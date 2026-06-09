@@ -1,0 +1,337 @@
+/* GALERÍA */
+.galeria-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
+.galeria-header h2 { color: #60a5fa; font-size: 28px; }
+.galeria-header p { color: #94a3b8; margin-top: 5px; }
+
+.btn-crear-mapa { background-color: #2563eb; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+.btn-crear-mapa:hover { background-color: #1d4ed8; }
+
+.grid-mapas { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 25px; }
+.card-mapa { background-color: #1e293b; border: 1px solid #334155; border-radius: 8px; overflow: hidden; transition: 0.2s; position: relative;}
+.card-mapa:hover { transform: translateY(-5px); border-color: #60a5fa; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
+
+.card-miniatura { height: 180px; background-color: #0f172a; display: flex; justify-content: center; align-items: center; border-bottom: 1px solid #334155; position: relative; overflow: hidden;}
+.icono-mapa { font-size: 50px; cursor: pointer;}
+.card-info { padding: 15px; cursor: pointer; }
+.card-info h3 { color: white; font-size: 16px; margin-bottom: 5px; }
+.card-info p { color: #94a3b8; font-size: 12px; }
+
+.mini-visor-wrapper { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+
+.btn-entrar-overlay {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: bold;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+}
+.btn-entrar-overlay:hover { background-color: #1d4ed8; transform: scale(1.05);}
+
+/* ========================================================
+   MODALES GENERALES Y MODAL DE OBJETOS 3D
+   ======================================================== */
+.modal-overlay { 
+  position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
+  background-color: rgba(0, 0, 0, 0.8); display: flex; justify-content: center; align-items: center; z-index: 2000; 
+}
+
+.modal-box { 
+  background-color: #242424; padding: 25px; border-radius: 8px; width: 400px; 
+  border: 1px solid #3d3d3d; display: flex; flex-direction: column; gap: 15px; 
+  box-shadow: 0 15px 40px rgba(0,0,0,0.6); 
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.modal-box.large {
+  width: 700px;
+  max-width: 90vw;
+}
+
+.modal-box h3 { color: #e6e6e6; margin-top: 0; border-bottom: 1px solid #3d3d3d; padding-bottom: 10px;}
+
+.modal-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.modal-section {
+  background-color: #1a1a1a;
+  padding: 15px;
+  border-radius: 6px;
+  border: 1px solid #333;
+}
+
+.modal-section h4 { color: #60a5fa; margin-top: 0; margin-bottom: 15px; font-size: 14px; }
+
+.modal-row {
+  display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px;
+}
+
+.modal-label { color: #a1a1a1; font-size: 13px; font-weight: 500; }
+
+.modal-input { 
+  background-color: #242424; border: 1px solid #3d3d3d; padding: 10px; border-radius: 4px; 
+  color: white; outline: none; width: 100%; box-sizing: border-box; font-family: inherit; 
+  transition: border 0.2s;
+}
+.modal-input:focus { border-color: #4b73b5; }
+
+.color-picker-wrapper { display: flex; align-items: center; gap: 10px; }
+.color-picker { -webkit-appearance: none; border: none; width: 40px; height: 35px; border-radius: 4px; cursor: pointer; padding: 0; background: transparent; }
+.color-picker::-webkit-color-swatch-wrapper { padding: 0; }
+.color-picker::-webkit-color-swatch { border: 1px solid #333; border-radius: 4px; }
+.color-hex-text { color: #888; font-family: monospace; font-size: 13px;}
+
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px; padding-top: 15px; border-top: 1px solid #3d3d3d;}
+.btn-cancel { background: transparent; color: #a1a1a1; border: none; cursor: pointer; padding: 10px 15px; border-radius: 4px; }
+.btn-cancel:hover { background-color: #333; color: white; }
+.btn-confirm { background-color: #4b73b5; color: white; border: none; padding: 10px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; }
+.btn-confirm:hover { background-color: #5c85c7; }
+.btn-confirm:disabled { background-color: #333; color: #666; cursor: not-allowed; }
+
+.upload-box {
+  border: 2px dashed #4b73b5;
+  padding: 15px;
+  text-align: center;
+  border-radius: 6px;
+  margin-top: 10px;
+  background-color: rgba(75, 115, 181, 0.1);
+}
+.upload-btn {
+  background-color: #4b73b5; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-top: 10px; cursor: pointer;
+}
+
+/* ========================================================
+   EDITOR 3D - LAYOUT TIPO BLENDER
+   ======================================================== */
+.blender-layout {
+  display: flex; background-color: #1e1e1e; position: fixed; top: 70px; left: 0; width: 100vw; height: calc(100vh - 70px); z-index: 950; overflow: hidden;
+}
+
+.viewport-area { flex-grow: 1; display: flex; flex-direction: column; position: relative; }
+
+.viewport-topbar {
+  height: 40px; background-color: #2b2b2b; border-bottom: 1px solid #1a1a1a;
+  display: flex; justify-content: space-between; align-items: center; padding: 0 15px;
+}
+
+.vp-left, .vp-right { display: flex; align-items: center; gap: 15px; }
+.vp-title { color: #d1d1d1; font-size: 14px; font-weight: 600; }
+
+.cam-select {
+  background-color: #1a1a1a; color: white; border: 1px solid #4b73b5;
+  border-radius: 4px; padding: 5px 10px; font-size: 12px; outline: none; cursor: pointer;
+}
+
+.btn-vp { background-color: #3e3e3e; color: #ccc; border: 1px solid #1a1a1a; padding: 5px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; transition: 0.2s; font-weight: bold;}
+.btn-vp:hover:not(:disabled) { background-color: #4e4e4e; color: white; }
+.btn-vp:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.btn-exit { background-color: #5c2525; }
+.btn-exit:hover { background-color: #7d3232; }
+.btn-save { background-color: #2e5c2e; }
+.btn-save:hover { background-color: #3b753b; }
+.btn-play { background-color: #b58900; color: #fff;}
+.btn-play:hover:not(:disabled) { background-color: #d6a100; }
+.btn-stop { background-color: #b52c00; color: #fff;}
+.btn-stop:hover { background-color: #d63400; }
+
+.sync-status { font-size: 12px; color: #888; font-style: italic; }
+.sync-status.syncing { color: #4b73b5; }
+
+.canvas-container { flex-grow: 1; position: relative; width: 100%; height: 100%; }
+.fps-badge { position: absolute; top: 15px; left: 70px; color: #87c04f; font-family: monospace; font-size: 13px; pointer-events: none; text-shadow: 1px 1px 2px black; z-index: 10; }
+
+
+/* 🔥 SISTEMA DE NOTIFICACIONES TIPO AAA (HUD) */
+.hud-container {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 50;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.hud-message {
+  padding: 8px 20px;
+  border-radius: 20px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 13px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  box-shadow: 0 4px 15px rgba(0,0,0,0.4);
+  animation: slideDown 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.hud-icon {
+  font-size: 16px;
+}
+
+.hud-playing {
+  background-color: rgba(0, 0, 0, 0.65);
+  color: #facc15; 
+  border: 1px solid rgba(250, 204, 21, 0.4);
+}
+
+.hud-paused {
+  background-color: rgba(0, 0, 0, 0.65);
+  color: #9ca3af; 
+  border: 1px solid rgba(156, 163, 175, 0.4);
+}
+
+.hud-editing {
+  background-color: rgba(16, 42, 22, 0.75); 
+  color: #4ade80; 
+  border: 1px solid rgba(74, 222, 128, 0.5);
+  box-shadow: 0 0 15px rgba(74, 222, 128, 0.2);
+}
+
+.hud-transition {
+  background-color: rgba(0, 0, 0, 0.8);
+  color: #60a5fa; 
+  border: 1px solid rgba(96, 165, 250, 0.5);
+  animation: pulseTransition 1s infinite alternate;
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulseTransition {
+  from { opacity: 0.7; box-shadow: 0 0 5px rgba(96, 165, 250, 0.2); }
+  to { opacity: 1; box-shadow: 0 0 20px rgba(96, 165, 250, 0.6); }
+}
+
+
+/* 🔥 ESTILOS PARA EL CROSSHAIR DEL JUEGO */
+.crosshair-ui {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 6px;
+  height: 6px;
+  background-color: #ffd700;
+  border: 1px solid rgba(0, 0, 0, 0.5);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none; 
+  z-index: 100;
+  box-shadow: 0 0 4px rgba(255, 215, 0, 0.8);
+  transition: all 0.15s ease-out;
+}
+
+.crosshair-ui.hovering {
+  width: 12px;
+  height: 12px;
+  background-color: #4ade80; 
+  border-color: rgba(255, 255, 255, 0.8);
+  box-shadow: 0 0 10px rgba(74, 222, 128, 0.9);
+}
+/* ========================================================
+   MODAL DE INTERACCIÓN RPG (JUGADOR NORMAL)
+   ======================================================== */
+.rpg-modal {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border: 2px solid #3b82f6;
+  border-radius: 12px;
+  width: 450px;
+  max-width: 90vw;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.8), inset 0 0 20px rgba(59, 130, 246, 0.2);
+  overflow: hidden;
+  animation: modalPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  color: #f8fafc;
+}
+
+.rpg-modal-header {
+  background: rgba(15, 23, 42, 0.8);
+  padding: 15px 20px;
+  border-bottom: 1px solid #334155;
+}
+
+.rpg-modal-header h3 { 
+  margin: 0; 
+  color: #60a5fa; 
+  font-size: 18px; 
+  display: flex; 
+  align-items: center; 
+  gap: 10px;
+}
+
+.rpg-modal-body { 
+  padding: 20px; 
+}
+
+.rpg-obj-name { 
+  font-size: 22px; 
+  font-weight: bold; 
+  color: #fbbf24; 
+  margin-top: 0; 
+  margin-bottom: 15px; 
+  border-bottom: 1px dashed #475569; 
+  padding-bottom: 10px;
+}
+
+.rpg-obj-desc p { 
+  margin: 8px 0; 
+  color: #cbd5e1; 
+  font-size: 14px;
+}
+
+.lore-text { 
+  color: #94a3b8; 
+  font-style: italic; 
+  margin-top: 20px; 
+  padding: 15px; 
+  background: rgba(0,0,0,0.3); 
+  border-left: 3px solid #3b82f6; 
+  border-radius: 4px;
+}
+
+.rpg-modal-footer {
+  padding: 15px 20px;
+  background: rgba(15, 23, 42, 0.8);
+  border-top: 1px solid #334155;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.btn-rpg-action {
+  background: #3b82f6;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 6px;
+  font-weight: bold;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 4px 10px rgba(59, 130, 246, 0.4);
+}
+
+.btn-rpg-action:hover { 
+  background: #2563eb; 
+  transform: translateY(-2px); 
+}
+
+@keyframes modalPop {
+  0% { opacity: 0; transform: scale(0.9) translateY(20px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}

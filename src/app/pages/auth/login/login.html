@@ -1,0 +1,43 @@
+<div class="login-container">
+  <div class="login-card">
+    
+    <div class="login-header">
+      <h1 class="logo-title"><span class="logo-icon">JP</span> Motor 3D</h1>
+      <p class="subtitle">Inicia sesión para continuar</p>
+    </div>
+    
+    <div class="login-form">
+      <div class="input-group">
+        <label>Usuario</label>
+        <input 
+          [(ngModel)]="username" 
+          type="text" 
+          placeholder="Ej: admin123"
+          (keydown.enter)="hacerLogin()">
+      </div>
+
+      <div class="input-group">
+        <label>Contraseña</label>
+        <input 
+          [(ngModel)]="password" 
+          type="password" 
+          placeholder="Tu contraseña"
+          (keydown.enter)="hacerLogin()">
+      </div>
+
+      <!-- Alerta de Error -->
+      <div class="error-message" *ngIf="errorMsg()">
+        ⚠️ {{ errorMsg() }}
+      </div>
+
+      <button 
+        (click)="hacerLogin()" 
+        [disabled]="loading()"
+        class="btn-login"
+        [class.btn-loading]="loading()">
+        {{ loading() ? 'Conectando...' : 'Ingresar al Motor' }}
+      </button>
+
+    </div>
+  </div>
+</div>

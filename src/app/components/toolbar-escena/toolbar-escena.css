@@ -1,0 +1,12 @@
+:host { position: absolute; top: 15px; left: 15px; z-index: 10; }
+.blender-toolbar { width: 44px; background-color: #2b2b2b; border-radius: 6px; display: flex; flex-direction: column; padding: 6px; gap: 6px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4); border: 1px solid #1a1a1a; user-select: none; }
+.tool-group { display: flex; flex-direction: column; gap: 6px; }
+.tool-btn { background: transparent; border: none; color: #cccccc; font-size: 18px; width: 32px; height: 32px; display: flex; justify-content: center; align-items: center; border-radius: 4px; cursor: pointer; filter: grayscale(100%); opacity: 0.6; transition: all 0.2s; }
+.tool-btn:hover { background-color: #3e3e3e; opacity: 1; }
+.tool-btn.active { background-color: #4b73b5; color: white; filter: grayscale(0%); opacity: 1; }
+.tool-divider { width: 80%; height: 1px; background-color: #1a1a1a; margin: 2px auto; }
+.action-btn { opacity: 0.9; filter: grayscale(0%); background-color: #383838; }
+.action-btn:hover { background-color: #4e4e4e; }
+.add-menu { position: absolute; top: 0; left: 100%; margin-left: 10px; background-color: #2b2b2b; border: 1px solid #1a1a1a; border-radius: 6px; width: 120px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.5); display: flex; flex-direction: column; padding: 4px; }
+.menu-item { padding: 8px 12px; color: #d1d1d1; font-size: 13px; cursor: pointer; border-radius: 4px; display: flex; align-items: center; gap: 8px; }
+.menu-item:hover { background-color: #4b73b5; color: white; }

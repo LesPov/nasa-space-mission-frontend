@@ -1,0 +1,15 @@
+<div class="admin-wrapper">
+  
+  <!-- Header fijo arriba (Siempre visible) -->
+  <app-header-admin></app-header-admin>
+
+  <!-- Menú lateral (Se oculta si el layoutSvc dice false) -->
+  <app-navbar-admin *ngIf="layoutSvc.menuVisible()"></app-navbar-admin>
+
+  <!-- CONTENIDO CENTRAL -->
+  <!-- Si el menú NO es visible, le ponemos la clase 'pantalla-completa' -->
+  <main class="admin-main-content" [class.pantalla-completa]="!layoutSvc.menuVisible()">
+    <router-outlet></router-outlet>
+  </main>
+
+</div>

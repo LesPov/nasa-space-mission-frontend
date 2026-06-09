@@ -1,0 +1,15 @@
+<div class="blender-toolbar">
+  <div class="tool-group">
+    <button class="tool-btn" [class.active]="currentTool === 'select'" (click)="setTool('select')" title="Seleccionar">↖️</button>
+    <button class="tool-btn" [class.active]="currentTool === 'translate'" (click)="setTool('translate')" title="Mover">☩</button>
+    <button class="tool-btn" [class.active]="currentTool === 'rotate'" (click)="setTool('rotate')" title="Rotar">↻</button>
+    <button class="tool-btn" [class.active]="currentTool === 'scale'" (click)="setTool('scale')" title="Escalar">⤡</button>
+  </div>
+
+  <div class="tool-divider"></div>
+
+  <div class="tool-group">
+    <!-- Este botón ahora abre el modal general -->
+    <button class="tool-btn action-btn" (click)="abrirModalAnadir()" title="Agregar Objeto Nuevo">➕</button>
+  </div>
+</div>

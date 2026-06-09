@@ -1,0 +1,245 @@
+<ng-container *ngIf="!editando">
+  <div class="galeria-header">
+    <div>
+      <h2>Tus Mapas / Episodios</h2>
+      <p>Selecciona un episodio o crea uno nuevo para empezar a editar.</p>
+    </div>
+    <button class="btn-crear-mapa" *ngIf="esAdmin" (click)="showModalMap = true">+ Crear Nuevo Mapa</button>
+  </div>
+
+  <div class="grid-mapas">
+    <div class="card-mapa" *ngFor="let epi of listaEpisodios" 
+         (mouseenter)="hoveredEpisodio = epi.id" 
+         (mouseleave)="hoveredEpisodio = null"
+         (click)="entrarAlEditor(epi)">
+      
+      <div class="card-miniatura">
+        <span class="icono-mapa" *ngIf="hoveredEpisodio !== epi.id">🌍</span>
+        
+        <ng-container *ngIf="hoveredEpisodio === epi.id">
+          <div class="mini-visor-wrapper" (click)="$event.stopPropagation()">
+            <app-mini-visor-escena [episodioId]="epi.id"></app-mini-visor-escena>
+          </div>
+          <button class="btn-entrar-overlay" (click)="entrarAlEditor(epi); $event.stopPropagation();">
+            {{ esAdmin ? 'Entrar al Editor ✏️' : 'Jugar 🎮' }}
+          </button>
+        </ng-container>
+      </div>
+      
+      <div class="card-info">
+        <h3>{{ epi.title }}</h3>
+        <p>ID: {{ epi.id }}</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" *ngIf="showModalMap">
+    <div class="modal-box">
+      <h3>Crear Nuevo Episodio</h3>
+      <div class="modal-row">
+        <label class="modal-label">Título del Episodio:</label>
+        <input type="text" [(ngModel)]="nuevoTitulo" class="modal-input">
+      </div>
+      <div class="modal-row">
+        <label class="modal-label">Descripción breve:</label>
+        <textarea [(ngModel)]="nuevaDesc" class="modal-input"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" (click)="showModalMap = false">Cancelar</button>
+        <button class="btn-confirm" (click)="crearNuevoEpisodio()">Crear y Entrar</button>
+      </div>
+    </div>
+  </div>
+</ng-container>
+
+<ng-container *ngIf="editando">
+  
+  <div class="modal-overlay" *ngIf="editorSvc.showAddObjectModal()" style="z-index: 9999;">
+    <div class="modal-box large">
+      <h3>Añadir Nuevo Elemento a la Escena</h3>
+      
+      <div class="modal-grid">
+        <div class="modal-section">
+          <h4>1. Configuración del Objeto</h4>
+          <div class="modal-row">
+            <label class="modal-label">Nombre Único:</label>
+            <input type="text" [(ngModel)]="objNombre" class="modal-input" placeholder="Ej: PuertaPrincipal">
+          </div>
+          <div class="modal-row">
+            <label class="modal-label" style="color: #ffd700;">Rol del Elemento:</label>
+            <select [(ngModel)]="objRol" class="modal-input" (change)="onRolChange()">
+              <option value="prop">🛋️ Decoración / Prop estático</option>
+              <option value="spawn_point">🧍‍♂️ Spawn del Jugador</option>
+              <option value="npc">🤖 NPC / Personaje</option>
+            </select>
+          </div>
+          <div class="modal-row">
+            <label class="modal-label">Tamaño Inicial (Escala X, Y, Z):</label>
+            <div style="display: flex; gap: 10px;">
+              <input type="number" [(ngModel)]="objSizeX" step="0.5" class="modal-input" placeholder="X">
+              <input type="number" [(ngModel)]="objSizeY" step="0.5" class="modal-input" placeholder="Y">
+              <input type="number" [(ngModel)]="objSizeZ" step="0.5" class="modal-input" placeholder="Z">
+            </div>
+          </div>
+          
+          <div class="modal-row" style="margin-top: 15px;">
+            <label class="modal-label" style="color: #4ade80;">Mensaje al interactuar (Lore):</label>
+            <textarea [(ngModel)]="objMensaje" class="modal-input" placeholder="Ej: 'Una puerta antigua cerrada con llave...'"></textarea>
+          </div>
+        </div>
+
+        <div class="modal-section">
+          <h4>2. Aspecto Visual y Físicas</h4>
+          <div class="modal-row">
+            <label class="modal-label">Tipo de Forma:</label>
+            <select [(ngModel)]="objTipo" class="modal-input" (change)="onTipoChange()" [disabled]="objRol === 'spawn_point' || objRol === 'npc'">
+              <option value="cube">🧊 Cubo Básico</option>
+              <option value="sphere">⚽ Esfera</option>
+              <option value="cylinder">🛢️ Cilindro / Cápsula</option>
+              <option value="plane">🗺️ Plano (Suelo)</option>
+              <option value="model">✨ Modelo 3D Importado (.GLB)</option>
+            </select>
+          </div>
+          
+          <div class="modal-row" *ngIf="objTipo !== 'model'">
+            <label class="modal-label">Color del Material:</label>
+            <div class="color-picker-wrapper">
+              <input type="color" [(ngModel)]="objColor" class="color-picker">
+              <span class="color-hex-text">{{ objColor.toUpperCase() }}</span>
+            </div>
+          </div>
+          
+          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 15px;">
+            <input type="checkbox" [(ngModel)]="objEsSolido" id="chkSolido">
+            <label for="chkSolido" class="modal-label" style="margin: 0; cursor: pointer;">🧱 Objeto Sólido (Bloquea el paso)</label>
+          </div>
+          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px;">
+            <input type="checkbox" [(ngModel)]="objEsSeleccionable" id="chkSeleccion">
+            <label for="chkSeleccion" class="modal-label" style="margin: 0; cursor: pointer;">🎯 Editable (Se puede tocar con el ratón)</label>
+          </div>
+
+          <div *ngIf="objTipo === 'model'" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 15px;">
+            <div class="modal-row">
+              <label class="modal-label">Selecciona el modelo guardado:</label>
+              <select [(ngModel)]="objAssetSeleccionado" class="modal-input">
+                <option [ngValue]="null" disabled>-- Elige un modelo --</option>
+                <option *ngFor="let asset of listaAssets" [ngValue]="asset">
+                  {{ asset.name }}
+                </option>
+              </select>
+            </div>
+            <div class="upload-box">
+              <p style="margin: 0 0 10px 0; color: #a1a1a1; font-size: 12px;">¿No está en la lista?</p>
+              <input type="file" accept=".glb, .obj" (change)="seleccionarArchivoSubida($event)" style="font-size: 11px; width: 100%;">
+              <button class="upload-btn" [disabled]="!archivoSubida || subiendoAsset" (click)="subirNuevoAsset()">
+                {{ subiendoAsset ? 'Subiendo...' : 'Subir a BD ☁️' }}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-cancel" (click)="cerrarModalObjeto()">Cancelar</button>
+        <button class="btn-confirm" (click)="crearObjeto3D()" [disabled]="objTipo === 'model' && !objAssetSeleccionado">
+          Añadir a la Escena
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" *ngIf="editorSvc.playState() === 'INTERACTING'" style="z-index: 1000;">
+    <div class="rpg-modal">
+      <div class="rpg-modal-header">
+        <h3>🔍 Inspeccionando Objeto</h3>
+      </div>
+      <div class="rpg-modal-body">
+        <p class="rpg-obj-name">{{ editorSvc.objetoInteractuado()?.name }}</p>
+        
+        <div class="rpg-obj-desc">
+          <div class="lore-text">
+            <p>"{{ editorSvc.objetoInteractuado()?.metadata?.mensaje || 'Un objeto cualquiera en tu camino. No parece hacer nada especial.' }}"</p>
+          </div>
+        </div>
+      </div>
+      <div class="rpg-modal-footer">
+        <button class="btn-rpg-action" (click)="cerrarInteraccion()">Continuar Aventura</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="blender-layout">
+    <div class="viewport-area">
+      <!-- TOPBAR -->
+      <div class="viewport-topbar">
+        <div class="vp-left">
+          <button class="btn-vp btn-exit" (click)="salirDelEditor()" *ngIf="editorSvc.playState() === 'EDITOR' || !esAdmin">⬅ Menú</button>
+          <span class="vp-title">{{ mapaActualNombre }}</span>
+        </div>
+        <div class="vp-right">
+          
+          <ng-container *ngIf="esAdmin">
+            <!-- 🔥 Botón simulador -->
+            <button class="btn-vp" style="border-color: #facc15;" (click)="toggleRolPrueba()">
+              [Prueba: {{ editorSvc.rolSimulado() | uppercase }}]
+            </button>
+
+            <select [(ngModel)]="vistaPrueba" class="cam-select" *ngIf="editorSvc.playState() === 'EDITOR'">
+              <option value="FPS">👁️ 1ra Persona</option>
+              <option value="TPS">🧍 3ra Persona</option>
+            </select>
+
+            <button class="btn-vp btn-play" 
+                    *ngIf="editorSvc.playState() === 'EDITOR'" 
+                    [disabled]="!esObjetoJugable()"
+                    (click)="iniciarModoPrueba()"
+                    [title]="!esObjetoJugable() ? 'Selecciona un Spawn o NPC para probar' : 'Jugar con este objeto'">
+              ▶️ Jugar
+            </button>
+            
+            <span class="sync-status" [class.syncing]="estadoGuardado() === 'Guardando...'" *ngIf="editorSvc.playState() === 'EDITOR'">{{ estadoGuardado() }}</span>
+            <button class="btn-vp btn-save" (click)="guardarMapaEnBD(false)" *ngIf="editorSvc.playState() === 'EDITOR'">💾 Guardar</button>
+          </ng-container>
+
+          <button class="btn-vp btn-stop" *ngIf="editorSvc.playState() !== 'EDITOR' && esAdmin" (click)="detenerModoPrueba()">
+            ⏹️ Salir del Juego
+          </button>
+        </div>
+      </div>
+
+      <div class="canvas-container">
+        
+        <div class="crosshair-ui" 
+             *ngIf="editorSvc.playState() === 'PLAYING' && vistaPrueba === 'FPS' && editorSvc.ratonBloqueado()" 
+             [class.hovering]="editorSvc.mirandoObjetoInteractuable()"></div>
+
+        <!-- SISTEMA DE NOTIFICACIONES TIPO AAA (HUD) -->
+        <div class="hud-container">
+          <div class="hud-message hud-playing" *ngIf="editorSvc.playState() === 'PLAYING' && editorSvc.ratonBloqueado()">
+            <span class="hud-icon">🎮</span> "WASD" Mover • "Espacio" Saltar • Click a un objeto para interactuar
+          </div>
+          
+          <div class="hud-message hud-paused" *ngIf="editorSvc.playState() === 'PLAYING' && !editorSvc.ratonBloqueado()">
+            <span class="hud-icon">⏸️</span> Juego Pausado | Click en la pantalla para volver
+          </div>
+
+          <div class="hud-message hud-editing" *ngIf="editorSvc.playState() === 'EDITING_IN_GAME'">
+            <span class="hud-icon">⚙️</span> MODO EDICIÓN EN VIVO | Click al fondo o "ESC" para volver
+          </div>
+          
+          <div class="hud-message hud-transition" *ngIf="editorSvc.playState() === 'TRANSITIONING'">
+            <span class="hud-icon">🎥</span> Moviendo Cámara...
+          </div>
+        </div>
+        
+        <app-motor-babylon></app-motor-babylon>
+        
+        <app-toolbar-escena *ngIf="esAdmin && (editorSvc.playState() === 'EDITOR' || editorSvc.playState() === 'EDITING_IN_GAME' || (editorSvc.playState() === 'PLAYING' && !editorSvc.ratonBloqueado()))"></app-toolbar-escena>
+        <div class="fps-badge">FPS: {{ fps() }}</div>
+      </div>
+    </div>
+
+    <!-- Inspector -->
+    <app-inspector-escena *ngIf="esAdmin"></app-inspector-escena>
+  </div>
+</ng-container>

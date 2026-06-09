@@ -1,0 +1,136 @@
+<div class="blender-ui">
+  
+  <div class="outliner-container">
+    <div class="panel-header"><span class="icon">📁</span> Scene Collection</div>
+    <div class="outliner-tree">
+      <div class="tree-collection"><span class="tree-expander">▼</span><span class="icon">📦</span> Collection</div>
+      <div class="tree-items">
+        <div *ngFor="let nodo of listaNodos" class="node-item" [class.selected]="esSeleccionado(nodo)" [class.locked]="esBloqueado(nodo)" (click)="seleccionarDesdeLista(nodo)">
+          <div class="node-left"><span class="node-icon">{{ getIcono(nodo) }}</span><span class="node-name">{{ nodo.name }}</span></div>
+          <div class="node-right"><span class="visibility-icon">👁️</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="properties-container">
+    
+    <div class="prop-tabs">
+      <button class="tab-btn" [class.active]="pestanaActiva === 'transform'" (click)="pestanaActiva = 'transform'" title="Object Properties">🟧</button>
+      <button class="tab-btn" [class.active]="pestanaActiva === 'animation'" (click)="pestanaActiva = 'animation'" title="Animations">🏃</button>
+      <button class="tab-btn" [class.active]="pestanaActiva === 'world'" (click)="pestanaActiva = 'world'" title="World Properties">🌍</button>
+    </div>
+
+    <div class="prop-content">
+      
+      <ng-container *ngIf="pestanaActiva === 'transform'">
+        <div class="panel-header"><span>Object Properties</span></div>
+        <div *ngIf="objetoActual" class="prop-scroll-area">
+          <div class="obj-title-bar"><span class="icon">🧊</span><input type="text" [value]="objetoActual.name" readonly class="obj-name-input"></div>
+
+          <div class="transform-box">
+            <div class="box-header">▼ Transform</div>
+            <div class="box-body">
+              
+              <!-- SE UTILIZA [(ngModel)] UNIDO A LAS VARIABLES LOCALES -->
+              <div class="prop-row">
+                <span class="label">Location</span>
+                <div class="vector-group">
+                  <div class="vector-input"><span class="axis x">X</span><input type="number" step="0.1" [(ngModel)]="localPosX" (ngModelChange)="aplicarPosicion()"></div>
+                  <div class="vector-input"><span class="axis y">Y</span><input type="number" step="0.1" [(ngModel)]="localPosY" (ngModelChange)="aplicarPosicion()"></div>
+                  <div class="vector-input"><span class="axis z">Z</span><input type="number" step="0.1" [(ngModel)]="localPosZ" (ngModelChange)="aplicarPosicion()"></div>
+                </div>
+              </div>
+
+              <div class="prop-row">
+                <span class="label">Rotation</span>
+                <div class="vector-group">
+                  <div class="vector-input"><span class="axis x">X</span><input type="number" step="1" [(ngModel)]="localRotX" (ngModelChange)="aplicarRotacion()"></div>
+                  <div class="vector-input"><span class="axis y">Y</span><input type="number" step="1" [(ngModel)]="localRotY" (ngModelChange)="aplicarRotacion()"></div>
+                  <div class="vector-input"><span class="axis z">Z</span><input type="number" step="1" [(ngModel)]="localRotZ" (ngModelChange)="aplicarRotacion()"></div>
+                </div>
+              </div>
+
+              <div class="prop-row">
+                <span class="label">Scale</span>
+                <div class="vector-group">
+                  <div class="vector-input"><span class="axis x">X</span><input type="number" step="0.1" [(ngModel)]="localEscX" (ngModelChange)="aplicarEscala()"></div>
+                  <div class="vector-input"><span class="axis y">Y</span><input type="number" step="0.1" [(ngModel)]="localEscY" (ngModelChange)="aplicarEscala()"></div>
+                  <div class="vector-input"><span class="axis z">Z</span><input type="number" step="0.1" [(ngModel)]="localEscZ" (ngModelChange)="aplicarEscala()"></div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- PROPIEDADES EXTRA -->
+          <div class="transform-box" style="margin-top: 15px; border-top: 1px solid #1a1a1a; padding-top: 15px;">
+            <div class="box-header">▼ Properties</div>
+            <div class="box-body">
+              
+              <div class="prop-row" *ngIf="objetoActual.metadata?.type !== 'model'">
+                <span class="label">Color Base</span>
+                <div class="color-picker-wrapper">
+                  <input type="color" [value]="objetoActual.metadata?.color || '#ffffff'" (input)="actualizarColor($event)" class="color-picker">
+                  <span class="color-hex-text">{{ (objetoActual.metadata?.color || '#ffffff').toUpperCase() }}</span>
+                </div>
+              </div>
+
+              <div class="prop-row" style="flex-direction: row; align-items: center; gap: 8px; margin-top: 10px;">
+                <input type="checkbox" id="insp-solido" [checked]="objetoActual.metadata?.isSolid ?? true" (change)="actualizarSolido($event)">
+                <label for="insp-solido" style="margin: 0; cursor: pointer; color: #b3b3b3;">🧱 Objeto Sólido (Físicas)</label>
+              </div>
+
+              <div class="prop-row" style="flex-direction: row; align-items: center; gap: 8px;">
+                <input type="checkbox" id="insp-select" [checked]="objetoActual.metadata?.isSelectable ?? true" (change)="actualizarSeleccionable($event)">
+                <label for="insp-select" style="margin: 0; cursor: pointer; color: #b3b3b3;">🎯 Seleccionable por ratón</label>
+              </div>
+
+            </div>
+          </div>
+          
+          <div class="transform-box" style="margin-top: 15px; border-top: 1px solid #1a1a1a; padding-top: 15px;">
+            <div class="box-header" style="color: #4ade80;">▼ Mensaje Interactivo (Lore)</div>
+            <div class="box-body">
+              <div class="prop-row">
+                <textarea [value]="objetoActual.metadata?.mensaje || ''" 
+                          (input)="actualizarMensaje($event)" 
+                          placeholder="Escribe aquí el texto que leerá el jugador al tocar este objeto..."
+                          style="width: 100%; min-height: 80px; background-color: #1e1e1e; color: white; border: 1px solid #333; padding: 8px; border-radius: 4px; font-family: inherit; font-size: 12px; outline: none;"></textarea>
+              </div>
+            </div>
+          </div>
+
+          <button class="btn-delete" (click)="eliminarObjeto()">Eliminar Objeto</button>
+        </div>
+        <div *ngIf="!objetoActual" class="empty-state"><p>Ningún objeto seleccionado</p></div>
+      </ng-container>
+
+      <ng-container *ngIf="pestanaActiva === 'animation'">
+        <div class="panel-header"><span>Animations Data</span></div>
+        
+        <div *ngIf="objetoActual && objetoActual.metadata?.animations?.length > 0" class="prop-scroll-area">
+          <p style="color: #4ade80; margin-bottom: 10px; font-weight: bold;">Animaciones Detectadas:</p>
+          
+          <div *ngFor="let anim of objetoActual.metadata.animations" style="background-color: #232323; padding: 8px; border-radius: 4px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+            <span style="color: white; font-size: 13px; text-overflow: ellipsis; overflow: hidden; max-width: 150px; white-space: nowrap;" [title]="anim.name">{{ anim.name }}</span>
+            <button (click)="reproducirAnimacion(anim)" style="background: #4b73b5; border: none; color: white; padding: 4px 8px; border-radius: 4px; cursor: pointer;">▶️ Play</button>
+          </div>
+          
+          <button (click)="detenerAnimaciones()" style="width: 100%; background: #5c2525; border: none; color: white; padding: 8px; border-radius: 4px; cursor: pointer; margin-top: 10px;">⏹️ Detener Todas</button>
+        </div>
+
+        <div *ngIf="!objetoActual || !objetoActual.metadata?.animations || objetoActual.metadata.animations.length === 0" class="empty-state">
+          <p>Sin Animaciones</p>
+          <span>Este objeto no tiene pistas de animación o no es un modelo GLB con esqueleto.</span>
+        </div>
+      </ng-container>
+
+      <ng-container *ngIf="pestanaActiva === 'world'">
+        <div class="panel-header"><span>World Properties</span></div>
+        <div class="empty-state"><p>Entorno 3D</p><span>Configuración global.</span></div>
+      </ng-container>
+
+    </div>
+  </div>
+</div>

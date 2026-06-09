@@ -1,0 +1,17 @@
+:host {
+  display: block;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.babylon-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none; /* MUY IMPORTANTE: Evita el zoom/scroll nativo del navegador */
+  outline: none;
+  border: none;
+}

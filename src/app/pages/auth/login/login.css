@@ -1,0 +1,129 @@
+/* Contenedor principal que ocupa toda la pantalla */
+.login-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background-color: #0f172a; /* Fondo muy oscuro, estilo editor de código */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  color: white;
+}
+
+/* La tarjeta central */
+.login-card {
+  background-color: #1e293b;
+  width: 100%;
+  max-width: 400px;
+  padding: 40px 30px;
+  border-radius: 12px;
+  box-shadow: 0 15px 30px rgba(0, 0, 0, 0.5);
+  border: 1px solid #334155;
+  box-sizing: border-box;
+}
+
+/* Encabezado */
+.login-header {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+.logo-title {
+  font-size: 28px;
+  font-weight: bold;
+  margin: 0 0 5px 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+}
+
+.logo-icon {
+  background-color: #2563eb;
+  color: white;
+  padding: 5px 10px;
+  border-radius: 8px;
+  font-size: 18px;
+}
+
+.subtitle {
+  color: #94a3b8;
+  font-size: 14px;
+  margin: 0;
+}
+
+/* Formulario e Inputs */
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.input-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+}
+
+.input-group label {
+  color: #cbd5e1;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.input-group input {
+  background-color: #0f172a;
+  border: 1px solid #475569;
+  color: white;
+  padding: 12px 15px;
+  border-radius: 8px;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.2s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.input-group input:focus {
+  border-color: #3b82f6; /* Azul brillante al enfocar */
+}
+
+/* Mensaje de Error */
+.error-message {
+  color: #ef4444; /* Rojo de error */
+  background-color: rgba(239, 68, 68, 0.1);
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #ef4444;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* Botón de Login */
+.btn-login {
+  background-color: #2563eb;
+  color: white;
+  border: none;
+  padding: 14px;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.btn-login:hover:not(:disabled) {
+  background-color: #1d4ed8;
+}
+
+.btn-login:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-loading {
+  background-color: #475569;
+  color: #cbd5e1;
+  cursor: not-allowed;
+}

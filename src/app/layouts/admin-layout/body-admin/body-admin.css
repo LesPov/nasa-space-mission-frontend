@@ -1,0 +1,19 @@
+.admin-wrapper {
+  display: block;
+  width: 100%;
+}
+
+.admin-main-content {
+  margin-top: 70px; 
+  margin-left: 250px; 
+  padding: 30px; 
+  min-height: calc(100vh - 70px);
+  background-color: #0f172a;
+  transition: margin-left 0.3s ease, padding 0.3s ease; /* Transición suave */
+}
+
+/* ESTA CLASE SE ACTIVA CUANDO ENTRAMOS AL EDITOR 3D */
+.admin-main-content.pantalla-completa {
+  margin-left: 0; /* Quita el espacio del menú lateral */
+  padding: 0; /* Quita el padding para que el canvas toque los bordes */
+}

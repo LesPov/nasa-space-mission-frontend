@@ -2,9 +2,8 @@ import { Injectable, inject } from '@angular/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { HistorialService } from '../historial.service';
-import { MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader, StandardMaterial, Color3 } from '@babylonjs/core';
+import { MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader, StandardMaterial, Color3, TransformNode, Matrix } from '@babylonjs/core';
 
-// 🔥 OBLIGATORIO: Permite que SceneLoader lea los modelos 3D (.glb)
 import '@babylonjs/loaders/glTF';
 
 @Injectable({ providedIn: 'root' })
@@ -46,10 +45,10 @@ export class EditorSceneService {
 
     const isModel = tipo === 'model';
     
-    // 🔥 Diferenciamos orígenes: Un .glb nace en los pies (Y=0). Un Cubo nace en el centro (Y=0.5).
-    const defaultCapsule = isModel 
-        ? { radiusX: 0.4, heightY: 0.9, radiusZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
-        : { radiusX: 0.5, heightY: 0.5, radiusZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 }; 
+    // Ahora todo se guarda estructurado bajo "collider" y de forma universal usando sizes.
+    const defaultCollider = isModel 
+        ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
+        : { type: tipo === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 }; 
 
     const defaultCamOffset = isModel
         ? { x: 0, y: 1.6, z: 0 }
@@ -66,7 +65,7 @@ export class EditorSceneService {
         rootNode.name = nombre;
         rootNode.scaling = new Vector3(sizeX, sizeY, sizeZ);
         if (!rootNode.rotationQuaternion) rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
-        rootNode.position = new Vector3(0, 0, 0); // Modelos al suelo perfecto
+        rootNode.position = new Vector3(0, 0, 0); 
         rootNode.checkCollisions = false;
         rootNode.isPickable = true;
 
@@ -80,15 +79,34 @@ export class EditorSceneService {
         const anims = result.animationGroups || [];
         anims.forEach(ag => ag.stop());
 
+        // 🔥 CALCULAMOS Y GUARDAMOS LA POSICIÓN ORIGINAL DE LA CABEZA
+        let initialHeadLocal = null;
+        const headNode = rootNode.getChildTransformNodes(false).find(n => 
+            n.name.toLowerCase() === 'head' || 
+            n.name.toLowerCase() === 'neck' || 
+            n.name.toLowerCase().includes('mixamorig:head') ||
+            n.name.toLowerCase().includes('head')
+        ) as TransformNode;
+
+        if (headNode) {
+            headNode.computeWorldMatrix(true);
+            rootNode.computeWorldMatrix(true);
+            initialHeadLocal = Vector3.TransformCoordinates(
+                headNode.getAbsolutePosition(), 
+                Matrix.Invert(rootNode.getWorldMatrix())
+            );
+        }
+
         rootNode.metadata = { 
             type: 'model', rol, assetId: asset.id, path: asset.path, 
             isSolid, isSelectable, animations: anims, mensaje,
-            capsule: { ...defaultCapsule },
-            camOffset: { ...defaultCamOffset }
+            collider: { ...defaultCollider },
+            camOffset: { ...defaultCamOffset },
+            initialHeadLocal
         };
 
-        rootNode.ellipsoid = new Vector3(defaultCapsule.radiusX * sizeX, defaultCapsule.heightY * sizeY, defaultCapsule.radiusZ * sizeZ);
-        rootNode.ellipsoidOffset = new Vector3(defaultCapsule.offsetX * sizeX, defaultCapsule.offsetY * sizeY, defaultCapsule.offsetZ * sizeZ);
+        rootNode.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
+        rootNode.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
 
         this.state.objetoSeleccionado.set(rootNode);
         this.actualizarListaNodos();
@@ -97,7 +115,7 @@ export class EditorSceneService {
       });
     } else {
       let mesh!: Mesh;
-      let offsetColisionY = 0.5; // Porque los objetos primitivos de Babylon se crean desde el centro
+      let offsetColisionY = 0.5; 
       
       switch (tipo) {
         case 'cube': mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene); break;
@@ -106,21 +124,20 @@ export class EditorSceneService {
         case 'plane': mesh = MeshBuilder.CreateGround(nombre, { width: 1, height: 1 }, scene); offsetColisionY = 0.02; break;
       }
       
-      // 🔥 TRUCO MAGISTRAL: Como le aplicamos offsetColisionY multiplicado por sizeY, las primitivas quedan sobre el suelo idéntico a un GLB
       mesh.scaling = new Vector3(sizeX, sizeY, sizeZ);
       mesh.position = new Vector3(0, offsetColisionY * sizeY, 0); 
       
       mesh.metadata = { 
           type: tipo, rol, color: colorHex, isSolid, isSelectable, mensaje,
-          capsule: { ...defaultCapsule },
+          collider: { ...defaultCollider },
           camOffset: { ...defaultCamOffset }
       };
 
       mesh.isPickable = true;
       mesh.checkCollisions = isSolid;
       
-      mesh.ellipsoid = new Vector3(defaultCapsule.radiusX * sizeX, defaultCapsule.heightY * sizeY, defaultCapsule.radiusZ * sizeZ);
-      mesh.ellipsoidOffset = new Vector3(defaultCapsule.offsetX * sizeX, defaultCapsule.offsetY * sizeY, defaultCapsule.offsetZ * sizeZ);
+      mesh.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
+      mesh.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
 
       const mat = new StandardMaterial("mat_" + nombre, scene);
       mat.diffuseColor = Color3.FromHexString(colorHex);
@@ -140,9 +157,9 @@ export class EditorSceneService {
     
     objetosBD.forEach(obj => {
       const isModel = obj.type === 'model';
-      const defaultCapsule = isModel 
-          ? { radiusX: 0.4, heightY: 0.9, radiusZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
-          : { radiusX: 0.5, heightY: 0.5, radiusZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 }; 
+      const defaultCollider = isModel 
+          ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
+          : { type: obj.type === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 }; 
 
       const defaultCamOffset = isModel
           ? { x: 0, y: 1.6, z: 0 }
@@ -153,7 +170,19 @@ export class EditorSceneService {
       const isSelectableSaved = obj.properties?.isSelectable ?? true;
       const mensajeSaved = obj.properties?.mensaje || '';
       
-      const savedCapsule = obj.properties?.capsule || { ...defaultCapsule };
+      // 🔥 MIGRACIÓN Y COMPATIBILIDAD CON MAPAS ANTIGUOS
+      const savedCollider = obj.properties?.collider || obj.properties?.capsule || { ...defaultCollider };
+      if (savedCollider.radiusX !== undefined) {
+          savedCollider.sizeX = savedCollider.radiusX;
+          savedCollider.sizeY = savedCollider.heightY;
+          savedCollider.sizeZ = savedCollider.radiusZ;
+          savedCollider.type = isModel ? 'capsule' : 'box';
+          delete savedCollider.radiusX;
+          delete savedCollider.heightY;
+          delete savedCollider.radiusZ;
+      }
+      if (!savedCollider.type) savedCollider.type = isModel ? 'capsule' : 'box';
+
       const savedCamOffset = obj.properties?.camOffset || { ...defaultCamOffset };
 
       if (isModel && obj.assetId) {
@@ -180,15 +209,34 @@ export class EditorSceneService {
           const anims = result.animationGroups || [];
           anims.forEach(ag => ag.stop());
 
+          // 🔥 CALCULAMOS Y GUARDAMOS LA POSICIÓN ORIGINAL DE LA CABEZA
+          let initialHeadLocal = null;
+          const headNode = rootNode.getChildTransformNodes(false).find(n => 
+              n.name.toLowerCase() === 'head' || 
+              n.name.toLowerCase() === 'neck' || 
+              n.name.toLowerCase().includes('mixamorig:head') ||
+              n.name.toLowerCase().includes('head')
+          ) as TransformNode;
+
+          if (headNode) {
+              headNode.computeWorldMatrix(true);
+              rootNode.computeWorldMatrix(true);
+              initialHeadLocal = Vector3.TransformCoordinates(
+                  headNode.getAbsolutePosition(), 
+                  Matrix.Invert(rootNode.getWorldMatrix())
+              );
+          }
+
           rootNode.metadata = { 
               type: 'model', rol: rolSaved, assetId: obj.assetId, path, 
               isSolid: isSolidSaved, isSelectable: isSelectableSaved, 
               animations: anims, mensaje: mensajeSaved,
-              capsule: savedCapsule, camOffset: savedCamOffset
+              collider: savedCollider, camOffset: savedCamOffset,
+              initialHeadLocal
           };
           
-          rootNode.ellipsoid = new Vector3(savedCapsule.radiusX * obj.scale.x, savedCapsule.heightY * obj.scale.y, savedCapsule.radiusZ * obj.scale.z);
-          rootNode.ellipsoidOffset = new Vector3(savedCapsule.offsetX * obj.scale.x, savedCapsule.offsetY * obj.scale.y, savedCapsule.offsetZ * obj.scale.z);
+          rootNode.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
+          rootNode.ellipsoidOffset = new Vector3(savedCollider.offsetX * obj.scale.x, savedCollider.offsetY * obj.scale.y, savedCollider.offsetZ * obj.scale.z);
 
           this.actualizarListaNodos();
         });
@@ -209,13 +257,13 @@ export class EditorSceneService {
         mesh.metadata = { 
             type: obj.type, rol: rolSaved, color: savedColor, 
             isSolid: isSolidSaved, isSelectable: isSelectableSaved, mensaje: mensajeSaved,
-            capsule: savedCapsule, camOffset: savedCamOffset
+            collider: savedCollider, camOffset: savedCamOffset
         };
         mesh.isPickable = true;
         mesh.checkCollisions = isSolidSaved;
 
-        mesh.ellipsoid = new Vector3(savedCapsule.radiusX * obj.scale.x, savedCapsule.heightY * obj.scale.y, savedCapsule.radiusZ * obj.scale.z);
-        mesh.ellipsoidOffset = new Vector3(savedCapsule.offsetX * obj.scale.x, savedCapsule.offsetY * obj.scale.y, savedCapsule.offsetZ * obj.scale.z);
+        mesh.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
+        mesh.ellipsoidOffset = new Vector3(savedCollider.offsetX * obj.scale.x, savedCollider.offsetY * obj.scale.y, savedCollider.offsetZ * obj.scale.z);
 
         const mat = new StandardMaterial("mat_" + obj.name, scene);
         mat.diffuseColor = Color3.FromHexString(savedColor);
@@ -242,7 +290,7 @@ export class EditorSceneService {
             isSolid: nodo.metadata.isSolid,
             isSelectable: nodo.metadata.isSelectable,
             mensaje: nodo.metadata.mensaje,
-            capsule: nodo.metadata.capsule,
+            collider: nodo.metadata.collider, // 🔥 Ahora se guarda bien
             camOffset: nodo.metadata.camOffset
         };
 

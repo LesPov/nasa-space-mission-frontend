@@ -16,6 +16,8 @@ export class EditorStateService {
   public currentTool = signal<ToolMode>('translate');
   
   public objetoSeleccionado = signal<Node | null>(null);
+  public subObjetoSeleccionado = signal<'collider' | 'camera' | null>(null); // 🔥 NUEVO: Subselección
+  
   public objetoInteractuado = signal<any>(null);
   public nodosEscena = signal<Node[]>([]);
   
@@ -38,15 +40,13 @@ export class EditorStateService {
   public cameraPivot: Mesh | null = null;
 
   // Backups para restaurar al salir de modo Play
+  public proxyColliders: Mesh[] = []; // 🔥 NUEVO: Muros invisibles
   public backupObjetoPosicion: Vector3 | null = null;
   public backupObjetoRotacionQuat: Quaternion | null = null;
   public backupObjetoVisibilidad: boolean = true;
   public backupColisionJugador: boolean = true;
   public backupColisionesHijos: { mesh: AbstractMesh, col: boolean }[] = [];
 
-  // ========================================================================
-  // FUNCIONES DE UTILIDAD PURAS
-  // ========================================================================
   triggerUpdate(): void {
     this.onMapChanged.next();
   }
@@ -83,7 +83,7 @@ export class EditorStateService {
     if (!mesh || !mesh.name || !mesh.isVisible) return false;
     if (mesh.name === "sueloInvisible" || mesh.name === "cameraPivot") return false;
     if (mesh.name.includes("eje") || mesh.name.includes("gridHelper")) return false;
-    if (mesh.name.toLowerCase().includes("gizmo") || mesh.name.toLowerCase().includes("highlight")) return false;
+    if (mesh.name.toLowerCase().includes("gizmo") || mesh.name.toLowerCase().includes("highlight") || mesh.name.toLowerCase().includes("debug")) return false;
 
     if (this.jugadorActivo && (mesh === this.jugadorActivo || this.isDescendant(mesh, this.jugadorActivo))) {
       return false;
@@ -114,5 +114,6 @@ export class EditorStateService {
     this.jugadorActivo = null;
     this.objetoHovereado.set(null);
     this.objetoSeleccionado.set(null);
+    this.subObjetoSeleccionado.set(null); 
   }
 }

@@ -4,11 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { EditorMapaService } from '../../services/editor-mapa.service';
 import { HistorialService } from '../../services/historial.service';
 import { Motor3dService } from '../../services/motor-3d.service';
-import { 
-  Node, AbstractMesh, Camera, Light, AnimationGroup, 
-  Quaternion, Color3, StandardMaterial, Vector3, MeshBuilder, Mesh,
-  TransformNode, Observer, Scene, Matrix
-} from '@babylonjs/core';
+import { Node, AbstractMesh, Camera, Light, AnimationGroup, Quaternion, Vector3 } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 
 @Component({
@@ -26,10 +22,7 @@ export class InspectorEscena implements OnInit, OnDestroy {
 
   private _pestanaActiva: string = 'transform';
   get pestanaActiva() { return this._pestanaActiva; }
-  set pestanaActiva(val: string) {
-    this._pestanaActiva = val;
-    this.actualizarDebugVisual();
-  }
+  set pestanaActiva(val: string) { this._pestanaActiva = val; }
 
   private subs: Subscription[] = [];
   public nodosExpandidos = new Set<string>();
@@ -39,27 +32,17 @@ export class InspectorEscena implements OnInit, OnDestroy {
   localRotX: number = 0; localRotY: number = 0; localRotZ: number = 0;
   localEscX: number = 1; localEscY: number = 1; localEscZ: number = 1;
 
-  // Propiedades de la Cápsula (Controller) y Cámara
-  capsuleRadX: number = 0.4; capsuleRadY: number = 0.9; capsuleRadZ: number = 0.4;
-  capsuleOffX: number = 0; capsuleOffY: number = 0.9; capsuleOffZ: number = 0;
+  // Propiedades Collider y Cámara
+  colliderType: string = 'mesh';
+  colliderSizeX: number = 0.5; colliderSizeY: number = 0.5; colliderSizeZ: number = 0.5;
+  colliderOffX: number = 0; colliderOffY: number = 0; colliderOffZ: number = 0;
   camPosX: number = 0; camPosY: number = 1.6; camPosZ: number = 0;
-
-  // Visualizadores 3D Debug
-  private debugCapsule: Mesh | null = null;
-  private debugCameraBox: Mesh | null = null;
-  
-  // Nodos para seguir la animación en vivo
-  private renderObserver: Observer<Scene> | null = null;
-  private headNode: TransformNode | null = null;
-  private initialHeadLocal: Vector3 | null = null;
 
   constructor() {
     effect(() => {
       const obj = this.editorSvc.objetoSeleccionado();
-      this.limpiarDebugVisual();
       if (obj) {
         this.syncTransformFromBabylon(obj as AbstractMesh);
-        this.actualizarDebugVisual();
         this.cdr.detectChanges();
       }
     });
@@ -70,7 +53,6 @@ export class InspectorEscena implements OnInit, OnDestroy {
       const obj = this.editorSvc.objetoSeleccionado();
       if (obj) {
         this.syncTransformFromBabylon(obj as AbstractMesh);
-        this.actualizarDebugVisual();
         this.cdr.detectChanges();
       }
     };
@@ -79,33 +61,10 @@ export class InspectorEscena implements OnInit, OnDestroy {
       this.editorSvc.onGizmoDrag.subscribe(refrescar),
       this.editorSvc.onMapChanged.subscribe(refrescar)
     );
-
-    // 🔥 LOOP DE RENDER PARA MOVER LA CÁPSULA/CÁMARA CON LA ANIMACIÓN
-    this.renderObserver = this.motor3dSvc.scene.onBeforeRenderObservable.add(() => {
-        if (!this.objetoActual || !this.debugCameraBox || !this.debugCapsule) return;
-
-        let breathX = 0, breathY = 0, breathZ = 0;
-
-        if (this.headNode && this.initialHeadLocal) {
-            const currentGlobal = this.headNode.getAbsolutePosition();
-            const currentLocal = Vector3.TransformCoordinates(currentGlobal, Matrix.Invert(this.objetoActual.getWorldMatrix()));
-            
-            breathX = currentLocal.x - this.initialHeadLocal.x;
-            breathY = currentLocal.y - this.initialHeadLocal.y;
-            breathZ = currentLocal.z - this.initialHeadLocal.z;
-        }
-
-        this.debugCameraBox.position.set(this.camPosX + breathX, this.camPosY + breathY, this.camPosZ + breathZ);
-        this.debugCapsule.position.set(this.capsuleOffX + breathX, this.capsuleOffY + breathY, this.capsuleOffZ + breathZ);
-    });
   }
 
   ngOnDestroy() {
     this.subs.forEach(s => s.unsubscribe());
-    this.limpiarDebugVisual();
-    if (this.renderObserver && this.motor3dSvc.scene) {
-        this.motor3dSvc.scene.onBeforeRenderObservable.remove(this.renderObserver);
-    }
   }
 
   get objetoActual() {
@@ -144,22 +103,16 @@ export class InspectorEscena implements OnInit, OnDestroy {
       this.localEscZ = this.formatNum(obj.scaling.z);
     }
 
-    const cap = obj.metadata?.capsule;
-    if (cap) {
-      this.capsuleRadX = this.formatNum(cap.radiusX);
-      this.capsuleRadY = this.formatNum(cap.heightY);
-      this.capsuleRadZ = this.formatNum(cap.radiusZ);
-      this.capsuleOffX = this.formatNum(cap.offsetX);
-      this.capsuleOffY = this.formatNum(cap.offsetY);
-      this.capsuleOffZ = this.formatNum(cap.offsetZ);
-    } else if (obj.ellipsoid) {
-      this.capsuleRadX = this.formatNum(obj.ellipsoid.x);
-      this.capsuleRadY = this.formatNum(obj.ellipsoid.y);
-      this.capsuleRadZ = this.formatNum(obj.ellipsoid.z);
-      this.capsuleOffX = this.formatNum(obj.ellipsoidOffset.x);
-      this.capsuleOffY = this.formatNum(obj.ellipsoidOffset.y);
-      this.capsuleOffZ = this.formatNum(obj.ellipsoidOffset.z);
-    }
+    const col = obj.metadata?.collider;
+    if (col) {
+      this.colliderType = col.type || 'box';
+      this.colliderSizeX = this.formatNum(col.sizeX ?? 0.5);
+      this.colliderSizeY = this.formatNum(col.sizeY ?? 0.5);
+      this.colliderSizeZ = this.formatNum(col.sizeZ ?? 0.5);
+      this.colliderOffX = this.formatNum(col.offsetX ?? 0);
+      this.colliderOffY = this.formatNum(col.offsetY ?? 0);
+      this.colliderOffZ = this.formatNum(col.offsetZ ?? 0);
+    } 
 
     const camOffset = obj.metadata?.camOffset;
     if (camOffset) {
@@ -200,27 +153,31 @@ export class InspectorEscena implements OnInit, OnDestroy {
     this.editorSvc.triggerUpdate();
   }
 
-  aplicarCapsula() {
+  aplicarCollider() {
     const obj = this.objetoActual as AbstractMesh;
     if (!obj) return;
     
     if (!obj.metadata) obj.metadata = {};
-    obj.metadata.capsule = {
-        radiusX: this.capsuleRadX,
-        heightY: this.capsuleRadY,
-        radiusZ: this.capsuleRadZ,
-        offsetX: this.capsuleOffX,
-        offsetY: this.capsuleOffY,
-        offsetZ: this.capsuleOffZ
+    obj.metadata.collider = {
+        type: this.colliderType,
+        sizeX: this.colliderSizeX,
+        sizeY: this.colliderSizeY,
+        sizeZ: this.colliderSizeZ,
+        offsetX: this.colliderOffX,
+        offsetY: this.colliderOffY,
+        offsetZ: this.colliderOffZ
     };
 
-    if (!obj.ellipsoid) obj.ellipsoid = new Vector3(0.5, 1, 0.5);
-    if (!obj.ellipsoidOffset) obj.ellipsoidOffset = new Vector3(0, 1, 0);
+    if (this.colliderType !== 'mesh') {
+        obj.ellipsoid = new Vector3(this.colliderSizeX * obj.scaling.x, this.colliderSizeY * obj.scaling.y, this.colliderSizeZ * obj.scaling.z);
+        obj.ellipsoidOffset = new Vector3(this.colliderOffX * obj.scaling.x, this.colliderOffY * obj.scaling.y, this.colliderOffZ * obj.scaling.z);
+    }
 
-    obj.ellipsoid.set(this.capsuleRadX, this.capsuleRadY, this.capsuleRadZ);
-    obj.ellipsoidOffset.set(this.capsuleOffX, this.capsuleOffY, this.capsuleOffZ);
-    
-    this.actualizarDebugVisual();
+    // Si pasamos a mesh, quitamos la selección visual de la cápsula/forma
+    if (this.colliderType === 'mesh' && this.editorSvc.subObjetoSeleccionado() === 'collider') {
+        this.editorSvc.subObjetoSeleccionado.set(null);
+    }
+
     this.editorSvc.triggerUpdate();
   }
 
@@ -231,65 +188,7 @@ export class InspectorEscena implements OnInit, OnDestroy {
     if (!obj.metadata) obj.metadata = {};
     obj.metadata.camOffset = { x: this.camPosX, y: this.camPosY, z: this.camPosZ };
 
-    this.actualizarDebugVisual();
     this.editorSvc.triggerUpdate();
-  }
-
-  limpiarDebugVisual() {
-    if (this.debugCapsule) { this.debugCapsule.dispose(); this.debugCapsule = null; }
-    if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
-  }
-
-  actualizarDebugVisual() {
-    this.limpiarDebugVisual();
-    if (this.pestanaActiva !== 'physics' || !this.objetoActual) return;
-    if (!this.esPersonajeOModelo(this.objetoActual)) return;
-
-    const scene = this.objetoActual.getScene();
-    
-    // Buscar la cabeza para sincronizar el Wireframe en el Editor
-    this.headNode = this.objetoActual.getChildTransformNodes(false).find((n: any) => 
-        n.name.toLowerCase() === 'head' || 
-        n.name.toLowerCase() === 'neck' || 
-        n.name.toLowerCase().includes('mixamorig:head') ||
-        n.name.toLowerCase().includes('head')
-    ) as TransformNode;
-
-    if (this.headNode) {
-        this.headNode.computeWorldMatrix(true);
-        this.objetoActual.computeWorldMatrix(true);
-        this.initialHeadLocal = Vector3.TransformCoordinates(
-            this.headNode.getAbsolutePosition(), 
-            Matrix.Invert(this.objetoActual.getWorldMatrix())
-        );
-    } else {
-        this.initialHeadLocal = null;
-    }
-    
-    this.debugCapsule = MeshBuilder.CreateCapsule("debugCapsule", {
-      radius: this.capsuleRadX, 
-      height: this.capsuleRadY * 2
-    }, scene);
-    this.debugCapsule.position = new Vector3(this.capsuleOffX, this.capsuleOffY, this.capsuleOffZ);
-    this.debugCapsule.parent = this.objetoActual;
-    
-    const matCap = new StandardMaterial("debugCapMat", scene);
-    matCap.wireframe = true;
-    matCap.emissiveColor = new Color3(0.2, 0.8, 0.2); 
-    matCap.disableLighting = true;
-    this.debugCapsule.material = matCap;
-    this.debugCapsule.isPickable = false; 
-
-    this.debugCameraBox = MeshBuilder.CreateBox("debugCamBox", { size: 0.25 }, scene);
-    this.debugCameraBox.position = new Vector3(this.camPosX, this.camPosY, this.camPosZ);
-    this.debugCameraBox.parent = this.objetoActual;
-    
-    const matCam = new StandardMaterial("debugCamMat", scene);
-    matCam.wireframe = true;
-    matCam.emissiveColor = new Color3(0.9, 0.2, 0.2); 
-    matCam.disableLighting = true;
-    this.debugCameraBox.material = matCam;
-    this.debugCameraBox.isPickable = false;
   }
 
   toggleExpandir(nodo: Node, event: Event) {
@@ -305,10 +204,17 @@ export class InspectorEscena implements OnInit, OnDestroy {
     return this.nodosExpandidos.has(nodo.name);
   }
 
-  seleccionarSubItem(pestana: string, nodo: Node, event: Event) {
+  seleccionarSubItem(pestana: string, subObj: 'collider' | 'camera' | null, nodo: Node, event: Event) {
     event.stopPropagation();
-    this.seleccionarDesdeLista(nodo);
+    if (this.esBloqueado(nodo)) return; 
+    
+    this.editorSvc.seleccionarObjeto(nodo); 
+    this.editorSvc.subObjetoSeleccionado.set(subObj);
     this.pestanaActiva = pestana;
+  }
+
+  esSubSeleccionado(nodo: Node, subObj: 'collider' | 'camera'): boolean {
+    return this.esSeleccionado(nodo) && this.editorSvc.subObjetoSeleccionado() === subObj;
   }
 
   esPersonajeOModelo(nodo: Node): boolean {
@@ -322,7 +228,7 @@ export class InspectorEscena implements OnInit, OnDestroy {
   }
 
   tieneCapsula(nodo: Node): boolean {
-    return nodo instanceof AbstractMesh && !!nodo.metadata?.capsule;
+    return nodo instanceof AbstractMesh && !!nodo.metadata?.collider;
   }
 
   tieneCamara(nodo: Node): boolean {
@@ -344,7 +250,10 @@ export class InspectorEscena implements OnInit, OnDestroy {
   esBloqueado(nodo: Node): boolean { return nodo instanceof Camera || nodo instanceof Light; }
   esSeleccionado(nodo: Node): boolean { return this.editorSvc.objetoSeleccionado() === nodo; }
   eliminarObjeto() { this.editorSvc.eliminarSeleccionado(); }
-  seleccionarDesdeLista(nodo: Node) { if (this.esBloqueado(nodo)) return; this.editorSvc.seleccionarObjeto(nodo); }
+  seleccionarDesdeLista(nodo: Node) { 
+    if (this.esBloqueado(nodo)) return; 
+    this.editorSvc.seleccionarObjeto(nodo); 
+  }
   
   reproducirAnimacion(anim: AnimationGroup) {
     if (this.objetoActual && this.objetoActual.metadata?.animations) {

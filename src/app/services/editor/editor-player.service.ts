@@ -25,44 +25,36 @@ export class EditorPlayerService {
   private state = inject(EditorStateService);
   private cameraSvc = inject(EditorCameraService);
 
-  // Físicas Dinámicas (Se actualizan según la escala del modelo)
   private playerHalfHeight: number = 0.9;
   private playerEyeLevel: number = 1.6;
   private playerRadius: number = 0.4;
   
-  // Nodos Cinematográficos (Para que la cámara siga la animación)
   private headNode: TransformNode | null = null;
   private initialHeadLocal: Vector3 | null = null;
   
-  // Variables dinámicas para suavizar la cámara en animaciones
   private currentEyeLevel: number = 1.6;
   private currentPivotY: number = 1.5;
   private idleTime: number = 0; 
   
-  // 🔥 FÍSICAS AAA: Salto ajustado y Gravedad natural
   private velocidadY: number = 0;
   private gravedad: number = 0.022; 
-  private jumpForce = 0.28; // 🔥 Salto más alto, natural y proporcional
+  private jumpForce = 0.28; 
   private highestY: number = -9999; 
   
-  // Estados
   private isJumping: boolean = false;
   private isFalling: boolean = false;
   private isHardLanding: boolean = false; 
   private isClimbing: boolean = false;
   
-  // Contadores y Variables exactas de escalada
   private climbFrame: number = 0;
   private landingFrame: number = 0;
   private climbStartY: number = 0;
   private climbTargetY: number = 0;
   private climbForwardDir: Vector3 = Vector3.Zero();
   
-  // Ajustes de Movimiento
   private walkSpeed = 0.08;
   private runSpeed = 0.18;
   
-  // Animaciones
   private animacionesJugador: AnimationGroup[] = [];
   private animActual: AnimationGroup | null = null;
   
@@ -103,7 +95,6 @@ export class EditorPlayerService {
     this.state.modoVistaPrueba = vista;
     this.state.objetoHovereado.set(null);
 
-    // Backups
     this.state.backupObjetoPosicion = obj.position.clone();
     if (obj.rotationQuaternion) {
       this.state.backupObjetoRotacionQuat = obj.rotationQuaternion.clone();
@@ -126,29 +117,62 @@ export class EditorPlayerService {
     const canvas = this.motor3d.engine.getRenderingCanvas();
     const scene = this.motor3d.scene;
 
-    // 🔥 LEEMOS METADATOS Y CALCULAMOS FÍSICAS PROPORCIONALES A LA ESCALA
+    // 🔥 CREAR PROXYS DE COLISIÓN PARA PROPS (Muros y obstáculos optimizados)
+    scene.meshes.forEach(m => {
+        if (m === obj) return; 
+        if (m.name.includes("debug") || m.name.includes("gizmo") || m.name.includes("cameraPivot") || m.name.includes("sueloInvisible") || m.name.includes("proxyCol")) return;
+        
+        const root = this.state.encontrarRaiz(m as AbstractMesh);
+        if (root && root instanceof AbstractMesh && root.metadata?.isSolid) {
+            const colMeta = root.metadata.collider;
+            
+            if (colMeta && colMeta.type !== 'mesh' && m === root) {
+                this.state.backupColisionesHijos.push({ mesh: m, col: m.checkCollisions });
+                m.checkCollisions = false;
+                
+                m.getChildMeshes().forEach(c => {
+                    this.state.backupColisionesHijos.push({ mesh: c as AbstractMesh, col: c.checkCollisions });
+                    c.checkCollisions = false;
+                });
+
+                let proxy: Mesh;
+                if (colMeta.type === 'capsule') {
+                    proxy = MeshBuilder.CreateCapsule("proxyCol_" + root.name, { radius: colMeta.sizeX, height: colMeta.sizeY * 2 }, scene);
+                } else if (colMeta.type === 'sphere') {
+                    proxy = MeshBuilder.CreateSphere("proxyCol_" + root.name, { diameterX: colMeta.sizeX * 2, diameterY: colMeta.sizeY * 2, diameterZ: colMeta.sizeZ * 2 }, scene);
+                } else {
+                    proxy = MeshBuilder.CreateBox("proxyCol_" + root.name, { width: colMeta.sizeX * 2, height: colMeta.sizeY * 2, depth: colMeta.sizeZ * 2 }, scene);
+                }
+                
+                proxy.parent = root;
+                proxy.position = new Vector3(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ);
+                proxy.isVisible = false; 
+                proxy.checkCollisions = true; 
+                
+                this.state.proxyColliders.push(proxy);
+            }
+        }
+    });
+
     const scale = obj.scaling;
     const isModel = obj.metadata?.type === 'model';
     
-    const defCap = isModel ? { radiusX: 0.4, heightY: 0.9, radiusZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 } : { radiusX: 0.5, heightY: 0.5, radiusZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+    const defCap = isModel ? { sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 } : { sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
     const defCam = isModel ? { x: 0, y: 1.6, z: 0 } : { x: 0, y: 0.4, z: 0 };
 
-    const capMeta = obj.metadata?.capsule || defCap;
+    const colMeta = obj.metadata?.collider || defCap;
     const camMeta = obj.metadata?.camOffset || defCam;
 
-    // Alturas y radios reales en el mundo
-    this.playerHalfHeight = capMeta.heightY * scale.y;
+    this.playerHalfHeight = colMeta.sizeY * scale.y;
     this.playerEyeLevel = camMeta.y * scale.y;
-    this.playerRadius = Math.max(capMeta.radiusX * scale.x, capMeta.radiusZ * scale.z);
+    this.playerRadius = Math.max(colMeta.sizeX * scale.x, colMeta.sizeZ * scale.z);
     
     this.currentEyeLevel = this.playerEyeLevel;
     this.currentPivotY = this.playerHalfHeight * 1.5;
 
-    // Aplicar la cápsula matemática exacta a Babylon
-    obj.ellipsoid = new Vector3(capMeta.radiusX * scale.x, capMeta.heightY * scale.y, capMeta.radiusZ * scale.z);
-    obj.ellipsoidOffset = new Vector3(capMeta.offsetX * scale.x, capMeta.offsetY * scale.y, capMeta.offsetZ * scale.z);
+    obj.ellipsoid = new Vector3(colMeta.sizeX * scale.x, colMeta.sizeY * scale.y, colMeta.sizeZ * scale.z);
+    obj.ellipsoidOffset = new Vector3(colMeta.offsetX * scale.x, colMeta.offsetY * scale.y, colMeta.offsetZ * scale.z);
 
-    // 🌟 RECOLECCIÓN DE ANIMACIONES
     this.animacionesJugador = obj.metadata?.animations || [];
     if (this.animacionesJugador.length === 0) {
         this.animacionesJugador = scene.animationGroups.filter((ag: AnimationGroup) => 
@@ -174,7 +198,6 @@ export class EditorPlayerService {
     if (!this.animFall) this.animFall = this.animJump; 
     if (!this.animHardLanding) this.animHardLanding = this.animIdle;
 
-    // 🔥 BUSCAR EL HUESO DE LA CABEZA PARA SINCRONIZAR CÁMARA (AAA SYSTEM)
     this.headNode = obj.getChildTransformNodes(false).find(n => 
         n.name.toLowerCase() === 'head' || 
         n.name.toLowerCase() === 'neck' || 
@@ -312,7 +335,7 @@ export class EditorPlayerService {
         }
 
         this.state.jugadorActivo.computeWorldMatrix(true);
-        const localCapsuleCenter = new Vector3(capMeta.offsetX, capMeta.offsetY, capMeta.offsetZ);
+        const localCapsuleCenter = new Vector3(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ);
         const capsuleCenter = Vector3.TransformCoordinates(localCapsuleCenter, this.state.jugadorActivo.getWorldMatrix());
 
         const rayCol = new Ray(capsuleCenter, Vector3.Down(), this.playerHalfHeight + (0.15 * scale.y)); 
@@ -324,11 +347,9 @@ export class EditorPlayerService {
         if (this.velocidadY > 0) isGrounded = false; 
 
         if (isGrounded) {
-            // 🔥 AHORA SE ACTIVA EL LANDING SIEMPRE QUE VENGAS DE UN SALTO O CAÍDA LIBRE
             if (this.isFalling || this.isJumping) {
                 const fallDistance = this.highestY - this.state.jugadorActivo.position.y;
                 
-                // Si la caída es mayor a 2.5 O simplemente veníamos de un salto normal
                 if (fallDistance > 2.5 * scale.y || this.isJumping) { 
                     this.isHardLanding = true;
                     this.landingFrame = 0;
@@ -553,6 +574,9 @@ export class EditorPlayerService {
     if (this.state.cameraPivot) { this.state.cameraPivot.dispose(); this.state.cameraPivot = null; }
     if (this.tecladoObserver) scene.onKeyboardObservable.remove(this.tecladoObserver);
     if (this.tpsUpdateObserver) scene.onBeforeRenderObservable.remove(this.tpsUpdateObserver);
+
+    this.state.proxyColliders.forEach(p => p.dispose());
+    this.state.proxyColliders = [];
 
     this.tecladoObserver = null; 
     this.tpsUpdateObserver = null;

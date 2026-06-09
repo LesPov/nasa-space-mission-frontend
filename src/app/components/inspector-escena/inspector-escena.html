@@ -1,5 +1,4 @@
 <div class="blender-ui">
-  
   <div class="outliner-container">
     <div class="panel-header"><span class="icon">📁</span> Scene Collection</div>
     <div class="outliner-tree">
@@ -7,34 +6,40 @@
       <div class="tree-items">
         
         <div *ngFor="let nodo of listaNodos">
-          <!-- Item Principal (Carpeta) -->
-          <div class="node-item" [class.selected]="esSeleccionado(nodo)" [class.locked]="esBloqueado(nodo)" (click)="seleccionarDesdeLista(nodo)">
+          <!-- Item Principal -->
+          <div class="node-item" 
+               [class.selected]="esSeleccionado(nodo) && !editorSvc.subObjetoSeleccionado()" 
+               [class.locked]="esBloqueado(nodo)" 
+               (click)="seleccionarDesdeLista(nodo)">
             <div class="node-left">
-              <span *ngIf="esPersonajeOModelo(nodo)" class="tree-expander" (click)="toggleExpandir(nodo, $event)">
+              <span class="tree-expander" (click)="toggleExpandir(nodo, $event)">
                 {{ estaExpandido(nodo) ? '▼' : '▶' }}
               </span>
-              <span *ngIf="!esPersonajeOModelo(nodo)" style="width: 12px; display: inline-block;"></span>
-              
               <span class="node-icon">{{ getIcono(nodo) }}</span>
               <span class="node-name">{{ nodo.name }}</span>
             </div>
             <div class="node-right">
               <span class="badge-icon" *ngIf="tieneAnimaciones(nodo)" title="Tiene Animaciones">🏃</span>
-              <span class="badge-icon" *ngIf="tieneCapsula(nodo)" title="Tiene Cápsula de Control/Físicas">💊</span>
+              <span class="badge-icon" *ngIf="tieneCapsula(nodo)" title="Tiene Cuerpo de Colisión Físico">📦</span>
               <span class="badge-icon" *ngIf="tieneCamara(nodo)" title="Tiene Cámara Asociada">🎥</span>
-              <span class="visibility-icon" style="margin-left: 8px;">👁️</span>
             </div>
           </div>
 
-          <!-- Contenido de la Carpeta (Hijos) -->
-          <div class="sub-tree" *ngIf="esPersonajeOModelo(nodo) && estaExpandido(nodo)">
-            <div class="node-item sub-item" (click)="seleccionarSubItem('physics', nodo, $event)">
-              <span class="node-icon">💊</span> <span class="node-name">Capsule Controller</span>
+          <!-- Contenido de la Carpeta (Hijos / Sub-selecciones) -->
+          <div class="sub-tree" *ngIf="estaExpandido(nodo)">
+            <div class="node-item sub-item" 
+                 *ngIf="nodo.metadata?.collider?.type !== 'mesh'"
+                 [class.selected]="esSubSeleccionado(nodo, 'collider')"
+                 (click)="seleccionarSubItem('physics', 'collider', nodo, $event)">
+              <span class="node-icon">📦</span> <span class="node-name">Colisión ({{nodo.metadata?.collider?.type}})</span>
             </div>
-            <div class="node-item sub-item" *ngIf="tieneCamara(nodo)" (click)="seleccionarSubItem('physics', nodo, $event)">
-              <span class="node-icon">🎥</span> <span class="node-name">Camera Pivot</span>
+            <div class="node-item sub-item" *ngIf="tieneCamara(nodo)" 
+                 [class.selected]="esSubSeleccionado(nodo, 'camera')"
+                 (click)="seleccionarSubItem('physics', 'camera', nodo, $event)">
+              <span class="node-icon">🎥</span> <span class="node-name">Cámara (Pivot)</span>
             </div>
-            <div class="node-item sub-item" *ngIf="tieneAnimaciones(nodo)" (click)="seleccionarSubItem('animation', nodo, $event)">
+            <div class="node-item sub-item" *ngIf="tieneAnimaciones(nodo)" 
+                 (click)="seleccionarSubItem('animation', null, nodo, $event)">
               <span class="node-icon">🏃</span> <span class="node-name">Animation Clips</span>
             </div>
           </div>
@@ -96,32 +101,44 @@
         <div *ngIf="!objetoActual" class="empty-state"><p>Ningún objeto seleccionado</p></div>
       </ng-container>
 
-      <!-- 🔥 NUEVA PESTAÑA: FÍSICAS Y CONTROLES (CÁPSULA/CÁMARA) -->
+      <!-- 🔥 PESTAÑA: FÍSICAS Y CONTROLES -->
       <ng-container *ngIf="pestanaActiva === 'physics'">
         <div class="panel-header"><span>Entity & Physics Controller</span></div>
         <div *ngIf="objetoActual" class="prop-scroll-area">
           <div class="obj-title-bar"><span class="icon">💊</span><input type="text" [value]="objetoActual.name" readonly class="obj-name-input"></div>
 
-          <div class="transform-box" *ngIf="esPersonajeOModelo(objetoActual)">
-            <div class="box-header" style="color: #60a5fa;">▼ Controller Capsule (Ellipsoid)</div>
-            <p style="color: #888; font-size: 11px; margin-bottom: 10px; padding-left: 5px;">Ajusta el radio y altura de la cápsula (Wireframe Verde) usada para colisiones y gravedad.</p>
+          <div class="transform-box">
+            <div class="box-header" style="color: #60a5fa;">▼ Collision Body (Physics)</div>
+            <p style="color: #888; font-size: 11px; margin-bottom: 10px; padding-left: 5px;">Ajusta la forma y tamaño para delimitar los bordes del objeto. (Capsule es obligatorio para NPCs/Players).</p>
             <div class="box-body">
               <div class="prop-row">
-                <span class="label">Capsule Size (Radius X, Height Y, Radius Z)</span>
-                <div class="vector-group">
-                  <div class="vector-input"><span class="axis x">X</span><input type="number" step="0.1" [(ngModel)]="capsuleRadX" (ngModelChange)="aplicarCapsula()"></div>
-                  <div class="vector-input"><span class="axis y">Y</span><input type="number" step="0.1" [(ngModel)]="capsuleRadY" (ngModelChange)="aplicarCapsula()"></div>
-                  <div class="vector-input"><span class="axis z">Z</span><input type="number" step="0.1" [(ngModel)]="capsuleRadZ" (ngModelChange)="aplicarCapsula()"></div>
-                </div>
+                <span class="label">Shape Type</span>
+                <select [(ngModel)]="colliderType" (ngModelChange)="aplicarCollider()" class="modal-input" style="padding: 6px;">
+                  <option value="capsule">Capsule (Players/NPCs)</option>
+                  <option value="box">Bounding Box (Optimized)</option>
+                  <option value="sphere">Bounding Sphere (Optimized)</option>
+                  <option value="mesh">Exact Mesh (Complex)</option>
+                </select>
               </div>
-              <div class="prop-row">
-                <span class="label">Capsule Center Offset</span>
-                <div class="vector-group">
-                  <div class="vector-input"><span class="axis x">X</span><input type="number" step="0.1" [(ngModel)]="capsuleOffX" (ngModelChange)="aplicarCapsula()"></div>
-                  <div class="vector-input"><span class="axis y">Y</span><input type="number" step="0.1" [(ngModel)]="capsuleOffY" (ngModelChange)="aplicarCapsula()"></div>
-                  <div class="vector-input"><span class="axis z">Z</span><input type="number" step="0.1" [(ngModel)]="capsuleOffZ" (ngModelChange)="aplicarCapsula()"></div>
+
+              <ng-container *ngIf="colliderType !== 'mesh'">
+                <div class="prop-row">
+                  <span class="label">Collider Size (Radius/Width X, Height Y, Depth Z)</span>
+                  <div class="vector-group">
+                    <div class="vector-input"><span class="axis x">X</span><input type="number" step="0.1" [(ngModel)]="colliderSizeX" (ngModelChange)="aplicarCollider()"></div>
+                    <div class="vector-input"><span class="axis y">Y</span><input type="number" step="0.1" [(ngModel)]="colliderSizeY" (ngModelChange)="aplicarCollider()"></div>
+                    <div class="vector-input"><span class="axis z">Z</span><input type="number" step="0.1" [(ngModel)]="colliderSizeZ" (ngModelChange)="aplicarCollider()"></div>
+                  </div>
                 </div>
-              </div>
+                <div class="prop-row">
+                  <span class="label">Collider Center Offset</span>
+                  <div class="vector-group">
+                    <div class="vector-input"><span class="axis x">X</span><input type="number" step="0.1" [(ngModel)]="colliderOffX" (ngModelChange)="aplicarCollider()"></div>
+                    <div class="vector-input"><span class="axis y">Y</span><input type="number" step="0.1" [(ngModel)]="colliderOffY" (ngModelChange)="aplicarCollider()"></div>
+                    <div class="vector-input"><span class="axis z">Z</span><input type="number" step="0.1" [(ngModel)]="colliderOffZ" (ngModelChange)="aplicarCollider()"></div>
+                  </div>
+                </div>
+              </ng-container>
             </div>
           </div>
 
@@ -138,11 +155,6 @@
                 </div>
               </div>
             </div>
-          </div>
-
-          <div *ngIf="!esPersonajeOModelo(objetoActual)" class="empty-state">
-            <p>Sin controlador</p>
-            <span>Este objeto no es un personaje ni tiene una cámara asociada o cápsula activa.</span>
           </div>
         </div>
         <div *ngIf="!objetoActual" class="empty-state"><p>Ningún objeto seleccionado</p></div>

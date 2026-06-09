@@ -37,7 +37,6 @@ export class EditorToolsService {
   private objetoEnPortapapeles: AbstractMesh | null = null;
   private listenerCtrlZAgregado = false;
 
-  // 🔥 MALLAS DE DEBUG PARA GIZMOS (Capsula y Camara)
   private debugCollider: Mesh | null = null;
   private debugCameraBox: Mesh | null = null;
   private isDraggingGizmo = false;
@@ -57,7 +56,15 @@ export class EditorToolsService {
       }
 
       if (this.gizmoManager) {
-        // 🔥 MAGIA: Conectamos los Gizmos a la Cápsula o la Cámara si fueron seleccionados
+        const modoJuego = this.state.playState();
+        if (modoJuego === 'PLAYING' || modoJuego === 'TRANSITIONING' || modoJuego === 'INTERACTING') {
+            this.gizmoManager.attachToMesh(null);
+            this.gizmoManager.positionGizmoEnabled = false;
+            this.gizmoManager.rotationGizmoEnabled = false;
+            this.gizmoManager.scaleGizmoEnabled = false;
+            return;
+        }
+
         if (subSelected === 'collider' && this.debugCollider) {
             this.gizmoManager.attachToMesh(this.debugCollider);
         } else if (subSelected === 'camera' && this.debugCameraBox) {
@@ -67,6 +74,7 @@ export class EditorToolsService {
         } else {
             this.gizmoManager.attachToMesh(null);
         }
+        
         this.actualizarGizmosActivos();
       }
     });
@@ -106,7 +114,6 @@ export class EditorToolsService {
     }
     if (this.gizmoManager.gizmos.scaleGizmo) this.gizmoManager.gizmos.scaleGizmo.snapDistance = 0;
 
-    // 🔥 FUNCIONES DE ARRASTRE DE GIZMOS
     const onDragStart = () => {
       this.isDraggingGizmo = true;
       const mesh = this.gizmoManager.attachedMesh as AbstractMesh;
@@ -137,7 +144,6 @@ export class EditorToolsService {
       const mesh = this.gizmoManager.attachedMesh as AbstractMesh;
       const parent = this.state.objetoSeleccionado() as Mesh;
 
-      // Al soltar el click de escalar cápsula/caja, aplicamos la escala al meta y la recreamos limpia
       if (mesh === this.debugCollider && parent) {
           parent.metadata.collider.sizeX *= mesh.scaling.x;
           parent.metadata.collider.sizeY *= mesh.scaling.y;
@@ -145,7 +151,7 @@ export class EditorToolsService {
           mesh.scaling.set(1, 1, 1);
           
           this.actualizarDebugMeshes(parent);
-          this.gizmoManager.attachToMesh(this.debugCollider); // Reenganchar el nuevo
+          this.gizmoManager.attachToMesh(this.debugCollider); 
           
           queueMicrotask(() => {
             this.state.onGizmoDrag.next();
@@ -183,10 +189,6 @@ export class EditorToolsService {
       this.gizmoManager.gizmos.scaleGizmo.onDragEndObservable.add(onDragEnd);
     }
 
-    this.gizmoManager.positionGizmoEnabled = false;
-    this.gizmoManager.rotationGizmoEnabled = false;
-    this.gizmoManager.scaleGizmoEnabled = false;
-
     this.gizmoManager.onAttachedToMeshObservable.add((mesh) => {
       if (mesh && mesh !== this.debugCollider && mesh !== this.debugCameraBox) {
         if (this.state.objetoSeleccionado() !== mesh) {
@@ -196,7 +198,18 @@ export class EditorToolsService {
       }
     });
 
-    // Control del puntero y selección
+    // 🔥 PREDICADO MEJORADO PARA EL RAYCAST (IGNORA PAREDES INVISIBLES Y CAPSULAS)
+    const pickingPredicate = (m: AbstractMesh) => {
+      if (!m || !m.name) return false;
+      if (this.state.jugadorActivo && (m === this.state.jugadorActivo || this.state.isDescendant(m, this.state.jugadorActivo))) return false;
+      if (m.name.includes("sueloInvisible") || m.name.includes("gridHelper") || m.name.includes("cameraPivot")) return false;
+      if (m.name.toLowerCase().includes("gizmo") || m.name.toLowerCase().includes("highlight") || m.name.toLowerCase().includes("debug")) return false;
+      
+      if (m.name.includes("proxyCol")) return false; // Ignora los cuerpos de colisión físicos
+      
+      return m.isVisible || m.isPickable; // Busca la primera malla real visible
+    };
+
     scene.onPointerObservable.add((pi) => {
       const canvas = this.motor3d.engine.getRenderingCanvas();
       const playSt = this.state.playState();
@@ -214,7 +227,8 @@ export class EditorToolsService {
             const w = this.motor3d.engine.getRenderWidth();
             const h = this.motor3d.engine.getRenderHeight();
             const crosshairRay = scene.createPickingRay(w / 2, h / 2, Matrix.Identity(), scene.activeCamera);
-            const hitInfo = scene.pickWithRay(crosshairRay, this.state.esObjetoObstructor);
+            
+            const hitInfo = scene.pickWithRay(crosshairRay, pickingPredicate);
 
             if (hitInfo && hitInfo.hit && hitInfo.pickedMesh && this.state.puedeSeleccionarse(hitInfo.pickedMesh as AbstractMesh)) {
               const rootNode = this.state.encontrarRaiz(hitInfo.pickedMesh as AbstractMesh);
@@ -237,7 +251,7 @@ export class EditorToolsService {
           const hitGizmo = scene.pickWithRay(ray, (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo'));
           if (hitGizmo && hitGizmo.hit) return;
 
-          const hitInfo = scene.pickWithRay(ray, this.state.esObjetoObstructor);
+          const hitInfo = scene.pickWithRay(ray, pickingPredicate);
 
           if (hitInfo && hitInfo.hit && hitInfo.pickedMesh && this.state.puedeSeleccionarse(hitInfo.pickedMesh as AbstractMesh)) {
             const rootNode = this.state.encontrarRaiz(hitInfo.pickedMesh as AbstractMesh);
@@ -265,7 +279,7 @@ export class EditorToolsService {
             return;
           }
 
-          const hitInfo = scene.pickWithRay(ray, this.state.esObjetoObstructor);
+          const hitInfo = scene.pickWithRay(ray, pickingPredicate);
 
           if (hitInfo && hitInfo.hit && hitInfo.pickedMesh && this.state.puedeSeleccionarse(hitInfo.pickedMesh as AbstractMesh)) {
             const rootNode = this.state.encontrarRaiz(hitInfo.pickedMesh as AbstractMesh);
@@ -306,7 +320,6 @@ export class EditorToolsService {
       }
     });
 
-    // 🔥 ANIMACIÓN PROCEDURAL PARA LAS CAJAS DE DEBUG EN EL EDITOR
     scene.onBeforeRenderObservable.add(() => {
         const obj = this.state.objetoSeleccionado() as Mesh;
         if (!obj || this.isDraggingGizmo) return;
@@ -347,7 +360,7 @@ export class EditorToolsService {
   }
 
   private actualizarDebugMeshes(selected: Mesh | null) {
-    if (!selected || this.state.playState() !== 'EDITOR') {
+    if (!selected || (this.state.playState() !== 'EDITOR' && this.state.playState() !== 'EDITING_IN_GAME')) {
       if (this.debugCollider) { this.debugCollider.dispose(); this.debugCollider = null; }
       if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
       return;
@@ -355,28 +368,16 @@ export class EditorToolsService {
 
     const scene = this.motor3d.scene;
     
-    // COLLIDER VISUAL
     const colMeta = selected.metadata?.collider;
     if (colMeta && colMeta.type !== 'mesh') {
       if (this.debugCollider) this.debugCollider.dispose(); 
       
       if (colMeta.type === 'capsule') {
-          this.debugCollider = MeshBuilder.CreateCapsule("debugCollider", {
-            radius: colMeta.sizeX, 
-            height: colMeta.sizeY * 2
-          }, scene);
+          this.debugCollider = MeshBuilder.CreateCapsule("debugCollider", { radius: colMeta.sizeX, height: colMeta.sizeY * 2 }, scene);
       } else if (colMeta.type === 'sphere') {
-          this.debugCollider = MeshBuilder.CreateSphere("debugCollider", {
-              diameterX: colMeta.sizeX * 2,
-              diameterY: colMeta.sizeY * 2,
-              diameterZ: colMeta.sizeZ * 2
-          }, scene);
+          this.debugCollider = MeshBuilder.CreateSphere("debugCollider", { diameterX: colMeta.sizeX * 2, diameterY: colMeta.sizeY * 2, diameterZ: colMeta.sizeZ * 2 }, scene);
       } else {
-          this.debugCollider = MeshBuilder.CreateBox("debugCollider", {
-              width: colMeta.sizeX * 2,
-              height: colMeta.sizeY * 2,
-              depth: colMeta.sizeZ * 2
-          }, scene);
+          this.debugCollider = MeshBuilder.CreateBox("debugCollider", { width: colMeta.sizeX * 2, height: colMeta.sizeY * 2, depth: colMeta.sizeZ * 2 }, scene);
       }
       
       this.debugCollider.position = new Vector3(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ);
@@ -392,7 +393,6 @@ export class EditorToolsService {
         if (this.debugCollider) { this.debugCollider.dispose(); this.debugCollider = null; }
     }
 
-    // CAMARA VISUAL
     const camMeta = selected.metadata?.camOffset;
     if (camMeta && (selected.metadata?.rol === 'npc' || selected.metadata?.rol === 'spawn_point')) {
       if (this.debugCameraBox) this.debugCameraBox.dispose();
@@ -433,6 +433,7 @@ export class EditorToolsService {
 
   setToolMode(mode: ToolMode): void {
     this.state.currentTool.set(mode);
+    this.actualizarGizmosActivos(); 
   }
 
   private actualizarGizmosActivos(): void {
@@ -442,7 +443,10 @@ export class EditorToolsService {
     this.gizmoManager.rotationGizmoEnabled = false;
     this.gizmoManager.scaleGizmoEnabled = false;
 
-    if (this.state.playState() === 'PLAYING' || this.state.playState() === 'INTERACTING') return;
+    const modo = this.state.playState();
+    if (modo === 'PLAYING' || modo === 'INTERACTING' || modo === 'TRANSITIONING') {
+      return;
+    }
 
     if (this.state.objetoSeleccionado() || this.state.subObjetoSeleccionado()) {
       switch (this.state.currentTool()) {
@@ -451,7 +455,7 @@ export class EditorToolsService {
           break;
         case 'rotate':
           if (this.state.subObjetoSeleccionado()) {
-              this.gizmoManager.rotationGizmoEnabled = false; // No tiene sentido rotar el offset matemático
+              this.gizmoManager.rotationGizmoEnabled = false; 
           } else {
               this.gizmoManager.rotationGizmoEnabled = true;
               if (this.gizmoManager.gizmos.rotationGizmo) {
@@ -466,31 +470,39 @@ export class EditorToolsService {
     }
   }
 
+  // 🔥 SOLUCIÓN DEFINITIVA A LOS BORDES EN MODELOS COMPLETOS E IGNORADO PARA USUARIOS NORMALES
   private actualizarHighlights(selected: Mesh | null, hovered: Mesh | null): void {
     if (!this.hlHover || !this.hlSelected) return;
 
     this.hlHover.removeAllMeshes();
     this.hlSelected.removeAllMeshes();
 
+    // Si estamos jugando y el rol es 'user', no mostramos los bordes azul/amarillo.
+    if (this.state.playState() !== 'EDITOR' && this.state.rolSimulado() === 'user') {
+        return;
+    }
+
     const colorHover = Color3.FromHexString('#3b82f6');
     const colorSelected = Color3.FromHexString('#fbbf24');
 
+    // Función que pinta todas las partes visibles del objeto (sin importar si es un GLB complejo o caja)
+    const addHighlightToAllVisible = (mesh: Mesh, hl: HighlightLayer, color: Color3) => {
+        if (mesh.isVisible && !mesh.name.includes("proxyCol") && !mesh.name.includes("debug") && !mesh.name.includes("cameraPivot")) {
+            hl.addMesh(mesh, color);
+        }
+        mesh.getChildMeshes().forEach(c => {
+            if (c instanceof Mesh && c.isVisible && !c.name.includes("proxyCol") && !c.name.includes("debug") && !c.name.includes("cameraPivot")) {
+                hl.addMesh(c, color);
+            }
+        });
+    };
+
     if (hovered && hovered !== selected) {
-      const childs = hovered.getChildMeshes();
-      if (childs.length > 0) {
-        childs.forEach(c => { if (c instanceof Mesh) this.hlHover.addMesh(c, colorHover); });
-      } else {
-        this.hlHover.addMesh(hovered, colorHover);
-      }
+        addHighlightToAllVisible(hovered, this.hlHover, colorHover);
     }
 
     if (selected && !this.state.subObjetoSeleccionado()) {
-      const childs = selected.getChildMeshes();
-      if (childs.length > 0) {
-        childs.forEach(c => { if (c instanceof Mesh) this.hlSelected.addMesh(c, colorSelected); });
-      } else {
-        this.hlSelected.addMesh(selected, colorSelected);
-      }
+        addHighlightToAllVisible(selected, this.hlSelected, colorSelected);
     }
   }
 

@@ -36,24 +36,42 @@ export class EditorPlayerService {
   private currentPivotY: number = 1.5;
   private idleTime: number = 0; 
   
+  // 🔥 FÍSICAS AAA: Ajustes
   private velocidadY: number = 0;
-  private gravedad: number = 0.022; 
-  private jumpForce = 0.28; 
+  private gravedad: number = 0.018; 
+  private jumpForce = 0.16; 
   private highestY: number = -9999; 
   
   private isJumping: boolean = false;
   private isFalling: boolean = false;
   private isHardLanding: boolean = false; 
+  
+  // 🔥 FASES DE ESCALADA Y RECUPERACIÓN AAA
   private isClimbing: boolean = false;
+  private isPullingUp: boolean = false;
+  private isRecoveringFromFall: boolean = false; 
+  private justFinishedClimb: boolean = false; 
   
   private climbFrame: number = 0;
+  private pullUpFrame: number = 0;
   private landingFrame: number = 0;
+  private recoveryFrame: number = 0;
+  
   private climbStartY: number = 0;
   private climbTargetY: number = 0;
+  private climbStartPos: Vector3 = Vector3.Zero();
   private climbForwardDir: Vector3 = Vector3.Zero();
+
+  // =====================================================================
+  // 🔧 AQUÍ CONTROLAS EL AVANCE DEL CLIMB FINISH MANUALMENTE
+  // 1.0 = Avance normal (El radio de colisión del jugador)
+  // 0.5 = La mitad de avance (RECOMENDADO para evitar tirones)
+  // =====================================================================
+  private climbForwardMultiplier = 1.5; 
   
-  private walkSpeed = 0.08;
-  private runSpeed = 0.18;
+  // 🔥 Velocidades
+  private walkSpeed = 0.045;
+  private runSpeed = 0.09;
   
   private animacionesJugador: AnimationGroup[] = [];
   private animActual: AnimationGroup | null = null;
@@ -64,6 +82,7 @@ export class EditorPlayerService {
   private animJump: AnimationGroup | null = null;
   private animHardLanding: AnimationGroup | null = null;
   private animClimb: AnimationGroup | null = null;
+  private animClimbFinish: AnimationGroup | null = null;
   private animFall: any;
 
   private inputMap: Record<string, boolean> = {};
@@ -117,7 +136,7 @@ export class EditorPlayerService {
     const canvas = this.motor3d.engine.getRenderingCanvas();
     const scene = this.motor3d.scene;
 
-    // 🔥 CREAR PROXYS DE COLISIÓN PARA PROPS (Muros y obstáculos optimizados)
+    // PROXYS DE COLISIÓN
     scene.meshes.forEach(m => {
         if (m === obj) return; 
         if (m.name.includes("debug") || m.name.includes("gizmo") || m.name.includes("cameraPivot") || m.name.includes("sueloInvisible") || m.name.includes("proxyCol")) return;
@@ -190,13 +209,20 @@ export class EditorPlayerService {
     this.animJump = buscarAnim(['jump start', 'jump']);
     this.animFall = buscarAnim(['falling', 'fall']); 
     this.animHardLanding = buscarAnim(['hard landing']); 
-    this.animClimb = buscarAnim(['climb up', 'climb']);
+    this.animClimb = buscarAnim(['climb up']); 
+    this.animClimbFinish = buscarAnim(['climb finish']); 
 
     if (!this.animWalk) this.animWalk = this.animIdle;
     if (!this.animRun) this.animRun = this.animWalk;
     if (!this.animJump) this.animJump = this.animIdle;
     if (!this.animFall) this.animFall = this.animJump; 
     if (!this.animHardLanding) this.animHardLanding = this.animIdle;
+    if (!this.animClimbFinish) this.animClimbFinish = this.animIdle;
+
+    if (this.animWalk) this.animWalk.speedRatio = 1.0;
+    if (this.animRun) this.animRun.speedRatio = 1.0;
+    if (this.animClimb) this.animClimb.speedRatio = 0.8;
+    if (this.animClimbFinish) this.animClimbFinish.speedRatio = 0.8;
 
     this.headNode = obj.getChildTransformNodes(false).find(n => 
         n.name.toLowerCase() === 'head' || 
@@ -255,6 +281,15 @@ export class EditorPlayerService {
     this.velocidadY = -0.1;
     this.highestY = obj.position.y; 
 
+    const pickingPredicate = (m: AbstractMesh) => {
+        if (!m || !m.name) return false;
+        if (m === this.state.jugadorActivo || this.state.isDescendant(m, this.state.jugadorActivo!)) return false;
+        if (m.name.includes("sueloInvisible") || m.name.includes("gridHelper") || m.name.includes("cameraPivot")) return false;
+        if (m.name.includes("proxyCol") || m.name.includes("debug")) return false; 
+        
+        return m.isVisible || m.isPickable; 
+    };
+
     // 🚀 BUCLE PRINCIPAL DE FÍSICAS Y ANIMACIONES 🚀
     this.tpsUpdateObserver = scene.onBeforeRenderObservable.add(() => {
       if (!this.state.jugadorActivo || this.state.playState() !== 'PLAYING' || !this.state.ratonBloqueado()) return;
@@ -263,7 +298,8 @@ export class EditorPlayerService {
         const w = this.motor3d.engine.getRenderWidth();
         const h = this.motor3d.engine.getRenderHeight();
         const crosshairRay = scene.createPickingRay(w / 2, h / 2, Matrix.Identity(), scene.activeCamera);
-        const hitCross = scene.pickWithRay(crosshairRay, (m) => m.checkCollisions && m !== this.state.jugadorActivo);
+        
+        const hitCross = scene.pickWithRay(crosshairRay, pickingPredicate);
 
         if (hitCross && hitCross.hit && hitCross.pickedMesh && this.state.puedeSeleccionarse(hitCross.pickedMesh as AbstractMesh)) {
           const rootNode = this.state.encontrarRaiz(hitCross.pickedMesh as AbstractMesh);
@@ -284,23 +320,74 @@ export class EditorPlayerService {
       // 1. LÓGICA DE MOVIMIENTO DEPENDIENDO DEL ESTADO
       // ==========================================
       
+      // 🔥 FASE 1: SUBIR (CLIMB UP)
       if (this.isClimbing) {
         this.climbFrame++;
-        const totalFrames = 42; 
+        const totalClimbFrames = 75; 
 
+        // Desactivamos colisiones momentáneamente para que no se atore al subir
         this.state.jugadorActivo.checkCollisions = false;
 
-        if (this.climbFrame >= totalFrames) {
-            this.state.jugadorActivo.position.y = this.climbTargetY;
-            this.state.jugadorActivo.position.addInPlace(this.climbForwardDir.scale(this.playerRadius * 2));
+        this.state.jugadorActivo.position = this.climbStartPos.clone();
+        this.state.jugadorActivo.computeWorldMatrix(true);
+
+        if (this.climbFrame >= totalClimbFrames) {
+            this.isClimbing = false;
+            this.isPullingUp = true; 
+            this.pullUpFrame = 0;
+
+            this.currentEyeLevel = this.playerEyeLevel;
+            this.currentPivotY = this.playerHalfHeight * 1.5;
+
+            // Subimos la cápsula físicamente al nivel del muro
+            let newPos = this.climbStartPos.clone();
+            newPos.y = this.climbTargetY;
+            this.state.jugadorActivo.position = newPos;
             this.state.jugadorActivo.computeWorldMatrix(true);
 
-            this.isClimbing = false;
+            this.climbStartPos = newPos.clone(); 
+        }
+
+      // 🔥 FASE 2: DAR EL PASO HACIA ADELANTE (CLIMB FINISH) 
+      } else if (this.isPullingUp) {
+        this.pullUpFrame++;
+        const totalPullFrames = 60; 
+        
+        let progreso = Math.min(this.pullUpFrame / totalPullFrames, 1.0);
+        let easeOut = 1 - Math.pow(1 - progreso, 3); // Curva suavizada
+        
+        // ---------------------------------------------------------
+        // APLICANDO EL MULTIPLICADOR DE AVANCE (Corrige el retroceso)
+        // ---------------------------------------------------------
+        let forwardOffsetTotal = this.playerRadius * this.climbForwardMultiplier; 
+        let avanceActual = forwardOffsetTotal * easeOut;
+
+        let currentPos = this.climbStartPos.clone();
+        currentPos.addInPlace(this.climbForwardDir.scale(avanceActual));
+        
+        this.state.jugadorActivo.position = currentPos;
+        this.state.jugadorActivo.computeWorldMatrix(true);
+
+        // Cuando termina de avanzar
+        if (this.pullUpFrame >= totalPullFrames) {
+            this.isPullingUp = false;
+            this.justFinishedClimb = true; 
+            
             this.velocidadY = -0.05; 
             this.highestY = this.state.jugadorActivo.position.y; 
+            
+            // Volvemos a encender las colisiones con el piso nuevo
             this.state.jugadorActivo.checkCollisions = true; 
         }
 
+      // 🔥 FASE 3: RECUPERACIÓN (Tras caer de gran altura)
+      } else if (this.isRecoveringFromFall) {
+        this.recoveryFrame++;
+        if (this.recoveryFrame > 70) {
+            this.isRecoveringFromFall = false;
+        }
+
+      // MOVIMIENTO NORMAL
       } else {
         let forward = scene.activeCamera!.getDirection(Vector3.Forward());
         forward.y = 0; forward.normalize();
@@ -319,7 +406,7 @@ export class EditorPlayerService {
 
         const scaleFactor = (this.playerHalfHeight / 0.9);
 
-        if (isMoving) {
+        if (isMoving && !this.isHardLanding) {
           let modSpeed = (isRunning ? this.runSpeed : this.walkSpeed) * scaleFactor;
           move.normalize().scaleInPlace(modSpeed);
           
@@ -329,7 +416,7 @@ export class EditorPlayerService {
             this.state.jugadorActivo.rotationQuaternion = Quaternion.Slerp(
               this.state.jugadorActivo.rotationQuaternion,
               Quaternion.FromEulerAngles(0, targetAngle, 0),
-              0.15
+              0.1 
             );
           }
         }
@@ -349,8 +436,7 @@ export class EditorPlayerService {
         if (isGrounded) {
             if (this.isFalling || this.isJumping) {
                 const fallDistance = this.highestY - this.state.jugadorActivo.position.y;
-                
-                if (fallDistance > 2.5 * scale.y || this.isJumping) { 
+                if (fallDistance > 2.5 * scale.y) { 
                     this.isHardLanding = true;
                     this.landingFrame = 0;
                     move = Vector3.Zero(); 
@@ -384,7 +470,8 @@ export class EditorPlayerService {
                 this.isFalling = false;
             }
 
-            if ((this.isJumping || this.isFalling) && isMoving && !this.isClimbing) {
+            // DETECCIÓN INTELIGENTE DE MUROS
+            if ((this.isJumping || this.isFalling) && isMoving && !this.isClimbing && !this.isPullingUp && !this.isHardLanding && !this.isRecoveringFromFall) {
                 const chestOrigin = capsuleCenter.clone();
                 const headOrigin = capsuleCenter.clone();
                 headOrigin.y += this.playerHalfHeight * 0.8; 
@@ -409,11 +496,17 @@ export class EditorPlayerService {
                     let hitTop = scene.pickWithRay(rayTop, collFn);
 
                     if (hitTop && hitTop.hit) {
-                        let offsetCorreccion = (isModel) ? 0 : (this.playerHalfHeight);
-                        let exactTargetY = hitTop.pickedPoint!.y + offsetCorreccion + 0.02;
+                        let exactTargetY = hitTop.pickedPoint!.y; 
+                        if (!isModel) exactTargetY += this.playerHalfHeight; 
                         
-                        if (exactTargetY - this.state.jugadorActivo.position.y <= this.playerHalfHeight * 3.5) {
-                            this.iniciarEscalada(exactTargetY, fDir);
+                        let heightDiff = exactTargetY - this.state.jugadorActivo.position.y;
+                        
+                        if (heightDiff > (this.playerHalfHeight * 0.5) && heightDiff <= (this.playerHalfHeight * 4.0)) {
+                            let wallPos = chestHit.pickedPoint!.clone();
+                            wallPos.y = this.state.jugadorActivo.position.y; 
+                            let idealStartPos = wallPos.subtract(fDir.scale(this.playerRadius * 1.05));
+                            
+                            this.iniciarEscalada(exactTargetY, fDir, idealStartPos);
                         }
                     }
                 }
@@ -423,34 +516,51 @@ export class EditorPlayerService {
         move.y = this.velocidadY;
       } 
 
-      if (!this.isClimbing) {
+      if (!this.isClimbing && !this.isPullingUp && !this.isHardLanding && !this.isRecoveringFromFall) {
           this.state.jugadorActivo.moveWithCollisions(move);
       }
 
       // ==========================================
-      // ANIMACIONES
+      // ANIMACIONES BLENDING AAA (TRANSICIONES SUAVES)
       // ==========================================
       if (this.isClimbing) {
-          this.playAnim(this.animClimb, false);
+          this.playAnim(this.animClimb, false, 0.1); 
       } 
+      else if (this.isPullingUp) {
+          // Fase 2 de escalar. No mezclamos al inicio para que mantenga la pose
+          this.playAnim(this.animClimbFinish, false, 0.0); 
+      }
       else if (this.isHardLanding) {
-          this.playAnim(this.animHardLanding, false);
+          this.playAnim(this.animHardLanding, false, 0.1);
           this.landingFrame++;
-          if (this.landingFrame > 60) { this.isHardLanding = false; }
+          if (this.landingFrame > 60) { 
+              this.isHardLanding = false; 
+              this.isRecoveringFromFall = true; 
+              this.recoveryFrame = 0;
+          }
+      }
+      else if (this.isRecoveringFromFall) {
+          this.playAnim(this.animClimbFinish, false, 0.05);
       }
       else if (this.isJumping || this.isFalling) {
-          this.playAnim(this.animJump, false); 
+          this.playAnim(this.animJump, false, 0.1); 
       } 
       else {
+          // 🚀 CORRECCIÓN DEL SALTO BRUSCO AL FINALIZAR ESCALADA
+          // En vez de 0.0, usamos una mezcla muy suave de 0.1 siempre
+          // Esto empalma la animación de escalar con estar quieto orgánicamente.
+          let finalBlendSpeed = 0.1; 
+          
           if (isMoving) {
-              this.playAnim(isRunning ? this.animRun : this.animWalk, true);
+              this.playAnim(isRunning ? this.animRun : this.animWalk, true, finalBlendSpeed);
           } else {
-              this.playAnim(this.animIdle, true);
+              this.playAnim(this.animIdle, true, finalBlendSpeed);
           }
+          this.justFinishedClimb = false; 
       }
 
       // ==========================================
-      // POSICIÓN PERFECTA DE CÁMARA (AAA SYSTEM)
+      // CÁMARA (Movimiento, respiración y rebote suave)
       // ==========================================
       let targetEyeLevel = this.playerEyeLevel;
       let targetPivotY = this.playerHalfHeight * 1.5;
@@ -476,15 +586,16 @@ export class EditorPlayerService {
           } 
 
           if (this.isClimbing) {
-              let progreso = this.climbFrame / 42;
-              let easeOut = 1 - Math.pow(1 - progreso, 3);
-              let fakeY = this.climbStartY + (this.climbTargetY - this.climbStartY) * easeOut;
+              let progreso = this.climbFrame / 75;
+              let easeY = progreso * progreso * (3 - 2 * progreso); 
+              let fakeY = this.climbStartY + (this.climbTargetY - this.climbStartY) * easeY;
               
-              targetEyeLevel = (fakeY - this.state.jugadorActivo.position.y) + this.playerEyeLevel;
-              targetPivotY = (fakeY - this.state.jugadorActivo.position.y) + (this.playerHalfHeight * 1.5);
+              let diffY = (fakeY - this.state.jugadorActivo.position.y);
+              targetEyeLevel += diffY;
+              targetPivotY += diffY;
           }
 
-          if (!isMoving && isGrounded && !this.isClimbing && !this.isHardLanding && isModel) {
+          if (!isMoving && isGrounded && !this.isClimbing && !this.isPullingUp && !this.isHardLanding && isModel) {
               this.idleTime += scene.getEngine().getDeltaTime() / 1000;
               breathY = Math.sin(this.idleTime * 2.5) * 0.015; 
               breathZ = Math.cos(this.idleTime * 2.5) * 0.015; 
@@ -493,8 +604,8 @@ export class EditorPlayerService {
           }
       }
 
-      this.currentEyeLevel += (targetEyeLevel - this.currentEyeLevel) * 0.15;
-      this.currentPivotY += (targetPivotY - this.currentPivotY) * 0.15;
+      this.currentEyeLevel += (targetEyeLevel - this.currentEyeLevel) * 0.06;
+      this.currentPivotY += (targetPivotY - this.currentPivotY) * 0.06;
 
       this.state.jugadorActivo.computeWorldMatrix(true);
 
@@ -505,7 +616,7 @@ export class EditorPlayerService {
         this.state.cameraPivot.position = Vector3.Lerp(
           this.state.cameraPivot.position,
           globalPivotPos,
-          0.3 
+          0.1 
         );
       }
 
@@ -521,7 +632,8 @@ export class EditorPlayerService {
             camMeta.z + breathZ
         );
         
-        fpsCam.position = Vector3.TransformCoordinates(localCamPos, this.state.jugadorActivo.getWorldMatrix());
+        const globalCamPos = Vector3.TransformCoordinates(localCamPos, this.state.jugadorActivo.getWorldMatrix());
+        fpsCam.position = globalCamPos;
       }
 
     });
@@ -535,12 +647,19 @@ export class EditorPlayerService {
     }
   }
 
-  private iniciarEscalada(targetY: number, forwardDir: Vector3) {
+  private iniciarEscalada(targetY: number, forwardDir: Vector3, startPosIdeal: Vector3) {
     this.isClimbing = true;
+    this.isPullingUp = false;
+    this.isRecoveringFromFall = false;
+    this.justFinishedClimb = false;
     this.velocidadY = 0; 
     this.climbFrame = 0;
     
-    this.climbStartY = this.state.jugadorActivo!.position.y;
+    this.state.jugadorActivo!.position = startPosIdeal.clone();
+    this.state.jugadorActivo!.computeWorldMatrix(true);
+
+    this.climbStartPos = startPosIdeal.clone();
+    this.climbStartY = startPosIdeal.y;
     this.climbTargetY = targetY; 
     this.climbForwardDir = forwardDir.clone(); 
 
@@ -548,7 +667,7 @@ export class EditorPlayerService {
     this.isFalling = false;
     this.isHardLanding = false;
 
-    this.playAnim(this.animClimb, false);
+    this.playAnim(this.animClimb, false, 0.1); 
   }
 
   detenerModoJuego() {
@@ -624,6 +743,9 @@ export class EditorPlayerService {
     this.isFalling = false;
     this.isHardLanding = false;
     this.isClimbing = false;
+    this.isPullingUp = false;
+    this.isRecoveringFromFall = false;
+    this.justFinishedClimb = false;
     this.velocidadY = -0.1;
     this.highestY = -9999;
     this.idleTime = 0;
@@ -631,7 +753,7 @@ export class EditorPlayerService {
     this.playAnim(this.animIdle, true);
   }
 
-  private playAnim(anim: AnimationGroup | null, loop: boolean) {
+  private playAnim(anim: AnimationGroup | null, loop: boolean, blendingSpeed: number = 0.05) {
     if (!anim) return;
     
     if (this.animActual === anim) {
@@ -642,11 +764,18 @@ export class EditorPlayerService {
     this.animacionesJugador.forEach(a => {
         if (a !== anim) {
             a.stop();
-            a.reset();
         }
     });
 
     anim.reset(); 
+    
+    if (blendingSpeed <= 0) {
+        anim.enableBlending = false;
+    } else {
+        anim.enableBlending = true;
+        anim.blendingSpeed = blendingSpeed;
+    }
+    
     anim.play(loop);
     this.animActual = anim;
   }

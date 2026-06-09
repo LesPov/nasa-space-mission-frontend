@@ -1,246 +1,64 @@
+
 /* src/app/components/inspector-escena/inspector-escena.css */
-.blender-ui {
-  width: 340px;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  background-color: #2b2b2b; /* Color base de Blender */
-  color: #cccccc;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  font-size: 12px;
-  border-left: 1px solid #1a1a1a;
-  user-select: none;
-}
-
-.panel-header {
-  background-color: #3e3e3e;
-  padding: 6px 10px;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-bottom: 1px solid #232323;
-  color: #e6e6e6;
-}
-
-/* ==================================
-   OUTLINER (ARRIBA)
-   ================================== */
-.outliner-container {
-  height: 40%;
-  border-bottom: 2px solid #1a1a1a;
-  display: flex;
-  flex-direction: column;
-}
-
-.outliner-tree {
-  flex-grow: 1;
-  overflow-y: auto;
-  background-color: #282828;
-  padding: 5px 0;
-}
-
-.tree-collection {
-  padding: 4px 10px;
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: #fff;
-  font-weight: bold;
-}
-
-.tree-expander { font-size: 10px; cursor: pointer; }
-
-.tree-items { padding-left: 20px; }
-
-.node-item {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 3px 10px 3px 5px;
-  cursor: pointer;
-  border-radius: 3px;
-  margin: 1px 5px;
-}
-
+.blender-ui { width: 340px; height: 100%; display: flex; flex-direction: column; background-color: #2b2b2b; color: #cccccc; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 12px; border-left: 1px solid #1a1a1a; user-select: none; }
+.panel-header { background-color: #3e3e3e; padding: 6px 10px; font-weight: 500; display: flex; align-items: center; gap: 8px; border-bottom: 1px solid #232323; color: #e6e6e6; }
+.outliner-container { height: 40%; border-bottom: 2px solid #1a1a1a; display: flex; flex-direction: column; }
+.outliner-tree { flex-grow: 1; overflow-y: auto; background-color: #282828; padding: 5px 0; }
+.tree-collection { padding: 4px 10px; display: flex; align-items: center; gap: 5px; color: #fff; font-weight: bold; }
+.tree-expander { font-size: 10px; cursor: pointer; display: inline-block; width: 14px; text-align: center; }
+.tree-items { padding-left: 10px; }
+.node-item { display: flex; justify-content: space-between; align-items: center; padding: 3px 10px 3px 5px; cursor: pointer; border-radius: 3px; margin: 1px 5px; }
 .node-item:hover { background-color: #3e3e3e; }
-.node-item.selected { background-color: #4b73b5; color: white; } /* Azul clásico Blender */
+.node-item.selected { background-color: #4b73b5; color: white; }
 .node-item.locked { color: #888; font-style: italic; }
+.node-left { display: flex; align-items: center; gap: 6px; }
+.node-right { display: flex; align-items: center; }
 
-.node-left { display: flex; align-items: center; gap: 8px; }
-.visibility-icon { font-size: 11px; opacity: 0.6; }
+/* NUEVOS ESTILOS PARA LAS CARPETAS DEL OUTLINER */
+.sub-tree {
+  padding-left: 20px;
+  border-left: 1px solid #444;
+  margin-left: 15px;
+  margin-top: 2px;
+  margin-bottom: 4px;
+}
+.sub-item {
+  font-size: 11px;
+  color: #a3a3a3;
+  padding: 2px 10px 2px 5px;
+}
+.sub-item:hover { color: white; background-color: #3e3e3e; }
+.badge-icon { font-size: 11px; margin-left: 4px; opacity: 0.8; }
+.badge-icon:hover { opacity: 1; }
+.visibility-icon { font-size: 11px; opacity: 0.6; cursor: pointer; }
 .visibility-icon:hover { opacity: 1; }
 
-/* ==================================
-   PROPERTIES PANEL (ABAJO)
-   ================================== */
-.properties-container {
-  height: 60%;
-  display: flex;
-  flex-direction: row;
-}
-
-.prop-tabs {
-  width: 32px;
-  background-color: #232323;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding-top: 5px;
-  border-right: 1px solid #1a1a1a;
-}
-
-.tab-btn {
-  background: transparent;
-  border: none;
-  color: #888;
-  font-size: 16px;
-  padding: 8px 0;
-  width: 100%;
-  cursor: pointer;
-  filter: grayscale(100%);
-  opacity: 0.5;
-}
-
+.properties-container { height: 60%; display: flex; flex-direction: row; }
+.prop-tabs { width: 32px; background-color: #232323; display: flex; flex-direction: column; align-items: center; padding-top: 5px; border-right: 1px solid #1a1a1a; }
+.tab-btn { background: transparent; border: none; color: #888; font-size: 16px; padding: 8px 0; width: 100%; cursor: pointer; filter: grayscale(100%); opacity: 0.5; }
 .tab-btn:hover { filter: grayscale(0%); opacity: 0.8; }
-.tab-btn.active {
-  background-color: #303030;
-  filter: grayscale(0%);
-  opacity: 1;
-}
+.tab-btn.active { background-color: #303030; filter: grayscale(0%); opacity: 1; }
+.prop-content { flex-grow: 1; background-color: #303030; display: flex; flex-direction: column; overflow: hidden; }
+.prop-scroll-area { padding: 10px; overflow-y: auto; flex-grow: 1; }
 
-.prop-content {
-  flex-grow: 1;
-  background-color: #303030;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.prop-scroll-area {
-  padding: 10px;
-  overflow-y: auto;
-  flex-grow: 1;
-}
-
-/* ==================================
-   INPUTS Y FORMULARIOS (TRANSFORM)
-   ================================== */
-.obj-title-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background-color: #232323;
-  padding: 4px 8px;
-  border-radius: 4px;
-  margin-bottom: 15px;
-}
-
-.obj-name-input {
-  background: transparent;
-  border: none;
-  color: white;
-  font-size: 13px;
-  width: 100%;
-  outline: none;
-}
-
-.transform-box {
-  margin-bottom: 15px;
-}
-
-.box-header {
-  font-weight: 600;
-  color: #e6e6e6;
-  margin-bottom: 8px;
-  cursor: pointer;
-}
-
-.box-body {
-  padding-left: 5px;
-}
-
-.prop-row {
-  display: flex;
-  flex-direction: column;
-  margin-bottom: 12px;
-}
-
-.prop-row .label {
-  margin-bottom: 4px;
-  color: #b3b3b3;
-}
-
-.vector-group {
-  display: flex;
-  flex-direction: column;
-  gap: 2px; /* Espacio mínimo entre inputs, estilo Blender stack */
-}
-
-.vector-input {
-  display: flex;
-  background-color: #1e1e1e;
-  border-radius: 4px;
-  border: 1px solid #1e1e1e;
-  overflow: hidden;
-}
-
-.vector-input:focus-within {
-  border-color: #4b73b5;
-}
-
-.axis {
-  width: 20px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  font-weight: bold;
-  font-size: 11px;
-}
-
-/* Colores de los ejes de Blender */
+/* ESTILOS DE INPUTS */
+.obj-title-bar { display: flex; align-items: center; gap: 8px; background-color: #232323; padding: 4px 8px; border-radius: 4px; margin-bottom: 15px; }
+.obj-name-input { background: transparent; border: none; color: white; font-size: 13px; width: 100%; outline: none; }
+.transform-box { margin-bottom: 15px; }
+.box-header { font-weight: 600; color: #e6e6e6; margin-bottom: 8px; cursor: pointer; }
+.box-body { padding-left: 5px; }
+.prop-row { display: flex; flex-direction: column; margin-bottom: 12px; }
+.prop-row .label { margin-bottom: 4px; color: #b3b3b3; }
+.vector-group { display: flex; flex-direction: column; gap: 2px; }
+.vector-input { display: flex; background-color: #1e1e1e; border-radius: 4px; border: 1px solid #1e1e1e; overflow: hidden; }
+.vector-input:focus-within { border-color: #4b73b5; }
+.axis { width: 20px; display: flex; justify-content: center; align-items: center; font-weight: bold; font-size: 11px; }
 .axis.x { color: #e54b4b; background-color: rgba(229, 75, 75, 0.1); }
 .axis.y { color: #87c04f; background-color: rgba(135, 192, 79, 0.1); }
 .axis.z { color: #4b83e5; background-color: rgba(75, 131, 229, 0.1); }
-
-.vector-input input {
-  flex-grow: 1;
-  background: transparent;
-  border: none;
-  color: white;
-  padding: 4px 8px;
-  outline: none;
-  font-family: monospace;
-  font-size: 12px;
-}
-
-/* Ocultar flechas de números */
-.vector-input input::-webkit-outer-spin-button,
-.vector-input input::-webkit-inner-spin-button {
-  -webkit-appearance: none;
-  margin: 0;
-}
-
-.empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  height: 100%;
-  color: #777;
-  text-align: center;
-  padding: 20px;
-}
+.vector-input input { flex-grow: 1; background: transparent; border: none; color: white; padding: 4px 8px; outline: none; font-family: monospace; font-size: 12px; }
+.vector-input input::-webkit-outer-spin-button, .vector-input input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #777; text-align: center; padding: 20px; }
 .empty-state p { font-size: 14px; font-weight: bold; color: #999; margin: 0 0 5px 0;}
-
-.btn-delete {
-  width: 100%;
-  background-color: #5c2525;
-  color: #ffcccc;
-  border: 1px solid #331111;
-  padding: 6px;
-  border-radius: 4px;
-  margin-top: 10px;
-  cursor: pointer;
-}
+.btn-delete { width: 100%; background-color: #5c2525; color: #ffcccc; border: 1px solid #331111; padding: 6px; border-radius: 4px; margin-top: 10px; cursor: pointer; }
 .btn-delete:hover { background-color: #7d3232; }

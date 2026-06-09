@@ -2,7 +2,22 @@ import { Injectable, inject } from '@angular/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { EditorCameraService } from './editor-camera.service';
-import { Mesh, Vector3, Quaternion, AnimationGroup, Observer, KeyboardInfo, Scene, KeyboardEventTypes, MeshBuilder, Matrix, Ray, UniversalCamera, AbstractMesh } from '@babylonjs/core';
+import { 
+  Mesh, 
+  Vector3, 
+  Quaternion, 
+  AnimationGroup, 
+  Observer, 
+  KeyboardInfo, 
+  Scene, 
+  KeyboardEventTypes, 
+  MeshBuilder, 
+  Matrix, 
+  Ray, 
+  UniversalCamera, 
+  AbstractMesh, 
+  TransformNode
+} from '@babylonjs/core';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayerService {
@@ -10,23 +25,60 @@ export class EditorPlayerService {
   private state = inject(EditorStateService);
   private cameraSvc = inject(EditorCameraService);
 
+  // Físicas Dinámicas (Se actualizan según la escala del modelo)
   private playerHalfHeight: number = 0.9;
   private playerEyeLevel: number = 1.6;
-  private velocidadY: number = 0;
-  private isPlayerMoving: boolean = false;
-  private isJumping: boolean = false;
+  private playerRadius: number = 0.4;
   
+  // Nodos Cinematográficos (Para que la cámara siga la animación)
+  private headNode: TransformNode | null = null;
+  private initialHeadLocal: Vector3 | null = null;
+  
+  // Variables dinámicas para suavizar la cámara en animaciones
+  private currentEyeLevel: number = 1.6;
+  private currentPivotY: number = 1.5;
+  private idleTime: number = 0; 
+  
+  // 🔥 FÍSICAS AAA: Salto ajustado y Gravedad natural
+  private velocidadY: number = 0;
+  private gravedad: number = 0.022; 
+  private jumpForce = 0.28; // 🔥 Salto más alto, natural y proporcional
+  private highestY: number = -9999; 
+  
+  // Estados
+  private isJumping: boolean = false;
+  private isFalling: boolean = false;
+  private isHardLanding: boolean = false; 
+  private isClimbing: boolean = false;
+  
+  // Contadores y Variables exactas de escalada
+  private climbFrame: number = 0;
+  private landingFrame: number = 0;
+  private climbStartY: number = 0;
+  private climbTargetY: number = 0;
+  private climbForwardDir: Vector3 = Vector3.Zero();
+  
+  // Ajustes de Movimiento
+  private walkSpeed = 0.08;
+  private runSpeed = 0.18;
+  
+  // Animaciones
   private animacionesJugador: AnimationGroup[] = [];
+  private animActual: AnimationGroup | null = null;
+  
   private animIdle: AnimationGroup | null = null;
   private animWalk: AnimationGroup | null = null;
+  private animRun: AnimationGroup | null = null;
   private animJump: AnimationGroup | null = null;
+  private animHardLanding: AnimationGroup | null = null;
+  private animClimb: AnimationGroup | null = null;
+  private animFall: any;
 
   private inputMap: Record<string, boolean> = {};
   private tecladoObserver: Observer<KeyboardInfo> | null = null;
   private tpsUpdateObserver: Observer<Scene> | null = null;
 
   constructor() {
-    // 🔥 FIX: Movemos el listener del ratón aquí para que pueda acceder a resetMovimientoJugador()
     document.addEventListener('pointerlockchange', () => {
       const isLocked = !!document.pointerLockElement;
       this.state.ratonBloqueado.set(isLocked);
@@ -45,6 +97,7 @@ export class EditorPlayerService {
     if (!obj) return;
 
     this.cameraSvc.guardarEstadoCamaraLibre();
+    
     this.state.playState.set('PLAYING');
     this.state.jugadorActivo = obj;
     this.state.modoVistaPrueba = vista;
@@ -62,9 +115,9 @@ export class EditorPlayerService {
     this.state.backupColisionJugador = obj.checkCollisions;
 
     this.state.backupColisionesHijos = [];
-    obj.getChildMeshes().forEach(m => {
-      this.state.backupColisionesHijos.push({ mesh: m as AbstractMesh, col: m.checkCollisions });
-      m.checkCollisions = false;
+    obj.getChildMeshes().forEach((m: AbstractMesh) => {
+      this.state.backupColisionesHijos.push({ mesh: m, col: m.checkCollisions });
+      m.checkCollisions = false; 
     });
 
     obj.checkCollisions = true;
@@ -73,185 +126,383 @@ export class EditorPlayerService {
     const canvas = this.motor3d.engine.getRenderingCanvas();
     const scene = this.motor3d.scene;
 
-    const boundingInfo = obj.getHierarchyBoundingVectors(true);
-    let alturaReal = boundingInfo.max.y - boundingInfo.min.y;
-    if (alturaReal < 0.5) alturaReal = 1.8;
+    // 🔥 LEEMOS METADATOS Y CALCULAMOS FÍSICAS PROPORCIONALES A LA ESCALA
+    const scale = obj.scaling;
+    const isModel = obj.metadata?.type === 'model';
+    
+    const defCap = isModel ? { radiusX: 0.4, heightY: 0.9, radiusZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 } : { radiusX: 0.5, heightY: 0.5, radiusZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+    const defCam = isModel ? { x: 0, y: 1.6, z: 0 } : { x: 0, y: 0.4, z: 0 };
 
-    this.playerHalfHeight = alturaReal / 2;
-    this.playerEyeLevel = alturaReal * 0.92;
+    const capMeta = obj.metadata?.capsule || defCap;
+    const camMeta = obj.metadata?.camOffset || defCam;
 
-    const radioCapsula = 0.4;
-    obj.ellipsoid = new Vector3(radioCapsula, this.playerHalfHeight, radioCapsula);
-    obj.ellipsoidOffset = new Vector3(0, this.playerHalfHeight, 0);
+    // Alturas y radios reales en el mundo
+    this.playerHalfHeight = capMeta.heightY * scale.y;
+    this.playerEyeLevel = camMeta.y * scale.y;
+    this.playerRadius = Math.max(capMeta.radiusX * scale.x, capMeta.radiusZ * scale.z);
+    
+    this.currentEyeLevel = this.playerEyeLevel;
+    this.currentPivotY = this.playerHalfHeight * 1.5;
 
+    // Aplicar la cápsula matemática exacta a Babylon
+    obj.ellipsoid = new Vector3(capMeta.radiusX * scale.x, capMeta.heightY * scale.y, capMeta.radiusZ * scale.z);
+    obj.ellipsoidOffset = new Vector3(capMeta.offsetX * scale.x, capMeta.offsetY * scale.y, capMeta.offsetZ * scale.z);
+
+    // 🌟 RECOLECCIÓN DE ANIMACIONES
     this.animacionesJugador = obj.metadata?.animations || [];
-    this.animIdle = null; this.animWalk = null; this.animJump = null;
-    this.isPlayerMoving = false; this.isJumping = false;
-
-    if (this.animacionesJugador.length > 0) {
-      this.animacionesJugador.forEach(a => a.stop());
-      this.animIdle = this.animacionesJugador.find(a => a.name.toLowerCase().includes('idle')) || this.animacionesJugador[0];
-      this.animWalk = this.animacionesJugador.find(a => a.name.toLowerCase().includes('walk') || a.name.toLowerCase().includes('run')) || this.animIdle;
-      this.animJump = this.animacionesJugador.find(a => a.name.toLowerCase().includes('jump')) || this.animIdle;
-      if (this.animIdle) this.animIdle.play(true);
+    if (this.animacionesJugador.length === 0) {
+        this.animacionesJugador = scene.animationGroups.filter((ag: AnimationGroup) => 
+            ag.targetedAnimations.some((ta) => ta.target.parent === obj || ta.target === obj)
+        );
     }
 
-    this.inputMap = {};
+    const buscarAnim = (claves: string[]) => {
+      return this.animacionesJugador.find(a => claves.some(c => a.name.toLowerCase().includes(c))) || null;
+    };
 
-    this.tecladoObserver = scene.onKeyboardObservable.add((kbInfo) => {
+    this.animIdle = buscarAnim(['idle']);
+    this.animWalk = buscarAnim(['walk']);
+    this.animRun = buscarAnim(['run']);
+    this.animJump = buscarAnim(['jump start', 'jump']);
+    this.animFall = buscarAnim(['falling', 'fall']); 
+    this.animHardLanding = buscarAnim(['hard landing']); 
+    this.animClimb = buscarAnim(['climb up', 'climb']);
+
+    if (!this.animWalk) this.animWalk = this.animIdle;
+    if (!this.animRun) this.animRun = this.animWalk;
+    if (!this.animJump) this.animJump = this.animIdle;
+    if (!this.animFall) this.animFall = this.animJump; 
+    if (!this.animHardLanding) this.animHardLanding = this.animIdle;
+
+    // 🔥 BUSCAR EL HUESO DE LA CABEZA PARA SINCRONIZAR CÁMARA (AAA SYSTEM)
+    this.headNode = obj.getChildTransformNodes(false).find(n => 
+        n.name.toLowerCase() === 'head' || 
+        n.name.toLowerCase() === 'neck' || 
+        n.name.toLowerCase().includes('mixamorig:head') ||
+        n.name.toLowerCase().includes('head')
+    ) as TransformNode;
+
+    if (this.headNode) {
+        this.headNode.computeWorldMatrix(true);
+        obj.computeWorldMatrix(true);
+        this.initialHeadLocal = Vector3.TransformCoordinates(
+            this.headNode.getAbsolutePosition(), 
+            Matrix.Invert(obj.getWorldMatrix())
+        );
+    } else {
+        this.initialHeadLocal = null;
+    }
+
+    this.resetMovimientoJugador();
+
+    this.tecladoObserver = scene.onKeyboardObservable.add((kbInfo: KeyboardInfo) => {
       if (this.state.playState() !== 'PLAYING' || !this.state.ratonBloqueado()) return;
       if (kbInfo.event.key) {
         this.inputMap[kbInfo.event.key.toLowerCase()] = kbInfo.type === KeyboardEventTypes.KEYDOWN;
-      }
-      if (kbInfo.event.code === "Space") {
-        this.inputMap["space"] = kbInfo.type === KeyboardEventTypes.KEYDOWN;
+        this.inputMap[kbInfo.event.code.toLowerCase()] = kbInfo.type === KeyboardEventTypes.KEYDOWN;
       }
     });
 
     if (vista === 'FPS') {
-      scene.activeCamera = this.motor3d.playerCameraFPS;
-      this.motor3d.playerCameraFPS.keysUp = [];
-      this.motor3d.playerCameraFPS.keysDown = [];
-      this.motor3d.playerCameraFPS.keysLeft = [];
-      this.motor3d.playerCameraFPS.keysRight = [];
+      const fpsCam = this.motor3d.playerCameraFPS;
+      scene.activeCamera = fpsCam;
+      fpsCam.keysUp = [];
+      fpsCam.keysDown = [];
+      fpsCam.keysLeft = [];
+      fpsCam.keysRight = [];
+      fpsCam.minZ = 0.05; 
+
+      const startRot = obj.rotationQuaternion ? obj.rotationQuaternion.toEulerAngles() : obj.rotation;
+      fpsCam.rotation.set(startRot.x, startRot.y, startRot.z);
+
     } else {
       obj.isVisible = true;
       this.state.cameraPivot = MeshBuilder.CreateBox("cameraPivot", { size: 0.1 }, scene);
       this.state.cameraPivot.isVisible = false;
-      this.state.cameraPivot.position = new Vector3(obj.position.x, obj.position.y + this.playerEyeLevel, obj.position.z);
+
+      obj.computeWorldMatrix(true);
+      const localPivotPos = new Vector3(camMeta.x, this.currentPivotY / scale.y, camMeta.z);
+      this.state.cameraPivot.position = Vector3.TransformCoordinates(localPivotPos, obj.getWorldMatrix());
+
       this.motor3d.playerCameraTPS.lockedTarget = this.state.cameraPivot;
-      this.motor3d.playerCameraTPS.radius = 5;
+      this.motor3d.playerCameraTPS.radius = 5 * scale.y; 
       scene.activeCamera = this.motor3d.playerCameraTPS;
     }
 
     this.velocidadY = -0.1;
+    this.highestY = obj.position.y; 
 
+    // 🚀 BUCLE PRINCIPAL DE FÍSICAS Y ANIMACIONES 🚀
     this.tpsUpdateObserver = scene.onBeforeRenderObservable.add(() => {
-      if (!this.state.jugadorActivo) return;
+      if (!this.state.jugadorActivo || this.state.playState() !== 'PLAYING' || !this.state.ratonBloqueado()) return;
 
-      if (this.state.playState() === 'PLAYING') {
-        if (this.state.ratonBloqueado()) {
+      if (vista === 'FPS') {
+        const w = this.motor3d.engine.getRenderWidth();
+        const h = this.motor3d.engine.getRenderHeight();
+        const crosshairRay = scene.createPickingRay(w / 2, h / 2, Matrix.Identity(), scene.activeCamera);
+        const hitCross = scene.pickWithRay(crosshairRay, (m) => m.checkCollisions && m !== this.state.jugadorActivo);
 
-          let nuevoHover: AbstractMesh | null = null;
-
-          if (vista === 'FPS') {
-            const w = this.motor3d.engine.getRenderWidth();
-            const h = this.motor3d.engine.getRenderHeight();
-            const crosshairRay = scene.createPickingRay(w / 2, h / 2, Matrix.Identity(), scene.activeCamera);
-            const hitCross = scene.pickWithRay(crosshairRay, this.state.esObjetoObstructor);
-
-            if (hitCross && hitCross.hit && hitCross.pickedMesh && this.state.puedeSeleccionarse(hitCross.pickedMesh as AbstractMesh)) {
-              const rootNode = this.state.encontrarRaiz(hitCross.pickedMesh as AbstractMesh);
-              if (rootNode && rootNode instanceof AbstractMesh) {
-                nuevoHover = rootNode;
-              }
-            }
-          }
-
-          this.state.mirandoObjetoInteractuable.set(!!nuevoHover);
-          this.state.objetoHovereado.set(nuevoHover);
-
-          let forward = scene.activeCamera!.getDirection(Vector3.Forward());
-          forward.y = 0;
-          forward.normalize();
-          let right = scene.activeCamera!.getDirection(Vector3.Right());
-          right.y = 0;
-          right.normalize();
-
-          let move = Vector3.Zero();
-          if (this.inputMap['w']) move.addInPlace(forward);
-          if (this.inputMap['s']) move.subtractInPlace(forward);
-          if (this.inputMap['d']) move.addInPlace(right);
-          if (this.inputMap['a']) move.subtractInPlace(right);
-
-          let isMoving = move.lengthSquared() > 0.001;
-
-          if (isMoving) {
-            move.normalize().scaleInPlace(this.inputMap['shift'] ? 0.22 : 0.08);
-            if (vista === 'TPS') {
-              let targetAngle = Math.atan2(move.x, move.z);
-              if (!this.state.jugadorActivo.rotationQuaternion) this.state.jugadorActivo.rotationQuaternion = Quaternion.Identity();
-              this.state.jugadorActivo.rotationQuaternion = Quaternion.Slerp(
-                this.state.jugadorActivo.rotationQuaternion,
-                Quaternion.FromEulerAngles(0, targetAngle, 0),
-                0.15
-              );
-            }
-          }
-
-          const rayOrigin = new Vector3(this.state.jugadorActivo.position.x, this.state.jugadorActivo.position.y + this.playerHalfHeight, this.state.jugadorActivo.position.z);
-          const rayCol = new Ray(rayOrigin, Vector3.Down(), this.playerHalfHeight + 0.1);
-
-          let rayHit = false;
-          for (let i = 0; i < scene.meshes.length; i++) {
-            const m = scene.meshes[i];
-            if (m.checkCollisions && m !== this.state.jugadorActivo && !this.state.isDescendant(m, this.state.jugadorActivo) && !m.name.includes('eje') && !m.name.includes('gridHelper')) {
-              if (rayCol.intersectsMesh(m as AbstractMesh).hit) { rayHit = true; break; }
-            }
-          }
-
-          if (rayHit) {
-            if (this.velocidadY <= 0) this.velocidadY = -0.05;
-            if (this.isJumping) { this.isJumping = false; this.isPlayerMoving = false; }
-
-            if (this.inputMap['space'] && !this.isJumping) {
-              this.velocidadY = 0.3;
-              this.inputMap['space'] = false;
-              this.isJumping = true;
-              if (this.animJump) {
-                this.animIdle?.stop();
-                this.animWalk?.stop();
-                this.animJump.play(false);
-              }
-            }
-          } else {
-            this.velocidadY -= 0.015;
-            if (this.velocidadY < -0.8) this.velocidadY = -0.8;
-          }
-
-          move.y = this.velocidadY;
-          this.state.jugadorActivo.moveWithCollisions(move);
-
-          if (!this.isJumping) {
-            if (isMoving && !this.isPlayerMoving) {
-              this.isPlayerMoving = true;
-              if (this.animIdle) this.animIdle.stop();
-              if (this.animWalk) this.animWalk.play(true);
-            } else if (!isMoving && this.isPlayerMoving) {
-              this.isPlayerMoving = false;
-              if (this.animWalk) this.animWalk.stop();
-              if (this.animIdle) this.animIdle.play(true);
-            }
-          }
+        if (hitCross && hitCross.hit && hitCross.pickedMesh && this.state.puedeSeleccionarse(hitCross.pickedMesh as AbstractMesh)) {
+          const rootNode = this.state.encontrarRaiz(hitCross.pickedMesh as AbstractMesh);
+          this.state.objetoHovereado.set(rootNode ? (rootNode as AbstractMesh) : null);
+          this.state.mirandoObjetoInteractuable.set(!!rootNode);
+        } else {
+          this.state.mirandoObjetoInteractuable.set(false);
+          this.state.objetoHovereado.set(null);
         }
       }
 
-      if (vista === 'FPS') {
-        const camRotY = (scene.activeCamera as UniversalCamera).rotation.y;
-        const forwardOffset = 0.30;
-        const offsetX = Math.sin(camRotY) * forwardOffset;
-        const offsetZ = Math.cos(camRotY) * forwardOffset;
+      let move = Vector3.Zero();
+      let isMoving = false;
+      let isRunning = false;
+      let isGrounded = false;
 
-        this.motor3d.playerCameraFPS.position = new Vector3(
-          this.state.jugadorActivo.position.x + offsetX,
-          this.state.jugadorActivo.position.y + this.playerEyeLevel,
-          this.state.jugadorActivo.position.z + offsetZ
-        );
+      // ==========================================
+      // 1. LÓGICA DE MOVIMIENTO DEPENDIENDO DEL ESTADO
+      // ==========================================
+      
+      if (this.isClimbing) {
+        this.climbFrame++;
+        const totalFrames = 42; 
 
-        if (!this.state.jugadorActivo.rotationQuaternion) this.state.jugadorActivo.rotationQuaternion = Quaternion.Identity();
-        this.state.jugadorActivo.rotationQuaternion = Quaternion.FromEulerAngles(0, camRotY, 0);
+        this.state.jugadorActivo.checkCollisions = false;
 
-      } else if (this.state.cameraPivot) {
+        if (this.climbFrame >= totalFrames) {
+            this.state.jugadorActivo.position.y = this.climbTargetY;
+            this.state.jugadorActivo.position.addInPlace(this.climbForwardDir.scale(this.playerRadius * 2));
+            this.state.jugadorActivo.computeWorldMatrix(true);
+
+            this.isClimbing = false;
+            this.velocidadY = -0.05; 
+            this.highestY = this.state.jugadorActivo.position.y; 
+            this.state.jugadorActivo.checkCollisions = true; 
+        }
+
+      } else {
+        let forward = scene.activeCamera!.getDirection(Vector3.Forward());
+        forward.y = 0; forward.normalize();
+        let right = scene.activeCamera!.getDirection(Vector3.Right());
+        right.y = 0; right.normalize();
+
+        if (!this.isHardLanding) {
+            if (this.inputMap['w']) move.addInPlace(forward);
+            if (this.inputMap['s']) move.subtractInPlace(forward);
+            if (this.inputMap['d']) move.addInPlace(right);
+            if (this.inputMap['a']) move.subtractInPlace(right);
+        }
+
+        isMoving = move.lengthSquared() > 0.001;
+        isRunning = this.inputMap['shiftleft'] || this.inputMap['shiftright'] || this.inputMap['shift'];
+
+        const scaleFactor = (this.playerHalfHeight / 0.9);
+
+        if (isMoving) {
+          let modSpeed = (isRunning ? this.runSpeed : this.walkSpeed) * scaleFactor;
+          move.normalize().scaleInPlace(modSpeed);
+          
+          if (vista === 'TPS') {
+            let targetAngle = Math.atan2(move.x, move.z);
+            if (!this.state.jugadorActivo.rotationQuaternion) this.state.jugadorActivo.rotationQuaternion = Quaternion.Identity();
+            this.state.jugadorActivo.rotationQuaternion = Quaternion.Slerp(
+              this.state.jugadorActivo.rotationQuaternion,
+              Quaternion.FromEulerAngles(0, targetAngle, 0),
+              0.15
+            );
+          }
+        }
+
+        this.state.jugadorActivo.computeWorldMatrix(true);
+        const localCapsuleCenter = new Vector3(capMeta.offsetX, capMeta.offsetY, capMeta.offsetZ);
+        const capsuleCenter = Vector3.TransformCoordinates(localCapsuleCenter, this.state.jugadorActivo.getWorldMatrix());
+
+        const rayCol = new Ray(capsuleCenter, Vector3.Down(), this.playerHalfHeight + (0.15 * scale.y)); 
+        const collFn = (m: AbstractMesh) => m.checkCollisions && m !== this.state.jugadorActivo && !this.state.isDescendant(m, this.state.jugadorActivo!) && !m.name.includes('gridHelper');
+        const hitInfo = scene.pickWithRay(rayCol, collFn);
+        
+        isGrounded = hitInfo ? hitInfo.hit : false;
+
+        if (this.velocidadY > 0) isGrounded = false; 
+
+        if (isGrounded) {
+            // 🔥 AHORA SE ACTIVA EL LANDING SIEMPRE QUE VENGAS DE UN SALTO O CAÍDA LIBRE
+            if (this.isFalling || this.isJumping) {
+                const fallDistance = this.highestY - this.state.jugadorActivo.position.y;
+                
+                // Si la caída es mayor a 2.5 O simplemente veníamos de un salto normal
+                if (fallDistance > 2.5 * scale.y || this.isJumping) { 
+                    this.isHardLanding = true;
+                    this.landingFrame = 0;
+                    move = Vector3.Zero(); 
+                } 
+                this.isFalling = false;
+                this.isJumping = false;
+            }
+
+            this.highestY = this.state.jugadorActivo.position.y; 
+            this.velocidadY = -0.05; 
+            
+            if (this.inputMap['space'] && !this.isHardLanding) {
+                this.velocidadY = this.jumpForce * scaleFactor;
+                this.isJumping = true;
+                this.inputMap['space'] = false; 
+            }
+
+        } else {
+            if (this.state.jugadorActivo.position.y > this.highestY) {
+                this.highestY = this.state.jugadorActivo.position.y;
+            }
+
+            this.velocidadY -= this.gravedad * scaleFactor;
+            if (this.velocidadY < -0.8 * scaleFactor) this.velocidadY = -0.8 * scaleFactor; 
+            
+            if (this.velocidadY < -0.05) {
+                this.isFalling = true;
+                this.isJumping = false;
+            } else if (this.velocidadY > 0) {
+                this.isJumping = true;
+                this.isFalling = false;
+            }
+
+            if ((this.isJumping || this.isFalling) && isMoving && !this.isClimbing) {
+                const chestOrigin = capsuleCenter.clone();
+                const headOrigin = capsuleCenter.clone();
+                headOrigin.y += this.playerHalfHeight * 0.8; 
+                
+                const fDir = this.state.jugadorActivo.getDirection(Vector3.Forward());
+                fDir.y = 0; fDir.normalize();
+                
+                const reachDistance = this.playerRadius * 2.5; 
+                
+                const chestRay = new Ray(chestOrigin, fDir, reachDistance);
+                const chestHit = scene.pickWithRay(chestRay, collFn);
+                
+                const headRay = new Ray(headOrigin, fDir, reachDistance);
+                const headHit = scene.pickWithRay(headRay, collFn);
+                
+                if (chestHit && chestHit.hit && (!headHit || !headHit.hit)) {
+                    let originTop = chestHit.pickedPoint!.clone();
+                    originTop.y += this.playerHalfHeight * 4; 
+                    originTop.addInPlace(fDir.scale(this.playerRadius)); 
+
+                    let rayTop = new Ray(originTop, Vector3.Down(), this.playerHalfHeight * 5); 
+                    let hitTop = scene.pickWithRay(rayTop, collFn);
+
+                    if (hitTop && hitTop.hit) {
+                        let offsetCorreccion = (isModel) ? 0 : (this.playerHalfHeight);
+                        let exactTargetY = hitTop.pickedPoint!.y + offsetCorreccion + 0.02;
+                        
+                        if (exactTargetY - this.state.jugadorActivo.position.y <= this.playerHalfHeight * 3.5) {
+                            this.iniciarEscalada(exactTargetY, fDir);
+                        }
+                    }
+                }
+            }
+        }
+        
+        move.y = this.velocidadY;
+      } 
+
+      if (!this.isClimbing) {
+          this.state.jugadorActivo.moveWithCollisions(move);
+      }
+
+      // ==========================================
+      // ANIMACIONES
+      // ==========================================
+      if (this.isClimbing) {
+          this.playAnim(this.animClimb, false);
+      } 
+      else if (this.isHardLanding) {
+          this.playAnim(this.animHardLanding, false);
+          this.landingFrame++;
+          if (this.landingFrame > 60) { this.isHardLanding = false; }
+      }
+      else if (this.isJumping || this.isFalling) {
+          this.playAnim(this.animJump, false); 
+      } 
+      else {
+          if (isMoving) {
+              this.playAnim(isRunning ? this.animRun : this.animWalk, true);
+          } else {
+              this.playAnim(this.animIdle, true);
+          }
+      }
+
+      // ==========================================
+      // POSICIÓN PERFECTA DE CÁMARA (AAA SYSTEM)
+      // ==========================================
+      let targetEyeLevel = this.playerEyeLevel;
+      let targetPivotY = this.playerHalfHeight * 1.5;
+
+      let breathY = 0;
+      let breathZ = 0;
+      let breathX = 0;
+
+      if (this.headNode && this.initialHeadLocal) {
+          const currentGlobal = this.headNode.getAbsolutePosition();
+          const currentLocal = Vector3.TransformCoordinates(currentGlobal, Matrix.Invert(this.state.jugadorActivo.getWorldMatrix()));
+          
+          breathX = currentLocal.x - this.initialHeadLocal.x;
+          breathY = currentLocal.y - this.initialHeadLocal.y;
+          breathZ = currentLocal.z - this.initialHeadLocal.z;
+      } 
+      else if (!this.headNode) {
+          if (this.isHardLanding) {
+              let progress = this.landingFrame / 60; 
+              let dip = Math.sin(progress * Math.PI); 
+              targetEyeLevel -= dip * (this.playerHalfHeight * 1.2); 
+              targetPivotY -= dip * (this.playerHalfHeight * 1.2);
+          } 
+
+          if (this.isClimbing) {
+              let progreso = this.climbFrame / 42;
+              let easeOut = 1 - Math.pow(1 - progreso, 3);
+              let fakeY = this.climbStartY + (this.climbTargetY - this.climbStartY) * easeOut;
+              
+              targetEyeLevel = (fakeY - this.state.jugadorActivo.position.y) + this.playerEyeLevel;
+              targetPivotY = (fakeY - this.state.jugadorActivo.position.y) + (this.playerHalfHeight * 1.5);
+          }
+
+          if (!isMoving && isGrounded && !this.isClimbing && !this.isHardLanding && isModel) {
+              this.idleTime += scene.getEngine().getDeltaTime() / 1000;
+              breathY = Math.sin(this.idleTime * 2.5) * 0.015; 
+              breathZ = Math.cos(this.idleTime * 2.5) * 0.015; 
+          } else {
+              this.idleTime = 0;
+          }
+      }
+
+      this.currentEyeLevel += (targetEyeLevel - this.currentEyeLevel) * 0.15;
+      this.currentPivotY += (targetPivotY - this.currentPivotY) * 0.15;
+
+      this.state.jugadorActivo.computeWorldMatrix(true);
+
+      if (vista === 'TPS' && this.state.cameraPivot) {
+        const localPivotPos = new Vector3(camMeta.x + breathX, (this.currentPivotY / scale.y) + breathY, camMeta.z + breathZ);
+        const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, this.state.jugadorActivo.getWorldMatrix());
+        
         this.state.cameraPivot.position = Vector3.Lerp(
           this.state.cameraPivot.position,
-          new Vector3(
-            this.state.jugadorActivo.position.x,
-            this.state.jugadorActivo.position.y + (this.playerHalfHeight * 1.5),
-            this.state.jugadorActivo.position.z
-          ),
-          0.3
+          globalPivotPos,
+          0.3 
         );
       }
+
+      if (vista === 'FPS') {
+        const fpsCam = scene.activeCamera as UniversalCamera;
+        
+        if (!this.state.jugadorActivo.rotationQuaternion) this.state.jugadorActivo.rotationQuaternion = Quaternion.Identity();
+        this.state.jugadorActivo.rotationQuaternion = Quaternion.FromEulerAngles(0, fpsCam.rotation.y, 0);
+        
+        const localCamPos = new Vector3(
+            camMeta.x + breathX, 
+            (this.currentEyeLevel / scale.y) + breathY, 
+            camMeta.z + breathZ
+        );
+        
+        fpsCam.position = Vector3.TransformCoordinates(localCamPos, this.state.jugadorActivo.getWorldMatrix());
+      }
+
     });
 
     if (canvas) {
@@ -263,38 +514,61 @@ export class EditorPlayerService {
     }
   }
 
+  private iniciarEscalada(targetY: number, forwardDir: Vector3) {
+    this.isClimbing = true;
+    this.velocidadY = 0; 
+    this.climbFrame = 0;
+    
+    this.climbStartY = this.state.jugadorActivo!.position.y;
+    this.climbTargetY = targetY; 
+    this.climbForwardDir = forwardDir.clone(); 
+
+    this.isJumping = false;
+    this.isFalling = false;
+    this.isHardLanding = false;
+
+    this.playAnim(this.animClimb, false);
+  }
+
   detenerModoJuego() {
     const scene = this.motor3d.scene;
     this.state.playState.set('EDITOR');
 
     this.resetMovimientoJugador();
-    this.cameraSvc.guardarEstadoCamaraLibre();
     scene.stopAllAnimations();
+
+    const currentCam = scene.activeCamera;
+    let camPos = currentCam!.globalPosition.clone();
+    let camTarget = camPos.add(currentCam!.getDirection(Vector3.Forward()).scale(10));
 
     this.motor3d.playerCameraFPS.detachControl();
     this.motor3d.playerCameraTPS.detachControl();
+    
+    this.motor3d.editorCamera.position = camPos;
+    this.motor3d.editorCamera.setTarget(camTarget);
+    
+    scene.activeCamera = this.motor3d.editorCamera;
     this.motor3d.editorCamera.attachControl(this.motor3d.engine.getRenderingCanvas(), true);
-
-    this.animacionesJugador.forEach(a => a.stop());
-    this.animacionesJugador = []; this.animIdle = null; this.animWalk = null; this.animJump = null;
-    this.isPlayerMoving = false; this.isJumping = false;
 
     if (this.state.cameraPivot) { this.state.cameraPivot.dispose(); this.state.cameraPivot = null; }
     if (this.tecladoObserver) scene.onKeyboardObservable.remove(this.tecladoObserver);
     if (this.tpsUpdateObserver) scene.onBeforeRenderObservable.remove(this.tpsUpdateObserver);
 
-    this.tecladoObserver = null; this.tpsUpdateObserver = null;
+    this.tecladoObserver = null; 
+    this.tpsUpdateObserver = null;
     this.inputMap = {};
 
     this.state.objetoHovereado.set(null);
     this.state.objetoSeleccionado.set(null);
-    scene.activeCamera = this.motor3d.editorCamera;
 
-    this.cameraSvc.restaurarCamaraLibre();
+    this.headNode = null;
+    this.initialHeadLocal = null;
 
     if (this.state.jugadorActivo && this.state.backupObjetoPosicion && this.state.backupObjetoRotacionQuat) {
       if (this.state.jugadorActivo.metadata?.rol === 'npc' || this.state.jugadorActivo.metadata?.rol === 'spawn_point') {
-        if (this.state.modoVistaPrueba === 'FPS') this.state.jugadorActivo.rotationQuaternion = Quaternion.FromEulerAngles(0, (this.motor3d.playerCameraFPS as any).rotation.y, 0);
+        if (this.state.modoVistaPrueba === 'FPS') {
+            this.state.jugadorActivo.rotationQuaternion = Quaternion.FromEulerAngles(0, (this.motor3d.playerCameraFPS as any).rotation.y, 0);
+        }
         this.state.triggerUpdate();
       } else {
         this.state.jugadorActivo.position = this.state.backupObjetoPosicion;
@@ -320,19 +594,36 @@ export class EditorPlayerService {
     if (document.pointerLockElement) document.exitPointerLock();
   }
 
-  resetMovimientoJugador(): void {
+  public resetMovimientoJugador(): void {
     this.inputMap = {};
-    this.isPlayerMoving = false;
     this.isJumping = false;
+    this.isFalling = false;
+    this.isHardLanding = false;
+    this.isClimbing = false;
     this.velocidadY = -0.1;
+    this.highestY = -9999;
+    this.idleTime = 0;
     this.state.mirandoObjetoInteractuable.set(false);
+    this.playAnim(this.animIdle, true);
+  }
 
-    if (this.animWalk) this.animWalk.stop();
-    if (this.animJump) this.animJump.stop();
-
-    if (this.animIdle) {
-      this.animIdle.stop();
-      this.animIdle.play(true);
+  private playAnim(anim: AnimationGroup | null, loop: boolean) {
+    if (!anim) return;
+    
+    if (this.animActual === anim) {
+        if (anim.isPlaying) return; 
+        if (!loop) return; 
     }
+
+    this.animacionesJugador.forEach(a => {
+        if (a !== anim) {
+            a.stop();
+            a.reset();
+        }
+    });
+
+    anim.reset(); 
+    anim.play(loop);
+    this.animActual = anim;
   }
 }

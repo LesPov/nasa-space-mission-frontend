@@ -44,7 +44,18 @@ export class EditorSceneService {
   ): void {
     const scene = this.motor3d.scene;
 
-    if (tipo === 'model' && asset) {
+    const isModel = tipo === 'model';
+    
+    // 🔥 Diferenciamos orígenes: Un .glb nace en los pies (Y=0). Un Cubo nace en el centro (Y=0.5).
+    const defaultCapsule = isModel 
+        ? { radiusX: 0.4, heightY: 0.9, radiusZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
+        : { radiusX: 0.5, heightY: 0.5, radiusZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 }; 
+
+    const defaultCamOffset = isModel
+        ? { x: 0, y: 1.6, z: 0 }
+        : { x: 0, y: 0.8, z: 0 }; 
+
+    if (isModel && asset) {
       const fullPath = 'http://localhost:4000' + asset.path;
       const lastSlash = fullPath.lastIndexOf('/');
       const rootUrl = fullPath.substring(0, lastSlash + 1);
@@ -55,7 +66,7 @@ export class EditorSceneService {
         rootNode.name = nombre;
         rootNode.scaling = new Vector3(sizeX, sizeY, sizeZ);
         if (!rootNode.rotationQuaternion) rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
-        rootNode.position = new Vector3(0, 0, 0);
+        rootNode.position = new Vector3(0, 0, 0); // Modelos al suelo perfecto
         rootNode.checkCollisions = false;
         rootNode.isPickable = true;
 
@@ -69,7 +80,15 @@ export class EditorSceneService {
         const anims = result.animationGroups || [];
         anims.forEach(ag => ag.stop());
 
-        rootNode.metadata = { type: 'model', rol, assetId: asset.id, path: asset.path, isSolid, isSelectable, animations: anims, mensaje };
+        rootNode.metadata = { 
+            type: 'model', rol, assetId: asset.id, path: asset.path, 
+            isSolid, isSelectable, animations: anims, mensaje,
+            capsule: { ...defaultCapsule },
+            camOffset: { ...defaultCamOffset }
+        };
+
+        rootNode.ellipsoid = new Vector3(defaultCapsule.radiusX * sizeX, defaultCapsule.heightY * sizeY, defaultCapsule.radiusZ * sizeZ);
+        rootNode.ellipsoidOffset = new Vector3(defaultCapsule.offsetX * sizeX, defaultCapsule.offsetY * sizeY, defaultCapsule.offsetZ * sizeZ);
 
         this.state.objetoSeleccionado.set(rootNode);
         this.actualizarListaNodos();
@@ -78,18 +97,30 @@ export class EditorSceneService {
       });
     } else {
       let mesh!: Mesh;
-      let offsetColisionY = 0.5;
+      let offsetColisionY = 0.5; // Porque los objetos primitivos de Babylon se crean desde el centro
+      
       switch (tipo) {
         case 'cube': mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene); break;
         case 'sphere': mesh = MeshBuilder.CreateSphere(nombre, { diameter: 1 }, scene); break;
         case 'cylinder': mesh = MeshBuilder.CreateCylinder(nombre, { height: 1, diameter: 1 }, scene); break;
         case 'plane': mesh = MeshBuilder.CreateGround(nombre, { width: 1, height: 1 }, scene); offsetColisionY = 0.02; break;
       }
-      mesh.position = new Vector3(0, offsetColisionY, 0);
+      
+      // 🔥 TRUCO MAGISTRAL: Como le aplicamos offsetColisionY multiplicado por sizeY, las primitivas quedan sobre el suelo idéntico a un GLB
       mesh.scaling = new Vector3(sizeX, sizeY, sizeZ);
-      mesh.metadata = { type: tipo, rol, color: colorHex, isSolid, isSelectable, mensaje };
+      mesh.position = new Vector3(0, offsetColisionY * sizeY, 0); 
+      
+      mesh.metadata = { 
+          type: tipo, rol, color: colorHex, isSolid, isSelectable, mensaje,
+          capsule: { ...defaultCapsule },
+          camOffset: { ...defaultCamOffset }
+      };
+
       mesh.isPickable = true;
       mesh.checkCollisions = isSolid;
+      
+      mesh.ellipsoid = new Vector3(defaultCapsule.radiusX * sizeX, defaultCapsule.heightY * sizeY, defaultCapsule.radiusZ * sizeZ);
+      mesh.ellipsoidOffset = new Vector3(defaultCapsule.offsetX * sizeX, defaultCapsule.offsetY * sizeY, defaultCapsule.offsetZ * sizeZ);
 
       const mat = new StandardMaterial("mat_" + nombre, scene);
       mat.diffuseColor = Color3.FromHexString(colorHex);
@@ -106,14 +137,26 @@ export class EditorSceneService {
   cargarEscenaDesdeDatos(objetosBD: any[]): void {
     if (!objetosBD || objetosBD.length === 0) return;
     const scene = this.motor3d.scene;
-
+    
     objetosBD.forEach(obj => {
+      const isModel = obj.type === 'model';
+      const defaultCapsule = isModel 
+          ? { radiusX: 0.4, heightY: 0.9, radiusZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
+          : { radiusX: 0.5, heightY: 0.5, radiusZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 }; 
+
+      const defaultCamOffset = isModel
+          ? { x: 0, y: 1.6, z: 0 }
+          : { x: 0, y: 0.8, z: 0 }; 
+
       const rolSaved = obj.properties?.rol || 'prop';
       const isSolidSaved = obj.properties?.isSolid ?? true;
       const isSelectableSaved = obj.properties?.isSelectable ?? true;
       const mensajeSaved = obj.properties?.mensaje || '';
+      
+      const savedCapsule = obj.properties?.capsule || { ...defaultCapsule };
+      const savedCamOffset = obj.properties?.camOffset || { ...defaultCamOffset };
 
-      if (obj.type === 'model' && obj.assetId) {
+      if (isModel && obj.assetId) {
         const path = obj.properties?.path || obj.asset?.path;
         if (!path) return;
         const fullPath = 'http://localhost:4000' + path;
@@ -137,7 +180,16 @@ export class EditorSceneService {
           const anims = result.animationGroups || [];
           anims.forEach(ag => ag.stop());
 
-          rootNode.metadata = { type: 'model', rol: rolSaved, assetId: obj.assetId, path, isSolid: isSolidSaved, isSelectable: isSelectableSaved, animations: anims, mensaje: mensajeSaved };
+          rootNode.metadata = { 
+              type: 'model', rol: rolSaved, assetId: obj.assetId, path, 
+              isSolid: isSolidSaved, isSelectable: isSelectableSaved, 
+              animations: anims, mensaje: mensajeSaved,
+              capsule: savedCapsule, camOffset: savedCamOffset
+          };
+          
+          rootNode.ellipsoid = new Vector3(savedCapsule.radiusX * obj.scale.x, savedCapsule.heightY * obj.scale.y, savedCapsule.radiusZ * obj.scale.z);
+          rootNode.ellipsoidOffset = new Vector3(savedCapsule.offsetX * obj.scale.x, savedCapsule.offsetY * obj.scale.y, savedCapsule.offsetZ * obj.scale.z);
+
           this.actualizarListaNodos();
         });
       } else {
@@ -153,9 +205,17 @@ export class EditorSceneService {
         mesh.rotationQuaternion = Quaternion.FromEulerAngles(obj.rotation.x, obj.rotation.y, obj.rotation.z);
         mesh.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
         const savedColor = obj.properties?.color || '#888888';
-        mesh.metadata = { type: obj.type, rol: rolSaved, color: savedColor, isSolid: isSolidSaved, isSelectable: isSelectableSaved, mensaje: mensajeSaved };
+        
+        mesh.metadata = { 
+            type: obj.type, rol: rolSaved, color: savedColor, 
+            isSolid: isSolidSaved, isSelectable: isSelectableSaved, mensaje: mensajeSaved,
+            capsule: savedCapsule, camOffset: savedCamOffset
+        };
         mesh.isPickable = true;
         mesh.checkCollisions = isSolidSaved;
+
+        mesh.ellipsoid = new Vector3(savedCapsule.radiusX * obj.scale.x, savedCapsule.heightY * obj.scale.y, savedCapsule.radiusZ * obj.scale.z);
+        mesh.ellipsoidOffset = new Vector3(savedCapsule.offsetX * obj.scale.x, savedCapsule.offsetY * obj.scale.y, savedCapsule.offsetZ * obj.scale.z);
 
         const mat = new StandardMaterial("mat_" + obj.name, scene);
         mat.diffuseColor = Color3.FromHexString(savedColor);
@@ -177,18 +237,27 @@ export class EditorSceneService {
           scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z }
         };
 
+        const propertiesToSave = {
+            rol: nodo.metadata.rol,
+            isSolid: nodo.metadata.isSolid,
+            isSelectable: nodo.metadata.isSelectable,
+            mensaje: nodo.metadata.mensaje,
+            capsule: nodo.metadata.capsule,
+            camOffset: nodo.metadata.camOffset
+        };
+
         if (nodo.metadata.type === 'model') {
           return {
             ...baseData,
             type: 'model',
             assetId: nodo.metadata.assetId,
-            properties: { path: nodo.metadata.path, rol: nodo.metadata.rol, isSolid: nodo.metadata.isSolid, isSelectable: nodo.metadata.isSelectable, mensaje: nodo.metadata.mensaje }
+            properties: { path: nodo.metadata.path, ...propertiesToSave }
           };
         }
         return {
           ...baseData,
           type: nodo.metadata.type,
-          properties: { color: nodo.metadata.color, rol: nodo.metadata.rol, isSolid: nodo.metadata.isSolid, isSelectable: nodo.metadata.isSelectable, mensaje: nodo.metadata.mensaje }
+          properties: { color: nodo.metadata.color, ...propertiesToSave }
         };
       }
       return null;

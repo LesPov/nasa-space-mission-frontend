@@ -1,3 +1,4 @@
+
 import {
   Component,
   inject,
@@ -94,8 +95,9 @@ export class InspectorEscena implements OnInit, OnDestroy {
   private subs: Subscription[] = [];
   public nodosExpandidos = new Set<string>();
 
+  // Eliminado acordeón Climb
   public acordeonesPlayer: Record<string, boolean> = {
-    movement: true, jump: false, climb: false, camera: false, blend: false, physics: false, animEnabled: false
+    movement: true, jump: false, camera: false, blend: false, physics: false, animEnabled: false
   };
 
   localPosX = 0; localPosY = 0; localPosZ = 0;
@@ -363,7 +365,6 @@ export class InspectorEscena implements OnInit, OnDestroy {
     this.editorSvc.triggerUpdate();
   }
 
-  // 🔥 FIX: Botón manual para dar tranquilidad al usuario de que se guardó
   aplicarInteraccionYForzarGuardado() {
     this.aplicarInteraccion();
     this.animStatus = '✅ Interacción y secuencias guardadas en el objeto';
@@ -533,13 +534,16 @@ export class InspectorEscena implements OnInit, OnDestroy {
     this.animStatus = `Secuencia Demo (Salto) creada`;
   }
 
-  // 🔥 NUEVA SECUENCIA CINEMÁTICA PARA ESCALAR
+  // 🔥 NUEVA SECUENCIA CINEMÁTICA PARA ESCALAR (CORREGIDA)
   crearSecuenciaBasicaEscalar() {
     const seq = createPlayerSequence(`Demo Escalar ${this.sequences.length + 1}`);
     seq.steps = [
-      { ...createSequenceStep('climbUp'), durationMs: 800, offsetY: 1.5, offsetForward: 0.2 },
-      { ...createSequenceStep('climbFinish'), durationMs: 600, offsetY: 0.5, offsetForward: 0.4 },
-      { ...createSequenceStep('idle'), durationMs: 500, offsetY: 0, offsetForward: 0 }
+      // Paso 1: Sube, no avanza.
+      { ...createSequenceStep('climbUp'), durationMs: 1000, offsetY: 2.8, offsetForward: 0, lockInput: true },
+      // Paso 2: Ya está arriba, avanza para no quedarse en el borde.
+      { ...createSequenceStep('climbFinish'), durationMs: 800, offsetY: 0, offsetForward: 1.5, lockInput: true },
+      // Paso 3: Aterriza y recupera el control.
+      { ...createSequenceStep('idle'), durationMs: 500, offsetY: 0, offsetForward: 0, lockInput: false }
     ];
     this.sequences = [...this.sequences, seq];
     this.selectedSequenceId = seq.id;
@@ -633,7 +637,6 @@ export class InspectorEscena implements OnInit, OnDestroy {
     this.animStatus = 'Configuración completa guardada';
   }
 
-  // 🔥 NUEVA FUNCIÓN PARA COPIAR EL ID DE LA SECUENCIA
   copiarIdSecuencia(id: string) {
     navigator.clipboard.writeText(id).then(() => {
       this.animStatus = '✅ ID copiado al portapapeles';

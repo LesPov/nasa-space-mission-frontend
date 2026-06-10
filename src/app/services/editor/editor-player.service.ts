@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { EditorStateService } from './editor-state.service';
@@ -40,7 +39,6 @@ export class EditorPlayerService {
 
   private playerHalfHeight = 0.9;
   private playerEyeLevel = 1.6;
-  private playerRadius = 0.4;
 
   private headNode: TransformNode | null = null;
   private initialHeadLocal: Vector3 | null = null;
@@ -57,38 +55,12 @@ export class EditorPlayerService {
   private isJumping = false;
   private isFalling = false;
   private isHardLanding = false;
-
-  private isClimbing = false;
-  private isPullingUp = false;
   private isRecoveringFromFall = false;
-  private justFinishedClimb = false;
-
-  private climbFrame = 0;
-  private pullUpFrame = 0;
   private landingFrame = 0;
   private recoveryFrame = 0;
 
-  private climbStartY = 0;
-  private climbTargetY = 0;
-
-  private climbHangPos: Vector3 = Vector3.Zero();
-  private climbUpEndPos: Vector3 = Vector3.Zero();
-  private climbTopPos: Vector3 = Vector3.Zero();
-  private climbForwardDir: Vector3 = Vector3.Zero();
-
-  private climbLedgeMesh: AbstractMesh | null = null;
-  private climbLedgeTopY = 0;
-
-  private postClimbLockFramesRemaining = 0;
-
   private walkSpeed = 0.045;
   private runSpeed = 0.09;
-
-  private climbDuration = 50;
-  private pullUpDuration = 32;
-
-  private climbForwardMultiplier = 0.12;
-  private climbUpForwardMultiplier = 0.05;
 
   private animacionesJugador: AnimationGroup[] = [];
   private animActual: AnimationGroup | null = null;
@@ -174,57 +146,8 @@ export class EditorPlayerService {
     this.resetMovimientoJugador();
   }
 
-  private clamp01(v: number): number {
-    return Math.max(0, Math.min(1, v));
-  }
-
-  private easeInOutSmooth(t: number): number {
-    const x = this.clamp01(t);
-    return x * x * (3 - 2 * x);
-  }
-
-  private easeOutCubic(t: number): number {
-    const x = this.clamp01(t);
-    return 1 - Math.pow(1 - x, 3);
-  }
-
-  private getWorldTopY(mesh: AbstractMesh | null, fallbackY: number): number {
-    if (!mesh) return fallbackY;
-    try {
-      mesh.computeWorldMatrix(true);
-      const bi = mesh.getBoundingInfo?.();
-      if (bi && bi.boundingBox) {
-        const topY = bi.boundingBox.maximumWorld.y;
-        if (Number.isFinite(topY)) return topY;
-      }
-    } catch {}
-    return fallbackY;
-  }
-
   private getScaleFactor(): number {
     return this.playerHalfHeight / 0.9;
-  }
-
-  private getClimbStandingY(topY: number): number {
-    const s = this.getScaleFactor();
-    return topY + (this.playerConfig.climb.topOffsetY * s);
-  }
-
-  private getSafeGrabStartPos(chestPoint: Vector3, forwardDir: Vector3, currentY: number): Vector3 {
-    const grab = chestPoint.clone();
-    grab.subtractInPlace(forwardDir.scale(this.playerRadius * 0.82));
-    grab.y = currentY - (this.playerHalfHeight * 0.25);
-    return grab;
-  }
-
-  private getClimbVisualY(ledgeTopY: number, currentY: number, isModel: boolean): { hangY: number; upY: number; topY: number } {
-    const s = this.getScaleFactor();
-    const hangY = ledgeTopY - (this.playerConfig.climb.hangOffsetY * s);
-    const upY = hangY + (this.playerConfig.climb.upOffsetY * s);
-    const topFromLedge = ledgeTopY + (this.playerConfig.climb.topOffsetY * s);
-    const topFromUp = upY + (this.playerHalfHeight * (isModel ? 0.12 : 0.10));
-    const topY = Math.max(topFromLedge, topFromUp);
-    return { hangY, upY, topY };
   }
 
   private resolveAnimation(binding: string | string[] | null, fallback: AnimationGroup | null): AnimationGroup | null {
@@ -295,7 +218,7 @@ export class EditorPlayerService {
     this.sequenceJumpTriggered = false;
   }
 
-  private iniciarSecuenciaEnJuego(sequenceId: string) {
+  private iniciarSecuenciaEnJuego(sequenceId: string, target?: AbstractMesh) {
     const seqs = this.getSequenceList();
     if (seqs.some(s => s.id === sequenceId)) {
         this.activeSequenceId = sequenceId;
@@ -303,6 +226,27 @@ export class EditorPlayerService {
         this.activeSequenceElapsedMs = 0;
         this.activeSequenceStepEntered = true;
         this.velocidadY = 0; 
+        
+        if (target && this.state.jugadorActivo) {
+            const playerPos = this.state.jugadorActivo.getAbsolutePosition();
+            const targetPos = target.getAbsolutePosition();
+            
+            const dir = targetPos.subtract(playerPos);
+            dir.y = 0; 
+            
+            if (dir.lengthSquared() > 0.001) {
+               dir.normalize();
+               const angle = Math.atan2(dir.x, dir.z);
+               
+               this.state.jugadorActivo.rotationQuaternion = Quaternion.FromEulerAngles(0, angle, 0);
+               
+               if (this.state.modoVistaPrueba === 'FPS') {
+                  this.motor3d.playerCameraFPS.rotation.y = angle;
+                  this.motor3d.playerCameraFPS.rotation.x = 0; 
+               }
+            }
+        }
+        
         this.log(`Secuencia iniciada via interacción: ${sequenceId}`);
     } else {
         this.log(`Secuencia no encontrada en el jugador: ${sequenceId}`);
@@ -424,12 +368,6 @@ export class EditorPlayerService {
     this.runSpeed = this.playerConfig.movement.runSpeed;
     this.jumpForce = this.playerConfig.jump.force;
     this.gravedad = this.playerConfig.jump.gravity;
-
-    this.climbForwardMultiplier = this.playerConfig.climb.forwardMultiplier;
-    this.climbUpForwardMultiplier = this.playerConfig.climb.climbUpForwardMultiplier;
-    this.climbDuration = this.playerConfig.climb.climbDuration;
-    this.pullUpDuration = this.playerConfig.climb.pullUpDuration;
-    this.postClimbLockFramesRemaining = 0;
   }
 
   private syncAnimationsFromMetadata(scene: Scene, obj: Mesh): void {
@@ -465,8 +403,6 @@ export class EditorPlayerService {
 
     if (this.animWalk) this.animWalk.speedRatio = 1.0;
     if (this.animRun) this.animRun.speedRatio = 1.0;
-    if (this.animClimb) this.animClimb.speedRatio = 0.88;
-    if (this.animClimbFinish) this.animClimbFinish.speedRatio = 0.9;
   }
 
   public iniciarPreviewSecuencia(mesh: AbstractMesh, sequenceId: string) {
@@ -487,6 +423,8 @@ export class EditorPlayerService {
       const runtime = this.updateSequencePlayback(dtMs, seq, trueMesh);
 
       if (runtime.running && runtime.animationOverride) {
+        const sr = runtime.step?.speedRatio || 1;
+        runtime.animationOverride.speedRatio = sr;
         this.playAnim(runtime.animationOverride, runtime.loop, runtime.blend);
       } else if (!runtime.running) {
         this.playAnim(this.animIdle, true, 0.1);
@@ -602,7 +540,6 @@ export class EditorPlayerService {
     const camMeta = obj.metadata?.camOffset || defCam;
 
     this.playerHalfHeight = colMeta.sizeY * scale.y;
-    this.playerRadius = Math.max(colMeta.sizeX * scale.x, colMeta.sizeZ * scale.z);
 
     this.loadPlayerConfigFromMetadata(obj);
     this.syncAnimationsFromMetadata(scene, obj);
@@ -644,23 +581,22 @@ export class EditorPlayerService {
         this.inputMap[keyStr] = true;
         this.inputMap[codeStr] = true;
 
+        if (keyStr === 'e') this.eKeyPressed = true;
+        if (keyStr === 'i') this.iKeyPressed = true;
+
         const target = this.state.targetInteractuable();
         if (target) {
-            // 🔥 LÓGICA REFINADA PARA MÚLTIPLES SECUENCIAS
             if (keyStr === 'e' && this.state.showToastE()) {
                 const seqIdRaw = target.metadata?.interactSequenceId;
                 if(seqIdRaw) {
-                    // Separamos por comas y limpiamos espacios vacíos
                     const ids = seqIdRaw.split(',').map((id: string) => id.trim()).filter((id: string) => id);
                     if (ids.length > 0) {
-                        // Buscamos si ya tiene un índice guardado, si no, empezamos en 0
                         let idx = target.metadata.currentSeqIdx || 0;
-                        if (idx >= ids.length) idx = 0; // Si llegamos al final, reiniciamos a 0
+                        if (idx >= ids.length) idx = 0;
 
                         const sequenceToPlay = ids[idx];
-                        this.iniciarSecuenciaEnJuego(sequenceToPlay);
+                        this.iniciarSecuenciaEnJuego(sequenceToPlay, target);
 
-                        // Incrementamos el índice para la próxima vez que presione E
                         target.metadata.currentSeqIdx = (idx + 1) % ids.length;
                     }
                 }
@@ -672,6 +608,9 @@ export class EditorPlayerService {
       } else {
         this.inputMap[keyStr] = false;
         this.inputMap[codeStr] = false;
+
+        if (keyStr === 'e') this.eKeyPressed = false;
+        if (keyStr === 'i') this.iKeyPressed = false;
       }
     });
 
@@ -715,11 +654,6 @@ export class EditorPlayerService {
       this.runSpeed = liveConfig.movement.runSpeed;
       this.jumpForce = liveConfig.jump.force;
       this.gravedad = liveConfig.jump.gravity;
-      this.climbForwardMultiplier = liveConfig.climb.forwardMultiplier;
-      this.climbUpForwardMultiplier = liveConfig.climb.climbUpForwardMultiplier;
-      this.climbDuration = liveConfig.climb.climbDuration;
-      this.pullUpDuration = liveConfig.climb.pullUpDuration;
-      this.postClimbLockFramesRemaining = 0;
 
       const activeCamera = scene.activeCamera;
       if (!activeCamera) return;
@@ -745,7 +679,6 @@ export class EditorPlayerService {
       let hitInteractuable: AbstractMesh | null = null;
       let hoverInteractable = false;
 
-      // 🔥 LÓGICA DE INTERACCIÓN: FPS (Visión) vs TPS (Proximidad)
       if (vista === 'FPS') {
         const centerRay = scene.createPickingRay(
           this.motor3d.engine.getRenderWidth() / 2,
@@ -755,7 +688,6 @@ export class EditorPlayerService {
         );
         centerRay.length = 10000;
 
-        // Utilizamos pickWithRay para obtener EXACTAMENTE el primer mesh visible que toque el rayo
         const hitCross = scene.pickWithRay(centerRay, (m) => m.isVisible || m.isPickable);
         
         let hoveredRoot: AbstractMesh | null = null;
@@ -763,7 +695,6 @@ export class EditorPlayerService {
         if (hitCross && hitCross.hit && hitCross.pickedMesh) {
           const picked = hitCross.pickedMesh as AbstractMesh;
           
-          // Si tocamos el suelo o un Helper ignorado, bloqueamos el rayo y no seleccionamos nada.
           if (!this.state.esMeshIgnorable(picked)) {
             const rootNode = this.state.encontrarRaiz(picked);
             if (rootNode && rootNode instanceof AbstractMesh) {
@@ -778,12 +709,9 @@ export class EditorPlayerService {
 
         this.state.objetoHovereado.set(hoveredRoot);
         this.state.mirandoObjetoInteractuable.set(hoverInteractable);
-        
-        // En FPS, el objeto interactuable es el que miramos fijamente
         hitInteractuable = hoveredRoot;
 
       } else {
-        // 🔥 TPS PROXIMIDAD AAA (Modo 3ra Persona)
         const playerPos = jugador.getAbsolutePosition();
         let minDist = 3.5 * scaleNow.y;
 
@@ -803,7 +731,6 @@ export class EditorPlayerService {
         this.state.objetoHovereado.set(null); 
       }
 
-      // 🔥 ACTUALIZAR ESTADO DEL TOAST
       this.state.targetInteractuable.set(hitInteractuable);
       if (hitInteractuable) {
           const meta = hitInteractuable.metadata || {};
@@ -823,24 +750,26 @@ export class EditorPlayerService {
       let isRunning = false;
       let isGrounded = false;
 
-      // 🔥 LÓGICA DE MOVIMIENTO CINEMÁTICO (Evita colisiones al subir/bajar)
-      let isCinematicMove = false;
+      // 🔥 LÓGICA INTELIGENTE DE MOVIMIENTO CINEMÁTICO EN SECUENCIAS
+      let isCinematicSequence = false;
       let dy = 0;
       let df = 0;
 
       if (seqRuntime.running && seqRuntime.step) {
           const soY = seqRuntime.step.offsetY || 0;
           const soF = seqRuntime.step.offsetForward || 0;
-          if (soY !== 0 || soF !== 0) {
-              isCinematicMove = true;
+          
+          // Entramos en cinemática si hay desplazamiento configurado o el usuario bloqueó las teclas
+          if (soY !== 0 || soF !== 0 || seqRuntime.lockInput) {
+              isCinematicSequence = true;
               const dtSec = dtMs / 1000;
               const durSec = Math.max(0.001, seqRuntime.step.durationMs / 1000);
-              dy = (soY * scaleNow.y / durSec) * dtSec;
-              df = (soF * scaleNow.z / durSec) * dtSec;
+              dy = (soY / durSec) * dtSec; 
+              df = (soF / durSec) * dtSec; 
           }
       }
 
-      const sequenceLocksInput = !!seqRuntime.lockInput;
+      const sequenceLocksInput = isCinematicSequence || !!seqRuntime.lockInput;
       const effectiveInput = sequenceLocksInput ? {} : this.inputMap;
 
       if (seqRuntime.running && seqRuntime.forceJump && !this.isJumping && !this.isFalling) {
@@ -849,257 +778,130 @@ export class EditorPlayerService {
         this.sequenceJumpTriggered = false;
       }
 
-      if (this.postClimbLockFramesRemaining > 0) {
-        this.postClimbLockFramesRemaining--;
-        this.velocidadY = 0;
-        move = Vector3.Zero();
-      }
+      // Evaluar Colisiones Inferiores
+      const rayCol = new Ray(capsuleCenter, Vector3.Down(), this.playerHalfHeight + (0.15 * scaleNow.y));
+      const hitInfo = scene.pickWithRay(rayCol, collFn);
+      isGrounded = hitInfo ? hitInfo.hit : false;
 
-      if (this.isClimbing) {
-        this.climbFrame++;
-        const totalClimbFrames = Math.max(1, this.climbDuration);
+      if (this.velocidadY > 0) isGrounded = false;
 
-        jugador.checkCollisions = false;
-
-        const t = this.clamp01(this.climbFrame / totalClimbFrames);
-        const ease = this.easeInOutSmooth(t);
-
-        const currentPos = Vector3.Lerp(this.climbHangPos, this.climbUpEndPos, ease);
-        jugador.position = currentPos;
-        jugador.computeWorldMatrix(true);
-
-        if (this.climbFrame >= totalClimbFrames) {
-          this.isClimbing = false;
-          this.isPullingUp = true;
-          this.pullUpFrame = 0;
-        }
-      } else if (this.isPullingUp) {
-        this.pullUpFrame++;
-        const totalPullFrames = Math.max(1, this.pullUpDuration);
-
-        const t = this.clamp01(this.pullUpFrame / totalPullFrames);
-        const easeOut = this.easeOutCubic(t);
-
-        const currentPos = Vector3.Lerp(this.climbUpEndPos, this.climbTopPos, easeOut);
-        jugador.position = currentPos;
-        jugador.computeWorldMatrix(true);
-
-        if (this.pullUpFrame >= totalPullFrames) {
-          this.isPullingUp = false;
-          this.justFinishedClimb = true;
-          this.postClimbLockFramesRemaining = liveConfig.climb.postClimbLockFrames;
-
-          this.velocidadY = 0;
-          this.isJumping = false;
-          this.isFalling = false;
-          this.highestY = this.climbLedgeTopY + 0.12;
-
-          jugador.checkCollisions = true;
-
-          const safeTopPos = this.climbTopPos.clone();
-          safeTopPos.y = this.getClimbStandingY(this.climbLedgeTopY);
-          safeTopPos.addInPlace(this.climbForwardDir.scale(this.playerRadius * 0.015));
-
-          jugador.position = safeTopPos;
-          jugador.computeWorldMatrix(true);
-        }
-      } else if (this.isRecoveringFromFall) {
-        this.recoveryFrame++;
-        if (this.recoveryFrame > liveConfig.physics.landingRecoveryFrames) {
-          this.isRecoveringFromFall = false;
-        }
-      } else {
-        if (this.postClimbLockFramesRemaining > 0) {
-          isGrounded = true;
-          this.isJumping = false;
-          this.isFalling = false;
-          move = Vector3.Zero();
-          move.y = 0;
-        } else {
-
-          // 🔥 APLICAMOS MOVIMIENTO CINEMÁTICO DIRECTO Y BYPASSEAMOS COLISIONES
-          if (isCinematicMove) {
-              jugador.checkCollisions = false;
-              jugador.position.y += dy;
-              jugador.position.addInPlace(forward.scale(df));
-              jugador.computeWorldMatrix(true);
-
-              this.velocidadY = 0;
-              this.highestY = jugador.position.y;
-              this.isJumping = false;
-              this.isFalling = false;
-              isGrounded = true;
-              move = Vector3.Zero();
-              isMoving = true; 
-              isRunning = false;
-          } else {
-              jugador.checkCollisions = true;
-              
-              if (!this.isHardLanding) {
-                if (effectiveInput['w']) move.addInPlace(forward);
-                if (effectiveInput['s']) move.subtractInPlace(forward);
-                if (effectiveInput['d']) move.addInPlace(right);
-                if (effectiveInput['a']) move.subtractInPlace(right);
-              }
-
-              if (seqRuntime.running && seqRuntime.allowMovement) {
-                if (seqRuntime.forceForwardRun) move.addInPlace(forward.scale(this.runSpeed * this.getScaleFactor()));
-                if (seqRuntime.forceForwardWalk) move.addInPlace(forward.scale(this.walkSpeed * this.getScaleFactor()));
-              }
-
-              isMoving = move.lengthSquared() > 0.001;
-              isRunning = !!effectiveInput['shiftleft'] || !!effectiveInput['shiftright'] || !!effectiveInput['shift'] || seqRuntime.forceForwardRun;
-
-              const scaleFactor = this.getScaleFactor();
-
-              if (isMoving && !this.isHardLanding) {
-                const modSpeed = (isRunning ? this.runSpeed : this.walkSpeed) * scaleFactor;
-
-                if (!seqRuntime.running || !seqRuntime.allowMovement) {
-                  move.normalize().scaleInPlace(modSpeed);
-                }
-
-                if (vista === 'TPS') {
-                  const targetAngle = Math.atan2(move.x, move.z);
-                  if (!jugador.rotationQuaternion) jugador.rotationQuaternion = Quaternion.Identity();
-                  jugador.rotationQuaternion = Quaternion.Slerp(
-                    jugador.rotationQuaternion,
-                    Quaternion.FromEulerAngles(0, targetAngle, 0),
-                    0.1
-                  );
-                }
-              }
-
-              const rayCol = new Ray(capsuleCenter, Vector3.Down(), this.playerHalfHeight + (0.15 * scaleNow.y));
-              const hitInfo = scene.pickWithRay(rayCol, collFn);
-              isGrounded = hitInfo ? hitInfo.hit : false;
-
-              if (this.velocidadY > 0) isGrounded = false;
-
-              if (isGrounded) {
-                if (this.isFalling || this.isJumping) {
-                  const fallDistance = this.highestY - jugador.position.y;
-                  if (fallDistance > this.playerConfig.physics.hardLandingThreshold * scaleNow.y) {
-                    this.isHardLanding = true;
-                    this.landingFrame = 0;
-                    move = Vector3.Zero();
-                  }
-                  this.isFalling = false;
-                  this.isJumping = false;
-                }
-
-                this.highestY = jugador.position.y;
-                this.velocidadY = -0.05;
-
-                if ((effectiveInput['space'] || seqRuntime.forceJump) && !this.isHardLanding) {
-                  this.velocidadY = this.jumpForce * scaleFactor;
-                  this.isJumping = true;
-                  this.inputMap['space'] = false;
-                }
-              } else {
-                if (jugador.position.y > this.highestY) this.highestY = jugador.position.y;
-
-                const gravityMul = this.isJumping ? 0.55 : this.playerConfig.jump.jumpFallMultiplier;
-                this.velocidadY -= this.gravedad * scaleFactor * gravityMul;
-
-                if (this.velocidadY < -this.playerConfig.jump.maxFallSpeed * scaleFactor) {
-                  this.velocidadY = -this.playerConfig.jump.maxFallSpeed * scaleFactor;
-                }
-
-                if (this.velocidadY < -0.05) {
-                  this.isFalling = true;
-                  this.isJumping = false;
-                } else if (this.velocidadY > 0) {
-                  this.isJumping = true;
-                  this.isFalling = false;
-                }
-
-                const climbActionsAllowed =
-                  liveConfig.climb.enabled &&
-                  (this.isActionEnabled('climbUp') || this.isActionEnabled('climbFinish'));
-
-                if (
-                  climbActionsAllowed &&
-                  (this.isJumping || this.isFalling) &&
-                  isMoving &&
-                  !this.isClimbing &&
-                  !this.isPullingUp &&
-                  !this.isHardLanding &&
-                  !this.isRecoveringFromFall &&
-                  this.postClimbLockFramesRemaining === 0
-                ) {
-                  const chestOrigin = capsuleCenter.clone();
-                  const headOrigin = capsuleCenter.clone();
-                  headOrigin.y += this.playerHalfHeight * 0.8;
-
-                  const fDir = this.sanitizeForwardDir(jugador.getDirection(Vector3.Forward()));
-                  const reachDistance = this.playerConfig.physics.climbRayReach;
-
-                  const chestRay = new Ray(chestOrigin, fDir, reachDistance);
-                  const chestHit = scene.pickWithRay(chestRay, collFn);
-
-                  const headRay = new Ray(headOrigin, fDir, reachDistance);
-                  const headHit = scene.pickWithRay(headRay, collFn);
-
-                  if (chestHit && chestHit.hit && (!headHit || !headHit.hit)) {
-                    const originTop = chestHit.pickedPoint!.clone();
-                    originTop.y += this.playerHalfHeight * 3.5;
-                    originTop.addInPlace(fDir.scale(this.playerRadius * 0.35));
-
-                    const rayTop = new Ray(originTop, Vector3.Down(), this.playerHalfHeight * 6);
-                    const hitTop = scene.pickWithRay(rayTop, collFn);
-
-                    if (hitTop && hitTop.hit) {
-                      const ledgeMesh = (hitTop.pickedMesh as AbstractMesh) || (chestHit.pickedMesh as AbstractMesh) || null;
-                      this.climbLedgeMesh = ledgeMesh;
-
-                      let exactTargetY = this.getWorldTopY(ledgeMesh, hitTop.pickedPoint!.y);
-                      exactTargetY = this.getClimbStandingY(exactTargetY);
-
-                      const heightDiff = exactTargetY - jugador.position.y;
-
-                      if (
-                        heightDiff > (this.playerHalfHeight * liveConfig.climb.minHeight) &&
-                        heightDiff <= (this.playerHalfHeight * liveConfig.climb.maxHeight)
-                      ) {
-                        const idealStartPos = this.getSafeGrabStartPos(
-                          chestHit.pickedPoint!.clone(),
-                          fDir,
-                          jugador.position.y
-                        );
-
-                        this.iniciarEscalada(exactTargetY, fDir, idealStartPos, isModel, ledgeMesh);
-                      }
-                    }
-                  }
-                }
-              }
-
-              move.y = this.velocidadY;
+      // 🔥 MODO CINEMÁTICO (Evita que las colisiones estropeen el Climbing)
+      if (isCinematicSequence) {
+          // Apagamos colisiones del jugador mientras dura la secuencia
+          jugador.checkCollisions = false; 
+          
+          const pForward = this.sanitizeForwardDir(jugador.getDirection(Vector3.Forward()));
+          
+          // Aplicamos posiciones puras sin el motor de físicas
+          if (dy !== 0) jugador.position.y += dy;
+          if (df !== 0) {
+             jugador.position.addInPlace(pForward.scale(df));
           }
-        }
+
+          jugador.computeWorldMatrix(true);
+
+          this.velocidadY = 0; // Anulamos gravedad
+          this.highestY = jugador.position.y;
+          this.isJumping = false;
+          this.isFalling = false;
+          isGrounded = true; // Fingimos que está tocando piso para que no se asuste
+          
+          move = Vector3.Zero();
+          isMoving = true; // Para que no active IDLE
+          isRunning = false;
+
+      } else {
+          // 🔥 MODO NORMAL (Gravedad y Movimiento libre)
+          jugador.checkCollisions = true; 
+          
+          if (this.isRecoveringFromFall) {
+            this.recoveryFrame++;
+            if (this.recoveryFrame > liveConfig.physics.landingRecoveryFrames) {
+              this.isRecoveringFromFall = false;
+            }
+          } else if (!this.isHardLanding) {
+            if (effectiveInput['w']) move.addInPlace(forward);
+            if (effectiveInput['s']) move.subtractInPlace(forward);
+            if (effectiveInput['d']) move.addInPlace(right);
+            if (effectiveInput['a']) move.subtractInPlace(right);
+          }
+
+          if (seqRuntime.running && seqRuntime.allowMovement) {
+            if (seqRuntime.forceForwardRun) move.addInPlace(forward.scale(this.runSpeed * this.getScaleFactor()));
+            if (seqRuntime.forceForwardWalk) move.addInPlace(forward.scale(this.walkSpeed * this.getScaleFactor()));
+          }
+
+          isMoving = move.lengthSquared() > 0.001;
+          isRunning = !!effectiveInput['shiftleft'] || !!effectiveInput['shiftright'] || !!effectiveInput['shift'] || seqRuntime.forceForwardRun;
+
+          const scaleFactor = this.getScaleFactor();
+
+          if (isMoving && !this.isHardLanding && !this.isRecoveringFromFall) {
+            const modSpeed = (isRunning ? this.runSpeed : this.walkSpeed) * scaleFactor;
+
+            if (!seqRuntime.running || !seqRuntime.allowMovement) {
+              move.normalize().scaleInPlace(modSpeed);
+            }
+
+            if (vista === 'TPS' && !sequenceLocksInput) {
+              const targetAngle = Math.atan2(move.x, move.z);
+              if (!jugador.rotationQuaternion) jugador.rotationQuaternion = Quaternion.Identity();
+              jugador.rotationQuaternion = Quaternion.Slerp(
+                jugador.rotationQuaternion,
+                Quaternion.FromEulerAngles(0, targetAngle, 0),
+                0.1
+              );
+            }
+          }
+
+          if (isGrounded) {
+            if (this.isFalling || this.isJumping) {
+              const fallDistance = this.highestY - jugador.position.y;
+              if (fallDistance > this.playerConfig.physics.hardLandingThreshold * scaleNow.y) {
+                this.isHardLanding = true;
+                this.landingFrame = 0;
+                move = Vector3.Zero();
+              }
+              this.isFalling = false;
+              this.isJumping = false;
+            }
+
+            this.highestY = jugador.position.y;
+            this.velocidadY = -0.05;
+
+            if ((effectiveInput['space'] || seqRuntime.forceJump) && !this.isHardLanding && !this.isRecoveringFromFall) {
+              this.velocidadY = this.jumpForce * scaleFactor;
+              this.isJumping = true;
+              this.inputMap['space'] = false;
+            }
+          } else {
+            if (jugador.position.y > this.highestY) this.highestY = jugador.position.y;
+
+            const gravityMul = this.isJumping ? 0.55 : this.playerConfig.jump.jumpFallMultiplier;
+            this.velocidadY -= this.gravedad * scaleFactor * gravityMul;
+
+            if (this.velocidadY < -this.playerConfig.jump.maxFallSpeed * scaleFactor) {
+              this.velocidadY = -this.playerConfig.jump.maxFallSpeed * scaleFactor;
+            }
+
+            if (this.velocidadY < -0.05) {
+              this.isFalling = true;
+              this.isJumping = false;
+            } else if (this.velocidadY > 0) {
+              this.isJumping = true;
+              this.isFalling = false;
+            }
+          }
+
+          move.y = this.velocidadY;
+          jugador.moveWithCollisions(move);
       }
 
-      if (
-        !this.isClimbing &&
-        !this.isPullingUp &&
-        !this.isHardLanding &&
-        !this.isRecoveringFromFall &&
-        this.postClimbLockFramesRemaining === 0
-      ) {
-         if (!isCinematicMove) {
-            jugador.moveWithCollisions(move);
-         }
-      }
-
+      // MANEJO DE ANIMACIONES
       if (seqRuntime.running && seqRuntime.animationOverride) {
+        const sr = seqRuntime.step?.speedRatio || 1;
+        seqRuntime.animationOverride.speedRatio = sr;
         this.playAnim(seqRuntime.animationOverride, seqRuntime.loop, seqRuntime.blend);
-      } else if (this.isClimbing) {
-        if (this.isActionEnabled('climbUp')) this.playAnim(this.animClimb || this.animIdle, false, 0.06);
-        else this.playAnim(this.animIdle, true, 0.06);
-      } else if (this.isPullingUp) {
-        if (this.isActionEnabled('climbFinish')) this.playAnim(this.animClimbFinish || this.animClimb || this.animIdle, false, 0.05);
-        else this.playAnim(this.animIdle, true, 0.05);
       } else if (this.isHardLanding) {
         if (this.isActionEnabled('landHard')) this.playAnim(this.animHardLanding || this.animLandSoft || this.animIdle, false, 0.1);
         else this.playAnim(this.animIdle, true, 0.1);
@@ -1136,8 +938,6 @@ export class EditorPlayerService {
           if (this.isActionEnabled('idle')) this.playAnim(this.animIdle, true, finalBlendSpeed);
           else this.playAnim(null, true, finalBlendSpeed);
         }
-
-        this.justFinishedClimb = false;
       }
 
       let targetEyeLevel = this.playerEyeLevel;
@@ -1165,22 +965,10 @@ export class EditorPlayerService {
           targetPivotY -= dip * (this.playerHalfHeight * 1.2);
         }
 
-        if (this.isPullingUp) {
-          const progreso = this.clamp01(this.pullUpFrame / Math.max(1, this.pullUpDuration));
-          const easeOut = this.easeOutCubic(progreso);
-          const fakeY = this.climbUpEndPos.y + (this.climbTopPos.y - this.climbUpEndPos.y) * easeOut;
-          const diffY = fakeY - jugador.position.y;
-          targetEyeLevel += diffY * 0.35;
-          targetPivotY += diffY * 0.35;
-        }
-
         if (
           !isMoving &&
           isGrounded &&
-          !this.isClimbing &&
-          !this.isPullingUp &&
-          !this.isHardLanding &&
-          this.postClimbLockFramesRemaining === 0
+          !this.isHardLanding
         ) {
           this.idleTime += scene.getEngine().getDeltaTime() / 1000;
           breathY = Math.sin(this.idleTime * 2.5) * 0.015;
@@ -1215,8 +1003,10 @@ export class EditorPlayerService {
       if (vista === 'FPS') {
         const fpsCam = scene.activeCamera as UniversalCamera;
 
-        if (!jugador.rotationQuaternion) jugador.rotationQuaternion = Quaternion.Identity();
-        jugador.rotationQuaternion = Quaternion.FromEulerAngles(0, fpsCam.rotation.y, 0);
+        if (!sequenceLocksInput) {
+            if (!jugador.rotationQuaternion) jugador.rotationQuaternion = Quaternion.Identity();
+            jugador.rotationQuaternion = Quaternion.FromEulerAngles(0, fpsCam.rotation.y, 0);
+        }
 
         const localCamPos = new Vector3(
           camMeta.x + breathX,
@@ -1236,54 +1026,6 @@ export class EditorPlayerService {
         canvas.requestPointerLock();
       } catch {}
     }
-  }
-
-  private iniciarEscalada(
-    targetY: number,
-    forwardDir: Vector3,
-    startPosIdeal: Vector3,
-    isModel: boolean,
-    ledgeMesh: AbstractMesh | null
-  ) {
-    this.isClimbing = true;
-    this.isPullingUp = false;
-    this.isRecoveringFromFall = false;
-    this.justFinishedClimb = false;
-    this.velocidadY = 0;
-    this.climbFrame = 0;
-    this.pullUpFrame = 0;
-    this.postClimbLockFramesRemaining = 0;
-
-    const cleanForward = this.sanitizeForwardDir(forwardDir);
-
-    this.climbLedgeMesh = ledgeMesh;
-    this.climbLedgeTopY = this.getWorldTopY(ledgeMesh, targetY);
-
-    this.climbHangPos = startPosIdeal.clone();
-    this.climbStartY = startPosIdeal.y;
-    this.climbTargetY = targetY;
-    this.climbForwardDir = cleanForward.clone();
-
-    const visual = this.getClimbVisualY(this.climbLedgeTopY, this.climbStartY, isModel);
-
-    this.climbHangPos.y = visual.hangY;
-
-    this.climbUpEndPos = this.climbHangPos.clone();
-    this.climbUpEndPos.addInPlace(cleanForward.scale(this.playerRadius * this.climbUpForwardMultiplier));
-    this.climbUpEndPos.y = visual.upY;
-
-    this.climbTopPos = this.climbUpEndPos.clone();
-    this.climbTopPos.addInPlace(cleanForward.scale(this.playerRadius * this.climbForwardMultiplier));
-    this.climbTopPos.y = visual.topY;
-
-    this.state.jugadorActivo!.position = this.climbHangPos.clone();
-    this.state.jugadorActivo!.computeWorldMatrix(true);
-
-    this.isJumping = false;
-    this.isFalling = false;
-    this.isHardLanding = false;
-
-    this.playAnim(this.animClimb || this.animIdle, false, 0.06);
   }
 
   detenerModoJuego() {
@@ -1321,8 +1063,6 @@ export class EditorPlayerService {
     this.tecladoObserver = null;
     this.tpsUpdateObserver = null;
     this.inputMap = {};
-    this.eKeyPressed = false;
-    this.iKeyPressed = false;
     this.resetSequenceRuntime();
 
     this.state.objetoHovereado.set(null);
@@ -1331,8 +1071,6 @@ export class EditorPlayerService {
 
     this.headNode = null;
     this.initialHeadLocal = null;
-    this.climbLedgeMesh = null;
-    this.climbLedgeTopY = 0;
 
     if (this.state.jugadorActivo && this.state.backupObjetoPosicion && this.state.backupObjetoRotacionQuat) {
       if (this.state.jugadorActivo.metadata?.rol === 'npc' || this.state.jugadorActivo.metadata?.rol === 'spawn_point') {
@@ -1373,11 +1111,7 @@ export class EditorPlayerService {
     this.isJumping = false;
     this.isFalling = false;
     this.isHardLanding = false;
-    this.isClimbing = false;
-    this.isPullingUp = false;
     this.isRecoveringFromFall = false;
-    this.justFinishedClimb = false;
-    this.postClimbLockFramesRemaining = 0;
     this.velocidadY = -0.1;
     this.highestY = -9999;
     this.idleTime = 0;

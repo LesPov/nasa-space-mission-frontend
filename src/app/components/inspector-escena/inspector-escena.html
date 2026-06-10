@@ -128,10 +128,9 @@
               <div class="field wide">
                 <label>ID(s) de Secuencia (separados por coma)</label>
                 <textarea rows="2" [(ngModel)]="objInteractSequenceId" placeholder="Ej: id_subir, id_bajar" (ngModelChange)="aplicarInteraccion()"></textarea>
-                <p class="help-text">Si pegas varios IDs separados por coma, el jugador alternará entre ellos cada vez que pulse la tecla E (ideal para Subir y Bajar).</p>
+                <p class="help-text">Si pegas varios IDs separados por coma, el jugador alternará entre ellos cada vez que pulse la tecla E.</p>
               </div>
             </div>
-            <!-- 🔥 BOTÓN PARA GUARDAR Y DAR TRANQUILIDAD AL USUARIO -->
             <button class="btn-primary full" style="margin-top: 10px;" (click)="aplicarInteraccionYForzarGuardado()">💾 Guardar Interacción</button>
           </div>
 
@@ -191,7 +190,7 @@
         <div *ngIf="!objetoActual" class="empty-state"><p>Ningún objeto seleccionado</p></div>
       </ng-container>
 
-      <!-- ================= PESTAÑA PLAYER (CON ACORDEONES) ================= -->
+      <!-- ================= PESTAÑA PLAYER ================= -->
       <ng-container *ngIf="pestanaActiva === 'player'">
         <div class="panel-header">
           <span>Configuración del Jugador</span>
@@ -235,30 +234,6 @@
                 <div class="field"><label>Coyote Time (s)</label><input type="number" step="0.01" [(ngModel)]="playerConfig.jump.coyoteTime" (ngModelChange)="aplicarPlayerConfig()" /></div>
                 <div class="field"><label>T. Subida (s)</label><input type="number" step="0.01" [(ngModel)]="playerConfig.jump.jumpRiseTime" (ngModelChange)="aplicarPlayerConfig()" /></div>
                 <div class="field"><label>Multiplicador Caída</label><input type="number" step="0.01" [(ngModel)]="playerConfig.jump.jumpFallMultiplier" (ngModelChange)="aplicarPlayerConfig()" /></div>
-              </div>
-            </div>
-          </div>
-
-          <!-- ACORDEÓN: ESCALADA -->
-          <div class="accordion-section" [class.expanded]="acordeonesPlayer['climb']">
-            <div class="accordion-header" (click)="toggleAcordeonPlayer('climb')">
-              <span class="chevron">{{ acordeonesPlayer['climb'] ? '▼' : '▶' }}</span>
-              <h4>Sistema de Escalada</h4>
-            </div>
-            <div class="accordion-content" *ngIf="acordeonesPlayer['climb']">
-              <div class="grid-2">
-                <div class="field"><label>Habilitar Parkour</label><select [(ngModel)]="playerConfig.climb.enabled" (ngModelChange)="aplicarPlayerConfig()"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-                <div class="field"><label>Alcance del Rayo</label><input type="number" step="0.01" [(ngModel)]="playerConfig.physics.climbRayReach" (ngModelChange)="aplicarPlayerConfig()" /></div>
-                <div class="field"><label>Altura Mínima</label><input type="number" step="0.01" [(ngModel)]="playerConfig.climb.minHeight" (ngModelChange)="aplicarPlayerConfig()" /></div>
-                <div class="field"><label>Altura Máxima</label><input type="number" step="0.01" [(ngModel)]="playerConfig.climb.maxHeight" (ngModelChange)="aplicarPlayerConfig()" /></div>
-                <div class="field"><label>Duración Colgado</label><input type="number" step="1" [(ngModel)]="playerConfig.climb.climbDuration" (ngModelChange)="aplicarPlayerConfig()" /></div>
-                <div class="field"><label>Duración Subida</label><input type="number" step="1" [(ngModel)]="playerConfig.climb.pullUpDuration" (ngModelChange)="aplicarPlayerConfig()" /></div>
-                <div class="field"><label>Bloqueo tras subir</label><input type="number" step="1" [(ngModel)]="playerConfig.climb.postClimbLockFrames" (ngModelChange)="aplicarPlayerConfig()" /></div>
-                <div class="field"><label>Avance Inicial</label><input type="number" step="0.01" [(ngModel)]="playerConfig.climb.forwardMultiplier" (ngModelChange)="aplicarPlayerConfig()" /></div>
-                <div class="field"><label>Avance Subiendo</label><input type="number" step="0.01" [(ngModel)]="playerConfig.climb.climbUpForwardMultiplier" (ngModelChange)="aplicarPlayerConfig()" /></div>
-                <div class="field"><label>Offset Y Colgado</label><input type="number" step="0.01" [(ngModel)]="playerConfig.climb.hangOffsetY" (ngModelChange)="aplicarPlayerConfig()" /></div>
-                <div class="field"><label>Offset Y Subiendo</label><input type="number" step="0.01" [(ngModel)]="playerConfig.climb.upOffsetY" (ngModelChange)="aplicarPlayerConfig()" /></div>
-                <div class="field"><label>Offset Y Final</label><input type="number" step="0.01" [(ngModel)]="playerConfig.climb.topOffsetY" (ngModelChange)="aplicarPlayerConfig()" /></div>
               </div>
             </div>
           </div>
@@ -509,6 +484,16 @@
                     <div class="field wide">
                       <label>Forzar Clip (Opcional)</label>
                       <input type="text" [(ngModel)]="step.clipOverride" placeholder="Ej: jump_start_02" (ngModelChange)="actualizarPaso()" />
+                    </div>
+
+                    <!-- LOS CHECKBOX DE BLOQUEO Y LOOP -->
+                    <div class="checkbox-field">
+                      <input type="checkbox" id="chkLoop_{{i}}" [(ngModel)]="step.loop" (ngModelChange)="actualizarPaso()" />
+                      <label for="chkLoop_{{i}}">En Bucle (Loop)</label>
+                    </div>
+                    <div class="checkbox-field">
+                      <input type="checkbox" id="chkLock_{{i}}" [(ngModel)]="step.lockInput" (ngModelChange)="actualizarPaso()" />
+                      <label for="chkLock_{{i}}" title="Desactiva la gravedad y colisiones">Bloquear Teclas (Gravedad OFF)</label>
                     </div>
                   </div>
                 </div>

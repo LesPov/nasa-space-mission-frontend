@@ -26,8 +26,8 @@ export interface PlayerSequenceStep {
   loop: boolean;
   allowMovement: boolean;
   lockInput: boolean;
-  offsetY: number; // 🔥 NUEVO: Movimiento Vertical Cinemático
-  offsetForward: number; // 🔥 NUEVO: Movimiento Frontal Cinemático
+  offsetY: number; // Movimiento Vertical Cinemático
+  offsetForward: number; // Movimiento Frontal Cinemático
 }
 
 export interface PlayerClipSequence {
@@ -88,20 +88,6 @@ export interface PlayerJumpConfig {
   jumpFallMultiplier: number;
 }
 
-export interface PlayerClimbConfig {
-  enabled: boolean;
-  minHeight: number;
-  maxHeight: number;
-  forwardMultiplier: number;
-  climbUpForwardMultiplier: number;
-  climbDuration: number;
-  pullUpDuration: number;
-  postClimbLockFrames: number;
-  hangOffsetY: number;
-  upOffsetY: number;
-  topOffsetY: number;
-}
-
 export interface PlayerCameraConfig {
   fpsEyeLevel: number;
   tpsPivotY: number;
@@ -119,7 +105,6 @@ export interface PlayerBlendConfig {
 export interface PlayerPhysicsConfig {
   hardLandingThreshold: number;
   landingRecoveryFrames: number;
-  climbRayReach: number;
 }
 
 export interface PlayerDebugConfig {
@@ -131,7 +116,6 @@ export interface PlayerDebugConfig {
 export interface PlayerRuntimeConfig {
   movement: PlayerMovementConfig;
   jump: PlayerJumpConfig;
-  climb: PlayerClimbConfig;
   camera: PlayerCameraConfig;
   blend: PlayerBlendConfig;
   physics: PlayerPhysicsConfig;
@@ -156,19 +140,6 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
     jumpRiseTime: 0.18,
     jumpFallMultiplier: 1.0
   },
-  climb: {
-    enabled: true,
-    minHeight: 0.25,
-    maxHeight: 4.0,
-    forwardMultiplier: 0.42,
-    climbUpForwardMultiplier: 0.16,
-    climbDuration: 66,
-    pullUpDuration: 40,
-    postClimbLockFrames: 40,
-    hangOffsetY: 1.05,
-    upOffsetY: 0.58,
-    topOffsetY: 0.003
-  },
   camera: {
     fpsEyeLevel: 1.6,
     tpsPivotY: 1.5,
@@ -183,8 +154,7 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
   },
   physics: {
     hardLandingThreshold: 2.5,
-    landingRecoveryFrames: 60,
-    climbRayReach: 2.5
+    landingRecoveryFrames: 60
   },
   animations: {
     idle: ['idle'],
@@ -237,7 +207,6 @@ export function mergePlayerConfig(partial?: Partial<PlayerRuntimeConfig> | null)
   return {
     movement: { ...base.movement, ...(partial.movement || {}) },
     jump: { ...base.jump, ...(partial.jump || {}) },
-    climb: { ...base.climb, ...(partial.climb || {}) },
     camera: { ...base.camera, ...(partial.camera || {}) },
     blend: { ...base.blend, ...(partial.blend || {}) },
     physics: { ...base.physics, ...(partial.physics || {}) },
@@ -255,6 +224,9 @@ export function normalizeAnimBinding(binding: AnimBinding): string[] {
 }
 
 export function createSequenceStep(action: PlayerActionKey = 'idle'): PlayerSequenceStep {
+  // Las acciones cinemáticas bloquean input por defecto (Apagan Gravedad)
+  const isCinematic = action !== 'idle' && action !== 'walk' && action !== 'run' && action !== 'fall';
+  
   return {
     id: crypto.randomUUID(),
     action,
@@ -262,9 +234,9 @@ export function createSequenceStep(action: PlayerActionKey = 'idle'): PlayerSequ
     durationMs: 1000,
     speedRatio: 1,
     blend: 0.08,
-    loop: true,
-    allowMovement: true,
-    lockInput: false,
+    loop: !isCinematic,
+    allowMovement: !isCinematic,
+    lockInput: isCinematic,
     offsetY: 0,
     offsetForward: 0
   };

@@ -3,6 +3,7 @@ import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
 import { ToolbarEscena } from '../../../components/toolbar-escena/toolbar-escena';
 import { EditorMapaService } from '../../../services/editor-mapa.service';
+import { EditorStateService } from '../../../services/editor/editor-state.service'; // 🔥 IMPORTACIÓN CORREGIDA
 import { Motor3dService } from '../../../services/motor-3d.service';
 import { LayoutService } from '../../../services/layout.service';
 import { EpisodiosService } from '../../../services/api/episodios'; 
@@ -19,6 +20,7 @@ import { debounceTime, Subscription, Subject } from 'rxjs';
   styleUrl: './editor-escena.css',
 }) 
 export class EditorEscena implements OnInit, OnDestroy {
+  public stateSvc = inject(EditorStateService); // 🔥 INYECCIÓN CORREGIDA
   public editorSvc = inject(EditorMapaService);
   public motor3dSvc = inject(Motor3dService);
   public layoutSvc = inject(LayoutService);
@@ -67,9 +69,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.cargarEpisodios();
     this.cargarAssets();
 
-    // 🔥 FIX: Guardado automático perfeccionado a 1 segundo.
-    // Solo dispara UNA llamada silenciosa a la BD 1 segundo después 
-    // de que sueltas un objeto o modificas algo. Nada de spam.
+    // 🔥 Guardado automático perfeccionado a 1 segundo.
     this.autoSaveSub = this.editorSvc.onMapChanged.pipe(
       debounceTime(1000) 
     ).subscribe(() => {
@@ -207,7 +207,6 @@ export class EditorEscena implements OnInit, OnDestroy {
         this.estadoGuardado.set('Guardado automático ✓');
         if (!silencioso) alert('Mapa guardado exitosamente');
         
-        // Quitar el mensaje de "Guardado automático" después de 3 segundos
         setTimeout(() => {
           if (this.estadoGuardado() === 'Guardado automático ✓') {
             this.estadoGuardado.set('');

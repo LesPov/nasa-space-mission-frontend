@@ -377,3 +377,76 @@
   0% { opacity: 0; transform: scale(0.9) translateY(20px); }
   100% { opacity: 1; transform: scale(1) translateY(0); }
 }
+/* 🔥 ESTILOS PARA EL TOAST MODERNO CON CSS GRID */
+.modern-toast-container {
+  position: absolute;
+  bottom: 60px; /* Separado del borde inferior */
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  pointer-events: none; /* No bloquea clicks */
+  animation: slideUpFade 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.modern-toast-box {
+  background: rgba(15, 23, 42, 0.85); /* Fondo oscuro translúcido */
+  border: 1px solid rgba(56, 189, 248, 0.3); /* Borde sutil azul */
+  border-radius: 12px;
+  padding: 12px 24px;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  min-width: 200px;
+}
+
+.toast-title {
+  color: #94a3b8;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  margin: 0;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.8);
+}
+
+.toast-actions-grid {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 16px; /* Separación entre cada botón */
+  align-items: center;
+}
+
+.action-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.key-cap {
+  background: #facc15;
+  color: #111;
+  padding: 4px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 900;
+  font-family: monospace;
+  box-shadow: 0 3px 0 #ca8a04;
+  line-height: 1;
+  display: inline-block;
+}
+
+.action-label {
+  color: #f8fafc;
+  font-size: 14px;
+  font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}
+
+@keyframes slideUpFade {
+  0% { opacity: 0; transform: translate(-50%, 20px) scale(0.95); }
+  100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}

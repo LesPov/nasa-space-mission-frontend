@@ -159,22 +159,17 @@ export class EditorToolsService {
       }
     });
 
-    const pickingPredicate = (m: AbstractMesh) => {
-      if (!m || !m.name) return false;
-      if (this.state.esMeshIgnorable(m)) return false;
-      return m.isVisible || m.isPickable;
-    };
-
     const resolverRootDesdeRay = (ray: any): AbstractMesh | null => {
-      const picks = scene.multiPickWithRay(ray, pickingPredicate) || [];
-      for (const hit of picks) {
-        const picked = hit.pickedMesh as AbstractMesh | null;
-        if (!picked) continue;
-        const rootNode = this.state.encontrarRaiz(picked);
-        if (!(rootNode instanceof AbstractMesh)) continue;
-        if (this.state.esMeshIgnorable(rootNode)) continue;
-        if (!this.state.puedeSeleccionarse(rootNode)) continue;
-        return rootNode;
+      const hit = scene.pickWithRay(ray, (m) => m.isVisible || m.isPickable);
+      
+      if (hit && hit.hit && hit.pickedMesh) {
+          const picked = hit.pickedMesh as AbstractMesh;
+          if (this.state.esMeshIgnorable(picked)) return null; 
+
+          const rootNode = this.state.encontrarRaiz(picked);
+          if (rootNode instanceof AbstractMesh && this.state.puedeSeleccionarse(rootNode)) {
+              return rootNode;
+          }
       }
       return null;
     };
@@ -192,7 +187,6 @@ export class EditorToolsService {
             return;
           }
 
-          // 🔥 FIX ADMIN CLICK: Solo el Admin entra a editar al dar click. Los Usuarios ahora usan Tecla 'I'
           if (this.state.rolSimulado() === 'admin' && this.state.modoVistaPrueba === 'FPS') {
             const cam = scene.activeCamera!;
             const ray = new Ray(cam.globalPosition, cam.getDirection(Vector3.Forward()), 20.0);
@@ -213,6 +207,7 @@ export class EditorToolsService {
           const rootNode = resolverRootDesdeRay(ray);
 
           if (rootNode) {
+            // 🔥 AQUÍ QUITÉ LA CÁMARA CENTRADA (Ahora solo lo selecciona)
             this.state.objetoSeleccionado.set(rootNode);
           } else {
             this.state.objetoSeleccionado.set(null);

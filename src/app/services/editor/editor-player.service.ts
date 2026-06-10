@@ -1,5 +1,3 @@
-
-
 import { Injectable, inject } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { EditorStateService } from './editor-state.service';
@@ -116,7 +114,6 @@ export class EditorPlayerService {
   private tpsUpdateObserver: Observer<Scene> | null = null;
   
   private previewObserver: Observer<Scene> | null = null;
-  private configSyncSub: Subscription | null = null;
 
   private activeSequenceId: string | null = null;
   private activeSequenceIndex = 0;
@@ -125,7 +122,6 @@ export class EditorPlayerService {
   private activeSequenceWasRunning = false;
   private sequenceJumpTriggered = false;
 
-  // 🔥 NUEVO: Control para evitar que la tecla E / I se spammeen
   private eKeyPressed = false;
   private iKeyPressed = false;
 
@@ -161,7 +157,6 @@ export class EditorPlayerService {
     if (d.lengthSquared() < 0.0001) return new Vector3(0, 0, 1);
     return d.normalize();
   }
-
 
   private abrirMensajeInteractivo(obj: AbstractMesh): void {
     this.state.playState.set('INTERACTING');
@@ -214,32 +209,20 @@ export class EditorPlayerService {
     return topY + (this.playerConfig.climb.topOffsetY * s);
   }
 
-  private getSafeGrabStartPos(
-    chestPoint: Vector3,
-    forwardDir: Vector3,
-    currentY: number
-  ): Vector3 {
+  private getSafeGrabStartPos(chestPoint: Vector3, forwardDir: Vector3, currentY: number): Vector3 {
     const grab = chestPoint.clone();
     grab.subtractInPlace(forwardDir.scale(this.playerRadius * 0.82));
     grab.y = currentY - (this.playerHalfHeight * 0.25);
     return grab;
   }
 
-  private getClimbVisualY(
-    ledgeTopY: number,
-    currentY: number,
-    isModel: boolean
-  ): { hangY: number; upY: number; topY: number } {
+  private getClimbVisualY(ledgeTopY: number, currentY: number, isModel: boolean): { hangY: number; upY: number; topY: number } {
     const s = this.getScaleFactor();
-
     const hangY = ledgeTopY - (this.playerConfig.climb.hangOffsetY * s);
     const upY = hangY + (this.playerConfig.climb.upOffsetY * s);
-
     const topFromLedge = ledgeTopY + (this.playerConfig.climb.topOffsetY * s);
     const topFromUp = upY + (this.playerHalfHeight * (isModel ? 0.12 : 0.10));
-
     const topY = Math.max(topFromLedge, topFromUp);
-
     return { hangY, upY, topY };
   }
 
@@ -299,9 +282,6 @@ export class EditorPlayerService {
       const found = seqs.find(s => s.id === this.activeSequenceId);
       if (found) return found;
     }
-
-    // 🔥 FIX: Antes devolvía seqs[0] haciendo que siempre se autoreprodujera la primera secuencia.
-    // Ahora retorna null para que no pase nada a menos que se active explícitamente.
     return null;
   }
 
@@ -314,7 +294,6 @@ export class EditorPlayerService {
     this.sequenceJumpTriggered = false;
   }
 
-  // 🔥 NUEVO: Función para iniciar una secuencia desde la interacción (Tecla E)
   private iniciarSecuenciaEnJuego(sequenceId: string) {
     const seqs = this.getSequenceList();
     if (seqs.some(s => s.id === sequenceId)) {
@@ -322,7 +301,7 @@ export class EditorPlayerService {
         this.activeSequenceIndex = 0;
         this.activeSequenceElapsedMs = 0;
         this.activeSequenceStepEntered = true;
-        this.velocidadY = 0; // Estabiliza al jugador al iniciar
+        this.velocidadY = 0; 
         this.log(`Secuencia iniciada via interacción: ${sequenceId}`);
     } else {
         this.log(`Secuencia no encontrada en el jugador: ${sequenceId}`);
@@ -352,10 +331,6 @@ export class EditorPlayerService {
     if (!sequence.steps || sequence.steps.length === 0) return null;
     const index = Math.max(0, Math.min(this.activeSequenceIndex, sequence.steps.length - 1));
     return sequence.steps[index] || null;
-  }
-
-  private stepToAction(step: PlayerSequenceStep): PlayerActionKey {
-    return step.action;
   }
 
   private resolveSequenceStepAnimation(step: PlayerSequenceStep): AnimationGroup | null {
@@ -389,49 +364,16 @@ export class EditorPlayerService {
     dtMs: number,
     sequence: PlayerClipSequence | null,
     jugador: Mesh
-  ): {
-    step: PlayerSequenceStep | null;
-    lockInput: boolean;
-    allowMovement: boolean;
-    forceForwardWalk: boolean;
-    forceForwardRun: boolean;
-    forceJump: boolean;
-    animationOverride: AnimationGroup | null;
-    blend: number;
-    loop: boolean;
-    running: boolean;
-  } {
+  ) {
     if (!sequence || !sequence.enabled || !sequence.steps || sequence.steps.length === 0) {
       this.activeSequenceWasRunning = false;
-      return {
-        step: null,
-        lockInput: false,
-        allowMovement: true,
-        forceForwardWalk: false,
-        forceForwardRun: false,
-        forceJump: false,
-        animationOverride: null,
-        blend: this.playerConfig.blend.defaultBlend,
-        loop: true,
-        running: false
-      };
+      return { step: null, lockInput: false, allowMovement: true, forceForwardWalk: false, forceForwardRun: false, forceJump: false, animationOverride: null, blend: this.playerConfig.blend.defaultBlend, loop: true, running: false };
     }
 
     const step = this.getCurrentSequenceStep(sequence);
     if (!step) {
       this.activeSequenceWasRunning = false;
-      return {
-        step: null,
-        lockInput: false,
-        allowMovement: true,
-        forceForwardWalk: false,
-        forceForwardRun: false,
-        forceJump: false,
-        animationOverride: null,
-        blend: this.playerConfig.blend.defaultBlend,
-        loop: true,
-        running: false
-      };
+      return { step: null, lockInput: false, allowMovement: true, forceForwardWalk: false, forceForwardRun: false, forceJump: false, animationOverride: null, blend: this.playerConfig.blend.defaultBlend, loop: true, running: false };
     }
 
     if (this.activeSequenceStepEntered) {
@@ -446,7 +388,6 @@ export class EditorPlayerService {
     const lockInput = !!step.lockInput;
 
     const lowerAction = step.action;
-
     const forceForwardWalk = allowMovement && lowerAction === 'walk';
     const forceForwardRun = allowMovement && lowerAction === 'run';
     const forceJump = this.sequenceJumpTriggered && lowerAction === 'jumpStart';
@@ -464,18 +405,7 @@ export class EditorPlayerService {
         } else {
           this.resetSequenceRuntime();
           this.activeSequenceWasRunning = false;
-          return {
-            step,
-            lockInput,
-            allowMovement,
-            forceForwardWalk,
-            forceForwardRun,
-            forceJump,
-            animationOverride,
-            blend,
-            loop,
-            running: false
-          };
+          return { step, lockInput, allowMovement, forceForwardWalk, forceForwardRun, forceJump, animationOverride, blend, loop, running: false };
         }
       } else {
         this.activeSequenceStepEntered = true;
@@ -483,19 +413,7 @@ export class EditorPlayerService {
     }
 
     this.activeSequenceWasRunning = true;
-
-    return {
-      step,
-      lockInput,
-      allowMovement,
-      forceForwardWalk,
-      forceForwardRun,
-      forceJump,
-      animationOverride,
-      blend,
-      loop,
-      running: true
-    };
+    return { step, lockInput, allowMovement, forceForwardWalk, forceForwardRun, forceJump, animationOverride, blend, loop, running: true };
   }
 
   private loadPlayerConfigFromMetadata(obj: Mesh): void {
@@ -717,9 +635,27 @@ export class EditorPlayerService {
 
     this.tecladoObserver = scene.onKeyboardObservable.add((kbInfo: KeyboardInfo) => {
       if (this.state.playState() !== 'PLAYING' || !this.state.ratonBloqueado()) return;
-      if (kbInfo.event.key) {
-        this.inputMap[kbInfo.event.key.toLowerCase()] = kbInfo.type === KeyboardEventTypes.KEYDOWN;
-        this.inputMap[kbInfo.event.code.toLowerCase()] = kbInfo.type === KeyboardEventTypes.KEYDOWN;
+      
+      const keyStr = kbInfo.event.key ? kbInfo.event.key.toLowerCase() : '';
+      const codeStr = kbInfo.event.code ? kbInfo.event.code.toLowerCase() : '';
+
+      if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
+        this.inputMap[keyStr] = true;
+        this.inputMap[codeStr] = true;
+
+        const target = this.state.targetInteractuable();
+        if (target) {
+            if (keyStr === 'e' && this.state.showToastE()) {
+                const seqId = target.metadata?.interactSequenceId;
+                if(seqId) this.iniciarSecuenciaEnJuego(seqId);
+            }
+            if (keyStr === 'i' && this.state.showToastI()) {
+                this.abrirMensajeInteractivo(target);
+            }
+        }
+      } else {
+        this.inputMap[keyStr] = false;
+        this.inputMap[codeStr] = false;
       }
     });
 
@@ -750,14 +686,6 @@ export class EditorPlayerService {
 
     this.velocidadY = -0.1;
     this.highestY = obj.position.y;
-
-    const pickingPredicate = (m: AbstractMesh) => {
-      if (!m || !m.name) return false;
-      if (m === this.state.jugadorActivo || this.state.isDescendant(m, this.state.jugadorActivo!)) return false;
-      if (m.name.includes('sueloInvisible') || m.name.includes('gridHelper') || m.name.includes('cameraPivot')) return false;
-      if (m.name.includes('proxyCol') || m.name.includes('debug')) return false;
-      return m.isVisible || m.isPickable;
-    };
 
     this.tpsUpdateObserver = scene.onBeforeRenderObservable.add(() => {
       if (!this.state.jugadorActivo || this.state.playState() !== 'PLAYING' || !this.state.ratonBloqueado()) return;
@@ -798,7 +726,10 @@ export class EditorPlayerService {
         !this.state.isDescendant(m, jugador) &&
         !m.name.includes('gridHelper');
 
-      // 🔥 PRESELECCIÓN EN PRIMERA / TERCERA PERSONA
+      let hitInteractuable: AbstractMesh | null = null;
+      let hoverInteractable = false;
+
+      // 🔥 LÓGICA DE INTERACCIÓN: FPS (Visión) vs TPS (Proximidad)
       if (vista === 'FPS') {
         const centerRay = scene.createPickingRay(
           this.motor3d.engine.getRenderWidth() / 2,
@@ -808,81 +739,63 @@ export class EditorPlayerService {
         );
         centerRay.length = 10000;
 
-        const hoverPredicate = (m: AbstractMesh) => {
-          if (!m || !m.name) return false;
-          if (this.state.esMeshIgnorable(m)) return false;
-          return m.isPickable !== false;
-        };
-
-        const hoverHits = scene.multiPickWithRay(centerRay, hoverPredicate) || [];
+        // Utilizamos pickWithRay para obtener EXACTAMENTE el primer mesh visible que toque el rayo
+        const hitCross = scene.pickWithRay(centerRay, (m) => m.isVisible || m.isPickable);
+        
         let hoveredRoot: AbstractMesh | null = null;
-        let hoverInteractable = false;
 
-        for (const hit of hoverHits) {
-          const picked = hit.pickedMesh as AbstractMesh | null;
-          if (!picked) continue;
-
-          const rootNode = this.state.encontrarRaiz(picked);
-          if (!(rootNode instanceof AbstractMesh)) continue;
-
-          const adminMode = this.state.rolSimulado() === 'admin';
-          if (!adminMode && !this.state.puedeSeleccionarse(rootNode)) continue;
-
-          hoveredRoot = rootNode;
-          hoverInteractable = adminMode ? true : this.state.esObjetoInteractuable(rootNode);
-          break;
+        if (hitCross && hitCross.hit && hitCross.pickedMesh) {
+          const picked = hitCross.pickedMesh as AbstractMesh;
+          
+          // Si tocamos el suelo o un Helper ignorado, bloqueamos el rayo y no seleccionamos nada.
+          if (!this.state.esMeshIgnorable(picked)) {
+            const rootNode = this.state.encontrarRaiz(picked);
+            if (rootNode && rootNode instanceof AbstractMesh) {
+              const adminMode = this.state.rolSimulado() === 'admin';
+              if (adminMode || this.state.puedeSeleccionarse(rootNode)) {
+                hoveredRoot = rootNode;
+                hoverInteractable = adminMode ? true : this.state.esObjetoInteractuable(rootNode);
+              }
+            }
+          }
         }
 
         this.state.objetoHovereado.set(hoveredRoot);
         this.state.mirandoObjetoInteractuable.set(hoverInteractable);
+        
+        // En FPS, el objeto interactuable es el que miramos fijamente
+        hitInteractuable = hoveredRoot;
+
       } else {
-        this.state.objetoHovereado.set(null);
+        // 🔥 TPS PROXIMIDAD AAA (Modo 3ra Persona)
+        const playerPos = jugador.getAbsolutePosition();
+        let minDist = 3.5 * scaleNow.y;
+
+        scene.meshes.forEach(m => {
+            if (m === jugador || m.name.includes("proxyCol") || m.name.includes("suelo") || !m.isVisible) return;
+            const root = this.state.encontrarRaiz(m as AbstractMesh);
+            if (root && root instanceof AbstractMesh && this.state.esObjetoInteractuable(root)) {
+                const dist = Vector3.Distance(playerPos, root.getAbsolutePosition());
+                if (dist < minDist) {
+                    minDist = dist;
+                    hitInteractuable = root;
+                }
+            }
+        });
+        
+        this.state.mirandoObjetoInteractuable.set(!!hitInteractuable);
+        this.state.objetoHovereado.set(null); 
       }
 
-      // 🔥 LOGICA DE INTERACCIÓN (RAYCAST HACIA ADELANTE Y TECLAS E / I)
-      const interactDistance = 8.5;
-      const interactRay = new Ray(capsuleCenter, forward, interactDistance);
-      const interactHit = scene.pickWithRay(interactRay, collFn);
-      let canInteract = false;
-      let targetInteractRoot: AbstractMesh | null = null;
-
-      if (interactHit && interactHit.hit && interactHit.pickedMesh) {
-          targetInteractRoot = this.state.encontrarRaiz(interactHit.pickedMesh as AbstractMesh) as AbstractMesh | null;
-          if (targetInteractRoot && this.state.esObjetoInteractuable(targetInteractRoot)) {
-              canInteract = true;
-          }
-      }
-
-      if (vista !== 'FPS') {
-        this.state.mirandoObjetoInteractuable.set(canInteract);
-      } else if (canInteract || this.state.mirandoObjetoInteractuable()) {
-        this.state.mirandoObjetoInteractuable.set(this.state.mirandoObjetoInteractuable() || canInteract);
-      }
-
-      const isEPressed = !!this.inputMap['e'];
-      if (isEPressed && !this.eKeyPressed) {
-          this.eKeyPressed = true;
-          if (canInteract && targetInteractRoot) {
-              const seqId = String(targetInteractRoot.metadata?.interactSequenceId || '').trim();
-              if (seqId) {
-                this.iniciarSecuenciaEnJuego(seqId);
-              }
-          }
-      } else if (!isEPressed) {
-          this.eKeyPressed = false;
-      }
-
-      const isIPressed = !!this.inputMap['i'];
-      if (isIPressed && !this.iKeyPressed) {
-          this.iKeyPressed = true;
-          if (canInteract && targetInteractRoot) {
-              const mensaje = String(targetInteractRoot.metadata?.mensaje || '').trim();
-              if (mensaje.length > 0) {
-                this.abrirMensajeInteractivo(targetInteractRoot);
-              }
-          }
-      } else if (!isIPressed) {
-          this.iKeyPressed = false;
+      // 🔥 ACTUALIZAR ESTADO DEL TOAST
+      this.state.targetInteractuable.set(hitInteractuable);
+      if (hitInteractuable) {
+          const meta = hitInteractuable.metadata || {};
+          this.state.showToastE.set(!!meta.interactSequenceId && meta.interactSequenceId.trim() !== '');
+          this.state.showToastI.set(!!meta.mensaje && meta.mensaje.trim() !== '');
+      } else {
+          this.state.showToastE.set(false);
+          this.state.showToastI.set(false);
       }
 
       const dtMs = scene.getEngine().getDeltaTime();
@@ -1315,18 +1228,6 @@ export class EditorPlayerService {
     this.isFalling = false;
     this.isHardLanding = false;
 
-    this.log('ESCALADA INICIADA', {
-      targetY,
-      ledgeTopY: this.climbLedgeTopY,
-      hangPos: this.climbHangPos.clone(),
-      upEndPos: this.climbUpEndPos.clone(),
-      topPos: this.climbTopPos.clone(),
-      forwardDir: cleanForward.clone(),
-      climbForwardMultiplier: this.climbForwardMultiplier,
-      climbUpForwardMultiplier: this.climbUpForwardMultiplier,
-      isModel
-    });
-
     this.playAnim(this.animClimb || this.animIdle, false, 0.06);
   }
 
@@ -1428,6 +1329,9 @@ export class EditorPlayerService {
     this.eKeyPressed = false;
     this.iKeyPressed = false;
     this.state.mirandoObjetoInteractuable.set(false);
+    this.state.targetInteractuable.set(null);
+    this.state.showToastE.set(false);
+    this.state.showToastI.set(false);
     this.resetSequenceRuntime();
     this.playAnim(this.animIdle, true);
   }
@@ -1456,4 +1360,3 @@ export class EditorPlayerService {
     this.animActual = anim;
   }
 }
-

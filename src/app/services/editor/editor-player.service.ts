@@ -1,23 +1,33 @@
 import { Injectable, inject } from '@angular/core';
-import { Motor3dService } from '../motor-3d.service';
+import { Subscription } from 'rxjs';
 import { EditorStateService } from './editor-state.service';
 import { EditorCameraService } from './editor-camera.service';
-import { 
-  Mesh, 
-  Vector3, 
-  Quaternion, 
-  AnimationGroup, 
-  Observer, 
-  KeyboardInfo, 
-  Scene, 
-  KeyboardEventTypes, 
-  MeshBuilder, 
-  Matrix, 
-  Ray, 
-  UniversalCamera, 
-  AbstractMesh, 
+import { Motor3dService } from '../motor-3d.service';
+import {
+  Mesh,
+  Vector3,
+  Quaternion,
+  AnimationGroup,
+  Observer,
+  KeyboardInfo,
+  Scene,
+  KeyboardEventTypes,
+  MeshBuilder,
+  Matrix,
+  Ray,
+  UniversalCamera,
+  AbstractMesh,
   TransformNode
 } from '@babylonjs/core';
+import {
+  cloneDefaultPlayerConfig,
+  mergePlayerConfig,
+  normalizeAnimBinding,
+  PlayerRuntimeConfig,
+  PlayerActionKey,
+  PlayerClipSequence,
+  PlayerSequenceStep
+} from './player-config.model';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayerService {
@@ -25,69 +35,91 @@ export class EditorPlayerService {
   private state = inject(EditorStateService);
   private cameraSvc = inject(EditorCameraService);
 
-  private playerHalfHeight: number = 0.9;
-  private playerEyeLevel: number = 1.6;
-  private playerRadius: number = 0.4;
-  
+  private debugPlayer = true;
+
+  private playerHalfHeight = 0.9;
+  private playerEyeLevel = 1.6;
+  private playerRadius = 0.4;
+
   private headNode: TransformNode | null = null;
   private initialHeadLocal: Vector3 | null = null;
-  
-  private currentEyeLevel: number = 1.6;
-  private currentPivotY: number = 1.5;
-  private idleTime: number = 0; 
-  
-  // 🔥 FÍSICAS AAA: Ajustes
-  private velocidadY: number = 0;
-  private gravedad: number = 0.018; 
-  private jumpForce = 0.16; 
-  private highestY: number = -9999; 
-  
-  private isJumping: boolean = false;
-  private isFalling: boolean = false;
-  private isHardLanding: boolean = false; 
-  
-  // 🔥 FASES DE ESCALADA Y RECUPERACIÓN AAA
-  private isClimbing: boolean = false;
-  private isPullingUp: boolean = false;
-  private isRecoveringFromFall: boolean = false; 
-  private justFinishedClimb: boolean = false; 
-  
-  private climbFrame: number = 0;
-  private pullUpFrame: number = 0;
-  private landingFrame: number = 0;
-  private recoveryFrame: number = 0;
-  
-  private climbStartY: number = 0;
-  private climbTargetY: number = 0;
-  private climbStartPos: Vector3 = Vector3.Zero();
+
+  private currentEyeLevel = 1.6;
+  private currentPivotY = 1.5;
+  private idleTime = 0;
+
+  private velocidadY = 0;
+  private gravedad = 0.018;
+  private jumpForce = 0.16;
+  private highestY = -9999;
+
+  private isJumping = false;
+  private isFalling = false;
+  private isHardLanding = false;
+
+  private isClimbing = false;
+  private isPullingUp = false;
+  private isRecoveringFromFall = false;
+  private justFinishedClimb = false;
+
+  private climbFrame = 0;
+  private pullUpFrame = 0;
+  private landingFrame = 0;
+  private recoveryFrame = 0;
+
+  private climbStartY = 0;
+  private climbTargetY = 0;
+
+  private climbHangPos: Vector3 = Vector3.Zero();
+  private climbUpEndPos: Vector3 = Vector3.Zero();
+  private climbTopPos: Vector3 = Vector3.Zero();
   private climbForwardDir: Vector3 = Vector3.Zero();
 
-  // =====================================================================
-  // 🔧 AQUÍ CONTROLAS EL AVANCE DEL CLIMB FINISH MANUALMENTE
-  // 1.0 = Avance normal (El radio de colisión del jugador)
-  // 0.5 = La mitad de avance (RECOMENDADO para evitar tirones)
-  // =====================================================================
-  private climbForwardMultiplier = 1.5; 
-  
-  // 🔥 Velocidades
+  private climbLedgeMesh: AbstractMesh | null = null;
+  private climbLedgeTopY = 0;
+
+  private postClimbLockFramesRemaining = 0;
+
   private walkSpeed = 0.045;
   private runSpeed = 0.09;
-  
+
+  private climbDuration = 50;
+  private pullUpDuration = 32;
+
+  private climbForwardMultiplier = 0.12;
+  private climbUpForwardMultiplier = 0.05;
+
   private animacionesJugador: AnimationGroup[] = [];
   private animActual: AnimationGroup | null = null;
-  
+
   private animIdle: AnimationGroup | null = null;
   private animWalk: AnimationGroup | null = null;
   private animRun: AnimationGroup | null = null;
   private animJump: AnimationGroup | null = null;
+  private animJumpLoop: AnimationGroup | null = null;
+  private animFall: AnimationGroup | null = null;
+  private animLandSoft: AnimationGroup | null = null;
   private animHardLanding: AnimationGroup | null = null;
   private animClimb: AnimationGroup | null = null;
   private animClimbFinish: AnimationGroup | null = null;
-  private animFall: any;
+  private animHangIdle: AnimationGroup | null = null;
+  private animVault: AnimationGroup | null = null;
+  private animStepUp: AnimationGroup | null = null;
+  private animRecover: AnimationGroup | null = null;
+
+  private playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
 
   private inputMap: Record<string, boolean> = {};
   private tecladoObserver: Observer<KeyboardInfo> | null = null;
   private tpsUpdateObserver: Observer<Scene> | null = null;
+  private configSyncSub: Subscription | null = null;
+
+  private activeSequenceId: string | null = null;
+  private activeSequenceIndex = 0;
+  private activeSequenceElapsedMs = 0;
+  private activeSequenceStepEntered = false;
+  private activeSequenceWasRunning = false;
+  private sequenceJumpTriggered = false;
 
   constructor() {
     document.addEventListener('pointerlockchange', () => {
@@ -96,11 +128,392 @@ export class EditorPlayerService {
 
       if (!isLocked) {
         const stateStr = this.state.playState();
-        if (stateStr === 'PLAYING' || stateStr === 'EDITING_IN_GAME' || stateStr === 'TRANSITIONING' || stateStr === 'INTERACTING') {
+        if (
+          stateStr === 'PLAYING' ||
+          stateStr === 'EDITING_IN_GAME' ||
+          stateStr === 'TRANSITIONING' ||
+          stateStr === 'INTERACTING'
+        ) {
+          this.log('Pointer lock perdido -> reset');
           this.resetMovimientoJugador();
         }
       }
     });
+  }
+
+  private log(message: string, data?: any) {
+    if (!this.debugPlayer) return;
+    if (data !== undefined) console.log(`[EditorPlayer] ${message}`, data);
+    else console.log(`[EditorPlayer] ${message}`);
+  }
+
+  private sanitizeForwardDir(dir: Vector3): Vector3 {
+    const d = dir.clone();
+    d.y = 0;
+    if (d.lengthSquared() < 0.0001) return new Vector3(0, 0, 1);
+    return d.normalize();
+  }
+
+  private clamp01(v: number): number {
+    return Math.max(0, Math.min(1, v));
+  }
+
+  private easeInOutSmooth(t: number): number {
+    const x = this.clamp01(t);
+    return x * x * (3 - 2 * x);
+  }
+
+  private easeOutCubic(t: number): number {
+    const x = this.clamp01(t);
+    return 1 - Math.pow(1 - x, 3);
+  }
+
+  private getWorldTopY(mesh: AbstractMesh | null, fallbackY: number): number {
+    if (!mesh) return fallbackY;
+    try {
+      mesh.computeWorldMatrix(true);
+      const bi = mesh.getBoundingInfo?.();
+      if (bi && bi.boundingBox) {
+        const topY = bi.boundingBox.maximumWorld.y;
+        if (Number.isFinite(topY)) return topY;
+      }
+    } catch {}
+    return fallbackY;
+  }
+
+  private getScaleFactor(): number {
+    return this.playerHalfHeight / 0.9;
+  }
+
+  private getClimbStandingY(topY: number): number {
+    const s = this.getScaleFactor();
+    return topY + (this.playerConfig.climb.topOffsetY * s);
+  }
+
+  private getSafeGrabStartPos(
+    chestPoint: Vector3,
+    forwardDir: Vector3,
+    currentY: number
+  ): Vector3 {
+    const grab = chestPoint.clone();
+    grab.subtractInPlace(forwardDir.scale(this.playerRadius * 0.82));
+    grab.y = currentY - (this.playerHalfHeight * 0.25);
+    return grab;
+  }
+
+  private getClimbVisualY(
+    ledgeTopY: number,
+    currentY: number,
+    isModel: boolean
+  ): { hangY: number; upY: number; topY: number } {
+    const s = this.getScaleFactor();
+
+    const hangY = ledgeTopY - (this.playerConfig.climb.hangOffsetY * s);
+    const upY = hangY + (this.playerConfig.climb.upOffsetY * s);
+
+    const topFromLedge = ledgeTopY + (this.playerConfig.climb.topOffsetY * s);
+    const topFromUp = upY + (this.playerHalfHeight * (isModel ? 0.12 : 0.10));
+
+    const topY = Math.max(topFromLedge, topFromUp);
+
+    return { hangY, upY, topY };
+  }
+
+  private resolveAnimation(binding: string | string[] | null, fallback: AnimationGroup | null): AnimationGroup | null {
+    const names = normalizeAnimBinding(binding).map(v => v.toLowerCase());
+    if (names.length === 0) return fallback;
+
+    const exact = this.animacionesJugador.find(ag => names.some(n => ag.name.toLowerCase() === n));
+    if (exact) return exact;
+
+    const contains = this.animacionesJugador.find(ag => names.some(n => ag.name.toLowerCase().includes(n)));
+    if (contains) return contains;
+
+    return fallback;
+  }
+
+  private isActionEnabled(action: PlayerActionKey): boolean {
+    return this.playerConfig.animationEnabled?.[action] !== false;
+  }
+
+  private getAnimationForAction(action: PlayerActionKey): AnimationGroup | null {
+    switch (action) {
+      case 'idle': return this.animIdle;
+      case 'walk': return this.animWalk || this.animIdle;
+      case 'run': return this.animRun || this.animWalk || this.animIdle;
+      case 'jumpStart': return this.animJump || this.animJumpLoop || this.animIdle;
+      case 'jumpLoop': return this.animJumpLoop || this.animJump || this.animIdle;
+      case 'fall': return this.animFall || this.animJumpLoop || this.animJump || this.animIdle;
+      case 'landSoft': return this.animLandSoft || this.animIdle;
+      case 'landHard': return this.animHardLanding || this.animLandSoft || this.animIdle;
+      case 'climbUp': return this.animClimb || this.animIdle;
+      case 'climbFinish': return this.animClimbFinish || this.animClimb || this.animIdle;
+      case 'hangIdle': return this.animHangIdle || this.animClimb || this.animIdle;
+      case 'vault': return this.animVault || this.animJump || this.animIdle;
+      case 'stepUp': return this.animStepUp || this.animClimbFinish || this.animIdle;
+      case 'recover': return this.animRecover || this.animIdle;
+      default: return this.animIdle;
+    }
+  }
+
+  private getSequenceList(): PlayerClipSequence[] {
+    const seqs = this.playerConfig.sequences || [];
+    return seqs.filter(s => !!s.enabled);
+  }
+
+  private getSelectedSequence(): PlayerClipSequence | null {
+    const seqs = this.getSequenceList();
+    if (seqs.length === 0) return null;
+
+    const metaActiveId = (this.playerConfig as any)?.activeSequenceId as string | undefined;
+    if (metaActiveId) {
+      const found = seqs.find(s => s.id === metaActiveId);
+      if (found) return found;
+    }
+
+    if (this.activeSequenceId) {
+      const found = seqs.find(s => s.id === this.activeSequenceId);
+      if (found) return found;
+    }
+
+    return seqs[0] || null;
+  }
+
+  private resetSequenceRuntime(): void {
+    this.activeSequenceId = null;
+    this.activeSequenceIndex = 0;
+    this.activeSequenceElapsedMs = 0;
+    this.activeSequenceStepEntered = false;
+    this.activeSequenceWasRunning = false;
+    this.sequenceJumpTriggered = false;
+  }
+
+  private syncSequenceStateFromConfig(): PlayerClipSequence | null {
+    const seq = this.getSelectedSequence();
+
+    if (!seq) {
+      this.resetSequenceRuntime();
+      return null;
+    }
+
+    if (this.activeSequenceId !== seq.id) {
+      this.activeSequenceId = seq.id;
+      this.activeSequenceIndex = 0;
+      this.activeSequenceElapsedMs = 0;
+      this.activeSequenceStepEntered = true;
+      this.sequenceJumpTriggered = false;
+    }
+
+    return seq;
+  }
+
+  private getCurrentSequenceStep(sequence: PlayerClipSequence): PlayerSequenceStep | null {
+    if (!sequence.steps || sequence.steps.length === 0) return null;
+    const index = Math.max(0, Math.min(this.activeSequenceIndex, sequence.steps.length - 1));
+    return sequence.steps[index] || null;
+  }
+
+  private stepToAction(step: PlayerSequenceStep): PlayerActionKey {
+    return step.action;
+  }
+
+  private resolveSequenceStepAnimation(step: PlayerSequenceStep): AnimationGroup | null {
+    const clipOverride = (step.clipOverride || '').trim();
+    if (clipOverride) {
+      const exact = this.animacionesJugador.find(ag => ag.name.toLowerCase() === clipOverride.toLowerCase());
+      if (exact) return exact;
+
+      const contains = this.animacionesJugador.find(ag => ag.name.toLowerCase().includes(clipOverride.toLowerCase()));
+      if (contains) return contains;
+    }
+
+    return this.getAnimationForAction(step.action);
+  }
+
+  private enterSequenceStep(step: PlayerSequenceStep): void {
+    this.sequenceJumpTriggered = false;
+
+    if (step.action === 'jumpStart') {
+      this.sequenceJumpTriggered = true;
+    }
+
+    if (step.action === 'recover') {
+      this.isRecoveringFromFall = true;
+      this.recoveryFrame = 0;
+      this.isHardLanding = false;
+    }
+  }
+
+  private updateSequencePlayback(
+    dtMs: number,
+    sequence: PlayerClipSequence | null,
+    jugador: Mesh
+  ): {
+    step: PlayerSequenceStep | null;
+    lockInput: boolean;
+    allowMovement: boolean;
+    forceForwardWalk: boolean;
+    forceForwardRun: boolean;
+    forceJump: boolean;
+    animationOverride: AnimationGroup | null;
+    blend: number;
+    loop: boolean;
+    running: boolean;
+  } {
+    if (!sequence || !sequence.enabled || !sequence.steps || sequence.steps.length === 0) {
+      this.activeSequenceWasRunning = false;
+      return {
+        step: null,
+        lockInput: false,
+        allowMovement: true,
+        forceForwardWalk: false,
+        forceForwardRun: false,
+        forceJump: false,
+        animationOverride: null,
+        blend: this.playerConfig.blend.defaultBlend,
+        loop: true,
+        running: false
+      };
+    }
+
+    const step = this.getCurrentSequenceStep(sequence);
+    if (!step) {
+      this.activeSequenceWasRunning = false;
+      return {
+        step: null,
+        lockInput: false,
+        allowMovement: true,
+        forceForwardWalk: false,
+        forceForwardRun: false,
+        forceJump: false,
+        animationOverride: null,
+        blend: this.playerConfig.blend.defaultBlend,
+        loop: true,
+        running: false
+      };
+    }
+
+    if (this.activeSequenceStepEntered) {
+      this.enterSequenceStep(step);
+      this.activeSequenceStepEntered = false;
+      this.log('SEQUENCE STEP ENTER', {
+        sequence: sequence.name,
+        index: this.activeSequenceIndex,
+        action: step.action,
+        durationMs: step.durationMs,
+        clipOverride: step.clipOverride
+      });
+    }
+
+    const animationOverride = this.resolveSequenceStepAnimation(step);
+    const blend = typeof step.blend === 'number' ? step.blend : this.playerConfig.blend.defaultBlend;
+    const loop = !!step.loop;
+    const allowMovement = step.allowMovement !== false;
+    const lockInput = !!step.lockInput;
+
+    const lowerAction = step.action;
+
+    const forceForwardWalk = allowMovement && lowerAction === 'walk';
+    const forceForwardRun = allowMovement && lowerAction === 'run';
+    const forceJump = this.sequenceJumpTriggered && lowerAction === 'jumpStart';
+
+    this.activeSequenceElapsedMs += dtMs;
+
+    if (this.activeSequenceElapsedMs >= Math.max(1, step.durationMs || 1)) {
+      this.activeSequenceElapsedMs = 0;
+      this.activeSequenceIndex++;
+
+      if (this.activeSequenceIndex >= sequence.steps.length) {
+        if (sequence.repeat) {
+          this.activeSequenceIndex = 0;
+          this.activeSequenceStepEntered = true;
+        } else {
+          this.resetSequenceRuntime();
+          this.activeSequenceWasRunning = false;
+          return {
+            step,
+            lockInput,
+            allowMovement,
+            forceForwardWalk,
+            forceForwardRun,
+            forceJump,
+            animationOverride,
+            blend,
+            loop,
+            running: false
+          };
+        }
+      } else {
+        this.activeSequenceStepEntered = true;
+      }
+    }
+
+    this.activeSequenceWasRunning = true;
+
+    return {
+      step,
+      lockInput,
+      allowMovement,
+      forceForwardWalk,
+      forceForwardRun,
+      forceJump,
+      animationOverride,
+      blend,
+      loop,
+      running: true
+    };
+  }
+
+  private loadPlayerConfigFromMetadata(obj: Mesh): void {
+    this.playerConfig = mergePlayerConfig(obj.metadata?.playerConfig || null);
+
+    this.walkSpeed = this.playerConfig.movement.walkSpeed;
+    this.runSpeed = this.playerConfig.movement.runSpeed;
+    this.jumpForce = this.playerConfig.jump.force;
+    this.gravedad = this.playerConfig.jump.gravity;
+
+    this.climbForwardMultiplier = this.playerConfig.climb.forwardMultiplier;
+    this.climbUpForwardMultiplier = this.playerConfig.climb.climbUpForwardMultiplier;
+    this.climbDuration = this.playerConfig.climb.climbDuration;
+    this.pullUpDuration = this.playerConfig.climb.pullUpDuration;
+    this.postClimbLockFramesRemaining = 0;
+  }
+
+  private syncAnimationsFromMetadata(scene: Scene, obj: Mesh): void {
+    this.animacionesJugador = [];
+
+    const metadataNames: string[] = obj.metadata?.animationNames || [];
+    if (metadataNames.length > 0) {
+      this.animacionesJugador = scene.animationGroups.filter(ag => metadataNames.includes(ag.name));
+    }
+
+    if (this.animacionesJugador.length === 0) {
+      this.animacionesJugador = scene.animationGroups.filter((ag: AnimationGroup) =>
+        ag.targetedAnimations.some((ta) => ta.target.parent === obj || ta.target === obj)
+      );
+    }
+
+    const anims = this.playerConfig.animations;
+
+    this.animIdle = this.resolveAnimation(anims.idle, null);
+    this.animWalk = this.resolveAnimation(anims.walk, this.animIdle);
+    this.animRun = this.resolveAnimation(anims.run, this.animWalk);
+    this.animJump = this.resolveAnimation(anims.jumpStart, this.animIdle);
+    this.animJumpLoop = this.resolveAnimation(anims.jumpLoop, this.animJump);
+    this.animFall = this.resolveAnimation(anims.fall, this.animJumpLoop || this.animJump);
+    this.animLandSoft = this.resolveAnimation(anims.landSoft, this.animIdle);
+    this.animHardLanding = this.resolveAnimation(anims.landHard, this.animLandSoft || this.animIdle);
+    this.animClimb = this.resolveAnimation(anims.climbUp, this.animIdle);
+    this.animClimbFinish = this.resolveAnimation(anims.climbFinish, this.animClimb);
+    this.animHangIdle = this.resolveAnimation(anims.hangIdle, this.animClimb);
+    this.animVault = this.resolveAnimation(anims.vault, this.animJump);
+    this.animStepUp = this.resolveAnimation(anims.stepUp, this.animClimbFinish || this.animIdle);
+    this.animRecover = this.resolveAnimation(anims.recover, this.animIdle);
+
+    if (this.animWalk) this.animWalk.speedRatio = 1.0;
+    if (this.animRun) this.animRun.speedRatio = 1.0;
+    if (this.animClimb) this.animClimb.speedRatio = 0.88;
+    if (this.animClimbFinish) this.animClimbFinish.speedRatio = 0.9;
   }
 
   iniciarModoJuego(vista: 'FPS' | 'TPS') {
@@ -108,16 +521,15 @@ export class EditorPlayerService {
     if (!obj) return;
 
     this.cameraSvc.guardarEstadoCamaraLibre();
-    
+
     this.state.playState.set('PLAYING');
     this.state.jugadorActivo = obj;
     this.state.modoVistaPrueba = vista;
     this.state.objetoHovereado.set(null);
 
     this.state.backupObjetoPosicion = obj.position.clone();
-    if (obj.rotationQuaternion) {
-      this.state.backupObjetoRotacionQuat = obj.rotationQuaternion.clone();
-    } else {
+    if (obj.rotationQuaternion) this.state.backupObjetoRotacionQuat = obj.rotationQuaternion.clone();
+    else {
       this.state.backupObjetoRotacionQuat = Quaternion.FromEulerAngles(obj.rotation.x, obj.rotation.y, obj.rotation.z);
       obj.rotationQuaternion = this.state.backupObjetoRotacionQuat.clone();
     }
@@ -127,7 +539,7 @@ export class EditorPlayerService {
     this.state.backupColisionesHijos = [];
     obj.getChildMeshes().forEach((m: AbstractMesh) => {
       this.state.backupColisionesHijos.push({ mesh: m, col: m.checkCollisions });
-      m.checkCollisions = false; 
+      m.checkCollisions = false;
     });
 
     obj.checkCollisions = true;
@@ -136,110 +548,97 @@ export class EditorPlayerService {
     const canvas = this.motor3d.engine.getRenderingCanvas();
     const scene = this.motor3d.scene;
 
-    // PROXYS DE COLISIÓN
     scene.meshes.forEach(m => {
-        if (m === obj) return; 
-        if (m.name.includes("debug") || m.name.includes("gizmo") || m.name.includes("cameraPivot") || m.name.includes("sueloInvisible") || m.name.includes("proxyCol")) return;
-        
-        const root = this.state.encontrarRaiz(m as AbstractMesh);
-        if (root && root instanceof AbstractMesh && root.metadata?.isSolid) {
-            const colMeta = root.metadata.collider;
-            
-            if (colMeta && colMeta.type !== 'mesh' && m === root) {
-                this.state.backupColisionesHijos.push({ mesh: m, col: m.checkCollisions });
-                m.checkCollisions = false;
-                
-                m.getChildMeshes().forEach(c => {
-                    this.state.backupColisionesHijos.push({ mesh: c as AbstractMesh, col: c.checkCollisions });
-                    c.checkCollisions = false;
-                });
+      if (m === obj) return;
+      if (
+        m.name.includes('debug') ||
+        m.name.includes('gizmo') ||
+        m.name.includes('cameraPivot') ||
+        m.name.includes('sueloInvisible') ||
+        m.name.includes('proxyCol')
+      ) return;
 
-                let proxy: Mesh;
-                if (colMeta.type === 'capsule') {
-                    proxy = MeshBuilder.CreateCapsule("proxyCol_" + root.name, { radius: colMeta.sizeX, height: colMeta.sizeY * 2 }, scene);
-                } else if (colMeta.type === 'sphere') {
-                    proxy = MeshBuilder.CreateSphere("proxyCol_" + root.name, { diameterX: colMeta.sizeX * 2, diameterY: colMeta.sizeY * 2, diameterZ: colMeta.sizeZ * 2 }, scene);
-                } else {
-                    proxy = MeshBuilder.CreateBox("proxyCol_" + root.name, { width: colMeta.sizeX * 2, height: colMeta.sizeY * 2, depth: colMeta.sizeZ * 2 }, scene);
-                }
-                
-                proxy.parent = root;
-                proxy.position = new Vector3(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ);
-                proxy.isVisible = false; 
-                proxy.checkCollisions = true; 
-                
-                this.state.proxyColliders.push(proxy);
-            }
+      const root = this.state.encontrarRaiz(m as AbstractMesh);
+      if (root && root instanceof AbstractMesh && root.metadata?.isSolid) {
+        const colMeta = root.metadata.collider;
+
+        if (colMeta && colMeta.type !== 'mesh' && m === root) {
+          this.state.backupColisionesHijos.push({ mesh: m, col: m.checkCollisions });
+          m.checkCollisions = false;
+
+          m.getChildMeshes().forEach(c => {
+            this.state.backupColisionesHijos.push({ mesh: c as AbstractMesh, col: c.checkCollisions });
+            c.checkCollisions = false;
+          });
+
+          let proxy: Mesh;
+          if (colMeta.type === 'capsule') {
+            proxy = MeshBuilder.CreateCapsule(`proxyCol_${root.name}`, { radius: colMeta.sizeX, height: colMeta.sizeY * 2 }, scene);
+          } else if (colMeta.type === 'sphere') {
+            proxy = MeshBuilder.CreateSphere(`proxyCol_${root.name}`, {
+              diameterX: colMeta.sizeX * 2,
+              diameterY: colMeta.sizeY * 2,
+              diameterZ: colMeta.sizeZ * 2
+            }, scene);
+          } else {
+            proxy = MeshBuilder.CreateBox(`proxyCol_${root.name}`, {
+              width: colMeta.sizeX * 2,
+              height: colMeta.sizeY * 2,
+              depth: colMeta.sizeZ * 2
+            }, scene);
+          }
+
+          proxy.parent = root;
+          proxy.position = new Vector3(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ);
+          proxy.isVisible = false;
+          proxy.checkCollisions = true;
+
+          this.state.proxyColliders.push(proxy);
         }
+      }
     });
 
     const scale = obj.scaling;
     const isModel = obj.metadata?.type === 'model';
-    
-    const defCap = isModel ? { sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 } : { sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+
+    const defCap = isModel
+      ? { sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
+      : { sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+
     const defCam = isModel ? { x: 0, y: 1.6, z: 0 } : { x: 0, y: 0.4, z: 0 };
 
     const colMeta = obj.metadata?.collider || defCap;
     const camMeta = obj.metadata?.camOffset || defCam;
 
     this.playerHalfHeight = colMeta.sizeY * scale.y;
-    this.playerEyeLevel = camMeta.y * scale.y;
     this.playerRadius = Math.max(colMeta.sizeX * scale.x, colMeta.sizeZ * scale.z);
-    
+
+    this.loadPlayerConfigFromMetadata(obj);
+    this.syncAnimationsFromMetadata(scene, obj);
+
+    this.playerEyeLevel = this.playerConfig.camera.fpsEyeLevel * scale.y;
     this.currentEyeLevel = this.playerEyeLevel;
-    this.currentPivotY = this.playerHalfHeight * 1.5;
+    this.currentPivotY = this.playerConfig.camera.tpsPivotY * scale.y;
 
     obj.ellipsoid = new Vector3(colMeta.sizeX * scale.x, colMeta.sizeY * scale.y, colMeta.sizeZ * scale.z);
     obj.ellipsoidOffset = new Vector3(colMeta.offsetX * scale.x, colMeta.offsetY * scale.y, colMeta.offsetZ * scale.z);
 
-    this.animacionesJugador = obj.metadata?.animations || [];
-    if (this.animacionesJugador.length === 0) {
-        this.animacionesJugador = scene.animationGroups.filter((ag: AnimationGroup) => 
-            ag.targetedAnimations.some((ta) => ta.target.parent === obj || ta.target === obj)
-        );
-    }
-
-    const buscarAnim = (claves: string[]) => {
-      return this.animacionesJugador.find(a => claves.some(c => a.name.toLowerCase().includes(c))) || null;
-    };
-
-    this.animIdle = buscarAnim(['idle']);
-    this.animWalk = buscarAnim(['walk']);
-    this.animRun = buscarAnim(['run']);
-    this.animJump = buscarAnim(['jump start', 'jump']);
-    this.animFall = buscarAnim(['falling', 'fall']); 
-    this.animHardLanding = buscarAnim(['hard landing']); 
-    this.animClimb = buscarAnim(['climb up']); 
-    this.animClimbFinish = buscarAnim(['climb finish']); 
-
-    if (!this.animWalk) this.animWalk = this.animIdle;
-    if (!this.animRun) this.animRun = this.animWalk;
-    if (!this.animJump) this.animJump = this.animIdle;
-    if (!this.animFall) this.animFall = this.animJump; 
-    if (!this.animHardLanding) this.animHardLanding = this.animIdle;
-    if (!this.animClimbFinish) this.animClimbFinish = this.animIdle;
-
-    if (this.animWalk) this.animWalk.speedRatio = 1.0;
-    if (this.animRun) this.animRun.speedRatio = 1.0;
-    if (this.animClimb) this.animClimb.speedRatio = 0.8;
-    if (this.animClimbFinish) this.animClimbFinish.speedRatio = 0.8;
-
-    this.headNode = obj.getChildTransformNodes(false).find(n => 
-        n.name.toLowerCase() === 'head' || 
-        n.name.toLowerCase() === 'neck' || 
-        n.name.toLowerCase().includes('mixamorig:head') ||
-        n.name.toLowerCase().includes('head')
+    this.headNode = obj.getChildTransformNodes(false).find(n =>
+      n.name.toLowerCase() === 'head' ||
+      n.name.toLowerCase() === 'neck' ||
+      n.name.toLowerCase().includes('mixamorig:head') ||
+      n.name.toLowerCase().includes('head')
     ) as TransformNode;
 
     if (this.headNode) {
-        this.headNode.computeWorldMatrix(true);
-        obj.computeWorldMatrix(true);
-        this.initialHeadLocal = Vector3.TransformCoordinates(
-            this.headNode.getAbsolutePosition(), 
-            Matrix.Invert(obj.getWorldMatrix())
-        );
+      this.headNode.computeWorldMatrix(true);
+      obj.computeWorldMatrix(true);
+      this.initialHeadLocal = Vector3.TransformCoordinates(
+        this.headNode.getAbsolutePosition(),
+        Matrix.Invert(obj.getWorldMatrix())
+      );
     } else {
-        this.initialHeadLocal = null;
+      this.initialHeadLocal = null;
     }
 
     this.resetMovimientoJugador();
@@ -259,14 +658,13 @@ export class EditorPlayerService {
       fpsCam.keysDown = [];
       fpsCam.keysLeft = [];
       fpsCam.keysRight = [];
-      fpsCam.minZ = 0.05; 
+      fpsCam.minZ = 0.05;
 
       const startRot = obj.rotationQuaternion ? obj.rotationQuaternion.toEulerAngles() : obj.rotation;
       fpsCam.rotation.set(startRot.x, startRot.y, startRot.z);
-
     } else {
       obj.isVisible = true;
-      this.state.cameraPivot = MeshBuilder.CreateBox("cameraPivot", { size: 0.1 }, scene);
+      this.state.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, scene);
       this.state.cameraPivot.isVisible = false;
 
       obj.computeWorldMatrix(true);
@@ -274,368 +672,434 @@ export class EditorPlayerService {
       this.state.cameraPivot.position = Vector3.TransformCoordinates(localPivotPos, obj.getWorldMatrix());
 
       this.motor3d.playerCameraTPS.lockedTarget = this.state.cameraPivot;
-      this.motor3d.playerCameraTPS.radius = 5 * scale.y; 
+      this.motor3d.playerCameraTPS.radius = this.playerConfig.camera.tpsRadius * scale.y;
       scene.activeCamera = this.motor3d.playerCameraTPS;
     }
 
     this.velocidadY = -0.1;
-    this.highestY = obj.position.y; 
+    this.highestY = obj.position.y;
 
     const pickingPredicate = (m: AbstractMesh) => {
-        if (!m || !m.name) return false;
-        if (m === this.state.jugadorActivo || this.state.isDescendant(m, this.state.jugadorActivo!)) return false;
-        if (m.name.includes("sueloInvisible") || m.name.includes("gridHelper") || m.name.includes("cameraPivot")) return false;
-        if (m.name.includes("proxyCol") || m.name.includes("debug")) return false; 
-        
-        return m.isVisible || m.isPickable; 
+      if (!m || !m.name) return false;
+      if (m === this.state.jugadorActivo || this.state.isDescendant(m, this.state.jugadorActivo!)) return false;
+      if (m.name.includes('sueloInvisible') || m.name.includes('gridHelper') || m.name.includes('cameraPivot')) return false;
+      if (m.name.includes('proxyCol') || m.name.includes('debug')) return false;
+      return m.isVisible || m.isPickable;
     };
 
-    // 🚀 BUCLE PRINCIPAL DE FÍSICAS Y ANIMACIONES 🚀
     this.tpsUpdateObserver = scene.onBeforeRenderObservable.add(() => {
       if (!this.state.jugadorActivo || this.state.playState() !== 'PLAYING' || !this.state.ratonBloqueado()) return;
 
-      if (vista === 'FPS') {
-        const w = this.motor3d.engine.getRenderWidth();
-        const h = this.motor3d.engine.getRenderHeight();
-        const crosshairRay = scene.createPickingRay(w / 2, h / 2, Matrix.Identity(), scene.activeCamera);
-        
-        const hitCross = scene.pickWithRay(crosshairRay, pickingPredicate);
+      const jugador = this.state.jugadorActivo;
+      const scaleNow = jugador.scaling;
+      const liveConfig = mergePlayerConfig(jugador.metadata?.playerConfig || null);
+      this.playerConfig = liveConfig;
 
-        if (hitCross && hitCross.hit && hitCross.pickedMesh && this.state.puedeSeleccionarse(hitCross.pickedMesh as AbstractMesh)) {
-          const rootNode = this.state.encontrarRaiz(hitCross.pickedMesh as AbstractMesh);
-          this.state.objetoHovereado.set(rootNode ? (rootNode as AbstractMesh) : null);
-          this.state.mirandoObjetoInteractuable.set(!!rootNode);
-        } else {
-          this.state.mirandoObjetoInteractuable.set(false);
-          this.state.objetoHovereado.set(null);
-        }
-      }
+      this.walkSpeed = liveConfig.movement.walkSpeed;
+      this.runSpeed = liveConfig.movement.runSpeed;
+      this.jumpForce = liveConfig.jump.force;
+      this.gravedad = liveConfig.jump.gravity;
+      this.climbForwardMultiplier = liveConfig.climb.forwardMultiplier;
+      this.climbUpForwardMultiplier = liveConfig.climb.climbUpForwardMultiplier;
+      this.climbDuration = liveConfig.climb.climbDuration;
+      this.pullUpDuration = liveConfig.climb.pullUpDuration;
+      this.postClimbLockFramesRemaining = 0;
+
+      const dtMs = scene.getEngine().getDeltaTime();
+      const sequence = this.syncSequenceStateFromConfig();
+      const seqRuntime = this.updateSequencePlayback(dtMs, sequence, jugador);
 
       let move = Vector3.Zero();
       let isMoving = false;
       let isRunning = false;
       let isGrounded = false;
 
-      // ==========================================
-      // 1. LÓGICA DE MOVIMIENTO DEPENDIENDO DEL ESTADO
-      // ==========================================
-      
-      // 🔥 FASE 1: SUBIR (CLIMB UP)
+      const sequenceLocksInput = !!seqRuntime.lockInput;
+      const effectiveInput = sequenceLocksInput ? {} : this.inputMap;
+
+      if (seqRuntime.running && seqRuntime.forceJump && !this.isJumping && !this.isFalling) {
+        this.velocidadY = this.jumpForce * this.getScaleFactor();
+        this.isJumping = true;
+        this.sequenceJumpTriggered = false;
+      }
+
+      if (this.postClimbLockFramesRemaining > 0) {
+        this.postClimbLockFramesRemaining--;
+        this.velocidadY = 0;
+        move = Vector3.Zero();
+      }
+
       if (this.isClimbing) {
         this.climbFrame++;
-        const totalClimbFrames = 75; 
+        const totalClimbFrames = Math.max(1, this.climbDuration);
 
-        // Desactivamos colisiones momentáneamente para que no se atore al subir
-        this.state.jugadorActivo.checkCollisions = false;
+        jugador.checkCollisions = false;
 
-        this.state.jugadorActivo.position = this.climbStartPos.clone();
-        this.state.jugadorActivo.computeWorldMatrix(true);
+        const t = this.clamp01(this.climbFrame / totalClimbFrames);
+        const ease = this.easeInOutSmooth(t);
+
+        const currentPos = Vector3.Lerp(this.climbHangPos, this.climbUpEndPos, ease);
+        jugador.position = currentPos;
+        jugador.computeWorldMatrix(true);
 
         if (this.climbFrame >= totalClimbFrames) {
-            this.isClimbing = false;
-            this.isPullingUp = true; 
-            this.pullUpFrame = 0;
-
-            this.currentEyeLevel = this.playerEyeLevel;
-            this.currentPivotY = this.playerHalfHeight * 1.5;
-
-            // Subimos la cápsula físicamente al nivel del muro
-            let newPos = this.climbStartPos.clone();
-            newPos.y = this.climbTargetY;
-            this.state.jugadorActivo.position = newPos;
-            this.state.jugadorActivo.computeWorldMatrix(true);
-
-            this.climbStartPos = newPos.clone(); 
+          this.isClimbing = false;
+          this.isPullingUp = true;
+          this.pullUpFrame = 0;
         }
-
-      // 🔥 FASE 2: DAR EL PASO HACIA ADELANTE (CLIMB FINISH) 
       } else if (this.isPullingUp) {
         this.pullUpFrame++;
-        const totalPullFrames = 60; 
-        
-        let progreso = Math.min(this.pullUpFrame / totalPullFrames, 1.0);
-        let easeOut = 1 - Math.pow(1 - progreso, 3); // Curva suavizada
-        
-        // ---------------------------------------------------------
-        // APLICANDO EL MULTIPLICADOR DE AVANCE (Corrige el retroceso)
-        // ---------------------------------------------------------
-        let forwardOffsetTotal = this.playerRadius * this.climbForwardMultiplier; 
-        let avanceActual = forwardOffsetTotal * easeOut;
+        const totalPullFrames = Math.max(1, this.pullUpDuration);
 
-        let currentPos = this.climbStartPos.clone();
-        currentPos.addInPlace(this.climbForwardDir.scale(avanceActual));
-        
-        this.state.jugadorActivo.position = currentPos;
-        this.state.jugadorActivo.computeWorldMatrix(true);
+        const t = this.clamp01(this.pullUpFrame / totalPullFrames);
+        const easeOut = this.easeOutCubic(t);
 
-        // Cuando termina de avanzar
+        const currentPos = Vector3.Lerp(this.climbUpEndPos, this.climbTopPos, easeOut);
+        jugador.position = currentPos;
+        jugador.computeWorldMatrix(true);
+
         if (this.pullUpFrame >= totalPullFrames) {
-            this.isPullingUp = false;
-            this.justFinishedClimb = true; 
-            
-            this.velocidadY = -0.05; 
-            this.highestY = this.state.jugadorActivo.position.y; 
-            
-            // Volvemos a encender las colisiones con el piso nuevo
-            this.state.jugadorActivo.checkCollisions = true; 
-        }
+          this.isPullingUp = false;
+          this.justFinishedClimb = true;
+          this.postClimbLockFramesRemaining = liveConfig.climb.postClimbLockFrames;
 
-      // 🔥 FASE 3: RECUPERACIÓN (Tras caer de gran altura)
+          this.velocidadY = 0;
+          this.isJumping = false;
+          this.isFalling = false;
+          this.highestY = this.climbLedgeTopY + 0.12;
+
+          jugador.checkCollisions = true;
+
+          const safeTopPos = this.climbTopPos.clone();
+          safeTopPos.y = this.getClimbStandingY(this.climbLedgeTopY);
+          safeTopPos.addInPlace(this.climbForwardDir.scale(this.playerRadius * 0.015));
+
+          jugador.position = safeTopPos;
+          jugador.computeWorldMatrix(true);
+        }
       } else if (this.isRecoveringFromFall) {
         this.recoveryFrame++;
-        if (this.recoveryFrame > 70) {
-            this.isRecoveringFromFall = false;
+        if (this.recoveryFrame > liveConfig.physics.landingRecoveryFrames) {
+          this.isRecoveringFromFall = false;
         }
-
-      // MOVIMIENTO NORMAL
       } else {
-        let forward = scene.activeCamera!.getDirection(Vector3.Forward());
-        forward.y = 0; forward.normalize();
-        let right = scene.activeCamera!.getDirection(Vector3.Right());
-        right.y = 0; right.normalize();
+        const activeCamera = scene.activeCamera;
+        if (!activeCamera) return;
 
-        if (!this.isHardLanding) {
-            if (this.inputMap['w']) move.addInPlace(forward);
-            if (this.inputMap['s']) move.subtractInPlace(forward);
-            if (this.inputMap['d']) move.addInPlace(right);
-            if (this.inputMap['a']) move.subtractInPlace(right);
-        }
-
-        isMoving = move.lengthSquared() > 0.001;
-        isRunning = this.inputMap['shiftleft'] || this.inputMap['shiftright'] || this.inputMap['shift'];
-
-        const scaleFactor = (this.playerHalfHeight / 0.9);
-
-        if (isMoving && !this.isHardLanding) {
-          let modSpeed = (isRunning ? this.runSpeed : this.walkSpeed) * scaleFactor;
-          move.normalize().scaleInPlace(modSpeed);
-          
-          if (vista === 'TPS') {
-            let targetAngle = Math.atan2(move.x, move.z);
-            if (!this.state.jugadorActivo.rotationQuaternion) this.state.jugadorActivo.rotationQuaternion = Quaternion.Identity();
-            this.state.jugadorActivo.rotationQuaternion = Quaternion.Slerp(
-              this.state.jugadorActivo.rotationQuaternion,
-              Quaternion.FromEulerAngles(0, targetAngle, 0),
-              0.1 
-            );
-          }
-        }
-
-        this.state.jugadorActivo.computeWorldMatrix(true);
-        const localCapsuleCenter = new Vector3(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ);
-        const capsuleCenter = Vector3.TransformCoordinates(localCapsuleCenter, this.state.jugadorActivo.getWorldMatrix());
-
-        const rayCol = new Ray(capsuleCenter, Vector3.Down(), this.playerHalfHeight + (0.15 * scale.y)); 
-        const collFn = (m: AbstractMesh) => m.checkCollisions && m !== this.state.jugadorActivo && !this.state.isDescendant(m, this.state.jugadorActivo!) && !m.name.includes('gridHelper');
-        const hitInfo = scene.pickWithRay(rayCol, collFn);
-        
-        isGrounded = hitInfo ? hitInfo.hit : false;
-
-        if (this.velocidadY > 0) isGrounded = false; 
-
-        if (isGrounded) {
-            if (this.isFalling || this.isJumping) {
-                const fallDistance = this.highestY - this.state.jugadorActivo.position.y;
-                if (fallDistance > 2.5 * scale.y) { 
-                    this.isHardLanding = true;
-                    this.landingFrame = 0;
-                    move = Vector3.Zero(); 
-                } 
-                this.isFalling = false;
-                this.isJumping = false;
-            }
-
-            this.highestY = this.state.jugadorActivo.position.y; 
-            this.velocidadY = -0.05; 
-            
-            if (this.inputMap['space'] && !this.isHardLanding) {
-                this.velocidadY = this.jumpForce * scaleFactor;
-                this.isJumping = true;
-                this.inputMap['space'] = false; 
-            }
-
+        if (this.postClimbLockFramesRemaining > 0) {
+          isGrounded = true;
+          this.isJumping = false;
+          this.isFalling = false;
+          move = Vector3.Zero();
+          move.y = 0;
         } else {
-            if (this.state.jugadorActivo.position.y > this.highestY) {
-                this.highestY = this.state.jugadorActivo.position.y;
-            }
+          const forward = activeCamera.getDirection(Vector3.Forward());
+          forward.y = 0;
+          forward.normalize();
 
-            this.velocidadY -= this.gravedad * scaleFactor;
-            if (this.velocidadY < -0.8 * scaleFactor) this.velocidadY = -0.8 * scaleFactor; 
-            
-            if (this.velocidadY < -0.05) {
-                this.isFalling = true;
-                this.isJumping = false;
-            } else if (this.velocidadY > 0) {
-                this.isJumping = true;
-                this.isFalling = false;
-            }
+          const right = activeCamera.getDirection(Vector3.Right());
+          right.y = 0;
+          right.normalize();
 
-            // DETECCIÓN INTELIGENTE DE MUROS
-            if ((this.isJumping || this.isFalling) && isMoving && !this.isClimbing && !this.isPullingUp && !this.isHardLanding && !this.isRecoveringFromFall) {
-                const chestOrigin = capsuleCenter.clone();
-                const headOrigin = capsuleCenter.clone();
-                headOrigin.y += this.playerHalfHeight * 0.8; 
-                
-                const fDir = this.state.jugadorActivo.getDirection(Vector3.Forward());
-                fDir.y = 0; fDir.normalize();
-                
-                const reachDistance = this.playerRadius * 2.5; 
-                
-                const chestRay = new Ray(chestOrigin, fDir, reachDistance);
-                const chestHit = scene.pickWithRay(chestRay, collFn);
-                
-                const headRay = new Ray(headOrigin, fDir, reachDistance);
-                const headHit = scene.pickWithRay(headRay, collFn);
-                
-                if (chestHit && chestHit.hit && (!headHit || !headHit.hit)) {
-                    let originTop = chestHit.pickedPoint!.clone();
-                    originTop.y += this.playerHalfHeight * 4; 
-                    originTop.addInPlace(fDir.scale(this.playerRadius)); 
-
-                    let rayTop = new Ray(originTop, Vector3.Down(), this.playerHalfHeight * 5); 
-                    let hitTop = scene.pickWithRay(rayTop, collFn);
-
-                    if (hitTop && hitTop.hit) {
-                        let exactTargetY = hitTop.pickedPoint!.y; 
-                        if (!isModel) exactTargetY += this.playerHalfHeight; 
-                        
-                        let heightDiff = exactTargetY - this.state.jugadorActivo.position.y;
-                        
-                        if (heightDiff > (this.playerHalfHeight * 0.5) && heightDiff <= (this.playerHalfHeight * 4.0)) {
-                            let wallPos = chestHit.pickedPoint!.clone();
-                            wallPos.y = this.state.jugadorActivo.position.y; 
-                            let idealStartPos = wallPos.subtract(fDir.scale(this.playerRadius * 1.05));
-                            
-                            this.iniciarEscalada(exactTargetY, fDir, idealStartPos);
-                        }
-                    }
-                }
-            }
-        }
-        
-        move.y = this.velocidadY;
-      } 
-
-      if (!this.isClimbing && !this.isPullingUp && !this.isHardLanding && !this.isRecoveringFromFall) {
-          this.state.jugadorActivo.moveWithCollisions(move);
-      }
-
-      // ==========================================
-      // ANIMACIONES BLENDING AAA (TRANSICIONES SUAVES)
-      // ==========================================
-      if (this.isClimbing) {
-          this.playAnim(this.animClimb, false, 0.1); 
-      } 
-      else if (this.isPullingUp) {
-          // Fase 2 de escalar. No mezclamos al inicio para que mantenga la pose
-          this.playAnim(this.animClimbFinish, false, 0.0); 
-      }
-      else if (this.isHardLanding) {
-          this.playAnim(this.animHardLanding, false, 0.1);
-          this.landingFrame++;
-          if (this.landingFrame > 60) { 
-              this.isHardLanding = false; 
-              this.isRecoveringFromFall = true; 
-              this.recoveryFrame = 0;
+          if (!this.isHardLanding) {
+            if (effectiveInput['w']) move.addInPlace(forward);
+            if (effectiveInput['s']) move.subtractInPlace(forward);
+            if (effectiveInput['d']) move.addInPlace(right);
+            if (effectiveInput['a']) move.subtractInPlace(right);
           }
-      }
-      else if (this.isRecoveringFromFall) {
-          this.playAnim(this.animClimbFinish, false, 0.05);
-      }
-      else if (this.isJumping || this.isFalling) {
-          this.playAnim(this.animJump, false, 0.1); 
-      } 
-      else {
-          // 🚀 CORRECCIÓN DEL SALTO BRUSCO AL FINALIZAR ESCALADA
-          // En vez de 0.0, usamos una mezcla muy suave de 0.1 siempre
-          // Esto empalma la animación de escalar con estar quieto orgánicamente.
-          let finalBlendSpeed = 0.1; 
-          
-          if (isMoving) {
-              this.playAnim(isRunning ? this.animRun : this.animWalk, true, finalBlendSpeed);
+
+          if (seqRuntime.running && seqRuntime.allowMovement) {
+            if (seqRuntime.forceForwardRun) move.addInPlace(forward.scale(this.runSpeed * this.getScaleFactor()));
+            if (seqRuntime.forceForwardWalk) move.addInPlace(forward.scale(this.walkSpeed * this.getScaleFactor()));
+          }
+
+          isMoving = move.lengthSquared() > 0.001;
+          isRunning = !!effectiveInput['shiftleft'] || !!effectiveInput['shiftright'] || !!effectiveInput['shift'] || seqRuntime.forceForwardRun;
+
+          const scaleFactor = this.getScaleFactor();
+
+          if (isMoving && !this.isHardLanding) {
+            const modSpeed = (isRunning ? this.runSpeed : this.walkSpeed) * scaleFactor;
+
+            if (!seqRuntime.running || !seqRuntime.allowMovement) {
+              move.normalize().scaleInPlace(modSpeed);
+            }
+
+            if (vista === 'TPS') {
+              const targetAngle = Math.atan2(move.x, move.z);
+              if (!jugador.rotationQuaternion) jugador.rotationQuaternion = Quaternion.Identity();
+              jugador.rotationQuaternion = Quaternion.Slerp(
+                jugador.rotationQuaternion,
+                Quaternion.FromEulerAngles(0, targetAngle, 0),
+                0.1
+              );
+            }
+          }
+
+          jugador.computeWorldMatrix(true);
+          const localCapsuleCenter = new Vector3(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ);
+          const capsuleCenter = Vector3.TransformCoordinates(localCapsuleCenter, jugador.getWorldMatrix());
+
+          const rayCol = new Ray(capsuleCenter, Vector3.Down(), this.playerHalfHeight + (0.15 * scaleNow.y));
+          const collFn = (m: AbstractMesh) =>
+            m.checkCollisions &&
+            m !== jugador &&
+            !this.state.isDescendant(m, jugador) &&
+            !m.name.includes('gridHelper');
+
+          const hitInfo = scene.pickWithRay(rayCol, collFn);
+          isGrounded = hitInfo ? hitInfo.hit : false;
+
+          if (this.velocidadY > 0) isGrounded = false;
+
+          if (isGrounded) {
+            if (this.isFalling || this.isJumping) {
+              const fallDistance = this.highestY - jugador.position.y;
+              if (fallDistance > this.playerConfig.physics.hardLandingThreshold * scaleNow.y) {
+                this.isHardLanding = true;
+                this.landingFrame = 0;
+                move = Vector3.Zero();
+              }
+              this.isFalling = false;
+              this.isJumping = false;
+            }
+
+            this.highestY = jugador.position.y;
+            this.velocidadY = -0.05;
+
+            if ((effectiveInput['space'] || seqRuntime.forceJump) && !this.isHardLanding) {
+              this.velocidadY = this.jumpForce * scaleFactor;
+              this.isJumping = true;
+              this.inputMap['space'] = false;
+            }
           } else {
-              this.playAnim(this.animIdle, true, finalBlendSpeed);
+            if (jugador.position.y > this.highestY) this.highestY = jugador.position.y;
+
+            const gravityMul = this.isJumping ? 0.55 : this.playerConfig.jump.jumpFallMultiplier;
+            this.velocidadY -= this.gravedad * scaleFactor * gravityMul;
+
+            if (this.velocidadY < -this.playerConfig.jump.maxFallSpeed * scaleFactor) {
+              this.velocidadY = -this.playerConfig.jump.maxFallSpeed * scaleFactor;
+            }
+
+            if (this.velocidadY < -0.05) {
+              this.isFalling = true;
+              this.isJumping = false;
+            } else if (this.velocidadY > 0) {
+              this.isJumping = true;
+              this.isFalling = false;
+            }
+
+            const climbActionsAllowed =
+              liveConfig.climb.enabled &&
+              (this.isActionEnabled('climbUp') || this.isActionEnabled('climbFinish'));
+
+            if (
+              climbActionsAllowed &&
+              (this.isJumping || this.isFalling) &&
+              isMoving &&
+              !this.isClimbing &&
+              !this.isPullingUp &&
+              !this.isHardLanding &&
+              !this.isRecoveringFromFall &&
+              this.postClimbLockFramesRemaining === 0
+            ) {
+              const chestOrigin = capsuleCenter.clone();
+              const headOrigin = capsuleCenter.clone();
+              headOrigin.y += this.playerHalfHeight * 0.8;
+
+              const fDir = this.sanitizeForwardDir(jugador.getDirection(Vector3.Forward()));
+              const reachDistance = this.playerConfig.physics.climbRayReach;
+
+              const chestRay = new Ray(chestOrigin, fDir, reachDistance);
+              const chestHit = scene.pickWithRay(chestRay, collFn);
+
+              const headRay = new Ray(headOrigin, fDir, reachDistance);
+              const headHit = scene.pickWithRay(headRay, collFn);
+
+              if (chestHit && chestHit.hit && (!headHit || !headHit.hit)) {
+                const originTop = chestHit.pickedPoint!.clone();
+                originTop.y += this.playerHalfHeight * 3.5;
+                originTop.addInPlace(fDir.scale(this.playerRadius * 0.35));
+
+                const rayTop = new Ray(originTop, Vector3.Down(), this.playerHalfHeight * 6);
+                const hitTop = scene.pickWithRay(rayTop, collFn);
+
+                if (hitTop && hitTop.hit) {
+                  const ledgeMesh = (hitTop.pickedMesh as AbstractMesh) || (chestHit.pickedMesh as AbstractMesh) || null;
+                  this.climbLedgeMesh = ledgeMesh;
+
+                  let exactTargetY = this.getWorldTopY(ledgeMesh, hitTop.pickedPoint!.y);
+                  exactTargetY = this.getClimbStandingY(exactTargetY);
+
+                  const heightDiff = exactTargetY - jugador.position.y;
+
+                  if (
+                    heightDiff > (this.playerHalfHeight * liveConfig.climb.minHeight) &&
+                    heightDiff <= (this.playerHalfHeight * liveConfig.climb.maxHeight)
+                  ) {
+                    const idealStartPos = this.getSafeGrabStartPos(
+                      chestHit.pickedPoint!.clone(),
+                      fDir,
+                      jugador.position.y
+                    );
+
+                    this.iniciarEscalada(exactTargetY, fDir, idealStartPos, isModel, ledgeMesh);
+                  }
+                }
+              }
+            }
           }
-          this.justFinishedClimb = false; 
+
+          move.y = this.velocidadY;
+        }
       }
 
-      // ==========================================
-      // CÁMARA (Movimiento, respiración y rebote suave)
-      // ==========================================
+      if (
+        !this.isClimbing &&
+        !this.isPullingUp &&
+        !this.isHardLanding &&
+        !this.isRecoveringFromFall &&
+        this.postClimbLockFramesRemaining === 0
+      ) {
+        jugador.moveWithCollisions(move);
+      }
+
+      if (seqRuntime.running && seqRuntime.animationOverride) {
+        this.playAnim(seqRuntime.animationOverride, seqRuntime.loop, seqRuntime.blend);
+      } else if (this.isClimbing) {
+        if (this.isActionEnabled('climbUp')) this.playAnim(this.animClimb || this.animIdle, false, 0.06);
+        else this.playAnim(this.animIdle, true, 0.06);
+      } else if (this.isPullingUp) {
+        if (this.isActionEnabled('climbFinish')) this.playAnim(this.animClimbFinish || this.animClimb || this.animIdle, false, 0.05);
+        else this.playAnim(this.animIdle, true, 0.05);
+      } else if (this.isHardLanding) {
+        if (this.isActionEnabled('landHard')) this.playAnim(this.animHardLanding || this.animLandSoft || this.animIdle, false, 0.1);
+        else this.playAnim(this.animIdle, true, 0.1);
+
+        this.landingFrame++;
+        if (this.landingFrame > liveConfig.physics.landingRecoveryFrames) {
+          this.isHardLanding = false;
+          this.isRecoveringFromFall = true;
+          this.recoveryFrame = 0;
+        }
+      } else if (this.isRecoveringFromFall) {
+        if (this.isActionEnabled('recover')) this.playAnim(this.animRecover || this.animIdle, false, 0.05);
+        else this.playAnim(this.animIdle, true, 0.05);
+      } else if (this.isJumping || this.isFalling) {
+        if (this.isFalling) {
+          if (this.isActionEnabled('fall')) this.playAnim(this.animFall || this.animJumpLoop || this.animJump || this.animIdle, false, 0.08);
+          else this.playAnim(this.animIdle, true, 0.08);
+        } else {
+          if (this.isActionEnabled('jumpStart')) this.playAnim(this.animJump || this.animJumpLoop || this.animIdle, false, 0.08);
+          else this.playAnim(this.animIdle, true, 0.08);
+        }
+      } else {
+        const finalBlendSpeed = liveConfig.blend.defaultBlend ?? 0.1;
+
+        if (isMoving) {
+          if (isRunning) {
+            if (this.isActionEnabled('run')) this.playAnim(this.animRun || this.animWalk || this.animIdle, true, finalBlendSpeed);
+            else this.playAnim(this.animIdle, true, finalBlendSpeed);
+          } else {
+            if (this.isActionEnabled('walk')) this.playAnim(this.animWalk || this.animIdle, true, finalBlendSpeed);
+            else this.playAnim(this.animIdle, true, finalBlendSpeed);
+          }
+        } else {
+          if (this.isActionEnabled('idle')) this.playAnim(this.animIdle, true, finalBlendSpeed);
+          else this.playAnim(null, true, finalBlendSpeed);
+        }
+
+        this.justFinishedClimb = false;
+      }
+
       let targetEyeLevel = this.playerEyeLevel;
-      let targetPivotY = this.playerHalfHeight * 1.5;
+      let targetPivotY = this.playerConfig.camera.tpsPivotY * scaleNow.y;
 
       let breathY = 0;
       let breathZ = 0;
       let breathX = 0;
 
-      if (this.headNode && this.initialHeadLocal) {
-          const currentGlobal = this.headNode.getAbsolutePosition();
-          const currentLocal = Vector3.TransformCoordinates(currentGlobal, Matrix.Invert(this.state.jugadorActivo.getWorldMatrix()));
-          
-          breathX = currentLocal.x - this.initialHeadLocal.x;
-          breathY = currentLocal.y - this.initialHeadLocal.y;
-          breathZ = currentLocal.z - this.initialHeadLocal.z;
-      } 
-      else if (!this.headNode) {
-          if (this.isHardLanding) {
-              let progress = this.landingFrame / 60; 
-              let dip = Math.sin(progress * Math.PI); 
-              targetEyeLevel -= dip * (this.playerHalfHeight * 1.2); 
-              targetPivotY -= dip * (this.playerHalfHeight * 1.2);
-          } 
+      if (this.playerConfig.camera.headFollow && this.headNode && this.initialHeadLocal) {
+        const currentGlobal = this.headNode.getAbsolutePosition();
+        const currentLocal = Vector3.TransformCoordinates(
+          currentGlobal,
+          Matrix.Invert(jugador.getWorldMatrix())
+        );
 
-          if (this.isClimbing) {
-              let progreso = this.climbFrame / 75;
-              let easeY = progreso * progreso * (3 - 2 * progreso); 
-              let fakeY = this.climbStartY + (this.climbTargetY - this.climbStartY) * easeY;
-              
-              let diffY = (fakeY - this.state.jugadorActivo.position.y);
-              targetEyeLevel += diffY;
-              targetPivotY += diffY;
-          }
+        breathX = currentLocal.x - this.initialHeadLocal.x;
+        breathY = currentLocal.y - this.initialHeadLocal.y;
+        breathZ = currentLocal.z - this.initialHeadLocal.z;
+      } else {
+        if (this.isHardLanding) {
+          const progress = this.landingFrame / Math.max(1, this.playerConfig.physics.landingRecoveryFrames);
+          const dip = Math.sin(progress * Math.PI);
+          targetEyeLevel -= dip * (this.playerHalfHeight * 1.2);
+          targetPivotY -= dip * (this.playerHalfHeight * 1.2);
+        }
 
-          if (!isMoving && isGrounded && !this.isClimbing && !this.isPullingUp && !this.isHardLanding && isModel) {
-              this.idleTime += scene.getEngine().getDeltaTime() / 1000;
-              breathY = Math.sin(this.idleTime * 2.5) * 0.015; 
-              breathZ = Math.cos(this.idleTime * 2.5) * 0.015; 
-          } else {
-              this.idleTime = 0;
-          }
+        if (this.isPullingUp) {
+          const progreso = this.clamp01(this.pullUpFrame / Math.max(1, this.pullUpDuration));
+          const easeOut = this.easeOutCubic(progreso);
+          const fakeY = this.climbUpEndPos.y + (this.climbTopPos.y - this.climbUpEndPos.y) * easeOut;
+          const diffY = fakeY - jugador.position.y;
+          targetEyeLevel += diffY * 0.35;
+          targetPivotY += diffY * 0.35;
+        }
+
+        if (
+          !isMoving &&
+          isGrounded &&
+          !this.isClimbing &&
+          !this.isPullingUp &&
+          !this.isHardLanding &&
+          this.postClimbLockFramesRemaining === 0
+        ) {
+          this.idleTime += scene.getEngine().getDeltaTime() / 1000;
+          breathY = Math.sin(this.idleTime * 2.5) * 0.015;
+          breathZ = Math.cos(this.idleTime * 2.5) * 0.015;
+        } else {
+          this.idleTime = 0;
+        }
       }
 
       this.currentEyeLevel += (targetEyeLevel - this.currentEyeLevel) * 0.06;
       this.currentPivotY += (targetPivotY - this.currentPivotY) * 0.06;
 
-      this.state.jugadorActivo.computeWorldMatrix(true);
+      jugador.computeWorldMatrix(true);
 
       if (vista === 'TPS' && this.state.cameraPivot) {
-        const localPivotPos = new Vector3(camMeta.x + breathX, (this.currentPivotY / scale.y) + breathY, camMeta.z + breathZ);
-        const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, this.state.jugadorActivo.getWorldMatrix());
-        
+        this.motor3d.playerCameraTPS.radius = this.playerConfig.camera.tpsRadius * scaleNow.y;
+
+        const localPivotPos = new Vector3(
+          camMeta.x + breathX,
+          (this.currentPivotY / scaleNow.y) + breathY,
+          camMeta.z + breathZ
+        );
+        const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
+
         this.state.cameraPivot.position = Vector3.Lerp(
           this.state.cameraPivot.position,
           globalPivotPos,
-          0.1 
+          0.1
         );
       }
 
       if (vista === 'FPS') {
         const fpsCam = scene.activeCamera as UniversalCamera;
-        
-        if (!this.state.jugadorActivo.rotationQuaternion) this.state.jugadorActivo.rotationQuaternion = Quaternion.Identity();
-        this.state.jugadorActivo.rotationQuaternion = Quaternion.FromEulerAngles(0, fpsCam.rotation.y, 0);
-        
+
+        if (!jugador.rotationQuaternion) jugador.rotationQuaternion = Quaternion.Identity();
+        jugador.rotationQuaternion = Quaternion.FromEulerAngles(0, fpsCam.rotation.y, 0);
+
         const localCamPos = new Vector3(
-            camMeta.x + breathX, 
-            (this.currentEyeLevel / scale.y) + breathY, 
-            camMeta.z + breathZ
+          camMeta.x + breathX,
+          (this.currentEyeLevel / scaleNow.y) + breathY,
+          camMeta.z + breathZ
         );
-        
-        const globalCamPos = Vector3.TransformCoordinates(localCamPos, this.state.jugadorActivo.getWorldMatrix());
+
+        const globalCamPos = Vector3.TransformCoordinates(localCamPos, jugador.getWorldMatrix());
         fpsCam.position = globalCamPos;
       }
-
     });
 
     if (canvas) {
@@ -643,36 +1107,75 @@ export class EditorPlayerService {
       try {
         scene.activeCamera!.attachControl(canvas, true);
         canvas.requestPointerLock();
-      } catch (e) { }
+      } catch {}
     }
   }
 
-  private iniciarEscalada(targetY: number, forwardDir: Vector3, startPosIdeal: Vector3) {
+  private iniciarEscalada(
+    targetY: number,
+    forwardDir: Vector3,
+    startPosIdeal: Vector3,
+    isModel: boolean,
+    ledgeMesh: AbstractMesh | null
+  ) {
     this.isClimbing = true;
     this.isPullingUp = false;
     this.isRecoveringFromFall = false;
     this.justFinishedClimb = false;
-    this.velocidadY = 0; 
+    this.velocidadY = 0;
     this.climbFrame = 0;
-    
-    this.state.jugadorActivo!.position = startPosIdeal.clone();
-    this.state.jugadorActivo!.computeWorldMatrix(true);
+    this.pullUpFrame = 0;
+    this.postClimbLockFramesRemaining = 0;
 
-    this.climbStartPos = startPosIdeal.clone();
+    const cleanForward = this.sanitizeForwardDir(forwardDir);
+
+    this.climbLedgeMesh = ledgeMesh;
+    this.climbLedgeTopY = this.getWorldTopY(ledgeMesh, targetY);
+
+    this.climbHangPos = startPosIdeal.clone();
     this.climbStartY = startPosIdeal.y;
-    this.climbTargetY = targetY; 
-    this.climbForwardDir = forwardDir.clone(); 
+    this.climbTargetY = targetY;
+    this.climbForwardDir = cleanForward.clone();
+
+    const visual = this.getClimbVisualY(this.climbLedgeTopY, this.climbStartY, isModel);
+
+    this.climbHangPos.y = visual.hangY;
+
+    this.climbUpEndPos = this.climbHangPos.clone();
+    this.climbUpEndPos.addInPlace(cleanForward.scale(this.playerRadius * this.climbUpForwardMultiplier));
+    this.climbUpEndPos.y = visual.upY;
+
+    this.climbTopPos = this.climbUpEndPos.clone();
+    this.climbTopPos.addInPlace(cleanForward.scale(this.playerRadius * this.climbForwardMultiplier));
+    this.climbTopPos.y = visual.topY;
+
+    this.state.jugadorActivo!.position = this.climbHangPos.clone();
+    this.state.jugadorActivo!.computeWorldMatrix(true);
 
     this.isJumping = false;
     this.isFalling = false;
     this.isHardLanding = false;
 
-    this.playAnim(this.animClimb, false, 0.1); 
+    this.log('ESCALADA INICIADA', {
+      targetY,
+      ledgeTopY: this.climbLedgeTopY,
+      hangPos: this.climbHangPos.clone(),
+      upEndPos: this.climbUpEndPos.clone(),
+      topPos: this.climbTopPos.clone(),
+      forwardDir: cleanForward.clone(),
+      climbForwardMultiplier: this.climbForwardMultiplier,
+      climbUpForwardMultiplier: this.climbUpForwardMultiplier,
+      isModel
+    });
+
+    this.playAnim(this.animClimb || this.animIdle, false, 0.06);
   }
 
   detenerModoJuego() {
     const scene = this.motor3d.scene;
     this.state.playState.set('EDITOR');
+
+    this.log('Deteniendo modo juego');
 
     this.resetMovimientoJugador();
     scene.stopAllAnimations();
@@ -683,34 +1186,44 @@ export class EditorPlayerService {
 
     this.motor3d.playerCameraFPS.detachControl();
     this.motor3d.playerCameraTPS.detachControl();
-    
+
     this.motor3d.editorCamera.position = camPos;
     this.motor3d.editorCamera.setTarget(camTarget);
-    
+
     scene.activeCamera = this.motor3d.editorCamera;
     this.motor3d.editorCamera.attachControl(this.motor3d.engine.getRenderingCanvas(), true);
 
-    if (this.state.cameraPivot) { this.state.cameraPivot.dispose(); this.state.cameraPivot = null; }
+    if (this.state.cameraPivot) {
+      this.state.cameraPivot.dispose();
+      this.state.cameraPivot = null;
+    }
     if (this.tecladoObserver) scene.onKeyboardObservable.remove(this.tecladoObserver);
     if (this.tpsUpdateObserver) scene.onBeforeRenderObservable.remove(this.tpsUpdateObserver);
 
     this.state.proxyColliders.forEach(p => p.dispose());
     this.state.proxyColliders = [];
 
-    this.tecladoObserver = null; 
+    this.tecladoObserver = null;
     this.tpsUpdateObserver = null;
     this.inputMap = {};
+    this.resetSequenceRuntime();
 
     this.state.objetoHovereado.set(null);
     this.state.objetoSeleccionado.set(null);
 
     this.headNode = null;
     this.initialHeadLocal = null;
+    this.climbLedgeMesh = null;
+    this.climbLedgeTopY = 0;
 
     if (this.state.jugadorActivo && this.state.backupObjetoPosicion && this.state.backupObjetoRotacionQuat) {
       if (this.state.jugadorActivo.metadata?.rol === 'npc' || this.state.jugadorActivo.metadata?.rol === 'spawn_point') {
         if (this.state.modoVistaPrueba === 'FPS') {
-            this.state.jugadorActivo.rotationQuaternion = Quaternion.FromEulerAngles(0, (this.motor3d.playerCameraFPS as any).rotation.y, 0);
+          this.state.jugadorActivo.rotationQuaternion = Quaternion.FromEulerAngles(
+            0,
+            (this.motor3d.playerCameraFPS as any).rotation.y,
+            0
+          );
         }
         this.state.triggerUpdate();
       } else {
@@ -746,36 +1259,35 @@ export class EditorPlayerService {
     this.isPullingUp = false;
     this.isRecoveringFromFall = false;
     this.justFinishedClimb = false;
+    this.postClimbLockFramesRemaining = 0;
     this.velocidadY = -0.1;
     this.highestY = -9999;
     this.idleTime = 0;
     this.state.mirandoObjetoInteractuable.set(false);
+    this.resetSequenceRuntime();
     this.playAnim(this.animIdle, true);
   }
 
   private playAnim(anim: AnimationGroup | null, loop: boolean, blendingSpeed: number = 0.05) {
-    if (!anim) return;
-    
+    if (!anim) {
+      this.animacionesJugador.forEach(a => a.stop());
+      this.animActual = null;
+      return;
+    }
+
     if (this.animActual === anim) {
-        if (anim.isPlaying) return; 
-        if (!loop) return; 
-    }
-
-    this.animacionesJugador.forEach(a => {
-        if (a !== anim) {
-            a.stop();
-        }
-    });
-
-    anim.reset(); 
-    
-    if (blendingSpeed <= 0) {
-        anim.enableBlending = false;
+      if (anim.isPlaying) return;
+      anim.reset();
     } else {
-        anim.enableBlending = true;
-        anim.blendingSpeed = blendingSpeed;
+      this.animacionesJugador.forEach(a => {
+        if (a !== anim) a.stop();
+      });
+      anim.reset();
+      this.animActual = anim;
     }
-    
+
+    anim.enableBlending = blendingSpeed > 0;
+    anim.blendingSpeed = blendingSpeed;
     anim.play(loop);
     this.animActual = anim;
   }

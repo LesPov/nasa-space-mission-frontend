@@ -2,9 +2,22 @@ import { Injectable, inject } from '@angular/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { HistorialService } from '../historial.service';
-import { MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader, StandardMaterial, Color3, TransformNode, Matrix } from '@babylonjs/core';
+import {
+  MeshBuilder,
+  Vector3,
+  Color4,
+  AbstractMesh,
+  Mesh,
+  Quaternion,
+  SceneLoader,
+  StandardMaterial,
+  Color3,
+  TransformNode,
+  Matrix
+} from '@babylonjs/core';
 
 import '@babylonjs/loaders/glTF';
+import { cloneDefaultPlayerConfig, mergePlayerConfig } from './player-config.model';
 
 @Injectable({ providedIn: 'root' })
 export class EditorSceneService {
@@ -15,44 +28,57 @@ export class EditorSceneService {
   crearEntornoVisual(): void {
     const scene = this.motor3d.scene;
     const size = 50;
-    MeshBuilder.CreateLines("ejeX", { points: [new Vector3(-size, 0, 0), new Vector3(size, 0, 0)], colors: [new Color4(1, 0.2, 0.2, 1), new Color4(1, 0.2, 0.2, 1)] }, scene).isPickable = false;
-    MeshBuilder.CreateLines("ejeY", { points: [new Vector3(0, -size, 0), new Vector3(0, size, 0)], colors: [new Color4(0.2, 1, 0.2, 1), new Color4(0.2, 1, 0.2, 1)] }, scene).isPickable = false;
-    MeshBuilder.CreateLines("ejeZ", { points: [new Vector3(0, 0, -size), new Vector3(0, 0, size)], colors: [new Color4(0.2, 0.5, 1, 1), new Color4(0.2, 0.5, 1, 1)] }, scene).isPickable = false;
+    MeshBuilder.CreateLines('ejeX', { points: [new Vector3(-size, 0, 0), new Vector3(size, 0, 0)], colors: [new Color4(1, 0.2, 0.2, 1), new Color4(1, 0.2, 0.2, 1)] }, scene).isPickable = false;
+    MeshBuilder.CreateLines('ejeY', { points: [new Vector3(0, -size, 0), new Vector3(0, size, 0)], colors: [new Color4(0.2, 1, 0.2, 1), new Color4(0.2, 1, 0.2, 1)] }, scene).isPickable = false;
+    MeshBuilder.CreateLines('ejeZ', { points: [new Vector3(0, 0, -size), new Vector3(0, 0, size)], colors: [new Color4(0.2, 0.5, 1, 1), new Color4(0.2, 0.5, 1, 1)] }, scene).isPickable = false;
 
-    const ptsGrid: Vector3[][] = []; const colorsGrid: Color4[][] = [];
+    const ptsGrid: Vector3[][] = [];
+    const colorsGrid: Color4[][] = [];
     const colorGris = new Color4(0.3, 0.3, 0.3, 0.5);
+
     for (let i = -60; i <= 60; i += 2) {
       if (i === 0) continue;
       ptsGrid.push([new Vector3(i, 0, -60), new Vector3(i, 0, 60)]); colorsGrid.push([colorGris, colorGris]);
       ptsGrid.push([new Vector3(-60, 0, i), new Vector3(60, 0, i)]); colorsGrid.push([colorGris, colorGris]);
     }
-    MeshBuilder.CreateLineSystem("gridHelper", { lines: ptsGrid, colors: colorsGrid }, scene).isPickable = false;
+    MeshBuilder.CreateLineSystem('gridHelper', { lines: ptsGrid, colors: colorsGrid }, scene).isPickable = false;
   }
 
   crearSuelo(): void {
     const scene = this.motor3d.scene;
-    const suelo = MeshBuilder.CreateBox("sueloInvisible", { width: 200, depth: 200, height: 1 }, scene);
-    suelo.position.y = -0.5; suelo.checkCollisions = true; suelo.isVisible = false; suelo.isPickable = true;
+    const suelo = MeshBuilder.CreateBox('sueloInvisible', { width: 200, depth: 200, height: 1 }, scene);
+    suelo.position.y = -0.5;
+    suelo.checkCollisions = true;
+    suelo.isVisible = false;
+    suelo.isPickable = true;
     this.actualizarListaNodos();
   }
 
   agregarObjetoCustom(
-    tipo: string, nombre: string, rol: string, colorHex: string,
-    sizeX: number, sizeY: number, sizeZ: number, asset?: any,
-    isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = ''
+    tipo: string,
+    nombre: string,
+    rol: string,
+    colorHex: string,
+    sizeX: number,
+    sizeY: number,
+    sizeZ: number,
+    asset?: any,
+    isSolid: boolean = true,
+    isSelectable: boolean = true,
+    mensaje: string = ''
   ): void {
     const scene = this.motor3d.scene;
-
     const isModel = tipo === 'model';
-    
-    // Ahora todo se guarda estructurado bajo "collider" y de forma universal usando sizes.
-    const defaultCollider = isModel 
-        ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
-        : { type: tipo === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 }; 
+
+    const defaultCollider = isModel
+      ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
+      : { type: tipo === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
 
     const defaultCamOffset = isModel
-        ? { x: 0, y: 1.6, z: 0 }
-        : { x: 0, y: 0.8, z: 0 }; 
+      ? { x: 0, y: 1.6, z: 0 }
+      : { x: 0, y: 0.8, z: 0 };
+
+    const defaultPlayerConfig = cloneDefaultPlayerConfig();
 
     if (isModel && asset) {
       const fullPath = 'http://localhost:4000' + asset.path;
@@ -60,12 +86,12 @@ export class EditorSceneService {
       const rootUrl = fullPath.substring(0, lastSlash + 1);
       const filename = fullPath.substring(lastSlash + 1);
 
-      SceneLoader.ImportMeshAsync("", rootUrl, filename, scene).then((result) => {
+      SceneLoader.ImportMeshAsync('', rootUrl, filename, scene).then((result) => {
         const rootNode = result.meshes[0] as Mesh;
         rootNode.name = nombre;
         rootNode.scaling = new Vector3(sizeX, sizeY, sizeZ);
         if (!rootNode.rotationQuaternion) rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
-        rootNode.position = new Vector3(0, 0, 0); 
+        rootNode.position = new Vector3(0, 0, 0);
         rootNode.checkCollisions = false;
         rootNode.isPickable = true;
 
@@ -79,30 +105,36 @@ export class EditorSceneService {
         const anims = result.animationGroups || [];
         anims.forEach(ag => ag.stop());
 
-        // 🔥 CALCULAMOS Y GUARDAMOS LA POSICIÓN ORIGINAL DE LA CABEZA
-        let initialHeadLocal = null;
-        const headNode = rootNode.getChildTransformNodes(false).find(n => 
-            n.name.toLowerCase() === 'head' || 
-            n.name.toLowerCase() === 'neck' || 
-            n.name.toLowerCase().includes('mixamorig:head') ||
-            n.name.toLowerCase().includes('head')
+        let initialHeadLocal: Vector3 | null = null;
+        const headNode = rootNode.getChildTransformNodes(false).find(n =>
+          n.name.toLowerCase() === 'head' ||
+          n.name.toLowerCase() === 'neck' ||
+          n.name.toLowerCase().includes('mixamorig:head') ||
+          n.name.toLowerCase().includes('head')
         ) as TransformNode;
 
         if (headNode) {
-            headNode.computeWorldMatrix(true);
-            rootNode.computeWorldMatrix(true);
-            initialHeadLocal = Vector3.TransformCoordinates(
-                headNode.getAbsolutePosition(), 
-                Matrix.Invert(rootNode.getWorldMatrix())
-            );
+          headNode.computeWorldMatrix(true);
+          rootNode.computeWorldMatrix(true);
+          initialHeadLocal = Vector3.TransformCoordinates(
+            headNode.getAbsolutePosition(),
+            Matrix.Invert(rootNode.getWorldMatrix())
+          );
         }
 
-        rootNode.metadata = { 
-            type: 'model', rol, assetId: asset.id, path: asset.path, 
-            isSolid, isSelectable, animations: anims, mensaje,
-            collider: { ...defaultCollider },
-            camOffset: { ...defaultCamOffset },
-            initialHeadLocal
+        rootNode.metadata = {
+          type: 'model',
+          rol,
+          assetId: asset.id,
+          path: asset.path,
+          isSolid,
+          isSelectable,
+          mensaje,
+          animationNames: anims.map(a => a.name),
+          collider: { ...defaultCollider },
+          camOffset: { ...defaultCamOffset },
+          playerConfig: defaultPlayerConfig,
+          initialHeadLocal
         };
 
         rootNode.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
@@ -115,33 +147,42 @@ export class EditorSceneService {
       });
     } else {
       let mesh!: Mesh;
-      let offsetColisionY = 0.5; 
-      
+      let offsetColisionY = 0.5;
+
       switch (tipo) {
         case 'cube': mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene); break;
         case 'sphere': mesh = MeshBuilder.CreateSphere(nombre, { diameter: 1 }, scene); break;
         case 'cylinder': mesh = MeshBuilder.CreateCylinder(nombre, { height: 1, diameter: 1 }, scene); break;
         case 'plane': mesh = MeshBuilder.CreateGround(nombre, { width: 1, height: 1 }, scene); offsetColisionY = 0.02; break;
+        default: mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene); break;
       }
-      
+
       mesh.scaling = new Vector3(sizeX, sizeY, sizeZ);
-      mesh.position = new Vector3(0, offsetColisionY * sizeY, 0); 
-      
-      mesh.metadata = { 
-          type: tipo, rol, color: colorHex, isSolid, isSelectable, mensaje,
-          collider: { ...defaultCollider },
-          camOffset: { ...defaultCamOffset }
+      mesh.position = new Vector3(0, offsetColisionY * sizeY, 0);
+
+      mesh.metadata = {
+        type: tipo,
+        rol,
+        color: colorHex,
+        isSolid,
+        isSelectable,
+        mensaje,
+        collider: { ...defaultCollider },
+        camOffset: { ...defaultCamOffset },
+        playerConfig: defaultPlayerConfig
       };
 
       mesh.isPickable = true;
       mesh.checkCollisions = isSolid;
-      
       mesh.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
       mesh.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
 
-      const mat = new StandardMaterial("mat_" + nombre, scene);
+      const mat = new StandardMaterial('mat_' + nombre, scene);
       mat.diffuseColor = Color3.FromHexString(colorHex);
-      if (rol === 'spawn_point') { mat.alpha = 0.5; mat.emissiveColor = new Color3(0, 1, 0); }
+      if (rol === 'spawn_point') {
+        mat.alpha = 0.5;
+        mat.emissiveColor = new Color3(0, 1, 0);
+      }
       mesh.material = mat;
 
       this.state.objetoSeleccionado.set(mesh);
@@ -154,43 +195,46 @@ export class EditorSceneService {
   cargarEscenaDesdeDatos(objetosBD: any[]): void {
     if (!objetosBD || objetosBD.length === 0) return;
     const scene = this.motor3d.scene;
-    
+
     objetosBD.forEach(obj => {
       const isModel = obj.type === 'model';
-      const defaultCollider = isModel 
-          ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
-          : { type: obj.type === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 }; 
+      const defaultCollider = isModel
+        ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
+        : { type: obj.type === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
 
       const defaultCamOffset = isModel
-          ? { x: 0, y: 1.6, z: 0 }
-          : { x: 0, y: 0.8, z: 0 }; 
+        ? { x: 0, y: 1.6, z: 0 }
+        : { x: 0, y: 0.8, z: 0 };
+
+      const defaultPlayerConfig = cloneDefaultPlayerConfig();
 
       const rolSaved = obj.properties?.rol || 'prop';
       const isSolidSaved = obj.properties?.isSolid ?? true;
       const isSelectableSaved = obj.properties?.isSelectable ?? true;
       const mensajeSaved = obj.properties?.mensaje || '';
-      
-      // 🔥 MIGRACIÓN Y COMPATIBILIDAD CON MAPAS ANTIGUOS
+
       const savedCollider = obj.properties?.collider || obj.properties?.capsule || { ...defaultCollider };
       if (savedCollider.radiusX !== undefined) {
-          savedCollider.sizeX = savedCollider.radiusX;
-          savedCollider.sizeY = savedCollider.heightY;
-          savedCollider.sizeZ = savedCollider.radiusZ;
-          savedCollider.type = isModel ? 'capsule' : 'box';
-          delete savedCollider.radiusX;
-          delete savedCollider.heightY;
-          delete savedCollider.radiusZ;
+        savedCollider.sizeX = savedCollider.radiusX;
+        savedCollider.sizeY = savedCollider.heightY;
+        savedCollider.sizeZ = savedCollider.radiusZ;
+        savedCollider.type = isModel ? 'capsule' : 'box';
+        delete savedCollider.radiusX;
+        delete savedCollider.heightY;
+        delete savedCollider.radiusZ;
       }
       if (!savedCollider.type) savedCollider.type = isModel ? 'capsule' : 'box';
 
       const savedCamOffset = obj.properties?.camOffset || { ...defaultCamOffset };
+      const savedPlayerConfig = mergePlayerConfig(obj.properties?.playerConfig || null);
 
       if (isModel && obj.assetId) {
         const path = obj.properties?.path || obj.asset?.path;
         if (!path) return;
         const fullPath = 'http://localhost:4000' + path;
         const lastSlash = fullPath.lastIndexOf('/');
-        SceneLoader.ImportMeshAsync("", fullPath.substring(0, lastSlash + 1), fullPath.substring(lastSlash + 1), scene).then((result) => {
+
+        SceneLoader.ImportMeshAsync('', fullPath.substring(0, lastSlash + 1), fullPath.substring(lastSlash + 1), scene).then((result) => {
           const rootNode = result.meshes[0] as Mesh;
           rootNode.name = obj.name;
           rootNode.position = new Vector3(obj.position.x, obj.position.y, obj.position.z);
@@ -209,32 +253,38 @@ export class EditorSceneService {
           const anims = result.animationGroups || [];
           anims.forEach(ag => ag.stop());
 
-          // 🔥 CALCULAMOS Y GUARDAMOS LA POSICIÓN ORIGINAL DE LA CABEZA
-          let initialHeadLocal = null;
-          const headNode = rootNode.getChildTransformNodes(false).find(n => 
-              n.name.toLowerCase() === 'head' || 
-              n.name.toLowerCase() === 'neck' || 
-              n.name.toLowerCase().includes('mixamorig:head') ||
-              n.name.toLowerCase().includes('head')
+          let initialHeadLocal: Vector3 | null = null;
+          const headNode = rootNode.getChildTransformNodes(false).find(n =>
+            n.name.toLowerCase() === 'head' ||
+            n.name.toLowerCase() === 'neck' ||
+            n.name.toLowerCase().includes('mixamorig:head') ||
+            n.name.toLowerCase().includes('head')
           ) as TransformNode;
 
           if (headNode) {
-              headNode.computeWorldMatrix(true);
-              rootNode.computeWorldMatrix(true);
-              initialHeadLocal = Vector3.TransformCoordinates(
-                  headNode.getAbsolutePosition(), 
-                  Matrix.Invert(rootNode.getWorldMatrix())
-              );
+            headNode.computeWorldMatrix(true);
+            rootNode.computeWorldMatrix(true);
+            initialHeadLocal = Vector3.TransformCoordinates(
+              headNode.getAbsolutePosition(),
+              Matrix.Invert(rootNode.getWorldMatrix())
+            );
           }
 
-          rootNode.metadata = { 
-              type: 'model', rol: rolSaved, assetId: obj.assetId, path, 
-              isSolid: isSolidSaved, isSelectable: isSelectableSaved, 
-              animations: anims, mensaje: mensajeSaved,
-              collider: savedCollider, camOffset: savedCamOffset,
-              initialHeadLocal
+          rootNode.metadata = {
+            type: 'model',
+            rol: rolSaved,
+            assetId: obj.assetId,
+            path,
+            isSolid: isSolidSaved,
+            isSelectable: isSelectableSaved,
+            mensaje: mensajeSaved,
+            animationNames: anims.map(a => a.name),
+            collider: savedCollider,
+            camOffset: savedCamOffset,
+            playerConfig: savedPlayerConfig,
+            initialHeadLocal
           };
-          
+
           rootNode.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
           rootNode.ellipsoidOffset = new Vector3(savedCollider.offsetX * obj.scale.x, savedCollider.offsetY * obj.scale.y, savedCollider.offsetZ * obj.scale.z);
 
@@ -249,36 +299,48 @@ export class EditorSceneService {
           case 'plane': mesh = MeshBuilder.CreateGround(obj.name, { width: 1, height: 1 }, scene); break;
           default: return;
         }
+
         mesh.position = new Vector3(obj.position.x, obj.position.y, obj.position.z);
         mesh.rotationQuaternion = Quaternion.FromEulerAngles(obj.rotation.x, obj.rotation.y, obj.rotation.z);
         mesh.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
+
         const savedColor = obj.properties?.color || '#888888';
-        
-        mesh.metadata = { 
-            type: obj.type, rol: rolSaved, color: savedColor, 
-            isSolid: isSolidSaved, isSelectable: isSelectableSaved, mensaje: mensajeSaved,
-            collider: savedCollider, camOffset: savedCamOffset
+
+        mesh.metadata = {
+          type: obj.type,
+          rol: rolSaved,
+          color: savedColor,
+          isSolid: isSolidSaved,
+          isSelectable: isSelectableSaved,
+          mensaje: mensajeSaved,
+          collider: savedCollider,
+          camOffset: savedCamOffset,
+          playerConfig: savedPlayerConfig
         };
+
         mesh.isPickable = true;
         mesh.checkCollisions = isSolidSaved;
-
         mesh.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
         mesh.ellipsoidOffset = new Vector3(savedCollider.offsetX * obj.scale.x, savedCollider.offsetY * obj.scale.y, savedCollider.offsetZ * obj.scale.z);
 
-        const mat = new StandardMaterial("mat_" + obj.name, scene);
+        const mat = new StandardMaterial('mat_' + obj.name, scene);
         mat.diffuseColor = Color3.FromHexString(savedColor);
-        if (rolSaved === 'spawn_point') { mat.alpha = 0.5; mat.emissiveColor = new Color3(0, 1, 0); }
+        if (rolSaved === 'spawn_point') {
+          mat.alpha = 0.5;
+          mat.emissiveColor = new Color3(0, 1, 0);
+        }
         mesh.material = mat;
       }
     });
+
     this.actualizarListaNodos();
   }
 
   obtenerDatosParaGuardar(): any[] {
     return this.state.nodosEscena().map(nodo => {
       if (nodo instanceof AbstractMesh && nodo.metadata?.type) {
-        let rot = nodo.rotationQuaternion ? nodo.rotationQuaternion.toEulerAngles() : nodo.rotation;
-        let baseData = {
+        const rot = nodo.rotationQuaternion ? nodo.rotationQuaternion.toEulerAngles() : nodo.rotation;
+        const baseData = {
           name: nodo.name,
           position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
           rotation: { x: rot.x, y: rot.y, z: rot.z },
@@ -286,12 +348,14 @@ export class EditorSceneService {
         };
 
         const propertiesToSave = {
-            rol: nodo.metadata.rol,
-            isSolid: nodo.metadata.isSolid,
-            isSelectable: nodo.metadata.isSelectable,
-            mensaje: nodo.metadata.mensaje,
-            collider: nodo.metadata.collider, // 🔥 Ahora se guarda bien
-            camOffset: nodo.metadata.camOffset
+          rol: nodo.metadata.rol,
+          isSolid: nodo.metadata.isSolid,
+          isSelectable: nodo.metadata.isSelectable,
+          mensaje: nodo.metadata.mensaje,
+          collider: nodo.metadata.collider,
+          camOffset: nodo.metadata.camOffset,
+          playerConfig: nodo.metadata.playerConfig || null,
+          animationNames: nodo.metadata.animationNames || []
         };
 
         if (nodo.metadata.type === 'model') {
@@ -302,6 +366,7 @@ export class EditorSceneService {
             properties: { path: nodo.metadata.path, ...propertiesToSave }
           };
         }
+
         return {
           ...baseData,
           type: nodo.metadata.type,
@@ -309,7 +374,7 @@ export class EditorSceneService {
         };
       }
       return null;
-    }).filter(n => n !== null);
+    }).filter(Boolean);
   }
 
   eliminarSeleccionado(): void {
@@ -326,17 +391,20 @@ export class EditorSceneService {
     if (!this.motor3d.scene) return;
     const scene = this.motor3d.scene;
     this.state.nodosEscena.set([
-      ...scene.cameras, ...scene.lights,
+      ...scene.cameras,
+      ...scene.lights,
       ...scene.meshes.filter(m =>
         !['ejeX', 'ejeY', 'ejeZ', 'gridHelper', 'sueloInvisible'].includes(m.name) &&
-        !m.name.includes('gizmo') && !m.name.includes('highlight') && m.parent === null
+        !m.name.includes('gizmo') &&
+        !m.name.includes('highlight') &&
+        m.parent === null
       )
     ]);
   }
 
   limpiarEstado(): void {
-    this.state.nodosEscena().forEach((nodo) => { 
-      if (nodo instanceof AbstractMesh && nodo.name !== "sueloInvisible") nodo.dispose(false, true); 
+    this.state.nodosEscena().forEach((nodo) => {
+      if (nodo instanceof AbstractMesh && nodo.name !== 'sueloInvisible') nodo.dispose(false, true);
     });
     this.state.nodosEscena.set([]);
   }

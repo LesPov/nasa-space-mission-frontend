@@ -17,7 +17,7 @@ import { debounceTime, Subscription, Subject } from 'rxjs';
   imports: [MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule, MiniVisorEscena],
   templateUrl: './editor-escena.html',
   styleUrl: './editor-escena.css',
-})
+}) 
 export class EditorEscena implements OnInit, OnDestroy {
   public editorSvc = inject(EditorMapaService);
   public motor3dSvc = inject(Motor3dService);

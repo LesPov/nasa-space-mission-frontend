@@ -112,6 +112,8 @@ export class EditorPlayerService {
   private inputMap: Record<string, boolean> = {};
   private tecladoObserver: Observer<KeyboardInfo> | null = null;
   private tpsUpdateObserver: Observer<Scene> | null = null;
+  
+  private previewObserver: Observer<Scene> | null = null;
   private configSyncSub: Subscription | null = null;
 
   private activeSequenceId: string | null = null;
@@ -120,6 +122,9 @@ export class EditorPlayerService {
   private activeSequenceStepEntered = false;
   private activeSequenceWasRunning = false;
   private sequenceJumpTriggered = false;
+
+  // 🔥 NUEVO: Control para evitar que la tecla E se spammee
+  private eKeyPressed = false;
 
   constructor() {
     document.addEventListener('pointerlockchange', () => {
@@ -276,7 +281,9 @@ export class EditorPlayerService {
       if (found) return found;
     }
 
-    return seqs[0] || null;
+    // 🔥 FIX: Antes devolvía seqs[0] haciendo que siempre se autoreprodujera la primera secuencia.
+    // Ahora retorna null para que no pase nada a menos que se active explícitamente.
+    return null;
   }
 
   private resetSequenceRuntime(): void {
@@ -286,6 +293,21 @@ export class EditorPlayerService {
     this.activeSequenceStepEntered = false;
     this.activeSequenceWasRunning = false;
     this.sequenceJumpTriggered = false;
+  }
+
+  // 🔥 NUEVO: Función para iniciar una secuencia desde la interacción (Tecla E)
+  private iniciarSecuenciaEnJuego(sequenceId: string) {
+    const seqs = this.getSequenceList();
+    if (seqs.some(s => s.id === sequenceId)) {
+        this.activeSequenceId = sequenceId;
+        this.activeSequenceIndex = 0;
+        this.activeSequenceElapsedMs = 0;
+        this.activeSequenceStepEntered = true;
+        this.velocidadY = 0; // Estabiliza al jugador al iniciar
+        this.log(`Secuencia iniciada via interacción: ${sequenceId}`);
+    } else {
+        this.log(`Secuencia no encontrada en el jugador: ${sequenceId}`);
+    }
   }
 
   private syncSequenceStateFromConfig(): PlayerClipSequence | null {
@@ -396,13 +418,6 @@ export class EditorPlayerService {
     if (this.activeSequenceStepEntered) {
       this.enterSequenceStep(step);
       this.activeSequenceStepEntered = false;
-      this.log('SEQUENCE STEP ENTER', {
-        sequence: sequence.name,
-        index: this.activeSequenceIndex,
-        action: step.action,
-        durationMs: step.durationMs,
-        clipOverride: step.clipOverride
-      });
     }
 
     const animationOverride = this.resolveSequenceStepAnimation(step);
@@ -514,6 +529,44 @@ export class EditorPlayerService {
     if (this.animRun) this.animRun.speedRatio = 1.0;
     if (this.animClimb) this.animClimb.speedRatio = 0.88;
     if (this.animClimbFinish) this.animClimbFinish.speedRatio = 0.9;
+  }
+
+  public iniciarPreviewSecuencia(mesh: AbstractMesh, sequenceId: string) {
+    this.detenerPreviewSecuencia(); 
+
+    const trueMesh = mesh as Mesh;
+    this.loadPlayerConfigFromMetadata(trueMesh);
+    this.syncAnimationsFromMetadata(this.motor3d.scene, trueMesh);
+
+    this.activeSequenceId = sequenceId;
+    this.activeSequenceIndex = 0;
+    this.activeSequenceElapsedMs = 0;
+    this.activeSequenceStepEntered = true;
+
+    this.previewObserver = this.motor3d.scene.onBeforeRenderObservable.add(() => {
+      const dtMs = this.motor3d.scene.getEngine().getDeltaTime();
+      const seq = this.syncSequenceStateFromConfig();
+      const runtime = this.updateSequencePlayback(dtMs, seq, trueMesh);
+
+      if (runtime.running && runtime.animationOverride) {
+        this.playAnim(runtime.animationOverride, runtime.loop, runtime.blend);
+      } else if (!runtime.running) {
+        this.playAnim(this.animIdle, true, 0.1);
+      }
+    });
+  }
+
+  public detenerPreviewSecuencia() {
+    if (this.previewObserver) {
+      this.motor3d.scene.onBeforeRenderObservable.remove(this.previewObserver);
+      this.previewObserver = null;
+    }
+    this.resetSequenceRuntime();
+    if (this.animActual) {
+       this.animActual.stop();
+       this.animActual = null;
+    }
+    this.animacionesJugador.forEach(a => a.stop());
   }
 
   iniciarModoJuego(vista: 'FPS' | 'TPS') {
@@ -705,6 +758,53 @@ export class EditorPlayerService {
       this.pullUpDuration = liveConfig.climb.pullUpDuration;
       this.postClimbLockFramesRemaining = 0;
 
+      const activeCamera = scene.activeCamera;
+      if (!activeCamera) return;
+
+      const forward = activeCamera.getDirection(Vector3.Forward());
+      forward.y = 0;
+      forward.normalize();
+
+      const right = activeCamera.getDirection(Vector3.Right());
+      right.y = 0;
+      right.normalize();
+
+      jugador.computeWorldMatrix(true);
+      const localCapsuleCenter = new Vector3(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ);
+      const capsuleCenter = Vector3.TransformCoordinates(localCapsuleCenter, jugador.getWorldMatrix());
+
+      const collFn = (m: AbstractMesh) =>
+        m.checkCollisions &&
+        m !== jugador &&
+        !this.state.isDescendant(m, jugador) &&
+        !m.name.includes('gridHelper');
+
+      // 🔥 LOGICA DE INTERACCIÓN (RAYCAST HACIA ADELANTE Y TECLA E)
+      const interactRay = new Ray(capsuleCenter, forward, 2.5);
+      const interactHit = scene.pickWithRay(interactRay, collFn);
+      let canInteract = false;
+      let targetInteractRoot: AbstractMesh | null = null;
+
+      if (interactHit && interactHit.hit && interactHit.pickedMesh) {
+          targetInteractRoot = this.state.encontrarRaiz(interactHit.pickedMesh as AbstractMesh) as AbstractMesh | null;
+          if (targetInteractRoot && targetInteractRoot.metadata?.interactSequenceId) {
+              canInteract = true;
+          }
+      }
+      this.state.mirandoObjetoInteractuable.set(canInteract);
+
+      const isEPressed = !!this.inputMap['e'];
+      if (isEPressed && !this.eKeyPressed) {
+          this.eKeyPressed = true;
+          if (canInteract && targetInteractRoot) {
+              const seqId = targetInteractRoot.metadata.interactSequenceId;
+              this.iniciarSecuenciaEnJuego(seqId);
+          }
+      } else if (!isEPressed) {
+          this.eKeyPressed = false;
+      }
+      // 🔥 FIN DE LOGICA DE INTERACCIÓN
+
       const dtMs = scene.getEngine().getDeltaTime();
       const sequence = this.syncSequenceStateFromConfig();
       const seqRuntime = this.updateSequencePlayback(dtMs, sequence, jugador);
@@ -783,9 +883,6 @@ export class EditorPlayerService {
           this.isRecoveringFromFall = false;
         }
       } else {
-        const activeCamera = scene.activeCamera;
-        if (!activeCamera) return;
-
         if (this.postClimbLockFramesRemaining > 0) {
           isGrounded = true;
           this.isJumping = false;
@@ -793,14 +890,6 @@ export class EditorPlayerService {
           move = Vector3.Zero();
           move.y = 0;
         } else {
-          const forward = activeCamera.getDirection(Vector3.Forward());
-          forward.y = 0;
-          forward.normalize();
-
-          const right = activeCamera.getDirection(Vector3.Right());
-          right.y = 0;
-          right.normalize();
-
           if (!this.isHardLanding) {
             if (effectiveInput['w']) move.addInPlace(forward);
             if (effectiveInput['s']) move.subtractInPlace(forward);
@@ -836,17 +925,7 @@ export class EditorPlayerService {
             }
           }
 
-          jugador.computeWorldMatrix(true);
-          const localCapsuleCenter = new Vector3(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ);
-          const capsuleCenter = Vector3.TransformCoordinates(localCapsuleCenter, jugador.getWorldMatrix());
-
           const rayCol = new Ray(capsuleCenter, Vector3.Down(), this.playerHalfHeight + (0.15 * scaleNow.y));
-          const collFn = (m: AbstractMesh) =>
-            m.checkCollisions &&
-            m !== jugador &&
-            !this.state.isDescendant(m, jugador) &&
-            !m.name.includes('gridHelper');
-
           const hitInfo = scene.pickWithRay(rayCol, collFn);
           isGrounded = hitInfo ? hitInfo.hit : false;
 
@@ -1206,6 +1285,7 @@ export class EditorPlayerService {
     this.tecladoObserver = null;
     this.tpsUpdateObserver = null;
     this.inputMap = {};
+    this.eKeyPressed = false;
     this.resetSequenceRuntime();
 
     this.state.objetoHovereado.set(null);
@@ -1263,6 +1343,7 @@ export class EditorPlayerService {
     this.velocidadY = -0.1;
     this.highestY = -9999;
     this.idleTime = 0;
+    this.eKeyPressed = false;
     this.state.mirandoObjetoInteractuable.set(false);
     this.resetSequenceRuntime();
     this.playAnim(this.animIdle, true);

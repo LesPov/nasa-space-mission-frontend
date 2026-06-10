@@ -214,6 +214,8 @@ export class EditorSceneService {
       const isSolidSaved = obj.properties?.isSolid ?? true;
       const isSelectableSaved = obj.properties?.isSelectable ?? true;
       const mensajeSaved = obj.properties?.mensaje || '';
+      
+      // 🔥 FIX: AHORA SÍ LEEMOS EL ID DE SECUENCIA DESDE LA BASE DE DATOS
       const interactSequenceIdSaved = obj.properties?.interactSequenceId || '';
 
       const savedCollider = obj.properties?.collider || obj.properties?.capsule || { ...defaultCollider };
@@ -281,6 +283,7 @@ export class EditorSceneService {
             isSolid: isSolidSaved,
             isSelectable: isSelectableSaved,
             mensaje: mensajeSaved,
+            interactSequenceId: interactSequenceIdSaved, // 🔥 ASIGNADO A METADATA
             animationNames: anims.map(a => a.name),
             collider: savedCollider,
             camOffset: savedCamOffset,
@@ -316,6 +319,7 @@ export class EditorSceneService {
           isSolid: isSolidSaved,
           isSelectable: isSelectableSaved,
           mensaje: mensajeSaved,
+          interactSequenceId: interactSequenceIdSaved, // 🔥 ASIGNADO A METADATA
           collider: savedCollider,
           camOffset: savedCamOffset,
           playerConfig: savedPlayerConfig

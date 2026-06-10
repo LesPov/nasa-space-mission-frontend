@@ -363,6 +363,12 @@ export class InspectorEscena implements OnInit, OnDestroy {
     this.editorSvc.triggerUpdate();
   }
 
+  // 🔥 FIX: Botón manual para dar tranquilidad al usuario de que se guardó
+  aplicarInteraccionYForzarGuardado() {
+    this.aplicarInteraccion();
+    this.animStatus = '✅ Interacción y secuencias guardadas en el objeto';
+  }
+
   aplicarCamara() {
     const obj = this.getSelectedMesh(); if (!obj) return;
     if (!obj.metadata) obj.metadata = {};
@@ -509,7 +515,6 @@ export class InspectorEscena implements OnInit, OnDestroy {
     this.animStatus = `Nueva secuencia creada: ${seq.name}`;
   }
 
-  // 🔥 SOLUCIÓN: Agregada la función que faltaba
   crearSecuenciaBasicaCaminarSaltar() {
     const seq = createPlayerSequence(`Demo Salto ${this.sequences.length + 1}`);
     seq.steps = [
@@ -526,6 +531,23 @@ export class InspectorEscena implements OnInit, OnDestroy {
     const obj = this.getSelectedMesh();
     if (obj) this.persistSequences(obj);
     this.animStatus = `Secuencia Demo (Salto) creada`;
+  }
+
+  // 🔥 NUEVA SECUENCIA CINEMÁTICA PARA ESCALAR
+  crearSecuenciaBasicaEscalar() {
+    const seq = createPlayerSequence(`Demo Escalar ${this.sequences.length + 1}`);
+    seq.steps = [
+      { ...createSequenceStep('climbUp'), durationMs: 800, offsetY: 1.5, offsetForward: 0.2 },
+      { ...createSequenceStep('climbFinish'), durationMs: 600, offsetY: 0.5, offsetForward: 0.4 },
+      { ...createSequenceStep('idle'), durationMs: 500, offsetY: 0, offsetForward: 0 }
+    ];
+    this.sequences = [...this.sequences, seq];
+    this.selectedSequenceId = seq.id;
+    this.selectedStepIndex = 0;
+    
+    const obj = this.getSelectedMesh();
+    if (obj) this.persistSequences(obj);
+    this.animStatus = `Secuencia Demo (Escalar) creada`;
   }
 
   duplicarSecuencia(seq: PlayerClipSequence) {
@@ -609,6 +631,16 @@ export class InspectorEscena implements OnInit, OnDestroy {
     this.playerConfig.sequences = this.cloneJson(this.sequences);
     this.persistPlayerConfig(obj);
     this.animStatus = 'Configuración completa guardada';
+  }
+
+  // 🔥 NUEVA FUNCIÓN PARA COPIAR EL ID DE LA SECUENCIA
+  copiarIdSecuencia(id: string) {
+    navigator.clipboard.writeText(id).then(() => {
+      this.animStatus = '✅ ID copiado al portapapeles';
+      this.cdr.detectChanges();
+    }).catch(err => {
+      this.animStatus = '❌ Error al copiar ID';
+    });
   }
 
   // NAVEGACIÓN BÁSICA

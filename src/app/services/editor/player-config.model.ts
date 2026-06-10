@@ -26,6 +26,8 @@ export interface PlayerSequenceStep {
   loop: boolean;
   allowMovement: boolean;
   lockInput: boolean;
+  offsetY: number; // 🔥 NUEVO: Movimiento Vertical Cinemático
+  offsetForward: number; // 🔥 NUEVO: Movimiento Frontal Cinemático
 }
 
 export interface PlayerClipSequence {
@@ -262,7 +264,9 @@ export function createSequenceStep(action: PlayerActionKey = 'idle'): PlayerSequ
     blend: 0.08,
     loop: true,
     allowMovement: true,
-    lockInput: false
+    lockInput: false,
+    offsetY: 0,
+    offsetForward: 0
   };
 }
 

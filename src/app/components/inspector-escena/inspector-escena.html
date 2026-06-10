@@ -126,11 +126,13 @@
                 <p class="help-text">Con la tecla I, el jugador abrirá este texto cuando el objeto esté cerca o bajo la mira.</p>
               </div>
               <div class="field wide">
-                <label>ID de Secuencia (Ejecutar en el jugador al pulsar E)</label>
-                <input type="text" [(ngModel)]="objInteractSequenceId" placeholder="Pega aquí el ID de la secuencia..." (ngModelChange)="aplicarInteraccion()" />
-                <p class="help-text">Cuando el jugador se acerque a este objeto y pulse E, ejecutará la secuencia que pegues aquí.</p>
+                <label>ID(s) de Secuencia (separados por coma)</label>
+                <textarea rows="2" [(ngModel)]="objInteractSequenceId" placeholder="Ej: id_subir, id_bajar" (ngModelChange)="aplicarInteraccion()"></textarea>
+                <p class="help-text">Si pegas varios IDs separados por coma, el jugador alternará entre ellos cada vez que pulse la tecla E (ideal para Subir y Bajar).</p>
               </div>
             </div>
+            <!-- 🔥 BOTÓN PARA GUARDAR Y DAR TRANQUILIDAD AL USUARIO -->
+            <button class="btn-primary full" style="margin-top: 10px;" (click)="aplicarInteraccionYForzarGuardado()">💾 Guardar Interacción</button>
           </div>
 
           <button class="btn-danger full" (click)="eliminarObjeto()">Eliminar objeto</button>
@@ -425,6 +427,8 @@
             <div class="actions-row wrap">
               <button class="btn-primary" (click)="nuevaSecuencia()">+ Nueva</button>
               <button class="btn-ghost" (click)="crearSecuenciaBasicaCaminarSaltar()">+ Demo (Salto)</button>
+              <!-- 🔥 NUEVO BOTÓN -->
+              <button class="btn-ghost" (click)="crearSecuenciaBasicaEscalar()">+ Demo (Escalar)</button>
             </div>
  
             <div class="sequence-list">
@@ -441,15 +445,17 @@
 
             <div class="sequence-editor" *ngIf="currentSequence; else noSequenceSelected">
               
-              <!-- 🔥 MOVIDO: ACTIVADOR DE REPETICIÓN -->
               <div class="field wide" style="margin-top: 10px;">
                 <label>Nombre de la Secuencia</label>
                 <input type="text" [(ngModel)]="currentSequence.name" (ngModelChange)="actualizarPasoSeleccionado()" />
               </div>
-              <div class="field wide" style="margin-bottom: 10px;">
-                <label style="color: #60a5fa; cursor: pointer; user-select: text;">ID: {{ currentSequence.id }}</label>
-                <span class="help-text">Copia este ID y pégalo en el objeto que activará esta secuencia.</span>
+
+              <!-- 🔥 BOTÓN PARA COPIAR EL ID FÁCILMENTE -->
+              <div class="field wide" style="margin-bottom: 10px; display: flex; align-items: center; gap: 10px;">
+                <label style="color: #60a5fa; margin: 0;">ID: {{ currentSequence.id }}</label>
+                <button class="btn-secondary small" style="padding: 4px 8px; font-size: 10px;" (click)="copiarIdSecuencia(currentSequence.id)">📋 Copiar</button>
               </div>
+
               <div class="field wide" style="margin-top: 5px; margin-bottom: 10px;">
                 <label style="display: flex; align-items: center; gap: 8px; color: #d6d6d6; font-size: 13px; cursor: pointer;">
                   <input type="checkbox" [(ngModel)]="currentSequence.repeat" (ngModelChange)="actualizarPasoSeleccionado()" style="width: 16px; height: 16px; cursor: pointer;" />
@@ -489,6 +495,17 @@
                       <label>Duración (ms)</label>
                       <input type="number" step="50" [(ngModel)]="step.durationMs" (ngModelChange)="actualizarPaso()" />
                     </div>
+                    
+                    <!-- 🔥 NUEVOS CAMPOS CINEMÁTICOS PARA DESPLAZAR EN Y/Z -->
+                    <div class="field">
+                      <label>Elevar (Y m)</label>
+                      <input type="number" step="0.1" [(ngModel)]="step.offsetY" (ngModelChange)="actualizarPaso()" />
+                    </div>
+                    <div class="field">
+                      <label>Avanzar (Z m)</label>
+                      <input type="number" step="0.1" [(ngModel)]="step.offsetForward" (ngModelChange)="actualizarPaso()" />
+                    </div>
+
                     <div class="field wide">
                       <label>Forzar Clip (Opcional)</label>
                       <input type="text" [(ngModel)]="step.clipOverride" placeholder="Ej: jump_start_02" (ngModelChange)="actualizarPaso()" />

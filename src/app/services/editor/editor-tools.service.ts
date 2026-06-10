@@ -207,7 +207,6 @@ export class EditorToolsService {
           const rootNode = resolverRootDesdeRay(ray);
 
           if (rootNode) {
-            // 🔥 AQUÍ QUITÉ LA CÁMARA CENTRADA (Ahora solo lo selecciona)
             this.state.objetoSeleccionado.set(rootNode);
           } else {
             this.state.objetoSeleccionado.set(null);
@@ -444,7 +443,17 @@ export class EditorToolsService {
     else clon.rotation = objOriginal.rotation.clone();
 
     clon.scaling = objOriginal.scaling.clone();
+    
+    // 🔥 FIX METADATA CLONING: Mantiene la data y re-instancia Vectores
     clon.metadata = JSON.parse(JSON.stringify(objOriginal.metadata));
+    if (objOriginal.metadata?.initialHeadLocal) {
+        clon.metadata.initialHeadLocal = new Vector3(
+            objOriginal.metadata.initialHeadLocal.x,
+            objOriginal.metadata.initialHeadLocal.y,
+            objOriginal.metadata.initialHeadLocal.z
+        );
+    }
+    
     clon.isPickable = true;
 
     this.sceneSvc.actualizarListaNodos();

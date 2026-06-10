@@ -3,7 +3,7 @@ import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
 import { ToolbarEscena } from '../../../components/toolbar-escena/toolbar-escena';
 import { EditorMapaService } from '../../../services/editor-mapa.service';
-import { EditorStateService } from '../../../services/editor/editor-state.service'; // 🔥 IMPORTACIÓN CORREGIDA
+import { EditorStateService } from '../../../services/editor/editor-state.service'; 
 import { Motor3dService } from '../../../services/motor-3d.service';
 import { LayoutService } from '../../../services/layout.service';
 import { EpisodiosService } from '../../../services/api/episodios'; 
@@ -20,7 +20,7 @@ import { debounceTime, Subscription, Subject } from 'rxjs';
   styleUrl: './editor-escena.css',
 }) 
 export class EditorEscena implements OnInit, OnDestroy {
-  public stateSvc = inject(EditorStateService); // 🔥 INYECCIÓN CORREGIDA
+  public stateSvc = inject(EditorStateService); 
   public editorSvc = inject(EditorMapaService);
   public motor3dSvc = inject(Motor3dService);
   public layoutSvc = inject(LayoutService);
@@ -69,7 +69,6 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.cargarEpisodios();
     this.cargarAssets();
 
-    // 🔥 Guardado automático perfeccionado a 1 segundo.
     this.autoSaveSub = this.editorSvc.onMapChanged.pipe(
       debounceTime(1000) 
     ).subscribe(() => {
@@ -82,6 +81,12 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   @HostListener('window:keydown', ['$event'])
   manejarAtajos(event: KeyboardEvent) {
+    // 🔥 FIX: Evita que los atajos de teclado (como Ctrl+C o Ctrl+V) se activen si estás escribiendo en un input o textarea.
+    const target = event.target as HTMLElement | null;
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
+      return; 
+    }
+
     const state = this.editorSvc.playState();
     if (this.editando && !this.editorSvc.showAddObjectModal() && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
       if (event.ctrlKey && (event.key === 'z' || event.key === 'Z')) {

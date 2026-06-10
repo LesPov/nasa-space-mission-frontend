@@ -108,6 +108,7 @@ export class InspectorEscena implements OnInit, OnDestroy {
   camPosX = 0; camPosY = 1.6; camPosZ = 0;
 
   public objInteractSequenceId: string = '';
+  public objMensaje: string = '';
 
   public playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
   public actionRows: ActionRow[] = ACTION_ROWS;
@@ -175,7 +176,8 @@ export class InspectorEscena implements OnInit, OnDestroy {
     this.colliderSizeX = 0.5; this.colliderSizeY = 0.5; this.colliderSizeZ = 0.5;
     this.colliderOffX = 0; this.colliderOffY = 0; this.colliderOffZ = 0;
     this.camPosX = 0; this.camPosY = 1.6; this.camPosZ = 0;
-    this.objInteractSequenceId = ''; 
+    this.objInteractSequenceId = '';
+    this.objMensaje = '';
     this.playerConfig = cloneDefaultPlayerConfig();
     this.bindingInputs = this.emptyBindingInputs();
     this.bindingTokens = this.emptyBindingTokens();
@@ -254,6 +256,7 @@ export class InspectorEscena implements OnInit, OnDestroy {
     this.playerConfig = mergePlayerConfig(meta.playerConfig || null);
     
     this.objInteractSequenceId = meta.interactSequenceId || '';
+    this.objMensaje = meta.mensaje || '';
 
     this.syncBindingDraftsFromConfig();
     this.syncClipsFromObject(obj);
@@ -355,7 +358,8 @@ export class InspectorEscena implements OnInit, OnDestroy {
     const obj = this.getSelectedMesh();
     if (!obj) return;
     if (!obj.metadata) obj.metadata = {};
-    obj.metadata.interactSequenceId = this.objInteractSequenceId;
+    obj.metadata.interactSequenceId = this.objInteractSequenceId.trim();
+    obj.metadata.mensaje = this.objMensaje.trim();
     this.editorSvc.triggerUpdate();
   }
 

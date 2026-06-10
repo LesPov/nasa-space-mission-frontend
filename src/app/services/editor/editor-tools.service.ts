@@ -1,24 +1,10 @@
 import { Injectable, inject, effect } from '@angular/core';
-import {
-  Color3,
-  GizmoManager,
-  HighlightLayer,
-  Mesh,
-  PointerEventTypes,
-  Matrix,
-  AbstractMesh,
-  KeyboardEventTypes,
-  MeshBuilder,
-  StandardMaterial,
-  Vector3,
-  TransformNode
-} from '@babylonjs/core';
+import { Color3, GizmoManager, HighlightLayer, Mesh, PointerEventTypes, Matrix, AbstractMesh, KeyboardEventTypes, MeshBuilder, StandardMaterial, Vector3, TransformNode, Ray } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService, ToolMode } from './editor-state.service';
 import { HistorialService } from '../historial.service';
 import { EditorSceneService } from './editor-scene.service';
 import { EditorCameraService } from './editor-camera.service';
-import { EditorInteractionService } from './editor-interaction.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
@@ -27,7 +13,6 @@ export class EditorToolsService {
   private historialSvc = inject(HistorialService);
   private sceneSvc = inject(EditorSceneService);
   private cameraSvc = inject(EditorCameraService);
-  private interaction = inject(EditorInteractionService);
 
   private gizmoManager!: GizmoManager;
   private hlHover!: HighlightLayer;
@@ -47,13 +32,8 @@ export class EditorToolsService {
       const hovered = this.state.objetoHovereado() as Mesh;
       const subSelected = this.state.subObjetoSeleccionado();
 
-      if (!this.isDraggingGizmo) {
-          this.actualizarDebugMeshes(selected);
-      }
-
-      if (this.hlHover && this.hlSelected) {
-        this.actualizarHighlights(selected, hovered);
-      }
+      if (!this.isDraggingGizmo) this.actualizarDebugMeshes(selected);
+      if (this.hlHover && this.hlSelected) this.actualizarHighlights(selected, hovered);
 
       if (this.gizmoManager) {
         const modoJuego = this.state.playState();
@@ -65,15 +45,10 @@ export class EditorToolsService {
             return;
         }
 
-        if (subSelected === 'collider' && this.debugCollider) {
-            this.gizmoManager.attachToMesh(this.debugCollider);
-        } else if (subSelected === 'camera' && this.debugCameraBox) {
-            this.gizmoManager.attachToMesh(this.debugCameraBox);
-        } else if (selected && !subSelected) {
-            this.gizmoManager.attachToMesh(selected);
-        } else {
-            this.gizmoManager.attachToMesh(null);
-        }
+        if (subSelected === 'collider' && this.debugCollider) this.gizmoManager.attachToMesh(this.debugCollider);
+        else if (subSelected === 'camera' && this.debugCameraBox) this.gizmoManager.attachToMesh(this.debugCameraBox);
+        else if (selected && !subSelected) this.gizmoManager.attachToMesh(selected);
+        else this.gizmoManager.attachToMesh(null);
         
         this.actualizarGizmosActivos();
       }
@@ -102,7 +77,6 @@ export class EditorToolsService {
     this.gizmoManager = new GizmoManager(scene);
     this.gizmoManager.usePointerToAttachGizmos = false;
     this.gizmoManager.clearGizmoOnEmptyPointerEvent = true;
-
     this.gizmoManager.positionGizmoEnabled = true;
     this.gizmoManager.rotationGizmoEnabled = true;
     this.gizmoManager.scaleGizmoEnabled = true;
@@ -135,7 +109,6 @@ export class EditorToolsService {
           parent.metadata.camOffset.y = mesh.position.y;
           parent.metadata.camOffset.z = mesh.position.z;
       }
-      
       this.state.onGizmoDrag.next(); 
     };
 
@@ -149,27 +122,15 @@ export class EditorToolsService {
           parent.metadata.collider.sizeY *= mesh.scaling.y;
           parent.metadata.collider.sizeZ *= mesh.scaling.z;
           mesh.scaling.set(1, 1, 1);
-          
           this.actualizarDebugMeshes(parent);
           this.gizmoManager.attachToMesh(this.debugCollider); 
-          
-          queueMicrotask(() => {
-            this.state.onGizmoDrag.next();
-            this.state.triggerUpdate(); 
-          });
+          queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
       } else if (mesh === this.debugCameraBox && parent) {
-          queueMicrotask(() => {
-            this.state.onGizmoDrag.next();
-            this.state.triggerUpdate(); 
-          });
+          queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
       } else if (mesh && this.estadoAntesDeArrastrar) {
         this.historialSvc.registrarAccionTransform(mesh, this.estadoAntesDeArrastrar);
         this.estadoAntesDeArrastrar = null;
-
-        queueMicrotask(() => {
-          this.state.onGizmoDrag.next();
-          this.state.triggerUpdate(); 
-        });
+        queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
       }
     };
 
@@ -198,16 +159,24 @@ export class EditorToolsService {
       }
     });
 
-    // 🔥 PREDICADO MEJORADO PARA EL RAYCAST (IGNORA PAREDES INVISIBLES Y CAPSULAS)
     const pickingPredicate = (m: AbstractMesh) => {
       if (!m || !m.name) return false;
-      if (this.state.jugadorActivo && (m === this.state.jugadorActivo || this.state.isDescendant(m, this.state.jugadorActivo))) return false;
-      if (m.name.includes("sueloInvisible") || m.name.includes("gridHelper") || m.name.includes("cameraPivot")) return false;
-      if (m.name.toLowerCase().includes("gizmo") || m.name.toLowerCase().includes("highlight") || m.name.toLowerCase().includes("debug")) return false;
-      
-      if (m.name.includes("proxyCol")) return false; // Ignora los cuerpos de colisión físicos
-      
-      return m.isVisible || m.isPickable; // Busca la primera malla real visible
+      if (this.state.esMeshIgnorable(m)) return false;
+      return m.isVisible || m.isPickable;
+    };
+
+    const resolverRootDesdeRay = (ray: any): AbstractMesh | null => {
+      const picks = scene.multiPickWithRay(ray, pickingPredicate) || [];
+      for (const hit of picks) {
+        const picked = hit.pickedMesh as AbstractMesh | null;
+        if (!picked) continue;
+        const rootNode = this.state.encontrarRaiz(picked);
+        if (!(rootNode instanceof AbstractMesh)) continue;
+        if (this.state.esMeshIgnorable(rootNode)) continue;
+        if (!this.state.puedeSeleccionarse(rootNode)) continue;
+        return rootNode;
+      }
+      return null;
     };
 
     scene.onPointerObservable.add((pi) => {
@@ -223,23 +192,13 @@ export class EditorToolsService {
             return;
           }
 
-          if (this.state.modoVistaPrueba === 'FPS') {
-            const w = this.motor3d.engine.getRenderWidth();
-            const h = this.motor3d.engine.getRenderHeight();
-            const crosshairRay = scene.createPickingRay(w / 2, h / 2, Matrix.Identity(), scene.activeCamera);
-            
-            const hitInfo = scene.pickWithRay(crosshairRay, pickingPredicate);
+          // 🔥 FIX ADMIN CLICK: Solo el Admin entra a editar al dar click. Los Usuarios ahora usan Tecla 'I'
+          if (this.state.rolSimulado() === 'admin' && this.state.modoVistaPrueba === 'FPS') {
+            const cam = scene.activeCamera!;
+            const ray = new Ray(cam.globalPosition, cam.getDirection(Vector3.Forward()), 20.0);
+            const rootNode = resolverRootDesdeRay(ray);
 
-            if (hitInfo && hitInfo.hit && hitInfo.pickedMesh && this.state.puedeSeleccionarse(hitInfo.pickedMesh as AbstractMesh)) {
-              const rootNode = this.state.encontrarRaiz(hitInfo.pickedMesh as AbstractMesh);
-              if (rootNode) {
-                if (this.state.rolSimulado() === 'admin') {
-                  this.cameraSvc.transicionAEdicionEnVivo(rootNode);
-                } else {
-                  this.interaction.abrirInteraccionJugador(rootNode);
-                }
-              }
-            }
+            if (rootNode) this.cameraSvc.transicionAEdicionEnVivo(rootNode);
           }
           return;
         }
@@ -251,13 +210,10 @@ export class EditorToolsService {
           const hitGizmo = scene.pickWithRay(ray, (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo'));
           if (hitGizmo && hitGizmo.hit) return;
 
-          const hitInfo = scene.pickWithRay(ray, pickingPredicate);
+          const rootNode = resolverRootDesdeRay(ray);
 
-          if (hitInfo && hitInfo.hit && hitInfo.pickedMesh && this.state.puedeSeleccionarse(hitInfo.pickedMesh as AbstractMesh)) {
-            const rootNode = this.state.encontrarRaiz(hitInfo.pickedMesh as AbstractMesh);
-            if (rootNode) {
-              this.state.objetoSeleccionado.set(rootNode);
-            }
+          if (rootNode) {
+            this.state.objetoSeleccionado.set(rootNode);
           } else {
             this.state.objetoSeleccionado.set(null);
             if (playSt === 'EDITING_IN_GAME') {
@@ -279,16 +235,8 @@ export class EditorToolsService {
             return;
           }
 
-          const hitInfo = scene.pickWithRay(ray, pickingPredicate);
-
-          if (hitInfo && hitInfo.hit && hitInfo.pickedMesh && this.state.puedeSeleccionarse(hitInfo.pickedMesh as AbstractMesh)) {
-            const rootNode = this.state.encontrarRaiz(hitInfo.pickedMesh as AbstractMesh);
-            if (rootNode && rootNode instanceof AbstractMesh) {
-              this.state.objetoHovereado.set(rootNode);
-            }
-          } else {
-            this.state.objetoHovereado.set(null);
-          }
+          const rootNode = resolverRootDesdeRay(ray);
+          this.state.objetoHovereado.set(rootNode);
         }
       }
     });
@@ -315,9 +263,7 @@ export class EditorToolsService {
     }
 
     this.state.onMapChanged.subscribe(() => {
-      if (!this.isDraggingGizmo) {
-        this.actualizarDebugMeshes(this.state.objetoSeleccionado() as Mesh);
-      }
+      if (!this.isDraggingGizmo) this.actualizarDebugMeshes(this.state.objetoSeleccionado() as Mesh);
     });
 
     scene.onBeforeRenderObservable.add(() => {
@@ -325,7 +271,6 @@ export class EditorToolsService {
         if (!obj || this.isDraggingGizmo) return;
 
         let breathX = 0, breathY = 0, breathZ = 0;
-
         if (obj.metadata?.initialHeadLocal) {
             const headNode = obj.getChildTransformNodes(false).find((n: any) => 
                 n.name.toLowerCase() === 'head' || 
@@ -367,18 +312,12 @@ export class EditorToolsService {
     }
 
     const scene = this.motor3d.scene;
-    
     const colMeta = selected.metadata?.collider;
     if (colMeta && colMeta.type !== 'mesh') {
       if (this.debugCollider) this.debugCollider.dispose(); 
-      
-      if (colMeta.type === 'capsule') {
-          this.debugCollider = MeshBuilder.CreateCapsule("debugCollider", { radius: colMeta.sizeX, height: colMeta.sizeY * 2 }, scene);
-      } else if (colMeta.type === 'sphere') {
-          this.debugCollider = MeshBuilder.CreateSphere("debugCollider", { diameterX: colMeta.sizeX * 2, diameterY: colMeta.sizeY * 2, diameterZ: colMeta.sizeZ * 2 }, scene);
-      } else {
-          this.debugCollider = MeshBuilder.CreateBox("debugCollider", { width: colMeta.sizeX * 2, height: colMeta.sizeY * 2, depth: colMeta.sizeZ * 2 }, scene);
-      }
+      if (colMeta.type === 'capsule') this.debugCollider = MeshBuilder.CreateCapsule("debugCollider", { radius: colMeta.sizeX, height: colMeta.sizeY * 2 }, scene);
+      else if (colMeta.type === 'sphere') this.debugCollider = MeshBuilder.CreateSphere("debugCollider", { diameterX: colMeta.sizeX * 2, diameterY: colMeta.sizeY * 2, diameterZ: colMeta.sizeZ * 2 }, scene);
+      else this.debugCollider = MeshBuilder.CreateBox("debugCollider", { width: colMeta.sizeX * 2, height: colMeta.sizeY * 2, depth: colMeta.sizeZ * 2 }, scene);
       
       this.debugCollider.position = new Vector3(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ);
       this.debugCollider.parent = selected;
@@ -396,11 +335,9 @@ export class EditorToolsService {
     const camMeta = selected.metadata?.camOffset;
     if (camMeta && (selected.metadata?.rol === 'npc' || selected.metadata?.rol === 'spawn_point')) {
       if (this.debugCameraBox) this.debugCameraBox.dispose();
-      
       this.debugCameraBox = MeshBuilder.CreateBox("debugCamBox", { size: 0.25 }, scene);
       this.debugCameraBox.position = new Vector3(camMeta.x, camMeta.y, camMeta.z);
       this.debugCameraBox.parent = selected;
-      
       const matCam = new StandardMaterial("debugCamMat", scene);
       matCam.wireframe = true;
       matCam.emissiveColor = new Color3(0.9, 0.2, 0.2); 
@@ -414,18 +351,11 @@ export class EditorToolsService {
 
   private manejarCtrlZGlobal = (event: KeyboardEvent) => {
     const state = this.state.playState();
-
     if (!(state === 'EDITOR' || state === 'EDITING_IN_GAME')) return;
     if (!event.ctrlKey && !event.metaKey) return;
-
-    const key = event.key.toLowerCase();
-    if (key !== 'z') return;
-
+    if (event.key.toLowerCase() !== 'z') return;
     const target = event.target as HTMLElement | null;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-      return;
-    }
-
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
     event.preventDefault();
     event.stopPropagation();
     this.deshacerAccion();
@@ -438,54 +368,39 @@ export class EditorToolsService {
 
   private actualizarGizmosActivos(): void {
     if (!this.gizmoManager) return;
-
     this.gizmoManager.positionGizmoEnabled = false;
     this.gizmoManager.rotationGizmoEnabled = false;
     this.gizmoManager.scaleGizmoEnabled = false;
 
     const modo = this.state.playState();
-    if (modo === 'PLAYING' || modo === 'INTERACTING' || modo === 'TRANSITIONING') {
-      return;
-    }
+    if (modo === 'PLAYING' || modo === 'INTERACTING' || modo === 'TRANSITIONING') return;
 
     if (this.state.objetoSeleccionado() || this.state.subObjetoSeleccionado()) {
       switch (this.state.currentTool()) {
-        case 'translate':
-          this.gizmoManager.positionGizmoEnabled = true;
-          break;
+        case 'translate': this.gizmoManager.positionGizmoEnabled = true; break;
         case 'rotate':
-          if (this.state.subObjetoSeleccionado()) {
-              this.gizmoManager.rotationGizmoEnabled = false; 
-          } else {
+          if (this.state.subObjetoSeleccionado()) this.gizmoManager.rotationGizmoEnabled = false; 
+          else {
               this.gizmoManager.rotationGizmoEnabled = true;
-              if (this.gizmoManager.gizmos.rotationGizmo) {
-                this.gizmoManager.gizmos.rotationGizmo.updateGizmoRotationToMatchAttachedMesh = false;
-              }
+              if (this.gizmoManager.gizmos.rotationGizmo) this.gizmoManager.gizmos.rotationGizmo.updateGizmoRotationToMatchAttachedMesh = false;
           }
           break;
-        case 'scale':
-          this.gizmoManager.scaleGizmoEnabled = true;
-          break;
+        case 'scale': this.gizmoManager.scaleGizmoEnabled = true; break;
       }
     }
   }
 
-  // 🔥 SOLUCIÓN DEFINITIVA A LOS BORDES EN MODELOS COMPLETOS E IGNORADO PARA USUARIOS NORMALES
   private actualizarHighlights(selected: Mesh | null, hovered: Mesh | null): void {
     if (!this.hlHover || !this.hlSelected) return;
 
     this.hlHover.removeAllMeshes();
     this.hlSelected.removeAllMeshes();
 
-    // Si estamos jugando y el rol es 'user', no mostramos los bordes azul/amarillo.
-    if (this.state.playState() !== 'EDITOR' && this.state.rolSimulado() === 'user') {
-        return;
-    }
+    if (this.state.playState() !== 'EDITOR' && this.state.rolSimulado() === 'user') return;
 
     const colorHover = Color3.FromHexString('#3b82f6');
     const colorSelected = Color3.FromHexString('#fbbf24');
 
-    // Función que pinta todas las partes visibles del objeto (sin importar si es un GLB complejo o caja)
     const addHighlightToAllVisible = (mesh: Mesh, hl: HighlightLayer, color: Color3) => {
         if (mesh.isVisible && !mesh.name.includes("proxyCol") && !mesh.name.includes("debug") && !mesh.name.includes("cameraPivot")) {
             hl.addMesh(mesh, color);
@@ -497,13 +412,8 @@ export class EditorToolsService {
         });
     };
 
-    if (hovered && hovered !== selected) {
-        addHighlightToAllVisible(hovered, this.hlHover, colorHover);
-    }
-
-    if (selected && !this.state.subObjetoSeleccionado()) {
-        addHighlightToAllVisible(selected, this.hlSelected, colorSelected);
-    }
+    if (hovered && hovered !== selected) addHighlightToAllVisible(hovered, this.hlHover, colorHover);
+    if (selected && !this.state.subObjetoSeleccionado()) addHighlightToAllVisible(selected, this.hlSelected, colorSelected);
   }
 
   copiarObjeto() {
@@ -513,7 +423,6 @@ export class EditorToolsService {
 
   pegarObjeto() {
     if (!this.objetoEnPortapapeles) return;
-
     const objOriginal = this.objetoEnPortapapeles;
     let clon: AbstractMesh;
     const nuevoNombre = objOriginal.name + '_Copia_' + Math.floor(Math.random() * 1000);
@@ -550,13 +459,10 @@ export class EditorToolsService {
   }
 
   deshacerAccion() {
-    console.log('↩️ Ctrl+Z presionado. Intentando deshacer...');
     if (this.historialSvc.deshacer()) {
       this.sceneSvc.actualizarListaNodos();
       this.state.onGizmoDrag.next(); 
       this.state.triggerUpdate();    
-    } else {
-      console.log('⚠️ No hay más acciones para deshacer en el historial.');
     }
   }
 }

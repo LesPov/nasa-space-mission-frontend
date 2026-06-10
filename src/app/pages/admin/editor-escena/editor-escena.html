@@ -213,6 +213,13 @@
              *ngIf="editorSvc.playState() === 'PLAYING' && vistaPrueba === 'FPS' && editorSvc.ratonBloqueado()" 
              [class.hovering]="editorSvc.mirandoObjetoInteractuable()"></div>
 
+        <div class="interaction-hint"
+             *ngIf="editorSvc.playState() === 'PLAYING' && editorSvc.ratonBloqueado() && editorSvc.mirandoObjetoInteractuable()">
+          <span class="hint-key">E</span> activar secuencia
+          <span class="hint-sep">•</span>
+          <span class="hint-key">I</span> leer mensaje
+        </div>
+
         <!-- SISTEMA DE NOTIFICACIONES TIPO AAA (HUD) -->
         <div class="hud-container">
           <div class="hud-message hud-playing" *ngIf="editorSvc.playState() === 'PLAYING' && editorSvc.ratonBloqueado()">

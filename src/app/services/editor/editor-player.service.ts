@@ -1,3 +1,5 @@
+
+
 import { Injectable, inject } from '@angular/core';
 import { Subscription } from 'rxjs';
 import { EditorStateService } from './editor-state.service';
@@ -123,8 +125,9 @@ export class EditorPlayerService {
   private activeSequenceWasRunning = false;
   private sequenceJumpTriggered = false;
 
-  // 🔥 NUEVO: Control para evitar que la tecla E se spammee
+  // 🔥 NUEVO: Control para evitar que la tecla E / I se spammeen
   private eKeyPressed = false;
+  private iKeyPressed = false;
 
   constructor() {
     document.addEventListener('pointerlockchange', () => {
@@ -157,6 +160,22 @@ export class EditorPlayerService {
     d.y = 0;
     if (d.lengthSquared() < 0.0001) return new Vector3(0, 0, 1);
     return d.normalize();
+  }
+
+
+  private abrirMensajeInteractivo(obj: AbstractMesh): void {
+    this.state.playState.set('INTERACTING');
+    this.state.objetoInteractuado.set(obj);
+    this.state.objetoSeleccionado.set(obj);
+    this.state.objetoHovereado.set(null);
+    this.state.mirandoObjetoInteractuable.set(false);
+    this.state.ratonBloqueado.set(false);
+
+    try {
+      if (document.pointerLockElement) document.exitPointerLock();
+    } catch {}
+
+    this.resetMovimientoJugador();
   }
 
   private clamp01(v: number): number {
@@ -779,31 +798,92 @@ export class EditorPlayerService {
         !this.state.isDescendant(m, jugador) &&
         !m.name.includes('gridHelper');
 
-      // 🔥 LOGICA DE INTERACCIÓN (RAYCAST HACIA ADELANTE Y TECLA E)
-      const interactRay = new Ray(capsuleCenter, forward, 2.5);
+      // 🔥 PRESELECCIÓN EN PRIMERA / TERCERA PERSONA
+      if (vista === 'FPS') {
+        const centerRay = scene.createPickingRay(
+          this.motor3d.engine.getRenderWidth() / 2,
+          this.motor3d.engine.getRenderHeight() / 2,
+          Matrix.Identity(),
+          activeCamera
+        );
+        centerRay.length = 10000;
+
+        const hoverPredicate = (m: AbstractMesh) => {
+          if (!m || !m.name) return false;
+          if (this.state.esMeshIgnorable(m)) return false;
+          return m.isPickable !== false;
+        };
+
+        const hoverHits = scene.multiPickWithRay(centerRay, hoverPredicate) || [];
+        let hoveredRoot: AbstractMesh | null = null;
+        let hoverInteractable = false;
+
+        for (const hit of hoverHits) {
+          const picked = hit.pickedMesh as AbstractMesh | null;
+          if (!picked) continue;
+
+          const rootNode = this.state.encontrarRaiz(picked);
+          if (!(rootNode instanceof AbstractMesh)) continue;
+
+          const adminMode = this.state.rolSimulado() === 'admin';
+          if (!adminMode && !this.state.puedeSeleccionarse(rootNode)) continue;
+
+          hoveredRoot = rootNode;
+          hoverInteractable = adminMode ? true : this.state.esObjetoInteractuable(rootNode);
+          break;
+        }
+
+        this.state.objetoHovereado.set(hoveredRoot);
+        this.state.mirandoObjetoInteractuable.set(hoverInteractable);
+      } else {
+        this.state.objetoHovereado.set(null);
+      }
+
+      // 🔥 LOGICA DE INTERACCIÓN (RAYCAST HACIA ADELANTE Y TECLAS E / I)
+      const interactDistance = 8.5;
+      const interactRay = new Ray(capsuleCenter, forward, interactDistance);
       const interactHit = scene.pickWithRay(interactRay, collFn);
       let canInteract = false;
       let targetInteractRoot: AbstractMesh | null = null;
 
       if (interactHit && interactHit.hit && interactHit.pickedMesh) {
           targetInteractRoot = this.state.encontrarRaiz(interactHit.pickedMesh as AbstractMesh) as AbstractMesh | null;
-          if (targetInteractRoot && targetInteractRoot.metadata?.interactSequenceId) {
+          if (targetInteractRoot && this.state.esObjetoInteractuable(targetInteractRoot)) {
               canInteract = true;
           }
       }
-      this.state.mirandoObjetoInteractuable.set(canInteract);
+
+      if (vista !== 'FPS') {
+        this.state.mirandoObjetoInteractuable.set(canInteract);
+      } else if (canInteract || this.state.mirandoObjetoInteractuable()) {
+        this.state.mirandoObjetoInteractuable.set(this.state.mirandoObjetoInteractuable() || canInteract);
+      }
 
       const isEPressed = !!this.inputMap['e'];
       if (isEPressed && !this.eKeyPressed) {
           this.eKeyPressed = true;
           if (canInteract && targetInteractRoot) {
-              const seqId = targetInteractRoot.metadata.interactSequenceId;
-              this.iniciarSecuenciaEnJuego(seqId);
+              const seqId = String(targetInteractRoot.metadata?.interactSequenceId || '').trim();
+              if (seqId) {
+                this.iniciarSecuenciaEnJuego(seqId);
+              }
           }
       } else if (!isEPressed) {
           this.eKeyPressed = false;
       }
-      // 🔥 FIN DE LOGICA DE INTERACCIÓN
+
+      const isIPressed = !!this.inputMap['i'];
+      if (isIPressed && !this.iKeyPressed) {
+          this.iKeyPressed = true;
+          if (canInteract && targetInteractRoot) {
+              const mensaje = String(targetInteractRoot.metadata?.mensaje || '').trim();
+              if (mensaje.length > 0) {
+                this.abrirMensajeInteractivo(targetInteractRoot);
+              }
+          }
+      } else if (!isIPressed) {
+          this.iKeyPressed = false;
+      }
 
       const dtMs = scene.getEngine().getDeltaTime();
       const sequence = this.syncSequenceStateFromConfig();
@@ -1286,9 +1366,11 @@ export class EditorPlayerService {
     this.tpsUpdateObserver = null;
     this.inputMap = {};
     this.eKeyPressed = false;
+    this.iKeyPressed = false;
     this.resetSequenceRuntime();
 
     this.state.objetoHovereado.set(null);
+    this.state.mirandoObjetoInteractuable.set(false);
     this.state.objetoSeleccionado.set(null);
 
     this.headNode = null;
@@ -1344,6 +1426,7 @@ export class EditorPlayerService {
     this.highestY = -9999;
     this.idleTime = 0;
     this.eKeyPressed = false;
+    this.iKeyPressed = false;
     this.state.mirandoObjetoInteractuable.set(false);
     this.resetSequenceRuntime();
     this.playAnim(this.animIdle, true);
@@ -1373,3 +1456,4 @@ export class EditorPlayerService {
     this.animActual = anim;
   }
 }
+

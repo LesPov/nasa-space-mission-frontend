@@ -119,10 +119,17 @@
             <div class="section-head">
               <h4>Interacción y Eventos</h4>
             </div>
-            <div class="field wide">
-              <label>ID de Secuencia (Ejecutar en el jugador al pulsar E)</label>
-              <input type="text" [(ngModel)]="objInteractSequenceId" placeholder="Pega aquí el ID de la secuencia..." (ngModelChange)="aplicarInteraccion()" />
-              <p class="help-text">Cuando el jugador se acerque a este objeto y pulse E, ejecutará la secuencia que pegues aquí.</p>
+            <div class="grid-2">
+              <div class="field wide">
+                <label>Mensaje del objeto (se abre con I)</label>
+                <textarea rows="3" [(ngModel)]="objMensaje" placeholder="Escribe aquí el texto que verá el jugador..." (ngModelChange)="aplicarInteraccion()"></textarea>
+                <p class="help-text">Con la tecla I, el jugador abrirá este texto cuando el objeto esté cerca o bajo la mira.</p>
+              </div>
+              <div class="field wide">
+                <label>ID de Secuencia (Ejecutar en el jugador al pulsar E)</label>
+                <input type="text" [(ngModel)]="objInteractSequenceId" placeholder="Pega aquí el ID de la secuencia..." (ngModelChange)="aplicarInteraccion()" />
+                <p class="help-text">Cuando el jugador se acerque a este objeto y pulse E, ejecutará la secuencia que pegues aquí.</p>
+              </div>
             </div>
           </div>
 

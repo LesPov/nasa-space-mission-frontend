@@ -130,6 +130,7 @@ export class EditorSceneService {
           isSolid,
           isSelectable,
           mensaje,
+          interactSequenceId: '',
           animationNames: anims.map(a => a.name),
           collider: { ...defaultCollider },
           camOffset: { ...defaultCamOffset },
@@ -167,6 +168,7 @@ export class EditorSceneService {
         isSolid,
         isSelectable,
         mensaje,
+        interactSequenceId: '',
         collider: { ...defaultCollider },
         camOffset: { ...defaultCamOffset },
         playerConfig: defaultPlayerConfig
@@ -212,6 +214,7 @@ export class EditorSceneService {
       const isSolidSaved = obj.properties?.isSolid ?? true;
       const isSelectableSaved = obj.properties?.isSelectable ?? true;
       const mensajeSaved = obj.properties?.mensaje || '';
+      const interactSequenceIdSaved = obj.properties?.interactSequenceId || '';
 
       const savedCollider = obj.properties?.collider || obj.properties?.capsule || { ...defaultCollider };
       if (savedCollider.radiusX !== undefined) {
@@ -352,6 +355,7 @@ export class EditorSceneService {
           isSolid: nodo.metadata.isSolid,
           isSelectable: nodo.metadata.isSelectable,
           mensaje: nodo.metadata.mensaje,
+          interactSequenceId: nodo.metadata.interactSequenceId || '',
           collider: nodo.metadata.collider,
           camOffset: nodo.metadata.camOffset,
           playerConfig: nodo.metadata.playerConfig || null,

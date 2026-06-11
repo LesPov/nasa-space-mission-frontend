@@ -1,5 +1,5 @@
 import { Injectable, inject, effect } from '@angular/core';
-import { Color3, GizmoManager, HighlightLayer, Mesh, PointerEventTypes, Matrix, AbstractMesh, KeyboardEventTypes, MeshBuilder, StandardMaterial, Vector3, TransformNode, Ray } from '@babylonjs/core';
+import { Color3, GizmoManager, HighlightLayer, Mesh, PointerEventTypes, Matrix, AbstractMesh, KeyboardEventTypes, MeshBuilder, StandardMaterial, Vector3, TransformNode, Ray, PointerDragBehavior } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService, ToolMode } from './editor-state.service';
 import { HistorialService } from '../historial.service';
@@ -80,16 +80,105 @@ export class EditorToolsService {
     this.gizmoManager = new GizmoManager(scene);
     this.gizmoManager.usePointerToAttachGizmos = false;
     this.gizmoManager.clearGizmoOnEmptyPointerEvent = true;
+    
     this.gizmoManager.positionGizmoEnabled = true;
     this.gizmoManager.rotationGizmoEnabled = true;
     this.gizmoManager.scaleGizmoEnabled = true;
 
-    if (this.gizmoManager.gizmos.positionGizmo) this.gizmoManager.gizmos.positionGizmo.snapDistance = 0;
+    if (this.gizmoManager.gizmos.positionGizmo) {
+      this.gizmoManager.gizmos.positionGizmo.snapDistance = 0;
+      this.gizmoManager.gizmos.positionGizmo.planarGizmoEnabled = false;
+    }
+    
     if (this.gizmoManager.gizmos.rotationGizmo) {
       this.gizmoManager.gizmos.rotationGizmo.snapDistance = 0;
       this.gizmoManager.gizmos.rotationGizmo.updateGizmoRotationToMatchAttachedMesh = false;
     }
-    if (this.gizmoManager.gizmos.scaleGizmo) this.gizmoManager.gizmos.scaleGizmo.snapDistance = 0;
+    
+    if (this.gizmoManager.gizmos.scaleGizmo) {
+      this.gizmoManager.gizmos.scaleGizmo.snapDistance = 0;
+    }
+
+    // =========================================================================
+    // 🔥 PIVOTE CENTRAL MEJORADO (ROMBO SEMITRANSPARENTE Y SIN LAG) 🔥
+    // =========================================================================
+    const utilityLayer = this.gizmoManager.utilityLayer;
+    
+    const centerDragMesh = MeshBuilder.CreatePolyhedron("centerDragPos", { type: 1, size: 0.6 }, utilityLayer.utilityLayerScene);
+    const centerDragMat = new StandardMaterial("centerDragPosMat", utilityLayer.utilityLayerScene);
+    centerDragMat.emissiveColor = new Color3(1, 1, 1); 
+    centerDragMat.alpha = 0.65; // 🔥 Transparencia para no tapar los objetos pequeños
+    centerDragMat.disableLighting = true;
+    centerDragMesh.material = centerDragMat;
+    centerDragMesh.isVisible = false;
+
+    const centerDragBehavior = new PointerDragBehavior();
+    centerDragBehavior.moveAttached = false; 
+    centerDragMesh.addBehavior(centerDragBehavior);
+
+    centerDragBehavior.onDragStartObservable.add(() => {
+        this.isDraggingGizmo = true;
+        if (this.gizmoManager.attachedMesh) {
+            this.estadoAntesDeArrastrar = this.historialSvc.obtenerEstado(this.gizmoManager.attachedMesh as AbstractMesh);
+        }
+    });
+
+    centerDragBehavior.onDragObservable.add((event) => {
+        const mesh = this.gizmoManager.attachedMesh as AbstractMesh;
+        const parent = this.state.objetoSeleccionado() as Mesh;
+
+        if (mesh) {
+            mesh.setAbsolutePosition(mesh.getAbsolutePosition().add(event.delta));
+            // 🔥 Evitar el lag: Sincronización instantánea en el mismo milisegundo
+            centerDragMesh.position.copyFrom(mesh.getAbsolutePosition());
+            
+            if (mesh === this.debugCollider && parent) {
+                parent.metadata.collider.offsetX = mesh.position.x;
+                parent.metadata.collider.offsetY = mesh.position.y;
+                parent.metadata.collider.offsetZ = mesh.position.z;
+            } else if (mesh === this.debugCameraBox && parent) {
+                parent.metadata.camOffset.x = mesh.position.x;
+                parent.metadata.camOffset.y = mesh.position.y;
+                parent.metadata.camOffset.z = mesh.position.z;
+            }
+            this.state.onGizmoDrag.next();
+        }
+    });
+
+    centerDragBehavior.onDragEndObservable.add(() => {
+        this.isDraggingGizmo = false;
+        const mesh = this.gizmoManager.attachedMesh as AbstractMesh;
+        const parent = this.state.objetoSeleccionado() as Mesh;
+
+        if (mesh === this.debugCollider && parent) {
+            parent.metadata.collider.sizeX *= mesh.scaling.x;
+            parent.metadata.collider.sizeY *= mesh.scaling.y;
+            parent.metadata.collider.sizeZ *= mesh.scaling.z;
+            mesh.scaling.set(1, 1, 1);
+            this.actualizarDebugMeshes(parent);
+            this.gizmoManager.attachToMesh(this.debugCollider); 
+            queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
+        } else if (mesh === this.debugCameraBox && parent) {
+            queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
+        } else if (mesh && this.estadoAntesDeArrastrar) {
+            this.historialSvc.registrarAccionTransform(mesh, this.estadoAntesDeArrastrar);
+            this.estadoAntesDeArrastrar = null;
+            queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
+        }
+    });
+
+    utilityLayer.utilityLayerScene.onPointerObservable.add((pi) => {
+        if (pi.type === PointerEventTypes.POINTERMOVE) {
+            if (pi.pickInfo?.pickedMesh === centerDragMesh) {
+                centerDragMat.emissiveColor = new Color3(1, 0.9, 0); // Amarillo al pasar por encima
+                centerDragMat.alpha = 0.85; // Se hace menos transparente al tocarlo
+            } else {
+                centerDragMat.emissiveColor = new Color3(1, 1, 1); 
+                centerDragMat.alpha = 0.65; // Vuelve a su transparencia original
+            }
+        }
+    });
+    // =========================================================================
 
     const onDragStart = () => {
       this.isDraggingGizmo = true;
@@ -102,6 +191,11 @@ export class EditorToolsService {
     const onDragging = () => {
       const mesh = this.gizmoManager.attachedMesh as AbstractMesh;
       const parent = this.state.objetoSeleccionado() as Mesh;
+
+      // 🔥 Evitar lag al mover usando las flechas
+      if (mesh && centerDragMesh.isVisible) {
+          centerDragMesh.position.copyFrom(mesh.getAbsolutePosition());
+      }
 
       if (mesh === this.debugCollider && parent) {
           parent.metadata.collider.offsetX = mesh.position.x;
@@ -163,7 +257,6 @@ export class EditorToolsService {
     });
 
     const resolverRootDesdeRay = (ray: any): AbstractMesh | null => {
-      // CORRECCIÓN LAG: Comprobamos && en vez de || y exluimos los internal de highlight para no hacer ciclos infinitos de click
       const hit = scene.pickWithRay(ray, (m) => m.isVisible && m.isPickable && !m.name.toLowerCase().includes('highlight') && !m.name.toLowerCase().includes('gizmo'));
       
       if (hit && hit.hit && hit.pickedMesh) {
@@ -199,7 +292,6 @@ export class EditorToolsService {
               scene.activeCamera
             );
             ray.length = 10000;
-            // CORRECCIÓN LAG FPS ADMIN: Evitar picar cosas invisibles o highlights
             const hit = scene.pickWithRay(ray, (m) => m.isVisible && m.isPickable && !m.name.includes("suelo") && !m.name.includes("proxyCol") && !m.name.toLowerCase().includes('highlight'));
             if (hit && hit.hit && hit.pickedMesh) {
                 const rootNode = this.state.encontrarRaiz(hit.pickedMesh as AbstractMesh);
@@ -215,7 +307,7 @@ export class EditorToolsService {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
 
-          const hitGizmo = scene.pickWithRay(ray, (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo'));
+          const hitGizmo = scene.pickWithRay(ray, (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo') || mesh === centerDragMesh);
           if (hitGizmo && hitGizmo.hit) return;
 
           const rootNode = resolverRootDesdeRay(ray);
@@ -237,7 +329,7 @@ export class EditorToolsService {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
 
-          const hitGizmo = scene.pickWithRay(ray, (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo'));
+          const hitGizmo = scene.pickWithRay(ray, (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo') || mesh === centerDragMesh);
           if (hitGizmo && hitGizmo.hit) {
             this.state.objetoHovereado.set(null);
             return;
@@ -258,9 +350,10 @@ export class EditorToolsService {
         }
 
         if (!this.state.showAddObjectModal() && (this.state.playState() === 'EDITOR' || this.state.playState() === 'EDITING_IN_GAME')) {
-          if (kbInfo.event.key === '1') this.setToolMode('translate');
-          if (kbInfo.event.key === '2') this.setToolMode('rotate');
-          if (kbInfo.event.key === '3') this.setToolMode('scale');
+          if (kbInfo.event.key === '1') this.setToolMode('select');
+          if (kbInfo.event.key === '2') this.setToolMode('translate');
+          if (kbInfo.event.key === '3') this.setToolMode('rotate');
+          if (kbInfo.event.key === '4') this.setToolMode('scale');
         }
       }
     });
@@ -276,6 +369,24 @@ export class EditorToolsService {
 
     scene.onBeforeRenderObservable.add(() => {
         const obj = this.state.objetoSeleccionado() as Mesh;
+        
+        if (this.gizmoManager.positionGizmoEnabled && this.gizmoManager.attachedMesh && !this.gizmoManager.attachedMesh.isDisposed()) {
+            centerDragMesh.isVisible = true;
+            // No usamos lerp, lo pegamos exactamente encima del mesh para evitar el lag
+            centerDragMesh.position.copyFrom(this.gizmoManager.attachedMesh.getAbsolutePosition());
+            
+            // 🔥 TAMAÑO DINÁMICO LIMITADO 🔥
+            const cam = utilityLayer.utilityLayerScene.activeCamera || scene.activeCamera;
+            if (cam) {
+                const distance = Vector3.Distance(cam.globalPosition, centerDragMesh.position);
+                // Si te alejas crece, pero no pasará del tamaño "1.2", si te acercas se reduce hasta "0.2"
+                const scale = Math.max(0.2, Math.min(distance * 0.035, 1.2));
+                centerDragMesh.scaling.setAll(scale);
+            }
+        } else {
+            centerDragMesh.isVisible = false;
+        }
+
         if (!obj || this.isDraggingGizmo) return;
 
         let breathX = 0, breathY = 0, breathZ = 0;
@@ -376,6 +487,7 @@ export class EditorToolsService {
 
   private actualizarGizmosActivos(): void {
     if (!this.gizmoManager) return;
+    
     this.gizmoManager.positionGizmoEnabled = false;
     this.gizmoManager.rotationGizmoEnabled = false;
     this.gizmoManager.scaleGizmoEnabled = false;
@@ -385,15 +497,24 @@ export class EditorToolsService {
 
     if (this.state.objetoSeleccionado() || this.state.subObjetoSeleccionado()) {
       switch (this.state.currentTool()) {
-        case 'translate': this.gizmoManager.positionGizmoEnabled = true; break;
+        case 'select':
+          break;
+        case 'translate': 
+          this.gizmoManager.positionGizmoEnabled = true; 
+          break;
         case 'rotate':
-          if (this.state.subObjetoSeleccionado()) this.gizmoManager.rotationGizmoEnabled = false; 
-          else {
-              this.gizmoManager.rotationGizmoEnabled = true;
-              if (this.gizmoManager.gizmos.rotationGizmo) this.gizmoManager.gizmos.rotationGizmo.updateGizmoRotationToMatchAttachedMesh = false;
+          if (this.state.subObjetoSeleccionado()) {
+            this.gizmoManager.rotationGizmoEnabled = false; 
+          } else {
+            this.gizmoManager.rotationGizmoEnabled = true;
+            if (this.gizmoManager.gizmos.rotationGizmo) {
+              this.gizmoManager.gizmos.rotationGizmo.updateGizmoRotationToMatchAttachedMesh = false;
+            }
           }
           break;
-        case 'scale': this.gizmoManager.scaleGizmoEnabled = true; break;
+        case 'scale': 
+          this.gizmoManager.scaleGizmoEnabled = true; 
+          break;
       }
     }
   }

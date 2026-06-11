@@ -1,4 +1,3 @@
-
 /* GALERÍA */
 .galeria-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
 .galeria-header h2 { color: #60a5fa; font-size: 28px; }
@@ -112,17 +111,85 @@
 }
 
 /* ========================================================
-   EDITOR 3D - LAYOUT TIPO BLENDER
+   EDITOR 3D - LAYOUT TIPO BLENDER CON SPLITTER
    ======================================================== */
 .blender-layout {
-  display: flex; background-color: #1e1e1e; position: fixed; top: 70px; left: 0; width: 100vw; height: calc(100vh - 70px); z-index: 950; overflow: hidden;
+  display: flex; 
+  background-color: #1e1e1e; 
+  position: fixed; 
+  top: 70px; 
+  left: 0; 
+  width: 100vw; 
+  height: calc(100vh - 70px); 
+  z-index: 950; 
+  overflow: hidden;
 }
 
-.viewport-area { flex-grow: 1; display: flex; flex-direction: column; position: relative; }
+/* 🔥 SOLUCIÓN AQUÍ: Se fuerza alto 100% y se encierra con overflow */
+.viewport-area { 
+  display: flex; 
+  flex-direction: column; 
+  position: relative; 
+  height: 100%;
+  min-width: 0; 
+  min-height: 0;
+  overflow: hidden;
+}
 
+/* 🔥 NUEVO: BARRA DIVISORA PARA REDIMENSIONAR TIPO BLENDER/UNITY */
+.layout-resizer {
+  width: 6px;
+  background-color: #1a1a1a;
+  cursor: col-resize;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 960;
+  transition: background-color 0.2s ease;
+}
+
+.layout-resizer:hover, .layout-resizer.resizing {
+  background-color: #3b82f6;
+}
+
+.resizer-grip {
+  width: 2px;
+  height: 30px;
+  background-color: #444;
+  border-radius: 2px;
+  transition: background-color 0.2s ease;
+}
+
+.layout-resizer:hover .resizer-grip, .layout-resizer.resizing .resizer-grip {
+  background-color: #fff;
+}
+
+/* CONTENEDOR FLEXIBLE DEL INSPECTOR */
+.inspector-wrapper {
+  flex-shrink: 0;
+  display: flex;
+  background-color: #1c1c1c;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.inspector-wrapper ::ng-deep app-inspector-escena {
+  width: 100% !important;
+}
+
+/* 🔥 SOLUCIÓN AQUÍ: Flex-shrink 0 evita que el Canvas aplaste la barra superior al volver a entrar */
 .viewport-topbar {
-  height: 40px; background-color: #2b2b2b; border-bottom: 1px solid #1a1a1a;
-  display: flex; justify-content: space-between; align-items: center; padding: 0 15px;
+  height: 40px; 
+  min-height: 40px; 
+  flex-shrink: 0; 
+  background-color: #2b2b2b; 
+  border-bottom: 1px solid #1a1a1a;
+  display: flex; 
+  justify-content: space-between; 
+  align-items: center; 
+  padding: 0 15px;
+  z-index: 10;
 }
 
 .vp-left, .vp-right { display: flex; align-items: center; gap: 15px; }
@@ -149,9 +216,17 @@
 .sync-status { font-size: 12px; color: #888; font-style: italic; }
 .sync-status.syncing { color: #4b73b5; }
 
-.canvas-container { flex-grow: 1; position: relative; width: 100%; height: 100%; }
+/* 🔥 SOLUCIÓN AQUÍ: Se le quita el control al Canvas de estirar todo */
+.canvas-container { 
+  flex-grow: 1; 
+  position: relative; 
+  width: 100%; 
+  height: calc(100% - 40px); 
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden; 
+}
 .fps-badge { position: absolute; top: 15px; left: 70px; color: #87c04f; font-family: monospace; font-size: 13px; pointer-events: none; text-shadow: 1px 1px 2px black; z-index: 10; }
-
 
 /* 🔥 SISTEMA DE NOTIFICACIONES TIPO AAA (HUD) */
 .hud-container {
@@ -221,7 +296,6 @@
   to { opacity: 1; box-shadow: 0 0 20px rgba(96, 165, 250, 0.6); }
 }
 
-
 /* 🔥 ESTILOS PARA EL CROSSHAIR DEL JUEGO */
 .crosshair-ui {
   position: absolute;
@@ -287,6 +361,7 @@
   color: #64748b;
   font-weight: 600;
 }
+
 /* ========================================================
    MODAL DE INTERACCIÓN RPG (JUGADOR NORMAL)
    ======================================================== */
@@ -377,6 +452,7 @@
   0% { opacity: 0; transform: scale(0.9) translateY(20px); }
   100% { opacity: 1; transform: scale(1) translateY(0); }
 }
+
 /* 🔥 ESTILOS PARA EL TOAST MODERNO CON CSS GRID */
 .modern-toast-container {
   position: absolute;

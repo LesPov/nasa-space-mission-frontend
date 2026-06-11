@@ -168,8 +168,11 @@
     </div>
   </div>
 
+  <!-- 🔥 LA ESTRUCTURA DEL EDITOR HA SIDO ACTUALIZADA PARA PERMITIR REDIMENSIÓN -->
  <div class="blender-layout">
-    <div class="viewport-area">
+    
+    <!-- ÁREA DEL MOTOR 3D: El ancho se calcula dinámicamente si es Admin -->
+    <div class="viewport-area" [style.width]="esAdmin ? 'calc(100% - ' + inspectorWidth + 'px)' : '100%'">
       <div class="viewport-topbar">
         <div class="vp-left">
           <button class="btn-vp btn-exit" (click)="salirDelEditor()" *ngIf="editorSvc.playState() === 'EDITOR' || !esAdmin">⬅ Menú</button>
@@ -230,6 +233,19 @@
         <div class="fps-badge">FPS: {{ fps() }}</div>
       </div>
     </div>
-    <app-inspector-escena *ngIf="esAdmin"></app-inspector-escena>
+    
+    <!-- 🔥 BARRA SEPARADORA (SPLITTER) PARA REDIMENSIONAR -->
+    <div class="layout-resizer" 
+         *ngIf="esAdmin" 
+         (mousedown)="iniciarRedimension($event)" 
+         [class.resizing]="isResizing">
+      <div class="resizer-grip"></div>
+    </div>
+
+    <!-- WRAPPER DEL INSPECTOR (Obtiene su ancho dinámicamente) -->
+    <div class="inspector-wrapper" *ngIf="esAdmin" [style.width.px]="inspectorWidth">
+      <app-inspector-escena></app-inspector-escena>
+    </div>
+    
   </div>
 </ng-container>

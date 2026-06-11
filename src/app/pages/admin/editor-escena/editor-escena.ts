@@ -58,6 +58,10 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   public vistaPrueba: 'FPS' | 'TPS' = 'FPS';
 
+  // 🔥 VARIABLES PARA EL SPLITTER (REDIMENSIÓN TIPO BLENDER)
+  public inspectorWidth = 350; // Ancho por defecto del inspector
+  public isResizing = false;
+
   private fpsInterval: any;
   private autoSaveSub!: Subscription;
   private mapChangesSubject = new Subject<void>();
@@ -79,9 +83,39 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
+  // 🔥 EVENTOS PARA REDIMENSIONAR EL PANEL LATERAL
+  iniciarRedimension(event: MouseEvent) {
+    if (this.editorSvc.playState() === 'EDITOR' || this.editorSvc.playState() === 'EDITING_IN_GAME') {
+      this.isResizing = true;
+      event.preventDefault(); // Evita que el cursor seleccione texto accidentalmente
+    }
+  }
+
+  @HostListener('window:mousemove', ['$event'])
+  onMouseMove(event: MouseEvent) {
+    if (!this.isResizing) return;
+    
+    // Calculamos el nuevo ancho restando la posición X del ratón al ancho total de la pantalla
+    const newWidth = window.innerWidth - event.clientX;
+    
+    // Límites para que no se oculte del todo ni ocupe toda la pantalla
+    if (newWidth > 250 && newWidth < window.innerWidth * 0.6) {
+      this.inspectorWidth = newWidth;
+      // Forzamos al motor a redimensionar el canvas para que no se estire
+      this.motor3dSvc.forzarRedimension(); 
+    }
+  }
+
+  @HostListener('window:mouseup')
+  onMouseUp() {
+    if (this.isResizing) {
+      this.isResizing = false;
+      this.motor3dSvc.forzarRedimension(); // Asegurar que quede bien al soltar
+    }
+  }
+
   @HostListener('window:keydown', ['$event'])
   manejarAtajos(event: KeyboardEvent) {
-    // 🔥 FIX: Evita que los atajos de teclado (como Ctrl+C o Ctrl+V) se activen si estás escribiendo en un input o textarea.
     const target = event.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
       return; 

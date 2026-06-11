@@ -18,6 +18,9 @@ export class EditorToolsService {
   private hlHover!: HighlightLayer;
   private hlSelected!: HighlightLayer;
 
+  private lastHoveredMesh: Mesh | null = null;
+  private lastSelectedMesh: Mesh | null = null;
+
   private estadoAntesDeArrastrar: any = null;
   private objetoEnPortapapeles: AbstractMesh | null = null;
   private listenerCtrlZAgregado = false;
@@ -160,7 +163,8 @@ export class EditorToolsService {
     });
 
     const resolverRootDesdeRay = (ray: any): AbstractMesh | null => {
-      const hit = scene.pickWithRay(ray, (m) => m.isVisible || m.isPickable);
+      // CORRECCIÓN LAG: Comprobamos && en vez de || y exluimos los internal de highlight para no hacer ciclos infinitos de click
+      const hit = scene.pickWithRay(ray, (m) => m.isVisible && m.isPickable && !m.name.toLowerCase().includes('highlight') && !m.name.toLowerCase().includes('gizmo'));
       
       if (hit && hit.hit && hit.pickedMesh) {
           const picked = hit.pickedMesh as AbstractMesh;
@@ -188,11 +192,21 @@ export class EditorToolsService {
           }
 
           if (this.state.rolSimulado() === 'admin' && this.state.modoVistaPrueba === 'FPS') {
-            const cam = scene.activeCamera!;
-            const ray = new Ray(cam.globalPosition, cam.getDirection(Vector3.Forward()), 20.0);
-            const rootNode = resolverRootDesdeRay(ray);
-
-            if (rootNode) this.cameraSvc.transicionAEdicionEnVivo(rootNode);
+            const ray = scene.createPickingRay(
+              this.motor3d.engine.getRenderWidth() / 2, 
+              this.motor3d.engine.getRenderHeight() / 2, 
+              Matrix.Identity(), 
+              scene.activeCamera
+            );
+            ray.length = 10000;
+            // CORRECCIÓN LAG FPS ADMIN: Evitar picar cosas invisibles o highlights
+            const hit = scene.pickWithRay(ray, (m) => m.isVisible && m.isPickable && !m.name.includes("suelo") && !m.name.includes("proxyCol") && !m.name.toLowerCase().includes('highlight'));
+            if (hit && hit.hit && hit.pickedMesh) {
+                const rootNode = this.state.encontrarRaiz(hit.pickedMesh as AbstractMesh);
+                if (rootNode instanceof AbstractMesh && this.state.puedeSeleccionarse(rootNode)) {
+                  this.cameraSvc.transicionAEdicionEnVivo(rootNode);
+                }
+            }
           }
           return;
         }
@@ -387,10 +401,21 @@ export class EditorToolsService {
   private actualizarHighlights(selected: Mesh | null, hovered: Mesh | null): void {
     if (!this.hlHover || !this.hlSelected) return;
 
+    if (this.lastHoveredMesh === hovered && this.lastSelectedMesh === selected) {
+        return;
+    }
+    this.lastHoveredMesh = hovered;
+    this.lastSelectedMesh = selected;
+
     this.hlHover.removeAllMeshes();
     this.hlSelected.removeAllMeshes();
 
-    if (this.state.playState() !== 'EDITOR' && this.state.rolSimulado() === 'user') return;
+    const mode = this.state.playState();
+    const isAdmin = this.state.rolSimulado() === 'admin';
+
+    if (mode !== 'EDITOR' && mode !== 'EDITING_IN_GAME' && !(mode === 'PLAYING' && isAdmin)) {
+       return; 
+    }
 
     const colorHover = Color3.FromHexString('#3b82f6');
     const colorSelected = Color3.FromHexString('#fbbf24');
@@ -444,7 +469,6 @@ export class EditorToolsService {
 
     clon.scaling = objOriginal.scaling.clone();
     
-    // 🔥 FIX METADATA CLONING: Mantiene la data y re-instancia Vectores
     clon.metadata = JSON.parse(JSON.stringify(objOriginal.metadata));
     if (objOriginal.metadata?.initialHeadLocal) {
         clon.metadata.initialHeadLocal = new Vector3(

@@ -16,9 +16,9 @@
   <div class="prop-content-scroll">
     
     <!-- ================= PESTAÑA TRANSFORM ================= -->
-    <ng-container *ngIf="pestanaActiva === 'transform'">
+  <ng-container *ngIf="pestanaActiva === 'transform'">
       <div class="panel-header">
-        <span>Transformación</span>
+        <span>Transformación e Interacciones</span>
         <span class="status-pill">{{ familiaResumen }}</span>
       </div>
 
@@ -34,7 +34,7 @@
             <div class="field"><label>Pos Y</label><input type="number" step="0.1" [ngModel]="localPosY" (ngModelChange)="localPosY = $event; aplicarPosicion()" /></div>
             <div class="field"><label>Pos Z</label><input type="number" step="0.1" [ngModel]="localPosZ" (ngModelChange)="localPosZ = $event; aplicarPosicion()" /></div>
             
-            <ng-container *ngIf="objetoActual.metadata?.type !== 'trigger'">
+            <ng-container>
               <div class="field"><label>Rot X</label><input type="number" step="1" [ngModel]="localRotX" (ngModelChange)="localRotX = $event; aplicarRotacion()" /></div>
               <div class="field"><label>Rot Y</label><input type="number" step="1" [ngModel]="localRotY" (ngModelChange)="localRotY = $event; aplicarRotacion()" /></div>
               <div class="field"><label>Rot Z</label><input type="number" step="1" [ngModel]="localRotZ" (ngModelChange)="localRotZ = $event; aplicarRotacion()" /></div>
@@ -46,31 +46,47 @@
           </div>
         </div>
 
-        <!-- 🔥 ZONA EXCLUSIVA PARA TRIGGERS -->
+        <!-- 🔥 ZONA EXCLUSIVA PARA TRIGGERS COMPUESTOS -->
         <div class="section-card" *ngIf="objetoActual.metadata?.type === 'trigger'">
           <div class="section-head">
             <h4>Configuración del Trigger</h4>
           </div>
           <div class="grid-2">
-            <div class="field wide">
-              <label>Mensaje a mostrar en pantalla</label>
-              <textarea rows="2" [ngModel]="objMensaje" placeholder="Ej: Entraste a la zona peligrosa..." (ngModelChange)="objMensaje = $event; aplicarTrigger()"></textarea>
-            </div>
             <div class="field">
-              <label>Condición</label>
-              <select [ngModel]="triggerCondition" (ngModelChange)="triggerCondition = $event; aplicarTrigger()">
-                <option value="on_enter">Al Entrar</option>
+              <label>Forma Física de Detección</label>
+              <select [ngModel]="triggerShape" (ngModelChange)="triggerShape = $event; aplicarTriggerForma($event)">
+                <option value="cube">Caja (Cubo)</option>
+                <option value="sphere">Radio (Esfera)</option>
+                <option value="cylinder">Cilíndrico (Tubo)</option>
               </select>
             </div>
             <div class="checkbox-field" style="margin-top: 15px;">
               <input type="checkbox" id="chkRep" [ngModel]="triggerRepeatable" (ngModelChange)="triggerRepeatable = $event; aplicarTrigger()" />
-              <label for="chkRep">Es repetible (Se dispara varias veces)</label>
+              <label for="chkRep">Es repetible</label>
             </div>
+          </div>
+
+          <div style="margin-top: 15px;">
+             <label style="font-size: 11px; color: #999;">¿Cuándo se activa este Trigger?</label>
+             <div class="grid-3" style="margin-top: 5px;">
+                 <div class="checkbox-field">
+                    <input type="checkbox" id="condEnt" [checked]="triggerConditions.includes('on_enter')" (change)="toggleTriggerCondition('on_enter', $event)" />
+                    <label for="condEnt">Al Pisarlo</label>
+                 </div>
+                 <div class="checkbox-field">
+                    <input type="checkbox" id="condExi" [checked]="triggerConditions.includes('on_exit')" (change)="toggleTriggerCondition('on_exit', $event)" />
+                    <label for="condExi">Al Salir</label>
+                 </div>
+                 <div class="checkbox-field">
+                    <input type="checkbox" id="condInt" [checked]="triggerConditions.includes('on_interact')" (change)="toggleTriggerCondition('on_interact', $event)" />
+                    <label for="condInt">Al Mirar (Tecla E/I)</label>
+                 </div>
+             </div>
           </div>
         </div>
 
-        <!-- ZONA DE INTERACCIÓN NORMAL (Solo para NO triggers) -->
-        <div class="section-card" *ngIf="objetoActual.metadata?.type !== 'trigger'">
+        <!-- ZONA DE INTERACCIÓN (Válida para Todos) -->
+        <div class="section-card">
           <div class="section-head">
             <h4>Interacción y Eventos</h4>
           </div>
@@ -79,9 +95,9 @@
             <div class="field"><label>Distancia (TPS)</label><input type="number" step="0.5" [ngModel]="objInteractDistanceTPS" (ngModelChange)="objInteractDistanceTPS = $event; aplicarInteraccion()" /></div>
           </div>
           <div class="grid-2">
-            <div class="field wide"><label>Mensaje (se abre con I)</label><textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarInteraccion()"></textarea></div>
-            <div class="field wide"><label>Secuencia (FPS)</label><textarea rows="1" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarInteraccion()"></textarea></div>
-            <div class="field wide"><label>Secuencia (TPS)</label><textarea rows="1" [ngModel]="objInteractSequenceIdTPS" (ngModelChange)="objInteractSequenceIdTPS = $event; aplicarInteraccion()"></textarea></div>
+            <div class="field wide"><label>Mensaje (se abre con I o al Entrar al Trigger)</label><textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarInteraccion()"></textarea></div>
+            <div class="field wide"><label>Secuencia a ejecutar (FPS)</label><textarea rows="1" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarInteraccion()"></textarea></div>
+            <div class="field wide"><label>Secuencia a ejecutar (TPS)</label><textarea rows="1" [ngModel]="objInteractSequenceIdTPS" (ngModelChange)="objInteractSequenceIdTPS = $event; aplicarInteraccion()"></textarea></div>
           </div>
           <button class="btn-primary full" style="margin-top: 10px;" (click)="aplicarInteraccionYForzarGuardado()">💾 Guardar Interacción</button>
         </div>
@@ -90,7 +106,6 @@
       </div>
       <div *ngIf="!objetoActual" class="empty-state"><p>Ningún objeto seleccionado</p></div>
     </ng-container>
-
     <!-- ================= PESTAÑA FÍSICA ================= -->
     <ng-container *ngIf="pestanaActiva === 'physics'">
       <div class="panel-header">

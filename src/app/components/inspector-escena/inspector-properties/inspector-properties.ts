@@ -10,6 +10,7 @@ import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EditorPlayerService } from '../../../services/editor/editor-player.service';
 import { HistorialService } from '../../../services/historial.service';
 import { Motor3dService } from '../../../services/motor-3d.service';
+import { EditorSceneService } from '../../../services/editor/editor-scene.service';
 import { 
   PlayerActionKey, PlayerRuntimeConfig, cloneDefaultPlayerConfig, 
   PlayerClipSequence, normalizeAnimBinding, mergePlayerConfig, 
@@ -45,6 +46,7 @@ const ACTION_ROWS: ActionRow[] = [
 })
 export class InspectorProperties implements OnInit, OnDestroy {
   public editorSvc = inject(EditorMapaService);
+  private sceneSvc = inject(EditorSceneService);
   private historialSvc = inject(HistorialService);
   private motor3dSvc = inject(Motor3dService);
   private playerSvc = inject(EditorPlayerService);
@@ -76,8 +78,9 @@ export class InspectorProperties implements OnInit, OnDestroy {
   public objInteractSequenceIdTPS: string = '';
   public objMensaje: string = '';
 
-  // 🔥 NUEVO: Variables para Trigger
-  public triggerCondition: string = 'on_enter';
+  // 🔥 NUEVO: Variables para Trigger Compuesto
+  public triggerShape: string = 'cube';
+  public triggerConditions: string[] = ['on_enter'];
   public triggerRepeatable: boolean = false;
 
   public playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
@@ -149,7 +152,8 @@ export class InspectorProperties implements OnInit, OnDestroy {
     this.objInteractDistanceFPS = 3.0; this.objInteractDistanceTPS = 5.0;
     this.objInteractSequenceIdFPS = ''; this.objInteractSequenceIdTPS = '';
     this.objMensaje = '';
-    this.triggerCondition = 'on_enter';
+    this.triggerShape = 'cube';
+    this.triggerConditions = ['on_enter'];
     this.triggerRepeatable = false;
     this.playerConfig = cloneDefaultPlayerConfig();
     this.bindingInputs = this.emptyBindingInputs();
@@ -233,7 +237,8 @@ export class InspectorProperties implements OnInit, OnDestroy {
     this.objInteractSequenceIdFPS = meta.interactSequenceIdFPS || meta.interactSequenceId || '';
     this.objInteractSequenceIdTPS = meta.interactSequenceIdTPS || meta.interactSequenceId || '';
     this.objMensaje = meta.mensaje || '';
-    this.triggerCondition = meta.condition || 'on_enter';
+    this.triggerShape = meta.triggerShape || 'cube';
+    this.triggerConditions = meta.conditions || ['on_enter'];
     this.triggerRepeatable = meta.isRepeatable || false;
     this.syncBindingDraftsFromConfig();
     this.syncClipsFromObject(obj);
@@ -344,17 +349,34 @@ export class InspectorProperties implements OnInit, OnDestroy {
 
   aplicarInteraccionYForzarGuardado() {
     this.aplicarInteraccion();
-    this.animStatus = '✅ Interacción y secuencias guardadas en el objeto';
+    this.animStatus = '✅ Interacción y secuencias guardadas';
+  }
+
+  toggleTriggerCondition(cond: string, event: any) {
+    if (event.target.checked) {
+        if (!this.triggerConditions.includes(cond)) this.triggerConditions.push(cond);
+    } else {
+        this.triggerConditions = this.triggerConditions.filter(c => c !== cond);
+    }
+    this.aplicarTrigger();
+  }
+
+  aplicarTriggerForma(nuevaForma: string) {
+    const obj = this.getSelectedMesh();
+    if (!obj || obj.metadata.type !== 'trigger') return;
+    // La escena se encarga de crear el nuevo objeto y reemplazarlo
+    this.sceneSvc.reconstruirMallaTrigger(obj, nuevaForma);
+    this.animStatus = '📍 Forma del Trigger actualizada';
   }
 
   aplicarTrigger() {
     const obj = this.getSelectedMesh();
     if (!obj || obj.metadata.type !== 'trigger') return;
-    obj.metadata.condition = this.triggerCondition;
+    obj.metadata.conditions = this.triggerConditions;
     obj.metadata.isRepeatable = this.triggerRepeatable;
     obj.metadata.mensaje = this.objMensaje.trim();
     this.editorSvc.triggerUpdate();
-    this.animStatus = '📍 Trigger actualizado';
+    this.animStatus = '📍 Condiciones del Trigger actualizadas';
   }
 
   aplicarCamara() {

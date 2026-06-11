@@ -26,7 +26,6 @@ export class EditorStateService {
   public showToastE = signal<boolean>(false);
   public showToastI = signal<boolean>(false);
 
-  // 🔥 NUEVO: Señal para el HUD de los Triggers
   public mensajeTriggerHUD = signal<string | null>(null);
 
   public onMapChanged = new Subject<void>();
@@ -75,7 +74,6 @@ export class EditorStateService {
       if (nodos.includes(currentMesh)) return currentMesh;
       currentMesh = currentMesh.parent;
     }
-
     return null;
   }
 
@@ -107,7 +105,6 @@ export class EditorStateService {
         return true;
       }
     }
-
     return false;
   }
 
@@ -125,7 +122,11 @@ export class EditorStateService {
     const nodoBase = root ?? mesh;
     const meta = (nodoBase.metadata ?? mesh.metadata ?? {}) as any;
 
-    if (meta.type === 'trigger') return false; 
+    // 🔥 MODIFICADO: Si es un trigger, verificamos si tiene la condición "on_interact" activada
+    if (meta.type === 'trigger') {
+        const conds = meta.conditions || [];
+        return conds.includes('on_interact');
+    }
 
     const mensaje = typeof meta.mensaje === 'string' ? meta.mensaje.trim() : '';
     const seqFPS = typeof meta.interactSequenceIdFPS === 'string' ? meta.interactSequenceIdFPS.trim() : '';
@@ -148,7 +149,6 @@ export class EditorStateService {
     if (this.playState() === 'PLAYING' || this.playState() === 'INTERACTING') {
       return this.esObjetoInteractuable(nodoBase);
     }
-
     return !!selectable;
   }
 

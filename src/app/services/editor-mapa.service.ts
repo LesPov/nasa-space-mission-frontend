@@ -25,7 +25,7 @@ export class EditorMapaService {
   get currentTool() { return this.state.currentTool; }
   
   get objetoSeleccionado() { return this.state.objetoSeleccionado; }
-  get subObjetoSeleccionado() { return this.state.subObjetoSeleccionado; } // 🔥 NUEVO
+  get subObjetoSeleccionado() { return this.state.subObjetoSeleccionado; } 
   
   get objetoInteractuado() { return this.state.objetoInteractuado; }
   get nodosEscena() { return this.state.nodosEscena; }
@@ -52,13 +52,17 @@ export class EditorMapaService {
   
   seleccionarObjeto(nodo: Node | null): void { 
     this.state.objetoSeleccionado.set(nodo); 
-    this.state.subObjetoSeleccionado.set(null); // 🔥 Limpia subselección al cambiar de objeto
+    this.state.subObjetoSeleccionado.set(null);
   }
 
   crearSuelo(): void { this.scene.crearSuelo(); }
   eliminarSeleccionado(): void { this.scene.eliminarSeleccionado(); }
-  cargarEscenaDesdeDatos(objetosBD: any[]): void { this.scene.cargarEscenaDesdeDatos(objetosBD); }
-  obtenerDatosParaGuardar(): any[] { return this.scene.obtenerDatosParaGuardar(); }
+  cargarEscenaDesdeDatos(dataBD: any): void { this.scene.cargarEscenaDesdeDatos(dataBD); }
+  
+  // 🔥 FIX ERROR DE TIPO AQUÍ
+  obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[] } { 
+    return this.scene.obtenerDatosParaGuardar(); 
+  }
   
   agregarObjetoCustom(
     tipo: string, nombre: string, rol: string, colorHex: string,

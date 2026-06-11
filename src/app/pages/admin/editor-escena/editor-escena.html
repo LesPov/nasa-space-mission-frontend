@@ -65,7 +65,7 @@
             <label class="modal-label">Nombre Único:</label>
             <input type="text" [(ngModel)]="objNombre" class="modal-input" placeholder="Ej: PuertaPrincipal">
           </div>
-          <div class="modal-row">
+          <div class="modal-row" *ngIf="objTipo !== 'trigger'">
             <label class="modal-label" style="color: #ffd700;">Rol del Elemento:</label>
             <select [(ngModel)]="objRol" class="modal-input" (change)="onRolChange()">
               <option value="prop">🛋️ Decoración / Prop estático</option>
@@ -83,8 +83,8 @@
           </div>
           
           <div class="modal-row" style="margin-top: 15px;">
-            <label class="modal-label" style="color: #4ade80;">Mensaje al interactuar (Lore):</label>
-            <textarea [(ngModel)]="objMensaje" class="modal-input" placeholder="Ej: 'Una puerta antigua cerrada con llave...'"></textarea>
+            <label class="modal-label" style="color: #4ade80;">Mensaje (Lore o Trigger):</label>
+            <textarea [(ngModel)]="objMensaje" class="modal-input" placeholder="Ej: 'Una puerta antigua...' o 'Entraste a Bogotá'"></textarea>
           </div>
         </div>
 
@@ -98,10 +98,11 @@
               <option value="cylinder">🛢️ Cilindro / Cápsula</option>
               <option value="plane">🗺️ Plano (Suelo)</option>
               <option value="model">✨ Modelo 3D Importado (.GLB)</option>
+              <option value="trigger">📍 Trigger (Zona Invisible)</option>
             </select>
           </div>
           
-          <div class="modal-row" *ngIf="objTipo !== 'model'">
+          <div class="modal-row" *ngIf="objTipo !== 'model' && objTipo !== 'trigger'">
             <label class="modal-label">Color del Material:</label>
             <div class="color-picker-wrapper">
               <input type="color" [(ngModel)]="objColor" class="color-picker">
@@ -109,11 +110,12 @@
             </div>
           </div>
           
-          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 15px;">
+          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 15px;" *ngIf="objTipo !== 'trigger'">
             <input type="checkbox" [(ngModel)]="objEsSolido" id="chkSolido">
             <label for="chkSolido" class="modal-label" style="margin: 0; cursor: pointer;">🧱 Objeto Sólido (Bloquea el paso)</label>
           </div>
-          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px;">
+          
+          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px;" *ngIf="objTipo !== 'trigger'">
             <input type="checkbox" [(ngModel)]="objEsSeleccionable" id="chkSeleccion">
             <label for="chkSeleccion" class="modal-label" style="margin: 0; cursor: pointer;">🎯 Editable (Se puede tocar con el ratón)</label>
           </div>
@@ -168,10 +170,8 @@
     </div>
   </div>
 
-  <!-- 🔥 LA ESTRUCTURA DEL EDITOR HA SIDO ACTUALIZADA PARA PERMITIR REDIMENSIÓN -->
  <div class="blender-layout">
     
-    <!-- ÁREA DEL MOTOR 3D: El ancho se calcula dinámicamente si es Admin -->
     <div class="viewport-area" [style.width]="esAdmin ? 'calc(100% - ' + inspectorWidth + 'px)' : '100%'">
       <div class="viewport-topbar">
         <div class="vp-left">
@@ -194,30 +194,33 @@
       </div>
 
       <div class="canvas-container">
-        
         <div class="crosshair-ui" *ngIf="editorSvc.playState() === 'PLAYING' && stateSvc.modoVistaPrueba === 'FPS' && editorSvc.ratonBloqueado()" [class.hovering]="editorSvc.mirandoObjetoInteractuable()"></div>
 
-        <!-- FIRE TOAST: MODERN GRID DESIGN -->
+        <!-- 🔥 NUEVO HUD PARA MENSAJES DE TRIGGER -->
+        <div class="modern-toast-container" *ngIf="stateSvc.mensajeTriggerHUD() !== null" style="bottom: 120px; z-index: 300;">
+            <div class="modern-toast-box" style="background: rgba(30, 58, 138, 0.95); border: 2px solid #60a5fa; box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);">
+               <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">
+                 📍 {{ stateSvc.mensajeTriggerHUD() }}
+               </div>
+            </div>
+        </div>
+
         <div class="modern-toast-container" *ngIf="stateSvc.playState() === 'PLAYING' && stateSvc.targetInteractuable() && stateSvc.ratonBloqueado() && (stateSvc.showToastE() || stateSvc.showToastI() || (esAdmin && stateSvc.modoVistaPrueba === 'FPS'))">
           <div class="modern-toast-box">
             <div class="toast-title">{{ stateSvc.targetInteractuable()?.name }}</div>
             <div class="toast-actions-grid">
-              
               <div class="action-item" *ngIf="esAdmin && stateSvc.modoVistaPrueba === 'FPS'">
                 <kbd class="key-cap">Click</kbd>
                 <span class="action-label">Editar</span>
               </div>
-              
               <div class="action-item" *ngIf="stateSvc.showToastE()">
                 <kbd class="key-cap">E</kbd>
                 <span class="action-label">Acción</span>
               </div>
-              
               <div class="action-item" *ngIf="stateSvc.showToastI()">
                 <kbd class="key-cap">I</kbd>
                 <span class="action-label">Leer</span>
               </div>
-
             </div>
           </div>
         </div>
@@ -234,7 +237,6 @@
       </div>
     </div>
     
-    <!-- 🔥 BARRA SEPARADORA (SPLITTER) PARA REDIMENSIONAR -->
     <div class="layout-resizer" 
          *ngIf="esAdmin" 
          (mousedown)="iniciarRedimension($event)" 
@@ -242,7 +244,6 @@
       <div class="resizer-grip"></div>
     </div>
 
-    <!-- WRAPPER DEL INSPECTOR (Obtiene su ancho dinámicamente) -->
     <div class="inspector-wrapper" *ngIf="esAdmin" [style.width.px]="inspectorWidth">
       <app-inspector-escena></app-inspector-escena>
     </div>

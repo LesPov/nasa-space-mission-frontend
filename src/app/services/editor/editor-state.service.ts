@@ -26,6 +26,9 @@ export class EditorStateService {
   public showToastE = signal<boolean>(false);
   public showToastI = signal<boolean>(false);
 
+  // 🔥 NUEVO: Señal para el HUD de los Triggers
+  public mensajeTriggerHUD = signal<string | null>(null);
+
   public onMapChanged = new Subject<void>();
   public onGizmoDrag = new Subject<void>();
 
@@ -47,7 +50,6 @@ export class EditorStateService {
   checkIsAdmin(): boolean {
     const userStr = localStorage.getItem('user');
     if (!userStr) return false;
-
     try {
       const user = JSON.parse(userStr);
       return user?.rol === 'admin';
@@ -80,18 +82,10 @@ export class EditorStateService {
   private esNombreIgnorable(name: string): boolean {
     const n = name.toLowerCase();
     return (
-      n === 'sueloinvisible' ||
-      n === 'suelo' ||
-      n === 'ground' ||
-      n === 'floor' ||
-      n === 'terrain' ||
-      n === 'camerapivot' ||
-      n.includes('eje') ||
-      n.includes('gridhelper') ||
-      n.includes('gizmo') ||
-      n.includes('highlight') ||
-      n.includes('debug') ||
-      n.includes('proxycol')
+      n === 'sueloinvisible' || n === 'suelo' || n === 'ground' || n === 'floor' ||
+      n === 'terrain' || n === 'camerapivot' || n.includes('eje') ||
+      n.includes('gridhelper') || n.includes('gizmo') || n.includes('highlight') ||
+      n.includes('debug') || n.includes('proxycol')
     );
   }
 
@@ -108,7 +102,7 @@ export class EditorStateService {
       return true;
     }
 
-    if (this.rolSimulado() === 'user' && meta.isSelectable === false && !meta.mensaje && !meta.interactSequenceId && !meta.interactSequenceIdFPS && !meta.interactSequenceIdTPS) {
+    if (this.rolSimulado() === 'user' && meta.isSelectable === false && !meta.mensaje && !meta.interactSequenceId && !meta.interactSequenceIdFPS && !meta.interactSequenceIdTPS && meta.type !== 'trigger') {
       if (this.playState() === 'PLAYING' || this.playState() === 'INTERACTING') {
         return true;
       }
@@ -130,6 +124,8 @@ export class EditorStateService {
     const root = this.encontrarRaiz(mesh) as AbstractMesh | null;
     const nodoBase = root ?? mesh;
     const meta = (nodoBase.metadata ?? mesh.metadata ?? {}) as any;
+
+    if (meta.type === 'trigger') return false; 
 
     const mensaje = typeof meta.mensaje === 'string' ? meta.mensaje.trim() : '';
     const seqFPS = typeof meta.interactSequenceIdFPS === 'string' ? meta.interactSequenceIdFPS.trim() : '';
@@ -167,6 +163,7 @@ export class EditorStateService {
     this.targetInteractuable.set(null);
     this.showToastE.set(false);
     this.showToastI.set(false);
+    this.mensajeTriggerHUD.set(null); 
     this.ratonBloqueado.set(false);
     this.objetoSeleccionado.set(null);
     this.subObjetoSeleccionado.set(null);

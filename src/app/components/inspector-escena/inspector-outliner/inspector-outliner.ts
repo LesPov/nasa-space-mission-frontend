@@ -2,14 +2,12 @@ import { Component, Output, EventEmitter, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Node, AbstractMesh, Camera, Light } from '@babylonjs/core';
 
-// 🔥 FIX: Ruta de importación corregida (tres niveles hacia atrás, no cuatro)
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 
 @Component({
   selector: 'app-inspector-outliner',
   standalone: true,
   imports: [CommonModule],
-  // 🔥 FIX: Nombres exactos de los archivos HTML y CSS
   templateUrl: './inspector-outliner.html',
   styleUrl: './inspector-outliner.css'
 })
@@ -67,6 +65,7 @@ export class InspectorOutliner {
     if (nodo instanceof Camera) return '🎥';
     if (nodo instanceof Light) return '💡';
     if (nodo instanceof AbstractMesh) {
+      if (nodo.metadata?.type === 'trigger') return '📍';
       if (nodo.metadata?.type === 'model') return '🧍';
       if (nodo.name.toLowerCase().includes('cubo')) return '🧊';
       if (nodo.name.toLowerCase().includes('esfera')) return '⚽';

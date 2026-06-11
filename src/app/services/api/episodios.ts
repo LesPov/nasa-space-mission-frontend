@@ -29,8 +29,9 @@ export class EpisodiosService {
     return this.http.post<any>(`${this.baseUrl}/episodes`, { title, description }, { headers: this.getAuthHeaders() });
   }
 
-  guardarMapa(id: number, sceneObjects: any[]): Observable<any> {
-    return this.http.post<any>(`${this.baseUrl}/episodes/${id}/save-map`, { sceneObjects }, { headers: this.getAuthHeaders() });
+  // 🔥 ACTUALIZADO PARA RECIBIR DATA COMPLETA (Objetos + Triggers)
+  guardarMapa(id: number, mapData: { sceneObjects: any[], triggers: any[] }): Observable<any> {
+    return this.http.post<any>(`${this.baseUrl}/episodes/${id}/save-map`, mapData, { headers: this.getAuthHeaders() });
   }
 
   obtenerAssets(): Observable<any[]> {
@@ -48,4 +49,5 @@ export class EpisodiosService {
     });
     return this.http.post<any>(`${this.baseUrl}/assets/upload`, formData, { headers });
   }
+  
 }

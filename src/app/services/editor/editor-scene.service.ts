@@ -3,17 +3,7 @@ import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { HistorialService } from '../historial.service';
 import {
-  MeshBuilder,
-  Vector3,
-  Color4,
-  AbstractMesh,
-  Mesh,
-  Quaternion,
-  SceneLoader,
-  StandardMaterial,
-  Color3,
-  TransformNode,
-  Matrix
+  MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader, StandardMaterial, Color3, TransformNode, Matrix
 } from '@babylonjs/core';
 
 import '@babylonjs/loaders/glTF';
@@ -54,6 +44,38 @@ export class EditorSceneService {
     this.actualizarListaNodos();
   }
 
+  // 🔥 NUEVO: Función exclusiva para crear un Trigger Verde
+  agregarTriggerCustom(nombre: string, condicion: string, mensaje: string, sizeX: number, sizeY: number, sizeZ: number): void {
+    const scene = this.motor3d.scene;
+    const mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene);
+    
+    mesh.scaling = new Vector3(sizeX, sizeY, sizeZ);
+    mesh.position = new Vector3(0, sizeY / 2, 0);
+
+    const mat = new StandardMaterial('mat_trigger_' + nombre, scene);
+    mat.diffuseColor = new Color3(0.2, 1, 0.2); // Verde
+    mat.alpha = 0.3; // Semitransparente para el editor
+    mat.wireframe = true;
+    mesh.material = mat;
+
+    mesh.metadata = {
+      type: 'trigger',
+      condition: condicion, 
+      mensaje: mensaje, 
+      isRepeatable: false,
+      isEnabled: true,
+      hasTriggered: false 
+    };
+
+    mesh.isPickable = true;
+    mesh.checkCollisions = false; // No bloquea el paso
+
+    this.state.objetoSeleccionado.set(mesh);
+    this.actualizarListaNodos();
+    this.historialSvc.registrarAccionCrear(mesh);
+    this.state.triggerUpdate();
+  }
+
   agregarObjetoCustom(
     tipo: string,
     nombre: string,
@@ -67,6 +89,12 @@ export class EditorSceneService {
     isSelectable: boolean = true,
     mensaje: string = ''
   ): void {
+    // Si viene desde la UI como Trigger, lo procesamos especial
+    if (tipo === 'trigger') {
+        this.agregarTriggerCustom(nombre, 'on_enter', mensaje, sizeX, sizeY, sizeZ);
+        return;
+    }
+
     const scene = this.motor3d.scene;
     const isModel = tipo === 'model';
 
@@ -157,8 +185,8 @@ export class EditorSceneService {
         case 'cube': mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene); break;
         case 'sphere': mesh = MeshBuilder.CreateSphere(nombre, { diameter: 1 }, scene); break;
         case 'cylinder': mesh = MeshBuilder.CreateCylinder(nombre, { height: 1, diameter: 1 }, scene); break;
-        case 'plane': mesh = MeshBuilder.CreateGround(nombre, { width: 1, height: 1 }, scene); offsetColisionY = 0.02; break;
-        default: mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene); break;
+        case 'plane': mesh = MeshBuilder.CreateGround(nombre, { width: 1, height: 1 }, scene); break;
+        default: return;
       }
 
       mesh.scaling = new Vector3(sizeX, sizeY, sizeZ);
@@ -200,11 +228,15 @@ export class EditorSceneService {
     }
   }
 
-  cargarEscenaDesdeDatos(objetosBD: any[]): void {
-    if (!objetosBD || objetosBD.length === 0) return;
+  cargarEscenaDesdeDatos(dataBD: any): void {
+    if (!dataBD) return;
     const scene = this.motor3d.scene;
 
-    objetosBD.forEach(obj => {
+    const objetosBD = Array.isArray(dataBD) ? dataBD : (dataBD.sceneObjects || []);
+    const triggersBD = Array.isArray(dataBD) ? [] : (dataBD.triggers || []);
+
+    // 1. Cargar Objetos normales
+    objetosBD.forEach((obj: any) => {
       const isModel = obj.type === 'model';
       const defaultCollider = isModel
         ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
@@ -354,13 +386,63 @@ export class EditorSceneService {
       }
     });
 
+    // 2. Cargar Triggers Invisibles/Verdes
+    triggersBD.forEach((trigger: any) => {
+        const mesh = MeshBuilder.CreateBox(trigger.name, { size: 1 }, scene);
+        mesh.position = new Vector3(trigger.position.x, trigger.position.y, trigger.position.z);
+        mesh.scaling = new Vector3(trigger.size.x, trigger.size.y, trigger.size.z); // Usamos trigger.size porque así llega del BD
+        
+        const mat = new StandardMaterial('mat_trigger_' + trigger.name, scene);
+        mat.diffuseColor = new Color3(0.2, 1, 0.2); 
+        mat.alpha = 0.3; 
+        mat.wireframe = true;
+        mesh.material = mat;
+
+        mesh.metadata = {
+            type: 'trigger',
+            condition: trigger.condition,
+            mensaje: trigger.actionProperties?.mensaje || '', // El mensaje viene de actionProperties
+            actionType: trigger.actionType,
+            targetObjectName: trigger.targetObjectName,
+            isRepeatable: trigger.isRepeatable,
+            isEnabled: trigger.isEnabled,
+            hasTriggered: false
+        };
+
+        mesh.isPickable = true;
+        mesh.checkCollisions = false;
+    });
+
     this.actualizarListaNodos();
   }
 
-  obtenerDatosParaGuardar(): any[] {
-    return this.state.nodosEscena().map(nodo => {
+  obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[] } {
+    const sceneObjects: any[] = [];
+    const triggers: any[] = [];
+
+    this.state.nodosEscena().forEach(nodo => {
       if (nodo instanceof AbstractMesh && nodo.metadata?.type) {
         const rot = nodo.rotationQuaternion ? nodo.rotationQuaternion.toEulerAngles() : nodo.rotation;
+        
+        // Si es un TRIGGER, lo exportamos al arreglo de triggers
+        if (nodo.metadata.type === 'trigger') {
+            triggers.push({
+                name: nodo.name,
+                position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
+                scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z }, 
+                properties: {
+                    condition: nodo.metadata.condition,
+                    actionType: 'show_message', 
+                    targetObjectName: nodo.metadata.targetObjectName || '',
+                    mensaje: nodo.metadata.mensaje,
+                    isRepeatable: nodo.metadata.isRepeatable,
+                    isEnabled: nodo.metadata.isEnabled
+                }
+            });
+            return;
+        }
+
+        // Si es un objeto normal
         const baseData = {
           name: nodo.name,
           position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
@@ -384,22 +466,23 @@ export class EditorSceneService {
         };
 
         if (nodo.metadata.type === 'model') {
-          return {
+          sceneObjects.push({
             ...baseData,
             type: 'model',
             assetId: nodo.metadata.assetId,
             properties: { path: nodo.metadata.path, ...propertiesToSave }
-          };
+          });
+        } else {
+          sceneObjects.push({
+            ...baseData,
+            type: nodo.metadata.type,
+            properties: { color: nodo.metadata.color, ...propertiesToSave }
+          });
         }
-
-        return {
-          ...baseData,
-          type: nodo.metadata.type,
-          properties: { color: nodo.metadata.color, ...propertiesToSave }
-        };
       }
-      return null;
-    }).filter(Boolean);
+    });
+
+    return { sceneObjects, triggers };
   }
 
   eliminarSeleccionado(): void {

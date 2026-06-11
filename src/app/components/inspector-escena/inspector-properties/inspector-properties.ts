@@ -6,7 +6,6 @@ import { FormsModule } from '@angular/forms';
 import { Node, AbstractMesh, AnimationGroup, Quaternion, Vector3 } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 
-// 🔥 FIX: Todas las rutas de importación corregidas (tres niveles hacia atrás)
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EditorPlayerService } from '../../../services/editor/editor-player.service';
 import { HistorialService } from '../../../services/historial.service';
@@ -41,7 +40,6 @@ const ACTION_ROWS: ActionRow[] = [
   selector: 'app-inspector-properties',
   standalone: true,
   imports: [CommonModule, FormsModule],
-  // 🔥 FIX: Nombres exactos de los archivos HTML y CSS
   templateUrl: './inspector-properties.html',
   styleUrl: './inspector-properties.css'
 })
@@ -77,6 +75,10 @@ export class InspectorProperties implements OnInit, OnDestroy {
   public objInteractSequenceIdFPS: string = '';
   public objInteractSequenceIdTPS: string = '';
   public objMensaje: string = '';
+
+  // 🔥 NUEVO: Variables para Trigger
+  public triggerCondition: string = 'on_enter';
+  public triggerRepeatable: boolean = false;
 
   public playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
   public actionRows: ActionRow[] = ACTION_ROWS;
@@ -147,6 +149,8 @@ export class InspectorProperties implements OnInit, OnDestroy {
     this.objInteractDistanceFPS = 3.0; this.objInteractDistanceTPS = 5.0;
     this.objInteractSequenceIdFPS = ''; this.objInteractSequenceIdTPS = '';
     this.objMensaje = '';
+    this.triggerCondition = 'on_enter';
+    this.triggerRepeatable = false;
     this.playerConfig = cloneDefaultPlayerConfig();
     this.bindingInputs = this.emptyBindingInputs();
     this.bindingTokens = this.emptyBindingTokens();
@@ -229,6 +233,8 @@ export class InspectorProperties implements OnInit, OnDestroy {
     this.objInteractSequenceIdFPS = meta.interactSequenceIdFPS || meta.interactSequenceId || '';
     this.objInteractSequenceIdTPS = meta.interactSequenceIdTPS || meta.interactSequenceId || '';
     this.objMensaje = meta.mensaje || '';
+    this.triggerCondition = meta.condition || 'on_enter';
+    this.triggerRepeatable = meta.isRepeatable || false;
     this.syncBindingDraftsFromConfig();
     this.syncClipsFromObject(obj);
     this.syncSequencesFromConfig();
@@ -339,6 +345,16 @@ export class InspectorProperties implements OnInit, OnDestroy {
   aplicarInteraccionYForzarGuardado() {
     this.aplicarInteraccion();
     this.animStatus = '✅ Interacción y secuencias guardadas en el objeto';
+  }
+
+  aplicarTrigger() {
+    const obj = this.getSelectedMesh();
+    if (!obj || obj.metadata.type !== 'trigger') return;
+    obj.metadata.condition = this.triggerCondition;
+    obj.metadata.isRepeatable = this.triggerRepeatable;
+    obj.metadata.mensaje = this.objMensaje.trim();
+    this.editorSvc.triggerUpdate();
+    this.animStatus = '📍 Trigger actualizado';
   }
 
   aplicarCamara() {

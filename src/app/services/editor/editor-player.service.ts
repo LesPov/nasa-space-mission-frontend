@@ -12,6 +12,7 @@ import { PlayerInputService } from './playerservice/player-input.service';
 import { PlayerInteractionService } from './playerservice/player-interaction.service';
 import { PlayerPhysicsService } from './playerservice/player-physics.service';
 import { PlayerSequenceService } from './playerservice/player-sequence.service';
+import { PlayerTriggerService } from './player-trigger.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayerService {
@@ -25,6 +26,7 @@ export class EditorPlayerService {
   private playerCamSvc = inject(PlayerCameraManagerService);
   private interactSvc = inject(PlayerInteractionService);
   private sequenceSvc = inject(PlayerSequenceService);
+  private triggerSvc = inject(PlayerTriggerService); // 🔥 INJECT NUEVO
 
   public playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
   private tpsUpdateObserver: Observer<Scene> | null = null;
@@ -85,6 +87,9 @@ export class EditorPlayerService {
     this.playerCamSvc.inicializarCamaras(obj, colMeta, camMeta, vista, obj.scaling, this.playerConfig);
 
     this.resetMovimientoJugador();
+    
+    // 🔥 NUEVO: Oculta los triggers e inicializa estado
+    this.triggerSvc.prepararTriggersParaJuego();
 
     this.inputSvc.iniciarEscuchaTeclado(this.motor3d.scene, {
       onToggleCamera: () => this.playerCamSvc.toggleCameraView(obj, this.playerConfig),
@@ -125,6 +130,9 @@ export class EditorPlayerService {
       const dtMs = scene.getEngine().getDeltaTime();
       this.playerConfig = mergePlayerConfig(jugador.metadata?.playerConfig || null);
 
+      // 🔥 NUEVO: Verificamos los triggers 60 veces por segundo
+      this.triggerSvc.verificarTriggers(jugador);
+
       this.interactSvc.comprobarInteracciones(jugador, activeCamera, colMeta, this.state.modoVistaPrueba || 'TPS');
       
       const seqRuntime = this.sequenceSvc.actualizarSecuencia(dtMs, jugador, this.playerConfig);
@@ -156,7 +164,9 @@ export class EditorPlayerService {
     this.resetMovimientoJugador();
     this.animSvc.detenerTodas();
 
-    // Restaura la cámara libre al salir
+    // 🔥 NUEVO: Vuelve a mostrar las cajas verdes en el editor
+    this.triggerSvc.restaurarTriggersParaEditor();
+
     this.playerCamSvc.restaurarCamaraEditor();
     
     if (this.state.cameraPivot) { this.state.cameraPivot.dispose(); this.state.cameraPivot = null; }
@@ -189,12 +199,10 @@ export class EditorPlayerService {
     this.state.backupObjetoRotacionQuat = null; 
     this.state.modoVistaPrueba = null;
     
-    // DESBLOQUEAR EL RATÓN SIEMPRE AL SALIR AL EDITOR
     if (document.pointerLockElement) {
         document.exitPointerLock();
     }
     
-    // FORZAR SEGUNDA CONFIRMACIÓN DE CONTROLES
     const canvas = this.motor3d.engine.getRenderingCanvas();
     if (canvas) {
       this.motor3d.editorCamera.attachControl(canvas, true);
@@ -241,7 +249,8 @@ export class EditorPlayerService {
     const scene = this.motor3d.scene;
     scene.meshes.forEach(m => {
       if (m === jugador) return;
-      if (m.name.includes('debug') || m.name.includes('gizmo') || m.name.includes('cameraPivot') || m.name.includes('sueloInvisible') || m.name.includes('proxyCol')) return;
+      // 🔥 IMPORTANTE: Los triggers no deben chocar físicamente al caminar, el motor de físicas los ignora.
+      if (m.name.includes('debug') || m.name.includes('gizmo') || m.name.includes('cameraPivot') || m.name.includes('sueloInvisible') || m.name.includes('proxyCol') || m.metadata?.type === 'trigger') return;
 
       const root = this.state.encontrarRaiz(m as AbstractMesh);
       if (root && root instanceof AbstractMesh && root.metadata?.isSolid) {

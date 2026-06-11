@@ -57,14 +57,11 @@ export class EditorEscena implements OnInit, OnDestroy {
   public objMensaje: string = '';
 
   public vistaPrueba: 'FPS' | 'TPS' = 'FPS';
-
-  // 🔥 VARIABLES PARA EL SPLITTER (REDIMENSIÓN TIPO BLENDER)
-  public inspectorWidth = 350; // Ancho por defecto del inspector
+  public inspectorWidth = 350; 
   public isResizing = false;
 
   private fpsInterval: any;
   private autoSaveSub!: Subscription;
-  private mapChangesSubject = new Subject<void>();
 
   public esAdmin: boolean = false;
 
@@ -83,25 +80,19 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  // 🔥 EVENTOS PARA REDIMENSIONAR EL PANEL LATERAL
   iniciarRedimension(event: MouseEvent) {
     if (this.editorSvc.playState() === 'EDITOR' || this.editorSvc.playState() === 'EDITING_IN_GAME') {
       this.isResizing = true;
-      event.preventDefault(); // Evita que el cursor seleccione texto accidentalmente
+      event.preventDefault(); 
     }
   }
 
   @HostListener('window:mousemove', ['$event'])
   onMouseMove(event: MouseEvent) {
     if (!this.isResizing) return;
-    
-    // Calculamos el nuevo ancho restando la posición X del ratón al ancho total de la pantalla
     const newWidth = window.innerWidth - event.clientX;
-    
-    // Límites para que no se oculte del todo ni ocupe toda la pantalla
     if (newWidth > 250 && newWidth < window.innerWidth * 0.6) {
       this.inspectorWidth = newWidth;
-      // Forzamos al motor a redimensionar el canvas para que no se estire
       this.motor3dSvc.forzarRedimension(); 
     }
   }
@@ -110,7 +101,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   onMouseUp() {
     if (this.isResizing) {
       this.isResizing = false;
-      this.motor3dSvc.forzarRedimension(); // Asegurar que quede bien al soltar
+      this.motor3dSvc.forzarRedimension(); 
     }
   }
 
@@ -153,7 +144,11 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   onTipoChange() {
-    if (this.objTipo !== 'model') {
+    if (this.objTipo === 'trigger') {
+      this.objRol = 'prop';
+      this.objEsSolido = false;
+      this.objEsSeleccionable = true;
+    } else if (this.objTipo !== 'model') {
       this.objRol = 'prop';
     }
   }
@@ -223,8 +218,9 @@ export class EditorEscena implements OnInit, OnDestroy {
           this.editorSvc.activarEventosEditor();
           this.editorSvc.crearSuelo();
 
-          if(res.sceneObjects) {
-            this.editorSvc.cargarEscenaDesdeDatos(res.sceneObjects);
+          // Res ahora tiene { episode, sceneObjects, triggers }
+          if(res) {
+            this.editorSvc.cargarEscenaDesdeDatos(res);
           }
           
           this.fpsInterval = setInterval(() => {
@@ -239,9 +235,11 @@ export class EditorEscena implements OnInit, OnDestroy {
   guardarMapaEnBD(silencioso = false) {
     if (!this.episodioIdActivo || !this.editando) return;
     this.estadoGuardado.set('Guardando...');
-    const objetos = this.editorSvc.obtenerDatosParaGuardar();
     
-    this.epiApiSvc.guardarMapa(this.episodioIdActivo, objetos).subscribe({
+    // 🔥 FIX DEL ERROR AQUÍ: mapData es un objeto con { sceneObjects: [], triggers: [] }
+    const mapData = this.editorSvc.obtenerDatosParaGuardar();
+    
+    this.epiApiSvc.guardarMapa(this.episodioIdActivo, mapData).subscribe({
       next: () => {
         this.estadoGuardado.set('Guardado automático ✓');
         if (!silencioso) alert('Mapa guardado exitosamente');

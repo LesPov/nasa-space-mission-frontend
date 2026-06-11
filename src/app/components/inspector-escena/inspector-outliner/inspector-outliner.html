@@ -1,0 +1,67 @@
+<div class="panel-header">
+  <span class="icon">📁</span>
+  <span>Escena (Outliner)</span>
+</div>
+
+<div class="outliner-tree">
+  <div class="tree-collection">
+    <span class="icon">📦</span>
+    <span>Raíz de la colección</span>
+  </div>
+
+  <div class="tree-items">
+    <div *ngFor="let nodo of listaNodos">
+      <div
+        class="node-item"
+        [class.selected]="esSeleccionado(nodo) && !editorSvc.subObjetoSeleccionado()"
+        [class.locked]="esBloqueado(nodo)"
+        (click)="seleccionarDesdeLista(nodo)"
+      >
+        <div class="node-left">
+          <span class="tree-expander" (click)="toggleExpandir(nodo, $event)">
+            {{ estaExpandido(nodo) ? '▼' : '▶' }}
+          </span>
+          <span class="node-icon">{{ getIcono(nodo) }}</span>
+          <span class="node-name">{{ nodo.name }}</span>
+        </div>
+
+        <div class="node-right">
+          <span class="badge-icon" *ngIf="tieneAnimaciones(nodo)" title="Tiene animaciones">🏃</span>
+          <span class="badge-icon" *ngIf="tieneCapsula(nodo)" title="Tiene collider">📦</span>
+          <span class="badge-icon" *ngIf="tieneCamara(nodo)" title="Tiene cámara">🎥</span>
+        </div>
+      </div>
+
+      <div class="sub-tree" *ngIf="estaExpandido(nodo)">
+        <div
+          class="node-item sub-item"
+          *ngIf="nodo?.metadata?.collider?.type !== 'mesh'"
+          [class.selected]="esSubSeleccionado(nodo, 'collider')"
+          (click)="seleccionarSubItem('physics', 'collider', nodo, $event)"
+        >
+          <span class="node-icon">📦</span>
+          <span class="node-name">Colisión ({{ nodo.metadata?.collider?.type || 'sin tipo' }})</span>
+        </div>
+
+        <div
+          class="node-item sub-item"
+          *ngIf="tieneCamara(nodo)"
+          [class.selected]="esSubSeleccionado(nodo, 'camera')"
+          (click)="seleccionarSubItem('physics', 'camera', nodo, $event)"
+        >
+          <span class="node-icon">🎥</span>
+          <span class="node-name">Cámara interna</span>
+        </div>
+
+        <div
+          class="node-item sub-item"
+          *ngIf="tieneAnimaciones(nodo)"
+          (click)="seleccionarSubItem('animation', null, nodo, $event)"
+        >
+          <span class="node-icon">🏃</span>
+          <span class="node-name">Animaciones</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

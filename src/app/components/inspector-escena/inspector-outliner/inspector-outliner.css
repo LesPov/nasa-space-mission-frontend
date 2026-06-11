@@ -1,0 +1,74 @@
+:host {
+  flex: 0 0 40%;
+  background: #232323;
+  border-bottom: 2px solid #111; 
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid #111;
+  font-size: 13px;
+  font-weight: 600;
+  background: #2d2d2d;
+  color: #d1d1d1;
+}
+
+.panel-header .icon { margin-right: 6px; }
+
+.outliner-tree {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.tree-collection {
+  padding: 8px 12px;
+  color: #a1a1a1;
+  font-size: 12px;
+  border-bottom: 1px solid #2f2f2f;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tree-items {
+  overflow-y: auto;
+  padding: 4px;
+  min-height: 0;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.tree-items::-webkit-scrollbar { display: none; }
+
+.node-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin-bottom: 2px;
+  border-radius: 4px;
+  background: transparent;
+  cursor: pointer;
+  transition: 0.1s ease;
+}
+
+.node-item:hover { background: #2d2d2d; }
+.node-item.selected { background: #4772b3; color: #fff; }
+.node-item.locked { opacity: 0.6; }
+
+.node-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tree-expander { width: 14px; text-align: center; color: #888; font-size: 10px; }
+.node-icon, .badge-icon { width: 16px; text-align: center; font-size: 12px; }
+.node-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
+.node-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
+
+.sub-tree { padding-left: 20px; margin-bottom: 4px; }
+.sub-item { background: #212121; }

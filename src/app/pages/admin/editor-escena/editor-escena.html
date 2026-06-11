@@ -192,15 +192,15 @@
 
       <div class="canvas-container">
         
-        <div class="crosshair-ui" *ngIf="editorSvc.playState() === 'PLAYING' && vistaPrueba === 'FPS' && editorSvc.ratonBloqueado()" [class.hovering]="editorSvc.mirandoObjetoInteractuable()"></div>
+        <div class="crosshair-ui" *ngIf="editorSvc.playState() === 'PLAYING' && stateSvc.modoVistaPrueba === 'FPS' && editorSvc.ratonBloqueado()" [class.hovering]="editorSvc.mirandoObjetoInteractuable()"></div>
 
         <!-- FIRE TOAST: MODERN GRID DESIGN -->
-        <div class="modern-toast-container" *ngIf="stateSvc.playState() === 'PLAYING' && stateSvc.targetInteractuable() && stateSvc.ratonBloqueado() && (stateSvc.showToastE() || stateSvc.showToastI() || (esAdmin && vistaPrueba === 'FPS'))">
+        <div class="modern-toast-container" *ngIf="stateSvc.playState() === 'PLAYING' && stateSvc.targetInteractuable() && stateSvc.ratonBloqueado() && (stateSvc.showToastE() || stateSvc.showToastI() || (esAdmin && stateSvc.modoVistaPrueba === 'FPS'))">
           <div class="modern-toast-box">
             <div class="toast-title">{{ stateSvc.targetInteractuable()?.name }}</div>
             <div class="toast-actions-grid">
               
-              <div class="action-item" *ngIf="esAdmin && vistaPrueba === 'FPS'">
+              <div class="action-item" *ngIf="esAdmin && stateSvc.modoVistaPrueba === 'FPS'">
                 <kbd class="key-cap">Click</kbd>
                 <span class="action-label">Editar</span>
               </div>
@@ -220,7 +220,7 @@
         </div>
 
         <div class="hud-container">
-          <div class="hud-message hud-playing" *ngIf="editorSvc.playState() === 'PLAYING' && editorSvc.ratonBloqueado()"><span class="hud-icon">🎮</span> "WASD" Mover • "Espacio" Saltar</div>
+          <div class="hud-message hud-playing" *ngIf="editorSvc.playState() === 'PLAYING' && editorSvc.ratonBloqueado()"><span class="hud-icon">🎮</span> "WASD" Mover • "Espacio" Saltar • "V" Cambiar Cámara</div>
           <div class="hud-message hud-paused" *ngIf="editorSvc.playState() === 'PLAYING' && !editorSvc.ratonBloqueado()"><span class="hud-icon">⏸️</span> Juego Pausado | Click en la pantalla para volver</div>
           <div class="hud-message hud-editing" *ngIf="editorSvc.playState() === 'EDITING_IN_GAME'"><span class="hud-icon">⚙️</span> MODO EDICIÓN EN VIVO | Click al fondo o "ESC" para volver</div>
         </div>

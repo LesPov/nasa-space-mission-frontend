@@ -1,4 +1,3 @@
-
 import {
   Component,
   inject,
@@ -95,7 +94,6 @@ export class InspectorEscena implements OnInit, OnDestroy {
   private subs: Subscription[] = [];
   public nodosExpandidos = new Set<string>();
 
-  // Eliminado acordeón Climb
   public acordeonesPlayer: Record<string, boolean> = {
     movement: true, jump: false, camera: false, blend: false, physics: false, animEnabled: false
   };
@@ -109,7 +107,11 @@ export class InspectorEscena implements OnInit, OnDestroy {
   colliderOffX = 0; colliderOffY = 0; colliderOffZ = 0;
   camPosX = 0; camPosY = 1.6; camPosZ = 0;
 
-  public objInteractSequenceId: string = '';
+  // 🔥 NUEVOS VALORES DIVIDIDOS POR VISTA
+  public objInteractDistanceFPS: number = 3.0;
+  public objInteractDistanceTPS: number = 5.0;
+  public objInteractSequenceIdFPS: string = '';
+  public objInteractSequenceIdTPS: string = '';
   public objMensaje: string = '';
 
   public playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
@@ -178,8 +180,14 @@ export class InspectorEscena implements OnInit, OnDestroy {
     this.colliderSizeX = 0.5; this.colliderSizeY = 0.5; this.colliderSizeZ = 0.5;
     this.colliderOffX = 0; this.colliderOffY = 0; this.colliderOffZ = 0;
     this.camPosX = 0; this.camPosY = 1.6; this.camPosZ = 0;
-    this.objInteractSequenceId = '';
+    
+    // Resetear las nuevas variables de Interacción
+    this.objInteractDistanceFPS = 3.0;
+    this.objInteractDistanceTPS = 5.0;
+    this.objInteractSequenceIdFPS = '';
+    this.objInteractSequenceIdTPS = '';
     this.objMensaje = '';
+
     this.playerConfig = cloneDefaultPlayerConfig();
     this.bindingInputs = this.emptyBindingInputs();
     this.bindingTokens = this.emptyBindingTokens();
@@ -257,7 +265,12 @@ export class InspectorEscena implements OnInit, OnDestroy {
     const meta = obj.metadata || {};
     this.playerConfig = mergePlayerConfig(meta.playerConfig || null);
     
-    this.objInteractSequenceId = meta.interactSequenceId || '';
+    // Extraer nuevos valores
+    this.objInteractDistanceFPS = meta.interactDistanceFPS ?? 3.0;
+    this.objInteractDistanceTPS = meta.interactDistanceTPS ?? 5.0;
+    // Retrocompatibilidad con la antigua key interactSequenceId
+    this.objInteractSequenceIdFPS = meta.interactSequenceIdFPS || meta.interactSequenceId || '';
+    this.objInteractSequenceIdTPS = meta.interactSequenceIdTPS || meta.interactSequenceId || '';
     this.objMensaje = meta.mensaje || '';
 
     this.syncBindingDraftsFromConfig();
@@ -360,8 +373,14 @@ export class InspectorEscena implements OnInit, OnDestroy {
     const obj = this.getSelectedMesh();
     if (!obj) return;
     if (!obj.metadata) obj.metadata = {};
-    obj.metadata.interactSequenceId = this.objInteractSequenceId.trim();
+    
+    // Guardando los nuevos parámetros
+    obj.metadata.interactDistanceFPS = this.objInteractDistanceFPS;
+    obj.metadata.interactDistanceTPS = this.objInteractDistanceTPS;
+    obj.metadata.interactSequenceIdFPS = this.objInteractSequenceIdFPS.trim();
+    obj.metadata.interactSequenceIdTPS = this.objInteractSequenceIdTPS.trim();
     obj.metadata.mensaje = this.objMensaje.trim();
+    
     this.editorSvc.triggerUpdate();
   }
 
@@ -534,15 +553,11 @@ export class InspectorEscena implements OnInit, OnDestroy {
     this.animStatus = `Secuencia Demo (Salto) creada`;
   }
 
-  // 🔥 NUEVA SECUENCIA CINEMÁTICA PARA ESCALAR (CORREGIDA)
   crearSecuenciaBasicaEscalar() {
     const seq = createPlayerSequence(`Demo Escalar ${this.sequences.length + 1}`);
     seq.steps = [
-      // Paso 1: Sube, no avanza.
       { ...createSequenceStep('climbUp'), durationMs: 1000, offsetY: 2.8, offsetForward: 0, lockInput: true },
-      // Paso 2: Ya está arriba, avanza para no quedarse en el borde.
       { ...createSequenceStep('climbFinish'), durationMs: 800, offsetY: 0, offsetForward: 1.5, lockInput: true },
-      // Paso 3: Aterriza y recupera el control.
       { ...createSequenceStep('idle'), durationMs: 500, offsetY: 0, offsetForward: 0, lockInput: false }
     ];
     this.sequences = [...this.sequences, seq];

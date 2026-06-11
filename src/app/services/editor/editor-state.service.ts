@@ -22,7 +22,6 @@ export class EditorStateService {
   public showAddObjectModal = signal<boolean>(false);
   public objetoHovereado = signal<AbstractMesh | null>(null);
 
-  // 🔥 SEÑALES PARA EL TOAST DE INTERACCIÓN AAA
   public targetInteractuable = signal<AbstractMesh | null>(null);
   public showToastE = signal<boolean>(false);
   public showToastI = signal<boolean>(false);
@@ -109,7 +108,7 @@ export class EditorStateService {
       return true;
     }
 
-    if (this.rolSimulado() === 'user' && meta.isSelectable === false && !meta.mensaje && !meta.interactSequenceId) {
+    if (this.rolSimulado() === 'user' && meta.isSelectable === false && !meta.mensaje && !meta.interactSequenceId && !meta.interactSequenceIdFPS && !meta.interactSequenceIdTPS) {
       if (this.playState() === 'PLAYING' || this.playState() === 'INTERACTING') {
         return true;
       }
@@ -133,9 +132,11 @@ export class EditorStateService {
     const meta = (nodoBase.metadata ?? mesh.metadata ?? {}) as any;
 
     const mensaje = typeof meta.mensaje === 'string' ? meta.mensaje.trim() : '';
-    const interactSequenceId = typeof meta.interactSequenceId === 'string' ? meta.interactSequenceId.trim() : '';
+    const seqFPS = typeof meta.interactSequenceIdFPS === 'string' ? meta.interactSequenceIdFPS.trim() : '';
+    const seqTPS = typeof meta.interactSequenceIdTPS === 'string' ? meta.interactSequenceIdTPS.trim() : '';
+    const seqLeg = typeof meta.interactSequenceId === 'string' ? meta.interactSequenceId.trim() : '';
 
-    return (mensaje.length > 0 || interactSequenceId.length > 0);
+    return (mensaje.length > 0 || seqFPS.length > 0 || seqTPS.length > 0 || seqLeg.length > 0);
   }
 
   puedeSeleccionarse(mesh: AbstractMesh): boolean {
@@ -146,10 +147,8 @@ export class EditorStateService {
     const nodoBase = root ?? mesh;
     const selectable = nodoBase.metadata?.isSelectable ?? mesh.metadata?.isSelectable ?? true;
 
-    // 🔥 FIX ADMIN: El admin siempre puede seleccionar todo en el editor y en vivo.
     if (this.rolSimulado() === 'admin') return true;
 
-    // Usuario: solo puede seleccionar si es interactuable (tiene Lore o Secuencia)
     if (this.playState() === 'PLAYING' || this.playState() === 'INTERACTING') {
       return this.esObjetoInteractuable(nodoBase);
     }

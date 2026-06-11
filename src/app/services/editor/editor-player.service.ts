@@ -17,7 +17,10 @@ import {
   Ray,
   UniversalCamera,
   AbstractMesh,
-  TransformNode
+  TransformNode,
+  Animation,
+  CubicEase,
+  EasingFunction
 } from '@babylonjs/core';
 import {
   cloneDefaultPlayerConfig,
@@ -85,7 +88,7 @@ export class EditorPlayerService {
   private inputMap: Record<string, boolean> = {};
   private tecladoObserver: Observer<KeyboardInfo> | null = null;
   private tpsUpdateObserver: Observer<Scene> | null = null;
-  
+
   private previewObserver: Observer<Scene> | null = null;
 
   private activeSequenceId: string | null = null;
@@ -97,6 +100,21 @@ export class EditorPlayerService {
 
   private eKeyPressed = false;
   private iKeyPressed = false;
+
+  // Distancia real del último objeto interactuable detectado
+  private lastInteractDistance: number | null = null;
+  private lastInteractionProbePoint: Vector3 | null = null;
+
+  // 🔥 Variables para la transición cinemática de la cámara
+  private isTransitioningCameras = false;
+  private overrideTargetPivotY: number | null = null;
+
+  // 🔒 Bloqueo de orientación durante secuencias de escalada / cinemáticas
+  private sequenceOrientationLocked = false;
+  private lockedSequenceQuaternion: Quaternion | null = null;
+  private lockedSequenceFPSRotation: Vector3 | null = null;
+  private lockedSequenceTPSAlpha: number | null = null;
+  private lockedSequenceTPSBeta: number | null = null;
 
   constructor() {
     document.addEventListener('pointerlockchange', () => {
@@ -148,6 +166,61 @@ export class EditorPlayerService {
 
   private getScaleFactor(): number {
     return this.playerHalfHeight / 0.9;
+  }
+
+  private clamp(value: number, min: number, max: number): number {
+    return Math.max(min, Math.min(max, value));
+  }
+
+  private getRootProxyCollider(root: AbstractMesh): AbstractMesh | null {
+    const proxies = this.state.proxyColliders || [];
+    return proxies.find(p => p.parent === root || p.name === `proxyCol_${root.name}`) ?? null;
+  }
+
+  private getInteractionShapeMesh(target: AbstractMesh): AbstractMesh {
+    return this.getRootProxyCollider(target) ?? target;
+  }
+
+  private getClosestPointOnMeshBounds(mesh: AbstractMesh, point: Vector3): Vector3 | null {
+    try {
+      mesh.computeWorldMatrix(true);
+      const bounds = mesh.getBoundingInfo().boundingBox;
+      const min = bounds.minimumWorld;
+      const max = bounds.maximumWorld;
+
+      return new Vector3(
+        this.clamp(point.x, min.x, max.x),
+        this.clamp(point.y, min.y, max.y),
+        this.clamp(point.z, min.z, max.z)
+      );
+    } catch {
+      return null;
+    }
+  }
+
+  private getInteractionProbePoint(view: 'FPS' | 'TPS', jugador: Mesh, activeCamera: any, colMeta: any): Vector3 {
+    if (view === 'FPS') {
+      if (activeCamera?.position) return activeCamera.position.clone();
+      return jugador.getAbsolutePosition().clone();
+    }
+
+    const localCapsuleCenter = new Vector3(
+      colMeta?.offsetX ?? 0,
+      colMeta?.offsetY ?? 0,
+      colMeta?.offsetZ ?? 0
+    );
+
+    jugador.computeWorldMatrix(true);
+    return Vector3.TransformCoordinates(localCapsuleCenter, jugador.getWorldMatrix());
+  }
+
+  private getInteractionDistanceToTarget(target: AbstractMesh, probePoint: Vector3): number {
+    const shapeMesh = this.getInteractionShapeMesh(target);
+    const closest = this.getClosestPointOnMeshBounds(shapeMesh, probePoint);
+    if (!closest) {
+      return Vector3.Distance(probePoint, target.getAbsolutePosition());
+    }
+    return Vector3.Distance(probePoint, closest);
   }
 
   private resolveAnimation(binding: string | string[] | null, fallback: AnimationGroup | null): AnimationGroup | null {
@@ -216,40 +289,103 @@ export class EditorPlayerService {
     this.activeSequenceStepEntered = false;
     this.activeSequenceWasRunning = false;
     this.sequenceJumpTriggered = false;
+    this.sequenceOrientationLocked = false;
+    this.lockedSequenceQuaternion = null;
+    this.lockedSequenceFPSRotation = null;
+    this.lockedSequenceTPSAlpha = null;
+    this.lockedSequenceTPSBeta = null;
+  }
+
+  private shouldLockOrientationForSequence(step: PlayerSequenceStep | null): boolean {
+    if (!step) return false;
+
+    return [
+      'climbUp',
+      'climbFinish',
+      'hangIdle',
+      'vault',
+      'stepUp'
+    ].includes(step.action);
+  }
+
+  private captureSequenceOrientationState(): void {
+    const jugador = this.state.jugadorActivo as Mesh | null;
+    if (!jugador) return;
+
+    jugador.computeWorldMatrix(true);
+
+    if (jugador.rotationQuaternion) {
+      this.lockedSequenceQuaternion = jugador.rotationQuaternion.clone();
+    } else {
+      this.lockedSequenceQuaternion = Quaternion.FromEulerAngles(
+        jugador.rotation.x,
+        jugador.rotation.y,
+        jugador.rotation.z
+      );
+      jugador.rotationQuaternion = this.lockedSequenceQuaternion.clone();
+    }
+
+    const fpsCam = this.motor3d.playerCameraFPS;
+    this.lockedSequenceFPSRotation = fpsCam.rotation.clone();
+
+    const tpsCam = this.motor3d.playerCameraTPS;
+    this.lockedSequenceTPSAlpha = tpsCam.alpha;
+    this.lockedSequenceTPSBeta = tpsCam.beta;
+
+    this.sequenceOrientationLocked = true;
+  }
+
+  private applyLockedOrientationWhileSequence(): void {
+    const jugador = this.state.jugadorActivo as Mesh | null;
+    if (!jugador || !this.sequenceOrientationLocked) return;
+
+    if (this.lockedSequenceQuaternion) {
+      jugador.rotationQuaternion = this.lockedSequenceQuaternion.clone();
+      jugador.rotation.set(0, 0, 0);
+    }
+
+    const activeCamera = this.motor3d.scene.activeCamera;
+    if (this.state.modoVistaPrueba === 'FPS' && activeCamera instanceof UniversalCamera && this.lockedSequenceFPSRotation) {
+      activeCamera.rotation.copyFrom(this.lockedSequenceFPSRotation);
+    }
+
+    if (this.state.modoVistaPrueba === 'TPS' && this.lockedSequenceTPSAlpha !== null && this.lockedSequenceTPSBeta !== null) {
+      this.motor3d.playerCameraTPS.alpha = this.lockedSequenceTPSAlpha;
+      this.motor3d.playerCameraTPS.beta = this.lockedSequenceTPSBeta;
+    }
   }
 
   private iniciarSecuenciaEnJuego(sequenceId: string, target?: AbstractMesh) {
     const seqs = this.getSequenceList();
     if (seqs.some(s => s.id === sequenceId)) {
-        this.activeSequenceId = sequenceId;
-        this.activeSequenceIndex = 0;
-        this.activeSequenceElapsedMs = 0;
-        this.activeSequenceStepEntered = true;
-        this.velocidadY = 0; 
-        
-        if (target && this.state.jugadorActivo) {
-            const playerPos = this.state.jugadorActivo.getAbsolutePosition();
-            const targetPos = target.getAbsolutePosition();
-            
-            const dir = targetPos.subtract(playerPos);
-            dir.y = 0; 
-            
-            if (dir.lengthSquared() > 0.001) {
-               dir.normalize();
-               const angle = Math.atan2(dir.x, dir.z);
-               
-               this.state.jugadorActivo.rotationQuaternion = Quaternion.FromEulerAngles(0, angle, 0);
-               
-               if (this.state.modoVistaPrueba === 'FPS') {
-                  this.motor3d.playerCameraFPS.rotation.y = angle;
-                  this.motor3d.playerCameraFPS.rotation.x = 0; 
-               }
-            }
+      this.activeSequenceId = sequenceId;
+      this.activeSequenceIndex = 0;
+      this.activeSequenceElapsedMs = 0;
+      this.activeSequenceStepEntered = true;
+      this.velocidadY = 0;
+
+      // IMPORTANTE:
+      // Ya no giramos al jugador hacia el centro del target.
+      // Se conserva tal cual llegó mirando el muro/plataforma.
+      // Eso evita que se desplace o rote de forma brusca al iniciar la escalada.
+      if (this.state.jugadorActivo) {
+        const jugador = this.state.jugadorActivo as Mesh;
+        if (!jugador.rotationQuaternion) {
+          jugador.rotationQuaternion = Quaternion.FromEulerAngles(
+            jugador.rotation.x,
+            jugador.rotation.y,
+            jugador.rotation.z
+          );
+          jugador.rotation.set(0, 0, 0);
         }
-        
-        this.log(`Secuencia iniciada via interacción: ${sequenceId}`);
+
+        // Bloqueamos orientación inicial para que no cambie durante la secuencia.
+        this.captureSequenceOrientationState();
+      }
+
+      this.log(`Secuencia iniciada via interacción: ${sequenceId}`);
     } else {
-        this.log(`Secuencia no encontrada en el jugador: ${sequenceId}`);
+      this.log(`Secuencia no encontrada en el jugador: ${sequenceId}`);
     }
   }
 
@@ -294,6 +430,13 @@ export class EditorPlayerService {
   private enterSequenceStep(step: PlayerSequenceStep): void {
     this.sequenceJumpTriggered = false;
 
+    // Bloqueo de orientación solo para la familia de escalada / paso por borde.
+    this.sequenceOrientationLocked = this.shouldLockOrientationForSequence(step);
+
+    if (this.sequenceOrientationLocked) {
+      this.captureSequenceOrientationState();
+    }
+
     if (step.action === 'jumpStart') {
       this.sequenceJumpTriggered = true;
     }
@@ -312,18 +455,45 @@ export class EditorPlayerService {
   ) {
     if (!sequence || !sequence.enabled || !sequence.steps || sequence.steps.length === 0) {
       this.activeSequenceWasRunning = false;
-      return { step: null, lockInput: false, allowMovement: true, forceForwardWalk: false, forceForwardRun: false, forceJump: false, animationOverride: null, blend: this.playerConfig.blend.defaultBlend, loop: true, running: false };
+      this.sequenceOrientationLocked = false;
+      return {
+        step: null,
+        lockInput: false,
+        allowMovement: true,
+        forceForwardWalk: false,
+        forceForwardRun: false,
+        forceJump: false,
+        animationOverride: null,
+        blend: this.playerConfig.blend.defaultBlend,
+        loop: true,
+        running: false
+      };
     }
 
     const step = this.getCurrentSequenceStep(sequence);
     if (!step) {
       this.activeSequenceWasRunning = false;
-      return { step: null, lockInput: false, allowMovement: true, forceForwardWalk: false, forceForwardRun: false, forceJump: false, animationOverride: null, blend: this.playerConfig.blend.defaultBlend, loop: true, running: false };
+      this.sequenceOrientationLocked = false;
+      return {
+        step: null,
+        lockInput: false,
+        allowMovement: true,
+        forceForwardWalk: false,
+        forceForwardRun: false,
+        forceJump: false,
+        animationOverride: null,
+        blend: this.playerConfig.blend.defaultBlend,
+        loop: true,
+        running: false
+      };
     }
 
     if (this.activeSequenceStepEntered) {
       this.enterSequenceStep(step);
       this.activeSequenceStepEntered = false;
+    } else {
+      // Mantener lock de orientación si la secuencia actual es de escalada.
+      this.sequenceOrientationLocked = this.shouldLockOrientationForSequence(step) || this.sequenceOrientationLocked;
     }
 
     const animationOverride = this.resolveSequenceStepAnimation(step);
@@ -350,7 +520,18 @@ export class EditorPlayerService {
         } else {
           this.resetSequenceRuntime();
           this.activeSequenceWasRunning = false;
-          return { step, lockInput, allowMovement, forceForwardWalk, forceForwardRun, forceJump, animationOverride, blend, loop, running: false };
+          return {
+            step,
+            lockInput,
+            allowMovement,
+            forceForwardWalk,
+            forceForwardRun,
+            forceJump,
+            animationOverride,
+            blend,
+            loop,
+            running: false
+          };
         }
       } else {
         this.activeSequenceStepEntered = true;
@@ -358,7 +539,18 @@ export class EditorPlayerService {
     }
 
     this.activeSequenceWasRunning = true;
-    return { step, lockInput, allowMovement, forceForwardWalk, forceForwardRun, forceJump, animationOverride, blend, loop, running: true };
+    return {
+      step,
+      lockInput,
+      allowMovement,
+      forceForwardWalk,
+      forceForwardRun,
+      forceJump,
+      animationOverride,
+      blend,
+      loop,
+      running: true
+    };
   }
 
   private loadPlayerConfigFromMetadata(obj: Mesh): void {
@@ -405,8 +597,27 @@ export class EditorPlayerService {
     if (this.animRun) this.animRun.speedRatio = 1.0;
   }
 
+  private getInteractDistanceLimit(target: AbstractMesh, view: 'FPS' | 'TPS'): number {
+    const meta = target.metadata || {};
+    if (view === 'FPS') return meta.interactDistanceFPS ?? 3.0;
+    return meta.interactDistanceTPS ?? 5.0;
+  }
+
+  private canActivateInteraction(target: AbstractMesh, view: 'FPS' | 'TPS' | null): boolean {
+    if (!target) return false;
+
+    const safeView: 'FPS' | 'TPS' = view ?? 'TPS';
+    const maxDist = this.getInteractDistanceLimit(target, safeView);
+
+    if (this.lastInteractDistance === null || !Number.isFinite(this.lastInteractDistance)) {
+      return false;
+    }
+
+    return this.lastInteractDistance <= maxDist;
+  }
+
   public iniciarPreviewSecuencia(mesh: AbstractMesh, sequenceId: string) {
-    this.detenerPreviewSecuencia(); 
+    this.detenerPreviewSecuencia();
 
     const trueMesh = mesh as Mesh;
     this.loadPlayerConfigFromMetadata(trueMesh);
@@ -439,10 +650,87 @@ export class EditorPlayerService {
     }
     this.resetSequenceRuntime();
     if (this.animActual) {
-       this.animActual.stop();
-       this.animActual = null;
+      this.animActual.stop();
+      this.animActual = null;
     }
     this.animacionesJugador.forEach(a => a.stop());
+  }
+
+  // 🔥 LÓGICA DE TRANSICIÓN CINEMATOGRÁFICA DE CÁMARAS
+  private toggleCameraView() {
+    if (!this.state.jugadorActivo || this.state.playState() !== 'PLAYING' || this.isTransitioningCameras) return;
+
+    this.isTransitioningCameras = true;
+    const scaleNow = this.state.jugadorActivo.scaling.y;
+    const targetRadius = this.playerConfig.camera.tpsRadius * scaleNow;
+
+    const ease = new CubicEase();
+    ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
+
+    const fpsCam = this.motor3d.playerCameraFPS;
+    const tpsCam = this.motor3d.playerCameraTPS;
+    const canvas = this.motor3d.engine.getRenderingCanvas();
+    const scene = this.motor3d.scene;
+
+    if (this.state.modoVistaPrueba === 'FPS') {
+      // --- DE 1RA A 3RA PERSONA ---
+      if (canvas) fpsCam.detachControl();
+
+      tpsCam.alpha = -fpsCam.rotation.y - Math.PI / 2;
+      tpsCam.beta = fpsCam.rotation.x + Math.PI / 2;
+
+      tpsCam.radius = 0.05;
+      this.currentPivotY = this.currentEyeLevel;
+
+      this.state.modoVistaPrueba = 'TPS';
+      scene.activeCamera = tpsCam;
+
+      const anim = Animation.CreateAndStartAnimation(
+        'camRadiusOut',
+        tpsCam,
+        'radius',
+        60,
+        45,
+        0.05,
+        targetRadius,
+        2,
+        ease
+      );
+
+      anim?.onAnimationEndObservable.addOnce(() => {
+        this.isTransitioningCameras = false;
+        if (canvas) tpsCam.attachControl(canvas, true);
+      });
+    } else {
+      // --- DE 3RA A 1RA PERSONA ---
+      if (canvas) tpsCam.detachControl();
+
+      this.overrideTargetPivotY = this.playerEyeLevel;
+
+      const anim = Animation.CreateAndStartAnimation(
+        'camRadiusIn',
+        tpsCam,
+        'radius',
+        60,
+        45,
+        tpsCam.radius,
+        0.05,
+        2,
+        ease
+      );
+
+      anim?.onAnimationEndObservable.addOnce(() => {
+        this.overrideTargetPivotY = null;
+        this.state.modoVistaPrueba = 'FPS';
+
+        fpsCam.rotation.y = -tpsCam.alpha - Math.PI / 2;
+        fpsCam.rotation.x = tpsCam.beta - Math.PI / 2;
+
+        scene.activeCamera = fpsCam;
+        if (canvas) fpsCam.attachControl(canvas, true);
+        this.isTransitioningCameras = false;
+      });
+    }
   }
 
   iniciarModoJuego(vista: 'FPS' | 'TPS') {
@@ -573,7 +861,7 @@ export class EditorPlayerService {
 
     this.tecladoObserver = scene.onKeyboardObservable.add((kbInfo: KeyboardInfo) => {
       if (this.state.playState() !== 'PLAYING' || !this.state.ratonBloqueado()) return;
-      
+
       const keyStr = kbInfo.event.key ? kbInfo.event.key.toLowerCase() : '';
       const codeStr = kbInfo.event.code ? kbInfo.event.code.toLowerCase() : '';
 
@@ -584,26 +872,52 @@ export class EditorPlayerService {
         if (keyStr === 'e') this.eKeyPressed = true;
         if (keyStr === 'i') this.iKeyPressed = true;
 
+        // 🔥 TECLA 'V' PARA CAMBIAR CÁMARA
+        if (keyStr === 'v' && !this.inputMap['v_handled']) {
+          this.inputMap['v_handled'] = true;
+          this.toggleCameraView();
+        }
+
         const target = this.state.targetInteractuable();
         if (target) {
-            if (keyStr === 'e' && this.state.showToastE()) {
-                const seqIdRaw = target.metadata?.interactSequenceId;
-                if(seqIdRaw) {
-                    const ids = seqIdRaw.split(',').map((id: string) => id.trim()).filter((id: string) => id);
-                    if (ids.length > 0) {
-                        let idx = target.metadata.currentSeqIdx || 0;
-                        if (idx >= ids.length) idx = 0;
+          const view = this.state.modoVistaPrueba;
 
-                        const sequenceToPlay = ids[idx];
-                        this.iniciarSecuenciaEnJuego(sequenceToPlay, target);
+          // Si está lejos, no ejecuta acción aunque sea admin.
+          // El admin puede seguir viendo/seleccionando, pero no activar lejos.
+          const canInteractNow = this.canActivateInteraction(target, view);
 
-                        target.metadata.currentSeqIdx = (idx + 1) % ids.length;
-                    }
-                }
+          if (keyStr === 'e' && this.state.showToastE()) {
+            if (!canInteractNow) {
+              this.log('Interacción E bloqueada: el objeto está lejos');
+              return;
             }
-            if (keyStr === 'i' && this.state.showToastI()) {
-                this.abrirMensajeInteractivo(target);
+
+            let seqIdRaw = view === 'FPS' ? target.metadata?.interactSequenceIdFPS : target.metadata?.interactSequenceIdTPS;
+            if (!seqIdRaw) seqIdRaw = target.metadata?.interactSequenceId;
+
+            if (seqIdRaw) {
+              const ids = seqIdRaw.split(',').map((id: string) => id.trim()).filter((id: string) => id);
+              if (ids.length > 0) {
+                const idxKey = view === 'FPS' ? 'currentSeqIdxFPS' : 'currentSeqIdxTPS';
+                let idx = target.metadata[idxKey] || 0;
+                if (idx >= ids.length) idx = 0;
+
+                const sequenceToPlay = ids[idx];
+                this.iniciarSecuenciaEnJuego(sequenceToPlay, target);
+
+                target.metadata[idxKey] = (idx + 1) % ids.length;
+              }
             }
+          }
+
+          if (keyStr === 'i' && this.state.showToastI()) {
+            if (!canInteractNow) {
+              this.log('Interacción I bloqueada: el objeto está lejos');
+              return;
+            }
+
+            this.abrirMensajeInteractivo(target);
+          }
         }
       } else {
         this.inputMap[keyStr] = false;
@@ -611,32 +925,37 @@ export class EditorPlayerService {
 
         if (keyStr === 'e') this.eKeyPressed = false;
         if (keyStr === 'i') this.iKeyPressed = false;
+        if (keyStr === 'v') this.inputMap['v_handled'] = false;
       }
     });
 
+    // 🔥 SIEMPRE CREAMOS AMBAS CÁMARAS PARA PODER ALTERNAR
+    const fpsCam = this.motor3d.playerCameraFPS;
+    fpsCam.keysUp = [];
+    fpsCam.keysDown = [];
+    fpsCam.keysLeft = [];
+    fpsCam.keysRight = [];
+    fpsCam.minZ = 0.05;
+    const startRot = obj.rotationQuaternion ? obj.rotationQuaternion.toEulerAngles() : obj.rotation;
+    fpsCam.rotation.set(startRot.x, startRot.y, startRot.z);
+
+    obj.isVisible = true;
+    this.state.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, scene);
+    this.state.cameraPivot.isVisible = false;
+    obj.computeWorldMatrix(true);
+    const localPivotPos = new Vector3(camMeta.x, this.currentPivotY / scale.y, camMeta.z);
+    this.state.cameraPivot.position = Vector3.TransformCoordinates(localPivotPos, obj.getWorldMatrix());
+
+    this.motor3d.playerCameraTPS.lockedTarget = this.state.cameraPivot;
+    this.motor3d.playerCameraTPS.radius = this.playerConfig.camera.tpsRadius * scale.y;
+
+    // Activar la cámara solicitada inicialmente
     if (vista === 'FPS') {
-      const fpsCam = this.motor3d.playerCameraFPS;
       scene.activeCamera = fpsCam;
-      fpsCam.keysUp = [];
-      fpsCam.keysDown = [];
-      fpsCam.keysLeft = [];
-      fpsCam.keysRight = [];
-      fpsCam.minZ = 0.05;
-
-      const startRot = obj.rotationQuaternion ? obj.rotationQuaternion.toEulerAngles() : obj.rotation;
-      fpsCam.rotation.set(startRot.x, startRot.y, startRot.z);
     } else {
-      obj.isVisible = true;
-      this.state.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, scene);
-      this.state.cameraPivot.isVisible = false;
-
-      obj.computeWorldMatrix(true);
-      const localPivotPos = new Vector3(camMeta.x, this.currentPivotY / scale.y, camMeta.z);
-      this.state.cameraPivot.position = Vector3.TransformCoordinates(localPivotPos, obj.getWorldMatrix());
-
-      this.motor3d.playerCameraTPS.lockedTarget = this.state.cameraPivot;
-      this.motor3d.playerCameraTPS.radius = this.playerConfig.camera.tpsRadius * scale.y;
       scene.activeCamera = this.motor3d.playerCameraTPS;
+      this.motor3d.playerCameraTPS.alpha = -startRot.y - Math.PI / 2;
+      this.motor3d.playerCameraTPS.beta = startRot.x + Math.PI / 2;
     }
 
     this.velocidadY = -0.1;
@@ -679,7 +998,21 @@ export class EditorPlayerService {
       let hitInteractuable: AbstractMesh | null = null;
       let hoverInteractable = false;
 
-      if (vista === 'FPS') {
+      // Reset por frame, luego se recalcula si hay un target válido
+      this.lastInteractDistance = null;
+
+      const viewMode = this.state.modoVistaPrueba ?? 'TPS';
+      this.lastInteractionProbePoint = this.getInteractionProbePoint(viewMode, jugador, activeCamera, colMeta);
+
+      const resolveRootFromPick = (picked: AbstractMesh | null | undefined): AbstractMesh | null => {
+        if (!picked || this.state.esMeshIgnorable(picked)) return null;
+        const rootNode = this.state.encontrarRaiz(picked);
+        return rootNode && rootNode instanceof AbstractMesh ? rootNode : null;
+      };
+
+      const canShowInteraction = (root: AbstractMesh): boolean => this.state.esObjetoInteractuable(root);
+
+      if (viewMode === 'FPS') {
         const centerRay = scene.createPickingRay(
           this.motor3d.engine.getRenderWidth() / 2,
           this.motor3d.engine.getRenderHeight() / 2,
@@ -689,56 +1022,96 @@ export class EditorPlayerService {
         centerRay.length = 10000;
 
         const hitCross = scene.pickWithRay(centerRay, (m) => m.isVisible || m.isPickable);
-        
+
         let hoveredRoot: AbstractMesh | null = null;
+        let hoveredDistance: number | null = null;
 
         if (hitCross && hitCross.hit && hitCross.pickedMesh) {
-          const picked = hitCross.pickedMesh as AbstractMesh;
-          
-          if (!this.state.esMeshIgnorable(picked)) {
-            const rootNode = this.state.encontrarRaiz(picked);
-            if (rootNode && rootNode instanceof AbstractMesh) {
-              const adminMode = this.state.rolSimulado() === 'admin';
-              if (adminMode || this.state.puedeSeleccionarse(rootNode)) {
-                hoveredRoot = rootNode;
-                hoverInteractable = adminMode ? true : this.state.esObjetoInteractuable(rootNode);
-              }
+          const pickedRoot = resolveRootFromPick(hitCross.pickedMesh as AbstractMesh);
+          if (pickedRoot && canShowInteraction(pickedRoot)) {
+            const maxDistFPS = pickedRoot.metadata?.interactDistanceFPS ?? 3.0;
+            const distFromSurface = this.getInteractionDistanceToTarget(pickedRoot, this.lastInteractionProbePoint);
+
+            if (distFromSurface <= maxDistFPS) {
+              hoveredRoot = pickedRoot;
+              hoveredDistance = distFromSurface;
+              hoverInteractable = true;
             }
+          }
+        }
+
+        if (!hoveredRoot) {
+          let bestRoot: AbstractMesh | null = null;
+          let bestDistance = Number.POSITIVE_INFINITY;
+
+          for (const mesh of scene.meshes) {
+            if (mesh === jugador || mesh.name.includes('proxyCol') || mesh.name.includes('suelo') || !mesh.isVisible) continue;
+
+            const root = this.state.encontrarRaiz(mesh as AbstractMesh);
+            if (!root || !(root instanceof AbstractMesh) || !canShowInteraction(root)) continue;
+
+            const maxDistFPS = root.metadata?.interactDistanceFPS ?? 3.0;
+            const distFromSurface = this.getInteractionDistanceToTarget(root, this.lastInteractionProbePoint);
+
+            if (distFromSurface <= maxDistFPS && distFromSurface < bestDistance) {
+              bestRoot = root;
+              bestDistance = distFromSurface;
+            }
+          }
+
+          if (bestRoot) {
+            hoveredRoot = bestRoot;
+            hoveredDistance = bestDistance;
+            hoverInteractable = true;
           }
         }
 
         this.state.objetoHovereado.set(hoveredRoot);
         this.state.mirandoObjetoInteractuable.set(hoverInteractable);
         hitInteractuable = hoveredRoot;
+        this.lastInteractDistance = hoveredDistance;
 
       } else {
-        const playerPos = jugador.getAbsolutePosition();
-        let minDist = 3.5 * scaleNow.y;
+        const playerProbe = this.lastInteractionProbePoint;
+        let closestRoot: AbstractMesh | null = null;
+        let closestDist = Number.POSITIVE_INFINITY;
 
-        scene.meshes.forEach(m => {
-            if (m === jugador || m.name.includes("proxyCol") || m.name.includes("suelo") || !m.isVisible) return;
-            const root = this.state.encontrarRaiz(m as AbstractMesh);
-            if (root && root instanceof AbstractMesh && this.state.esObjetoInteractuable(root)) {
-                const dist = Vector3.Distance(playerPos, root.getAbsolutePosition());
-                if (dist < minDist) {
-                    minDist = dist;
-                    hitInteractuable = root;
-                }
-            }
-        });
-        
+        for (const mesh of scene.meshes) {
+          if (mesh === jugador || mesh.name.includes('proxyCol') || mesh.name.includes('suelo') || !mesh.isVisible) continue;
+
+          const root = this.state.encontrarRaiz(mesh as AbstractMesh);
+          if (!root || !(root instanceof AbstractMesh) || !canShowInteraction(root)) continue;
+
+          const maxDistTPS = root.metadata?.interactDistanceTPS ?? 5.0;
+          const distFromSurface = this.getInteractionDistanceToTarget(root, playerProbe);
+
+          if (distFromSurface <= maxDistTPS && distFromSurface < closestDist) {
+            closestDist = distFromSurface;
+            closestRoot = root;
+          }
+        }
+
+        hitInteractuable = closestRoot;
+        this.lastInteractDistance = closestRoot ? closestDist : null;
+
         this.state.mirandoObjetoInteractuable.set(!!hitInteractuable);
-        this.state.objetoHovereado.set(null); 
+        this.state.objetoHovereado.set(null);
       }
 
       this.state.targetInteractuable.set(hitInteractuable);
       if (hitInteractuable) {
-          const meta = hitInteractuable.metadata || {};
-          this.state.showToastE.set(!!meta.interactSequenceId && meta.interactSequenceId.trim() !== '');
-          this.state.showToastI.set(!!meta.mensaje && meta.mensaje.trim() !== '');
+        const meta = hitInteractuable.metadata || {};
+        const safeView = this.state.modoVistaPrueba;
+
+        // Ahora el prompt solo aparece si realmente está cerca del borde/superficie.
+        const canInteractNow = this.canActivateInteraction(hitInteractuable, safeView);
+        const seqIdForView = safeView === 'FPS' ? (meta.interactSequenceIdFPS || meta.interactSequenceId) : (meta.interactSequenceIdTPS || meta.interactSequenceId);
+
+        this.state.showToastE.set(!!seqIdForView && seqIdForView.trim() !== '' && canInteractNow);
+        this.state.showToastI.set(!!meta.mensaje && meta.mensaje.trim() !== '' && canInteractNow);
       } else {
-          this.state.showToastE.set(false);
-          this.state.showToastI.set(false);
+        this.state.showToastE.set(false);
+        this.state.showToastI.set(false);
       }
 
       const dtMs = scene.getEngine().getDeltaTime();
@@ -750,26 +1123,25 @@ export class EditorPlayerService {
       let isRunning = false;
       let isGrounded = false;
 
-      // 🔥 LÓGICA INTELIGENTE DE MOVIMIENTO CINEMÁTICO EN SECUENCIAS
       let isCinematicSequence = false;
       let dy = 0;
       let df = 0;
 
       if (seqRuntime.running && seqRuntime.step) {
-          const soY = seqRuntime.step.offsetY || 0;
-          const soF = seqRuntime.step.offsetForward || 0;
-          
-          // Entramos en cinemática si hay desplazamiento configurado o el usuario bloqueó las teclas
-          if (soY !== 0 || soF !== 0 || seqRuntime.lockInput) {
-              isCinematicSequence = true;
-              const dtSec = dtMs / 1000;
-              const durSec = Math.max(0.001, seqRuntime.step.durationMs / 1000);
-              dy = (soY / durSec) * dtSec; 
-              df = (soF / durSec) * dtSec; 
-          }
+        const soY = seqRuntime.step.offsetY || 0;
+        const soF = seqRuntime.step.offsetForward || 0;
+
+        if (soY !== 0 || soF !== 0 || seqRuntime.lockInput || this.sequenceOrientationLocked) {
+          isCinematicSequence = true;
+          const dtSec = dtMs / 1000;
+          const durSec = Math.max(0.001, seqRuntime.step.durationMs / 1000);
+          dy = (soY / durSec) * dtSec;
+          df = (soF / durSec) * dtSec;
+        }
       }
 
-      const sequenceLocksInput = isCinematicSequence || !!seqRuntime.lockInput;
+      const freezeOrientation = this.sequenceOrientationLocked || (seqRuntime.running && this.shouldLockOrientationForSequence(seqRuntime.step));
+      const sequenceLocksInput = isCinematicSequence || !!seqRuntime.lockInput || freezeOrientation;
       const effectiveInput = sequenceLocksInput ? {} : this.inputMap;
 
       if (seqRuntime.running && seqRuntime.forceJump && !this.isJumping && !this.isFalling) {
@@ -778,126 +1150,120 @@ export class EditorPlayerService {
         this.sequenceJumpTriggered = false;
       }
 
-      // Evaluar Colisiones Inferiores
       const rayCol = new Ray(capsuleCenter, Vector3.Down(), this.playerHalfHeight + (0.15 * scaleNow.y));
       const hitInfo = scene.pickWithRay(rayCol, collFn);
       isGrounded = hitInfo ? hitInfo.hit : false;
 
       if (this.velocidadY > 0) isGrounded = false;
 
-      // 🔥 MODO CINEMÁTICO (Evita que las colisiones estropeen el Climbing)
       if (isCinematicSequence) {
-          // Apagamos colisiones del jugador mientras dura la secuencia
-          jugador.checkCollisions = false; 
-          
-          const pForward = this.sanitizeForwardDir(jugador.getDirection(Vector3.Forward()));
-          
-          // Aplicamos posiciones puras sin el motor de físicas
-          if (dy !== 0) jugador.position.y += dy;
-          if (df !== 0) {
-             jugador.position.addInPlace(pForward.scale(df));
-          }
+        jugador.checkCollisions = false;
 
-          jugador.computeWorldMatrix(true);
+        const pForward = this.sanitizeForwardDir(jugador.getDirection(Vector3.Forward()));
 
-          this.velocidadY = 0; // Anulamos gravedad
-          this.highestY = jugador.position.y;
-          this.isJumping = false;
-          this.isFalling = false;
-          isGrounded = true; // Fingimos que está tocando piso para que no se asuste
-          
-          move = Vector3.Zero();
-          isMoving = true; // Para que no active IDLE
-          isRunning = false;
+        if (dy !== 0) jugador.position.y += dy;
+        if (df !== 0) {
+          jugador.position.addInPlace(pForward.scale(df));
+        }
+
+        jugador.computeWorldMatrix(true);
+
+        this.velocidadY = 0;
+        this.highestY = jugador.position.y;
+        this.isJumping = false;
+        this.isFalling = false;
+        isGrounded = true;
+
+        move = Vector3.Zero();
+        isMoving = true;
+        isRunning = false;
 
       } else {
-          // 🔥 MODO NORMAL (Gravedad y Movimiento libre)
-          jugador.checkCollisions = true; 
-          
-          if (this.isRecoveringFromFall) {
-            this.recoveryFrame++;
-            if (this.recoveryFrame > liveConfig.physics.landingRecoveryFrames) {
-              this.isRecoveringFromFall = false;
-            }
-          } else if (!this.isHardLanding) {
-            if (effectiveInput['w']) move.addInPlace(forward);
-            if (effectiveInput['s']) move.subtractInPlace(forward);
-            if (effectiveInput['d']) move.addInPlace(right);
-            if (effectiveInput['a']) move.subtractInPlace(right);
+        jugador.checkCollisions = true;
+
+        if (this.isRecoveringFromFall) {
+          this.recoveryFrame++;
+          if (this.recoveryFrame > liveConfig.physics.landingRecoveryFrames) {
+            this.isRecoveringFromFall = false;
+          }
+        } else if (!this.isHardLanding) {
+          if (effectiveInput['w']) move.addInPlace(forward);
+          if (effectiveInput['s']) move.subtractInPlace(forward);
+          if (effectiveInput['d']) move.addInPlace(right);
+          if (effectiveInput['a']) move.subtractInPlace(right);
+        }
+
+        if (seqRuntime.running && seqRuntime.allowMovement) {
+          if (seqRuntime.forceForwardRun) move.addInPlace(forward.scale(this.runSpeed * this.getScaleFactor()));
+          if (seqRuntime.forceForwardWalk) move.addInPlace(forward.scale(this.walkSpeed * this.getScaleFactor()));
+        }
+
+        isMoving = move.lengthSquared() > 0.001;
+        isRunning = !!effectiveInput['shiftleft'] || !!effectiveInput['shiftright'] || !!effectiveInput['shift'] || seqRuntime.forceForwardRun;
+
+        const scaleFactor = this.getScaleFactor();
+
+        if (isMoving && !this.isHardLanding && !this.isRecoveringFromFall) {
+          const modSpeed = (isRunning ? this.runSpeed : this.walkSpeed) * scaleFactor;
+
+          if (!seqRuntime.running || !seqRuntime.allowMovement) {
+            move.normalize().scaleInPlace(modSpeed);
           }
 
-          if (seqRuntime.running && seqRuntime.allowMovement) {
-            if (seqRuntime.forceForwardRun) move.addInPlace(forward.scale(this.runSpeed * this.getScaleFactor()));
-            if (seqRuntime.forceForwardWalk) move.addInPlace(forward.scale(this.walkSpeed * this.getScaleFactor()));
+          if (this.state.modoVistaPrueba === 'TPS' && !sequenceLocksInput && !freezeOrientation) {
+            const targetAngle = Math.atan2(move.x, move.z);
+            if (!jugador.rotationQuaternion) jugador.rotationQuaternion = Quaternion.Identity();
+            jugador.rotationQuaternion = Quaternion.Slerp(
+              jugador.rotationQuaternion,
+              Quaternion.FromEulerAngles(0, targetAngle, 0),
+              0.1
+            );
+          }
+        }
+
+        if (isGrounded) {
+          if (this.isFalling || this.isJumping) {
+            const fallDistance = this.highestY - jugador.position.y;
+            if (fallDistance > this.playerConfig.physics.hardLandingThreshold * scaleNow.y) {
+              this.isHardLanding = true;
+              this.landingFrame = 0;
+              move = Vector3.Zero();
+            }
+            this.isFalling = false;
+            this.isJumping = false;
           }
 
-          isMoving = move.lengthSquared() > 0.001;
-          isRunning = !!effectiveInput['shiftleft'] || !!effectiveInput['shiftright'] || !!effectiveInput['shift'] || seqRuntime.forceForwardRun;
+          this.highestY = jugador.position.y;
+          this.velocidadY = -0.05;
 
-          const scaleFactor = this.getScaleFactor();
+          if ((effectiveInput['space'] || seqRuntime.forceJump) && !this.isHardLanding && !this.isRecoveringFromFall) {
+            this.velocidadY = this.jumpForce * scaleFactor;
+            this.isJumping = true;
+            this.inputMap['space'] = false;
+          }
+        } else {
+          if (jugador.position.y > this.highestY) this.highestY = jugador.position.y;
 
-          if (isMoving && !this.isHardLanding && !this.isRecoveringFromFall) {
-            const modSpeed = (isRunning ? this.runSpeed : this.walkSpeed) * scaleFactor;
+          const gravityMul = this.isJumping ? 0.55 : this.playerConfig.jump.jumpFallMultiplier;
+          this.velocidadY -= this.gravedad * scaleFactor * gravityMul;
 
-            if (!seqRuntime.running || !seqRuntime.allowMovement) {
-              move.normalize().scaleInPlace(modSpeed);
-            }
-
-            if (vista === 'TPS' && !sequenceLocksInput) {
-              const targetAngle = Math.atan2(move.x, move.z);
-              if (!jugador.rotationQuaternion) jugador.rotationQuaternion = Quaternion.Identity();
-              jugador.rotationQuaternion = Quaternion.Slerp(
-                jugador.rotationQuaternion,
-                Quaternion.FromEulerAngles(0, targetAngle, 0),
-                0.1
-              );
-            }
+          if (this.velocidadY < -this.playerConfig.jump.maxFallSpeed * scaleFactor) {
+            this.velocidadY = -this.playerConfig.jump.maxFallSpeed * scaleFactor;
           }
 
-          if (isGrounded) {
-            if (this.isFalling || this.isJumping) {
-              const fallDistance = this.highestY - jugador.position.y;
-              if (fallDistance > this.playerConfig.physics.hardLandingThreshold * scaleNow.y) {
-                this.isHardLanding = true;
-                this.landingFrame = 0;
-                move = Vector3.Zero();
-              }
-              this.isFalling = false;
-              this.isJumping = false;
-            }
-
-            this.highestY = jugador.position.y;
-            this.velocidadY = -0.05;
-
-            if ((effectiveInput['space'] || seqRuntime.forceJump) && !this.isHardLanding && !this.isRecoveringFromFall) {
-              this.velocidadY = this.jumpForce * scaleFactor;
-              this.isJumping = true;
-              this.inputMap['space'] = false;
-            }
-          } else {
-            if (jugador.position.y > this.highestY) this.highestY = jugador.position.y;
-
-            const gravityMul = this.isJumping ? 0.55 : this.playerConfig.jump.jumpFallMultiplier;
-            this.velocidadY -= this.gravedad * scaleFactor * gravityMul;
-
-            if (this.velocidadY < -this.playerConfig.jump.maxFallSpeed * scaleFactor) {
-              this.velocidadY = -this.playerConfig.jump.maxFallSpeed * scaleFactor;
-            }
-
-            if (this.velocidadY < -0.05) {
-              this.isFalling = true;
-              this.isJumping = false;
-            } else if (this.velocidadY > 0) {
-              this.isJumping = true;
-              this.isFalling = false;
-            }
+          if (this.velocidadY < -0.05) {
+            this.isFalling = true;
+            this.isJumping = false;
+          } else if (this.velocidadY > 0) {
+            this.isJumping = true;
+            this.isFalling = false;
           }
+        }
 
-          move.y = this.velocidadY;
-          jugador.moveWithCollisions(move);
+        move.y = this.velocidadY;
+        jugador.moveWithCollisions(move);
       }
 
-      // MANEJO DE ANIMACIONES
       if (seqRuntime.running && seqRuntime.animationOverride) {
         const sr = seqRuntime.step?.speedRatio || 1;
         seqRuntime.animationOverride.speedRatio = sr;
@@ -941,7 +1307,10 @@ export class EditorPlayerService {
       }
 
       let targetEyeLevel = this.playerEyeLevel;
-      let targetPivotY = this.playerConfig.camera.tpsPivotY * scaleNow.y;
+      // 🔥 Leemos la sobreescritura del pivote para crear el efecto de cámara cinemático
+      let targetPivotY = this.overrideTargetPivotY !== null
+        ? this.overrideTargetPivotY
+        : this.playerConfig.camera.tpsPivotY * scaleNow.y;
 
       let breathY = 0;
       let breathZ = 0;
@@ -983,8 +1352,10 @@ export class EditorPlayerService {
 
       jugador.computeWorldMatrix(true);
 
-      if (vista === 'TPS' && this.state.cameraPivot) {
-        this.motor3d.playerCameraTPS.radius = this.playerConfig.camera.tpsRadius * scaleNow.y;
+      if (this.state.modoVistaPrueba === 'TPS' && this.state.cameraPivot) {
+        if (!this.isTransitioningCameras) {
+          this.motor3d.playerCameraTPS.radius = this.playerConfig.camera.tpsRadius * scaleNow.y;
+        }
 
         const localPivotPos = new Vector3(
           camMeta.x + breathX,
@@ -1000,12 +1371,14 @@ export class EditorPlayerService {
         );
       }
 
-      if (vista === 'FPS') {
+      if (this.state.modoVistaPrueba === 'FPS') {
         const fpsCam = scene.activeCamera as UniversalCamera;
 
-        if (!sequenceLocksInput) {
-            if (!jugador.rotationQuaternion) jugador.rotationQuaternion = Quaternion.Identity();
-            jugador.rotationQuaternion = Quaternion.FromEulerAngles(0, fpsCam.rotation.y, 0);
+        if (!sequenceLocksInput && !freezeOrientation) {
+          if (!jugador.rotationQuaternion) jugador.rotationQuaternion = Quaternion.Identity();
+          jugador.rotationQuaternion = Quaternion.FromEulerAngles(0, fpsCam.rotation.y, 0);
+        } else if (freezeOrientation && this.lockedSequenceQuaternion) {
+          jugador.rotationQuaternion = this.lockedSequenceQuaternion.clone();
         }
 
         const localCamPos = new Vector3(
@@ -1016,6 +1389,10 @@ export class EditorPlayerService {
 
         const globalCamPos = Vector3.TransformCoordinates(localCamPos, jugador.getWorldMatrix());
         fpsCam.position = globalCamPos;
+      }
+
+      if (freezeOrientation) {
+        this.applyLockedOrientationWhileSequence();
       }
     });
 
@@ -1117,6 +1494,14 @@ export class EditorPlayerService {
     this.idleTime = 0;
     this.eKeyPressed = false;
     this.iKeyPressed = false;
+    this.isTransitioningCameras = false;
+    this.overrideTargetPivotY = null;
+    this.lastInteractDistance = null;
+    this.sequenceOrientationLocked = false;
+    this.lockedSequenceQuaternion = null;
+    this.lockedSequenceFPSRotation = null;
+    this.lockedSequenceTPSAlpha = null;
+    this.lockedSequenceTPSBeta = null;
     this.state.mirandoObjetoInteractuable.set(false);
     this.state.targetInteractuable.set(null);
     this.state.showToastE.set(false);

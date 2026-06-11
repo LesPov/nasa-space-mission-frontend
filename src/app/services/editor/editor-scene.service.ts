@@ -130,7 +130,10 @@ export class EditorSceneService {
           isSolid,
           isSelectable,
           mensaje,
-          interactSequenceId: '',
+          interactDistanceFPS: 3.0,
+          interactDistanceTPS: 5.0,
+          interactSequenceIdFPS: '',
+          interactSequenceIdTPS: '',
           animationNames: anims.map(a => a.name),
           collider: { ...defaultCollider },
           camOffset: { ...defaultCamOffset },
@@ -168,7 +171,10 @@ export class EditorSceneService {
         isSolid,
         isSelectable,
         mensaje,
-        interactSequenceId: '',
+        interactDistanceFPS: 3.0,
+        interactDistanceTPS: 5.0,
+        interactSequenceIdFPS: '',
+        interactSequenceIdTPS: '',
         collider: { ...defaultCollider },
         camOffset: { ...defaultCamOffset },
         playerConfig: defaultPlayerConfig
@@ -215,8 +221,10 @@ export class EditorSceneService {
       const isSelectableSaved = obj.properties?.isSelectable ?? true;
       const mensajeSaved = obj.properties?.mensaje || '';
       
-      // 🔥 FIX: AHORA SÍ LEEMOS EL ID DE SECUENCIA DESDE LA BASE DE DATOS
-      const interactSequenceIdSaved = obj.properties?.interactSequenceId || '';
+      const interactDistanceFPS = obj.properties?.interactDistanceFPS ?? 3.0;
+      const interactDistanceTPS = obj.properties?.interactDistanceTPS ?? 5.0;
+      const interactSequenceIdFPS = obj.properties?.interactSequenceIdFPS || '';
+      const interactSequenceIdTPS = obj.properties?.interactSequenceIdTPS || '';
 
       const savedCollider = obj.properties?.collider || obj.properties?.capsule || { ...defaultCollider };
       if (savedCollider.radiusX !== undefined) {
@@ -283,7 +291,10 @@ export class EditorSceneService {
             isSolid: isSolidSaved,
             isSelectable: isSelectableSaved,
             mensaje: mensajeSaved,
-            interactSequenceId: interactSequenceIdSaved, // 🔥 ASIGNADO A METADATA
+            interactDistanceFPS,
+            interactDistanceTPS,
+            interactSequenceIdFPS,
+            interactSequenceIdTPS,
             animationNames: anims.map(a => a.name),
             collider: savedCollider,
             camOffset: savedCamOffset,
@@ -319,7 +330,10 @@ export class EditorSceneService {
           isSolid: isSolidSaved,
           isSelectable: isSelectableSaved,
           mensaje: mensajeSaved,
-          interactSequenceId: interactSequenceIdSaved, // 🔥 ASIGNADO A METADATA
+          interactDistanceFPS,
+          interactDistanceTPS,
+          interactSequenceIdFPS,
+          interactSequenceIdTPS,
           collider: savedCollider,
           camOffset: savedCamOffset,
           playerConfig: savedPlayerConfig
@@ -359,7 +373,10 @@ export class EditorSceneService {
           isSolid: nodo.metadata.isSolid,
           isSelectable: nodo.metadata.isSelectable,
           mensaje: nodo.metadata.mensaje,
-          interactSequenceId: nodo.metadata.interactSequenceId || '',
+          interactDistanceFPS: nodo.metadata.interactDistanceFPS ?? 3.0,
+          interactDistanceTPS: nodo.metadata.interactDistanceTPS ?? 5.0,
+          interactSequenceIdFPS: nodo.metadata.interactSequenceIdFPS || '',
+          interactSequenceIdTPS: nodo.metadata.interactSequenceIdTPS || '',
           collider: nodo.metadata.collider,
           camOffset: nodo.metadata.camOffset,
           playerConfig: nodo.metadata.playerConfig || null,

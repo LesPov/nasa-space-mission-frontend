@@ -78,7 +78,6 @@
       <button class="tab-btn" [class.active]="pestanaActiva === 'physics'" (click)="pestanaActiva = 'physics'" title="Física">💊</button>
       <button class="tab-btn" [class.active]="pestanaActiva === 'player'" (click)="pestanaActiva = 'player'" title="Player">🎮</button>
       
-      <!-- 🔥 ESTAS PESTAÑAS SOLO APARECEN EN MODELOS 3D (.GLB) -->
       <button class="tab-btn" *ngIf="objetoActual && esPersonajeOModelo(objetoActual)" [class.active]="pestanaActiva === 'animation'" (click)="pestanaActiva = 'animation'" title="Animaciones">🏃</button>
       <button class="tab-btn" *ngIf="objetoActual && esPersonajeOModelo(objetoActual)" [class.active]="pestanaActiva === 'sequences'" (click)="pestanaActiva = 'sequences'" title="Secuencias">🎞️</button>
       
@@ -114,21 +113,35 @@
             </div>
           </div>
 
-          <!-- 🔥 AÑADIDO: VINCULAR SECUENCIA AL OBJETO -->
+          <!-- 🔥 AÑADIDO: LÓGICA DE DISTANCIAS Y SECUENCIAS DIVIDIDAS -->
           <div class="section-card">
             <div class="section-head">
               <h4>Interacción y Eventos</h4>
             </div>
+            
+            <div class="grid-2" style="margin-bottom: 10px;">
+              <div class="field">
+                <label>Distancia 1ra Pers. (FPS)</label>
+                <input type="number" step="0.5" [(ngModel)]="objInteractDistanceFPS" (ngModelChange)="aplicarInteraccion()" />
+              </div>
+              <div class="field">
+                <label>Distancia 3ra Pers. (TPS)</label>
+                <input type="number" step="0.5" [(ngModel)]="objInteractDistanceTPS" (ngModelChange)="aplicarInteraccion()" />
+              </div>
+            </div>
+
             <div class="grid-2">
               <div class="field wide">
                 <label>Mensaje del objeto (se abre con I)</label>
-                <textarea rows="3" [(ngModel)]="objMensaje" placeholder="Escribe aquí el texto que verá el jugador..." (ngModelChange)="aplicarInteraccion()"></textarea>
-                <p class="help-text">Con la tecla I, el jugador abrirá este texto cuando el objeto esté cerca o bajo la mira.</p>
+                <textarea rows="2" [(ngModel)]="objMensaje" placeholder="Texto que verá el jugador..." (ngModelChange)="aplicarInteraccion()"></textarea>
               </div>
               <div class="field wide">
-                <label>ID(s) de Secuencia (separados por coma)</label>
-                <textarea rows="2" [(ngModel)]="objInteractSequenceId" placeholder="Ej: id_subir, id_bajar" (ngModelChange)="aplicarInteraccion()"></textarea>
-                <p class="help-text">Si pegas varios IDs separados por coma, el jugador alternará entre ellos cada vez que pulse la tecla E.</p>
+                <label>Secuencia en 1ra Persona (FPS) - IDs separados por coma</label>
+                <textarea rows="1" [(ngModel)]="objInteractSequenceIdFPS" placeholder="Ej: id_fps_1, id_fps_2" (ngModelChange)="aplicarInteraccion()"></textarea>
+              </div>
+              <div class="field wide">
+                <label>Secuencia en 3ra Persona (TPS) - IDs separados por coma</label>
+                <textarea rows="1" [(ngModel)]="objInteractSequenceIdTPS" placeholder="Ej: id_tps_1, id_tps_2" (ngModelChange)="aplicarInteraccion()"></textarea>
               </div>
             </div>
             <button class="btn-primary full" style="margin-top: 10px;" (click)="aplicarInteraccionYForzarGuardado()">💾 Guardar Interacción</button>
@@ -204,7 +217,6 @@
             <button class="btn-ghost small" style="margin-left: auto;" (click)="restaurarPlayerConfigDefault()" title="Restablecer valores">🔄 Reset</button>
           </div>
 
-          <!-- ACORDEÓN: MOVIMIENTO -->
           <div class="accordion-section" [class.expanded]="acordeonesPlayer['movement']">
             <div class="accordion-header" (click)="toggleAcordeonPlayer('movement')">
               <span class="chevron">{{ acordeonesPlayer['movement'] ? '▼' : '▶' }}</span>
@@ -220,7 +232,6 @@
             </div>
           </div>
 
-          <!-- ACORDEÓN: SALTO Y CAÍDA -->
           <div class="accordion-section" [class.expanded]="acordeonesPlayer['jump']">
             <div class="accordion-header" (click)="toggleAcordeonPlayer('jump')">
               <span class="chevron">{{ acordeonesPlayer['jump'] ? '▼' : '▶' }}</span>
@@ -238,7 +249,6 @@
             </div>
           </div>
 
-          <!-- ACORDEÓN: CÁMARA Y BLENDING -->
           <div class="accordion-section" [class.expanded]="acordeonesPlayer['camera']">
             <div class="accordion-header" (click)="toggleAcordeonPlayer('camera')">
               <span class="chevron">{{ acordeonesPlayer['camera'] ? '▼' : '▶' }}</span>
@@ -256,7 +266,6 @@
             </div>
           </div>
 
-          <!-- ACORDEÓN: EXTRAS DE FÍSICA -->
           <div class="accordion-section" [class.expanded]="acordeonesPlayer['physics']">
             <div class="accordion-header" (click)="toggleAcordeonPlayer('physics')">
               <span class="chevron">{{ acordeonesPlayer['physics'] ? '▼' : '▶' }}</span>
@@ -270,7 +279,6 @@
             </div>
           </div>
 
-          <!-- ACORDEÓN: TOGGLES DE ANIMACIÓN -->
           <div class="accordion-section" [class.expanded]="acordeonesPlayer['animEnabled']">
             <div class="accordion-header" (click)="toggleAcordeonPlayer('animEnabled')">
               <span class="chevron">{{ acordeonesPlayer['animEnabled'] ? '▼' : '▶' }}</span>

@@ -3,7 +3,7 @@ import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { HistorialService } from '../historial.service';
 import {
-  MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader, StandardMaterial, Color3, TransformNode, Matrix
+  MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader, StandardMaterial, Color3, TransformNode, Matrix, HemisphericLight
 } from '@babylonjs/core';
 
 import '@babylonjs/loaders/glTF';
@@ -47,37 +47,26 @@ export class EditorSceneService {
   reconstruirMallaTrigger(oldMesh: AbstractMesh, nuevaForma: string): Mesh {
     const scene = this.motor3d.scene;
     let newMesh!: Mesh;
-    
     switch (nuevaForma) {
         case 'sphere': newMesh = MeshBuilder.CreateSphere(oldMesh.name, { diameter: 1 }, scene); break;
         case 'cylinder': newMesh = MeshBuilder.CreateCylinder(oldMesh.name, { height: 1, diameter: 1 }, scene); break;
         default: newMesh = MeshBuilder.CreateBox(oldMesh.name, { size: 1 }, scene); break;
     }
-
     newMesh.position = oldMesh.position.clone();
     if (oldMesh.rotationQuaternion) newMesh.rotationQuaternion = oldMesh.rotationQuaternion.clone();
     else newMesh.rotation = oldMesh.rotation.clone();
     newMesh.scaling = oldMesh.scaling.clone();
-    
     newMesh.metadata = JSON.parse(JSON.stringify(oldMesh.metadata));
     newMesh.metadata.triggerShape = nuevaForma;
 
     const mat = new StandardMaterial('mat_trigger_' + newMesh.name, scene);
     mat.diffuseColor = new Color3(0.2, 1, 0.2); 
-    mat.alpha = 0.3; 
-    mat.wireframe = true;
-    newMesh.material = mat;
-    
-    newMesh.isPickable = true;
-    newMesh.checkCollisions = false;
+    mat.alpha = 0.3; mat.wireframe = true; newMesh.material = mat;
+    newMesh.isPickable = true; newMesh.checkCollisions = false;
     newMesh.isVisible = this.state.rolSimulado() === 'admin';
 
-    if (this.state.objetoSeleccionado() === oldMesh) {
-        this.state.objetoSeleccionado.set(newMesh);
-    }
-    oldMesh.dispose();
-    this.actualizarListaNodos();
-    return newMesh;
+    if (this.state.objetoSeleccionado() === oldMesh) this.state.objetoSeleccionado.set(newMesh);
+    oldMesh.dispose(); this.actualizarListaNodos(); return newMesh;
   }
 
   agregarTriggerCustom(nombre: string, shape: string, isComposite: boolean, mensaje: string, sizeX: number, sizeY: number, sizeZ: number): void {
@@ -88,129 +77,60 @@ export class EditorSceneService {
         case 'cylinder': mesh = MeshBuilder.CreateCylinder(nombre, { height: 1, diameter: 1 }, scene); break;
         default: mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene); break;
     }
-    
     mesh.scaling = new Vector3(sizeX, sizeY, sizeZ);
     mesh.position = new Vector3(0, sizeY / 2, 0);
 
     const mat = new StandardMaterial('mat_trigger_' + nombre, scene);
-    mat.diffuseColor = new Color3(0.2, 1, 0.2); 
-    mat.alpha = 0.3; 
-    mat.wireframe = true;
-    mesh.material = mat;
+    mat.diffuseColor = new Color3(0.2, 1, 0.2); mat.alpha = 0.3; mat.wireframe = true; mesh.material = mat;
 
     mesh.metadata = {
-      type: 'trigger',
-      isComposite: isComposite,
-      triggerShape: shape || 'cube',
-      
-      // Compuesto
-      conditions: isComposite ? ['on_enter'] : [],
-      mensajeEntrada: isComposite ? mensaje : '',
-      mensajeSalida: '',
-      soundUrlEntrada: '',
-      soundUrlSalida: '',
-      seqEntrada: '',
-      seqSalida: '',
-      timeEntrada: 4.5,
-      timeSalida: 4.5,
-      videoEntrada: '',
-      videoSalida: '',
-
-      // Normal
-      condition: 'on_enter',
-      mensaje: isComposite ? '' : mensaje,
-      soundUrl: '',
-      interactSequenceId: '', 
-      timeNorm: 4.5,
-      videoNorm: '',
-
-      isRepeatable: false,
-      isEnabled: true,
-      hasTriggeredEnter: false,
-      hasTriggeredExit: false
+      type: 'trigger', isComposite: isComposite, triggerShape: shape || 'cube',
+      conditions: isComposite ? ['on_enter'] : [], mensajeEntrada: isComposite ? mensaje : '', mensajeSalida: '',
+      soundUrlEntrada: '', soundUrlSalida: '', seqEntrada: '', seqSalida: '', timeEntrada: 4.5, timeSalida: 4.5, videoEntrada: '', videoSalida: '',
+      condition: 'on_enter', mensaje: isComposite ? '' : mensaje, soundUrl: '', interactSequenceId: '', timeNorm: 4.5, videoNorm: '',
+      isRepeatable: false, isEnabled: true, hasTriggeredEnter: false, hasTriggeredExit: false
     };
 
-    mesh.isPickable = true;
-    mesh.checkCollisions = false; 
-    mesh.isVisible = this.state.rolSimulado() === 'admin';
-
-    this.state.objetoSeleccionado.set(mesh);
-    this.actualizarListaNodos();
-    this.historialSvc.registrarAccionCrear(mesh);
-    this.state.triggerUpdate();
+    mesh.isPickable = true; mesh.checkCollisions = false; mesh.isVisible = this.state.rolSimulado() === 'admin';
+    this.state.objetoSeleccionado.set(mesh); this.actualizarListaNodos(); this.historialSvc.registrarAccionCrear(mesh); this.state.triggerUpdate();
   }
 
-  agregarObjetoCustom(
-    tipo: string, nombre: string, rol: string, colorHex: string,
-    sizeX: number, sizeY: number, sizeZ: number, asset?: any,
-    isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = ''
-  ): void {
+  agregarObjetoCustom(tipo: string, nombre: string, rol: string, colorHex: string, sizeX: number, sizeY: number, sizeZ: number, asset?: any, isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = ''): void {
     if (tipo === 'trigger' || tipo === 'trigger_compuesto') {
         const isComposite = tipo === 'trigger_compuesto';
-        this.agregarTriggerCustom(nombre, 'cube', isComposite, mensaje, sizeX, sizeY, sizeZ);
-        return;
+        this.agregarTriggerCustom(nombre, 'cube', isComposite, mensaje, sizeX, sizeY, sizeZ); return;
     }
-
-    const scene = this.motor3d.scene;
-    const isModel = tipo === 'model';
-
-    const defaultCollider = isModel
-      ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
-      : { type: tipo === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
-
+    const scene = this.motor3d.scene; const isModel = tipo === 'model';
+    const defaultCollider = isModel ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 } : { type: tipo === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
     const defaultCamOffset = isModel ? { x: 0, y: 1.6, z: 0 } : { x: 0, y: 0.8, z: 0 };
     const defaultPlayerConfig = cloneDefaultPlayerConfig();
 
     if (isModel && asset) {
-      const fullPath = 'http://localhost:4000' + asset.path;
-      const lastSlash = fullPath.lastIndexOf('/');
-      const rootUrl = fullPath.substring(0, lastSlash + 1);
-      const filename = fullPath.substring(lastSlash + 1);
-
-      SceneLoader.ImportMeshAsync('', rootUrl, filename, scene).then((result) => {
+      const fullPath = 'http://localhost:4000' + asset.path; const lastSlash = fullPath.lastIndexOf('/');
+      SceneLoader.ImportMeshAsync('', fullPath.substring(0, lastSlash + 1), fullPath.substring(lastSlash + 1), scene).then((result) => {
         const rootNode = result.meshes[0] as Mesh;
-        rootNode.name = nombre;
-        rootNode.scaling = new Vector3(sizeX, sizeY, sizeZ);
+        rootNode.name = nombre; rootNode.scaling = new Vector3(sizeX, sizeY, sizeZ);
         if (!rootNode.rotationQuaternion) rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
-        rootNode.position = new Vector3(0, 0, 0);
-        rootNode.checkCollisions = false;
-        rootNode.isPickable = true;
-
-        result.meshes.forEach(m => {
-          if (m !== rootNode) {
-            m.isPickable = true;
-            m.checkCollisions = isSolid;
-          }
-        });
-
-        const anims = result.animationGroups || [];
-        anims.forEach(ag => ag.stop());
+        rootNode.position = new Vector3(0, 0, 0); rootNode.checkCollisions = false; rootNode.isPickable = true;
+        result.meshes.forEach(m => { if (m !== rootNode) { m.isPickable = true; m.checkCollisions = isSolid; } });
+        const anims = result.animationGroups || []; anims.forEach(ag => ag.stop());
 
         let initialHeadLocal: Vector3 | null = null;
-        const headNode = rootNode.getChildTransformNodes(false).find(n =>
-          n.name.toLowerCase() === 'head' || n.name.toLowerCase() === 'neck' || n.name.toLowerCase().includes('head')
-        ) as TransformNode;
-
+        const headNode = rootNode.getChildTransformNodes(false).find(n => n.name.toLowerCase() === 'head' || n.name.toLowerCase() === 'neck' || n.name.toLowerCase().includes('head')) as TransformNode;
         if (headNode) {
-          headNode.computeWorldMatrix(true);
-          rootNode.computeWorldMatrix(true);
+          headNode.computeWorldMatrix(true); rootNode.computeWorldMatrix(true);
           initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
         }
 
         rootNode.metadata = {
           type: 'model', rol, assetId: asset.id, path: asset.path, isSolid, isSelectable, mensaje,
           interactDistanceFPS: 3.0, interactDistanceTPS: 5.0, interactSequenceIdFPS: '', interactSequenceIdTPS: '',
-          animationNames: anims.map(a => a.name), collider: { ...defaultCollider }, camOffset: { ...defaultCamOffset },
-          playerConfig: defaultPlayerConfig, initialHeadLocal
+          animationNames: anims.map(a => a.name), collider: { ...defaultCollider }, camOffset: { ...defaultCamOffset }, playerConfig: defaultPlayerConfig, initialHeadLocal
         };
-
         rootNode.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
         rootNode.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
 
-        this.state.objetoSeleccionado.set(rootNode);
-        this.actualizarListaNodos();
-        this.historialSvc.registrarAccionCrear(rootNode);
-        this.state.triggerUpdate();
+        this.state.objetoSeleccionado.set(rootNode); this.actualizarListaNodos(); this.historialSvc.registrarAccionCrear(rootNode); this.state.triggerUpdate();
       });
     } else {
       let mesh!: Mesh;
@@ -221,18 +141,14 @@ export class EditorSceneService {
         case 'plane': mesh = MeshBuilder.CreateGround(nombre, { width: 1, height: 1 }, scene); break;
         default: return;
       }
-
-      mesh.scaling = new Vector3(sizeX, sizeY, sizeZ);
-      mesh.position = new Vector3(0, 0.5 * sizeY, 0);
+      mesh.scaling = new Vector3(sizeX, sizeY, sizeZ); mesh.position = new Vector3(0, 0.5 * sizeY, 0);
 
       mesh.metadata = {
         type: tipo, rol, color: colorHex, isSolid, isSelectable, mensaje,
         interactDistanceFPS: 3.0, interactDistanceTPS: 5.0, interactSequenceIdFPS: '', interactSequenceIdTPS: '',
         collider: { ...defaultCollider }, camOffset: { ...defaultCamOffset }, playerConfig: defaultPlayerConfig
       };
-
-      mesh.isPickable = true;
-      mesh.checkCollisions = isSolid;
+      mesh.isPickable = true; mesh.checkCollisions = isSolid;
       mesh.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
       mesh.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
 
@@ -241,10 +157,7 @@ export class EditorSceneService {
       if (rol === 'spawn_point') { mat.alpha = 0.5; mat.emissiveColor = new Color3(0, 1, 0); }
       mesh.material = mat;
 
-      this.state.objetoSeleccionado.set(mesh);
-      this.actualizarListaNodos();
-      this.historialSvc.registrarAccionCrear(mesh);
-      this.state.triggerUpdate();
+      this.state.objetoSeleccionado.set(mesh); this.actualizarListaNodos(); this.historialSvc.registrarAccionCrear(mesh); this.state.triggerUpdate();
     }
   }
 
@@ -252,16 +165,39 @@ export class EditorSceneService {
     if (!dataBD) return;
     const scene = this.motor3d.scene;
 
+    // 🔥 1. CARGAR DATOS GLOBALES DEL MUNDO 🔥
+    if (dataBD.worldSettings) {
+        const w = dataBD.worldSettings;
+        scene.clearColor = Color4.FromHexString(w.clearColor ? (w.clearColor + 'ff') : '#0d1729ff');
+        scene.gravity = new Vector3(0, w.gravityY ?? -0.25, 0);
+        
+        if (w.fogEnabled) {
+            scene.fogMode = 1; // FOGMODE_EXP
+            scene.fogColor = Color3.FromHexString(w.fogColor || '#0d1729');
+            scene.fogDensity = w.fogDensity ?? 0.01;
+        } else {
+            scene.fogMode = 0; // NONE
+        }
+
+        let light = scene.lights.find(l => l.name === 'globalLight') as HemisphericLight;
+        if (!light) {
+            light = new HemisphericLight('globalLight', new Vector3(w.lightDirX ?? 0, w.lightDirY ?? 1, w.lightDirZ ?? 0), scene);
+        }
+        
+        light.direction = new Vector3(w.lightDirX ?? 0, w.lightDirY ?? 1, w.lightDirZ ?? 0);
+        light.intensity = w.ambientIntensity ?? 1;
+        light.diffuse = Color3.FromHexString(w.ambientDiffuse || '#ffffff');
+        light.groundColor = Color3.FromHexString(w.ambientGround || '#333333');
+    }
+
     const objetosBD = Array.isArray(dataBD) ? dataBD : (dataBD.sceneObjects || []);
     const triggersBD = Array.isArray(dataBD) ? [] : (dataBD.triggers || []);
-
     const isAdmin = this.state.rolSimulado() === 'admin';
 
+    // 2. Cargar Objetos (igual que antes)
     objetosBD.forEach((obj: any) => {
       const isModel = obj.type === 'model';
-      const defaultCollider = isModel
-        ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
-        : { type: obj.type === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+      const defaultCollider = isModel ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 } : { type: obj.type === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
       const defaultCamOffset = isModel ? { x: 0, y: 1.6, z: 0 } : { x: 0, y: 0.8, z: 0 };
       const defaultPlayerConfig = cloneDefaultPlayerConfig();
 
@@ -279,7 +215,6 @@ export class EditorSceneService {
       if (savedCollider.radiusX !== undefined) {
         savedCollider.sizeX = savedCollider.radiusX; savedCollider.sizeY = savedCollider.heightY; savedCollider.sizeZ = savedCollider.radiusZ;
         savedCollider.type = isModel ? 'capsule' : 'box';
-        delete savedCollider.radiusX; delete savedCollider.heightY; delete savedCollider.radiusZ;
       }
       if (!savedCollider.type) savedCollider.type = isModel ? 'capsule' : 'box';
 
@@ -294,8 +229,7 @@ export class EditorSceneService {
 
         SceneLoader.ImportMeshAsync('', fullPath.substring(0, lastSlash + 1), fullPath.substring(lastSlash + 1), scene).then((result) => {
           const rootNode = result.meshes[0] as Mesh;
-          rootNode.name = obj.name;
-          rootNode.position = new Vector3(obj.position.x, obj.position.y, obj.position.z);
+          rootNode.name = obj.name; rootNode.position = new Vector3(obj.position.x, obj.position.y, obj.position.z);
           rootNode.rotationQuaternion = Quaternion.FromEulerAngles(obj.rotation.x, obj.rotation.y, obj.rotation.z);
           rootNode.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
           rootNode.checkCollisions = false; rootNode.isPickable = true;
@@ -351,6 +285,7 @@ export class EditorSceneService {
       }
     });
 
+    // 3. Cargar Triggers
     triggersBD.forEach((trigger: any) => {
         let mesh = scene.getMeshByName(trigger.name) as Mesh;
         const shape = trigger.actionProperties?.triggerShape || 'cube';
@@ -368,36 +303,15 @@ export class EditorSceneService {
             
             const mat = new StandardMaterial('mat_trigger_' + trigger.name, scene);
             mat.diffuseColor = new Color3(0.2, 1, 0.2); 
-            mat.alpha = 0.3; 
-            mat.wireframe = true;
-            mesh.material = mat;
-            mesh.isPickable = true;
-            mesh.checkCollisions = false;
-
+            mat.alpha = 0.3; mat.wireframe = true; mesh.material = mat;
+            mesh.isPickable = true; mesh.checkCollisions = false;
             mesh.isVisible = isAdmin;
 
             mesh.metadata = {
-                type: 'trigger',
-                triggerShape: shape,
-                isComposite: isComposite,
-
-                conditions: [],
-                mensajeEntrada: '', mensajeSalida: '',
-                soundUrlEntrada: '', soundUrlSalida: '',
-                seqEntrada: '', seqSalida: '',
-                timeEntrada: 4.5, timeSalida: 4.5,
-                videoEntrada: '', videoSalida: '',
-
-                condition: 'on_enter',
-                mensaje: '',
-                soundUrl: '',
-                interactSequenceId: '',
-                timeNorm: 4.5, videoNorm: '',
-
-                isRepeatable: trigger.isRepeatable,
-                isEnabled: trigger.isEnabled,
-                hasTriggeredEnter: false,
-                hasTriggeredExit: false
+                type: 'trigger', triggerShape: shape, isComposite: isComposite,
+                conditions: [], mensajeEntrada: '', mensajeSalida: '', soundUrlEntrada: '', soundUrlSalida: '', seqEntrada: '', seqSalida: '', timeEntrada: 4.5, timeSalida: 4.5, videoEntrada: '', videoSalida: '',
+                condition: 'on_enter', mensaje: '', soundUrl: '', interactSequenceId: '', timeNorm: 4.5, videoNorm: '',
+                isRepeatable: trigger.isRepeatable, isEnabled: trigger.isEnabled, hasTriggeredEnter: false, hasTriggeredExit: false
             };
         }
 
@@ -431,9 +345,27 @@ export class EditorSceneService {
     this.actualizarListaNodos();
   }
 
-  obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[] } {
+  obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[], worldSettings: any } {
     const sceneObjects: any[] = [];
     const triggers: any[] = [];
+    
+    // 🔥 1. EXTRAER CONFIGURACIÓN GLOBAL DEL MUNDO 🔥
+    const scene = this.motor3d.scene;
+    const light = scene.lights.find(l => l.name === 'globalLight') as HemisphericLight;
+    
+    const worldSettings = {
+      clearColor: scene.clearColor.toHexString().substring(0, 7), // Quitar Alpha
+      gravityY: scene.gravity.y,
+      fogEnabled: scene.fogMode !== 0,
+      fogColor: scene.fogColor.toHexString(),
+      fogDensity: scene.fogDensity,
+      ambientIntensity: light ? light.intensity : 1.0,
+      ambientDiffuse: light ? light.diffuse.toHexString() : '#ffffff',
+      ambientGround: light ? light.groundColor.toHexString() : '#333333',
+      lightDirX: light ? light.direction.x : 0,
+      lightDirY: light ? light.direction.y : 1,
+      lightDirZ: light ? light.direction.z : 0
+    };
 
     this.state.nodosEscena().forEach(nodo => {
       if (nodo instanceof AbstractMesh && nodo.metadata?.type) {
@@ -443,11 +375,7 @@ export class EditorSceneService {
             if (nodo.metadata.isComposite) {
                 const conditions = nodo.metadata.conditions || [];
                 conditions.forEach((cond: string) => {
-                    let actionProps: any = { 
-                        triggerShape: nodo.metadata.triggerShape,
-                        isComposite: true
-                    };
-                    
+                    let actionProps: any = { triggerShape: nodo.metadata.triggerShape, isComposite: true };
                     if (cond === 'on_enter') {
                         actionProps.mensaje = nodo.metadata.mensajeEntrada || '';
                         actionProps.soundUrl = nodo.metadata.soundUrlEntrada || '';
@@ -467,14 +395,7 @@ export class EditorSceneService {
                         name: nodo.name,
                         position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
                         scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z }, 
-                        properties: {
-                            condition: cond,
-                            actionType: 'show_message', 
-                            targetObjectName: '',
-                            isRepeatable: nodo.metadata.isRepeatable,
-                            isEnabled: nodo.metadata.isEnabled,
-                            ...actionProps
-                        }
+                        properties: { condition: cond, actionType: 'show_message', targetObjectName: '', isRepeatable: nodo.metadata.isRepeatable, isEnabled: nodo.metadata.isEnabled, ...actionProps }
                     });
                 });
             } else {
@@ -483,18 +404,9 @@ export class EditorSceneService {
                     position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
                     scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z }, 
                     properties: {
-                        condition: nodo.metadata.condition,
-                        actionType: 'show_message', 
-                        targetObjectName: '',
-                        isRepeatable: nodo.metadata.isRepeatable,
-                        isEnabled: nodo.metadata.isEnabled,
-                        triggerShape: nodo.metadata.triggerShape,
-                        mensaje: nodo.metadata.mensaje,
-                        soundUrl: nodo.metadata.soundUrl,
-                        interactSequenceId: nodo.metadata.interactSequenceId,
-                        timeNorm: nodo.metadata.timeNorm ?? 4.5,
-                        videoNorm: nodo.metadata.videoNorm || '',
-                        isComposite: false
+                        condition: nodo.metadata.condition, actionType: 'show_message', targetObjectName: '', isRepeatable: nodo.metadata.isRepeatable, isEnabled: nodo.metadata.isEnabled,
+                        triggerShape: nodo.metadata.triggerShape, mensaje: nodo.metadata.mensaje, soundUrl: nodo.metadata.soundUrl, interactSequenceId: nodo.metadata.interactSequenceId,
+                        timeNorm: nodo.metadata.timeNorm ?? 4.5, videoNorm: nodo.metadata.videoNorm || '', isComposite: false
                     }
                 });
             }
@@ -509,38 +421,21 @@ export class EditorSceneService {
         };
 
         const propertiesToSave = {
-          rol: nodo.metadata.rol,
-          isSolid: nodo.metadata.isSolid,
-          isSelectable: nodo.metadata.isSelectable,
-          mensaje: nodo.metadata.mensaje,
-          interactDistanceFPS: nodo.metadata.interactDistanceFPS ?? 3.0,
-          interactDistanceTPS: nodo.metadata.interactDistanceTPS ?? 5.0,
-          interactSequenceIdFPS: nodo.metadata.interactSequenceIdFPS || '',
-          interactSequenceIdTPS: nodo.metadata.interactSequenceIdTPS || '',
-          collider: nodo.metadata.collider,
-          camOffset: nodo.metadata.camOffset,
-          playerConfig: nodo.metadata.playerConfig || null,
-          animationNames: nodo.metadata.animationNames || []
+          rol: nodo.metadata.rol, isSolid: nodo.metadata.isSolid, isSelectable: nodo.metadata.isSelectable, mensaje: nodo.metadata.mensaje,
+          interactDistanceFPS: nodo.metadata.interactDistanceFPS ?? 3.0, interactDistanceTPS: nodo.metadata.interactDistanceTPS ?? 5.0,
+          interactSequenceIdFPS: nodo.metadata.interactSequenceIdFPS || '', interactSequenceIdTPS: nodo.metadata.interactSequenceIdTPS || '',
+          collider: nodo.metadata.collider, camOffset: nodo.metadata.camOffset, playerConfig: nodo.metadata.playerConfig || null, animationNames: nodo.metadata.animationNames || []
         };
 
         if (nodo.metadata.type === 'model') {
-          sceneObjects.push({
-            ...baseData,
-            type: 'model',
-            assetId: nodo.metadata.assetId,
-            properties: { path: nodo.metadata.path, ...propertiesToSave }
-          });
+          sceneObjects.push({ ...baseData, type: 'model', assetId: nodo.metadata.assetId, properties: { path: nodo.metadata.path, ...propertiesToSave } });
         } else {
-          sceneObjects.push({
-            ...baseData,
-            type: nodo.metadata.type,
-            properties: { color: nodo.metadata.color, ...propertiesToSave }
-          });
+          sceneObjects.push({ ...baseData, type: nodo.metadata.type, properties: { color: nodo.metadata.color, ...propertiesToSave } });
         }
       }
     });
 
-    return { sceneObjects, triggers };
+    return { sceneObjects, triggers, worldSettings };
   }
 
   eliminarSeleccionado(): void {

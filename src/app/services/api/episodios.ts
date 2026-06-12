@@ -7,7 +7,6 @@ import { Observable } from 'rxjs';
 })
 export class EpisodiosService {
   private http = inject(HttpClient);
-  // Asegúrate de que esta URL apunte a tu backend real. Puedes usar environment.apiUrl
   private baseUrl = 'http://localhost:4000/api'; 
 
   private getAuthHeaders() {
@@ -29,8 +28,8 @@ export class EpisodiosService {
     return this.http.post<any>(`${this.baseUrl}/episodes`, { title, description }, { headers: this.getAuthHeaders() });
   }
 
-  // 🔥 ACTUALIZADO PARA RECIBIR DATA COMPLETA (Objetos + Triggers)
-  guardarMapa(id: number, mapData: { sceneObjects: any[], triggers: any[] }): Observable<any> {
+  // 🔥 ACTUALIZADO: Ahora acepta worldSettings en la estructura
+  guardarMapa(id: number, mapData: { sceneObjects: any[], triggers: any[], worldSettings?: any }): Observable<any> {
     return this.http.post<any>(`${this.baseUrl}/episodes/${id}/save-map`, mapData, { headers: this.getAuthHeaders() });
   }
 
@@ -38,16 +37,12 @@ export class EpisodiosService {
     return this.http.get<any[]>(`${this.baseUrl}/assets`, { headers: this.getAuthHeaders() });
   }
 
-  // 🔥 NUEVO: Método para subir Assets (.glb, .mp4, etc) desde el Frontend
   subirAsset(file: File): Observable<any> {
     const formData = new FormData();
     formData.append('assetFile', file);
-    // IMPORTANTE: Al subir archivos con FormData NO debes establecer el Content-Type,
-    // el navegador lo hace automáticamente agregando el 'boundary' correcto.
     const headers = new HttpHeaders({
       'Authorization': `Bearer ${localStorage.getItem('token')}`
     });
     return this.http.post<any>(`${this.baseUrl}/assets/upload`, formData, { headers });
   }
-  
 }

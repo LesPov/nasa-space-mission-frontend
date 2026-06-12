@@ -1,0 +1,71 @@
+<div class="section-card">
+  <div class="section-head"><h4>Cielo y Entorno</h4></div>
+  <div class="field" style="margin-bottom: 10px;">
+    <label>Color del Cielo (Fondo)</label>
+    <div class="color-picker-wrapper">
+      <input type="color" [(ngModel)]="clearColorHex" (ngModelChange)="aplicarFondo()" class="color-picker">
+      <span class="color-hex-text">{{ clearColorHex.toUpperCase() }}</span>
+    </div>
+  </div>
+</div>
+
+<div class="section-card">
+  <div class="section-head"><h4>Iluminación Global (Sol)</h4></div>
+  <div class="grid-2" style="margin-bottom: 8px;">
+    <div class="field wide">
+      <label>Intensidad de Luz Ambiental</label>
+      <input type="number" step="0.1" min="0" max="5" [(ngModel)]="ambientIntensity" (ngModelChange)="aplicarIluminacion()" />
+    </div>
+    <div class="field">
+      <label>Color Luz (Cielo)</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="ambientColorHex" (ngModelChange)="aplicarIluminacion()" class="color-picker">
+      </div>
+    </div>
+    <div class="field">
+      <label>Color Sombra (Suelo)</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="groundColorHex" (ngModelChange)="aplicarIluminacion()" class="color-picker">
+      </div>
+    </div>
+  </div>
+  
+  <div class="section-mini-head" style="margin-top: 15px; margin-bottom: 5px;">
+     <label style="font-size: 11px; color: #999;">Dirección del Sol (Rotación)</label>
+  </div>
+  <div class="grid-3">
+    <div class="field"><label>Dir X</label><input type="number" step="0.1" [(ngModel)]="lightDirX" (ngModelChange)="aplicarIluminacion()" /></div>
+    <div class="field"><label>Dir Y</label><input type="number" step="0.1" [(ngModel)]="lightDirY" (ngModelChange)="aplicarIluminacion()" /></div>
+    <div class="field"><label>Dir Z</label><input type="number" step="0.1" [(ngModel)]="lightDirZ" (ngModelChange)="aplicarIluminacion()" /></div>
+  </div>
+</div>
+
+<div class="section-card">
+  <div class="section-head"><h4>Físicas Globales</h4></div>
+  <div class="field">
+    <label>Gravedad de la Escena (Y)</label>
+    <input type="number" step="0.05" [(ngModel)]="gravedadY" (ngModelChange)="aplicarGravedad()" />
+    <p class="help-text">Gravedad base del mundo (Afecta físicas generales y la velocidad de caída del jugador).</p>
+  </div>
+</div>
+
+<div class="section-card">
+  <div class="section-head"><h4>Efectos: Niebla (Fog Volumétrica)</h4></div>
+  <div class="checkbox-field" style="margin-bottom: 10px;">
+    <input type="checkbox" id="chkFog" [(ngModel)]="fogEnabled" (ngModelChange)="aplicarNiebla()" />
+    <label for="chkFog">Habilitar Niebla</label>
+  </div>
+  
+  <div class="grid-2" *ngIf="fogEnabled">
+    <div class="field">
+      <label>Color de Niebla</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="fogColorHex" (ngModelChange)="aplicarNiebla()" class="color-picker">
+      </div>
+    </div>
+    <div class="field">
+      <label>Densidad</label>
+      <input type="number" step="0.005" min="0" [(ngModel)]="fogDensity" (ngModelChange)="aplicarNiebla()" />
+    </div>
+  </div>
+</div>

@@ -13,14 +13,15 @@ import { PropTrigger } from './prop-trigger/prop-trigger';
 import { PropPlayer } from './prop-player/prop-player';
 import { PropSequences } from './prop-sequences/prop-sequences';
 import { PropAnimation } from './prop-animation/prop-animation';
-// 🔥 IMPORTAMOS FÍSICAS
 import { PropPhysics } from './prop-physics/prop-physics';
+// 🔥 IMPORTAMOS EL COMPONENTE GLOBAL
+import { PropWorld } from './prop-world/prop-world';
 
 @Component({
   selector: 'app-inspector-properties',
   standalone: true,
   // 🔥 LO AGREGAMOS AL IMPORTS
-  imports: [CommonModule, PropTransform, PropTrigger, PropPlayer, PropSequences, PropAnimation, PropPhysics],
+  imports: [CommonModule, PropTransform, PropTrigger, PropPlayer, PropSequences, PropAnimation, PropPhysics, PropWorld],
   templateUrl: './inspector-properties.html',
   styleUrl: './inspector-properties.css'
 })
@@ -59,6 +60,11 @@ export class InspectorProperties implements OnInit, OnDestroy {
         this.esTrigger = false;
         this.esPersonaje = false;
         this.familiaResumen = 'Sin selección';
+        
+        // 🔥 Si no hay nada seleccionado, forzar la pestaña de mundo
+        if (this.pestanaActiva !== 'world') {
+          this.cambiarPestana('world');
+        }
       }
       this.cdr.detectChanges();
     });

@@ -1,12 +1,16 @@
 <div class="properties-shell">
   <!-- PESTAÑAS (Fijas en la parte superior) -->
   <div class="prop-tabs">
-    <button class="tab-btn" [class.active]="pestanaActiva === 'transform'" (click)="cambiarPestana('transform')" title="Transformación">🟧</button>
-    <button class="tab-btn" *ngIf="!esTrigger" [class.active]="pestanaActiva === 'physics'" (click)="cambiarPestana('physics')" title="Física y Colisiones">💊</button>
-    <button class="tab-btn" *ngIf="esPersonaje && !esTrigger" [class.active]="pestanaActiva === 'player'" (click)="cambiarPestana('player')" title="Configuración Jugador">🎮</button>
-    <button class="tab-btn" *ngIf="esPersonaje && !esTrigger" [class.active]="pestanaActiva === 'animation'" (click)="cambiarPestana('animation')" title="Mapeo de Animaciones">🏃</button>
-    <button class="tab-btn" *ngIf="esPersonaje || esTrigger" [class.active]="pestanaActiva === 'sequences'" (click)="cambiarPestana('sequences')" title="Creador de Secuencias">🎞️</button>
-    <button class="tab-btn" [class.active]="pestanaActiva === 'world'" (click)="cambiarPestana('world')" title="Entorno">🌍</button>
+    <!-- Solo mostrar pestañas de objeto SI HAY UN OBJETO -->
+    <ng-container *ngIf="objetoActual">
+        <button class="tab-btn" [class.active]="pestanaActiva === 'transform'" (click)="cambiarPestana('transform')" title="Transformación">🟧</button>
+        <button class="tab-btn" *ngIf="!esTrigger" [class.active]="pestanaActiva === 'physics'" (click)="cambiarPestana('physics')" title="Física y Colisiones">💊</button>
+        <button class="tab-btn" *ngIf="esPersonaje && !esTrigger" [class.active]="pestanaActiva === 'player'" (click)="cambiarPestana('player')" title="Configuración Jugador">🎮</button>
+        <button class="tab-btn" *ngIf="esPersonaje && !esTrigger" [class.active]="pestanaActiva === 'animation'" (click)="cambiarPestana('animation')" title="Mapeo de Animaciones">🏃</button>
+        <button class="tab-btn" *ngIf="esPersonaje || esTrigger" [class.active]="pestanaActiva === 'sequences'" (click)="cambiarPestana('sequences')" title="Creador de Secuencias">🎞️</button>
+    </ng-container>
+    
+    <button class="tab-btn" [class.active]="pestanaActiva === 'world'" (click)="cambiarPestana('world')" title="Entorno Global">🌍</button>
   </div>
 
   <div class="prop-content-scroll">
@@ -21,32 +25,26 @@
       <span class="status-pill">{{ familiaResumen }}</span>
     </div>
 
-    <!-- OBJETO NO SELECCIONADO O MUNDO -->
-    <ng-container *ngIf="!objetoActual && pestanaActiva !== 'world'">
-      <div class="empty-state">
-        <p>Ningún objeto seleccionado</p>
-        <span>Haz clic en un objeto de la escena o del Outliner.</span>
+    <!-- PESTAÑA MUNDO / GLOBAL -->
+    <ng-container *ngIf="pestanaActiva === 'world'">
+      <div class="panel-header"><span>Configuración del Escenario</span><span class="status-pill">Global</span></div>
+      <div class="prop-body">
+         <app-prop-world></app-prop-world>
       </div>
     </ng-container>
 
-    <ng-container *ngIf="pestanaActiva === 'world'">
-      <div class="panel-header"><span>Propiedades globales</span><span class="status-pill">Global</span></div>
-      <div class="empty-state"><p>Entorno 3D</p><span>Configuración general del nivel.</span></div>
-    </ng-container>
-
-    <!-- CARGA DINÁMICA DE LOS COMPONENTES SI HAY OBJETO -->
-    <div class="prop-body" *ngIf="objetoActual">
+    <!-- CARGA DINÁMICA DE LOS COMPONENTES DE OBJETO -->
+    <div class="prop-body" *ngIf="objetoActual && pestanaActiva !== 'world'">
       
       <div class="obj-title-bar">
         <span class="icon">{{ esTrigger ? '📍' : (esPersonaje ? '🧍' : '🧊') }}</span>
         <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" />
       </div>
 
-      <!-- COMPONENTES REFATORIZADOS -->
+      <!-- COMPONENTES -->
       <app-prop-transform *ngIf="pestanaActiva === 'transform' && !esTrigger" [objeto]="objetoActual"></app-prop-transform>
       <app-prop-trigger *ngIf="pestanaActiva === 'transform' && esTrigger" [objeto]="objetoActual"></app-prop-trigger>
 
-      <!-- 🔥 AQUÍ ESTÁN LAS FÍSICAS PARA CUBOS Y MODELOS -->
       <app-prop-physics *ngIf="pestanaActiva === 'physics' && !esTrigger" [objeto]="objetoActual"></app-prop-physics>
 
       <app-prop-player *ngIf="pestanaActiva === 'player' && esPersonaje" [objeto]="objetoActual"></app-prop-player>

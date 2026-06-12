@@ -1,10 +1,10 @@
+
 :host {
-  flex: 0 0 40%;
+  /* Quitamos el flex fijo, ya que ahora la altura la da el componente padre (inspector-escena) en % */
   background: #232323;
-  border-bottom: 2px solid #111; 
   display: flex;
   flex-direction: column;
-  min-height: 0;
+  height: 100%; /* Ocupa el 100% de lo que le dé su padre */
 }
 
 .panel-header {
@@ -17,6 +17,7 @@
   font-weight: 600;
   background: #2d2d2d;
   color: #d1d1d1;
+  flex-shrink: 0;
 }
 
 .panel-header .icon { margin-right: 6px; }
@@ -24,6 +25,7 @@
 .outliner-tree {
   display: flex;
   flex-direction: column;
+  flex: 1; /* Ocupa el resto del espacio disponible en su caja */
   min-height: 0;
   overflow: hidden;
 }
@@ -36,16 +38,30 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-shrink: 0;
 }
 
 .tree-items {
-  overflow-y: auto;
+  overflow-y: auto; /* SCROLL ACTIVADO AQUÍ */
   padding: 4px;
+  flex: 1;
   min-height: 0;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+  /* Damos un estilo sutil a la barra de scroll para el UX */
 }
-.tree-items::-webkit-scrollbar { display: none; }
+
+.tree-items::-webkit-scrollbar { 
+  width: 6px; 
+}
+.tree-items::-webkit-scrollbar-track { 
+  background: #1c1c1c; 
+}
+.tree-items::-webkit-scrollbar-thumb { 
+  background: #444; 
+  border-radius: 3px; 
+}
+.tree-items::-webkit-scrollbar-thumb:hover { 
+  background: #666; 
+}
 
 .node-item {
   display: flex;
@@ -62,10 +78,10 @@
 
 .node-item:hover { background: #2d2d2d; }
 .node-item.selected { background: #4772b3; color: #fff; }
-.node-item.locked { opacity: 0.6; }
+.node-item.locked { opacity: 0.5; cursor: default; }
 
 .node-left { display: flex; align-items: center; gap: 6px; min-width: 0; }
-.tree-expander { width: 14px; text-align: center; color: #888; font-size: 10px; }
+.tree-expander { width: 14px; text-align: center; color: #888; font-size: 10px; cursor: pointer;}
 .node-icon, .badge-icon { width: 16px; text-align: center; font-size: 12px; }
 .node-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; }
 .node-right { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }

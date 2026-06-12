@@ -1,12 +1,24 @@
+
 <div class="inspector-shell">
   
-  <!-- PANEL SUPERIOR: OUTLINER (Lista de objetos) -->
-  <app-inspector-outliner (tabSelect)="activeTab = $event"></app-inspector-outliner>
+  <!-- PANEL SUPERIOR: OUTLINER (Ajustado por porcentaje) -->
+  <app-inspector-outliner 
+    class="outliner-panel"
+    [style.height.%]="outlinerHeight"
+    (tabSelect)="activeTab = $event">
+  </app-inspector-outliner>
   
-  <!-- PANEL INFERIOR: PROPERTIES (Lógica y físicas) -->
+  <!-- 🔥 BARRA DIVISORA HORIZONTAL (SPLITTER) -->
+  <div class="vertical-resizer" (mousedown)="startVerticalResize($event)" [class.resizing]="isResizing">
+    <div class="resizer-grip-h"></div>
+  </div>
+
+  <!-- PANEL INFERIOR: PROPERTIES (Toma el resto del espacio) -->
   <app-inspector-properties 
+    class="properties-panel"
     [pestanaActiva]="activeTab" 
     (pestanaActivaChange)="activeTab = $event">
   </app-inspector-properties>
 
 </div>
+

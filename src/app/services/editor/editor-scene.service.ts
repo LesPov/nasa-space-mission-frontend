@@ -15,21 +15,16 @@ export class EditorSceneService {
   private state = inject(EditorStateService);
   private historialSvc = inject(HistorialService);
 
-  // 🔥 NUEVA FUNCIÓN MAGICA: Hace que los GLB brillen igual que las figuras básicas
   private ajustarMaterialGLB(material: any): void {
     if (!material) return;
     
-    // Si el objeto tiene varios materiales incrustados, iteramos en ellos
     if (material.getClassName() === "MultiMaterial" && material.subMaterials) {
         material.subMaterials.forEach((subMat: any) => this.ajustarMaterialGLB(subMat));
         return;
     }
 
-    // 1. Permitimos que le peguen hasta 16 luces (linternas, postes, etc)
     material.maxSimultaneousLights = 16;
     
-    // 2. Si el material es PBR (GLB por defecto), apagamos la física estricta de la luz.
-    // Esto hace que una linterna con intensidad 1.0 lo ilumine perfectamente en la oscuridad.
     if (material.getClassName().includes("PBR")) {
         material.usePhysicalLightFalloff = false;
     }
@@ -183,7 +178,6 @@ export class EditorSceneService {
                 m.isPickable = true; 
                 m.checkCollisions = isSolid; 
             } 
-            // 🔥 APLICAMOS LA MAGIA DE LA LUZ AL MODELO NUEVO
             if (m.material) {
                 this.ajustarMaterialGLB(m.material);
             }
@@ -247,11 +241,11 @@ export class EditorSceneService {
         scene.gravity = new Vector3(0, w.gravityY ?? -0.25, 0);
         
         if (w.fogEnabled) {
-            scene.fogMode = 1; // FOGMODE_EXP
+            scene.fogMode = 1; 
             scene.fogColor = Color3.FromHexString(w.fogColor || '#0d1729');
             scene.fogDensity = w.fogDensity ?? 0.01;
         } else {
-            scene.fogMode = 0; // NONE
+            scene.fogMode = 0; 
         }
 
         let light = scene.lights.find(l => l.name === 'globalLight') as HemisphericLight;
@@ -351,7 +345,6 @@ export class EditorSceneService {
                   m.isPickable = true; 
                   m.checkCollisions = isSolidSaved; 
               } 
-              // 🔥 APLICAMOS LA MAGIA DE LA LUZ AL MODELO CARGADO DE LA BD
               if (m.material) {
                   this.ajustarMaterialGLB(m.material);
               }
@@ -478,7 +471,7 @@ export class EditorSceneService {
     const light = scene.lights.find(l => l.name === 'globalLight') as HemisphericLight;
     
     const worldSettings = {
-      clearColor: scene.clearColor.toHexString().substring(0, 7), // Quitar Alpha
+      clearColor: scene.clearColor.toHexString().substring(0, 7), 
       gravityY: scene.gravity.y,
       fogEnabled: scene.fogMode !== 0,
       fogColor: scene.fogColor.toHexString(),
@@ -587,9 +580,15 @@ export class EditorSceneService {
   actualizarListaNodos(): void {
     if (!this.motor3d.scene) return;
     const scene = this.motor3d.scene;
+    
+    // 🔥 SOLUCIÓN A DUPLICADOS DE LUCES EN EL OUTLINER:
+    // Solo permitimos que se liste la luz global (el sol), las demás luces 
+    // están atadas al Mesh de su bombillo, por lo que listamos el Mesh, no la luz suelta.
+    const lucesValidas = scene.lights.filter(l => l.name === 'globalLight' || !l.parent);
+
     this.state.nodosEscena.set([
       ...scene.cameras,
-      ...scene.lights,
+      ...lucesValidas,
       ...scene.meshes.filter(m =>
         !['ejeX', 'ejeY', 'ejeZ', 'gridHelper', 'sueloInvisible'].includes(m.name) &&
         !m.name.includes('gizmo') &&

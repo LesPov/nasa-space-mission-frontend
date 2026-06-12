@@ -3,7 +3,7 @@ import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { HistorialService } from '../historial.service';
 import {
-  MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader, StandardMaterial, Color3, TransformNode, Matrix, HemisphericLight, PointLight, SpotLight, DirectionalLight
+  MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader, StandardMaterial, Color3, TransformNode, Matrix, HemisphericLight, PointLight, SpotLight, DirectionalLight, Scene, ShadowGenerator
 } from '@babylonjs/core';
 
 import '@babylonjs/loaders/glTF';
@@ -27,6 +27,8 @@ export class EditorSceneService {
     
     if (material.getClassName().includes("PBR")) {
         material.usePhysicalLightFalloff = false;
+        material.metallic = 0.1;
+        material.roughness = 0.8;
     }
   }
 
@@ -56,6 +58,7 @@ export class EditorSceneService {
     suelo.checkCollisions = true;
     suelo.isVisible = false;
     suelo.isPickable = true;
+    suelo.receiveShadows = true; 
     this.actualizarListaNodos();
   }
 
@@ -114,6 +117,26 @@ export class EditorSceneService {
     this.state.objetoSeleccionado.set(mesh); this.actualizarListaNodos(); this.historialSvc.registrarAccionCrear(mesh); this.state.triggerUpdate();
   }
 
+  // 🔥 Añadimos un actualizador de sombras para que las luces nuevas agarren todos los objetos sólidos
+  private asignarObjetosASombrasDeLuces(scene: Scene) {
+      const lights = scene.lights.filter(l => l instanceof DirectionalLight || l instanceof SpotLight);
+      lights.forEach(light => {
+          let sg = light.getShadowGenerator() as ShadowGenerator;
+          if (!sg) {
+              sg = new ShadowGenerator(2048, light as DirectionalLight | SpotLight);
+              sg.useBlurExponentialShadowMap = true;
+              sg.useKernelBlur = true;
+              sg.blurKernel = 32;
+              sg.setDarkness(0.3);
+          }
+          scene.meshes.forEach(m => {
+              if (m.isVisible && !m.name.includes('sueloInvisible') && !m.name.includes('proxy') && !m.name.includes('gizmo') && m.metadata?.type !== 'trigger' && !m.metadata?.type?.startsWith('light_')) {
+                  sg.addShadowCaster(m, true);
+              }
+          });
+      });
+  }
+
   agregarObjetoCustom(tipo: string, nombre: string, rol: string, colorHex: string, sizeX: number, sizeY: number, sizeZ: number, asset?: any, isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = ''): void {
     if (tipo === 'trigger' || tipo === 'trigger_compuesto') {
         const isComposite = tipo === 'trigger_compuesto';
@@ -148,6 +171,7 @@ export class EditorSceneService {
         
         lightObj.parent = mesh;
         lightObj.diffuse = Color3.FromHexString(colorHex);
+        lightObj.specular = new Color3(0, 0, 0); 
         
         mesh.metadata = {
             type: tipo, rol: 'light', isSolid: false, isSelectable: true,
@@ -157,6 +181,11 @@ export class EditorSceneService {
         mesh.isPickable = true;
         mesh.checkCollisions = false;
         mesh.isVisible = this.state.rolSimulado() === 'admin';
+        
+        // Asignamos que esta luz recién creada genere sombras para todos los objetos
+        if (tipo === 'light_directional' || tipo === 'light_spot') {
+            this.asignarObjetosASombrasDeLuces(scene);
+        }
         
         this.state.objetoSeleccionado.set(mesh); 
         this.actualizarListaNodos(); 
@@ -177,6 +206,7 @@ export class EditorSceneService {
             if (m !== rootNode) { 
                 m.isPickable = true; 
                 m.checkCollisions = isSolid; 
+                m.receiveShadows = true; 
             } 
             if (m.material) {
                 this.ajustarMaterialGLB(m.material);
@@ -199,6 +229,9 @@ export class EditorSceneService {
         rootNode.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
         rootNode.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
 
+        // Agregamos el modelo a los generadores de sombra existentes
+        this.asignarObjetosASombrasDeLuces(scene);
+
         this.state.objetoSeleccionado.set(rootNode); this.actualizarListaNodos(); this.historialSvc.registrarAccionCrear(rootNode); this.state.triggerUpdate();
       });
     } else {
@@ -218,17 +251,51 @@ export class EditorSceneService {
         collider: { ...defaultCollider }, camOffset: { ...defaultCamOffset }, playerConfig: defaultPlayerConfig
       };
       mesh.isPickable = true; mesh.checkCollisions = isSolid;
+      mesh.receiveShadows = true; 
+      
       mesh.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
       mesh.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
 
       const mat = new StandardMaterial('mat_' + nombre, scene);
       mat.diffuseColor = Color3.FromHexString(colorHex);
+      mat.specularColor = new Color3(0, 0, 0); 
       if (rol === 'spawn_point') { mat.alpha = 0.5; mat.emissiveColor = new Color3(0, 1, 0); }
       mat.maxSimultaneousLights = 16; 
       mesh.material = mat;
 
+      // Agregamos la figura a los generadores de sombra existentes
+      this.asignarObjetosASombrasDeLuces(scene);
+
       this.state.objetoSeleccionado.set(mesh); this.actualizarListaNodos(); this.historialSvc.registrarAccionCrear(mesh); this.state.triggerUpdate();
     }
+  }
+
+  // 🔥 NUEVO: CONFIGURAR AMBIENTE GLOBAL (Sin sol direccional, solo luz de relleno) 🔥
+  private configurarAmbienteGlobal(scene: Scene, props: any): void {
+      let ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;
+      if (!ambient) {
+          ambient = new HemisphericLight('ambientLight', new Vector3(0, 1, 0), scene);
+      }
+      // Aplicar propiedades ambientales
+      ambient.direction = new Vector3(props.ambientDirX ?? 0, props.ambientDirY ?? 1, props.ambientDirZ ?? 0);
+      ambient.intensity = props.ambientIntensity ?? 0.6;
+      ambient.diffuse = Color3.FromHexString(props.ambientDiffuse || '#ffffff');
+      ambient.groundColor = Color3.FromHexString(props.ambientGround || '#333333');
+      ambient.specular = new Color3(0, 0, 0); // Cero brillo plástico
+
+      // Limpiar luces automáticas antiguas si existen
+      const oldGlobal = scene.lights.find(l => l.name === 'globalLight');
+      if (oldGlobal) oldGlobal.dispose();
+      const oldSun = scene.lights.find(l => l.name === 'sunLight');
+      if (oldSun) oldSun.dispose(); 
+  }
+
+  // 🔥 NUEVO: Aplicar el límite de renderizado de cámaras según la niebla
+  private aplicarDistanciaRender(scene: Scene, enabled: boolean, endDistance: number) {
+      // Si la niebla está apagada, la cámara renderiza a 10000 metros (casi infinito).
+      // Si está encendida, solo dibuja hasta donde llega la niebla (+ 5 metros de buffer de seguridad).
+      const maxZ = enabled ? (endDistance + 5) : 10000;
+      scene.cameras.forEach(cam => cam.maxZ = maxZ);
   }
 
   cargarEscenaDesdeDatos(dataBD: any): void {
@@ -237,26 +304,32 @@ export class EditorSceneService {
 
     if (dataBD.worldSettings) {
         const w = dataBD.worldSettings;
-        scene.clearColor = Color4.FromHexString(w.clearColor ? (w.clearColor + 'ff') : '#0d1729ff');
+        
+        const clearHex = w.clearColor?.length === 7 ? w.clearColor : (w.clearColor?.substring(0, 7) || '#0d1729');
+        scene.clearColor = Color4.FromHexString(clearHex + 'ff');
+        
         scene.gravity = new Vector3(0, w.gravityY ?? -0.25, 0);
         
         if (w.fogEnabled) {
-            scene.fogMode = 1; 
-            scene.fogColor = Color3.FromHexString(w.fogColor || '#0d1729');
-            scene.fogDensity = w.fogDensity ?? 0.01;
+            scene.fogMode = Scene.FOGMODE_LINEAR; 
+            scene.fogColor = Color3.FromHexString(w.fogColor?.substring(0, 7) || '#0d1729');
+            scene.fogStart = w.fogStart ?? 20;
+            scene.fogEnd = w.fogEnd ?? 100;
         } else {
-            scene.fogMode = 0; 
+            scene.fogMode = Scene.FOGMODE_NONE; 
         }
 
-        let light = scene.lights.find(l => l.name === 'globalLight') as HemisphericLight;
-        if (!light) {
-            light = new HemisphericLight('globalLight', new Vector3(w.lightDirX ?? 0, w.lightDirY ?? 1, w.lightDirZ ?? 0), scene);
-        }
-        
-        light.direction = new Vector3(w.lightDirX ?? 0, w.lightDirY ?? 1, w.lightDirZ ?? 0);
-        light.intensity = w.ambientIntensity ?? 1;
-        light.diffuse = Color3.FromHexString(w.ambientDiffuse || '#ffffff');
-        light.groundColor = Color3.FromHexString(w.ambientGround || '#333333');
+        // Cargamos el ambiente global y ajustamos el render de cámara
+        this.configurarAmbienteGlobal(scene, w);
+        this.aplicarDistanciaRender(scene, w.fogEnabled, w.fogEnd ?? 100);
+
+    } else {
+        // Fallback por si no hay configuración
+        this.configurarAmbienteGlobal(scene, {
+            ambientIntensity: 0.6, ambientDiffuse: '#ffffff', ambientGround: '#333333',
+            ambientDirX: 0, ambientDirY: 1, ambientDirZ: 0
+        });
+        this.aplicarDistanciaRender(scene, false, 10000);
     }
 
     const objetosBD = Array.isArray(dataBD) ? dataBD : (dataBD.sceneObjects || []);
@@ -282,8 +355,10 @@ export class EditorSceneService {
           mesh.rotationQuaternion = Quaternion.FromEulerAngles(obj.rotation.x, obj.rotation.y, obj.rotation.z);
           mesh.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
           
+          const lightColorHex = obj.properties?.lightColor?.substring(0, 7) || '#ffffff';
+          
           const mat = new StandardMaterial('mat_' + obj.name, scene);
-          mat.emissiveColor = Color3.FromHexString(obj.properties?.lightColor || '#ffffff');
+          mat.emissiveColor = Color3.FromHexString(lightColorHex);
           mat.wireframe = true;
           mat.maxSimultaneousLights = 16;
           mesh.material = mat;
@@ -295,12 +370,13 @@ export class EditorSceneService {
           
           lightObj.parent = mesh;
           lightObj.intensity = obj.properties?.intensity ?? 1.0;
-          lightObj.diffuse = Color3.FromHexString(obj.properties?.lightColor || '#ffffff');
+          lightObj.diffuse = Color3.FromHexString(lightColorHex);
+          lightObj.specular = new Color3(0, 0, 0); 
           if (lightObj.range !== undefined) lightObj.range = obj.properties?.range ?? 50;
 
           mesh.metadata = {
               type: obj.type, rol: 'light', isSolid: false, isSelectable: true,
-              lightColor: obj.properties?.lightColor || '#ffffff', 
+              lightColor: lightColorHex, 
               intensity: obj.properties?.intensity ?? 1.0, 
               range: obj.properties?.range ?? 50, 
               angle: obj.properties?.angle ?? 60
@@ -344,6 +420,7 @@ export class EditorSceneService {
               if (m !== rootNode) { 
                   m.isPickable = true; 
                   m.checkCollisions = isSolidSaved; 
+                  m.receiveShadows = true; 
               } 
               if (m.material) {
                   this.ajustarMaterialGLB(m.material);
@@ -380,20 +457,24 @@ export class EditorSceneService {
         mesh.position = new Vector3(obj.position.x, obj.position.y, obj.position.z);
         mesh.rotationQuaternion = Quaternion.FromEulerAngles(obj.rotation.x, obj.rotation.y, obj.rotation.z);
         mesh.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
-        const savedColor = obj.properties?.color || '#888888';
+        
+        const savedColorHex = obj.properties?.color?.substring(0, 7) || '#888888';
 
         mesh.metadata = {
-          type: obj.type, rol: rolSaved, color: savedColor, isSolid: isSolidSaved, isSelectable: isSelectableSaved, mensaje: mensajeSaved,
+          type: obj.type, rol: rolSaved, color: savedColorHex, isSolid: isSolidSaved, isSelectable: isSelectableSaved, mensaje: mensajeSaved,
           interactDistanceFPS, interactDistanceTPS, interactSequenceIdFPS, interactSequenceIdTPS,
           collider: savedCollider, camOffset: savedCamOffset, playerConfig: savedPlayerConfig
         };
 
         mesh.isPickable = true; mesh.checkCollisions = isSolidSaved;
+        mesh.receiveShadows = true; 
+        
         mesh.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
         mesh.ellipsoidOffset = new Vector3(savedCollider.offsetX * obj.scale.x, savedCollider.offsetY * obj.scale.y, savedCollider.offsetZ * obj.scale.z);
 
         const mat = new StandardMaterial('mat_' + obj.name, scene);
-        mat.diffuseColor = Color3.FromHexString(savedColor);
+        mat.diffuseColor = Color3.FromHexString(savedColorHex);
+        mat.specularColor = new Color3(0, 0, 0); 
         if (rolSaved === 'spawn_point') { mat.alpha = 0.5; mat.emissiveColor = new Color3(0, 1, 0); }
         mat.maxSimultaneousLights = 16; 
         mesh.material = mat;
@@ -459,6 +540,8 @@ export class EditorSceneService {
         }
     });
 
+    // Aseguramos que todas las luces creen sombras
+    this.asignarObjetosASombrasDeLuces(scene);
     this.actualizarListaNodos();
   }
 
@@ -466,22 +549,24 @@ export class EditorSceneService {
     const sceneObjects: any[] = [];
     const triggers: any[] = [];
     
-    // 🔥 1. EXTRAER CONFIGURACIÓN GLOBAL DEL MUNDO 🔥
+    // 🔥 Guardamos SOLO Luz Ambiental. (Direccionales serán objetos)
     const scene = this.motor3d.scene;
-    const light = scene.lights.find(l => l.name === 'globalLight') as HemisphericLight;
+    const ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;
     
     const worldSettings = {
       clearColor: scene.clearColor.toHexString().substring(0, 7), 
       gravityY: scene.gravity.y,
       fogEnabled: scene.fogMode !== 0,
-      fogColor: scene.fogColor.toHexString(),
-      fogDensity: scene.fogDensity,
-      ambientIntensity: light ? light.intensity : 1.0,
-      ambientDiffuse: light ? light.diffuse.toHexString() : '#ffffff',
-      ambientGround: light ? light.groundColor.toHexString() : '#333333',
-      lightDirX: light ? light.direction.x : 0,
-      lightDirY: light ? light.direction.y : 1,
-      lightDirZ: light ? light.direction.z : 0
+      fogColor: scene.fogColor.toHexString().substring(0, 7),
+      fogStart: scene.fogStart,
+      fogEnd: scene.fogEnd,
+      
+      ambientIntensity: ambient ? ambient.intensity : 0.6,
+      ambientDiffuse: ambient ? ambient.diffuse.toHexString().substring(0, 7) : '#ffffff',
+      ambientGround: ambient ? ambient.groundColor.toHexString().substring(0, 7) : '#333333',
+      ambientDirX: ambient ? ambient.direction.x : 0,
+      ambientDirY: ambient ? ambient.direction.y : 1,
+      ambientDirZ: ambient ? ambient.direction.z : 0
     };
 
     this.state.nodosEscena().forEach(nodo => {
@@ -547,7 +632,6 @@ export class EditorSceneService {
         if (nodo.metadata.type === 'model') {
           sceneObjects.push({ ...baseData, type: 'model', assetId: nodo.metadata.assetId, properties: { path: nodo.metadata.path, ...propertiesToSave } });
         } else if (nodo.metadata.type?.startsWith('light_')) {
-          // 🔥 GUARDAR PROPIEDADES DE LUZ
           sceneObjects.push({ 
               ...baseData, type: nodo.metadata.type, 
               properties: { 
@@ -581,10 +665,8 @@ export class EditorSceneService {
     if (!this.motor3d.scene) return;
     const scene = this.motor3d.scene;
     
-    // 🔥 SOLUCIÓN A DUPLICADOS DE LUCES EN EL OUTLINER:
-    // Solo permitimos que se liste la luz global (el sol), las demás luces 
-    // están atadas al Mesh de su bombillo, por lo que listamos el Mesh, no la luz suelta.
-    const lucesValidas = scene.lights.filter(l => l.name === 'globalLight' || !l.parent);
+    // Filtramos para no mostrar la luz global de fondo (Hemisférica) ni luces hijas
+    const lucesValidas = scene.lights.filter(l => !l.parent && l.name !== 'ambientLight' && l.name !== 'sunLight' && l.name !== 'globalLight');
 
     this.state.nodosEscena.set([
       ...scene.cameras,

@@ -1,5 +1,3 @@
-/* Heredamos el grid de la hoja de estilos principal, pero agregamos especificidades visuales si se requieren */
-
 .section-card { 
   background: transparent; 
   border-bottom: 1px solid #2f2f2f; 

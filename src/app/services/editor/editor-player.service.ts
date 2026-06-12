@@ -35,6 +35,9 @@ export class EditorPlayerService {
   private tpsUpdateObserver: Observer<Scene> | null = null;
   private previewObserver: Observer<Scene> | null = null;
   private npcsYPropsAnimados: Mesh[] = [];
+  
+  // 🔥 FIX: Guardar el estado inicial de TODO lo que pueda moverse o cambiar de intensidad en el juego
+  private backupsAnimados: any[] = [];
 
   constructor() {
     document.addEventListener('pointerlockchange', () => {
@@ -77,16 +80,27 @@ export class EditorPlayerService {
 
     this.crearProxysDeColision(obj);
 
-    // 🔥 PREPARAR MÚLTIPLES ENTIDADES ANIMADAS (NPCs Y LUCES CON MODELOS)
     this.npcsYPropsAnimados = [];
+    this.backupsAnimados = []; // Vaciamos backups viejos
+    
     this.motor3d.scene.meshes.forEach(m => {
-        if (m !== obj && (m.metadata?.type === 'model' || m.metadata?.type?.startsWith('light_')) && m.metadata?.playerConfig) {
+        if (m !== obj && m.metadata?.playerConfig?.sequences && m.metadata.playerConfig.sequences.length > 0) {
             this.npcsYPropsAnimados.push(m as Mesh);
+            
+            // 🔥 FIX: Guardar una copia exacta del Mesh antes de que la secuencia empiece a moverlo o apagarlo
+            const lightObj = m.getDescendants(false).find(c => c.name.startsWith('l_'));
+            this.backupsAnimados.push({
+                mesh: m as Mesh,
+                pos: m.position.clone(),
+                rot: m.rotation.clone(),
+                rotQ: m.rotationQuaternion ? m.rotationQuaternion.clone() : null,
+                intensity: lightObj ? (lightObj as any).intensity : null
+            });
+
             this.animSvc.sincronizarAnimaciones(this.motor3d.scene, m as Mesh, mergePlayerConfig(m.metadata.playerConfig));
         }
     });
 
-    // Ocultar luces que NO tienen modelo 3D (para no ver esferas volando en el juego)
     this.motor3d.scene.meshes.forEach(m => {
         if (m.metadata?.type?.startsWith('light_') && !m.metadata?.assetId) {
             m.isVisible = false;
@@ -172,7 +186,6 @@ export class EditorPlayerService {
       
       if (seqRuntime.freezeOrientation) this.sequenceSvc.applyLockedOrientationWhileSequence(jugador);
 
-      // 🔥 LÓGICA PARA NPCS Y LUCES CON MODELO (Ejecutan sus propias secuencias simultáneamente)
       this.npcsYPropsAnimados.forEach(npc => {
           const npcConfig = mergePlayerConfig(npc.metadata?.playerConfig || null);
           const npcSeq = this.sequenceSvc.actualizarSecuencia(dtMs, npc, npcConfig);
@@ -214,6 +227,25 @@ export class EditorPlayerService {
     this.animSvc.detenerTodasGlobal();
 
     this.triggerSvc.restaurarTriggersParaEditor();
+
+    // 🔥 FIX: Restaurar todo a como estaba antes de jugar
+    this.backupsAnimados.forEach(b => {
+        if (b.mesh && !b.mesh.isDisposed()) {
+            b.mesh.position.copyFrom(b.pos);
+            if (b.rotQ) {
+                if (!b.mesh.rotationQuaternion) b.mesh.rotationQuaternion = Quaternion.Identity();
+                b.mesh.rotationQuaternion.copyFrom(b.rotQ);
+            } else {
+                b.mesh.rotationQuaternion = null;
+                b.mesh.rotation.copyFrom(b.rot);
+            }
+            if (b.intensity !== null) {
+                const lightObj = b.mesh.getDescendants(false).find((c: any) => c.name.startsWith('l_'));
+                if (lightObj) (lightObj as any).intensity = b.intensity;
+            }
+        }
+    });
+    this.backupsAnimados = [];
 
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
     this.motor3d.scene.meshes.forEach(m => {

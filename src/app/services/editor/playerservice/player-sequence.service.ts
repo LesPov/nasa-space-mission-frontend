@@ -2,7 +2,7 @@
 // ARCHIVO: src/app/services/editor/playerservice/player-sequence.service.ts
 // ========================================================================
 import { Injectable, inject } from '@angular/core';
-import { Mesh, Quaternion, Vector3, AbstractMesh, UniversalCamera } from '@babylonjs/core';
+import { Mesh, Quaternion, Vector3, AbstractMesh, UniversalCamera, Light } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
 import { Motor3dService } from '../../motor-3d.service';
 import { PlayerClipSequence, PlayerSequenceStep, PlayerRuntimeConfig } from '../player-config.model';
@@ -25,7 +25,6 @@ export class PlayerSequenceService {
   private state = inject(EditorStateService);
   private motor3d = inject(Motor3dService);
 
-  // 🔥 Usamos un Map para llevar el control de secuencias de MÚLTIPLES objetos a la vez
   private activeSequences = new Map<number, {
     id: string;
     index: number;
@@ -36,7 +35,6 @@ export class PlayerSequenceService {
     quaternion: Quaternion | null;
   }>();
 
-  // Guardamos rotación de cámaras separadas (esto solo aplica al Jugador principal)
   public lockedSequenceFPSRotation: Vector3 | null = null;
   public lockedSequenceTPSAlpha: number | null = null;
   public lockedSequenceTPSBeta: number | null = null;
@@ -77,7 +75,6 @@ export class PlayerSequenceService {
         jugador.rotationQuaternion = state.quaternion.clone();
     }
     
-    // Si es el jugador activo, bloqueamos la cámara también
     if (this.state.jugadorActivo === jugador) {
         const fpsCam = this.motor3d.playerCameraFPS;
         this.lockedSequenceFPSRotation = fpsCam.rotation.clone();
@@ -97,7 +94,6 @@ export class PlayerSequenceService {
       jugador.rotation.set(0, 0, 0);
     }
     
-    // Si es el jugador principal, bloqueamos cámara
     if (this.state.jugadorActivo === jugador) {
         const activeCamera = this.motor3d.scene.activeCamera;
         if (this.state.modoVistaPrueba === 'FPS' && activeCamera instanceof UniversalCamera && this.lockedSequenceFPSRotation) {
@@ -165,6 +161,32 @@ export class PlayerSequenceService {
       state.orientationLocked = this.shouldLockOrientationForSequence(step) || state.orientationLocked;
     }
 
+    // 🔥 LOGICA PARA EFECTOS DE LUCES EN TIEMPO REAL (Con el reloj global del sistema para que no falle)
+    if (jugador.metadata?.type?.startsWith('light_')) {
+        const light = jugador.getDescendants(false).find(c => c.name.startsWith('l_')) as Light;
+        if (light && typeof light.intensity !== 'undefined') {
+            const baseIntensity = jugador.metadata?.intensity ?? 1.0;
+            
+            if (step.action === 'lightOn') {
+                light.intensity = baseIntensity;
+            } else if (step.action === 'lightOff') {
+                light.intensity = 0;
+            } else if (step.action === 'lightPulse') {
+                const freq = step.speedRatio || 1;
+                // 🔥 FIX: usamos performance.now() global en lugar de los milisegundos del paso (que se resetean a 0)
+                const timeSec = performance.now() / 1000;
+                light.intensity = baseIntensity * (0.5 + 0.5 * Math.sin(timeSec * Math.PI * 2 * freq));
+            } else if (step.action === 'lightFlicker') {
+                const freq = step.speedRatio || 1;
+                if (Math.random() < (0.1 * freq)) {
+                    light.intensity = Math.random() > 0.5 ? baseIntensity : 0;
+                }
+            } else {
+                light.intensity = baseIntensity;
+            }
+        }
+    }
+
     const blend = typeof step.blend === 'number' ? step.blend : config.blend.defaultBlend;
     const loop = !!step.loop;
     const allowMovement = step.allowMovement !== false;
@@ -185,7 +207,7 @@ export class PlayerSequenceService {
             state.index = 0; 
             state.stepEntered = true; 
         } else { 
-            state.id = ''; // Terminó la secuencia
+            state.id = ''; // Terminó la secuencia y no se repite
             return { step, lockInput, allowMovement, forceForwardWalk, forceForwardRun, forceJump, blend, loop, running: false, freezeOrientation: false }; 
         }
       } else {

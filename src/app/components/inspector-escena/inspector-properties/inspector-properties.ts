@@ -1,6 +1,4 @@
-import {
-  Component, inject, OnInit, OnDestroy, ChangeDetectorRef, effect, Input, Output, EventEmitter
-} from '@angular/core';
+import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, effect, Input, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AbstractMesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
@@ -43,7 +41,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
   public esPersonaje = false;
   public esTrigger = false;
   public esLuz = false;
-  public esLuzConModelo = false; // 🔥 NUEVO: Detecta si la luz tiene un cuerpo físico
+  public esLuzConModelo = false;
 
   constructor() {
     effect(() => {
@@ -52,7 +50,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
       if (obj) {
         this.esTrigger = obj.metadata?.type === 'trigger';
         this.esLuz = obj.metadata?.type?.startsWith('light_');
-        this.esLuzConModelo = this.esLuz && !!obj.metadata?.assetId; // Verificamos si tiene modelo
+        this.esLuzConModelo = this.esLuz && !!obj.metadata?.assetId;
         this.esPersonaje = obj.metadata?.type === 'model' || obj.metadata?.rol === 'npc' || obj.metadata?.rol === 'spawn_point';
         
         if (this.esPersonaje) this.familiaResumen = 'Personaje / Player';
@@ -63,7 +61,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
         
         if (this.pestanaActiva === 'player' && (!this.esPersonaje || this.esTrigger)) this.cambiarPestana('transform');
         if (this.pestanaActiva === 'animation' && (!this.esPersonaje && !this.esLuzConModelo)) this.cambiarPestana('transform');
-        if (this.pestanaActiva === 'sequences' && !this.esPersonaje && !this.esTrigger && !this.esLuzConModelo) this.cambiarPestana('transform');
+        if (this.pestanaActiva === 'sequences' && !this.esPersonaje && !this.esTrigger && !this.esLuz) this.cambiarPestana('transform');
         if (this.pestanaActiva === 'light' && !this.esLuz) this.cambiarPestana('transform');
         if (this.pestanaActiva === 'physics' && this.esLuz && !this.esLuzConModelo) this.cambiarPestana('transform');
       } else {

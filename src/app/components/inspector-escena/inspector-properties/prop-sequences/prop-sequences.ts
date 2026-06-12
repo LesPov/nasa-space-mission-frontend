@@ -1,6 +1,3 @@
-// ========================================================================
-// ARCHIVO: src/app/components/inspector-escena/inspector-properties/prop-sequences/prop-sequences.ts
-// ========================================================================
 import { Component, Input, OnInit, OnChanges, SimpleChanges, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -10,8 +7,16 @@ import { EditorPlayerService } from '../../../../services/editor/editor-player.s
 import { PlayerClipSequence, mergePlayerConfig, cloneDefaultPlayerConfig, createPlayerSequence, createSequenceStep } from '../../../../services/editor/player-config.model';
 import { Motor3dService } from '../../../../services/motor-3d.service';
  
-const ACTION_ROWS = [
+const ACTION_ROWS_CHAR = [
   { key: 'idle', label: 'Idle / Reposo' }, { key: 'walk', label: 'Walk (Caminar)' }, { key: 'run', label: 'Run (Correr)' }
+];
+
+const ACTION_ROWS_LIGHT = [
+  { key: 'idle', label: 'Luz Fija (Encendida Mantiene Estado)' }, 
+  { key: 'lightOn', label: 'Forzar Encender Luz' }, 
+  { key: 'lightOff', label: 'Forzar Apagar Luz' }, 
+  { key: 'lightPulse', label: 'Parpadeo Suave (Pulsar)' }, 
+  { key: 'lightFlicker', label: 'Parpadeo Roto (Estroboscópico)' }
 ];
 
 @Component({
@@ -29,11 +34,12 @@ export class PropSequences implements OnInit, OnChanges {
 
   sequences: PlayerClipSequence[] = [];
   selectedSequenceId: string | null = null;
-  actionRows = ACTION_ROWS;
+  actionRows: any[] = [];
   animStatus = '';
   
   availableClips: string[] = [];
   esPersonaje: boolean = false;
+  esLuz: boolean = false;
 
   ngOnInit() {
     this.cargarDatos();
@@ -49,6 +55,13 @@ export class PropSequences implements OnInit, OnChanges {
     if (!this.objeto) return;
     
     this.esPersonaje = this.objeto.metadata?.rol === 'npc' || this.objeto.metadata?.rol === 'spawn_point';
+    this.esLuz = this.objeto.metadata?.type?.startsWith('light_');
+
+    if (this.esLuz) {
+        this.actionRows = ACTION_ROWS_LIGHT;
+    } else {
+        this.actionRows = ACTION_ROWS_CHAR;
+    }
     
     const meta = this.objeto.metadata || {};
     const config = mergePlayerConfig(meta.playerConfig || null);
@@ -59,7 +72,6 @@ export class PropSequences implements OnInit, OnChanges {
     validTargets.add(this.objeto);
     this.objeto.getDescendants(false).forEach(child => validTargets.add(child));
 
-    // OBTENCIÓN PROFUNDA DE ANIMACIONES (Soporta luces GLB y luces invisibles)
     let myAnimNames: string[] = this.objeto.metadata?.animationNames || [];
     if (myAnimNames.length === 0) {
         const childWithAnims = this.objeto.getChildMeshes(false).find(m => m.metadata?.animationNames && m.metadata.animationNames.length > 0);
@@ -131,7 +143,6 @@ export class PropSequences implements OnInit, OnChanges {
   probarSecuencia(seq: PlayerClipSequence) {
     this.persist();
     if(this.objeto.metadata.type !== 'trigger'){
-        // Pasamos el objeto base para que el motor reproduzca tanto la animación como el offset físico
         this.playerSvc.iniciarPreviewSecuencia(this.objeto, seq.id);
         this.animStatus = `Visualizando: ${seq.name}...`;
     }

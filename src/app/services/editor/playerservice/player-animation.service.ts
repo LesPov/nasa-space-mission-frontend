@@ -1,6 +1,3 @@
-// ========================================================================
-// ARCHIVO: src/app/services/editor/playerservice/player-animation.service.ts
-// ========================================================================
 import { Injectable } from '@angular/core';
 import { AnimationGroup, Scene, Mesh } from '@babylonjs/core';
 import { PlayerRuntimeConfig, normalizeAnimBinding, PlayerActionKey, PlayerSequenceStep } from '../player-config.model';
@@ -105,6 +102,12 @@ export class PlayerAnimationService {
       case 'vault': return state.animVault || state.animJump || state.animIdle;
       case 'stepUp': return state.animStepUp || state.animClimbFinish || state.animIdle;
       case 'recover': return state.animRecover || state.animIdle;
+      // Para las luces, no hay un grupo de animación físico. Devolvemos null.
+      case 'lightOn':
+      case 'lightOff':
+      case 'lightPulse':
+      case 'lightFlicker':
+          return null;
       default: return state.animIdle;
     }
   }

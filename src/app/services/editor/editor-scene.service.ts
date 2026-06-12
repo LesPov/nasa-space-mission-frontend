@@ -1,6 +1,3 @@
-// ========================================================================
-// ARCHIVO: src/app/services/editor/editor-scene.service.ts
-// ========================================================================
 import { Injectable, inject } from '@angular/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
@@ -20,21 +17,17 @@ export class EditorSceneService {
 
   private ajustarMaterialGLB(material: any): void {
     if (!material) return;
-    
     if (material.getClassName() === "MultiMaterial" && material.subMaterials) {
         material.subMaterials.forEach((subMat: any) => this.ajustarMaterialGLB(subMat));
         return;
     }
-
     material.maxSimultaneousLights = 16;
-    
     if (material.getClassName().includes("PBR")) {
         material.usePhysicalLightFalloff = false;
         material.metallic = 0.1;
         material.roughness = 0.8;
         material.environmentIntensity = 0.5; 
     }
-    
     material.freeze();
   }
 
@@ -213,17 +206,17 @@ export class EditorSceneService {
 
                 rootNode.metadata = {
                     type: tipo, rol: 'light', assetId: asset.id, path: asset.path, isSolid, isSelectable, mensaje,
-                    lightColor: colorHex, intensity: 1.0, range: 50, angle: 60,
+                    lightColor: colorHex, intensity: 1.0, range: 50, angle: 60, attachedNodePath: '', attachedNodeName: '',
                     animationNames: anims.map(a => a.name), collider: { ...defaultCollider }, camOffset: { ...defaultCamOffset }, playerConfig: defaultPlayerConfig, initialHeadLocal
                 };
 
-                // 🔥 Modificación: Creamos la luz elevada 2.5 mts por encima del ancla del modelo para salir de la geometría
                 let lightObj: any;
                 if (tipo === 'light_point') lightObj = new PointLight('l_' + nombre, new Vector3(0, 2.5, 0), scene);
                 else if (tipo === 'light_spot') lightObj = new SpotLight('l_' + nombre, new Vector3(0, 2.5, 0), new Vector3(0, -1, 0), Math.PI/3, 2, scene);
                 else if (tipo === 'light_directional') lightObj = new DirectionalLight('l_' + nombre, new Vector3(0, -1, 0), scene);
                 
                 lightObj.parent = rootNode;
+                lightObj.intensity = 1.0;
                 lightObj.diffuse = Color3.FromHexString(colorHex);
                 lightObj.specular = new Color3(0, 0, 0); 
                 
@@ -244,19 +237,20 @@ export class EditorSceneService {
             mat.maxSimultaneousLights = 16; 
             mesh.material = mat;
 
-            // 🔥 Modificación: Creamos la luz elevada 2.5 mts por encima de la esfera invisible
             let lightObj: any;
             if (tipo === 'light_point') lightObj = new PointLight('l_' + nombre, new Vector3(0, 2.5, 0), scene);
             else if (tipo === 'light_spot') lightObj = new SpotLight('l_' + nombre, new Vector3(0, 2.5, 0), new Vector3(0, -1, 0), Math.PI/3, 2, scene);
             else if (tipo === 'light_directional') lightObj = new DirectionalLight('l_' + nombre, new Vector3(0, -1, 0), scene);
             
             lightObj.parent = mesh;
+            lightObj.intensity = 1.0;
             lightObj.diffuse = Color3.FromHexString(colorHex);
             lightObj.specular = new Color3(0, 0, 0); 
             
             mesh.metadata = {
                 type: tipo, rol: 'light', isSolid: false, isSelectable: true,
-                lightColor: colorHex, intensity: 1.0, range: 50, angle: 60
+                lightColor: colorHex, intensity: 1.0, range: 50, angle: 60,
+                attachedNodePath: '', attachedNodeName: '', playerConfig: defaultPlayerConfig
             };
 
             mesh.isPickable = true;
@@ -455,16 +449,23 @@ export class EditorSceneService {
                 rootNode.metadata = {
                     type: obj.type, rol: 'light', assetId: obj.assetId, path, isSolid: isSolidSaved, isSelectable: isSelectableSaved,
                     lightColor: lightColorHex, intensity: obj.properties?.intensity ?? 1.0, range: obj.properties?.range ?? 50, angle: obj.properties?.angle ?? 60,
+                    attachedNodePath: obj.properties?.attachedNodePath || '', attachedNodeName: obj.properties?.attachedNodeName || '',
                     animationNames: anims.map(a => a.name), collider: obj.properties?.collider || defaultCollider, camOffset: obj.properties?.camOffset || defaultCamOffset, playerConfig: mergePlayerConfig(obj.properties?.playerConfig || null), initialHeadLocal
                 };
 
-                // 🔥 Modificación: Cargamos la luz elevada 2.5 mts por encima del ancla
                 let lightObj: any;
                 if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 2.5, 0), scene);
                 else if (obj.type === 'light_spot') lightObj = new SpotLight('l_' + obj.name, new Vector3(0, 2.5, 0), new Vector3(0, -1, 0), (obj.properties?.angle ?? 60) * (Math.PI/180), 2, scene);
                 else if (obj.type === 'light_directional') lightObj = new DirectionalLight('l_' + obj.name, new Vector3(0, -1, 0), scene);
                 
-                lightObj.parent = rootNode;
+                let targetParent: TransformNode | AbstractMesh = rootNode;
+                if (obj.properties?.attachedNodeName) {
+                    const allDescendants = rootNode.getDescendants(false);
+                    const foundNode = allDescendants.find((n: any) => n.name === obj.properties.attachedNodeName) as TransformNode | AbstractMesh;
+                    if (foundNode) targetParent = foundNode;
+                }
+                
+                lightObj.parent = targetParent;
                 lightObj.intensity = obj.properties?.intensity ?? 1.0;
                 lightObj.diffuse = Color3.FromHexString(lightColorHex);
                 lightObj.specular = new Color3(0, 0, 0); 
@@ -484,7 +485,6 @@ export class EditorSceneService {
              mat.maxSimultaneousLights = 16;
              mesh.material = mat;
 
-             // 🔥 Modificación: Cargamos la luz elevada 2.5 mts
              let lightObj: any;
              if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 2.5, 0), scene);
              else if (obj.type === 'light_spot') lightObj = new SpotLight('l_' + obj.name, new Vector3(0, 2.5, 0), new Vector3(0, -1, 0), (obj.properties?.angle ?? 60) * (Math.PI/180), 2, scene);
@@ -496,12 +496,11 @@ export class EditorSceneService {
              lightObj.specular = new Color3(0, 0, 0); 
              if (lightObj.range !== undefined) lightObj.range = obj.properties?.range ?? 50;
 
+             // 🔥 FIX: Aquí agregamos mergePlayerConfig() para que NUNCA MÁS se borre la secuencia de la luz invisible
              mesh.metadata = {
                  type: obj.type, rol: 'light', isSolid: false, isSelectable: true,
-                 lightColor: lightColorHex, 
-                 intensity: obj.properties?.intensity ?? 1.0, 
-                 range: obj.properties?.range ?? 50, 
-                 angle: obj.properties?.angle ?? 60
+                 lightColor: lightColorHex, intensity: obj.properties?.intensity ?? 1.0, range: obj.properties?.range ?? 50, angle: obj.properties?.angle ?? 60,
+                 attachedNodePath: '', attachedNodeName: '', playerConfig: mergePlayerConfig(obj.properties?.playerConfig || null)
              };
 
              mesh.isPickable = true;
@@ -760,6 +759,8 @@ export class EditorSceneService {
                   range: nodo.metadata.range,
                   angle: nodo.metadata.angle,
                   path: nodo.metadata.path,
+                  attachedNodePath: nodo.metadata.attachedNodePath || '',
+                  attachedNodeName: nodo.metadata.attachedNodeName || '',
                   ...propertiesToSave 
               },
               assetId: nodo.metadata.assetId 

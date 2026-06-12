@@ -1,3 +1,6 @@
+// ========================================================================
+// ARCHIVO: src/app/services/editor/player-trigger.service.ts
+// ========================================================================
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
 import { EditorStateService } from './editor-state.service';
@@ -10,10 +13,7 @@ export class PlayerTriggerService {
   private state = inject(EditorStateService);
   private sequenceSvc = inject(PlayerSequenceService);
   
-  // Guardamos qué triggers está pisando el jugador actualmente
   private activeTriggersInside = new Set<string>();
-
-  // Mapas para manejar los temporizadores y poder cancelarlos
   private hudTimeouts = new Map<string, any>();
 
   public prepararTriggersParaJuego(): void {
@@ -54,7 +54,6 @@ export class PlayerTriggerService {
     const playerCenterY = colMeta.offsetY * (jugador.scaling.y || 1);
     const playerPos = jugador.getAbsolutePosition();
     
-    // Punto central del cuerpo del jugador (pecho/cintura)
     const probePoint = playerPos.clone();
     probePoint.y += playerCenterY;
 
@@ -75,26 +74,19 @@ export class PlayerTriggerService {
         const isInside = triggerBox.intersectsPoint(probePoint);
         const wasInside = this.activeTriggersInside.has(mesh.name);
 
-        // ==========================================
-        // CASO 1: EL JUGADOR ENTRA AL TRIGGER
-        // ==========================================
         if (isInside && !wasInside) {
             this.activeTriggersInside.add(mesh.name);
             if (conditions.includes('on_enter')) {
-                this.ejecutarLogicaTrigger(mesh, jugador, 'on_enter');
+                this.ejecutarLogicaTrigger(mesh, 'on_enter');
             }
         }
         
-        // ==========================================
-        // CASO 2: EL JUGADOR SALE DEL TRIGGER
-        // ==========================================
         if (!isInside && wasInside) {
             this.activeTriggersInside.delete(mesh.name);
 
             let mostroMensajeSalida = false;
-            
             if (conditions.includes('on_exit')) {
-                mostroMensajeSalida = this.ejecutarLogicaTrigger(mesh, jugador, 'on_exit');
+                mostroMensajeSalida = this.ejecutarLogicaTrigger(mesh, 'on_exit');
             }
             
             if (!mesh.metadata.isRepeatable) {
@@ -121,7 +113,7 @@ export class PlayerTriggerService {
     });
   }
 
-  private ejecutarLogicaTrigger(triggerMesh: AbstractMesh, jugador: Mesh, eventType: string): boolean {
+  private ejecutarLogicaTrigger(triggerMesh: AbstractMesh, eventType: string): boolean {
       if (triggerMesh.metadata.isEnabled === false) return false;
       
       if (!triggerMesh.metadata.isRepeatable) {
@@ -132,8 +124,8 @@ export class PlayerTriggerService {
       let mensaje = '';
       let soundUrl = '';
       let seqId = '';
-      let msgTime = 4.5; // Tiempo por defecto
-      let videoUrl = ''; // Nuevo campo cinemática
+      let msgTime = 4.5; 
+      let videoUrl = ''; 
 
       if (triggerMesh.metadata.isComposite) {
           if (eventType === 'on_enter') {
@@ -163,7 +155,6 @@ export class PlayerTriggerService {
 
       let mostroMensaje = false;
 
-      // 1. Mostrar Mensaje en el HUD con su tiempo personalizado
       if (mensaje && mensaje.trim() !== '') {
           this.state.mensajeTriggerHUD.set(mensaje);
           mostroMensaje = true;
@@ -179,7 +170,6 @@ export class PlayerTriggerService {
           this.hudTimeouts.set('hud', timeoutId);
       }
 
-      // 2. Reproducir Sonido
       if (soundUrl && soundUrl.trim() !== '') {
           try {
              const audio = new Audio(soundUrl);
@@ -188,24 +178,34 @@ export class PlayerTriggerService {
           } catch(e) { console.error(e); }
       }
 
-      // 3. (FUTURO) Reproducir Video Cinemático
       if (videoUrl && videoUrl.trim() !== '') {
           console.log("🎬 Reproduciendo Video Cinemático en Trigger:", videoUrl);
-          // Aquí más adelante llamaremos a un servicio de UI para poner el video en pantalla completa.
       }
 
-      // 4. Ejecutar Secuencias Cinemáticas del Personaje
+      // 🔥 LÓGICA REESCRITA Y REFORZADA: BÚSQUEDA UNIVERSAL DE SECUENCIAS
       if (seqId && seqId.trim() !== '') {
           const ids = seqId.split(',').map((id: string) => id.trim()).filter(Boolean);
           if (ids.length > 0) {
-              const playerConfig = jugador.metadata?.playerConfig;
-              if (playerConfig) {
-                  this.sequenceSvc.iniciarSecuenciaEnJuego(ids[0], jugador, playerConfig);
+              const sequenceToFind = ids[0];
+              const scene = this.motor3d.scene;
+              let found = false;
+              
+              scene.meshes.forEach(m => {
+                  if (m.metadata && m.metadata.playerConfig && m.metadata.playerConfig.sequences) {
+                      const hasSequence = m.metadata.playerConfig.sequences.some((s: any) => s.id === sequenceToFind);
+                      if (hasSequence) {
+                          found = true;
+                          this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceToFind, m as Mesh, m.metadata.playerConfig);
+                      }
+                  }
+              });
+
+              if (!found) {
+                  console.warn(`⚠️ Trigger ${triggerMesh.name} intentó iniciar la secuencia [${sequenceToFind}] pero ningún objeto en la escena la tiene configurada.`);
               }
           }
       }
 
-      // Marcamos banderas de uso
       if (eventType === 'on_enter') triggerMesh.metadata.hasTriggeredEnter = true;
       if (eventType === 'on_exit') triggerMesh.metadata.hasTriggeredExit = true;
 

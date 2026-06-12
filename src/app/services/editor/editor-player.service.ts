@@ -26,7 +26,7 @@ export class EditorPlayerService {
   private playerCamSvc = inject(PlayerCameraManagerService);
   private interactSvc = inject(PlayerInteractionService);
   private sequenceSvc = inject(PlayerSequenceService);
-  private triggerSvc = inject(PlayerTriggerService); // 🔥 INJECT NUEVO
+  private triggerSvc = inject(PlayerTriggerService);
 
   public playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
   private tpsUpdateObserver: Observer<Scene> | null = null;
@@ -88,16 +88,19 @@ export class EditorPlayerService {
 
     this.resetMovimientoJugador();
     
-    // 🔥 NUEVO: Oculta los triggers e inicializa estado
     this.triggerSvc.prepararTriggersParaJuego();
 
     this.inputSvc.iniciarEscuchaTeclado(this.motor3d.scene, {
       onToggleCamera: () => this.playerCamSvc.toggleCameraView(obj, this.playerConfig),
+      
       onInteractE: () => {
         const target = this.state.targetInteractuable();
+        // 🔥 FIX: Aquí ya los Triggers no llegan, solo interactuamos con objetos normales
         if (target && this.interactSvc.canActivateInteraction(target, this.state.modoVistaPrueba)) {
+          
           let seqId = this.state.modoVistaPrueba === 'FPS' ? target.metadata?.interactSequenceIdFPS : target.metadata?.interactSequenceIdTPS;
           if (!seqId) seqId = target.metadata?.interactSequenceId;
+          
           if (seqId) {
             const ids = seqId.split(',').map((id: string) => id.trim()).filter(Boolean);
             if (ids.length > 0) {
@@ -110,10 +113,16 @@ export class EditorPlayerService {
           }
         }
       },
+      
       onInteractI: () => {
         const target = this.state.targetInteractuable();
+        // 🔥 FIX: Solo interactuamos con objetos normales
         if (target && this.interactSvc.canActivateInteraction(target, this.state.modoVistaPrueba)) {
-          this.interactSvc.abrirMensajeInteractivo(target, () => this.resetMovimientoJugador());
+          const cloneData = {
+              name: target.name,
+              metadata: { mensaje: target.metadata?.mensaje || '' }
+          };
+          this.interactSvc.abrirMensajeInteractivo(cloneData as any, () => this.resetMovimientoJugador());
         }
       }
     });
@@ -130,9 +139,7 @@ export class EditorPlayerService {
       const dtMs = scene.getEngine().getDeltaTime();
       this.playerConfig = mergePlayerConfig(jugador.metadata?.playerConfig || null);
 
-      // 🔥 NUEVO: Verificamos los triggers 60 veces por segundo
       this.triggerSvc.verificarTriggers(jugador);
-
       this.interactSvc.comprobarInteracciones(jugador, activeCamera, colMeta, this.state.modoVistaPrueba || 'TPS');
       
       const seqRuntime = this.sequenceSvc.actualizarSecuencia(dtMs, jugador, this.playerConfig);
@@ -164,7 +171,6 @@ export class EditorPlayerService {
     this.resetMovimientoJugador();
     this.animSvc.detenerTodas();
 
-    // 🔥 NUEVO: Vuelve a mostrar las cajas verdes en el editor
     this.triggerSvc.restaurarTriggersParaEditor();
 
     this.playerCamSvc.restaurarCamaraEditor();
@@ -249,7 +255,6 @@ export class EditorPlayerService {
     const scene = this.motor3d.scene;
     scene.meshes.forEach(m => {
       if (m === jugador) return;
-      // 🔥 IMPORTANTE: Los triggers no deben chocar físicamente al caminar, el motor de físicas los ignora.
       if (m.name.includes('debug') || m.name.includes('gizmo') || m.name.includes('cameraPivot') || m.name.includes('sueloInvisible') || m.name.includes('proxyCol') || m.metadata?.type === 'trigger') return;
 
       const root = this.state.encontrarRaiz(m as AbstractMesh);

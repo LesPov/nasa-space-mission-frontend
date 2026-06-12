@@ -132,9 +132,18 @@ export class EditorEscena implements OnInit, OnDestroy {
   toggleRolPrueba() {
     if (this.editorSvc.rolSimulado() === 'admin') {
       this.editorSvc.rolSimulado.set('user');
+      this.editorSvc.seleccionarObjeto(null); // Quitar selección por si estaba tocando un trigger
     } else {
       this.editorSvc.rolSimulado.set('admin');
     }
+    
+    // 🔥 FIX: Actualizamos instantáneamente la visibilidad en escena al cambiar rol
+    const isAdmin = this.editorSvc.rolSimulado() === 'admin';
+    this.motor3dSvc.scene.meshes.forEach(m => {
+        if (m.metadata?.type === 'trigger') {
+            m.isVisible = isAdmin;
+        }
+    });
   }
 
   onRolChange() {
@@ -144,7 +153,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   onTipoChange() {
-    if (this.objTipo === 'trigger') {
+    if (this.objTipo === 'trigger' || this.objTipo === 'trigger_compuesto') {
       this.objRol = 'prop';
       this.objEsSolido = false;
       this.objEsSeleccionable = true;
@@ -218,7 +227,6 @@ export class EditorEscena implements OnInit, OnDestroy {
           this.editorSvc.activarEventosEditor();
           this.editorSvc.crearSuelo();
 
-          // Res ahora tiene { episode, sceneObjects, triggers }
           if(res) {
             this.editorSvc.cargarEscenaDesdeDatos(res);
           }
@@ -236,7 +244,6 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (!this.episodioIdActivo || !this.editando) return;
     this.estadoGuardado.set('Guardando...');
     
-    // 🔥 FIX DEL ERROR AQUÍ: mapData es un objeto con { sceneObjects: [], triggers: [] }
     const mapData = this.editorSvc.obtenerDatosParaGuardar();
     
     this.epiApiSvc.guardarMapa(this.episodioIdActivo, mapData).subscribe({

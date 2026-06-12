@@ -3,11 +3,12 @@
   <!-- PESTAÑAS (Fijas en la parte superior) -->
   <div class="prop-tabs">
     <button class="tab-btn" [class.active]="pestanaActiva === 'transform'" (click)="cambiarPestana('transform')" title="Transformación">🟧</button>
-    <button class="tab-btn" [class.active]="pestanaActiva === 'physics'" (click)="cambiarPestana('physics')" title="Física">💊</button>
-    <button class="tab-btn" [class.active]="pestanaActiva === 'player'" (click)="cambiarPestana('player')" title="Player">🎮</button>
+    <button class="tab-btn" *ngIf="objetoActual?.metadata?.type !== 'trigger'" [class.active]="pestanaActiva === 'physics'" (click)="cambiarPestana('physics')" title="Física">💊</button>
+    <button class="tab-btn" *ngIf="objetoActual?.metadata?.type !== 'trigger'" [class.active]="pestanaActiva === 'player'" (click)="cambiarPestana('player')" title="Player">🎮</button>
     
     <button class="tab-btn" *ngIf="objetoActual && esPersonajeOModelo(objetoActual)" [class.active]="pestanaActiva === 'animation'" (click)="cambiarPestana('animation')" title="Animaciones">🏃</button>
-    <button class="tab-btn" *ngIf="objetoActual && esPersonajeOModelo(objetoActual)" [class.active]="pestanaActiva === 'sequences'" (click)="cambiarPestana('sequences')" title="Secuencias">🎞️</button>
+    <!-- Triggers SI pueden tener secuencias para ejecutarlas al pisarlos -->
+    <button class="tab-btn" *ngIf="objetoActual && (esPersonajeOModelo(objetoActual) || objetoActual?.metadata?.type === 'trigger')" [class.active]="pestanaActiva === 'sequences'" (click)="cambiarPestana('sequences')" title="Secuencias">🎞️</button>
     
     <button class="tab-btn" [class.active]="pestanaActiva === 'world'" (click)="cambiarPestana('world')" title="Mundo">🌍</button>
   </div>
@@ -16,7 +17,7 @@
   <div class="prop-content-scroll">
     
     <!-- ================= PESTAÑA TRANSFORM ================= -->
-  <ng-container *ngIf="pestanaActiva === 'transform'">
+    <ng-container *ngIf="pestanaActiva === 'transform'">
       <div class="panel-header">
         <span>Transformación e Interacciones</span>
         <span class="status-pill">{{ familiaResumen }}</span>
@@ -47,9 +48,9 @@
         </div>
 
         <!-- 🔥 ZONA EXCLUSIVA PARA TRIGGERS COMPUESTOS -->
-        <div class="section-card" *ngIf="objetoActual.metadata?.type === 'trigger'">
+        <div class="section-card" *ngIf="objetoActual.metadata?.type === 'trigger' && triggerIsComposite">
           <div class="section-head">
-            <h4>Configuración del Trigger</h4>
+            <h4>Configuración del Trigger Múltiple</h4>
           </div>
           <div class="grid-2">
             <div class="field">
@@ -61,14 +62,14 @@
               </select>
             </div>
             <div class="checkbox-field" style="margin-top: 15px;">
-              <input type="checkbox" id="chkRep" [ngModel]="triggerRepeatable" (ngModelChange)="triggerRepeatable = $event; aplicarTrigger()" />
-              <label for="chkRep">Es repetible</label>
+              <input type="checkbox" id="chkRepComp" [ngModel]="triggerRepeatable" (ngModelChange)="triggerRepeatable = $event; aplicarTrigger()" />
+              <label for="chkRepComp">Es repetible</label>
             </div>
           </div>
 
           <div style="margin-top: 15px;">
              <label style="font-size: 11px; color: #999;">¿Cuándo se activa este Trigger?</label>
-             <div class="grid-3" style="margin-top: 5px;">
+             <div class="grid-2" style="margin-top: 5px; margin-bottom: 10px;">
                  <div class="checkbox-field">
                     <input type="checkbox" id="condEnt" [checked]="triggerConditions.includes('on_enter')" (change)="toggleTriggerCondition('on_enter', $event)" />
                     <label for="condEnt">Al Pisarlo</label>
@@ -77,16 +78,92 @@
                     <input type="checkbox" id="condExi" [checked]="triggerConditions.includes('on_exit')" (change)="toggleTriggerCondition('on_exit', $event)" />
                     <label for="condExi">Al Salir</label>
                  </div>
-                 <div class="checkbox-field">
-                    <input type="checkbox" id="condInt" [checked]="triggerConditions.includes('on_interact')" (change)="toggleTriggerCondition('on_interact', $event)" />
-                    <label for="condInt">Al Mirar (Tecla E/I)</label>
-                 </div>
+             </div>
+
+             <!-- Bloques condicionales según lo que se seleccionó arriba -->
+             <div *ngIf="triggerConditions.includes('on_enter')" style="margin-bottom: 15px; border-left: 2px solid #4ade80; padding-left: 8px;">
+                <div class="field wide">
+                    <label>Mensaje al ENTRAR al área</label>
+                    <textarea rows="1" [ngModel]="triggerMensajeEntrada" placeholder="Ej: Es un cuarto frío..." (ngModelChange)="triggerMensajeEntrada = $event; aplicarTrigger()"></textarea>
+                </div>
+                <div class="grid-2" style="margin-top: 5px;">
+                    <div class="field">
+                        <label>Audio URL (Opcional)</label>
+                        <input type="text" [ngModel]="triggerSoundEntrada" placeholder="Ej: /assets/door.mp3" (ngModelChange)="triggerSoundEntrada = $event; aplicarTrigger()" />
+                    </div>
+                    <div class="field">
+                        <label>ID Secuencia (Opcional)</label>
+                        <input type="text" [ngModel]="triggerSeqEntrada" placeholder="Ej: cin_01" (ngModelChange)="triggerSeqEntrada = $event; aplicarTrigger()" />
+                    </div>
+                </div>
+             </div>
+
+             <div *ngIf="triggerConditions.includes('on_exit')" style="margin-bottom: 15px; border-left: 2px solid #f87171; padding-left: 8px;">
+                <div class="field wide">
+                    <label>Mensaje al SALIR del área</label>
+                    <textarea rows="1" [ngModel]="triggerMensajeSalida" placeholder="Ej: Mejor no vuelvo..." (ngModelChange)="triggerMensajeSalida = $event; aplicarTrigger()"></textarea>
+                </div>
+                <div class="grid-2" style="margin-top: 5px;">
+                    <div class="field">
+                        <label>Audio URL (Opcional)</label>
+                        <input type="text" [ngModel]="triggerSoundSalida" placeholder="Ej: /assets/lock.mp3" (ngModelChange)="triggerSoundSalida = $event; aplicarTrigger()" />
+                    </div>
+                    <div class="field">
+                        <label>ID Secuencia (Opcional)</label>
+                        <input type="text" [ngModel]="triggerSeqSalida" placeholder="Ej: cin_02" (ngModelChange)="triggerSeqSalida = $event; aplicarTrigger()" />
+                    </div>
+                </div>
              </div>
           </div>
         </div>
 
-        <!-- ZONA DE INTERACCIÓN (Válida para Todos) -->
-        <div class="section-card">
+        <!-- 🔥 ZONA EXCLUSIVA PARA TRIGGERS NORMALES (Simples) -->
+        <div class="section-card" *ngIf="objetoActual.metadata?.type === 'trigger' && !triggerIsComposite">
+          <div class="section-head">
+            <h4>Trigger Normal (Una sola acción)</h4>
+          </div>
+          <div class="grid-2">
+            <div class="field">
+              <label>Forma de Detección</label>
+              <select [ngModel]="triggerShape" (ngModelChange)="triggerShape = $event; aplicarTriggerForma($event)">
+                <option value="cube">Caja</option>
+                <option value="sphere">Esfera</option>
+                <option value="cylinder">Tubo</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Condición</label>
+              <select [ngModel]="triggerCondition" (ngModelChange)="triggerCondition = $event; aplicarTrigger()">
+                <option value="on_enter">Al Pisarlo</option>
+                <option value="on_exit">Al Salir</option>
+              </select>
+            </div>
+            <div class="checkbox-field" style="margin-top: 15px;">
+              <input type="checkbox" id="chkRepNorm" [ngModel]="triggerRepeatable" (ngModelChange)="triggerRepeatable = $event; aplicarTrigger()" />
+              <label for="chkRepNorm">Es repetible</label>
+            </div>
+          </div>
+          
+          <div class="field wide" style="margin-top: 10px;">
+              <label>Mensaje a mostrar en pantalla</label>
+              <textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarTrigger()"></textarea>
+          </div>
+          
+          <div class="grid-2" style="margin-top: 5px;">
+              <div class="field">
+                  <label>Audio (Opcional URL)</label>
+                  <input type="text" [ngModel]="objSoundUrl" placeholder="Ej: /assets/sonido.mp3" (ngModelChange)="objSoundUrl = $event; aplicarTrigger()" />
+              </div>
+              <div class="field">
+                  <label>ID Secuencia (Opcional)</label>
+                  <!-- Usamos la variable general de secuencia de trigger simple -->
+                  <input type="text" [ngModel]="objInteractSequenceIdFPS" placeholder="Ej: cin_01" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarTrigger()" />
+              </div>
+          </div>
+        </div>
+
+        <!-- ZONA DE INTERACCIÓN (Para Objetos que NO son Triggers ej. Personajes, Props) -->
+        <div class="section-card" *ngIf="objetoActual.metadata?.type !== 'trigger'">
           <div class="section-head">
             <h4>Interacción y Eventos</h4>
           </div>
@@ -95,9 +172,9 @@
             <div class="field"><label>Distancia (TPS)</label><input type="number" step="0.5" [ngModel]="objInteractDistanceTPS" (ngModelChange)="objInteractDistanceTPS = $event; aplicarInteraccion()" /></div>
           </div>
           <div class="grid-2">
-            <div class="field wide"><label>Mensaje (se abre con I o al Entrar al Trigger)</label><textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarInteraccion()"></textarea></div>
-            <div class="field wide"><label>Secuencia a ejecutar (FPS)</label><textarea rows="1" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarInteraccion()"></textarea></div>
-            <div class="field wide"><label>Secuencia a ejecutar (TPS)</label><textarea rows="1" [ngModel]="objInteractSequenceIdTPS" (ngModelChange)="objInteractSequenceIdTPS = $event; aplicarInteraccion()"></textarea></div>
+            <div class="field wide"><label>Mensaje (se abre con I)</label><textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarInteraccion()"></textarea></div>
+            <div class="field wide"><label>Secuencia a ejecutar (FPS)</label><input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarInteraccion()"/></div>
+            <div class="field wide"><label>Secuencia a ejecutar (TPS)</label><input type="text" [ngModel]="objInteractSequenceIdTPS" (ngModelChange)="objInteractSequenceIdTPS = $event; aplicarInteraccion()"/></div>
           </div>
           <button class="btn-primary full" style="margin-top: 10px;" (click)="aplicarInteraccionYForzarGuardado()">💾 Guardar Interacción</button>
         </div>
@@ -106,6 +183,7 @@
       </div>
       <div *ngIf="!objetoActual" class="empty-state"><p>Ningún objeto seleccionado</p></div>
     </ng-container>
+
     <!-- ================= PESTAÑA FÍSICA ================= -->
     <ng-container *ngIf="pestanaActiva === 'physics'">
       <div class="panel-header">
@@ -333,7 +411,7 @@
         <span class="status-pill">{{ sequences.length }} secuencias</span>
       </div>
 
-      <div *ngIf="objetoActual && esPersonajeOModelo(objetoActual); else noSeqConfig" class="prop-body">
+      <div *ngIf="objetoActual && (esPersonajeOModelo(objetoActual) || objetoActual.metadata?.type === 'trigger'); else noSeqConfig" class="prop-body">
         <div class="obj-title-bar">
           <span class="icon">🎞️</span>
           <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" />
@@ -346,8 +424,6 @@
 
           <div class="actions-row wrap">
             <button class="btn-primary" (click)="nuevaSecuencia()">+ Nueva</button>
-            <button class="btn-ghost" (click)="crearSecuenciaBasicaCaminarSaltar()">+ Demo Salto</button>
-            <button class="btn-ghost" (click)="crearSecuenciaBasicaEscalar()">+ Demo Escalar</button>
           </div>
 
           <div class="sequence-list">
@@ -373,16 +449,7 @@
               <button class="btn-secondary small" style="padding: 4px 8px; font-size: 10px;" (click)="copiarIdSecuencia(currentSequence.id)">📋 Copiar</button>
             </div>
 
-            <div class="field wide" style="margin-top: 5px; margin-bottom: 10px;">
-              <label style="display: flex; align-items: center; gap: 8px; color: #d6d6d6; font-size: 13px; cursor: pointer;">
-                <input type="checkbox" [ngModel]="currentSequence.repeat" (ngModelChange)="currentSequence.repeat = $event; actualizarPasoSeleccionado()" style="width: 16px; height: 16px; cursor: pointer;" />
-                Repetir en Bucle (Loop)
-              </label>
-            </div>
-
             <div class="actions-row wrap">
-              <button class="btn-primary" style="background-color: #facc15; color: black;" (click)="probarSecuencia(currentSequence)">▶ Ver en Vivo</button>
-              <button class="btn-ghost" (click)="detenerPreviewSecuencia()">⏹ Detener</button>
               <button class="btn-danger" (click)="eliminarSecuencia(currentSequence.id)">🗑️ Eliminar</button>
             </div>
 
@@ -412,25 +479,9 @@
                     <label>Duración (ms)</label>
                     <input type="number" step="50" [ngModel]="step.durationMs" (ngModelChange)="step.durationMs = $event; actualizarPaso()" />
                   </div>
-                  <div class="field">
-                    <label>Elevar (Y m)</label>
-                    <input type="number" step="0.1" [ngModel]="step.offsetY" (ngModelChange)="step.offsetY = $event; actualizarPaso()" />
-                  </div>
-                  <div class="field">
-                    <label>Avanzar (Z m)</label>
-                    <input type="number" step="0.1" [ngModel]="step.offsetForward" (ngModelChange)="step.offsetForward = $event; actualizarPaso()" />
-                  </div>
                   <div class="field wide">
                     <label>Forzar Clip (Opcional)</label>
                     <input type="text" [ngModel]="step.clipOverride" placeholder="Ej: jump_start_02" (ngModelChange)="step.clipOverride = $event; actualizarPaso()" />
-                  </div>
-                  <div class="checkbox-field">
-                    <input type="checkbox" id="chkLoop_{{i}}" [ngModel]="step.loop" (ngModelChange)="step.loop = $event; actualizarPaso()" />
-                    <label for="chkLoop_{{i}}">En Bucle</label>
-                  </div>
-                  <div class="checkbox-field">
-                    <input type="checkbox" id="chkLock_{{i}}" [ngModel]="step.lockInput" (ngModelChange)="step.lockInput = $event; actualizarPaso()" />
-                    <label for="chkLock_{{i}}">Bloquear Teclas</label>
                   </div>
                 </div>
               </div>
@@ -439,7 +490,7 @@
           <ng-template #noSequenceSelected><div class="empty-state"><p>No hay secuencia</p></div></ng-template>
         </div>
       </div>
-      <ng-template #noSeqConfig><div class="empty-state"><p>Selecciona un modelo o NPC</p></div></ng-template>
+      <ng-template #noSeqConfig><div class="empty-state"><p>Objeto no soporta secuencias</p></div></ng-template>
     </ng-container>
 
     <ng-container *ngIf="pestanaActiva === 'world'">

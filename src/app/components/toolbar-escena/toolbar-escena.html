@@ -9,7 +9,9 @@
   <div class="tool-divider"></div>
 
   <div class="tool-group">
-    <!-- Este botón ahora abre el modal general -->
     <button class="tool-btn action-btn" (click)="abrirModalAnadir()" title="Agregar Objeto Nuevo">➕</button>
+    <!-- NUEVOS BOTONES DIRECTOS PARA TRIGGERS -->
+    <button class="tool-btn action-btn" style="margin-top: 5px; color: #4ade80;" (click)="crearTriggerDirecto(false)" title="Crear Trigger Normal">📍</button>
+    <button class="tool-btn action-btn" style="margin-top: 5px; color: #60a5fa;" (click)="crearTriggerDirecto(true)" title="Crear Trigger Compuesto">💠</button>
   </div>
 </div>

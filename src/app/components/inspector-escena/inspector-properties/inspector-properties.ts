@@ -1,3 +1,4 @@
+
 import {
   Component, inject, OnInit, OnDestroy, ChangeDetectorRef, effect, Input, Output, EventEmitter
 } from '@angular/core';
@@ -77,11 +78,24 @@ export class InspectorProperties implements OnInit, OnDestroy {
   public objInteractSequenceIdFPS: string = '';
   public objInteractSequenceIdTPS: string = '';
   public objMensaje: string = '';
+  public objSoundUrl: string = ''; 
 
-  // 🔥 NUEVO: Variables para Trigger Compuesto
+  // 🔥 Variables para Trigger Compuesto y Normal
+  public triggerIsComposite: boolean = false;
   public triggerShape: string = 'cube';
-  public triggerConditions: string[] = ['on_enter'];
   public triggerRepeatable: boolean = false;
+  
+  // Compuesto
+  public triggerConditions: string[] = ['on_enter'];
+  public triggerMensajeEntrada: string = '';
+  public triggerMensajeSalida: string = '';
+  public triggerSoundEntrada: string = '';
+  public triggerSoundSalida: string = '';
+  public triggerSeqEntrada: string = '';
+  public triggerSeqSalida: string = '';
+
+  // Normal
+  public triggerCondition: string = 'on_enter';
 
   public playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
   public actionRows: ActionRow[] = ACTION_ROWS;
@@ -149,12 +163,27 @@ export class InspectorProperties implements OnInit, OnDestroy {
     this.colliderSizeX = 0.5; this.colliderSizeY = 0.5; this.colliderSizeZ = 0.5;
     this.colliderOffX = 0; this.colliderOffY = 0; this.colliderOffZ = 0;
     this.camPosX = 0; this.camPosY = 1.6; this.camPosZ = 0;
-    this.objInteractDistanceFPS = 3.0; this.objInteractDistanceTPS = 5.0;
-    this.objInteractSequenceIdFPS = ''; this.objInteractSequenceIdTPS = '';
+    
+    this.objInteractDistanceFPS = 3.0; 
+    this.objInteractDistanceTPS = 5.0;
+    this.objInteractSequenceIdFPS = ''; 
+    this.objInteractSequenceIdTPS = '';
     this.objMensaje = '';
+    this.objSoundUrl = '';
+    
+    this.triggerIsComposite = false;
     this.triggerShape = 'cube';
-    this.triggerConditions = ['on_enter'];
+    this.triggerCondition = 'on_enter';
     this.triggerRepeatable = false;
+
+    this.triggerConditions = ['on_enter'];
+    this.triggerMensajeEntrada = '';
+    this.triggerMensajeSalida = '';
+    this.triggerSoundEntrada = '';
+    this.triggerSoundSalida = '';
+    this.triggerSeqEntrada = '';
+    this.triggerSeqSalida = '';
+
     this.playerConfig = cloneDefaultPlayerConfig();
     this.bindingInputs = this.emptyBindingInputs();
     this.bindingTokens = this.emptyBindingTokens();
@@ -227,19 +256,38 @@ export class InspectorProperties implements OnInit, OnDestroy {
 
   private syncFromSelection(obj: AbstractMesh) {
     if (!this.esPersonajeOModelo(obj) && (this.pestanaActiva === 'animation' || this.pestanaActiva === 'sequences' || this.pestanaActiva === 'player')) {
-        this.cambiarPestana('transform');
+        if(this.pestanaActiva === 'sequences' && obj.metadata?.type !== 'trigger') {
+            this.cambiarPestana('transform');
+        }
     }
     this.syncTransformFromBabylon(obj);
     const meta = obj.metadata || {};
     this.playerConfig = mergePlayerConfig(meta.playerConfig || null);
+    
+    // Asignación de variables según el tipo de objeto y si es compuesto
+    this.triggerIsComposite = meta.isComposite ?? false;
+    this.triggerShape = meta.triggerShape || 'cube';
+    this.triggerRepeatable = meta.isRepeatable || false;
+
     this.objInteractDistanceFPS = meta.interactDistanceFPS ?? 3.0;
     this.objInteractDistanceTPS = meta.interactDistanceTPS ?? 5.0;
     this.objInteractSequenceIdFPS = meta.interactSequenceIdFPS || meta.interactSequenceId || '';
     this.objInteractSequenceIdTPS = meta.interactSequenceIdTPS || meta.interactSequenceId || '';
+    
+    // Normal / Object
+    this.triggerCondition = meta.condition || 'on_enter';
     this.objMensaje = meta.mensaje || '';
-    this.triggerShape = meta.triggerShape || 'cube';
+    this.objSoundUrl = meta.soundUrl || '';
+
+    // Compuesto
     this.triggerConditions = meta.conditions || ['on_enter'];
-    this.triggerRepeatable = meta.isRepeatable || false;
+    this.triggerMensajeEntrada = meta.mensajeEntrada || '';
+    this.triggerMensajeSalida = meta.mensajeSalida || '';
+    this.triggerSoundEntrada = meta.soundUrlEntrada || '';
+    this.triggerSoundSalida = meta.soundUrlSalida || '';
+    this.triggerSeqEntrada = meta.seqEntrada || '';
+    this.triggerSeqSalida = meta.seqSalida || '';
+
     this.syncBindingDraftsFromConfig();
     this.syncClipsFromObject(obj);
     this.syncSequencesFromConfig();
@@ -364,7 +412,6 @@ export class InspectorProperties implements OnInit, OnDestroy {
   aplicarTriggerForma(nuevaForma: string) {
     const obj = this.getSelectedMesh();
     if (!obj || obj.metadata.type !== 'trigger') return;
-    // La escena se encarga de crear el nuevo objeto y reemplazarlo
     this.sceneSvc.reconstruirMallaTrigger(obj, nuevaForma);
     this.animStatus = '📍 Forma del Trigger actualizada';
   }
@@ -372,11 +419,26 @@ export class InspectorProperties implements OnInit, OnDestroy {
   aplicarTrigger() {
     const obj = this.getSelectedMesh();
     if (!obj || obj.metadata.type !== 'trigger') return;
-    obj.metadata.conditions = this.triggerConditions;
-    obj.metadata.isRepeatable = this.triggerRepeatable;
-    obj.metadata.mensaje = this.objMensaje.trim();
+
+    if (this.triggerIsComposite) {
+        obj.metadata.conditions = this.triggerConditions;
+        obj.metadata.isRepeatable = this.triggerRepeatable;
+        obj.metadata.mensajeEntrada = this.triggerMensajeEntrada.trim();
+        obj.metadata.mensajeSalida = this.triggerMensajeSalida.trim();
+        obj.metadata.soundUrlEntrada = this.triggerSoundEntrada.trim();
+        obj.metadata.soundUrlSalida = this.triggerSoundSalida.trim();
+        obj.metadata.seqEntrada = this.triggerSeqEntrada.trim();
+        obj.metadata.seqSalida = this.triggerSeqSalida.trim();
+    } else {
+        obj.metadata.condition = this.triggerCondition;
+        obj.metadata.isRepeatable = this.triggerRepeatable;
+        obj.metadata.mensaje = this.objMensaje.trim();
+        obj.metadata.soundUrl = this.objSoundUrl.trim();
+        obj.metadata.interactSequenceId = this.objInteractSequenceIdFPS.trim();
+    }
+    
     this.editorSvc.triggerUpdate();
-    this.animStatus = '📍 Condiciones del Trigger actualizadas';
+    this.animStatus = '📍 Trigger actualizado';
   }
 
   aplicarCamara() {

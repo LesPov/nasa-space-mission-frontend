@@ -44,7 +44,6 @@ export class EditorSceneService {
     this.actualizarListaNodos();
   }
 
-  // 🔥 NUEVO: Función para reconstruir la malla física del Trigger
   reconstruirMallaTrigger(oldMesh: AbstractMesh, nuevaForma: string): Mesh {
     const scene = this.motor3d.scene;
     let newMesh!: Mesh;
@@ -60,7 +59,6 @@ export class EditorSceneService {
     else newMesh.rotation = oldMesh.rotation.clone();
     newMesh.scaling = oldMesh.scaling.clone();
     
-    // Copiamos la metadata y actualizamos la forma
     newMesh.metadata = JSON.parse(JSON.stringify(oldMesh.metadata));
     newMesh.metadata.triggerShape = nuevaForma;
 
@@ -73,6 +71,9 @@ export class EditorSceneService {
     newMesh.isPickable = true;
     newMesh.checkCollisions = false;
 
+    // 🔥 FIX: Garantizar visibilidad real basada en el rol actual
+    newMesh.isVisible = this.state.rolSimulado() === 'admin';
+
     if (this.state.objetoSeleccionado() === oldMesh) {
         this.state.objetoSeleccionado.set(newMesh);
     }
@@ -81,7 +82,7 @@ export class EditorSceneService {
     return newMesh;
   }
 
-  agregarTriggerCustom(nombre: string, shape: string, mensaje: string, sizeX: number, sizeY: number, sizeZ: number): void {
+  agregarTriggerCustom(nombre: string, shape: string, isComposite: boolean, mensaje: string, sizeX: number, sizeY: number, sizeZ: number): void {
     const scene = this.motor3d.scene;
     let mesh!: Mesh;
     switch (shape) {
@@ -94,27 +95,40 @@ export class EditorSceneService {
     mesh.position = new Vector3(0, sizeY / 2, 0);
 
     const mat = new StandardMaterial('mat_trigger_' + nombre, scene);
-    mat.diffuseColor = new Color3(0.2, 1, 0.2); // Verde
+    mat.diffuseColor = new Color3(0.2, 1, 0.2); 
     mat.alpha = 0.3; 
     mat.wireframe = true;
     mesh.material = mat;
 
     mesh.metadata = {
       type: 'trigger',
+      isComposite: isComposite,
       triggerShape: shape || 'cube',
-      conditions: ['on_enter'], // Trigger Compuesto por defecto
-      mensaje: mensaje, 
+      
+      conditions: isComposite ? ['on_enter'] : [],
+      mensajeEntrada: isComposite ? mensaje : '',
+      mensajeSalida: '',
+      soundUrlEntrada: '',
+      soundUrlSalida: '',
+      seqEntrada: '',
+      seqSalida: '',
+
+      condition: 'on_enter',
+      mensaje: isComposite ? '' : mensaje,
+      soundUrl: '',
+      interactSequenceId: '', 
+
       isRepeatable: false,
       isEnabled: true,
-      hasTriggered: false,
-      interactDistanceFPS: 3.0,
-      interactDistanceTPS: 5.0,
-      interactSequenceIdFPS: '',
-      interactSequenceIdTPS: ''
+      hasTriggeredEnter: false,
+      hasTriggeredExit: false
     };
 
     mesh.isPickable = true;
     mesh.checkCollisions = false; 
+    
+    // 🔥 FIX: Al agregarlo, solo será visible si el admin lo crea (que es lo normal)
+    mesh.isVisible = this.state.rolSimulado() === 'admin';
 
     this.state.objetoSeleccionado.set(mesh);
     this.actualizarListaNodos();
@@ -127,8 +141,9 @@ export class EditorSceneService {
     sizeX: number, sizeY: number, sizeZ: number, asset?: any,
     isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = ''
   ): void {
-    if (tipo === 'trigger') {
-        this.agregarTriggerCustom(nombre, 'cube', mensaje, sizeX, sizeY, sizeZ);
+    if (tipo === 'trigger' || tipo === 'trigger_compuesto') {
+        const isComposite = tipo === 'trigger_compuesto';
+        this.agregarTriggerCustom(nombre, 'cube', isComposite, mensaje, sizeX, sizeY, sizeZ);
         return;
     }
 
@@ -236,6 +251,8 @@ export class EditorSceneService {
     const objetosBD = Array.isArray(dataBD) ? dataBD : (dataBD.sceneObjects || []);
     const triggersBD = Array.isArray(dataBD) ? [] : (dataBD.triggers || []);
 
+    const isAdmin = this.state.rolSimulado() === 'admin';
+
     objetosBD.forEach((obj: any) => {
       const isModel = obj.type === 'model';
       const defaultCollider = isModel
@@ -330,44 +347,73 @@ export class EditorSceneService {
       }
     });
 
-    // 2. Cargar Triggers Compuestos
     triggersBD.forEach((trigger: any) => {
-        let mesh!: Mesh;
+        let mesh = scene.getMeshByName(trigger.name) as Mesh;
         const shape = trigger.actionProperties?.triggerShape || 'cube';
-        switch (shape) {
-            case 'sphere': mesh = MeshBuilder.CreateSphere(trigger.name, { diameter: 1 }, scene); break;
-            case 'cylinder': mesh = MeshBuilder.CreateCylinder(trigger.name, { height: 1, diameter: 1 }, scene); break;
-            default: mesh = MeshBuilder.CreateBox(trigger.name, { size: 1 }, scene); break;
+        const isComposite = trigger.actionProperties?.isComposite ?? false;
+
+        if (!mesh) {
+            switch (shape) {
+                case 'sphere': mesh = MeshBuilder.CreateSphere(trigger.name, { diameter: 1 }, scene); break;
+                case 'cylinder': mesh = MeshBuilder.CreateCylinder(trigger.name, { height: 1, diameter: 1 }, scene); break;
+                default: mesh = MeshBuilder.CreateBox(trigger.name, { size: 1 }, scene); break;
+            }
+
+            mesh.position = new Vector3(trigger.position.x, trigger.position.y, trigger.position.z);
+            mesh.scaling = new Vector3(trigger.size.x, trigger.size.y, trigger.size.z);
+            
+            const mat = new StandardMaterial('mat_trigger_' + trigger.name, scene);
+            mat.diffuseColor = new Color3(0.2, 1, 0.2); 
+            mat.alpha = 0.3; 
+            mat.wireframe = true;
+            mesh.material = mat;
+            mesh.isPickable = true;
+            mesh.checkCollisions = false;
+
+            // 🔥 FIX: Visibilidad al momento de crearlo/cargarlo
+            mesh.isVisible = isAdmin;
+
+            mesh.metadata = {
+                type: 'trigger',
+                triggerShape: shape,
+                isComposite: isComposite,
+
+                conditions: [],
+                mensajeEntrada: '', mensajeSalida: '',
+                soundUrlEntrada: '', soundUrlSalida: '',
+                seqEntrada: '', seqSalida: '',
+
+                condition: 'on_enter',
+                mensaje: '',
+                soundUrl: '',
+                interactSequenceId: '',
+
+                isRepeatable: trigger.isRepeatable,
+                isEnabled: trigger.isEnabled,
+                hasTriggeredEnter: false,
+                hasTriggeredExit: false
+            };
         }
 
-        mesh.position = new Vector3(trigger.position.x, trigger.position.y, trigger.position.z);
-        mesh.scaling = new Vector3(trigger.size.x, trigger.size.y, trigger.size.z);
-        
-        const mat = new StandardMaterial('mat_trigger_' + trigger.name, scene);
-        mat.diffuseColor = new Color3(0.2, 1, 0.2); 
-        mat.alpha = 0.3; 
-        mat.wireframe = true;
-        mesh.material = mat;
-
-        let conds = trigger.actionProperties?.conditions || [];
-        if (conds.length === 0 && trigger.condition) conds = [trigger.condition];
-
-        mesh.metadata = {
-            type: 'trigger',
-            triggerShape: shape,
-            conditions: conds,
-            mensaje: trigger.actionProperties?.mensaje || '', 
-            interactDistanceFPS: trigger.actionProperties?.interactDistanceFPS ?? 3.0,
-            interactDistanceTPS: trigger.actionProperties?.interactDistanceTPS ?? 5.0,
-            interactSequenceIdFPS: trigger.actionProperties?.interactSequenceIdFPS || '',
-            interactSequenceIdTPS: trigger.actionProperties?.interactSequenceIdTPS || '',
-            isRepeatable: trigger.isRepeatable,
-            isEnabled: trigger.isEnabled,
-            hasTriggered: false
-        };
-
-        mesh.isPickable = true;
-        mesh.checkCollisions = false;
+        if (isComposite) {
+            if (trigger.condition && !mesh.metadata.conditions.includes(trigger.condition)) {
+                mesh.metadata.conditions.push(trigger.condition);
+            }
+            if (trigger.condition === 'on_enter') {
+                mesh.metadata.mensajeEntrada = trigger.actionProperties?.mensaje || '';
+                mesh.metadata.soundUrlEntrada = trigger.actionProperties?.soundUrl || '';
+                mesh.metadata.seqEntrada = trigger.actionProperties?.seqEntrada || '';
+            } else if (trigger.condition === 'on_exit') {
+                mesh.metadata.mensajeSalida = trigger.actionProperties?.mensaje || '';
+                mesh.metadata.soundUrlSalida = trigger.actionProperties?.soundUrl || '';
+                mesh.metadata.seqSalida = trigger.actionProperties?.seqSalida || '';
+            }
+        } else {
+            mesh.metadata.condition = trigger.condition || 'on_enter';
+            mesh.metadata.mensaje = trigger.actionProperties?.mensaje || '';
+            mesh.metadata.soundUrl = trigger.actionProperties?.soundUrl || '';
+            mesh.metadata.interactSequenceId = trigger.actionProperties?.interactSequenceId || '';
+        }
     });
 
     this.actualizarListaNodos();
@@ -382,23 +428,59 @@ export class EditorSceneService {
         const rot = nodo.rotationQuaternion ? nodo.rotationQuaternion.toEulerAngles() : nodo.rotation;
         
         if (nodo.metadata.type === 'trigger') {
-            triggers.push({
-                name: nodo.name,
-                position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
-                scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z }, 
-                properties: {
-                    conditions: nodo.metadata.conditions,
-                    triggerShape: nodo.metadata.triggerShape,
-                    mensaje: nodo.metadata.mensaje,
-                    interactDistanceFPS: nodo.metadata.interactDistanceFPS ?? 3.0,
-                    interactDistanceTPS: nodo.metadata.interactDistanceTPS ?? 5.0,
-                    interactSequenceIdFPS: nodo.metadata.interactSequenceIdFPS || '',
-                    interactSequenceIdTPS: nodo.metadata.interactSequenceIdTPS || '',
-                    isRepeatable: nodo.metadata.isRepeatable,
-                    isEnabled: nodo.metadata.isEnabled
-                }
-            });
-            return;
+            if (nodo.metadata.isComposite) {
+                const conditions = nodo.metadata.conditions || [];
+                conditions.forEach((cond: string) => {
+                    let actionProps: any = { 
+                        triggerShape: nodo.metadata.triggerShape,
+                        isComposite: true
+                    };
+                    
+                    if (cond === 'on_enter') {
+                        actionProps.mensaje = nodo.metadata.mensajeEntrada || '';
+                        actionProps.soundUrl = nodo.metadata.soundUrlEntrada || '';
+                        actionProps.seqEntrada = nodo.metadata.seqEntrada || '';
+                    }
+                    if (cond === 'on_exit') {
+                        actionProps.mensaje = nodo.metadata.mensajeSalida || '';
+                        actionProps.soundUrl = nodo.metadata.soundUrlSalida || '';
+                        actionProps.seqSalida = nodo.metadata.seqSalida || '';
+                    }
+
+                    triggers.push({
+                        name: nodo.name,
+                        position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
+                        scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z }, 
+                        properties: {
+                            condition: cond,
+                            actionType: 'show_message', 
+                            targetObjectName: '',
+                            isRepeatable: nodo.metadata.isRepeatable,
+                            isEnabled: nodo.metadata.isEnabled,
+                            ...actionProps
+                        }
+                    });
+                });
+            } else {
+                triggers.push({
+                    name: nodo.name,
+                    position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
+                    scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z }, 
+                    properties: {
+                        condition: nodo.metadata.condition,
+                        actionType: 'show_message', 
+                        targetObjectName: '',
+                        isRepeatable: nodo.metadata.isRepeatable,
+                        isEnabled: nodo.metadata.isEnabled,
+                        triggerShape: nodo.metadata.triggerShape,
+                        mensaje: nodo.metadata.mensaje,
+                        soundUrl: nodo.metadata.soundUrl,
+                        interactSequenceId: nodo.metadata.interactSequenceId,
+                        isComposite: false
+                    }
+                });
+            }
+            return; 
         }
 
         const baseData = {

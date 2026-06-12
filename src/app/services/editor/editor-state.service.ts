@@ -100,7 +100,16 @@ export class EditorStateService {
       return true;
     }
 
-    if (this.rolSimulado() === 'user' && meta.isSelectable === false && !meta.mensaje && !meta.interactSequenceId && !meta.interactSequenceIdFPS && !meta.interactSequenceIdTPS && meta.type !== 'trigger') {
+    // 🔥 FIX APLICADO: Si es Trigger y el rol es ADMIN, NUNCA es ignorable, se puede seleccionar siempre.
+    if (meta.type === 'trigger') {
+        if (this.rolSimulado() === 'admin') {
+            return false; 
+        }
+        // Si es USER normal, ignoramos los triggers por completo para raycast
+        return true; 
+    }
+
+    if (this.rolSimulado() === 'user' && meta.isSelectable === false && !meta.mensaje && !meta.interactSequenceId && !meta.interactSequenceIdFPS && !meta.interactSequenceIdTPS) {
       if (this.playState() === 'PLAYING' || this.playState() === 'INTERACTING') {
         return true;
       }
@@ -122,10 +131,8 @@ export class EditorStateService {
     const nodoBase = root ?? mesh;
     const meta = (nodoBase.metadata ?? mesh.metadata ?? {}) as any;
 
-    // 🔥 MODIFICADO: Si es un trigger, verificamos si tiene la condición "on_interact" activada
     if (meta.type === 'trigger') {
-        const conds = meta.conditions || [];
-        return conds.includes('on_interact');
+        return false; // Los triggers NO despliegan HUD de interacción. Se activan al pisarlos.
     }
 
     const mensaje = typeof meta.mensaje === 'string' ? meta.mensaje.trim() : '';

@@ -46,7 +46,8 @@ export class PlayerInteractionService {
 
   public canActivateInteraction(target: AbstractMesh, view: 'FPS' | 'TPS' | null): boolean {
     if (!target || this.lastInteractDistance === null || !Number.isFinite(this.lastInteractDistance)) return false;
-    const maxDist = view === 'FPS' ? (target.metadata?.interactDistanceFPS ?? 3.0) : (target.metadata?.interactDistanceTPS ?? 5.0);
+    const meta = target.metadata || {};
+    const maxDist = view === 'FPS' ? (meta.interactDistanceFPS ?? 3.0) : (meta.interactDistanceTPS ?? 5.0);
     return this.lastInteractDistance <= maxDist;
   }
 
@@ -72,12 +73,19 @@ export class PlayerInteractionService {
       centerRay.length = 10000;
       
       const hitCross = scene.pickWithRay(centerRay, (m) => {
-        // CORRECCIÓN: Usar && en lugar de || para que solo seleccione mallas visibles Y pickables.
-        if (!m.isVisible || !m.isPickable) return false;
+        if (!m.isPickable) return false;
+        if (!m.isVisible) return false;
+        
+        // 🔥 FIX APLICADO: Si es trigger, el rayo SOLO lo detecta si es Admin, para permitirle editar.
+        if (m.metadata?.type === 'trigger') {
+            if (!isAdmin) return false; 
+        }
+        
         if (m === jugador || m.isDescendantOf(jugador)) return false;
+        
         const nameStr = m.name.toLowerCase();
-        // IGNORAR GIZMOS Y DEBUG PARA EVITAR LAG Y CAMBIOS RÁPIDOS
         if (nameStr.includes('proxycol') || nameStr.includes('suelo') || nameStr.includes('skybox') || nameStr.includes('highlight') || nameStr.includes('gizmo') || nameStr.includes('debug')) return false;
+        
         return true;
       });
 
@@ -88,11 +96,9 @@ export class PlayerInteractionService {
         if (!this.state.esMeshIgnorable(picked)) {
           const rootNode = this.state.encontrarRaiz(picked) as AbstractMesh;
           if (rootNode) {
-            
             if (isAdmin && this.state.puedeSeleccionarse(rootNode)) {
               hitAnyRootAdmin = rootNode;
             }
-
             if (canShowInteraction(rootNode)) {
               hitInteractuable = rootNode;
               hoveredDistance = this.getInteractionDistanceToTarget(rootNode, this.lastInteractionProbePoint);
@@ -101,23 +107,29 @@ export class PlayerInteractionService {
           }
         }
       }
-
       this.lastInteractDistance = hoveredDistance;
 
     } else {
       let closestRoot: AbstractMesh | null = null; 
       let closestDist = Number.POSITIVE_INFINITY;
       const playerProbe = this.lastInteractionProbePoint;
-
+      
       scene.meshes.forEach(mesh => {
-        if (mesh === jugador || mesh.name.includes('proxyCol') || mesh.name.toLowerCase().includes('suelo') || !mesh.isVisible || !mesh.isPickable) return;
+        if (mesh === jugador || mesh.name.includes('proxyCol') || mesh.name.toLowerCase().includes('suelo') || !mesh.isPickable) return;
+        
+        if (mesh.metadata?.type === 'trigger') return;
+        
+        if (!mesh.isVisible) return;
+
         const root = this.state.encontrarRaiz(mesh as AbstractMesh) as AbstractMesh;
         if (!root || !canShowInteraction(root)) return;
         
         const dist = this.getInteractionDistanceToTarget(root, playerProbe);
-        if (dist <= (root.metadata?.interactDistanceTPS ?? 5.0) && dist < closestDist) {
-          closestDist = dist; 
-          closestRoot = root;
+        const maxDist = root.metadata?.interactDistanceTPS ?? 5.0;
+        
+        if (dist <= maxDist && dist < closestDist) {
+            closestDist = dist; 
+            closestRoot = root;
         }
       });
       
@@ -133,14 +145,14 @@ export class PlayerInteractionService {
       const meta = hitInteractuable.metadata || {};
       const safeView = this.state.modoVistaPrueba;
       const canInteractNow = this.canActivateInteraction(hitInteractuable, safeView);
+      
       const seqIdForView = safeView === 'FPS' ? (meta.interactSequenceIdFPS || meta.interactSequenceId) : (meta.interactSequenceIdTPS || meta.interactSequenceId);
+      const mensajeParaMostrar = meta.mensaje || '';
 
       showE = !!seqIdForView && seqIdForView.trim() !== '' && canInteractNow;
-      showI = !!meta.mensaje && meta.mensaje.trim() !== '' && canInteractNow;
+      showI = !!mensajeParaMostrar && mensajeParaMostrar.trim() !== '' && canInteractNow;
     }
 
-    // CORRECCIÓN: EVITAR EL ERROR NG0100 (ExpressionChangedAfterItHasBeenCheckedError)
-    // Actualizamos las señales de forma asíncrona y solo si realmente han cambiado de valor.
     setTimeout(() => {
       if (this.state.targetInteractuable() !== hitInteractuable) {
         this.state.targetInteractuable.set(hitInteractuable);
@@ -148,12 +160,10 @@ export class PlayerInteractionService {
       if (this.state.mirandoObjetoInteractuable() !== hoverInteractable) {
         this.state.mirandoObjetoInteractuable.set(hoverInteractable);
       }
-
       const adminHover = (viewMode === 'FPS' && isAdmin) ? hitAnyRootAdmin : null;
       if (this.state.objetoHovereado() !== adminHover) {
         this.state.objetoHovereado.set(adminHover);
       }
-
       if (this.state.showToastE() !== showE) {
         this.state.showToastE.set(showE);
       }

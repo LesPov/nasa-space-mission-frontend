@@ -1,5 +1,5 @@
 import { Injectable, inject, effect } from '@angular/core';
-import { Color3, GizmoManager, HighlightLayer, Mesh, PointerEventTypes, Matrix, AbstractMesh, KeyboardEventTypes, MeshBuilder, StandardMaterial, Vector3, TransformNode, Ray, PointerDragBehavior, Scene, Color4 } from '@babylonjs/core';
+import { Color3, GizmoManager, HighlightLayer, Mesh, PointerEventTypes, Matrix, AbstractMesh, KeyboardEventTypes, MeshBuilder, StandardMaterial, Vector3, TransformNode, Ray, PointerDragBehavior, Scene, Color4, TransformNode as BabylonTransformNode } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService, ToolMode } from './editor-state.service';
 import { HistorialService } from '../historial.service';
@@ -29,6 +29,8 @@ export class EditorToolsService {
   private debugCameraBox: Mesh | null = null;
   private debugFogSphere: Mesh | null = null; 
   
+  private centerDragMesh!: Mesh;
+  private gizmoPivotNode!: BabylonTransformNode; 
   private isDraggingGizmo = false;
 
   constructor() {
@@ -54,10 +56,26 @@ export class EditorToolsService {
             return;
         }
 
-        if (subSelected === 'collider' && this.debugCollider) this.gizmoManager.attachToMesh(this.debugCollider);
-        else if (subSelected === 'camera' && this.debugCameraBox) this.gizmoManager.attachToMesh(this.debugCameraBox);
-        else if (selected && !subSelected) this.gizmoManager.attachToMesh(selected);
-        else this.gizmoManager.attachToMesh(null);
+        if (subSelected === 'collider' && this.debugCollider) {
+            this.gizmoManager.attachToMesh(this.debugCollider);
+            this.gizmoPivotNode.parent = null; 
+        } else if (subSelected === 'camera' && this.debugCameraBox) {
+            this.gizmoManager.attachToMesh(this.debugCameraBox);
+            this.gizmoPivotNode.parent = null;
+        } else if (selected && !subSelected) {
+            this.gizmoPivotNode.position.copyFrom(this.centerDragMesh.position);
+            if (selected.rotationQuaternion) {
+                this.gizmoPivotNode.rotationQuaternion = selected.rotationQuaternion.clone();
+            } else {
+                this.gizmoPivotNode.rotation = selected.rotation.clone();
+            }
+            this.gizmoPivotNode.scaling.copyFrom(selected.scaling);
+            
+            this.gizmoManager.attachToMesh(this.gizmoPivotNode as any);
+        } else {
+            this.gizmoManager.attachToMesh(null);
+            this.gizmoPivotNode.parent = null;
+        }
         
         this.actualizarGizmosActivos();
       }
@@ -98,7 +116,7 @@ export class EditorToolsService {
     
     if (this.gizmoManager.gizmos.rotationGizmo) {
       this.gizmoManager.gizmos.rotationGizmo.snapDistance = 0;
-      this.gizmoManager.gizmos.rotationGizmo.updateGizmoRotationToMatchAttachedMesh = false;
+      this.gizmoManager.gizmos.rotationGizmo.updateGizmoRotationToMatchAttachedMesh = true; 
     }
     
     if (this.gizmoManager.gizmos.scaleGizmo) {
@@ -107,48 +125,59 @@ export class EditorToolsService {
 
     const utilityLayer = this.gizmoManager.utilityLayer;
     
-    const centerDragMesh = MeshBuilder.CreatePolyhedron("centerDragPos", { type: 1, size: 0.6 }, utilityLayer.utilityLayerScene);
+    this.centerDragMesh = MeshBuilder.CreatePolyhedron("centerDragPos", { type: 1, size: 0.6 }, utilityLayer.utilityLayerScene);
     const centerDragMat = new StandardMaterial("centerDragPosMat", utilityLayer.utilityLayerScene);
     centerDragMat.emissiveColor = new Color3(1, 1, 1); 
     centerDragMat.alpha = 0.65;
     centerDragMat.disableLighting = true;
-    centerDragMesh.material = centerDragMat;
-    centerDragMesh.isVisible = false;
+    this.centerDragMesh.material = centerDragMat;
+    this.centerDragMesh.isVisible = false;
+
+    this.gizmoPivotNode = new BabylonTransformNode("gizmoPivotNode", utilityLayer.utilityLayerScene);
 
     const centerDragBehavior = new PointerDragBehavior();
     centerDragBehavior.moveAttached = false; 
-    centerDragMesh.addBehavior(centerDragBehavior);
+    this.centerDragMesh.addBehavior(centerDragBehavior);
 
     centerDragBehavior.onDragStartObservable.add(() => {
         this.isDraggingGizmo = true;
-        if (this.gizmoManager.attachedMesh) {
-            this.estadoAntesDeArrastrar = this.historialSvc.obtenerEstado(this.gizmoManager.attachedMesh as AbstractMesh);
+        const attached = this.state.objetoSeleccionado() as AbstractMesh;
+        if (attached) {
+            this.estadoAntesDeArrastrar = this.historialSvc.obtenerEstado(attached);
         }
     });
 
     centerDragBehavior.onDragObservable.add((event) => {
-        const mesh = this.gizmoManager.attachedMesh as AbstractMesh;
-        const parent = this.state.objetoSeleccionado() as Mesh;
+        const mesh = this.state.objetoSeleccionado() as Mesh;
+        const subSelected = this.state.subObjetoSeleccionado();
 
         if (mesh) {
-            mesh.setAbsolutePosition(mesh.getAbsolutePosition().add(event.delta));
-            
-            // 🔥 MANTENEMOS EL GIZMO BLANCO EN EL CENTRO MIENTRAS ARRASTRAS
-            if (mesh === this.debugCollider || mesh === this.debugCameraBox) {
-                centerDragMesh.position.copyFrom(mesh.getAbsolutePosition());
+            if (subSelected === 'collider' && this.debugCollider) {
+                this.debugCollider.setAbsolutePosition(this.debugCollider.getAbsolutePosition().add(event.delta));
+                this.centerDragMesh.position.copyFrom(this.debugCollider.getAbsolutePosition());
+                mesh.metadata.collider.offsetX = this.debugCollider.position.x;
+                mesh.metadata.collider.offsetY = this.debugCollider.position.y;
+                mesh.metadata.collider.offsetZ = this.debugCollider.position.z;
+            } else if (subSelected === 'camera' && this.debugCameraBox) {
+                this.debugCameraBox.setAbsolutePosition(this.debugCameraBox.getAbsolutePosition().add(event.delta));
+                this.centerDragMesh.position.copyFrom(this.debugCameraBox.getAbsolutePosition());
+                mesh.metadata.camOffset.x = this.debugCameraBox.position.x;
+                mesh.metadata.camOffset.y = this.debugCameraBox.position.y;
+                mesh.metadata.camOffset.z = this.debugCameraBox.position.z;
             } else {
-                mesh.computeWorldMatrix(true);
-                centerDragMesh.position.copyFrom(mesh.getBoundingInfo().boundingBox.centerWorld);
-            }
-            
-            if (mesh === this.debugCollider && parent) {
-                parent.metadata.collider.offsetX = mesh.position.x;
-                parent.metadata.collider.offsetY = mesh.position.y;
-                parent.metadata.collider.offsetZ = mesh.position.z;
-            } else if (mesh === this.debugCameraBox && parent) {
-                parent.metadata.camOffset.x = mesh.position.x;
-                parent.metadata.camOffset.y = mesh.position.y;
-                parent.metadata.camOffset.z = mesh.position.z;
+                mesh.setAbsolutePosition(mesh.getAbsolutePosition().add(event.delta));
+                
+                if (mesh.metadata?.collider && mesh.metadata?.collider?.type !== 'mesh') {
+                    const colOffsetX = mesh.metadata.collider.offsetX || 0;
+                    const colOffsetY = mesh.metadata.collider.offsetY || 0;
+                    const colOffsetZ = mesh.metadata.collider.offsetZ || 0;
+                    const posMundo = Vector3.TransformCoordinates(new Vector3(colOffsetX, colOffsetY, colOffsetZ), mesh.getWorldMatrix());
+                    this.centerDragMesh.position.copyFrom(posMundo);
+                } else {
+                    mesh.computeWorldMatrix(true);
+                    this.centerDragMesh.position.copyFrom(mesh.getBoundingInfo().boundingBox.centerWorld);
+                }
+                this.gizmoPivotNode.position.copyFrom(this.centerDragMesh.position);
             }
             this.state.onGizmoDrag.next();
         }
@@ -156,18 +185,18 @@ export class EditorToolsService {
 
     centerDragBehavior.onDragEndObservable.add(() => {
         this.isDraggingGizmo = false;
-        const mesh = this.gizmoManager.attachedMesh as AbstractMesh;
-        const parent = this.state.objetoSeleccionado() as Mesh;
+        const mesh = this.state.objetoSeleccionado() as Mesh;
+        const subSelected = this.state.subObjetoSeleccionado();
 
-        if (mesh === this.debugCollider && parent) {
-            parent.metadata.collider.sizeX *= mesh.scaling.x;
-            parent.metadata.collider.sizeY *= mesh.scaling.y;
-            parent.metadata.collider.sizeZ *= mesh.scaling.z;
-            mesh.scaling.set(1, 1, 1);
-            this.actualizarDebugMeshes(parent);
+        if (subSelected === 'collider' && this.debugCollider) {
+            mesh.metadata.collider.sizeX *= this.debugCollider.scaling.x;
+            mesh.metadata.collider.sizeY *= this.debugCollider.scaling.y;
+            mesh.metadata.collider.sizeZ *= this.debugCollider.scaling.z;
+            this.debugCollider.scaling.set(1, 1, 1);
+            this.actualizarDebugMeshes(mesh);
             this.gizmoManager.attachToMesh(this.debugCollider); 
             queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
-        } else if (mesh === this.debugCameraBox && parent) {
+        } else if (subSelected === 'camera' && this.debugCameraBox) {
             queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
         } else if (mesh && this.estadoAntesDeArrastrar) {
             this.historialSvc.registrarAccionTransform(mesh, this.estadoAntesDeArrastrar);
@@ -178,7 +207,7 @@ export class EditorToolsService {
 
     utilityLayer.utilityLayerScene.onPointerObservable.add((pi) => {
         if (pi.type === PointerEventTypes.POINTERMOVE) {
-            if (pi.pickInfo?.pickedMesh === centerDragMesh) {
+            if (pi.pickInfo?.pickedMesh === this.centerDragMesh) {
                 centerDragMat.emissiveColor = new Color3(1, 0.9, 0); 
                 centerDragMat.alpha = 0.85; 
             } else {
@@ -190,51 +219,69 @@ export class EditorToolsService {
 
     const onDragStart = () => {
       this.isDraggingGizmo = true;
-      const mesh = this.gizmoManager.attachedMesh as AbstractMesh;
-      if (mesh && mesh !== this.debugCollider && mesh !== this.debugCameraBox) {
+      const mesh = this.state.objetoSeleccionado() as Mesh;
+      if (mesh) {
         this.estadoAntesDeArrastrar = this.historialSvc.obtenerEstado(mesh);
       }
     };
 
     const onDragging = () => {
-      const mesh = this.gizmoManager.attachedMesh as AbstractMesh;
-      const parent = this.state.objetoSeleccionado() as Mesh;
+      const mesh = this.state.objetoSeleccionado() as Mesh;
+      const subSelected = this.state.subObjetoSeleccionado();
 
-      if (mesh && centerDragMesh.isVisible) {
-          if (mesh === this.debugCollider || mesh === this.debugCameraBox) {
-              centerDragMesh.position.copyFrom(mesh.getAbsolutePosition());
+      if (!mesh) return;
+
+      if (subSelected === 'collider' && this.debugCollider) {
+          this.centerDragMesh.position.copyFrom(this.debugCollider.getAbsolutePosition());
+          mesh.metadata.collider.offsetX = this.debugCollider.position.x;
+          mesh.metadata.collider.offsetY = this.debugCollider.position.y;
+          mesh.metadata.collider.offsetZ = this.debugCollider.position.z;
+      } else if (subSelected === 'camera' && this.debugCameraBox) {
+          this.centerDragMesh.position.copyFrom(this.debugCameraBox.getAbsolutePosition());
+          mesh.metadata.camOffset.x = this.debugCameraBox.position.x;
+          mesh.metadata.camOffset.y = this.debugCameraBox.position.y;
+          mesh.metadata.camOffset.z = this.debugCameraBox.position.z;
+      } else {
+          mesh.setAbsolutePosition(this.gizmoPivotNode.absolutePosition.subtract(this.centerDragMesh.position.subtract(mesh.getAbsolutePosition())));
+          
+          if (this.gizmoPivotNode.rotationQuaternion && mesh.rotationQuaternion) {
+              mesh.rotationQuaternion.copyFrom(this.gizmoPivotNode.rotationQuaternion);
+          } else {
+              mesh.rotation.copyFrom(this.gizmoPivotNode.rotation);
+          }
+          mesh.scaling.copyFrom(this.gizmoPivotNode.scaling);
+
+          if (mesh.metadata?.collider && mesh.metadata?.collider?.type !== 'mesh') {
+              const colOffsetX = mesh.metadata.collider.offsetX || 0;
+              const colOffsetY = mesh.metadata.collider.offsetY || 0;
+              const colOffsetZ = mesh.metadata.collider.offsetZ || 0;
+              const posMundo = Vector3.TransformCoordinates(new Vector3(colOffsetX, colOffsetY, colOffsetZ), mesh.getWorldMatrix());
+              this.centerDragMesh.position.copyFrom(posMundo);
           } else {
               mesh.computeWorldMatrix(true);
-              centerDragMesh.position.copyFrom(mesh.getBoundingInfo().boundingBox.centerWorld);
+              this.centerDragMesh.position.copyFrom(mesh.getBoundingInfo().boundingBox.centerWorld);
           }
-      }
-
-      if (mesh === this.debugCollider && parent) {
-          parent.metadata.collider.offsetX = mesh.position.x;
-          parent.metadata.collider.offsetY = mesh.position.y;
-          parent.metadata.collider.offsetZ = mesh.position.z;
-      } else if (mesh === this.debugCameraBox && parent) {
-          parent.metadata.camOffset.x = mesh.position.x;
-          parent.metadata.camOffset.y = mesh.position.y;
-          parent.metadata.camOffset.z = mesh.position.z;
+          this.gizmoPivotNode.position.copyFrom(this.centerDragMesh.position);
       }
       this.state.onGizmoDrag.next(); 
     };
 
     const onDragEnd = () => {
       this.isDraggingGizmo = false;
-      const mesh = this.gizmoManager.attachedMesh as AbstractMesh;
-      const parent = this.state.objetoSeleccionado() as Mesh;
+      const mesh = this.state.objetoSeleccionado() as Mesh;
+      const subSelected = this.state.subObjetoSeleccionado();
 
-      if (mesh === this.debugCollider && parent) {
-          parent.metadata.collider.sizeX *= mesh.scaling.x;
-          parent.metadata.collider.sizeY *= mesh.scaling.y;
-          parent.metadata.collider.sizeZ *= mesh.scaling.z;
-          mesh.scaling.set(1, 1, 1);
-          this.actualizarDebugMeshes(parent);
+      if (!mesh) return;
+
+      if (subSelected === 'collider' && this.debugCollider) {
+          mesh.metadata.collider.sizeX *= this.debugCollider.scaling.x;
+          mesh.metadata.collider.sizeY *= this.debugCollider.scaling.y;
+          mesh.metadata.collider.sizeZ *= this.debugCollider.scaling.z;
+          this.debugCollider.scaling.set(1, 1, 1);
+          this.actualizarDebugMeshes(mesh);
           this.gizmoManager.attachToMesh(this.debugCollider); 
           queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
-      } else if (mesh === this.debugCameraBox && parent) {
+      } else if (subSelected === 'camera' && this.debugCameraBox) {
           queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
       } else if (mesh && this.estadoAntesDeArrastrar) {
         this.historialSvc.registrarAccionTransform(mesh, this.estadoAntesDeArrastrar);
@@ -259,15 +306,6 @@ export class EditorToolsService {
       this.gizmoManager.gizmos.scaleGizmo.onDragEndObservable.add(onDragEnd);
     }
 
-    this.gizmoManager.onAttachedToMeshObservable.add((mesh) => {
-      if (mesh && mesh !== this.debugCollider && mesh !== this.debugCameraBox) {
-        if (this.state.objetoSeleccionado() !== mesh) {
-          this.state.objetoSeleccionado.set(mesh);
-          this.state.subObjetoSeleccionado.set(null); 
-        }
-      }
-    });
-
     const resolverRootDesdeRay = (ray: any): AbstractMesh | null => {
       const hit = scene.pickWithRay(ray, (m) => m.isVisible && m.isPickable && !m.name.toLowerCase().includes('highlight') && !m.name.toLowerCase().includes('gizmo'));
       
@@ -290,22 +328,22 @@ export class EditorToolsService {
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
 
-      // 🔥 DOBLE CLIC PARA ENFOCAR (NUEVA LÓGICA)
       if (pi.type === PointerEventTypes.POINTERDOUBLETAP && pi.event.button === 0) {
         if (isAdmin && playSt === 'EDITOR') {
             const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
             ray.length = 10000;
             const rootNode = resolverRootDesdeRay(ray);
             if (rootNode) {
-                this.state.objetoSeleccionado.set(rootNode); // Nos aseguramos de seleccionarlo
-                this.cameraSvc.enfocarObjetoEnEditor(rootNode); // Y volamos hacia él
+                this.state.objetoSeleccionado.set(rootNode); 
+                this.cameraSvc.enfocarObjetoEnEditor(rootNode); 
             }
         }
         return;
       }
 
-      // 🔥 UN SOLO CLIC: SELECCIONAR Y MOSTRAR GIZMOS
-      if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
+      // 🔥 AQUÍ ESTÁ LA SOLUCIÓN: Cambiamos POINTERDOWN a POINTERTAP.
+      // Así, si mantienes presionado para arrastrar/girar la cámara, no se deselecciona.
+      if (pi.type === PointerEventTypes.POINTERTAP && pi.event.button === 0) {
         if (playSt === 'PLAYING') {
           if (!this.state.ratonBloqueado()) {
             try { canvas?.requestPointerLock(); } catch (e) {}
@@ -335,13 +373,12 @@ export class EditorToolsService {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
 
-          const hitGizmo = scene.pickWithRay(ray, (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo') || mesh === centerDragMesh);
+          const hitGizmo = scene.pickWithRay(ray, (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo') || mesh === this.centerDragMesh);
           if (hitGizmo && hitGizmo.hit) return;
 
           const rootNode = resolverRootDesdeRay(ray);
 
           if (rootNode) {
-            // Un solo clic: Solo actualizamos la señal para mostrar propiedades y gizmos
             if (this.state.objetoSeleccionado() !== rootNode) {
               this.state.objetoSeleccionado.set(rootNode);
             }
@@ -360,7 +397,7 @@ export class EditorToolsService {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
 
-          const hitGizmo = scene.pickWithRay(ray, (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo') || mesh === centerDragMesh);
+          const hitGizmo = scene.pickWithRay(ray, (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo') || mesh === this.centerDragMesh);
           if (hitGizmo && hitGizmo.hit) {
             this.state.objetoHovereado.set(null);
             return;
@@ -388,7 +425,6 @@ export class EditorToolsService {
           if (kbInfo.event.key === '3') this.setToolMode('rotate');
           if (kbInfo.event.key === '4') this.setToolMode('scale');
           
-          // 🔥 ATAJO TECLADO 'F' PARA ENFOCAR LO QUE ESTÉ SELECCIONADO (Ej: Desde el panel izquierdo)
           if (kbInfo.event.key.toLowerCase() === 'f') {
              const obj = this.state.objetoSeleccionado();
              if (obj) this.cameraSvc.enfocarObjetoEnEditor(obj);
@@ -409,28 +445,40 @@ export class EditorToolsService {
 
     scene.onBeforeRenderObservable.add(() => {
         const obj = this.state.objetoSeleccionado() as Mesh;
+        const subSelected = this.state.subObjetoSeleccionado();
         
-        if (this.gizmoManager.positionGizmoEnabled && this.gizmoManager.attachedMesh && !this.gizmoManager.attachedMesh.isDisposed()) {
-            centerDragMesh.isVisible = true;
-            
-            const attached = this.gizmoManager.attachedMesh as AbstractMesh;
-            attached.computeWorldMatrix(true);
-            
-            // 🔥 PONER EL GIZMO CENTRAL BLANCO EN EL CENTRO DEL OBJETO EN VEZ DE LOS PIES
-            if (attached === this.debugCollider || attached === this.debugCameraBox) {
-                centerDragMesh.position.copyFrom(attached.getAbsolutePosition());
-            } else {
-                centerDragMesh.position.copyFrom(attached.getBoundingInfo().boundingBox.centerWorld);
+        if (obj && !this.isDraggingGizmo) {
+            if (subSelected !== 'collider' && subSelected !== 'camera') {
+                if (obj.metadata?.collider && obj.metadata?.collider?.type !== 'mesh') {
+                    const colOffsetX = obj.metadata.collider.offsetX || 0;
+                    const colOffsetY = obj.metadata.collider.offsetY || 0;
+                    const colOffsetZ = obj.metadata.collider.offsetZ || 0;
+                    const posMundo = Vector3.TransformCoordinates(new Vector3(colOffsetX, colOffsetY, colOffsetZ), obj.getWorldMatrix());
+                    this.centerDragMesh.position.copyFrom(posMundo);
+                } else {
+                    obj.computeWorldMatrix(true);
+                    this.centerDragMesh.position.copyFrom(obj.getBoundingInfo().boundingBox.centerWorld);
+                }
+                this.gizmoPivotNode.position.copyFrom(this.centerDragMesh.position);
+                
+                if (obj.rotationQuaternion) {
+                    this.gizmoPivotNode.rotationQuaternion = obj.rotationQuaternion.clone();
+                } else {
+                    this.gizmoPivotNode.rotation = obj.rotation.clone();
+                }
             }
-            
+        }
+
+        if (this.gizmoManager.attachedMesh && !this.gizmoManager.attachedMesh.isDisposed()) {
+            this.centerDragMesh.isVisible = true;
             const cam = utilityLayer.utilityLayerScene.activeCamera || scene.activeCamera;
             if (cam) {
-                const distance = Vector3.Distance(cam.globalPosition, centerDragMesh.position);
+                const distance = Vector3.Distance(cam.globalPosition, this.centerDragMesh.position);
                 const scale = Math.max(0.2, Math.min(distance * 0.035, 1.2));
-                centerDragMesh.scaling.setAll(scale);
+                this.centerDragMesh.scaling.setAll(scale);
             }
         } else {
-            centerDragMesh.isVisible = false;
+            this.centerDragMesh.isVisible = false;
         }
 
         if (!obj || this.isDraggingGizmo) return;
@@ -629,9 +677,6 @@ export class EditorToolsService {
             this.gizmoManager.rotationGizmoEnabled = false; 
           } else {
             this.gizmoManager.rotationGizmoEnabled = true;
-            if (this.gizmoManager.gizmos.rotationGizmo) {
-              this.gizmoManager.gizmos.rotationGizmo.updateGizmoRotationToMatchAttachedMesh = false;
-            }
           }
           break;
         case 'scale': 

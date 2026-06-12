@@ -69,20 +69,29 @@ export class Motor3dService {
     this.editorCamera.maxZ = 10000;
     this.editorCamera.attachControl(canvas, true);
 
-    // Sensibilidad dinámica según distancia, sin invertir ejes.
+    // Sensibilidad dinámica:
+    // - Más cerca del objeto = más rápido girar / arrastrar / zoom.
+    // - Más lejos = un poco más suave.
     this.scene.onBeforeRenderObservable.add(() => {
       if (this.scene.activeCamera === this.editorCamera) {
-        const radius = Math.max(0.5, this.editorCamera.radius);
+        const radius = Math.max(1, this.editorCamera.radius);
 
-        // Giro natural, sin signos negativos.
-        this.editorCamera.angularSensibilityX = 40000 / radius;
-        this.editorCamera.angularSensibilityY = 40000 / radius;
+        // Cuanto más pequeño el radio, más rápida se siente la cámara.
+        // Ejemplo:
+        // radius pequeño -> menor sensibility -> más rápido
+        // radius grande  -> mayor sensibility -> más suave
+        const speedFactor = Math.max(0.75, Math.min(3.0, 14 / radius));
 
-        // Paneo natural, sin invertir.
-        this.editorCamera.panningSensibility = 1500 / radius;
+        // Giro más rápido al acercarte
+        this.editorCamera.angularSensibilityX = Math.max(350, Math.min(2200, 1600 / speedFactor));
+        this.editorCamera.angularSensibilityY = Math.max(350, Math.min(2200, 1600 / speedFactor));
 
-        // Zoom proporcional a la distancia.
-        this.editorCamera.wheelPrecision = 300 / radius;
+        // Click derecho / paneo más ágil
+        this.editorCamera.panningSensibility = Math.max(180, Math.min(1800, 1100 / speedFactor));
+
+        // Zoom más rápido cuando estás cerca del objeto
+        // Menor wheelPrecision = zoom más rápido
+        this.editorCamera.wheelPrecision = Math.max(6, Math.min(35, 14 / speedFactor));
       }
     });
 
@@ -119,7 +128,7 @@ export class Motor3dService {
     // Zoom rápido en TPS
     this.playerCameraTPS.wheelPrecision = 15;
 
-    // Giro natural, sin invertir.
+    // Giro natural, sin invertir
     this.playerCameraTPS.angularSensibilityX = 2000;
     this.playerCameraTPS.angularSensibilityY = 2000;
 

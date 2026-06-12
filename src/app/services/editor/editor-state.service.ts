@@ -92,6 +92,7 @@ export class EditorStateService {
 
     const meta = (mesh.metadata ?? {}) as any;
     const name = mesh.name.toLowerCase();
+    const isAdmin = this.checkIsAdmin() && this.rolSimulado() === 'admin';
 
     if (meta.isGround === true) return true;
     if (this.esNombreIgnorable(name)) return true;
@@ -100,16 +101,15 @@ export class EditorStateService {
       return true;
     }
 
-    // 🔥 FIX APLICADO: Si es Trigger y el rol es ADMIN, NUNCA es ignorable, se puede seleccionar siempre.
+    // Los triggers solo son seleccionables/visibles por el Admin en el editor
     if (meta.type === 'trigger') {
-        if (this.rolSimulado() === 'admin') {
+        if (isAdmin) {
             return false; 
         }
-        // Si es USER normal, ignoramos los triggers por completo para raycast
         return true; 
     }
 
-    if (this.rolSimulado() === 'user' && meta.isSelectable === false && !meta.mensaje && !meta.interactSequenceId && !meta.interactSequenceIdFPS && !meta.interactSequenceIdTPS) {
+    if (!isAdmin && meta.isSelectable === false && !meta.mensaje && !meta.interactSequenceId && !meta.interactSequenceIdFPS && !meta.interactSequenceIdTPS) {
       if (this.playState() === 'PLAYING' || this.playState() === 'INTERACTING') {
         return true;
       }
@@ -132,7 +132,7 @@ export class EditorStateService {
     const meta = (nodoBase.metadata ?? mesh.metadata ?? {}) as any;
 
     if (meta.type === 'trigger') {
-        return false; // Los triggers NO despliegan HUD de interacción. Se activan al pisarlos.
+        return false; 
     }
 
     const mensaje = typeof meta.mensaje === 'string' ? meta.mensaje.trim() : '';
@@ -151,12 +151,18 @@ export class EditorStateService {
     const nodoBase = root ?? mesh;
     const selectable = nodoBase.metadata?.isSelectable ?? mesh.metadata?.isSelectable ?? true;
 
-    if (this.rolSimulado() === 'admin') return true;
+    const isAdmin = this.checkIsAdmin() && this.rolSimulado() === 'admin';
 
+    // En modo juego o interacción, SOLO importan los objetos interactuables
     if (this.playState() === 'PLAYING' || this.playState() === 'INTERACTING') {
       return this.esObjetoInteractuable(nodoBase);
     }
-    return !!selectable;
+    
+    // Si estamos en modo EDITOR, SOLO EL ADMIN puede seleccionar y modificar objetos.
+    if (isAdmin) return !!selectable;
+    
+    // Un usuario normal NUNCA puede seleccionar nada en el modo Editor.
+    return false;
   }
 
   limpiarEstado(): void {

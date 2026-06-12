@@ -58,7 +58,8 @@ export class PlayerInteractionService {
     this.lastInteractDistance = null;
     this.lastInteractionProbePoint = this.getInteractionProbePoint(viewMode, jugador, activeCamera, colMeta);
 
-    const isAdmin = this.state.rolSimulado() === 'admin';
+    // Validación estricta para que el HUD de "Editar (Clic)" solo le salga al dueño
+    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
     const canShowInteraction = (root: AbstractMesh) => this.state.esObjetoInteractuable(root);
 
     let hitAnyRootAdmin: AbstractMesh | null = null;
@@ -76,7 +77,6 @@ export class PlayerInteractionService {
         if (!m.isPickable) return false;
         if (!m.isVisible) return false;
         
-        // 🔥 FIX APLICADO: Si es trigger, el rayo SOLO lo detecta si es Admin, para permitirle editar.
         if (m.metadata?.type === 'trigger') {
             if (!isAdmin) return false; 
         }
@@ -118,7 +118,6 @@ export class PlayerInteractionService {
         if (mesh === jugador || mesh.name.includes('proxyCol') || mesh.name.toLowerCase().includes('suelo') || !mesh.isPickable) return;
         
         if (mesh.metadata?.type === 'trigger') return;
-        
         if (!mesh.isVisible) return;
 
         const root = this.state.encontrarRaiz(mesh as AbstractMesh) as AbstractMesh;

@@ -74,7 +74,8 @@ export class EditorEscena implements OnInit, OnDestroy {
       debounceTime(1000) 
     ).subscribe(() => {
       const state = this.editorSvc.playState();
-      if (this.editando && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
+      // Solo guardado automático si de verdad eres el Admin
+      if (this.esAdmin && this.editando && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
         this.guardarMapaEnBD(true); 
       }
     });
@@ -157,7 +158,6 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.objEsSolido = false;
       this.objEsSeleccionable = true;
     } else if (this.objTipo.startsWith('light_')) {
-      // Si elige una luz, bloqueamos sólidas y roles
       this.objRol = 'prop';
       this.objColor = '#ffffff';
       this.objEsSolido = false;
@@ -235,6 +235,20 @@ export class EditorEscena implements OnInit, OnDestroy {
           if(res) {
             this.editorSvc.cargarEscenaDesdeDatos(res);
           }
+
+          // 🔥 AUTO-PLAY PARA USUARIOS: Se saltan el editor e inician de inmediato.
+          if (!this.esAdmin) {
+            setTimeout(() => {
+              const spawnMesh = this.motor3dSvc.scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
+              if (spawnMesh) {
+                this.editorSvc.seleccionarObjeto(spawnMesh);
+                this.iniciarModoPrueba();
+              } else {
+                alert('Este mapa no tiene un punto de aparición (Spawn Point). Habla con el creador.');
+                this.salirDelEditor();
+              }
+            }, 600);
+          }
           
           this.fpsInterval = setInterval(() => {
             this.fps.set(this.motor3dSvc.currentFps.toFixed(0));
@@ -246,7 +260,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   guardarMapaEnBD(silencioso = false) {
-    if (!this.episodioIdActivo || !this.editando) return;
+    // Si no es el administrador, bajo ninguna circunstancia se le deja guardar el mapa.
+    if (!this.episodioIdActivo || !this.editando || !this.esAdmin) return;
     this.estadoGuardado.set('Guardando...');
     
     const mapData = this.editorSvc.obtenerDatosParaGuardar();
@@ -301,14 +316,18 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   iniciarModoPrueba() {
     if (!this.esObjetoJugable()) return;
-    this.guardarMapaEnBD(true); 
+    if (this.esAdmin) {
+        this.guardarMapaEnBD(true); 
+    }
     this.editorSvc.iniciarModoJuego(this.vistaPrueba);
   }
 
   detenerModoPrueba() {
     if (this.editorSvc.playState() === 'EDITOR') return;
     this.editorSvc.detenerModoJuego(); 
-    setTimeout(() => this.guardarMapaEnBD(true), 500);
+    if (this.esAdmin) {
+        setTimeout(() => this.guardarMapaEnBD(true), 500);
+    }
   }
 
   cerrarInteraccion() {

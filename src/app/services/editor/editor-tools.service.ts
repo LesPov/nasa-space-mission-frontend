@@ -40,7 +40,10 @@ export class EditorToolsService {
 
       if (this.gizmoManager) {
         const modoJuego = this.state.playState();
-        if (modoJuego === 'PLAYING' || modoJuego === 'TRANSITIONING' || modoJuego === 'INTERACTING') {
+        const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+
+        // Si NO eres admin, o estás jugando, LOS GIZMOS SE APAGAN.
+        if (modoJuego === 'PLAYING' || modoJuego === 'TRANSITIONING' || modoJuego === 'INTERACTING' || !isAdmin) {
             this.gizmoManager.attachToMesh(null);
             this.gizmoManager.positionGizmoEnabled = false;
             this.gizmoManager.rotationGizmoEnabled = false;
@@ -99,15 +102,12 @@ export class EditorToolsService {
       this.gizmoManager.gizmos.scaleGizmo.snapDistance = 0;
     }
 
-    // =========================================================================
-    // 🔥 PIVOTE CENTRAL MEJORADO (ROMBO SEMITRANSPARENTE Y SIN LAG) 🔥
-    // =========================================================================
     const utilityLayer = this.gizmoManager.utilityLayer;
     
     const centerDragMesh = MeshBuilder.CreatePolyhedron("centerDragPos", { type: 1, size: 0.6 }, utilityLayer.utilityLayerScene);
     const centerDragMat = new StandardMaterial("centerDragPosMat", utilityLayer.utilityLayerScene);
     centerDragMat.emissiveColor = new Color3(1, 1, 1); 
-    centerDragMat.alpha = 0.65; // 🔥 Transparencia para no tapar los objetos pequeños
+    centerDragMat.alpha = 0.65;
     centerDragMat.disableLighting = true;
     centerDragMesh.material = centerDragMat;
     centerDragMesh.isVisible = false;
@@ -129,7 +129,6 @@ export class EditorToolsService {
 
         if (mesh) {
             mesh.setAbsolutePosition(mesh.getAbsolutePosition().add(event.delta));
-            // 🔥 Evitar el lag: Sincronización instantánea en el mismo milisegundo
             centerDragMesh.position.copyFrom(mesh.getAbsolutePosition());
             
             if (mesh === this.debugCollider && parent) {
@@ -170,15 +169,14 @@ export class EditorToolsService {
     utilityLayer.utilityLayerScene.onPointerObservable.add((pi) => {
         if (pi.type === PointerEventTypes.POINTERMOVE) {
             if (pi.pickInfo?.pickedMesh === centerDragMesh) {
-                centerDragMat.emissiveColor = new Color3(1, 0.9, 0); // Amarillo al pasar por encima
-                centerDragMat.alpha = 0.85; // Se hace menos transparente al tocarlo
+                centerDragMat.emissiveColor = new Color3(1, 0.9, 0); 
+                centerDragMat.alpha = 0.85; 
             } else {
                 centerDragMat.emissiveColor = new Color3(1, 1, 1); 
-                centerDragMat.alpha = 0.65; // Vuelve a su transparencia original
+                centerDragMat.alpha = 0.65; 
             }
         }
     });
-    // =========================================================================
 
     const onDragStart = () => {
       this.isDraggingGizmo = true;
@@ -192,7 +190,6 @@ export class EditorToolsService {
       const mesh = this.gizmoManager.attachedMesh as AbstractMesh;
       const parent = this.state.objetoSeleccionado() as Mesh;
 
-      // 🔥 Evitar lag al mover usando las flechas
       if (mesh && centerDragMesh.isVisible) {
           centerDragMesh.position.copyFrom(mesh.getAbsolutePosition());
       }
@@ -274,6 +271,7 @@ export class EditorToolsService {
     scene.onPointerObservable.add((pi) => {
       const canvas = this.motor3d.engine.getRenderingCanvas();
       const playSt = this.state.playState();
+      const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
 
@@ -284,7 +282,7 @@ export class EditorToolsService {
             return;
           }
 
-          if (this.state.rolSimulado() === 'admin' && this.state.modoVistaPrueba === 'FPS') {
+          if (isAdmin && this.state.modoVistaPrueba === 'FPS') {
             const ray = scene.createPickingRay(
               this.motor3d.engine.getRenderWidth() / 2, 
               this.motor3d.engine.getRenderHeight() / 2, 
@@ -303,7 +301,8 @@ export class EditorToolsService {
           return;
         }
 
-        if (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME') {
+        // Modo Editor: Bloquear selecciones y rayos si NO es Admin
+        if (isAdmin && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
 
@@ -325,7 +324,7 @@ export class EditorToolsService {
       }
 
       if (pi.type === PointerEventTypes.POINTERMOVE) {
-        if (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME') {
+        if (isAdmin && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
 
@@ -342,6 +341,8 @@ export class EditorToolsService {
     });
 
     scene.onKeyboardObservable.add((kbInfo) => {
+      const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+      
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
         if (kbInfo.event.key === 'Escape' && this.state.playState() === 'EDITING_IN_GAME') {
           const canvas = this.motor3d.engine.getRenderingCanvas();
@@ -349,7 +350,7 @@ export class EditorToolsService {
           this.cameraSvc.volverAJuego();
         }
 
-        if (!this.state.showAddObjectModal() && (this.state.playState() === 'EDITOR' || this.state.playState() === 'EDITING_IN_GAME')) {
+        if (isAdmin && !this.state.showAddObjectModal() && (this.state.playState() === 'EDITOR' || this.state.playState() === 'EDITING_IN_GAME')) {
           if (kbInfo.event.key === '1') this.setToolMode('select');
           if (kbInfo.event.key === '2') this.setToolMode('translate');
           if (kbInfo.event.key === '3') this.setToolMode('rotate');
@@ -372,14 +373,11 @@ export class EditorToolsService {
         
         if (this.gizmoManager.positionGizmoEnabled && this.gizmoManager.attachedMesh && !this.gizmoManager.attachedMesh.isDisposed()) {
             centerDragMesh.isVisible = true;
-            // No usamos lerp, lo pegamos exactamente encima del mesh para evitar el lag
             centerDragMesh.position.copyFrom(this.gizmoManager.attachedMesh.getAbsolutePosition());
             
-            // 🔥 TAMAÑO DINÁMICO LIMITADO 🔥
             const cam = utilityLayer.utilityLayerScene.activeCamera || scene.activeCamera;
             if (cam) {
                 const distance = Vector3.Distance(cam.globalPosition, centerDragMesh.position);
-                // Si te alejas crece, pero no pasará del tamaño "1.2", si te acercas se reduce hasta "0.2"
                 const scale = Math.max(0.2, Math.min(distance * 0.035, 1.2));
                 centerDragMesh.scaling.setAll(scale);
             }
@@ -469,6 +467,9 @@ export class EditorToolsService {
   }
 
   private manejarCtrlZGlobal = (event: KeyboardEvent) => {
+    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+    if (!isAdmin) return;
+
     const state = this.state.playState();
     if (!(state === 'EDITOR' || state === 'EDITING_IN_GAME')) return;
     if (!event.ctrlKey && !event.metaKey) return;
@@ -493,6 +494,11 @@ export class EditorToolsService {
     this.gizmoManager.scaleGizmoEnabled = false;
 
     const modo = this.state.playState();
+    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+
+    // Si NO es admin, no importa la herramienta, gizmos bloqueados
+    if (!isAdmin) return;
+
     if (modo === 'PLAYING' || modo === 'INTERACTING' || modo === 'TRANSITIONING') return;
 
     if (this.state.objetoSeleccionado() || this.state.subObjetoSeleccionado()) {
@@ -532,11 +538,14 @@ export class EditorToolsService {
     this.hlSelected.removeAllMeshes();
 
     const mode = this.state.playState();
-    const isAdmin = this.state.rolSimulado() === 'admin';
+    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
     if (mode !== 'EDITOR' && mode !== 'EDITING_IN_GAME' && !(mode === 'PLAYING' && isAdmin)) {
        return; 
     }
+    
+    // Si NO es admin y está en el "editor" (aunque no debería), nunca mostramos Highlights del sistema base.
+    if (!isAdmin && (mode === 'EDITOR' || mode === 'EDITING_IN_GAME')) return;
 
     const colorHover = Color3.FromHexString('#3b82f6');
     const colorSelected = Color3.FromHexString('#fbbf24');

@@ -1,5 +1,5 @@
 import { Injectable, inject, effect } from '@angular/core';
-import { Color3, GizmoManager, HighlightLayer, Mesh, PointerEventTypes, Matrix, AbstractMesh, KeyboardEventTypes, MeshBuilder, StandardMaterial, Vector3, TransformNode, Ray, PointerDragBehavior, Scene, Color4, TransformNode as BabylonTransformNode } from '@babylonjs/core';
+import { Color3, GizmoManager, HighlightLayer, Mesh, PointerEventTypes, Matrix, AbstractMesh, KeyboardEventTypes, MeshBuilder, StandardMaterial, Vector3, TransformNode, Ray, PointerDragBehavior, Scene, Color4, TransformNode as BabylonTransformNode, Quaternion } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService, ToolMode } from './editor-state.service';
 import { HistorialService } from '../historial.service';
@@ -225,47 +225,106 @@ export class EditorToolsService {
       }
     };
 
-    const onDragging = () => {
-      const mesh = this.state.objetoSeleccionado() as Mesh;
-      const subSelected = this.state.subObjetoSeleccionado();
+const onDragging = () => {
+  const mesh = this.state.objetoSeleccionado() as Mesh;
+  const subSelected = this.state.subObjetoSeleccionado();
 
-      if (!mesh) return;
+  if (!mesh) return;
 
-      if (subSelected === 'collider' && this.debugCollider) {
-          this.centerDragMesh.position.copyFrom(this.debugCollider.getAbsolutePosition());
-          mesh.metadata.collider.offsetX = this.debugCollider.position.x;
-          mesh.metadata.collider.offsetY = this.debugCollider.position.y;
-          mesh.metadata.collider.offsetZ = this.debugCollider.position.z;
-      } else if (subSelected === 'camera' && this.debugCameraBox) {
-          this.centerDragMesh.position.copyFrom(this.debugCameraBox.getAbsolutePosition());
-          mesh.metadata.camOffset.x = this.debugCameraBox.position.x;
-          mesh.metadata.camOffset.y = this.debugCameraBox.position.y;
-          mesh.metadata.camOffset.z = this.debugCameraBox.position.z;
-      } else {
-          mesh.setAbsolutePosition(this.gizmoPivotNode.absolutePosition.subtract(this.centerDragMesh.position.subtract(mesh.getAbsolutePosition())));
-          
-          if (this.gizmoPivotNode.rotationQuaternion && mesh.rotationQuaternion) {
-              mesh.rotationQuaternion.copyFrom(this.gizmoPivotNode.rotationQuaternion);
-          } else {
-              mesh.rotation.copyFrom(this.gizmoPivotNode.rotation);
-          }
-          mesh.scaling.copyFrom(this.gizmoPivotNode.scaling);
+  // COLLIDER
+  if (subSelected === 'collider' && this.debugCollider) {
 
-          if (mesh.metadata?.collider && mesh.metadata?.collider?.type !== 'mesh') {
-              const colOffsetX = mesh.metadata.collider.offsetX || 0;
-              const colOffsetY = mesh.metadata.collider.offsetY || 0;
-              const colOffsetZ = mesh.metadata.collider.offsetZ || 0;
-              const posMundo = Vector3.TransformCoordinates(new Vector3(colOffsetX, colOffsetY, colOffsetZ), mesh.getWorldMatrix());
-              this.centerDragMesh.position.copyFrom(posMundo);
-          } else {
-              mesh.computeWorldMatrix(true);
-              this.centerDragMesh.position.copyFrom(mesh.getBoundingInfo().boundingBox.centerWorld);
-          }
-          this.gizmoPivotNode.position.copyFrom(this.centerDragMesh.position);
-      }
-      this.state.onGizmoDrag.next(); 
-    };
+    this.centerDragMesh.position.copyFrom(
+      this.debugCollider.getAbsolutePosition()
+    );
 
+    mesh.metadata.collider.offsetX = this.debugCollider.position.x;
+    mesh.metadata.collider.offsetY = this.debugCollider.position.y;
+    mesh.metadata.collider.offsetZ = this.debugCollider.position.z;
+
+    this.state.onGizmoDrag.next();
+    return;
+  }
+
+  // CAMERA
+  if (subSelected === 'camera' && this.debugCameraBox) {
+
+    this.centerDragMesh.position.copyFrom(
+      this.debugCameraBox.getAbsolutePosition()
+    );
+
+    mesh.metadata.camOffset.x = this.debugCameraBox.position.x;
+    mesh.metadata.camOffset.y = this.debugCameraBox.position.y;
+    mesh.metadata.camOffset.z = this.debugCameraBox.position.z;
+
+    this.state.onGizmoDrag.next();
+    return;
+  }
+
+  // ==========================
+  // OBJETO NORMAL
+  // ==========================
+
+  mesh.computeWorldMatrix(true);
+
+  const pivotPos = this.gizmoPivotNode.getAbsolutePosition();
+
+  if (
+    !isNaN(pivotPos.x) &&
+    !isNaN(pivotPos.y) &&
+    !isNaN(pivotPos.z)
+  ) {
+    mesh.setAbsolutePosition(pivotPos);
+  }
+
+  if (this.gizmoPivotNode.rotationQuaternion) {
+
+    if (!mesh.rotationQuaternion) {
+      mesh.rotationQuaternion = Quaternion.Identity();
+    }
+
+    mesh.rotationQuaternion.copyFrom(
+      this.gizmoPivotNode.rotationQuaternion
+    );
+
+  } else {
+
+    mesh.rotation.copyFrom(
+      this.gizmoPivotNode.rotation
+    );
+  }
+
+  mesh.scaling.copyFrom(
+    this.gizmoPivotNode.scaling
+  );
+
+  mesh.computeWorldMatrix(true);
+
+  if (
+    mesh.metadata?.collider &&
+    mesh.metadata.collider.type !== 'mesh'
+  ) {
+
+    const posMundo = Vector3.TransformCoordinates(
+      new Vector3(
+        mesh.metadata.collider.offsetX || 0,
+        mesh.metadata.collider.offsetY || 0,
+        mesh.metadata.collider.offsetZ || 0
+      ),
+      mesh.getWorldMatrix()
+    );
+
+    this.centerDragMesh.position.copyFrom(posMundo);
+
+  } else {
+
+    this.centerDragMesh.position.copyFrom(
+      mesh.getBoundingInfo().boundingBox.centerWorld
+    );
+  }
+
+  this.state.onGizmoDrag.next();
+};
     const onDragEnd = () => {
       this.isDraggingGizmo = false;
       const mesh = this.state.objetoSeleccionado() as Mesh;

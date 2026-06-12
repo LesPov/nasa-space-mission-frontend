@@ -34,6 +34,49 @@ export class EditorCameraService {
     }
   }
 
+  // 🔥 ENFOQUE CINEMATOGRÁFICO POR DOBLE CLIC
+  enfocarObjetoEnEditor(objeto: Node): void {
+    if (!objeto || !(objeto instanceof AbstractMesh)) return;
+    if (this.state.playState() !== 'EDITOR') return; 
+
+    const cam = this.motor3d.editorCamera;
+    if (!cam) return;
+
+    // 1. Encontrar el centro absoluto del objeto
+    objeto.computeWorldMatrix(true);
+    const boundingInfo = objeto.getBoundingInfo();
+    const targetPos = boundingInfo.boundingBox.centerWorld.clone(); 
+    
+    // 2. Determinar el tamaño real para no hacerle un zoom extremo a la cara
+    const maxSize = boundingInfo.boundingBox.maximumWorld.subtract(boundingInfo.boundingBox.minimumWorld).length();
+    
+    // 3. Lógica de Distancia Dinámica
+    let targetRadius = Math.max(3, maxSize * 1.5); 
+    
+    // Si el objeto es un NPC o el Player, forzamos un alejamiento mayor para ver el cuerpo entero
+    if (objeto.metadata?.rol === 'npc' || objeto.metadata?.rol === 'spawn_point') {
+        targetRadius = Math.max(5, maxSize * 2.2); 
+    }
+
+    // 4. Suavizado de la cámara (EaseInOut)
+    const ease = new CubicEase();
+    ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
+
+    const currentTarget = cam.getTarget().clone();
+    
+    // Animar la Mirada (Hacia donde apunta)
+    Animation.CreateAndStartAnimation(
+      "camEditorTargetAnim", cam, "target", 60, 25, 
+      currentTarget, targetPos, 2, ease
+    );
+
+    // Animar la Distancia (Zoom in / Zoom out)
+    Animation.CreateAndStartAnimation(
+      "camEditorRadiusAnim", cam, "radius", 60, 25, 
+      cam.radius, targetRadius, 2, ease
+    );
+  }
+
   transicionAEdicionEnVivo(objetoReceptor: Node): void {
     this.state.playState.set('TRANSITIONING');
     document.exitPointerLock();

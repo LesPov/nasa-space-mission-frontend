@@ -6,6 +6,7 @@ import { EditorSceneService } from './editor/editor-scene.service';
 import { EditorPlayerService } from './editor/editor-player.service';
 import { EditorInteractionService } from './editor/editor-interaction.service';
 import { EditorStateService, ToolMode, PlayState } from './editor/editor-state.service';
+import { EditorCameraService } from './editor/editor-camera.service';
 
 export type { ToolMode, PlayState };
 
@@ -19,6 +20,7 @@ export class EditorMapaService {
   private scene = inject(EditorSceneService);
   private player = inject(EditorPlayerService);
   private interaction = inject(EditorInteractionService);
+  private camera = inject(EditorCameraService);
 
   get playState() { return this.state.playState; }
   get rolSimulado() { return this.state.rolSimulado; }
@@ -53,13 +55,13 @@ export class EditorMapaService {
   seleccionarObjeto(nodo: Node | null): void { 
     this.state.objetoSeleccionado.set(nodo); 
     this.state.subObjetoSeleccionado.set(null);
+    // Un solo clic o seleccionar en la lista SOLO SELECCIONA, no mueve la cámara.
   }
 
   crearSuelo(): void { this.scene.crearSuelo(); }
   eliminarSeleccionado(): void { this.scene.eliminarSeleccionado(); }
   cargarEscenaDesdeDatos(dataBD: any): void { this.scene.cargarEscenaDesdeDatos(dataBD); }
   
-  // 🔥 FIX ERROR DE TIPO AQUÍ
   obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[] } { 
     return this.scene.obtenerDatosParaGuardar(); 
   }

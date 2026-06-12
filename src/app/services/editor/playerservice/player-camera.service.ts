@@ -93,9 +93,7 @@ export class PlayerCameraManagerService {
       this.motor3d.playerCameraTPS.lowerRadiusLimit = Math.max(0.5, (config.camera.tpsRadius || 5) * scaleY * 0.15);
       this.motor3d.playerCameraTPS.upperRadiusLimit = Math.max(1.25, (config.camera.tpsRadius || 5) * scaleY * 2.5);
       
-      // 🔥 SOLUCIÓN: Hacemos que el zoom de la rueda sea más sensible en el modo juego (15 en vez de 50)
       this.motor3d.playerCameraTPS.wheelPrecision = 15;
-      
       this.motor3d.playerCameraTPS.panningSensibility = 0;
       this.motor3d.playerCameraTPS.allowUpsideDown = false;
     }

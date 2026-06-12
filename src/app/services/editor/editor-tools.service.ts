@@ -27,7 +27,7 @@ export class EditorToolsService {
 
   private debugCollider: Mesh | null = null;
   private debugCameraBox: Mesh | null = null;
-  private debugFogSphere: Mesh | null = null; // 🔥 LA GUÍA VISUAL PARA EL EDITOR
+  private debugFogSphere: Mesh | null = null; 
   
   private isDraggingGizmo = false;
 
@@ -132,7 +132,14 @@ export class EditorToolsService {
 
         if (mesh) {
             mesh.setAbsolutePosition(mesh.getAbsolutePosition().add(event.delta));
-            centerDragMesh.position.copyFrom(mesh.getAbsolutePosition());
+            
+            // 🔥 MANTENEMOS EL GIZMO BLANCO EN EL CENTRO MIENTRAS ARRASTRAS
+            if (mesh === this.debugCollider || mesh === this.debugCameraBox) {
+                centerDragMesh.position.copyFrom(mesh.getAbsolutePosition());
+            } else {
+                mesh.computeWorldMatrix(true);
+                centerDragMesh.position.copyFrom(mesh.getBoundingInfo().boundingBox.centerWorld);
+            }
             
             if (mesh === this.debugCollider && parent) {
                 parent.metadata.collider.offsetX = mesh.position.x;
@@ -194,7 +201,12 @@ export class EditorToolsService {
       const parent = this.state.objetoSeleccionado() as Mesh;
 
       if (mesh && centerDragMesh.isVisible) {
-          centerDragMesh.position.copyFrom(mesh.getAbsolutePosition());
+          if (mesh === this.debugCollider || mesh === this.debugCameraBox) {
+              centerDragMesh.position.copyFrom(mesh.getAbsolutePosition());
+          } else {
+              mesh.computeWorldMatrix(true);
+              centerDragMesh.position.copyFrom(mesh.getBoundingInfo().boundingBox.centerWorld);
+          }
       }
 
       if (mesh === this.debugCollider && parent) {
@@ -278,6 +290,21 @@ export class EditorToolsService {
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
 
+      // 🔥 DOBLE CLIC PARA ENFOCAR (NUEVA LÓGICA)
+      if (pi.type === PointerEventTypes.POINTERDOUBLETAP && pi.event.button === 0) {
+        if (isAdmin && playSt === 'EDITOR') {
+            const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
+            ray.length = 10000;
+            const rootNode = resolverRootDesdeRay(ray);
+            if (rootNode) {
+                this.state.objetoSeleccionado.set(rootNode); // Nos aseguramos de seleccionarlo
+                this.cameraSvc.enfocarObjetoEnEditor(rootNode); // Y volamos hacia él
+            }
+        }
+        return;
+      }
+
+      // 🔥 UN SOLO CLIC: SELECCIONAR Y MOSTRAR GIZMOS
       if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
         if (playSt === 'PLAYING') {
           if (!this.state.ratonBloqueado()) {
@@ -314,7 +341,10 @@ export class EditorToolsService {
           const rootNode = resolverRootDesdeRay(ray);
 
           if (rootNode) {
-            this.state.objetoSeleccionado.set(rootNode);
+            // Un solo clic: Solo actualizamos la señal para mostrar propiedades y gizmos
+            if (this.state.objetoSeleccionado() !== rootNode) {
+              this.state.objetoSeleccionado.set(rootNode);
+            }
           } else {
             this.state.objetoSeleccionado.set(null);
             if (playSt === 'EDITING_IN_GAME') {
@@ -357,6 +387,12 @@ export class EditorToolsService {
           if (kbInfo.event.key === '2') this.setToolMode('translate');
           if (kbInfo.event.key === '3') this.setToolMode('rotate');
           if (kbInfo.event.key === '4') this.setToolMode('scale');
+          
+          // 🔥 ATAJO TECLADO 'F' PARA ENFOCAR LO QUE ESTÉ SELECCIONADO (Ej: Desde el panel izquierdo)
+          if (kbInfo.event.key.toLowerCase() === 'f') {
+             const obj = this.state.objetoSeleccionado();
+             if (obj) this.cameraSvc.enfocarObjetoEnEditor(obj);
+          }
         }
       }
     });
@@ -376,7 +412,16 @@ export class EditorToolsService {
         
         if (this.gizmoManager.positionGizmoEnabled && this.gizmoManager.attachedMesh && !this.gizmoManager.attachedMesh.isDisposed()) {
             centerDragMesh.isVisible = true;
-            centerDragMesh.position.copyFrom(this.gizmoManager.attachedMesh.getAbsolutePosition());
+            
+            const attached = this.gizmoManager.attachedMesh as AbstractMesh;
+            attached.computeWorldMatrix(true);
+            
+            // 🔥 PONER EL GIZMO CENTRAL BLANCO EN EL CENTRO DEL OBJETO EN VEZ DE LOS PIES
+            if (attached === this.debugCollider || attached === this.debugCameraBox) {
+                centerDragMesh.position.copyFrom(attached.getAbsolutePosition());
+            } else {
+                centerDragMesh.position.copyFrom(attached.getBoundingInfo().boundingBox.centerWorld);
+            }
             
             const cam = utilityLayer.utilityLayerScene.activeCamera || scene.activeCamera;
             if (cam) {
@@ -424,7 +469,6 @@ export class EditorToolsService {
     this.setToolMode('translate');
   }
 
-  // 🔥 MÉTODO QUE APLICA LA NIEBLA DE FORMA INSTANTÁNEA 🔥
   public aplicarNieblaEnTiempoReal() {
     const scene = this.motor3d.scene;
     if (!scene) return;
@@ -432,7 +476,6 @@ export class EditorToolsService {
     const modo = this.state.playState();
     let targetPlayer: AbstractMesh | null = null;
     
-    // Identificar a qué jugador estamos evaluando
     if (modo === 'PLAYING' || modo === 'EDITING_IN_GAME' || modo === 'TRANSITIONING') {
        targetPlayer = this.state.jugadorActivo;
     } else {
@@ -451,23 +494,19 @@ export class EditorToolsService {
        scene.fogStart = fog.start || 10;
        scene.fogEnd = fog.end || 50;
        
-       // El clearColor debe coincidir con la niebla para un fundido sin costuras
        scene.clearColor = Color4.FromHexString((fog.color || '#0d1729') + 'FF');
        
-       // El Admin nunca tiene recorte de cámara para poder ver/editar el mundo a través de la niebla
        if (isAdmin) {
            this.motor3d.editorCamera.maxZ = 10000;
            this.motor3d.playerCameraFPS.maxZ = 10000;
            this.motor3d.playerCameraTPS.maxZ = 10000;
        } else {
-           // Los Usuarios sufren el recorte de geometría al mismo nivel que termina la niebla (Ahorro de GPU)
            const cutoff = fog.end;
            this.motor3d.editorCamera.maxZ = cutoff;
            this.motor3d.playerCameraFPS.maxZ = cutoff;
            this.motor3d.playerCameraTPS.maxZ = cutoff;
        }
     } else {
-       // Si no hay jugador, o el jugador no tiene niebla encendida
        scene.fogMode = Scene.FOGMODE_NONE;
        const globalClear = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
        scene.clearColor = Color4.FromHexString(globalClear + 'FF');
@@ -524,7 +563,6 @@ export class EditorToolsService {
       if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
     }
 
-    // 3. DIBUJAR GUÍA DE LA ESFERA DE NIEBLA (Solo visual, no seleccionable)
     const playerConfig = selected.metadata?.playerConfig;
     if (playerConfig && playerConfig.fog && playerConfig.fog.enabled && (selected.metadata?.rol === 'npc' || selected.metadata?.rol === 'spawn_point')) {
       if (this.debugFogSphere) this.debugFogSphere.dispose();
@@ -539,7 +577,7 @@ export class EditorToolsService {
       matFog.disableLighting = true;
       
       this.debugFogSphere.material = matFog;
-      this.debugFogSphere.isPickable = false; // NO permite que el ratón lo cliquee (no estorba al admin)
+      this.debugFogSphere.isPickable = false; 
     } else {
       if (this.debugFogSphere) { this.debugFogSphere.dispose(); this.debugFogSphere = null; }
     }
@@ -575,7 +613,6 @@ export class EditorToolsService {
     const modo = this.state.playState();
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
-    // Si NO es admin, no importa la herramienta, gizmos bloqueados
     if (!isAdmin) return;
 
     if (modo === 'PLAYING' || modo === 'INTERACTING' || modo === 'TRANSITIONING') return;

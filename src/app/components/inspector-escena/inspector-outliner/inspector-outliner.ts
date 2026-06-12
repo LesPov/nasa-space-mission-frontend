@@ -65,6 +65,7 @@ export class InspectorOutliner {
     if (nodo instanceof Camera) return '🎥';
     if (nodo instanceof Light) return '💡';
     if (nodo instanceof AbstractMesh) {
+      if (nodo.metadata?.type?.startsWith('light_')) return '💡'; // 🔥 NUEVO ÍCONO PARA LUCES
       if (nodo.metadata?.type === 'trigger') return '📍';
       if (nodo.metadata?.type === 'model') return '🧍';
       if (nodo.name.toLowerCase().includes('cubo')) return '🧊';

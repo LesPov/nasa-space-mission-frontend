@@ -456,7 +456,7 @@
 /* 🔥 ESTILOS PARA EL TOAST MODERNO CON CSS GRID */
 .modern-toast-container {
   position: absolute;
-  bottom: 60px; /* Separado del borde inferior */
+  bottom: 40px; /* Separado del borde inferior */
   left: 50%;
   transform: translateX(-50%);
   z-index: 200;

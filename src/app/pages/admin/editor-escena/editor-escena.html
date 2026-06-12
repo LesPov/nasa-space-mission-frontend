@@ -63,9 +63,9 @@
           <h4>1. Configuración del Objeto</h4>
           <div class="modal-row">
             <label class="modal-label">Nombre Único:</label>
-            <input type="text" [(ngModel)]="objNombre" class="modal-input" placeholder="Ej: PuertaPrincipal">
+            <input type="text" [(ngModel)]="objNombre" class="modal-input" placeholder="Ej: Elemento_1">
           </div>
-          <div class="modal-row" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto'">
+          <div class="modal-row" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_')">
             <label class="modal-label" style="color: #ffd700;">Rol del Elemento:</label>
             <select [(ngModel)]="objRol" class="modal-input" (change)="onRolChange()">
               <option value="prop">🛋️ Decoración / Prop estático</option>
@@ -82,9 +82,9 @@
             </div>
           </div>
           
-          <div class="modal-row" style="margin-top: 15px;">
+          <div class="modal-row" style="margin-top: 15px;" *ngIf="!objTipo.startsWith('light_')">
             <label class="modal-label" style="color: #4ade80;">Mensaje (Lore o Trigger):</label>
-            <textarea [(ngModel)]="objMensaje" class="modal-input" placeholder="Ej: 'Una puerta antigua...' o 'Entraste a Bogotá'"></textarea>
+            <textarea [(ngModel)]="objMensaje" class="modal-input" placeholder="Ej: 'Una puerta antigua...'"></textarea>
           </div>
         </div>
 
@@ -93,30 +93,39 @@
           <div class="modal-row">
             <label class="modal-label">Tipo de Forma:</label>
             <select [(ngModel)]="objTipo" class="modal-input" (change)="onTipoChange()" [disabled]="objRol === 'spawn_point' || objRol === 'npc'">
-              <option value="cube">🧊 Cubo Básico</option>
-              <option value="sphere">⚽ Esfera</option>
-              <option value="cylinder">🛢️ Cilindro / Cápsula</option>
-              <option value="plane">🗺️ Plano (Suelo)</option>
-              <option value="model">✨ Modelo 3D Importado (.GLB)</option>
-              <option value="trigger">📍 Trigger Normal (1 Acción)</option>
-              <option value="trigger_compuesto">💠 Trigger Compuesto (Múltiples Acciones)</option>
+              <optgroup label="Geometría Básica">
+                <option value="cube">🧊 Cubo Básico</option>
+                <option value="sphere">⚽ Esfera</option>
+                <option value="cylinder">🛢️ Cilindro / Cápsula</option>
+                <option value="plane">🗺️ Plano (Suelo)</option>
+              </optgroup>
+              <optgroup label="Modelos y Scripts">
+                <option value="model">✨ Modelo 3D Importado (.GLB)</option>
+                <option value="trigger">📍 Trigger Normal (1 Acción)</option>
+                <option value="trigger_compuesto">💠 Trigger Compuesto</option>
+              </optgroup>
+              <optgroup label="Iluminación">
+                <option value="light_directional">☀️ Luz Direccional (Sol/Rayo)</option>
+                <option value="light_spot">🔦 Luz Foco (Spotlight)</option>
+                <option value="light_point">💡 Luz de Punto (Omnidireccional)</option>
+              </optgroup>
             </select>
           </div>
           
           <div class="modal-row" *ngIf="objTipo !== 'model' && objTipo !== 'trigger' && objTipo !== 'trigger_compuesto'">
-            <label class="modal-label">Color del Material:</label>
+            <label class="modal-label">Color del Material / Emisión:</label>
             <div class="color-picker-wrapper">
               <input type="color" [(ngModel)]="objColor" class="color-picker">
               <span class="color-hex-text">{{ objColor.toUpperCase() }}</span>
             </div>
           </div>
           
-          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 15px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto'">
+          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 15px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_')">
             <input type="checkbox" [(ngModel)]="objEsSolido" id="chkSolido">
             <label for="chkSolido" class="modal-label" style="margin: 0; cursor: pointer;">🧱 Objeto Sólido (Bloquea el paso)</label>
           </div>
           
-          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto'">
+          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_')">
             <input type="checkbox" [(ngModel)]="objEsSeleccionable" id="chkSeleccion">
             <label for="chkSeleccion" class="modal-label" style="margin: 0; cursor: pointer;">🎯 Editable (Se puede tocar con el ratón)</label>
           </div>

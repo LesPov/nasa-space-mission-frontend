@@ -10,7 +10,7 @@ import { EpisodiosService } from '../../../services/api/episodios';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MiniVisorEscena } from '../../../components/mini-visor-escena/mini-visor-escena';
-import { debounceTime, Subscription, Subject } from 'rxjs';
+import { debounceTime, Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-editor-escena',
@@ -132,15 +132,14 @@ export class EditorEscena implements OnInit, OnDestroy {
   toggleRolPrueba() {
     if (this.editorSvc.rolSimulado() === 'admin') {
       this.editorSvc.rolSimulado.set('user');
-      this.editorSvc.seleccionarObjeto(null); // Quitar selección por si estaba tocando un trigger
+      this.editorSvc.seleccionarObjeto(null);
     } else {
       this.editorSvc.rolSimulado.set('admin');
     }
     
-    // 🔥 FIX: Actualizamos instantáneamente la visibilidad en escena al cambiar rol
     const isAdmin = this.editorSvc.rolSimulado() === 'admin';
     this.motor3dSvc.scene.meshes.forEach(m => {
-        if (m.metadata?.type === 'trigger') {
+        if (m.metadata?.type === 'trigger' || m.metadata?.type?.startsWith('light_')) {
             m.isVisible = isAdmin;
         }
     });
@@ -155,6 +154,12 @@ export class EditorEscena implements OnInit, OnDestroy {
   onTipoChange() {
     if (this.objTipo === 'trigger' || this.objTipo === 'trigger_compuesto') {
       this.objRol = 'prop';
+      this.objEsSolido = false;
+      this.objEsSeleccionable = true;
+    } else if (this.objTipo.startsWith('light_')) {
+      // Si elige una luz, bloqueamos sólidas y roles
+      this.objRol = 'prop';
+      this.objColor = '#ffffff';
       this.objEsSolido = false;
       this.objEsSeleccionable = true;
     } else if (this.objTipo !== 'model') {

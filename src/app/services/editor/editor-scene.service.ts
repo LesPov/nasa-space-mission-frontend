@@ -3,7 +3,7 @@ import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { HistorialService } from '../historial.service';
 import {
-  MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader, StandardMaterial, Color3, TransformNode, Matrix, HemisphericLight
+  MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader, StandardMaterial, Color3, TransformNode, Matrix, HemisphericLight, PointLight, SpotLight, DirectionalLight
 } from '@babylonjs/core';
 
 import '@babylonjs/loaders/glTF';
@@ -14,6 +14,26 @@ export class EditorSceneService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
   private historialSvc = inject(HistorialService);
+
+  // 🔥 NUEVA FUNCIÓN MAGICA: Hace que los GLB brillen igual que las figuras básicas
+  private ajustarMaterialGLB(material: any): void {
+    if (!material) return;
+    
+    // Si el objeto tiene varios materiales incrustados, iteramos en ellos
+    if (material.getClassName() === "MultiMaterial" && material.subMaterials) {
+        material.subMaterials.forEach((subMat: any) => this.ajustarMaterialGLB(subMat));
+        return;
+    }
+
+    // 1. Permitimos que le peguen hasta 16 luces (linternas, postes, etc)
+    material.maxSimultaneousLights = 16;
+    
+    // 2. Si el material es PBR (GLB por defecto), apagamos la física estricta de la luz.
+    // Esto hace que una linterna con intensidad 1.0 lo ilumine perfectamente en la oscuridad.
+    if (material.getClassName().includes("PBR")) {
+        material.usePhysicalLightFalloff = false;
+    }
+  }
 
   crearEntornoVisual(): void {
     const scene = this.motor3d.scene;
@@ -61,7 +81,9 @@ export class EditorSceneService {
 
     const mat = new StandardMaterial('mat_trigger_' + newMesh.name, scene);
     mat.diffuseColor = new Color3(0.2, 1, 0.2); 
-    mat.alpha = 0.3; mat.wireframe = true; newMesh.material = mat;
+    mat.alpha = 0.3; mat.wireframe = true; 
+    mat.maxSimultaneousLights = 16; 
+    newMesh.material = mat;
     newMesh.isPickable = true; newMesh.checkCollisions = false;
     newMesh.isVisible = this.state.rolSimulado() === 'admin';
 
@@ -81,7 +103,9 @@ export class EditorSceneService {
     mesh.position = new Vector3(0, sizeY / 2, 0);
 
     const mat = new StandardMaterial('mat_trigger_' + nombre, scene);
-    mat.diffuseColor = new Color3(0.2, 1, 0.2); mat.alpha = 0.3; mat.wireframe = true; mesh.material = mat;
+    mat.diffuseColor = new Color3(0.2, 1, 0.2); mat.alpha = 0.3; mat.wireframe = true; 
+    mat.maxSimultaneousLights = 16; 
+    mesh.material = mat;
 
     mesh.metadata = {
       type: 'trigger', isComposite: isComposite, triggerShape: shape || 'cube',
@@ -100,10 +124,51 @@ export class EditorSceneService {
         const isComposite = tipo === 'trigger_compuesto';
         this.agregarTriggerCustom(nombre, 'cube', isComposite, mensaje, sizeX, sizeY, sizeZ); return;
     }
-    const scene = this.motor3d.scene; const isModel = tipo === 'model';
+    
+    const scene = this.motor3d.scene; 
+    const isModel = tipo === 'model';
+    const isLight = tipo.startsWith('light_');
     const defaultCollider = isModel ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 } : { type: tipo === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
     const defaultCamOffset = isModel ? { x: 0, y: 1.6, z: 0 } : { x: 0, y: 0.8, z: 0 };
     const defaultPlayerConfig = cloneDefaultPlayerConfig();
+
+    if (isLight) {
+        const mesh = MeshBuilder.CreateSphere(nombre, { diameter: 0.4 }, scene);
+        mesh.position = new Vector3(0, 2, 0); 
+        
+        const mat = new StandardMaterial('mat_' + nombre, scene);
+        mat.emissiveColor = Color3.FromHexString(colorHex);
+        mat.wireframe = true;
+        mat.maxSimultaneousLights = 16; 
+        mesh.material = mat;
+
+        let lightObj: any;
+        if (tipo === 'light_point') {
+            lightObj = new PointLight('l_' + nombre, Vector3.Zero(), scene);
+        } else if (tipo === 'light_spot') {
+            lightObj = new SpotLight('l_' + nombre, Vector3.Zero(), new Vector3(0, -1, 0), Math.PI/3, 2, scene);
+        } else if (tipo === 'light_directional') {
+            lightObj = new DirectionalLight('l_' + nombre, new Vector3(0, -1, 0), scene);
+        }
+        
+        lightObj.parent = mesh;
+        lightObj.diffuse = Color3.FromHexString(colorHex);
+        
+        mesh.metadata = {
+            type: tipo, rol: 'light', isSolid: false, isSelectable: true,
+            lightColor: colorHex, intensity: 1.0, range: 50, angle: 60
+        };
+
+        mesh.isPickable = true;
+        mesh.checkCollisions = false;
+        mesh.isVisible = this.state.rolSimulado() === 'admin';
+        
+        this.state.objetoSeleccionado.set(mesh); 
+        this.actualizarListaNodos(); 
+        this.historialSvc.registrarAccionCrear(mesh); 
+        this.state.triggerUpdate();
+        return;
+    }
 
     if (isModel && asset) {
       const fullPath = 'http://localhost:4000' + asset.path; const lastSlash = fullPath.lastIndexOf('/');
@@ -112,7 +177,17 @@ export class EditorSceneService {
         rootNode.name = nombre; rootNode.scaling = new Vector3(sizeX, sizeY, sizeZ);
         if (!rootNode.rotationQuaternion) rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
         rootNode.position = new Vector3(0, 0, 0); rootNode.checkCollisions = false; rootNode.isPickable = true;
-        result.meshes.forEach(m => { if (m !== rootNode) { m.isPickable = true; m.checkCollisions = isSolid; } });
+        
+        result.meshes.forEach(m => { 
+            if (m !== rootNode) { 
+                m.isPickable = true; 
+                m.checkCollisions = isSolid; 
+            } 
+            // 🔥 APLICAMOS LA MAGIA DE LA LUZ AL MODELO NUEVO
+            if (m.material) {
+                this.ajustarMaterialGLB(m.material);
+            }
+        });
         const anims = result.animationGroups || []; anims.forEach(ag => ag.stop());
 
         let initialHeadLocal: Vector3 | null = null;
@@ -155,6 +230,7 @@ export class EditorSceneService {
       const mat = new StandardMaterial('mat_' + nombre, scene);
       mat.diffuseColor = Color3.FromHexString(colorHex);
       if (rol === 'spawn_point') { mat.alpha = 0.5; mat.emissiveColor = new Color3(0, 1, 0); }
+      mat.maxSimultaneousLights = 16; 
       mesh.material = mat;
 
       this.state.objetoSeleccionado.set(mesh); this.actualizarListaNodos(); this.historialSvc.registrarAccionCrear(mesh); this.state.triggerUpdate();
@@ -165,7 +241,6 @@ export class EditorSceneService {
     if (!dataBD) return;
     const scene = this.motor3d.scene;
 
-    // 🔥 1. CARGAR DATOS GLOBALES DEL MUNDO 🔥
     if (dataBD.worldSettings) {
         const w = dataBD.worldSettings;
         scene.clearColor = Color4.FromHexString(w.clearColor ? (w.clearColor + 'ff') : '#0d1729ff');
@@ -194,9 +269,10 @@ export class EditorSceneService {
     const triggersBD = Array.isArray(dataBD) ? [] : (dataBD.triggers || []);
     const isAdmin = this.state.rolSimulado() === 'admin';
 
-    // 2. Cargar Objetos (igual que antes)
     objetosBD.forEach((obj: any) => {
       const isModel = obj.type === 'model';
+      const isLight = obj.type?.startsWith('light_');
+      
       const defaultCollider = isModel ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 } : { type: obj.type === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
       const defaultCamOffset = isModel ? { x: 0, y: 1.6, z: 0 } : { x: 0, y: 0.8, z: 0 };
       const defaultPlayerConfig = cloneDefaultPlayerConfig();
@@ -206,6 +282,42 @@ export class EditorSceneService {
       const isSelectableSaved = obj.properties?.isSelectable ?? true;
       const mensajeSaved = obj.properties?.mensaje || '';
       
+      if (isLight) {
+          const mesh = MeshBuilder.CreateSphere(obj.name, { diameter: 0.4 }, scene);
+          mesh.position = new Vector3(obj.position.x, obj.position.y, obj.position.z);
+          mesh.rotationQuaternion = Quaternion.FromEulerAngles(obj.rotation.x, obj.rotation.y, obj.rotation.z);
+          mesh.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
+          
+          const mat = new StandardMaterial('mat_' + obj.name, scene);
+          mat.emissiveColor = Color3.FromHexString(obj.properties?.lightColor || '#ffffff');
+          mat.wireframe = true;
+          mat.maxSimultaneousLights = 16;
+          mesh.material = mat;
+
+          let lightObj: any;
+          if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, Vector3.Zero(), scene);
+          else if (obj.type === 'light_spot') lightObj = new SpotLight('l_' + obj.name, Vector3.Zero(), new Vector3(0, -1, 0), (obj.properties?.angle ?? 60) * (Math.PI/180), 2, scene);
+          else if (obj.type === 'light_directional') lightObj = new DirectionalLight('l_' + obj.name, new Vector3(0, -1, 0), scene);
+          
+          lightObj.parent = mesh;
+          lightObj.intensity = obj.properties?.intensity ?? 1.0;
+          lightObj.diffuse = Color3.FromHexString(obj.properties?.lightColor || '#ffffff');
+          if (lightObj.range !== undefined) lightObj.range = obj.properties?.range ?? 50;
+
+          mesh.metadata = {
+              type: obj.type, rol: 'light', isSolid: false, isSelectable: true,
+              lightColor: obj.properties?.lightColor || '#ffffff', 
+              intensity: obj.properties?.intensity ?? 1.0, 
+              range: obj.properties?.range ?? 50, 
+              angle: obj.properties?.angle ?? 60
+          };
+
+          mesh.isPickable = true;
+          mesh.checkCollisions = false;
+          mesh.isVisible = isAdmin;
+          return; 
+      }
+
       const interactDistanceFPS = obj.properties?.interactDistanceFPS ?? 3.0;
       const interactDistanceTPS = obj.properties?.interactDistanceTPS ?? 5.0;
       const interactSequenceIdFPS = obj.properties?.interactSequenceIdFPS || '';
@@ -234,7 +346,16 @@ export class EditorSceneService {
           rootNode.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
           rootNode.checkCollisions = false; rootNode.isPickable = true;
 
-          result.meshes.forEach(m => { if (m !== rootNode) { m.isPickable = true; m.checkCollisions = isSolidSaved; } });
+          result.meshes.forEach(m => { 
+              if (m !== rootNode) { 
+                  m.isPickable = true; 
+                  m.checkCollisions = isSolidSaved; 
+              } 
+              // 🔥 APLICAMOS LA MAGIA DE LA LUZ AL MODELO CARGADO DE LA BD
+              if (m.material) {
+                  this.ajustarMaterialGLB(m.material);
+              }
+          });
           const anims = result.animationGroups || []; anims.forEach(ag => ag.stop());
 
           let initialHeadLocal: Vector3 | null = null;
@@ -281,6 +402,7 @@ export class EditorSceneService {
         const mat = new StandardMaterial('mat_' + obj.name, scene);
         mat.diffuseColor = Color3.FromHexString(savedColor);
         if (rolSaved === 'spawn_point') { mat.alpha = 0.5; mat.emissiveColor = new Color3(0, 1, 0); }
+        mat.maxSimultaneousLights = 16; 
         mesh.material = mat;
       }
     });
@@ -303,7 +425,9 @@ export class EditorSceneService {
             
             const mat = new StandardMaterial('mat_trigger_' + trigger.name, scene);
             mat.diffuseColor = new Color3(0.2, 1, 0.2); 
-            mat.alpha = 0.3; mat.wireframe = true; mesh.material = mat;
+            mat.alpha = 0.3; mat.wireframe = true; 
+            mat.maxSimultaneousLights = 16; 
+            mesh.material = mat;
             mesh.isPickable = true; mesh.checkCollisions = false;
             mesh.isVisible = isAdmin;
 
@@ -429,6 +553,18 @@ export class EditorSceneService {
 
         if (nodo.metadata.type === 'model') {
           sceneObjects.push({ ...baseData, type: 'model', assetId: nodo.metadata.assetId, properties: { path: nodo.metadata.path, ...propertiesToSave } });
+        } else if (nodo.metadata.type?.startsWith('light_')) {
+          // 🔥 GUARDAR PROPIEDADES DE LUZ
+          sceneObjects.push({ 
+              ...baseData, type: nodo.metadata.type, 
+              properties: { 
+                  lightColor: nodo.metadata.lightColor,
+                  intensity: nodo.metadata.intensity,
+                  range: nodo.metadata.range,
+                  angle: nodo.metadata.angle,
+                  ...propertiesToSave 
+              } 
+          });
         } else {
           sceneObjects.push({ ...baseData, type: nodo.metadata.type, properties: { color: nodo.metadata.color, ...propertiesToSave } });
         }

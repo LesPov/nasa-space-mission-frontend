@@ -73,6 +73,13 @@ export class EditorPlayerService {
 
     this.crearProxysDeColision(obj);
 
+    // 🔥 OCULTAR LUCES DURANTE EL JUEGO (Para no ver la esfera proxy)
+    this.motor3d.scene.meshes.forEach(m => {
+        if (m.metadata?.type?.startsWith('light_')) {
+            m.isVisible = false;
+        }
+    });
+
     this.playerConfig = mergePlayerConfig(obj.metadata?.playerConfig || null);
     const colMeta = obj.metadata?.collider || { sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 };
     const camMeta = obj.metadata?.camOffset || { x: 0, y: 1.6, z: 0 };
@@ -95,7 +102,6 @@ export class EditorPlayerService {
       
       onInteractE: () => {
         const target = this.state.targetInteractuable();
-        // 🔥 FIX: Aquí ya los Triggers no llegan, solo interactuamos con objetos normales
         if (target && this.interactSvc.canActivateInteraction(target, this.state.modoVistaPrueba)) {
           
           let seqId = this.state.modoVistaPrueba === 'FPS' ? target.metadata?.interactSequenceIdFPS : target.metadata?.interactSequenceIdTPS;
@@ -116,7 +122,6 @@ export class EditorPlayerService {
       
       onInteractI: () => {
         const target = this.state.targetInteractuable();
-        // 🔥 FIX: Solo interactuamos con objetos normales
         if (target && this.interactSvc.canActivateInteraction(target, this.state.modoVistaPrueba)) {
           const cloneData = {
               name: target.name,
@@ -172,6 +177,14 @@ export class EditorPlayerService {
     this.animSvc.detenerTodas();
 
     this.triggerSvc.restaurarTriggersParaEditor();
+
+    // 🔥 MOSTRAR LUCES EN MODO EDITOR
+    const isAdmin = this.state.rolSimulado() === 'admin';
+    this.motor3d.scene.meshes.forEach(m => {
+        if (m.metadata?.type?.startsWith('light_')) {
+            m.isVisible = isAdmin;
+        }
+    });
 
     this.playerCamSvc.restaurarCamaraEditor();
     

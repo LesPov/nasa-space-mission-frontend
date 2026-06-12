@@ -14,14 +14,13 @@ import { PropPlayer } from './prop-player/prop-player';
 import { PropSequences } from './prop-sequences/prop-sequences';
 import { PropAnimation } from './prop-animation/prop-animation';
 import { PropPhysics } from './prop-physics/prop-physics';
-// 🔥 IMPORTAMOS EL COMPONENTE GLOBAL
 import { PropWorld } from './prop-world/prop-world';
+import { PropLight } from './prop-light/prop-light'; // 🔥 IMPORTAMOS LA LUZ
 
 @Component({
   selector: 'app-inspector-properties',
   standalone: true,
-  // 🔥 LO AGREGAMOS AL IMPORTS
-  imports: [CommonModule, PropTransform, PropTrigger, PropPlayer, PropSequences, PropAnimation, PropPhysics, PropWorld],
+  imports: [CommonModule, PropTransform, PropTrigger, PropPlayer, PropSequences, PropAnimation, PropPhysics, PropWorld, PropLight],
   templateUrl: './inspector-properties.html',
   styleUrl: './inspector-properties.css'
 })
@@ -43,6 +42,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
   public familiaResumen = '';
   public esPersonaje = false;
   public esTrigger = false;
+  public esLuz = false; // 🔥 NUEVA VARIABLE
 
   constructor() {
     effect(() => {
@@ -50,18 +50,24 @@ export class InspectorProperties implements OnInit, OnDestroy {
       this.objetoActual = obj || null;
       if (obj) {
         this.esTrigger = obj.metadata?.type === 'trigger';
+        this.esLuz = obj.metadata?.type?.startsWith('light_');
         this.esPersonaje = obj.metadata?.type === 'model' || obj.metadata?.rol === 'npc' || obj.metadata?.rol === 'spawn_point';
-        this.familiaResumen = this.esPersonaje ? 'Personaje / Player' : (this.esTrigger ? 'Trigger de Evento' : 'Objeto normal');
+        
+        if (this.esPersonaje) this.familiaResumen = 'Personaje / Player';
+        else if (this.esTrigger) this.familiaResumen = 'Trigger de Evento';
+        else if (this.esLuz) this.familiaResumen = 'Fuente de Luz';
+        else this.familiaResumen = 'Objeto normal';
         
         if (this.pestanaActiva === 'player' && (!this.esPersonaje || this.esTrigger)) this.cambiarPestana('transform');
         if (this.pestanaActiva === 'animation' && (!this.esPersonaje || this.esTrigger)) this.cambiarPestana('transform');
         if (this.pestanaActiva === 'sequences' && !this.esPersonaje && !this.esTrigger) this.cambiarPestana('transform');
+        if (this.pestanaActiva === 'light' && !this.esLuz) this.cambiarPestana('transform');
       } else {
         this.esTrigger = false;
         this.esPersonaje = false;
+        this.esLuz = false;
         this.familiaResumen = 'Sin selección';
         
-        // 🔥 Si no hay nada seleccionado, forzar la pestaña de mundo
         if (this.pestanaActiva !== 'world') {
           this.cambiarPestana('world');
         }

@@ -1,0 +1,33 @@
+<div class="section-card">
+  <div class="section-head">
+    <h4>Propiedades de la Luz</h4>
+  </div>
+
+  <div class="field" style="margin-bottom: 15px;">
+    <label>Color de Emisión</label>
+    <div class="color-picker-wrapper">
+      <input type="color" [(ngModel)]="lightColor" (ngModelChange)="aplicarLuz()" class="color-picker">
+      <span class="color-hex-text">{{ lightColor.toUpperCase() }}</span>
+    </div>
+  </div>
+
+  <div class="grid-2">
+    <div class="field wide">
+      <label>Intensidad</label>
+      <input type="number" step="0.1" min="0" [(ngModel)]="intensity" (ngModelChange)="aplicarLuz()" />
+    </div>
+    
+    <!-- Solo para Luz de Punto (Bombilla) y Foco (Spotlight) -->
+    <div class="field wide" *ngIf="isPoint || isSpot">
+      <label>Distancia Máxima (Rango)</label>
+      <input type="number" step="1" min="0" [(ngModel)]="range" (ngModelChange)="aplicarLuz()" />
+    </div>
+
+    <!-- Solo para Luz de Foco (Spotlight) -->
+    <div class="field wide" *ngIf="isSpot">
+      <label>Ángulo del Cono (Grados)</label>
+      <input type="number" step="1" min="1" max="179" [(ngModel)]="angle" (ngModelChange)="aplicarLuz()" />
+    </div>
+  </div>
+</div>
+<div class="status-line" *ngIf="animStatus">{{ animStatus }}</div>

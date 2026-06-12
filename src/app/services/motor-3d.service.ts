@@ -29,7 +29,6 @@ export class Motor3dService {
   private readonly TPS_MAX_RADIUS = 15;
 
   iniciarMotor(canvas: HTMLCanvasElement): void {
-    // CONFIGURACIÓN AAA Y ANTIALIASING
     this.engine = new Engine(canvas, true, {
       preserveDrawingBuffer: false,
       stencil: true,
@@ -55,7 +54,7 @@ export class Motor3dService {
     this.renderingPipeline.samples = 4;
     this.renderingPipeline.bloomEnabled = false;
 
-    // --- CÁMARA 1: EDITOR (OrbitControls equivalente) ---
+    // --- CÁMARA 1: EDITOR ---
     this.editorCamera = new ArcRotateCamera(
       'editorCamera',
       Math.PI / 4,
@@ -67,35 +66,53 @@ export class Motor3dService {
 
     this.editorCamera.minZ = 0.01;
     this.editorCamera.maxZ = 10000;
-    this.editorCamera.attachControl(canvas, true);
 
-    // Sensibilidad dinámica:
-    // - Más cerca del objeto = más rápido girar / arrastrar / zoom.
-    // - Más lejos = un poco más suave.
+    // Controles normales:
+    // click izquierdo = girar
+    // click derecho = paneo
+    // rueda = zoom
+    this.editorCamera.attachControl(canvas, true);
+    this.editorCamera._panningMouseButton = 2;
+    this.editorCamera.allowUpsideDown = false;
+
+    // Sensibilidad dinámica por distancia:
+    // al acercarte, baja un poco la sensibilidad de giro y arrastre,
+    // y el zoom se vuelve un poco más lento para que no “salte”.
     this.scene.onBeforeRenderObservable.add(() => {
       if (this.scene.activeCamera === this.editorCamera) {
         const radius = Math.max(1, this.editorCamera.radius);
 
-        // Cuanto más pequeño el radio, más rápida se siente la cámara.
-        // Ejemplo:
-        // radius pequeño -> menor sensibility -> más rápido
-        // radius grande  -> mayor sensibility -> más suave
-        const speedFactor = Math.max(0.75, Math.min(3.0, 14 / radius));
+        // 0 = lejos, 1 = muy cerca
+        const proximity = Math.max(0, Math.min(1, 1 - (radius / 14)));
 
-        // Giro más rápido al acercarte
-        this.editorCamera.angularSensibilityX = Math.max(350, Math.min(2200, 1600 / speedFactor));
-        this.editorCamera.angularSensibilityY = Math.max(350, Math.min(2200, 1600 / speedFactor));
+        // Giro: un poco menos sensible al acercarte
+        this.editorCamera.angularSensibilityX = Math.max(
+          500,
+          Math.min(2200, 900 + (proximity * 650))
+        );
+        this.editorCamera.angularSensibilityY = Math.max(
+          500,
+          Math.min(2200, 900 + (proximity * 650))
+        );
 
-        // Click derecho / paneo más ágil
-        this.editorCamera.panningSensibility = Math.max(180, Math.min(1800, 1100 / speedFactor));
+        // Arrastre con click derecho: un poco más suave al acercarte
+        this.editorCamera.panningSensibility = Math.max(
+          380,
+          Math.min(1800, 700 + (proximity * 500))
+        );
 
-        // Zoom más rápido cuando estás cerca del objeto
-        // Menor wheelPrecision = zoom más rápido
-        this.editorCamera.wheelPrecision = Math.max(6, Math.min(35, 14 / speedFactor));
+        // Zoom: más lento cuando estás cerca del objeto,
+        // pero sin dejarlo pesado.
+        // Menor wheelPrecision = zoom más rápido.
+        // Mayor wheelPrecision = zoom más lento.
+        this.editorCamera.wheelPrecision = Math.max(
+          10,
+          Math.min(35, 16 + (proximity * 8))
+        );
       }
     });
 
-    // --- CÁMARA 2: JUGADOR FPS (PointerLockControls equivalente) ---
+    // --- CÁMARA 2: JUGADOR FPS ---
     this.playerCameraFPS = new UniversalCamera(
       'playerCameraFPS',
       new Vector3(0, 0, 0),
@@ -125,20 +142,17 @@ export class Motor3dService {
     this.playerCameraTPS.minZ = 0.01;
     this.playerCameraTPS.maxZ = 10000;
 
-    // Zoom rápido en TPS
     this.playerCameraTPS.wheelPrecision = 15;
-
-    // Giro natural, sin invertir
     this.playerCameraTPS.angularSensibilityX = 2000;
     this.playerCameraTPS.angularSensibilityY = 2000;
-
     this.playerCameraTPS.lowerRadiusLimit = this.TPS_MIN_RADIUS;
     this.playerCameraTPS.upperRadiusLimit = this.TPS_MAX_RADIUS;
     this.playerCameraTPS.checkCollisions = false;
+    this.playerCameraTPS._panningMouseButton = 2;
+    this.playerCameraTPS.allowUpsideDown = false;
 
     this.scene.activeCamera = this.editorCamera;
 
-    // --- ILUMINACIÓN GLOBAL ---
     const ambientLight = new HemisphericLight(
       'globalLight',
       new Vector3(0, 1, 0),

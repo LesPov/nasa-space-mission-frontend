@@ -12,7 +12,7 @@
   flex-direction: column;
   height: 100%;
   width: 100%;
-  overflow: hidden; /* Evita que el componente completo crezca y dañe la barra lateral */
+  overflow: hidden; 
 }
 
 /* =========================================
@@ -26,7 +26,7 @@
   border-bottom: 1px solid #111; 
   background: #282828; 
   overflow-x: auto;
-  flex-shrink: 0; /* Las pestañas NO se encogen ni crecen */
+  flex-shrink: 0; 
 }
 
 .tab-btn {
@@ -52,15 +52,15 @@
    EL CONTENEDOR QUE SÍ HACE SCROLL 
    ========================================= */
 .prop-content-scroll {
-  flex: 1; /* Ocupa el resto del espacio disponible */
-  overflow-y: auto; /* SCROLL INDEPENDIENTE AQUÍ */
+  flex: 1; 
+  overflow-y: auto; 
   display: flex;
   flex-direction: column;
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE y Edge */
+  scrollbar-width: none; 
+  -ms-overflow-style: none; 
 }
 .prop-content-scroll::-webkit-scrollbar { 
-  display: none; /* Chrome, Safari, Opera */
+  display: none; 
 }
 
 .panel-header {
@@ -73,7 +73,7 @@
   font-weight: 600; 
   background: #2d2d2d; 
   color: #d1d1d1;
-  flex-shrink: 0; /* Que no se aplaste */
+  flex-shrink: 0; 
 }
 
 .prop-body {
@@ -170,7 +170,7 @@
 .clip-top, .binding-head, .step-head { display: flex; justify-content: space-between; gap: 8px; align-items: flex-start; margin-bottom: 8px; }
 .clip-name, .binding-title, .step-title { font-size: 12px; font-weight: 600; color: #ddd; }
 
-/* ACORDEONES (Para la vista de Secuencias y Binding) */
+/* ACORDEONES */
 .accordion-section { margin-bottom: 8px; }
 .accordion-header {
   display: flex; align-items: center; gap: 8px; padding: 8px; 

@@ -13,16 +13,19 @@ export class PlayerTriggerService {
   // Guardamos qué triggers está pisando el jugador actualmente
   private activeTriggersInside = new Set<string>();
 
+  // Mapas para manejar los temporizadores y poder cancelarlos
+  private hudTimeouts = new Map<string, any>();
+
   public prepararTriggersParaJuego(): void {
     this.activeTriggersInside.clear();
-    const scene = this.motor3d.scene;
+    this.hudTimeouts.forEach(t => clearTimeout(t));
+    this.hudTimeouts.clear();
     
-    // 🔥 LÓGICA DE ROL: Saber si es Admin.
+    const scene = this.motor3d.scene;
     const isAdmin = this.state.rolSimulado() === 'admin';
 
     scene.meshes.forEach(m => {
         if (m.metadata && m.metadata.type === 'trigger') {
-            // 🔥 Si es Admin, los triggers se quedan VISIBLES para poder editarlos. Si es User, se ocultan.
             m.isVisible = isAdmin; 
             m.metadata.hasTriggeredEnter = false; 
             m.metadata.hasTriggeredExit = false; 
@@ -34,10 +37,10 @@ export class PlayerTriggerService {
   public restaurarTriggersParaEditor(): void {
     const scene = this.motor3d.scene;
     const isAdmin = this.state.rolSimulado() === 'admin';
+    this.hudTimeouts.forEach(t => clearTimeout(t));
 
     scene.meshes.forEach(m => {
         if (m.metadata && m.metadata.type === 'trigger') {
-            // 🔥 Restauramos la visibilidad dependiendo del rol activo
             m.isVisible = isAdmin; 
         }
     });
@@ -69,8 +72,6 @@ export class PlayerTriggerService {
 
         mesh.computeWorldMatrix(true);
         const triggerBox = mesh.getBoundingInfo().boundingBox;
-
-        // Evaluamos si el centro del jugador cruzó los límites de la caja del Trigger
         const isInside = triggerBox.intersectsPoint(probePoint);
         const wasInside = this.activeTriggersInside.has(mesh.name);
 
@@ -90,90 +91,124 @@ export class PlayerTriggerService {
         if (!isInside && wasInside) {
             this.activeTriggersInside.delete(mesh.name);
 
+            let mostroMensajeSalida = false;
+            
             if (conditions.includes('on_exit')) {
-                this.ejecutarLogicaTrigger(mesh, jugador, 'on_exit');
+                mostroMensajeSalida = this.ejecutarLogicaTrigger(mesh, jugador, 'on_exit');
             }
             
-            // Si el trigger no es repetible, lo apagamos para siempre una vez haya entrado y salido
             if (!mesh.metadata.isRepeatable) {
-                 mesh.metadata.isEnabled = false;
+                 const reqEnter = conditions.includes('on_enter');
+                 const reqExit = conditions.includes('on_exit');
+                 const doneEnter = !reqEnter || mesh.metadata.hasTriggeredEnter;
+                 const doneExit = !reqExit || mesh.metadata.hasTriggeredExit;
+
+                 if (doneEnter && doneExit) {
+                     mesh.metadata.isEnabled = false;
+                 }
             }
 
-            // Limpiamos el mensaje de la pantalla si era de este trigger
-            if (this.state.mensajeTriggerHUD() === mesh.metadata.mensajeEntrada || this.state.mensajeTriggerHUD() === mesh.metadata.mensajeSalida || this.state.mensajeTriggerHUD() === mesh.metadata.mensaje) {
-                this.state.mensajeTriggerHUD.set(null);
+            if (!mostroMensajeSalida) {
+                const hudAct = this.state.mensajeTriggerHUD();
+                if (hudAct === mesh.metadata.mensajeEntrada || hudAct === mesh.metadata.mensaje) {
+                    this.state.mensajeTriggerHUD.set(null);
+                    if (this.hudTimeouts.has('hud')) {
+                        clearTimeout(this.hudTimeouts.get('hud'));
+                    }
+                }
             }
         }
     });
   }
 
-  private ejecutarLogicaTrigger(triggerMesh: AbstractMesh, jugador: Mesh, eventType: string): void {
-      if (triggerMesh.metadata.isEnabled === false) return;
+  private ejecutarLogicaTrigger(triggerMesh: AbstractMesh, jugador: Mesh, eventType: string): boolean {
+      if (triggerMesh.metadata.isEnabled === false) return false;
       
       if (!triggerMesh.metadata.isRepeatable) {
-          if (eventType === 'on_enter' && triggerMesh.metadata.hasTriggeredEnter) return;
-          if (eventType === 'on_exit' && triggerMesh.metadata.hasTriggeredExit) return;
+          if (eventType === 'on_enter' && triggerMesh.metadata.hasTriggeredEnter) return false;
+          if (eventType === 'on_exit' && triggerMesh.metadata.hasTriggeredExit) return false;
       }
 
       let mensaje = '';
       let soundUrl = '';
       let seqId = '';
+      let msgTime = 4.5; // Tiempo por defecto
+      let videoUrl = ''; // Nuevo campo cinemática
 
       if (triggerMesh.metadata.isComposite) {
           if (eventType === 'on_enter') {
               mensaje = triggerMesh.metadata.mensajeEntrada;
               soundUrl = triggerMesh.metadata.soundUrlEntrada;
               seqId = triggerMesh.metadata.seqEntrada;
+              msgTime = triggerMesh.metadata.timeEntrada ?? 4.5;
+              videoUrl = triggerMesh.metadata.videoEntrada ?? '';
           } else if (eventType === 'on_exit') {
               mensaje = triggerMesh.metadata.mensajeSalida;
               soundUrl = triggerMesh.metadata.soundUrlSalida;
               seqId = triggerMesh.metadata.seqSalida;
+              msgTime = triggerMesh.metadata.timeSalida ?? 4.5;
+              videoUrl = triggerMesh.metadata.videoSalida ?? '';
           }
       } else {
           if (triggerMesh.metadata.condition === eventType) {
               mensaje = triggerMesh.metadata.mensaje;
               soundUrl = triggerMesh.metadata.soundUrl;
-              seqId = triggerMesh.metadata.interactSequenceId; // Reusamos campo
+              seqId = triggerMesh.metadata.interactSequenceId;
+              msgTime = triggerMesh.metadata.timeNorm ?? 4.5;
+              videoUrl = triggerMesh.metadata.videoNorm ?? '';
           } else {
-              return; 
+              return false; 
           }
       }
 
-      // 1. Mostrar Mensaje en el HUD
+      let mostroMensaje = false;
+
+      // 1. Mostrar Mensaje en el HUD con su tiempo personalizado
       if (mensaje && mensaje.trim() !== '') {
           this.state.mensajeTriggerHUD.set(mensaje);
-          setTimeout(() => {
+          mostroMensaje = true;
+          
+          if (this.hudTimeouts.has('hud')) clearTimeout(this.hudTimeouts.get('hud'));
+          
+          const timeoutId = setTimeout(() => {
               if (this.state.mensajeTriggerHUD() === mensaje) {
                   this.state.mensajeTriggerHUD.set(null);
               }
-          }, 4500); // 4.5 segundos en pantalla
+          }, msgTime * 1000); 
+
+          this.hudTimeouts.set('hud', timeoutId);
       }
 
-      // 2. Reproducir Sonido (Musica, efectos, voces)
+      // 2. Reproducir Sonido
       if (soundUrl && soundUrl.trim() !== '') {
           try {
              const audio = new Audio(soundUrl);
-             audio.volume = 0.8; // Volumen general
-             audio.play().catch(err => console.warn('El navegador bloqueó el audio automático:', err));
-          } catch(e) {
-             console.error("Error reproduciendo audio del trigger", e);
-          }
+             audio.volume = 0.8; 
+             audio.play().catch(err => console.warn('Bloqueo de audio:', err));
+          } catch(e) { console.error(e); }
       }
 
-      // 3. Ejecutar Secuencias Cinemáticas (Por si quieres que al entrar lance animación)
+      // 3. (FUTURO) Reproducir Video Cinemático
+      if (videoUrl && videoUrl.trim() !== '') {
+          console.log("🎬 Reproduciendo Video Cinemático en Trigger:", videoUrl);
+          // Aquí más adelante llamaremos a un servicio de UI para poner el video en pantalla completa.
+      }
+
+      // 4. Ejecutar Secuencias Cinemáticas del Personaje
       if (seqId && seqId.trim() !== '') {
           const ids = seqId.split(',').map((id: string) => id.trim()).filter(Boolean);
           if (ids.length > 0) {
               const playerConfig = jugador.metadata?.playerConfig;
               if (playerConfig) {
-                  // Ejecuta siempre el primero en Triggers simples
                   this.sequenceSvc.iniciarSecuenciaEnJuego(ids[0], jugador, playerConfig);
               }
           }
       }
 
-      // Marcamos la bandera para no repetirlo si no debe
+      // Marcamos banderas de uso
       if (eventType === 'on_enter') triggerMesh.metadata.hasTriggeredEnter = true;
       if (eventType === 'on_exit') triggerMesh.metadata.hasTriggeredExit = true;
+
+      return mostroMensaje;
   }
 }

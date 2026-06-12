@@ -70,8 +70,6 @@ export class EditorSceneService {
     
     newMesh.isPickable = true;
     newMesh.checkCollisions = false;
-
-    // 🔥 FIX: Garantizar visibilidad real basada en el rol actual
     newMesh.isVisible = this.state.rolSimulado() === 'admin';
 
     if (this.state.objetoSeleccionado() === oldMesh) {
@@ -105,6 +103,7 @@ export class EditorSceneService {
       isComposite: isComposite,
       triggerShape: shape || 'cube',
       
+      // Compuesto
       conditions: isComposite ? ['on_enter'] : [],
       mensajeEntrada: isComposite ? mensaje : '',
       mensajeSalida: '',
@@ -112,11 +111,18 @@ export class EditorSceneService {
       soundUrlSalida: '',
       seqEntrada: '',
       seqSalida: '',
+      timeEntrada: 4.5,
+      timeSalida: 4.5,
+      videoEntrada: '',
+      videoSalida: '',
 
+      // Normal
       condition: 'on_enter',
       mensaje: isComposite ? '' : mensaje,
       soundUrl: '',
       interactSequenceId: '', 
+      timeNorm: 4.5,
+      videoNorm: '',
 
       isRepeatable: false,
       isEnabled: true,
@@ -126,8 +132,6 @@ export class EditorSceneService {
 
     mesh.isPickable = true;
     mesh.checkCollisions = false; 
-    
-    // 🔥 FIX: Al agregarlo, solo será visible si el admin lo crea (que es lo normal)
     mesh.isVisible = this.state.rolSimulado() === 'admin';
 
     this.state.objetoSeleccionado.set(mesh);
@@ -370,7 +374,6 @@ export class EditorSceneService {
             mesh.isPickable = true;
             mesh.checkCollisions = false;
 
-            // 🔥 FIX: Visibilidad al momento de crearlo/cargarlo
             mesh.isVisible = isAdmin;
 
             mesh.metadata = {
@@ -382,11 +385,14 @@ export class EditorSceneService {
                 mensajeEntrada: '', mensajeSalida: '',
                 soundUrlEntrada: '', soundUrlSalida: '',
                 seqEntrada: '', seqSalida: '',
+                timeEntrada: 4.5, timeSalida: 4.5,
+                videoEntrada: '', videoSalida: '',
 
                 condition: 'on_enter',
                 mensaje: '',
                 soundUrl: '',
                 interactSequenceId: '',
+                timeNorm: 4.5, videoNorm: '',
 
                 isRepeatable: trigger.isRepeatable,
                 isEnabled: trigger.isEnabled,
@@ -403,16 +409,22 @@ export class EditorSceneService {
                 mesh.metadata.mensajeEntrada = trigger.actionProperties?.mensaje || '';
                 mesh.metadata.soundUrlEntrada = trigger.actionProperties?.soundUrl || '';
                 mesh.metadata.seqEntrada = trigger.actionProperties?.seqEntrada || '';
+                mesh.metadata.timeEntrada = trigger.actionProperties?.timeEntrada ?? 4.5;
+                mesh.metadata.videoEntrada = trigger.actionProperties?.videoEntrada || '';
             } else if (trigger.condition === 'on_exit') {
                 mesh.metadata.mensajeSalida = trigger.actionProperties?.mensaje || '';
                 mesh.metadata.soundUrlSalida = trigger.actionProperties?.soundUrl || '';
                 mesh.metadata.seqSalida = trigger.actionProperties?.seqSalida || '';
+                mesh.metadata.timeSalida = trigger.actionProperties?.timeSalida ?? 4.5;
+                mesh.metadata.videoSalida = trigger.actionProperties?.videoSalida || '';
             }
         } else {
             mesh.metadata.condition = trigger.condition || 'on_enter';
             mesh.metadata.mensaje = trigger.actionProperties?.mensaje || '';
             mesh.metadata.soundUrl = trigger.actionProperties?.soundUrl || '';
             mesh.metadata.interactSequenceId = trigger.actionProperties?.interactSequenceId || '';
+            mesh.metadata.timeNorm = trigger.actionProperties?.timeNorm ?? 4.5;
+            mesh.metadata.videoNorm = trigger.actionProperties?.videoNorm || '';
         }
     });
 
@@ -440,11 +452,15 @@ export class EditorSceneService {
                         actionProps.mensaje = nodo.metadata.mensajeEntrada || '';
                         actionProps.soundUrl = nodo.metadata.soundUrlEntrada || '';
                         actionProps.seqEntrada = nodo.metadata.seqEntrada || '';
+                        actionProps.timeEntrada = nodo.metadata.timeEntrada ?? 4.5;
+                        actionProps.videoEntrada = nodo.metadata.videoEntrada || '';
                     }
                     if (cond === 'on_exit') {
                         actionProps.mensaje = nodo.metadata.mensajeSalida || '';
                         actionProps.soundUrl = nodo.metadata.soundUrlSalida || '';
                         actionProps.seqSalida = nodo.metadata.seqSalida || '';
+                        actionProps.timeSalida = nodo.metadata.timeSalida ?? 4.5;
+                        actionProps.videoSalida = nodo.metadata.videoSalida || '';
                     }
 
                     triggers.push({
@@ -476,6 +492,8 @@ export class EditorSceneService {
                         mensaje: nodo.metadata.mensaje,
                         soundUrl: nodo.metadata.soundUrl,
                         interactSequenceId: nodo.metadata.interactSequenceId,
+                        timeNorm: nodo.metadata.timeNorm ?? 4.5,
+                        videoNorm: nodo.metadata.videoNorm || '',
                         isComposite: false
                     }
                 });

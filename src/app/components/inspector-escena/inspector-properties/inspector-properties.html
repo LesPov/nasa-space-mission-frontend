@@ -1,508 +1,59 @@
 <div class="properties-shell">
-  
   <!-- PESTAÑAS (Fijas en la parte superior) -->
   <div class="prop-tabs">
     <button class="tab-btn" [class.active]="pestanaActiva === 'transform'" (click)="cambiarPestana('transform')" title="Transformación">🟧</button>
-    <button class="tab-btn" *ngIf="objetoActual?.metadata?.type !== 'trigger'" [class.active]="pestanaActiva === 'physics'" (click)="cambiarPestana('physics')" title="Física">💊</button>
-    <button class="tab-btn" *ngIf="objetoActual?.metadata?.type !== 'trigger'" [class.active]="pestanaActiva === 'player'" (click)="cambiarPestana('player')" title="Player">🎮</button>
-    
-    <button class="tab-btn" *ngIf="objetoActual && esPersonajeOModelo(objetoActual)" [class.active]="pestanaActiva === 'animation'" (click)="cambiarPestana('animation')" title="Animaciones">🏃</button>
-    <!-- Triggers SI pueden tener secuencias para ejecutarlas al pisarlos -->
-    <button class="tab-btn" *ngIf="objetoActual && (esPersonajeOModelo(objetoActual) || objetoActual?.metadata?.type === 'trigger')" [class.active]="pestanaActiva === 'sequences'" (click)="cambiarPestana('sequences')" title="Secuencias">🎞️</button>
-    
-    <button class="tab-btn" [class.active]="pestanaActiva === 'world'" (click)="cambiarPestana('world')" title="Mundo">🌍</button>
+    <button class="tab-btn" *ngIf="!esTrigger" [class.active]="pestanaActiva === 'physics'" (click)="cambiarPestana('physics')" title="Física y Colisiones">💊</button>
+    <button class="tab-btn" *ngIf="esPersonaje && !esTrigger" [class.active]="pestanaActiva === 'player'" (click)="cambiarPestana('player')" title="Configuración Jugador">🎮</button>
+    <button class="tab-btn" *ngIf="esPersonaje && !esTrigger" [class.active]="pestanaActiva === 'animation'" (click)="cambiarPestana('animation')" title="Mapeo de Animaciones">🏃</button>
+    <button class="tab-btn" *ngIf="esPersonaje || esTrigger" [class.active]="pestanaActiva === 'sequences'" (click)="cambiarPestana('sequences')" title="Creador de Secuencias">🎞️</button>
+    <button class="tab-btn" [class.active]="pestanaActiva === 'world'" (click)="cambiarPestana('world')" title="Entorno">🌍</button>
   </div>
 
-  <!-- CONTENIDO DE LA PESTAÑA (Con Scroll Independiente y Oculto) -->
   <div class="prop-content-scroll">
-    
-    <!-- ================= PESTAÑA TRANSFORM ================= -->
-    <ng-container *ngIf="pestanaActiva === 'transform'">
-      <div class="panel-header">
-        <span>Transformación e Interacciones</span>
-        <span class="status-pill">{{ familiaResumen }}</span>
+    <div class="panel-header" *ngIf="pestanaActiva !== 'world'">
+      <span>
+        {{ pestanaActiva === 'transform' ? 'Transformación Básica' : '' }}
+        {{ pestanaActiva === 'physics' ? 'Colisiones y Cámaras' : '' }}
+        {{ pestanaActiva === 'player' ? 'Propiedades del Jugador/NPC' : '' }}
+        {{ pestanaActiva === 'animation' ? 'Gestor de Animaciones' : '' }}
+        {{ pestanaActiva === 'sequences' ? 'Línea de Tiempo Cinematográfica' : '' }}
+      </span>
+      <span class="status-pill">{{ familiaResumen }}</span>
+    </div>
+
+    <!-- OBJETO NO SELECCIONADO O MUNDO -->
+    <ng-container *ngIf="!objetoActual && pestanaActiva !== 'world'">
+      <div class="empty-state">
+        <p>Ningún objeto seleccionado</p>
+        <span>Haz clic en un objeto de la escena o del Outliner.</span>
       </div>
-
-      <div *ngIf="objetoActual" class="prop-body">
-        <div class="obj-title-bar">
-          <span class="icon">{{ objetoActual.metadata?.type === 'trigger' ? '📍' : '🧊' }}</span>
-          <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" />
-        </div>
-
-        <div class="section-card">
-          <div class="grid-3">
-            <div class="field"><label>Pos X</label><input type="number" step="0.1" [ngModel]="localPosX" (ngModelChange)="localPosX = $event; aplicarPosicion()" /></div>
-            <div class="field"><label>Pos Y</label><input type="number" step="0.1" [ngModel]="localPosY" (ngModelChange)="localPosY = $event; aplicarPosicion()" /></div>
-            <div class="field"><label>Pos Z</label><input type="number" step="0.1" [ngModel]="localPosZ" (ngModelChange)="localPosZ = $event; aplicarPosicion()" /></div>
-            
-            <ng-container>
-              <div class="field"><label>Rot X</label><input type="number" step="1" [ngModel]="localRotX" (ngModelChange)="localRotX = $event; aplicarRotacion()" /></div>
-              <div class="field"><label>Rot Y</label><input type="number" step="1" [ngModel]="localRotY" (ngModelChange)="localRotY = $event; aplicarRotacion()" /></div>
-              <div class="field"><label>Rot Z</label><input type="number" step="1" [ngModel]="localRotZ" (ngModelChange)="localRotZ = $event; aplicarRotacion()" /></div>
-            </ng-container>
-
-            <div class="field"><label>Escala/Tam X</label><input type="number" step="0.1" [ngModel]="localEscX" (ngModelChange)="localEscX = $event; aplicarEscala()" /></div>
-            <div class="field"><label>Escala/Tam Y</label><input type="number" step="0.1" [ngModel]="localEscY" (ngModelChange)="localEscY = $event; aplicarEscala()" /></div>
-            <div class="field"><label>Escala/Tam Z</label><input type="number" step="0.1" [ngModel]="localEscZ" (ngModelChange)="localEscZ = $event; aplicarEscala()" /></div>
-          </div>
-        </div>
-
-        <!-- 🔥 ZONA EXCLUSIVA PARA TRIGGERS COMPUESTOS -->
-        <div class="section-card" *ngIf="objetoActual.metadata?.type === 'trigger' && triggerIsComposite">
-          <div class="section-head">
-            <h4>Configuración del Trigger Múltiple</h4>
-          </div>
-          <div class="grid-2">
-            <div class="field">
-              <label>Forma Física de Detección</label>
-              <select [ngModel]="triggerShape" (ngModelChange)="triggerShape = $event; aplicarTriggerForma($event)">
-                <option value="cube">Caja (Cubo)</option>
-                <option value="sphere">Radio (Esfera)</option>
-                <option value="cylinder">Cilíndrico (Tubo)</option>
-              </select>
-            </div>
-            <div class="checkbox-field" style="margin-top: 15px;">
-              <input type="checkbox" id="chkRepComp" [ngModel]="triggerRepeatable" (ngModelChange)="triggerRepeatable = $event; aplicarTrigger()" />
-              <label for="chkRepComp">Es repetible</label>
-            </div>
-          </div>
-
-          <div style="margin-top: 15px;">
-             <label style="font-size: 11px; color: #999;">¿Cuándo se activa este Trigger?</label>
-             <div class="grid-2" style="margin-top: 5px; margin-bottom: 10px;">
-                 <div class="checkbox-field">
-                    <input type="checkbox" id="condEnt" [checked]="triggerConditions.includes('on_enter')" (change)="toggleTriggerCondition('on_enter', $event)" />
-                    <label for="condEnt">Al Pisarlo</label>
-                 </div>
-                 <div class="checkbox-field">
-                    <input type="checkbox" id="condExi" [checked]="triggerConditions.includes('on_exit')" (change)="toggleTriggerCondition('on_exit', $event)" />
-                    <label for="condExi">Al Salir</label>
-                 </div>
-             </div>
-
-             <!-- Bloques condicionales según lo que se seleccionó arriba -->
-             <div *ngIf="triggerConditions.includes('on_enter')" style="margin-bottom: 15px; border-left: 2px solid #4ade80; padding-left: 8px;">
-                <div class="field wide">
-                    <label>Mensaje al ENTRAR al área</label>
-                    <textarea rows="1" [ngModel]="triggerMensajeEntrada" placeholder="Ej: Es un cuarto frío..." (ngModelChange)="triggerMensajeEntrada = $event; aplicarTrigger()"></textarea>
-                </div>
-                <div class="grid-2" style="margin-top: 5px;">
-                    <div class="field">
-                        <label>Audio URL (Opcional)</label>
-                        <input type="text" [ngModel]="triggerSoundEntrada" placeholder="Ej: /assets/door.mp3" (ngModelChange)="triggerSoundEntrada = $event; aplicarTrigger()" />
-                    </div>
-                    <div class="field">
-                        <label>ID Secuencia (Opcional)</label>
-                        <input type="text" [ngModel]="triggerSeqEntrada" placeholder="Ej: cin_01" (ngModelChange)="triggerSeqEntrada = $event; aplicarTrigger()" />
-                    </div>
-                </div>
-             </div>
-
-             <div *ngIf="triggerConditions.includes('on_exit')" style="margin-bottom: 15px; border-left: 2px solid #f87171; padding-left: 8px;">
-                <div class="field wide">
-                    <label>Mensaje al SALIR del área</label>
-                    <textarea rows="1" [ngModel]="triggerMensajeSalida" placeholder="Ej: Mejor no vuelvo..." (ngModelChange)="triggerMensajeSalida = $event; aplicarTrigger()"></textarea>
-                </div>
-                <div class="grid-2" style="margin-top: 5px;">
-                    <div class="field">
-                        <label>Audio URL (Opcional)</label>
-                        <input type="text" [ngModel]="triggerSoundSalida" placeholder="Ej: /assets/lock.mp3" (ngModelChange)="triggerSoundSalida = $event; aplicarTrigger()" />
-                    </div>
-                    <div class="field">
-                        <label>ID Secuencia (Opcional)</label>
-                        <input type="text" [ngModel]="triggerSeqSalida" placeholder="Ej: cin_02" (ngModelChange)="triggerSeqSalida = $event; aplicarTrigger()" />
-                    </div>
-                </div>
-             </div>
-          </div>
-        </div>
-
-        <!-- 🔥 ZONA EXCLUSIVA PARA TRIGGERS NORMALES (Simples) -->
-        <div class="section-card" *ngIf="objetoActual.metadata?.type === 'trigger' && !triggerIsComposite">
-          <div class="section-head">
-            <h4>Trigger Normal (Una sola acción)</h4>
-          </div>
-          <div class="grid-2">
-            <div class="field">
-              <label>Forma de Detección</label>
-              <select [ngModel]="triggerShape" (ngModelChange)="triggerShape = $event; aplicarTriggerForma($event)">
-                <option value="cube">Caja</option>
-                <option value="sphere">Esfera</option>
-                <option value="cylinder">Tubo</option>
-              </select>
-            </div>
-            <div class="field">
-              <label>Condición</label>
-              <select [ngModel]="triggerCondition" (ngModelChange)="triggerCondition = $event; aplicarTrigger()">
-                <option value="on_enter">Al Pisarlo</option>
-                <option value="on_exit">Al Salir</option>
-              </select>
-            </div>
-            <div class="checkbox-field" style="margin-top: 15px;">
-              <input type="checkbox" id="chkRepNorm" [ngModel]="triggerRepeatable" (ngModelChange)="triggerRepeatable = $event; aplicarTrigger()" />
-              <label for="chkRepNorm">Es repetible</label>
-            </div>
-          </div>
-          
-          <div class="field wide" style="margin-top: 10px;">
-              <label>Mensaje a mostrar en pantalla</label>
-              <textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarTrigger()"></textarea>
-          </div>
-          
-          <div class="grid-2" style="margin-top: 5px;">
-              <div class="field">
-                  <label>Audio (Opcional URL)</label>
-                  <input type="text" [ngModel]="objSoundUrl" placeholder="Ej: /assets/sonido.mp3" (ngModelChange)="objSoundUrl = $event; aplicarTrigger()" />
-              </div>
-              <div class="field">
-                  <label>ID Secuencia (Opcional)</label>
-                  <!-- Usamos la variable general de secuencia de trigger simple -->
-                  <input type="text" [ngModel]="objInteractSequenceIdFPS" placeholder="Ej: cin_01" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarTrigger()" />
-              </div>
-          </div>
-        </div>
-
-        <!-- ZONA DE INTERACCIÓN (Para Objetos que NO son Triggers ej. Personajes, Props) -->
-        <div class="section-card" *ngIf="objetoActual.metadata?.type !== 'trigger'">
-          <div class="section-head">
-            <h4>Interacción y Eventos</h4>
-          </div>
-          <div class="grid-2" style="margin-bottom: 10px;">
-            <div class="field"><label>Distancia (FPS)</label><input type="number" step="0.5" [ngModel]="objInteractDistanceFPS" (ngModelChange)="objInteractDistanceFPS = $event; aplicarInteraccion()" /></div>
-            <div class="field"><label>Distancia (TPS)</label><input type="number" step="0.5" [ngModel]="objInteractDistanceTPS" (ngModelChange)="objInteractDistanceTPS = $event; aplicarInteraccion()" /></div>
-          </div>
-          <div class="grid-2">
-            <div class="field wide"><label>Mensaje (se abre con I)</label><textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarInteraccion()"></textarea></div>
-            <div class="field wide"><label>Secuencia a ejecutar (FPS)</label><input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarInteraccion()"/></div>
-            <div class="field wide"><label>Secuencia a ejecutar (TPS)</label><input type="text" [ngModel]="objInteractSequenceIdTPS" (ngModelChange)="objInteractSequenceIdTPS = $event; aplicarInteraccion()"/></div>
-          </div>
-          <button class="btn-primary full" style="margin-top: 10px;" (click)="aplicarInteraccionYForzarGuardado()">💾 Guardar Interacción</button>
-        </div>
-
-        <button class="btn-danger full" (click)="eliminarObjeto()">Eliminar objeto</button>
-      </div>
-      <div *ngIf="!objetoActual" class="empty-state"><p>Ningún objeto seleccionado</p></div>
-    </ng-container>
-
-    <!-- ================= PESTAÑA FÍSICA ================= -->
-    <ng-container *ngIf="pestanaActiva === 'physics'">
-      <div class="panel-header">
-        <span>Física y Colisión</span>
-        <span class="status-pill">{{ familiaResumen }}</span>
-      </div>
-
-      <div *ngIf="objetoActual" class="prop-body">
-        <div class="obj-title-bar">
-          <span class="icon">💊</span>
-          <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" />
-        </div>
-
-        <div class="section-card">
-          <div class="section-head"><h4>Cuerpo de colisión</h4></div>
-          <div class="field" style="margin-bottom: 8px;">
-            <label>Tipo de collider</label>
-            <select [ngModel]="colliderType" (ngModelChange)="colliderType = $event; aplicarCollider()">
-              <option value="capsule">Capsule</option>
-              <option value="box">Box</option>
-              <option value="sphere">Sphere</option>
-              <option value="mesh">Mesh exacto</option>
-            </select>
-          </div>
-
-          <div *ngIf="colliderType !== 'mesh'" class="grid-3">
-            <div class="field"><label>Tam X</label><input type="number" step="0.1" [ngModel]="colliderSizeX" (ngModelChange)="colliderSizeX = $event; aplicarCollider()" /></div>
-            <div class="field"><label>Tam Y</label><input type="number" step="0.1" [ngModel]="colliderSizeY" (ngModelChange)="colliderSizeY = $event; aplicarCollider()" /></div>
-            <div class="field"><label>Tam Z</label><input type="number" step="0.1" [ngModel]="colliderSizeZ" (ngModelChange)="colliderSizeZ = $event; aplicarCollider()" /></div>
-            <div class="field"><label>Off X</label><input type="number" step="0.1" [ngModel]="colliderOffX" (ngModelChange)="colliderOffX = $event; aplicarCollider()" /></div>
-            <div class="field"><label>Off Y</label><input type="number" step="0.1" [ngModel]="colliderOffY" (ngModelChange)="colliderOffY = $event; aplicarCollider()" /></div>
-            <div class="field"><label>Off Z</label><input type="number" step="0.1" [ngModel]="colliderOffZ" (ngModelChange)="colliderOffZ = $event; aplicarCollider()" /></div>
-          </div>
-        </div>
-
-        <div class="section-card" *ngIf="esPersonajeOModelo(objetoActual)">
-          <div class="section-head"><h4>Cámara interna</h4></div>
-          <div class="grid-3">
-            <div class="field"><label>Cam X</label><input type="number" step="0.1" [ngModel]="camPosX" (ngModelChange)="camPosX = $event; aplicarCamara()" /></div>
-            <div class="field"><label>Cam Y</label><input type="number" step="0.1" [ngModel]="camPosY" (ngModelChange)="camPosY = $event; aplicarCamara()" /></div>
-            <div class="field"><label>Cam Z</label><input type="number" step="0.1" [ngModel]="camPosZ" (ngModelChange)="camPosZ = $event; aplicarCamara()" /></div>
-          </div>
-        </div>
-      </div>
-      <div *ngIf="!objetoActual" class="empty-state"><p>Ningún objeto seleccionado</p></div>
-    </ng-container>
-
-    <!-- ================= PESTAÑA PLAYER ================= -->
-    <ng-container *ngIf="pestanaActiva === 'player'">
-      <div class="panel-header">
-        <span>Configuración del Jugador</span>
-        <span class="status-pill">{{ familiaResumen }}</span>
-      </div>
-
-      <div *ngIf="objetoActual && esPersonajeOModelo(objetoActual); else noPlayerConfig" class="prop-body">
-        <div class="obj-title-bar">
-          <span class="icon">🎮</span>
-          <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" />
-          <button class="btn-ghost small" style="margin-left: auto;" (click)="restaurarPlayerConfigDefault()" title="Restablecer valores">🔄 Reset</button>
-        </div>
-
-        <div class="accordion-section" [class.expanded]="acordeonesPlayer['movement']">
-          <div class="accordion-header" (click)="toggleAcordeonPlayer('movement')">
-            <span class="chevron">{{ acordeonesPlayer['movement'] ? '▼' : '▶' }}</span>
-            <h4>Movimiento Base</h4>
-          </div>
-          <div class="accordion-content" *ngIf="acordeonesPlayer['movement']">
-            <div class="grid-2">
-              <div class="field"><label>Vel. Caminar</label><input type="number" step="0.001" [ngModel]="playerConfig.movement.walkSpeed" (ngModelChange)="playerConfig.movement.walkSpeed = $event; aplicarPlayerConfig()" /></div>
-              <div class="field"><label>Vel. Correr</label><input type="number" step="0.001" [ngModel]="playerConfig.movement.runSpeed" (ngModelChange)="playerConfig.movement.runSpeed = $event; aplicarPlayerConfig()" /></div>
-              <div class="field"><label>Aceleración</label><input type="number" step="0.001" [ngModel]="playerConfig.movement.acceleration" (ngModelChange)="playerConfig.movement.acceleration = $event; aplicarPlayerConfig()" /></div>
-              <div class="field"><label>Rotación</label><input type="number" step="0.001" [ngModel]="playerConfig.movement.rotationSpeed" (ngModelChange)="playerConfig.movement.rotationSpeed = $event; aplicarPlayerConfig()" /></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="accordion-section" [class.expanded]="acordeonesPlayer['jump']">
-          <div class="accordion-header" (click)="toggleAcordeonPlayer('jump')">
-            <span class="chevron">{{ acordeonesPlayer['jump'] ? '▼' : '▶' }}</span>
-            <h4>Salto y Gravedad</h4>
-          </div>
-          <div class="accordion-content" *ngIf="acordeonesPlayer['jump']">
-            <div class="grid-2">
-              <div class="field"><label>Fuerza Salto</label><input type="number" step="0.001" [ngModel]="playerConfig.jump.force" (ngModelChange)="playerConfig.jump.force = $event; aplicarPlayerConfig()" /></div>
-              <div class="field"><label>Gravedad Base</label><input type="number" step="0.001" [ngModel]="playerConfig.jump.gravity" (ngModelChange)="playerConfig.jump.gravity = $event; aplicarPlayerConfig()" /></div>
-              <div class="field"><label>Caída Máx</label><input type="number" step="0.001" [ngModel]="playerConfig.jump.maxFallSpeed" (ngModelChange)="playerConfig.jump.maxFallSpeed = $event; aplicarPlayerConfig()" /></div>
-              <div class="field"><label>Coyote Time</label><input type="number" step="0.01" [ngModel]="playerConfig.jump.coyoteTime" (ngModelChange)="playerConfig.jump.coyoteTime = $event; aplicarPlayerConfig()" /></div>
-              <div class="field"><label>T. Subida</label><input type="number" step="0.01" [ngModel]="playerConfig.jump.jumpRiseTime" (ngModelChange)="playerConfig.jump.jumpRiseTime = $event; aplicarPlayerConfig()" /></div>
-              <div class="field"><label>Multiplicador</label><input type="number" step="0.01" [ngModel]="playerConfig.jump.jumpFallMultiplier" (ngModelChange)="playerConfig.jump.jumpFallMultiplier = $event; aplicarPlayerConfig()" /></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="accordion-section" [class.expanded]="acordeonesPlayer['camera']">
-          <div class="accordion-header" (click)="toggleAcordeonPlayer('camera')">
-            <span class="chevron">{{ acordeonesPlayer['camera'] ? '▼' : '▶' }}</span>
-            <h4>Cámara y Transiciones</h4>
-          </div>
-          <div class="accordion-content" *ngIf="acordeonesPlayer['camera']">
-            <div class="grid-2">
-              <div class="field"><label>Ojos (FPS Y)</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.fpsEyeLevel" (ngModelChange)="playerConfig.camera.fpsEyeLevel = $event; aplicarPlayerConfig()" /></div>
-              <div class="field"><label>Pivote (TPS Y)</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.tpsPivotY" (ngModelChange)="playerConfig.camera.tpsPivotY = $event; aplicarPlayerConfig()" /></div>
-              <div class="field"><label>Distancia TPS</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.tpsRadius" (ngModelChange)="playerConfig.camera.tpsRadius = $event; aplicarPlayerConfig()" /></div>
-              <div class="field"><label>Cámara sigue cabeza</label><select [ngModel]="playerConfig.camera.headFollow" (ngModelChange)="playerConfig.camera.headFollow = $event; aplicarPlayerConfig()"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-              <div class="field"><label>Blend Normal</label><input type="number" step="0.01" [ngModel]="playerConfig.blend.defaultBlend" (ngModelChange)="playerConfig.blend.defaultBlend = $event; aplicarPlayerConfig()" /></div>
-              <div class="field"><label>Blend Rápido</label><input type="number" step="0.01" [ngModel]="playerConfig.blend.fastBlend" (ngModelChange)="playerConfig.blend.fastBlend = $event; aplicarPlayerConfig()" /></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="accordion-section" [class.expanded]="acordeonesPlayer['physics']">
-          <div class="accordion-header" (click)="toggleAcordeonPlayer('physics')">
-            <span class="chevron">{{ acordeonesPlayer['physics'] ? '▼' : '▶' }}</span>
-            <h4>Impactos y Física</h4>
-          </div>
-          <div class="accordion-content" *ngIf="acordeonesPlayer['physics']">
-            <div class="grid-2">
-              <div class="field"><label>Umbral Caída Fuerte</label><input type="number" step="0.01" [ngModel]="playerConfig.physics.hardLandingThreshold" (ngModelChange)="playerConfig.physics.hardLandingThreshold = $event; aplicarPlayerConfig()" /></div>
-              <div class="field"><label>Recuperación (Frames)</label><input type="number" step="1" [ngModel]="playerConfig.physics.landingRecoveryFrames" (ngModelChange)="playerConfig.physics.landingRecoveryFrames = $event; aplicarPlayerConfig()" /></div>
-            </div>
-          </div>
-        </div>
-
-        <div class="accordion-section" [class.expanded]="acordeonesPlayer['animEnabled']">
-          <div class="accordion-header" (click)="toggleAcordeonPlayer('animEnabled')">
-            <span class="chevron">{{ acordeonesPlayer['animEnabled'] ? '▼' : '▶' }}</span>
-            <h4>Permitir Acciones (Toggles)</h4>
-          </div>
-          <div class="accordion-content" *ngIf="acordeonesPlayer['animEnabled']">
-            <p class="help-text" style="margin-bottom: 8px;">Si desactivas una, el jugador omitirá ese estado físico y visual.</p>
-            <div class="grid-2">
-              <div class="field"><label>Idle</label><select [ngModel]="playerConfig.animationEnabled.idle" (ngModelChange)="cambiarHabilitadoAnim('idle', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-              <div class="field"><label>Walk</label><select [ngModel]="playerConfig.animationEnabled.walk" (ngModelChange)="cambiarHabilitadoAnim('walk', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-              <div class="field"><label>Run</label><select [ngModel]="playerConfig.animationEnabled.run" (ngModelChange)="cambiarHabilitadoAnim('run', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-              <div class="field"><label>Jump Start</label><select [ngModel]="playerConfig.animationEnabled.jumpStart" (ngModelChange)="cambiarHabilitadoAnim('jumpStart', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-              <div class="field"><label>Jump Loop</label><select [ngModel]="playerConfig.animationEnabled.jumpLoop" (ngModelChange)="cambiarHabilitadoAnim('jumpLoop', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-              <div class="field"><label>Fall</label><select [ngModel]="playerConfig.animationEnabled.fall" (ngModelChange)="cambiarHabilitadoAnim('fall', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-              <div class="field"><label>Land Soft</label><select [ngModel]="playerConfig.animationEnabled.landSoft" (ngModelChange)="cambiarHabilitadoAnim('landSoft', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-              <div class="field"><label>Land Hard</label><select [ngModel]="playerConfig.animationEnabled.landHard" (ngModelChange)="cambiarHabilitadoAnim('landHard', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-              <div class="field"><label>Climb Up</label><select [ngModel]="playerConfig.animationEnabled.climbUp" (ngModelChange)="cambiarHabilitadoAnim('climbUp', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-              <div class="field"><label>Climb Finish</label><select [ngModel]="playerConfig.animationEnabled.climbFinish" (ngModelChange)="cambiarHabilitadoAnim('climbFinish', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-              <div class="field"><label>Hang Idle</label><select [ngModel]="playerConfig.animationEnabled.hangIdle" (ngModelChange)="cambiarHabilitadoAnim('hangIdle', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-              <div class="field"><label>Recover</label><select [ngModel]="playerConfig.animationEnabled.recover" (ngModelChange)="cambiarHabilitadoAnim('recover', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-            </div>
-          </div>
-        </div>
-      </div>
-      <ng-template #noPlayerConfig><div class="empty-state"><p>Selecciona un modelo o NPC</p></div></ng-template>
-    </ng-container>
-
-    <!-- ================= PESTAÑA ANIMATIONS ================= -->
-    <ng-container *ngIf="pestanaActiva === 'animation'">
-      <div class="panel-header">
-        <span>Mapeo de Animaciones</span>
-        <span class="status-pill">{{ animationClips.length }} clips</span>
-      </div>
-
-      <div *ngIf="objetoActual && esPersonajeOModelo(objetoActual); else noAnimConfig" class="prop-body">
-        <div class="obj-title-bar">
-          <span class="icon">🏃</span>
-          <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" />
-        </div>
-
-        <div class="section-card">
-          <div class="section-head">
-            <h4>1. Probar Clips Originales</h4>
-            <button class="btn-ghost small" (click)="detenerAnimaciones()">⏹ Detener</button>
-          </div>
-
-          <div class="tool-row">
-            <input type="text" [(ngModel)]="clipFilter" placeholder="Buscar clip..." class="search-input" />
-          </div>
-
-          <div class="clip-list">
-            <div *ngFor="let clip of animationClipsFiltradas" class="clip-card" [class.playing]="clip.playing">
-              <div class="clip-top">
-                <div class="clip-name" [title]="clip.name">{{ clip.name }}</div>
-                <button class="btn-primary small" (click)="reproducirAnimacion(clip.group)">▶</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="section-card">
-          <div class="section-head">
-            <h4>2. Asignar a Acciones</h4>
-            <button class="btn-secondary small" (click)="detectarBindingsAutomaticamente()">✨ Auto-detectar</button>
-          </div>
-
-          <div class="binding-list">
-            <div class="accordion-section" *ngFor="let action of actionRows">
-              <div class="accordion-header" style="justify-content: space-between;">
-                <div style="display: flex; gap: 8px; align-items: center;">
-                  <h4>{{ action.label }}</h4>
-                </div>
-                <span class="status-pill" [class.active]="actionBadge(action.key) !== 'vacío'">{{ actionBadge(action.key) }}</span>
-              </div>
-              
-              <div class="accordion-content" style="padding-left: 0; padding-top: 5px;">
-                <div class="binding-grid">
-                  <div class="field wide">
-                    <!-- Aquí SÍ podemos usar [(ngModel)] porque no hay (ngModelChange) en la misma etiqueta -->
-                    <input type="text" [(ngModel)]="bindingInputs[action.key]" placeholder="Nombre del clip..." (keydown.enter)="agregarBinding(action.key)" />
-                    <div class="token-row" *ngIf="bindingTokens[action.key]?.length">
-                      <span class="token" *ngFor="let token of bindingTokens[action.key]; let i = index">
-                        {{ token }}
-                        <button type="button" (click)="quitarBinding(action.key, i)">×</button>
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div class="status-line">{{ animStatus }}</div>
-      </div>
-      <ng-template #noAnimConfig><div class="empty-state"><p>Selecciona un modelo o NPC</p></div></ng-template>
-    </ng-container>
-
-    <!-- ================= PESTAÑA SEQUENCES ================= -->
-    <ng-container *ngIf="pestanaActiva === 'sequences'">
-      <div class="panel-header">
-        <span>Creador de Secuencias</span>
-        <span class="status-pill">{{ sequences.length }} secuencias</span>
-      </div>
-
-      <div *ngIf="objetoActual && (esPersonajeOModelo(objetoActual) || objetoActual.metadata?.type === 'trigger'); else noSeqConfig" class="prop-body">
-        <div class="obj-title-bar">
-          <span class="icon">🎞️</span>
-          <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" />
-        </div>
-
-        <div class="section-card">
-          <div class="section-head">
-            <h4>Secuencias Guardadas</h4>
-          </div>
-
-          <div class="actions-row wrap">
-            <button class="btn-primary" (click)="nuevaSecuencia()">+ Nueva</button>
-          </div>
-
-          <div class="sequence-list">
-            <button
-              type="button"
-              class="sequence-chip"
-              *ngFor="let seq of sequences; let i = index"
-              [class.active]="seq.id === selectedSequenceId"
-              (click)="seleccionarSecuencia(seq)"
-            >
-              <span>{{ seq.name }}</span>
-            </button>
-          </div>
-
-          <div class="sequence-editor" *ngIf="currentSequence; else noSequenceSelected">
-            <div class="field wide" style="margin-top: 10px;">
-              <label>Nombre de la Secuencia</label>
-              <input type="text" [ngModel]="currentSequence.name" (ngModelChange)="currentSequence.name = $event; actualizarPasoSeleccionado()" />
-            </div>
-
-            <div class="field wide" style="margin-bottom: 10px; display: flex; align-items: center; gap: 10px;">
-              <label style="color: #60a5fa; margin: 0;">ID: {{ currentSequence.id }}</label>
-              <button class="btn-secondary small" style="padding: 4px 8px; font-size: 10px;" (click)="copiarIdSecuencia(currentSequence.id)">📋 Copiar</button>
-            </div>
-
-            <div class="actions-row wrap">
-              <button class="btn-danger" (click)="eliminarSecuencia(currentSequence.id)">🗑️ Eliminar</button>
-            </div>
-
-            <div class="section-mini-head" style="margin-top: 15px;">
-              <h5>Línea de Tiempo (Pasos)</h5>
-              <button class="btn-secondary small" (click)="agregarPaso(currentSequence)">+ Paso</button>
-            </div>
-
-            <div class="step-list">
-              <div class="accordion-section" *ngFor="let step of currentSequence.steps; let i = index" style="background: #242424; padding: 5px; border-radius: 6px; border: 1px solid #111; margin-bottom: 10px;">
-                <div class="accordion-header" style="justify-content: space-between; cursor: default;">
-                  <div style="font-size: 12px; font-weight: bold; color: #ddd;">{{ i + 1 }}. {{ step.action }}</div>
-                  <div class="step-actions-inline">
-                    <button type="button" (click)="moverPaso(currentSequence, i, -1)">↑</button>
-                    <button type="button" (click)="moverPaso(currentSequence, i, 1)">↓</button>
-                    <button type="button" (click)="quitarPaso(currentSequence, i)">×</button>
-                  </div>
-                </div>
-                <div class="grid-step">
-                  <div class="field">
-                    <label>Acción</label>
-                    <select [ngModel]="step.action" (ngModelChange)="step.action = $event; actualizarPaso()">
-                      <option *ngFor="let act of actionRows" [ngValue]="act.key">{{ act.label }}</option>
-                    </select>
-                  </div>
-                  <div class="field">
-                    <label>Duración (ms)</label>
-                    <input type="number" step="50" [ngModel]="step.durationMs" (ngModelChange)="step.durationMs = $event; actualizarPaso()" />
-                  </div>
-                  <div class="field wide">
-                    <label>Forzar Clip (Opcional)</label>
-                    <input type="text" [ngModel]="step.clipOverride" placeholder="Ej: jump_start_02" (ngModelChange)="step.clipOverride = $event; actualizarPaso()" />
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-          <ng-template #noSequenceSelected><div class="empty-state"><p>No hay secuencia</p></div></ng-template>
-        </div>
-      </div>
-      <ng-template #noSeqConfig><div class="empty-state"><p>Objeto no soporta secuencias</p></div></ng-template>
     </ng-container>
 
     <ng-container *ngIf="pestanaActiva === 'world'">
-      <div class="panel-header">
-        <span>Propiedades globales</span>
-        <span class="status-pill">Global</span>
-      </div>
-      <div class="empty-state">
-        <p>Entorno 3D</p>
-        <span>Configuración general del nivel.</span>
-      </div>
+      <div class="panel-header"><span>Propiedades globales</span><span class="status-pill">Global</span></div>
+      <div class="empty-state"><p>Entorno 3D</p><span>Configuración general del nivel.</span></div>
     </ng-container>
 
-  </div> <!-- FIN DEL CONTENEDOR CON SCROLL -->
+    <!-- CARGA DINÁMICA DE LOS COMPONENTES SI HAY OBJETO -->
+    <div class="prop-body" *ngIf="objetoActual">
+      
+      <div class="obj-title-bar">
+        <span class="icon">{{ esTrigger ? '📍' : (esPersonaje ? '🧍' : '🧊') }}</span>
+        <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" />
+      </div>
+
+      <!-- COMPONENTES REFATORIZADOS -->
+      <app-prop-transform *ngIf="pestanaActiva === 'transform' && !esTrigger" [objeto]="objetoActual"></app-prop-transform>
+      <app-prop-trigger *ngIf="pestanaActiva === 'transform' && esTrigger" [objeto]="objetoActual"></app-prop-trigger>
+
+      <!-- 🔥 AQUÍ ESTÁN LAS FÍSICAS PARA CUBOS Y MODELOS -->
+      <app-prop-physics *ngIf="pestanaActiva === 'physics' && !esTrigger" [objeto]="objetoActual"></app-prop-physics>
+
+      <app-prop-player *ngIf="pestanaActiva === 'player' && esPersonaje" [objeto]="objetoActual"></app-prop-player>
+      <app-prop-animation *ngIf="pestanaActiva === 'animation' && esPersonaje" [objeto]="objetoActual"></app-prop-animation>
+      <app-prop-sequences *ngIf="pestanaActiva === 'sequences' && (esPersonaje || esTrigger)" [objeto]="objetoActual"></app-prop-sequences>
+
+      <button class="btn-danger full" style="margin-top: 20px;" (click)="eliminarObjeto()">🗑️ Eliminar objeto de la escena</button>
+    </div>
+  </div>
 </div>

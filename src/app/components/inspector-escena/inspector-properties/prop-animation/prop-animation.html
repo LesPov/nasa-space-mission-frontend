@@ -1,0 +1,52 @@
+<div class="section-card">
+  <div class="section-head">
+    <h4>1. Probar Clips Originales</h4>
+    <button class="btn-ghost small" (click)="detenerAnimaciones()">⏹ Detener</button>
+  </div>
+
+  <div class="tool-row">
+    <input type="text" [(ngModel)]="clipFilter" placeholder="Buscar clip..." class="search-input" />
+  </div>
+
+  <div class="clip-list">
+    <div *ngFor="let clip of animationClipsFiltradas" class="clip-card" [class.playing]="clip.playing">
+      <div class="clip-top">
+        <div class="clip-name" [title]="clip.name">{{ clip.name }}</div>
+        <button class="btn-primary small" (click)="reproducirAnimacion(clip.group)">▶</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section-card">
+  <div class="section-head">
+    <h4>2. Asignar a Acciones</h4>
+    <button class="btn-secondary small" (click)="detectarBindingsAutomaticamente()">✨ Auto-detectar</button>
+  </div>
+
+  <div class="binding-list">
+    <div class="accordion-section" *ngFor="let action of actionRows">
+      <div class="accordion-header" style="justify-content: space-between;">
+        <div style="display: flex; gap: 8px; align-items: center;">
+          <h4>{{ action.label }}</h4>
+        </div>
+        <span class="status-pill" [class.active]="actionBadge(action.key) !== 'vacío'">{{ actionBadge(action.key) }}</span>
+      </div>
+      
+      <div class="accordion-content" style="padding-left: 0; padding-top: 5px;">
+        <div class="binding-grid">
+          <div class="field wide">
+            <input type="text" [(ngModel)]="bindingInputs[action.key]" placeholder="Nombre del clip..." (keydown.enter)="agregarBinding(action.key)" />
+            <div class="token-row" *ngIf="bindingTokens[action.key]?.length">
+              <span class="token" *ngFor="let token of bindingTokens[action.key]; let i = index">
+                {{ token }}
+                <button type="button" (click)="quitarBinding(action.key, i)">×</button>
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="status-line" *ngIf="animStatus">{{ animStatus }}</div>

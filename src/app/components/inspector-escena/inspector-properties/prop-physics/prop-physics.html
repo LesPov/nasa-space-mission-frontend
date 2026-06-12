@@ -1,0 +1,30 @@
+<div class="section-card">
+  <div class="section-head"><h4>Cuerpo de colisión</h4></div>
+  <div class="field" style="margin-bottom: 8px;">
+    <label>Tipo de collider</label>
+    <select [ngModel]="colliderType" (ngModelChange)="colliderType = $event; aplicarCollider()">
+      <option value="capsule">Capsule (Ideal Personajes)</option>
+      <option value="box">Box (Caja)</option>
+      <option value="sphere">Sphere (Esfera)</option>
+      <option value="mesh">Mesh exacto (Pesado)</option>
+    </select>
+  </div>
+
+  <div *ngIf="colliderType !== 'mesh'" class="grid-3">
+    <div class="field"><label>Tam X</label><input type="number" step="0.1" [ngModel]="colliderSizeX" (ngModelChange)="colliderSizeX = $event; aplicarCollider()" /></div>
+    <div class="field"><label>Tam Y</label><input type="number" step="0.1" [ngModel]="colliderSizeY" (ngModelChange)="colliderSizeY = $event; aplicarCollider()" /></div>
+    <div class="field"><label>Tam Z</label><input type="number" step="0.1" [ngModel]="colliderSizeZ" (ngModelChange)="colliderSizeZ = $event; aplicarCollider()" /></div>
+    <div class="field"><label>Off X</label><input type="number" step="0.1" [ngModel]="colliderOffX" (ngModelChange)="colliderOffX = $event; aplicarCollider()" /></div>
+    <div class="field"><label>Off Y</label><input type="number" step="0.1" [ngModel]="colliderOffY" (ngModelChange)="colliderOffY = $event; aplicarCollider()" /></div>
+    <div class="field"><label>Off Z</label><input type="number" step="0.1" [ngModel]="colliderOffZ" (ngModelChange)="colliderOffZ = $event; aplicarCollider()" /></div>
+  </div>
+</div>
+
+<div class="section-card" *ngIf="esPersonaje">
+  <div class="section-head"><h4>Cámara interna FPS (Ojos)</h4></div>
+  <div class="grid-3">
+    <div class="field"><label>Cam X</label><input type="number" step="0.1" [ngModel]="camPosX" (ngModelChange)="camPosX = $event; aplicarCamara()" /></div>
+    <div class="field"><label>Cam Y</label><input type="number" step="0.1" [ngModel]="camPosY" (ngModelChange)="camPosY = $event; aplicarCamara()" /></div>
+    <div class="field"><label>Cam Z</label><input type="number" step="0.1" [ngModel]="camPosZ" (ngModelChange)="camPosZ = $event; aplicarCamara()" /></div>
+  </div>
+</div>

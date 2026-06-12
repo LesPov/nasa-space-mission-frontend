@@ -1,0 +1,64 @@
+<div class="section-card">
+  <div class="actions-row wrap">
+    <button class="btn-primary" (click)="nuevaSecuencia()">+ Nueva Secuencia</button>
+  </div>
+
+  <div class="sequence-list">
+    <button class="sequence-chip" *ngFor="let seq of sequences" [class.active]="seq.id === selectedSequenceId" (click)="selectedSequenceId = seq.id">
+      {{ seq.name }}
+    </button>
+  </div>
+
+  <div class="sequence-editor" *ngIf="currentSequence; else noSeq">
+    <div class="field wide" style="margin-top: 10px;">
+      <label>Nombre de la Secuencia</label>
+      <input type="text" [ngModel]="currentSequence.name" (ngModelChange)="currentSequence.name = $event; persist()" />
+    </div>
+
+    <div class="field wide" style="margin-bottom: 10px; display: flex; align-items: center; gap: 10px;">
+      <label style="color: #60a5fa; margin: 0;">ID: {{ currentSequence.id }}</label>
+      <button class="btn-secondary small" (click)="copiarId(currentSequence.id)">📋 Copiar ID</button>
+    </div>
+
+    <div class="actions-row wrap">
+      <button class="btn-primary" *ngIf="objeto.metadata?.type !== 'trigger'" (click)="probarSecuencia(currentSequence)">▶ Probar en vivo</button>
+      <button class="btn-danger" (click)="eliminarSecuencia(currentSequence.id)">🗑️ Eliminar</button>
+    </div>
+
+    <div class="section-mini-head" style="margin-top: 15px;">
+      <h5>Línea de Tiempo (Pasos)</h5>
+      <button class="btn-secondary small" (click)="agregarPaso(currentSequence)">+ Paso</button>
+    </div>
+
+    <div class="step-list">
+      <div class="accordion-section" *ngFor="let step of currentSequence.steps; let i = index" style="background: #242424; padding: 5px; border-radius: 6px; border: 1px solid #111; margin-bottom: 10px;">
+        <div class="accordion-header" style="justify-content: space-between; cursor: default;">
+          <div style="font-size: 12px; font-weight: bold; color: #ddd;">{{ i + 1 }}. {{ step.action }}</div>
+          <div class="step-actions-inline">
+            <button (click)="moverPaso(currentSequence, i, -1)">↑</button>
+            <button (click)="moverPaso(currentSequence, i, 1)">↓</button>
+            <button (click)="quitarPaso(currentSequence, i)">×</button>
+          </div>
+        </div>
+        
+        <div class="grid-step">
+          <div class="field"><label>Acción principal</label><select [ngModel]="step.action" (ngModelChange)="step.action = $event; persist()"><option *ngFor="let act of actionRows" [ngValue]="act.key">{{ act.label }}</option></select></div>
+          <div class="field"><label>Duración (ms)</label><input type="number" step="50" [ngModel]="step.durationMs" (ngModelChange)="step.durationMs = $event; persist()" /></div>
+          <div class="field"><label>Vel. Anim (Ratio)</label><input type="number" step="0.1" [ngModel]="step.speedRatio" (ngModelChange)="step.speedRatio = $event; persist()" /></div>
+          <div class="field"><label>Transición (Blend)</label><input type="number" step="0.01" [ngModel]="step.blend" (ngModelChange)="step.blend = $event; persist()" /></div>
+          <div class="field"><label>Desplaz. Arriba (Y)</label><input type="number" step="0.1" [ngModel]="step.offsetY" (ngModelChange)="step.offsetY = $event; persist()" /></div>
+          <div class="field"><label>Desplaz. Adelante (Z)</label><input type="number" step="0.1" [ngModel]="step.offsetForward" (ngModelChange)="step.offsetForward = $event; persist()" /></div>
+          <div class="field wide"><label>Forzar Clip Exacto (Opcional)</label><input type="text" [ngModel]="step.clipOverride" placeholder="Ej: jump_start_02" (ngModelChange)="step.clipOverride = $event; persist()" /></div>
+        </div>
+
+        <div class="grid-3" style="margin-top: 10px; border-top: 1px dashed #333; padding-top: 10px;">
+            <div class="checkbox-field"><input type="checkbox" id="chkLoop_{{i}}" [ngModel]="step.loop" (ngModelChange)="step.loop = $event; persist()" /><label for="chkLoop_{{i}}">Loop</label></div>
+            <div class="checkbox-field"><input type="checkbox" id="chkMove_{{i}}" [ngModel]="step.allowMovement" (ngModelChange)="step.allowMovement = $event; persist()" /><label for="chkMove_{{i}}">Moverse</label></div>
+            <div class="checkbox-field"><input type="checkbox" id="chkLock_{{i}}" [ngModel]="step.lockInput" (ngModelChange)="step.lockInput = $event; persist()" /><label for="chkLock_{{i}}">Cinemática</label></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <ng-template #noSeq><div class="empty-state"><p>Crea una secuencia para empezar</p></div></ng-template>
+</div>
+<div class="status-line" *ngIf="animStatus">{{ animStatus }}</div>

@@ -15,8 +15,6 @@ export class EditorSceneService {
   private state = inject(EditorStateService);
   private historialSvc = inject(HistorialService);
 
-  private shadowGenerator: ShadowGenerator | null = null; 
-
   private ajustarMaterialGLB(material: any): void {
     if (!material) return;
     
@@ -33,6 +31,8 @@ export class EditorSceneService {
         material.roughness = 0.8;
         material.environmentIntensity = 0.5; 
     }
+    
+    material.freeze();
   }
 
   crearEntornoVisual(): void {
@@ -61,7 +61,7 @@ export class EditorSceneService {
     suelo.checkCollisions = true;
     suelo.isVisible = false;
     suelo.isPickable = true;
-    suelo.receiveShadows = true; 
+    suelo.receiveShadows = true; // 🔥 CRÍTICO: El suelo debe recibir sombras
     this.actualizarListaNodos();
   }
 
@@ -125,24 +125,22 @@ export class EditorSceneService {
       const lights = scene.lights.filter(l => l instanceof DirectionalLight || l instanceof SpotLight);
       
       lights.forEach(light => {
-          // 🔥 AQUÍ ESTÁ LA SOLUCIÓN: Casteamos como 'any' para evitar las quejas de TypeScript 
-          // de que la interfaz base (IShadowGenerator) no tiene las propiedades avanzadas.
           let sg: any = light.getShadowGenerator();
           if (!sg) {
               if (light instanceof DirectionalLight) {
-                  // Usar sombras en cascada (AAA) que evitan los estiramientos de MaxZ
+                  // 🔥 CASCADED SHADOWS: Calidad AAA con PCF Filtering.
+                  // Desactivamos autoCalcDepthBounds porque consumía toda la CPU.
                   const csg = new CascadedShadowGenerator(2048, light);
-                  csg.useBlurExponentialShadowMap = true;
-                  csg.useKernelBlur = true;
-                  csg.blurKernel = 32;
+                  csg.usePercentageCloserFiltering = true;
+                  csg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
                   csg.setDarkness(0.4);
-                  csg.autoCalcDepthBounds = true;
+                  csg.autoCalcDepthBounds = false; // CPU Saver
                   sg = csg;
               } else {
-                  const regularSg = new ShadowGenerator(2048, light as SpotLight);
-                  regularSg.useBlurExponentialShadowMap = true;
-                  regularSg.useKernelBlur = true;
-                  regularSg.blurKernel = 32;
+                  // 🔥 SPOTLIGHT SHADOWS
+                  const regularSg = new ShadowGenerator(1024, light as SpotLight);
+                  regularSg.usePercentageCloserFiltering = true;
+                  regularSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
                   regularSg.setDarkness(0.4);
                   sg = regularSg;
               }
@@ -152,9 +150,7 @@ export class EditorSceneService {
           if (renderList) {
               renderList.length = 0; 
               scene.meshes.forEach(m => {
-                  if (
-                      m.isVisible && 
-                      m.name !== 'sueloInvisible' && 
+                  const isValidShadowCaster = m.isVisible && 
                       !m.name.includes('proxyCol') && 
                       !m.name.includes('gizmo') && 
                       !m.name.includes('highlight') && 
@@ -163,17 +159,13 @@ export class EditorSceneService {
                       m.name !== 'debugCamBox' &&
                       m.name !== 'debugFogSphere' &&
                       m.metadata?.type !== 'trigger' && 
-                      !m.metadata?.type?.startsWith('light_')
-                  ) {
-                      renderList.push(m);
+                      !m.metadata?.type?.startsWith('light_');
+
+                  if (isValidShadowCaster) {
+                      sg.addShadowCaster(m, false); // Añadimos el proyector de sombras
+                      m.receiveShadows = true; // Y obligamos a que reciba sombras
                   }
               });
-          }
-      });
-
-      scene.meshes.forEach(m => {
-          if (m.name !== 'sueloInvisible' && !m.name.includes('gizmo') && !m.name.includes('highlight') && !m.metadata?.type?.startsWith('light_')) {
-              m.receiveShadows = true;
           }
       });
   }
@@ -244,6 +236,8 @@ export class EditorSceneService {
             if (m !== rootNode) { 
                 m.isPickable = true; 
                 m.checkCollisions = isSolid; 
+                m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
+                m.receiveShadows = true; // 🔥 Obligamos a que el modelo reciba sombras
             } 
             if (m.material) {
                 this.ajustarMaterialGLB(m.material);
@@ -287,6 +281,8 @@ export class EditorSceneService {
         collider: { ...defaultCollider }, camOffset: { ...defaultCamOffset }, playerConfig: defaultPlayerConfig
       };
       mesh.isPickable = true; mesh.checkCollisions = isSolid;
+      mesh.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
+      mesh.receiveShadows = true; // 🔥
       
       mesh.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
       mesh.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
@@ -446,6 +442,8 @@ export class EditorSceneService {
               if (m !== rootNode) { 
                   m.isPickable = true; 
                   m.checkCollisions = isSolidSaved; 
+                  m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
+                  m.receiveShadows = true; // 🔥
               } 
               if (m.material) {
                   this.ajustarMaterialGLB(m.material);
@@ -492,6 +490,8 @@ export class EditorSceneService {
         };
 
         mesh.isPickable = true; mesh.checkCollisions = isSolidSaved;
+        mesh.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
+        mesh.receiveShadows = true; // 🔥
         
         mesh.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
         mesh.ellipsoidOffset = new Vector3(savedCollider.offsetX * obj.scale.x, savedCollider.offsetY * obj.scale.y, savedCollider.offsetZ * obj.scale.z);

@@ -1,5 +1,5 @@
 import { Injectable, inject, effect } from '@angular/core';
-import { Color3, GizmoManager, HighlightLayer, Mesh, PointerEventTypes, Matrix, AbstractMesh, KeyboardEventTypes, MeshBuilder, StandardMaterial, Vector3, TransformNode, Ray, PointerDragBehavior, Scene, Color4, TransformNode as BabylonTransformNode, Quaternion } from '@babylonjs/core';
+import { Color3, GizmoManager, HighlightLayer, Mesh, PointerEventTypes, Matrix, AbstractMesh, KeyboardEventTypes, MeshBuilder, StandardMaterial, Vector3, TransformNode, Ray, PointerDragBehavior, Scene, Color4, TransformNode as BabylonTransformNode, Quaternion, CascadedShadowGenerator } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService, ToolMode } from './editor-state.service';
 import { HistorialService } from '../historial.service';
@@ -32,6 +32,9 @@ export class EditorToolsService {
   private centerDragMesh!: Mesh;
   private gizmoPivotNode!: BabylonTransformNode; 
   private isDraggingGizmo = false;
+
+  // 🔥 OPTIMIZACIÓN CRÍTICA 7: Control de tiempo para raycasts
+  private lastHoverCheckTime = 0;
 
   constructor() {
     effect(() => {
@@ -412,6 +415,11 @@ export class EditorToolsService {
 
       if (pi.type === PointerEventTypes.POINTERMOVE) {
         if (isAdmin && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
+          // 🔥 OPTIMIZACIÓN CRÍTICA 8: Limitación de frecuencia (Throttling) para el Hover.
+          const now = performance.now();
+          if (now - this.lastHoverCheckTime < 40) return;
+          this.lastHoverCheckTime = now;
+
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
 
@@ -546,8 +554,8 @@ export class EditorToolsService {
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
     let targetPlayer: AbstractMesh | null = null;
-    
-    // 🔥 FORZAMOS BUSCAR SIEMPRE AL JUGADOR
+    let shadowLimit = 10000; // Valor por defecto
+
     const spawnOrNpc = scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
     targetPlayer = spawnOrNpc || null;
 
@@ -560,21 +568,38 @@ export class EditorToolsService {
         
         scene.clearColor = Color4.FromHexString((fog.color || '#0d1729') + 'FF');
         
-        // 🔥 APLICAMOS EXACTAMENTE LA MISMA CONFIGURACIÓN A TODAS LAS CÁMARAS SIEMPRE
-        const cutoff = fog.end;
+        const cutoff = fog.end + (fog.end * 0.3);
         this.motor3d.editorCamera.maxZ = cutoff;
         this.motor3d.playerCameraFPS.maxZ = cutoff;
         this.motor3d.playerCameraTPS.maxZ = cutoff;
+        
+        // Si hay niebla, usamos su límite para las sombras en modo juego
+        shadowLimit = cutoff;
     } else {
         scene.fogMode = Scene.FOGMODE_NONE;
         const globalClear = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
         scene.clearColor = Color4.FromHexString(globalClear + 'FF');
         
-        // 🔥 LIMITE SANO PARA NO DAÑAR LAS SOMBRAS EN CÁMARA LIBRE
-        this.motor3d.editorCamera.maxZ = 1000;
-        this.motor3d.playerCameraFPS.maxZ = 1000;
-        this.motor3d.playerCameraTPS.maxZ = 1000;
+        this.motor3d.editorCamera.maxZ = 10000;
+        this.motor3d.playerCameraFPS.maxZ = 10000;
+        this.motor3d.playerCameraTPS.maxZ = 10000;
     }
+
+    // 🔥 OPTIMIZACIÓN DINÁMICA DE SOMBRAS
+    scene.lights.forEach(light => {
+        const sg: any = light.getShadowGenerator();
+        if (sg && sg instanceof CascadedShadowGenerator) {
+            if (modo === 'PLAYING') {
+                // En modo Jugar, concentramos los 1024 pixeles en la zona visible.
+                // Se verán en calidad ULTRA y no renderiza lo que está oculto.
+                sg.shadowMaxZ = shadowLimit;
+            } else {
+                // En modo Editor, extendemos las sombras a 10000 metros.
+                // Abarca todo, baja la calidad visual, sube los FPS enormemente.
+                sg.shadowMaxZ = 10000;
+            }
+        }
+    });
   }
 
   private actualizarDebugMeshes(selected: Mesh | null) {

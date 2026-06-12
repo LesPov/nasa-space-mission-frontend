@@ -71,7 +71,7 @@ export class PlayerInteractionService {
         Matrix.Identity(), 
         activeCamera
       );
-      centerRay.length = 10000;
+      centerRay.length = 10000; // La longitud del rayo está bien que sobrepase la niebla
       
       const hitCross = scene.pickWithRay(centerRay, (m) => {
         if (!m.isPickable) return false;

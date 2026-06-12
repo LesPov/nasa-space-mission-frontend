@@ -31,7 +31,7 @@ export class Motor3dService {
   iniciarMotor(canvas: HTMLCanvasElement): void {
     this.engine = new Engine(canvas, true, {
       preserveDrawingBuffer: false,
-      stencil: true,
+      stencil: true, 
       antialias: true,
     }, true);
 
@@ -44,17 +44,13 @@ export class Motor3dService {
     this.scene.collisionsEnabled = true;
     this.scene.gravity = new Vector3(0, -0.25, 0);
 
-    this.renderingPipeline = new DefaultRenderingPipeline(
-      'defaultPipeline',
-      false,
-      this.scene,
-      [this.scene.activeCamera!]
-    );
-    this.renderingPipeline.fxaaEnabled = false;
-    this.renderingPipeline.samples = 4;
-    this.renderingPipeline.bloomEnabled = false;
+    // 🔥 OPTIMIZACIÓN CRÍTICA 1: Evita cálculos de ratón nativos innecesarios.
+    this.scene.skipPointerMovePicking = true;
 
-    // --- CÁMARA 1: EDITOR ---
+    // ==========================================
+    // 1. CÁMARAS
+    // ==========================================
+
     this.editorCamera = new ArcRotateCamera(
       'editorCamera',
       Math.PI / 4,
@@ -63,50 +59,20 @@ export class Motor3dService {
       Vector3.Zero(),
       this.scene
     );
-
     this.editorCamera.minZ = 0.01;
     this.editorCamera.maxZ = 10000;
-
-    // Inercia más suave para que la cámara no resbale tanto al moverse rápido
     this.editorCamera.inertia = 0.8;
     this.editorCamera.panningInertia = 0.8;
-
-    // Controles normales: click izq = girar, click der = paneo, rueda = zoom
     this.editorCamera.attachControl(canvas, true);
     this.editorCamera._panningMouseButton = 2;
     this.editorCamera.allowUpsideDown = false;
 
-    // 🔥 LA MAGIA DE LA VELOCIDAD: Sensibilidad súper dinámica (Estilo Blender/Unity)
-    this.scene.onBeforeRenderObservable.add(() => {
-      if (this.scene.activeCamera === this.editorCamera) {
-        // Obtenemos el radio actual. Nunca bajamos de 0.1 para no dividir por cero.
-        const radius = Math.max(0.1, this.editorCamera.radius);
-
-        // Curva de proximidad basada en una distancia de 50 metros.
-        // 0 = Lejos (Radio mayor a 50) -> MUY RÁPIDO
-        // 1 = Muy Cerca (Radio cercano a 0) -> LENTO Y PRECISO
-        const proximity = Math.max(0, Math.min(1, 1 - (radius / 50)));
-
-        // Giro (Click Izquierdo): De 250 (rapidísimo) a 2200 (muy lento y preciso)
-        this.editorCamera.angularSensibilityX = 250 + (proximity * 1950);
-        this.editorCamera.angularSensibilityY = 250 + (proximity * 1950);
-
-        // Paneo (Click Derecho): De 25 (vuela por el mapa) a 1200 (arrastre de milímetros)
-        this.editorCamera.panningSensibility = 25 + (proximity * 1175);
-
-        // Zoom (Rueda): De 0.8 (avanza metros enteros) a 50 (avanza centímetros)
-        this.editorCamera.wheelPrecision = 0.8 + (proximity * 49.2);
-      }
-    });
-
-    // --- CÁMARA 2: JUGADOR FPS ---
     this.playerCameraFPS = new UniversalCamera(
       'playerCameraFPS',
       new Vector3(0, 0, 0),
       this.scene
     );
     this.playerCameraFPS.minZ = 0.01;
-    this.playerCameraFPS.maxZ = 10000;
     this.playerCameraFPS.keysUp = [];
     this.playerCameraFPS.keysDown = [];
     this.playerCameraFPS.keysLeft = [];
@@ -116,7 +82,6 @@ export class Motor3dService {
     this.playerCameraFPS.applyGravity = false;
     this.playerCameraFPS.checkCollisions = false;
 
-    // --- CÁMARA 3: JUGADOR TPS ---
     this.playerCameraTPS = new ArcRotateCamera(
       'playerCameraTPS',
       -Math.PI / 2,
@@ -125,10 +90,7 @@ export class Motor3dService {
       Vector3.Zero(),
       this.scene
     );
-
     this.playerCameraTPS.minZ = 0.01;
-    this.playerCameraTPS.maxZ = 10000;
-
     this.playerCameraTPS.wheelPrecision = 15;
     this.playerCameraTPS.angularSensibilityX = 2000;
     this.playerCameraTPS.angularSensibilityY = 2000;
@@ -139,6 +101,53 @@ export class Motor3dService {
     this.playerCameraTPS.allowUpsideDown = false;
 
     this.scene.activeCamera = this.editorCamera;
+
+    // ==========================================
+    // 2. PIPELINE DE RENDERIZADO
+    // ==========================================
+    this.renderingPipeline = new DefaultRenderingPipeline(
+      'defaultPipeline',
+      false,
+      this.scene,
+      this.scene.cameras
+    );
+    
+    // 🔥 OPTIMIZACIÓN CRÍTICA 2: Samples en 2 reduce la carga GPU a la mitad manteniendo calidad.
+    this.renderingPipeline.fxaaEnabled = true; 
+    this.renderingPipeline.samples = 2;
+    this.renderingPipeline.bloomEnabled = false;
+
+    // ==========================================
+    // 3. LÓGICAS DE VELOCIDAD Y NIEBLA
+    // ==========================================
+
+    this.scene.onBeforeRenderObservable.add(() => {
+      if (this.scene.activeCamera === this.editorCamera) {
+        const radius = Math.max(0.1, this.editorCamera.radius);
+        const proximity = Math.max(0, Math.min(1, 1 - (radius / 50)));
+
+        this.editorCamera.angularSensibilityX = 250 + (proximity * 1950);
+        this.editorCamera.angularSensibilityY = 250 + (proximity * 1950);
+        this.editorCamera.panningSensibility = 25 + (proximity * 1175);
+        this.editorCamera.wheelPrecision = 0.8 + (proximity * 49.2);
+      }
+    });
+
+    this.scene.onBeforeCameraRenderObservable.add((camera) => {
+      if (camera.name === 'editorCamera') {
+        this.scene.fogEnabled = false;
+        camera.maxZ = 10000; 
+      } else {
+        this.scene.fogEnabled = true;
+        // 🔥 Culling Suave: Sumamos un 30% a la distancia de la niebla. 
+        // Esto evita que los objetos y las sombras desaparezcan de golpe. Se desvanecen suavemente.
+        if (this.scene.fogMode !== Scene.FOGMODE_NONE && this.scene.fogEnd > 0) {
+          camera.maxZ = this.scene.fogEnd + (this.scene.fogEnd * 0.3);
+        } else {
+          camera.maxZ = 10000;
+        }
+      }
+    });
 
     const ambientLight = new HemisphericLight(
       'globalLight',

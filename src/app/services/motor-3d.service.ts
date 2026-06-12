@@ -67,48 +67,35 @@ export class Motor3dService {
     this.editorCamera.minZ = 0.01;
     this.editorCamera.maxZ = 10000;
 
-    // Controles normales:
-    // click izquierdo = girar
-    // click derecho = paneo
-    // rueda = zoom
+    // Inercia más suave para que la cámara no resbale tanto al moverse rápido
+    this.editorCamera.inertia = 0.8;
+    this.editorCamera.panningInertia = 0.8;
+
+    // Controles normales: click izq = girar, click der = paneo, rueda = zoom
     this.editorCamera.attachControl(canvas, true);
     this.editorCamera._panningMouseButton = 2;
     this.editorCamera.allowUpsideDown = false;
 
-    // Sensibilidad dinámica por distancia:
-    // al acercarte, baja un poco la sensibilidad de giro y arrastre,
-    // y el zoom se vuelve un poco más lento para que no “salte”.
+    // 🔥 LA MAGIA DE LA VELOCIDAD: Sensibilidad súper dinámica (Estilo Blender/Unity)
     this.scene.onBeforeRenderObservable.add(() => {
       if (this.scene.activeCamera === this.editorCamera) {
-        const radius = Math.max(1, this.editorCamera.radius);
+        // Obtenemos el radio actual. Nunca bajamos de 0.1 para no dividir por cero.
+        const radius = Math.max(0.1, this.editorCamera.radius);
 
-        // 0 = lejos, 1 = muy cerca
-        const proximity = Math.max(0, Math.min(1, 1 - (radius / 14)));
+        // Curva de proximidad basada en una distancia de 50 metros.
+        // 0 = Lejos (Radio mayor a 50) -> MUY RÁPIDO
+        // 1 = Muy Cerca (Radio cercano a 0) -> LENTO Y PRECISO
+        const proximity = Math.max(0, Math.min(1, 1 - (radius / 50)));
 
-        // Giro: un poco menos sensible al acercarte
-        this.editorCamera.angularSensibilityX = Math.max(
-          500,
-          Math.min(2200, 900 + (proximity * 650))
-        );
-        this.editorCamera.angularSensibilityY = Math.max(
-          500,
-          Math.min(2200, 900 + (proximity * 650))
-        );
+        // Giro (Click Izquierdo): De 250 (rapidísimo) a 2200 (muy lento y preciso)
+        this.editorCamera.angularSensibilityX = 250 + (proximity * 1950);
+        this.editorCamera.angularSensibilityY = 250 + (proximity * 1950);
 
-        // Arrastre con click derecho: un poco más suave al acercarte
-        this.editorCamera.panningSensibility = Math.max(
-          380,
-          Math.min(1800, 700 + (proximity * 500))
-        );
+        // Paneo (Click Derecho): De 25 (vuela por el mapa) a 1200 (arrastre de milímetros)
+        this.editorCamera.panningSensibility = 25 + (proximity * 1175);
 
-        // Zoom: más lento cuando estás cerca del objeto,
-        // pero sin dejarlo pesado.
-        // Menor wheelPrecision = zoom más rápido.
-        // Mayor wheelPrecision = zoom más lento.
-        this.editorCamera.wheelPrecision = Math.max(
-          10,
-          Math.min(35, 16 + (proximity * 8))
-        );
+        // Zoom (Rueda): De 0.8 (avanza metros enteros) a 50 (avanza centímetros)
+        this.editorCamera.wheelPrecision = 0.8 + (proximity * 49.2);
       }
     });
 

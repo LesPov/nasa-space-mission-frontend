@@ -225,106 +225,64 @@ export class EditorToolsService {
       }
     };
 
-const onDragging = () => {
-  const mesh = this.state.objetoSeleccionado() as Mesh;
-  const subSelected = this.state.subObjetoSeleccionado();
+    const onDragging = () => {
+      const mesh = this.state.objetoSeleccionado() as Mesh;
+      const subSelected = this.state.subObjetoSeleccionado();
 
-  if (!mesh) return;
+      if (!mesh) return;
 
-  // COLLIDER
-  if (subSelected === 'collider' && this.debugCollider) {
+      if (subSelected === 'collider' && this.debugCollider) {
+        this.centerDragMesh.position.copyFrom(this.debugCollider.getAbsolutePosition());
+        mesh.metadata.collider.offsetX = this.debugCollider.position.x;
+        mesh.metadata.collider.offsetY = this.debugCollider.position.y;
+        mesh.metadata.collider.offsetZ = this.debugCollider.position.z;
+        this.state.onGizmoDrag.next();
+        return;
+      }
 
-    this.centerDragMesh.position.copyFrom(
-      this.debugCollider.getAbsolutePosition()
-    );
+      if (subSelected === 'camera' && this.debugCameraBox) {
+        this.centerDragMesh.position.copyFrom(this.debugCameraBox.getAbsolutePosition());
+        mesh.metadata.camOffset.x = this.debugCameraBox.position.x;
+        mesh.metadata.camOffset.y = this.debugCameraBox.position.y;
+        mesh.metadata.camOffset.z = this.debugCameraBox.position.z;
+        this.state.onGizmoDrag.next();
+        return;
+      }
 
-    mesh.metadata.collider.offsetX = this.debugCollider.position.x;
-    mesh.metadata.collider.offsetY = this.debugCollider.position.y;
-    mesh.metadata.collider.offsetZ = this.debugCollider.position.z;
+      mesh.computeWorldMatrix(true);
+      const pivotPos = this.gizmoPivotNode.getAbsolutePosition();
 
-    this.state.onGizmoDrag.next();
-    return;
-  }
+      if (!isNaN(pivotPos.x) && !isNaN(pivotPos.y) && !isNaN(pivotPos.z)) {
+        mesh.setAbsolutePosition(pivotPos);
+      }
 
-  // CAMERA
-  if (subSelected === 'camera' && this.debugCameraBox) {
+      if (this.gizmoPivotNode.rotationQuaternion) {
+        if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
+        mesh.rotationQuaternion.copyFrom(this.gizmoPivotNode.rotationQuaternion);
+      } else {
+        mesh.rotation.copyFrom(this.gizmoPivotNode.rotation);
+      }
 
-    this.centerDragMesh.position.copyFrom(
-      this.debugCameraBox.getAbsolutePosition()
-    );
+      mesh.scaling.copyFrom(this.gizmoPivotNode.scaling);
+      mesh.computeWorldMatrix(true);
 
-    mesh.metadata.camOffset.x = this.debugCameraBox.position.x;
-    mesh.metadata.camOffset.y = this.debugCameraBox.position.y;
-    mesh.metadata.camOffset.z = this.debugCameraBox.position.z;
+      if (mesh.metadata?.collider && mesh.metadata.collider.type !== 'mesh') {
+        const posMundo = Vector3.TransformCoordinates(
+          new Vector3(
+            mesh.metadata.collider.offsetX || 0,
+            mesh.metadata.collider.offsetY || 0,
+            mesh.metadata.collider.offsetZ || 0
+          ),
+          mesh.getWorldMatrix()
+        );
+        this.centerDragMesh.position.copyFrom(posMundo);
+      } else {
+        this.centerDragMesh.position.copyFrom(mesh.getBoundingInfo().boundingBox.centerWorld);
+      }
 
-    this.state.onGizmoDrag.next();
-    return;
-  }
+      this.state.onGizmoDrag.next();
+    };
 
-  // ==========================
-  // OBJETO NORMAL
-  // ==========================
-
-  mesh.computeWorldMatrix(true);
-
-  const pivotPos = this.gizmoPivotNode.getAbsolutePosition();
-
-  if (
-    !isNaN(pivotPos.x) &&
-    !isNaN(pivotPos.y) &&
-    !isNaN(pivotPos.z)
-  ) {
-    mesh.setAbsolutePosition(pivotPos);
-  }
-
-  if (this.gizmoPivotNode.rotationQuaternion) {
-
-    if (!mesh.rotationQuaternion) {
-      mesh.rotationQuaternion = Quaternion.Identity();
-    }
-
-    mesh.rotationQuaternion.copyFrom(
-      this.gizmoPivotNode.rotationQuaternion
-    );
-
-  } else {
-
-    mesh.rotation.copyFrom(
-      this.gizmoPivotNode.rotation
-    );
-  }
-
-  mesh.scaling.copyFrom(
-    this.gizmoPivotNode.scaling
-  );
-
-  mesh.computeWorldMatrix(true);
-
-  if (
-    mesh.metadata?.collider &&
-    mesh.metadata.collider.type !== 'mesh'
-  ) {
-
-    const posMundo = Vector3.TransformCoordinates(
-      new Vector3(
-        mesh.metadata.collider.offsetX || 0,
-        mesh.metadata.collider.offsetY || 0,
-        mesh.metadata.collider.offsetZ || 0
-      ),
-      mesh.getWorldMatrix()
-    );
-
-    this.centerDragMesh.position.copyFrom(posMundo);
-
-  } else {
-
-    this.centerDragMesh.position.copyFrom(
-      mesh.getBoundingInfo().boundingBox.centerWorld
-    );
-  }
-
-  this.state.onGizmoDrag.next();
-};
     const onDragEnd = () => {
       this.isDraggingGizmo = false;
       const mesh = this.state.objetoSeleccionado() as Mesh;
@@ -400,8 +358,6 @@ const onDragging = () => {
         return;
       }
 
-      // 🔥 AQUÍ ESTÁ LA SOLUCIÓN: Cambiamos POINTERDOWN a POINTERTAP.
-      // Así, si mantienes presionado para arrastrar/girar la cámara, no se deselecciona.
       if (pi.type === PointerEventTypes.POINTERTAP && pi.event.button === 0) {
         if (playSt === 'PLAYING') {
           if (!this.state.ratonBloqueado()) {
@@ -444,7 +400,10 @@ const onDragging = () => {
           } else {
             this.state.objetoSeleccionado.set(null);
             if (playSt === 'EDITING_IN_GAME') {
-              try { canvas?.requestPointerLock(); } catch (e) {}
+              if (canvas) {
+                canvas.focus();
+                try { canvas.requestPointerLock(); } catch (e) {}
+              }
               this.cameraSvc.volverAJuego();
             }
           }
@@ -474,7 +433,10 @@ const onDragging = () => {
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
         if (kbInfo.event.key === 'Escape' && this.state.playState() === 'EDITING_IN_GAME') {
           const canvas = this.motor3d.engine.getRenderingCanvas();
-          try { canvas?.requestPointerLock(); } catch (e) {}
+          if (canvas) {
+            canvas.focus();
+            try { canvas.requestPointerLock(); } catch (e) {}
+          }
           this.cameraSvc.volverAJuego();
         }
 
@@ -581,46 +543,37 @@ const onDragging = () => {
     if (!scene) return;
 
     const modo = this.state.playState();
-    let targetPlayer: AbstractMesh | null = null;
-    
-    if (modo === 'PLAYING' || modo === 'EDITING_IN_GAME' || modo === 'TRANSITIONING') {
-       targetPlayer = this.state.jugadorActivo;
-    } else {
-       const obj = this.state.objetoSeleccionado() as AbstractMesh;
-       if (obj && (obj.metadata?.rol === 'npc' || obj.metadata?.rol === 'spawn_point')) {
-           targetPlayer = obj;
-       }
-    }
-
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
+    let targetPlayer: AbstractMesh | null = null;
+    
+    // 🔥 FORZAMOS BUSCAR SIEMPRE AL JUGADOR
+    const spawnOrNpc = scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
+    targetPlayer = spawnOrNpc || null;
+
     if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
-       const fog = targetPlayer.metadata.playerConfig.fog;
-       scene.fogMode = Scene.FOGMODE_LINEAR;
-       scene.fogColor = Color3.FromHexString(fog.color || '#0d1729');
-       scene.fogStart = fog.start || 10;
-       scene.fogEnd = fog.end || 50;
-       
-       scene.clearColor = Color4.FromHexString((fog.color || '#0d1729') + 'FF');
-       
-       if (isAdmin) {
-           this.motor3d.editorCamera.maxZ = 10000;
-           this.motor3d.playerCameraFPS.maxZ = 10000;
-           this.motor3d.playerCameraTPS.maxZ = 10000;
-       } else {
-           const cutoff = fog.end;
-           this.motor3d.editorCamera.maxZ = cutoff;
-           this.motor3d.playerCameraFPS.maxZ = cutoff;
-           this.motor3d.playerCameraTPS.maxZ = cutoff;
-       }
+        const fog = targetPlayer.metadata.playerConfig.fog;
+        scene.fogMode = Scene.FOGMODE_LINEAR;
+        scene.fogColor = Color3.FromHexString(fog.color || '#0d1729');
+        scene.fogStart = fog.start || 10;
+        scene.fogEnd = fog.end || 50;
+        
+        scene.clearColor = Color4.FromHexString((fog.color || '#0d1729') + 'FF');
+        
+        // 🔥 APLICAMOS EXACTAMENTE LA MISMA CONFIGURACIÓN A TODAS LAS CÁMARAS SIEMPRE
+        const cutoff = fog.end;
+        this.motor3d.editorCamera.maxZ = cutoff;
+        this.motor3d.playerCameraFPS.maxZ = cutoff;
+        this.motor3d.playerCameraTPS.maxZ = cutoff;
     } else {
-       scene.fogMode = Scene.FOGMODE_NONE;
-       const globalClear = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
-       scene.clearColor = Color4.FromHexString(globalClear + 'FF');
-       
-       this.motor3d.editorCamera.maxZ = 10000;
-       this.motor3d.playerCameraFPS.maxZ = 10000;
-       this.motor3d.playerCameraTPS.maxZ = 10000;
+        scene.fogMode = Scene.FOGMODE_NONE;
+        const globalClear = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
+        scene.clearColor = Color4.FromHexString(globalClear + 'FF');
+        
+        // 🔥 LIMITE SANO PARA NO DAÑAR LAS SOMBRAS EN CÁMARA LIBRE
+        this.motor3d.editorCamera.maxZ = 1000;
+        this.motor3d.playerCameraFPS.maxZ = 1000;
+        this.motor3d.playerCameraTPS.maxZ = 1000;
     }
   }
 

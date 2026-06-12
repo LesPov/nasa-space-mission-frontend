@@ -3,7 +3,7 @@ import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { HistorialService } from '../historial.service';
 import {
-  MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader, StandardMaterial, Color3, TransformNode, Matrix, HemisphericLight, PointLight, SpotLight, DirectionalLight, Scene, ShadowGenerator
+  MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader, StandardMaterial, Color3, TransformNode, Matrix, HemisphericLight, PointLight, SpotLight, DirectionalLight, Scene, ShadowGenerator, CascadedShadowGenerator
 } from '@babylonjs/core';
 
 import '@babylonjs/loaders/glTF';
@@ -31,6 +31,7 @@ export class EditorSceneService {
         material.usePhysicalLightFalloff = false;
         material.metallic = 0.1;
         material.roughness = 0.8;
+        material.environmentIntensity = 0.5; 
     }
   }
 
@@ -119,22 +120,61 @@ export class EditorSceneService {
     this.state.objetoSeleccionado.set(mesh); this.actualizarListaNodos(); this.historialSvc.registrarAccionCrear(mesh); this.state.triggerUpdate();
   }
 
-  private asignarObjetosASombrasDeLuces(scene: Scene) {
+  public asignarObjetosASombrasDeLuces(): void {
+      const scene = this.motor3d.scene;
       const lights = scene.lights.filter(l => l instanceof DirectionalLight || l instanceof SpotLight);
+      
       lights.forEach(light => {
-          let sg = light.getShadowGenerator() as ShadowGenerator;
+          // 🔥 AQUÍ ESTÁ LA SOLUCIÓN: Casteamos como 'any' para evitar las quejas de TypeScript 
+          // de que la interfaz base (IShadowGenerator) no tiene las propiedades avanzadas.
+          let sg: any = light.getShadowGenerator();
           if (!sg) {
-              sg = new ShadowGenerator(2048, light as DirectionalLight | SpotLight);
-              sg.useBlurExponentialShadowMap = true;
-              sg.useKernelBlur = true;
-              sg.blurKernel = 32;
-              sg.setDarkness(0.3);
-          }
-          scene.meshes.forEach(m => {
-              if (m.isVisible && !m.name.includes('sueloInvisible') && !m.name.includes('proxy') && !m.name.includes('gizmo') && m.metadata?.type !== 'trigger' && !m.metadata?.type?.startsWith('light_')) {
-                  sg.addShadowCaster(m, true);
+              if (light instanceof DirectionalLight) {
+                  // Usar sombras en cascada (AAA) que evitan los estiramientos de MaxZ
+                  const csg = new CascadedShadowGenerator(2048, light);
+                  csg.useBlurExponentialShadowMap = true;
+                  csg.useKernelBlur = true;
+                  csg.blurKernel = 32;
+                  csg.setDarkness(0.4);
+                  csg.autoCalcDepthBounds = true;
+                  sg = csg;
+              } else {
+                  const regularSg = new ShadowGenerator(2048, light as SpotLight);
+                  regularSg.useBlurExponentialShadowMap = true;
+                  regularSg.useKernelBlur = true;
+                  regularSg.blurKernel = 32;
+                  regularSg.setDarkness(0.4);
+                  sg = regularSg;
               }
-          });
+          }
+          
+          const renderList = sg.getShadowMap()?.renderList;
+          if (renderList) {
+              renderList.length = 0; 
+              scene.meshes.forEach(m => {
+                  if (
+                      m.isVisible && 
+                      m.name !== 'sueloInvisible' && 
+                      !m.name.includes('proxyCol') && 
+                      !m.name.includes('gizmo') && 
+                      !m.name.includes('highlight') && 
+                      m.name !== 'centerDragPos' &&
+                      m.name !== 'debugCollider' &&
+                      m.name !== 'debugCamBox' &&
+                      m.name !== 'debugFogSphere' &&
+                      m.metadata?.type !== 'trigger' && 
+                      !m.metadata?.type?.startsWith('light_')
+                  ) {
+                      renderList.push(m);
+                  }
+              });
+          }
+      });
+
+      scene.meshes.forEach(m => {
+          if (m.name !== 'sueloInvisible' && !m.name.includes('gizmo') && !m.name.includes('highlight') && !m.metadata?.type?.startsWith('light_')) {
+              m.receiveShadows = true;
+          }
       });
   }
 
@@ -183,9 +223,7 @@ export class EditorSceneService {
         mesh.checkCollisions = false;
         mesh.isVisible = this.state.rolSimulado() === 'admin';
         
-        if (tipo === 'light_directional' || tipo === 'light_spot') {
-            this.asignarObjetosASombrasDeLuces(scene);
-        }
+        this.asignarObjetosASombrasDeLuces();
         
         this.state.objetoSeleccionado.set(mesh); 
         this.actualizarListaNodos(); 
@@ -206,7 +244,6 @@ export class EditorSceneService {
             if (m !== rootNode) { 
                 m.isPickable = true; 
                 m.checkCollisions = isSolid; 
-                m.receiveShadows = true; 
             } 
             if (m.material) {
                 this.ajustarMaterialGLB(m.material);
@@ -229,7 +266,7 @@ export class EditorSceneService {
         rootNode.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
         rootNode.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
 
-        this.asignarObjetosASombrasDeLuces(scene);
+        this.asignarObjetosASombrasDeLuces();
 
         this.state.objetoSeleccionado.set(rootNode); this.actualizarListaNodos(); this.historialSvc.registrarAccionCrear(rootNode); this.state.triggerUpdate();
       });
@@ -250,7 +287,6 @@ export class EditorSceneService {
         collider: { ...defaultCollider }, camOffset: { ...defaultCamOffset }, playerConfig: defaultPlayerConfig
       };
       mesh.isPickable = true; mesh.checkCollisions = isSolid;
-      mesh.receiveShadows = true; 
       
       mesh.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
       mesh.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
@@ -262,7 +298,7 @@ export class EditorSceneService {
       mat.maxSimultaneousLights = 16; 
       mesh.material = mat;
 
-      this.asignarObjetosASombrasDeLuces(scene);
+      this.asignarObjetosASombrasDeLuces();
 
       this.state.objetoSeleccionado.set(mesh); this.actualizarListaNodos(); this.historialSvc.registrarAccionCrear(mesh); this.state.triggerUpdate();
     }
@@ -278,6 +314,15 @@ export class EditorSceneService {
       ambient.diffuse = Color3.FromHexString(props.ambientDiffuse || '#ffffff');
       ambient.groundColor = Color3.FromHexString(props.ambientGround || '#333333');
       ambient.specular = new Color3(0, 0, 0); 
+
+      if (!scene.environmentTexture) {
+          scene.createDefaultEnvironment({
+              createSkybox: false,
+              createGround: false,
+              enableGroundShadow: false,
+              setupImageProcessing: false
+          });
+      }
 
       const oldGlobal = scene.lights.find(l => l.name === 'globalLight');
       if (oldGlobal) oldGlobal.dispose();
@@ -308,14 +353,14 @@ export class EditorSceneService {
         });
     }
 
-    // Aseguramos que la niebla base esté apagada al cargar el mundo,
-    // la niebla ahora es 100% controlada por EditorToolsService (por personaje)
     scene.fogMode = Scene.FOGMODE_NONE;
     scene.cameras.forEach(cam => cam.maxZ = 10000);
 
     const objetosBD = Array.isArray(dataBD) ? dataBD : (dataBD.sceneObjects || []);
     const triggersBD = Array.isArray(dataBD) ? [] : (dataBD.triggers || []);
     const isAdmin = this.state.rolSimulado() === 'admin';
+
+    let promesasCarga: any[] = [];
 
     objetosBD.forEach((obj: any) => {
       const isModel = obj.type === 'model';
@@ -390,7 +435,7 @@ export class EditorSceneService {
         const fullPath = 'http://localhost:4000' + path;
         const lastSlash = fullPath.lastIndexOf('/');
 
-        SceneLoader.ImportMeshAsync('', fullPath.substring(0, lastSlash + 1), fullPath.substring(lastSlash + 1), scene).then((result) => {
+        const p = SceneLoader.ImportMeshAsync('', fullPath.substring(0, lastSlash + 1), fullPath.substring(lastSlash + 1), scene).then((result) => {
           const rootNode = result.meshes[0] as Mesh;
           rootNode.name = obj.name; rootNode.position = new Vector3(obj.position.x, obj.position.y, obj.position.z);
           rootNode.rotationQuaternion = Quaternion.FromEulerAngles(obj.rotation.x, obj.rotation.y, obj.rotation.z);
@@ -401,7 +446,6 @@ export class EditorSceneService {
               if (m !== rootNode) { 
                   m.isPickable = true; 
                   m.checkCollisions = isSolidSaved; 
-                  m.receiveShadows = true; 
               } 
               if (m.material) {
                   this.ajustarMaterialGLB(m.material);
@@ -423,8 +467,8 @@ export class EditorSceneService {
           };
           rootNode.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
           rootNode.ellipsoidOffset = new Vector3(savedCollider.offsetX * obj.scale.x, savedCollider.offsetY * obj.scale.y, savedCollider.offsetZ * obj.scale.z);
-          this.actualizarListaNodos();
         });
+        promesasCarga.push(p);
       } else {
         let mesh!: Mesh;
         switch (obj.type) {
@@ -448,7 +492,6 @@ export class EditorSceneService {
         };
 
         mesh.isPickable = true; mesh.checkCollisions = isSolidSaved;
-        mesh.receiveShadows = true; 
         
         mesh.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
         mesh.ellipsoidOffset = new Vector3(savedCollider.offsetX * obj.scale.x, savedCollider.offsetY * obj.scale.y, savedCollider.offsetZ * obj.scale.z);
@@ -462,7 +505,6 @@ export class EditorSceneService {
       }
     });
 
-    // 3. Cargar Triggers
     triggersBD.forEach((trigger: any) => {
         let mesh = scene.getMeshByName(trigger.name) as Mesh;
         const shape = trigger.actionProperties?.triggerShape || 'cube';
@@ -521,8 +563,10 @@ export class EditorSceneService {
         }
     });
 
-    this.asignarObjetosASombrasDeLuces(scene);
-    this.actualizarListaNodos();
+    Promise.all(promesasCarga).then(() => {
+        this.asignarObjetosASombrasDeLuces();
+        this.actualizarListaNodos();
+    });
   }
 
   obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[], worldSettings: any } {
@@ -532,7 +576,6 @@ export class EditorSceneService {
     const scene = this.motor3d.scene;
     const ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;
     
-    // Solo guardamos Luz Ambiental y Gravedad (La Niebla Global ya no existe)
     const worldSettings = {
       clearColor: scene.metadata?.globalClearColor || scene.clearColor.toHexString().substring(0, 7), 
       gravityY: scene.gravity.y,
@@ -641,7 +684,6 @@ export class EditorSceneService {
     if (!this.motor3d.scene) return;
     const scene = this.motor3d.scene;
     
-    // Filtramos para no mostrar la luz global de fondo (Hemisférica) ni luces hijas
     const lucesValidas = scene.lights.filter(l => !l.parent && l.name !== 'ambientLight');
 
     this.state.nodosEscena.set([

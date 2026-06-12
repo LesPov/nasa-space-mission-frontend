@@ -24,7 +24,6 @@ export class EditorCameraService {
     const metadata: any = objeto.metadata || {};
     const collider = metadata.collider;
 
-    // Caso especial: objetos con collider/cápsula definidos
     if (collider && collider.type !== 'mesh') {
       const colOffsetX = Number(collider.offsetX || 0);
       const colOffsetY = Number(collider.offsetY || 0);
@@ -40,15 +39,11 @@ export class EditorCameraService {
       const sizeZ = Math.max(0.5, Number(collider.sizeZ || collider.sizeY || 1)) * Math.abs(objeto.scaling.z);
 
       const maxSize = Math.max(sizeX, sizeY, sizeZ);
-
-      // Más distancia para que no quede demasiado cerca.
-      // Esto hace que incluso colliders pequeños se vean con aire.
       const radius = Math.max(7, maxSize * 3.2);
 
       return { target, radius };
     }
 
-    // Caso normal: malla sólida / objeto 3D
     const boundingVectors = objeto.getHierarchyBoundingVectors(true);
     const min = boundingVectors.min;
     const max = boundingVectors.max;
@@ -59,29 +54,9 @@ export class EditorCameraService {
     const maxDim = Math.max(size.x, size.y, size.z);
     const diagonal = size.length();
 
-    // Distancia más abierta para que objetos pequeños no queden pegados.
-    // Para 1x1x1 ya no se verá demasiado cerca.
     const radius = Math.max(7, maxDim * 3.0, diagonal * 1.4);
 
     return { target, radius };
-  }
-
-  private aplicarSensibilidadDinamica(): void {
-    const cam = this.motor3d.editorCamera;
-    if (!cam) return;
-
-    const radius = Math.max(1, cam.radius);
-
-    // Más cerca = más rápido de girar/arrastrar.
-    // Más lejos = un poco más suave para no pasarse.
-    cam.angularSensibilityX = Math.max(650, Math.min(7000, radius * 220));
-    cam.angularSensibilityY = Math.max(650, Math.min(7000, radius * 220));
-
-    // Paneo también acompaña la distancia.
-    cam.panningSensibility = Math.max(250, Math.min(3500, radius * 110));
-
-    // Zoom con rueda: preciso cerca, más ágil lejos.
-    cam.wheelPrecision = Math.max(10, Math.min(85, 18 + radius * 2.2));
   }
 
   guardarEstadoCamaraLibre(): void {
@@ -200,7 +175,6 @@ export class EditorCameraService {
       this.state.playState.set('EDITING_IN_GAME');
       this.state.objetoSeleccionado.set(objetoReceptor);
       this.motor3d.editorCamera.attachControl(this.motor3d.engine.getRenderingCanvas(), true);
-      this.aplicarSensibilidadDinamica();
     });
   }
 
@@ -253,14 +227,6 @@ export class EditorCameraService {
     animTarget?.onAnimationEndObservable.addOnce(() => {
       this.motor3d.scene.activeCamera = targetCam;
       this.state.playState.set('PLAYING');
-
-      const canvas = this.motor3d.engine.getRenderingCanvas();
-      if (canvas) {
-        canvas.focus();
-        try {
-          canvas.requestPointerLock();
-        } catch (e) {}
-      }
     });
   }
 }

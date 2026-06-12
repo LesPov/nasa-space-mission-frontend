@@ -3,11 +3,12 @@
   <div class="prop-tabs">
     <ng-container *ngIf="objetoActual">
         <button class="tab-btn" [class.active]="pestanaActiva === 'transform'" (click)="cambiarPestana('transform')" title="Transformación">🟧</button>
-        <button class="tab-btn" *ngIf="!esTrigger && !esLuz" [class.active]="pestanaActiva === 'physics'" (click)="cambiarPestana('physics')" title="Física y Colisiones">💊</button>
+        <!-- 🔥 Permitir físicas si es un modelo normal o una luz CON modelo -->
+        <button class="tab-btn" *ngIf="!esTrigger && (!esLuz || esLuzConModelo)" [class.active]="pestanaActiva === 'physics'" (click)="cambiarPestana('physics')" title="Física y Colisiones">💊</button>
         <button class="tab-btn" *ngIf="esPersonaje && !esTrigger" [class.active]="pestanaActiva === 'player'" (click)="cambiarPestana('player')" title="Configuración Jugador">🎮</button>
-        <button class="tab-btn" *ngIf="esPersonaje && !esTrigger" [class.active]="pestanaActiva === 'animation'" (click)="cambiarPestana('animation')" title="Mapeo de Animaciones">🏃</button>
-        <button class="tab-btn" *ngIf="esPersonaje || esTrigger" [class.active]="pestanaActiva === 'sequences'" (click)="cambiarPestana('sequences')" title="Creador de Secuencias">🎞️</button>
-        <!-- 🔥 BOTÓN DE PESTAÑA PARA LA LUZ -->
+        <!-- 🔥 Permitir animaciones y secuencias si es personaje o luz con modelo -->
+        <button class="tab-btn" *ngIf="(esPersonaje || esLuzConModelo) && !esTrigger" [class.active]="pestanaActiva === 'animation'" (click)="cambiarPestana('animation')" title="Mapeo de Animaciones">🏃</button>
+        <button class="tab-btn" *ngIf="esPersonaje || esTrigger || esLuzConModelo" [class.active]="pestanaActiva === 'sequences'" (click)="cambiarPestana('sequences')" title="Creador de Secuencias">🎞️</button>
         <button class="tab-btn" *ngIf="esLuz" [class.active]="pestanaActiva === 'light'" (click)="cambiarPestana('light')" title="Propiedades de Luz">💡</button>
     </ng-container>
     
@@ -47,13 +48,13 @@
       <app-prop-transform *ngIf="pestanaActiva === 'transform' && !esTrigger" [objeto]="objetoActual"></app-prop-transform>
       <app-prop-trigger *ngIf="pestanaActiva === 'transform' && esTrigger" [objeto]="objetoActual"></app-prop-trigger>
 
-      <app-prop-physics *ngIf="pestanaActiva === 'physics' && !esTrigger && !esLuz" [objeto]="objetoActual"></app-prop-physics>
+      <app-prop-physics *ngIf="pestanaActiva === 'physics' && !esTrigger && (!esLuz || esLuzConModelo)" [objeto]="objetoActual"></app-prop-physics>
 
       <app-prop-player *ngIf="pestanaActiva === 'player' && esPersonaje" [objeto]="objetoActual"></app-prop-player>
-      <app-prop-animation *ngIf="pestanaActiva === 'animation' && esPersonaje" [objeto]="objetoActual"></app-prop-animation>
-      <app-prop-sequences *ngIf="pestanaActiva === 'sequences' && (esPersonaje || esTrigger)" [objeto]="objetoActual"></app-prop-sequences>
+      <app-prop-animation *ngIf="pestanaActiva === 'animation' && (esPersonaje || esLuzConModelo)" [objeto]="objetoActual"></app-prop-animation>
+      <app-prop-sequences *ngIf="pestanaActiva === 'sequences' && (esPersonaje || esTrigger || esLuzConModelo)" [objeto]="objetoActual"></app-prop-sequences>
       
-      <!-- 🔥 COMPONENTE DE LUZ -->
+      <!-- COMPONENTE DE LUZ -->
       <app-prop-light *ngIf="pestanaActiva === 'light' && esLuz" [objeto]="objetoActual"></app-prop-light>
 
       <button class="btn-danger full" style="margin-top: 20px;" (click)="eliminarObjeto()">🗑️ Eliminar objeto de la escena</button>

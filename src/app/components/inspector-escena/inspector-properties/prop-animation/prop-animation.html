@@ -1,26 +1,30 @@
 <div class="section-card">
   <div class="section-head">
-    <h4>1. Probar Clips Originales</h4>
+    <h4>1. Probar Animaciones del Modelo</h4>
     <button class="btn-ghost small" (click)="detenerAnimaciones()">⏹ Detener</button>
   </div>
 
   <div class="tool-row">
-    <input type="text" [(ngModel)]="clipFilter" placeholder="Buscar clip..." class="search-input" />
+    <input type="text" [(ngModel)]="clipFilter" placeholder="Buscar animación de ESTE objeto..." class="search-input" />
   </div>
 
   <div class="clip-list">
     <div *ngFor="let clip of animationClipsFiltradas" class="clip-card" [class.playing]="clip.playing">
       <div class="clip-top">
-        <div class="clip-name" [title]="clip.name">{{ clip.name }}</div>
-        <button class="btn-primary small" (click)="reproducirAnimacion(clip.group)">▶</button>
+        <div class="clip-name" [title]="clip.name">🎬 {{ clip.name }}</div>
+        <button class="btn-primary small" (click)="reproducirAnimacion(clip.group)">▶ Probar</button>
       </div>
+    </div>
+    
+    <div *ngIf="animationClipsFiltradas.length === 0" style="color: #888; font-size: 11px; text-align: center; margin-top: 10px;">
+      Este modelo 3D no tiene animaciones incrustadas.
     </div>
   </div>
 </div>
 
 <div class="section-card">
   <div class="section-head">
-    <h4>2. Asignar a Acciones</h4>
+    <h4>2. Asignar Animación al Reposo (Idle)</h4>
     <button class="btn-secondary small" (click)="detectarBindingsAutomaticamente()">✨ Auto-detectar</button>
   </div>
 
@@ -36,13 +40,14 @@
       <div class="accordion-content" style="padding-left: 0; padding-top: 5px;">
         <div class="binding-grid">
           <div class="field wide">
-            <input type="text" [(ngModel)]="bindingInputs[action.key]" placeholder="Nombre del clip..." (keydown.enter)="agregarBinding(action.key)" />
+            <input type="text" [(ngModel)]="bindingInputs[action.key]" placeholder="Escribe el nombre de la animación..." (keydown.enter)="agregarBinding(action.key)" />
             <div class="token-row" *ngIf="bindingTokens[action.key]?.length">
               <span class="token" *ngFor="let token of bindingTokens[action.key]; let i = index">
                 {{ token }}
                 <button type="button" (click)="quitarBinding(action.key, i)">×</button>
               </span>
             </div>
+            <p class="help-text" style="margin-top: 5px;">* La animación que pongas en "Idle" será la que el objeto haga por defecto todo el tiempo.</p>
           </div>
         </div>
       </div>

@@ -1,3 +1,6 @@
+// ========================================================================
+// ARCHIVO: src/app/services/motor-3d.service.ts
+// ========================================================================
 import { Injectable } from '@angular/core';
 import {
   Engine,
@@ -51,14 +54,7 @@ export class Motor3dService {
     // 1. CÁMARAS
     // ==========================================
 
-    this.editorCamera = new ArcRotateCamera(
-      'editorCamera',
-      Math.PI / 4,
-      Math.PI / 3,
-      25,
-      Vector3.Zero(),
-      this.scene
-    );
+    this.editorCamera = new ArcRotateCamera('editorCamera', Math.PI / 4, Math.PI / 3, 25, Vector3.Zero(), this.scene);
     this.editorCamera.minZ = 0.01;
     this.editorCamera.maxZ = 10000;
     this.editorCamera.inertia = 0.8;
@@ -67,11 +63,7 @@ export class Motor3dService {
     this.editorCamera._panningMouseButton = 2;
     this.editorCamera.allowUpsideDown = false;
 
-    this.playerCameraFPS = new UniversalCamera(
-      'playerCameraFPS',
-      new Vector3(0, 0, 0),
-      this.scene
-    );
+    this.playerCameraFPS = new UniversalCamera('playerCameraFPS', new Vector3(0, 0, 0), this.scene);
     this.playerCameraFPS.minZ = 0.01;
     this.playerCameraFPS.keysUp = [];
     this.playerCameraFPS.keysDown = [];
@@ -82,14 +74,7 @@ export class Motor3dService {
     this.playerCameraFPS.applyGravity = false;
     this.playerCameraFPS.checkCollisions = false;
 
-    this.playerCameraTPS = new ArcRotateCamera(
-      'playerCameraTPS',
-      -Math.PI / 2,
-      Math.PI / 2.5,
-      10,
-      Vector3.Zero(),
-      this.scene
-    );
+    this.playerCameraTPS = new ArcRotateCamera('playerCameraTPS', -Math.PI / 2, Math.PI / 2.5, 10, Vector3.Zero(), this.scene);
     this.playerCameraTPS.minZ = 0.01;
     this.playerCameraTPS.wheelPrecision = 15;
     this.playerCameraTPS.angularSensibilityX = 2000;
@@ -105,14 +90,7 @@ export class Motor3dService {
     // ==========================================
     // 2. PIPELINE DE RENDERIZADO
     // ==========================================
-    this.renderingPipeline = new DefaultRenderingPipeline(
-      'defaultPipeline',
-      false,
-      this.scene,
-      this.scene.cameras
-    );
-    
-    // 🔥 OPTIMIZACIÓN CRÍTICA 2: Samples en 2 reduce la carga GPU a la mitad manteniendo calidad.
+    this.renderingPipeline = new DefaultRenderingPipeline('defaultPipeline', false, this.scene, this.scene.cameras);
     this.renderingPipeline.fxaaEnabled = true; 
     this.renderingPipeline.samples = 2;
     this.renderingPipeline.bloomEnabled = false;
@@ -120,7 +98,6 @@ export class Motor3dService {
     // ==========================================
     // 3. LÓGICAS DE VELOCIDAD Y NIEBLA
     // ==========================================
-
     this.scene.onBeforeRenderObservable.add(() => {
       if (this.scene.activeCamera === this.editorCamera) {
         const radius = Math.max(0.1, this.editorCamera.radius);
@@ -139,8 +116,6 @@ export class Motor3dService {
         camera.maxZ = 10000; 
       } else {
         this.scene.fogEnabled = true;
-        // 🔥 Culling Suave: Sumamos un 30% a la distancia de la niebla. 
-        // Esto evita que los objetos y las sombras desaparezcan de golpe. Se desvanecen suavemente.
         if (this.scene.fogMode !== Scene.FOGMODE_NONE && this.scene.fogEnd > 0) {
           camera.maxZ = this.scene.fogEnd + (this.scene.fogEnd * 0.3);
         } else {
@@ -149,11 +124,7 @@ export class Motor3dService {
       }
     });
 
-    const ambientLight = new HemisphericLight(
-      'globalLight',
-      new Vector3(0, 1, 0),
-      this.scene
-    );
+    const ambientLight = new HemisphericLight('globalLight', new Vector3(0, 1, 0), this.scene);
     ambientLight.intensity = 1.0;
     ambientLight.diffuse = new Color3(1, 1, 1);
     ambientLight.groundColor = new Color3(0.2, 0.2, 0.2);

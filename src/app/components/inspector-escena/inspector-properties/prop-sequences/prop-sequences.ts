@@ -1,16 +1,17 @@
-import { Component, Input, OnInit, inject } from '@angular/core';
+// ========================================================================
+// ARCHIVO: src/app/components/inspector-escena/inspector-properties/prop-sequences/prop-sequences.ts
+// ========================================================================
+import { Component, Input, OnInit, OnChanges, SimpleChanges, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh } from '@babylonjs/core';
+import { AbstractMesh, AnimationGroup } from '@babylonjs/core';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorPlayerService } from '../../../../services/editor/editor-player.service';
 import { PlayerClipSequence, mergePlayerConfig, cloneDefaultPlayerConfig, createPlayerSequence, createSequenceStep } from '../../../../services/editor/player-config.model';
+import { Motor3dService } from '../../../../services/motor-3d.service';
  
 const ACTION_ROWS = [
-  { key: 'idle', label: 'Idle' }, { key: 'walk', label: 'Walk' }, { key: 'run', label: 'Run' },
-  { key: 'jumpStart', label: 'Jump Start' }, { key: 'jumpLoop', label: 'Jump Loop' },
-  { key: 'fall', label: 'Fall' }, { key: 'landHard', label: 'Land Hard' },
-  { key: 'climbUp', label: 'Climb Up' }, { key: 'climbFinish', label: 'Climb Finish' }
+  { key: 'idle', label: 'Idle / Reposo' }, { key: 'walk', label: 'Walk (Caminar)' }, { key: 'run', label: 'Run (Correr)' }
 ];
 
 @Component({
@@ -20,21 +21,63 @@ const ACTION_ROWS = [
   templateUrl: './prop-sequences.html',
   styleUrls: ['../inspector-properties.css']
 })
-export class PropSequences implements OnInit {
+export class PropSequences implements OnInit, OnChanges {
   @Input() objeto!: AbstractMesh;
   private editorSvc = inject(EditorMapaService);
   private playerSvc = inject(EditorPlayerService);
+  private motor3dSvc = inject(Motor3dService); 
 
   sequences: PlayerClipSequence[] = [];
   selectedSequenceId: string | null = null;
   actionRows = ACTION_ROWS;
   animStatus = '';
+  
+  availableClips: string[] = [];
+  esPersonaje: boolean = false;
 
   ngOnInit() {
+    this.cargarDatos();
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['objeto']) {
+      this.cargarDatos();
+    }
+  }
+
+  cargarDatos() {
+    if (!this.objeto) return;
+    
+    this.esPersonaje = this.objeto.metadata?.rol === 'npc' || this.objeto.metadata?.rol === 'spawn_point';
+    
     const meta = this.objeto.metadata || {};
     const config = mergePlayerConfig(meta.playerConfig || null);
     this.sequences = Array.isArray(config.sequences) ? JSON.parse(JSON.stringify(config.sequences)) : [];
     if (this.sequences.length > 0) this.selectedSequenceId = this.sequences[0].id;
+
+    const validTargets = new Set();
+    validTargets.add(this.objeto);
+    this.objeto.getDescendants(false).forEach(child => validTargets.add(child));
+
+    // OBTENCIÓN PROFUNDA DE ANIMACIONES (Soporta luces GLB y luces invisibles)
+    let myAnimNames: string[] = this.objeto.metadata?.animationNames || [];
+    if (myAnimNames.length === 0) {
+        const childWithAnims = this.objeto.getChildMeshes(false).find(m => m.metadata?.animationNames && m.metadata.animationNames.length > 0);
+        if (childWithAnims) {
+            myAnimNames = childWithAnims.metadata.animationNames;
+        }
+    }
+    
+    if (myAnimNames.length > 0) {
+        const groups = this.motor3dSvc.scene.animationGroups.filter(ag => myAnimNames.includes(ag.name));
+        this.availableClips = groups.map(g => g.name);
+    } else {
+        const groups = this.motor3dSvc.scene.animationGroups.filter((ag: AnimationGroup) => {
+          if (!ag.targetedAnimations || ag.targetedAnimations.length === 0) return false;
+          return ag.targetedAnimations.some((ta: any) => validTargets.has(ta.target));
+        });
+        this.availableClips = groups.map(g => g.name);
+    }
   }
 
   get currentSequence() { return this.sequences.find(s => s.id === this.selectedSequenceId) || null; }
@@ -48,7 +91,11 @@ export class PropSequences implements OnInit {
   }
 
   nuevaSecuencia() {
-    const seq = createPlayerSequence(`Seq ${this.sequences.length + 1}`);
+    const seq = createPlayerSequence(`Secuencia ${this.sequences.length + 1}`);
+    if (!this.esPersonaje && seq.steps.length > 0) {
+        seq.steps[0].action = 'idle';
+        seq.steps[0].loop = true;
+    }
     this.sequences.push(seq);
     this.selectedSequenceId = seq.id;
     this.persist();
@@ -60,7 +107,18 @@ export class PropSequences implements OnInit {
     this.persist();
   }
 
-  agregarPaso(seq: PlayerClipSequence) { seq.steps.push(createSequenceStep('walk')); this.persist(); }
+  agregarPaso(seq: PlayerClipSequence) { 
+    const step = createSequenceStep(this.esPersonaje ? 'walk' : 'idle');
+    if (!this.esPersonaje) {
+        step.loop = true; 
+        if (this.availableClips.length > 0) {
+            step.clipOverride = this.availableClips[0];
+        }
+    }
+    seq.steps.push(step); 
+    this.persist(); 
+  }
+  
   quitarPaso(seq: PlayerClipSequence, i: number) { seq.steps.splice(i, 1); this.persist(); }
   
   moverPaso(seq: PlayerClipSequence, index: number, dir: number) {
@@ -73,6 +131,7 @@ export class PropSequences implements OnInit {
   probarSecuencia(seq: PlayerClipSequence) {
     this.persist();
     if(this.objeto.metadata.type !== 'trigger'){
+        // Pasamos el objeto base para que el motor reproduzca tanto la animación como el offset físico
         this.playerSvc.iniciarPreviewSecuencia(this.objeto, seq.id);
         this.animStatus = `Visualizando: ${seq.name}...`;
     }

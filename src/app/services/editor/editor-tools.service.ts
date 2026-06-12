@@ -1,5 +1,5 @@
 import { Injectable, inject, effect } from '@angular/core';
-import { Color3, GizmoManager, HighlightLayer, Mesh, PointerEventTypes, Matrix, AbstractMesh, KeyboardEventTypes, MeshBuilder, StandardMaterial, Vector3, TransformNode, Ray, PointerDragBehavior, Scene, Color4, TransformNode as BabylonTransformNode, Quaternion, CascadedShadowGenerator } from '@babylonjs/core';
+import { Color3, GizmoManager, HighlightLayer, Mesh, PointerEventTypes, Matrix, AbstractMesh, KeyboardEventTypes, MeshBuilder, StandardMaterial, Vector3, TransformNode, Ray, PointerDragBehavior, Scene, Color4, TransformNode as BabylonTransformNode, Quaternion, CascadedShadowGenerator, SpotLight, DirectionalLight } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService, ToolMode } from './editor-state.service';
 import { HistorialService } from '../historial.service';
@@ -33,7 +33,6 @@ export class EditorToolsService {
   private gizmoPivotNode!: BabylonTransformNode; 
   private isDraggingGizmo = false;
 
-  // 🔥 OPTIMIZACIÓN CRÍTICA 7: Control de tiempo para raycasts
   private lastHoverCheckTime = 0;
 
   constructor() {
@@ -415,7 +414,6 @@ export class EditorToolsService {
 
       if (pi.type === PointerEventTypes.POINTERMOVE) {
         if (isAdmin && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
-          // 🔥 OPTIMIZACIÓN CRÍTICA 8: Limitación de frecuencia (Throttling) para el Hover.
           const now = performance.now();
           if (now - this.lastHoverCheckTime < 40) return;
           this.lastHoverCheckTime = now;
@@ -473,6 +471,24 @@ export class EditorToolsService {
     });
 
     scene.onBeforeRenderObservable.add(() => {
+        // 🔥 LÓGICA VITAL: Forzar a que las luces Spot y Direccionales apunten SIEMPRE al suelo (0, -1, 0)
+        // Sin importar si están ancladas a una animación de hueso o al modelo que está rotando.
+        scene.lights.forEach(light => {
+            if ((light instanceof SpotLight || light instanceof DirectionalLight) && light.name.startsWith('l_')) {
+                if (light.parent) {
+                    const parentNode = light.parent as TransformNode;
+                    // Obtenemos la matriz de mundo invertida del padre
+                    const invWorldMatrix = parentNode.getWorldMatrix().clone().invert();
+                    // Transformamos la dirección global "hacia abajo" al espacio local del padre
+                    const localDown = Vector3.TransformNormal(new Vector3(0, -1, 0), invWorldMatrix);
+                    // Asignamos esa dirección local a la luz para que globalmente mire hacia el suelo
+                    light.direction.copyFrom(localDown.normalize());
+                } else {
+                    light.direction.copyFromFloats(0, -1, 0);
+                }
+            }
+        });
+
         const obj = this.state.objetoSeleccionado() as Mesh;
         const subSelected = this.state.subObjetoSeleccionado();
         
@@ -590,12 +606,8 @@ export class EditorToolsService {
         const sg: any = light.getShadowGenerator();
         if (sg && sg instanceof CascadedShadowGenerator) {
             if (modo === 'PLAYING') {
-                // En modo Jugar, concentramos los 1024 pixeles en la zona visible.
-                // Se verán en calidad ULTRA y no renderiza lo que está oculto.
                 sg.shadowMaxZ = shadowLimit;
             } else {
-                // En modo Editor, extendemos las sombras a 10000 metros.
-                // Abarca todo, baja la calidad visual, sube los FPS enormemente.
                 sg.shadowMaxZ = 10000;
             }
         }

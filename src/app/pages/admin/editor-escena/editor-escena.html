@@ -130,11 +130,12 @@
             <label for="chkSeleccion" class="modal-label" style="margin: 0; cursor: pointer;">🎯 Editable (Se puede tocar con el ratón)</label>
           </div>
 
-          <div *ngIf="objTipo === 'model'" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 15px;">
+          <!-- LA MAGIA: Permitir elegir modelos también para las luces -->
+          <div *ngIf="objTipo === 'model' || objTipo.startsWith('light_')" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 15px;">
             <div class="modal-row">
-              <label class="modal-label">Selecciona el modelo guardado:</label>
+              <label class="modal-label">{{ objTipo.startsWith('light_') ? 'Cuerpo de la luz (Opcional):' : 'Selecciona el modelo guardado:' }}</label>
               <select [(ngModel)]="objAssetSeleccionado" class="modal-input">
-                <option [ngValue]="null" disabled>-- Elige un modelo --</option>
+                <option [ngValue]="null" [disabled]="objTipo === 'model'">{{ objTipo.startsWith('light_') ? '-- Sin modelo (Usar esfera invisible) --' : '-- Elige un modelo --' }}</option>
                 <option *ngFor="let asset of listaAssets" [ngValue]="asset">
                   {{ asset.name }}
                 </option>

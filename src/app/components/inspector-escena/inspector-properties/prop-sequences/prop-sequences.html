@@ -1,11 +1,11 @@
 <div class="section-card">
   <div class="actions-row wrap">
-    <button class="btn-primary" (click)="nuevaSecuencia()">+ Nueva Secuencia</button>
+    <button class="btn-primary" (click)="nuevaSecuencia()">+ Crear Secuencia Nueva</button>
   </div>
 
   <div class="sequence-list">
     <button class="sequence-chip" *ngFor="let seq of sequences" [class.active]="seq.id === selectedSequenceId" (click)="selectedSequenceId = seq.id">
-      {{ seq.name }}
+      🎞️ {{ seq.name }}
     </button>
   </div>
 
@@ -16,24 +16,24 @@
     </div>
 
     <div class="field wide" style="margin-bottom: 10px; display: flex; align-items: center; gap: 10px;">
-      <label style="color: #60a5fa; margin: 0;">ID: {{ currentSequence.id }}</label>
+      <label style="color: #60a5fa; margin: 0; font-size: 10px;">ID: {{ currentSequence.id }}</label>
       <button class="btn-secondary small" (click)="copiarId(currentSequence.id)">📋 Copiar ID</button>
     </div>
 
     <div class="actions-row wrap">
-      <button class="btn-primary" *ngIf="objeto.metadata?.type !== 'trigger'" (click)="probarSecuencia(currentSequence)">▶ Probar en vivo</button>
-      <button class="btn-danger" (click)="eliminarSecuencia(currentSequence.id)">🗑️ Eliminar</button>
+      <button class="btn-primary" *ngIf="objeto.metadata?.type !== 'trigger'" (click)="probarSecuencia(currentSequence)">▶ Ver Prevista de Animación</button>
+      <button class="btn-danger" (click)="eliminarSecuencia(currentSequence.id)">🗑️ Borrar Secuencia</button>
     </div>
 
     <div class="section-mini-head" style="margin-top: 15px;">
       <h5>Línea de Tiempo (Pasos)</h5>
-      <button class="btn-secondary small" (click)="agregarPaso(currentSequence)">+ Paso</button>
+      <button class="btn-secondary small" (click)="agregarPaso(currentSequence)">+ Añadir Paso</button>
     </div>
 
     <div class="step-list">
       <div class="accordion-section" *ngFor="let step of currentSequence.steps; let i = index" style="background: #242424; padding: 5px; border-radius: 6px; border: 1px solid #111; margin-bottom: 10px;">
         <div class="accordion-header" style="justify-content: space-between; cursor: default;">
-          <div style="font-size: 12px; font-weight: bold; color: #ddd;">{{ i + 1 }}. {{ step.action }}</div>
+          <div style="font-size: 12px; font-weight: bold; color: #ddd;">Paso {{ i + 1 }}</div>
           <div class="step-actions-inline">
             <button (click)="moverPaso(currentSequence, i, -1)">↑</button>
             <button (click)="moverPaso(currentSequence, i, 1)">↓</button>
@@ -42,23 +42,39 @@
         </div>
         
         <div class="grid-step">
-          <div class="field"><label>Acción principal</label><select [ngModel]="step.action" (ngModelChange)="step.action = $event; persist()"><option *ngFor="let act of actionRows" [ngValue]="act.key">{{ act.label }}</option></select></div>
+          <!-- Si es un personaje, le dejamos escoger walk, run, etc. Si es un prop, lo ocultamos para no confundir -->
+          <div class="field wide" *ngIf="esPersonaje">
+            <label>Acción del Personaje</label>
+            <select [ngModel]="step.action" (ngModelChange)="step.action = $event; persist()">
+               <option *ngFor="let act of actionRows" [ngValue]="act.key">{{ act.label }}</option>
+            </select>
+          </div>
+          
+          <!-- 🔥 AQUÍ SE LISTAN ESTRICTAMENTE LAS ANIMACIONES DE ESTE OBJETO -->
+          <div class="field wide" style="margin-top: 5px; padding: 10px; border: 1px dashed #4b73b5; border-radius: 6px; background: rgba(75, 115, 181, 0.1);">
+            <label style="color: #60a5fa; font-weight: bold;">Elegir Animación (Clip Exacto):</label>
+            <select [ngModel]="step.clipOverride" (ngModelChange)="step.clipOverride = $event; persist()" style="margin-top: 5px; font-weight: bold;">
+              <option value="">{{ esPersonaje ? '-- Usar Acción del Personaje Arriba --' : '-- Selecciona la animación --' }}</option>
+              <option *ngFor="let clip of availableClips" [value]="clip">🎬 {{ clip }}</option>
+            </select>
+            <p *ngIf="availableClips.length === 0" class="help-text" style="color: #ef4444; margin-top: 5px;">Este modelo no tiene animaciones.</p>
+          </div>
+
+          <!-- Campos de físicas de la secuencia -->
           <div class="field"><label>Duración (ms)</label><input type="number" step="50" [ngModel]="step.durationMs" (ngModelChange)="step.durationMs = $event; persist()" /></div>
-          <div class="field"><label>Vel. Anim (Ratio)</label><input type="number" step="0.1" [ngModel]="step.speedRatio" (ngModelChange)="step.speedRatio = $event; persist()" /></div>
-          <div class="field"><label>Transición (Blend)</label><input type="number" step="0.01" [ngModel]="step.blend" (ngModelChange)="step.blend = $event; persist()" /></div>
-          <div class="field"><label>Desplaz. Arriba (Y)</label><input type="number" step="0.1" [ngModel]="step.offsetY" (ngModelChange)="step.offsetY = $event; persist()" /></div>
-          <div class="field"><label>Desplaz. Adelante (Z)</label><input type="number" step="0.1" [ngModel]="step.offsetForward" (ngModelChange)="step.offsetForward = $event; persist()" /></div>
-          <div class="field wide"><label>Forzar Clip Exacto (Opcional)</label><input type="text" [ngModel]="step.clipOverride" placeholder="Ej: jump_start_02" (ngModelChange)="step.clipOverride = $event; persist()" /></div>
+          <div class="field"><label>Vel. Animación</label><input type="number" step="0.1" [ngModel]="step.speedRatio" (ngModelChange)="step.speedRatio = $event; persist()" /></div>
+          
+          <div class="field wide" *ngIf="esPersonaje"><label>Mover hacia Adelante (Distancia Z)</label><input type="number" step="0.1" [ngModel]="step.offsetForward" (ngModelChange)="step.offsetForward = $event; persist()" /></div>
         </div>
 
+        <!-- Opciones de Loop y Control -->
         <div class="grid-3" style="margin-top: 10px; border-top: 1px dashed #333; padding-top: 10px;">
-            <div class="checkbox-field"><input type="checkbox" id="chkLoop_{{i}}" [ngModel]="step.loop" (ngModelChange)="step.loop = $event; persist()" /><label for="chkLoop_{{i}}">Loop</label></div>
-            <div class="checkbox-field"><input type="checkbox" id="chkMove_{{i}}" [ngModel]="step.allowMovement" (ngModelChange)="step.allowMovement = $event; persist()" /><label for="chkMove_{{i}}">Moverse</label></div>
-            <div class="checkbox-field"><input type="checkbox" id="chkLock_{{i}}" [ngModel]="step.lockInput" (ngModelChange)="step.lockInput = $event; persist()" /><label for="chkLock_{{i}}">Cinemática</label></div>
+            <div class="checkbox-field"><input type="checkbox" id="chkLoop_{{i}}" [ngModel]="step.loop" (ngModelChange)="step.loop = $event; persist()" /><label for="chkLoop_{{i}}">Bucle Infinito</label></div>
+            <div class="checkbox-field" *ngIf="esPersonaje"><input type="checkbox" id="chkLock_{{i}}" [ngModel]="step.lockInput" (ngModelChange)="step.lockInput = $event; persist()" /><label for="chkLock_{{i}}">Bloquear Player</label></div>
         </div>
       </div>
     </div>
   </div>
-  <ng-template #noSeq><div class="empty-state"><p>Crea una secuencia para empezar</p></div></ng-template>
+  <ng-template #noSeq><div class="empty-state"><p>Crea una secuencia para programar acciones automáticas</p></div></ng-template>
 </div>
 <div class="status-line" *ngIf="animStatus">{{ animStatus }}</div>

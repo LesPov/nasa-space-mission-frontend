@@ -1,4 +1,4 @@
-import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh, AnimationGroup } from '@babylonjs/core';
@@ -8,27 +8,8 @@ import { EditorPlayerService } from '../../../../services/editor/editor-player.s
 import { PlayerActionKey, PlayerRuntimeConfig, cloneDefaultPlayerConfig, mergePlayerConfig, normalizeAnimBinding } from '../../../../services/editor/player-config.model';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 
- 
- 
 interface ActionRow { key: PlayerActionKey; label: string; family: string; keywords: string[]; help: string; }
 interface ClipViewModel { name: string; group: AnimationGroup; targetCount: number; speedRatio: number; loop: boolean; playing: boolean; }
-
-const ACTION_ROWS: ActionRow[] = [
-  { key: 'idle', label: 'Idle', family: 'Movimiento base', keywords: ['idle'], help: 'Reposo / espera' },
-  { key: 'walk', label: 'Walk', family: 'Movimiento base', keywords: ['walk'], help: 'Caminar' },
-  { key: 'run', label: 'Run', family: 'Movimiento base', keywords: ['run'], help: 'Correr' },
-  { key: 'jumpStart', label: 'Jump Start', family: 'Aire', keywords: ['jump start', 'jump_begin', 'jump'], help: 'Inicio del salto' },
-  { key: 'jumpLoop', label: 'Jump Loop', family: 'Aire', keywords: ['jump loop', 'jump'], help: 'Fase en el aire' },
-  { key: 'fall', label: 'Fall', family: 'Aire', keywords: ['fall', 'falling'], help: 'Caída' },
-  { key: 'landSoft', label: 'Land Soft', family: 'Aire', keywords: ['land', 'soft landing'], help: 'Aterrizaje suave' },
-  { key: 'landHard', label: 'Land Hard', family: 'Aire', keywords: ['hard landing'], help: 'Aterrizaje fuerte' },
-  { key: 'recover', label: 'Recover', family: 'Aire', keywords: ['recover', 'recovery'], help: 'Recuperación' },
-  { key: 'climbUp', label: 'Climb Up', family: 'Escalada', keywords: ['climb up', 'climb'], help: 'Subida inicial' },
-  { key: 'hangIdle', label: 'Hang Idle', family: 'Escalada', keywords: ['hang idle', 'hang'], help: 'Colgado del borde' },
-  { key: 'climbFinish', label: 'Climb Finish', family: 'Escalada', keywords: ['climb finish', 'pull up'], help: 'Terminar de subir' },
-  { key: 'vault', label: 'Vault', family: 'Escalada', keywords: ['vault'], help: 'Impulso / salto corto' },
-  { key: 'stepUp', label: 'Step Up', family: 'Escalada', keywords: ['step up', 'step'], help: 'Subir escalón' }
-];
 
 @Component({
   selector: 'app-prop-animation',
@@ -37,7 +18,7 @@ const ACTION_ROWS: ActionRow[] = [
   templateUrl: './prop-animation.html',
   styleUrls: ['../inspector-properties.css']
 })
-export class PropAnimation implements OnInit, OnDestroy {
+export class PropAnimation implements OnInit, OnDestroy, OnChanges {
   @Input() objeto!: AbstractMesh;
   
   private editorSvc = inject(EditorMapaService);
@@ -47,7 +28,10 @@ export class PropAnimation implements OnInit, OnDestroy {
   private subs: Subscription[] = [];
 
   public playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
-  public actionRows: ActionRow[] = ACTION_ROWS;
+  
+  public actionRows: ActionRow[] = [
+    { key: 'idle', label: 'Animación Base (Idle)', family: 'Base', keywords: ['idle', 'scene', 'base', 'anim'], help: 'Animación constante' }
+  ];
 
   public bindingInputs: Record<PlayerActionKey, string> = this.emptyBindingInputs();
   public bindingTokens: Record<PlayerActionKey, string[]> = this.emptyBindingTokens();
@@ -57,10 +41,21 @@ export class PropAnimation implements OnInit, OnDestroy {
   public animStatus = '';
 
   ngOnInit() {
+    this.ajustarFilasSegunTipo();
     this.syncData();
     this.subs.push(
-      this.editorSvc.onMapChanged.subscribe(() => this.syncData())
+      this.editorSvc.onMapChanged.subscribe(() => {
+        this.ajustarFilasSegunTipo();
+        this.syncData();
+      })
     );
+  }
+
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['objeto']) {
+      this.ajustarFilasSegunTipo();
+      this.syncData();
+    }
   }
 
   ngOnDestroy() {
@@ -68,8 +63,27 @@ export class PropAnimation implements OnInit, OnDestroy {
     this.detenerAnimaciones();
   }
 
-  private emptyBindingInputs(): Record<PlayerActionKey, string> { return ACTION_ROWS.reduce((acc, row) => { acc[row.key] = ''; return acc; }, {} as Record<PlayerActionKey, string>); }
-  private emptyBindingTokens(): Record<PlayerActionKey, string[]> { return ACTION_ROWS.reduce((acc, row) => { acc[row.key] = []; return acc; }, {} as Record<PlayerActionKey, string[]>); }
+  private ajustarFilasSegunTipo() {
+      const isChar = this.objeto?.metadata?.rol === 'npc' || this.objeto?.metadata?.rol === 'spawn_point';
+      if (isChar) {
+          this.actionRows = [
+            { key: 'idle', label: 'Idle / Reposo', family: 'Base', keywords: ['idle'], help: '' },
+            { key: 'walk', label: 'Walk', family: 'Movimiento base', keywords: ['walk'], help: '' },
+            { key: 'run', label: 'Run', family: 'Movimiento base', keywords: ['run'], help: '' },
+            { key: 'jumpStart', label: 'Jump Start', family: 'Aire', keywords: ['jump'], help: '' },
+            { key: 'jumpLoop', label: 'Jump Loop', family: 'Aire', keywords: ['fall'], help: '' }
+          ];
+      } else {
+          this.actionRows = [
+            { key: 'idle', label: 'Animación Base Continua', family: 'Base', keywords: ['scene', 'idle'], help: '' }
+          ];
+      }
+      this.bindingInputs = this.emptyBindingInputs();
+      this.bindingTokens = this.emptyBindingTokens();
+  }
+
+  private emptyBindingInputs(): Record<PlayerActionKey, string> { return this.actionRows.reduce((acc, row) => { acc[row.key] = ''; return acc; }, {} as Record<PlayerActionKey, string>); }
+  private emptyBindingTokens(): Record<PlayerActionKey, string[]> { return this.actionRows.reduce((acc, row) => { acc[row.key] = []; return acc; }, {} as Record<PlayerActionKey, string[]>); }
 
   syncData() {
     if (!this.objeto) return;
@@ -79,18 +93,38 @@ export class PropAnimation implements OnInit, OnDestroy {
     this.syncBindingDraftsFromConfig();
     this.syncClipsFromObject(this.objeto);
     
-    this.animStatus = 'Cargado correctamente';
+    this.animStatus = 'Animaciones del modelo cargadas.';
     this.cdr.detectChanges();
   }
 
   private getAvailableAnimationGroups(obj: AbstractMesh): AnimationGroup[] {
     const scene = this.motor3dSvc.scene;
-    const names: string[] = Array.isArray(obj.metadata?.animationNames) ? obj.metadata.animationNames : [];
-    let groups: AnimationGroup[] = [];
-    if (names.length > 0) groups = scene.animationGroups.filter(ag => names.includes(ag.name));
-    if (groups.length === 0) {
-      groups = scene.animationGroups.filter((ag: AnimationGroup) => ag.targetedAnimations.some((ta: any) => ta.target === obj || ta.target?.parent === obj));
+    
+    const validTargets = new Set();
+    validTargets.add(obj);
+    obj.getDescendants(false).forEach(child => validTargets.add(child));
+
+    // 🔥 BUSCAMOS ANIMACIONES EN EL PADRE Y EN LOS HIJOS (Para Luces con Modelo)
+    let myAnimNames: string[] = obj.metadata?.animationNames || [];
+    
+    if (myAnimNames.length === 0) {
+        // Si no está en el padre, buscar en los hijos (El modelo GLB real dentro de la luz)
+        const childWithAnims = obj.getChildMeshes(false).find(m => m.metadata?.animationNames && m.metadata.animationNames.length > 0);
+        if (childWithAnims) {
+            myAnimNames = childWithAnims.metadata.animationNames;
+        }
     }
+    
+    if (myAnimNames.length > 0) {
+         let matchedGroups = scene.animationGroups.filter(ag => myAnimNames.includes(ag.name));
+         if (matchedGroups.length > 0) return matchedGroups;
+    }
+
+    let groups = scene.animationGroups.filter((ag: AnimationGroup) => {
+      if (!ag.targetedAnimations || ag.targetedAnimations.length === 0) return false;
+      return ag.targetedAnimations.some((ta: any) => validTargets.has(ta.target));
+    });
+
     return groups;
   }
 
@@ -106,6 +140,7 @@ export class PropAnimation implements OnInit, OnDestroy {
   private syncClipsFromObject(obj: AbstractMesh) {
     const metaRuntime = obj.metadata?.playerConfig?.animationRuntime || {};
     const groups = this.getAvailableAnimationGroups(obj);
+    
     this.animationClips = groups.map(group => {
       const runtime = metaRuntime?.[group.name] || {};
       const speedRatio = typeof runtime.speedRatio === 'number' ? runtime.speedRatio : (group.speedRatio ?? 1);
@@ -133,7 +168,7 @@ export class PropAnimation implements OnInit, OnDestroy {
     this.bindingInputs[actionKey] = '';
     this.playerConfig.animations[actionKey] = this.bindingTokens[actionKey].length > 0 ? [...this.bindingTokens[actionKey]] : null;
     this.persistPlayerConfig();
-    this.animStatus = `Binding agregado a ${actionKey}`;
+    this.animStatus = `Asignado a ${actionKey}`;
   }
 
   quitarBinding(actionKey: PlayerActionKey, index: number) {
@@ -149,23 +184,18 @@ export class PropAnimation implements OnInit, OnDestroy {
       const current = new Set(this.bindingTokens[action.key] || []);
       for (const clip of this.animationClips) {
         const name = clip.name.toLowerCase();
-        const match =
-          action.key === 'jumpStart' ? ['jump start', 'jump_begin', 'jump'] :
-          action.key === 'jumpLoop' ? ['jump loop', 'jump'] :
-          action.key === 'landHard' ? ['hard landing'] :
-          action.key === 'landSoft' ? ['land', 'soft landing'] :
-          action.key === 'climbUp' ? ['climb up', 'climb'] :
-          action.key === 'climbFinish' ? ['climb finish', 'pull up'] :
-          action.key === 'hangIdle' ? ['hang idle', 'hang'] :
-          action.key === 'stepUp' ? ['step up', 'step'] :
-          action.key === 'vault' ? ['vault'] : [action.key];
-        if (match.some(term => name.includes(term))) current.add(clip.name);
+        // Si es 'idle', tomamos casi cualquier animación por defecto como Scene o Base
+        const match = action.key === 'idle' ? ['scene', 'idle', 'anim', 'action'] : [action.key];
+        
+        if (match.some(term => name.includes(term)) || this.animationClips.length === 1) {
+            current.add(clip.name);
+        }
       }
       this.bindingTokens[action.key] = Array.from(current);
       this.playerConfig.animations[action.key] = this.bindingTokens[action.key].length > 0 ? [...this.bindingTokens[action.key]] : null;
     }
     this.persistPlayerConfig();
-    this.animStatus = 'Bindings detectados automáticamente';
+    this.animStatus = 'Detección automática lista';
   }
 
   reproducirAnimacion(anim: AnimationGroup) { 
@@ -173,7 +203,7 @@ export class PropAnimation implements OnInit, OnDestroy {
     this.playerSvc.detenerPreviewSecuencia(); 
     anim.reset(); 
     anim.play(true); 
-    this.animStatus = `Reproduciendo ${anim.name}`; 
+    this.animStatus = `Reproduciendo: ${anim.name}`; 
   }
   
   detenerAnimaciones() { 
@@ -182,7 +212,7 @@ export class PropAnimation implements OnInit, OnDestroy {
         clip.playing = false; 
     } 
     this.playerSvc.detenerPreviewSecuencia(); 
-    this.animStatus = 'Todas las animaciones detenidas'; 
+    this.animStatus = 'Animación detenida'; 
   }
   
   refreshClipPlayingFlags() { 
@@ -200,6 +230,6 @@ export class PropAnimation implements OnInit, OnDestroy {
   
   actionBadge(actionKey: PlayerActionKey): string { 
       const tokens = this.bindingTokens[actionKey] || []; 
-      return tokens.length ? `activo · ${tokens.length}` : 'vacío'; 
+      return tokens.length ? `Asignado` : 'vacío'; 
   }
 }

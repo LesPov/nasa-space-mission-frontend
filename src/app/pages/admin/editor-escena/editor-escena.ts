@@ -46,7 +46,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public objNombre: string = 'Objeto_01';
   public objTipo: string = 'cube';
   public objRol: string = 'prop'; 
-  public objColor: string = '#4b73b5'; 
+  public objColor: string = '#ffffff'; 
   public objSizeX: number = 1;
   public objSizeY: number = 1;
   public objSizeZ: number = 1;
@@ -140,7 +140,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     
     const isAdmin = this.editorSvc.rolSimulado() === 'admin';
     this.motor3dSvc.scene.meshes.forEach(m => {
-        if (m.metadata?.type === 'trigger' || m.metadata?.type?.startsWith('light_')) {
+        if (m.metadata?.type === 'trigger' || (m.metadata?.type?.startsWith('light_') && !m.metadata?.assetId)) {
             m.isVisible = isAdmin;
         }
     });
@@ -260,7 +260,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   guardarMapaEnBD(silencioso = false) {
-    // Si no es el administrador, bajo ninguna circunstancia se le deja guardar el mapa.
     if (!this.episodioIdActivo || !this.editando || !this.esAdmin) return;
     this.estadoGuardado.set('Guardando...');
     
@@ -299,7 +298,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.objNombre = 'Objeto_' + Math.floor(Math.random() * 100);
     this.objTipo = 'cube';
     this.objRol = 'prop';
-    this.objColor = '#4b73b5';
+    this.objColor = '#ffffff';
     this.objSizeX = 1; this.objSizeY = 1; this.objSizeZ = 1;
     this.objAssetSeleccionado = null;
     this.archivoSubida = null;

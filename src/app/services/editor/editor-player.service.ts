@@ -1,3 +1,6 @@
+// ========================================================================
+// ARCHIVO: src/app/services/editor/editor-player.service.ts
+// ========================================================================
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder, Color3, Color4, StandardMaterial } from '@babylonjs/core';
 
@@ -31,6 +34,7 @@ export class EditorPlayerService {
   public playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
   private tpsUpdateObserver: Observer<Scene> | null = null;
   private previewObserver: Observer<Scene> | null = null;
+  private npcsYPropsAnimados: Mesh[] = [];
 
   constructor() {
     document.addEventListener('pointerlockchange', () => {
@@ -73,9 +77,18 @@ export class EditorPlayerService {
 
     this.crearProxysDeColision(obj);
 
-    // 🔥 OCULTAR LUCES DURANTE EL JUEGO
+    // 🔥 PREPARAR MÚLTIPLES ENTIDADES ANIMADAS (NPCs Y LUCES CON MODELOS)
+    this.npcsYPropsAnimados = [];
     this.motor3d.scene.meshes.forEach(m => {
-        if (m.metadata?.type?.startsWith('light_')) {
+        if (m !== obj && (m.metadata?.type === 'model' || m.metadata?.type?.startsWith('light_')) && m.metadata?.playerConfig) {
+            this.npcsYPropsAnimados.push(m as Mesh);
+            this.animSvc.sincronizarAnimaciones(this.motor3d.scene, m as Mesh, mergePlayerConfig(m.metadata.playerConfig));
+        }
+    });
+
+    // Ocultar luces que NO tienen modelo 3D (para no ver esferas volando en el juego)
+    this.motor3d.scene.meshes.forEach(m => {
+        if (m.metadata?.type?.startsWith('light_') && !m.metadata?.assetId) {
             m.isVisible = false;
         }
     });
@@ -100,14 +113,11 @@ export class EditorPlayerService {
 
     this.inputSvc.iniciarEscuchaTeclado(this.motor3d.scene, {
       onToggleCamera: () => this.playerCamSvc.toggleCameraView(obj, this.playerConfig),
-      
       onInteractE: () => {
         const target = this.state.targetInteractuable();
         if (target && this.interactSvc.canActivateInteraction(target, this.state.modoVistaPrueba)) {
-          
           let seqId = this.state.modoVistaPrueba === 'FPS' ? target.metadata?.interactSequenceIdFPS : target.metadata?.interactSequenceIdTPS;
           if (!seqId) seqId = target.metadata?.interactSequenceId;
-          
           if (seqId) {
             const ids = seqId.split(',').map((id: string) => id.trim()).filter(Boolean);
             if (ids.length > 0) {
@@ -120,21 +130,17 @@ export class EditorPlayerService {
           }
         }
       },
-      
       onInteractI: () => {
         const target = this.state.targetInteractuable();
         if (target && this.interactSvc.canActivateInteraction(target, this.state.modoVistaPrueba)) {
-          const cloneData = {
-              name: target.name,
-              metadata: { mensaje: target.metadata?.mensaje || '' }
-          };
+          const cloneData = { name: target.name, metadata: { mensaje: target.metadata?.mensaje || '' } };
           this.interactSvc.abrirMensajeInteractivo(cloneData as any, () => this.resetMovimientoJugador());
         }
       }
     });
 
     this.iniciarBuclePrincipal(obj, colMeta, camMeta);
-    this.state.triggerUpdate(); // Obliga a EditorToolsService a inyectar la niebla
+    this.state.triggerUpdate();
   }
 
   private iniciarBuclePrincipal(jugador: Mesh, colMeta: any, camMeta: any): void {
@@ -161,11 +167,40 @@ export class EditorPlayerService {
         this.playerConfig
       );
 
-      this.animSvc.gestionarAnimaciones(estadoFisico, seqRuntime, this.playerConfig);
-
+      this.animSvc.gestionarAnimaciones(jugador, estadoFisico, seqRuntime, this.playerConfig);
       this.playerCamSvc.actualizarPosicionCamara(jugador, activeCamera, estadoFisico, seqRuntime, colMeta, camMeta, jugador.scaling, this.playerConfig);
       
       if (seqRuntime.freezeOrientation) this.sequenceSvc.applyLockedOrientationWhileSequence(jugador);
+
+      // 🔥 LÓGICA PARA NPCS Y LUCES CON MODELO (Ejecutan sus propias secuencias simultáneamente)
+      this.npcsYPropsAnimados.forEach(npc => {
+          const npcConfig = mergePlayerConfig(npc.metadata?.playerConfig || null);
+          const npcSeq = this.sequenceSvc.actualizarSecuencia(dtMs, npc, npcConfig);
+          
+          const npcStateFisico = { 
+              isMoving: false, isRunning: false, isGrounded: true, isJumping: false, 
+              isFalling: false, isHardLanding: false, isRecoveringFromFall: false, 
+              landingFrame: 0, recoveryFrame: 0, velocidadY: 0 
+          };
+          
+          if (npcSeq.running && npcSeq.step) {
+               const soY = npcSeq.step.offsetY || 0;
+               const soF = npcSeq.step.offsetForward || 0;
+               if (soY !== 0 || soF !== 0) {
+                   const durSec = Math.max(0.001, npcSeq.step.durationMs / 1000);
+                   const dy = (soY / durSec) * (dtMs / 1000);
+                   const df = (soF / durSec) * (dtMs / 1000);
+                   npc.position.y += dy;
+                   const fwd = npc.getDirection(Vector3.Forward());
+                   fwd.y = 0; fwd.normalize();
+                   npc.position.addInPlace(fwd.scale(df));
+                   npcStateFisico.isMoving = true;
+               }
+          }
+          
+          this.animSvc.gestionarAnimaciones(npc, npcStateFisico, npcSeq, npcConfig);
+          if (npcSeq.freezeOrientation) this.sequenceSvc.applyLockedOrientationWhileSequence(npc);
+      });
     });
 
     const canvas = this.motor3d.engine.getRenderingCanvas();
@@ -176,14 +211,13 @@ export class EditorPlayerService {
     const scene = this.motor3d.scene;
     this.state.playState.set('EDITOR');
     this.resetMovimientoJugador();
-    this.animSvc.detenerTodas();
+    this.animSvc.detenerTodasGlobal();
 
     this.triggerSvc.restaurarTriggersParaEditor();
 
-    // 🔥 MOSTRAR LUCES EN MODO EDITOR
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
     this.motor3d.scene.meshes.forEach(m => {
-        if (m.metadata?.type?.startsWith('light_')) {
+        if (m.metadata?.type?.startsWith('light_') && !m.metadata?.assetId) {
             m.isVisible = isAdmin;
         }
     });
@@ -228,7 +262,7 @@ export class EditorPlayerService {
     if (canvas) {
       this.motor3d.editorCamera.attachControl(canvas, true);
     }
-    this.state.triggerUpdate(); // Obliga a EditorToolsService a quitar la niebla en el editor
+    this.state.triggerUpdate();
   }
 
   public iniciarPreviewSecuencia(mesh: AbstractMesh, sequenceId: string) {
@@ -243,16 +277,16 @@ export class EditorPlayerService {
       const runtime = this.sequenceSvc.actualizarSecuencia(dtMs, trueMesh, this.playerConfig);
       
       if (runtime.running && runtime.step) {
-        const override = this.animSvc.resolveSequenceStepAnimation(runtime.step);
-        if (override) { override.speedRatio = runtime.step.speedRatio || 1; this.animSvc.playAnim(override, runtime.loop, runtime.blend); }
-      } else if (!runtime.running) this.animSvc.reproducirIdle();
+        const override = this.animSvc.resolveSequenceStepAnimation(trueMesh, runtime.step);
+        if (override) { override.speedRatio = runtime.step.speedRatio || 1; this.animSvc.playAnim(trueMesh, override, runtime.loop, runtime.blend); }
+      } else if (!runtime.running) this.animSvc.reproducirIdle(trueMesh);
     });
   }
 
   public detenerPreviewSecuencia() {
     if (this.previewObserver) { this.motor3d.scene.onBeforeRenderObservable.remove(this.previewObserver); this.previewObserver = null; }
     this.sequenceSvc.resetearSecuencias();
-    this.animSvc.detenerTodas();
+    this.animSvc.detenerTodasGlobal();
   }
  
   public resetMovimientoJugador(): void {
@@ -264,7 +298,9 @@ export class EditorPlayerService {
     this.state.targetInteractuable.set(null);
     this.state.showToastE.set(false);
     this.state.showToastI.set(false);
-    this.animSvc.reproducirIdle(); 
+    if (this.state.jugadorActivo) {
+        this.animSvc.reproducirIdle(this.state.jugadorActivo); 
+    }
   }
 
   private crearProxysDeColision(jugador: Mesh): void {

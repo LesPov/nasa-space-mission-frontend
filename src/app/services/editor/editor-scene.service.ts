@@ -15,6 +15,8 @@ export class EditorSceneService {
   private state = inject(EditorStateService);
   private historialSvc = inject(HistorialService);
 
+  private shadowGenerator: ShadowGenerator | null = null; 
+
   private ajustarMaterialGLB(material: any): void {
     if (!material) return;
     
@@ -117,7 +119,6 @@ export class EditorSceneService {
     this.state.objetoSeleccionado.set(mesh); this.actualizarListaNodos(); this.historialSvc.registrarAccionCrear(mesh); this.state.triggerUpdate();
   }
 
-  // 🔥 Añadimos un actualizador de sombras para que las luces nuevas agarren todos los objetos sólidos
   private asignarObjetosASombrasDeLuces(scene: Scene) {
       const lights = scene.lights.filter(l => l instanceof DirectionalLight || l instanceof SpotLight);
       lights.forEach(light => {
@@ -182,7 +183,6 @@ export class EditorSceneService {
         mesh.checkCollisions = false;
         mesh.isVisible = this.state.rolSimulado() === 'admin';
         
-        // Asignamos que esta luz recién creada genere sombras para todos los objetos
         if (tipo === 'light_directional' || tipo === 'light_spot') {
             this.asignarObjetosASombrasDeLuces(scene);
         }
@@ -229,7 +229,6 @@ export class EditorSceneService {
         rootNode.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
         rootNode.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
 
-        // Agregamos el modelo a los generadores de sombra existentes
         this.asignarObjetosASombrasDeLuces(scene);
 
         this.state.objetoSeleccionado.set(rootNode); this.actualizarListaNodos(); this.historialSvc.registrarAccionCrear(rootNode); this.state.triggerUpdate();
@@ -263,39 +262,27 @@ export class EditorSceneService {
       mat.maxSimultaneousLights = 16; 
       mesh.material = mat;
 
-      // Agregamos la figura a los generadores de sombra existentes
       this.asignarObjetosASombrasDeLuces(scene);
 
       this.state.objetoSeleccionado.set(mesh); this.actualizarListaNodos(); this.historialSvc.registrarAccionCrear(mesh); this.state.triggerUpdate();
     }
   }
 
-  // 🔥 NUEVO: CONFIGURAR AMBIENTE GLOBAL (Sin sol direccional, solo luz de relleno) 🔥
   private configurarAmbienteGlobal(scene: Scene, props: any): void {
       let ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;
       if (!ambient) {
           ambient = new HemisphericLight('ambientLight', new Vector3(0, 1, 0), scene);
       }
-      // Aplicar propiedades ambientales
       ambient.direction = new Vector3(props.ambientDirX ?? 0, props.ambientDirY ?? 1, props.ambientDirZ ?? 0);
       ambient.intensity = props.ambientIntensity ?? 0.6;
       ambient.diffuse = Color3.FromHexString(props.ambientDiffuse || '#ffffff');
       ambient.groundColor = Color3.FromHexString(props.ambientGround || '#333333');
-      ambient.specular = new Color3(0, 0, 0); // Cero brillo plástico
+      ambient.specular = new Color3(0, 0, 0); 
 
-      // Limpiar luces automáticas antiguas si existen
       const oldGlobal = scene.lights.find(l => l.name === 'globalLight');
       if (oldGlobal) oldGlobal.dispose();
       const oldSun = scene.lights.find(l => l.name === 'sunLight');
       if (oldSun) oldSun.dispose(); 
-  }
-
-  // 🔥 NUEVO: Aplicar el límite de renderizado de cámaras según la niebla
-  private aplicarDistanciaRender(scene: Scene, enabled: boolean, endDistance: number) {
-      // Si la niebla está apagada, la cámara renderiza a 10000 metros (casi infinito).
-      // Si está encendida, solo dibuja hasta donde llega la niebla (+ 5 metros de buffer de seguridad).
-      const maxZ = enabled ? (endDistance + 5) : 10000;
-      scene.cameras.forEach(cam => cam.maxZ = maxZ);
   }
 
   cargarEscenaDesdeDatos(dataBD: any): void {
@@ -304,33 +291,27 @@ export class EditorSceneService {
 
     if (dataBD.worldSettings) {
         const w = dataBD.worldSettings;
-        
         const clearHex = w.clearColor?.length === 7 ? w.clearColor : (w.clearColor?.substring(0, 7) || '#0d1729');
-        scene.clearColor = Color4.FromHexString(clearHex + 'ff');
         
+        scene.clearColor = Color4.FromHexString(clearHex + 'ff');
+        scene.metadata = { ...scene.metadata, globalClearColor: clearHex };
         scene.gravity = new Vector3(0, w.gravityY ?? -0.25, 0);
         
-        if (w.fogEnabled) {
-            scene.fogMode = Scene.FOGMODE_LINEAR; 
-            scene.fogColor = Color3.FromHexString(w.fogColor?.substring(0, 7) || '#0d1729');
-            scene.fogStart = w.fogStart ?? 20;
-            scene.fogEnd = w.fogEnd ?? 100;
-        } else {
-            scene.fogMode = Scene.FOGMODE_NONE; 
-        }
-
-        // Cargamos el ambiente global y ajustamos el render de cámara
         this.configurarAmbienteGlobal(scene, w);
-        this.aplicarDistanciaRender(scene, w.fogEnabled, w.fogEnd ?? 100);
-
     } else {
-        // Fallback por si no hay configuración
+        const clearHex = '#0d1729';
+        scene.clearColor = Color4.FromHexString(clearHex + 'ff');
+        scene.metadata = { ...scene.metadata, globalClearColor: clearHex };
         this.configurarAmbienteGlobal(scene, {
             ambientIntensity: 0.6, ambientDiffuse: '#ffffff', ambientGround: '#333333',
             ambientDirX: 0, ambientDirY: 1, ambientDirZ: 0
         });
-        this.aplicarDistanciaRender(scene, false, 10000);
     }
+
+    // Aseguramos que la niebla base esté apagada al cargar el mundo,
+    // la niebla ahora es 100% controlada por EditorToolsService (por personaje)
+    scene.fogMode = Scene.FOGMODE_NONE;
+    scene.cameras.forEach(cam => cam.maxZ = 10000);
 
     const objetosBD = Array.isArray(dataBD) ? dataBD : (dataBD.sceneObjects || []);
     const triggersBD = Array.isArray(dataBD) ? [] : (dataBD.triggers || []);
@@ -540,7 +521,6 @@ export class EditorSceneService {
         }
     });
 
-    // Aseguramos que todas las luces creen sombras
     this.asignarObjetosASombrasDeLuces(scene);
     this.actualizarListaNodos();
   }
@@ -549,17 +529,13 @@ export class EditorSceneService {
     const sceneObjects: any[] = [];
     const triggers: any[] = [];
     
-    // 🔥 Guardamos SOLO Luz Ambiental. (Direccionales serán objetos)
     const scene = this.motor3d.scene;
     const ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;
     
+    // Solo guardamos Luz Ambiental y Gravedad (La Niebla Global ya no existe)
     const worldSettings = {
-      clearColor: scene.clearColor.toHexString().substring(0, 7), 
+      clearColor: scene.metadata?.globalClearColor || scene.clearColor.toHexString().substring(0, 7), 
       gravityY: scene.gravity.y,
-      fogEnabled: scene.fogMode !== 0,
-      fogColor: scene.fogColor.toHexString().substring(0, 7),
-      fogStart: scene.fogStart,
-      fogEnd: scene.fogEnd,
       
       ambientIntensity: ambient ? ambient.intensity : 0.6,
       ambientDiffuse: ambient ? ambient.diffuse.toHexString().substring(0, 7) : '#ffffff',
@@ -666,7 +642,7 @@ export class EditorSceneService {
     const scene = this.motor3d.scene;
     
     // Filtramos para no mostrar la luz global de fondo (Hemisférica) ni luces hijas
-    const lucesValidas = scene.lights.filter(l => !l.parent && l.name !== 'ambientLight' && l.name !== 'sunLight' && l.name !== 'globalLight');
+    const lucesValidas = scene.lights.filter(l => !l.parent && l.name !== 'ambientLight');
 
     this.state.nodosEscena.set([
       ...scene.cameras,

@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder, Color3, Color4, StandardMaterial } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
@@ -73,7 +73,7 @@ export class EditorPlayerService {
 
     this.crearProxysDeColision(obj);
 
-    // 🔥 OCULTAR LUCES DURANTE EL JUEGO (Para no ver la esfera proxy)
+    // 🔥 OCULTAR LUCES DURANTE EL JUEGO
     this.motor3d.scene.meshes.forEach(m => {
         if (m.metadata?.type?.startsWith('light_')) {
             m.isVisible = false;
@@ -81,6 +81,7 @@ export class EditorPlayerService {
     });
 
     this.playerConfig = mergePlayerConfig(obj.metadata?.playerConfig || null);
+
     const colMeta = obj.metadata?.collider || { sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 };
     const camMeta = obj.metadata?.camOffset || { x: 0, y: 1.6, z: 0 };
 
@@ -133,6 +134,7 @@ export class EditorPlayerService {
     });
 
     this.iniciarBuclePrincipal(obj, colMeta, camMeta);
+    this.state.triggerUpdate(); // Obliga a EditorToolsService a inyectar la niebla
   }
 
   private iniciarBuclePrincipal(jugador: Mesh, colMeta: any, camMeta: any): void {
@@ -179,7 +181,7 @@ export class EditorPlayerService {
     this.triggerSvc.restaurarTriggersParaEditor();
 
     // 🔥 MOSTRAR LUCES EN MODO EDITOR
-    const isAdmin = this.state.rolSimulado() === 'admin';
+    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
     this.motor3d.scene.meshes.forEach(m => {
         if (m.metadata?.type?.startsWith('light_')) {
             m.isVisible = isAdmin;
@@ -226,6 +228,7 @@ export class EditorPlayerService {
     if (canvas) {
       this.motor3d.editorCamera.attachControl(canvas, true);
     }
+    this.state.triggerUpdate(); // Obliga a EditorToolsService a quitar la niebla en el editor
   }
 
   public iniciarPreviewSecuencia(mesh: AbstractMesh, sequenceId: string) {

@@ -74,7 +74,7 @@ export class PlayerCameraManagerService {
     fpsCam.keysDown = [];
     fpsCam.keysLeft = [];
     fpsCam.keysRight = [];
-    fpsCam.minZ = 0.05;
+    fpsCam.minZ = 0.01; 
 
     const startRot = jugador.rotationQuaternion
       ? jugador.rotationQuaternion.toEulerAngles()
@@ -90,10 +90,12 @@ export class PlayerCameraManagerService {
       this.motor3d.playerCameraTPS.lockedTarget = this.state.cameraPivot;
       this.motor3d.playerCameraTPS.radius = (config.camera.tpsRadius || 5) * scaleY;
 
-      // Límite seguro para que el zoom no se vaya a infinito por wheel
-      this.motor3d.playerCameraTPS.lowerRadiusLimit = Math.max(1.25, (config.camera.tpsRadius || 5) * scaleY * 0.35);
-      this.motor3d.playerCameraTPS.upperRadiusLimit = Math.max(1.25, (config.camera.tpsRadius || 5) * scaleY);
-      this.motor3d.playerCameraTPS.wheelPrecision = 18;
+      this.motor3d.playerCameraTPS.lowerRadiusLimit = Math.max(0.5, (config.camera.tpsRadius || 5) * scaleY * 0.15);
+      this.motor3d.playerCameraTPS.upperRadiusLimit = Math.max(1.25, (config.camera.tpsRadius || 5) * scaleY * 2.5);
+      
+      // 🔥 SOLUCIÓN: Hacemos que el zoom de la rueda sea más sensible en el modo juego (15 en vez de 50)
+      this.motor3d.playerCameraTPS.wheelPrecision = 15;
+      
       this.motor3d.playerCameraTPS.panningSensibility = 0;
       this.motor3d.playerCameraTPS.allowUpsideDown = false;
     }
@@ -152,7 +154,7 @@ export class PlayerCameraManagerService {
 
       tpsCam.alpha = -(fpsCam.rotation.y || 0) - Math.PI / 2;
       tpsCam.beta = (fpsCam.rotation.x || 0) + Math.PI / 2;
-      tpsCam.radius = 0.05;
+      tpsCam.radius = 0.01;
 
       this.currentPivotY = this.currentEyeLevel;
       this.state.modoVistaPrueba = 'TPS';
@@ -164,7 +166,7 @@ export class PlayerCameraManagerService {
         'radius',
         60,
         45,
-        0.05,
+        0.01,
         targetRadius,
         2,
         ease
@@ -186,7 +188,7 @@ export class PlayerCameraManagerService {
         60,
         45,
         tpsCam.radius,
-        0.05,
+        0.01,
         2,
         ease
       );
@@ -267,8 +269,8 @@ export class PlayerCameraManagerService {
     if (this.state.modoVistaPrueba === 'TPS' && this.state.cameraPivot) {
       if (!this.isTransitioningCameras) {
         const radiusBase = (config.camera.tpsRadius || 5) * scaleY;
-        const minRadius = Math.max(1.25, radiusBase * 0.35);
-        const maxRadius = radiusBase;
+        const minRadius = Math.max(0.5, radiusBase * 0.15); // Permite acercarse libremente
+        const maxRadius = radiusBase * 2.5;
 
         this.motor3d.playerCameraTPS.lowerRadiusLimit = minRadius;
         this.motor3d.playerCameraTPS.upperRadiusLimit = maxRadius;

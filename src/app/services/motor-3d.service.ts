@@ -18,7 +18,6 @@ export class Motor3dService {
   public engine!: Engine;
   public scene!: Scene;
   
-  // Cámaras (OrbitControls y PointerLockControls equivalentes en Babylon)
   public editorCamera!: ArcRotateCamera;
   public playerCameraFPS!: UniversalCamera;
   public playerCameraTPS!: ArcRotateCamera;
@@ -26,14 +25,11 @@ export class Motor3dService {
   public renderingPipeline!: DefaultRenderingPipeline;
   public currentFps: number = 0;
 
-  // Límites de zoom para la cámara en tercera persona
-  // maxRadius = distancia máxima de alejamiento
-  // minRadius = distancia mínima a la que puede acercarse al jugador
-  private readonly TPS_MIN_RADIUS = 4;
-  private readonly TPS_MAX_RADIUS = 12;
+  private readonly TPS_MIN_RADIUS = 0.5;
+  private readonly TPS_MAX_RADIUS = 15;
 
   iniciarMotor(canvas: HTMLCanvasElement): void {
-    // 🔥 CONFIGURACIÓN AAA Y ANTIALIASING
+    // CONFIGURACIÓN AAA Y ANTIALIASING
     this.engine = new Engine(canvas, true, {
       preserveDrawingBuffer: false,
       stencil: true,
@@ -68,10 +64,16 @@ export class Motor3dService {
       Vector3.Zero(),
       this.scene
     );
-    this.editorCamera.wheelPrecision = 15;
-    this.editorCamera.panningSensibility = 40;
-    this.editorCamera.minZ = 0.1;
+    
+    // 🔥 SOLUCIÓN AL ZOOM: En Babylon, menor número = zoom más rápido. Pasamos de 50 a 15.
+    this.editorCamera.wheelPrecision = 15; 
+    this.editorCamera.minZ = 0.01; 
     this.editorCamera.maxZ = 10000;
+    
+    // 🔥 SOLUCIÓN A CONTROLES INVERTIDOS: Usar valores POSITIVOS para giro y paneo correctos.
+    this.editorCamera.angularSensibilityX = 1500; 
+    this.editorCamera.angularSensibilityY = 1500; 
+    this.editorCamera.panningSensibility = 50; 
     this.editorCamera.attachControl(canvas, true);
 
     // --- CÁMARA 2: JUGADOR FPS (PointerLockControls equivalente) ---
@@ -80,14 +82,13 @@ export class Motor3dService {
       new Vector3(0, 0, 0),
       this.scene
     );
-    // minZ a 0.25 para evitar hacer clipping dentro de la cabeza del modelo
-    this.playerCameraFPS.minZ = 0.25;
+    this.playerCameraFPS.minZ = 0.01; 
     this.playerCameraFPS.maxZ = 10000;
     this.playerCameraFPS.keysUp = [];
     this.playerCameraFPS.keysDown = [];
     this.playerCameraFPS.keysLeft = [];
     this.playerCameraFPS.keysRight = [];
-    this.playerCameraFPS.angularSensibility = 3000;
+    this.playerCameraFPS.angularSensibility = 2500; 
     this.playerCameraFPS.speed = 0.3;
     this.playerCameraFPS.applyGravity = false;
     this.playerCameraFPS.checkCollisions = false;
@@ -102,18 +103,18 @@ export class Motor3dService {
       this.scene
     );
 
-    this.playerCameraTPS.minZ = 0.2;
+    this.playerCameraTPS.minZ = 0.01; 
     this.playerCameraTPS.maxZ = 10000;
 
-    // Zoom con la rueda del mouse
-    this.playerCameraTPS.wheelPrecision = 30;
+    // Zoom más rápido también en TPS
+    this.playerCameraTPS.wheelPrecision = 15;
 
-    // Límite máximo de alejamiento / acercamiento
+    // Controles en dirección estándar (positivos)
+    this.playerCameraTPS.angularSensibilityX = 2000;
+    this.playerCameraTPS.angularSensibilityY = 2000;
+
     this.playerCameraTPS.lowerRadiusLimit = this.TPS_MIN_RADIUS;
     this.playerCameraTPS.upperRadiusLimit = this.TPS_MAX_RADIUS;
-
-    this.playerCameraTPS.angularSensibilityX = 3000;
-    this.playerCameraTPS.angularSensibilityY = 3000;
     this.playerCameraTPS.checkCollisions = false;
 
     this.scene.activeCamera = this.editorCamera;

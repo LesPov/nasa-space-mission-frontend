@@ -48,31 +48,3 @@
     <p class="help-text">Gravedad base del mundo (Afecta físicas generales y la velocidad de caída del jugador).</p>
   </div>
 </div>
-
-<div class="section-card">
-  <div class="section-head"><h4>Efectos: Niebla (Render Limits)</h4></div>
-  <div class="checkbox-field" style="margin-bottom: 10px;">
-    <input type="checkbox" id="chkFog" [(ngModel)]="fogEnabled" (ngModelChange)="aplicarNiebla()" />
-    <label for="chkFog">Habilitar Niebla Linear</label>
-  </div>
-  
-  <div class="grid-2" *ngIf="fogEnabled">
-    <div class="field wide" style="margin-bottom: 5px;">
-      <label>Color de Niebla</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="fogColorHex" (ngModelChange)="aplicarNiebla()" class="color-picker">
-      </div>
-    </div>
-    <div class="field">
-      <label>Inicia a (Metros)</label>
-      <input type="number" step="1" min="0" [(ngModel)]="fogStart" (ngModelChange)="aplicarNiebla()" />
-    </div>
-    <div class="field">
-      <label>Termina a (Metros)</label>
-      <input type="number" step="1" min="1" [(ngModel)]="fogEnd" (ngModelChange)="aplicarNiebla()" />
-    </div>
-    <div class="field wide">
-      <p class="help-text">Todo lo que esté a más de {{ fogEnd }} metros quedará tapado por la niebla y no se renderizará.</p>
-    </div>
-  </div>
-</div>

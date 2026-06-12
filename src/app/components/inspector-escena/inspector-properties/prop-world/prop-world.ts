@@ -21,6 +21,7 @@ export class PropWorld implements OnInit, OnDestroy {
 
   clearColorHex: string = '#0d1729';
   
+  // Variables Ambientales (Relleno)
   ambientIntensity: number = 0.6;
   ambientColorHex: string = '#ffffff';
   groundColorHex: string = '#333333';
@@ -29,11 +30,6 @@ export class PropWorld implements OnInit, OnDestroy {
   ambientDirZ: number = 0;
 
   gravedadY: number = -0.25;
-  
-  fogEnabled: boolean = false;
-  fogColorHex: string = '#0d1729';
-  fogStart: number = 20;
-  fogEnd: number = 100;
 
   ngOnInit() {
     this.leerEstadoActual();
@@ -52,7 +48,7 @@ export class PropWorld implements OnInit, OnDestroy {
     const scene = this.motor3dSvc.scene;
     if(!scene) return;
     
-    this.clearColorHex = scene.clearColor.toHexString().substring(0, 7);
+    this.clearColorHex = scene.metadata?.globalClearColor || scene.clearColor.toHexString().substring(0, 7);
 
     // Solo cargamos la luz ambiental
     const ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;
@@ -66,18 +62,13 @@ export class PropWorld implements OnInit, OnDestroy {
     }
 
     this.gravedadY = scene.gravity.y;
-
-    this.fogEnabled = scene.fogMode !== Scene.FOGMODE_NONE;
-    this.fogColorHex = scene.fogColor.toHexString().substring(0, 7);
-    this.fogStart = scene.fogStart;
-    this.fogEnd = scene.fogEnd;
-
     this.cdr.detectChanges();
   }
 
   aplicarFondo() {
     const scene = this.motor3dSvc.scene;
     scene.clearColor = Color4.FromHexString(this.clearColorHex + 'ff');
+    scene.metadata = { ...scene.metadata, globalClearColor: this.clearColorHex };
     this.editorSvc.triggerUpdate(); 
   }
 
@@ -101,22 +92,6 @@ export class PropWorld implements OnInit, OnDestroy {
   aplicarGravedad() {
     const scene = this.motor3dSvc.scene;
     scene.gravity = new Vector3(0, this.gravedadY, 0);
-    this.editorSvc.triggerUpdate();
-  }
-
-  aplicarNiebla() {
-    const scene = this.motor3dSvc.scene;
-    if (this.fogEnabled) {
-      scene.fogMode = Scene.FOGMODE_LINEAR; 
-      scene.fogColor = Color3.FromHexString(this.fogColorHex);
-      scene.fogStart = this.fogStart;
-      scene.fogEnd = this.fogEnd;
-      // Optimizacion: Evitamos renderizar todo lo que la niebla tapa
-      scene.cameras.forEach(cam => cam.maxZ = this.fogEnd + 5);
-    } else {
-      scene.fogMode = Scene.FOGMODE_NONE; 
-      scene.cameras.forEach(cam => cam.maxZ = 10000);
-    }
     this.editorSvc.triggerUpdate();
   }
 }

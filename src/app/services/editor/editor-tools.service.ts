@@ -1,5 +1,5 @@
 import { Injectable, inject, effect } from '@angular/core';
-import { Color3, GizmoManager, HighlightLayer, Mesh, PointerEventTypes, Matrix, AbstractMesh, KeyboardEventTypes, MeshBuilder, StandardMaterial, Vector3, TransformNode, Ray, PointerDragBehavior } from '@babylonjs/core';
+import { Color3, GizmoManager, HighlightLayer, Mesh, PointerEventTypes, Matrix, AbstractMesh, KeyboardEventTypes, MeshBuilder, StandardMaterial, Vector3, TransformNode, Ray, PointerDragBehavior, Scene, Color4 } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService, ToolMode } from './editor-state.service';
 import { HistorialService } from '../historial.service';
@@ -27,6 +27,8 @@ export class EditorToolsService {
 
   private debugCollider: Mesh | null = null;
   private debugCameraBox: Mesh | null = null;
+  private debugFogSphere: Mesh | null = null; // 🔥 LA GUÍA VISUAL PARA EL EDITOR
+  
   private isDraggingGizmo = false;
 
   constructor() {
@@ -38,11 +40,12 @@ export class EditorToolsService {
       if (!this.isDraggingGizmo) this.actualizarDebugMeshes(selected);
       if (this.hlHover && this.hlSelected) this.actualizarHighlights(selected, hovered);
 
+      this.aplicarNieblaEnTiempoReal();
+
       if (this.gizmoManager) {
         const modoJuego = this.state.playState();
         const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
-        // Si NO eres admin, o estás jugando, LOS GIZMOS SE APAGAN.
         if (modoJuego === 'PLAYING' || modoJuego === 'TRANSITIONING' || modoJuego === 'INTERACTING' || !isAdmin) {
             this.gizmoManager.attachToMesh(null);
             this.gizmoManager.positionGizmoEnabled = false;
@@ -301,7 +304,6 @@ export class EditorToolsService {
           return;
         }
 
-        // Modo Editor: Bloquear selecciones y rayos si NO es Admin
         if (isAdmin && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
@@ -366,6 +368,7 @@ export class EditorToolsService {
 
     this.state.onMapChanged.subscribe(() => {
       if (!this.isDraggingGizmo) this.actualizarDebugMeshes(this.state.objetoSeleccionado() as Mesh);
+      this.aplicarNieblaEnTiempoReal();
     });
 
     scene.onBeforeRenderObservable.add(() => {
@@ -421,15 +424,71 @@ export class EditorToolsService {
     this.setToolMode('translate');
   }
 
+  // 🔥 MÉTODO QUE APLICA LA NIEBLA DE FORMA INSTANTÁNEA 🔥
+  public aplicarNieblaEnTiempoReal() {
+    const scene = this.motor3d.scene;
+    if (!scene) return;
+
+    const modo = this.state.playState();
+    let targetPlayer: AbstractMesh | null = null;
+    
+    // Identificar a qué jugador estamos evaluando
+    if (modo === 'PLAYING' || modo === 'EDITING_IN_GAME' || modo === 'TRANSITIONING') {
+       targetPlayer = this.state.jugadorActivo;
+    } else {
+       const obj = this.state.objetoSeleccionado() as AbstractMesh;
+       if (obj && (obj.metadata?.rol === 'npc' || obj.metadata?.rol === 'spawn_point')) {
+           targetPlayer = obj;
+       }
+    }
+
+    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+
+    if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
+       const fog = targetPlayer.metadata.playerConfig.fog;
+       scene.fogMode = Scene.FOGMODE_LINEAR;
+       scene.fogColor = Color3.FromHexString(fog.color || '#0d1729');
+       scene.fogStart = fog.start || 10;
+       scene.fogEnd = fog.end || 50;
+       
+       // El clearColor debe coincidir con la niebla para un fundido sin costuras
+       scene.clearColor = Color4.FromHexString((fog.color || '#0d1729') + 'FF');
+       
+       // El Admin nunca tiene recorte de cámara para poder ver/editar el mundo a través de la niebla
+       if (isAdmin) {
+           this.motor3d.editorCamera.maxZ = 10000;
+           this.motor3d.playerCameraFPS.maxZ = 10000;
+           this.motor3d.playerCameraTPS.maxZ = 10000;
+       } else {
+           // Los Usuarios sufren el recorte de geometría al mismo nivel que termina la niebla (Ahorro de GPU)
+           const cutoff = fog.end;
+           this.motor3d.editorCamera.maxZ = cutoff;
+           this.motor3d.playerCameraFPS.maxZ = cutoff;
+           this.motor3d.playerCameraTPS.maxZ = cutoff;
+       }
+    } else {
+       // Si no hay jugador, o el jugador no tiene niebla encendida
+       scene.fogMode = Scene.FOGMODE_NONE;
+       const globalClear = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
+       scene.clearColor = Color4.FromHexString(globalClear + 'FF');
+       
+       this.motor3d.editorCamera.maxZ = 10000;
+       this.motor3d.playerCameraFPS.maxZ = 10000;
+       this.motor3d.playerCameraTPS.maxZ = 10000;
+    }
+  }
+
   private actualizarDebugMeshes(selected: Mesh | null) {
     if (!selected || (this.state.playState() !== 'EDITOR' && this.state.playState() !== 'EDITING_IN_GAME')) {
       if (this.debugCollider) { this.debugCollider.dispose(); this.debugCollider = null; }
       if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
+      if (this.debugFogSphere) { this.debugFogSphere.dispose(); this.debugFogSphere = null; }
       return;
     }
 
     const scene = this.motor3d.scene;
     const colMeta = selected.metadata?.collider;
+    
     if (colMeta && colMeta.type !== 'mesh') {
       if (this.debugCollider) this.debugCollider.dispose(); 
       if (colMeta.type === 'capsule') this.debugCollider = MeshBuilder.CreateCapsule("debugCollider", { radius: colMeta.sizeX, height: colMeta.sizeY * 2 }, scene);
@@ -463,6 +522,26 @@ export class EditorToolsService {
       this.debugCameraBox.isPickable = false;
     } else {
       if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
+    }
+
+    // 3. DIBUJAR GUÍA DE LA ESFERA DE NIEBLA (Solo visual, no seleccionable)
+    const playerConfig = selected.metadata?.playerConfig;
+    if (playerConfig && playerConfig.fog && playerConfig.fog.enabled && (selected.metadata?.rol === 'npc' || selected.metadata?.rol === 'spawn_point')) {
+      if (this.debugFogSphere) this.debugFogSphere.dispose();
+      this.debugFogSphere = MeshBuilder.CreateSphere("debugFogSphere", { diameter: playerConfig.fog.end * 2, segments: 32 }, scene);
+      this.debugFogSphere.position = Vector3.Zero();
+      this.debugFogSphere.parent = selected;
+      
+      const matFog = new StandardMaterial("debugFogMat", scene);
+      matFog.wireframe = true;
+      matFog.emissiveColor = Color3.FromHexString(playerConfig.fog.color || '#0d1729');
+      matFog.alpha = 0.15;
+      matFog.disableLighting = true;
+      
+      this.debugFogSphere.material = matFog;
+      this.debugFogSphere.isPickable = false; // NO permite que el ratón lo cliquee (no estorba al admin)
+    } else {
+      if (this.debugFogSphere) { this.debugFogSphere.dispose(); this.debugFogSphere = null; }
     }
   }
 
@@ -544,7 +623,6 @@ export class EditorToolsService {
        return; 
     }
     
-    // Si NO es admin y está en el "editor" (aunque no debería), nunca mostramos Highlights del sistema base.
     if (!isAdmin && (mode === 'EDITOR' || mode === 'EDITING_IN_GAME')) return;
 
     const colorHover = Color3.FromHexString('#3b82f6');

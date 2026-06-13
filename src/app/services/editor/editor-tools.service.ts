@@ -20,7 +20,8 @@ import {
   Quaternion,
   CascadedShadowGenerator,
   SpotLight,
-  DirectionalLight
+  DirectionalLight,
+  ShadowGenerator
 } from '@babylonjs/core';
 import { HistorialService } from '../historial.service';
 import { Motor3dService } from '../motor-3d.service';
@@ -49,7 +50,10 @@ export class EditorToolsService {
 
   private debugCollider: Mesh | null = null;
   private debugCameraBox: Mesh | null = null;
-  private debugFogSphere: Mesh | null = null;
+  
+  // 🔥 Esferas para mostrar los dos radios de la niebla en el Editor
+  private debugFogStartSphere: Mesh | null = null;
+  private debugFogEndSphere: Mesh | null = null;
 
   private centerDragMesh!: Mesh;
   private gizmoPivotNode!: BabylonTransformNode;
@@ -698,6 +702,14 @@ export class EditorToolsService {
       if (camMeta && this.debugCameraBox) {
         this.debugCameraBox.position.set(camMeta.x + breathX, camMeta.y + breathY, camMeta.z + breathZ);
       }
+
+      // 🔥 FIX: Actualizamos la posición de las esferas de niebla para que sigan al jugador
+      if (this.debugFogStartSphere) {
+         this.debugFogStartSphere.position.set(breathX, breathY, breathZ);
+      }
+      if (this.debugFogEndSphere) {
+         this.debugFogEndSphere.position.set(breathX, breathY, breathZ);
+      }
     });
 
     this.motor3d.editorCamera.attachControl(this.motor3d.engine.getRenderingCanvas(), true);
@@ -706,8 +718,6 @@ export class EditorToolsService {
     this.setToolMode('translate');
   }
 
-  // 🔥 LÓGICA DE NIEBLA BLINDADA: 
-  // Ahora aísla perfectamente el modo Editor del modo de Juego y NUNCA borra tu color de fondo.
   public aplicarNieblaEnTiempoReal() {
     const scene = this.motor3d.scene;
     if (!scene) return;
@@ -719,30 +729,70 @@ export class EditorToolsService {
     const spawnOrNpc = scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
     targetPlayer = spawnOrNpc || null;
 
-    // 🔥 SIEMPRE recuperamos y forzamos el color global, para que la niebla jamás lo sobrescriba.
     const globalClearHex = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
     const clearColor3 = Color3.FromHexString(globalClearHex);
     scene.clearColor = new Color4(clearColor3.r, clearColor3.g, clearColor3.b, 1);
 
+    const isBW = scene.metadata?.globalVisualMode === 'bw';
+    const isFPS = this.state.modoVistaPrueba === 'FPS';
+
     if (modo === 'PLAYING' || modo === 'EDITING_IN_GAME') {
         if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
           const fog = targetPlayer.metadata.playerConfig.fog;
+          
+          const activeMode = fog.fogMode || 'linear';
+          const activeColor = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
+          
+          let activeStart = 0;
+          let activeEnd = 50;
+          let activeDensity = 0.02;
+          let activeRenderDistance = 150;
+
+          if (isBW) {
+              activeStart = isFPS ? (fog.startFpsBW ?? 0) : (fog.startTpsBW ?? 5);
+              activeEnd = isFPS ? (fog.endFpsBW ?? 60) : (fog.endTpsBW ?? 90);
+              activeDensity = isFPS ? (fog.densityFpsBW ?? 0.045) : (fog.densityTpsBW ?? 0.025);
+              activeRenderDistance = isFPS ? (fog.renderDistanceFpsBW ?? 100) : (fog.renderDistanceTpsBW ?? 150);
+          } else {
+              activeStart = isFPS ? (fog.startFPS ?? 0) : (fog.startTPS ?? 5);
+              activeEnd = isFPS ? (fog.endFPS ?? 80) : (fog.endTPS ?? 120);
+              activeDensity = isFPS ? (fog.densityFps ?? 0.025) : (fog.densityTps ?? 0.015);
+              activeRenderDistance = isFPS ? (fog.renderDistanceFPS ?? 150) : (fog.renderDistanceTPS ?? 200);
+          }
+
+          // 🔥 MAGIA MATEMÁTICA AQUÍ 🔥
+          // Forzamos al motor a usar LINEAR para que RESPETE siempre tu zona limpia (activeStart).
           scene.fogMode = Scene.FOGMODE_LINEAR;
-          scene.fogColor = Color3.FromHexString(fog.color || '#0d1729');
-          scene.fogStart = fog.start || 10;
-          scene.fogEnd = fog.end || 50;
+          scene.fogStart = activeStart;
 
-          const cutoff = fog.end + (fog.end * 0.3);
-          this.motor3d.editorCamera.maxZ = cutoff;
-          this.motor3d.playerCameraFPS.maxZ = cutoff;
-          this.motor3d.playerCameraTPS.maxZ = cutoff;
+          if (activeMode === 'exp' || activeMode === 'exp2') {
+              // Si eliges modo denso/exponencial, calculamos el "FIN" usando tu Densidad.
+              // A mayor densidad -> transición más corta -> Muro ciego inmediato.
+              const factorFuerza = activeMode === 'exp2' ? 0.5 : 1.0; 
+              const densidadSegura = activeDensity <= 0 ? 0.001 : activeDensity;
+              
+              const distanciaTransicion = (1 / densidadSegura) * factorFuerza;
+              scene.fogEnd = activeStart + distanciaTransicion;
+          } else {
+              // Modo Lineal Clásico (usa el valor exacto de la caja de texto "Fin")
+              scene.fogEnd = activeEnd;
+          }
+          
+          scene.fogDensity = activeDensity; // Mantenemos el valor asignado
+          
+          scene.clearColor = Color4.FromHexString(activeColor + 'ff');
+          scene.fogColor = Color3.FromHexString(activeColor);
 
-          shadowLimit = cutoff;
+          // 🔥 APLICAMOS EL LÍMITE DE RENDER EXACTO DEL USUARIO
+          this.motor3d.editorCamera.maxZ = activeRenderDistance;
+          this.motor3d.playerCameraFPS.maxZ = activeRenderDistance;
+          this.motor3d.playerCameraTPS.maxZ = activeRenderDistance;
+
+          shadowLimit = activeRenderDistance;
         } else {
           this.restaurarEntornoLibreDeNiebla(scene);
         }
     } else {
-        // 🔥 MODO EDITOR LIBRE: Entorno completamente despejado siempre.
         this.restaurarEntornoLibreDeNiebla(scene);
     }
 
@@ -760,6 +810,11 @@ export class EditorToolsService {
 
   private restaurarEntornoLibreDeNiebla(scene: Scene) {
       scene.fogMode = Scene.FOGMODE_NONE;
+      
+      const isBW = scene.metadata?.globalVisualMode === 'bw';
+      const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
+      scene.clearColor = Color4.FromHexString(globalClearHex + 'ff');
+
       this.motor3d.editorCamera.maxZ = 10000;
       this.motor3d.playerCameraFPS.maxZ = 10000;
       this.motor3d.playerCameraTPS.maxZ = 10000;
@@ -769,7 +824,8 @@ export class EditorToolsService {
     if (!selected || (this.state.playState() !== 'EDITOR' && this.state.playState() !== 'EDITING_IN_GAME')) {
       if (this.debugCollider) { this.debugCollider.dispose(); this.debugCollider = null; }
       if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
-      if (this.debugFogSphere) { this.debugFogSphere.dispose(); this.debugFogSphere = null; }
+      if (this.debugFogStartSphere) { this.debugFogStartSphere.dispose(); this.debugFogStartSphere = null; }
+      if (this.debugFogEndSphere) { this.debugFogEndSphere.dispose(); this.debugFogEndSphere = null; }
       return;
     }
 
@@ -811,23 +867,75 @@ export class EditorToolsService {
       if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
     }
 
+    // 🔥 FIX: CREACIÓN DE DOS ESFERAS DE NIEBLA (START Y END) PARA DEBUGEAR "EL MURO" O "EL GRADIENTE"
+    if (this.debugFogStartSphere) { this.debugFogStartSphere.dispose(); this.debugFogStartSphere = null; }
+    if (this.debugFogEndSphere) { this.debugFogEndSphere.dispose(); this.debugFogEndSphere = null; }
+
     const playerConfig = selected.metadata?.playerConfig;
     if (playerConfig && playerConfig.fog && playerConfig.fog.enabled && (selected.metadata?.rol === 'npc' || selected.metadata?.rol === 'spawn_point')) {
-      if (this.debugFogSphere) this.debugFogSphere.dispose();
-      this.debugFogSphere = MeshBuilder.CreateSphere('debugFogSphere', { diameter: playerConfig.fog.end * 2, segments: 32 }, scene);
-      this.debugFogSphere.position = Vector3.Zero();
-      this.debugFogSphere.parent = selected;
+      
+      const isBW = scene.metadata?.globalVisualMode === 'bw';
+      const isFPS = this.state.modoVistaPrueba === 'FPS';
+      
+      const activeColor = isBW ? (playerConfig.fog.colorBW || '#888888') : (playerConfig.fog.color || '#0d1729');
+      
+      let activeStart = 0;
+      let activeEnd = 50;
 
-      const matFog = new StandardMaterial('debugFogMat', scene);
-      matFog.wireframe = true;
-      matFog.emissiveColor = Color3.FromHexString(playerConfig.fog.color || '#0d1729');
-      matFog.alpha = 0.15;
-      matFog.disableLighting = true;
+      if (isBW) {
+          activeStart = isFPS ? (playerConfig.fog.startFpsBW ?? 0) : (playerConfig.fog.startTpsBW ?? 5);
+          activeEnd = isFPS ? (playerConfig.fog.endFpsBW ?? 60) : (playerConfig.fog.endTpsBW ?? 90);
+      } else {
+          activeStart = isFPS ? (playerConfig.fog.startFPS ?? 0) : (playerConfig.fog.startTPS ?? 5);
+          activeEnd = isFPS ? (playerConfig.fog.endFPS ?? 80) : (playerConfig.fog.endTPS ?? 120);
+      }
 
-      this.debugFogSphere.material = matFog;
-      this.debugFogSphere.isPickable = false;
-    } else {
-      if (this.debugFogSphere) { this.debugFogSphere.dispose(); this.debugFogSphere = null; }
+      // --- CÁLCULO VISUAL PARA LA ESFERA ROJA SEGÚN EL MODO (Sincronizado con el juego real) ---
+      let finalFogEnd = activeEnd;
+      const activeFogMode = playerConfig.fog.fogMode || 'linear';
+
+      // Obtenemos la densidad que estás editando actualmente
+      let currentDensity = isFPS ? 
+          (isBW ? (playerConfig.fog.densityFpsBW ?? 0.045) : (playerConfig.fog.densityFps ?? 0.025)) : 
+          (isBW ? (playerConfig.fog.densityTpsBW ?? 0.025) : (playerConfig.fog.densityTps ?? 0.015));
+
+      if (activeFogMode === 'exp' || activeFogMode === 'exp2') {
+          const factorFuerza = activeFogMode === 'exp2' ? 0.5 : 1.0;
+          const densidadSegura = currentDensity <= 0 ? 0.001 : currentDensity;
+          finalFogEnd = activeStart + ((1 / densidadSegura) * factorFuerza);
+      }
+
+      // Esfera Interior (Donde Inicia la Niebla - Azul Claro)
+      if (activeStart > 0.1) {
+          this.debugFogStartSphere = MeshBuilder.CreateSphere('debugFogStartSphere', { diameter: activeStart * 2, segments: 32 }, scene);
+          this.debugFogStartSphere.position = Vector3.Zero();
+          this.debugFogStartSphere.parent = selected;
+
+          const matFogStart = new StandardMaterial('debugFogStartMat', scene);
+          matFogStart.wireframe = true;
+          matFogStart.emissiveColor = new Color3(0.2, 0.8, 1.0); // Azul claro
+          matFogStart.alpha = 0.15;
+          matFogStart.disableLighting = true;
+
+          this.debugFogStartSphere.material = matFogStart;
+          this.debugFogStartSphere.isPickable = false;
+      }
+
+      // Esfera Exterior (Donde la Niebla es 100% Sólida - Roja/Naranja del color de la niebla)
+      if (finalFogEnd > 0.1) {
+          this.debugFogEndSphere = MeshBuilder.CreateSphere('debugFogEndSphere', { diameter: finalFogEnd * 2, segments: 32 }, scene);
+          this.debugFogEndSphere.position = Vector3.Zero();
+          this.debugFogEndSphere.parent = selected;
+
+          const matFogEnd = new StandardMaterial('debugFogEndMat', scene);
+          matFogEnd.wireframe = true;
+          matFogEnd.emissiveColor = Color3.FromHexString(activeColor); // Toma el color exacto de la niebla elegida
+          matFogEnd.alpha = 0.25;
+          matFogEnd.disableLighting = true;
+
+          this.debugFogEndSphere.material = matFogEnd;
+          this.debugFogEndSphere.isPickable = false;
+      }
     }
   }
 

@@ -16,11 +16,20 @@
 
 <div class="section-card">
   <div class="section-head"><h4>Cielo y Entorno</h4></div>
-  <div class="field" style="margin-bottom: 10px;">
-    <label>Color del Cielo (Fondo)</label>
-    <div class="color-picker-wrapper">
-      <input type="color" [(ngModel)]="clearColorHex" (ngModelChange)="aplicarFondo()" class="color-picker">
-      <span class="color-hex-text">{{ clearColorHex.toUpperCase() }}</span>
+  <div class="grid-2">
+    <div class="field">
+      <label>Cielo Normal</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="clearColorHex" (ngModelChange)="aplicarFondo()" class="color-picker">
+        <span class="color-hex-text">{{ clearColorHex.toUpperCase() }}</span>
+      </div>
+    </div>
+    <div class="field">
+      <label style="color: #cbd5e1; font-weight: bold;">Cielo B&N</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="clearColorHexBW" (ngModelChange)="aplicarFondo()" class="color-picker">
+        <span class="color-hex-text">{{ clearColorHexBW.toUpperCase() }}</span>
+      </div>
     </div>
   </div>
 </div>

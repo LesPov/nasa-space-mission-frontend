@@ -102,7 +102,7 @@ export class Motor3dService {
         this.editorCamera.wheelPrecision = 0.8 + (proximity * 49.2);
       }
 
-      // 🔥 FIX ANIMACIÓN BURBUJA: Reducimos la escala máxima y el latido para que sea más fina
+      // 🔥 FIX ANIMACIÓN BURBUJA
       const time = performance.now() * 0.003;
       this.scene.meshes.forEach(m => {
           if (m.metadata && m.metadata.type === 'bubble' && m.isVisible) {
@@ -113,13 +113,12 @@ export class Motor3dService {
               }
               
               const isHovered = m.metadata.isHovered === true;
-              const targetHoverScale = isHovered ? 1.15 : 1.0; // Antes 1.3, ahora 1.15 (más pequeño)
+              const targetHoverScale = isHovered ? 1.15 : 1.0; 
               
               if (m.metadata.currentHoverScale === undefined) m.metadata.currentHoverScale = 1.0;
               m.metadata.currentHoverScale += (targetHoverScale - m.metadata.currentHoverScale) * 0.15;
               
-              // Latido más sutil
-              const pulse = 1 + Math.sin(time + m.uniqueId) * 0.025; // Antes 0.06, ahora 0.025
+              const pulse = 1 + Math.sin(time + m.uniqueId) * 0.025; 
               const finalScale = pulse * m.metadata.currentHoverScale;
               
               m.scaling.set(
@@ -133,17 +132,12 @@ export class Motor3dService {
       });
     });
 
+    // 🔥 FIX: Eliminado el límite forzado del maxZ para que EditorToolsService pueda tomar el control
     this.scene.onBeforeCameraRenderObservable.add((camera) => {
       if (camera.name === 'editorCamera') {
         this.scene.fogEnabled = false;
-        camera.maxZ = 10000; 
       } else {
         this.scene.fogEnabled = true;
-        if (this.scene.fogMode !== Scene.FOGMODE_NONE && this.scene.fogEnd > 0) {
-          camera.maxZ = this.scene.fogEnd + (this.scene.fogEnd * 0.3);
-        } else {
-          camera.maxZ = 10000;
-        }
       }
     });
 

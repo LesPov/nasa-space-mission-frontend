@@ -29,6 +29,7 @@ export class PropWorld implements OnInit, OnDestroy {
   private subs: Subscription[] = [];
 
   clearColorHex = '#0d1729';
+  clearColorHexBW = '#555555';
 
   ambientIntensity = 0.6;
   ambientColorHex = '#ffffff';
@@ -55,7 +56,8 @@ export class PropWorld implements OnInit, OnDestroy {
     const scene = this.motor3dSvc.scene;
     if (!scene) return;
 
-    this.clearColorHex = scene.metadata?.globalClearColor || scene.clearColor.toHexString().substring(0, 7);
+    this.clearColorHex = scene.metadata?.globalClearColor || '#0d1729';
+    this.clearColorHexBW = scene.metadata?.globalClearColorBW || '#555555';
     
     this.visualMode = scene.metadata?.globalVisualMode === 'bw' ? 'bw' : 'normal';
     this.motor3dSvc.setVisualMode(this.visualMode);
@@ -79,8 +81,6 @@ export class PropWorld implements OnInit, OnDestroy {
     scene.metadata = { ...(scene.metadata || {}), globalVisualMode: this.visualMode };
     this.motor3dSvc.setVisualMode(this.visualMode);
 
-    // 🔥 MAGIA: Cuando cambiamos el modo, recorremos toda la escena y le aplicamos 
-    // su color B&N o su color Normal a todos los objetos geométricos al instante.
     scene.meshes.forEach(mesh => {
       const meta = mesh.metadata;
       if (meta && ['cube', 'sphere', 'cylinder', 'plane'].includes(meta.type)) {
@@ -99,8 +99,18 @@ export class PropWorld implements OnInit, OnDestroy {
 
   aplicarFondo() {
     const scene = this.motor3dSvc.scene;
-    scene.clearColor = Color4.FromHexString(this.clearColorHex + 'ff');
-    scene.metadata = { ...(scene.metadata || {}), globalClearColor: this.clearColorHex };
+    scene.metadata = { 
+      ...(scene.metadata || {}), 
+      globalClearColor: this.clearColorHex,
+      globalClearColorBW: this.clearColorHexBW 
+    };
+
+    // Si el editor NO está jugando (es decir, no hay niebla tapando el fondo), aplicamos el color al instante.
+    if (this.editorSvc.playState() === 'EDITOR') {
+      const activeClearHex = this.visualMode === 'bw' ? this.clearColorHexBW : this.clearColorHex;
+      scene.clearColor = Color4.FromHexString(activeClearHex + 'ff');
+    }
+
     this.editorSvc.triggerUpdate();
   }
 

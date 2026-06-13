@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import {
   MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader,
@@ -167,14 +168,14 @@ export class EditorSceneService {
         if (light instanceof DirectionalLight) {
           const csg = new CascadedShadowGenerator(2048, light);
           csg.usePercentageCloserFiltering = true;
-          csg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
+          csg.filteringQuality = ShadowGenerator.QUALITY_HIGH; // 🔥 MEJORES SOMBRAS
           csg.setDarkness(0.4);
-          csg.autoCalcDepthBounds = false;
+          csg.autoCalcDepthBounds = true; // 🔥 OPTIMIZADO PARA MÁXIMA CALIDAD EN RANGO VISIBLE
           sg = csg;
         } else {
           const regularSg = new ShadowGenerator(1024, light as SpotLight);
           regularSg.usePercentageCloserFiltering = true;
-          regularSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
+          regularSg.filteringQuality = ShadowGenerator.QUALITY_HIGH;
           regularSg.setDarkness(0.4);
           sg = regularSg;
         }
@@ -551,24 +552,37 @@ export class EditorSceneService {
 
       if (w) {
         const clearHex = w.clearColor?.length >= 7 ? w.clearColor.substring(0, 7) : '#0d1729';
+        const clearHexBW = w.clearColorBW?.length >= 7 ? w.clearColorBW.substring(0, 7) : '#555555';
 
         this.configurarAmbienteGlobal(scene, w);
-        scene.clearColor = Color4.FromHexString(clearHex + 'ff');
-        
         const loadedMode = w.visualMode === 'bw' ? 'bw' : 'normal';
-        scene.metadata = { ...scene.metadata, globalClearColor: clearHex, globalVisualMode: loadedMode };
+        const activeClear = loadedMode === 'bw' ? clearHexBW : clearHex;
+        scene.clearColor = Color4.FromHexString(activeClear + 'ff');
+        
+        scene.metadata = { 
+            ...scene.metadata, 
+            globalClearColor: clearHex, 
+            globalClearColorBW: clearHexBW,
+            globalVisualMode: loadedMode 
+        };
         this.motor3d.setVisualMode(loadedMode);
         
         scene.gravity = new Vector3(0, w.gravityY ?? -0.25, 0);
       } else {
         const clearHex = '#0d1729';
+        const clearHexBW = '#555555';
         this.configurarAmbienteGlobal(scene, {
           ambientIntensity: 0.6, ambientDiffuse: '#ffffff', ambientGround: '#333333',
           ambientDirX: 0, ambientDirY: 1, ambientDirZ: 0
         });
         scene.clearColor = Color4.FromHexString(clearHex + 'ff');
         
-        scene.metadata = { ...scene.metadata, globalClearColor: clearHex, globalVisualMode: 'normal' };
+        scene.metadata = { 
+            ...scene.metadata, 
+            globalClearColor: clearHex, 
+            globalClearColorBW: clearHexBW,
+            globalVisualMode: 'normal' 
+        };
         this.motor3d.setVisualMode('normal');
       }
 
@@ -927,7 +941,8 @@ export class EditorSceneService {
 
     const worldSettings = {
       visualMode: scene.metadata?.globalVisualMode || 'normal',
-      clearColor: scene.metadata?.globalClearColor || scene.clearColor.toHexString().substring(0, 7),
+      clearColor: scene.metadata?.globalClearColor || '#0d1729',
+      clearColorBW: scene.metadata?.globalClearColorBW || '#555555',
       gravityY: scene.gravity.y,
       ambientIntensity: ambient ? ambient.intensity : 0.6,
       ambientDiffuse: ambient ? ambient.diffuse.toHexString().substring(0, 7) : '#ffffff',

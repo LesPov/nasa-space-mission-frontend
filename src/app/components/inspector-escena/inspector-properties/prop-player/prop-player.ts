@@ -1,5 +1,3 @@
-
-// src/app/components/inspector-escena/inspector-properties/prop-player/prop-player.ts
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -19,7 +17,7 @@ interface SelectionRangeConfig {
 @Component({
   selector: 'app-prop-player',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule], 
   templateUrl: './prop-player.html',
   styleUrls: ['../inspector-properties.css']
 })
@@ -31,7 +29,7 @@ export class PropPlayer implements OnInit {
   acordeonesPlayer: Record<string, boolean> = {
     movement: true,
     jump: false,
-    fog: false,
+    fog: true, 
     camera: false,
     selection: false,
     physics: false,

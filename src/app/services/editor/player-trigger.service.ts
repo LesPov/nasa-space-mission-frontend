@@ -78,6 +78,7 @@ export class PlayerTriggerService {
         const isInside = triggerBox.intersectsPoint(probePoint);
         const wasInside = this.activeTriggersInside.has(mesh.name);
 
+        // 🔥 FIX VITAL: Validar cuando el jugador recién entra o nace adentro del Trigger
         if (isInside && !wasInside) {
             this.activeTriggersInside.add(mesh.name);
             if (conditions.includes('on_enter')) {
@@ -186,7 +187,7 @@ export class PlayerTriggerService {
           console.log("🎬 Reproduciendo Video Cinemático en Trigger:", videoUrl);
       }
 
-      // 🔥 LÓGICA MÚLTIPLE REPARADA: Si el usuario pegó el mismo ID varias veces por error, el Set lo limpia.
+      // 🔥 LÓGICA MÚLTIPLE REPARADA Y BLINDADA: Filtra por comas e inicia la secuencia correctamente
       if (seqIdString && seqIdString.trim() !== '') {
           const rawIds = seqIdString.split(',').map((id: string) => id.trim()).filter(Boolean);
           const idsToTrigger = [...new Set(rawIds)]; // Elimina duplicados automágicamente

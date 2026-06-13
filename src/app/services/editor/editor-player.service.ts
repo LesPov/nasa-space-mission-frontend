@@ -99,17 +99,15 @@ export class EditorPlayerService {
             this.animSvc.sincronizarAnimaciones(this.motor3d.scene, m as Mesh, mergePlayerConfig(m.metadata.playerConfig));
         }
 
-        // 🔥 LÓGICA DE INICIO: Apagar TVs
         if (m.metadata?.type === 'video_plane') {
             if (m.material instanceof StandardMaterial) {
                 const tex = m.material.diffuseTexture;
                 if (tex instanceof VideoTexture) {
                     tex.video.pause();
                     tex.video.currentTime = 0;
-                    m.material.emissiveColor = new Color3(0, 0, 0); // Pantalla negra
+                    m.material.emissiveColor = new Color3(0, 0, 0); 
                 }
             }
-            // Declaramos que la TV inicia APAGADA y por ende no se le puede hacer click
             m.metadata.isPoweredOn = false; 
         }
 
@@ -148,13 +146,12 @@ export class EditorPlayerService {
           if (!seqIdString) seqIdString = target.metadata?.interactSequenceId;
           const ids = seqIdString ? seqIdString.split(',').map((id: string) => id.trim()).filter(Boolean) : [];
 
-          // 🔥 LÓGICA DE BURBUJA
           if (target.metadata?.type === 'bubble') {
             this.bubbleSvc.ejecutarBurbuja(target);
             
             if (ids.length > 0) {
                target.metadata.isProcessingAction = true;
-               target.isVisible = false; // Desaparece la burbuja
+               target.isVisible = false; 
                
                const idxKey = this.state.modoVistaPrueba === 'FPS' ? 'currentSeqIdxFPS' : 'currentSeqIdxTPS';
                let idx = target.metadata[idxKey] || 0;
@@ -162,30 +159,25 @@ export class EditorPlayerService {
                
                const idToPlay = ids[idx];
 
-               // Delay suave unificado
                setTimeout(() => {
                    this.motor3d.scene.meshes.forEach(m => {
                        if (m.metadata?.playerConfig?.sequences?.some((s: any) => s.id === idToPlay)) {
-                           // Dejamos que player-sequence se encargue de la data (Prender/Apagar la TV a nivel variables)
                            this.sequenceSvc.iniciarSecuenciaEnJuego(idToPlay, m as Mesh, m.metadata.playerConfig);
                        }
                    });
                    
-                   // Vuelve a aparecer la burbuja y avanza a la siguiente acción si la hay
                    target.isVisible = true;
                    target.metadata.isProcessingAction = false;
                    target.metadata[idxKey] = (idx + 1) % ids.length;
                }, 500);
             }
           } else {
-            // 🔥 LÓGICA DE PANTALLA TV DIRECTA (NUEVA UX INTELIGENTE)
             if (target.metadata?.type === 'video_plane') {
                 if (!target.metadata.isPoweredOn) {
                     console.log("📺 La TV está apagada. Usa la burbuja para encenderla.");
-                    return; // Bloquea el click si está apagada
+                    return; 
                 }
 
-                // 🔥 TOGGLE NATIVO: Si está encendida y NO tiene secuencias, hace Toggle Pause/Play NATIVO
                 if (ids.length === 0) {
                     if (target.material instanceof StandardMaterial) {
                         const tex = target.material.diffuseTexture;
@@ -195,15 +187,14 @@ export class EditorPlayerService {
                                 target.material.emissiveColor = new Color3(1, 1, 1);
                             } else {
                                 tex.video.pause();
-                                target.material.emissiveColor = new Color3(0.3, 0.3, 0.3); // Atenúa la luz
+                                target.material.emissiveColor = new Color3(0.3, 0.3, 0.3); 
                             }
                         }
                     }
-                    return; // Terminamos aquí la acción
+                    return; 
                 }
             }
 
-            // Ejecución normal de secuencias si es que el objeto las tuviera configuradas
             if (ids.length > 0) {
                const idxKey = this.state.modoVistaPrueba === 'FPS' ? 'currentSeqIdxFPS' : 'currentSeqIdxTPS';
                let idx = target.metadata[idxKey] || 0;
@@ -309,6 +300,9 @@ export class EditorPlayerService {
     this.state.playState.set('EDITOR');
     this.resetMovimientoJugador();
     this.animSvc.detenerTodasGlobal();
+    
+    // 🔥 SOLUCIÓN DEFINITIVA: Limpia la memoria de animaciones solo al salir del modo juego
+    this.animSvc.limpiarEstados(); 
 
     this.triggerSvc.restaurarTriggersParaEditor();
     this.bubbleSvc.restaurarBurbujasParaEditor(); 
@@ -342,7 +336,6 @@ export class EditorPlayerService {
             m.metadata.isProcessingAction = false;
         }
 
-        // Restaurar pantallas en el editor
         if (m.metadata?.type === 'video_plane') {
             if (m.material instanceof StandardMaterial) {
                 const tex = m.material.diffuseTexture;
@@ -351,7 +344,7 @@ export class EditorPlayerService {
                     m.material.emissiveColor = new Color3(1, 1, 1); 
                 }
             }
-            m.metadata.isPoweredOn = undefined; // Limpiamos la variable
+            m.metadata.isPoweredOn = undefined; 
         }
     });
 
@@ -398,7 +391,22 @@ export class EditorPlayerService {
     this.state.triggerUpdate();
   }
 
+  // 🔥 NUEVO: Función para recargar animaciones en vivo si se editan en el panel durante el juego
+  public resincronizarAnimaciones(mesh: AbstractMesh): void {
+     const trueMesh = mesh as Mesh;
+     const config = mergePlayerConfig(trueMesh.metadata?.playerConfig || null);
+     this.animSvc.sincronizarAnimaciones(this.motor3d.scene, trueMesh, config);
+  }
+
   public iniciarPreviewSecuencia(mesh: AbstractMesh, sequenceId: string) {
+    if (this.state.playState() !== 'EDITOR') {
+       // 🔥 FIX: Si estamos jugando o editando en vivo, que corra la animación normal del juego, no un preview aislado
+       const trueMesh = mesh as Mesh;
+       this.playerConfig = mergePlayerConfig(trueMesh.metadata?.playerConfig || null);
+       this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceId, trueMesh, this.playerConfig);
+       return;
+    }
+
     this.detenerPreviewSecuencia();
     const trueMesh = mesh as Mesh;
     this.playerConfig = mergePlayerConfig(trueMesh.metadata?.playerConfig || null);
@@ -417,9 +425,16 @@ export class EditorPlayerService {
   }
 
   public detenerPreviewSecuencia() {
-    if (this.previewObserver) { this.motor3d.scene.onBeforeRenderObservable.remove(this.previewObserver); this.previewObserver = null; }
-    this.sequenceSvc.resetearSecuencias();
-    this.animSvc.detenerTodasGlobal();
+    if (this.previewObserver) { 
+        this.motor3d.scene.onBeforeRenderObservable.remove(this.previewObserver); 
+        this.previewObserver = null; 
+    }
+    
+    // 🔥 FIX: Solo cortamos la secuencia y las animaciones globales si estamos verdaderamente en EDITOR
+    if (this.state.playState() === 'EDITOR') {
+        this.sequenceSvc.resetearSecuencias();
+        this.animSvc.detenerTodasGlobal();
+    }
   }
  
   public resetMovimientoJugador(): void {

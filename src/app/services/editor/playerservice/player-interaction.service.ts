@@ -108,7 +108,8 @@ export class PlayerInteractionService {
         if (!m.isPickable) return false;
         if (!m.isVisible) return false;
 
-        if (m.metadata?.type === 'trigger') return false;
+        // 🔥 FIX: Permitir al Admin hacer hover visual al trigger con el puntero FPS
+        if (m.metadata?.type === 'trigger' && !isAdmin) return false;
         if (m === jugador || m.isDescendantOf(jugador)) return false;
 
         const nameStr = m.name.toLowerCase();
@@ -129,7 +130,7 @@ export class PlayerInteractionService {
         if (!this.state.esMeshIgnorable(picked)) {
           const rootNode = this.state.encontrarRaiz(picked) as AbstractMesh;
           
-          if (rootNode && rootNode.metadata?.type !== 'trigger') {
+          if (rootNode) {
             const selectionDistance = this.getInteractionDistanceToTarget(rootNode, this.lastInteractionProbePoint);
             this.lastInteractDistance = selectionDistance;
 
@@ -137,18 +138,14 @@ export class PlayerInteractionService {
             const interactMax = rootNode.metadata?.interactDistanceFPS ?? 3.0;
             const isInteractable = canShowInteraction(rootNode);
 
-            // 🔥 LOGICA CORREGIDA PARA EL CROSSHAIR 🔥
             if (isAdmin) {
-              // El Admin puede hacer hover (agrandar el punto) en cualquier cosa editable
               if (selectionDistance <= selectionMax) {
                 hoverSelectable = rootNode;
               }
-              // Pero solo activa E / I si es interactivo y está cerca
               if (isInteractable && selectionDistance <= interactMax) {
                 hitInteractuable = rootNode;
               }
             } else {
-              // El Usuario Normal SOLO ve el hover en cosas con las que puede interactuar Y que estén cerca
               if (isInteractable && selectionDistance <= interactMax) {
                 hoverSelectable = rootNode;
                 hitInteractuable = rootNode;
@@ -164,11 +161,13 @@ export class PlayerInteractionService {
 
       scene.meshes.forEach(mesh => {
         if (mesh === jugador || mesh.name.includes('proxyCol') || mesh.name.toLowerCase().includes('suelo') || !mesh.isPickable) return;
-        if (mesh.metadata?.type === 'trigger') return;
+        
+        // 🔥 FIX: Permitir al Admin evaluar el trigger en TPS
+        if (mesh.metadata?.type === 'trigger' && !isAdmin) return; 
         if (!mesh.isVisible) return;
 
         const root = this.state.encontrarRaiz(mesh as AbstractMesh) as AbstractMesh;
-        if (!root || root.metadata?.type === 'trigger') return;
+        if (!root || (root.metadata?.type === 'trigger' && !isAdmin)) return;
 
         const selectionDistance = this.getInteractionDistanceToTarget(root, playerProbe);
         const selectionMax = this.getSelectionMaxDistance(isAdmin);
@@ -183,7 +182,6 @@ export class PlayerInteractionService {
             }
           }
         } else if (isAdmin && selectionDistance <= selectionMax && selectionDistance < closestDist) {
-          // El Admin evaluando un objeto inactivo en TPS
           closestDist = selectionDistance;
           closestRoot = root;
         }

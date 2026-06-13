@@ -139,7 +139,7 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
     const metaRuntime = obj.metadata?.playerConfig?.animationRuntime || {};
     const groups = this.getAvailableAnimationGroups(obj);
     
-    // 🔥 FIX: Quitar duplicados por nombre de la lista de visualización
+    // Quitar duplicados por nombre de la lista de visualización
     const uniqueGroups = groups.filter((v, i, a) => a.findIndex(t => (t.name === v.name)) === i);
     
     this.animationClips = uniqueGroups.map(group => {
@@ -155,6 +155,12 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
     if (!this.objeto.metadata) this.objeto.metadata = {};
     this.objeto.metadata.playerConfig = JSON.parse(JSON.stringify(this.playerConfig));
     this.objeto.metadata.animationNames = this.animationClips.map(c => c.name);
+    
+    // 🔥 FIX: Resincronizar en vivo si el juego está corriendo y se cambia la animación base
+    if (this.editorSvc.playState() === 'EDITING_IN_GAME') {
+       this.playerSvc.resincronizarAnimaciones(this.objeto);
+    }
+    
     this.editorSvc.triggerUpdate();
   }
 

@@ -217,12 +217,12 @@ export class EditorToolsService {
     const rootNode = this.state.encontrarRaiz(picked);
     if (!(rootNode instanceof AbstractMesh)) return null;
 
-    // Triggers nunca se seleccionan desde FPS
-    if (this.esTriggerMesh(rootNode)) return null;
+    // 🔥 FIX: Permitimos que el Admin sí pueda seleccionar triggers en cualquier modo
+    if (this.esTriggerMesh(rootNode) && !isAdmin) return null;
 
     const playSt = this.state.playState();
 
-    // En juego / edición en vivo: admin puede seleccionar NO triggers, user no selecciona nada
+    // En juego / edición en vivo: admin puede seleccionar, user no selecciona nada
     if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') {
       if (!isAdmin) return null;
       if (!this.canSelectByDistance(ray, rootNode, hit, true)) return null;
@@ -558,10 +558,6 @@ export class EditorToolsService {
         if (now - this.lastHoverCheckTime < 40) return;
         this.lastHoverCheckTime = now;
 
-        // 🔥 FIX VITAL: Evitar conflicto de Highlight (Borde azul que salta).
-        // Cuando el ratón está bloqueado (Jugando en 1ra Persona), los valores scene.pointerX/Y
-        // son basura / están congelados. PlayerInteractionService ya se encarga del hover con 
-        // la cámara, así que aquí cortamos la ejecución para no sobreescribirlo.
         if (this.state.ratonBloqueado()) return;
 
         if (playSt === 'PLAYING' && this.state.modoVistaPrueba === 'FPS') {

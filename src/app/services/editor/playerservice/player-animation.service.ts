@@ -91,7 +91,7 @@ export class PlayerAnimationService {
     state.animFall = this.resolveAnimation(state, anims.fall, state.animJumpLoop || state.animJump);
     state.animLandSoft = this.resolveAnimation(state, anims.landSoft, state.animIdle);
     
-    // 🔥 AQUÍ ESTABA EL ERROR: Era anims.landHard, no anims.hardLanding
+    // 🔥 AQUÍ ESTABA EL ERROR DE LA T-POSE: Mapeo correcto a landHard
     state.animHardLanding = this.resolveAnimation(state, anims.landHard, state.animLandSoft || state.animIdle);
     
     state.animClimb = this.resolveAnimation(state, anims.climbUp, state.animIdle);
@@ -176,6 +176,11 @@ export class PlayerAnimationService {
       if (state.animActual) { state.animActual.stop(); state.animActual = null; }
       state.animacionesJugador.forEach(a => a.stop());
     });
+    // 🔥 FIX VITAL: YA NO HACEMOS this.states.clear() AQUÍ PARA EVITAR PERDER LA MEMORIA DURANTE EL JUEGO
+  }
+
+  public limpiarEstados(): void {
+    // 🔥 SOLAMENTE SE LLAMA A ESTO CUANDO DE VERDAD SALIMOS DEL JUEGO
     this.states.clear();
   }
 
@@ -196,7 +201,6 @@ export class PlayerAnimationService {
   public gestionarAnimaciones(mesh: Mesh, estadoFisico: EstadoFisico, seqRuntime: SeqRuntime, config: PlayerRuntimeConfig): void {
     const state = this.getState(mesh);
     
-    // Si hay una secuencia cinemática activa OBLIGAMOS su animación
     if (seqRuntime.running && seqRuntime.step) {
       const override = this.resolveSequenceStepAnimation(mesh, seqRuntime.step);
       if (override) {
@@ -206,7 +210,6 @@ export class PlayerAnimationService {
       }
     }
 
-    // SI NO, evaluamos el estado físico normal del mundo
     if (estadoFisico.isHardLanding) {
       if (this.isActionEnabled('landHard', config)) this.playAnim(mesh, state.animHardLanding || state.animLandSoft || state.animIdle, false, 0.1);
       else this.playAnim(mesh, state.animIdle, true, 0.1);
@@ -224,7 +227,6 @@ export class PlayerAnimationService {
     } else {
       const finalBlendSpeed = config.blend.defaultBlend ?? 0.1;
       
-      // 🔥 Lógica clara de Movimiento
       if (estadoFisico.isMoving) {
         if (estadoFisico.isRunning) {
           if (this.isActionEnabled('run', config)) this.playAnim(mesh, state.animRun || state.animWalk || state.animIdle, true, finalBlendSpeed);
@@ -234,7 +236,6 @@ export class PlayerAnimationService {
           else this.playAnim(mesh, state.animIdle, true, finalBlendSpeed);
         }
       } else {
-        // Personaje quieto
         if (this.isActionEnabled('idle', config)) this.playAnim(mesh, state.animIdle, true, finalBlendSpeed);
         else this.playAnim(mesh, null, true, finalBlendSpeed);
       }

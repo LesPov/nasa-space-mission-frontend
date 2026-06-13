@@ -57,7 +57,6 @@ export interface PlayerAnimationBindings {
   vault: AnimBinding;
   stepUp: AnimBinding;
   recover: AnimBinding;
-  // 🔥 FIX PARA TYPESCRIPT (Luces)
   lightOn: AnimBinding;
   lightOff: AnimBinding;
   lightPulse: AnimBinding;
@@ -79,7 +78,6 @@ export interface PlayerAnimationEnabled {
   vault: boolean;
   stepUp: boolean;
   recover: boolean;
-  // 🔥 FIX PARA TYPESCRIPT (Luces)
   lightOn: boolean;
   lightOff: boolean;
   lightPulse: boolean;
@@ -259,10 +257,15 @@ export function normalizeAnimBinding(binding: AnimBinding): string[] {
   return [String(binding).trim()].filter(Boolean);
 }
 
+// 🔥 GENERADOR DE ID CORTOS (Ejemplo: seq_4f8a2b)
+function generarIdCorto(): string {
+  return 'seq_' + Math.random().toString(36).substring(2, 8);
+}
+
 export function createSequenceStep(action: PlayerActionKey = 'idle'): PlayerSequenceStep {
   const isCinematic = action !== 'idle' && action !== 'walk' && action !== 'run' && action !== 'fall';
   return {
-    id: crypto.randomUUID(),
+    id: generarIdCorto(),
     action,
     clipOverride: null,
     durationMs: 1000,
@@ -278,7 +281,7 @@ export function createSequenceStep(action: PlayerActionKey = 'idle'): PlayerSequ
 
 export function createPlayerSequence(name = 'Nueva secuencia'): PlayerClipSequence {
   return {
-    id: crypto.randomUUID(),
+    id: generarIdCorto(),
     name,
     enabled: true,
     repeat: true, 

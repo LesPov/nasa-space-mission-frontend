@@ -1,6 +1,3 @@
-// ========================================================================
-// ARCHIVO: src/app/services/editor/player-trigger.service.ts
-// ========================================================================
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
 import { EditorStateService } from './editor-state.service';
@@ -37,11 +34,18 @@ export class PlayerTriggerService {
   public restaurarTriggersParaEditor(): void {
     const scene = this.motor3d.scene;
     const isAdmin = this.state.rolSimulado() === 'admin';
+    
+    this.activeTriggersInside.clear();
     this.hudTimeouts.forEach(t => clearTimeout(t));
+    this.hudTimeouts.clear();
 
     scene.meshes.forEach(m => {
         if (m.metadata && m.metadata.type === 'trigger') {
             m.isVisible = isAdmin; 
+            // Reiniciamos las banderas para que en la próxima partida vuelvan a funcionar
+            m.metadata.hasTriggeredEnter = false; 
+            m.metadata.hasTriggeredExit = false; 
+            m.metadata.isEnabled = true;
         }
     });
   }
@@ -89,6 +93,7 @@ export class PlayerTriggerService {
                 mostroMensajeSalida = this.ejecutarLogicaTrigger(mesh, 'on_exit');
             }
             
+            // 🔥 FIX: Si no es repetible, asegurarse de apagarlo
             if (!mesh.metadata.isRepeatable) {
                  const reqEnter = conditions.includes('on_enter');
                  const reqExit = conditions.includes('on_exit');
@@ -123,7 +128,7 @@ export class PlayerTriggerService {
 
       let mensaje = '';
       let soundUrl = '';
-      let seqId = '';
+      let seqIdString = ''; 
       let msgTime = 4.5; 
       let videoUrl = ''; 
 
@@ -131,13 +136,13 @@ export class PlayerTriggerService {
           if (eventType === 'on_enter') {
               mensaje = triggerMesh.metadata.mensajeEntrada;
               soundUrl = triggerMesh.metadata.soundUrlEntrada;
-              seqId = triggerMesh.metadata.seqEntrada;
+              seqIdString = triggerMesh.metadata.seqEntrada;
               msgTime = triggerMesh.metadata.timeEntrada ?? 4.5;
               videoUrl = triggerMesh.metadata.videoEntrada ?? '';
           } else if (eventType === 'on_exit') {
               mensaje = triggerMesh.metadata.mensajeSalida;
               soundUrl = triggerMesh.metadata.soundUrlSalida;
-              seqId = triggerMesh.metadata.seqSalida;
+              seqIdString = triggerMesh.metadata.seqSalida;
               msgTime = triggerMesh.metadata.timeSalida ?? 4.5;
               videoUrl = triggerMesh.metadata.videoSalida ?? '';
           }
@@ -145,7 +150,7 @@ export class PlayerTriggerService {
           if (triggerMesh.metadata.condition === eventType) {
               mensaje = triggerMesh.metadata.mensaje;
               soundUrl = triggerMesh.metadata.soundUrl;
-              seqId = triggerMesh.metadata.interactSequenceId;
+              seqIdString = triggerMesh.metadata.interactSequenceId;
               msgTime = triggerMesh.metadata.timeNorm ?? 4.5;
               videoUrl = triggerMesh.metadata.videoNorm ?? '';
           } else {
@@ -182,27 +187,32 @@ export class PlayerTriggerService {
           console.log("🎬 Reproduciendo Video Cinemático en Trigger:", videoUrl);
       }
 
-      // 🔥 LÓGICA REESCRITA Y REFORZADA: BÚSQUEDA UNIVERSAL DE SECUENCIAS
-      if (seqId && seqId.trim() !== '') {
-          const ids = seqId.split(',').map((id: string) => id.trim()).filter(Boolean);
-          if (ids.length > 0) {
-              const sequenceToFind = ids[0];
+      // 🔥 LÓGICA MÚLTIPLE: Cortar por comas e iterar todos los IDs
+      if (seqIdString && seqIdString.trim() !== '') {
+          // El split(',') separa. Trim() limpia espacios basura a los lados de cada ID
+          const idsToTrigger = seqIdString.split(',').map((id: string) => id.trim()).filter(Boolean);
+          
+          if (idsToTrigger.length > 0) {
               const scene = this.motor3d.scene;
-              let found = false;
               
-              scene.meshes.forEach(m => {
-                  if (m.metadata && m.metadata.playerConfig && m.metadata.playerConfig.sequences) {
-                      const hasSequence = m.metadata.playerConfig.sequences.some((s: any) => s.id === sequenceToFind);
-                      if (hasSequence) {
-                          found = true;
-                          this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceToFind, m as Mesh, m.metadata.playerConfig);
+              idsToTrigger.forEach(sequenceToFind => {
+                  let found = false;
+                  
+                  scene.meshes.forEach(m => {
+                      if (m.metadata && m.metadata.playerConfig && m.metadata.playerConfig.sequences) {
+                          const hasSequence = m.metadata.playerConfig.sequences.some((s: any) => s.id === sequenceToFind);
+                          if (hasSequence) {
+                              found = true;
+                              // Inicia la secuencia forzando reinicio
+                              this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceToFind, m as Mesh, m.metadata.playerConfig);
+                          }
                       }
+                  });
+
+                  if (!found) {
+                      console.warn(`⚠️ Trigger ${triggerMesh.name} intentó iniciar la secuencia [${sequenceToFind}] pero ningún objeto en la escena la tiene.`);
                   }
               });
-
-              if (!found) {
-                  console.warn(`⚠️ Trigger ${triggerMesh.name} intentó iniciar la secuencia [${sequenceToFind}] pero ningún objeto en la escena la tiene configurada.`);
-              }
           }
       }
 

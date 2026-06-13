@@ -95,6 +95,7 @@ export class PlayerPhysicsService {
       !this.state.isDescendant(m, jugador) &&
       !m.name.includes('gridHelper');
 
+    // MODO CINEMÁTICO PURO
     if (seqRuntime.running && seqRuntime.step) {
       const soY = seqRuntime.step.offsetY || 0;
       const soF = seqRuntime.step.offsetForward || 0;
@@ -138,7 +139,6 @@ export class PlayerPhysicsService {
     } else {
       jugador.checkCollisions = true;
 
-      // 1. Controlar el flujo de caídas (Hard Landing / Recovery) para que no se quede bloqueado
       if (this.isHardLanding) {
         this.landingFrame++;
         if (this.landingFrame > (config.physics.landingRecoveryFrames || 60)) {
@@ -153,7 +153,7 @@ export class PlayerPhysicsService {
         }
       }
 
-      // 2. Si no está atrapado en animación, permitir movimiento
+      // 🔥 FIX: Reescrita la suma vectorial para captar WASD correctamente
       if (!this.isHardLanding && !this.isRecoveringFromFall) {
         if (inputMap['w']) move.addInPlace(forward);
         if (inputMap['s']) move.subtractInPlace(forward);
@@ -166,6 +166,7 @@ export class PlayerPhysicsService {
         if (seqRuntime.forceForwardWalk) move.addInPlace(forward.scale((config.movement.walkSpeed || 0.045) * scaleFactor));
       }
 
+      // IMPORTANTE: Si el vector de movimiento tiene longitud, el personaje SI se está moviendo.
       isMoving = move.lengthSquared() > 0.001;
       isRunning = !!inputMap['shiftleft'] || !!inputMap['shiftright'] || !!inputMap['shift'] || seqRuntime.forceForwardRun;
 
@@ -173,10 +174,11 @@ export class PlayerPhysicsService {
         const modSpeed = (isRunning ? (config.movement.runSpeed || 0.09) : (config.movement.walkSpeed || 0.045)) * scaleFactor;
         
         if (!seqRuntime.running || !seqRuntime.allowMovement) {
+          // Normalizamos y escalamos a la velocidad correcta
           move.normalize().scaleInPlace(modSpeed);
         }
 
-        // ROTAR JUGADOR EN TPS CON RESPECTO AL MOVIMIENTO REAL
+        // ROTAR JUGADOR EN TPS (El jugador debe mirar hacia donde camina)
         if (this.state.modoVistaPrueba === 'TPS' && !seqRuntime.lockInput && !seqRuntime.freezeOrientation) {
           const targetAngle = Math.atan2(move.x, move.z);
           if (!isNaN(targetAngle)) {
@@ -190,6 +192,7 @@ export class PlayerPhysicsService {
         }
       }
 
+      // Gravedad y Salto
       if (isGrounded) {
         if (this.isFalling || this.isJumping) {
           const fallDistance = this.highestY - jugador.position.y;
@@ -197,6 +200,7 @@ export class PlayerPhysicsService {
             this.isHardLanding = true;
             this.landingFrame = 0;
             move = Vector3.Zero();
+            isMoving = false; // Se detiene por golpe fuerte
           }
           this.isFalling = false;
           this.isJumping = false;
@@ -205,10 +209,13 @@ export class PlayerPhysicsService {
         this.highestY = jugador.position.y;
         this.velocidadY = -0.05;
 
-        if ((inputMap['space'] || seqRuntime.forceJump) && !this.isHardLanding && !this.isRecoveringFromFall) {
+        // 🔥 FIX: Salto con espacio corregido
+        if ((inputMap[' '] || inputMap['space'] || seqRuntime.forceJump) && !this.isHardLanding && !this.isRecoveringFromFall) {
           this.velocidadY = (config.jump.force || 0.16) * scaleFactor;
           this.isJumping = true;
-          inputMap['space'] = false; // Consumir input
+          isGrounded = false;
+          inputMap[' '] = false;
+          inputMap['space'] = false;
         }
       } else {
         if (jugador.position.y > this.highestY) this.highestY = jugador.position.y;
@@ -232,11 +239,11 @@ export class PlayerPhysicsService {
 
       move.y = this.velocidadY;
       
-      // Control contra NaNs para no desaparecer la malla de la pantalla
       if (isNaN(move.x)) move.x = 0;
       if (isNaN(move.y)) move.y = 0;
       if (isNaN(move.z)) move.z = 0;
       
+      // Mover modelo en el mundo
       jugador.moveWithCollisions(move);
     }
 

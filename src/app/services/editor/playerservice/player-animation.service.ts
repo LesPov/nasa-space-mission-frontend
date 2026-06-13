@@ -29,7 +29,12 @@ export class PlayerAnimationService {
 
   private getState(mesh: Mesh): AnimState {
     if (!this.states.has(mesh.uniqueId)) {
-      this.states.set(mesh.uniqueId, { animacionesJugador: [], animActual: null, animIdle: null, animWalk: null, animRun: null, animJump: null, animJumpLoop: null, animFall: null, animLandSoft: null, animHardLanding: null, animClimb: null, animClimbFinish: null, animHangIdle: null, animVault: null, animStepUp: null, animRecover: null });
+      this.states.set(mesh.uniqueId, { 
+        animacionesJugador: [], animActual: null, animIdle: null, animWalk: null, animRun: null, 
+        animJump: null, animJumpLoop: null, animFall: null, animLandSoft: null, animHardLanding: null, 
+        animClimb: null, animClimbFinish: null, animHangIdle: null, animVault: null, animStepUp: null, 
+        animRecover: null 
+      });
     }
     return this.states.get(mesh.uniqueId)!;
   }
@@ -52,20 +57,35 @@ export class PlayerAnimationService {
     state.animacionesJugador = [];
     const metadataNames: string[] = obj.metadata?.animationNames || [];
     
+    // 🔥 FIX VITAL: Función para validar que la animación realmente apunta a este objeto o a sus hijos.
+    // Esto evita que el Player robe animaciones de los NPCs o clones.
+    const isTargetingObj = (ag: AnimationGroup) => {
+        if (!ag.targetedAnimations) return false;
+        return ag.targetedAnimations.some((ta) => {
+            let current: any = ta.target;
+            while(current) {
+                if (current === obj) return true;
+                current = current.parent;
+            }
+            return false;
+        });
+    };
+
     if (metadataNames.length > 0) {
-      state.animacionesJugador = scene.animationGroups.filter(ag => metadataNames.includes(ag.name));
-    }
-    if (state.animacionesJugador.length === 0) {
-      state.animacionesJugador = scene.animationGroups.filter((ag: AnimationGroup) =>
-        ag.targetedAnimations.some((ta) => ta.target.parent === obj || ta.target === obj)
+      state.animacionesJugador = scene.animationGroups.filter(ag => 
+          metadataNames.includes(ag.name) && isTargetingObj(ag)
       );
+    }
+    
+    if (state.animacionesJugador.length === 0) {
+      state.animacionesJugador = scene.animationGroups.filter(isTargetingObj);
     }
 
     const anims = config.animations;
 
     state.animIdle = this.resolveAnimation(state, anims.idle, null);
     state.animWalk = this.resolveAnimation(state, anims.walk, state.animIdle);
-    state.animRun = this.resolveAnimation(state, anims.run, state.animWalk);
+    state.animRun = this.resolveAnimation(state, anims.run, state.animWalk); 
     state.animJump = this.resolveAnimation(state, anims.jumpStart, state.animIdle);
     state.animJumpLoop = this.resolveAnimation(state, anims.jumpLoop, state.animJump);
     state.animFall = this.resolveAnimation(state, anims.fall, state.animJumpLoop || state.animJump);
@@ -102,7 +122,6 @@ export class PlayerAnimationService {
       case 'vault': return state.animVault || state.animJump || state.animIdle;
       case 'stepUp': return state.animStepUp || state.animClimbFinish || state.animIdle;
       case 'recover': return state.animRecover || state.animIdle;
-      // Para las luces, no hay un grupo de animación físico. Devolvemos null.
       case 'lightOn':
       case 'lightOff':
       case 'lightPulse':
@@ -171,6 +190,7 @@ export class PlayerAnimationService {
   public gestionarAnimaciones(mesh: Mesh, estadoFisico: EstadoFisico, seqRuntime: SeqRuntime, config: PlayerRuntimeConfig): void {
     const state = this.getState(mesh);
     
+    // Si hay una secuencia cinemática activa OBLIGAMOS su animación
     if (seqRuntime.running && seqRuntime.step) {
       const override = this.resolveSequenceStepAnimation(mesh, seqRuntime.step);
       if (override) {
@@ -180,6 +200,7 @@ export class PlayerAnimationService {
       }
     }
 
+    // SI NO, evaluamos el estado físico normal del mundo
     if (estadoFisico.isHardLanding) {
       if (this.isActionEnabled('landHard', config)) this.playAnim(mesh, state.animHardLanding || state.animLandSoft || state.animIdle, false, 0.1);
       else this.playAnim(mesh, state.animIdle, true, 0.1);
@@ -196,6 +217,8 @@ export class PlayerAnimationService {
       }
     } else {
       const finalBlendSpeed = config.blend.defaultBlend ?? 0.1;
+      
+      // 🔥 Lógica clara de Movimiento
       if (estadoFisico.isMoving) {
         if (estadoFisico.isRunning) {
           if (this.isActionEnabled('run', config)) this.playAnim(mesh, state.animRun || state.animWalk || state.animIdle, true, finalBlendSpeed);
@@ -205,6 +228,7 @@ export class PlayerAnimationService {
           else this.playAnim(mesh, state.animIdle, true, finalBlendSpeed);
         }
       } else {
+        // Personaje quieto
         if (this.isActionEnabled('idle', config)) this.playAnim(mesh, state.animIdle, true, finalBlendSpeed);
         else this.playAnim(mesh, null, true, finalBlendSpeed);
       }

@@ -1,8 +1,5 @@
-// ========================================================================
-// ARCHIVO: src/app/services/editor/editor-player.service.ts
-// ========================================================================
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder, Color3, Color4, StandardMaterial } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
@@ -36,7 +33,6 @@ export class EditorPlayerService {
   private previewObserver: Observer<Scene> | null = null;
   private npcsYPropsAnimados: Mesh[] = [];
   
-  // 🔥 FIX: Guardar el estado inicial de TODO lo que pueda moverse o cambiar de intensidad en el juego
   private backupsAnimados: any[] = [];
 
   constructor() {
@@ -53,6 +49,9 @@ export class EditorPlayerService {
   }
 
   public iniciarModoJuego(vista: 'FPS' | 'TPS'): void {
+    // 🔥 FIX: Nos aseguramos de purgar la UI de las secuencias si estaban abiertas
+    this.detenerPreviewSecuencia();
+
     const obj = this.state.objetoSeleccionado() as Mesh;
     if (!obj) return;
     this.cameraSvc.guardarEstadoCamaraLibre();
@@ -81,13 +80,12 @@ export class EditorPlayerService {
     this.crearProxysDeColision(obj);
 
     this.npcsYPropsAnimados = [];
-    this.backupsAnimados = []; // Vaciamos backups viejos
+    this.backupsAnimados = []; 
     
     this.motor3d.scene.meshes.forEach(m => {
         if (m !== obj && m.metadata?.playerConfig?.sequences && m.metadata.playerConfig.sequences.length > 0) {
             this.npcsYPropsAnimados.push(m as Mesh);
             
-            // 🔥 FIX: Guardar una copia exacta del Mesh antes de que la secuencia empiece a moverlo o apagarlo
             const lightObj = m.getDescendants(false).find(c => c.name.startsWith('l_'));
             this.backupsAnimados.push({
                 mesh: m as Mesh,
@@ -171,6 +169,7 @@ export class EditorPlayerService {
       
       const seqRuntime = this.sequenceSvc.actualizarSecuencia(dtMs, jugador, this.playerConfig);
       
+      // 🔥 1. Físicas (Aquí se lee el teclado y se mueve al jugador)
       const estadoFisico = this.physicsSvc.aplicarMovimientoYGravedad(
         jugador, 
         seqRuntime.lockInput || seqRuntime.freezeOrientation ? {} : this.inputSvc.inputMap, 
@@ -181,7 +180,10 @@ export class EditorPlayerService {
         this.playerConfig
       );
 
+      // 🔥 2. Animaciones (Aquí le enviamos el estado físico al gestor para que anime el modelo)
       this.animSvc.gestionarAnimaciones(jugador, estadoFisico, seqRuntime, this.playerConfig);
+      
+      // 🔥 3. Cámara
       this.playerCamSvc.actualizarPosicionCamara(jugador, activeCamera, estadoFisico, seqRuntime, colMeta, camMeta, jugador.scaling, this.playerConfig);
       
       if (seqRuntime.freezeOrientation) this.sequenceSvc.applyLockedOrientationWhileSequence(jugador);
@@ -217,7 +219,15 @@ export class EditorPlayerService {
     });
 
     const canvas = this.motor3d.engine.getRenderingCanvas();
-    if (canvas) { canvas.focus(); try { scene.activeCamera!.attachControl(canvas, true); canvas.requestPointerLock(); } catch {} }
+    if (canvas) { 
+        canvas.focus(); 
+        try { 
+            scene.activeCamera!.attachControl(canvas, true); 
+            // 🔥 FIX: Promesa manejada silenciosamente
+            const p = canvas.requestPointerLock(); 
+            if (p) p.catch(() => {});
+        } catch {} 
+    }
   }
 
   public detenerModoJuego(): void {
@@ -228,7 +238,6 @@ export class EditorPlayerService {
 
     this.triggerSvc.restaurarTriggersParaEditor();
 
-    // 🔥 FIX: Restaurar todo a como estaba antes de jugar
     this.backupsAnimados.forEach(b => {
         if (b.mesh && !b.mesh.isDisposed()) {
             b.mesh.position.copyFrom(b.pos);

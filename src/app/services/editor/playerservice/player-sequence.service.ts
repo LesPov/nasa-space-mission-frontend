@@ -1,6 +1,3 @@
-// ========================================================================
-// ARCHIVO: src/app/services/editor/playerservice/player-sequence.service.ts
-// ========================================================================
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Quaternion, Vector3, AbstractMesh, UniversalCamera, Light } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
@@ -111,9 +108,12 @@ export class PlayerSequenceService {
     if (seqs.some(s => s.id === sequenceId)) {
       const state = this.getSeqState(jugador);
       state.id = sequenceId;
+      // 🔥 FIX: Forzar siempre a cero garantiza que la secuencia empiece desde el inicio
       state.index = 0;
       state.elapsedMs = 0;
       state.stepEntered = true;
+      state.jumpTriggered = false;
+
       if (!jugador.rotationQuaternion) {
         jugador.rotationQuaternion = Quaternion.FromEulerAngles(jugador.rotation.x, jugador.rotation.y, jugador.rotation.z);
         jugador.rotation.set(0, 0, 0);
@@ -137,6 +137,7 @@ export class PlayerSequenceService {
       return { step: null, lockInput: false, allowMovement: true, forceForwardWalk: false, forceForwardRun: false, forceJump: false, blend: config.blend.defaultBlend, loop: true, running: false, freezeOrientation: false };
     }
 
+    // Seguridad por si el ID de estado cambió mágicamente
     if (state.id !== sequence.id) {
       state.id = sequence.id; 
       state.index = 0; 
@@ -161,7 +162,6 @@ export class PlayerSequenceService {
       state.orientationLocked = this.shouldLockOrientationForSequence(step) || state.orientationLocked;
     }
 
-    // 🔥 LOGICA PARA EFECTOS DE LUCES EN TIEMPO REAL (Con el reloj global del sistema para que no falle)
     if (jugador.metadata?.type?.startsWith('light_')) {
         const light = jugador.getDescendants(false).find(c => c.name.startsWith('l_')) as Light;
         if (light && typeof light.intensity !== 'undefined') {
@@ -173,7 +173,6 @@ export class PlayerSequenceService {
                 light.intensity = 0;
             } else if (step.action === 'lightPulse') {
                 const freq = step.speedRatio || 1;
-                // 🔥 FIX: usamos performance.now() global en lugar de los milisegundos del paso (que se resetean a 0)
                 const timeSec = performance.now() / 1000;
                 light.intensity = baseIntensity * (0.5 + 0.5 * Math.sin(timeSec * Math.PI * 2 * freq));
             } else if (step.action === 'lightFlicker') {

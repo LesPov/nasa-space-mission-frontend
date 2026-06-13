@@ -27,7 +27,11 @@
         <div class="grid-2">
           <div class="field wide"><label>Mensaje al ENTRAR</label><textarea rows="1" [ngModel]="triggerMensajeEntrada" (ngModelChange)="triggerMensajeEntrada = $event; aplicarTrigger()"></textarea></div>
           <div class="field"><label>Segundos</label><input type="number" step="0.5" [ngModel]="triggerTimeEntrada" (ngModelChange)="triggerTimeEntrada = $event; aplicarTrigger()" /></div>
-          <div class="field"><label>ID Seq</label><input type="text" [ngModel]="triggerSeqEntrada" (ngModelChange)="triggerSeqEntrada = $event; aplicarTrigger()" /></div>
+          <!-- 🔥 FIX UI: Ayuda para IDs separados por comas -->
+          <div class="field wide">
+            <label>ID Seq (Múltiples separados por coma)</label>
+            <input type="text" [ngModel]="triggerSeqEntrada" (ngModelChange)="triggerSeqEntrada = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
+          </div>
           <div class="field wide"><label>Audio URL</label><input type="text" [ngModel]="triggerSoundEntrada" (ngModelChange)="triggerSoundEntrada = $event; aplicarTrigger()" /></div>
           <div class="field wide"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoEntrada" (ngModelChange)="triggerVideoEntrada = $event; aplicarTrigger()" /></div>
         </div>
@@ -37,7 +41,11 @@
          <div class="grid-2">
           <div class="field wide"><label>Mensaje al SALIR</label><textarea rows="1" [ngModel]="triggerMensajeSalida" (ngModelChange)="triggerMensajeSalida = $event; aplicarTrigger()"></textarea></div>
           <div class="field"><label>Segundos</label><input type="number" step="0.5" [ngModel]="triggerTimeSalida" (ngModelChange)="triggerTimeSalida = $event; aplicarTrigger()" /></div>
-          <div class="field"><label>ID Seq</label><input type="text" [ngModel]="triggerSeqSalida" (ngModelChange)="triggerSeqSalida = $event; aplicarTrigger()" /></div>
+          <!-- 🔥 FIX UI: Ayuda para IDs separados por comas -->
+          <div class="field wide">
+            <label>ID Seq (Múltiples separados por coma)</label>
+            <input type="text" [ngModel]="triggerSeqSalida" (ngModelChange)="triggerSeqSalida = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
+          </div>
           <div class="field wide"><label>Audio URL</label><input type="text" [ngModel]="triggerSoundSalida" (ngModelChange)="triggerSoundSalida = $event; aplicarTrigger()" /></div>
           <div class="field wide"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoSalida" (ngModelChange)="triggerVideoSalida = $event; aplicarTrigger()" /></div>
         </div>
@@ -55,7 +63,11 @@
   <div class="field wide" style="margin-top: 10px;"><label>Mensaje</label><textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarTrigger()"></textarea></div>
   <div class="grid-2" style="margin-top: 5px;">
       <div class="field"><label>Segundos</label><input type="number" step="0.5" [ngModel]="triggerTimeNorm" (ngModelChange)="triggerTimeNorm = $event; aplicarTrigger()" /></div>
-      <div class="field"><label>ID Seq</label><input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarTrigger()" /></div>
+      <!-- 🔥 FIX UI: Ayuda para IDs separados por comas -->
+      <div class="field wide">
+        <label>ID Seq (Múltiples separados por coma)</label>
+        <input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
+      </div>
       <div class="field wide"><label>Audio URL</label><input type="text" [ngModel]="objSoundUrl" (ngModelChange)="objSoundUrl = $event; aplicarTrigger()" /></div>
       <div class="field wide"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoNorm" (ngModelChange)="triggerVideoNorm = $event; aplicarTrigger()" /></div>
   </div>

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 
@@ -300,9 +299,10 @@ export class EditorPlayerService {
     const scene = this.motor3d.scene;
     this.state.playState.set('EDITOR');
     this.resetMovimientoJugador();
-    this.animSvc.detenerTodasGlobal();
     
-    // 🔥 SOLUCIÓN DEFINITIVA: Limpia la memoria de animaciones solo al salir del modo juego
+    // 🔥 FIX: AHORA SÍ LIMPIAMOS LAS SECUENCIAS PORQUE SALIMOS COMPLETAMENTE DEL JUEGO
+    this.sequenceSvc.resetearSecuencias(); 
+    this.animSvc.detenerTodasGlobal();
     this.animSvc.limpiarEstados(); 
 
     this.triggerSvc.restaurarTriggersParaEditor();
@@ -392,7 +392,6 @@ export class EditorPlayerService {
     this.state.triggerUpdate();
   }
 
-  // 🔥 NUEVO: Función para recargar animaciones en vivo si se editan en el panel durante el juego
   public resincronizarAnimaciones(mesh: AbstractMesh): void {
      const trueMesh = mesh as Mesh;
      const config = mergePlayerConfig(trueMesh.metadata?.playerConfig || null);
@@ -401,7 +400,6 @@ export class EditorPlayerService {
 
   public iniciarPreviewSecuencia(mesh: AbstractMesh, sequenceId: string) {
     if (this.state.playState() !== 'EDITOR') {
-       // 🔥 FIX: Si estamos jugando o editando en vivo, que corra la animación normal del juego, no un preview aislado
        const trueMesh = mesh as Mesh;
        this.playerConfig = mergePlayerConfig(trueMesh.metadata?.playerConfig || null);
        this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceId, trueMesh, this.playerConfig);
@@ -431,7 +429,6 @@ export class EditorPlayerService {
         this.previewObserver = null; 
     }
     
-    // 🔥 FIX: Solo cortamos la secuencia y las animaciones globales si estamos verdaderamente en EDITOR
     if (this.state.playState() === 'EDITOR') {
         this.sequenceSvc.resetearSecuencias();
         this.animSvc.detenerTodasGlobal();
@@ -441,7 +438,8 @@ export class EditorPlayerService {
   public resetMovimientoJugador(): void {
     this.inputSvc.resetearInputs();
     this.physicsSvc.resetearFisicas();
-    this.sequenceSvc.resetearSecuencias();
+    // 🔥 FIX BUG 1: NO borrar secuencias aquí. Esto permite que el ESC (pausa) no destruya la memoria de las secuencias del Trigger.
+    
     this.playerCamSvc.resetearTransiciones();
     this.state.mirandoObjetoInteractuable.set(false);
     this.state.targetInteractuable.set(null);

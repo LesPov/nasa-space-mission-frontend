@@ -62,7 +62,8 @@ export class EditorSceneService {
       material.roughness = 0.8;
       material.environmentIntensity = 0.5;
     }
-    material.freeze();
+    // 🔥 FIX BUG 2: Eliminamos material.freeze();
+    // Al no estar congelado, el material PBR escuchará instantáneamente el cambio de Blanco y Negro.
   }
 
   crearEntornoVisual(): void {
@@ -425,8 +426,9 @@ export class EditorSceneService {
       }
 
       const playerConfig = attachSelectionRange(mergePlayerConfig(defaultPlayerConfig));
+      
       mesh.metadata = {
-        type: tipo, rol, color: colorHex, isSolid, isSelectable, mensaje,
+        type: tipo, rol, color: colorHex, colorBW: colorHex, isSolid, isSelectable, mensaje,
         interactDistanceFPS: 3.0,
         interactDistanceTPS: 5.0,
         interactSequenceIdFPS: '',
@@ -483,7 +485,8 @@ export class EditorSceneService {
         mesh.material = mat;
       } else {
         const mat = new StandardMaterial('mat_' + nombre, scene);
-        mat.diffuseColor = Color3.FromHexString(colorHex);
+        const isBW = scene.metadata?.globalVisualMode === 'bw';
+        mat.diffuseColor = Color3.FromHexString(isBW ? mesh.metadata.colorBW : colorHex);
         mat.specularColor = new Color3(0, 0, 0);
         if (rol === 'spawn_point') { mat.alpha = 0.5; mat.emissiveColor = new Color3(0, 1, 0); }
         mat.maxSimultaneousLights = 16;
@@ -552,7 +555,12 @@ export class EditorSceneService {
 
         this.configurarAmbienteGlobal(scene, w);
         scene.clearColor = Color4.FromHexString(clearHex + 'ff');
-        scene.metadata = { ...scene.metadata, globalClearColor: clearHex };
+        
+        // 🔥 LÓGICA VITAL: Guardamos y aplicamos el filtro B&W al cargar la escena
+        const loadedMode = w.visualMode === 'bw' ? 'bw' : 'normal';
+        scene.metadata = { ...scene.metadata, globalClearColor: clearHex, globalVisualMode: loadedMode };
+        this.motor3d.setVisualMode(loadedMode);
+        
         scene.gravity = new Vector3(0, w.gravityY ?? -0.25, 0);
       } else {
         const clearHex = '#0d1729';
@@ -561,7 +569,10 @@ export class EditorSceneService {
           ambientDirX: 0, ambientDirY: 1, ambientDirZ: 0
         });
         scene.clearColor = Color4.FromHexString(clearHex + 'ff');
-        scene.metadata = { ...scene.metadata, globalClearColor: clearHex };
+        
+        // 🔥 Si no había nada en BD, forzamos Normal
+        scene.metadata = { ...scene.metadata, globalClearColor: clearHex, globalVisualMode: 'normal' };
+        this.motor3d.setVisualMode('normal');
       }
 
       scene.fogMode = Scene.FOGMODE_NONE;
@@ -774,9 +785,10 @@ export class EditorSceneService {
           mesh.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
 
           const savedColorHex = obj.properties?.color?.substring(0, 7) || '#888888';
+          const savedColorBW = obj.properties?.colorBW?.substring(0, 7) || savedColorHex;
 
           mesh.metadata = {
-            type: obj.type, rol: rolSaved, color: savedColorHex, isSolid: isSolidSaved, isSelectable: isSelectableSaved, mensaje: mensajeSaved,
+            type: obj.type, rol: rolSaved, color: savedColorHex, colorBW: savedColorBW, isSolid: isSolidSaved, isSelectable: isSelectableSaved, mensaje: mensajeSaved,
             interactDistanceFPS, interactDistanceTPS, interactSequenceIdFPS, interactSequenceIdTPS,
             collider: savedCollider,
             camOffset: savedCamOffset,
@@ -830,7 +842,8 @@ export class EditorSceneService {
               mesh.material = mat;
           } else {
               const mat = new StandardMaterial('mat_' + obj.name, scene);
-              mat.diffuseColor = Color3.FromHexString(savedColorHex);
+              const isBW = scene.metadata?.globalVisualMode === 'bw';
+              mat.diffuseColor = Color3.FromHexString(isBW ? savedColorBW : savedColorHex);
               mat.specularColor = new Color3(0, 0, 0);
               if (rolSaved === 'spawn_point') { mat.alpha = 0.5; mat.emissiveColor = new Color3(0, 1, 0); }
               mat.maxSimultaneousLights = 16;
@@ -914,7 +927,9 @@ export class EditorSceneService {
     const scene = this.motor3d.scene;
     const ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;
 
+    // 🔥 AQUÍ SE GUARDA EL MODO EN LA BASE DE DATOS
     const worldSettings = {
+      visualMode: scene.metadata?.globalVisualMode || 'normal',
       clearColor: scene.metadata?.globalClearColor || scene.clearColor.toHexString().substring(0, 7),
       gravityY: scene.gravity.y,
       ambientIntensity: ambient ? ambient.intensity : 0.6,
@@ -994,7 +1009,8 @@ export class EditorSceneService {
           camOffset: nodo.metadata.camOffset,
           playerConfig: nodo.metadata.playerConfig || null,
           selectionRange,
-          animationNames: nodo.metadata.animationNames || []
+          animationNames: nodo.metadata.animationNames || [],
+          colorBW: nodo.metadata.colorBW
         };
 
         if (nodo.metadata.type === 'model') {

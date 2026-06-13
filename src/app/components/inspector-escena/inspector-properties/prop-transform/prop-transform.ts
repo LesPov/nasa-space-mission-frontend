@@ -1,29 +1,36 @@
-
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh, Quaternion, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Quaternion, Vector3, StandardMaterial, Color3 } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { HistorialService } from '../../../../services/historial.service';
- @Component({
+import { Motor3dService } from '../../../../services/motor-3d.service';
+
+@Component({
   selector: 'app-prop-transform',
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-transform.html',
-  styleUrls: ['../inspector-properties.css'] // 🔥 Reutiliza el CSS maestro
+  styleUrls: ['../inspector-properties.css'] 
 })
 export class PropTransform implements OnInit, OnDestroy {
   @Input() objeto!: AbstractMesh;
   
   private editorSvc = inject(EditorMapaService);
   private historialSvc = inject(HistorialService);
+  private motor3dSvc = inject(Motor3dService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
   localPosX = 0; localPosY = 0; localPosZ = 0;
   localRotX = 0; localRotY = 0; localRotZ = 0;
   localEscX = 1; localEscY = 1; localEscZ = 1;
+
+  // Variables para la nueva sección de Color
+  mostrarSeccionColor = false;
+  objColor = '#ffffff';
+  objColorBW = '#ffffff';
 
   objInteractDistanceFPS = 3.0;
   objInteractDistanceTPS = 5.0;
@@ -68,6 +75,12 @@ export class PropTransform implements OnInit, OnDestroy {
     this.localEscZ = this.formatNum(this.objeto.scaling.z);
 
     const meta = this.objeto.metadata || {};
+    
+    // Cargar colores
+    this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane'].includes(meta.type);
+    this.objColor = meta.color || '#ffffff';
+    this.objColorBW = meta.colorBW || this.objColor;
+
     this.objInteractDistanceFPS = meta.interactDistanceFPS ?? 3.0;
     this.objInteractDistanceTPS = meta.interactDistanceTPS ?? 5.0;
     this.objInteractSequenceIdFPS = meta.interactSequenceIdFPS || meta.interactSequenceId || '';
@@ -89,6 +102,22 @@ export class PropTransform implements OnInit, OnDestroy {
 
   aplicarEscala() {
     this.historialSvc.registrarCambioTransform(this.objeto, () => { this.objeto.scaling.set(this.localEscX, this.localEscY, this.localEscZ); });
+    this.editorSvc.triggerUpdate();
+  }
+
+  aplicarColor() {
+    if (!this.objeto.metadata) this.objeto.metadata = {};
+    this.objeto.metadata.color = this.objColor;
+    this.objeto.metadata.colorBW = this.objColorBW;
+
+    // Evaluamos el modo actual de la escena
+    const isBW = this.motor3dSvc.scene.metadata?.globalVisualMode === 'bw';
+    const activeColorHex = isBW ? this.objColorBW : this.objColor;
+
+    if (this.objeto.material instanceof StandardMaterial) {
+      this.objeto.material.diffuseColor = Color3.FromHexString(activeColorHex);
+    }
+
     this.editorSvc.triggerUpdate();
   }
 

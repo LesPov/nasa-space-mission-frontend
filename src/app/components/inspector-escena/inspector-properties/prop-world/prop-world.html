@@ -1,3 +1,18 @@
+<div class="section-card">
+  <div class="section-head">
+    <h4>Filtro Visual de Cámara</h4>
+  </div>
+  <div class="field">
+    <label>Modo visual del episodio</label>
+    <select [(ngModel)]="visualMode" (ngModelChange)="aplicarModoVisualCambiado()">
+      <option value="normal">Normal / Color</option>
+      <option value="bw">Blanco y negro (Época antigua)</option>
+    </select>
+    <p class="help-text">
+      No cambia los colores de tus modelos 3D, solo le pone un filtro a la cámara del jugador y del editor. Ideal para flashbacks o historias antiguas.
+    </p>
+  </div>
+</div>
 
 <div class="section-card">
   <div class="section-head"><h4>Cielo y Entorno</h4></div>

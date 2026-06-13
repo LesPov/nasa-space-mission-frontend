@@ -1,10 +1,8 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { PlayerSequenceService } from './playerservice/player-sequence.service';
- 
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService {
@@ -79,7 +77,8 @@ export class PlayerTriggerService {
         const isInside = triggerBox.intersectsPoint(probePoint);
         const wasInside = this.activeTriggersInside.has(mesh.name);
 
-        // 🔥 FIX VITAL: Validar cuando el jugador recién entra o nace adentro del Trigger
+        // 🔥 FIX BUG 1: Eliminamos la restricción del primer frame. 
+        // Si el jugador nace o entra al juego dentro del trigger, SE DEBE EJECUTAR para que las luces/secuencias inicien.
         if (isInside && !wasInside) {
             this.activeTriggersInside.add(mesh.name);
             if (conditions.includes('on_enter')) {
@@ -188,10 +187,9 @@ export class PlayerTriggerService {
           console.log("🎬 Reproduciendo Video Cinemático en Trigger:", videoUrl);
       }
 
-      // 🔥 LÓGICA MÚLTIPLE REPARADA Y BLINDADA: Filtra por comas e inicia la secuencia correctamente
       if (seqIdString && seqIdString.trim() !== '') {
           const rawIds = seqIdString.split(',').map((id: string) => id.trim()).filter(Boolean);
-          const idsToTrigger = [...new Set(rawIds)]; // Elimina duplicados automágicamente
+          const idsToTrigger = [...new Set(rawIds)];
           
           if (idsToTrigger.length > 0) {
               const scene = this.motor3d.scene;

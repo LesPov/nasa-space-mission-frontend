@@ -1,7 +1,3 @@
-
-// ========================================================================
-// ARCHIVO: src/app/services/motor-3d.service.ts
-// ========================================================================
 import { Injectable } from '@angular/core';
 import {
   Engine,
@@ -12,7 +8,8 @@ import {
   Color4,
   UniversalCamera,
   DefaultRenderingPipeline,
-  Color3
+  Color3,
+  ColorCurves
 } from '@babylonjs/core';
 
 @Injectable({
@@ -48,12 +45,7 @@ export class Motor3dService {
     this.scene.collisionsEnabled = true;
     this.scene.gravity = new Vector3(0, -0.25, 0);
 
-    // 🔥 OPTIMIZACIÓN CRÍTICA 1: Evita cálculos de ratón nativos innecesarios.
     this.scene.skipPointerMovePicking = true;
-
-    // ==========================================
-    // 1. CÁMARAS
-    // ==========================================
 
     this.editorCamera = new ArcRotateCamera('editorCamera', Math.PI / 4, Math.PI / 3, 25, Vector3.Zero(), this.scene);
     this.editorCamera.minZ = 0.01;
@@ -88,17 +80,12 @@ export class Motor3dService {
 
     this.scene.activeCamera = this.editorCamera;
 
-    // ==========================================
-    // 2. PIPELINE DE RENDERIZADO
-    // ==========================================
     this.renderingPipeline = new DefaultRenderingPipeline('defaultPipeline', false, this.scene, this.scene.cameras);
     this.renderingPipeline.fxaaEnabled = true; 
     this.renderingPipeline.samples = 2;
     this.renderingPipeline.bloomEnabled = false;
+    this.renderingPipeline.imageProcessingEnabled = true; 
 
-    // ==========================================
-    // 3. LÓGICAS DE VELOCIDAD Y NIEBLA
-    // ==========================================
     this.scene.onBeforeRenderObservable.add(() => {
       if (this.scene.activeCamera === this.editorCamera) {
         const radius = Math.max(0.1, this.editorCamera.radius);
@@ -137,6 +124,42 @@ export class Motor3dService {
 
     window.addEventListener('resize', () => {
       this.forzarRedimension();
+    });
+  }
+
+  // 🔥 FIX BUG 2: Fuerza la actualización de todos los materiales PBR en tiempo real
+  setVisualMode(mode: 'normal' | 'bw'): void {
+    if (!this.renderingPipeline) return;
+
+    const isBw = mode === 'bw';
+    const curves = new ColorCurves();
+
+    if (isBw) {
+      curves.globalSaturation = -100; 
+      curves.globalHue = 0;
+      curves.globalDensity = 0;
+    }
+
+    // 1. Post Process a la cámara principal
+    this.renderingPipeline.imageProcessing.colorCurvesEnabled = isBw;
+    if (isBw) this.renderingPipeline.imageProcessing.colorCurves = curves;
+    this.renderingPipeline.imageProcessing.exposure = isBw ? 0.98 : 1.0;
+    this.renderingPipeline.imageProcessing.contrast = isBw ? 1.15 : 1.0; 
+
+    // 2. Configuración global a la escena
+    this.scene.imageProcessingConfiguration.colorCurvesEnabled = isBw;
+    if (isBw) this.scene.imageProcessingConfiguration.colorCurves = curves;
+    this.scene.imageProcessingConfiguration.exposure = isBw ? 0.98 : 1.0;
+    this.scene.imageProcessingConfiguration.contrast = isBw ? 1.15 : 1.0;
+
+    // 3. 🔥 Inyectar obligatoriamente la nueva configuración en los modelos PBR de los personajes/objetos
+    this.scene.materials.forEach(mat => {
+      if ((mat as any).imageProcessingConfiguration) {
+        (mat as any).imageProcessingConfiguration.colorCurvesEnabled = isBw;
+        if (isBw) (mat as any).imageProcessingConfiguration.colorCurves = curves;
+        (mat as any).imageProcessingConfiguration.exposure = isBw ? 0.98 : 1.0;
+        (mat as any).imageProcessingConfiguration.contrast = isBw ? 1.15 : 1.0;
+      }
     });
   }
 

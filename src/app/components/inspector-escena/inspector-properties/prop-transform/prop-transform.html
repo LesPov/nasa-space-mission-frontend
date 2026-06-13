@@ -1,4 +1,3 @@
-
 <div class="section-card">
   <div class="section-head"><h4>Posición & Escala</h4></div>
   <div class="grid-3">
@@ -14,6 +13,32 @@
     <div class="field"><label>Escala Y</label><input type="number" step="0.1" [ngModel]="localEscY" (ngModelChange)="localEscY = $event; aplicarEscala()" /></div>
     <div class="field"><label>Escala Z</label><input type="number" step="0.1" [ngModel]="localEscZ" (ngModelChange)="localEscZ = $event; aplicarEscala()" /></div>
   </div>
+</div>
+
+<!-- 🔥 NUEVA SECCIÓN: COLOR Y CONTRASTE B&N -->
+<div class="section-card" *ngIf="mostrarSeccionColor">
+  <div class="section-head">
+    <h4>Apariencia Visual (Color)</h4>
+  </div>
+  <div class="grid-2">
+    <div class="field">
+      <label>Color Normal</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="objColor" (ngModelChange)="aplicarColor()" class="color-picker">
+        <span class="color-hex-text">{{ objColor.toUpperCase() }}</span>
+      </div>
+    </div>
+    <div class="field">
+      <label style="color: #cbd5e1; font-weight: bold;">Color en B&N (Contraste)</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="objColorBW" (ngModelChange)="aplicarColor()" class="color-picker">
+        <span class="color-hex-text">{{ objColorBW.toUpperCase() }}</span>
+      </div>
+    </div>
+  </div>
+  <p class="help-text" style="margin-top: 10px;">
+    Define un tono distinto para el modo Blanco y Negro (Ej: Blanco puro #FFFFFF o Negro #000000) para forzar un contraste fuerte y que el objeto no se pierda en el fondo gris.
+  </p>
 </div>
 
 <div class="section-card">

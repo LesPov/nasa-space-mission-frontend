@@ -1,4 +1,3 @@
-
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -12,6 +11,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MiniVisorEscena } from '../../../components/mini-visor-escena/mini-visor-escena';
 import { debounceTime, Subscription } from 'rxjs';
+import { AbstractMesh } from '@babylonjs/core';
 
 @Component({
   selector: 'app-editor-escena',
@@ -162,12 +162,17 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.objColor = '#ffffff';
       this.objEsSolido = false;
       this.objEsSeleccionable = true;
-    } else if (this.objTipo === 'bubble') {
+    } else if (this.objTipo === 'bubble' || this.objTipo === 'video_plane') {
       this.objRol = 'prop';
       this.objEsSolido = false;
       this.objEsSeleccionable = true;
     } else if (this.objTipo !== 'model') {
       this.objRol = 'prop';
+    }
+    
+    // Auto-limpiar asset seleccionado si cambiamos de tipo
+    if (this.objTipo !== 'model' && !this.objTipo.startsWith('light_') && this.objTipo !== 'video_plane') {
+      this.objAssetSeleccionado = null;
     }
   }
 
@@ -180,7 +185,12 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   cargarAssets() {
     this.epiApiSvc.obtenerAssets().subscribe({
-      next: (res) => { this.listaAssets = res.filter((a:any) => a.type === 'model_glb'); },
+      next: (res) => { 
+        // Permitimos modelos 3D y Videos
+        this.listaAssets = res.filter((a:any) => 
+          a.type === 'model_glb' || a.type === 'video_mp4' || a.path.endsWith('.mp4') || a.path.endsWith('.webm')
+        ); 
+      },
       error: (err) => console.error('Error al cargar assets', err)
     });
   }
@@ -198,13 +208,13 @@ export class EditorEscena implements OnInit, OnDestroy {
       next: (res) => {
         this.subiendoAsset = false;
         this.archivoSubida = null;
-        alert('Modelo subido correctamente');
+        alert('Archivo subido correctamente');
         this.cargarAssets(); 
       },
       error: (err) => {
         this.subiendoAsset = false;
         console.error("Error subiendo asset:", err);
-        alert('Error al subir el modelo. Revisa la consola.');
+        alert('Error al subir el archivo. Revisa la consola.');
       }
     });
   }
@@ -288,10 +298,14 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   crearObjeto3D() {
     if(!this.objNombre) return;
+    
+    // Obtenemos el objeto que esté seleccionado actualmente para pasarlo como padre
+    const parent = this.editorSvc.objetoSeleccionado() as AbstractMesh | null;
+
     this.editorSvc.agregarObjetoCustom(
       this.objTipo, this.objNombre, this.objRol, this.objColor, 
       this.objSizeX, this.objSizeY, this.objSizeZ, this.objAssetSeleccionado,
-      this.objEsSolido, this.objEsSeleccionable, this.objMensaje 
+      this.objEsSolido, this.objEsSeleccionable, this.objMensaje, parent // Pasamos el parent
     );
     this.cerrarModalObjeto();
   }

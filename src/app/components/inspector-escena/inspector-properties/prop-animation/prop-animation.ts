@@ -104,11 +104,9 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
     validTargets.add(obj);
     obj.getDescendants(false).forEach(child => validTargets.add(child));
 
-    // 🔥 BUSCAMOS ANIMACIONES EN EL PADRE Y EN LOS HIJOS (Para Luces con Modelo)
     let myAnimNames: string[] = obj.metadata?.animationNames || [];
     
     if (myAnimNames.length === 0) {
-        // Si no está en el padre, buscar en los hijos (El modelo GLB real dentro de la luz)
         const childWithAnims = obj.getChildMeshes(false).find(m => m.metadata?.animationNames && m.metadata.animationNames.length > 0);
         if (childWithAnims) {
             myAnimNames = childWithAnims.metadata.animationNames;
@@ -141,7 +139,10 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
     const metaRuntime = obj.metadata?.playerConfig?.animationRuntime || {};
     const groups = this.getAvailableAnimationGroups(obj);
     
-    this.animationClips = groups.map(group => {
+    // 🔥 FIX: Quitar duplicados por nombre de la lista de visualización
+    const uniqueGroups = groups.filter((v, i, a) => a.findIndex(t => (t.name === v.name)) === i);
+    
+    this.animationClips = uniqueGroups.map(group => {
       const runtime = metaRuntime?.[group.name] || {};
       const speedRatio = typeof runtime.speedRatio === 'number' ? runtime.speedRatio : (group.speedRatio ?? 1);
       const loop = typeof runtime.loop === 'boolean' ? runtime.loop : true;
@@ -184,7 +185,6 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
       const current = new Set(this.bindingTokens[action.key] || []);
       for (const clip of this.animationClips) {
         const name = clip.name.toLowerCase();
-        // Si es 'idle', tomamos casi cualquier animación por defecto como Scene o Base
         const match = action.key === 'idle' ? ['scene', 'idle', 'anim', 'action'] : [action.key];
         
         if (match.some(term => name.includes(term)) || this.animationClips.length === 1) {

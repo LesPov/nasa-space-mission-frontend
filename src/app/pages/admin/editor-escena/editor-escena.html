@@ -1,4 +1,3 @@
-
 <ng-container *ngIf="!editando">
   <div class="galeria-header">
     <div>
@@ -58,6 +57,9 @@
   <div class="modal-overlay" *ngIf="editorSvc.showAddObjectModal()" style="z-index: 9999;">
     <div class="modal-box large">
       <h3>Añadir Nuevo Elemento a la Escena</h3>
+      <p style="font-size: 11px; color: #fbbf24; margin-top: -10px;">
+        *Si tienes un objeto seleccionado, el nuevo será su hijo.
+      </p>
       
       <div class="modal-grid">
         <div class="modal-section">
@@ -66,7 +68,7 @@
             <label class="modal-label">Nombre Único:</label>
             <input type="text" [(ngModel)]="objNombre" class="modal-input" placeholder="Ej: Elemento_1">
           </div>
-          <div class="modal-row" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble'">
+          <div class="modal-row" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble' && objTipo !== 'video_plane'">
             <label class="modal-label" style="color: #ffd700;">Rol del Elemento:</label>
             <select [(ngModel)]="objRol" class="modal-input" (change)="onRolChange()">
               <option value="prop">🛋️ Decoración / Prop estático</option>
@@ -105,6 +107,7 @@
                 <option value="trigger">📍 Trigger Normal (1 Acción)</option>
                 <option value="trigger_compuesto">💠 Trigger Compuesto</option>
                 <option value="bubble">🫧 Burbuja Interactiva (Evento FPS)</option>
+                <option value="video_plane">📺 Pantalla de Video (.mp4)</option>
               </optgroup>
               <optgroup label="Iluminación">
                 <option value="light_directional">☀️ Luz Direccional (Sol/Rayo)</option>
@@ -114,7 +117,7 @@
             </select>
           </div>
           
-          <div class="modal-row" *ngIf="objTipo !== 'model' && objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && objTipo !== 'bubble'">
+          <div class="modal-row" *ngIf="objTipo !== 'model' && objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && objTipo !== 'bubble' && objTipo !== 'video_plane'">
             <label class="modal-label">Color del Material / Emisión:</label>
             <div class="color-picker-wrapper">
               <input type="color" [(ngModel)]="objColor" class="color-picker">
@@ -122,7 +125,7 @@
             </div>
           </div>
           
-          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 15px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble'">
+          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 15px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble' && objTipo !== 'video_plane'">
             <input type="checkbox" [(ngModel)]="objEsSolido" id="chkSolido">
             <label for="chkSolido" class="modal-label" style="margin: 0; cursor: pointer;">🧱 Objeto Sólido (Bloquea el paso)</label>
           </div>
@@ -132,12 +135,11 @@
             <label for="chkSeleccion" class="modal-label" style="margin: 0; cursor: pointer;">🎯 Editable (Se puede tocar con el ratón)</label>
           </div>
 
-          <!-- LA MAGIA: Permitir elegir modelos también para las luces -->
-          <div *ngIf="objTipo === 'model' || objTipo.startsWith('light_')" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 15px;">
+          <div *ngIf="objTipo === 'model' || objTipo.startsWith('light_') || objTipo === 'video_plane'" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 15px;">
             <div class="modal-row">
-              <label class="modal-label">{{ objTipo.startsWith('light_') ? 'Cuerpo de la luz (Opcional):' : 'Selecciona el modelo guardado:' }}</label>
+              <label class="modal-label">{{ objTipo === 'video_plane' ? 'Selecciona un Video (.mp4):' : (objTipo.startsWith('light_') ? 'Cuerpo de la luz (Opcional):' : 'Selecciona el modelo guardado:') }}</label>
               <select [(ngModel)]="objAssetSeleccionado" class="modal-input">
-                <option [ngValue]="null" [disabled]="objTipo === 'model'">{{ objTipo.startsWith('light_') ? '-- Sin modelo (Usar esfera invisible) --' : '-- Elige un modelo --' }}</option>
+                <option [ngValue]="null" [disabled]="objTipo === 'model'">{{ objTipo === 'video_plane' ? '-- Sin video (Pantalla negra) --' : (objTipo.startsWith('light_') ? '-- Sin modelo (Usar esfera invisible) --' : '-- Elige un modelo --') }}</option>
                 <option *ngFor="let asset of listaAssets" [ngValue]="asset">
                   {{ asset.name }}
                 </option>
@@ -145,7 +147,7 @@
             </div>
             <div class="upload-box">
               <p style="margin: 0 0 10px 0; color: #a1a1a1; font-size: 12px;">¿No está en la lista?</p>
-              <input type="file" accept=".glb, .obj" (change)="seleccionarArchivoSubida($event)" style="font-size: 11px; width: 100%;">
+              <input type="file" accept=".glb, .obj, .mp4, .webm" (change)="seleccionarArchivoSubida($event)" style="font-size: 11px; width: 100%;">
               <button class="upload-btn" [disabled]="!archivoSubida || subiendoAsset" (click)="subirNuevoAsset()">
                 {{ subiendoAsset ? 'Subiendo...' : 'Subir a BD ☁️' }}
               </button>
@@ -209,7 +211,6 @@
       <div class="canvas-container">
         <div class="crosshair-ui" *ngIf="editorSvc.playState() === 'PLAYING' && stateSvc.modoVistaPrueba === 'FPS' && editorSvc.ratonBloqueado()" [class.hovering]="editorSvc.mirandoObjetoInteractuable()"></div>
 
-        <!-- 🔥 NUEVO HUD PARA MENSAJES DE TRIGGER -->
         <div class="modern-toast-container" *ngIf="stateSvc.mensajeTriggerHUD() !== null" style="bottom: 120px; z-index: 300;">
             <div class="modern-toast-box" style="background: rgba(30, 58, 138, 0.95); border: 2px solid #60a5fa; box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);">
                <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">

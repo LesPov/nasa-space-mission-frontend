@@ -1,8 +1,9 @@
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
-import { EditorStateService } from './editor-state.service';
 import { Motor3dService } from '../motor-3d.service';
+import { EditorStateService } from './editor-state.service';
 import { PlayerSequenceService } from './playerservice/player-sequence.service';
+ 
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService {
@@ -42,7 +43,6 @@ export class PlayerTriggerService {
     scene.meshes.forEach(m => {
         if (m.metadata && m.metadata.type === 'trigger') {
             m.isVisible = isAdmin; 
-            // Reiniciamos las banderas para que en la próxima partida vuelvan a funcionar
             m.metadata.hasTriggeredEnter = false; 
             m.metadata.hasTriggeredExit = false; 
             m.metadata.isEnabled = true;
@@ -93,7 +93,6 @@ export class PlayerTriggerService {
                 mostroMensajeSalida = this.ejecutarLogicaTrigger(mesh, 'on_exit');
             }
             
-            // 🔥 FIX: Si no es repetible, asegurarse de apagarlo
             if (!mesh.metadata.isRepeatable) {
                  const reqEnter = conditions.includes('on_enter');
                  const reqExit = conditions.includes('on_exit');
@@ -187,10 +186,10 @@ export class PlayerTriggerService {
           console.log("🎬 Reproduciendo Video Cinemático en Trigger:", videoUrl);
       }
 
-      // 🔥 LÓGICA MÚLTIPLE: Cortar por comas e iterar todos los IDs
+      // 🔥 LÓGICA MÚLTIPLE REPARADA: Si el usuario pegó el mismo ID varias veces por error, el Set lo limpia.
       if (seqIdString && seqIdString.trim() !== '') {
-          // El split(',') separa. Trim() limpia espacios basura a los lados de cada ID
-          const idsToTrigger = seqIdString.split(',').map((id: string) => id.trim()).filter(Boolean);
+          const rawIds = seqIdString.split(',').map((id: string) => id.trim()).filter(Boolean);
+          const idsToTrigger = [...new Set(rawIds)]; // Elimina duplicados automágicamente
           
           if (idsToTrigger.length > 0) {
               const scene = this.motor3d.scene;
@@ -203,7 +202,6 @@ export class PlayerTriggerService {
                           const hasSequence = m.metadata.playerConfig.sequences.some((s: any) => s.id === sequenceToFind);
                           if (hasSequence) {
                               found = true;
-                              // Inicia la secuencia forzando reinicio
                               this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceToFind, m as Mesh, m.metadata.playerConfig);
                           }
                       }

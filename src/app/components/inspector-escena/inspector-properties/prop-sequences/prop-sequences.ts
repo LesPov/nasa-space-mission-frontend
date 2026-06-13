@@ -71,7 +71,6 @@ export class PropSequences implements OnInit, OnChanges {
     this.sequences = Array.isArray(config.sequences) ? JSON.parse(JSON.stringify(config.sequences)) : [];
     if (this.sequences.length > 0) this.selectedSequenceId = this.sequences[0].id;
 
-    // 🔥 MODIFICADO PARA BUSCAR TAMBIÉN VIDEOS EN LA ESCENA Y QUE APAREZCAN EN EL DROPDOWN
     const validTargets = new Set();
     validTargets.add(this.objeto);
     this.objeto.getDescendants(false).forEach(child => validTargets.add(child));
@@ -84,26 +83,30 @@ export class PropSequences implements OnInit, OnChanges {
         }
     }
     
-    this.availableClips = [];
+    // Lista temporal para recolectar nombres y luego quitar duplicados
+    const rawClips: string[] = [];
 
-    // Agregar animaciones
+    // Agregar animaciones 3D del objeto
     if (myAnimNames.length > 0) {
         const groups = this.motor3dSvc.scene.animationGroups.filter(ag => myAnimNames.includes(ag.name));
-        this.availableClips.push(...groups.map(g => g.name));
+        rawClips.push(...groups.map(g => g.name));
     } else {
         const groups = this.motor3dSvc.scene.animationGroups.filter((ag: AnimationGroup) => {
           if (!ag.targetedAnimations || ag.targetedAnimations.length === 0) return false;
           return ag.targetedAnimations.some((ta: any) => validTargets.has(ta.target));
         });
-        this.availableClips.push(...groups.map(g => g.name));
+        rawClips.push(...groups.map(g => g.name));
     }
 
     // Agregar nombres de los Planos de Video
     this.motor3dSvc.scene.meshes.forEach(m => {
         if (m.metadata?.type === 'video_plane') {
-            this.availableClips.push(m.name);
+            rawClips.push(m.name);
         }
     });
+
+    // 🔥 FIX: Quitar nombres de animaciones duplicadas de la lista para que la interfaz se vea limpia
+    this.availableClips = [...new Set(rawClips)];
   }
 
   get currentSequence() { return this.sequences.find(s => s.id === this.selectedSequenceId) || null; }

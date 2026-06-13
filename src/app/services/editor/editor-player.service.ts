@@ -1,6 +1,5 @@
-
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
@@ -99,9 +98,21 @@ export class EditorPlayerService {
 
             this.animSvc.sincronizarAnimaciones(this.motor3d.scene, m as Mesh, mergePlayerConfig(m.metadata.playerConfig));
         }
-    });
 
-    this.motor3d.scene.meshes.forEach(m => {
+        // 🔥 LÓGICA DE INICIO: Apagar TVs
+        if (m.metadata?.type === 'video_plane') {
+            if (m.material instanceof StandardMaterial) {
+                const tex = m.material.diffuseTexture;
+                if (tex instanceof VideoTexture) {
+                    tex.video.pause();
+                    tex.video.currentTime = 0;
+                    m.material.emissiveColor = new Color3(0, 0, 0); // Pantalla negra
+                }
+            }
+            // Declaramos que la TV inicia APAGADA y por ende no se le puede hacer click
+            m.metadata.isPoweredOn = false; 
+        }
+
         if (m.metadata?.type?.startsWith('light_') && !m.metadata?.assetId) {
             m.isVisible = false;
         }
@@ -130,20 +141,81 @@ export class EditorPlayerService {
       onInteractE: () => {
         const target = this.state.targetInteractuable();
         if (target && this.interactSvc.canActivateInteraction(target, this.state.modoVistaPrueba)) {
+          
+          if (target.metadata?.isProcessingAction) return;
+
+          let seqIdString = this.state.modoVistaPrueba === 'FPS' ? target.metadata?.interactSequenceIdFPS : target.metadata?.interactSequenceIdTPS;
+          if (!seqIdString) seqIdString = target.metadata?.interactSequenceId;
+          const ids = seqIdString ? seqIdString.split(',').map((id: string) => id.trim()).filter(Boolean) : [];
+
+          // 🔥 LÓGICA DE BURBUJA
           if (target.metadata?.type === 'bubble') {
             this.bubbleSvc.ejecutarBurbuja(target);
-            return;
-          }
-          let seqId = this.state.modoVistaPrueba === 'FPS' ? target.metadata?.interactSequenceIdFPS : target.metadata?.interactSequenceIdTPS;
-          if (!seqId) seqId = target.metadata?.interactSequenceId;
-          if (seqId) {
-            const ids = seqId.split(',').map((id: string) => id.trim()).filter(Boolean);
+            
             if (ids.length > 0) {
-              const idxKey = this.state.modoVistaPrueba === 'FPS' ? 'currentSeqIdxFPS' : 'currentSeqIdxTPS';
-              let idx = target.metadata[idxKey] || 0;
-              if (idx >= ids.length) idx = 0;
-              this.sequenceSvc.iniciarSecuenciaEnJuego(ids[idx], obj, this.playerConfig);
-              target.metadata[idxKey] = (idx + 1) % ids.length;
+               target.metadata.isProcessingAction = true;
+               target.isVisible = false; // Desaparece la burbuja
+               
+               const idxKey = this.state.modoVistaPrueba === 'FPS' ? 'currentSeqIdxFPS' : 'currentSeqIdxTPS';
+               let idx = target.metadata[idxKey] || 0;
+               if (idx >= ids.length) idx = 0;
+               
+               const idToPlay = ids[idx];
+
+               // Delay suave unificado
+               setTimeout(() => {
+                   this.motor3d.scene.meshes.forEach(m => {
+                       if (m.metadata?.playerConfig?.sequences?.some((s: any) => s.id === idToPlay)) {
+                           // Dejamos que player-sequence se encargue de la data (Prender/Apagar la TV a nivel variables)
+                           this.sequenceSvc.iniciarSecuenciaEnJuego(idToPlay, m as Mesh, m.metadata.playerConfig);
+                       }
+                   });
+                   
+                   // Vuelve a aparecer la burbuja y avanza a la siguiente acción si la hay
+                   target.isVisible = true;
+                   target.metadata.isProcessingAction = false;
+                   target.metadata[idxKey] = (idx + 1) % ids.length;
+               }, 500);
+            }
+          } else {
+            // 🔥 LÓGICA DE PANTALLA TV DIRECTA (NUEVA UX INTELIGENTE)
+            if (target.metadata?.type === 'video_plane') {
+                if (!target.metadata.isPoweredOn) {
+                    console.log("📺 La TV está apagada. Usa la burbuja para encenderla.");
+                    return; // Bloquea el click si está apagada
+                }
+
+                // 🔥 TOGGLE NATIVO: Si está encendida y NO tiene secuencias, hace Toggle Pause/Play NATIVO
+                if (ids.length === 0) {
+                    if (target.material instanceof StandardMaterial) {
+                        const tex = target.material.diffuseTexture;
+                        if (tex instanceof VideoTexture) {
+                            if (tex.video.paused) {
+                                tex.video.play();
+                                target.material.emissiveColor = new Color3(1, 1, 1);
+                            } else {
+                                tex.video.pause();
+                                target.material.emissiveColor = new Color3(0.3, 0.3, 0.3); // Atenúa la luz
+                            }
+                        }
+                    }
+                    return; // Terminamos aquí la acción
+                }
+            }
+
+            // Ejecución normal de secuencias si es que el objeto las tuviera configuradas
+            if (ids.length > 0) {
+               const idxKey = this.state.modoVistaPrueba === 'FPS' ? 'currentSeqIdxFPS' : 'currentSeqIdxTPS';
+               let idx = target.metadata[idxKey] || 0;
+               if (idx >= ids.length) idx = 0;
+               const idToPlay = ids[idx];
+               
+               this.motor3d.scene.meshes.forEach(m => {
+                   if (m.metadata?.playerConfig?.sequences?.some((s: any) => s.id === idToPlay)) {
+                       this.sequenceSvc.iniciarSecuenciaEnJuego(idToPlay, m as Mesh, m.metadata.playerConfig);
+                   }
+               });
+               target.metadata[idxKey] = (idx + 1) % ids.length;
             }
           }
         }
@@ -239,7 +311,7 @@ export class EditorPlayerService {
     this.animSvc.detenerTodasGlobal();
 
     this.triggerSvc.restaurarTriggersParaEditor();
-    this.bubbleSvc.restaurarBurbujasParaEditor(); // Restauramos las burbujas!
+    this.bubbleSvc.restaurarBurbujasParaEditor(); 
 
     this.backupsAnimados.forEach(b => {
         if (b.mesh && !b.mesh.isDisposed()) {
@@ -263,6 +335,23 @@ export class EditorPlayerService {
     this.motor3d.scene.meshes.forEach(m => {
         if (m.metadata?.type?.startsWith('light_') && !m.metadata?.assetId) {
             m.isVisible = isAdmin;
+        }
+
+        if (m.metadata?.type === 'bubble') {
+            m.isVisible = true;
+            m.metadata.isProcessingAction = false;
+        }
+
+        // Restaurar pantallas en el editor
+        if (m.metadata?.type === 'video_plane') {
+            if (m.material instanceof StandardMaterial) {
+                const tex = m.material.diffuseTexture;
+                if (tex instanceof VideoTexture) {
+                    tex.video.pause();
+                    m.material.emissiveColor = new Color3(1, 1, 1); 
+                }
+            }
+            m.metadata.isPoweredOn = undefined; // Limpiamos la variable
         }
     });
 

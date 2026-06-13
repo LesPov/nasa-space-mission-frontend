@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Mesh, Quaternion, Vector3, AbstractMesh, UniversalCamera, Light, StandardMaterial, VideoTexture } from '@babylonjs/core';
+import { Mesh, Quaternion, Vector3, AbstractMesh, UniversalCamera, Light, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
 import { Motor3dService } from '../../motor-3d.service';
 import { PlayerClipSequence, PlayerSequenceStep, PlayerRuntimeConfig } from '../player-config.model';
@@ -156,17 +156,33 @@ export class PlayerSequenceService {
       if (state.orientationLocked) this.captureSequenceOrientationState(jugador, state);
       if (step.action === 'jumpStart') state.jumpTriggered = true;
       
-      // 🔥 LÓGICA DE VIDEOS EN EL ENTRAR AL PASO
+      // 🔥 LÓGICA DE VIDEOS AL ENTRAR AL PASO MEJORADA Y UNIFICADA
       if (step.action === 'playVideo' || step.action === 'pauseVideo' || step.action === 'stopVideo') {
-          const videoName = step.clipOverride; // El nombre del video plane está en clipOverride
+          const videoName = step.clipOverride; 
           if (videoName) {
               const videoMesh = this.motor3d.scene.getMeshByName(videoName);
               if (videoMesh && videoMesh.material instanceof StandardMaterial) {
                   const texture = videoMesh.material.diffuseTexture;
                   if (texture && texture instanceof VideoTexture) {
-                      if (step.action === 'playVideo') texture.video.play();
-                      if (step.action === 'pauseVideo') texture.video.pause();
-                      if (step.action === 'stopVideo') { texture.video.pause(); texture.video.currentTime = 0; }
+                      if (step.action === 'playVideo') {
+                          console.log("▶️ Reproduciendo video:", videoName);
+                          texture.video.play();
+                          videoMesh.material.emissiveColor = new Color3(1, 1, 1); // Brilla normal
+                          videoMesh.metadata.isPoweredOn = true; // 🔥 AVISA AL MOTOR QUE SE ENCENDIÓ
+                      }
+                      if (step.action === 'pauseVideo') {
+                          console.log("⏸️ Pausando video:", videoName);
+                          texture.video.pause();
+                          videoMesh.material.emissiveColor = new Color3(0.3, 0.3, 0.3); // Se oscurece a la mitad
+                          videoMesh.metadata.isPoweredOn = true; // 🔥 SIGUE ENCENDIDA, SOLO PAUSADA
+                      }
+                      if (step.action === 'stopVideo') { 
+                          console.log("⏹️ Deteniendo video:", videoName);
+                          texture.video.pause(); 
+                          texture.video.currentTime = 0; 
+                          videoMesh.material.emissiveColor = new Color3(0, 0, 0); // Pantalla negra
+                          videoMesh.metadata.isPoweredOn = false; // 🔥 AVISA AL MOTOR QUE SE APAGÓ TOTALMENTE
+                      }
                   }
               }
           }

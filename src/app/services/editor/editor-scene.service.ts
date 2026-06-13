@@ -3,7 +3,7 @@ import {
   MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader,
   StandardMaterial, Color3, TransformNode, Matrix, HemisphericLight, PointLight,
   SpotLight, DirectionalLight, Scene, ShadowGenerator, CascadedShadowGenerator,
-  FresnelParameters, VideoTexture // 🔥 Importamos VideoTexture y Fresnel
+  FresnelParameters, VideoTexture
 } from '@babylonjs/core';
 
 import '@babylonjs/loaders/glTF';
@@ -103,6 +103,7 @@ export class EditorSceneService {
       case 'cylinder': newMesh = MeshBuilder.CreateCylinder(oldMesh.name, { height: 1, diameter: 1 }, scene); break;
       default: newMesh = MeshBuilder.CreateBox(oldMesh.name, { size: 1 }, scene); break;
     }
+    newMesh.parent = oldMesh.parent;
     newMesh.position = oldMesh.position.clone();
     if (oldMesh.rotationQuaternion) newMesh.rotationQuaternion = oldMesh.rotationQuaternion.clone();
     else newMesh.rotation = oldMesh.rotation.clone();
@@ -122,7 +123,7 @@ export class EditorSceneService {
     oldMesh.dispose(); this.actualizarListaNodos(); return newMesh;
   }
 
-  agregarTriggerCustom(nombre: string, shape: string, isComposite: boolean, mensaje: string, sizeX: number, sizeY: number, sizeZ: number): void {
+  agregarTriggerCustom(nombre: string, shape: string, isComposite: boolean, mensaje: string, sizeX: number, sizeY: number, sizeZ: number, parentNode: AbstractMesh | null = null): void {
     const scene = this.motor3d.scene;
     let mesh!: Mesh;
     switch (shape) {
@@ -130,8 +131,15 @@ export class EditorSceneService {
       case 'cylinder': mesh = MeshBuilder.CreateCylinder(nombre, { height: 1, diameter: 1 }, scene); break;
       default: mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene); break;
     }
+    
+    if (parentNode) {
+        mesh.parent = parentNode;
+        mesh.position = Vector3.Zero();
+    } else {
+        mesh.position = new Vector3(0, sizeY / 2, 0);
+    }
+    
     mesh.scaling = new Vector3(sizeX, sizeY, sizeZ);
-    mesh.position = new Vector3(0, sizeY / 2, 0);
 
     const mat = new StandardMaterial('mat_trigger_' + nombre, scene);
     mat.diffuseColor = new Color3(0.2, 1, 0.2); mat.alpha = 0.3; mat.wireframe = true;
@@ -186,8 +194,8 @@ export class EditorSceneService {
             m.name !== 'debugCamBox' &&
             m.name !== 'debugFogSphere' &&
             m.metadata?.type !== 'trigger' &&
-            m.metadata?.type !== 'bubble' &&        // 🔥 Burbujas no hacen sombra
-            m.metadata?.type !== 'video_plane' &&   // 🔥 Videos no hacen sombra
+            m.metadata?.type !== 'bubble' &&
+            m.metadata?.type !== 'video_plane' &&
             !m.metadata?.type?.startsWith('light_');
 
           if (isValidShadowCaster) {
@@ -202,11 +210,12 @@ export class EditorSceneService {
   agregarObjetoCustom(
     tipo: string, nombre: string, rol: string, colorHex: string,
     sizeX: number, sizeY: number, sizeZ: number, asset?: any,
-    isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = ''
+    isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = '',
+    parentNode: AbstractMesh | null = null
   ): void {
     if (tipo === 'trigger' || tipo === 'trigger_compuesto') {
       const isComposite = tipo === 'trigger_compuesto';
-      this.agregarTriggerCustom(nombre, 'cube', isComposite, mensaje, sizeX, sizeY, sizeZ); return;
+      this.agregarTriggerCustom(nombre, 'cube', isComposite, mensaje, sizeX, sizeY, sizeZ, parentNode); return;
     }
 
     const scene = this.motor3d.scene;
@@ -236,7 +245,15 @@ export class EditorSceneService {
           const rootNode = result.meshes[0] as Mesh;
           rootNode.name = nombre; rootNode.scaling = new Vector3(sizeX, sizeY, sizeZ);
           if (!rootNode.rotationQuaternion) rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
-          rootNode.position = new Vector3(0, 0, 0); rootNode.checkCollisions = false; rootNode.isPickable = true;
+          
+          if (parentNode) {
+              rootNode.parent = parentNode;
+              rootNode.position = Vector3.Zero();
+          } else {
+              rootNode.position = new Vector3(0, 0, 0); 
+          }
+          
+          rootNode.checkCollisions = false; rootNode.isPickable = true;
 
           result.meshes.forEach(m => {
             if (m !== rootNode) {
@@ -249,13 +266,6 @@ export class EditorSceneService {
           });
           const anims = result.animationGroups || []; anims.forEach(ag => ag.stop());
 
-          let initialHeadLocal: Vector3 | null = null;
-          const headNode = rootNode.getChildTransformNodes(false).find(n => n.name.toLowerCase() === 'head' || n.name.toLowerCase() === 'neck' || n.name.toLowerCase().includes('head')) as TransformNode;
-          if (headNode) {
-            headNode.computeWorldMatrix(true); rootNode.computeWorldMatrix(true);
-            initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
-          }
-
           const playerConfig = attachSelectionRange(mergePlayerConfig(defaultPlayerConfig));
           rootNode.metadata = {
             type: tipo, rol: 'light', assetId: asset.id, path: asset.path, isSolid, isSelectable, mensaje,
@@ -264,8 +274,7 @@ export class EditorSceneService {
             collider: { ...defaultCollider },
             camOffset: { ...defaultCamOffset },
             playerConfig,
-            selectionRange: { ...playerConfig.selectionRange },
-            initialHeadLocal
+            selectionRange: { ...playerConfig.selectionRange }
           };
 
           let lightObj: any;
@@ -287,7 +296,12 @@ export class EditorSceneService {
         return;
       } else {
         const mesh = MeshBuilder.CreateSphere(nombre, { diameter: 0.4 }, scene);
-        mesh.position = new Vector3(0, 2, 0);
+        if (parentNode) {
+            mesh.parent = parentNode;
+            mesh.position = Vector3.Zero();
+        } else {
+            mesh.position = new Vector3(0, 2, 0);
+        }
 
         const mat = new StandardMaterial('mat_' + nombre, scene);
         mat.emissiveColor = Color3.FromHexString(colorHex);
@@ -332,7 +346,15 @@ export class EditorSceneService {
         const rootNode = result.meshes[0] as Mesh;
         rootNode.name = nombre; rootNode.scaling = new Vector3(sizeX, sizeY, sizeZ);
         if (!rootNode.rotationQuaternion) rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
-        rootNode.position = new Vector3(0, 0, 0); rootNode.checkCollisions = false; rootNode.isPickable = true;
+        
+        if (parentNode) {
+            rootNode.parent = parentNode;
+            rootNode.position = Vector3.Zero();
+        } else {
+            rootNode.position = new Vector3(0, 0, 0); 
+        }
+        
+        rootNode.checkCollisions = false; rootNode.isPickable = true;
 
         result.meshes.forEach(m => {
           if (m !== rootNode) {
@@ -390,10 +412,17 @@ export class EditorSceneService {
         case 'cylinder': mesh = MeshBuilder.CreateCylinder(nombre, { height: 1, diameter: 1 }, scene); break;
         case 'plane': mesh = MeshBuilder.CreateGround(nombre, { width: 1, height: 1 }, scene); break;
         case 'bubble': mesh = MeshBuilder.CreateSphere(nombre, { diameter: 1 }, scene); break;
-        case 'video_plane': mesh = MeshBuilder.CreatePlane(nombre, { size: 1, sideOrientation: Mesh.DOUBLESIDE }, scene); break; // 🔥 NUEVO VIDEO PLANE
+        case 'video_plane': mesh = MeshBuilder.CreatePlane(nombre, { size: 1, sideOrientation: Mesh.DOUBLESIDE }, scene); break; 
         default: return;
       }
-      mesh.scaling = new Vector3(sizeX, sizeY, sizeZ); mesh.position = new Vector3(0, 0.5 * sizeY, 0);
+      
+      mesh.scaling = new Vector3(sizeX, sizeY, sizeZ); 
+      if (parentNode) {
+          mesh.parent = parentNode;
+          mesh.position = Vector3.Zero();
+      } else {
+          mesh.position = new Vector3(0, 0.5 * sizeY, 0);
+      }
 
       const playerConfig = attachSelectionRange(mergePlayerConfig(defaultPlayerConfig));
       mesh.metadata = {
@@ -410,7 +439,7 @@ export class EditorSceneService {
 
       if (isVideo && asset) {
          mesh.metadata.assetId = asset.id;
-         mesh.metadata.videoUrl = asset.path; // Guardamos el path del video
+         mesh.metadata.videoUrl = asset.path; 
       }
 
       mesh.isPickable = true; mesh.checkCollisions = isSolid;
@@ -447,7 +476,7 @@ export class EditorSceneService {
         if (asset && asset.path) {
             const videoUrl = 'http://localhost:4000' + asset.path;
             const videoTexture = new VideoTexture("vidTex_" + nombre, videoUrl, scene, true, true);
-            videoTexture.video.pause(); // En el editor inicia pausado
+            videoTexture.video.pause(); 
             mat.diffuseTexture = videoTexture;
         } else {
             mat.diffuseColor = new Color3(0.1, 0.1, 0.1); 
@@ -528,6 +557,11 @@ export class EditorSceneService {
     const isAdmin = this.state.rolSimulado() === 'admin';
 
     const promesasCarga: any[] = [];
+
+    // Primero procesamos los nodos sueltos para armar la jerarquía en caso de existir, 
+    // pero como la base de datos es un array plano, los padres pueden cargarse después que los hijos.
+    // Babylons js maneja esto bien si le pasamos la id de guardado pero actualmente guardas plano,
+    // esto lo arreglaremos luego si añades hijos a un obj BD. Por ahora cargan plano.
 
     objetosBD.forEach((obj: any) => {
       const isModel = obj.type === 'model';
@@ -755,6 +789,7 @@ export class EditorSceneService {
         mesh.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
         mesh.ellipsoidOffset = new Vector3(savedCollider.offsetX * obj.scale.x, savedCollider.offsetY * obj.scale.y, savedCollider.offsetZ * obj.scale.z);
 
+        // 🔥 MATERIALES ESPECIALES
         if (obj.type === 'bubble') {
             const mat = new StandardMaterial('mat_' + obj.name, scene);
             mat.emissiveColor = new Color3(1, 1, 1);
@@ -857,6 +892,13 @@ export class EditorSceneService {
 
     Promise.all(promesasCarga).then(() => {
       this.asignarObjetosASombrasDeLuces();
+      
+      // Una vez todo está cargado, restauramos la jerarquía.
+      // Babylons js maneja esto bien si le pasamos la id de guardado pero actualmente guardas plano,
+      // Como guardas plano, el parenting de un objeto que se acaba de cargar (como burbujas a TVs) 
+      // necesitará un refactor profundo de la BD para guardar {parentId: 'NombreDelPadre'}. 
+      // Esto lo podemos añadir en la próxima iteración. Por ahora todo carga.
+      
       this.actualizarListaNodos();
     });
   }
@@ -1005,7 +1047,7 @@ export class EditorSceneService {
         !['ejeX', 'ejeY', 'ejeZ', 'gridHelper', 'sueloInvisible'].includes(m.name) &&
         !m.name.includes('gizmo') &&
         !m.name.includes('highlight') &&
-        m.parent === null
+        m.parent === null // Ojo aquí: las burbujas que son hijas no aparecerán en la raíz del outliner (lo cual es correcto).
       )
     ]);
   }

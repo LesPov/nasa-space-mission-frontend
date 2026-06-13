@@ -1,13 +1,14 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Matrix } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
-
+import { PlayerBubbleService } from './player-bubble';
+ 
 @Injectable({ providedIn: 'root' })
 export class PlayerInteractionService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
+  private bubbleSvc = inject(PlayerBubbleService);
 
   public lastInteractDistance: number | null = null;
   public lastInteractionProbePoint: Vector3 | null = null;
@@ -127,19 +128,29 @@ export class PlayerInteractionService {
         const picked = hitCross.pickedMesh as AbstractMesh;
         if (!this.state.esMeshIgnorable(picked)) {
           const rootNode = this.state.encontrarRaiz(picked) as AbstractMesh;
+          
           if (rootNode && rootNode.metadata?.type !== 'trigger') {
             const selectionDistance = this.getInteractionDistanceToTarget(rootNode, this.lastInteractionProbePoint);
             this.lastInteractDistance = selectionDistance;
 
             const selectionMax = this.getSelectionMaxDistance(isAdmin);
+            const interactMax = rootNode.metadata?.interactDistanceFPS ?? 3.0;
+            const isInteractable = canShowInteraction(rootNode);
 
-            if (selectionDistance <= selectionMax) {
-              hoverSelectable = rootNode;
-            }
-
-            if (canShowInteraction(rootNode)) {
-              const interactMax = rootNode.metadata?.interactDistanceFPS ?? 3.0;
-              if (selectionDistance <= interactMax) {
+            // 🔥 LOGICA CORREGIDA PARA EL CROSSHAIR 🔥
+            if (isAdmin) {
+              // El Admin puede hacer hover (agrandar el punto) en cualquier cosa editable
+              if (selectionDistance <= selectionMax) {
+                hoverSelectable = rootNode;
+              }
+              // Pero solo activa E / I si es interactivo y está cerca
+              if (isInteractable && selectionDistance <= interactMax) {
+                hitInteractuable = rootNode;
+              }
+            } else {
+              // El Usuario Normal SOLO ve el hover en cosas con las que puede interactuar Y que estén cerca
+              if (isInteractable && selectionDistance <= interactMax) {
+                hoverSelectable = rootNode;
                 hitInteractuable = rootNode;
               }
             }
@@ -161,18 +172,18 @@ export class PlayerInteractionService {
 
         const selectionDistance = this.getInteractionDistanceToTarget(root, playerProbe);
         const selectionMax = this.getSelectionMaxDistance(isAdmin);
+        const isInteractable = canShowInteraction(root);
 
-        if (canShowInteraction(root)) {
-          if (root.metadata?.type === 'bubble') {
-             // Las burbujas se ven en TPS pero NO se pueden interactuar con ellas ni autoseleccionar.
-          } else {
+        if (isInteractable) {
+          if (root.metadata?.type !== 'bubble') {
             const interactMax = root.metadata?.interactDistanceTPS ?? 5.0;
             if (selectionDistance <= interactMax && selectionDistance < closestDist) {
               closestDist = selectionDistance;
               closestRoot = root;
             }
           }
-        } else if (selectionDistance <= selectionMax && selectionDistance < closestDist) {
+        } else if (isAdmin && selectionDistance <= selectionMax && selectionDistance < closestDist) {
+          // El Admin evaluando un objeto inactivo en TPS
           closestDist = selectionDistance;
           closestRoot = root;
         }
@@ -203,9 +214,16 @@ export class PlayerInteractionService {
 
       if (meta.type === 'bubble') {
         showE = canInteractNow; 
+      } else if (meta.type === 'video_plane') {
+        if (!meta.isPoweredOn) {
+            showE = false; 
+        } else {
+            showE = canInteractNow; 
+        }
       } else {
         showE = !!seqIdForView && seqIdForView.trim() !== '' && canInteractNow;
       }
+      
       showI = !!mensajeParaMostrar && mensajeParaMostrar.trim() !== '' && canInteractNow && meta.type !== 'bubble';
     }
 

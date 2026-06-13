@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Node } from '@babylonjs/core';
+import { Node, AbstractMesh } from '@babylonjs/core';
 
 import { EditorToolsService } from './editor/editor-tools.service';
 import { EditorSceneService } from './editor/editor-scene.service';
@@ -55,7 +55,6 @@ export class EditorMapaService {
   seleccionarObjeto(nodo: Node | null): void { 
     this.state.objetoSeleccionado.set(nodo); 
     this.state.subObjetoSeleccionado.set(null);
-    // Un solo clic o seleccionar en la lista SOLO SELECCIONA, no mueve la cámara.
   }
 
   crearSuelo(): void { this.scene.crearSuelo(); }
@@ -69,9 +68,10 @@ export class EditorMapaService {
   agregarObjetoCustom(
     tipo: string, nombre: string, rol: string, colorHex: string,
     sizeX: number, sizeY: number, sizeZ: number, asset?: any,
-    isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = ''
+    isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = '',
+    parentNode: AbstractMesh | null = null
   ): void {
-    this.scene.agregarObjetoCustom(tipo, nombre, rol, colorHex, sizeX, sizeY, sizeZ, asset, isSolid, isSelectable, mensaje);
+    this.scene.agregarObjetoCustom(tipo, nombre, rol, colorHex, sizeX, sizeY, sizeZ, asset, isSolid, isSelectable, mensaje, parentNode);
   }
 
   iniciarModoJuego(vista: 'FPS' | 'TPS'): void { this.player.iniciarModoJuego(vista); }

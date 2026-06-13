@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder } from '@babylonjs/core';
 
@@ -13,7 +14,8 @@ import { PlayerInteractionService } from './playerservice/player-interaction.ser
 import { PlayerPhysicsService } from './playerservice/player-physics.service';
 import { PlayerSequenceService } from './playerservice/player-sequence.service';
 import { PlayerTriggerService } from './player-trigger.service';
-
+import { PlayerBubbleService } from './playerservice/player-bubble';
+ 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayerService {
   private motor3d = inject(Motor3dService);
@@ -27,6 +29,7 @@ export class EditorPlayerService {
   private interactSvc = inject(PlayerInteractionService);
   private sequenceSvc = inject(PlayerSequenceService);
   private triggerSvc = inject(PlayerTriggerService);
+  private bubbleSvc = inject(PlayerBubbleService);
 
   public playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
   private tpsUpdateObserver: Observer<Scene> | null = null;
@@ -127,6 +130,10 @@ export class EditorPlayerService {
       onInteractE: () => {
         const target = this.state.targetInteractuable();
         if (target && this.interactSvc.canActivateInteraction(target, this.state.modoVistaPrueba)) {
+          if (target.metadata?.type === 'bubble') {
+            this.bubbleSvc.ejecutarBurbuja(target);
+            return;
+          }
           let seqId = this.state.modoVistaPrueba === 'FPS' ? target.metadata?.interactSequenceIdFPS : target.metadata?.interactSequenceIdTPS;
           if (!seqId) seqId = target.metadata?.interactSequenceId;
           if (seqId) {
@@ -232,6 +239,7 @@ export class EditorPlayerService {
     this.animSvc.detenerTodasGlobal();
 
     this.triggerSvc.restaurarTriggersParaEditor();
+    this.bubbleSvc.restaurarBurbujasParaEditor(); // Restauramos las burbujas!
 
     this.backupsAnimados.forEach(b => {
         if (b.mesh && !b.mesh.isDisposed()) {
@@ -335,7 +343,6 @@ export class EditorPlayerService {
     this.state.showToastE.set(false);
     this.state.showToastI.set(false);
     if (this.state.jugadorActivo) {
-        // 🔥 FIX VITAL: Forzar detención de animaciones preexistentes para evitar bloqueos
         this.animSvc.detenerTodas(this.state.jugadorActivo);
         this.animSvc.reproducirIdle(this.state.jugadorActivo); 
     }

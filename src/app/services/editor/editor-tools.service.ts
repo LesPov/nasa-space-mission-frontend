@@ -1,4 +1,3 @@
-// src/app/services/editor/editor-tools.service.ts
 import { Injectable, inject, effect } from '@angular/core';
 import {
   Color3,
@@ -29,7 +28,6 @@ import { EditorCameraService } from './editor-camera.service';
 import { EditorSceneService } from './editor-scene.service';
 import { EditorStateService, ToolMode } from './editor-state.service';
 
- 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
   private motor3d = inject(Motor3dService);
@@ -559,6 +557,12 @@ export class EditorToolsService {
         const now = performance.now();
         if (now - this.lastHoverCheckTime < 40) return;
         this.lastHoverCheckTime = now;
+
+        // 🔥 FIX VITAL: Evitar conflicto de Highlight (Borde azul que salta).
+        // Cuando el ratón está bloqueado (Jugando en 1ra Persona), los valores scene.pointerX/Y
+        // son basura / están congelados. PlayerInteractionService ya se encarga del hover con 
+        // la cámara, así que aquí cortamos la ejecución para no sobreescribirlo.
+        if (this.state.ratonBloqueado()) return;
 
         if (playSt === 'PLAYING' && this.state.modoVistaPrueba === 'FPS') {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);

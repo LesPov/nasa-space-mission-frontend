@@ -1,4 +1,4 @@
-// src/app/services/editor/playerservice/player-interaction.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Matrix } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -101,13 +101,7 @@ export class PlayerInteractionService {
     const canShowInteraction = (root: AbstractMesh) => this.state.esObjetoInteractuable(root);
 
     if (viewMode === 'FPS') {
-      const centerRay = scene.createPickingRay(
-        this.motor3d.engine.getRenderWidth() / 2,
-        this.motor3d.engine.getRenderHeight() / 2,
-        Matrix.Identity(),
-        activeCamera
-      );
-      centerRay.length = 10000;
+      const centerRay = activeCamera.getForwardRay(10000);
 
       const hitCross = scene.pickWithRay(centerRay, (m) => {
         if (!m.isPickable) return false;
@@ -139,13 +133,10 @@ export class PlayerInteractionService {
 
             const selectionMax = this.getSelectionMaxDistance(isAdmin);
 
-            // El punto / mira amarilla se activa por rango de selección en FPS,
-            // pero el usuario no selecciona nada con click.
             if (selectionDistance <= selectionMax) {
               hoverSelectable = rootNode;
             }
 
-            // La interacción real sigue dependiendo de la distancia de interacción.
             if (canShowInteraction(rootNode)) {
               const interactMax = rootNode.metadata?.interactDistanceFPS ?? 3.0;
               if (selectionDistance <= interactMax) {
@@ -171,17 +162,19 @@ export class PlayerInteractionService {
         const selectionDistance = this.getInteractionDistanceToTarget(root, playerProbe);
         const selectionMax = this.getSelectionMaxDistance(isAdmin);
 
-        if (selectionDistance <= selectionMax && selectionDistance < closestDist) {
+        if (canShowInteraction(root)) {
+          if (root.metadata?.type === 'bubble') {
+             // Las burbujas se ven en TPS pero NO se pueden interactuar con ellas ni autoseleccionar.
+          } else {
+            const interactMax = root.metadata?.interactDistanceTPS ?? 5.0;
+            if (selectionDistance <= interactMax && selectionDistance < closestDist) {
+              closestDist = selectionDistance;
+              closestRoot = root;
+            }
+          }
+        } else if (selectionDistance <= selectionMax && selectionDistance < closestDist) {
           closestDist = selectionDistance;
           closestRoot = root;
-        }
-
-        if (canShowInteraction(root)) {
-          const interactMax = root.metadata?.interactDistanceTPS ?? 5.0;
-          if (selectionDistance <= interactMax && selectionDistance < closestDist) {
-            closestDist = selectionDistance;
-            closestRoot = root;
-          }
         }
       });
 
@@ -208,8 +201,12 @@ export class PlayerInteractionService {
 
       const mensajeParaMostrar = meta.mensaje || '';
 
-      showE = !!seqIdForView && seqIdForView.trim() !== '' && canInteractNow;
-      showI = !!mensajeParaMostrar && mensajeParaMostrar.trim() !== '' && canInteractNow;
+      if (meta.type === 'bubble') {
+        showE = canInteractNow; 
+      } else {
+        showE = !!seqIdForView && seqIdForView.trim() !== '' && canInteractNow;
+      }
+      showI = !!mensajeParaMostrar && mensajeParaMostrar.trim() !== '' && canInteractNow && meta.type !== 'bubble';
     }
 
     if (this.state.targetInteractuable() !== hitInteractuable) {

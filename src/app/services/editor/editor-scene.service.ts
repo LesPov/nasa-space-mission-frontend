@@ -1,9 +1,10 @@
-// src/app/services/editor/editor-scene.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import {
   MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader,
   StandardMaterial, Color3, TransformNode, Matrix, HemisphericLight, PointLight,
-  SpotLight, DirectionalLight, Scene, ShadowGenerator, CascadedShadowGenerator
+  SpotLight, DirectionalLight, Scene, ShadowGenerator, CascadedShadowGenerator,
+  FresnelParameters
 } from '@babylonjs/core';
 
 import '@babylonjs/loaders/glTF';
@@ -186,6 +187,7 @@ export class EditorSceneService {
             m.name !== 'debugCamBox' &&
             m.name !== 'debugFogSphere' &&
             m.metadata?.type !== 'trigger' &&
+            m.metadata?.type !== 'bubble' &&
             !m.metadata?.type?.startsWith('light_');
 
           if (isValidShadowCaster) {
@@ -212,7 +214,7 @@ export class EditorSceneService {
     const isLight = tipo.startsWith('light_');
     const defaultCollider = isModel
       ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
-      : { type: tipo === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+      : { type: tipo === 'sphere' || tipo === 'bubble' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
     const defaultCamOffset = isModel ? { x: 0, y: 1.6, z: 0 } : { x: 0, y: 0.8, z: 0 };
     const defaultPlayerConfig = cloneDefaultPlayerConfig();
 
@@ -384,6 +386,7 @@ export class EditorSceneService {
         case 'sphere': mesh = MeshBuilder.CreateSphere(nombre, { diameter: 1 }, scene); break;
         case 'cylinder': mesh = MeshBuilder.CreateCylinder(nombre, { height: 1, diameter: 1 }, scene); break;
         case 'plane': mesh = MeshBuilder.CreateGround(nombre, { width: 1, height: 1 }, scene); break;
+        case 'bubble': mesh = MeshBuilder.CreateSphere(nombre, { diameter: 1 }, scene); break;
         default: return;
       }
       mesh.scaling = new Vector3(sizeX, sizeY, sizeZ); mesh.position = new Vector3(0, 0.5 * sizeY, 0);
@@ -403,17 +406,40 @@ export class EditorSceneService {
 
       mesh.isPickable = true; mesh.checkCollisions = isSolid;
       mesh.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
-      mesh.receiveShadows = true;
+      
+      if (tipo !== 'bubble') {
+        mesh.receiveShadows = true;
+      }
 
       mesh.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
       mesh.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
 
-      const mat = new StandardMaterial('mat_' + nombre, scene);
-      mat.diffuseColor = Color3.FromHexString(colorHex);
-      mat.specularColor = new Color3(0, 0, 0);
-      if (rol === 'spawn_point') { mat.alpha = 0.5; mat.emissiveColor = new Color3(0, 1, 0); }
-      mat.maxSimultaneousLights = 16;
-      mesh.material = mat;
+      if (tipo === 'bubble') {
+        const mat = new StandardMaterial('mat_' + nombre, scene);
+        mat.diffuseColor = new Color3(0.5, 0.5, 0.5);
+        mat.emissiveColor = new Color3(0.3, 0.3, 0.3);
+        mat.alpha = 0.8;
+        mat.disableLighting = true;
+        
+        mat.emissiveFresnelParameters = new FresnelParameters();
+        mat.emissiveFresnelParameters.bias = 0.1;
+        mat.emissiveFresnelParameters.power = 2;
+        mat.emissiveFresnelParameters.leftColor = Color3.White();
+        mat.emissiveFresnelParameters.rightColor = new Color3(0.5, 0.5, 0.5);
+
+        mat.opacityFresnelParameters = new FresnelParameters();
+        mat.opacityFresnelParameters.leftColor = Color3.White();
+        mat.opacityFresnelParameters.rightColor = Color3.Black();
+
+        mesh.material = mat;
+      } else {
+        const mat = new StandardMaterial('mat_' + nombre, scene);
+        mat.diffuseColor = Color3.FromHexString(colorHex);
+        mat.specularColor = new Color3(0, 0, 0);
+        if (rol === 'spawn_point') { mat.alpha = 0.5; mat.emissiveColor = new Color3(0, 1, 0); }
+        mat.maxSimultaneousLights = 16;
+        mesh.material = mat;
+      }
 
       this.asignarObjetosASombrasDeLuces();
 
@@ -488,7 +514,7 @@ export class EditorSceneService {
 
       const defaultCollider = isModel
         ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
-        : { type: obj.type === 'sphere' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+        : { type: obj.type === 'sphere' || obj.type === 'bubble' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
       const defaultCamOffset = isModel ? { x: 0, y: 1.6, z: 0 } : { x: 0, y: 0.8, z: 0 };
       const defaultPlayerConfig = cloneDefaultPlayerConfig();
 
@@ -672,6 +698,7 @@ export class EditorSceneService {
           case 'sphere': mesh = MeshBuilder.CreateSphere(obj.name, { diameter: 1 }, scene); break;
           case 'cylinder': mesh = MeshBuilder.CreateCylinder(obj.name, { height: 1, diameter: 1 }, scene); break;
           case 'plane': mesh = MeshBuilder.CreateGround(obj.name, { width: 1, height: 1 }, scene); break;
+          case 'bubble': mesh = MeshBuilder.CreateSphere(obj.name, { diameter: 1 }, scene); break;
           default: return;
         }
 
@@ -692,17 +719,40 @@ export class EditorSceneService {
 
         mesh.isPickable = true; mesh.checkCollisions = isSolidSaved;
         mesh.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
-        mesh.receiveShadows = true;
+        
+        if (obj.type !== 'bubble') {
+            mesh.receiveShadows = true;
+        }
 
         mesh.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
         mesh.ellipsoidOffset = new Vector3(savedCollider.offsetX * obj.scale.x, savedCollider.offsetY * obj.scale.y, savedCollider.offsetZ * obj.scale.z);
 
-        const mat = new StandardMaterial('mat_' + obj.name, scene);
-        mat.diffuseColor = Color3.FromHexString(savedColorHex);
-        mat.specularColor = new Color3(0, 0, 0);
-        if (rolSaved === 'spawn_point') { mat.alpha = 0.5; mat.emissiveColor = new Color3(0, 1, 0); }
-        mat.maxSimultaneousLights = 16;
-        mesh.material = mat;
+        if (obj.type === 'bubble') {
+            const mat = new StandardMaterial('mat_' + obj.name, scene);
+            mat.diffuseColor = new Color3(0.5, 0.5, 0.5);
+            mat.emissiveColor = new Color3(0.3, 0.3, 0.3);
+            mat.alpha = 0.8;
+            mat.disableLighting = true;
+            
+            mat.emissiveFresnelParameters = new FresnelParameters();
+            mat.emissiveFresnelParameters.bias = 0.1;
+            mat.emissiveFresnelParameters.power = 2;
+            mat.emissiveFresnelParameters.leftColor = Color3.White();
+            mat.emissiveFresnelParameters.rightColor = new Color3(0.5, 0.5, 0.5);
+
+            mat.opacityFresnelParameters = new FresnelParameters();
+            mat.opacityFresnelParameters.leftColor = Color3.White();
+            mat.opacityFresnelParameters.rightColor = Color3.Black();
+
+            mesh.material = mat;
+        } else {
+            const mat = new StandardMaterial('mat_' + obj.name, scene);
+            mat.diffuseColor = Color3.FromHexString(savedColorHex);
+            mat.specularColor = new Color3(0, 0, 0);
+            if (rolSaved === 'spawn_point') { mat.alpha = 0.5; mat.emissiveColor = new Color3(0, 1, 0); }
+            mat.maxSimultaneousLights = 16;
+            mesh.material = mat;
+        }
 
         this.asignarObjetosASombrasDeLuces();
       }

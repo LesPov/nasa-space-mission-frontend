@@ -1,3 +1,4 @@
+
 <ng-container *ngIf="!editando">
   <div class="galeria-header">
     <div>
@@ -65,7 +66,7 @@
             <label class="modal-label">Nombre Único:</label>
             <input type="text" [(ngModel)]="objNombre" class="modal-input" placeholder="Ej: Elemento_1">
           </div>
-          <div class="modal-row" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_')">
+          <div class="modal-row" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble'">
             <label class="modal-label" style="color: #ffd700;">Rol del Elemento:</label>
             <select [(ngModel)]="objRol" class="modal-input" (change)="onRolChange()">
               <option value="prop">🛋️ Decoración / Prop estático</option>
@@ -103,6 +104,7 @@
                 <option value="model">✨ Modelo 3D Importado (.GLB)</option>
                 <option value="trigger">📍 Trigger Normal (1 Acción)</option>
                 <option value="trigger_compuesto">💠 Trigger Compuesto</option>
+                <option value="bubble">🫧 Burbuja Interactiva (Evento FPS)</option>
               </optgroup>
               <optgroup label="Iluminación">
                 <option value="light_directional">☀️ Luz Direccional (Sol/Rayo)</option>
@@ -112,7 +114,7 @@
             </select>
           </div>
           
-          <div class="modal-row" *ngIf="objTipo !== 'model' && objTipo !== 'trigger' && objTipo !== 'trigger_compuesto'">
+          <div class="modal-row" *ngIf="objTipo !== 'model' && objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && objTipo !== 'bubble'">
             <label class="modal-label">Color del Material / Emisión:</label>
             <div class="color-picker-wrapper">
               <input type="color" [(ngModel)]="objColor" class="color-picker">
@@ -120,12 +122,12 @@
             </div>
           </div>
           
-          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 15px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_')">
+          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 15px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble'">
             <input type="checkbox" [(ngModel)]="objEsSolido" id="chkSolido">
             <label for="chkSolido" class="modal-label" style="margin: 0; cursor: pointer;">🧱 Objeto Sólido (Bloquea el paso)</label>
           </div>
           
-          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_')">
+          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble'">
             <input type="checkbox" [(ngModel)]="objEsSeleccionable" id="chkSeleccion">
             <label for="chkSeleccion" class="modal-label" style="margin: 0; cursor: pointer;">🎯 Editable (Se puede tocar con el ratón)</label>
           </div>

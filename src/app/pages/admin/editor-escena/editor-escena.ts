@@ -1,3 +1,4 @@
+
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -74,7 +75,6 @@ export class EditorEscena implements OnInit, OnDestroy {
       debounceTime(1000) 
     ).subscribe(() => {
       const state = this.editorSvc.playState();
-      // Solo guardado automático si de verdad eres el Admin
       if (this.esAdmin && this.editando && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
         this.guardarMapaEnBD(true); 
       }
@@ -162,6 +162,10 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.objColor = '#ffffff';
       this.objEsSolido = false;
       this.objEsSeleccionable = true;
+    } else if (this.objTipo === 'bubble') {
+      this.objRol = 'prop';
+      this.objEsSolido = false;
+      this.objEsSeleccionable = true;
     } else if (this.objTipo !== 'model') {
       this.objRol = 'prop';
     }
@@ -236,7 +240,6 @@ export class EditorEscena implements OnInit, OnDestroy {
             this.editorSvc.cargarEscenaDesdeDatos(res);
           }
 
-          // 🔥 AUTO-PLAY PARA USUARIOS: Se saltan el editor e inician de inmediato.
           if (!this.esAdmin) {
             setTimeout(() => {
               const spawnMesh = this.motor3dSvc.scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');

@@ -1,0 +1,23 @@
+import { Injectable } from '@angular/core';
+
+@Injectable({ providedIn: 'root' })
+export class SceneMaterialService {
+  
+  public ajustarMaterialGLB(material: any): void {
+    if (!material) return;
+    
+    if (material.getClassName() === 'MultiMaterial' && material.subMaterials) {
+      material.subMaterials.forEach((subMat: any) => this.ajustarMaterialGLB(subMat));
+      return;
+    }
+    
+    material.maxSimultaneousLights = 16;
+    
+    if (material.getClassName().includes('PBR')) {
+      material.usePhysicalLightFalloff = false;
+      material.metallic = 0.1;
+      material.roughness = 0.8;
+      material.environmentIntensity = 0.5;
+    }
+  }
+}

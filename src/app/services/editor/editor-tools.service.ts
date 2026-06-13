@@ -167,6 +167,40 @@ export class EditorToolsService {
     return mesh.getAbsolutePosition().clone();
   }
 
+  private getFogDebugAnchor(selected: AbstractMesh): Vector3 {
+    const meta = selected?.metadata || {};
+
+    const camMeta = meta?.camOffset;
+    if ((meta?.rol === 'npc' || meta?.rol === 'spawn_point') && camMeta) {
+      return new Vector3(
+        this.normalizarNumero(camMeta.x, 0),
+        this.normalizarNumero(camMeta.y, 1.6),
+        this.normalizarNumero(camMeta.z, 0)
+      );
+    }
+
+    if (meta?.initialHeadLocal) {
+      return new Vector3(
+        this.normalizarNumero(meta.initialHeadLocal.x, 0),
+        this.normalizarNumero(meta.initialHeadLocal.y, 1.6),
+        this.normalizarNumero(meta.initialHeadLocal.z, 0)
+      );
+    }
+
+    const colMeta = meta?.collider;
+    if (colMeta) {
+      const offsetY = this.normalizarNumero(colMeta.offsetY, 0);
+      const sizeY = this.normalizarNumero(colMeta.sizeY, 1);
+      return new Vector3(
+        this.normalizarNumero(colMeta.offsetX, 0),
+        offsetY + Math.max(sizeY, 0.8),
+        this.normalizarNumero(colMeta.offsetZ, 0)
+      );
+    }
+
+    return new Vector3(0, 1.6, 0);
+  }
+
   private canSelectByDistance(ray: Ray, target: AbstractMesh, hit: any, isAdmin: boolean): boolean {
     const playSt = this.state.playState();
 
@@ -406,7 +440,20 @@ export class EditorToolsService {
       const pivotPos = this.gizmoPivotNode.getAbsolutePosition();
 
       if (!isNaN(pivotPos.x) && !isNaN(pivotPos.y) && !isNaN(pivotPos.z)) {
-        mesh.setAbsolutePosition(pivotPos);
+        let localOffset = Vector3.Zero();
+        if (mesh.metadata?.collider && mesh.metadata.collider.type !== 'mesh') {
+          localOffset = new Vector3(
+            mesh.metadata.collider.offsetX || 0,
+            mesh.metadata.collider.offsetY || 0,
+            mesh.metadata.collider.offsetZ || 0
+          );
+        }
+        
+        const rotQuat = this.gizmoPivotNode.rotationQuaternion || Quaternion.FromEulerAngles(this.gizmoPivotNode.rotation.x, this.gizmoPivotNode.rotation.y, this.gizmoPivotNode.rotation.z);
+        const offsetMatrix = Matrix.Compose(this.gizmoPivotNode.scaling, rotQuat, Vector3.Zero());
+        const worldOffset = Vector3.TransformCoordinates(localOffset, offsetMatrix);
+        
+        mesh.setAbsolutePosition(pivotPos.subtract(worldOffset));
       }
 
       if (this.gizmoPivotNode.rotationQuaternion) {
@@ -703,12 +750,21 @@ export class EditorToolsService {
         this.debugCameraBox.position.set(camMeta.x + breathX, camMeta.y + breathY, camMeta.z + breathZ);
       }
 
-      // 🔥 FIX: Actualizamos la posición de las esferas de niebla para que sigan al jugador
+      // 🔥 FIX POSICIÓN ESFERAS: LAS ANCLAMOS MÁS ARRIBA PARA QUE NO QUEDEN DENTRO DEL CUERPO
+      const fogAnchor = this.getFogDebugAnchor(obj);
       if (this.debugFogStartSphere) {
-         this.debugFogStartSphere.position.set(breathX, breathY, breathZ);
+        this.debugFogStartSphere.position.set(
+          fogAnchor.x + breathX,
+          fogAnchor.y + breathY,
+          fogAnchor.z + breathZ
+        );
       }
       if (this.debugFogEndSphere) {
-         this.debugFogEndSphere.position.set(breathX, breathY, breathZ);
+        this.debugFogEndSphere.position.set(
+          fogAnchor.x + breathX,
+          fogAnchor.y + breathY,
+          fogAnchor.z + breathZ
+        );
       }
     });
 
@@ -718,7 +774,7 @@ export class EditorToolsService {
     this.setToolMode('translate');
   }
 
-  public aplicarNieblaEnTiempoReal() {
+public aplicarNieblaEnTiempoReal() {
     const scene = this.motor3d.scene;
     if (!scene) return;
 
@@ -737,63 +793,71 @@ export class EditorToolsService {
     const isFPS = this.state.modoVistaPrueba === 'FPS';
 
     if (modo === 'PLAYING' || modo === 'EDITING_IN_GAME') {
-        if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
-          const fog = targetPlayer.metadata.playerConfig.fog;
+      if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
+        const fog = targetPlayer.metadata.playerConfig.fog;
+        
+        const activeColor = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
+        
+        let activeStart = 0;
+        let activeEnd = 50;
+        let activeRenderDistance = 150;
+        
+        let activeDensityStart = 0; // Fuerza del Muro
+        let activeDensityEnd = 100; // Transparencia Lejana
+
+        if (isBW) {
+          activeStart = isFPS ? (fog.startFpsBW ?? 0) : (fog.startTpsBW ?? 5);
+          activeEnd = isFPS ? (fog.endFpsBW ?? 60) : (fog.endTpsBW ?? 90);
+          activeRenderDistance = isFPS ? (fog.renderDistanceFpsBW ?? 100) : (fog.renderDistanceTpsBW ?? 150);
           
-          const activeMode = fog.fogMode || 'linear';
-          const activeColor = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
-          
-          let activeStart = 0;
-          let activeEnd = 50;
-          let activeDensity = 0.02;
-          let activeRenderDistance = 150;
-
-          if (isBW) {
-              activeStart = isFPS ? (fog.startFpsBW ?? 0) : (fog.startTpsBW ?? 5);
-              activeEnd = isFPS ? (fog.endFpsBW ?? 60) : (fog.endTpsBW ?? 90);
-              activeDensity = isFPS ? (fog.densityFpsBW ?? 0.045) : (fog.densityTpsBW ?? 0.025);
-              activeRenderDistance = isFPS ? (fog.renderDistanceFpsBW ?? 100) : (fog.renderDistanceTpsBW ?? 150);
-          } else {
-              activeStart = isFPS ? (fog.startFPS ?? 0) : (fog.startTPS ?? 5);
-              activeEnd = isFPS ? (fog.endFPS ?? 80) : (fog.endTPS ?? 120);
-              activeDensity = isFPS ? (fog.densityFps ?? 0.025) : (fog.densityTps ?? 0.015);
-              activeRenderDistance = isFPS ? (fog.renderDistanceFPS ?? 150) : (fog.renderDistanceTPS ?? 200);
-          }
-
-          // 🔥 MAGIA MATEMÁTICA AQUÍ 🔥
-          // Forzamos al motor a usar LINEAR para que RESPETE siempre tu zona limpia (activeStart).
-          scene.fogMode = Scene.FOGMODE_LINEAR;
-          scene.fogStart = activeStart;
-
-          if (activeMode === 'exp' || activeMode === 'exp2') {
-              // Si eliges modo denso/exponencial, calculamos el "FIN" usando tu Densidad.
-              // A mayor densidad -> transición más corta -> Muro ciego inmediato.
-              const factorFuerza = activeMode === 'exp2' ? 0.5 : 1.0; 
-              const densidadSegura = activeDensity <= 0 ? 0.001 : activeDensity;
-              
-              const distanciaTransicion = (1 / densidadSegura) * factorFuerza;
-              scene.fogEnd = activeStart + distanciaTransicion;
-          } else {
-              // Modo Lineal Clásico (usa el valor exacto de la caja de texto "Fin")
-              scene.fogEnd = activeEnd;
-          }
-          
-          scene.fogDensity = activeDensity; // Mantenemos el valor asignado
-          
-          scene.clearColor = Color4.FromHexString(activeColor + 'ff');
-          scene.fogColor = Color3.FromHexString(activeColor);
-
-          // 🔥 APLICAMOS EL LÍMITE DE RENDER EXACTO DEL USUARIO
-          this.motor3d.editorCamera.maxZ = activeRenderDistance;
-          this.motor3d.playerCameraFPS.maxZ = activeRenderDistance;
-          this.motor3d.playerCameraTPS.maxZ = activeRenderDistance;
-
-          shadowLimit = activeRenderDistance;
+          activeDensityStart = isFPS ? (fog.densityStartFpsBW ?? 0) : (fog.densityStartTpsBW ?? 0);
+          activeDensityEnd = isFPS ? (fog.densityEndFpsBW ?? 100) : (fog.densityEndTpsBW ?? 100);
         } else {
-          this.restaurarEntornoLibreDeNiebla(scene);
+          activeStart = isFPS ? (fog.startFPS ?? 0) : (fog.startTPS ?? 5);
+          activeEnd = isFPS ? (fog.endFPS ?? 80) : (fog.endTPS ?? 120);
+          activeRenderDistance = isFPS ? (fog.renderDistanceFPS ?? 150) : (fog.renderDistanceTPS ?? 200);
+          
+          activeDensityStart = isFPS ? (fog.densityStartFPS ?? 0) : (fog.densityStartTPS ?? 0);
+          activeDensityEnd = isFPS ? (fog.densityEndFPS ?? 100) : (fog.densityEndTPS ?? 100);
         }
-    } else {
+
+        let distCamToPlayer = 0;
+        if (targetPlayer && scene.activeCamera) {
+          distCamToPlayer = Vector3.Distance(scene.activeCamera.globalPosition, targetPlayer.getAbsolutePosition());
+        }
+
+        // 🔥 LOGICA MATEMATICA DE DOBLE DENSIDAD
+        const clampedStart = Math.max(0, Math.min(99.5, activeDensityStart));
+        const clampedEnd = Math.max(1, Math.min(100, activeDensityEnd)); // Minimo 1% para evitar errores de limite
+
+        const gap = activeEnd - activeStart;
+
+        // 1. DENSIDAD DE FONDO (Opacidad Final): Empuja el final de la niebla muchísimo más lejos.
+        // Si quieres 50% de niebla en la esfera roja, el verdadero final al 100% ocurre al doble de distancia.
+        const targetFogEnd = activeStart + (gap / (clampedEnd / 100));
+
+        // 2. DENSIDAD DE INICIO (Muro): Comprime agresivamente ese final calculado hacia la esfera azul.
+        // Esto crea el "golpe de niebla" sin mover el inicio, por lo que la zona interior sigue 100% limpia.
+        const finalAdjustedEnd = activeStart + ((targetFogEnd - activeStart) * (1 - (clampedStart / 100)));
+
+        scene.fogMode = Scene.FOGMODE_LINEAR;
+        scene.fogStart = activeStart + distCamToPlayer; // LA ZONA LIMPIA ESTÁ COMPLETAMENTE A SALVO
+        scene.fogEnd = finalAdjustedEnd + distCamToPlayer; 
+        
+        scene.clearColor = Color4.FromHexString(activeColor + 'ff');
+        scene.fogColor = Color3.FromHexString(activeColor);
+
+        const renderMaxZ = activeRenderDistance + distCamToPlayer;
+        this.motor3d.editorCamera.maxZ = renderMaxZ;
+        this.motor3d.playerCameraFPS.maxZ = renderMaxZ;
+        this.motor3d.playerCameraTPS.maxZ = renderMaxZ;
+
+        shadowLimit = renderMaxZ;
+      } else {
         this.restaurarEntornoLibreDeNiebla(scene);
+      }
+    } else {
+      this.restaurarEntornoLibreDeNiebla(scene);
     }
 
     scene.lights.forEach(light => {
@@ -809,15 +873,15 @@ export class EditorToolsService {
   }
 
   private restaurarEntornoLibreDeNiebla(scene: Scene) {
-      scene.fogMode = Scene.FOGMODE_NONE;
-      
-      const isBW = scene.metadata?.globalVisualMode === 'bw';
-      const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
-      scene.clearColor = Color4.FromHexString(globalClearHex + 'ff');
+    scene.fogMode = Scene.FOGMODE_NONE;
+    
+    const isBW = scene.metadata?.globalVisualMode === 'bw';
+    const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
+    scene.clearColor = Color4.FromHexString(globalClearHex + 'ff');
 
-      this.motor3d.editorCamera.maxZ = 10000;
-      this.motor3d.playerCameraFPS.maxZ = 10000;
-      this.motor3d.playerCameraTPS.maxZ = 10000;
+    this.motor3d.editorCamera.maxZ = 10000;
+    this.motor3d.playerCameraFPS.maxZ = 10000;
+    this.motor3d.playerCameraTPS.maxZ = 10000;
   }
 
   private actualizarDebugMeshes(selected: Mesh | null) {
@@ -867,7 +931,6 @@ export class EditorToolsService {
       if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
     }
 
-    // 🔥 FIX: CREACIÓN DE DOS ESFERAS DE NIEBLA (START Y END) PARA DEBUGEAR "EL MURO" O "EL GRADIENTE"
     if (this.debugFogStartSphere) { this.debugFogStartSphere.dispose(); this.debugFogStartSphere = null; }
     if (this.debugFogEndSphere) { this.debugFogEndSphere.dispose(); this.debugFogEndSphere = null; }
 
@@ -876,65 +939,49 @@ export class EditorToolsService {
       
       const isBW = scene.metadata?.globalVisualMode === 'bw';
       const isFPS = this.state.modoVistaPrueba === 'FPS';
-      
-      const activeColor = isBW ? (playerConfig.fog.colorBW || '#888888') : (playerConfig.fog.color || '#0d1729');
+      const fog = playerConfig.fog;
       
       let activeStart = 0;
       let activeEnd = 50;
 
       if (isBW) {
-          activeStart = isFPS ? (playerConfig.fog.startFpsBW ?? 0) : (playerConfig.fog.startTpsBW ?? 5);
-          activeEnd = isFPS ? (playerConfig.fog.endFpsBW ?? 60) : (playerConfig.fog.endTpsBW ?? 90);
+        activeStart = isFPS ? (fog.startFpsBW ?? 0) : (fog.startTpsBW ?? 5);
+        activeEnd = isFPS ? (fog.endFpsBW ?? 60) : (fog.endTpsBW ?? 90);
       } else {
-          activeStart = isFPS ? (playerConfig.fog.startFPS ?? 0) : (playerConfig.fog.startTPS ?? 5);
-          activeEnd = isFPS ? (playerConfig.fog.endFPS ?? 80) : (playerConfig.fog.endTPS ?? 120);
+        activeStart = isFPS ? (fog.startFPS ?? 0) : (fog.startTPS ?? 5);
+        activeEnd = isFPS ? (fog.endFPS ?? 80) : (fog.endTPS ?? 120);
       }
 
-      // --- CÁLCULO VISUAL PARA LA ESFERA ROJA SEGÚN EL MODO (Sincronizado con el juego real) ---
-      let finalFogEnd = activeEnd;
-      const activeFogMode = playerConfig.fog.fogMode || 'linear';
+      const fogAnchor = this.getFogDebugAnchor(selected);
 
-      // Obtenemos la densidad que estás editando actualmente
-      let currentDensity = isFPS ? 
-          (isBW ? (playerConfig.fog.densityFpsBW ?? 0.045) : (playerConfig.fog.densityFps ?? 0.025)) : 
-          (isBW ? (playerConfig.fog.densityTpsBW ?? 0.025) : (playerConfig.fog.densityTps ?? 0.015));
-
-      if (activeFogMode === 'exp' || activeFogMode === 'exp2') {
-          const factorFuerza = activeFogMode === 'exp2' ? 0.5 : 1.0;
-          const densidadSegura = currentDensity <= 0 ? 0.001 : currentDensity;
-          finalFogEnd = activeStart + ((1 / densidadSegura) * factorFuerza);
-      }
-
-      // Esfera Interior (Donde Inicia la Niebla - Azul Claro)
       if (activeStart > 0.1) {
-          this.debugFogStartSphere = MeshBuilder.CreateSphere('debugFogStartSphere', { diameter: activeStart * 2, segments: 32 }, scene);
-          this.debugFogStartSphere.position = Vector3.Zero();
-          this.debugFogStartSphere.parent = selected;
+        this.debugFogStartSphere = MeshBuilder.CreateSphere('debugFogStartSphere', { diameter: activeStart * 2, segments: 32 }, scene);
+        this.debugFogStartSphere.position = fogAnchor.clone();
+        this.debugFogStartSphere.parent = selected;
 
-          const matFogStart = new StandardMaterial('debugFogStartMat', scene);
-          matFogStart.wireframe = true;
-          matFogStart.emissiveColor = new Color3(0.2, 0.8, 1.0); // Azul claro
-          matFogStart.alpha = 0.15;
-          matFogStart.disableLighting = true;
+        const matFogStart = new StandardMaterial('debugFogStartMat', scene);
+        matFogStart.wireframe = true;
+        matFogStart.emissiveColor = new Color3(0.2, 0.8, 1.0); 
+        matFogStart.alpha = 0.15;
+        matFogStart.disableLighting = true;
 
-          this.debugFogStartSphere.material = matFogStart;
-          this.debugFogStartSphere.isPickable = false;
+        this.debugFogStartSphere.material = matFogStart;
+        this.debugFogStartSphere.isPickable = false;
       }
 
-      // Esfera Exterior (Donde la Niebla es 100% Sólida - Roja/Naranja del color de la niebla)
-      if (finalFogEnd > 0.1) {
-          this.debugFogEndSphere = MeshBuilder.CreateSphere('debugFogEndSphere', { diameter: finalFogEnd * 2, segments: 32 }, scene);
-          this.debugFogEndSphere.position = Vector3.Zero();
-          this.debugFogEndSphere.parent = selected;
+      if (activeEnd > 0.1) {
+        this.debugFogEndSphere = MeshBuilder.CreateSphere('debugFogEndSphere', { diameter: activeEnd * 2, segments: 32 }, scene);
+        this.debugFogEndSphere.position = fogAnchor.clone();
+        this.debugFogEndSphere.parent = selected;
 
-          const matFogEnd = new StandardMaterial('debugFogEndMat', scene);
-          matFogEnd.wireframe = true;
-          matFogEnd.emissiveColor = Color3.FromHexString(activeColor); // Toma el color exacto de la niebla elegida
-          matFogEnd.alpha = 0.25;
-          matFogEnd.disableLighting = true;
+        const matFogEnd = new StandardMaterial('debugFogEndMat', scene);
+        matFogEnd.wireframe = true;
+        matFogEnd.emissiveColor = new Color3(1.0, 0.2, 0.2); 
+        matFogEnd.alpha = 0.25;
+        matFogEnd.disableLighting = true;
 
-          this.debugFogEndSphere.material = matFogEnd;
-          this.debugFogEndSphere.isPickable = false;
+        this.debugFogEndSphere.material = matFogEnd;
+        this.debugFogEndSphere.isPickable = false;
       }
     }
   }

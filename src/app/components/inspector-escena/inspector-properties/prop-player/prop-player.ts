@@ -17,7 +17,7 @@ interface SelectionRangeConfig {
 @Component({
   selector: 'app-prop-player',
   standalone: true,
-  imports: [CommonModule, FormsModule], 
+  imports: [CommonModule, FormsModule],
   templateUrl: './prop-player.html',
   styleUrls: ['../inspector-properties.css']
 })
@@ -29,7 +29,7 @@ export class PropPlayer implements OnInit {
   acordeonesPlayer: Record<string, boolean> = {
     movement: true,
     jump: false,
-    fog: true, 
+    fog: true,
     camera: false,
     selection: false,
     physics: false,
@@ -61,11 +61,54 @@ export class PropPlayer implements OnInit {
       fpsAdminMax: this.selectionRange.fpsAdminMax,
       fpsUserMax: this.selectionRange.fpsUserMax
     };
+
+    this.sincronizarFogCompat();
   }
 
   private normalizarNumero(valor: any, fallback: number): number {
     const n = Number(valor);
     return Number.isFinite(n) && n >= 0 ? n : fallback;
+  }
+
+  private sincronizarFogCompat(): void {
+    const fog: any = this.playerConfig.fog || {};
+
+    fog.enabled = !!fog.enabled;
+    fog.fogMode = fog.fogMode === 'exp' || fog.fogMode === 'exp2' ? fog.fogMode : 'linear';
+
+    fog.color = typeof fog.color === 'string' ? fog.color : '#0d1729';
+    fog.colorBW = typeof fog.colorBW === 'string' ? fog.colorBW : '#555555';
+
+    // 🔥 Compatibilidad para Densidad de Inicio y Opacidad de Fondo
+    fog.densityStartFPS = this.normalizarNumero(fog.densityStartFPS ?? fog.densityFPS ?? fog.densityFps, 0);
+    fog.densityEndFPS = this.normalizarNumero(fog.densityEndFPS, 100);
+
+    fog.densityStartTPS = this.normalizarNumero(fog.densityStartTPS ?? fog.densityTPS ?? fog.densityTps, 0);
+    fog.densityEndTPS = this.normalizarNumero(fog.densityEndTPS, 100);
+
+    fog.densityStartFpsBW = this.normalizarNumero(fog.densityStartFpsBW ?? fog.densityFpsBW, 0);
+    fog.densityEndFpsBW = this.normalizarNumero(fog.densityEndFpsBW, 100);
+
+    fog.densityStartTpsBW = this.normalizarNumero(fog.densityStartTpsBW ?? fog.densityTpsBW, 0);
+    fog.densityEndTpsBW = this.normalizarNumero(fog.densityEndTpsBW, 100);
+
+    fog.startFPS = this.normalizarNumero(fog.startFPS, 0);
+    fog.endFPS = this.normalizarNumero(fog.endFPS, 80);
+    fog.startTPS = this.normalizarNumero(fog.startTPS, 5);
+    fog.endTPS = this.normalizarNumero(fog.endTPS, 120);
+
+    fog.renderDistanceFPS = this.normalizarNumero(fog.renderDistanceFPS, 150);
+    fog.renderDistanceTPS = this.normalizarNumero(fog.renderDistanceTPS, 200);
+
+    fog.startFpsBW = this.normalizarNumero(fog.startFpsBW, 0);
+    fog.endFpsBW = this.normalizarNumero(fog.endFpsBW, 60);
+    fog.startTpsBW = this.normalizarNumero(fog.startTpsBW, 5);
+    fog.endTpsBW = this.normalizarNumero(fog.endTpsBW, 90);
+
+    fog.renderDistanceFpsBW = this.normalizarNumero(fog.renderDistanceFpsBW, 100);
+    fog.renderDistanceTpsBW = this.normalizarNumero(fog.renderDistanceTpsBW, 150);
+
+    this.playerConfig.fog = fog;
   }
 
   toggleAcordeon(s: string) {
@@ -84,6 +127,8 @@ export class PropPlayer implements OnInit {
     this.selectionRange.fpsUserMax = selectionPayload.fpsUserMax;
 
     (this.playerConfig as any).selectionRange = { ...selectionPayload };
+
+    this.sincronizarFogCompat();
 
     this.objeto.metadata.playerConfig = JSON.parse(JSON.stringify(this.playerConfig));
     this.objeto.metadata.selectionRange = JSON.parse(JSON.stringify(selectionPayload));
@@ -106,6 +151,7 @@ export class PropPlayer implements OnInit {
       fpsAdminMax: 10000,
       fpsUserMax: 3
     };
+    this.sincronizarFogCompat();
     this.aplicarPlayerConfig();
   }
 }

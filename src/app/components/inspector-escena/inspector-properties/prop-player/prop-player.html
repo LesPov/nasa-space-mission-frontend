@@ -32,27 +32,23 @@
   <div class="accordion-content" *ngIf="acordeonesPlayer['fog']">
     <div class="checkbox-field" style="margin-bottom: 15px;">
       <input type="checkbox" id="chkPlayerFog" [ngModel]="playerConfig.fog.enabled" (ngModelChange)="playerConfig.fog.enabled = $event; aplicarPlayerConfig()" />
-      <label for="chkPlayerFog" style="color: #60a5fa; font-weight: bold;">Habilitar Niebla (Efecto Muro o Gradiente)</label>
+      <label for="chkPlayerFog" style="color: #60a5fa; font-weight: bold;">Habilitar Niebla Avanzada</label>
     </div>
 
     <ng-container *ngIf="playerConfig.fog.enabled">
       
-      <div class="field wide" style="margin-bottom: 15px;">
-        <label>Comportamiento Matemático de la Niebla</label>
-        <select [ngModel]="playerConfig.fog.fogMode" (ngModelChange)="playerConfig.fog.fogMode = $event; aplicarPlayerConfig()" style="background: #2a2a2a; color: #fbbf24; font-weight: bold;">
-          <option value="linear">Lineal (Efecto Silent Hill: Zona Limpia a Muro. Usa Inicio y Fin)</option>
-          <option value="exp">Exponencial (Niebla Tóxica: Usa SOLO Densidad)</option>
-          <option value="exp2">Exponencial Denso (Muro Ciego: Usa SOLO Densidad)</option>
-        </select>
-        <p class="help-text" style="color: #94a3b8; font-size: 10px; margin-top: 5px;">
-          En modo Lineal, tú controlas exactamente el Inicio (Azul) y el Fin (Rojo) de la niebla.<br>
-          En modos Exponenciales, la niebla envuelve todo desde el jugador (ignora las esferas) usando la Densidad.
+      <div class="field wide" style="margin-bottom: 15px; padding: 10px; background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; border-radius: 6px;">
+        <label style="color: #60a5fa; font-weight: bold; font-size: 13px;">Reglas Visuales</label>
+        <p class="help-text" style="color: #cbd5e1; font-size: 11px; margin-top: 5px;">
+          * <b>Zona Limpia:</b> Desde la cámara hasta la <b>Esfera Azul</b> es Full HD 0% niebla.<br>
+          * <b>Dens. Inicio (Muro):</b> Súbelo para que la niebla arranque espesa y pesada de golpe.<br>
+          * <b>Opac. Fondo:</b> Bájalo (ej: 50%) para hacer la niebla lejana transparente y ver el fondo.
         </p>
       </div>
 
       <!-- 🔥 SECCIÓN NIEBLA MODO NORMAL -->
       <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; border: 1px solid #334155; margin-bottom: 15px;">
-        <h5 style="margin: 0 0 10px 0; color: #e2e8f0; font-size: 11px; text-transform: uppercase;">Ajustes para Color Normal</h5>
+        <h5 style="margin: 0 0 10px 0; color: #e2e8f0; font-size: 11px; text-transform: uppercase;">Ajustes Color Normal</h5>
         
         <div class="field wide" style="margin-bottom: 8px;">
           <label>Color de la Niebla</label>
@@ -63,14 +59,17 @@
         </div>
 
         <div class="grid-2">
-          <div class="field"><label style="color:#60a5fa">Densidad EXP (FPS)</label><input type="number" step="0.005" min="0.001" [ngModel]="playerConfig.fog.densityFps" (ngModelChange)="playerConfig.fog.densityFps = $event; aplicarPlayerConfig()" /></div>
-          <div class="field"><label style="color:#facc15">Densidad EXP (TPS)</label><input type="number" step="0.005" min="0.001" [ngModel]="playerConfig.fog.densityTps" (ngModelChange)="playerConfig.fog.densityTps = $event; aplicarPlayerConfig()" /></div>
-
-          <div class="field"><label style="color:#60a5fa">Inicio Lin. (Esfera Azul FPS)</label><input type="number" step="1" min="0" [ngModel]="playerConfig.fog.startFPS" (ngModelChange)="playerConfig.fog.startFPS = $event; aplicarPlayerConfig()" /></div>
-          <div class="field"><label style="color:#facc15">Inicio Lin. (Esfera Azul TPS)</label><input type="number" step="1" min="0" [ngModel]="playerConfig.fog.startTPS" (ngModelChange)="playerConfig.fog.startTPS = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#60a5fa">Inicio (Esfera Azul FPS)</label><input type="number" step="1" min="0" [ngModel]="playerConfig.fog.startFPS" (ngModelChange)="playerConfig.fog.startFPS = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#facc15">Inicio (Esfera Azul TPS)</label><input type="number" step="1" min="0" [ngModel]="playerConfig.fog.startTPS" (ngModelChange)="playerConfig.fog.startTPS = $event; aplicarPlayerConfig()" /></div>
           
-          <div class="field"><label style="color:#60a5fa">Fin Lin. (Esfera Roja FPS)</label><input type="number" step="1" min="1" [ngModel]="playerConfig.fog.endFPS" (ngModelChange)="playerConfig.fog.endFPS = $event; aplicarPlayerConfig()" /></div>
-          <div class="field"><label style="color:#facc15">Fin Lin. (Esfera Roja TPS)</label><input type="number" step="1" min="1" [ngModel]="playerConfig.fog.endTPS" (ngModelChange)="playerConfig.fog.endTPS = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#ef4444">Fin (Esfera Roja FPS)</label><input type="number" step="1" min="1" [ngModel]="playerConfig.fog.endFPS" (ngModelChange)="playerConfig.fog.endFPS = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#facc15">Fin (Esfera Roja TPS)</label><input type="number" step="1" min="1" [ngModel]="playerConfig.fog.endTPS" (ngModelChange)="playerConfig.fog.endTPS = $event; aplicarPlayerConfig()" /></div>
+ 
+          <div class="field"><label style="color:#10b981; font-weight:bold;">Dens. Inicio FPS (Muro 0-99%)</label><input type="number" step="1" min="0" max="99" [ngModel]="playerConfig.fog.densityStartFPS" (ngModelChange)="playerConfig.fog.densityStartFPS = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#10b981; font-weight:bold;">Dens. Inicio TPS (Muro 0-99%)</label><input type="number" step="1" min="0" max="99" [ngModel]="playerConfig.fog.densityStartTPS" (ngModelChange)="playerConfig.fog.densityStartTPS = $event; aplicarPlayerConfig()" /></div>
+
+          <div class="field"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo FPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndFPS" (ngModelChange)="playerConfig.fog.densityEndFPS = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo TPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndTPS" (ngModelChange)="playerConfig.fog.densityEndTPS = $event; aplicarPlayerConfig()" /></div>
 
           <div class="field"><label style="color:#38bdf8; font-weight:bold;">Corte de Render FPS (Z)</label><input type="number" step="1" min="10" [ngModel]="playerConfig.fog.renderDistanceFPS" (ngModelChange)="playerConfig.fog.renderDistanceFPS = $event; aplicarPlayerConfig()" /></div>
           <div class="field"><label style="color:#fcd34d; font-weight:bold;">Corte de Render TPS (Z)</label><input type="number" step="1" min="10" [ngModel]="playerConfig.fog.renderDistanceTPS" (ngModelChange)="playerConfig.fog.renderDistanceTPS = $event; aplicarPlayerConfig()" /></div>
@@ -79,7 +78,7 @@
 
       <!-- 🔥 SECCIÓN NIEBLA MODO BLANCO Y NEGRO -->
       <div style="background: rgba(0,0,0,0.3); padding: 10px; border-radius: 6px; border: 1px solid #334155;">
-        <h5 style="margin: 0 0 10px 0; color: #94a3b8; font-size: 11px; text-transform: uppercase;">Ajustes para Blanco y Negro</h5>
+        <h5 style="margin: 0 0 10px 0; color: #94a3b8; font-size: 11px; text-transform: uppercase;">Ajustes Blanco y Negro</h5>
         
         <div class="field wide" style="margin-bottom: 8px;">
           <label>Color de la Niebla B&N</label>
@@ -90,23 +89,22 @@
         </div>
 
         <div class="grid-2">
-          <div class="field"><label style="color:#60a5fa">Densidad EXP (FPS)</label><input type="number" step="0.005" min="0.001" [ngModel]="playerConfig.fog.densityFpsBW" (ngModelChange)="playerConfig.fog.densityFpsBW = $event; aplicarPlayerConfig()" /></div>
-          <div class="field"><label style="color:#facc15">Densidad EXP (TPS)</label><input type="number" step="0.005" min="0.001" [ngModel]="playerConfig.fog.densityTpsBW" (ngModelChange)="playerConfig.fog.densityTpsBW = $event; aplicarPlayerConfig()" /></div>
-
-          <div class="field"><label style="color:#60a5fa">Inicio Lin. (Esfera Azul FPS)</label><input type="number" step="1" min="0" [ngModel]="playerConfig.fog.startFpsBW" (ngModelChange)="playerConfig.fog.startFpsBW = $event; aplicarPlayerConfig()" /></div>
-          <div class="field"><label style="color:#facc15">Inicio Lin. (Esfera Azul TPS)</label><input type="number" step="1" min="0" [ngModel]="playerConfig.fog.startTpsBW" (ngModelChange)="playerConfig.fog.startTpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#60a5fa">Inicio (Esfera Azul FPS)</label><input type="number" step="1" min="0" [ngModel]="playerConfig.fog.startFpsBW" (ngModelChange)="playerConfig.fog.startFpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#facc15">Inicio (Esfera Azul TPS)</label><input type="number" step="1" min="0" [ngModel]="playerConfig.fog.startTpsBW" (ngModelChange)="playerConfig.fog.startTpsBW = $event; aplicarPlayerConfig()" /></div>
           
-          <div class="field"><label style="color:#60a5fa">Fin Lin. (Esfera Roja FPS)</label><input type="number" step="1" min="1" [ngModel]="playerConfig.fog.endFpsBW" (ngModelChange)="playerConfig.fog.endFpsBW = $event; aplicarPlayerConfig()" /></div>
-          <div class="field"><label style="color:#facc15">Fin Lin. (Esfera Roja TPS)</label><input type="number" step="1" min="1" [ngModel]="playerConfig.fog.endTpsBW" (ngModelChange)="playerConfig.fog.endTpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#ef4444">Fin (Esfera Roja FPS)</label><input type="number" step="1" min="1" [ngModel]="playerConfig.fog.endFpsBW" (ngModelChange)="playerConfig.fog.endFpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#facc15">Fin (Esfera Roja TPS)</label><input type="number" step="1" min="1" [ngModel]="playerConfig.fog.endTpsBW" (ngModelChange)="playerConfig.fog.endTpsBW = $event; aplicarPlayerConfig()" /></div>
 
-          <div class="field"><label style="color:#38bdf8; font-weight:bold;">Corte de Render FPS (Z)</label><input type="number" step="1" min="10" [ngModel]="playerConfig.fog.renderDistanceFpsBW" (ngModelChange)="playerConfig.fog.renderDistanceFpsBW = $event; aplicarPlayerConfig()" /></div>
-          <div class="field"><label style="color:#fcd34d; font-weight:bold;">Corte de Render TPS (Z)</label><input type="number" step="1" min="10" [ngModel]="playerConfig.fog.renderDistanceTpsBW" (ngModelChange)="playerConfig.fog.renderDistanceTpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#10b981; font-weight:bold;">Dens. Inicio FPS (Muro 0-99%)</label><input type="number" step="1" min="0" max="99" [ngModel]="playerConfig.fog.densityStartFpsBW" (ngModelChange)="playerConfig.fog.densityStartFpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#10b981; font-weight:bold;">Dens. Inicio TPS (Muro 0-99%)</label><input type="number" step="1" min="0" max="99" [ngModel]="playerConfig.fog.densityStartTpsBW" (ngModelChange)="playerConfig.fog.densityStartTpsBW = $event; aplicarPlayerConfig()" /></div>
+
+          <div class="field"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo FPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndFpsBW" (ngModelChange)="playerConfig.fog.densityEndFpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo TPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndTpsBW" (ngModelChange)="playerConfig.fog.densityEndTpsBW = $event; aplicarPlayerConfig()" /></div>
+
+          <div class="field"><label style="color:#38bdf8; font-weight:bold;">Corte Render FPS (Z)</label><input type="number" step="1" min="10" [ngModel]="playerConfig.fog.renderDistanceFpsBW" (ngModelChange)="playerConfig.fog.renderDistanceFpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#fcd34d; font-weight:bold;">Corte Render TPS (Z)</label><input type="number" step="1" min="10" [ngModel]="playerConfig.fog.renderDistanceTpsBW" (ngModelChange)="playerConfig.fog.renderDistanceTpsBW = $event; aplicarPlayerConfig()" /></div>
         </div>
       </div>
-
-      <p class="help-text" style="margin-top: 10px; color: #4ade80;">
-        <b>Óptimizacion de "Corte de Render (Z)":</b> Ajusta este valor para que la cámara literalmente deje de dibujar todo lo que esté oculto tras el muro de niebla. Disparará tus FPS al cielo.
-      </p>
     </ng-container>
   </div>
 </div>

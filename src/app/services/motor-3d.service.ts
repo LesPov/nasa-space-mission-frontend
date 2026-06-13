@@ -132,7 +132,7 @@ export class Motor3dService {
       });
     });
 
-    // 🔥 FIX: Eliminado el límite forzado del maxZ para que EditorToolsService pueda tomar el control
+    // Control de límite de niebla nativo
     this.scene.onBeforeCameraRenderObservable.add((camera) => {
       if (camera.name === 'editorCamera') {
         this.scene.fogEnabled = false;

@@ -41,10 +41,27 @@ export class EditorPlayerService {
     document.addEventListener('pointerlockchange', () => {
       const isLocked = !!document.pointerLockElement;
       this.state.ratonBloqueado.set(isLocked);
+      
       if (!isLocked) {
         const stateStr = this.state.playState();
         if (stateStr === 'PLAYING' || stateStr === 'EDITING_IN_GAME' || stateStr === 'TRANSITIONING' || stateStr === 'INTERACTING') {
           this.resetMovimientoJugador();
+        }
+      } else {
+        // 🔥 FIX VITAL: Re-vincular la cámara activa cuando el ratón se vuelve a bloquear
+        // Esto soluciona el bug donde al salir de un modal (como el de Diálogos/Mensajes), 
+        // BabylonJS pierde el contexto de los inputs y el canvas pierde el foco real impidiendo jugar.
+        const stateStr = this.state.playState();
+        if (stateStr === 'PLAYING' || stateStr === 'EDITING_IN_GAME') {
+          const canvas = this.motor3d.engine.getRenderingCanvas();
+          const activeCam = this.motor3d.scene?.activeCamera;
+          if (canvas && activeCam) {
+            setTimeout(() => {
+              canvas.focus();
+              activeCam.detachControl();
+              activeCam.attachControl(canvas, true);
+            }, 50); // Pequeño delay para asegurar que el DOM terminó de cerrar el modal
+          }
         }
       }
     });

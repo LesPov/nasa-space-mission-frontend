@@ -1,3 +1,4 @@
+
 import { Component, Output, EventEmitter, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Node, AbstractMesh, Camera, Light } from '@babylonjs/core';

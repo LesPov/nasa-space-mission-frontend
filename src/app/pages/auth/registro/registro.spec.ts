@@ -1,3 +1,4 @@
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { Registro } from './registro';
@@ -20,3 +21,4 @@ describe('Registro', () => {
     expect(component).toBeTruthy();
   });
 });
+

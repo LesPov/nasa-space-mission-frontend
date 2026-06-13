@@ -1,3 +1,4 @@
+
 <ng-container *ngIf="!editando">
   <div class="galeria-header">
     <div>
@@ -54,6 +55,13 @@
 
 <ng-container *ngIf="editando">
   
+  <!-- 🔥 PANTALLA DE CARGA DEL MAPA -->
+  <div class="loading-overlay" *ngIf="cargandoEscena">
+    <div class="spinner"></div>
+    <h2>Cargando Entorno...</h2>
+    <p>Preparando modelos, texturas y físicas 3D</p>
+  </div>
+
   <div class="modal-overlay" *ngIf="editorSvc.showAddObjectModal()" style="z-index: 9999;">
     <div class="modal-box large">
       <h3>Añadir Nuevo Elemento a la Escena</h3>

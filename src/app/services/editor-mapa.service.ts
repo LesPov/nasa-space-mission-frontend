@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Node, AbstractMesh } from '@babylonjs/core';
 
@@ -59,7 +60,11 @@ export class EditorMapaService {
 
   crearSuelo(): void { this.scene.crearSuelo(); }
   eliminarSeleccionado(): void { this.scene.eliminarSeleccionado(); }
-  cargarEscenaDesdeDatos(dataBD: any): void { this.scene.cargarEscenaDesdeDatos(dataBD); }
+  
+  // 🔥 FIX: Retorna Promise
+  cargarEscenaDesdeDatos(dataBD: any): Promise<void> { 
+    return this.scene.cargarEscenaDesdeDatos(dataBD); 
+  }
   
   obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[] } { 
     return this.scene.obtenerDatosParaGuardar(); 

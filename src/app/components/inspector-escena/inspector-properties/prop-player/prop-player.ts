@@ -1,3 +1,4 @@
+
 // src/app/components/inspector-escena/inspector-properties/prop-player/prop-player.ts
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';

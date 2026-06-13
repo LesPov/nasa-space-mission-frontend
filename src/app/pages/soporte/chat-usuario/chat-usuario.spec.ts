@@ -1,3 +1,4 @@
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { ChatUsuario } from './chat-usuario';
@@ -20,3 +21,4 @@ describe('ChatUsuario', () => {
     expect(component).toBeTruthy();
   });
 });
+

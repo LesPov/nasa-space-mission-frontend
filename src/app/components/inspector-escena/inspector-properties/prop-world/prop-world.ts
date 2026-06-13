@@ -48,6 +48,7 @@ export class PropWorld implements OnInit, OnDestroy {
     const scene = this.motor3dSvc.scene;
     if(!scene) return;
     
+    // Leemos siempre de la metadata global primero, es nuestro valor real y seguro.
     this.clearColorHex = scene.metadata?.globalClearColor || scene.clearColor.toHexString().substring(0, 7);
 
     // Solo cargamos la luz ambiental
@@ -67,6 +68,7 @@ export class PropWorld implements OnInit, OnDestroy {
 
   aplicarFondo() {
     const scene = this.motor3dSvc.scene;
+    // Aplicamos al render real y a la memoria del sistema para asegurar guardado y no ser sobrescritos
     scene.clearColor = Color4.FromHexString(this.clearColorHex + 'ff');
     scene.metadata = { ...scene.metadata, globalClearColor: this.clearColorHex };
     this.editorSvc.triggerUpdate(); 

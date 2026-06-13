@@ -1,3 +1,4 @@
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { PropLight } from './prop-light';
@@ -20,3 +21,4 @@ describe('PropLight', () => {
     expect(component).toBeTruthy();
   });
 });
+

@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { Node } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
@@ -43,3 +44,4 @@ export class EditorInteractionService {
     }
   }
 }
+

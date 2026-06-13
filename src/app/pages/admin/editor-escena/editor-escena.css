@@ -1,3 +1,4 @@
+
 /* GALERÍA */
 .galeria-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
 .galeria-header h2 { color: #60a5fa; font-size: 28px; }
@@ -125,7 +126,6 @@
   overflow: hidden;
 }
 
-/* 🔥 SOLUCIÓN AQUÍ: Se fuerza alto 100% y se encierra con overflow */
 .viewport-area { 
   display: flex; 
   flex-direction: column; 
@@ -136,7 +136,6 @@
   overflow: hidden;
 }
 
-/* 🔥 NUEVO: BARRA DIVISORA PARA REDIMENSIONAR TIPO BLENDER/UNITY */
 .layout-resizer {
   width: 6px;
   background-color: #1a1a1a;
@@ -164,7 +163,6 @@
   background-color: #fff;
 }
 
-/* CONTENEDOR FLEXIBLE DEL INSPECTOR */
 .inspector-wrapper {
   flex-shrink: 0;
   display: flex;
@@ -178,7 +176,6 @@
   width: 100% !important;
 }
 
-/* 🔥 SOLUCIÓN AQUÍ: Flex-shrink 0 evita que el Canvas aplaste la barra superior al volver a entrar */
 .viewport-topbar {
   height: 40px; 
   min-height: 40px; 
@@ -216,7 +213,6 @@
 .sync-status { font-size: 12px; color: #888; font-style: italic; }
 .sync-status.syncing { color: #4b73b5; }
 
-/* 🔥 SOLUCIÓN AQUÍ: Se le quita el control al Canvas de estirar todo */
 .canvas-container { 
   flex-grow: 1; 
   position: relative; 
@@ -227,6 +223,50 @@
   overflow: hidden; 
 }
 .fps-badge { position: absolute; top: 15px; left: 70px; color: #87c04f; font-family: monospace; font-size: 13px; pointer-events: none; text-shadow: 1px 1px 2px black; z-index: 10; }
+
+/* 🔥 PANTALLA DE CARGA PROFESIONAL (NUEVO) */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background-color: #0f172a;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  z-index: 9999;
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid rgba(255, 255, 255, 0.1);
+  border-top-color: #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin-bottom: 20px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.loading-overlay h2 {
+  font-size: 24px;
+  margin: 0 0 10px 0;
+  color: #60a5fa;
+  font-weight: bold;
+}
+
+.loading-overlay p {
+  color: #94a3b8;
+  font-size: 14px;
+  margin: 0;
+}
 
 /* 🔥 SISTEMA DE NOTIFICACIONES TIPO AAA (HUD) */
 .hud-container {
@@ -456,17 +496,17 @@
 /* 🔥 ESTILOS PARA EL TOAST MODERNO CON CSS GRID */
 .modern-toast-container {
   position: absolute;
-  bottom: 40px; /* Separado del borde inferior */
+  bottom: 40px; 
   left: 50%;
   transform: translateX(-50%);
   z-index: 200;
-  pointer-events: none; /* No bloquea clicks */
+  pointer-events: none; 
   animation: slideUpFade 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
 }
 
 .modern-toast-box {
-  background: rgba(15, 23, 42, 0.85); /* Fondo oscuro translúcido */
-  border: 1px solid rgba(56, 189, 248, 0.3); /* Borde sutil azul */
+  background: rgba(15, 23, 42, 0.85); 
+  border: 1px solid rgba(56, 189, 248, 0.3); 
   border-radius: 12px;
   padding: 12px 24px;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6);
@@ -492,7 +532,7 @@
 .toast-actions-grid {
   display: grid;
   grid-auto-flow: column;
-  gap: 16px; /* Separación entre cada botón */
+  gap: 16px; 
   align-items: center;
 }
 

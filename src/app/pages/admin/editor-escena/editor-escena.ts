@@ -1,3 +1,4 @@
+
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -29,6 +30,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   public cdr = inject(ChangeDetectorRef);
 
   public editando = false;
+  public cargandoEscena = false; // 🔥 Añadido para controlar la HUD de carga
+  
   public episodioIdActivo = 0;
   public mapaActualNombre = '';
   public fps = signal<string>('0');
@@ -170,7 +173,6 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.objRol = 'prop';
     }
     
-    // Auto-limpiar asset seleccionado si cambiamos de tipo
     if (this.objTipo !== 'model' && !this.objTipo.startsWith('light_') && this.objTipo !== 'video_plane') {
       this.objAssetSeleccionado = null;
     }
@@ -186,7 +188,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   cargarAssets() {
     this.epiApiSvc.obtenerAssets().subscribe({
       next: (res) => { 
-        // Permitimos modelos 3D y Videos
         this.listaAssets = res.filter((a:any) => 
           a.type === 'model_glb' || a.type === 'video_mp4' || a.path.endsWith('.mp4') || a.path.endsWith('.webm')
         ); 
@@ -237,18 +238,22 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.episodioIdActivo = episodio.id;
     this.mapaActualNombre = episodio.title;
     this.editando = true;
+    this.cargandoEscena = true;
     this.layoutSvc.ocultarMenu(); 
     
     this.epiApiSvc.obtenerEpisodio(episodio.id).subscribe({
       next: (res) => {
-        setTimeout(() => {
+        setTimeout(async () => {
           this.motor3dSvc.forzarRedimension(); 
           this.editorSvc.activarEventosEditor();
           this.editorSvc.crearSuelo();
 
           if(res) {
-            this.editorSvc.cargarEscenaDesdeDatos(res);
+            await this.editorSvc.cargarEscenaDesdeDatos(res);
           }
+
+          this.cargandoEscena = false;
+          this.cdr.detectChanges(); 
 
           if (!this.esAdmin) {
             setTimeout(() => {
@@ -260,7 +265,7 @@ export class EditorEscena implements OnInit, OnDestroy {
                 alert('Este mapa no tiene un punto de aparición (Spawn Point). Habla con el creador.');
                 this.salirDelEditor();
               }
-            }, 600);
+            }, 100);
           }
           
           this.fpsInterval = setInterval(() => {
@@ -268,7 +273,10 @@ export class EditorEscena implements OnInit, OnDestroy {
           }, 500);
         }, 150); 
       },
-      error: (err) => alert('Error cargando los objetos del mapa')
+      error: (err) => {
+        this.cargandoEscena = false;
+        alert('Error cargando los objetos del mapa');
+      }
     });
   }
 
@@ -299,13 +307,12 @@ export class EditorEscena implements OnInit, OnDestroy {
   crearObjeto3D() {
     if(!this.objNombre) return;
     
-    // Obtenemos el objeto que esté seleccionado actualmente para pasarlo como padre
     const parent = this.editorSvc.objetoSeleccionado() as AbstractMesh | null;
 
     this.editorSvc.agregarObjetoCustom(
       this.objTipo, this.objNombre, this.objRol, this.objColor, 
       this.objSizeX, this.objSizeY, this.objSizeZ, this.objAssetSeleccionado,
-      this.objEsSolido, this.objEsSeleccionable, this.objMensaje, parent // Pasamos el parent
+      this.objEsSolido, this.objEsSeleccionable, this.objMensaje, parent
     );
     this.cerrarModalObjeto();
   }
@@ -352,6 +359,7 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   salirDelEditor() {
     this.editando = false; 
+    this.cargandoEscena = false;
     this.layoutSvc.mostrarMenu(); 
     this.editorSvc.limpiarEstado();
     this.cargarEpisodios(); 

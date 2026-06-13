@@ -217,19 +217,16 @@ export class EditorToolsService {
     const rootNode = this.state.encontrarRaiz(picked);
     if (!(rootNode instanceof AbstractMesh)) return null;
 
-    // 🔥 FIX: Permitimos que el Admin sí pueda seleccionar triggers en cualquier modo
     if (this.esTriggerMesh(rootNode) && !isAdmin) return null;
 
     const playSt = this.state.playState();
 
-    // En juego / edición en vivo: admin puede seleccionar, user no selecciona nada
     if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') {
       if (!isAdmin) return null;
       if (!this.canSelectByDistance(ray, rootNode, hit, true)) return null;
       return rootNode;
     }
 
-    // En editor: admin sí, respetando isSelectable
     if (playSt === 'EDITOR') {
       if (!isAdmin) return null;
       if (!this.puedeTomarseParaSeleccion(rootNode)) return null;
@@ -709,6 +706,8 @@ export class EditorToolsService {
     this.setToolMode('translate');
   }
 
+  // 🔥 LÓGICA DE NIEBLA BLINDADA: 
+  // Ahora aísla perfectamente el modo Editor del modo de Juego y NUNCA borra tu color de fondo.
   public aplicarNieblaEnTiempoReal() {
     const scene = this.motor3d.scene;
     if (!scene) return;
@@ -720,29 +719,31 @@ export class EditorToolsService {
     const spawnOrNpc = scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
     targetPlayer = spawnOrNpc || null;
 
-    if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
-      const fog = targetPlayer.metadata.playerConfig.fog;
-      scene.fogMode = Scene.FOGMODE_LINEAR;
-      scene.fogColor = Color3.FromHexString(fog.color || '#0d1729');
-      scene.fogStart = fog.start || 10;
-      scene.fogEnd = fog.end || 50;
+    // 🔥 SIEMPRE recuperamos y forzamos el color global, para que la niebla jamás lo sobrescriba.
+    const globalClearHex = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
+    const clearColor3 = Color3.FromHexString(globalClearHex);
+    scene.clearColor = new Color4(clearColor3.r, clearColor3.g, clearColor3.b, 1);
 
-      scene.clearColor = Color4.FromHexString((fog.color || '#0d1729') + 'FF');
+    if (modo === 'PLAYING' || modo === 'EDITING_IN_GAME') {
+        if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
+          const fog = targetPlayer.metadata.playerConfig.fog;
+          scene.fogMode = Scene.FOGMODE_LINEAR;
+          scene.fogColor = Color3.FromHexString(fog.color || '#0d1729');
+          scene.fogStart = fog.start || 10;
+          scene.fogEnd = fog.end || 50;
 
-      const cutoff = fog.end + (fog.end * 0.3);
-      this.motor3d.editorCamera.maxZ = cutoff;
-      this.motor3d.playerCameraFPS.maxZ = cutoff;
-      this.motor3d.playerCameraTPS.maxZ = cutoff;
+          const cutoff = fog.end + (fog.end * 0.3);
+          this.motor3d.editorCamera.maxZ = cutoff;
+          this.motor3d.playerCameraFPS.maxZ = cutoff;
+          this.motor3d.playerCameraTPS.maxZ = cutoff;
 
-      shadowLimit = cutoff;
+          shadowLimit = cutoff;
+        } else {
+          this.restaurarEntornoLibreDeNiebla(scene);
+        }
     } else {
-      scene.fogMode = Scene.FOGMODE_NONE;
-      const globalClear = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
-      scene.clearColor = Color4.FromHexString(globalClear + 'FF');
-
-      this.motor3d.editorCamera.maxZ = 10000;
-      this.motor3d.playerCameraFPS.maxZ = 10000;
-      this.motor3d.playerCameraTPS.maxZ = 10000;
+        // 🔥 MODO EDITOR LIBRE: Entorno completamente despejado siempre.
+        this.restaurarEntornoLibreDeNiebla(scene);
     }
 
     scene.lights.forEach(light => {
@@ -755,6 +756,13 @@ export class EditorToolsService {
         }
       }
     });
+  }
+
+  private restaurarEntornoLibreDeNiebla(scene: Scene) {
+      scene.fogMode = Scene.FOGMODE_NONE;
+      this.motor3d.editorCamera.maxZ = 10000;
+      this.motor3d.playerCameraFPS.maxZ = 10000;
+      this.motor3d.playerCameraTPS.maxZ = 10000;
   }
 
   private actualizarDebugMeshes(selected: Mesh | null) {
@@ -889,7 +897,6 @@ export class EditorToolsService {
     const mode = this.state.playState();
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
-    // En PLAYING también se permite hover visual si estás administrando el mundo
     if (mode !== 'EDITOR' && mode !== 'EDITING_IN_GAME' && !(mode === 'PLAYING' && isAdmin)) {
       return;
     }

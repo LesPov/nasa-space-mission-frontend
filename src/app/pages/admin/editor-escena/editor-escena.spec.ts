@@ -1,3 +1,4 @@
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { EditorEscena } from './editor-escena';
@@ -20,3 +21,4 @@ describe('EditorEscena', () => {
     expect(component).toBeTruthy();
   });
 });
+

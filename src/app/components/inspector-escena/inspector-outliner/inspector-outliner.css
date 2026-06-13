@@ -1,4 +1,5 @@
 
+
 :host {
   /* Quitamos el flex fijo, ya que ahora la altura la da el componente padre (inspector-escena) en % */
   background: #232323;

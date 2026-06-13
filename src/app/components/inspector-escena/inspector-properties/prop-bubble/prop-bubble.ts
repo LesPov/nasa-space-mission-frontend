@@ -1,3 +1,4 @@
+
 import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AbstractMesh } from '@babylonjs/core';

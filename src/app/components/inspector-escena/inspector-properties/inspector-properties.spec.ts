@@ -1,3 +1,4 @@
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { InspectorProperties } from './inspector-properties';
@@ -20,3 +21,4 @@ describe('InspectorProperties', () => {
     expect(component).toBeTruthy();
   });
 });
+

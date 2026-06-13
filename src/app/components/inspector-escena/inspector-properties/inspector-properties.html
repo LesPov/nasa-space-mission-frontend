@@ -1,14 +1,16 @@
 <div class="properties-shell">
-  <!-- PESTAÑAS (Fijas en la parte superior) -->
   <div class="prop-tabs">
     <ng-container *ngIf="objetoActual">
         <button class="tab-btn" [class.active]="pestanaActiva === 'transform'" (click)="cambiarPestana('transform')" title="Transformación">🟧</button>
-        <button class="tab-btn" *ngIf="!esTrigger && (!esLuz || esLuzConModelo)" [class.active]="pestanaActiva === 'physics'" (click)="cambiarPestana('physics')" title="Física y Colisiones">💊</button>
+        <button class="tab-btn" *ngIf="!esTrigger && (!esLuz || esLuzConModelo) && !esBurbuja" [class.active]="pestanaActiva === 'physics'" (click)="cambiarPestana('physics')" title="Física y Colisiones">💊</button>
         <button class="tab-btn" *ngIf="esPersonaje && !esTrigger" [class.active]="pestanaActiva === 'player'" (click)="cambiarPestana('player')" title="Configuración Jugador">🎮</button>
         <button class="tab-btn" *ngIf="(esPersonaje || esLuzConModelo) && !esTrigger" [class.active]="pestanaActiva === 'animation'" (click)="cambiarPestana('animation')" title="Mapeo de Animaciones">🏃</button>
-        <!-- 🔥 FIX: Permitimos la pestaña secuencias a CUALQUIER luz (tenga o no tenga modelo) -->
-        <button class="tab-btn" *ngIf="esPersonaje || esTrigger || esLuz" [class.active]="pestanaActiva === 'sequences'" (click)="cambiarPestana('sequences')" title="Creador de Secuencias">🎞️</button>
+        <button class="tab-btn" *ngIf="esPersonaje || esTrigger || esLuz || esBurbuja" [class.active]="pestanaActiva === 'sequences'" (click)="cambiarPestana('sequences')" title="Creador de Secuencias">🎞️</button>
         <button class="tab-btn" *ngIf="esLuz" [class.active]="pestanaActiva === 'light'" (click)="cambiarPestana('light')" title="Propiedades de Luz">💡</button>
+        
+        <!-- 🔥 BOTONES NUEVOS DE BURBUJA Y VIDEO -->
+        <button class="tab-btn" *ngIf="esBurbuja" [class.active]="pestanaActiva === 'bubble'" (click)="cambiarPestana('bubble')" title="Burbuja Interactiva">🫧</button>
+        <button class="tab-btn" *ngIf="esVideo" [class.active]="pestanaActiva === 'video'" (click)="cambiarPestana('video')" title="Pantalla de Video">📺</button>
     </ng-container>
     
     <button class="tab-btn" [class.active]="pestanaActiva === 'world'" (click)="cambiarPestana('world')" title="Entorno Global">🌍</button>
@@ -23,11 +25,12 @@
         {{ pestanaActiva === 'animation' ? 'Gestor de Animaciones' : '' }}
         {{ pestanaActiva === 'sequences' ? 'Línea de Tiempo Cinematográfica' : '' }}
         {{ pestanaActiva === 'light' ? 'Configuración de Iluminación' : '' }}
+        {{ pestanaActiva === 'bubble' ? 'Ajustes de Burbuja (Evento)' : '' }}
+        {{ pestanaActiva === 'video' ? 'Configuración de Video' : '' }}
       </span>
       <span class="status-pill">{{ familiaResumen }}</span>
     </div>
 
-    <!-- PESTAÑA MUNDO / GLOBAL -->
     <ng-container *ngIf="pestanaActiva === 'world'">
       <div class="panel-header"><span>Configuración del Escenario</span><span class="status-pill">Global</span></div>
       <div class="prop-body">
@@ -35,22 +38,24 @@
       </div>
     </ng-container>
 
-    <!-- CARGA DINÁMICA DE LOS COMPONENTES DE OBJETO -->
     <div class="prop-body" *ngIf="objetoActual && pestanaActiva !== 'world'">
       
       <div class="obj-title-bar">
-        <span class="icon">{{ esTrigger ? '📍' : (esLuz ? '💡' : (esPersonaje ? '🧍' : '🧊')) }}</span>
+        <span class="icon">{{ esTrigger ? '📍' : (esLuz ? '💡' : (esBurbuja ? '🫧' : (esVideo ? '📺' : (esPersonaje ? '🧍' : '🧊')))) }}</span>
         <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" />
       </div>
 
-      <!-- COMPONENTES -->
       <app-prop-transform *ngIf="pestanaActiva === 'transform' && !esTrigger" [objeto]="objetoActual"></app-prop-transform>
       <app-prop-trigger *ngIf="pestanaActiva === 'transform' && esTrigger" [objeto]="objetoActual"></app-prop-trigger>
-      <app-prop-physics *ngIf="pestanaActiva === 'physics' && !esTrigger && (!esLuz || esLuzConModelo)" [objeto]="objetoActual"></app-prop-physics>
+      <app-prop-physics *ngIf="pestanaActiva === 'physics' && !esTrigger && (!esLuz || esLuzConModelo) && !esBurbuja" [objeto]="objetoActual"></app-prop-physics>
       <app-prop-player *ngIf="pestanaActiva === 'player' && esPersonaje" [objeto]="objetoActual"></app-prop-player>
       <app-prop-animation *ngIf="pestanaActiva === 'animation' && (esPersonaje || esLuzConModelo)" [objeto]="objetoActual"></app-prop-animation>
-      <app-prop-sequences *ngIf="pestanaActiva === 'sequences' && (esPersonaje || esTrigger || esLuz)" [objeto]="objetoActual"></app-prop-sequences>
+      <app-prop-sequences *ngIf="pestanaActiva === 'sequences' && (esPersonaje || esTrigger || esLuz || esBurbuja)" [objeto]="objetoActual"></app-prop-sequences>
       <app-prop-light *ngIf="pestanaActiva === 'light' && esLuz" [objeto]="objetoActual"></app-prop-light>
+      
+      <!-- Carga de los nuevos componentes -->
+      <app-prop-bubble *ngIf="pestanaActiva === 'bubble' && esBurbuja" [objeto]="objetoActual"></app-prop-bubble>
+      <app-prop-video *ngIf="pestanaActiva === 'video' && esVideo" [objeto]="objetoActual"></app-prop-video>
 
       <button class="btn-danger full" style="margin-top: 20px;" (click)="eliminarObjeto()">🗑️ Eliminar objeto de la escena</button>
     </div>

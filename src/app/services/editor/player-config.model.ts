@@ -18,7 +18,10 @@ export type PlayerActionKey =
   | 'lightOn'
   | 'lightOff'
   | 'lightPulse'
-  | 'lightFlicker';
+  | 'lightFlicker'
+  | 'playVideo'
+  | 'pauseVideo'
+  | 'stopVideo';
 
 export interface PlayerSequenceStep {
   id: string;
@@ -61,6 +64,9 @@ export interface PlayerAnimationBindings {
   lightOff: AnimBinding;
   lightPulse: AnimBinding;
   lightFlicker: AnimBinding;
+  playVideo: AnimBinding;
+  pauseVideo: AnimBinding;
+  stopVideo: AnimBinding;
 }
 
 export interface PlayerAnimationEnabled {
@@ -82,6 +88,9 @@ export interface PlayerAnimationEnabled {
   lightOff: boolean;
   lightPulse: boolean;
   lightFlicker: boolean;
+  playVideo: boolean;
+  pauseVideo: boolean;
+  stopVideo: boolean;
 }
 
 export interface PlayerMovementConfig {
@@ -194,7 +203,10 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
     lightOn: null,
     lightOff: null,
     lightPulse: null,
-    lightFlicker: null
+    lightFlicker: null,
+    playVideo: null,
+    pauseVideo: null,
+    stopVideo: null
   },
   animationEnabled: {
     idle: true,
@@ -214,7 +226,10 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
     lightOn: true,
     lightOff: true,
     lightPulse: true,
-    lightFlicker: true
+    lightFlicker: true,
+    playVideo: true,
+    pauseVideo: true,
+    stopVideo: true
   },
   sequences: [],
   debug: {
@@ -257,7 +272,6 @@ export function normalizeAnimBinding(binding: AnimBinding): string[] {
   return [String(binding).trim()].filter(Boolean);
 }
 
-// 🔥 GENERADOR DE ID CORTOS (Ejemplo: seq_4f8a2b)
 function generarIdCorto(): string {
   return 'seq_' + Math.random().toString(36).substring(2, 8);
 }

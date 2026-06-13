@@ -90,7 +90,10 @@ export class PlayerAnimationService {
     state.animJumpLoop = this.resolveAnimation(state, anims.jumpLoop, state.animJump);
     state.animFall = this.resolveAnimation(state, anims.fall, state.animJumpLoop || state.animJump);
     state.animLandSoft = this.resolveAnimation(state, anims.landSoft, state.animIdle);
+    
+    // 🔥 AQUÍ ESTABA EL ERROR: Era anims.landHard, no anims.hardLanding
     state.animHardLanding = this.resolveAnimation(state, anims.landHard, state.animLandSoft || state.animIdle);
+    
     state.animClimb = this.resolveAnimation(state, anims.climbUp, state.animIdle);
     state.animClimbFinish = this.resolveAnimation(state, anims.climbFinish, state.animClimb);
     state.animHangIdle = this.resolveAnimation(state, anims.hangIdle, state.animClimb);
@@ -126,7 +129,10 @@ export class PlayerAnimationService {
       case 'lightOff':
       case 'lightPulse':
       case 'lightFlicker':
-          return null;
+      case 'playVideo':
+      case 'pauseVideo':
+      case 'stopVideo':
+          return null; // A estos no se les busca animación física
       default: return state.animIdle;
     }
   }

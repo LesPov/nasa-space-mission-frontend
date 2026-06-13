@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Mesh, Quaternion, Vector3, AbstractMesh, UniversalCamera, Light } from '@babylonjs/core';
+import { Mesh, Quaternion, Vector3, AbstractMesh, UniversalCamera, Light, StandardMaterial, VideoTexture } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
 import { Motor3dService } from '../../motor-3d.service';
 import { PlayerClipSequence, PlayerSequenceStep, PlayerRuntimeConfig } from '../player-config.model';
@@ -108,7 +108,6 @@ export class PlayerSequenceService {
     if (seqs.some(s => s.id === sequenceId)) {
       const state = this.getSeqState(jugador);
       state.id = sequenceId;
-      // 🔥 FIX: Forzar siempre a cero garantiza que la secuencia empiece desde el inicio
       state.index = 0;
       state.elapsedMs = 0;
       state.stepEntered = true;
@@ -137,7 +136,6 @@ export class PlayerSequenceService {
       return { step: null, lockInput: false, allowMovement: true, forceForwardWalk: false, forceForwardRun: false, forceJump: false, blend: config.blend.defaultBlend, loop: true, running: false, freezeOrientation: false };
     }
 
-    // Seguridad por si el ID de estado cambió mágicamente
     if (state.id !== sequence.id) {
       state.id = sequence.id; 
       state.index = 0; 
@@ -157,6 +155,23 @@ export class PlayerSequenceService {
       state.orientationLocked = this.shouldLockOrientationForSequence(step);
       if (state.orientationLocked) this.captureSequenceOrientationState(jugador, state);
       if (step.action === 'jumpStart') state.jumpTriggered = true;
+      
+      // 🔥 LÓGICA DE VIDEOS EN EL ENTRAR AL PASO
+      if (step.action === 'playVideo' || step.action === 'pauseVideo' || step.action === 'stopVideo') {
+          const videoName = step.clipOverride; // El nombre del video plane está en clipOverride
+          if (videoName) {
+              const videoMesh = this.motor3d.scene.getMeshByName(videoName);
+              if (videoMesh && videoMesh.material instanceof StandardMaterial) {
+                  const texture = videoMesh.material.diffuseTexture;
+                  if (texture && texture instanceof VideoTexture) {
+                      if (step.action === 'playVideo') texture.video.play();
+                      if (step.action === 'pauseVideo') texture.video.pause();
+                      if (step.action === 'stopVideo') { texture.video.pause(); texture.video.currentTime = 0; }
+                  }
+              }
+          }
+      }
+
       state.stepEntered = false;
     } else {
       state.orientationLocked = this.shouldLockOrientationForSequence(step) || state.orientationLocked;
@@ -206,7 +221,7 @@ export class PlayerSequenceService {
             state.index = 0; 
             state.stepEntered = true; 
         } else { 
-            state.id = ''; // Terminó la secuencia y no se repite
+            state.id = ''; 
             return { step, lockInput, allowMovement, forceForwardWalk, forceForwardRun, forceJump, blend, loop, running: false, freezeOrientation: false }; 
         }
       } else {

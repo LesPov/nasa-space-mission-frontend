@@ -1,0 +1,16 @@
+<div class="section-card">
+  <div class="section-head">
+    <h4>Reproductor de Video</h4>
+  </div>
+  <div class="field wide" style="margin-bottom: 15px;">
+    <label>Ruta / URL del Archivo de Video (.mp4)</label>
+    <input type="text" [value]="videoUrl" readonly style="color: #64748b; background: #0f172a;" />
+  </div>
+  <div class="actions-row wrap">
+    <button class="btn-primary" (click)="playVideo()">▶️ Probar Video</button>
+    <button class="btn-secondary" (click)="pauseVideo()">⏸️ Pausar</button>
+  </div>
+  <p class="help-text" style="margin-top: 10px;">
+    El video iniciará pausado por defecto. Usa la burbuja y asignale una <b>"🎞️ Secuencia"</b> (Acción: ▶️ Reproducir Video) para encender esta TV durante el juego de forma remota.
+  </p>
+</div>

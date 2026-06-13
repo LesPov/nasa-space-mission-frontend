@@ -8,7 +8,10 @@ import { PlayerClipSequence, mergePlayerConfig, cloneDefaultPlayerConfig, create
 import { Motor3dService } from '../../../../services/motor-3d.service';
  
 const ACTION_ROWS_CHAR = [
-  { key: 'idle', label: 'Idle / Reposo' }, { key: 'walk', label: 'Walk (Caminar)' }, { key: 'run', label: 'Run (Correr)' }
+  { key: 'idle', label: 'Idle / Reposo' }, { key: 'walk', label: 'Walk (Caminar)' }, { key: 'run', label: 'Run (Correr)' },
+  { key: 'playVideo', label: '▶️ Reproducir Video (TV)' },
+  { key: 'pauseVideo', label: '⏸️ Pausar Video (TV)' },
+  { key: 'stopVideo', label: '⏹️ Detener Video (TV)' }
 ];
 
 const ACTION_ROWS_LIGHT = [
@@ -68,6 +71,7 @@ export class PropSequences implements OnInit, OnChanges {
     this.sequences = Array.isArray(config.sequences) ? JSON.parse(JSON.stringify(config.sequences)) : [];
     if (this.sequences.length > 0) this.selectedSequenceId = this.sequences[0].id;
 
+    // 🔥 MODIFICADO PARA BUSCAR TAMBIÉN VIDEOS EN LA ESCENA Y QUE APAREZCAN EN EL DROPDOWN
     const validTargets = new Set();
     validTargets.add(this.objeto);
     this.objeto.getDescendants(false).forEach(child => validTargets.add(child));
@@ -80,16 +84,26 @@ export class PropSequences implements OnInit, OnChanges {
         }
     }
     
+    this.availableClips = [];
+
+    // Agregar animaciones
     if (myAnimNames.length > 0) {
         const groups = this.motor3dSvc.scene.animationGroups.filter(ag => myAnimNames.includes(ag.name));
-        this.availableClips = groups.map(g => g.name);
+        this.availableClips.push(...groups.map(g => g.name));
     } else {
         const groups = this.motor3dSvc.scene.animationGroups.filter((ag: AnimationGroup) => {
           if (!ag.targetedAnimations || ag.targetedAnimations.length === 0) return false;
           return ag.targetedAnimations.some((ta: any) => validTargets.has(ta.target));
         });
-        this.availableClips = groups.map(g => g.name);
+        this.availableClips.push(...groups.map(g => g.name));
     }
+
+    // Agregar nombres de los Planos de Video
+    this.motor3dSvc.scene.meshes.forEach(m => {
+        if (m.metadata?.type === 'video_plane') {
+            this.availableClips.push(m.name);
+        }
+    });
   }
 
   get currentSequence() { return this.sequences.find(s => s.id === this.selectedSequenceId) || null; }

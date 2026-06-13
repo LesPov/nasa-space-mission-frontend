@@ -1,10 +1,9 @@
-
 import { Injectable, inject } from '@angular/core';
 import {
   MeshBuilder, Vector3, Color4, AbstractMesh, Mesh, Quaternion, SceneLoader,
   StandardMaterial, Color3, TransformNode, Matrix, HemisphericLight, PointLight,
   SpotLight, DirectionalLight, Scene, ShadowGenerator, CascadedShadowGenerator,
-  FresnelParameters
+  FresnelParameters, VideoTexture // 🔥 Importamos VideoTexture y Fresnel
 } from '@babylonjs/core';
 
 import '@babylonjs/loaders/glTF';
@@ -187,7 +186,8 @@ export class EditorSceneService {
             m.name !== 'debugCamBox' &&
             m.name !== 'debugFogSphere' &&
             m.metadata?.type !== 'trigger' &&
-            m.metadata?.type !== 'bubble' &&
+            m.metadata?.type !== 'bubble' &&        // 🔥 Burbujas no hacen sombra
+            m.metadata?.type !== 'video_plane' &&   // 🔥 Videos no hacen sombra
             !m.metadata?.type?.startsWith('light_');
 
           if (isValidShadowCaster) {
@@ -212,9 +212,12 @@ export class EditorSceneService {
     const scene = this.motor3d.scene;
     const isModel = tipo === 'model';
     const isLight = tipo.startsWith('light_');
+    const isVideo = tipo === 'video_plane';
+
     const defaultCollider = isModel
       ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
-      : { type: tipo === 'sphere' || tipo === 'bubble' ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+      : { type: (tipo === 'sphere' || tipo === 'bubble') ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+    
     const defaultCamOffset = isModel ? { x: 0, y: 1.6, z: 0 } : { x: 0, y: 0.8, z: 0 };
     const defaultPlayerConfig = cloneDefaultPlayerConfig();
 
@@ -387,6 +390,7 @@ export class EditorSceneService {
         case 'cylinder': mesh = MeshBuilder.CreateCylinder(nombre, { height: 1, diameter: 1 }, scene); break;
         case 'plane': mesh = MeshBuilder.CreateGround(nombre, { width: 1, height: 1 }, scene); break;
         case 'bubble': mesh = MeshBuilder.CreateSphere(nombre, { diameter: 1 }, scene); break;
+        case 'video_plane': mesh = MeshBuilder.CreatePlane(nombre, { size: 1, sideOrientation: Mesh.DOUBLESIDE }, scene); break; // 🔥 NUEVO VIDEO PLANE
         default: return;
       }
       mesh.scaling = new Vector3(sizeX, sizeY, sizeZ); mesh.position = new Vector3(0, 0.5 * sizeY, 0);
@@ -404,33 +408,50 @@ export class EditorSceneService {
         selectionRange: { ...playerConfig.selectionRange }
       };
 
+      if (isVideo && asset) {
+         mesh.metadata.assetId = asset.id;
+         mesh.metadata.videoUrl = asset.path; // Guardamos el path del video
+      }
+
       mesh.isPickable = true; mesh.checkCollisions = isSolid;
       mesh.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
       
-      if (tipo !== 'bubble') {
+      if (tipo !== 'bubble' && tipo !== 'video_plane') {
         mesh.receiveShadows = true;
       }
 
       mesh.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
       mesh.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
 
+      // 🔥 MATERIALES ESPECIALES
       if (tipo === 'bubble') {
         const mat = new StandardMaterial('mat_' + nombre, scene);
-        mat.diffuseColor = new Color3(0.5, 0.5, 0.5);
-        mat.emissiveColor = new Color3(0.3, 0.3, 0.3);
-        mat.alpha = 0.8;
-        mat.disableLighting = true;
+        mat.emissiveColor = new Color3(1, 1, 1); 
+        mat.diffuseColor = new Color3(0, 0, 0); 
+        mat.alpha = 0.9;
+        mat.disableLighting = true; 
         
-        mat.emissiveFresnelParameters = new FresnelParameters();
-        mat.emissiveFresnelParameters.bias = 0.1;
-        mat.emissiveFresnelParameters.power = 2;
-        mat.emissiveFresnelParameters.leftColor = Color3.White();
-        mat.emissiveFresnelParameters.rightColor = new Color3(0.5, 0.5, 0.5);
-
         mat.opacityFresnelParameters = new FresnelParameters();
-        mat.opacityFresnelParameters.leftColor = Color3.White();
-        mat.opacityFresnelParameters.rightColor = Color3.Black();
+        mat.opacityFresnelParameters.leftColor = Color3.White(); 
+        mat.opacityFresnelParameters.rightColor = Color3.Black(); 
+        mat.opacityFresnelParameters.bias = 0.4;
+        mat.opacityFresnelParameters.power = 2;
 
+        mesh.material = mat;
+        mesh.billboardMode = Mesh.BILLBOARDMODE_ALL; 
+      } else if (tipo === 'video_plane') {
+        const mat = new StandardMaterial('mat_' + nombre, scene);
+        mat.emissiveColor = new Color3(1, 1, 1); 
+        mat.disableLighting = true; 
+        
+        if (asset && asset.path) {
+            const videoUrl = 'http://localhost:4000' + asset.path;
+            const videoTexture = new VideoTexture("vidTex_" + nombre, videoUrl, scene, true, true);
+            videoTexture.video.pause(); // En el editor inicia pausado
+            mat.diffuseTexture = videoTexture;
+        } else {
+            mat.diffuseColor = new Color3(0.1, 0.1, 0.1); 
+        }
         mesh.material = mat;
       } else {
         const mat = new StandardMaterial('mat_' + nombre, scene);
@@ -511,6 +532,7 @@ export class EditorSceneService {
     objetosBD.forEach((obj: any) => {
       const isModel = obj.type === 'model';
       const isLight = obj.type?.startsWith('light_');
+      const isVideo = obj.type === 'video_plane';
 
       const defaultCollider = isModel
         ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
@@ -699,6 +721,7 @@ export class EditorSceneService {
           case 'cylinder': mesh = MeshBuilder.CreateCylinder(obj.name, { height: 1, diameter: 1 }, scene); break;
           case 'plane': mesh = MeshBuilder.CreateGround(obj.name, { width: 1, height: 1 }, scene); break;
           case 'bubble': mesh = MeshBuilder.CreateSphere(obj.name, { diameter: 1 }, scene); break;
+          case 'video_plane': mesh = MeshBuilder.CreatePlane(obj.name, { size: 1, sideOrientation: Mesh.DOUBLESIDE }, scene); break;
           default: return;
         }
 
@@ -717,11 +740,16 @@ export class EditorSceneService {
           selectionRange: { ...savedPlayerConfig.selectionRange }
         };
 
+        if (isVideo) {
+           mesh.metadata.assetId = obj.assetId;
+           mesh.metadata.videoUrl = obj.properties?.videoUrl || obj.properties?.path || '';
+        }
+
         mesh.isPickable = true; mesh.checkCollisions = isSolidSaved;
         mesh.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
         
-        if (obj.type !== 'bubble') {
-            mesh.receiveShadows = true;
+        if (obj.type !== 'bubble' && obj.type !== 'video_plane') {
+          mesh.receiveShadows = true;
         }
 
         mesh.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
@@ -729,21 +757,32 @@ export class EditorSceneService {
 
         if (obj.type === 'bubble') {
             const mat = new StandardMaterial('mat_' + obj.name, scene);
-            mat.diffuseColor = new Color3(0.5, 0.5, 0.5);
-            mat.emissiveColor = new Color3(0.3, 0.3, 0.3);
-            mat.alpha = 0.8;
+            mat.emissiveColor = new Color3(1, 1, 1);
+            mat.diffuseColor = new Color3(0, 0, 0);
+            mat.alpha = 0.9;
             mat.disableLighting = true;
             
-            mat.emissiveFresnelParameters = new FresnelParameters();
-            mat.emissiveFresnelParameters.bias = 0.1;
-            mat.emissiveFresnelParameters.power = 2;
-            mat.emissiveFresnelParameters.leftColor = Color3.White();
-            mat.emissiveFresnelParameters.rightColor = new Color3(0.5, 0.5, 0.5);
-
             mat.opacityFresnelParameters = new FresnelParameters();
             mat.opacityFresnelParameters.leftColor = Color3.White();
             mat.opacityFresnelParameters.rightColor = Color3.Black();
+            mat.opacityFresnelParameters.bias = 0.4;
+            mat.opacityFresnelParameters.power = 2;
 
+            mesh.material = mat;
+            mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
+        } else if (obj.type === 'video_plane') {
+            const mat = new StandardMaterial('mat_' + obj.name, scene);
+            mat.emissiveColor = new Color3(1, 1, 1);
+            mat.disableLighting = true;
+            
+            if (mesh.metadata.videoUrl) {
+                const videoUrl = 'http://localhost:4000' + mesh.metadata.videoUrl;
+                const videoTexture = new VideoTexture("vidTex_" + obj.name, videoUrl, scene, true, true);
+                videoTexture.video.pause();
+                mat.diffuseTexture = videoTexture;
+            } else {
+                mat.diffuseColor = new Color3(0.1, 0.1, 0.1); 
+            }
             mesh.material = mat;
         } else {
             const mat = new StandardMaterial('mat_' + obj.name, scene);
@@ -929,6 +968,11 @@ export class EditorSceneService {
             },
             assetId: nodo.metadata.assetId
           });
+        } else if (nodo.metadata.type === 'video_plane') {
+           sceneObjects.push({
+             ...baseData, type: 'video_plane', assetId: nodo.metadata.assetId,
+             properties: { videoUrl: nodo.metadata.videoUrl, path: nodo.metadata.videoUrl, ...propertiesToSave }
+           });
         } else {
           sceneObjects.push({ ...baseData, type: nodo.metadata.type, properties: { color: nodo.metadata.color, ...propertiesToSave } });
         }

@@ -114,7 +114,7 @@ export class Motor3dService {
 
           // 🔥 FIX NIEBLA: Ocultar Burbujas, Luces y Videos gradualmente
           if (m.metadata.type === 'bubble' || m.metadata.type?.startsWith('light_') || m.metadata.type === 'video_plane') {
-              if (useFogFade) {
+              if (useFogFade && !m.metadata.ignoraNiebla) {
                   const dist = Vector3.Distance(cam.globalPosition, m.getAbsolutePosition());
                   let targetVis = 1;
                   if (dist >= fogEnd) {

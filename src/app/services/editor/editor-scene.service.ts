@@ -168,9 +168,9 @@ export class EditorSceneService {
         if (light instanceof DirectionalLight) {
           const csg = new CascadedShadowGenerator(2048, light);
           csg.usePercentageCloserFiltering = true;
-          csg.filteringQuality = ShadowGenerator.QUALITY_HIGH; // 🔥 MEJORES SOMBRAS
+          csg.filteringQuality = ShadowGenerator.QUALITY_HIGH;
           csg.setDarkness(0.4);
-          csg.autoCalcDepthBounds = true; // 🔥 OPTIMIZADO PARA MÁXIMA CALIDAD EN RANGO VISIBLE
+          csg.autoCalcDepthBounds = true; 
           sg = csg;
         } else {
           const regularSg = new ShadowGenerator(1024, light as SpotLight);
@@ -254,6 +254,7 @@ export class EditorSceneService {
           }
           
           rootNode.checkCollisions = false; rootNode.isPickable = true;
+          rootNode.applyFog = true;
 
           result.meshes.forEach(m => {
             if (m !== rootNode) {
@@ -261,14 +262,18 @@ export class EditorSceneService {
               m.checkCollisions = isSolid;
               m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
               m.receiveShadows = true;
+              m.applyFog = true;
             }
-            if (m.material) this.ajustarMaterialGLB(m.material);
+            if (m.material) {
+                this.ajustarMaterialGLB(m.material);
+            }
           });
           const anims = result.animationGroups || []; anims.forEach(ag => ag.stop());
 
           const playerConfig = attachSelectionRange(mergePlayerConfig(defaultPlayerConfig));
           rootNode.metadata = {
             type: tipo, rol: 'light', assetId: asset.id, path: asset.path, isSolid, isSelectable, mensaje,
+            ignoraNiebla: false,
             lightColor: colorHex, intensity: 1.0, range: 50, angle: 60, attachedNodePath: '', attachedNodeName: '',
             animationNames: anims.map(a => a.name),
             collider: { ...defaultCollider },
@@ -308,6 +313,7 @@ export class EditorSceneService {
         mat.wireframe = true;
         mat.maxSimultaneousLights = 16;
         mesh.material = mat;
+        mesh.applyFog = true;
 
         let lightObj: any;
         if (tipo === 'light_point') lightObj = new PointLight('l_' + nombre, new Vector3(0, 2.5, 0), scene);
@@ -322,6 +328,7 @@ export class EditorSceneService {
         const playerConfig = attachSelectionRange(mergePlayerConfig(defaultPlayerConfig));
         mesh.metadata = {
           type: tipo, rol: 'light', isSolid: false, isSelectable: true,
+          ignoraNiebla: false,
           lightColor: colorHex, intensity: 1.0, range: 50, angle: 60,
           attachedNodePath: '', attachedNodeName: '', playerConfig,
           selectionRange: { ...playerConfig.selectionRange }
@@ -355,6 +362,7 @@ export class EditorSceneService {
         }
         
         rootNode.checkCollisions = false; rootNode.isPickable = true;
+        rootNode.applyFog = true;
 
         result.meshes.forEach(m => {
           if (m !== rootNode) {
@@ -362,8 +370,11 @@ export class EditorSceneService {
             m.checkCollisions = isSolid;
             m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
             m.receiveShadows = true;
+            m.applyFog = true;
           }
-          if (m.material) this.ajustarMaterialGLB(m.material);
+          if (m.material) {
+              this.ajustarMaterialGLB(m.material);
+          }
         });
         const anims = result.animationGroups || []; anims.forEach(ag => ag.stop());
 
@@ -383,6 +394,7 @@ export class EditorSceneService {
           isSolid,
           isSelectable,
           mensaje,
+          ignoraNiebla: false,
           interactDistanceFPS: 3.0,
           interactDistanceTPS: 5.0,
           interactSequenceIdFPS: '',
@@ -428,6 +440,7 @@ export class EditorSceneService {
       
       mesh.metadata = {
         type: tipo, rol, color: colorHex, colorBW: colorHex, isSolid, isSelectable, mensaje,
+        ignoraNiebla: false,
         respawnTime: 8,
         interactDistanceFPS: 3.0,
         interactDistanceTPS: 5.0,
@@ -446,6 +459,7 @@ export class EditorSceneService {
 
       mesh.isPickable = true; mesh.checkCollisions = isSolid;
       mesh.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
+      mesh.applyFog = true;
       
       if (tipo !== 'bubble' && tipo !== 'video_plane') {
         mesh.receiveShadows = true;
@@ -471,7 +485,7 @@ export class EditorSceneService {
         mesh.billboardMode = Mesh.BILLBOARDMODE_ALL; 
       } else if (tipo === 'video_plane') {
         const mat = new StandardMaterial('mat_' + nombre, scene);
-        mat.emissiveColor = new Color3(0, 0, 0); // 🔥 FIX: Inicia apagado y negro siempre
+        mat.emissiveColor = new Color3(0, 0, 0); 
         mat.disableLighting = true; 
         
         if (asset && asset.path) {
@@ -610,6 +624,7 @@ export class EditorSceneService {
         const isSolidSaved = obj.properties?.isSolid ?? true;
         const isSelectableSaved = obj.properties?.isSelectable ?? true;
         const mensajeSaved = obj.properties?.mensaje || '';
+        const isIgnoraNieblaSaved = obj.properties?.ignoraNiebla ?? false; // 🔥 Leemos de la BD
 
         const savedSelectionRange = this.extraerSelectionRange(obj.properties || obj);
 
@@ -627,6 +642,7 @@ export class EditorSceneService {
               rootNode.rotationQuaternion = Quaternion.FromEulerAngles(obj.rotation.x, obj.rotation.y, obj.rotation.z);
               rootNode.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
               rootNode.checkCollisions = false; rootNode.isPickable = true;
+              rootNode.applyFog = !isIgnoraNieblaSaved;
 
               result.meshes.forEach(m => {
                 if (m !== rootNode) {
@@ -634,8 +650,11 @@ export class EditorSceneService {
                   m.checkCollisions = isSolidSaved;
                   m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
                   m.receiveShadows = true;
+                  m.applyFog = !isIgnoraNieblaSaved;
                 }
-                if (m.material) this.ajustarMaterialGLB(m.material);
+                if (m.material) {
+                    this.ajustarMaterialGLB(m.material);
+                }
               });
               const anims = result.animationGroups || []; anims.forEach(ag => ag.stop());
 
@@ -650,6 +669,7 @@ export class EditorSceneService {
 
               rootNode.metadata = {
                 type: obj.type, rol: 'light', assetId: obj.assetId, path, isSolid: isSolidSaved, isSelectable: isSelectableSaved,
+                ignoraNiebla: isIgnoraNieblaSaved,
                 lightColor: lightColorHex, intensity: obj.properties?.intensity ?? 1.0, range: obj.properties?.range ?? 50, angle: obj.properties?.angle ?? 60,
                 attachedNodePath: obj.properties?.attachedNodePath || '', attachedNodeName: obj.properties?.attachedNodeName || '',
                 animationNames: anims.map(a => a.name),
@@ -691,6 +711,7 @@ export class EditorSceneService {
             mat.wireframe = true;
             mat.maxSimultaneousLights = 16;
             mesh.material = mat;
+            mesh.applyFog = !isIgnoraNieblaSaved;
 
             let lightObj: any;
             if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 2.5, 0), scene);
@@ -707,6 +728,7 @@ export class EditorSceneService {
 
             mesh.metadata = {
               type: obj.type, rol: 'light', isSolid: false, isSelectable: true,
+              ignoraNiebla: isIgnoraNieblaSaved,
               lightColor: lightColorHex, intensity: obj.properties?.intensity ?? 1.0, range: obj.properties?.range ?? 50, angle: obj.properties?.angle ?? 60,
               attachedNodePath: '', attachedNodeName: '', playerConfig,
               selectionRange: { ...playerConfig.selectionRange }
@@ -746,6 +768,7 @@ export class EditorSceneService {
             rootNode.rotationQuaternion = Quaternion.FromEulerAngles(obj.rotation.x, obj.rotation.y, obj.rotation.z);
             rootNode.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
             rootNode.checkCollisions = false; rootNode.isPickable = true;
+            rootNode.applyFog = !isIgnoraNieblaSaved;
 
             result.meshes.forEach(m => {
               if (m !== rootNode) {
@@ -753,8 +776,11 @@ export class EditorSceneService {
                 m.checkCollisions = isSolidSaved;
                 m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
                 m.receiveShadows = true;
+                m.applyFog = !isIgnoraNieblaSaved;
               }
-              if (m.material) this.ajustarMaterialGLB(m.material);
+              if (m.material) {
+                  this.ajustarMaterialGLB(m.material);
+              }
             });
             const anims = result.animationGroups || []; anims.forEach(ag => ag.stop());
 
@@ -767,6 +793,7 @@ export class EditorSceneService {
 
             rootNode.metadata = {
               type: 'model', rol: rolSaved, assetId: obj.assetId, path, isSolid: isSolidSaved, isSelectable: isSelectableSaved, mensaje: mensajeSaved,
+              ignoraNiebla: isIgnoraNieblaSaved,
               interactDistanceFPS, interactDistanceTPS, interactSequenceIdFPS, interactSequenceIdTPS,
               animationNames: anims.map(a => a.name),
               collider: savedCollider,
@@ -800,6 +827,7 @@ export class EditorSceneService {
 
           mesh.metadata = {
             type: obj.type, rol: rolSaved, color: savedColorHex, colorBW: savedColorBW, isSolid: isSolidSaved, isSelectable: isSelectableSaved, mensaje: mensajeSaved,
+            ignoraNiebla: isIgnoraNieblaSaved,
             respawnTime: obj.properties?.respawnTime ?? 8, 
             interactDistanceFPS, interactDistanceTPS, interactSequenceIdFPS, interactSequenceIdTPS,
             collider: savedCollider,
@@ -815,6 +843,7 @@ export class EditorSceneService {
 
           mesh.isPickable = true; mesh.checkCollisions = isSolidSaved;
           mesh.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
+          mesh.applyFog = !isIgnoraNieblaSaved;
           
           if (obj.type !== 'bubble' && obj.type !== 'video_plane') {
             mesh.receiveShadows = true;
@@ -1012,6 +1041,7 @@ export class EditorSceneService {
           rol: nodo.metadata.rol,
           isSolid: nodo.metadata.isSolid,
           isSelectable: nodo.metadata.isSelectable,
+          ignoraNiebla: nodo.metadata.ignoraNiebla ?? false,
           mensaje: nodo.metadata.mensaje,
           respawnTime: nodo.metadata.respawnTime ?? 8, 
           interactDistanceFPS: nodo.metadata.interactDistanceFPS ?? 3.0,

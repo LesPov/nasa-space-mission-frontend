@@ -27,10 +27,12 @@ export class PropTransform implements OnInit, OnDestroy {
   localRotX = 0; localRotY = 0; localRotZ = 0;
   localEscX = 1; localEscY = 1; localEscZ = 1;
 
-  // Variables para la nueva sección de Color
   mostrarSeccionColor = false;
   objColor = '#ffffff';
   objColorBW = '#ffffff';
+  
+  objIgnoraNiebla = false;
+  objEsEmisivo = false; // 🔥 NUEVO: Control para que el objeto brille en la oscuridad
 
   objInteractDistanceFPS = 3.0;
   objInteractDistanceTPS = 5.0;
@@ -76,10 +78,12 @@ export class PropTransform implements OnInit, OnDestroy {
 
     const meta = this.objeto.metadata || {};
     
-    // Cargar colores
     this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane'].includes(meta.type);
     this.objColor = meta.color || '#ffffff';
     this.objColorBW = meta.colorBW || this.objColor;
+    
+    this.objIgnoraNiebla = meta.ignoraNiebla ?? false; 
+    this.objEsEmisivo = meta.esEmisivo ?? false; // 🔥 Sincronizar estado
 
     this.objInteractDistanceFPS = meta.interactDistanceFPS ?? 3.0;
     this.objInteractDistanceTPS = meta.interactDistanceTPS ?? 5.0;
@@ -105,18 +109,31 @@ export class PropTransform implements OnInit, OnDestroy {
     this.editorSvc.triggerUpdate();
   }
 
-  aplicarColor() {
+  aplicarVisuales() {
     if (!this.objeto.metadata) this.objeto.metadata = {};
     this.objeto.metadata.color = this.objColor;
     this.objeto.metadata.colorBW = this.objColorBW;
+    this.objeto.metadata.ignoraNiebla = this.objIgnoraNiebla;
+    this.objeto.metadata.esEmisivo = this.objEsEmisivo;
 
-    // Evaluamos el modo actual de la escena
     const isBW = this.motor3dSvc.scene.metadata?.globalVisualMode === 'bw';
     const activeColorHex = isBW ? this.objColorBW : this.objColor;
 
-    if (this.objeto.material instanceof StandardMaterial) {
-      this.objeto.material.diffuseColor = Color3.FromHexString(activeColorHex);
+    if (this.objeto.material && this.objeto.material instanceof StandardMaterial) {
+        this.objeto.material.diffuseColor = Color3.FromHexString(activeColorHex);
+        
+        // 🔥 LÓGICA DE NEÓN / EMISIVO: Si está activo, el objeto brilla solo.
+        if (this.objEsEmisivo) {
+            this.objeto.material.emissiveColor = Color3.FromHexString(activeColorHex);
+            this.objeto.material.disableLighting = true; // Brilla al 100% sin importar la sombra
+        } else {
+            this.objeto.material.emissiveColor = new Color3(0, 0, 0);
+            this.objeto.material.disableLighting = false; // Vuelve a ser un objeto normal afectado por luz
+        }
     }
+
+    this.objeto.applyFog = !this.objIgnoraNiebla;
+    this.objeto.getChildMeshes().forEach(m => m.applyFog = !this.objIgnoraNiebla);
 
     this.editorSvc.triggerUpdate();
   }

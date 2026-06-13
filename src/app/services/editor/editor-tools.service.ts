@@ -1,4 +1,3 @@
-
 import { Injectable, inject, effect } from '@angular/core';
 import {
   Color3,
@@ -126,7 +125,6 @@ export class EditorToolsService {
 
   private getSelectionRangeConfig(): { fpsAdminMax: number; fpsUserMax: number } {
     const fallback = { fpsAdminMax: 10000, fpsUserMax: 3 };
-
     const candidates: Array<any> = [];
     const jugadorActivo = this.state.jugadorActivo as AbstractMesh | null;
     if (jugadorActivo?.metadata) candidates.push(jugadorActivo.metadata);
@@ -142,13 +140,11 @@ export class EditorToolsService {
     for (const meta of candidates) {
       const source = meta?.playerConfig?.selectionRange || meta?.selectionRange;
       if (!source) continue;
-
       return {
         fpsAdminMax: this.normalizarNumero(source.fpsAdminMax, fallback.fpsAdminMax),
         fpsUserMax: this.normalizarNumero(source.fpsUserMax, fallback.fpsUserMax)
       };
     }
-
     return fallback;
   }
 
@@ -169,7 +165,6 @@ export class EditorToolsService {
 
   private getFogDebugAnchor(selected: AbstractMesh): Vector3 {
     const meta = selected?.metadata || {};
-
     const camMeta = meta?.camOffset;
     if ((meta?.rol === 'npc' || meta?.rol === 'spawn_point') && camMeta) {
       return new Vector3(
@@ -178,7 +173,6 @@ export class EditorToolsService {
         this.normalizarNumero(camMeta.z, 0)
       );
     }
-
     if (meta?.initialHeadLocal) {
       return new Vector3(
         this.normalizarNumero(meta.initialHeadLocal.x, 0),
@@ -186,7 +180,6 @@ export class EditorToolsService {
         this.normalizarNumero(meta.initialHeadLocal.z, 0)
       );
     }
-
     const colMeta = meta?.collider;
     if (colMeta) {
       const offsetY = this.normalizarNumero(colMeta.offsetY, 0);
@@ -197,13 +190,11 @@ export class EditorToolsService {
         this.normalizarNumero(colMeta.offsetZ, 0)
       );
     }
-
     return new Vector3(0, 1.6, 0);
   }
 
   private canSelectByDistance(ray: Ray, target: AbstractMesh, hit: any, isAdmin: boolean): boolean {
     const playSt = this.state.playState();
-
     if (playSt !== 'PLAYING' && playSt !== 'EDITING_IN_GAME') return true;
     if (this.state.modoVistaPrueba !== 'FPS') return true;
 
@@ -211,15 +202,11 @@ export class EditorToolsService {
     if (!Number.isFinite(maxDistance) || maxDistance <= 0) return true;
 
     const distanceFromPick = typeof hit?.distance === 'number' ? hit.distance : NaN;
-    if (Number.isFinite(distanceFromPick)) {
-      return distanceFromPick <= maxDistance;
-    }
+    if (Number.isFinite(distanceFromPick)) return distanceFromPick <= maxDistance;
 
     const origin = ray?.origin ?? this.motor3d.scene.activeCamera?.globalPosition;
     if (!origin) return true;
-
-    const point = this.getMeshSelectionPoint(target);
-    return Vector3.Distance(origin, point) <= maxDistance;
+    return Vector3.Distance(origin, this.getMeshSelectionPoint(target)) <= maxDistance;
   }
 
   private puedeTomarseParaSeleccion(mesh: AbstractMesh): boolean {
@@ -229,7 +216,6 @@ export class EditorToolsService {
     const root = this.state.encontrarRaiz(mesh) as AbstractMesh | null;
     const base = root ?? mesh;
     const selectable = base.metadata?.isSelectable ?? mesh.metadata?.isSelectable ?? true;
-
     return selectable !== false;
   }
 
@@ -239,17 +225,13 @@ export class EditorToolsService {
 
     const hit = scene.pickWithRay(ray, (m) => {
       if (!m.isVisible || !m.isPickable) return false;
-
       const nameStr = m.name.toLowerCase();
       if (nameStr.includes('highlight') || nameStr.includes('gizmo')) return false;
       if (nameStr.includes('proxycol') || nameStr.includes('suelo') || nameStr.includes('skybox') || nameStr.includes('debug')) return false;
       if (m === this.centerDragMesh) return false;
-
-      // 🔥 FIX TRIGGERS: NUNCA se preseleccionan en PLAYING o EDITING_IN_GAME (1ra y 3ra persona)
       if (m.metadata?.type === 'trigger' || nameStr.includes('trigger')) {
           if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') return false;
       }
-
       return true;
     });
 
@@ -260,7 +242,6 @@ export class EditorToolsService {
 
     const rootNode = this.state.encontrarRaiz(picked);
     if (!(rootNode instanceof AbstractMesh)) return null;
-
     if (this.esTriggerMesh(rootNode) && !isAdmin) return null;
 
     if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') {
@@ -274,7 +255,6 @@ export class EditorToolsService {
       if (!this.puedeTomarseParaSeleccion(rootNode)) return null;
       return rootNode;
     }
-
     return null;
   }
 
@@ -303,11 +283,15 @@ export class EditorToolsService {
     if (this.gizmoManager.gizmos.positionGizmo) {
       this.gizmoManager.gizmos.positionGizmo.snapDistance = 0;
       this.gizmoManager.gizmos.positionGizmo.planarGizmoEnabled = false;
+      // 🔥 FIX DEFINITIVO DE SALTOS Y TELETRANSPORTE AL INFINITO
+      // Obliga al Gizmo de posición a usar el Mundo Global, evitando cálculos erróneos por escalas no uniformes.
+      this.gizmoManager.gizmos.positionGizmo.updateGizmoRotationToMatchAttachedMesh = false;
     }
 
     if (this.gizmoManager.gizmos.rotationGizmo) {
       this.gizmoManager.gizmos.rotationGizmo.snapDistance = 0;
-      this.gizmoManager.gizmos.rotationGizmo.updateGizmoRotationToMatchAttachedMesh = true;
+      // 🔥 FIX DE ROTACIÓN CON ESCALAS NO UNIFORMES
+      this.gizmoManager.gizmos.rotationGizmo.updateGizmoRotationToMatchAttachedMesh = false;
     }
 
     if (this.gizmoManager.gizmos.scaleGizmo) {
@@ -679,8 +663,8 @@ export class EditorToolsService {
         if ((light instanceof SpotLight || light instanceof DirectionalLight) && light.name.startsWith('l_')) {
           if (light.parent) {
             const parentNode = light.parent as TransformNode;
-            const invWorldMatrix = parentNode.getWorldMatrix().clone().invert();
-            const localDown = Vector3.TransformNormal(new Vector3(0, -1, 0), invWorldMatrix);
+            const worldMatrix = parentNode.getWorldMatrix();
+            const localDown = Vector3.TransformNormal(new Vector3(0, -1, 0), worldMatrix);
             light.direction.copyFrom(localDown.normalize());
           } else {
             light.direction.copyFromFloats(0, -1, 0);

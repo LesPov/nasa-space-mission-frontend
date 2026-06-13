@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Quaternion, Vector3, AbstractMesh, UniversalCamera, Light, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
@@ -157,7 +156,7 @@ export class PlayerSequenceService {
       if (state.orientationLocked) this.captureSequenceOrientationState(jugador, state);
       if (step.action === 'jumpStart') state.jumpTriggered = true;
       
-      // 🔥 LÓGICA DE VIDEOS AL ENTRAR AL PASO MEJORADA Y UNIFICADA
+      // 🔥 FIX VIDEO BURN-OUT: Ajustamos el emissiveColor para que no se queme en Blanco y Negro
       if (step.action === 'playVideo' || step.action === 'pauseVideo' || step.action === 'stopVideo') {
           const videoName = step.clipOverride; 
           if (videoName) {
@@ -166,23 +165,21 @@ export class PlayerSequenceService {
                   const texture = videoMesh.material.diffuseTexture;
                   if (texture && texture instanceof VideoTexture) {
                       if (step.action === 'playVideo') {
-                          console.log("▶️ Reproduciendo video:", videoName);
                           texture.video.play();
-                          videoMesh.material.emissiveColor = new Color3(1, 1, 1); // Brilla normal
-                          videoMesh.metadata.isPoweredOn = true; // 🔥 AVISA AL MOTOR QUE SE ENCENDIÓ
+                          // En lugar de blanco puro (1,1,1), usamos un gris medio para que el contraste B&W no lo destruya
+                          videoMesh.material.emissiveColor = new Color3(0.4, 0.4, 0.4); 
+                          videoMesh.metadata.isPoweredOn = true; 
                       }
                       if (step.action === 'pauseVideo') {
-                          console.log("⏸️ Pausando video:", videoName);
                           texture.video.pause();
-                          videoMesh.material.emissiveColor = new Color3(0.3, 0.3, 0.3); // Se oscurece a la mitad
-                          videoMesh.metadata.isPoweredOn = true; // 🔥 SIGUE ENCENDIDA, SOLO PAUSADA
+                          videoMesh.material.emissiveColor = new Color3(0.2, 0.2, 0.2); 
+                          videoMesh.metadata.isPoweredOn = true; 
                       }
                       if (step.action === 'stopVideo') { 
-                          console.log("⏹️ Deteniendo video:", videoName);
                           texture.video.pause(); 
                           texture.video.currentTime = 0; 
-                          videoMesh.material.emissiveColor = new Color3(0, 0, 0); // Pantalla negra
-                          videoMesh.metadata.isPoweredOn = false; // 🔥 AVISA AL MOTOR QUE SE APAGÓ TOTALMENTE
+                          videoMesh.material.emissiveColor = new Color3(0, 0, 0); 
+                          videoMesh.metadata.isPoweredOn = false; 
                       }
                   }
               }
@@ -195,7 +192,7 @@ export class PlayerSequenceService {
     }
 
     if (jugador.metadata?.type?.startsWith('light_')) {
-        const light = jugador.getDescendants(false).find(c => c.name.startsWith('l_')) as Light;
+        const light = jugador.getDescendants(false).find(c => c instanceof Light) as Light;
         if (light && typeof light.intensity !== 'undefined') {
             const baseIntensity = jugador.metadata?.intensity ?? 1.0;
             

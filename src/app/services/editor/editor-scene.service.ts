@@ -62,8 +62,6 @@ export class EditorSceneService {
       material.roughness = 0.8;
       material.environmentIntensity = 0.5;
     }
-    // 🔥 FIX BUG 2: Eliminamos material.freeze();
-    // Al no estar congelado, el material PBR escuchará instantáneamente el cambio de Blanco y Negro.
   }
 
   crearEntornoVisual(): void {
@@ -429,6 +427,7 @@ export class EditorSceneService {
       
       mesh.metadata = {
         type: tipo, rol, color: colorHex, colorBW: colorHex, isSolid, isSelectable, mensaje,
+        respawnTime: 8,
         interactDistanceFPS: 3.0,
         interactDistanceTPS: 5.0,
         interactSequenceIdFPS: '',
@@ -456,22 +455,22 @@ export class EditorSceneService {
 
       if (tipo === 'bubble') {
         const mat = new StandardMaterial('mat_' + nombre, scene);
-        mat.emissiveColor = new Color3(1, 1, 1); 
+        mat.emissiveColor = new Color3(0.9, 0.95, 1.0); 
         mat.diffuseColor = new Color3(0, 0, 0); 
-        mat.alpha = 0.9;
+        mat.alpha = 0.6; 
         mat.disableLighting = true; 
         
         mat.opacityFresnelParameters = new FresnelParameters();
         mat.opacityFresnelParameters.leftColor = Color3.White(); 
         mat.opacityFresnelParameters.rightColor = Color3.Black(); 
-        mat.opacityFresnelParameters.bias = 0.4;
-        mat.opacityFresnelParameters.power = 2;
+        mat.opacityFresnelParameters.bias = 0.2;
+        mat.opacityFresnelParameters.power = 1.5;
 
         mesh.material = mat;
         mesh.billboardMode = Mesh.BILLBOARDMODE_ALL; 
       } else if (tipo === 'video_plane') {
         const mat = new StandardMaterial('mat_' + nombre, scene);
-        mat.emissiveColor = new Color3(1, 1, 1); 
+        mat.emissiveColor = new Color3(0, 0, 0); // 🔥 FIX: Inicia apagado y negro siempre
         mat.disableLighting = true; 
         
         if (asset && asset.path) {
@@ -556,7 +555,6 @@ export class EditorSceneService {
         this.configurarAmbienteGlobal(scene, w);
         scene.clearColor = Color4.FromHexString(clearHex + 'ff');
         
-        // 🔥 LÓGICA VITAL: Guardamos y aplicamos el filtro B&W al cargar la escena
         const loadedMode = w.visualMode === 'bw' ? 'bw' : 'normal';
         scene.metadata = { ...scene.metadata, globalClearColor: clearHex, globalVisualMode: loadedMode };
         this.motor3d.setVisualMode(loadedMode);
@@ -570,7 +568,6 @@ export class EditorSceneService {
         });
         scene.clearColor = Color4.FromHexString(clearHex + 'ff');
         
-        // 🔥 Si no había nada en BD, forzamos Normal
         scene.metadata = { ...scene.metadata, globalClearColor: clearHex, globalVisualMode: 'normal' };
         this.motor3d.setVisualMode('normal');
       }
@@ -789,6 +786,7 @@ export class EditorSceneService {
 
           mesh.metadata = {
             type: obj.type, rol: rolSaved, color: savedColorHex, colorBW: savedColorBW, isSolid: isSolidSaved, isSelectable: isSelectableSaved, mensaje: mensajeSaved,
+            respawnTime: obj.properties?.respawnTime ?? 8, 
             interactDistanceFPS, interactDistanceTPS, interactSequenceIdFPS, interactSequenceIdTPS,
             collider: savedCollider,
             camOffset: savedCamOffset,
@@ -813,22 +811,22 @@ export class EditorSceneService {
 
           if (obj.type === 'bubble') {
               const mat = new StandardMaterial('mat_' + obj.name, scene);
-              mat.emissiveColor = new Color3(1, 1, 1);
+              mat.emissiveColor = new Color3(0.9, 0.95, 1.0);
               mat.diffuseColor = new Color3(0, 0, 0);
-              mat.alpha = 0.9;
+              mat.alpha = 0.6;
               mat.disableLighting = true;
               
               mat.opacityFresnelParameters = new FresnelParameters();
               mat.opacityFresnelParameters.leftColor = Color3.White();
               mat.opacityFresnelParameters.rightColor = Color3.Black();
-              mat.opacityFresnelParameters.bias = 0.4;
-              mat.opacityFresnelParameters.power = 2;
+              mat.opacityFresnelParameters.bias = 0.2;
+              mat.opacityFresnelParameters.power = 1.5;
 
               mesh.material = mat;
               mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
           } else if (obj.type === 'video_plane') {
               const mat = new StandardMaterial('mat_' + obj.name, scene);
-              mat.emissiveColor = new Color3(1, 1, 1);
+              mat.emissiveColor = new Color3(0, 0, 0); // 🔥 FIX: Inicia apagado al cargar
               mat.disableLighting = true;
               
               if (mesh.metadata.videoUrl) {
@@ -927,7 +925,6 @@ export class EditorSceneService {
     const scene = this.motor3d.scene;
     const ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;
 
-    // 🔥 AQUÍ SE GUARDA EL MODO EN LA BASE DE DATOS
     const worldSettings = {
       visualMode: scene.metadata?.globalVisualMode || 'normal',
       clearColor: scene.metadata?.globalClearColor || scene.clearColor.toHexString().substring(0, 7),
@@ -1001,6 +998,7 @@ export class EditorSceneService {
           isSolid: nodo.metadata.isSolid,
           isSelectable: nodo.metadata.isSelectable,
           mensaje: nodo.metadata.mensaje,
+          respawnTime: nodo.metadata.respawnTime ?? 8, 
           interactDistanceFPS: nodo.metadata.interactDistanceFPS ?? 3.0,
           interactDistanceTPS: nodo.metadata.interactDistanceTPS ?? 5.0,
           interactSequenceIdFPS: nodo.metadata.interactSequenceIdFPS || '',

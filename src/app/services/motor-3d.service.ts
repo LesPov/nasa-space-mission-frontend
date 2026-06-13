@@ -9,7 +9,9 @@ import {
   UniversalCamera,
   DefaultRenderingPipeline,
   Color3,
-  ColorCurves
+  ColorCurves,
+  GlowLayer,
+  Mesh
 } from '@babylonjs/core';
 
 @Injectable({
@@ -24,6 +26,7 @@ export class Motor3dService {
   public playerCameraTPS!: ArcRotateCamera;
 
   public renderingPipeline!: DefaultRenderingPipeline;
+  public glowLayer!: GlowLayer; 
   public currentFps: number = 0;
 
   private readonly TPS_MIN_RADIUS = 0.5;
@@ -44,7 +47,6 @@ export class Motor3dService {
     this.scene.autoClearDepthAndStencil = false;
     this.scene.collisionsEnabled = true;
     this.scene.gravity = new Vector3(0, -0.25, 0);
-
     this.scene.skipPointerMovePicking = true;
 
     this.editorCamera = new ArcRotateCamera('editorCamera', Math.PI / 4, Math.PI / 3, 25, Vector3.Zero(), this.scene);
@@ -83,8 +85,11 @@ export class Motor3dService {
     this.renderingPipeline = new DefaultRenderingPipeline('defaultPipeline', false, this.scene, this.scene.cameras);
     this.renderingPipeline.fxaaEnabled = true; 
     this.renderingPipeline.samples = 2;
-    this.renderingPipeline.bloomEnabled = false;
+    this.renderingPipeline.bloomEnabled = false; 
     this.renderingPipeline.imageProcessingEnabled = true; 
+
+    this.glowLayer = new GlowLayer("glow", this.scene, { mainTextureFixedSize: 1024, blurKernelSize: 32 });
+    this.glowLayer.intensity = 0.6; 
 
     this.scene.onBeforeRenderObservable.add(() => {
       if (this.scene.activeCamera === this.editorCamera) {
@@ -96,6 +101,36 @@ export class Motor3dService {
         this.editorCamera.panningSensibility = 25 + (proximity * 1175);
         this.editorCamera.wheelPrecision = 0.8 + (proximity * 49.2);
       }
+
+      // 🔥 FIX ANIMACIÓN BURBUJA: Reducimos la escala máxima y el latido para que sea más fina
+      const time = performance.now() * 0.003;
+      this.scene.meshes.forEach(m => {
+          if (m.metadata && m.metadata.type === 'bubble' && m.isVisible) {
+              if (!m.metadata.baseScaleX) {
+                  m.metadata.baseScaleX = m.scaling.x;
+                  m.metadata.baseScaleY = m.scaling.y;
+                  m.metadata.baseScaleZ = m.scaling.z;
+              }
+              
+              const isHovered = m.metadata.isHovered === true;
+              const targetHoverScale = isHovered ? 1.15 : 1.0; // Antes 1.3, ahora 1.15 (más pequeño)
+              
+              if (m.metadata.currentHoverScale === undefined) m.metadata.currentHoverScale = 1.0;
+              m.metadata.currentHoverScale += (targetHoverScale - m.metadata.currentHoverScale) * 0.15;
+              
+              // Latido más sutil
+              const pulse = 1 + Math.sin(time + m.uniqueId) * 0.025; // Antes 0.06, ahora 0.025
+              const finalScale = pulse * m.metadata.currentHoverScale;
+              
+              m.scaling.set(
+                  m.metadata.baseScaleX * finalScale,
+                  m.metadata.baseScaleY * finalScale,
+                  m.metadata.baseScaleZ * finalScale
+              );
+              
+              m.billboardMode = Mesh.BILLBOARDMODE_ALL; 
+          }
+      });
     });
 
     this.scene.onBeforeCameraRenderObservable.add((camera) => {
@@ -127,7 +162,6 @@ export class Motor3dService {
     });
   }
 
-  // 🔥 FIX BUG 2: Fuerza la actualización de todos los materiales PBR en tiempo real
   setVisualMode(mode: 'normal' | 'bw'): void {
     if (!this.renderingPipeline) return;
 
@@ -140,19 +174,16 @@ export class Motor3dService {
       curves.globalDensity = 0;
     }
 
-    // 1. Post Process a la cámara principal
     this.renderingPipeline.imageProcessing.colorCurvesEnabled = isBw;
     if (isBw) this.renderingPipeline.imageProcessing.colorCurves = curves;
     this.renderingPipeline.imageProcessing.exposure = isBw ? 0.98 : 1.0;
     this.renderingPipeline.imageProcessing.contrast = isBw ? 1.15 : 1.0; 
 
-    // 2. Configuración global a la escena
     this.scene.imageProcessingConfiguration.colorCurvesEnabled = isBw;
     if (isBw) this.scene.imageProcessingConfiguration.colorCurves = curves;
     this.scene.imageProcessingConfiguration.exposure = isBw ? 0.98 : 1.0;
     this.scene.imageProcessingConfiguration.contrast = isBw ? 1.15 : 1.0;
 
-    // 3. 🔥 Inyectar obligatoriamente la nueva configuración en los modelos PBR de los personajes/objetos
     this.scene.materials.forEach(mat => {
       if ((mat as any).imageProcessingConfiguration) {
         (mat as any).imageProcessingConfiguration.colorCurvesEnabled = isBw;

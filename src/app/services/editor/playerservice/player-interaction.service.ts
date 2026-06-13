@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Matrix } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -196,6 +195,14 @@ export class PlayerInteractionService {
         }
       }
     }
+
+    // 🔥 FIX ANIMACIÓN BURBUJA: Le avisamos a TODOS los modelos si están siendo "Hovereados"
+    // Esto lo usará el Motor3dService para escalar el objeto y darle retroalimentación visual al usuario.
+    scene.meshes.forEach(m => {
+        if (m.metadata) {
+            m.metadata.isHovered = (hoverSelectable === m);
+        }
+    });
 
     let showE = false;
     let showI = false;

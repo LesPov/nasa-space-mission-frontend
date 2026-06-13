@@ -1,3 +1,4 @@
+
 import { Injectable } from '@angular/core';
 import {
   Engine,
@@ -102,10 +103,37 @@ export class Motor3dService {
         this.editorCamera.wheelPrecision = 0.8 + (proximity * 49.2);
       }
 
-      // 🔥 FIX ANIMACIÓN BURBUJA
+      const cam = this.scene.activeCamera;
+      const useFogFade = this.scene.fogMode !== Scene.FOGMODE_NONE && cam;
+      const fogStart = this.scene.fogStart;
+      const fogEnd = this.scene.fogEnd;
       const time = performance.now() * 0.003;
+
       this.scene.meshes.forEach(m => {
-          if (m.metadata && m.metadata.type === 'bubble' && m.isVisible) {
+          if (!m.metadata) return;
+
+          // 🔥 FIX NIEBLA: Ocultar Burbujas, Luces y Videos gradualmente
+          if (m.metadata.type === 'bubble' || m.metadata.type?.startsWith('light_') || m.metadata.type === 'video_plane') {
+              if (useFogFade) {
+                  const dist = Vector3.Distance(cam.globalPosition, m.getAbsolutePosition());
+                  let targetVis = 1;
+                  if (dist >= fogEnd) {
+                      targetVis = 0;
+                  } else if (dist > fogStart) {
+                      targetVis = 1.0 - ((dist - fogStart) / (fogEnd - fogStart));
+                      targetVis = Math.pow(targetVis, 1.2); // Curva suave de desaparición
+                  }
+                  
+                  m.visibility = targetVis;
+                  m.getChildMeshes().forEach(child => child.visibility = targetVis);
+              } else {
+                  m.visibility = 1;
+                  m.getChildMeshes().forEach(child => child.visibility = 1);
+              }
+          }
+
+          // 🔥 FIX ANIMACIÓN BURBUJA
+          if (m.metadata.type === 'bubble' && m.isVisible) {
               if (!m.metadata.baseScaleX) {
                   m.metadata.baseScaleX = m.scaling.x;
                   m.metadata.baseScaleY = m.scaling.y;

@@ -1,3 +1,4 @@
+
 import { Injectable, inject, effect } from '@angular/core';
 import {
   Color3,
@@ -51,7 +52,6 @@ export class EditorToolsService {
   private debugCollider: Mesh | null = null;
   private debugCameraBox: Mesh | null = null;
   
-  // 🔥 Esferas para mostrar los dos radios de la niebla en el Editor
   private debugFogStartSphere: Mesh | null = null;
   private debugFogEndSphere: Mesh | null = null;
 
@@ -235,6 +235,7 @@ export class EditorToolsService {
 
   private resolverRootDesdeRay(ray: Ray, isAdmin: boolean): AbstractMesh | null {
     const scene = this.motor3d.scene;
+    const playSt = this.state.playState();
 
     const hit = scene.pickWithRay(ray, (m) => {
       if (!m.isVisible || !m.isPickable) return false;
@@ -243,6 +244,11 @@ export class EditorToolsService {
       if (nameStr.includes('highlight') || nameStr.includes('gizmo')) return false;
       if (nameStr.includes('proxycol') || nameStr.includes('suelo') || nameStr.includes('skybox') || nameStr.includes('debug')) return false;
       if (m === this.centerDragMesh) return false;
+
+      // 🔥 FIX TRIGGERS: NUNCA se preseleccionan en PLAYING o EDITING_IN_GAME (1ra y 3ra persona)
+      if (m.metadata?.type === 'trigger' || nameStr.includes('trigger')) {
+          if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') return false;
+      }
 
       return true;
     });
@@ -256,8 +262,6 @@ export class EditorToolsService {
     if (!(rootNode instanceof AbstractMesh)) return null;
 
     if (this.esTriggerMesh(rootNode) && !isAdmin) return null;
-
-    const playSt = this.state.playState();
 
     if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') {
       if (!isAdmin) return null;
@@ -750,7 +754,6 @@ export class EditorToolsService {
         this.debugCameraBox.position.set(camMeta.x + breathX, camMeta.y + breathY, camMeta.z + breathZ);
       }
 
-      // 🔥 FIX POSICIÓN ESFERAS: LAS ANCLAMOS MÁS ARRIBA PARA QUE NO QUEDEN DENTRO DEL CUERPO
       const fogAnchor = this.getFogDebugAnchor(obj);
       if (this.debugFogStartSphere) {
         this.debugFogStartSphere.position.set(
@@ -774,7 +777,7 @@ export class EditorToolsService {
     this.setToolMode('translate');
   }
 
-public aplicarNieblaEnTiempoReal() {
+  public aplicarNieblaEnTiempoReal() {
     const scene = this.motor3d.scene;
     if (!scene) return;
 
@@ -802,8 +805,8 @@ public aplicarNieblaEnTiempoReal() {
         let activeEnd = 50;
         let activeRenderDistance = 150;
         
-        let activeDensityStart = 0; // Fuerza del Muro
-        let activeDensityEnd = 100; // Transparencia Lejana
+        let activeDensityStart = 0;
+        let activeDensityEnd = 100;
 
         if (isBW) {
           activeStart = isFPS ? (fog.startFpsBW ?? 0) : (fog.startTpsBW ?? 5);
@@ -826,22 +829,15 @@ public aplicarNieblaEnTiempoReal() {
           distCamToPlayer = Vector3.Distance(scene.activeCamera.globalPosition, targetPlayer.getAbsolutePosition());
         }
 
-        // 🔥 LOGICA MATEMATICA DE DOBLE DENSIDAD
         const clampedStart = Math.max(0, Math.min(99.5, activeDensityStart));
-        const clampedEnd = Math.max(1, Math.min(100, activeDensityEnd)); // Minimo 1% para evitar errores de limite
+        const clampedEnd = Math.max(1, Math.min(100, activeDensityEnd)); 
 
         const gap = activeEnd - activeStart;
-
-        // 1. DENSIDAD DE FONDO (Opacidad Final): Empuja el final de la niebla muchísimo más lejos.
-        // Si quieres 50% de niebla en la esfera roja, el verdadero final al 100% ocurre al doble de distancia.
         const targetFogEnd = activeStart + (gap / (clampedEnd / 100));
-
-        // 2. DENSIDAD DE INICIO (Muro): Comprime agresivamente ese final calculado hacia la esfera azul.
-        // Esto crea el "golpe de niebla" sin mover el inicio, por lo que la zona interior sigue 100% limpia.
         const finalAdjustedEnd = activeStart + ((targetFogEnd - activeStart) * (1 - (clampedStart / 100)));
 
         scene.fogMode = Scene.FOGMODE_LINEAR;
-        scene.fogStart = activeStart + distCamToPlayer; // LA ZONA LIMPIA ESTÁ COMPLETAMENTE A SALVO
+        scene.fogStart = activeStart + distCamToPlayer; 
         scene.fogEnd = finalAdjustedEnd + distCamToPlayer; 
         
         scene.clearColor = Color4.FromHexString(activeColor + 'ff');
@@ -1062,11 +1058,11 @@ public aplicarNieblaEnTiempoReal() {
     const colorSelected = Color3.FromHexString('#fbbf24');
 
     const addHighlightToAllVisible = (mesh: Mesh, hl: HighlightLayer, color: Color3) => {
-      if (mesh.isVisible && !mesh.name.includes('proxyCol') && !mesh.name.includes('debug') && !mesh.name.includes('cameraPivot')) {
+      if (mesh.isVisible && !mesh.name.includes('proxyCol') && !mesh.name.includes('debug') && !mesh.name.includes('cameraPivot') && mesh.metadata?.type !== 'trigger') {
         hl.addMesh(mesh, color);
       }
       mesh.getChildMeshes().forEach(c => {
-        if (c instanceof Mesh && c.isVisible && !c.name.includes('proxyCol') && !c.name.includes('debug') && !c.name.includes('cameraPivot')) {
+        if (c instanceof Mesh && c.isVisible && !c.name.includes('proxyCol') && !c.name.includes('debug') && !c.name.includes('cameraPivot') && c.metadata?.type !== 'trigger') {
           hl.addMesh(c, color);
         }
       });

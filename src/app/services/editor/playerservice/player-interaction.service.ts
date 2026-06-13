@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Matrix } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -108,8 +109,8 @@ export class PlayerInteractionService {
         if (!m.isPickable) return false;
         if (!m.isVisible) return false;
 
-        // 🔥 FIX: Permitir al Admin hacer hover visual al trigger con el puntero FPS
-        if (m.metadata?.type === 'trigger' && !isAdmin) return false;
+        // 🔥 FIX TRIGGERS FPS: Ignorar triggers por completo para no preseleccionar
+        if (m.metadata?.type === 'trigger') return false; 
         if (m === jugador || m.isDescendantOf(jugador)) return false;
 
         const nameStr = m.name.toLowerCase();
@@ -162,8 +163,8 @@ export class PlayerInteractionService {
       scene.meshes.forEach(mesh => {
         if (mesh === jugador || mesh.name.includes('proxyCol') || mesh.name.toLowerCase().includes('suelo') || !mesh.isPickable) return;
         
-        // 🔥 FIX: Permitir al Admin evaluar el trigger en TPS
-        if (mesh.metadata?.type === 'trigger' && !isAdmin) return; 
+        // 🔥 FIX TRIGGERS TPS: Ignorar triggers por completo
+        if (mesh.metadata?.type === 'trigger') return; 
         if (!mesh.isVisible) return;
 
         const root = this.state.encontrarRaiz(mesh as AbstractMesh) as AbstractMesh;

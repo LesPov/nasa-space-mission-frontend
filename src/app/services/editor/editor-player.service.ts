@@ -49,7 +49,6 @@ export class EditorPlayerService {
   }
 
   public iniciarModoJuego(vista: 'FPS' | 'TPS'): void {
-    // 🔥 FIX: Nos aseguramos de purgar la UI de las secuencias si estaban abiertas
     this.detenerPreviewSecuencia();
 
     const obj = this.state.objetoSeleccionado() as Mesh;
@@ -169,7 +168,6 @@ export class EditorPlayerService {
       
       const seqRuntime = this.sequenceSvc.actualizarSecuencia(dtMs, jugador, this.playerConfig);
       
-      // 🔥 1. Físicas (Aquí se lee el teclado y se mueve al jugador)
       const estadoFisico = this.physicsSvc.aplicarMovimientoYGravedad(
         jugador, 
         seqRuntime.lockInput || seqRuntime.freezeOrientation ? {} : this.inputSvc.inputMap, 
@@ -180,10 +178,8 @@ export class EditorPlayerService {
         this.playerConfig
       );
 
-      // 🔥 2. Animaciones (Aquí le enviamos el estado físico al gestor para que anime el modelo)
       this.animSvc.gestionarAnimaciones(jugador, estadoFisico, seqRuntime, this.playerConfig);
       
-      // 🔥 3. Cámara
       this.playerCamSvc.actualizarPosicionCamara(jugador, activeCamera, estadoFisico, seqRuntime, colMeta, camMeta, jugador.scaling, this.playerConfig);
       
       if (seqRuntime.freezeOrientation) this.sequenceSvc.applyLockedOrientationWhileSequence(jugador);
@@ -223,7 +219,6 @@ export class EditorPlayerService {
         canvas.focus(); 
         try { 
             scene.activeCamera!.attachControl(canvas, true); 
-            // 🔥 FIX: Promesa manejada silenciosamente
             const p = canvas.requestPointerLock(); 
             if (p) p.catch(() => {});
         } catch {} 
@@ -340,6 +335,8 @@ export class EditorPlayerService {
     this.state.showToastE.set(false);
     this.state.showToastI.set(false);
     if (this.state.jugadorActivo) {
+        // 🔥 FIX VITAL: Forzar detención de animaciones preexistentes para evitar bloqueos
+        this.animSvc.detenerTodas(this.state.jugadorActivo);
         this.animSvc.reproducirIdle(this.state.jugadorActivo); 
     }
   }

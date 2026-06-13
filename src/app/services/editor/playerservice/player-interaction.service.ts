@@ -1,7 +1,8 @@
+// src/app/services/editor/playerservice/player-interaction.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Matrix } from '@babylonjs/core';
-import { EditorStateService } from '../editor-state.service';
 import { Motor3dService } from '../../motor-3d.service';
+import { EditorStateService } from '../editor-state.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInteractionService {
@@ -28,13 +29,20 @@ export class PlayerInteractionService {
         this.clamp(point.y, bounds.minimumWorld.y, bounds.maximumWorld.y),
         this.clamp(point.z, bounds.minimumWorld.z, bounds.maximumWorld.z)
       );
-    } catch { return null; }
+    } catch {
+      return null;
+    }
   }
 
   private getInteractionProbePoint(view: 'FPS' | 'TPS', jugador: Mesh, activeCamera: any, colMeta: any): Vector3 {
-    if (view === 'FPS') return activeCamera?.position ? activeCamera.position.clone() : jugador.getAbsolutePosition().clone();
+    if (view === 'FPS') {
+      return activeCamera?.position ? activeCamera.position.clone() : jugador.getAbsolutePosition().clone();
+    }
     jugador.computeWorldMatrix(true);
-    return Vector3.TransformCoordinates(new Vector3(colMeta?.offsetX ?? 0, colMeta?.offsetY ?? 0, colMeta?.offsetZ ?? 0), jugador.getWorldMatrix());
+    return Vector3.TransformCoordinates(
+      new Vector3(colMeta?.offsetX ?? 0, colMeta?.offsetY ?? 0, colMeta?.offsetZ ?? 0),
+      jugador.getWorldMatrix()
+    );
   }
 
   private getInteractionDistanceToTarget(target: AbstractMesh, probePoint: Vector3 | null): number {
@@ -42,6 +50,35 @@ export class PlayerInteractionService {
     const shapeMesh = this.getRootProxyCollider(target) ?? target;
     const closest = this.getClosestPointOnMeshBounds(shapeMesh, probePoint);
     return closest ? Vector3.Distance(probePoint, closest) : Vector3.Distance(probePoint, target.getAbsolutePosition());
+  }
+
+  private getSelectionRange(): { fpsAdminMax: number; fpsUserMax: number } {
+    const fallback = { fpsAdminMax: 10000, fpsUserMax: 3 };
+
+    const candidates: any[] = [];
+    if (this.state.jugadorActivo?.metadata) candidates.push(this.state.jugadorActivo.metadata);
+    const selected = this.state.objetoSeleccionado() as AbstractMesh | null;
+    if (selected?.metadata) candidates.push(selected.metadata);
+
+    for (const meta of candidates) {
+      const src = meta?.playerConfig?.selectionRange || meta?.selectionRange;
+      if (!src) continue;
+
+      const admin = Number(src.fpsAdminMax);
+      const user = Number(src.fpsUserMax);
+
+      return {
+        fpsAdminMax: Number.isFinite(admin) && admin >= 0 ? admin : fallback.fpsAdminMax,
+        fpsUserMax: Number.isFinite(user) && user >= 0 ? user : fallback.fpsUserMax
+      };
+    }
+
+    return fallback;
+  }
+
+  private getSelectionMaxDistance(isAdmin: boolean): number {
+    const range = this.getSelectionRange();
+    return isAdmin ? range.fpsAdminMax : range.fpsUserMax;
   }
 
   public canActivateInteraction(target: AbstractMesh, view: 'FPS' | 'TPS' | null): boolean {
@@ -53,88 +90,108 @@ export class PlayerInteractionService {
 
   public comprobarInteracciones(jugador: Mesh, activeCamera: any, colMeta: any, viewMode: 'FPS' | 'TPS'): void {
     const scene = this.motor3d.scene;
+
     let hitInteractuable: AbstractMesh | null = null;
-    let hoverInteractable = false;
+    let hoverSelectable: AbstractMesh | null = null;
+
     this.lastInteractDistance = null;
     this.lastInteractionProbePoint = this.getInteractionProbePoint(viewMode, jugador, activeCamera, colMeta);
 
-    // Validación estricta para que el HUD de "Editar (Clic)" solo le salga al dueño
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
     const canShowInteraction = (root: AbstractMesh) => this.state.esObjetoInteractuable(root);
 
-    let hitAnyRootAdmin: AbstractMesh | null = null;
-
     if (viewMode === 'FPS') {
       const centerRay = scene.createPickingRay(
-        this.motor3d.engine.getRenderWidth() / 2, 
-        this.motor3d.engine.getRenderHeight() / 2, 
-        Matrix.Identity(), 
+        this.motor3d.engine.getRenderWidth() / 2,
+        this.motor3d.engine.getRenderHeight() / 2,
+        Matrix.Identity(),
         activeCamera
       );
-      centerRay.length = 10000; // La longitud del rayo está bien que sobrepase la niebla
-      
+      centerRay.length = 10000;
+
       const hitCross = scene.pickWithRay(centerRay, (m) => {
         if (!m.isPickable) return false;
         if (!m.isVisible) return false;
-        
-        if (m.metadata?.type === 'trigger') {
-            if (!isAdmin) return false; 
-        }
-        
+
+        if (m.metadata?.type === 'trigger') return false;
         if (m === jugador || m.isDescendantOf(jugador)) return false;
-        
+
         const nameStr = m.name.toLowerCase();
-        if (nameStr.includes('proxycol') || nameStr.includes('suelo') || nameStr.includes('skybox') || nameStr.includes('highlight') || nameStr.includes('gizmo') || nameStr.includes('debug')) return false;
-        
+        if (
+          nameStr.includes('proxycol') ||
+          nameStr.includes('suelo') ||
+          nameStr.includes('skybox') ||
+          nameStr.includes('highlight') ||
+          nameStr.includes('gizmo') ||
+          nameStr.includes('debug')
+        ) return false;
+
         return true;
       });
-
-      let hoveredDistance: number | null = null;
 
       if (hitCross && hitCross.hit && hitCross.pickedMesh) {
         const picked = hitCross.pickedMesh as AbstractMesh;
         if (!this.state.esMeshIgnorable(picked)) {
           const rootNode = this.state.encontrarRaiz(picked) as AbstractMesh;
-          if (rootNode) {
-            if (isAdmin && this.state.puedeSeleccionarse(rootNode)) {
-              hitAnyRootAdmin = rootNode;
+          if (rootNode && rootNode.metadata?.type !== 'trigger') {
+            const selectionDistance = this.getInteractionDistanceToTarget(rootNode, this.lastInteractionProbePoint);
+            this.lastInteractDistance = selectionDistance;
+
+            const selectionMax = this.getSelectionMaxDistance(isAdmin);
+
+            // El punto / mira amarilla se activa por rango de selección en FPS,
+            // pero el usuario no selecciona nada con click.
+            if (selectionDistance <= selectionMax) {
+              hoverSelectable = rootNode;
             }
+
+            // La interacción real sigue dependiendo de la distancia de interacción.
             if (canShowInteraction(rootNode)) {
-              hitInteractuable = rootNode;
-              hoveredDistance = this.getInteractionDistanceToTarget(rootNode, this.lastInteractionProbePoint);
-              hoverInteractable = true; 
+              const interactMax = rootNode.metadata?.interactDistanceFPS ?? 3.0;
+              if (selectionDistance <= interactMax) {
+                hitInteractuable = rootNode;
+              }
             }
           }
         }
       }
-      this.lastInteractDistance = hoveredDistance;
-
     } else {
-      let closestRoot: AbstractMesh | null = null; 
+      let closestRoot: AbstractMesh | null = null;
       let closestDist = Number.POSITIVE_INFINITY;
       const playerProbe = this.lastInteractionProbePoint;
-      
+
       scene.meshes.forEach(mesh => {
         if (mesh === jugador || mesh.name.includes('proxyCol') || mesh.name.toLowerCase().includes('suelo') || !mesh.isPickable) return;
-        
         if (mesh.metadata?.type === 'trigger') return;
         if (!mesh.isVisible) return;
 
         const root = this.state.encontrarRaiz(mesh as AbstractMesh) as AbstractMesh;
-        if (!root || !canShowInteraction(root)) return;
-        
-        const dist = this.getInteractionDistanceToTarget(root, playerProbe);
-        const maxDist = root.metadata?.interactDistanceTPS ?? 5.0;
-        
-        if (dist <= maxDist && dist < closestDist) {
-            closestDist = dist; 
+        if (!root || root.metadata?.type === 'trigger') return;
+
+        const selectionDistance = this.getInteractionDistanceToTarget(root, playerProbe);
+        const selectionMax = this.getSelectionMaxDistance(isAdmin);
+
+        if (selectionDistance <= selectionMax && selectionDistance < closestDist) {
+          closestDist = selectionDistance;
+          closestRoot = root;
+        }
+
+        if (canShowInteraction(root)) {
+          const interactMax = root.metadata?.interactDistanceTPS ?? 5.0;
+          if (selectionDistance <= interactMax && selectionDistance < closestDist) {
+            closestDist = selectionDistance;
             closestRoot = root;
+          }
         }
       });
-      
-      hitInteractuable = closestRoot;
-      this.lastInteractDistance = closestRoot ? closestDist : null;
-      if (hitInteractuable) hoverInteractable = true;
+
+      if (closestRoot) {
+        hoverSelectable = closestRoot;
+        this.lastInteractDistance = closestDist;
+        if (canShowInteraction(closestRoot)) {
+          hitInteractuable = closestRoot;
+        }
+      }
     }
 
     let showE = false;
@@ -144,32 +201,36 @@ export class PlayerInteractionService {
       const meta = hitInteractuable.metadata || {};
       const safeView = this.state.modoVistaPrueba;
       const canInteractNow = this.canActivateInteraction(hitInteractuable, safeView);
-      
-      const seqIdForView = safeView === 'FPS' ? (meta.interactSequenceIdFPS || meta.interactSequenceId) : (meta.interactSequenceIdTPS || meta.interactSequenceId);
+
+      const seqIdForView = safeView === 'FPS'
+        ? (meta.interactSequenceIdFPS || meta.interactSequenceId)
+        : (meta.interactSequenceIdTPS || meta.interactSequenceId);
+
       const mensajeParaMostrar = meta.mensaje || '';
 
       showE = !!seqIdForView && seqIdForView.trim() !== '' && canInteractNow;
       showI = !!mensajeParaMostrar && mensajeParaMostrar.trim() !== '' && canInteractNow;
     }
 
-    setTimeout(() => {
-      if (this.state.targetInteractuable() !== hitInteractuable) {
-        this.state.targetInteractuable.set(hitInteractuable);
-      }
-      if (this.state.mirandoObjetoInteractuable() !== hoverInteractable) {
-        this.state.mirandoObjetoInteractuable.set(hoverInteractable);
-      }
-      const adminHover = (viewMode === 'FPS' && isAdmin) ? hitAnyRootAdmin : null;
-      if (this.state.objetoHovereado() !== adminHover) {
-        this.state.objetoHovereado.set(adminHover);
-      }
-      if (this.state.showToastE() !== showE) {
-        this.state.showToastE.set(showE);
-      }
-      if (this.state.showToastI() !== showI) {
-        this.state.showToastI.set(showI);
-      }
-    }, 0);
+    if (this.state.targetInteractuable() !== hitInteractuable) {
+      this.state.targetInteractuable.set(hitInteractuable);
+    }
+
+    if (this.state.mirandoObjetoInteractuable() !== !!hoverSelectable) {
+      this.state.mirandoObjetoInteractuable.set(!!hoverSelectable);
+    }
+
+    if (this.state.objetoHovereado() !== hoverSelectable) {
+      this.state.objetoHovereado.set(hoverSelectable);
+    }
+
+    if (this.state.showToastE() !== showE) {
+      this.state.showToastE.set(showE);
+    }
+
+    if (this.state.showToastI() !== showI) {
+      this.state.showToastI.set(showI);
+    }
   }
 
   public abrirMensajeInteractivo(obj: AbstractMesh, resetMovementCallback: () => void): void {
@@ -179,7 +240,11 @@ export class PlayerInteractionService {
     this.state.objetoHovereado.set(null);
     this.state.mirandoObjetoInteractuable.set(false);
     this.state.ratonBloqueado.set(false);
-    try { if (document.pointerLockElement) document.exitPointerLock(); } catch {}
+
+    try {
+      if (document.pointerLockElement) document.exitPointerLock();
+    } catch {}
+
     resetMovementCallback();
   }
 }

@@ -1,81 +1,117 @@
-<button class="btn-ghost small full" style="margin-bottom: 10px;" (click)="restaurarPlayerConfigDefault()">🔄 Reset a Valores de Fábrica</button>
+<!-- src/app/components/inspector-escena/inspector-properties/prop-player/prop-player.html -->
+<button class="btn-ghost small full" style="margin-bottom: 10px;" (click)="restaurarPlayerConfigDefault()">
+  🔄 Reset a Valores de Fábrica
+</button>
 
 <div class="accordion-section" [class.expanded]="acordeonesPlayer['movement']">
-<div class="accordion-header" (click)="toggleAcordeon('movement')"><h4>▶ Movimiento Base</h4></div>
-<div class="accordion-content" *ngIf="acordeonesPlayer['movement']">
-<div class="grid-2">
-<div class="field"><label>Vel. Caminar</label><input type="number" step="0.001" [ngModel]="playerConfig.movement.walkSpeed" (ngModelChange)="playerConfig.movement.walkSpeed = $event; aplicarPlayerConfig()" /></div>
-<div class="field"><label>Vel. Correr</label><input type="number" step="0.001" [ngModel]="playerConfig.movement.runSpeed" (ngModelChange)="playerConfig.movement.runSpeed = $event; aplicarPlayerConfig()" /></div>
-<div class="field"><label>Aceleración</label><input type="number" step="0.001" [ngModel]="playerConfig.movement.acceleration" (ngModelChange)="playerConfig.movement.acceleration = $event; aplicarPlayerConfig()" /></div>
-<div class="field"><label>Rotación</label><input type="number" step="0.001" [ngModel]="playerConfig.movement.rotationSpeed" (ngModelChange)="playerConfig.movement.rotationSpeed = $event; aplicarPlayerConfig()" /></div>
-</div>
-</div>
+  <div class="accordion-header" (click)="toggleAcordeon('movement')"><h4>▶ Movimiento Base</h4></div>
+  <div class="accordion-content" *ngIf="acordeonesPlayer['movement']">
+    <div class="grid-2">
+      <div class="field"><label>Vel. Caminar</label><input type="number" step="0.001" [ngModel]="playerConfig.movement.walkSpeed" (ngModelChange)="playerConfig.movement.walkSpeed = $event; aplicarPlayerConfig()" /></div>
+      <div class="field"><label>Vel. Correr</label><input type="number" step="0.001" [ngModel]="playerConfig.movement.runSpeed" (ngModelChange)="playerConfig.movement.runSpeed = $event; aplicarPlayerConfig()" /></div>
+      <div class="field"><label>Aceleración</label><input type="number" step="0.001" [ngModel]="playerConfig.movement.acceleration" (ngModelChange)="playerConfig.movement.acceleration = $event; aplicarPlayerConfig()" /></div>
+      <div class="field"><label>Rotación</label><input type="number" step="0.001" [ngModel]="playerConfig.movement.rotationSpeed" (ngModelChange)="playerConfig.movement.rotationSpeed = $event; aplicarPlayerConfig()" /></div>
+    </div>
+  </div>
 </div>
 
 <div class="accordion-section" [class.expanded]="acordeonesPlayer['jump']">
-<div class="accordion-header" (click)="toggleAcordeon('jump')"><h4>▶ Salto y Gravedad</h4></div>
-<div class="accordion-content" *ngIf="acordeonesPlayer['jump']">
-<div class="grid-2">
-<div class="field"><label>Fuerza Salto</label><input type="number" step="0.001" [ngModel]="playerConfig.jump.force" (ngModelChange)="playerConfig.jump.force = $event; aplicarPlayerConfig()" /></div>
-<div class="field"><label>Gravedad Base</label><input type="number" step="0.001" [ngModel]="playerConfig.jump.gravity" (ngModelChange)="playerConfig.jump.gravity = $event; aplicarPlayerConfig()" /></div>
-<div class="field"><label>Caída Máx</label><input type="number" step="0.001" [ngModel]="playerConfig.jump.maxFallSpeed" (ngModelChange)="playerConfig.jump.maxFallSpeed = $event; aplicarPlayerConfig()" /></div>
-<div class="field"><label>Coyote Time</label><input type="number" step="0.01" [ngModel]="playerConfig.jump.coyoteTime" (ngModelChange)="playerConfig.jump.coyoteTime = $event; aplicarPlayerConfig()" /></div>
-<div class="field"><label>T. Subida</label><input type="number" step="0.01" [ngModel]="playerConfig.jump.jumpRiseTime" (ngModelChange)="playerConfig.jump.jumpRiseTime = $event; aplicarPlayerConfig()" /></div>
-</div>
-</div>
+  <div class="accordion-header" (click)="toggleAcordeon('jump')"><h4>▶ Salto y Gravedad</h4></div>
+  <div class="accordion-content" *ngIf="acordeonesPlayer['jump']">
+    <div class="grid-2">
+      <div class="field"><label>Fuerza Salto</label><input type="number" step="0.001" [ngModel]="playerConfig.jump.force" (ngModelChange)="playerConfig.jump.force = $event; aplicarPlayerConfig()" /></div>
+      <div class="field"><label>Gravedad Base</label><input type="number" step="0.001" [ngModel]="playerConfig.jump.gravity" (ngModelChange)="playerConfig.jump.gravity = $event; aplicarPlayerConfig()" /></div>
+      <div class="field"><label>Caída Máx</label><input type="number" step="0.001" [ngModel]="playerConfig.jump.maxFallSpeed" (ngModelChange)="playerConfig.jump.maxFallSpeed = $event; aplicarPlayerConfig()" /></div>
+      <div class="field"><label>Coyote Time</label><input type="number" step="0.01" [ngModel]="playerConfig.jump.coyoteTime" (ngModelChange)="playerConfig.jump.coyoteTime = $event; aplicarPlayerConfig()" /></div>
+      <div class="field"><label>T. Subida</label><input type="number" step="0.01" [ngModel]="playerConfig.jump.jumpRiseTime" (ngModelChange)="playerConfig.jump.jumpRiseTime = $event; aplicarPlayerConfig()" /></div>
+    </div>
+  </div>
 </div>
 
-<!-- 🔥 NUEVO ACORDEÓN: Muro Ciego y Niebla -->
 <div class="accordion-section" [class.expanded]="acordeonesPlayer['fog']">
-<div class="accordion-header" (click)="toggleAcordeon('fog')"><h4>▶ Rendimiento: Niebla y Muro Ciego</h4></div>
-<div class="accordion-content" *ngIf="acordeonesPlayer['fog']">
-<div class="checkbox-field" style="margin-bottom: 10px;">
-<input type="checkbox" id="chkPlayerFog" [ngModel]="playerConfig.fog.enabled" (ngModelChange)="playerConfig.fog.enabled = $event; aplicarPlayerConfig()" />
-<label for="chkPlayerFog" style="color: #60a5fa; font-weight: bold;">Habilitar Visibilidad Limitada Local</label>
-</div>
+  <div class="accordion-header" (click)="toggleAcordeon('fog')"><h4>▶ Rendimiento: Niebla y Muro Ciego</h4></div>
+  <div class="accordion-content" *ngIf="acordeonesPlayer['fog']">
+    <div class="checkbox-field" style="margin-bottom: 10px;">
+      <input type="checkbox" id="chkPlayerFog" [ngModel]="playerConfig.fog.enabled" (ngModelChange)="playerConfig.fog.enabled = $event; aplicarPlayerConfig()" />
+      <label for="chkPlayerFog" style="color: #60a5fa; font-weight: bold;">Habilitar Visibilidad Limitada Local</label>
+    </div>
 
-<div class="grid-2" *ngIf="playerConfig.fog.enabled">
-<div class="field wide">
-<label>Color de la Niebla (Fondo)</label>
-<div class="color-picker-wrapper">
-<input type="color" [ngModel]="playerConfig.fog.color" (ngModelChange)="playerConfig.fog.color = $event; aplicarPlayerConfig()" class="color-picker">
-<span class="color-hex-text">{{ playerConfig.fog.color.toUpperCase() }}</span>
-</div>
-</div>
-<div class="field">
-<label>Radio Visible (Inicia Niebla)</label>
-<input type="number" step="1" min="0" [ngModel]="playerConfig.fog.start" (ngModelChange)="playerConfig.fog.start = $event; aplicarPlayerConfig()" />
-</div>
-<div class="field">
-<label>Muro Ciego (Límite Render)</label>
-<input type="number" step="1" min="1" [ngModel]="playerConfig.fog.end" (ngModelChange)="playerConfig.fog.end = $event; aplicarPlayerConfig()" />
-</div>
-</div>
-<p class="help-text" *ngIf="playerConfig.fog.enabled" style="margin-top: 10px;">
-<b>Efecto Silent Hill:</b> Los objetos más allá del "Muro Ciego" dejan de renderizarse cortando de tajo su procesamiento en tarjeta gráfica. Solo afecta a Usuarios.
-</p>
-</div>
+    <div class="grid-2" *ngIf="playerConfig.fog.enabled">
+      <div class="field wide">
+        <label>Color de la Niebla (Fondo)</label>
+        <div class="color-picker-wrapper">
+          <input type="color" [ngModel]="playerConfig.fog.color" (ngModelChange)="playerConfig.fog.color = $event; aplicarPlayerConfig()" class="color-picker">
+          <span class="color-hex-text">{{ playerConfig.fog.color.toUpperCase() }}</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Radio Visible (Inicia Niebla)</label>
+        <input type="number" step="1" min="0" [ngModel]="playerConfig.fog.start" (ngModelChange)="playerConfig.fog.start = $event; aplicarPlayerConfig()" />
+      </div>
+      <div class="field">
+        <label>Muro Ciego (Límite Render)</label>
+        <input type="number" step="1" min="1" [ngModel]="playerConfig.fog.end" (ngModelChange)="playerConfig.fog.end = $event; aplicarPlayerConfig()" />
+      </div>
+    </div>
+
+    <p class="help-text" *ngIf="playerConfig.fog.enabled" style="margin-top: 10px;">
+      <b>Efecto Silent Hill:</b> Los objetos más allá del "Muro Ciego" dejan de renderizarse cortando de tajo su procesamiento en tarjeta gráfica. Solo afecta a Usuarios.
+    </p>
+  </div>
 </div>
 
 <div class="accordion-section" [class.expanded]="acordeonesPlayer['camera']">
-<div class="accordion-header" (click)="toggleAcordeon('camera')"><h4>▶ Cámara</h4></div>
-<div class="accordion-content" *ngIf="acordeonesPlayer['camera']">
-<div class="grid-2">
-<div class="field"><label>Ojos (FPS Y)</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.fpsEyeLevel" (ngModelChange)="playerConfig.camera.fpsEyeLevel = $event; aplicarPlayerConfig()" /></div>
-<div class="field"><label>Pivote (TPS Y)</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.tpsPivotY" (ngModelChange)="playerConfig.camera.tpsPivotY = $event; aplicarPlayerConfig()" /></div>
-<div class="field"><label>Distancia TPS</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.tpsRadius" (ngModelChange)="playerConfig.camera.tpsRadius = $event; aplicarPlayerConfig()" /></div>
+  <div class="accordion-header" (click)="toggleAcordeon('camera')"><h4>▶ Cámara</h4></div>
+  <div class="accordion-content" *ngIf="acordeonesPlayer['camera']">
+    <div class="grid-2">
+      <div class="field"><label>Ojos (FPS Y)</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.fpsEyeLevel" (ngModelChange)="playerConfig.camera.fpsEyeLevel = $event; aplicarPlayerConfig()" /></div>
+      <div class="field"><label>Pivote (TPS Y)</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.tpsPivotY" (ngModelChange)="playerConfig.camera.tpsPivotY = $event; aplicarPlayerConfig()" /></div>
+      <div class="field"><label>Distancia TPS</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.tpsRadius" (ngModelChange)="playerConfig.camera.tpsRadius = $event; aplicarPlayerConfig()" /></div>
+    </div>
+  </div>
 </div>
-</div>
+
+<div class="accordion-section" [class.expanded]="acordeonesPlayer['selection']">
+  <div class="accordion-header" (click)="toggleAcordeon('selection')"><h4>▶ Rango de Selección en 1ra Persona</h4></div>
+  <div class="accordion-content" *ngIf="acordeonesPlayer['selection']">
+    <div class="grid-2">
+      <div class="field">
+        <label>Admin: distancia máxima</label>
+        <input
+          type="number"
+          step="0.1"
+          min="0"
+          [ngModel]="selectionRange.fpsAdminMax"
+          (ngModelChange)="selectionRange.fpsAdminMax = $event; aplicarPlayerConfig()"
+        />
+      </div>
+
+      <div class="field">
+        <label>User: distancia máxima</label>
+        <input
+          type="number"
+          step="0.1"
+          min="0"
+          [ngModel]="selectionRange.fpsUserMax"
+          (ngModelChange)="selectionRange.fpsUserMax = $event; aplicarPlayerConfig()"
+        />
+      </div>
+    </div>
+
+    <p class="help-text" style="margin-top: 10px;">
+      Admin puede seleccionar desde lejos en FPS para editar. User solo desde cerca.
+    </p>
+  </div>
 </div>
 
 <div class="accordion-section" [class.expanded]="acordeonesPlayer['animEnabled']">
-<div class="accordion-header" (click)="toggleAcordeon('animEnabled')"><h4>▶ Permitir Acciones (Toggles)</h4></div>
-<div class="accordion-content" *ngIf="acordeonesPlayer['animEnabled']">
-<div class="grid-2">
-<div class="field"><label>Idle</label><select [ngModel]="playerConfig.animationEnabled.idle" (ngModelChange)="cambiarHabilitadoAnim('idle', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-<div class="field"><label>Walk</label><select [ngModel]="playerConfig.animationEnabled.walk" (ngModelChange)="cambiarHabilitadoAnim('walk', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-<div class="field"><label>Jump Loop</label><select [ngModel]="playerConfig.animationEnabled.jumpLoop" (ngModelChange)="cambiarHabilitadoAnim('jumpLoop', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-<div class="field"><label>Climb Up</label><select [ngModel]="playerConfig.animationEnabled.climbUp" (ngModelChange)="cambiarHabilitadoAnim('climbUp', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
-</div>
-</div>
+  <div class="accordion-header" (click)="toggleAcordeon('animEnabled')"><h4>▶ Permitir Acciones (Toggles)</h4></div>
+  <div class="accordion-content" *ngIf="acordeonesPlayer['animEnabled']">
+    <div class="grid-2">
+      <div class="field"><label>Idle</label><select [ngModel]="playerConfig.animationEnabled.idle" (ngModelChange)="cambiarHabilitadoAnim('idle', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
+      <div class="field"><label>Walk</label><select [ngModel]="playerConfig.animationEnabled.walk" (ngModelChange)="cambiarHabilitadoAnim('walk', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
+      <div class="field"><label>Jump Loop</label><select [ngModel]="playerConfig.animationEnabled.jumpLoop" (ngModelChange)="cambiarHabilitadoAnim('jumpLoop', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
+      <div class="field"><label>Climb Up</label><select [ngModel]="playerConfig.animationEnabled.climbUp" (ngModelChange)="cambiarHabilitadoAnim('climbUp', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>
+    </div>
+  </div>
 </div>

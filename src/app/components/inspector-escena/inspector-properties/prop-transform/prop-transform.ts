@@ -1,5 +1,4 @@
-
-import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh, Quaternion, StandardMaterial, Color3, Engine } from '@babylonjs/core';
@@ -15,7 +14,7 @@ import { Motor3dService } from '../../../../services/motor-3d.service';
   templateUrl: './prop-transform.html',
   styleUrls: ['../inspector-properties.css']
 })
-export class PropTransform implements OnInit, OnDestroy {
+export class PropTransform implements OnInit, OnDestroy, OnChanges {
   @Input() objeto!: AbstractMesh;
 
   private editorSvc = inject(EditorMapaService);
@@ -60,7 +59,6 @@ export class PropTransform implements OnInit, OnDestroy {
   objProyeccionEspaciado = 2;
   objProyeccionEje = 'Y';
 
-  // 🔥 NUEVA VARIABLE DE FADE 
   objFadeDistance = 0;
 
   animStatus = '';
@@ -71,6 +69,13 @@ export class PropTransform implements OnInit, OnDestroy {
       this.editorSvc.onGizmoDrag.subscribe(() => this.syncData()),
       this.editorSvc.onMapChanged.subscribe(() => this.syncData())
     );
+  }
+
+  // 🔥 SOLUCIÓN 1: Si cambiamos la selección (De padre a hijo), forzamos a refrescar los datos.
+  ngOnChanges(changes: SimpleChanges) {
+    if (changes['objeto']) {
+      this.syncData();
+    }
   }
 
   ngOnDestroy() {
@@ -308,7 +313,6 @@ export class PropTransform implements OnInit, OnDestroy {
       mat.emissiveTexture = null as any;
       mat.emissiveColor = c3.scale(brillo);
       
-      // Siempre establecemos el alpha base aquí. El observador lo reducirá si es necesario.
       mat.alpha = 1.0;
     } else {
       mat.diffuseTexture = null as any;
@@ -317,7 +321,6 @@ export class PropTransform implements OnInit, OnDestroy {
       mat.useAlphaFromDiffuseTexture = false;
 
       mat.emissiveColor = c3.scale(brillo);
-      // Siempre establecemos el alpha base aquí.
       mat.alpha = Math.max(0.2, Math.min(1.0, brillo * 0.5));
     }
   }

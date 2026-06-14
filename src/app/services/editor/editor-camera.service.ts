@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import {
   Vector3,
@@ -124,8 +123,9 @@ export class EditorCameraService {
     const ease = new CubicEase();
     ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
 
-    Animation.CreateAndStartAnimation('camRadius', this.motor3d.editorCamera, 'radius', 60, 40, this.motor3d.editorCamera.radius, objectRadius, 2, ease);
-    const anim = Animation.CreateAndStartAnimation('camBeta', this.motor3d.editorCamera, 'beta', 60, 40, this.motor3d.editorCamera.beta, Math.PI / 3, 2, ease);
+    // 🔥 TRANSICIÓN MÁS LENTA Y SUAVE (Aumentada de 40 a 90 frames = 1.5s)
+    Animation.CreateAndStartAnimation('camRadius', this.motor3d.editorCamera, 'radius', 60, 90, this.motor3d.editorCamera.radius, objectRadius, 2, ease);
+    const anim = Animation.CreateAndStartAnimation('camBeta', this.motor3d.editorCamera, 'beta', 60, 90, this.motor3d.editorCamera.beta, Math.PI / 3, 2, ease);
 
     anim?.onAnimationEndObservable.addOnce(() => {
       this.state.playState.set('EDITING_IN_GAME');
@@ -134,7 +134,6 @@ export class EditorCameraService {
     });
   }
 
-  // 🔥 NUEVO: Función para volar cinematográficamente DESDE el editor HACIA el jugador con CURVA BEZIER
   volarHaciaCamaraJuego(targetPos: Vector3, targetLookAt: Vector3, isFPS: boolean, onComplete: () => void): void {
     const editorCam = this.motor3d.editorCamera;
     editorCam.detachControl();
@@ -145,7 +144,8 @@ export class EditorCameraService {
     const startPos = editorCam.position.clone();
     const currentTarget = editorCam.getTarget().clone();
 
-    const frames = 90; // Vuelo suave
+    // 🔥 CÁMARA MÁS LENTA: 150 frames = 2.5 segundos
+    const frames = 150; 
     const posAnim = new Animation('camPosIn', 'position', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
     
     const keysPos = [];
@@ -154,13 +154,11 @@ export class EditorCameraService {
     if (isFPS) {
       const playerForward = targetLookAt.subtract(targetPos).normalize();
       let playerRight = Vector3.Cross(Vector3.Up(), playerForward).normalize();
-      if (playerRight.lengthSquared() === 0) playerRight = new Vector3(1, 0, 0); // fallback preventivo
+      if (playerRight.lengthSquared() === 0) playerRight = new Vector3(1, 0, 0); 
       
-      // 🔥 MAGIA: Punto de control desviado hacia la derecha y atrás (Evita atravesar el centro del cuerpo)
       P1 = targetPos.subtract(playerForward.scale(2.5)).add(playerRight.scale(1.5));
     }
 
-    // Calcular la curva cuadrática de Bezier cuadro por cuadro para un vuelo natural
     for (let i = 0; i <= frames; i++) {
       const t = i / frames;
       const easeT = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -190,7 +188,6 @@ export class EditorCameraService {
       ? this.motor3d.playerCameraFPS
       : this.motor3d.playerCameraTPS;
 
-    // Actualizamos matrices para asegurar que recogemos la posición final
     targetCam.getViewMatrix(true);
     const targetPos = targetCam.globalPosition.clone();
 
@@ -205,7 +202,9 @@ export class EditorCameraService {
     ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
 
     const startPos = this.motor3d.editorCamera.position.clone();
-    const frames = 90;
+    
+    // 🔥 CÁMARA MÁS LENTA: 150 frames = 2.5 segundos
+    const frames = 150; 
     const posAnim = new Animation('camPosOut', 'position', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
     
     const keysPos = [];
@@ -216,7 +215,6 @@ export class EditorCameraService {
       let playerRight = Vector3.Cross(Vector3.Up(), playerForward).normalize();
       if (playerRight.lengthSquared() === 0) playerRight = new Vector3(1, 0, 0);
       
-      // Curva saliendo por el hombro de vuelta a la cámara del juego
       P1 = targetPos.subtract(playerForward.scale(2.5)).add(playerRight.scale(1.5));
     }
 

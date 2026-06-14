@@ -1,3 +1,4 @@
+
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -132,7 +133,6 @@ export class PropTransform implements OnInit, OnDestroy {
       this.objProyeccionEspaciado = meta.proyeccionEspaciado ?? 2;
       this.objProyeccionEje = meta.proyeccionEje || 'Y';
       
-      // 🔥 CARGA EL VALOR DE FADE DEL METADATA
       this.objFadeDistance = Math.max(0, Number(meta.fadeDistance ?? 0));
 
       if (this.objeto.metadata.decalMaterial) {
@@ -202,7 +202,6 @@ export class PropTransform implements OnInit, OnDestroy {
     this.objeto.metadata.proyeccionEspaciado = Number(this.objProyeccionEspaciado);
     this.objeto.metadata.proyeccionEje = this.objProyeccionEje;
 
-    // 🔥 GUARDA EL VALOR DE FADE EN EL METADATA
     this.objeto.metadata.fadeDistance = Math.max(0, Number(this.objFadeDistance));
 
     if (this.objeto.metadata.updateDecal) {
@@ -309,10 +308,8 @@ export class PropTransform implements OnInit, OnDestroy {
       mat.emissiveTexture = null as any;
       mat.emissiveColor = c3.scale(brillo);
       
-      // 🔥 DEJAMOS EL ALPHA EN LA MANO DEL FADE-OUT OBSERVABLE
-      if (this.objFadeDistance <= 0) {
-         mat.alpha = 1.0;
-      }
+      // Siempre establecemos el alpha base aquí. El observador lo reducirá si es necesario.
+      mat.alpha = 1.0;
     } else {
       mat.diffuseTexture = null as any;
       mat.opacityTexture = null as any;
@@ -320,9 +317,8 @@ export class PropTransform implements OnInit, OnDestroy {
       mat.useAlphaFromDiffuseTexture = false;
 
       mat.emissiveColor = c3.scale(brillo);
-      if (this.objFadeDistance <= 0) {
-         mat.alpha = Math.max(0.2, Math.min(1.0, brillo * 0.5));
-      }
+      // Siempre establecemos el alpha base aquí.
+      mat.alpha = Math.max(0.2, Math.min(1.0, brillo * 0.5));
     }
   }
 

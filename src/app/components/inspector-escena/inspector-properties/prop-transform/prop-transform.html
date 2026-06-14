@@ -156,22 +156,22 @@
   </p>
 </div>
 
-<!-- 🔥 NUEVA SECCIÓN DE FADE-OUT -->
+<!-- 🔥 SECCIÓN MEJORADA DE FADE-OUT -->
 <div class="section-card" *ngIf="objeto.metadata?.type === 'image_plane'">
   <div class="section-head">
-    <h4>Desvanecimiento por Distancia (Fade)</h4>
+    <h4>Desvanecimiento como Niebla (Fade Lineal)</h4>
   </div>
 
   <div class="grid-2">
     <div class="field wide">
-      <label style="color: #facc15; font-weight: bold;">Distancia de Apagado Suave (Unidades)</label>
+      <label style="color: #facc15; font-weight: bold;">Distancia Límite de Apagado (Unidades)</label>
       <input type="number" step="1" min="0" [(ngModel)]="objFadeDistance" (ngModelChange)="aplicarProyeccion()" />
     </div>
   </div>
 
   <p class="help-text" style="color: #cbd5e1; margin-top: 8px;">
-    * Pon <b style="color: #facc15;">0</b> para desactivar el desvanecimiento y dejar que la niebla del mundo lo corte.<br>
-    * Pon <b style="color: #facc15;">50</b> o <b style="color: #facc15;">100</b> para que el holograma empiece a volverse transparente y se apague suavemente antes de llegar al límite de la cámara.
+    * Pon <b style="color: #facc15;">0</b> para que siempre esté encendido.<br>
+    * Si pones <b style="color: #facc15;">50</b>, el holograma se verá al 100% de calidad hasta los 25 metros (la mitad), y desde ahí empezará a apagarse suavemente y de forma lineal hasta desaparecer por completo al cruzar los 50.
   </p>
 </div>
 

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import {
   AbstractMesh,
@@ -48,9 +49,6 @@ export class SceneLoaderService {
     return Math.max(min, Math.min(max, Number(v)));
   }
 
-  // =======================================================
-  // CARGA DE PROYECTOR CON MULTIPLICADOR DE BRILLO REAL Y FIX PARPADEO
-  // =======================================================
   private configurarMaterialProyector(
     mat: StandardMaterial,
     colorHex: string,
@@ -70,7 +68,6 @@ export class SceneLoaderService {
     mat.alphaMode = Engine.ALPHA_COMBINE;
     mat.fogEnabled = !ignoraNiebla;
     
-    // 🔥 FIX PARPADEO
     mat.zOffset = -10;
 
     if (texture) {
@@ -83,6 +80,7 @@ export class SceneLoaderService {
 
       mat.emissiveTexture = null as any;
       mat.emissiveColor = c3.scale(brillo);
+      // Siempre establecemos el alpha base aquí.
       mat.alpha = 1.0;
     } else {
       mat.diffuseTexture = null as any;
@@ -91,6 +89,7 @@ export class SceneLoaderService {
       mat.useAlphaFromDiffuseTexture = false;
 
       mat.emissiveColor = c3.scale(brillo);
+      // Siempre establecemos el alpha base aquí.
       mat.alpha = Math.max(0.2, Math.min(1.0, brillo * 0.5));
     }
   }
@@ -202,12 +201,9 @@ export class SceneLoaderService {
         const isIgnoraNieblaSaved = obj.properties?.ignoraNiebla ?? false;
         const isEmisivoSaved = obj.properties?.esEmisivo ?? false;
         
-        // 🔥 AHORA CARGA CON 1.0 POR DEFECTO
         const savedBrilloIntensidad = this.utilsSvc.normalizarNumero(obj.properties?.brilloIntensidad, 1.0);
-
         const savedSelectionRange = this.utilsSvc.extraerSelectionRange(obj.properties || obj);
 
-        // EXTRAEMOS LOS COLORES A NIVEL DE OBJETO
         const savedColorHex = obj.properties?.color?.substring(0, 7) || '#888888';
         const savedColorBW = obj.properties?.colorBW?.substring(0, 7) || savedColorHex;
 
@@ -256,21 +252,6 @@ export class SceneLoaderService {
               const anims = result.animationGroups || [];
               anims.forEach(ag => ag.stop());
 
-              let initialHeadLocal: Vector3 | null = null;
-              const headNode = rootNode.getChildTransformNodes(false).find(
-                n => n.name.toLowerCase() === 'head' ||
-                  n.name.toLowerCase() === 'neck' ||
-                  n.name.toLowerCase().includes('head')
-              ) as TransformNode;
-              if (headNode) {
-                headNode.computeWorldMatrix(true);
-                rootNode.computeWorldMatrix(true);
-                initialHeadLocal = Vector3.TransformCoordinates(
-                  headNode.getAbsolutePosition(),
-                  Matrix.Invert(rootNode.getWorldMatrix())
-                );
-              }
-
               const playerConfig = this.utilsSvc.prepararPlayerConfigConSelectionRange(
                 obj.properties?.playerConfig || null,
                 savedSelectionRange
@@ -297,8 +278,7 @@ export class SceneLoaderService {
                 collider: obj.properties?.collider || defaultCollider,
                 camOffset: obj.properties?.camOffset || defaultCamOffset,
                 playerConfig,
-                selectionRange: { ...playerConfig.selectionRange },
-                initialHeadLocal
+                selectionRange: { ...playerConfig.selectionRange }
               };
 
               mallasCreadas.set(rootNode.metadata.uid, rootNode);
@@ -663,7 +643,6 @@ export class SceneLoaderService {
             const isBW = scene.metadata?.globalVisualMode === 'bw';
             const activeColorAUsar = isBW ? savedColorBW : savedColorHex;
 
-            // Obtener la URL de la imagen desde metadata o desde las propiedades del objeto
             const imagePath = mesh.metadata?.imageUrl || obj.properties?.imageUrl || obj.properties?.path || '';
             const imageUrl = imagePath ? 'http://localhost:4000' + imagePath : '';
             const tex = imageUrl ? new Texture(imageUrl, scene) : undefined;
@@ -672,52 +651,61 @@ export class SceneLoaderService {
 
             mesh.metadata.decalMaterial = mat;
             mesh.metadata.brilloIntensidad = savedBrilloIntensidad;
-            
-            // 🔥 RECUPERA EL VALOR GUARDADO EN LA BASE DE DATOS
             mesh.metadata.fadeDistance = this.utilsSvc.normalizarNumero(obj.properties?.fadeDistance, 0);
 
-            // 🔥 NUEVO VIGILANTE: ATADO A LA ESCENA PARA QUE NUNCA SE DETENGA
+            // 🔥 FIX MATEMÁTICO Y CINEMÁTICO: SMOOTHSTEP
             const fadeObserver = scene.onBeforeRenderObservable.add(() => {
-              
-              // 1. Lógica de Blanco y Negro (B&W)
               const currentModeIsBW = scene.metadata?.globalVisualMode === 'bw';
               if (mesh.metadata._lastVisualMode !== currentModeIsBW) {
                   mesh.metadata._lastVisualMode = currentModeIsBW;
                   if (mesh.metadata.updateDecal) mesh.metadata.updateDecal();
               }
 
-              // 2. Lógica de Desvanecimiento por Distancia (Fade-Out)
               const fadeDist = Number(mesh.metadata.fadeDistance ?? 0);
               
-              // 🔥 Si fadeDist es 0, ignoramos completamente la lógica y forzamos Alpha 1
               if (fadeDist > 0 && scene.activeCamera) {
                   const distanceToCam = Vector3.Distance(scene.activeCamera.globalPosition, mesh.getAbsolutePosition());
                   
-                  // Empieza a desvanecerse al 70% de la distancia total establecida
-                  const fadeStart = fadeDist * 0.7;
+                  const fadeStart = fadeDist * 0.5; 
                   
-                  let opacity = 1.0;
-                  if (distanceToCam > fadeDist) {
-                      opacity = 0;
+                  let alphaMultiplier = 1.0;
+                  if (distanceToCam >= fadeDist) {
+                      alphaMultiplier = 0.0; 
                   } else if (distanceToCam > fadeStart) {
-                      const progress = (distanceToCam - fadeStart) / (fadeDist - fadeStart);
-                      opacity = 1.0 - progress;
+                      // 🔥 FADE CINEMÁTICO: Uso de curva Smoothstep en lugar de lineal puro
+                      let progress = (distanceToCam - fadeStart) / (fadeDist - fadeStart);
+                      progress = progress * progress * (3 - 2 * progress);
+                      alphaMultiplier = Math.max(0, Math.min(1.0, 1.0 - progress));
                   }
 
-                  // Aplicar a los decals directamente usando .visibility
-                  if (mesh.metadata.decalMeshes && Array.isArray(mesh.metadata.decalMeshes)) {
+                  // 1. Desvanecer el MATERIAL (Esto reduce el glow y la luz de forma real)
+                  if (mesh.metadata.decalMaterial) {
+                      const dMat = mesh.metadata.decalMaterial as StandardMaterial;
+                      const hasTexture = dMat.diffuseTexture != null;
+                      const baseAlpha = hasTexture ? 1.0 : Math.max(0.2, Math.min(1.0, Number(mesh.metadata.brilloIntensidad ?? 1.0) * 0.5));
+                      dMat.alpha = baseAlpha * alphaMultiplier;
+                  }
+
+                  // 2. Apagar la visibilidad solo si ya llegó a 0 para ahorrar recursos
+                  if (Array.isArray(mesh.metadata.decalMeshes)) {
                       mesh.metadata.decalMeshes.forEach((decal: Mesh) => {
-                          if (decal) {
-                              decal.visibility = opacity;
-                              decal.alwaysSelectAsActiveMesh = true; // Asegura render a la distancia
+                          if (decal && !decal.isDisposed()) {
+                              decal.visibility = alphaMultiplier > 0 ? 1 : 0;
+                              decal.alwaysSelectAsActiveMesh = true;
                           }
                       });
                   }
-              } else {
-                   // Si fadeDist es 0, forzamos la visibilidad total
-                   if (mesh.metadata.decalMeshes && Array.isArray(mesh.metadata.decalMeshes)) {
+              } 
+              else if (fadeDist <= 0) {
+                  // Restaurar a tope si el fade está apagado
+                  if (mesh.metadata.decalMaterial) {
+                      const dMat = mesh.metadata.decalMaterial as StandardMaterial;
+                      const hasTexture = dMat.diffuseTexture != null;
+                      dMat.alpha = hasTexture ? 1.0 : Math.max(0.2, Math.min(1.0, Number(mesh.metadata.brilloIntensidad ?? 1.0) * 0.5));
+                  }
+                  if (Array.isArray(mesh.metadata.decalMeshes)) {
                       mesh.metadata.decalMeshes.forEach((decal: Mesh) => {
-                          if (decal) {
+                          if (decal && !decal.isDisposed()) {
                               decal.visibility = 1.0;
                               decal.alwaysSelectAsActiveMesh = true;
                           }
@@ -730,10 +718,10 @@ export class SceneLoaderService {
               this.limpiarDecalsImagen(mesh);
 
               try {
-                // 🔥 LEEMOS EL COLOR CORRECTO EN TIEMPO REAL
                 const isNowBW = scene.metadata?.globalVisualMode === 'bw';
                 const colorReal = isNowBW ? mesh.metadata.colorBW : mesh.metadata.color;
                 const decalTexture = (mesh.metadata.decalMaterial as StandardMaterial).diffuseTexture;
+                
                 this.configurarMaterialProyector(
                   mesh.metadata.decalMaterial,
                   colorReal,
@@ -804,7 +792,6 @@ export class SceneLoaderService {
                     decal.receiveShadows = false;
                     decal.applyFog = !mesh.metadata.ignoraNiebla;
 
-                    // 🔥 FIX CORTE DE CÁMARA (EVITA DESAPARECER POR PARTES)
                     decal.alwaysSelectAsActiveMesh = true;
 
                     mesh.metadata.decalMeshes.push(decal);
@@ -840,8 +827,10 @@ export class SceneLoaderService {
               mat.emissiveColor = new Color3(0, 1, 0);
             }
 
+            const brilloToUse = Number(mesh.metadata?.brilloIntensidad ?? 1.0);
+
             if (isEmisivoSaved) {
-              mat.emissiveColor = c3.scale(savedBrilloIntensidad);
+              mat.emissiveColor = c3.scale(brilloToUse);
               mat.disableLighting = false;
             } else {
               mat.emissiveColor = new Color3(0, 0, 0);

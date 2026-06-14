@@ -56,10 +56,7 @@ export class SceneSaverService {
       isSelectable: this.safeBool(nodo.metadata?.isSelectable, true),
       ignoraNiebla: this.safeBool(nodo.metadata?.ignoraNiebla, false),
       esEmisivo: this.safeBool(nodo.metadata?.esEmisivo, false),
-      
-      // 🔥 AHORA GUARDAMOS EL BRILLO COMO 1.0 POR DEFECTO PARA NO PERDER INTENSIDAD
       brilloIntensidad: this.safeNumber(nodo.metadata?.brilloIntensidad, 1.0),
-      
       mensaje: nodo.metadata?.mensaje || '',
       respawnTime: this.safeNumber(nodo.metadata?.respawnTime, 8),
       interactDistanceFPS: this.safeNumber(nodo.metadata?.interactDistanceFPS, 3.0),
@@ -244,10 +241,7 @@ export class SceneSaverService {
                 esEmisivo: this.safeBool(nodo.metadata.esEmisivo, false),
                 brilloIntensidad: this.safeNumber(nodo.metadata.brilloIntensidad, 1.0),
                 ignoraNiebla: this.safeBool(nodo.metadata.ignoraNiebla, false),
-                
-                // 🔥 AÑADIMOS EL GUARDADO A LA BD DEL FADE
                 fadeDistance: this.safeNumber(nodo.metadata.fadeDistance, 0),
-
                 ...propertiesToSave
               }
             });

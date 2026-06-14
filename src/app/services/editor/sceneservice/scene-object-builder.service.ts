@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import {
   AbstractMesh,
@@ -46,9 +47,6 @@ export class SceneObjectBuilderService {
     return Math.max(min, Math.min(max, Number(v)));
   }
 
-  // =======================================================
-  // CONFIGURACIÓN DE PROYECTOR (BRILLO x10 Y FIX DE PARPADEO)
-  // =======================================================
   private configurarMaterialProyector(
     mat: StandardMaterial,
     colorHex: string,
@@ -59,7 +57,6 @@ export class SceneObjectBuilderService {
     const colorSeguro = colorHex || '#ffffff';
     const c3 = Color3.FromHexString(colorSeguro);
     
-    // 🔥 Límite de brillo subido a 10 para luz extrema
     const brillo = this.clampNum(Number(brilloIntensidad), 0, 10, 1.0);
 
     mat.disableLighting = true;
@@ -70,7 +67,6 @@ export class SceneObjectBuilderService {
     mat.alphaMode = Engine.ALPHA_COMBINE;
     mat.fogEnabled = !ignoraNiebla;
     
-    // 🔥 FIX PARPADEO EXTREMO: zOffset -10 obliga a la textura a pintarse SOBRE la pared
     mat.zOffset = -10;
 
     if (texture) {
@@ -597,7 +593,6 @@ export class SceneObjectBuilderService {
         camOffset: { ...defaultCamOffset },
         playerConfig,
         brilloIntensidad: 1.0,
-        // 🔥 NUEVA VARIABLE DE FADE (0 = DESACTIVADO)
         fadeDistance: 0,
         selectionRange: { ...playerConfig.selectionRange }
       };
@@ -677,46 +672,57 @@ export class SceneObjectBuilderService {
         mesh.metadata.decalMaterial = mat;
         mesh.metadata.brilloIntensidad = 1.0;
 
-        // 🔥 NUEVO VIGILANTE MEJORADO PARA DETECTAR FADE Y B&W
+        // 🔥 FIX MATEMÁTICO Y CINEMÁTICO: SMOOTHSTEP
         const fadeObserver = scene.onBeforeRenderObservable.add(() => {
-          // Lógica B&W (Sin cambios, esto ya funcionaba bien)
           const currentModeIsBW = scene.metadata?.globalVisualMode === 'bw';
           if (mesh.metadata._lastVisualMode !== currentModeIsBW) {
               mesh.metadata._lastVisualMode = currentModeIsBW;
               if (mesh.metadata.updateDecal) mesh.metadata.updateDecal();
           }
 
-          // 🔥 LÓGICA DE FADE (MEJORADA PARA GARANTIZAR VISIBILIDAD)
           const fadeDist = Number(mesh.metadata.fadeDistance ?? 0);
           
-          if (fadeDist > 0 && scene.activeCamera && mesh.metadata.decalMeshes) {
+          if (fadeDist > 0 && scene.activeCamera) {
               const distanceToCam = Vector3.Distance(scene.activeCamera.globalPosition, mesh.getAbsolutePosition());
-              const fadeStart = fadeDist * 0.7; // 70% de la distancia total, empieza el desvanecimiento
               
-              let targetAlpha = 1.0;
-              if (distanceToCam > fadeDist) {
-                  targetAlpha = 0; // Totalmente invisible al pasar el límite
+              const fadeStart = fadeDist * 0.5; 
+              
+              let alphaMultiplier = 1.0;
+              if (distanceToCam >= fadeDist) {
+                  alphaMultiplier = 0.0; 
               } else if (distanceToCam > fadeStart) {
-                  const progress = (distanceToCam - fadeStart) / (fadeDist - fadeStart);
-                  targetAlpha = 1.0 - progress; // Transición matemática limpia
+                  // 🔥 FADE CINEMÁTICO: Uso de curva Smoothstep en lugar de lineal puro
+                  let progress = (distanceToCam - fadeStart) / (fadeDist - fadeStart);
+                  progress = progress * progress * (3 - 2 * progress);
+                  alphaMultiplier = Math.max(0, Math.min(1.0, 1.0 - progress));
               }
 
-              // 🔥 IMPORTANTE: Aquí aplicamos el Alpha directamente a CADA decal
-              // y garantizamos que sean visibles para la cámara en todo momento.
+              // 1. Desvanecer el MATERIAL (Esto reduce el glow y la luz de forma real)
+              if (mesh.metadata.decalMaterial) {
+                  const dMat = mesh.metadata.decalMaterial as StandardMaterial;
+                  const hasTexture = dMat.diffuseTexture != null;
+                  const baseAlpha = hasTexture ? 1.0 : Math.max(0.2, Math.min(1.0, Number(mesh.metadata.brilloIntensidad ?? 1.0) * 0.5));
+                  dMat.alpha = baseAlpha * alphaMultiplier;
+              }
+
+              // 2. Apagar la visibilidad solo si ya llegó a 0 para ahorrar recursos
               if (Array.isArray(mesh.metadata.decalMeshes)) {
                   mesh.metadata.decalMeshes.forEach((decal: Mesh) => {
                       if (decal && !decal.isDisposed()) {
-                          // Modificamos la visibilidad de Babylon
-                          decal.visibility = targetAlpha;
-                          // Opcional: aseguramos que siempre intente renderizarse aunque la cámara no lo apunte directamente
+                          decal.visibility = alphaMultiplier > 0 ? 1 : 0;
                           decal.alwaysSelectAsActiveMesh = true;
                       }
                   });
               }
           } 
-          // 🔥 SI FADE ES 0, OBLIGAMOS A QUE TODO SEA COMPLETAMENTE VISIBLE SIEMPRE
-          else if (fadeDist <= 0 && mesh.metadata.decalMeshes) {
-               if (Array.isArray(mesh.metadata.decalMeshes)) {
+          else if (fadeDist <= 0) {
+              // Restaurar a tope si el fade está apagado
+              if (mesh.metadata.decalMaterial) {
+                  const dMat = mesh.metadata.decalMaterial as StandardMaterial;
+                  const hasTexture = dMat.diffuseTexture != null;
+                  dMat.alpha = hasTexture ? 1.0 : Math.max(0.2, Math.min(1.0, Number(mesh.metadata.brilloIntensidad ?? 1.0) * 0.5));
+              }
+              if (Array.isArray(mesh.metadata.decalMeshes)) {
                   mesh.metadata.decalMeshes.forEach((decal: Mesh) => {
                       if (decal && !decal.isDisposed()) {
                           decal.visibility = 1.0;
@@ -805,7 +811,6 @@ export class SceneObjectBuilderService {
                 decal.receiveShadows = false;
                 decal.applyFog = !mesh.metadata.ignoraNiebla;
 
-                // 🔥 CRÍTICO PARA EL RENDIMIENTO Y VISIBILIDAD DE DECALS LEJANOS
                 decal.alwaysSelectAsActiveMesh = true;
 
                 mesh.metadata.decalMeshes.push(decal);

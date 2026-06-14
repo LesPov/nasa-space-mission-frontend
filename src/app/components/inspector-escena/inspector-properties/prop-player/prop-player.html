@@ -110,7 +110,6 @@
 <div class="accordion-section" [class.expanded]="acordeonesPlayer['camera']">
   <div class="accordion-header" (click)="toggleAcordeon('camera')"><h4>▶ Cámara</h4></div>
   <div class="accordion-content" *ngIf="acordeonesPlayer['camera']">
-    <!-- 🔥 SE MODIFICÓ LA GRILLA AQUÍ A GRID-3 Y SE AÑADIERON LOS CAMPOS MIN/MAX -->
     <div class="grid-3">
       <div class="field"><label>Ojos (FPS Y)</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.fpsEyeLevel" (ngModelChange)="playerConfig.camera.fpsEyeLevel = $event; aplicarPlayerConfig()" /></div>
       <div class="field"><label>Pivote (TPS Y)</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.tpsPivotY" (ngModelChange)="playerConfig.camera.tpsPivotY = $event; aplicarPlayerConfig()" /></div>

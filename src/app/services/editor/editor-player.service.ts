@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 
@@ -100,7 +101,6 @@ export class EditorPlayerService {
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
     this.motor3d.scene.meshes.forEach(m => {
-        // 🔥 FIX USUARIO FINAL: Apagado absoluto de los ejes y grilla si no es admin
         if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
             m.isVisible = isAdmin;
             m.setEnabled(isAdmin);
@@ -170,7 +170,8 @@ export class EditorPlayerService {
       targetLookAt = this.state.cameraPivot!.getAbsolutePosition();
     }
 
-    this.cameraSvc.volarHaciaCamaraJuego(targetPos, targetLookAt, vista === 'FPS', () => {
+    // 🔥 LLAMADA AL NUEVO VUELO ESPIRAL ORBITAL
+    this.cameraSvc.volarHaciaCamaraJuego(obj.getAbsolutePosition(), targetPos, targetLookAt, vista === 'FPS', () => {
         this.motor3d.scene.activeCamera = targetCam;
         this.state.playState.set('PLAYING');
         
@@ -370,7 +371,6 @@ export class EditorPlayerService {
 
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
     this.motor3d.scene.meshes.forEach(m => {
-        // 🔥 FIX USUARIO FINAL: Volver a encender los ejes para el admin al salir
         if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
             m.setEnabled(isAdmin);
             m.isVisible = isAdmin;
@@ -421,8 +421,15 @@ export class EditorPlayerService {
         this.state.jugadorActivo.position = this.state.backupObjetoPosicion;
         this.state.jugadorActivo.rotationQuaternion = this.state.backupObjetoRotacionQuat.clone();
       }
+      
+      // 🔥 FIX RESTAURAR VISIBILIDAD: Se restaura tanto el booleano como el valor numérico (0 a 1)
       this.state.jugadorActivo.isVisible = this.state.backupObjetoVisibilidad;
-      this.state.jugadorActivo.getChildMeshes().forEach(m => m.isVisible = true);
+      this.state.jugadorActivo.visibility = 1;
+      this.state.jugadorActivo.getChildMeshes().forEach(m => {
+          m.isVisible = true;
+          m.visibility = 1;
+      });
+      
       this.state.jugadorActivo.checkCollisions = this.state.backupColisionJugador;
       this.state.backupColisionesHijos.forEach(item => { if (item.mesh) item.mesh.checkCollisions = item.col; });
       this.state.backupColisionesHijos = [];

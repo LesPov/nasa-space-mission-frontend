@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, Scene, Vector3, Observer } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -22,7 +23,6 @@ export class ToolsFogService {
     if (!scene) return;
 
     if (!this.fogObserver) {
-      // Inicializar colores base rápidos para evitar saltos
       const globalClearHex = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
       const clearColor3 = Color3.FromHexString(globalClearHex);
       this.curR = clearColor3.r;
@@ -32,7 +32,6 @@ export class ToolsFogService {
       this.curStart = scene.fogStart || 10000;
       this.curEnd = scene.fogEnd || 10000;
 
-      // Iniciar el bucle de interpolación constante
       this.fogObserver = scene.onBeforeRenderObservable.add(() => this.updateFogFrame(scene));
     }
   }
@@ -53,7 +52,6 @@ export class ToolsFogService {
     let targetR = 0, targetG = 0, targetB = 0;
     let useFog = false;
 
-    // 🔥 La niebla se activa en PLAYING, EDITING_IN_GAME y durante el TRANSITIONING (vuelo de cámara)
     if (modo === 'PLAYING' || modo === 'EDITING_IN_GAME' || modo === 'TRANSITIONING') {
       if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
         useFog = true;
@@ -88,6 +86,12 @@ export class ToolsFogService {
         let distCamToPlayer = 0;
         if (targetPlayer && scene.activeCamera) {
           distCamToPlayer = Vector3.Distance(scene.activeCamera.globalPosition, targetPlayer.getAbsolutePosition());
+          
+          // 🔥 FIX CINEMÁTICO: Durante la transición limitamos la distancia para que
+          // la niebla se forme antes y el personaje emerja de entre la bruma en el vuelo inicial.
+          if (modo === 'TRANSITIONING') {
+              distCamToPlayer = Math.min(distCamToPlayer, 8); 
+          }
         }
 
         const clampedStart = Math.max(0, Math.min(99.5, activeDensityStart));
@@ -102,7 +106,6 @@ export class ToolsFogService {
 
         const renderMaxZ = activeRenderDistance + distCamToPlayer;
         
-        // Interpolar suavemente el MaxZ de las cámaras
         this.motor3d.editorCamera.maxZ += (renderMaxZ - this.motor3d.editorCamera.maxZ) * 0.05;
         this.motor3d.playerCameraFPS.maxZ += (renderMaxZ - this.motor3d.playerCameraFPS.maxZ) * 0.05;
         this.motor3d.playerCameraTPS.maxZ += (renderMaxZ - this.motor3d.playerCameraTPS.maxZ) * 0.05;
@@ -123,9 +126,8 @@ export class ToolsFogService {
       this.motor3d.playerCameraTPS.maxZ += (10000 - this.motor3d.playerCameraTPS.maxZ) * 0.05;
     }
 
-    // 🌟 LERP MÁGICO PARA TRANSICIÓN CINEMÁTICA LENTA
-    // Acompaña perfectamente la transición de cámara de 130-150 frames.
-    const lerpSpeed = 0.035; 
+    // 🔥 ACELERAMOS EL LERP DURANTE LA TRANSICIÓN PARA QUE SE SINCRONICE CON LA ESPIRAL
+    const lerpSpeed = modo === 'TRANSITIONING' ? 0.15 : 0.035; 
     
     this.curStart += (targetStart - this.curStart) * lerpSpeed;
     this.curEnd += (targetEnd - this.curEnd) * lerpSpeed;

@@ -1,38 +1,83 @@
 <div class="section-card">
   <div class="section-head"><h4>Posición & Escala</h4></div>
   <div class="grid-3">
-    <div class="field"><label>Pos X</label><input type="number" step="0.1" [ngModel]="localPosX" (ngModelChange)="localPosX = $event; aplicarPosicion()" /></div>
-    <div class="field"><label>Pos Y</label><input type="number" step="0.1" [ngModel]="localPosY" (ngModelChange)="localPosY = $event; aplicarPosicion()" /></div>
-    <div class="field"><label>Pos Z</label><input type="number" step="0.1" [ngModel]="localPosZ" (ngModelChange)="localPosZ = $event; aplicarPosicion()" /></div>
+    <div class="field">
+      <label>Pos X</label>
+      <input type="number" step="0.1" [ngModel]="localPosX" (ngModelChange)="localPosX = $event; aplicarPosicion()" />
+    </div>
+    <div class="field">
+      <label>Pos Y</label>
+      <input type="number" step="0.1" [ngModel]="localPosY" (ngModelChange)="localPosY = $event; aplicarPosicion()" />
+    </div>
+    <div class="field">
+      <label>Pos Z</label>
+      <input type="number" step="0.1" [ngModel]="localPosZ" (ngModelChange)="localPosZ = $event; aplicarPosicion()" />
+    </div>
 
-    <div class="field"><label>Rot X</label><input type="number" step="1" [ngModel]="localRotX" (ngModelChange)="localRotX = $event; aplicarRotacion()" /></div>
-    <div class="field"><label>Rot Y</label><input type="number" step="1" [ngModel]="localRotY" (ngModelChange)="localRotY = $event; aplicarRotacion()" /></div>
-    <div class="field"><label>Rot Z</label><input type="number" step="1" [ngModel]="localRotZ" (ngModelChange)="localRotZ = $event; aplicarRotacion()" /></div>
+    <div class="field">
+      <label>Rot X</label>
+      <input type="number" step="1" [ngModel]="localRotX" (ngModelChange)="localRotX = $event; aplicarRotacion()" />
+    </div>
+    <div class="field">
+      <label>Rot Y</label>
+      <input type="number" step="1" [ngModel]="localRotY" (ngModelChange)="localRotY = $event; aplicarRotacion()" />
+    </div>
+    <div class="field">
+      <label>Rot Z</label>
+      <input type="number" step="1" [ngModel]="localRotZ" (ngModelChange)="localRotZ = $event; aplicarRotacion()" />
+    </div>
 
-    <div class="field"><label>Escala X</label><input type="number" step="0.1" [ngModel]="localEscX" (ngModelChange)="localEscX = $event; aplicarEscala()" /></div>
-    <div class="field"><label>Escala Y</label><input type="number" step="0.1" [ngModel]="localEscY" (ngModelChange)="localEscY = $event; aplicarEscala()" /></div>
-    <div class="field"><label>Escala Z</label><input type="number" step="0.1" [ngModel]="localEscZ" (ngModelChange)="localEscZ = $event; aplicarEscala()" /></div>
+    <div class="field">
+      <label>Escala X</label>
+      <input type="number" step="0.1" [ngModel]="localEscX" (ngModelChange)="localEscX = $event; aplicarEscala()" />
+    </div>
+    <div class="field">
+      <label>Escala Y</label>
+      <input type="number" step="0.1" [ngModel]="localEscY" (ngModelChange)="localEscY = $event; aplicarEscala()" />
+    </div>
+    <div class="field">
+      <label>Escala Z</label>
+      <input type="number" step="0.1" [ngModel]="localEscZ" (ngModelChange)="localEscZ = $event; aplicarEscala()" />
+    </div>
   </div>
 </div>
 
 <div class="section-card" *ngIf="objeto.metadata?.type === 'image_plane'">
   <div class="section-head">
-    <h4>Ajustes de Proyección (Decal)</h4>
+    <h4>Ajustes de Proyección (Luz de Esquina)</h4>
   </div>
+
   <div class="grid-2">
     <div class="field">
-      <label>Alcance (Metros)</label>
-      <input type="number" step="1" min="1" [(ngModel)]="objProfundidadProyeccion" (ngModelChange)="aplicarProyeccion()" />
+      <label>Ancho (Interno)</label>
+      <input type="number" step="0.5" [(ngModel)]="objProyeccionAncho" (ngModelChange)="aplicarProyeccion()" />
     </div>
+
+    <div class="field">
+      <label>Alto (Interno)</label>
+      <input type="number" step="0.5" [(ngModel)]="objProyeccionAlto" (ngModelChange)="aplicarProyeccion()" />
+    </div>
+
+    <div class="field">
+      <label>Profundidad (Interna)</label>
+      <input type="number" step="0.01" [(ngModel)]="objProfundidadProyeccion" (ngModelChange)="aplicarProyeccion()" />
+    </div>
+
     <div class="field">
       <label>Girar Imagen (Grados)</label>
       <input type="number" step="1" [(ngModel)]="objAnguloProyeccion" (ngModelChange)="aplicarProyeccion()" />
     </div>
   </div>
-  <p class="help-text" style="color: #60a5fa; margin-top: 8px;">
-    * Si la imagen no llega a la pared/techo, aumenta el <b>Alcance</b> en metros.<br>
-    * Usa escalar (tecla 4) sobre la caja amarilla para hacer la imagen más ancha o alta.
-  </p>
+
+  <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; padding: 10px; border-radius: 6px; margin-top: 15px;">
+    <label style="color: #60a5fa; font-weight: bold; font-size: 13px;">¿Cómo ajusto la proyección?</label>
+    <p class="help-text" style="color: #cbd5e1; margin-top: 5px;">
+      * Usa <b>Ancho / Alto</b> para cambiar el tamaño real de la luz sin tocar la caja.<br>
+      * Usa <b>Profundidad</b> para acercar o alejar el brillo de la esquina.<br>
+      * Usa <b>Girar Imagen</b> para mover la esquina desde donde cae la luz.<br>
+      * La proyección se pinta en <b>arriba + dos paredes</b>, no en las 4 caras.
+    </p>
+  </div>
 
   <button class="btn-secondary full" style="margin-top: 10px;" (click)="forzarRecalculo()">
     🎯 Forzar Re-proyección en Pared
@@ -117,14 +162,29 @@
   </div>
 
   <div class="grid-2" style="margin-bottom: 10px;">
-    <div class="field"><label>Dist. FPS</label><input type="number" step="0.5" [ngModel]="objInteractDistanceFPS" (ngModelChange)="objInteractDistanceFPS = $event; aplicarInteraccion()" /></div>
-    <div class="field"><label>Dist. TPS</label><input type="number" step="0.5" [ngModel]="objInteractDistanceTPS" (ngModelChange)="objInteractDistanceTPS = $event; aplicarInteraccion()" /></div>
+    <div class="field">
+      <label>Dist. FPS</label>
+      <input type="number" step="0.5" [ngModel]="objInteractDistanceFPS" (ngModelChange)="objInteractDistanceFPS = $event; aplicarInteraccion()" />
+    </div>
+    <div class="field">
+      <label>Dist. TPS</label>
+      <input type="number" step="0.5" [ngModel]="objInteractDistanceTPS" (ngModelChange)="objInteractDistanceTPS = $event; aplicarInteraccion()" />
+    </div>
   </div>
 
   <div class="grid-2">
-    <div class="field wide"><label>Mensaje (tecla I)</label><textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarInteraccion()"></textarea></div>
-    <div class="field wide"><label>Ejecutar Seq. FPS</label><input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarInteraccion()"/></div>
-    <div class="field wide"><label>Ejecutar Seq. TPS</label><input type="text" [ngModel]="objInteractSequenceIdTPS" (ngModelChange)="objInteractSequenceIdTPS = $event; aplicarInteraccion()"/></div>
+    <div class="field wide">
+      <label>Mensaje (tecla I)</label>
+      <textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarInteraccion()"></textarea>
+    </div>
+    <div class="field wide">
+      <label>Ejecutar Seq. FPS</label>
+      <input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarInteraccion()"/>
+    </div>
+    <div class="field wide">
+      <label>Ejecutar Seq. TPS</label>
+      <input type="text" [ngModel]="objInteractSequenceIdTPS" (ngModelChange)="objInteractSequenceIdTPS = $event; aplicarInteraccion()"/>
+    </div>
   </div>
 </div>
 

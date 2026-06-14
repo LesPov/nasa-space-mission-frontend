@@ -41,8 +41,6 @@ export class PropTransform implements OnInit, OnDestroy {
 
   objIgnoraNiebla = false;
   objEsEmisivo = false;
-
-  // Nuevo: intensidad del brillo
   objBrilloIntensidad = 0.12;
 
   objInteractDistanceFPS = 3.0;
@@ -51,8 +49,11 @@ export class PropTransform implements OnInit, OnDestroy {
   objInteractSequenceIdTPS = '';
   objMensaje = '';
 
-  objProfundidadProyeccion = 10;
+  objProfundidadProyeccion = 0.08;
   objAnguloProyeccion = 0;
+
+  objProyeccionAncho = 1;
+  objProyeccionAlto = 1;
 
   animStatus = '';
 
@@ -75,6 +76,11 @@ export class PropTransform implements OnInit, OnDestroy {
   private clampBrightness(v: number): number {
     if (Number.isNaN(v) || v === null || v === undefined) return 0.12;
     return Math.max(0, Math.min(2, Number(v)));
+  }
+
+  private clampPositive(v: number, fallback: number, min = 0.01, max = 9999): number {
+    if (Number.isNaN(v) || v === null || v === undefined) return fallback;
+    return Math.max(min, Math.min(max, Number(v)));
   }
 
   syncData() {
@@ -110,8 +116,10 @@ export class PropTransform implements OnInit, OnDestroy {
     if (meta.type === 'image_plane') {
       this.objEsEmisivo = meta.esEmisivo ?? false;
       this.objBrilloIntensidad = this.clampBrightness(meta.brilloIntensidad ?? 0.12);
-      this.objProfundidadProyeccion = meta.profundidadProyeccion ?? 10;
-      this.objAnguloProyeccion = meta.anguloProyeccion ?? 0;
+      this.objProfundidadProyeccion = this.clampPositive(meta.profundidadProyeccion ?? 0.08, 0.08, 0.01, 1000);
+      this.objAnguloProyeccion = this.formatNum(meta.anguloProyeccion ?? 0);
+      this.objProyeccionAncho = this.clampPositive(meta.proyeccionAncho ?? this.localEscX, this.localEscX, 0.01, 1000);
+      this.objProyeccionAlto = this.clampPositive(meta.proyeccionAlto ?? this.localEscY, this.localEscY, 0.01, 1000);
     } else {
       this.objEsEmisivo = meta.esEmisivo ?? false;
       this.objBrilloIntensidad = this.clampBrightness(meta.brilloIntensidad ?? 0.12);
@@ -161,8 +169,11 @@ export class PropTransform implements OnInit, OnDestroy {
   aplicarProyeccion() {
     if (!this.objeto.metadata) this.objeto.metadata = {};
 
-    this.objeto.metadata.profundidadProyeccion = this.objProfundidadProyeccion;
-    this.objeto.metadata.anguloProyeccion = this.objAnguloProyeccion;
+    this.objeto.metadata.profundidadProyeccion = this.clampPositive(Number(this.objProfundidadProyeccion), 0.08, 0.01, 1000);
+    this.objeto.metadata.anguloProyeccion = Number(this.objAnguloProyeccion);
+
+    this.objeto.metadata.proyeccionAncho = this.clampPositive(Number(this.objProyeccionAncho), 1, 0.01, 1000);
+    this.objeto.metadata.proyeccionAlto = this.clampPositive(Number(this.objProyeccionAlto), 1, 0.01, 1000);
 
     if (this.objeto.metadata.updateDecal) {
       this.objeto.metadata.updateDecal();
@@ -202,6 +213,9 @@ export class PropTransform implements OnInit, OnDestroy {
           decalMat.diffuseColor = c3;
           decalMat.specularColor = new Color3(0, 0, 0);
           decalMat.ambientColor = c3.scale(Math.max(0.05, brillo * 0.35));
+          decalMat.backFaceCulling = false;
+          decalMat.useAlphaFromDiffuseTexture = true;
+          decalMat.fogEnabled = !this.objIgnoraNiebla;
 
           if (!this.objEsEmisivo) {
             decalMat.emissiveColor = new Color3(0, 0, 0);
@@ -210,12 +224,14 @@ export class PropTransform implements OnInit, OnDestroy {
             decalMat.emissiveColor = c3.scale(brillo);
             decalMat.disableLighting = false;
           }
-
-          decalMat.fogEnabled = !this.objIgnoraNiebla;
-          decalMat.useAlphaFromDiffuseTexture = true;
         }
 
-        if (this.objeto.metadata.decalMesh) {
+        const decMeshes = this.objeto.metadata.decalMeshes as any[] | undefined;
+        if (Array.isArray(decMeshes)) {
+          decMeshes.forEach((m) => {
+            if (m) m.applyFog = !this.objIgnoraNiebla;
+          });
+        } else if (this.objeto.metadata.decalMesh) {
           this.objeto.metadata.decalMesh.applyFog = !this.objIgnoraNiebla;
         }
       } else {

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import {
   Vector3,
@@ -25,6 +24,7 @@ export class EditorCameraService {
     const metadata: any = objeto.metadata || {};
     const collider = metadata.collider;
 
+    // Si tiene un collider custom configurado
     if (collider && collider.type !== 'mesh') {
       const colOffsetX = Number(collider.offsetX || 0);
       const colOffsetY = Number(collider.offsetY || 0);
@@ -39,12 +39,15 @@ export class EditorCameraService {
       const sizeY = Math.max(0.5, Number(collider.sizeY || 1)) * Math.abs(objeto.scaling.y);
       const sizeZ = Math.max(0.5, Number(collider.sizeZ || collider.sizeY || 1)) * Math.abs(objeto.scaling.z);
 
-      const maxSize = Math.max(sizeX, sizeY, sizeZ);
-      const radius = Math.max(7, maxSize * 3.2);
+      // 🔥 LÓGICA MEJORADA DE CÁMARA: Se aumenta el multiplicador a 2.2 para dar margen de visión
+      const diagonal = Math.sqrt((sizeX*sizeX) + (sizeY*sizeY) + (sizeZ*sizeZ));
+      let radius = Math.max(4.0, diagonal * 2.2); 
+      radius = Math.min(radius, 150); // Tope máximo para evitar que se vaya lejísimos
 
       return { target, radius };
     }
 
+    // Si no tiene collider custom, usamos el Bounding Box real del objeto
     const boundingVectors = objeto.getHierarchyBoundingVectors(true);
     const min = boundingVectors.min;
     const max = boundingVectors.max;
@@ -52,10 +55,10 @@ export class EditorCameraService {
     const target = min.add(max).scale(0.5);
     const size = max.subtract(min);
 
-    const maxDim = Math.max(size.x, size.y, size.z);
+    // 🔥 LÓGICA MEJORADA DE CÁMARA: Se aumenta el multiplicador a 2.0 y radio mínimo a 4.0
     const diagonal = size.length();
-
-    const radius = Math.max(7, maxDim * 3.0, diagonal * 1.4);
+    let radius = Math.max(4.0, diagonal * 2.0);
+    radius = Math.min(radius, 150); 
 
     return { target, radius };
   }

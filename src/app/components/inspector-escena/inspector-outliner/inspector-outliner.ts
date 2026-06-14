@@ -16,7 +16,6 @@ export class InspectorOutliner {
   
   @Output() tabSelect = new EventEmitter<string>();
 
-  // 🔥 AHORA GUARDA UIDs EN LUGAR DE NOMBRES
   public nodosExpandidos = new Set<string>();
 
   get listaNodos() { return this.editorSvc.nodosEscena(); }
@@ -43,7 +42,6 @@ export class InspectorOutliner {
   esSeleccionado(nodo: Node): boolean { return this.editorSvc.objetoSeleccionado() === nodo; }
   esBloqueado(nodo: Node): boolean { return nodo instanceof Camera || nodo instanceof Light && !nodo.metadata; }
   
-  // 🔥 SE USA EL UID PARA EXPANDIR
   toggleExpandir(nodo: Node, event: Event) { 
     event.stopPropagation(); 
     const id = (nodo as any).metadata?.uid || nodo.uniqueId.toString();
@@ -60,14 +58,26 @@ export class InspectorOutliner {
     event.stopPropagation(); 
     if (this.esBloqueado(nodo)) return; 
     
-    this.editorSvc.seleccionarObjeto(nodo); 
-    this.editorSvc.subObjetoSeleccionado.set(subObj); 
-    this.tabSelect.emit(pestana); 
+    // 🔥 LÓGICA DE DESELECCIÓN PARA SUB-ITEMS
+    if (this.esSubSeleccionado(nodo, subObj as any)) {
+      this.editorSvc.subObjetoSeleccionado.set(null); 
+    } else {
+      this.editorSvc.seleccionarObjeto(nodo); 
+      this.editorSvc.subObjetoSeleccionado.set(subObj); 
+      this.tabSelect.emit(pestana); 
+    }
   }
   
   seleccionarDesdeLista(nodo: Node) { 
     if (this.esBloqueado(nodo)) return; 
-    this.editorSvc.seleccionarObjeto(nodo); 
+    
+    // 🔥 LÓGICA DE DESELECCIÓN: Si el objeto clickeado ya está seleccionado, lo deselecciona.
+    if (this.esSeleccionado(nodo)) {
+      this.editorSvc.seleccionarObjeto(null);
+      this.editorSvc.subObjetoSeleccionado.set(null);
+    } else {
+      this.editorSvc.seleccionarObjeto(nodo); 
+    }
   }
   
   esSubSeleccionado(nodo: Node, subObj: 'collider' | 'camera'): boolean { 

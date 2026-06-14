@@ -1,5 +1,3 @@
-
-// src/app/services/editor/editor-tools.service.ts
 import { Injectable, inject, effect } from '@angular/core';
 import { DirectionalLight, KeyboardEventTypes, Matrix, Mesh, PointerEventTypes, SpotLight, TransformNode, Vector3, Ray } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
@@ -64,7 +62,6 @@ export class EditorToolsService {
       this.gizmoSvc.syncCenterDragMeshVisuals(pi);
     });
 
-    // Función pura interna para resolver objetos seleccionables y no dañar la librería de Babylon
     const castRayToSelectable = (ray: Ray, ignoreTriggers: boolean = false) => {
         const hit = scene.pickWithRay(ray, (mesh) => {
             if (!mesh.isPickable || !mesh.isVisible) return false;
@@ -86,7 +83,7 @@ export class EditorToolsService {
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
 
-      // DOBLE CLICK (Enfocar)
+      // DOBLE CLICK (Enfocar en modo editor)
       if (pi.type === PointerEventTypes.POINTERDOUBLETAP && pi.event.button === 0) {
         if (isAdmin && playSt === 'EDITOR') {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
@@ -100,8 +97,10 @@ export class EditorToolsService {
         return;
       }
 
-      // CLICK NORMAL (Seleccionar / Transicionar)
+      // CLICK NORMAL (Seleccionar / Deseleccionar / Transicionar)
       if (pi.type === PointerEventTypes.POINTERTAP && pi.event.button === 0) {
+        
+        // Comportamiento cuando estamos jugando y somos Admin (1ra persona modo edición)
         if (playSt === 'PLAYING') {
           if (!this.state.ratonBloqueado()) {
             try { canvas?.requestPointerLock(); } catch {}
@@ -111,12 +110,18 @@ export class EditorToolsService {
           if (this.state.modoVistaPrueba === 'FPS') {
             const ray = scene.createPickingRay(this.motor3d.engine.getRenderWidth() / 2, this.motor3d.engine.getRenderHeight() / 2, Matrix.Identity(), scene.activeCamera);
             ray.length = 10000;
-            const rootNode = castRayToSelectable(ray, true); // Ignoramos triggers al cliquear en FPS
+            const rootNode = castRayToSelectable(ray, true); 
             
             if (rootNode) {
-              this.state.objetoSeleccionado.set(rootNode);
-              this.state.objetoHovereado.set(rootNode);
-              if (isAdmin) this.cameraSvc.transicionAEdicionEnVivo(rootNode);
+              // 🔥 LÓGICA DE DESELECCIÓN PARA ADMIN FPS
+              if (this.state.objetoSeleccionado() === rootNode) {
+                this.state.objetoSeleccionado.set(null);
+                this.state.objetoHovereado.set(null);
+              } else {
+                this.state.objetoSeleccionado.set(rootNode);
+                this.state.objetoHovereado.set(rootNode);
+                if (isAdmin) this.cameraSvc.transicionAEdicionEnVivo(rootNode);
+              }
             } else {
               this.state.objetoSeleccionado.set(null);
               this.state.objetoHovereado.set(null);
@@ -125,6 +130,7 @@ export class EditorToolsService {
           return;
         }
 
+        // Comportamiento para modo Editor Puro o Editando en Vivo
         if (isAdmin && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
@@ -135,7 +141,12 @@ export class EditorToolsService {
           const rootNode = castRayToSelectable(ray);
 
           if (rootNode) {
-            if (this.state.objetoSeleccionado() !== rootNode) this.state.objetoSeleccionado.set(rootNode);
+            // 🔥 LÓGICA DE DESELECCIÓN PARA MODO EDITOR
+            if (this.state.objetoSeleccionado() === rootNode) {
+              this.state.objetoSeleccionado.set(null); // Click al mismo = deseleccionar
+            } else {
+              this.state.objetoSeleccionado.set(rootNode); // Nuevo objeto
+            }
           } else {
             this.state.objetoSeleccionado.set(null);
             if (playSt === 'EDITING_IN_GAME') {
@@ -160,7 +171,7 @@ export class EditorToolsService {
         if (playSt === 'PLAYING' && this.state.modoVistaPrueba === 'FPS') {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
-          const rootNode = castRayToSelectable(ray, true); // Ignoramos triggers en hover FPS
+          const rootNode = castRayToSelectable(ray, true); 
           this.state.objetoHovereado.set(rootNode);
           return;
         }
@@ -181,7 +192,6 @@ export class EditorToolsService {
       }
     });
 
-    // TECLADO (Accesos directos de herramientas)
     scene.onKeyboardObservable.add((kbInfo) => {
       const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
@@ -213,7 +223,6 @@ export class EditorToolsService {
       this.fogSvc.aplicarNieblaEnTiempoReal();
     });
 
-    // BEFORE RENDER LOOP
     scene.onBeforeRenderObservable.add(() => {
       scene.lights.forEach(light => {
         if ((light instanceof SpotLight || light instanceof DirectionalLight) && light.name.startsWith('l_')) {
@@ -251,4 +260,3 @@ export class EditorToolsService {
   pegarObjeto() { this.clipboardSvc.pegarObjeto(); }
   deshacerAccion() { this.clipboardSvc.deshacerAccion(); }
 }
-

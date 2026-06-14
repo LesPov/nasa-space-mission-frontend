@@ -1,4 +1,3 @@
-
 import { Injectable } from '@angular/core';
 import {
   Engine,
@@ -93,14 +92,21 @@ export class Motor3dService {
     this.glowLayer.intensity = 0.6; 
 
     this.scene.onBeforeRenderObservable.add(() => {
+      // 🔥 LÓGICA MEJORADA DE SENSIBILIDAD PARA LA CÁMARA DEL EDITOR
       if (this.scene.activeCamera === this.editorCamera) {
         const radius = Math.max(0.1, this.editorCamera.radius);
-        const proximity = Math.max(0, Math.min(1, 1 - (radius / 50)));
-
-        this.editorCamera.angularSensibilityX = 250 + (proximity * 1950);
-        this.editorCamera.angularSensibilityY = 250 + (proximity * 1950);
-        this.editorCamera.panningSensibility = 25 + (proximity * 1175);
-        this.editorCamera.wheelPrecision = 0.8 + (proximity * 49.2);
+        
+        // En BabylonJS, un wheelPrecision MENOR significa un zoom MÁS RÁPIDO.
+        // Si estamos lejos (radius grande), precision es pequeña (rápido).
+        // Si estamos cerca (radius pequeño), precision es grande (lento y detallado).
+        this.editorCamera.wheelPrecision = Math.max(1.5, 50 / radius);
+        
+        // Panning (paneo) también debe escalar según la distancia.
+        this.editorCamera.panningSensibility = Math.max(50, 2000 / radius);
+        
+        // Rotación de cámara cómoda
+        this.editorCamera.angularSensibilityX = Math.max(500, 3000 / Math.sqrt(radius));
+        this.editorCamera.angularSensibilityY = Math.max(500, 3000 / Math.sqrt(radius));
       }
 
       const cam = this.scene.activeCamera;
@@ -112,7 +118,6 @@ export class Motor3dService {
       this.scene.meshes.forEach(m => {
           if (!m.metadata) return;
 
-          // 🔥 FIX NIEBLA: Ocultar Burbujas, Luces y Videos gradualmente
           if (m.metadata.type === 'bubble' || m.metadata.type?.startsWith('light_') || m.metadata.type === 'video_plane') {
               if (useFogFade && !m.metadata.ignoraNiebla) {
                   const dist = Vector3.Distance(cam.globalPosition, m.getAbsolutePosition());
@@ -121,7 +126,7 @@ export class Motor3dService {
                       targetVis = 0;
                   } else if (dist > fogStart) {
                       targetVis = 1.0 - ((dist - fogStart) / (fogEnd - fogStart));
-                      targetVis = Math.pow(targetVis, 1.2); // Curva suave de desaparición
+                      targetVis = Math.pow(targetVis, 1.2); 
                   }
                   
                   m.visibility = targetVis;
@@ -132,7 +137,6 @@ export class Motor3dService {
               }
           }
 
-          // 🔥 FIX ANIMACIÓN BURBUJA
           if (m.metadata.type === 'bubble' && m.isVisible) {
               if (!m.metadata.baseScaleX) {
                   m.metadata.baseScaleX = m.scaling.x;
@@ -160,7 +164,6 @@ export class Motor3dService {
       });
     });
 
-    // Control de límite de niebla nativo
     this.scene.onBeforeCameraRenderObservable.add((camera) => {
       if (camera.name === 'editorCamera') {
         this.scene.fogEnabled = false;

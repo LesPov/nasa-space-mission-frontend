@@ -1,5 +1,7 @@
+
+// src/app/services/editor/editor-tools.service.ts
 import { Injectable, inject, effect } from '@angular/core';
-import { DirectionalLight, KeyboardEventTypes, Matrix, Mesh, PointerEventTypes, SpotLight, TransformNode, Vector3 } from '@babylonjs/core';
+import { DirectionalLight, KeyboardEventTypes, Matrix, Mesh, PointerEventTypes, SpotLight, TransformNode, Vector3, Ray } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorCameraService } from './editor-camera.service';
 import { EditorSceneService } from './editor-scene.service';
@@ -41,7 +43,6 @@ export class EditorToolsService {
       this.highlightSvc.actualizarHighlights(selected, hovered);
       this.fogSvc.aplicarNieblaEnTiempoReal();
       
-      // Vincula o desvincula el gizmo según selección
       this.gizmoSvc.attachGizmoToCurrentSelection(selected, subSelected);
     });
 
@@ -55,17 +56,29 @@ export class EditorToolsService {
     const scene = this.motor3d.scene;
     this.state.playState.set('EDITOR');
 
-    // Iniciar Módulos
     this.highlightSvc.initHighlights();
     this.gizmoSvc.initGizmos();
     this.clipboardSvc.initKeyboardListeners();
 
-    // Comportamiento visual del botón arrastrable del centro
     this.gizmoSvc.gizmoManager.utilityLayer.utilityLayerScene.onPointerObservable.add((pi) => {
       this.gizmoSvc.syncCenterDragMeshVisuals(pi);
     });
 
-    // MOUSE Y RAYCAST
+    // Función pura interna para resolver objetos seleccionables y no dañar la librería de Babylon
+    const castRayToSelectable = (ray: Ray, ignoreTriggers: boolean = false) => {
+        const hit = scene.pickWithRay(ray, (mesh) => {
+            if (!mesh.isPickable || !mesh.isVisible) return false;
+            const n = mesh.name.toLowerCase();
+            if (n.includes('gizmo') || n.includes('proxycol') || n.includes('suelo') || n.includes('skybox')) return false;
+            if (ignoreTriggers && (n.includes('trigger') || mesh.metadata?.type === 'trigger')) return false;
+            return true;
+        });
+        if (hit && hit.hit && hit.pickedMesh) {
+            return this.state.resolverObjetoSeleccionable(hit.pickedMesh);
+        }
+        return null;
+    };
+
     scene.onPointerObservable.add((pi) => {
       const canvas = this.motor3d.engine.getRenderingCanvas();
       const playSt = this.state.playState();
@@ -78,7 +91,7 @@ export class EditorToolsService {
         if (isAdmin && playSt === 'EDITOR') {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
-          const rootNode = this.selectionSvc.resolverRootDesdeRay(ray, isAdmin, this.gizmoSvc.centerDragMesh);
+          const rootNode = castRayToSelectable(ray);
           if (rootNode) {
             this.state.objetoSeleccionado.set(rootNode);
             this.cameraSvc.enfocarObjetoEnEditor(rootNode);
@@ -98,7 +111,7 @@ export class EditorToolsService {
           if (this.state.modoVistaPrueba === 'FPS') {
             const ray = scene.createPickingRay(this.motor3d.engine.getRenderWidth() / 2, this.motor3d.engine.getRenderHeight() / 2, Matrix.Identity(), scene.activeCamera);
             ray.length = 10000;
-            const rootNode = this.selectionSvc.resolverRootDesdeRay(ray, isAdmin, this.gizmoSvc.centerDragMesh);
+            const rootNode = castRayToSelectable(ray, true); // Ignoramos triggers al cliquear en FPS
             
             if (rootNode) {
               this.state.objetoSeleccionado.set(rootNode);
@@ -119,7 +132,7 @@ export class EditorToolsService {
           const hitGizmo = scene.pickWithRay(ray, (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo') || mesh === this.gizmoSvc.centerDragMesh);
           if (hitGizmo && hitGizmo.hit) return;
 
-          const rootNode = this.selectionSvc.resolverRootDesdeRay(ray, isAdmin, this.gizmoSvc.centerDragMesh);
+          const rootNode = castRayToSelectable(ray);
 
           if (rootNode) {
             if (this.state.objetoSeleccionado() !== rootNode) this.state.objetoSeleccionado.set(rootNode);
@@ -147,7 +160,7 @@ export class EditorToolsService {
         if (playSt === 'PLAYING' && this.state.modoVistaPrueba === 'FPS') {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
-          const rootNode = this.selectionSvc.resolverRootDesdeRay(ray, isAdmin, this.gizmoSvc.centerDragMesh);
+          const rootNode = castRayToSelectable(ray, true); // Ignoramos triggers en hover FPS
           this.state.objetoHovereado.set(rootNode);
           return;
         }
@@ -162,7 +175,7 @@ export class EditorToolsService {
             return;
           }
 
-          const rootNode = this.selectionSvc.resolverRootDesdeRay(ray, isAdmin, this.gizmoSvc.centerDragMesh);
+          const rootNode = castRayToSelectable(ray);
           this.state.objetoHovereado.set(rootNode);
         }
       }
@@ -200,7 +213,7 @@ export class EditorToolsService {
       this.fogSvc.aplicarNieblaEnTiempoReal();
     });
 
-    // BEFORE RENDER LOOP (Ajustar sombras direccionales, pivot, esferas)
+    // BEFORE RENDER LOOP
     scene.onBeforeRenderObservable.add(() => {
       scene.lights.forEach(light => {
         if ((light instanceof SpotLight || light instanceof DirectionalLight) && light.name.startsWith('l_')) {
@@ -238,3 +251,4 @@ export class EditorToolsService {
   pegarObjeto() { this.clipboardSvc.pegarObjeto(); }
   deshacerAccion() { this.clipboardSvc.deshacerAccion(); }
 }
+

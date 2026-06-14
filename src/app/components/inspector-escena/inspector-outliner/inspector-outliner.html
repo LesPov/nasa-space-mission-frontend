@@ -1,4 +1,3 @@
-
 <div class="panel-header">
   <span class="icon">📁</span>
   <span>Escena (Outliner)</span>
@@ -11,15 +10,22 @@
   </div>
 
   <div class="tree-items">
-    <div *ngFor="let nodo of listaNodos">
+    
+    <!-- Definimos una plantilla recursiva para poder dibujar infinitos niveles de hijos -->
+    <ng-template #nodeTemplate let-nodo="nodo" let-depth="depth">
+      <!-- El div del Nodo en sí -->
       <div
         class="node-item"
         [class.selected]="esSeleccionado(nodo) && !editorSvc.subObjetoSeleccionado()"
         [class.locked]="esBloqueado(nodo)"
+        [style.padding-left.px]="8 + (depth * 15)"
         (click)="seleccionarDesdeLista(nodo)"
       >
         <div class="node-left">
-          <span class="tree-expander" (click)="toggleExpandir(nodo, $event)">
+          <!-- Si el objeto tiene hijos reales O tiene "sub-items lógicos" (cámara, collider), muestra el botón de expandir -->
+          <span class="tree-expander" 
+                [style.visibility]="(tieneHijos(nodo) || tieneCapsula(nodo) || tieneCamara(nodo) || tieneAnimaciones(nodo)) ? 'visible' : 'hidden'" 
+                (click)="toggleExpandir(nodo, $event)">
             {{ estaExpandido(nodo) ? '▼' : '▶' }}
           </span>
           <span class="node-icon">{{ getIcono(nodo) }}</span>
@@ -33,36 +39,48 @@
         </div>
       </div>
 
-      <div class="sub-tree" *ngIf="estaExpandido(nodo)">
-        <div
-          class="node-item sub-item"
-          *ngIf="nodo?.metadata?.collider?.type !== 'mesh'"
-          [class.selected]="esSubSeleccionado(nodo, 'collider')"
-          (click)="seleccionarSubItem('physics', 'collider', nodo, $event)"
-        >
+      <!-- El contenedor para todo lo que va debajo de este nodo (solo si está expandido) -->
+      <div class="sub-tree-container" *ngIf="estaExpandido(nodo)">
+        
+        <!-- 1. Mostrar Sub-Items lógicos falsos (Cámaras, Colliders, Animaciones) -->
+        <div class="node-item sub-item"
+             *ngIf="nodo?.metadata?.collider?.type !== 'mesh'"
+             [class.selected]="esSubSeleccionado(nodo, 'collider')"
+             [style.padding-left.px]="28 + (depth * 15)"
+             (click)="seleccionarSubItem('physics', 'collider', nodo, $event)">
           <span class="node-icon">📦</span>
-          <span class="node-name">Colisión ({{ nodo.metadata?.collider?.type || 'sin tipo' }})</span>
+          <span class="node-name" style="color:#aaa;">Colisión ({{ nodo.metadata?.collider?.type || 'sin tipo' }})</span>
         </div>
 
-        <div
-          class="node-item sub-item"
-          *ngIf="tieneCamara(nodo)"
-          [class.selected]="esSubSeleccionado(nodo, 'camera')"
-          (click)="seleccionarSubItem('physics', 'camera', nodo, $event)"
-        >
+        <div class="node-item sub-item"
+             *ngIf="tieneCamara(nodo)"
+             [class.selected]="esSubSeleccionado(nodo, 'camera')"
+             [style.padding-left.px]="28 + (depth * 15)"
+             (click)="seleccionarSubItem('physics', 'camera', nodo, $event)">
           <span class="node-icon">🎥</span>
-          <span class="node-name">Cámara interna</span>
+          <span class="node-name" style="color:#aaa;">Cámara interna FPS</span>
         </div>
 
-        <div
-          class="node-item sub-item"
-          *ngIf="tieneAnimaciones(nodo)"
-          (click)="seleccionarSubItem('animation', null, nodo, $event)"
-        >
+        <div class="node-item sub-item"
+             *ngIf="tieneAnimaciones(nodo)"
+             [style.padding-left.px]="28 + (depth * 15)"
+             (click)="seleccionarSubItem('animation', null, nodo, $event)">
           <span class="node-icon">🏃</span>
-          <span class="node-name">Animaciones</span>
+          <span class="node-name" style="color:#aaa;">Gestor de Animaciones</span>
         </div>
+
+        <!-- 2. Mostrar Hijos reales (Llamada recursiva a la misma plantilla) -->
+        <ng-container *ngFor="let childNode of obtenerHijos(nodo)">
+           <ng-container *ngTemplateOutlet="nodeTemplate; context:{ nodo: childNode, depth: depth + 1 }"></ng-container>
+        </ng-container>
+
       </div>
-    </div>
+    </ng-template>
+
+    <!-- Iniciamos el bucle principal usando la plantilla, pero SOLO con los nodos que NO tienen padre (los Root) -->
+    <ng-container *ngFor="let nodoRaiz of listaNodos">
+      <ng-container *ngTemplateOutlet="nodeTemplate; context:{ nodo: nodoRaiz, depth: 0 }"></ng-container>
+    </ng-container>
+
   </div>
 </div>

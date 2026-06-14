@@ -1,7 +1,6 @@
-
 import { Component, Output, EventEmitter, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { Node, AbstractMesh, Camera, Light } from '@babylonjs/core';
+import { Node, AbstractMesh, Camera, Light, Mesh } from '@babylonjs/core';
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 
@@ -17,24 +16,50 @@ export class InspectorOutliner {
   
   @Output() tabSelect = new EventEmitter<string>();
 
+  // 🔥 AHORA GUARDA UIDs EN LUGAR DE NOMBRES
   public nodosExpandidos = new Set<string>();
 
   get listaNodos() { return this.editorSvc.nodosEscena(); }
 
+  obtenerHijos(nodo: Node): Node[] {
+    if (!nodo || !nodo.getChildren) return [];
+    
+    return nodo.getChildren().filter(child => {
+        if (!(child instanceof Mesh) && !(child instanceof Light)) return false;
+        if (child.name.includes('proxyCol') || child.name.includes('debug') || child.name.includes('gizmo')) return false;
+        
+        if (nodo.metadata?.type === 'model') {
+           return !!child.metadata && child.metadata.type; 
+        }
+        
+        return true;
+    });
+  }
+
+  tieneHijos(nodo: Node): boolean {
+    return this.obtenerHijos(nodo).length > 0;
+  }
+
   esSeleccionado(nodo: Node): boolean { return this.editorSvc.objetoSeleccionado() === nodo; }
-  esBloqueado(nodo: Node): boolean { return nodo instanceof Camera || nodo instanceof Light; }
+  esBloqueado(nodo: Node): boolean { return nodo instanceof Camera || nodo instanceof Light && !nodo.metadata; }
   
+  // 🔥 SE USA EL UID PARA EXPANDIR
   toggleExpandir(nodo: Node, event: Event) { 
     event.stopPropagation(); 
-    if (this.nodosExpandidos.has(nodo.name)) this.nodosExpandidos.delete(nodo.name); 
-    else this.nodosExpandidos.add(nodo.name); 
+    const id = (nodo as any).metadata?.uid || nodo.uniqueId.toString();
+    if (this.nodosExpandidos.has(id)) this.nodosExpandidos.delete(id); 
+    else this.nodosExpandidos.add(id); 
   }
   
-  estaExpandido(nodo: Node): boolean { return this.nodosExpandidos.has(nodo.name); }
+  estaExpandido(nodo: Node): boolean { 
+    const id = (nodo as any).metadata?.uid || nodo.uniqueId.toString();
+    return this.nodosExpandidos.has(id); 
+  }
   
   seleccionarSubItem(pestana: string, subObj: 'collider' | 'camera' | null, nodo: Node, event: Event) { 
     event.stopPropagation(); 
     if (this.esBloqueado(nodo)) return; 
+    
     this.editorSvc.seleccionarObjeto(nodo); 
     this.editorSvc.subObjetoSeleccionado.set(subObj); 
     this.tabSelect.emit(pestana); 
@@ -66,7 +91,7 @@ export class InspectorOutliner {
     if (nodo instanceof Camera) return '🎥';
     if (nodo instanceof Light) return '💡';
     if (nodo instanceof AbstractMesh) {
-      if (nodo.metadata?.type?.startsWith('light_')) return '💡'; // 🔥 NUEVO ÍCONO PARA LUCES
+      if (nodo.metadata?.type?.startsWith('light_')) return '💡'; 
       if (nodo.metadata?.type === 'trigger') return '📍';
       if (nodo.metadata?.type === 'model') return '🧍';
       if (nodo.name.toLowerCase().includes('cubo')) return '🧊';

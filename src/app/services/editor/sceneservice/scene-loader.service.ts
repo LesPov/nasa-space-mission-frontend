@@ -1,14 +1,6 @@
 import { Injectable, inject } from '@angular/core';
-import { 
-  AbstractMesh, Color3, Color4, DirectionalLight, Matrix, Mesh, 
-  MeshBuilder, PointLight, Quaternion, Scene, SceneLoader, SpotLight, 
-  StandardMaterial, TransformNode, Vector3, VideoTexture, FresnelParameters 
-} from '@babylonjs/core';
-
-// 🔥 FIX CRÍTICO 1: Importación global obligatoria para que Babylon 
-// pueda decodificar JSON de modelos .glb, .gltf y .obj sin crashear.
+import { AbstractMesh, Color3, Color4, DirectionalLight, Matrix, Mesh, MeshBuilder, PointLight, Quaternion, Scene, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3, VideoTexture, FresnelParameters } from '@babylonjs/core';
 import '@babylonjs/loaders';
-
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { SceneUtilsService } from './scene-utils.service';
@@ -78,6 +70,7 @@ export class SceneLoaderService {
       const isAdmin = this.state.rolSimulado() === 'admin';
 
       const promesasCarga: any[] = [];
+      const mallasCreadas = new Map<string, Mesh>(); 
 
       objetosBD.forEach((obj: any) => {
         const isModel = obj.type === 'model';
@@ -113,7 +106,7 @@ export class SceneLoaderService {
               rootNode.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
               rootNode.checkCollisions = false; rootNode.isPickable = true;
               rootNode.applyFog = !isIgnoraNieblaSaved;
-
+              
               result.meshes.forEach(m => {
                 if (m !== rootNode) {
                   m.isPickable = true; m.checkCollisions = isSolidSaved;
@@ -134,8 +127,9 @@ export class SceneLoaderService {
               const playerConfig = this.utilsSvc.prepararPlayerConfigConSelectionRange(obj.properties?.playerConfig || null, savedSelectionRange);
 
               rootNode.metadata = {
+                uid: obj.uid || window.crypto.randomUUID(), // 🔥 LEEMOS O GENERAMOS UID
                 type: obj.type, rol: 'light', assetId: obj.assetId, path, isSolid: isSolidSaved, isSelectable: isSelectableSaved,
-                ignoraNiebla: isIgnoraNieblaSaved,
+                ignoraNiebla: isIgnoraNieblaSaved, parentId: obj.parentId || null,
                 lightColor: lightColorHex, intensity: obj.properties?.intensity ?? 1.0, range: obj.properties?.range ?? 50, angle: obj.properties?.angle ?? 60,
                 attachedNodePath: obj.properties?.attachedNodePath || '', attachedNodeName: obj.properties?.attachedNodeName || '',
                 animationNames: anims.map(a => a.name),
@@ -143,6 +137,8 @@ export class SceneLoaderService {
                 camOffset: obj.properties?.camOffset || defaultCamOffset,
                 playerConfig, selectionRange: { ...playerConfig.selectionRange }, initialHeadLocal
               };
+
+              mallasCreadas.set(rootNode.metadata.uid, rootNode); // 🔥 GUARDAMOS POR UID
 
               let lightObj: any;
               if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 2.5, 0), scene);
@@ -189,10 +185,14 @@ export class SceneLoaderService {
             const playerConfig = this.utilsSvc.prepararPlayerConfigConSelectionRange(obj.properties?.playerConfig || null, savedSelectionRange);
 
             mesh.metadata = {
+              uid: obj.uid || window.crypto.randomUUID(), // 🔥 LEEMOS O GENERAMOS UID
               type: obj.type, rol: 'light', isSolid: false, isSelectable: true, ignoraNiebla: isIgnoraNieblaSaved,
               lightColor: lightColorHex, intensity: obj.properties?.intensity ?? 1.0, range: obj.properties?.range ?? 50, angle: obj.properties?.angle ?? 60,
-              attachedNodePath: '', attachedNodeName: '', playerConfig, selectionRange: { ...playerConfig.selectionRange }
+              attachedNodePath: '', attachedNodeName: '', playerConfig, selectionRange: { ...playerConfig.selectionRange },
+              parentId: obj.parentId || null
             };
+            
+            mallasCreadas.set(mesh.metadata.uid, mesh); // 🔥 GUARDAMOS POR UID
 
             mesh.isPickable = true; mesh.checkCollisions = false; mesh.isVisible = isAdmin;
             return;
@@ -246,11 +246,16 @@ export class SceneLoaderService {
             }
 
             rootNode.metadata = {
+              uid: obj.uid || window.crypto.randomUUID(), // 🔥 LEEMOS O GENERAMOS UID
               type: 'model', rol: rolSaved, assetId: obj.assetId, path, isSolid: isSolidSaved, isSelectable: isSelectableSaved, mensaje: mensajeSaved,
               ignoraNiebla: isIgnoraNieblaSaved, interactDistanceFPS, interactDistanceTPS, interactSequenceIdFPS, interactSequenceIdTPS,
               animationNames: anims.map(a => a.name), collider: savedCollider, camOffset: savedCamOffset,
-              playerConfig: savedPlayerConfig, selectionRange: { ...savedPlayerConfig.selectionRange }, initialHeadLocal
+              playerConfig: savedPlayerConfig, selectionRange: { ...savedPlayerConfig.selectionRange }, initialHeadLocal,
+              parentId: obj.parentId || null 
             };
+            
+            mallasCreadas.set(rootNode.metadata.uid, rootNode); // 🔥 GUARDAMOS POR UID
+
             rootNode.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
             rootNode.ellipsoidOffset = new Vector3(savedCollider.offsetX * obj.scale.x, savedCollider.offsetY * obj.scale.y, savedCollider.offsetZ * obj.scale.z);
           });
@@ -275,12 +280,16 @@ export class SceneLoaderService {
           const savedColorBW = obj.properties?.colorBW?.substring(0, 7) || savedColorHex;
 
           mesh.metadata = {
+            uid: obj.uid || window.crypto.randomUUID(), // 🔥 LEEMOS O GENERAMOS UID
             type: obj.type, rol: rolSaved, color: savedColorHex, colorBW: savedColorBW, isSolid: isSolidSaved, isSelectable: isSelectableSaved, mensaje: mensajeSaved,
             ignoraNiebla: isIgnoraNieblaSaved, respawnTime: obj.properties?.respawnTime ?? 8, 
             interactDistanceFPS, interactDistanceTPS, interactSequenceIdFPS, interactSequenceIdTPS,
             collider: savedCollider, camOffset: savedCamOffset,
-            playerConfig: savedPlayerConfig, selectionRange: { ...savedPlayerConfig.selectionRange }
+            playerConfig: savedPlayerConfig, selectionRange: { ...savedPlayerConfig.selectionRange },
+            parentId: obj.parentId || null
           };
+
+          mallasCreadas.set(mesh.metadata.uid, mesh); // 🔥 GUARDAMOS POR UID
 
           if (isVideo) {
              mesh.metadata.assetId = obj.assetId;
@@ -308,25 +317,10 @@ export class SceneLoaderService {
               mesh.material = mat; mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
           } else if (obj.type === 'video_plane') {
               const mat = new StandardMaterial('mat_' + obj.name, scene);
-              mat.emissiveColor = new Color3(0, 0, 0); 
-              mat.disableLighting = true;
-              
+              mat.emissiveColor = new Color3(0, 0, 0); mat.disableLighting = true;
               if (mesh.metadata.videoUrl) {
                   const videoUrl = 'http://localhost:4000' + mesh.metadata.videoUrl;
-                  
-                  // 🔥 FIX CRÍTICO 2 y 3: generateMipMaps en false (4to arg) para evitar GL_INVALID_OPERATION
-                  // y autoPlay: false para evitar The play() request was interrupted by a call to pause()
-                  const videoTexture = new VideoTexture(
-                    "vidTex_" + obj.name, 
-                    videoUrl, 
-                    scene, 
-                    false,  // generateMipMaps: NO SOPORTADO PARA VIDEOS
-                    true,   // invertY
-                    undefined, 
-                    { autoPlay: false } // Evita que arranque automáticamente
-                  );
-                  
-                  // ELIMINADO: videoTexture.video.pause(); -> Causa problemas.
+                  const videoTexture = new VideoTexture("vidTex_" + obj.name, videoUrl, scene, false, true, undefined, { autoPlay: false });
                   mat.diffuseTexture = videoTexture;
               } else {
                   mat.diffuseColor = new Color3(0.1, 0.1, 0.1); 
@@ -365,11 +359,13 @@ export class SceneLoaderService {
           mesh.material = mat; mesh.isPickable = true; mesh.checkCollisions = false; mesh.isVisible = isAdmin;
 
           mesh.metadata = {
-            type: 'trigger', triggerShape: shape, isComposite: isComposite,
+            uid: trigger.uid || window.crypto.randomUUID(), // 🔥 LEEMOS O GENERAMOS UID
+            type: 'trigger', triggerShape: shape, isComposite: isComposite, parentId: trigger.parentId || null, 
             conditions: [], mensajeEntrada: '', mensajeSalida: '', soundUrlEntrada: '', soundUrlSalida: '', seqEntrada: '', seqSalida: '', timeEntrada: 4.5, timeSalida: 4.5, videoEntrada: '', videoSalida: '',
             condition: 'on_enter', mensaje: '', soundUrl: '', interactSequenceId: '', timeNorm: 4.5, videoNorm: '',
             isRepeatable: trigger.isRepeatable, isEnabled: trigger.isEnabled, hasTriggeredEnter: false, hasTriggeredExit: false
           };
+          mallasCreadas.set(mesh.metadata.uid, mesh); // 🔥 GUARDAMOS POR UID
         }
 
         if (isComposite) {
@@ -391,6 +387,16 @@ export class SceneLoaderService {
       });
 
       Promise.all(promesasCarga).then(() => {
+        // 🔥 RECONSTRUIR JERARQUÍA BASADA EN UID
+        mallasCreadas.forEach((mesh) => {
+            if (mesh.metadata?.parentId) {
+                const parentNode = mallasCreadas.get(mesh.metadata.parentId) || scene.getMeshByName(mesh.metadata.parentId);
+                if (parentNode) {
+                    mesh.parent = parentNode; 
+                }
+            }
+        });
+
         this.shadowsSvc.asignarObjetosASombrasDeLuces();
         this.nodesSvc.actualizarListaNodos();
         resolve(); 

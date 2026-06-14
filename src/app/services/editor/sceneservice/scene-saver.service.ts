@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, HemisphericLight } from '@babylonjs/core';
+import { AbstractMesh, HemisphericLight, Node } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { SceneUtilsService } from './scene-utils.service';
@@ -30,12 +30,25 @@ export class SceneSaverService {
       ambientDirZ: ambient ? ambient.direction.z : 0
     };
 
-    this.state.nodosEscena().forEach(nodo => {
+    const processNode = (nodo: Node) => {
       if (nodo instanceof AbstractMesh && nodo.metadata?.type) {
+        
+        // 🔥 Si por alguna razón un objeto viejo no tiene UID, se lo asignamos antes de guardar
+        if (!nodo.metadata.uid) {
+            nodo.metadata.uid = window.crypto.randomUUID();
+        }
+        
         const rot = nodo.rotationQuaternion ? nodo.rotationQuaternion.toEulerAngles() : nodo.rotation;
+        
         const selectionRange = this.utilsSvc.normalizarSelectionRange(
           nodo.metadata?.playerConfig?.selectionRange || nodo.metadata?.selectionRange || null
         );
+
+        // 🔥 AHORA GUARDAMOS EL UID DEL PADRE
+        let parentUid = null;
+        if (nodo.parent && nodo.parent.name !== '__root__') {
+            parentUid = (nodo.parent as AbstractMesh).metadata?.uid || null;
+        }
 
         if (nodo.metadata.type === 'trigger') {
           if (nodo.metadata.isComposite) {
@@ -58,7 +71,9 @@ export class SceneSaverService {
               }
 
               triggers.push({
+                uid: nodo.metadata.uid, // 🔥 GUARDAR UID
                 name: nodo.name,
+                parentId: parentUid, // 🔥 GUARDAR UID DEL PADRE
                 position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
                 scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z },
                 properties: { condition: cond, actionType: 'show_message', targetObjectName: '', isRepeatable: nodo.metadata.isRepeatable, isEnabled: nodo.metadata.isEnabled, ...actionProps }
@@ -66,7 +81,9 @@ export class SceneSaverService {
             });
           } else {
             triggers.push({
+              uid: nodo.metadata.uid, // 🔥 GUARDAR UID
               name: nodo.name,
+              parentId: parentUid, // 🔥 GUARDAR UID DEL PADRE
               position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
               scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z },
               properties: {
@@ -76,56 +93,63 @@ export class SceneSaverService {
               }
             });
           }
-          return;
-        }
-
-        const baseData = {
-          name: nodo.name,
-          position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
-          rotation: { x: rot.x, y: rot.y, z: rot.z },
-          scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z }
-        };
-
-        const propertiesToSave = {
-          rol: nodo.metadata.rol,
-          isSolid: nodo.metadata.isSolid,
-          isSelectable: nodo.metadata.isSelectable,
-          ignoraNiebla: nodo.metadata.ignoraNiebla ?? false,
-          mensaje: nodo.metadata.mensaje,
-          respawnTime: nodo.metadata.respawnTime ?? 8, 
-          interactDistanceFPS: nodo.metadata.interactDistanceFPS ?? 3.0,
-          interactDistanceTPS: nodo.metadata.interactDistanceTPS ?? 5.0,
-          interactSequenceIdFPS: nodo.metadata.interactSequenceIdFPS || '',
-          interactSequenceIdTPS: nodo.metadata.interactSequenceIdTPS || '',
-          collider: nodo.metadata.collider,
-          camOffset: nodo.metadata.camOffset,
-          playerConfig: nodo.metadata.playerConfig || null,
-          selectionRange,
-          animationNames: nodo.metadata.animationNames || [],
-          colorBW: nodo.metadata.colorBW
-        };
-
-        if (nodo.metadata.type === 'model') {
-          sceneObjects.push({ ...baseData, type: 'model', assetId: nodo.metadata.assetId, properties: { path: nodo.metadata.path, ...propertiesToSave } });
-        } else if (nodo.metadata.type?.startsWith('light_')) {
-          sceneObjects.push({
-            ...baseData, type: nodo.metadata.type,
-            properties: {
-              lightColor: nodo.metadata.lightColor, intensity: nodo.metadata.intensity, range: nodo.metadata.range, angle: nodo.metadata.angle, path: nodo.metadata.path,
-              attachedNodePath: nodo.metadata.attachedNodePath || '', attachedNodeName: nodo.metadata.attachedNodeName || '', ...propertiesToSave
-            },
-            assetId: nodo.metadata.assetId
-          });
-        } else if (nodo.metadata.type === 'video_plane') {
-           sceneObjects.push({
-             ...baseData, type: 'video_plane', assetId: nodo.metadata.assetId,
-             properties: { videoUrl: nodo.metadata.videoUrl, path: nodo.metadata.videoUrl, ...propertiesToSave }
-           });
         } else {
-          sceneObjects.push({ ...baseData, type: nodo.metadata.type, properties: { color: nodo.metadata.color, ...propertiesToSave } });
+          const baseData = {
+            uid: nodo.metadata.uid, // 🔥 GUARDAR UID
+            name: nodo.name,
+            parentId: parentUid, // 🔥 GUARDAR UID DEL PADRE
+            position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
+            rotation: { x: rot.x, y: rot.y, z: rot.z },
+            scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z }
+          };
+
+          const propertiesToSave = {
+            rol: nodo.metadata.rol,
+            isSolid: nodo.metadata.isSolid,
+            isSelectable: nodo.metadata.isSelectable,
+            ignoraNiebla: nodo.metadata.ignoraNiebla ?? false,
+            mensaje: nodo.metadata.mensaje,
+            respawnTime: nodo.metadata.respawnTime ?? 8, 
+            interactDistanceFPS: nodo.metadata.interactDistanceFPS ?? 3.0,
+            interactDistanceTPS: nodo.metadata.interactDistanceTPS ?? 5.0,
+            interactSequenceIdFPS: nodo.metadata.interactSequenceIdFPS || '',
+            interactSequenceIdTPS: nodo.metadata.interactSequenceIdTPS || '',
+            collider: nodo.metadata.collider,
+            camOffset: nodo.metadata.camOffset,
+            playerConfig: nodo.metadata.playerConfig || null,
+            selectionRange,
+            animationNames: nodo.metadata.animationNames || [],
+            colorBW: nodo.metadata.colorBW
+          };
+
+          if (nodo.metadata.type === 'model') {
+            sceneObjects.push({ ...baseData, type: 'model', assetId: nodo.metadata.assetId, properties: { path: nodo.metadata.path, ...propertiesToSave } });
+          } else if (nodo.metadata.type?.startsWith('light_')) {
+            sceneObjects.push({
+              ...baseData, type: nodo.metadata.type,
+              properties: {
+                lightColor: nodo.metadata.lightColor, intensity: nodo.metadata.intensity, range: nodo.metadata.range, angle: nodo.metadata.angle, path: nodo.metadata.path,
+                attachedNodePath: nodo.metadata.attachedNodePath || '', attachedNodeName: nodo.metadata.attachedNodeName || '', ...propertiesToSave
+              },
+              assetId: nodo.metadata.assetId
+            });
+          } else if (nodo.metadata.type === 'video_plane') {
+             sceneObjects.push({
+               ...baseData, type: 'video_plane', assetId: nodo.metadata.assetId,
+               properties: { videoUrl: nodo.metadata.videoUrl, path: nodo.metadata.videoUrl, ...propertiesToSave }
+             });
+          } else {
+            sceneObjects.push({ ...baseData, type: nodo.metadata.type, properties: { color: nodo.metadata.color, ...propertiesToSave } });
+          }
         }
       }
-    });
+
+      // Procesar hijos recursivamente
+      nodo.getChildren().forEach(child => processNode(child));
+    };
+
+    // Iniciamos el proceso iterando sobre los elementos base (padres)
+    this.state.nodosEscena().forEach(nodo => processNode(nodo));
 
     return { sceneObjects, triggers, worldSettings };
   }

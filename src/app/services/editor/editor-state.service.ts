@@ -1,5 +1,4 @@
-
-
+// src/app/services/editor/editor-state.service.ts
 import { Injectable, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { Node, AbstractMesh, Mesh, Vector3, Quaternion } from '@babylonjs/core';
@@ -68,24 +67,44 @@ export class EditorStateService {
     return false;
   }
 
+  // 🔥 NUEVA LÓGICA: Se detiene en el primer objeto válido con metadata
+  // Esto permite seleccionar y mover hijos sin que se obligue a seleccionar el padre máximo.
   encontrarRaiz(mesh: AbstractMesh): Node | null {
-    let currentMesh: Node | null = mesh;
-    const nodos = this.nodosEscena();
+    if (!mesh) return null;
+    let current: Node | null = mesh;
 
-    while (currentMesh) {
-      if (nodos.includes(currentMesh)) return currentMesh;
-      currentMesh = currentMesh.parent;
+    while (current) {
+      if (current.name === '__root__') {
+        current = current.parent;
+        continue;
+      }
+      if (this.esNombreIgnorable(current.name)) {
+        current = current.parent;
+        continue;
+      }
+      // Si el objeto fue creado/configurado en el editor, tiene type. 
+      // Al retornar aquí, permitimos agarrar piezas hijas que tienen su propia data.
+      if ((current as any).metadata && (current as any).metadata.type) {
+        return current;
+      }
+      current = current.parent;
     }
     return null;
   }
 
+  // Alias para mantener coherencia semántica en los raycasts
+  resolverObjetoSeleccionable(mesh: AbstractMesh | null): AbstractMesh | null {
+    return this.encontrarRaiz(mesh as AbstractMesh) as AbstractMesh | null;
+  }
+
   private esNombreIgnorable(name: string): boolean {
+    if(!name) return true;
     const n = name.toLowerCase();
     return (
       n === 'sueloinvisible' || n === 'suelo' || n === 'ground' || n === 'floor' ||
       n === 'terrain' || n === 'camerapivot' || n.includes('eje') ||
       n.includes('gridhelper') || n.includes('gizmo') || n.includes('highlight') ||
-      n.includes('debug') || n.includes('proxycol')
+      n.includes('debug') || n.includes('proxycol') || n.includes('skybox')
     );
   }
 
@@ -128,7 +147,7 @@ export class EditorStateService {
     if (!mesh) return false;
     if (this.esMeshIgnorable(mesh)) return false;
 
-    const root = this.encontrarRaiz(mesh) as AbstractMesh | null;
+    const root = this.resolverObjetoSeleccionable(mesh) as AbstractMesh | null;
     const nodoBase = root ?? mesh;
     const meta = (nodoBase.metadata ?? mesh.metadata ?? {}) as any;
 
@@ -147,7 +166,7 @@ export class EditorStateService {
     if (!mesh) return false;
     if (this.esMeshIgnorable(mesh)) return false;
 
-    const root = this.encontrarRaiz(mesh) as AbstractMesh | null;
+    const root = this.resolverObjetoSeleccionable(mesh) as AbstractMesh | null;
     const nodoBase = root ?? mesh;
     const selectable = nodoBase.metadata?.isSelectable ?? mesh.metadata?.isSelectable ?? true;
 

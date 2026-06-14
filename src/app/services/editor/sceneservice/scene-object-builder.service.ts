@@ -5,7 +5,6 @@ import {
   StandardMaterial, TransformNode, Vector3, VideoTexture 
 } from '@babylonjs/core';
 
-// 🔥 FIX CRÍTICO 1: Importación global obligatoria para nuevos Modelos GLB.
 import '@babylonjs/loaders';
 
 import { cloneDefaultPlayerConfig, mergePlayerConfig } from '../player-config.model';
@@ -35,8 +34,14 @@ export class SceneObjectBuilderService {
       case 'cylinder': newMesh = MeshBuilder.CreateCylinder(oldMesh.name, { height: 1, diameter: 1 }, scene); break;
       default: newMesh = MeshBuilder.CreateBox(oldMesh.name, { size: 1 }, scene); break;
     }
-    newMesh.parent = oldMesh.parent;
-    newMesh.position = oldMesh.position.clone();
+    
+    if(oldMesh.parent) {
+       newMesh.position = oldMesh.getAbsolutePosition().clone();
+       newMesh.setParent(oldMesh.parent);
+    } else {
+       newMesh.position = oldMesh.position.clone();
+    }
+    
     if (oldMesh.rotationQuaternion) newMesh.rotationQuaternion = oldMesh.rotationQuaternion.clone();
     else newMesh.rotation = oldMesh.rotation.clone();
     newMesh.scaling = oldMesh.scaling.clone();
@@ -66,21 +71,22 @@ export class SceneObjectBuilderService {
       default: mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene); break;
     }
     
+    mesh.scaling = new Vector3(sizeX, sizeY, sizeZ);
+
     if (parentNode) {
-        mesh.parent = parentNode;
-        mesh.position = Vector3.Zero();
+        mesh.position = parentNode.getAbsolutePosition().clone();
+        mesh.setParent(parentNode);
     } else {
         mesh.position = new Vector3(0, sizeY / 2, 0);
     }
     
-    mesh.scaling = new Vector3(sizeX, sizeY, sizeZ);
-
     const mat = new StandardMaterial('mat_trigger_' + nombre, scene);
     mat.diffuseColor = new Color3(0.2, 1, 0.2); mat.alpha = 0.3; mat.wireframe = true;
     mat.maxSimultaneousLights = 16;
     mesh.material = mat;
 
     mesh.metadata = {
+      uid: window.crypto.randomUUID(), // 🔥 GENERAMOS UID
       type: 'trigger', isComposite: isComposite, triggerShape: shape || 'cube',
       conditions: isComposite ? ['on_enter'] : [], mensajeEntrada: isComposite ? mensaje : '', mensajeSalida: '',
       soundUrlEntrada: '', soundUrlSalida: '', seqEntrada: '', seqSalida: '', timeEntrada: 4.5, timeSalida: 4.5, videoEntrada: '', videoSalida: '',
@@ -135,8 +141,8 @@ export class SceneObjectBuilderService {
           if (!rootNode.rotationQuaternion) rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
           
           if (parentNode) {
-              rootNode.parent = parentNode;
-              rootNode.position = Vector3.Zero();
+              rootNode.position = parentNode.getAbsolutePosition().clone();
+              rootNode.setParent(parentNode);
           } else {
               rootNode.position = new Vector3(0, 0, 0); 
           }
@@ -160,6 +166,7 @@ export class SceneObjectBuilderService {
 
           const playerConfig = attachSelectionRange(mergePlayerConfig(defaultPlayerConfig));
           rootNode.metadata = {
+            uid: window.crypto.randomUUID(), // 🔥 GENERAMOS UID
             type: tipo, rol: 'light', assetId: asset.id, path: asset.path, isSolid, isSelectable, mensaje,
             ignoraNiebla: false,
             lightColor: colorHex, intensity: 1.0, range: 50, angle: 60, attachedNodePath: '', attachedNodeName: '',
@@ -189,9 +196,11 @@ export class SceneObjectBuilderService {
         return;
       } else {
         const mesh = MeshBuilder.CreateSphere(nombre, { diameter: 0.4 }, scene);
+        mesh.scaling = new Vector3(sizeX, sizeY, sizeZ);
+
         if (parentNode) {
-            mesh.parent = parentNode;
-            mesh.position = Vector3.Zero();
+            mesh.position = parentNode.getAbsolutePosition().clone();
+            mesh.setParent(parentNode);
         } else {
             mesh.position = new Vector3(0, 2, 0);
         }
@@ -215,6 +224,7 @@ export class SceneObjectBuilderService {
 
         const playerConfig = attachSelectionRange(mergePlayerConfig(defaultPlayerConfig));
         mesh.metadata = {
+          uid: window.crypto.randomUUID(), // 🔥 GENERAMOS UID
           type: tipo, rol: 'light', isSolid: false, isSelectable: true,
           ignoraNiebla: false,
           lightColor: colorHex, intensity: 1.0, range: 50, angle: 60,
@@ -243,8 +253,8 @@ export class SceneObjectBuilderService {
         if (!rootNode.rotationQuaternion) rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
         
         if (parentNode) {
-            rootNode.parent = parentNode;
-            rootNode.position = Vector3.Zero();
+            rootNode.position = parentNode.getAbsolutePosition().clone();
+            rootNode.setParent(parentNode);
         } else {
             rootNode.position = new Vector3(0, 0, 0); 
         }
@@ -275,6 +285,7 @@ export class SceneObjectBuilderService {
 
         const playerConfig = attachSelectionRange(mergePlayerConfig(defaultPlayerConfig));
         rootNode.metadata = {
+          uid: window.crypto.randomUUID(), // 🔥 GENERAMOS UID
           type: 'model',
           rol,
           assetId: asset.id,
@@ -317,9 +328,10 @@ export class SceneObjectBuilderService {
       }
       
       mesh.scaling = new Vector3(sizeX, sizeY, sizeZ); 
+      
       if (parentNode) {
-          mesh.parent = parentNode;
-          mesh.position = Vector3.Zero();
+          mesh.position = parentNode.getAbsolutePosition().clone();
+          mesh.setParent(parentNode);
       } else {
           mesh.position = new Vector3(0, 0.5 * sizeY, 0);
       }
@@ -327,6 +339,7 @@ export class SceneObjectBuilderService {
       const playerConfig = attachSelectionRange(mergePlayerConfig(defaultPlayerConfig));
       
       mesh.metadata = {
+        uid: window.crypto.randomUUID(), // 🔥 GENERAMOS UID
         type: tipo, rol, color: colorHex, colorBW: colorHex, isSolid, isSelectable, mensaje,
         ignoraNiebla: false,
         respawnTime: 8,
@@ -378,17 +391,15 @@ export class SceneObjectBuilderService {
         
         if (asset && asset.path) {
             const videoUrl = 'http://localhost:4000' + asset.path;
-            // 🔥 FIX 2 y 3: generateMipMaps en false (4to arg) y autoPlay en false.
             const videoTexture = new VideoTexture(
                 "vidTex_" + nombre, 
                 videoUrl, 
                 scene, 
-                false, // generateMipMaps: NO SOPORTADO PARA VIDEOS
-                true,  // invertY
-                undefined, // samplingMode
-                { autoPlay: false } // Evita el error The play() request was interrupted by a call to pause()
+                false, 
+                true,   
+                undefined, 
+                { autoPlay: false } 
             );
-            // ELIMINADO: videoTexture.video.pause();
             mat.diffuseTexture = videoTexture;
         } else {
             mat.diffuseColor = new Color3(0.1, 0.1, 0.1); 

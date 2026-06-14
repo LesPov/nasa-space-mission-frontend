@@ -1,5 +1,5 @@
 
-
+// src/app/services/editor/playerservice/player-interaction.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Matrix } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -130,7 +130,8 @@ export class PlayerInteractionService {
       if (hitCross && hitCross.hit && hitCross.pickedMesh) {
         const picked = hitCross.pickedMesh as AbstractMesh;
         if (!this.state.esMeshIgnorable(picked)) {
-          const rootNode = this.state.encontrarRaiz(picked) as AbstractMesh;
+          // 🔥 USAR NUEVA LÓGICA
+          const rootNode = this.state.resolverObjetoSeleccionable(picked);
           
           if (rootNode) {
             const selectionDistance = this.getInteractionDistanceToTarget(rootNode, this.lastInteractionProbePoint);
@@ -168,7 +169,8 @@ export class PlayerInteractionService {
         if (mesh.metadata?.type === 'trigger' || mesh.name.toLowerCase().includes('trigger')) return; 
         if (!mesh.isVisible) return;
 
-        const root = this.state.encontrarRaiz(mesh as AbstractMesh) as AbstractMesh;
+        // 🔥 USAR NUEVA LÓGICA
+        const root = this.state.resolverObjetoSeleccionable(mesh as AbstractMesh);
         if (!root || (root.metadata?.type === 'trigger' && !isAdmin)) return;
 
         const selectionDistance = this.getInteractionDistanceToTarget(root, playerProbe);
@@ -198,8 +200,7 @@ export class PlayerInteractionService {
       }
     }
 
-    // 🔥 FIX ANIMACIÓN BURBUJA: Le avisamos a TODOS los modelos si están siendo "Hovereados"
-    // Esto lo usará el Motor3dService para escalar el objeto y darle retroalimentación visual al usuario.
+    // Le avisamos a TODOS los modelos si están siendo "Hovereados"
     scene.meshes.forEach(m => {
         if (m.metadata) {
             m.metadata.isHovered = (hoverSelectable === m);

@@ -35,7 +35,12 @@ export class SceneShadowsService {
       if (renderList) {
         renderList.length = 0;
         scene.meshes.forEach(m => {
+
+          // Nombres seguros que debemos ignorar al calcular las sombras
+          const ignoredNames = ['ejeX', 'ejeY', 'ejeZ', 'gridHelper', 'sueloInvisible'];
+          
           const isValidShadowCaster = m.isVisible &&
+            !ignoredNames.includes(m.name) &&
             !m.name.includes('proxyCol') &&
             !m.name.includes('gizmo') &&
             !m.name.includes('highlight') &&

@@ -44,7 +44,7 @@
 
 <div class="section-card" *ngIf="objeto.metadata?.type === 'image_plane'">
   <div class="section-head">
-    <h4>Ajustes de Proyección (Luz de Esquina)</h4>
+    <h4>Ajustes de Proyección (Luz Holográfica)</h4>
   </div>
 
   <div class="grid-2">
@@ -69,13 +69,34 @@
     </div>
   </div>
 
+  <!-- 🔥 NUEVO BLOQUE DE MULTIPLICACIÓN (TIPO PERSIANAS/VENTANAS) -->
+  <div class="section-mini-head" style="margin-top: 15px; margin-bottom: 5px;">
+    <h5 style="color: #4ade80;">Multiplicar Proyección (Patrones)</h5>
+  </div>
+  <div class="grid-3">
+    <div class="field">
+      <label>Cant. Copias</label>
+      <input type="number" step="1" min="1" max="50" [(ngModel)]="objProyeccionRepeticiones" (ngModelChange)="aplicarProyeccion()" />
+    </div>
+    <div class="field">
+      <label>Espacio entre ellas</label>
+      <input type="number" step="0.1" [(ngModel)]="objProyeccionEspaciado" (ngModelChange)="aplicarProyeccion()" />
+    </div>
+    <div class="field">
+      <label>Dirección</label>
+      <select [(ngModel)]="objProyeccionEje" (ngModelChange)="aplicarProyeccion()">
+        <option value="Y">Arriba/Abajo (Y)</option>
+        <option value="X">Lado a Lado (X)</option>
+      </select>
+    </div>
+  </div>
+
   <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; padding: 10px; border-radius: 6px; margin-top: 15px;">
     <label style="color: #60a5fa; font-weight: bold; font-size: 13px;">¿Cómo ajusto la proyección?</label>
     <p class="help-text" style="color: #cbd5e1; margin-top: 5px;">
       * Usa <b>Ancho / Alto</b> para cambiar el tamaño real de la luz sin tocar la caja.<br>
-      * Usa <b>Profundidad</b> para acercar o alejar el brillo de la esquina.<br>
-      * Usa <b>Girar Imagen</b> para mover la esquina desde donde cae la luz.<br>
-      * La proyección se pinta en <b>arriba + dos paredes</b>, no en las 4 caras.
+      * Usa <b>Profundidad</b> para atravesar la esquina y no cortarse.<br>
+      * Usa <b>Cant. Copias</b> para crear efectos de franjas tipo persianas o varios pisos de ventanas automáticamente.
     </p>
   </div>
 

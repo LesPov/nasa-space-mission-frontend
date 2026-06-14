@@ -1,8 +1,10 @@
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, HemisphericLight, Node } from '@babylonjs/core';
-import { Motor3dService } from '../../motor-3d.service';
-import { EditorStateService } from '../editor-state.service';
+import { AbstractMesh, Color3, HemisphericLight, Node } from '@babylonjs/core';
+ import { EditorStateService } from '../editor-state.service';
 import { SceneUtilsService } from './scene-utils.service';
+import { Motor3dService } from '../../motor-3d.service';
+
+type SavedVector3 = { x: number; y: number; z: number };
 
 @Injectable({ providedIn: 'root' })
 export class SceneSaverService {
@@ -10,7 +12,65 @@ export class SceneSaverService {
   private state = inject(EditorStateService);
   private utilsSvc = inject(SceneUtilsService);
 
-  public obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[], worldSettings: any } {
+  private hex7(value: any, fallback: string): string {
+    if (typeof value !== 'string' || !value.trim()) return fallback;
+    const v = value.trim();
+    return v.length >= 7 ? v.substring(0, 7) : fallback;
+  }
+
+  private safeNumber(value: any, fallback: number): number {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : fallback;
+  }
+
+  private safeBool(value: any, fallback = false): boolean {
+    return typeof value === 'boolean' ? value : fallback;
+  }
+
+  private getRotationEuler(nodo: AbstractMesh): SavedVector3 {
+    const rot = nodo.rotationQuaternion
+      ? nodo.rotationQuaternion.toEulerAngles()
+      : nodo.rotation;
+
+    return {
+      x: this.safeNumber(rot?.x, 0),
+      y: this.safeNumber(rot?.y, 0),
+      z: this.safeNumber(rot?.z, 0)
+    };
+  }
+
+  private getParentUid(nodo: AbstractMesh): string | null {
+    if (nodo.parent && nodo.parent.name !== '__root__') {
+      return (nodo.parent as AbstractMesh).metadata?.uid || null;
+    }
+    return null;
+  }
+
+  private buildCommonProperties(nodo: AbstractMesh, selectionRange: any): any {
+    return {
+      color: this.hex7(nodo.metadata?.color, '#ffffff'),
+      colorBW: this.hex7(nodo.metadata?.colorBW, this.hex7(nodo.metadata?.color, '#ffffff')),
+      rol: nodo.metadata?.rol,
+      isSolid: this.safeBool(nodo.metadata?.isSolid, true),
+      isSelectable: this.safeBool(nodo.metadata?.isSelectable, true),
+      ignoraNiebla: this.safeBool(nodo.metadata?.ignoraNiebla, false),
+      esEmisivo: this.safeBool(nodo.metadata?.esEmisivo, false),
+      brilloIntensidad: this.safeNumber(nodo.metadata?.brilloIntensidad, 0.12),
+      mensaje: nodo.metadata?.mensaje || '',
+      respawnTime: this.safeNumber(nodo.metadata?.respawnTime, 8),
+      interactDistanceFPS: this.safeNumber(nodo.metadata?.interactDistanceFPS, 3.0),
+      interactDistanceTPS: this.safeNumber(nodo.metadata?.interactDistanceTPS, 5.0),
+      interactSequenceIdFPS: nodo.metadata?.interactSequenceIdFPS || '',
+      interactSequenceIdTPS: nodo.metadata?.interactSequenceIdTPS || '',
+      collider: nodo.metadata?.collider,
+      camOffset: nodo.metadata?.camOffset,
+      playerConfig: nodo.metadata?.playerConfig || null,
+      selectionRange,
+      animationNames: nodo.metadata?.animationNames || []
+    };
+  }
+
+  public obtenerDatosParaGuardar(): { sceneObjects: any[]; triggers: any[]; worldSettings: any } {
     const sceneObjects: any[] = [];
     const triggers: any[] = [];
 
@@ -19,40 +79,43 @@ export class SceneSaverService {
 
     const worldSettings = {
       visualMode: scene.metadata?.globalVisualMode || 'normal',
-      clearColor: scene.metadata?.globalClearColor || '#0d1729',
-      clearColorBW: scene.metadata?.globalClearColorBW || '#555555',
-      gravityY: scene.gravity.y,
-      ambientIntensity: ambient ? ambient.intensity : 0.6,
-      ambientDiffuse: ambient ? ambient.diffuse.toHexString().substring(0, 7) : '#ffffff',
-      ambientGround: ambient ? ambient.groundColor.toHexString().substring(0, 7) : '#333333',
-      ambientDirX: ambient ? ambient.direction.x : 0,
-      ambientDirY: ambient ? ambient.direction.y : 1,
-      ambientDirZ: ambient ? ambient.direction.z : 0
+      clearColor: this.hex7(scene.metadata?.globalClearColor, '#0d1729'),
+      clearColorBW: this.hex7(scene.metadata?.globalClearColorBW, '#555555'),
+      gravityY: this.safeNumber(scene.gravity?.y, 0),
+      ambientIntensity: ambient ? this.safeNumber(ambient.intensity, 0.6) : 0.6,
+      ambientDiffuse: ambient
+        ? this.hex7(ambient.diffuse?.toHexString?.(), '#ffffff')
+        : '#ffffff',
+      ambientGround: ambient
+        ? this.hex7(ambient.groundColor?.toHexString?.(), '#333333')
+        : '#333333',
+      ambientDirX: ambient ? this.safeNumber(ambient.direction?.x, 0) : 0,
+      ambientDirY: ambient ? this.safeNumber(ambient.direction?.y, 1) : 1,
+      ambientDirZ: ambient ? this.safeNumber(ambient.direction?.z, 0) : 0
     };
 
     const processNode = (nodo: Node) => {
       if (nodo instanceof AbstractMesh && nodo.metadata?.type) {
-        
         if (!nodo.metadata.uid) {
-            nodo.metadata.uid = window.crypto.randomUUID();
+          nodo.metadata.uid = window.crypto.randomUUID();
         }
-        
-        const rot = nodo.rotationQuaternion ? nodo.rotationQuaternion.toEulerAngles() : nodo.rotation;
-        
+
+        const rot = this.getRotationEuler(nodo);
         const selectionRange = this.utilsSvc.normalizarSelectionRange(
           nodo.metadata?.playerConfig?.selectionRange || nodo.metadata?.selectionRange || null
         );
 
-        let parentUid = null;
-        if (nodo.parent && nodo.parent.name !== '__root__') {
-            parentUid = (nodo.parent as AbstractMesh).metadata?.uid || null;
-        }
+        const parentUid = this.getParentUid(nodo);
 
         if (nodo.metadata.type === 'trigger') {
           if (nodo.metadata.isComposite) {
             const conditions = nodo.metadata.conditions || [];
             conditions.forEach((cond: string) => {
-              let actionProps: any = { triggerShape: nodo.metadata.triggerShape, isComposite: true };
+              const actionProps: any = {
+                triggerShape: nodo.metadata.triggerShape,
+                isComposite: true
+              };
+
               if (cond === 'on_enter') {
                 actionProps.mensaje = nodo.metadata.mensajeEntrada || '';
                 actionProps.soundUrl = nodo.metadata.soundUrlEntrada || '';
@@ -60,6 +123,7 @@ export class SceneSaverService {
                 actionProps.timeEntrada = nodo.metadata.timeEntrada ?? 4.5;
                 actionProps.videoEntrada = nodo.metadata.videoEntrada || '';
               }
+
               if (cond === 'on_exit') {
                 actionProps.mensaje = nodo.metadata.mensajeSalida || '';
                 actionProps.soundUrl = nodo.metadata.soundUrlSalida || '';
@@ -74,7 +138,14 @@ export class SceneSaverService {
                 parentId: parentUid,
                 position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
                 scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z },
-                properties: { condition: cond, actionType: 'show_message', targetObjectName: '', isRepeatable: nodo.metadata.isRepeatable, isEnabled: nodo.metadata.isEnabled, ...actionProps }
+                properties: {
+                  condition: cond,
+                  actionType: 'show_message',
+                  targetObjectName: '',
+                  isRepeatable: nodo.metadata.isRepeatable,
+                  isEnabled: nodo.metadata.isEnabled,
+                  ...actionProps
+                }
               });
             });
           } else {
@@ -85,9 +156,18 @@ export class SceneSaverService {
               position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
               scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z },
               properties: {
-                condition: nodo.metadata.condition, actionType: 'show_message', targetObjectName: '', isRepeatable: nodo.metadata.isRepeatable, isEnabled: nodo.metadata.isEnabled,
-                triggerShape: nodo.metadata.triggerShape, mensaje: nodo.metadata.mensaje, soundUrl: nodo.metadata.soundUrl, interactSequenceId: nodo.metadata.interactSequenceId,
-                timeNorm: nodo.metadata.timeNorm ?? 4.5, videoNorm: nodo.metadata.videoNorm || '', isComposite: false
+                condition: nodo.metadata.condition,
+                actionType: 'show_message',
+                targetObjectName: '',
+                isRepeatable: nodo.metadata.isRepeatable,
+                isEnabled: nodo.metadata.isEnabled,
+                triggerShape: nodo.metadata.triggerShape,
+                mensaje: nodo.metadata.mensaje,
+                soundUrl: nodo.metadata.soundUrl,
+                interactSequenceId: nodo.metadata.interactSequenceId,
+                timeNorm: nodo.metadata.timeNorm ?? 4.5,
+                videoNorm: nodo.metadata.videoNorm || '',
+                isComposite: false
               }
             });
           }
@@ -101,56 +181,78 @@ export class SceneSaverService {
             scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z }
           };
 
-          const propertiesToSave = {
-            color: nodo.metadata.color, // 🔥 COLOR SE GUARDA SIEMPRE
-            rol: nodo.metadata.rol,
-            isSolid: nodo.metadata.isSolid,
-            isSelectable: nodo.metadata.isSelectable,
-            ignoraNiebla: nodo.metadata.ignoraNiebla ?? false,
-            esEmisivo: nodo.metadata.esEmisivo ?? false,
-            mensaje: nodo.metadata.mensaje,
-            respawnTime: nodo.metadata.respawnTime ?? 8, 
-            interactDistanceFPS: nodo.metadata.interactDistanceFPS ?? 3.0,
-            interactDistanceTPS: nodo.metadata.interactDistanceTPS ?? 5.0,
-            interactSequenceIdFPS: nodo.metadata.interactSequenceIdFPS || '',
-            interactSequenceIdTPS: nodo.metadata.interactSequenceIdTPS || '',
-            collider: nodo.metadata.collider,
-            camOffset: nodo.metadata.camOffset,
-            playerConfig: nodo.metadata.playerConfig || null,
-            selectionRange,
-            animationNames: nodo.metadata.animationNames || [],
-            colorBW: nodo.metadata.colorBW
-          };
+          const propertiesToSave = this.buildCommonProperties(nodo, selectionRange);
 
           if (nodo.metadata.type === 'model') {
-            sceneObjects.push({ ...baseData, type: 'model', assetId: nodo.metadata.assetId, properties: { path: nodo.metadata.path, ...propertiesToSave } });
+            sceneObjects.push({
+              ...baseData,
+              type: 'model',
+              assetId: nodo.metadata.assetId,
+              properties: {
+                path: nodo.metadata.path,
+                ...propertiesToSave
+              }
+            });
           } else if (nodo.metadata.type?.startsWith('light_')) {
             sceneObjects.push({
-              ...baseData, type: nodo.metadata.type,
+              ...baseData,
+              type: nodo.metadata.type,
               properties: {
-                lightColor: nodo.metadata.lightColor, intensity: nodo.metadata.intensity, range: nodo.metadata.range, angle: nodo.metadata.angle, path: nodo.metadata.path,
-                attachedNodePath: nodo.metadata.attachedNodePath || '', attachedNodeName: nodo.metadata.attachedNodeName || '', ...propertiesToSave
+                lightColor: nodo.metadata.lightColor,
+                intensity: this.safeNumber(nodo.metadata.intensity, 1.0),
+                range: this.safeNumber(nodo.metadata.range, 50),
+                angle: this.safeNumber(nodo.metadata.angle, 60),
+                path: nodo.metadata.path,
+                attachedNodePath: nodo.metadata.attachedNodePath || '',
+                attachedNodeName: nodo.metadata.attachedNodeName || '',
+                ...propertiesToSave
               },
               assetId: nodo.metadata.assetId
             });
           } else if (nodo.metadata.type === 'video_plane') {
-             sceneObjects.push({
-               ...baseData, type: 'video_plane', assetId: nodo.metadata.assetId,
-               properties: { videoUrl: nodo.metadata.videoUrl, path: nodo.metadata.videoUrl, ...propertiesToSave }
-             });
+            sceneObjects.push({
+              ...baseData,
+              type: 'video_plane',
+              assetId: nodo.metadata.assetId,
+              properties: {
+                videoUrl: nodo.metadata.videoUrl,
+                path: nodo.metadata.videoUrl,
+                ...propertiesToSave
+              }
+            });
           } else if (nodo.metadata.type === 'image_plane') {
-             sceneObjects.push({
-               ...baseData, type: 'image_plane', assetId: nodo.metadata.assetId,
-               properties: { 
-                 imageUrl: nodo.metadata.imageUrl, 
-                 path: nodo.metadata.imageUrl, 
-                 profundidadProyeccion: nodo.metadata.profundidadProyeccion,
-                 anguloProyeccion: nodo.metadata.anguloProyeccion,
-                 ...propertiesToSave 
-               }
-             });
+            sceneObjects.push({
+              ...baseData,
+              type: 'image_plane',
+              assetId: nodo.metadata.assetId,
+              properties: {
+                imageUrl: nodo.metadata.imageUrl,
+                path: nodo.metadata.imageUrl,
+
+                // 🔥 TODOS LOS DATOS DE PROYECCIÓN / HOLOGRAMA
+                profundidadProyeccion: this.safeNumber(nodo.metadata.profundidadProyeccion, 0.08),
+                anguloProyeccion: this.safeNumber(nodo.metadata.anguloProyeccion, 0),
+                proyeccionAncho: this.safeNumber(nodo.metadata.proyeccionAncho, nodo.scaling.x),
+                proyeccionAlto: this.safeNumber(nodo.metadata.proyeccionAlto, nodo.scaling.y),
+
+                // 🔥 ESTADO VISUAL
+                color: this.hex7(nodo.metadata.color, '#ffffff'),
+                colorBW: this.hex7(nodo.metadata.colorBW, this.hex7(nodo.metadata.color, '#ffffff')),
+                esEmisivo: this.safeBool(nodo.metadata.esEmisivo, false),
+                brilloIntensidad: this.safeNumber(nodo.metadata.brilloIntensidad, 0.12),
+                ignoraNiebla: this.safeBool(nodo.metadata.ignoraNiebla, false),
+
+                ...propertiesToSave
+              }
+            });
           } else {
-            sceneObjects.push({ ...baseData, type: nodo.metadata.type, properties: { ...propertiesToSave } });
+            sceneObjects.push({
+              ...baseData,
+              type: nodo.metadata.type,
+              properties: {
+                ...propertiesToSave
+              }
+            });
           }
         }
       }

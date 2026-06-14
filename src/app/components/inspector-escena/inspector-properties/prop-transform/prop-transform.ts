@@ -1,7 +1,7 @@
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh, Quaternion, StandardMaterial, Color3 } from '@babylonjs/core';
+import { AbstractMesh, Quaternion, StandardMaterial, Color3, Engine } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { HistorialService } from '../../../../services/historial.service';
@@ -107,7 +107,7 @@ export class PropTransform implements OnInit, OnDestroy {
 
     const meta = this.objeto.metadata || {};
 
-    this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane'].includes(meta.type);
+    this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane', 'image_plane'].includes(meta.type);
     this.objColor = meta.color || '#ffffff';
     this.objColorBW = meta.colorBW || this.objColor;
 
@@ -203,6 +203,8 @@ export class PropTransform implements OnInit, OnDestroy {
     const activeColorHex = isBW ? this.objColorBW : this.objColor;
 
     if (this.objeto.material && this.objeto.material instanceof StandardMaterial) {
+      
+      // 🔥 FIX: SI ES HOLOGRAMA APLICAMOS TU LÓGICA EXACTA (Evitamos que se vuelva blanco)
       if (this.objeto.metadata.type === 'image_plane') {
         const decalMat = this.objeto.metadata.decalMaterial as StandardMaterial;
 
@@ -210,19 +212,25 @@ export class PropTransform implements OnInit, OnDestroy {
           const c3 = Color3.FromHexString(activeColorHex);
           const brillo = this.clampBrightness(this.objBrilloIntensidad);
 
-          decalMat.diffuseColor = c3;
-          decalMat.specularColor = new Color3(0, 0, 0);
-          decalMat.ambientColor = c3.scale(Math.max(0.05, brillo * 0.35));
-          decalMat.backFaceCulling = false;
-          decalMat.useAlphaFromDiffuseTexture = true;
-          decalMat.fogEnabled = !this.objIgnoraNiebla;
+          decalMat.disableLighting = true; 
+          decalMat.diffuseColor = Color3.Black(); 
+          decalMat.specularColor = Color3.Black();
+          decalMat.ambientColor = Color3.Black();
+          
+          decalMat.emissiveColor = c3.scale(Math.max(0.1, brillo));
 
-          if (!this.objEsEmisivo) {
-            decalMat.emissiveColor = new Color3(0, 0, 0);
-            decalMat.disableLighting = false;
+          decalMat.backFaceCulling = false;
+          decalMat.useAlphaFromDiffuseTexture = !!decalMat.diffuseTexture;
+          decalMat.alphaMode = Engine.ALPHA_ADD; 
+          decalMat.fogEnabled = !this.objIgnoraNiebla;
+          decalMat.zOffset = -2;
+
+          if (decalMat.diffuseTexture) {
+             decalMat.diffuseTexture.hasAlpha = true;
+             decalMat.emissiveTexture = decalMat.diffuseTexture;
+             decalMat.opacityTexture = decalMat.diffuseTexture;
           } else {
-            decalMat.emissiveColor = c3.scale(brillo);
-            decalMat.disableLighting = false;
+             decalMat.alpha = 0.5;
           }
         }
 
@@ -234,7 +242,9 @@ export class PropTransform implements OnInit, OnDestroy {
         } else if (this.objeto.metadata.decalMesh) {
           this.objeto.metadata.decalMesh.applyFog = !this.objIgnoraNiebla;
         }
+
       } else {
+        // Lógica de material estándar (Malla normal)
         const objMat = this.objeto.material as StandardMaterial;
         const c3 = Color3.FromHexString(activeColorHex);
         const brillo = this.clampBrightness(this.objBrilloIntensidad);

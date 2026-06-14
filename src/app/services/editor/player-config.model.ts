@@ -54,7 +54,12 @@ export interface PlayerJumpConfig {
 }
 
 export interface PlayerCameraConfig {
-  fpsEyeLevel: number; tpsPivotY: number; tpsRadius: number; headFollow: boolean;
+  fpsEyeLevel: number; 
+  tpsPivotY: number; 
+  tpsRadius: number; 
+  tpsMinRadius: number; 
+  tpsMaxRadius: number;
+  headFollow: boolean;
 }
 
 export interface PlayerBlendConfig {
@@ -127,7 +132,7 @@ export interface PlayerRuntimeConfig {
 export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
   movement: { walkSpeed: 0.045, runSpeed: 0.09, acceleration: 0.1, rotationSpeed: 0.1 },
   jump: { force: 0.16, gravity: 0.018, maxFallSpeed: 0.8, coyoteTime: 0.1, jumpRiseTime: 0.18, jumpFallMultiplier: 1.0 },
-  camera: { fpsEyeLevel: 1.6, tpsPivotY: 1.5, tpsRadius: 5, headFollow: true },
+  camera: { fpsEyeLevel: 1.6, tpsPivotY: 1.5, tpsRadius: 5, tpsMinRadius: 1.5, tpsMaxRadius: 15, headFollow: true },
   blend: { defaultBlend: 0.1, fastBlend: 0.05, slowBlend: 0.15, noBlend: 0 },
   physics: { hardLandingThreshold: 2.5, landingRecoveryFrames: 60 },
   animations: {
@@ -183,7 +188,12 @@ export function mergePlayerConfig(partial?: Partial<PlayerRuntimeConfig> | null)
   return {
     movement: { ...base.movement, ...(partial.movement || {}) },
     jump: { ...base.jump, ...(partial.jump || {}) },
-    camera: { ...base.camera, ...(partial.camera || {}) },
+    camera: { 
+      ...base.camera, 
+      ...(partial.camera || {}),
+      tpsMinRadius: partial.camera?.tpsMinRadius ?? base.camera.tpsMinRadius,
+      tpsMaxRadius: partial.camera?.tpsMaxRadius ?? base.camera.tpsMaxRadius
+    },
     blend: { ...base.blend, ...(partial.blend || {}) },
     physics: { ...base.physics, ...(partial.physics || {}) },
     animations: { ...base.animations, ...(partial.animations || {}) },

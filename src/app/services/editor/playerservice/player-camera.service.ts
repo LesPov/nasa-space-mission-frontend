@@ -98,14 +98,16 @@ export class PlayerCameraManagerService {
       this.motor3d.playerCameraTPS.lockedTarget = this.state.cameraPivot;
       
       const radBase = (config.camera.tpsRadius || 5) * scaleY;
+      const minRad = (config.camera.tpsMinRadius ?? 1.5) * scaleY;
+      const maxRad = (config.camera.tpsMaxRadius ?? 15) * scaleY;
       
-      this.motor3d.playerCameraTPS.radius = radBase * 1.5;
-      this.motor3d.playerCameraTPS.lowerRadiusLimit = Math.max(0.5, radBase * 0.15);
-      this.motor3d.playerCameraTPS.upperRadiusLimit = Math.max(1.25, radBase * 2.5);
+      this.motor3d.playerCameraTPS.radius = radBase;
+      this.motor3d.playerCameraTPS.lowerRadiusLimit = minRad;
+      this.motor3d.playerCameraTPS.upperRadiusLimit = maxRad;
       
-      // 🔥 REFUERZO DE PROTECCIÓN PARA NO ATRAVESAR PISO (COINCIDIENDO CON MOTOR)
+      // 🔥 REFUERZO DE PROTECCIÓN PARA NO ATRAVESAR PISO NI PERSONAJE
       this.motor3d.playerCameraTPS.checkCollisions = true;
-      this.motor3d.playerCameraTPS.collisionRadius = new Vector3(0.15, 0.15, 0.15);
+      this.motor3d.playerCameraTPS.collisionRadius = new Vector3(0.25, 0.25, 0.25); // Engrosado de 0.15 a 0.25
       this.motor3d.playerCameraTPS.upperBetaLimit = (Math.PI / 2) + 0.4;
       
       this.motor3d.playerCameraTPS.wheelPrecision = 15;
@@ -160,7 +162,12 @@ export class PlayerCameraManagerService {
 
     this.isTransitioningCameras = true;
     const scaleNow = jugador.scaling.y || 1;
-    const targetRadius = (config.camera.tpsRadius || 5) * scaleNow * 1.5;
+    
+    // Asegurar que el radio objetivo está dentro de los nuevos límites configurados
+    const minR = (config.camera.tpsMinRadius ?? 1.5) * scaleNow;
+    const maxR = (config.camera.tpsMaxRadius ?? 15) * scaleNow;
+    const targetRadiusRaw = (config.camera.tpsRadius || 5) * scaleNow;
+    const targetRadius = Math.max(minR, Math.min(maxR, targetRadiusRaw));
 
     const ease = new CubicEase();
     ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
@@ -303,13 +310,14 @@ export class PlayerCameraManagerService {
 
     if (this.state.modoVistaPrueba === 'TPS' && this.state.cameraPivot) {
       if (!this.isTransitioningCameras) {
-        const radiusBase = (config.camera.tpsRadius || 5) * scaleY;
-        const minRadius = Math.max(0.5, radiusBase * 0.15); 
-        const maxRadius = radiusBase * 2.5;
+        // 🔥 ACTUALIZA LÍMITES CONSTANTEMENTE EN CASO DE EDITARSE EN VIVO
+        const minRadius = (config.camera.tpsMinRadius ?? 1.5) * scaleY;
+        const maxRadius = (config.camera.tpsMaxRadius ?? 15) * scaleY;
 
         this.motor3d.playerCameraTPS.lowerRadiusLimit = minRadius;
         this.motor3d.playerCameraTPS.upperRadiusLimit = maxRadius;
 
+        // Obliga a rebotar si la cámara actual se quedó atrapada fuera de los límites editados
         if (this.motor3d.playerCameraTPS.radius < minRadius) {
           this.motor3d.playerCameraTPS.radius = minRadius;
         }

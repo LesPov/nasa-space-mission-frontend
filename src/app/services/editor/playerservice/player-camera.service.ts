@@ -103,6 +103,11 @@ export class PlayerCameraManagerService {
       this.motor3d.playerCameraTPS.lowerRadiusLimit = Math.max(0.5, radBase * 0.15);
       this.motor3d.playerCameraTPS.upperRadiusLimit = Math.max(1.25, radBase * 2.5);
       
+      // 🔥 REFUERZO DE PROTECCIÓN PARA NO ATRAVESAR PISO (COINCIDIENDO CON MOTOR)
+      this.motor3d.playerCameraTPS.checkCollisions = true;
+      this.motor3d.playerCameraTPS.collisionRadius = new Vector3(0.15, 0.15, 0.15);
+      this.motor3d.playerCameraTPS.upperBetaLimit = (Math.PI / 2) + 0.4;
+      
       this.motor3d.playerCameraTPS.wheelPrecision = 15;
       this.motor3d.playerCameraTPS.panningSensibility = 0;
       this.motor3d.playerCameraTPS.allowUpsideDown = false;
@@ -165,7 +170,6 @@ export class PlayerCameraManagerService {
     const canvas = this.motor3d.engine.getRenderingCanvas();
     const scene = this.motor3d.scene;
 
-    // 🔥 CÁMARA MÁS LENTA Y CINEMÁTICA: 130 frames (~2.1 segundos)
     const framesTransicion = 130;
 
     if (this.fadeObserver) {
@@ -174,7 +178,6 @@ export class PlayerCameraManagerService {
     }
 
     if (this.state.modoVistaPrueba === 'FPS') {
-      // TRANSICIÓN FPS -> TPS (Se aleja lentamente)
       if (canvas) fpsCam.detachControl();
 
       tpsCam.alpha = -(fpsCam.rotation.y || 0) - Math.PI / 2;
@@ -205,7 +208,6 @@ export class PlayerCameraManagerService {
         if (canvas) tpsCam.attachControl(canvas, true);
       });
     } else {
-      // TRANSICIÓN TPS -> FPS (Se acerca lentamente a la cara)
       if (canvas) tpsCam.detachControl();
 
       this.overrideTargetPivotY = (config.camera.fpsEyeLevel || 1.6) * scaleNow;

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 
@@ -98,7 +97,15 @@ export class EditorPlayerService {
     this.npcsYPropsAnimados = [];
     this.backupsAnimados = []; 
     
+    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+
     this.motor3d.scene.meshes.forEach(m => {
+        // 🔥 FIX USUARIO FINAL: Apagado absoluto de los ejes y grilla si no es admin
+        if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
+            m.isVisible = isAdmin;
+            m.setEnabled(isAdmin);
+        }
+
         if (m !== obj && m.metadata?.playerConfig?.sequences && m.metadata.playerConfig.sequences.length > 0) {
             this.npcsYPropsAnimados.push(m as Mesh);
             
@@ -148,13 +155,11 @@ export class EditorPlayerService {
     this.state.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
     this.state.cameraPivot.isVisible = false;
     
-    // Dejamos las cámaras listas en su sitio y con matrices calculadas
     this.playerCamSvc.inicializarCamaras(obj, colMeta, camMeta, vista, obj.scaling, this.playerConfig);
     this.motor3d.scene.render(false, true);
 
     const targetCam = vista === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS;
     
-    // Obtenemos su posición GLOBAL ya computada
     targetCam.getViewMatrix(true);
     const targetPos = targetCam.globalPosition.clone();
     let targetLookAt: Vector3;
@@ -165,7 +170,6 @@ export class EditorPlayerService {
       targetLookAt = this.state.cameraPivot!.getAbsolutePosition();
     }
 
-    // 🔥 VUELO CINEMÁTICO AL JUEGO usando la nueva lógica curva pasando isFPS
     this.cameraSvc.volarHaciaCamaraJuego(targetPos, targetLookAt, vista === 'FPS', () => {
         this.motor3d.scene.activeCamera = targetCam;
         this.state.playState.set('PLAYING');
@@ -366,6 +370,12 @@ export class EditorPlayerService {
 
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
     this.motor3d.scene.meshes.forEach(m => {
+        // 🔥 FIX USUARIO FINAL: Volver a encender los ejes para el admin al salir
+        if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
+            m.setEnabled(isAdmin);
+            m.isVisible = isAdmin;
+        }
+
         if (m.metadata?.type?.startsWith('light_') && !m.metadata?.assetId) {
             m.isVisible = isAdmin;
         }
@@ -403,7 +413,6 @@ export class EditorPlayerService {
     this.state.mirandoObjetoInteractuable.set(false); 
     this.state.objetoSeleccionado.set(null);
 
-    // 🔥 FIX: Al volver de FPS, el modelo del jugador recobra su visibilidad
     if (this.state.jugadorActivo && this.state.backupObjetoPosicion && this.state.backupObjetoRotacionQuat) {
       if (this.state.jugadorActivo.metadata?.rol === 'npc' || this.state.jugadorActivo.metadata?.rol === 'spawn_point') {
         if (this.state.modoVistaPrueba === 'FPS') this.state.jugadorActivo.rotationQuaternion = Quaternion.FromEulerAngles(0, (this.motor3d.playerCameraFPS as any).rotation.y, 0);

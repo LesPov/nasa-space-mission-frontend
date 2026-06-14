@@ -42,10 +42,13 @@ export class BuilderTriggerService {
     newMesh.metadata = JSON.parse(JSON.stringify(oldMesh.metadata));
     newMesh.metadata.triggerShape = nuevaForma;
 
+    // 🔥 MATERIAL VERDE NEÓN PARA TRIGGERS
     const mat = new StandardMaterial('mat_trigger_' + newMesh.name, scene);
-    mat.diffuseColor = new Color3(0.2, 1, 0.2);
-    mat.alpha = 0.3;
+    mat.diffuseColor = new Color3(0.0, 1.0, 0.0);
+    mat.emissiveColor = new Color3(0.2, 1.0, 0.2); // Emisión brillante
+    mat.alpha = 0.4;
     mat.wireframe = true;
+    mat.disableLighting = true; // No le afectan las sombras, siempre brilla
     mat.maxSimultaneousLights = 16;
     newMesh.material = mat;
 
@@ -96,10 +99,13 @@ export class BuilderTriggerService {
       mesh.position = new Vector3(0, sizeY / 2, 0);
     }
 
+    // 🔥 MATERIAL VERDE NEÓN PARA NUEVOS TRIGGERS
     const mat = new StandardMaterial('mat_trigger_' + nombre, scene);
-    mat.diffuseColor = new Color3(0.2, 1, 0.2);
-    mat.alpha = 0.3;
+    mat.diffuseColor = new Color3(0.0, 1.0, 0.0);
+    mat.emissiveColor = new Color3(0.2, 1.0, 0.2);
+    mat.alpha = 0.4;
     mat.wireframe = true;
+    mat.disableLighting = true;
     mat.maxSimultaneousLights = 16;
     mesh.material = mat;
 

@@ -25,12 +25,16 @@ export class LoaderTriggerService {
       mesh.position = new Vector3(trigger.position.x, trigger.position.y, trigger.position.z);
       mesh.scaling = new Vector3(trigger.size.x, trigger.size.y, trigger.size.z);
 
+      // 🔥 MATERIAL VERDE NEÓN AL CARGAR LA ESCENA
       const mat = new StandardMaterial('mat_trigger_' + trigger.name, scene);
-      mat.diffuseColor = new Color3(0.2, 1, 0.2);
-      mat.alpha = 0.3;
+      mat.diffuseColor = new Color3(0.0, 1.0, 0.0);
+      mat.emissiveColor = new Color3(0.2, 1.0, 0.2);
+      mat.alpha = 0.4;
       mat.wireframe = true;
+      mat.disableLighting = true;
       mat.maxSimultaneousLights = 16;
       mesh.material = mat;
+      
       mesh.isPickable = true;
       mesh.checkCollisions = false;
       mesh.isVisible = isAdmin;

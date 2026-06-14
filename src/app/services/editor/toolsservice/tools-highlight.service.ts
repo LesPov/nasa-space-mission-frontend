@@ -48,11 +48,18 @@ export class ToolsHighlightService {
     const colorSelected = Color3.FromHexString('#fbbf24');
 
     const addHighlightToAllVisible = (mesh: Mesh, hl: HighlightLayer, color: Color3) => {
-      if (mesh.isVisible && !mesh.name.includes('proxyCol') && !mesh.name.includes('debug') && !mesh.name.includes('cameraPivot') && mesh.metadata?.type !== 'trigger') {
+      const isTrigger = mesh.metadata?.type === 'trigger' || mesh.name.toLowerCase().includes('trigger');
+      // 🔥 LÓGICA DE PRESELECCIÓN: Los triggers solo se iluminan en MODO EDITOR puro.
+      const canHighlight = mode === 'EDITOR' || !isTrigger;
+
+      if (mesh.isVisible && !mesh.name.includes('proxyCol') && !mesh.name.includes('debug') && !mesh.name.includes('cameraPivot') && canHighlight) {
         hl.addMesh(mesh, color);
       }
       mesh.getChildMeshes().forEach(c => {
-        if (c instanceof Mesh && c.isVisible && !c.name.includes('proxyCol') && !c.name.includes('debug') && !c.name.includes('cameraPivot') && c.metadata?.type !== 'trigger') {
+        const childIsTrigger = c.metadata?.type === 'trigger' || c.name.toLowerCase().includes('trigger');
+        const childCanHighlight = mode === 'EDITOR' || !childIsTrigger;
+
+        if (c instanceof Mesh && c.isVisible && !c.name.includes('proxyCol') && !c.name.includes('debug') && !c.name.includes('cameraPivot') && childCanHighlight) {
           hl.addMesh(c, color);
         }
       });

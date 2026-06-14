@@ -145,6 +145,11 @@ export class EditorEscena implements OnInit, OnDestroy {
         if (m.metadata?.type === 'trigger' || (m.metadata?.type?.startsWith('light_') && !m.metadata?.assetId)) {
             m.isVisible = isAdmin;
         }
+        // 🔥 FIX USUARIO FINAL: Apagado y encendido absoluto de ejes y grilla
+        if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
+            m.isVisible = isAdmin;
+            m.setEnabled(isAdmin);
+        }
     });
   }
 
@@ -172,7 +177,6 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.objRol = 'prop';
     }
     
-    // Si no es un tipo que necesite Asset (video, imagen, luz o modelo), limpiamos el seleccionador.
     if (this.objTipo !== 'model' && !this.objTipo.startsWith('light_') && this.objTipo !== 'video_plane' && this.objTipo !== 'image_plane') {
       this.objAssetSeleccionado = null;
     }
@@ -188,7 +192,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   cargarAssets() {
     this.epiApiSvc.obtenerAssets().subscribe({
       next: (res) => { 
-        // 🔥 AÑADIMOS PNG, JPG Y TEXTURES AL FILTRO
         this.listaAssets = res.filter((a:any) => 
           a.type === 'model_glb' || 
           a.type === 'video_mp4' || 

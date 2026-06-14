@@ -69,6 +69,7 @@ export class Motor3dService {
     this.playerCameraFPS.applyGravity = false;
     this.playerCameraFPS.checkCollisions = false;
 
+    // 🔥 CÁMARA 3RA PERSONA CONFIGURADA
     this.playerCameraTPS = new ArcRotateCamera('playerCameraTPS', -Math.PI / 2, Math.PI / 2.5, 10, Vector3.Zero(), this.scene);
     this.playerCameraTPS.minZ = 0.01;
     this.playerCameraTPS.wheelPrecision = 15;
@@ -76,9 +77,13 @@ export class Motor3dService {
     this.playerCameraTPS.angularSensibilityY = 2000;
     this.playerCameraTPS.lowerRadiusLimit = this.TPS_MIN_RADIUS;
     this.playerCameraTPS.upperRadiusLimit = this.TPS_MAX_RADIUS;
-    this.playerCameraTPS.checkCollisions = false;
     this.playerCameraTPS._panningMouseButton = 2;
     this.playerCameraTPS.allowUpsideDown = false;
+
+    // 🚀 FIX: Físicas de cámara ajustadas para que baje mucho más sin atravesar
+    this.playerCameraTPS.checkCollisions = true; 
+    this.playerCameraTPS.collisionRadius = new Vector3(0.15, 0.15, 0.15); // Radio muy pequeño para acercarse al suelo
+    this.playerCameraTPS.upperBetaLimit = (Math.PI / 2) + 0.4; // Permite bajar mucho más por debajo del horizonte
 
     this.scene.activeCamera = this.editorCamera;
 
@@ -92,19 +97,10 @@ export class Motor3dService {
     this.glowLayer.intensity = 0.6; 
 
     this.scene.onBeforeRenderObservable.add(() => {
-      // 🔥 LÓGICA MEJORADA DE SENSIBILIDAD PARA LA CÁMARA DEL EDITOR
       if (this.scene.activeCamera === this.editorCamera) {
         const radius = Math.max(0.1, this.editorCamera.radius);
-        
-        // En BabylonJS, un wheelPrecision MENOR significa un zoom MÁS RÁPIDO.
-        // Si estamos lejos (radius grande), precision es pequeña (rápido).
-        // Si estamos cerca (radius pequeño), precision es grande (lento y detallado).
         this.editorCamera.wheelPrecision = Math.max(1.5, 50 / radius);
-        
-        // Panning (paneo) también debe escalar según la distancia.
         this.editorCamera.panningSensibility = Math.max(50, 2000 / radius);
-        
-        // Rotación de cámara cómoda
         this.editorCamera.angularSensibilityX = Math.max(500, 3000 / Math.sqrt(radius));
         this.editorCamera.angularSensibilityY = Math.max(500, 3000 / Math.sqrt(radius));
       }
@@ -189,7 +185,6 @@ export class Motor3dService {
 
   setVisualMode(mode: 'normal' | 'bw'): void {
     if (!this.renderingPipeline) return;
-
     const isBw = mode === 'bw';
     const curves = new ColorCurves();
 

@@ -12,11 +12,12 @@ import { FormsModule } from '@angular/forms';
 import { MiniVisorEscena } from '../../../components/mini-visor-escena/mini-visor-escena';
 import { debounceTime, Subscription } from 'rxjs';
 import { AbstractMesh } from '@babylonjs/core';
+import { GlobalTimeline } from '../../../components/global-timeline/global-timeline'; // 🔥 NUEVO IMPORT
 
 @Component({
   selector: 'app-editor-escena',
   standalone: true,
-  imports: [MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule, MiniVisorEscena],
+  imports: [MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule, MiniVisorEscena, GlobalTimeline], // 🔥 AGREGADO AQUÍ
   templateUrl: './editor-escena.html',
   styleUrl: './editor-escena.css',
 }) 
@@ -63,6 +64,10 @@ export class EditorEscena implements OnInit, OnDestroy {
   public inspectorWidth = 350; 
   public isResizing = false;
 
+  // 🔥 NUEVAS VARIABLES PARA EL TIMELINE INFERIOR
+  public timelineHeight = 30; // Altura inicial en porcentaje
+  public isResizingTimeline = false;
+
   private fpsInterval: any;
   private autoSaveSub!: Subscription;
 
@@ -83,6 +88,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
+  // Lógica de resizers...
   iniciarRedimension(event: MouseEvent) {
     if (this.editorSvc.playState() === 'EDITOR' || this.editorSvc.playState() === 'EDITING_IN_GAME') {
       this.isResizing = true;
@@ -90,13 +96,37 @@ export class EditorEscena implements OnInit, OnDestroy {
     }
   }
 
+  iniciarRedimensionTimeline(event: MouseEvent) {
+    if (this.editorSvc.playState() === 'EDITOR' || this.editorSvc.playState() === 'EDITING_IN_GAME') {
+      this.isResizingTimeline = true;
+      event.preventDefault();
+    }
+  }
+
   @HostListener('window:mousemove', ['$event'])
   onMouseMove(event: MouseEvent) {
-    if (!this.isResizing) return;
-    const newWidth = window.innerWidth - event.clientX;
-    if (newWidth > 250 && newWidth < window.innerWidth * 0.6) {
-      this.inspectorWidth = newWidth;
-      this.motor3dSvc.forzarRedimension(); 
+    if (this.isResizing) {
+      const newWidth = window.innerWidth - event.clientX;
+      if (newWidth > 250 && newWidth < window.innerWidth * 0.6) {
+        this.inspectorWidth = newWidth;
+        this.motor3dSvc.forzarRedimension(); 
+      }
+    }
+
+    // 🔥 CÁLCULO DEL SPLITTER HORIZONTAL DEL TIMELINE INFERIOR
+    if (this.isResizingTimeline) {
+      const headerOffset = 70; // Header global
+      const containerHeight = window.innerHeight - headerOffset;
+      const bottomY = window.innerHeight - event.clientY;
+      
+      let newHeight = (bottomY / containerHeight) * 100;
+      
+      // Límites: Mínimo 5% (casi cerrado), máximo 70% de la pantalla
+      if (newHeight < 5) newHeight = 5; 
+      if (newHeight > 70) newHeight = 70;
+      
+      this.timelineHeight = newHeight;
+      this.motor3dSvc.forzarRedimension();
     }
   }
 
@@ -105,6 +135,10 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (this.isResizing) {
       this.isResizing = false;
       this.motor3dSvc.forzarRedimension(); 
+    }
+    if (this.isResizingTimeline) {
+      this.isResizingTimeline = false;
+      this.motor3dSvc.forzarRedimension();
     }
   }
 

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, HemisphericLight, Node } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
@@ -67,7 +66,8 @@ export class SceneSaverService {
       camOffset: nodo.metadata?.camOffset,
       playerConfig: nodo.metadata?.playerConfig || null,
       selectionRange,
-      animationNames: nodo.metadata?.animationNames || []
+      animationNames: nodo.metadata?.animationNames || [],
+      autoAnim: nodo.metadata?.autoAnim || null // 🔥 AÑADIDO: GURDAMOS LA ANIMACIÓN EN LA BD
     };
   }
 
@@ -236,12 +236,6 @@ export class SceneSaverService {
                 proyeccionRepeticiones: this.safeNumber(nodo.metadata.proyeccionRepeticiones, 1),
                 proyeccionEspaciado: this.safeNumber(nodo.metadata.proyeccionEspaciado, 2),
                 proyeccionEje: nodo.metadata.proyeccionEje || 'Y',
-                color: this.hex7(nodo.metadata.color, '#ffffff'),
-                colorBW: this.hex7(nodo.metadata.colorBW, this.hex7(nodo.metadata.color, '#ffffff')),
-                esEmisivo: this.safeBool(nodo.metadata.esEmisivo, false),
-                brilloIntensidad: this.safeNumber(nodo.metadata.brilloIntensidad, 1.0),
-                ignoraNiebla: this.safeBool(nodo.metadata.ignoraNiebla, false),
-                fadeDistance: this.safeNumber(nodo.metadata.fadeDistance, 0),
                 ...propertiesToSave
               }
             });

@@ -3,7 +3,6 @@ import { AbstractMesh, Color3, DirectionalLight, Matrix, Mesh, PointLight, Quate
 import { Motor3dService } from '../../../motor-3d.service';
 import { SceneMaterialService } from '../scene-material.service';
 import { SceneUtilsService } from '../scene-utils.service';
-import { cloneDefaultPlayerConfig } from '../../player-config.model';
 
 @Injectable({ providedIn: 'root' })
 export class LoaderModelService {
@@ -41,6 +40,13 @@ export class LoaderModelService {
     const savedPlayerConfig = this.utilsSvc.prepararPlayerConfigConSelectionRange(obj.properties?.playerConfig || null, savedSelectionRange);
 
     const path = obj.properties?.path || obj.asset?.path;
+    
+    // 🔥 PROTECCIÓN: Si el asset/luz se corrompió y no tiene ruta, evitamos que Babylon colapse
+    if (!path) {
+      console.warn(`[LoaderModel] El objeto ${obj.name} no tiene una ruta válida de modelo. Se omitirá para no romper la carga.`);
+      return Promise.resolve();
+    }
+
     const fullPath = 'http://localhost:4000' + path;
     const lastSlash = fullPath.lastIndexOf('/');
 
@@ -104,7 +110,8 @@ export class LoaderModelService {
         playerConfig: savedPlayerConfig,
         selectionRange: { ...savedPlayerConfig.selectionRange },
         initialHeadLocal,
-        parentId: obj.parentId || null
+        parentId: obj.parentId || null,
+        autoAnim: obj.properties?.autoAnim || null // 🔥 RECUPERAMOS ANIMACIÓN PROCEDURAL DE LA BD
       };
 
       if (isLight) {

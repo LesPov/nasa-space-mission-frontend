@@ -3,12 +3,14 @@ import { AbstractMesh, Quaternion, Vector3 } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
 import { EditorStateService } from '../editor-state.service';
 import { EditorSceneService } from '../editor-scene.service';
+import { SceneUtilsService } from '../sceneservice/scene-utils.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsClipboardService {
   private state = inject(EditorStateService);
   private historialSvc = inject(HistorialService);
   private sceneSvc = inject(EditorSceneService);
+  private utilsSvc = inject(SceneUtilsService);
 
   private objetoEnPortapapeles: AbstractMesh | null = null;
   private listenerCtrlZAgregado = false;
@@ -48,7 +50,11 @@ export class ToolsClipboardService {
     let clon: AbstractMesh;
     const nuevoNombre = objOriginal.name + '_Copia_' + Math.floor(Math.random() * 1000);
 
-    if (objOriginal.metadata?.type === 'model') {
+    const hasAsset = !!objOriginal.metadata?.assetId;
+    const isModelOrLightModel = objOriginal.metadata?.type === 'model' || (objOriginal.metadata?.type?.startsWith('light_') && hasAsset);
+
+    if (isModelOrLightModel) {
+      // Instanciamos el modelo con toda su jerarquía de mallas
       const parentClone = objOriginal.instantiateHierarchy(null, { doNotInstantiate: true });
       clon = parentClone as AbstractMesh;
       clon.name = nuevoNombre;
@@ -62,6 +68,21 @@ export class ToolsClipboardService {
       clon = objOriginal.clone(nuevoNombre, null) as AbstractMesh;
     }
 
+    // 🔥 FIX VITAL: CLONAR LA LUZ FÍSICA SI ES UNA LUZ (instantiateHierarchy no clona las luces nativas)
+    if (objOriginal.metadata?.type?.startsWith('light_')) {
+      const originalLight = objOriginal.getDescendants(false).find(c => c.getClassName().includes('Light')) as any;
+      if (originalLight) {
+         const newLight = originalLight.clone('l_' + nuevoNombre);
+         
+         let targetParent: any = clon;
+         if (objOriginal.metadata?.attachedNodeName) {
+            const foundNode = clon.getDescendants(false).find((n: any) => n.name === objOriginal.metadata.attachedNodeName);
+            if (foundNode) targetParent = foundNode;
+         }
+         newLight.parent = targetParent;
+      }
+    }
+
     clon.position = objOriginal.position.clone();
     clon.position.x += 1;
     clon.position.z += 1;
@@ -71,6 +92,10 @@ export class ToolsClipboardService {
 
     clon.scaling = objOriginal.scaling.clone();
     clon.metadata = JSON.parse(JSON.stringify(objOriginal.metadata));
+    
+    // RENOVAMOS EL UID DE BABYLON Y TODOS LOS IDS DE LAS SECUENCIAS
+    clon.metadata.uid = window.crypto.randomUUID();
+    this.utilsSvc.renovarIdsDeSecuencias(clon.metadata);
     
     if (objOriginal.metadata?.initialHeadLocal) {
       clon.metadata.initialHeadLocal = new Vector3(

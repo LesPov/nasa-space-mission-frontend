@@ -1,6 +1,5 @@
-
 import { Injectable, inject } from '@angular/core';
-import { Node, AbstractMesh } from '@babylonjs/core';
+import { Node, AbstractMesh, Vector3 } from '@babylonjs/core';
 
 import { EditorToolsService } from './editor/editor-tools.service';
 import { EditorSceneService } from './editor/editor-scene.service';
@@ -8,6 +7,7 @@ import { EditorPlayerService } from './editor/editor-player.service';
 import { EditorInteractionService } from './editor/editor-interaction.service';
 import { EditorStateService, ToolMode, PlayState } from './editor/editor-state.service';
 import { EditorCameraService } from './editor/editor-camera.service';
+import { SceneLoaderService } from './editor/sceneservice/scene-loader.service'; // 🔥 IMPORTADO
 
 export type { ToolMode, PlayState };
 
@@ -22,6 +22,7 @@ export class EditorMapaService {
   private player = inject(EditorPlayerService);
   private interaction = inject(EditorInteractionService);
   private camera = inject(EditorCameraService);
+  private loader = inject(SceneLoaderService); // 🔥 INYECTADO
 
   get playState() { return this.state.playState; }
   get rolSimulado() { return this.state.rolSimulado; }
@@ -61,12 +62,11 @@ export class EditorMapaService {
   crearSuelo(): void { this.scene.crearSuelo(); }
   eliminarSeleccionado(): void { this.scene.eliminarSeleccionado(); }
   
-  // 🔥 FIX: Retorna Promise
   cargarEscenaDesdeDatos(dataBD: any): Promise<void> { 
     return this.scene.cargarEscenaDesdeDatos(dataBD); 
   }
   
-  obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[] } { 
+  obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[], worldSettings: any } { 
     return this.scene.obtenerDatosParaGuardar(); 
   }
   
@@ -77,6 +77,11 @@ export class EditorMapaService {
     parentNode: AbstractMesh | null = null
   ): void {
     this.scene.agregarObjetoCustom(tipo, nombre, rol, colorHex, sizeX, sizeY, sizeZ, asset, isSolid, isSelectable, mensaje, parentNode);
+  }
+
+  // 🔥 NUEVO: Método directo para instanciar el prefab clonado
+  instanciarPrefabFull(prefabData: any, targetPos: Vector3): void {
+    this.loader.instanciarObjetoDesdePrefab(prefabData, targetPos);
   }
 
   iniciarModoJuego(vista: 'FPS' | 'TPS'): void { this.player.iniciarModoJuego(vista); }

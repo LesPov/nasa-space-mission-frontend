@@ -6,8 +6,8 @@ import { EditorStateService } from '../editor-state.service';
 import { SceneShadowsService } from './scene-shadows.service';
 import { SceneNodesService } from './scene-nodes.service';
 import { SceneEnvironmentService } from './scene-environment.service';
+import { SceneUtilsService } from './scene-utils.service';
 
-// 🔥 IMPORTAMOS LOS NUEVOS LOADERS
 import { LoaderModelService } from './loaders/loader-model.service';
 import { LoaderPrimitiveService } from './loaders/loader-primitive.service';
 import { LoaderTriggerService } from './loaders/loader-trigger.service';
@@ -19,6 +19,7 @@ export class SceneLoaderService {
   private envSvc = inject(SceneEnvironmentService);
   private shadowsSvc = inject(SceneShadowsService);
   private nodesSvc = inject(SceneNodesService);
+  private utilsSvc = inject(SceneUtilsService);
 
   private loaderModelSvc = inject(LoaderModelService);
   private loaderPrimitiveSvc = inject(LoaderPrimitiveService);
@@ -30,7 +31,6 @@ export class SceneLoaderService {
 
       const scene = this.motor3d.scene;
       
-      // 1. Configurar Entorno Global (Cielo y Físicas)
       let w: any = dataBD.worldSettings;
       if (typeof w === 'string') {
         try { w = JSON.parse(w); } catch (e) {}
@@ -64,26 +64,23 @@ export class SceneLoaderService {
       const promesasCarga: any[] = [];
       const mallasCreadas = new Map<string, Mesh>();
 
-      // 2. Cargar Objetos 3D
       objetosBD.forEach((obj: any) => {
         const isModel = obj.type === 'model';
         const isLight = obj.type?.startsWith('light_');
+        // 🔥 FIX ANTICRASHEOS: Verificamos si realmente existe la ruta del asset antes de intentar cargarlo
+        const hasPath = !!(obj.properties?.path || obj.asset?.path);
 
-        if ((isLight && obj.assetId) || isModel) {
-          // Modelos GLB que requieren carga asíncrona
+        if ((isLight && obj.assetId && hasPath) || (isModel && hasPath)) {
           promesasCarga.push(this.loaderModelSvc.cargarModeloAsync(obj, mallasCreadas));
         } else {
-          // Primitivas, Luces Simples y Hologramas sincrónicos
           this.loaderPrimitiveSvc.cargarPrimitiva(obj, mallasCreadas);
         }
       });
 
-      // 3. Cargar Triggers
       triggersBD.forEach((trigger: any) => {
         this.loaderTriggerSvc.cargarTrigger(trigger, mallasCreadas);
       });
 
-      // 4. Finalizar Ensamblaje cuando los modelos asíncronos descarguen
       Promise.all(promesasCarga).then(() => {
         mallasCreadas.forEach((mesh) => {
           if (mesh.metadata?.parentId) {
@@ -92,7 +89,6 @@ export class SceneLoaderService {
           }
         });
 
-        // Forzamos actualización de los Decals (Hologramas) para que se peguen bien a las paredes recién cargadas
         setTimeout(() => {
           mallasCreadas.forEach((mesh) => {
             if (mesh.metadata?.type === 'image_plane' && mesh.metadata.updateDecal) {
@@ -106,5 +102,62 @@ export class SceneLoaderService {
         resolve();
       });
     });
+  }
+
+  // 🔥 LÓGICA VITAL: Instanciar el prefab rescatando toda la estructura
+  public instanciarObjetoDesdePrefab(prefabData: any, positionTarget: Vector3): Promise<void> {
+    return new Promise((resolve) => {
+      const mallasCreadas = new Map<string, Mesh>();
+      
+      const propertiesClone = JSON.parse(JSON.stringify(prefabData.properties || {}));
+      
+      // Renovamos IDs de secuencias para que el clon sea independiente
+      this.utilsSvc.renovarIdsDeSecuencias(propertiesClone);
+
+      // Simulamos que el Prefab viene de la Base de Datos
+      const mockDbObject = {
+        uid: window.crypto.randomUUID(), 
+        type: prefabData.type,
+        name: prefabData.name + '_' + Math.floor(Math.random() * 1000),
+        position: { x: positionTarget.x, y: positionTarget.y, z: positionTarget.z },
+        
+        // 🔥 RESCATAMOS LA ROTACIÓN Y ESCALA ORIGINAL DEL PREFAB DESDE LAS PROPIEDADES
+        rotation: propertiesClone.rotation || { x: 0, y: 0, z: 0 },
+        scale: propertiesClone.scale || { x: 1, y: 1, z: 1 },
+        
+        properties: propertiesClone,
+        assetId: prefabData.assetId,
+        asset: { path: propertiesClone.path }
+      };
+
+      const isModel = mockDbObject.type === 'model';
+      const isLight = mockDbObject.type?.startsWith('light_');
+      
+      // 🔥 CRÍTICO: Prevenimos el error "undefined" comprobando la ruta de forma segura
+      const hasPath = !!(mockDbObject.properties?.path || mockDbObject.asset?.path);
+
+      if ((isLight && mockDbObject.assetId && hasPath) || (isModel && hasPath)) {
+        this.loaderModelSvc.cargarModeloAsync(mockDbObject, mallasCreadas).then(() => {
+          this.finalizarPrefab(mallasCreadas);
+          resolve();
+        });
+      } else {
+        this.loaderPrimitiveSvc.cargarPrimitiva(mockDbObject, mallasCreadas);
+        this.finalizarPrefab(mallasCreadas);
+        resolve();
+      }
+    });
+  }
+
+  private finalizarPrefab(mallasCreadas: Map<string, Mesh>) {
+    this.shadowsSvc.asignarObjetosASombrasDeLuces();
+    this.nodesSvc.actualizarListaNodos();
+    
+    // Seleccionar automáticamente el prefab recién clonado para que el usuario pueda moverlo de inmediato
+    const iter = mallasCreadas.values().next();
+    if (!iter.done) {
+       this.state.objetoSeleccionado.set(iter.value);
+       this.state.triggerUpdate();
+    }
   }
 }

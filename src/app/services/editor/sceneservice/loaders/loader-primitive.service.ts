@@ -4,7 +4,6 @@ import { Motor3dService } from '../../../motor-3d.service';
 import { EditorStateService } from '../../editor-state.service';
 import { SceneUtilsService } from '../scene-utils.service';
 import { SceneProjectionService } from '../scene-projection.service';
-import { cloneDefaultPlayerConfig } from '../../player-config.model';
 
 @Injectable({ providedIn: 'root' })
 export class LoaderPrimitiveService {
@@ -77,7 +76,8 @@ export class LoaderPrimitiveService {
       camOffset: obj.properties?.camOffset || { x: 0, y: 0.8, z: 0 },
       playerConfig: savedPlayerConfig,
       selectionRange: { ...savedPlayerConfig.selectionRange },
-      parentId: obj.parentId || null
+      parentId: obj.parentId || null,
+      autoAnim: obj.properties?.autoAnim || null // 🔥 RECUPERAMOS ANIMACIÓN PROCEDURAL DE LA BD
     };
 
     if (obj.type === 'video_plane') {
@@ -134,7 +134,6 @@ export class LoaderPrimitiveService {
       const imageUrl = mesh.metadata.imageUrl ? 'http://localhost:4000' + mesh.metadata.imageUrl : '';
       const tex = imageUrl ? new Texture(imageUrl, scene) : null;
 
-      // 🔥 REUTILIZAMOS TU SUPER PROJECTION SERVICE
       this.projectionSvc.configurarMaterialProyector(mat, activeColorAUsar, mesh.metadata.brilloIntensidad, isIgnoraNieblaSaved, tex);
       
       mesh.material = mat;

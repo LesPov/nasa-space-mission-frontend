@@ -1,0 +1,113 @@
+<div class="timeline-shell">
+  <!-- Pestañas del Panel Inferior -->
+  <div class="timeline-tabs">
+    <button class="tab-btn" [class.active]="activeTab === 'animaciones'" (click)="activeTab = 'animaciones'">
+      <span>🏃</span> Animaciones Ambientales (Bloques)
+    </button>
+    <button class="tab-btn" [class.active]="activeTab === 'prefabs'" (click)="activeTab = 'prefabs'">
+      <span>📦</span> Prefabs (Objetos Inteligentes)
+    </button>
+  </div>
+
+  <div class="timeline-content">
+    
+    <!-- ============================================== -->
+    <!-- PESTAÑA: ANIMACIONES AMBIENTALES (AUTO-PLAY) -->
+    <!-- ============================================== -->
+    <div *ngIf="activeTab === 'animaciones'" style="padding: 10px; display: flex; flex-direction: column; gap: 15px;">
+      
+      <div *ngIf="!editorSvc.objetoSeleccionado()" class="empty-state">
+        <p>Selecciona un objeto de la escena (ej: un Cubo) para animarlo.</p>
+      </div>
+
+      <div *ngIf="editorSvc.objetoSeleccionado()" style="background: #242424; padding: 15px; border-radius: 6px; border: 1px solid #333;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px;">
+          <h4 style="margin: 0; color: #60a5fa;">Animar en Bucle: {{ (editorSvc.objetoSeleccionado()?.name) }}</h4>
+          
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <input type="checkbox" id="chkAutoAnim" [(ngModel)]="autoAnimConfig.enabled" (change)="guardarAutoAnimacion()">
+            <label for="chkAutoAnim" style="color: #4ade80; font-weight: bold; cursor: pointer;">Activar Animación Automática</label>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 15px;" [style.opacity]="autoAnimConfig.enabled ? '1' : '0.4'" [style.pointer-events]="autoAnimConfig.enabled ? 'all' : 'none'">
+          
+          <div style="display: flex; flex-direction: column; gap: 5px; width: 150px;">
+            <label style="font-size: 11px; color: #aaa;">Tipo de Movimiento</label>
+            <!-- 🔥 NUEVAS OPCIONES DE ANIMACIÓN AÑADIDAS AQUÍ -->
+            <select [(ngModel)]="autoAnimConfig.type" (change)="guardarAutoAnimacion()" style="background: #111; color: white; padding: 6px; border: 1px solid #444; border-radius: 4px;">
+              <option value="move">Desplazar (Ida y Vuelta)</option>
+              <option value="rotate">Rotar (Giro Continuo)</option>
+              <option value="scale">Escalar (Latido/Pulsar)</option>
+              <option value="float">Flotar (Arriba/Abajo Suave)</option>
+            </select>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 5px; width: 100px;">
+            <label style="font-size: 11px; color: #aaa;">Eje</label>
+            <!-- El eje se deshabilita si es flotar porque por defecto es Y -->
+            <select [(ngModel)]="autoAnimConfig.axis" (change)="guardarAutoAnimacion()" [disabled]="autoAnimConfig.type === 'float'" style="background: #111; color: white; padding: 6px; border: 1px solid #444; border-radius: 4px;">
+              <option value="X">X (Lados)</option>
+              <option value="Y">Y (Arriba/Abajo)</option>
+              <option value="Z">Z (Profundidad)</option>
+              <option value="ALL" *ngIf="autoAnimConfig.type === 'scale'">Todos</option>
+            </select>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 5px; width: 120px;">
+            <label style="font-size: 11px; color: #aaa;">Distancia / Grados</label>
+            <input type="number" [(ngModel)]="autoAnimConfig.amount" (change)="guardarAutoAnimacion()" style="background: #111; color: white; padding: 6px; border: 1px solid #444; border-radius: 4px;">
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 5px; width: 120px;">
+            <label style="font-size: 11px; color: #aaa;">Duración (Segundos)</label>
+            <input type="number" step="0.5" [(ngModel)]="autoAnimConfig.duration" (change)="guardarAutoAnimacion()" style="background: #111; color: white; padding: 6px; border: 1px solid #444; border-radius: 4px;">
+          </div>
+
+        </div>
+        <p style="font-size: 11px; color: #888; margin-top: 15px;">* Esta animación iniciará automáticamente cuando le des a "Jugar". Es ideal para plataformas móviles, luces decorativas, engranajes o trampas.</p>
+      </div>
+
+    </div>
+
+    <!-- ============================================== -->
+    <!-- PESTAÑA: PREFABS -->
+    <!-- ============================================== -->
+    <div *ngIf="activeTab === 'prefabs'" style="padding: 15px; display: flex; flex-direction: column; gap: 15px; height: 100%; box-sizing: border-box;">
+      
+      <div style="display: flex; gap: 10px; align-items: center; background: #2a2a2a; padding: 10px; border-radius: 6px; border: 1px solid #333;">
+        <span style="font-size: 20px;">💾</span>
+        <div style="display: flex; flex-direction: column;">
+          <b style="color: white; font-size: 13px;">Crear Prefab desde Selección</b>
+          <span style="color: #aaa; font-size: 11px;">Guarda el objeto actual (con sus secuencias y físicas) en la BD.</span>
+        </div>
+        <input type="text" [(ngModel)]="nuevoPrefabNombre" placeholder="Ej: Plataforma_Móvil_01" style="background: #111; border: 1px solid #444; color: white; padding: 6px; border-radius: 4px; flex: 1; margin-left: 20px;">
+        <button (click)="guardarObjetoActualComoPrefab()" [disabled]="!editorSvc.objetoSeleccionado() || !nuevoPrefabNombre || guardandoPrefab" style="background: #3b82f6; color: white; border: none; padding: 6px 15px; border-radius: 4px; font-weight: bold; cursor: pointer;">
+          {{ guardandoPrefab ? 'Guardando...' : 'Guardar' }}
+        </button>
+      </div>
+
+      <div style="flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; align-content: flex-start;">
+        
+        <div *ngIf="prefabsDisponibles.length === 0" style="grid-column: 1 / -1; text-align: center; color: #666; padding: 20px;">
+          No hay prefabs guardados en la base de datos.
+        </div>
+
+        <div *ngFor="let prefab of prefabsDisponibles" style="background: #242424; border: 1px solid #444; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+            <b style="color: #60a5fa; font-size: 13px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">{{ prefab.name }}</b>
+            <span style="font-size: 16px;">{{ prefab.type === 'model' ? '🧍' : (prefab.type.startsWith('light') ? '💡' : '📦') }}</span>
+          </div>
+          <span style="color: #aaa; font-size: 10px;">Tipo: {{ prefab.type }}</span>
+          
+          <div style="display: flex; gap: 5px; margin-top: auto;">
+            <button (click)="instanciarPrefab(prefab)" style="flex: 1; background: #2ea043; color: white; border: none; border-radius: 4px; padding: 4px; font-size: 11px; cursor: pointer;">➕ Colocar</button>
+            <button (click)="eliminarPrefab(prefab.id)" style="background: #da3633; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: 11px; cursor: pointer;">🗑️</button>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+</div>

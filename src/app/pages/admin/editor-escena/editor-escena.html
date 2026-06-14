@@ -198,69 +198,88 @@
  <div class="blender-layout">
     
     <div class="viewport-area" [style.width]="esAdmin ? 'calc(100% - ' + inspectorWidth + 'px)' : '100%'">
-      <div class="viewport-topbar">
-        <div class="vp-left">
-          <button class="btn-vp btn-exit" (click)="salirDelEditor()" *ngIf="editorSvc.playState() === 'EDITOR' || !esAdmin">⬅ Menú</button>
-          <span class="vp-title">{{ mapaActualNombre }}</span>
-        </div>
-        <div class="vp-right">
-          <ng-container *ngIf="esAdmin">
-            <button class="btn-vp" style="border-color: #facc15;" (click)="toggleRolPrueba()">[Prueba: {{ editorSvc.rolSimulado() | uppercase }}]</button>
-            <select [(ngModel)]="vistaPrueba" class="cam-select" *ngIf="editorSvc.playState() === 'EDITOR'">
-              <option value="FPS">👁️ 1ra Persona</option>
-              <option value="TPS">🧍 3ra Persona</option>
-            </select>
-            <button class="btn-vp btn-play" *ngIf="editorSvc.playState() === 'EDITOR'" [disabled]="!esObjetoJugable()" (click)="iniciarModoPrueba()">▶️ Jugar</button>
-            <span class="sync-status" [class.syncing]="estadoGuardado() === 'Guardando...'" *ngIf="editorSvc.playState() === 'EDITOR'">{{ estadoGuardado() }}</span>
-            <button class="btn-vp btn-save" (click)="guardarMapaEnBD(false)" *ngIf="editorSvc.playState() === 'EDITOR'">💾 Guardar</button>
-          </ng-container>
-          <button class="btn-vp btn-stop" *ngIf="editorSvc.playState() !== 'EDITOR' && esAdmin" (click)="detenerModoPrueba()">⏹️ Salir del Juego</button>
-        </div>
-      </div>
-
-      <div class="canvas-container">
-        <div class="crosshair-ui" *ngIf="editorSvc.playState() === 'PLAYING' && stateSvc.modoVistaPrueba === 'FPS' && editorSvc.ratonBloqueado()" [class.hovering]="editorSvc.mirandoObjetoInteractuable()"></div>
-
-        <div class="modern-toast-container" *ngIf="stateSvc.mensajeTriggerHUD() !== null" style="bottom: 120px; z-index: 300;">
-            <div class="modern-toast-box" style="background: rgba(30, 58, 138, 0.95); border: 2px solid #60a5fa; box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);">
-               <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">
-                 📍 {{ stateSvc.mensajeTriggerHUD() }}
-               </div>
-            </div>
-        </div>
-
-        <div class="modern-toast-container" *ngIf="stateSvc.playState() === 'PLAYING' && stateSvc.targetInteractuable() && stateSvc.ratonBloqueado() && (stateSvc.showToastE() || stateSvc.showToastI() || (esAdmin && stateSvc.modoVistaPrueba === 'FPS'))">
-          <div class="modern-toast-box">
-            <div class="toast-title">{{ stateSvc.targetInteractuable()?.name }}</div>
-            <div class="toast-actions-grid">
-              <div class="action-item" *ngIf="esAdmin && stateSvc.modoVistaPrueba === 'FPS'">
-                <kbd class="key-cap">Click</kbd>
-                <span class="action-label">Editar</span>
-              </div>
-              <div class="action-item" *ngIf="stateSvc.showToastE()">
-                <kbd class="key-cap">E</kbd>
-                <span class="action-label">Acción</span>
-              </div>
-              <div class="action-item" *ngIf="stateSvc.showToastI()">
-                <kbd class="key-cap">I</kbd>
-                <span class="action-label">Leer</span>
-              </div>
-            </div>
+      
+      <!-- CONTENEDOR SUPERIOR (Canvas 3D) -->
+      <div class="canvas-wrapper" [style.height.%]="esAdmin ? 100 - timelineHeight : 100">
+        <div class="viewport-topbar">
+          <div class="vp-left">
+            <button class="btn-vp btn-exit" (click)="salirDelEditor()" *ngIf="editorSvc.playState() === 'EDITOR' || !esAdmin">⬅ Menú</button>
+            <span class="vp-title">{{ mapaActualNombre }}</span>
+          </div>
+          <div class="vp-right">
+            <ng-container *ngIf="esAdmin">
+              <button class="btn-vp" style="border-color: #facc15;" (click)="toggleRolPrueba()">[Prueba: {{ editorSvc.rolSimulado() | uppercase }}]</button>
+              <select [(ngModel)]="vistaPrueba" class="cam-select" *ngIf="editorSvc.playState() === 'EDITOR'">
+                <option value="FPS">👁️ 1ra Persona</option>
+                <option value="TPS">🧍 3ra Persona</option>
+              </select>
+              <button class="btn-vp btn-play" *ngIf="editorSvc.playState() === 'EDITOR'" [disabled]="!esObjetoJugable()" (click)="iniciarModoPrueba()">▶️ Jugar</button>
+              <span class="sync-status" [class.syncing]="estadoGuardado() === 'Guardando...'" *ngIf="editorSvc.playState() === 'EDITOR'">{{ estadoGuardado() }}</span>
+              <button class="btn-vp btn-save" (click)="guardarMapaEnBD(false)" *ngIf="editorSvc.playState() === 'EDITOR'">💾 Guardar</button>
+            </ng-container>
+            <button class="btn-vp btn-stop" *ngIf="editorSvc.playState() !== 'EDITOR' && esAdmin" (click)="detenerModoPrueba()">⏹️ Salir del Juego</button>
           </div>
         </div>
 
-        <div class="hud-container">
-          <div class="hud-message hud-playing" *ngIf="editorSvc.playState() === 'PLAYING' && editorSvc.ratonBloqueado()"><span class="hud-icon">🎮</span> "WASD" Mover • "Espacio" Saltar • "V" Cambiar Cámara</div>
-          <div class="hud-message hud-paused" *ngIf="editorSvc.playState() === 'PLAYING' && !editorSvc.ratonBloqueado()"><span class="hud-icon">⏸️</span> Juego Pausado | Click en la pantalla para volver</div>
-          <div class="hud-message hud-editing" *ngIf="editorSvc.playState() === 'EDITING_IN_GAME'"><span class="hud-icon">⚙️</span> MODO EDICIÓN EN VIVO | Click al fondo o "ESC" para volver</div>
+        <div class="canvas-container">
+          <div class="crosshair-ui" *ngIf="editorSvc.playState() === 'PLAYING' && stateSvc.modoVistaPrueba === 'FPS' && editorSvc.ratonBloqueado()" [class.hovering]="editorSvc.mirandoObjetoInteractuable()"></div>
+
+          <div class="modern-toast-container" *ngIf="stateSvc.mensajeTriggerHUD() !== null" style="bottom: 120px; z-index: 300;">
+              <div class="modern-toast-box" style="background: rgba(30, 58, 138, 0.95); border: 2px solid #60a5fa; box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);">
+                 <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">
+                   📍 {{ stateSvc.mensajeTriggerHUD() }}
+                 </div>
+              </div>
+          </div>
+
+          <div class="modern-toast-container" *ngIf="stateSvc.playState() === 'PLAYING' && stateSvc.targetInteractuable() && stateSvc.ratonBloqueado() && (stateSvc.showToastE() || stateSvc.showToastI() || (esAdmin && stateSvc.modoVistaPrueba === 'FPS'))">
+            <div class="modern-toast-box">
+              <div class="toast-title">{{ stateSvc.targetInteractuable()?.name }}</div>
+              <div class="toast-actions-grid">
+                <div class="action-item" *ngIf="esAdmin && stateSvc.modoVistaPrueba === 'FPS'">
+                  <kbd class="key-cap">Click</kbd>
+                  <span class="action-label">Editar</span>
+                </div>
+                <div class="action-item" *ngIf="stateSvc.showToastE()">
+                  <kbd class="key-cap">E</kbd>
+                  <span class="action-label">Acción</span>
+                </div>
+                <div class="action-item" *ngIf="stateSvc.showToastI()">
+                  <kbd class="key-cap">I</kbd>
+                  <span class="action-label">Leer</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="hud-container">
+            <div class="hud-message hud-playing" *ngIf="editorSvc.playState() === 'PLAYING' && editorSvc.ratonBloqueado()"><span class="hud-icon">🎮</span> "WASD" Mover • "Espacio" Saltar • "V" Cambiar Cámara</div>
+            <div class="hud-message hud-paused" *ngIf="editorSvc.playState() === 'PLAYING' && !editorSvc.ratonBloqueado()"><span class="hud-icon">⏸️</span> Juego Pausado | Click en la pantalla para volver</div>
+            <div class="hud-message hud-editing" *ngIf="editorSvc.playState() === 'EDITING_IN_GAME'"><span class="hud-icon">⚙️</span> MODO EDICIÓN EN VIVO | Click al fondo o "ESC" para volver</div>
+          </div>
+          
+          <app-motor-babylon></app-motor-babylon>
+          <app-toolbar-escena *ngIf="esAdmin && (editorSvc.playState() === 'EDITOR' || editorSvc.playState() === 'EDITING_IN_GAME' || (editorSvc.playState() === 'PLAYING' && !editorSvc.ratonBloqueado()))"></app-toolbar-escena>
+          <div class="fps-badge">FPS: {{ fps() }}</div>
         </div>
-        
-        <app-motor-babylon></app-motor-babylon>
-        <app-toolbar-escena *ngIf="esAdmin && (editorSvc.playState() === 'EDITOR' || editorSvc.playState() === 'EDITING_IN_GAME' || (editorSvc.playState() === 'PLAYING' && !editorSvc.ratonBloqueado()))"></app-toolbar-escena>
-        <div class="fps-badge">FPS: {{ fps() }}</div>
       </div>
+      
+      <!-- 🔥 SPLITTER HORIZONTAL DEL TIMELINE (NUEVO) -->
+      <div class="horizontal-resizer" 
+           *ngIf="esAdmin"
+           (mousedown)="iniciarRedimensionTimeline($event)" 
+           [class.resizing]="isResizingTimeline">
+        <div class="resizer-grip-h"></div>
+      </div>
+
+      <!-- 🔥 PANEL INFERIOR TIMELINE (NUEVO) -->
+      <div class="timeline-wrapper" *ngIf="esAdmin && timelineHeight > 5" [style.height.%]="timelineHeight">
+        <app-global-timeline></app-global-timeline>
+      </div>
+      
     </div>
     
+    <!-- SPLITTER VERTICAL DEL INSPECTOR DERECHO -->
     <div class="layout-resizer" 
          *ngIf="esAdmin" 
          (mousedown)="iniciarRedimension($event)" 
@@ -268,6 +287,7 @@
       <div class="resizer-grip"></div>
     </div>
 
+    <!-- INSPECTOR DERECHO -->
     <div class="inspector-wrapper" *ngIf="esAdmin" [style.width.px]="inspectorWidth">
       <app-inspector-escena></app-inspector-escena>
     </div>

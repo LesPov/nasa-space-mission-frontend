@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 
@@ -15,7 +14,10 @@ import { PlayerPhysicsService } from './playerservice/player-physics.service';
 import { PlayerSequenceService } from './playerservice/player-sequence.service';
 import { PlayerTriggerService } from './player-trigger.service';
 import { PlayerBubbleService } from './playerservice/player-bubble';
- 
+
+// 🔥 NUEVO SERVICIO INYECTADO
+import { ObjectAnimationService } from './object-animation.service';
+
 @Injectable({ providedIn: 'root' })
 export class EditorPlayerService {
   private motor3d = inject(Motor3dService);
@@ -30,6 +32,7 @@ export class EditorPlayerService {
   private sequenceSvc = inject(PlayerSequenceService);
   private triggerSvc = inject(PlayerTriggerService);
   private bubbleSvc = inject(PlayerBubbleService);
+  private autoAnimSvc = inject(ObjectAnimationService); // 🔥 INYECTADO
 
   public playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
   private tpsUpdateObserver: Observer<Scene> | null = null;
@@ -170,7 +173,9 @@ export class EditorPlayerService {
       targetLookAt = this.state.cameraPivot!.getAbsolutePosition();
     }
 
-    // 🔥 LLAMADA AL NUEVO VUELO ESPIRAL ORBITAL
+    // 🔥 INICIAR ANIMACIONES PROCEDURALES
+    this.autoAnimSvc.startAmbientAutoAnimations();
+
     this.cameraSvc.volarHaciaCamaraJuego(obj.getAbsolutePosition(), targetPos, targetLookAt, vista === 'FPS', () => {
         this.motor3d.scene.activeCamera = targetCam;
         this.state.playState.set('PLAYING');
@@ -348,6 +353,9 @@ export class EditorPlayerService {
     this.animSvc.detenerTodasGlobal();
     this.animSvc.limpiarEstados(); 
 
+    // 🔥 DETENEMOS ANIMACIONES PROCEDURALES
+    this.autoAnimSvc.stopAmbientAutoAnimations();
+
     this.triggerSvc.restaurarTriggersParaEditor();
     this.bubbleSvc.restaurarBurbujasParaEditor(); 
 
@@ -422,7 +430,6 @@ export class EditorPlayerService {
         this.state.jugadorActivo.rotationQuaternion = this.state.backupObjetoRotacionQuat.clone();
       }
       
-      // 🔥 FIX RESTAURAR VISIBILIDAD: Se restaura tanto el booleano como el valor numérico (0 a 1)
       this.state.jugadorActivo.isVisible = this.state.backupObjetoVisibilidad;
       this.state.jugadorActivo.visibility = 1;
       this.state.jugadorActivo.getChildMeshes().forEach(m => {

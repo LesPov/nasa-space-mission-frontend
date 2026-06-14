@@ -26,7 +26,8 @@ export class ToolsFogService {
     const isBW = scene.metadata?.globalVisualMode === 'bw';
     const isFPS = this.state.modoVistaPrueba === 'FPS';
 
-    if (modo === 'PLAYING' || modo === 'EDITING_IN_GAME') {
+    // 🔥 FIX: Añadimos 'TRANSITIONING' para que la niebla se active MIENTRAS la cámara vuela hacia el personaje
+    if (modo === 'PLAYING' || modo === 'EDITING_IN_GAME' || modo === 'TRANSITIONING') {
       if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
         const fog = targetPlayer.metadata.playerConfig.fog;
         
@@ -87,7 +88,7 @@ export class ToolsFogService {
     scene.lights.forEach(light => {
       const sg: any = light.getShadowGenerator();
       if (sg && sg instanceof CascadedShadowGenerator) {
-        sg.shadowMaxZ = modo === 'PLAYING' ? shadowLimit : 10000;
+        sg.shadowMaxZ = modo === 'PLAYING' || modo === 'TRANSITIONING' ? shadowLimit : 10000;
       }
     });
   }

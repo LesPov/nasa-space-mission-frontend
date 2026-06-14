@@ -9,7 +9,9 @@ import {
   Animation,
   CubicEase,
   EasingFunction,
-  Quaternion
+  Quaternion,
+  Observer,
+  Scene
 } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
 import { Motor3dService } from '../../motor-3d.service';
@@ -30,11 +32,17 @@ export class PlayerCameraManagerService {
 
   public headNode: TransformNode | null = null;
   public initialHeadLocal: Vector3 | null = null;
+  
+  private fadeObserver: Observer<Scene> | null = null;
 
   public resetearTransiciones(): void {
     this.isTransitioningCameras = false;
     this.overrideTargetPivotY = null;
     this.idleTime = 0;
+    if (this.fadeObserver) {
+       this.motor3d.scene.onBeforeRenderObservable.remove(this.fadeObserver);
+       this.fadeObserver = null;
+    }
   }
 
   public inicializarCamaras(
@@ -89,22 +97,35 @@ export class PlayerCameraManagerService {
       this.state.cameraPivot.position = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
 
       this.motor3d.playerCameraTPS.lockedTarget = this.state.cameraPivot;
-      this.motor3d.playerCameraTPS.radius = (config.camera.tpsRadius || 5) * scaleY;
-
-      this.motor3d.playerCameraTPS.lowerRadiusLimit = Math.max(0.5, (config.camera.tpsRadius || 5) * scaleY * 0.15);
-      this.motor3d.playerCameraTPS.upperRadiusLimit = Math.max(1.25, (config.camera.tpsRadius || 5) * scaleY * 2.5);
+      
+      const radBase = (config.camera.tpsRadius || 5) * scaleY;
+      
+      // 🔥 FIX: Aumentar la distancia base para que esté "más lejos" y actualizar límites
+      this.motor3d.playerCameraTPS.radius = radBase * 1.5;
+      this.motor3d.playerCameraTPS.lowerRadiusLimit = Math.max(0.5, radBase * 0.15);
+      this.motor3d.playerCameraTPS.upperRadiusLimit = Math.max(1.25, radBase * 2.5);
       
       this.motor3d.playerCameraTPS.wheelPrecision = 15;
       this.motor3d.playerCameraTPS.panningSensibility = 0;
       this.motor3d.playerCameraTPS.allowUpsideDown = false;
+      this.motor3d.playerCameraTPS.alpha = -(startRot.y || 0) - Math.PI / 2;
+      this.motor3d.playerCameraTPS.beta = (startRot.x || 0) + Math.PI / 2;
+      
+      // 🔥 Forzar reconstrucción de matrices de cámara para evitar el salto al centro 0,0,0
+      this.motor3d.playerCameraTPS.rebuildAnglesAndRadius();
+      this.motor3d.playerCameraTPS.getViewMatrix(true);
     }
 
     if (vista === 'FPS') {
-      scene.activeCamera = fpsCam;
+      jugador.visibility = 0;
+      jugador.getChildMeshes().forEach(m => m.visibility = 0);
+      // 🔥 FIX: Actualizar de inmediato la cámara a la posición real del personaje para evitar el viaje desde (0,0,0)
+      const localCamPos = new Vector3(camMeta.x || 0, this.currentEyeLevel / scaleY, camMeta.z || 0);
+      fpsCam.position = Vector3.TransformCoordinates(localCamPos, jugador.getWorldMatrix());
+      fpsCam.getViewMatrix(true);
     } else {
-      scene.activeCamera = this.motor3d.playerCameraTPS;
-      this.motor3d.playerCameraTPS.alpha = -(startRot.y || 0) - Math.PI / 2;
-      this.motor3d.playerCameraTPS.beta = (startRot.x || 0) + Math.PI / 2;
+      jugador.visibility = 1;
+      jugador.getChildMeshes().forEach(m => m.visibility = 1);
     }
   }
 
@@ -128,9 +149,9 @@ export class PlayerCameraManagerService {
       this.motor3d.editorCamera.attachControl(canvas, true);
     }
 
+    this.resetearTransiciones();
     this.headNode = null;
     this.initialHeadLocal = null;
-    this.overrideTargetPivotY = null;
   }
 
   public toggleCameraView(jugador: Mesh, config: PlayerRuntimeConfig): void {
@@ -138,7 +159,9 @@ export class PlayerCameraManagerService {
 
     this.isTransitioningCameras = true;
     const scaleNow = jugador.scaling.y || 1;
-    const targetRadius = (config.camera.tpsRadius || 5) * scaleNow;
+    
+    // 🔥 La cámara a 3ra persona se va a alejar un 1.5x de su radio base normal
+    const targetRadius = (config.camera.tpsRadius || 5) * scaleNow * 1.5;
 
     const ease = new CubicEase();
     ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
@@ -148,7 +171,13 @@ export class PlayerCameraManagerService {
     const canvas = this.motor3d.engine.getRenderingCanvas();
     const scene = this.motor3d.scene;
 
+    if (this.fadeObserver) {
+        scene.onBeforeRenderObservable.remove(this.fadeObserver);
+        this.fadeObserver = null;
+    }
+
     if (this.state.modoVistaPrueba === 'FPS') {
+      // 🔥 TRANSICIÓN FPS -> TPS (Se aleja)
       if (canvas) fpsCam.detachControl();
 
       tpsCam.alpha = -(fpsCam.rotation.y || 0) - Math.PI / 2;
@@ -159,47 +188,57 @@ export class PlayerCameraManagerService {
       this.state.modoVistaPrueba = 'TPS';
       scene.activeCamera = tpsCam;
 
-      const anim = Animation.CreateAndStartAnimation(
-        'camRadiusOut',
-        tpsCam,
-        'radius',
-        60,
-        45,
-        0.01,
-        targetRadius,
-        2,
-        ease
-      );
+      // 🔥 FIX CLIPPING: Mantener al personaje 100% invisible hasta que la cámara esté fuera del modelo (radius > 1.0)
+      this.fadeObserver = scene.onBeforeRenderObservable.add(() => {
+          const fadeLimit = Math.min(2.5, targetRadius * 0.5);
+          if (tpsCam.radius < fadeLimit) {
+             jugador.visibility = Math.max(0, (tpsCam.radius - 1.0) / (fadeLimit - 1.0));
+             jugador.getChildMeshes().forEach(m => m.visibility = jugador.visibility);
+          } else {
+             jugador.visibility = 1;
+             jugador.getChildMeshes().forEach(m => m.visibility = 1);
+          }
+      });
+
+      const anim = Animation.CreateAndStartAnimation('camRadiusOut', tpsCam, 'radius', 60, 45, 0.01, targetRadius, 2, ease);
 
       anim?.onAnimationEndObservable.addOnce(() => {
-        this.isTransitioningCameras = false;
+        this.resetearTransiciones();
+        jugador.visibility = 1;
+        jugador.getChildMeshes().forEach(m => m.visibility = 1);
         if (canvas) tpsCam.attachControl(canvas, true);
       });
     } else {
+      // 🔥 TRANSICIÓN TPS -> FPS (Se acerca a la cara)
       if (canvas) tpsCam.detachControl();
 
       this.overrideTargetPivotY = (config.camera.fpsEyeLevel || 1.6) * scaleNow;
 
-      const anim = Animation.CreateAndStartAnimation(
-        'camRadiusIn',
-        tpsCam,
-        'radius',
-        60,
-        45,
-        tpsCam.radius,
-        0.01,
-        2,
-        ease
-      );
+      // 🔥 FIX CLIPPING: Hacer desaparecer el personaje por completo antes de que la cámara le toque la cabeza (radius < 1.0)
+      this.fadeObserver = scene.onBeforeRenderObservable.add(() => {
+          const fadeLimit = Math.min(2.5, targetRadius * 0.5);
+          if (tpsCam.radius < fadeLimit) {
+             jugador.visibility = Math.max(0, (tpsCam.radius - 1.0) / (fadeLimit - 1.0));
+             jugador.getChildMeshes().forEach(m => m.visibility = jugador.visibility);
+          } else {
+             jugador.visibility = 1;
+             jugador.getChildMeshes().forEach(m => m.visibility = 1);
+          }
+      });
+
+      const anim = Animation.CreateAndStartAnimation('camRadiusIn', tpsCam, 'radius', 60, 45, tpsCam.radius, 0.01, 2, ease);
 
       anim?.onAnimationEndObservable.addOnce(() => {
-        this.overrideTargetPivotY = null;
         this.state.modoVistaPrueba = 'FPS';
         fpsCam.rotation.y = -(tpsCam.alpha || 0) - Math.PI / 2;
         fpsCam.rotation.x = (tpsCam.beta || 0) - Math.PI / 2;
         scene.activeCamera = fpsCam;
+        
+        this.resetearTransiciones();
+        jugador.visibility = 0;
+        jugador.getChildMeshes().forEach(m => m.visibility = 0);
+        
         if (canvas) fpsCam.attachControl(canvas, true);
-        this.isTransitioningCameras = false;
       });
     }
   }
@@ -268,7 +307,7 @@ export class PlayerCameraManagerService {
     if (this.state.modoVistaPrueba === 'TPS' && this.state.cameraPivot) {
       if (!this.isTransitioningCameras) {
         const radiusBase = (config.camera.tpsRadius || 5) * scaleY;
-        const minRadius = Math.max(0.5, radiusBase * 0.15); // Permite acercarse libremente
+        const minRadius = Math.max(0.5, radiusBase * 0.15); 
         const maxRadius = radiusBase * 2.5;
 
         this.motor3d.playerCameraTPS.lowerRadiusLimit = minRadius;
@@ -328,6 +367,7 @@ export class PlayerCameraManagerService {
       ? this.motor3d.playerCameraFPS
       : this.motor3d.playerCameraTPS;
 
+    targetCam.getViewMatrix(true);
     const targetPos = targetCam.globalPosition.clone();
 
     let targetLookAt: Vector3;
@@ -340,30 +380,36 @@ export class PlayerCameraManagerService {
     const ease = new CubicEase();
     ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
 
-    Animation.CreateAndStartAnimation(
-      'camPos',
-      this.motor3d.editorCamera,
-      'position',
-      60,
-      90,
-      this.motor3d.editorCamera.position,
-      targetPos,
-      2,
-      ease
-    );
+    const startPos = this.motor3d.editorCamera.position.clone();
+    const frames = 90;
+    const posAnim = new Animation('camPosOut', 'position', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    
+    const keysPos = [];
+    let P1 = startPos.add(targetPos).scale(0.5);
+    
+    if (this.state.modoVistaPrueba === 'FPS') {
+      const playerForward = targetLookAt.subtract(targetPos).normalize();
+      let playerRight = Vector3.Cross(Vector3.Up(), playerForward).normalize();
+      if (playerRight.lengthSquared() === 0) playerRight = new Vector3(1, 0, 0);
+      
+      // 🔥 MAGIA: Curva saliendo por el hombro de vuelta a la cámara del juego
+      P1 = targetPos.subtract(playerForward.scale(2.5)).add(playerRight.scale(1.5));
+    }
 
-    const currentTarget = this.motor3d.editorCamera.getTarget().clone();
-    const animTarget = Animation.CreateAndStartAnimation(
-      'camTarget',
-      this.motor3d.editorCamera,
-      'target',
-      60,
-      90,
-      currentTarget,
-      targetLookAt,
-      2,
-      ease
-    );
+    for (let i = 0; i <= frames; i++) {
+      const t = i / frames;
+      const easeT = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      const invT = 1 - easeT;
+      const pos = startPos.scale(invT * invT)
+                  .add(P1.scale(2 * invT * easeT))
+                  .add(targetPos.scale(easeT * easeT));
+      keysPos.push({ frame: i, value: pos });
+    }
+    
+    posAnim.setKeys(keysPos);
+    this.motor3d.scene.beginDirectAnimation(this.motor3d.editorCamera, [posAnim], 0, frames, false, 1);
+
+    const animTarget = Animation.CreateAndStartAnimation('camTargetOut', this.motor3d.editorCamera, 'target', 60, frames, this.motor3d.editorCamera.getTarget().clone(), targetLookAt, 2, ease);
 
     animTarget?.onAnimationEndObservable.addOnce(() => {
       this.motor3d.scene.activeCamera = targetCam;
@@ -380,17 +426,10 @@ export class PlayerCameraManagerService {
 
   public limpiarPivotTPS(): void {
     this.motor3d.playerCameraTPS.lockedTarget = null;
-
     if (this.state.cameraPivot && !this.state.cameraPivot.isDisposed()) {
-      try {
-        this.state.cameraPivot.dispose(false, true);
-      } catch {
-        // no-op
-      }
+      try { this.state.cameraPivot.dispose(false, true); } catch {}
     }
-
     this.state.cameraPivot = null;
-    this.headNode = null;
-    this.initialHeadLocal = null;
+    this.resetearTransiciones();
   }
 }

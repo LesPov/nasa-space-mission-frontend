@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import {
   Vector3,
@@ -20,11 +21,9 @@ export class EditorCameraService {
 
   private obtenerEncuadreObjeto(objeto: AbstractMesh): { target: Vector3; radius: number } {
     objeto.computeWorldMatrix(true);
-
     const metadata: any = objeto.metadata || {};
     const collider = metadata.collider;
 
-    // Si tiene un collider custom configurado
     if (collider && collider.type !== 'mesh') {
       const colOffsetX = Number(collider.offsetX || 0);
       const colOffsetY = Number(collider.offsetY || 0);
@@ -39,23 +38,18 @@ export class EditorCameraService {
       const sizeY = Math.max(0.5, Number(collider.sizeY || 1)) * Math.abs(objeto.scaling.y);
       const sizeZ = Math.max(0.5, Number(collider.sizeZ || collider.sizeY || 1)) * Math.abs(objeto.scaling.z);
 
-      // 🔥 LÓGICA MEJORADA DE CÁMARA: Se aumenta el multiplicador a 2.2 para dar margen de visión
       const diagonal = Math.sqrt((sizeX*sizeX) + (sizeY*sizeY) + (sizeZ*sizeZ));
       let radius = Math.max(4.0, diagonal * 2.2); 
-      radius = Math.min(radius, 150); // Tope máximo para evitar que se vaya lejísimos
-
+      radius = Math.min(radius, 150); 
       return { target, radius };
     }
 
-    // Si no tiene collider custom, usamos el Bounding Box real del objeto
     const boundingVectors = objeto.getHierarchyBoundingVectors(true);
     const min = boundingVectors.min;
     const max = boundingVectors.max;
-
     const target = min.add(max).scale(0.5);
     const size = max.subtract(min);
 
-    // 🔥 LÓGICA MEJORADA DE CÁMARA: Se aumenta el multiplicador a 2.0 y radio mínimo a 4.0
     const diagonal = size.length();
     let radius = Math.max(4.0, diagonal * 2.0);
     radius = Math.min(radius, 150); 
@@ -100,29 +94,8 @@ export class EditorCameraService {
 
     const currentTarget = cam.getTarget().clone();
 
-    Animation.CreateAndStartAnimation(
-      'camEditorTargetAnim',
-      cam,
-      'target',
-      60,
-      25,
-      currentTarget,
-      target,
-      2,
-      ease
-    );
-
-    Animation.CreateAndStartAnimation(
-      'camEditorRadiusAnim',
-      cam,
-      'radius',
-      60,
-      25,
-      cam.radius,
-      radius,
-      2,
-      ease
-    );
+    Animation.CreateAndStartAnimation('camEditorTargetAnim', cam, 'target', 60, 25, currentTarget, target, 2, ease);
+    Animation.CreateAndStartAnimation('camEditorRadiusAnim', cam, 'radius', 60, 25, cam.radius, radius, 2, ease);
   }
 
   transicionAEdicionEnVivo(objetoReceptor: Node): void {
@@ -151,34 +124,60 @@ export class EditorCameraService {
     const ease = new CubicEase();
     ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
 
-    Animation.CreateAndStartAnimation(
-      'camRadius',
-      this.motor3d.editorCamera,
-      'radius',
-      60,
-      40,
-      this.motor3d.editorCamera.radius,
-      objectRadius,
-      2,
-      ease
-    );
-
-    const anim = Animation.CreateAndStartAnimation(
-      'camBeta',
-      this.motor3d.editorCamera,
-      'beta',
-      60,
-      40,
-      this.motor3d.editorCamera.beta,
-      Math.PI / 3,
-      2,
-      ease
-    );
+    Animation.CreateAndStartAnimation('camRadius', this.motor3d.editorCamera, 'radius', 60, 40, this.motor3d.editorCamera.radius, objectRadius, 2, ease);
+    const anim = Animation.CreateAndStartAnimation('camBeta', this.motor3d.editorCamera, 'beta', 60, 40, this.motor3d.editorCamera.beta, Math.PI / 3, 2, ease);
 
     anim?.onAnimationEndObservable.addOnce(() => {
       this.state.playState.set('EDITING_IN_GAME');
       this.state.objetoSeleccionado.set(objetoReceptor);
       this.motor3d.editorCamera.attachControl(this.motor3d.engine.getRenderingCanvas(), true);
+    });
+  }
+
+  // 🔥 NUEVO: Función para volar cinematográficamente DESDE el editor HACIA el jugador con CURVA BEZIER
+  volarHaciaCamaraJuego(targetPos: Vector3, targetLookAt: Vector3, isFPS: boolean, onComplete: () => void): void {
+    const editorCam = this.motor3d.editorCamera;
+    editorCam.detachControl();
+
+    const ease = new CubicEase();
+    ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
+
+    const startPos = editorCam.position.clone();
+    const currentTarget = editorCam.getTarget().clone();
+
+    const frames = 90; // Vuelo suave
+    const posAnim = new Animation('camPosIn', 'position', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    
+    const keysPos = [];
+    let P1 = startPos.add(targetPos).scale(0.5);
+    
+    if (isFPS) {
+      const playerForward = targetLookAt.subtract(targetPos).normalize();
+      let playerRight = Vector3.Cross(Vector3.Up(), playerForward).normalize();
+      if (playerRight.lengthSquared() === 0) playerRight = new Vector3(1, 0, 0); // fallback preventivo
+      
+      // 🔥 MAGIA: Punto de control desviado hacia la derecha y atrás (Evita atravesar el centro del cuerpo)
+      P1 = targetPos.subtract(playerForward.scale(2.5)).add(playerRight.scale(1.5));
+    }
+
+    // Calcular la curva cuadrática de Bezier cuadro por cuadro para un vuelo natural
+    for (let i = 0; i <= frames; i++) {
+      const t = i / frames;
+      const easeT = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      const invT = 1 - easeT;
+      const pos = startPos.scale(invT * invT)
+                  .add(P1.scale(2 * invT * easeT))
+                  .add(targetPos.scale(easeT * easeT));
+      keysPos.push({ frame: i, value: pos });
+    }
+    
+    posAnim.setKeys(keysPos);
+    this.motor3d.scene.beginDirectAnimation(editorCam, [posAnim], 0, frames, false, 1);
+    
+    const animTarget = Animation.CreateAndStartAnimation('camTargetIn', editorCam, 'target', 60, frames, currentTarget, targetLookAt, 2, ease);
+
+    animTarget?.onAnimationEndObservable.addOnce(() => {
+      onComplete();
     });
   }
 
@@ -191,6 +190,8 @@ export class EditorCameraService {
       ? this.motor3d.playerCameraFPS
       : this.motor3d.playerCameraTPS;
 
+    // Actualizamos matrices para asegurar que recogemos la posición final
+    targetCam.getViewMatrix(true);
     const targetPos = targetCam.globalPosition.clone();
 
     let targetLookAt: Vector3;
@@ -203,30 +204,36 @@ export class EditorCameraService {
     const ease = new CubicEase();
     ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
 
-    Animation.CreateAndStartAnimation(
-      'camPos',
-      this.motor3d.editorCamera,
-      'position',
-      60,
-      90,
-      this.motor3d.editorCamera.position,
-      targetPos,
-      2,
-      ease
-    );
+    const startPos = this.motor3d.editorCamera.position.clone();
+    const frames = 90;
+    const posAnim = new Animation('camPosOut', 'position', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    
+    const keysPos = [];
+    let P1 = startPos.add(targetPos).scale(0.5);
+    
+    if (this.state.modoVistaPrueba === 'FPS') {
+      const playerForward = targetLookAt.subtract(targetPos).normalize();
+      let playerRight = Vector3.Cross(Vector3.Up(), playerForward).normalize();
+      if (playerRight.lengthSquared() === 0) playerRight = new Vector3(1, 0, 0);
+      
+      // Curva saliendo por el hombro de vuelta a la cámara del juego
+      P1 = targetPos.subtract(playerForward.scale(2.5)).add(playerRight.scale(1.5));
+    }
 
-    const currentTarget = this.motor3d.editorCamera.getTarget().clone();
-    const animTarget = Animation.CreateAndStartAnimation(
-      'camTarget',
-      this.motor3d.editorCamera,
-      'target',
-      60,
-      90,
-      currentTarget,
-      targetLookAt,
-      2,
-      ease
-    );
+    for (let i = 0; i <= frames; i++) {
+      const t = i / frames;
+      const easeT = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+      const invT = 1 - easeT;
+      const pos = startPos.scale(invT * invT)
+                  .add(P1.scale(2 * invT * easeT))
+                  .add(targetPos.scale(easeT * easeT));
+      keysPos.push({ frame: i, value: pos });
+    }
+    
+    posAnim.setKeys(keysPos);
+    this.motor3d.scene.beginDirectAnimation(this.motor3d.editorCamera, [posAnim], 0, frames, false, 1);
+
+    const animTarget = Animation.CreateAndStartAnimation('camTargetOut', this.motor3d.editorCamera, 'target', 60, frames, this.motor3d.editorCamera.getTarget().clone(), targetLookAt, 2, ease);
 
     animTarget?.onAnimationEndObservable.addOnce(() => {
       this.motor3d.scene.activeCamera = targetCam;

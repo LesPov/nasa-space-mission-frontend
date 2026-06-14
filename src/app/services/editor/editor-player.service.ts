@@ -72,7 +72,7 @@ export class EditorPlayerService {
     if (!obj) return;
     this.cameraSvc.guardarEstadoCamaraLibre();
 
-    this.state.playState.set('PLAYING');
+    this.state.playState.set('TRANSITIONING');
     this.state.jugadorActivo = obj;
     this.state.modoVistaPrueba = vista;
     this.state.objetoHovereado.set(null);
@@ -130,7 +130,6 @@ export class EditorPlayerService {
             m.isVisible = false;
         }
 
-        // 🔥 OCULTAMOS LA CAJA PROYECTORA DEL DECAL, PERO EL DECAL HIJO QUEDA VISIBLE
         if (m.metadata?.type === 'image_plane') {
             m.isVisible = false; 
         }
@@ -148,100 +147,120 @@ export class EditorPlayerService {
     
     this.state.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
     this.state.cameraPivot.isVisible = false;
-    this.playerCamSvc.inicializarCamaras(obj, colMeta, camMeta, vista, obj.scaling, this.playerConfig);
-
-    this.resetMovimientoJugador();
     
-    this.triggerSvc.prepararTriggersParaJuego();
+    // Dejamos las cámaras listas en su sitio y con matrices calculadas
+    this.playerCamSvc.inicializarCamaras(obj, colMeta, camMeta, vista, obj.scaling, this.playerConfig);
+    this.motor3d.scene.render(false, true);
 
-    this.inputSvc.iniciarEscuchaTeclado(this.motor3d.scene, {
-      onToggleCamera: () => this.playerCamSvc.toggleCameraView(obj, this.playerConfig),
-      onInteractE: () => {
-        const target = this.state.targetInteractuable();
-        if (target && this.interactSvc.canActivateInteraction(target, this.state.modoVistaPrueba)) {
-          
-          if (target.metadata?.isProcessingAction) return;
+    const targetCam = vista === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS;
+    
+    // Obtenemos su posición GLOBAL ya computada
+    targetCam.getViewMatrix(true);
+    const targetPos = targetCam.globalPosition.clone();
+    let targetLookAt: Vector3;
 
-          let seqIdString = this.state.modoVistaPrueba === 'FPS' ? target.metadata?.interactSequenceIdFPS : target.metadata?.interactSequenceIdTPS;
-          if (!seqIdString) seqIdString = target.metadata?.interactSequenceId;
-          const ids = seqIdString ? seqIdString.split(',').map((id: string) => id.trim()).filter(Boolean) : [];
+    if (vista === 'FPS') {
+      targetLookAt = targetCam.globalPosition.add(targetCam.getDirection(Vector3.Forward()));
+    } else {
+      targetLookAt = this.state.cameraPivot!.getAbsolutePosition();
+    }
 
-          if (target.metadata?.type === 'bubble') {
-            this.bubbleSvc.ejecutarBurbuja(target);
-            
-            if (ids.length > 0) {
-               target.metadata.isProcessingAction = true;
-               target.isVisible = false; 
-               
-               const idxKey = this.state.modoVistaPrueba === 'FPS' ? 'currentSeqIdxFPS' : 'currentSeqIdxTPS';
-               let idx = target.metadata[idxKey] || 0;
-               if (idx >= ids.length) idx = 0;
-               
-               const idToPlay = ids[idx];
+    // 🔥 VUELO CINEMÁTICO AL JUEGO usando la nueva lógica curva pasando isFPS
+    this.cameraSvc.volarHaciaCamaraJuego(targetPos, targetLookAt, vista === 'FPS', () => {
+        this.motor3d.scene.activeCamera = targetCam;
+        this.state.playState.set('PLAYING');
+        
+        this.resetMovimientoJugador();
+        this.triggerSvc.prepararTriggersParaJuego();
 
-               setTimeout(() => {
+        this.inputSvc.iniciarEscuchaTeclado(this.motor3d.scene, {
+          onToggleCamera: () => this.playerCamSvc.toggleCameraView(obj, this.playerConfig),
+          onInteractE: () => {
+            const target = this.state.targetInteractuable();
+            if (target && this.interactSvc.canActivateInteraction(target, this.state.modoVistaPrueba)) {
+              
+              if (target.metadata?.isProcessingAction) return;
+
+              let seqIdString = this.state.modoVistaPrueba === 'FPS' ? target.metadata?.interactSequenceIdFPS : target.metadata?.interactSequenceIdTPS;
+              if (!seqIdString) seqIdString = target.metadata?.interactSequenceId;
+              const ids = seqIdString ? seqIdString.split(',').map((id: string) => id.trim()).filter(Boolean) : [];
+
+              if (target.metadata?.type === 'bubble') {
+                this.bubbleSvc.ejecutarBurbuja(target);
+                
+                if (ids.length > 0) {
+                   target.metadata.isProcessingAction = true;
+                   target.isVisible = false; 
+                   
+                   const idxKey = this.state.modoVistaPrueba === 'FPS' ? 'currentSeqIdxFPS' : 'currentSeqIdxTPS';
+                   let idx = target.metadata[idxKey] || 0;
+                   if (idx >= ids.length) idx = 0;
+                   
+                   const idToPlay = ids[idx];
+
+                   setTimeout(() => {
+                       this.motor3d.scene.meshes.forEach(m => {
+                           if (m.metadata?.playerConfig?.sequences?.some((s: any) => s.id === idToPlay)) {
+                               this.sequenceSvc.iniciarSecuenciaEnJuego(idToPlay, m as Mesh, m.metadata.playerConfig);
+                           }
+                       });
+                       
+                       target.isVisible = true;
+                       target.metadata.isProcessingAction = false;
+                       target.metadata[idxKey] = (idx + 1) % ids.length;
+                   }, 500);
+                }
+              } else {
+                if (target.metadata?.type === 'video_plane') {
+                    if (!target.metadata.isPoweredOn) {
+                        return; 
+                    }
+
+                    if (ids.length === 0) {
+                        if (target.material instanceof StandardMaterial) {
+                            const tex = target.material.diffuseTexture;
+                            if (tex instanceof VideoTexture) {
+                                if (tex.video.paused) {
+                                    tex.video.play();
+                                    target.material.emissiveColor = new Color3(1, 1, 1);
+                                } else {
+                                    tex.video.pause();
+                                    target.material.emissiveColor = new Color3(0.3, 0.3, 0.3); 
+                                }
+                            }
+                        }
+                        return; 
+                    }
+                }
+
+                if (ids.length > 0) {
+                   const idxKey = this.state.modoVistaPrueba === 'FPS' ? 'currentSeqIdxFPS' : 'currentSeqIdxTPS';
+                   let idx = target.metadata[idxKey] || 0;
+                   if (idx >= ids.length) idx = 0;
+                   const idToPlay = ids[idx];
+                   
                    this.motor3d.scene.meshes.forEach(m => {
                        if (m.metadata?.playerConfig?.sequences?.some((s: any) => s.id === idToPlay)) {
                            this.sequenceSvc.iniciarSecuenciaEnJuego(idToPlay, m as Mesh, m.metadata.playerConfig);
                        }
                    });
-                   
-                   target.isVisible = true;
-                   target.metadata.isProcessingAction = false;
                    target.metadata[idxKey] = (idx + 1) % ids.length;
-               }, 500);
-            }
-          } else {
-            if (target.metadata?.type === 'video_plane') {
-                if (!target.metadata.isPoweredOn) {
-                    console.log("📺 La TV está apagada. Usa la burbuja para encenderla.");
-                    return; 
                 }
-
-                if (ids.length === 0) {
-                    if (target.material instanceof StandardMaterial) {
-                        const tex = target.material.diffuseTexture;
-                        if (tex instanceof VideoTexture) {
-                            if (tex.video.paused) {
-                                tex.video.play();
-                                target.material.emissiveColor = new Color3(1, 1, 1);
-                            } else {
-                                tex.video.pause();
-                                target.material.emissiveColor = new Color3(0.3, 0.3, 0.3); 
-                            }
-                        }
-                    }
-                    return; 
-                }
+              }
             }
-
-            if (ids.length > 0) {
-               const idxKey = this.state.modoVistaPrueba === 'FPS' ? 'currentSeqIdxFPS' : 'currentSeqIdxTPS';
-               let idx = target.metadata[idxKey] || 0;
-               if (idx >= ids.length) idx = 0;
-               const idToPlay = ids[idx];
-               
-               this.motor3d.scene.meshes.forEach(m => {
-                   if (m.metadata?.playerConfig?.sequences?.some((s: any) => s.id === idToPlay)) {
-                       this.sequenceSvc.iniciarSecuenciaEnJuego(idToPlay, m as Mesh, m.metadata.playerConfig);
-                   }
-               });
-               target.metadata[idxKey] = (idx + 1) % ids.length;
+          },
+          onInteractI: () => {
+            const target = this.state.targetInteractuable();
+            if (target && this.interactSvc.canActivateInteraction(target, this.state.modoVistaPrueba)) {
+              const cloneData = { name: target.name, metadata: { mensaje: target.metadata?.mensaje || '' } };
+              this.interactSvc.abrirMensajeInteractivo(cloneData as any, () => this.resetMovimientoJugador());
             }
           }
-        }
-      },
-      onInteractI: () => {
-        const target = this.state.targetInteractuable();
-        if (target && this.interactSvc.canActivateInteraction(target, this.state.modoVistaPrueba)) {
-          const cloneData = { name: target.name, metadata: { mensaje: target.metadata?.mensaje || '' } };
-          this.interactSvc.abrirMensajeInteractivo(cloneData as any, () => this.resetMovimientoJugador());
-        }
-      }
-    });
+        });
 
-    this.iniciarBuclePrincipal(obj, colMeta, camMeta);
-    this.state.triggerUpdate();
+        this.iniciarBuclePrincipal(obj, colMeta, camMeta);
+        this.state.triggerUpdate();
+    });
   }
 
   private iniciarBuclePrincipal(jugador: Mesh, colMeta: any, camMeta: any): void {
@@ -367,7 +386,6 @@ export class EditorPlayerService {
             m.metadata.isPoweredOn = undefined; 
         }
 
-        // 🔥 DEVOLVEMOS LA CAJA AL ESTADO ORIGINAL EN EL EDITOR
         if (m.metadata?.type === 'image_plane') {
             m.isVisible = isAdmin; 
         }
@@ -385,6 +403,7 @@ export class EditorPlayerService {
     this.state.mirandoObjetoInteractuable.set(false); 
     this.state.objetoSeleccionado.set(null);
 
+    // 🔥 FIX: Al volver de FPS, el modelo del jugador recobra su visibilidad
     if (this.state.jugadorActivo && this.state.backupObjetoPosicion && this.state.backupObjetoRotacionQuat) {
       if (this.state.jugadorActivo.metadata?.rol === 'npc' || this.state.jugadorActivo.metadata?.rol === 'spawn_point') {
         if (this.state.modoVistaPrueba === 'FPS') this.state.jugadorActivo.rotationQuaternion = Quaternion.FromEulerAngles(0, (this.motor3d.playerCameraFPS as any).rotation.y, 0);
@@ -394,6 +413,7 @@ export class EditorPlayerService {
         this.state.jugadorActivo.rotationQuaternion = this.state.backupObjetoRotacionQuat.clone();
       }
       this.state.jugadorActivo.isVisible = this.state.backupObjetoVisibilidad;
+      this.state.jugadorActivo.getChildMeshes().forEach(m => m.isVisible = true);
       this.state.jugadorActivo.checkCollisions = this.state.backupColisionJugador;
       this.state.backupColisionesHijos.forEach(item => { if (item.mesh) item.mesh.checkCollisions = item.col; });
       this.state.backupColisionesHijos = [];

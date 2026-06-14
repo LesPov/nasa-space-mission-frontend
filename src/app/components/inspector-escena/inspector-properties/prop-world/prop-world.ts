@@ -6,7 +6,8 @@ import {
   Color4,
   HemisphericLight,
   Scene,
-  Vector3
+  Vector3,
+  StandardMaterial // 🔥 Faltaba importar StandardMaterial aquí
 } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 
@@ -81,16 +82,46 @@ export class PropWorld implements OnInit, OnDestroy {
     scene.metadata = { ...(scene.metadata || {}), globalVisualMode: this.visualMode };
     this.motor3dSvc.setVisualMode(this.visualMode);
 
+    const isBW = this.visualMode === 'bw';
+
     scene.meshes.forEach(mesh => {
       const meta = mesh.metadata;
-      if (meta && ['cube', 'sphere', 'cylinder', 'plane'].includes(meta.type)) {
-        const colorToApply = this.visualMode === 'bw' 
-          ? (meta.colorBW || meta.color || '#ffffff') 
-          : (meta.color || '#ffffff');
-          
+      if (!meta) return;
+
+      const activeColorHex = isBW ? (meta.colorBW || meta.color || '#ffffff') : (meta.color || '#ffffff');
+      const c3 = Color3.FromHexString(activeColorHex);
+
+      // 🔥 1. ACTUALIZA HOLOGRAMAS E IMÁGENES PROYECTADAS EN VIVO
+      if (meta.type === 'image_plane' && meta.decalMaterial) {
+        const decalMat = meta.decalMaterial as StandardMaterial;
+        const brillo = Number(meta.brilloIntensidad ?? 1.0);
+        
+        decalMat.diffuseColor = c3;
+        decalMat.emissiveColor = c3.scale(brillo);
+      } 
+      // 🔥 2. ACTUALIZA OBJETOS SÓLIDOS (Cubo, Esfera, Cilindro, Plano)
+      else if (['cube', 'sphere', 'cylinder', 'plane'].includes(meta.type)) {
         if (mesh.material && (mesh.material as any).diffuseColor) {
-          (mesh.material as any).diffuseColor = Color3.FromHexString(colorToApply);
+          const mat = mesh.material as StandardMaterial;
+          mat.diffuseColor = c3;
+
+          if (meta.esEmisivo) {
+            const brillo = Number(meta.brilloIntensidad ?? 1.0);
+            mat.emissiveColor = c3.scale(brillo);
+          } else {
+            mat.emissiveColor = new Color3(0, 0, 0);
+          }
         }
+      }
+      // 🔥 3. ACTUALIZA FUENTES DE LUZ
+      else if (meta.type?.startsWith('light_')) {
+          if (mesh.material && (mesh.material as any).emissiveColor) {
+              (mesh.material as StandardMaterial).emissiveColor = c3;
+          }
+          const lightObj = mesh.getDescendants(false).find(c => c.name.startsWith('l_')) as any;
+          if (lightObj && lightObj.diffuse) {
+              lightObj.diffuse = c3;
+          }
       }
     });
 
@@ -105,7 +136,6 @@ export class PropWorld implements OnInit, OnDestroy {
       globalClearColorBW: this.clearColorHexBW 
     };
 
-    // Si el editor NO está jugando (es decir, no hay niebla tapando el fondo), aplicamos el color al instante.
     if (this.editorSvc.playState() === 'EDITOR') {
       const activeClearHex = this.visualMode === 'bw' ? this.clearColorHexBW : this.clearColorHex;
       scene.clearColor = Color4.FromHexString(activeClearHex + 'ff');

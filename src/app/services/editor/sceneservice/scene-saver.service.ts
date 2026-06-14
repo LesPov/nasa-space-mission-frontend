@@ -1,6 +1,7 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, HemisphericLight, Node } from '@babylonjs/core';
- import { EditorStateService } from '../editor-state.service';
+import { EditorStateService } from '../editor-state.service';
 import { SceneUtilsService } from './scene-utils.service';
 import { Motor3dService } from '../../motor-3d.service';
 
@@ -55,7 +56,10 @@ export class SceneSaverService {
       isSelectable: this.safeBool(nodo.metadata?.isSelectable, true),
       ignoraNiebla: this.safeBool(nodo.metadata?.ignoraNiebla, false),
       esEmisivo: this.safeBool(nodo.metadata?.esEmisivo, false),
-      brilloIntensidad: this.safeNumber(nodo.metadata?.brilloIntensidad, 0.12),
+      
+      // 🔥 AHORA GUARDAMOS EL BRILLO COMO 1.0 POR DEFECTO PARA NO PERDER INTENSIDAD
+      brilloIntensidad: this.safeNumber(nodo.metadata?.brilloIntensidad, 1.0),
+      
       mensaje: nodo.metadata?.mensaje || '',
       respawnTime: this.safeNumber(nodo.metadata?.respawnTime, 8),
       interactDistanceFPS: this.safeNumber(nodo.metadata?.interactDistanceFPS, 3.0),
@@ -220,36 +224,34 @@ export class SceneSaverService {
                 ...propertiesToSave
               }
             });
-       // =======================================================
-// 7) SceneSaverService
-// Tu guardado ya trae color, colorBW, ignoraNiebla, esEmisivo y brilloIntensidad
-// para image_plane. No necesitas cambiar mucho allí.
-// Si quieres dejarlo explícito, en el bloque de image_plane debe quedar así:
-// =======================================================
-} else if (nodo.metadata.type === 'image_plane') {
-  sceneObjects.push({
-    ...baseData,
-    type: 'image_plane',
-    assetId: nodo.metadata.assetId,
-    properties: {
-      imageUrl: nodo.metadata.imageUrl,
-      path: nodo.metadata.imageUrl,
-      profundidadProyeccion: this.safeNumber(nodo.metadata.profundidadProyeccion, 0.08),
-      anguloProyeccion: this.safeNumber(nodo.metadata.anguloProyeccion, 0),
-      proyeccionAncho: this.safeNumber(nodo.metadata.proyeccionAncho, nodo.scaling.x),
-      proyeccionAlto: this.safeNumber(nodo.metadata.proyeccionAlto, nodo.scaling.y),
-      proyeccionRepeticiones: this.safeNumber(nodo.metadata.proyeccionRepeticiones, 1),
-      proyeccionEspaciado: this.safeNumber(nodo.metadata.proyeccionEspaciado, 2),
-      proyeccionEje: nodo.metadata.proyeccionEje || 'Y',
-      color: this.hex7(nodo.metadata.color, '#ffffff'),
-      colorBW: this.hex7(nodo.metadata.colorBW, this.hex7(nodo.metadata.color, '#ffffff')),
-      esEmisivo: this.safeBool(nodo.metadata.esEmisivo, false),
-      brilloIntensidad: this.safeNumber(nodo.metadata.brilloIntensidad, 0.12),
-      ignoraNiebla: this.safeBool(nodo.metadata.ignoraNiebla, false),
-      ...propertiesToSave
-    }
-  });
-} else {
+          } else if (nodo.metadata.type === 'image_plane') {
+            sceneObjects.push({
+              ...baseData,
+              type: 'image_plane',
+              assetId: nodo.metadata.assetId,
+              properties: {
+                imageUrl: nodo.metadata.imageUrl,
+                path: nodo.metadata.imageUrl,
+                profundidadProyeccion: this.safeNumber(nodo.metadata.profundidadProyeccion, 0.08),
+                anguloProyeccion: this.safeNumber(nodo.metadata.anguloProyeccion, 0),
+                proyeccionAncho: this.safeNumber(nodo.metadata.proyeccionAncho, nodo.scaling.x),
+                proyeccionAlto: this.safeNumber(nodo.metadata.proyeccionAlto, nodo.scaling.y),
+                proyeccionRepeticiones: this.safeNumber(nodo.metadata.proyeccionRepeticiones, 1),
+                proyeccionEspaciado: this.safeNumber(nodo.metadata.proyeccionEspaciado, 2),
+                proyeccionEje: nodo.metadata.proyeccionEje || 'Y',
+                color: this.hex7(nodo.metadata.color, '#ffffff'),
+                colorBW: this.hex7(nodo.metadata.colorBW, this.hex7(nodo.metadata.color, '#ffffff')),
+                esEmisivo: this.safeBool(nodo.metadata.esEmisivo, false),
+                brilloIntensidad: this.safeNumber(nodo.metadata.brilloIntensidad, 1.0),
+                ignoraNiebla: this.safeBool(nodo.metadata.ignoraNiebla, false),
+                
+                // 🔥 AÑADIMOS EL GUARDADO A LA BD DEL FADE
+                fadeDistance: this.safeNumber(nodo.metadata.fadeDistance, 0),
+
+                ...propertiesToSave
+              }
+            });
+          } else {
             sceneObjects.push({
               ...baseData,
               type: nodo.metadata.type,

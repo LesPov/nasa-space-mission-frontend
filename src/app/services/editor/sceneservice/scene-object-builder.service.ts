@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import {
   AbstractMesh,
@@ -47,51 +46,51 @@ export class SceneObjectBuilderService {
     return Math.max(min, Math.min(max, Number(v)));
   }
 
-// =======================================================
-// 1) SceneObjectBuilderService
-// Reemplaza el helper configurarMaterialProyector por este.
-// =======================================================
-private configurarMaterialProyector(
-  mat: StandardMaterial,
-  colorHex: string,
-  brilloIntensidad: number,
-  ignoraNiebla: boolean,
-  texture?: Texture
-): void {
-  const colorSeguro = colorHex || '#ffffff';
-  const c3 = Color3.FromHexString(colorSeguro);
-  const brillo = this.clampNum(Number(brilloIntensidad), 0, 2, 0.12);
+  // =======================================================
+  // CONFIGURACIÓN DE PROYECTOR (BRILLO x10 Y FIX DE PARPADEO)
+  // =======================================================
+  private configurarMaterialProyector(
+    mat: StandardMaterial,
+    colorHex: string,
+    brilloIntensidad: number,
+    ignoraNiebla: boolean,
+    texture?: Texture
+  ): void {
+    const colorSeguro = colorHex || '#ffffff';
+    const c3 = Color3.FromHexString(colorSeguro);
+    
+    // 🔥 Límite de brillo subido a 10 para luz extrema
+    const brillo = this.clampNum(Number(brilloIntensidad), 0, 10, 1.0);
 
-  mat.disableLighting = true;
-  mat.diffuseColor = c3;
-  mat.ambientColor = Color3.Black();
-  mat.specularColor = Color3.Black();
-  mat.backFaceCulling = false;
-  mat.alphaMode = Engine.ALPHA_COMBINE;
-  mat.fogEnabled = !ignoraNiebla;
-  mat.zOffset = -2;
+    mat.disableLighting = true;
+    mat.diffuseColor = c3;
+    mat.ambientColor = Color3.Black();
+    mat.specularColor = Color3.Black();
+    mat.backFaceCulling = false;
+    mat.alphaMode = Engine.ALPHA_COMBINE;
+    mat.fogEnabled = !ignoraNiebla;
+    
+    // 🔥 FIX PARPADEO EXTREMO: zOffset -10 obliga a la textura a pintarse SOBRE la pared
+    mat.zOffset = -10;
 
-  if (texture) {
-    texture.hasAlpha = true;
-    texture.gammaSpace = true;
-
-    mat.diffuseTexture = texture;
-    mat.useAlphaFromDiffuseTexture = true;
-    mat.opacityTexture = texture;
-
-    mat.emissiveTexture = null as any;
-    mat.emissiveColor = c3.scale(Math.max(0.04, Math.min(0.18, brillo * 0.15)));
-    mat.alpha = 1.0;
-  } else {
-    mat.diffuseTexture = null as any;
-    mat.opacityTexture = null as any;
-    mat.emissiveTexture = null as any;
-    mat.useAlphaFromDiffuseTexture = false;
-
-    mat.emissiveColor = c3.scale(Math.max(0.04, Math.min(0.18, brillo * 0.15)));
-    mat.alpha = Math.max(0.35, Math.min(1.0, brillo));
+    if (texture) {
+      texture.hasAlpha = true;
+      texture.gammaSpace = true;
+      mat.diffuseTexture = texture;
+      mat.useAlphaFromDiffuseTexture = true;
+      mat.opacityTexture = texture;
+      mat.emissiveTexture = null as any;
+      mat.emissiveColor = c3.scale(brillo); 
+      mat.alpha = 1.0;
+    } else {
+      mat.diffuseTexture = null as any;
+      mat.opacityTexture = null as any;
+      mat.emissiveTexture = null as any;
+      mat.useAlphaFromDiffuseTexture = false;
+      mat.emissiveColor = c3.scale(brillo); 
+      mat.alpha = Math.max(0.2, Math.min(1.0, brillo * 0.5));
+    }
   }
-}
 
   private limpiarDecalsImagen(mesh: Mesh): void {
     const meta: any = mesh.metadata || {};
@@ -581,13 +580,11 @@ private configurarMaterialProyector(
         esEmisivo: false,
         respawnTime: 8,
         
-        // Variables de Proyección Originales
         profundidadProyeccion: 10, 
         anguloProyeccion: 0,
         proyeccionAncho: 2,
         proyeccionAlto: 2,
 
-        // 🔥 NUEVAS VARIABLES POR DEFECTO PARA MULTIPLICAR HOLOGRAMA
         proyeccionRepeticiones: 1,
         proyeccionEspaciado: 2,
         proyeccionEje: 'Y',
@@ -599,6 +596,9 @@ private configurarMaterialProyector(
         collider: { ...defaultCollider },
         camOffset: { ...defaultCamOffset },
         playerConfig,
+        brilloIntensidad: 1.0,
+        // 🔥 NUEVA VARIABLE DE FADE (0 = DESACTIVADO)
+        fadeDistance: 0,
         selectionRange: { ...playerConfig.selectionRange }
       };
 
@@ -617,6 +617,10 @@ private configurarMaterialProyector(
       mesh.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
       mesh.applyFog = true;
 
+      if (tipo === 'image_plane') {
+        mesh.alwaysSelectAsActiveMesh = true;
+      }
+
       if (tipo !== 'bubble' && tipo !== 'video_plane' && tipo !== 'image_plane') {
         mesh.receiveShadows = true;
       }
@@ -630,13 +634,11 @@ private configurarMaterialProyector(
         mat.diffuseColor = new Color3(0, 0, 0);
         mat.alpha = 0.6;
         mat.disableLighting = true;
-
         mat.opacityFresnelParameters = new FresnelParameters();
         mat.opacityFresnelParameters.leftColor = Color3.White();
         mat.opacityFresnelParameters.rightColor = Color3.Black();
         mat.opacityFresnelParameters.bias = 0.2;
         mat.opacityFresnelParameters.power = 1.5;
-
         mesh.material = mat;
         mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
       } else if (tipo === 'video_plane') {
@@ -661,107 +663,175 @@ private configurarMaterialProyector(
         }
 
         mesh.material = mat;
- } else if (tipo === 'image_plane') {
-  const mat = new StandardMaterial('decalMat_' + nombre, scene);
+      } else if (tipo === 'image_plane') {
+        const mat = new StandardMaterial('decalMat_' + nombre, scene);
+        const isBW = scene.metadata?.globalVisualMode === 'bw';
+        const activeColorAUsar = isBW ? mesh.metadata.colorBW : colorHex;
 
-  const imageUrl = asset && asset.path ? 'http://localhost:4000' + asset.path : '';
-  const tex = imageUrl ? new Texture(imageUrl, scene) : undefined;
+        const imageUrl = asset && asset.path ? 'http://localhost:4000' + asset.path : '';
+        const tex = imageUrl ? new Texture(imageUrl, scene) : undefined;
 
-  this.configurarMaterialProyector(mat, colorHex, 0.12, false, tex);
+        this.configurarMaterialProyector(mat, activeColorAUsar, 1.0, false, tex);
 
-  mesh.material = mat;
-  mesh.metadata.decalMaterial = mat;
-  mesh.metadata.brilloIntensidad = 0.12;
+        mesh.material = mat;
+        mesh.metadata.decalMaterial = mat;
+        mesh.metadata.brilloIntensidad = 1.0;
 
-  mesh.metadata.updateDecal = () => {
-    this.limpiarDecalsImagen(mesh);
+        // 🔥 NUEVO VIGILANTE MEJORADO PARA DETECTAR FADE Y B&W
+        const fadeObserver = scene.onBeforeRenderObservable.add(() => {
+          // Lógica B&W (Sin cambios, esto ya funcionaba bien)
+          const currentModeIsBW = scene.metadata?.globalVisualMode === 'bw';
+          if (mesh.metadata._lastVisualMode !== currentModeIsBW) {
+              mesh.metadata._lastVisualMode = currentModeIsBW;
+              if (mesh.metadata.updateDecal) mesh.metadata.updateDecal();
+          }
 
-    try {
-      mesh.computeWorldMatrix(true);
-      const origin = mesh.getAbsolutePosition();
-      const direction = mesh.forward;
+          // 🔥 LÓGICA DE FADE (MEJORADA PARA GARANTIZAR VISIBILIDAD)
+          const fadeDist = Number(mesh.metadata.fadeDistance ?? 0);
+          
+          if (fadeDist > 0 && scene.activeCamera && mesh.metadata.decalMeshes) {
+              const distanceToCam = Vector3.Distance(scene.activeCamera.globalPosition, mesh.getAbsolutePosition());
+              const fadeStart = fadeDist * 0.7; // 70% de la distancia total, empieza el desvanecimiento
+              
+              let targetAlpha = 1.0;
+              if (distanceToCam > fadeDist) {
+                  targetAlpha = 0; // Totalmente invisible al pasar el límite
+              } else if (distanceToCam > fadeStart) {
+                  const progress = (distanceToCam - fadeStart) / (fadeDist - fadeStart);
+                  targetAlpha = 1.0 - progress; // Transición matemática limpia
+              }
 
-      const ray = new Ray(origin, direction, 500);
+              // 🔥 IMPORTANTE: Aquí aplicamos el Alpha directamente a CADA decal
+              // y garantizamos que sean visibles para la cámara en todo momento.
+              if (Array.isArray(mesh.metadata.decalMeshes)) {
+                  mesh.metadata.decalMeshes.forEach((decal: Mesh) => {
+                      if (decal && !decal.isDisposed()) {
+                          // Modificamos la visibilidad de Babylon
+                          decal.visibility = targetAlpha;
+                          // Opcional: aseguramos que siempre intente renderizarse aunque la cámara no lo apunte directamente
+                          decal.alwaysSelectAsActiveMesh = true;
+                      }
+                  });
+              }
+          } 
+          // 🔥 SI FADE ES 0, OBLIGAMOS A QUE TODO SEA COMPLETAMENTE VISIBLE SIEMPRE
+          else if (fadeDist <= 0 && mesh.metadata.decalMeshes) {
+               if (Array.isArray(mesh.metadata.decalMeshes)) {
+                  mesh.metadata.decalMeshes.forEach((decal: Mesh) => {
+                      if (decal && !decal.isDisposed()) {
+                          decal.visibility = 1.0;
+                          decal.alwaysSelectAsActiveMesh = true;
+                      }
+                  });
+              }
+          }
+        });
 
-      const hit = scene.pickWithRay(ray, (m) => {
-        if (!m.isPickable || !m.isVisible) return false;
-        if (m === mesh) return false;
+        mesh.metadata.updateDecal = () => {
+          this.limpiarDecalsImagen(mesh);
 
-        const n = m.name.toLowerCase();
-        if (n.includes('trigger') || m.metadata?.type === 'trigger') return false;
-        if (n.includes('proxycol') || n.includes('gizmo') || n.includes('debug')) return false;
-        if (m.metadata?.type === 'image_plane' || m.metadata?.type === 'bubble') return false;
-        if (['ejex', 'ejey', 'ejez', 'gridhelper', 'sueloinvisible'].includes(n)) return false;
+          try {
+            const isNowBW = scene.metadata?.globalVisualMode === 'bw';
+            const colorReal = isNowBW ? mesh.metadata.colorBW : mesh.metadata.color;
+            const decalTexture = (mesh.metadata.decalMaterial as StandardMaterial).diffuseTexture;
+            
+            this.configurarMaterialProyector(
+              mesh.metadata.decalMaterial,
+              colorReal,
+              mesh.metadata.brilloIntensidad,
+              mesh.metadata.ignoraNiebla,
+              decalTexture instanceof Texture ? decalTexture : undefined
+            );
 
-        return true;
-      });
+            mesh.computeWorldMatrix(true);
+            const origin = mesh.getAbsolutePosition();
+            const direction = mesh.forward;
 
-      if (hit && hit.hit && hit.pickedMesh && hit.pickedPoint) {
-        const targetMesh = hit.pickedMesh as Mesh;
+            const ray = new Ray(origin, direction, 500);
 
-        const ancho = this.clampNum(Number(mesh.metadata.proyeccionAncho ?? 2), 0.05, 9999);
-        const alto = this.clampNum(Number(mesh.metadata.proyeccionAlto ?? 2), 0.05, 9999);
-        const prof = this.clampNum(Number(mesh.metadata.profundidadProyeccion ?? 10), 0.01, 9999);
+            const hit = scene.pickWithRay(ray, (m) => {
+              if (!m.isPickable || !m.isVisible) return false;
+              if (m === mesh) return false;
 
-        let angulo = Number(mesh.metadata.anguloProyeccion ?? 0) * (Math.PI / 180);
-        if (mesh.rotationQuaternion) {
-          angulo += mesh.rotationQuaternion.toEulerAngles().z;
-        } else {
-          angulo += mesh.rotation.z;
-        }
+              const n = m.name.toLowerCase();
+              if (n.includes('trigger') || m.metadata?.type === 'trigger') return false;
+              if (n.includes('proxycol') || n.includes('gizmo') || n.includes('debug')) return false;
+              if (m.metadata?.type === 'image_plane' || m.metadata?.type === 'bubble') return false;
+              if (['ejex', 'ejey', 'ejez', 'gridhelper', 'sueloinvisible'].includes(n)) return false;
 
-        const normal = direction.scale(-1).normalize();
-        const decalSize = new Vector3(ancho, alto, prof);
+              return true;
+            });
 
-        const repeticiones = Math.floor(this.clampNum(Number(mesh.metadata.proyeccionRepeticiones ?? 1), 1, 50));
-        const espaciado = Number(mesh.metadata.proyeccionEspaciado ?? 2);
-        const ejeRepeticion = mesh.metadata.proyeccionEje === 'X' ? mesh.right : mesh.up;
+            if (hit && hit.hit && hit.pickedMesh && hit.pickedPoint) {
+              const targetMesh = hit.pickedMesh as Mesh;
 
-        const totalDist = (repeticiones - 1) * espaciado;
-        const centerDecalPos = hit.pickedPoint.add(direction.scale(prof * 0.5));
-        const startPos = centerDecalPos.subtract(ejeRepeticion.scale(totalDist * 0.5));
+              const ancho = this.clampNum(Number(mesh.metadata.proyeccionAncho ?? 2), 0.05, 9999);
+              const alto = this.clampNum(Number(mesh.metadata.proyeccionAlto ?? 2), 0.05, 9999);
+              const prof = this.clampNum(Number(mesh.metadata.profundidadProyeccion ?? 10), 0.01, 9999);
 
-        mesh.metadata.decalMeshes = [];
+              let angulo = Number(mesh.metadata.anguloProyeccion ?? 0) * (Math.PI / 180);
+              if (mesh.rotationQuaternion) {
+                angulo += mesh.rotationQuaternion.toEulerAngles().z;
+              } else {
+                angulo += mesh.rotation.z;
+              }
 
-        for (let i = 0; i < repeticiones; i++) {
-          const currentDecalPos = startPos.add(ejeRepeticion.scale(i * espaciado));
+              const normal = direction.scale(-1).normalize();
+              const decalSize = new Vector3(ancho, alto, prof);
 
-          const decal = MeshBuilder.CreateDecal('decal_' + mesh.name + '_' + i, targetMesh, {
-            position: currentDecalPos,
-            normal: normal,
-            size: decalSize,
-            angle: angulo
-          });
+              const repeticiones = Math.floor(this.clampNum(Number(mesh.metadata.proyeccionRepeticiones ?? 1), 1, 50));
+              const espaciado = Number(mesh.metadata.proyeccionEspaciado ?? 2);
+              const ejeRepeticion = mesh.metadata.proyeccionEje === 'X' ? mesh.right : mesh.up;
 
-          decal.material = mesh.metadata.decalMaterial;
-          decal.setParent(targetMesh);
-          decal.isPickable = false;
-          decal.receiveShadows = false;
-          decal.applyFog = !mesh.metadata.ignoraNiebla;
+              const totalDist = (repeticiones - 1) * espaciado;
+              const centerDecalPos = hit.pickedPoint.add(direction.scale(prof * 0.5));
+              const startPos = centerDecalPos.subtract(ejeRepeticion.scale(totalDist * 0.5));
 
-          mesh.metadata.decalMeshes.push(decal);
-        }
-      }
-    } catch (e) {
-      console.warn('Error proyectando imagen con raycast:', e);
-    }
-  };
+              mesh.metadata.decalMeshes = [];
 
-  mesh.onDisposeObservable.add(() => {
-    this.limpiarDecalsImagen(mesh);
-    if (mesh.metadata.decalMaterial && !mesh.metadata.decalMaterial.isDisposed()) {
-      mesh.metadata.decalMaterial.dispose();
-    }
-  });
+              for (let i = 0; i < repeticiones; i++) {
+                const currentDecalPos = startPos.add(ejeRepeticion.scale(i * espaciado));
 
-  setTimeout(() => {
-    if (mesh.metadata.updateDecal) mesh.metadata.updateDecal();
-  }, 150);
-} else {
+                const decal = MeshBuilder.CreateDecal('decal_' + mesh.name + '_' + i, targetMesh, {
+                  position: currentDecalPos,
+                  normal: normal,
+                  size: decalSize,
+                  angle: angulo
+                });
+
+                decal.material = mesh.metadata.decalMaterial;
+                decal.setParent(targetMesh);
+                decal.isPickable = false;
+                decal.receiveShadows = false;
+                decal.applyFog = !mesh.metadata.ignoraNiebla;
+
+                // 🔥 CRÍTICO PARA EL RENDIMIENTO Y VISIBILIDAD DE DECALS LEJANOS
+                decal.alwaysSelectAsActiveMesh = true;
+
+                mesh.metadata.decalMeshes.push(decal);
+              }
+            }
+          } catch (e) {
+            console.warn('Error proyectando imagen con raycast:', e);
+          }
+        };
+
+        mesh.onDisposeObservable.add(() => {
+          scene.onBeforeRenderObservable.remove(fadeObserver);
+          this.limpiarDecalsImagen(mesh);
+          if (mesh.metadata.decalMaterial && !mesh.metadata.decalMaterial.isDisposed()) {
+            mesh.metadata.decalMaterial.dispose();
+          }
+        });
+
+        setTimeout(() => {
+          if (mesh.metadata.updateDecal) mesh.metadata.updateDecal();
+        }, 150);
+      } else {
         const mat = new StandardMaterial('mat_' + nombre, scene);
         const isBW = scene.metadata?.globalVisualMode === 'bw';
-        const activeColor = isBW ? mesh.metadata.colorBW : colorHex;
-        const c3 = Color3.FromHexString(activeColor);
+        const activeHexToApply = isBW ? (mesh.metadata?.colorBW || mesh.metadata?.color || colorHex) : (mesh.metadata?.color || colorHex);
+        const c3 = Color3.FromHexString(activeHexToApply);
 
         mat.diffuseColor = c3;
         mat.specularColor = new Color3(0, 0, 0);
@@ -771,8 +841,10 @@ private configurarMaterialProyector(
           mat.emissiveColor = new Color3(0, 1, 0);
         }
 
+        const brilloToUse = Number(mesh.metadata?.brilloIntensidad ?? 1.0);
+
         if (mesh.metadata.esEmisivo) {
-          mat.emissiveColor = c3.scale(0.12);
+          mat.emissiveColor = c3.scale(brilloToUse);
           mat.disableLighting = false;
         } else {
           mat.emissiveColor = new Color3(0, 0, 0);

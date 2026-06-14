@@ -1,4 +1,3 @@
-
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -42,7 +41,8 @@ export class PropTransform implements OnInit, OnDestroy {
 
   objIgnoraNiebla = false;
   objEsEmisivo = false;
-  objBrilloIntensidad = 0.12;
+  
+  objBrilloIntensidad = 1.0;
 
   objInteractDistanceFPS = 3.0;
   objInteractDistanceTPS = 5.0;
@@ -55,10 +55,12 @@ export class PropTransform implements OnInit, OnDestroy {
   objProyeccionAncho = 1;
   objProyeccionAlto = 1;
 
-  // 🔥 PROPIEDADES DE REPETICIÓN (Bucle de ventanas)
   objProyeccionRepeticiones = 1;
   objProyeccionEspaciado = 2;
   objProyeccionEje = 'Y';
+
+  // 🔥 NUEVA VARIABLE DE FADE 
+  objFadeDistance = 0;
 
   animStatus = '';
 
@@ -79,8 +81,8 @@ export class PropTransform implements OnInit, OnDestroy {
   }
 
   private clampBrightness(v: number): number {
-    if (Number.isNaN(v) || v === null || v === undefined) return 0.12;
-    return Math.max(0, Math.min(2, Number(v)));
+    if (Number.isNaN(v) || v === null || v === undefined) return 1.0;
+    return Math.max(0, Math.min(10, Number(v)));
   }
 
   private clampPositive(v: number, fallback: number, min = 0.01, max = 9999): number {
@@ -120,19 +122,30 @@ export class PropTransform implements OnInit, OnDestroy {
 
     if (meta.type === 'image_plane') {
       this.objEsEmisivo = meta.esEmisivo ?? false;
-      this.objBrilloIntensidad = this.clampBrightness(meta.brilloIntensidad ?? 0.12);
+      this.objBrilloIntensidad = this.clampBrightness(meta.brilloIntensidad ?? 1.0);
       this.objProfundidadProyeccion = this.clampPositive(meta.profundidadProyeccion ?? 0.08, 0.08, 0.01, 1000);
       this.objAnguloProyeccion = this.formatNum(meta.anguloProyeccion ?? 0);
       this.objProyeccionAncho = this.clampPositive(meta.proyeccionAncho ?? this.localEscX, this.localEscX, 0.01, 1000);
       this.objProyeccionAlto = this.clampPositive(meta.proyeccionAlto ?? this.localEscY, this.localEscY, 0.01, 1000);
       
-      // Sincronizar nuevas variables
       this.objProyeccionRepeticiones = this.clampPositive(meta.proyeccionRepeticiones ?? 1, 1, 1, 50);
       this.objProyeccionEspaciado = meta.proyeccionEspaciado ?? 2;
       this.objProyeccionEje = meta.proyeccionEje || 'Y';
+      
+      // 🔥 CARGA EL VALOR DE FADE DEL METADATA
+      this.objFadeDistance = Math.max(0, Number(meta.fadeDistance ?? 0));
+
+      if (this.objeto.metadata.decalMaterial) {
+        const isBW = this.motor3dSvc.scene.metadata?.globalVisualMode === 'bw';
+        const activeColorHex = isBW ? this.objColorBW : this.objColor;
+        const decalMat = this.objeto.metadata.decalMaterial as StandardMaterial;
+        const tex = (decalMat.diffuseTexture || decalMat.opacityTexture) as any;
+        
+        this.aplicarMaterialHolograma(decalMat, activeColorHex, this.objBrilloIntensidad, this.objIgnoraNiebla, tex);
+      }
     } else {
       this.objEsEmisivo = meta.esEmisivo ?? false;
-      this.objBrilloIntensidad = this.clampBrightness(meta.brilloIntensidad ?? 0.12);
+      this.objBrilloIntensidad = this.clampBrightness(meta.brilloIntensidad ?? 1.0);
     }
 
     this.objInteractDistanceFPS = meta.interactDistanceFPS ?? 3.0;
@@ -185,10 +198,12 @@ export class PropTransform implements OnInit, OnDestroy {
     this.objeto.metadata.proyeccionAncho = this.clampPositive(Number(this.objProyeccionAncho), 1, 0.01, 1000);
     this.objeto.metadata.proyeccionAlto = this.clampPositive(Number(this.objProyeccionAlto), 1, 0.01, 1000);
 
-    // Guardar variables de repetición
     this.objeto.metadata.proyeccionRepeticiones = Math.floor(this.clampPositive(Number(this.objProyeccionRepeticiones), 1, 1, 50));
     this.objeto.metadata.proyeccionEspaciado = Number(this.objProyeccionEspaciado);
     this.objeto.metadata.proyeccionEje = this.objProyeccionEje;
+
+    // 🔥 GUARDA EL VALOR DE FADE EN EL METADATA
+    this.objeto.metadata.fadeDistance = Math.max(0, Number(this.objFadeDistance));
 
     if (this.objeto.metadata.updateDecal) {
       this.objeto.metadata.updateDecal();
@@ -205,111 +220,112 @@ export class PropTransform implements OnInit, OnDestroy {
     }
   }
 
-// =======================================================
-// 6) PropTransform
-// Reemplaza COMPLETO tu método aplicarVisuales por este.
-// =======================================================
-aplicarVisuales() {
-  if (!this.objeto.metadata) this.objeto.metadata = {};
+  aplicarVisuales() {
+    if (!this.objeto.metadata) this.objeto.metadata = {};
 
-  this.objeto.metadata.color = this.objColor;
-  this.objeto.metadata.colorBW = this.objColorBW;
-  this.objeto.metadata.ignoraNiebla = this.objIgnoraNiebla;
-  this.objeto.metadata.esEmisivo = this.objEsEmisivo;
-  this.objeto.metadata.brilloIntensidad = this.clampBrightness(this.objBrilloIntensidad);
+    this.objeto.metadata.color = this.objColor;
+    this.objeto.metadata.colorBW = this.objColorBW;
+    this.objeto.metadata.ignoraNiebla = this.objIgnoraNiebla;
+    this.objeto.metadata.esEmisivo = this.objEsEmisivo;
+    this.objeto.metadata.brilloIntensidad = this.clampBrightness(this.objBrilloIntensidad);
 
-  const isBW = this.motor3dSvc.scene.metadata?.globalVisualMode === 'bw';
-  const activeColorHex = isBW ? this.objColorBW : this.objColor;
+    const isBW = this.motor3dSvc.scene.metadata?.globalVisualMode === 'bw';
+    const activeColorHex = isBW ? this.objColorBW : this.objColor;
 
-  if (this.objeto.material && this.objeto.material instanceof StandardMaterial) {
-    if (this.objeto.metadata.type === 'image_plane') {
-      const decalMat = this.objeto.metadata.decalMaterial as StandardMaterial;
+    if (this.objeto.material && this.objeto.material instanceof StandardMaterial) {
+      if (this.objeto.metadata.type === 'image_plane') {
+        const decalMat = this.objeto.metadata.decalMaterial as StandardMaterial;
 
-      if (decalMat) {
-        const tex = (decalMat.diffuseTexture || decalMat.opacityTexture) as any;
-        this.aplicarMaterialHolograma(
-          decalMat,
-          activeColorHex,
-          this.objBrilloIntensidad,
-          this.objIgnoraNiebla,
-          tex
-        );
+        if (decalMat) {
+          const tex = (decalMat.diffuseTexture || decalMat.opacityTexture) as any;
+          this.aplicarMaterialHolograma(
+            decalMat,
+            activeColorHex,
+            this.objBrilloIntensidad,
+            this.objIgnoraNiebla,
+            tex
+          );
+        }
+
+        const decMeshes = this.objeto.metadata.decalMeshes as any[] | undefined;
+        if (Array.isArray(decMeshes)) {
+          decMeshes.forEach((m) => {
+            if (m) m.applyFog = !this.objIgnoraNiebla;
+          });
+        }
+      } else {
+        const objMat = this.objeto.material as StandardMaterial;
+        const c3 = Color3.FromHexString(activeColorHex);
+        const brillo = this.clampBrightness(this.objBrilloIntensidad);
+
+        objMat.diffuseColor = c3;
+        objMat.specularColor = new Color3(0, 0, 0);
+
+        if (this.objEsEmisivo) {
+          objMat.emissiveColor = c3.scale(brillo);
+          objMat.disableLighting = false;
+        } else {
+          objMat.emissiveColor = new Color3(0, 0, 0);
+          objMat.ambientColor = c3.scale(Math.max(0.05, brillo * 0.2));
+          objMat.disableLighting = false;
+        }
       }
+    }
 
-      const decMeshes = this.objeto.metadata.decalMeshes as any[] | undefined;
-      if (Array.isArray(decMeshes)) {
-        decMeshes.forEach((m) => {
-          if (m) m.applyFog = !this.objIgnoraNiebla;
-        });
+    this.objeto.applyFog = !this.objIgnoraNiebla;
+    this.objeto.getChildMeshes().forEach(m => m.applyFog = !this.objIgnoraNiebla);
+
+    this.editorSvc.triggerUpdate();
+  }
+
+  private aplicarMaterialHolograma(
+    mat: StandardMaterial,
+    colorHex: string,
+    brilloIntensidad: number,
+    ignoraNiebla: boolean,
+    texture?: any
+  ): void {
+    const c3 = Color3.FromHexString(colorHex || '#ffffff');
+    const brillo = this.clampBrightness(brilloIntensidad);
+
+    mat.disableLighting = true;
+    mat.diffuseColor = c3;
+    mat.ambientColor = Color3.Black();
+    mat.specularColor = Color3.Black();
+    mat.backFaceCulling = false;
+    mat.alphaMode = Engine.ALPHA_COMBINE;
+    mat.fogEnabled = !ignoraNiebla;
+    
+    mat.zOffset = -10; 
+
+    if (texture) {
+      texture.hasAlpha = true;
+      texture.gammaSpace = true;
+
+      mat.diffuseTexture = texture;
+      mat.useAlphaFromDiffuseTexture = true;
+      mat.opacityTexture = texture;
+
+      mat.emissiveTexture = null as any;
+      mat.emissiveColor = c3.scale(brillo);
+      
+      // 🔥 DEJAMOS EL ALPHA EN LA MANO DEL FADE-OUT OBSERVABLE
+      if (this.objFadeDistance <= 0) {
+         mat.alpha = 1.0;
       }
     } else {
-      const objMat = this.objeto.material as StandardMaterial;
-      const c3 = Color3.FromHexString(activeColorHex);
-      const brillo = this.clampBrightness(this.objBrilloIntensidad);
+      mat.diffuseTexture = null as any;
+      mat.opacityTexture = null as any;
+      mat.emissiveTexture = null as any;
+      mat.useAlphaFromDiffuseTexture = false;
 
-      objMat.diffuseColor = c3;
-      objMat.specularColor = new Color3(0, 0, 0);
-
-      if (this.objEsEmisivo) {
-        objMat.emissiveColor = c3.scale(brillo);
-        objMat.disableLighting = false;
-      } else {
-        objMat.emissiveColor = new Color3(0, 0, 0);
-        objMat.ambientColor = c3.scale(Math.max(0.05, brillo * 0.2));
-        objMat.disableLighting = false;
+      mat.emissiveColor = c3.scale(brillo);
+      if (this.objFadeDistance <= 0) {
+         mat.alpha = Math.max(0.2, Math.min(1.0, brillo * 0.5));
       }
     }
   }
 
-  this.objeto.applyFog = !this.objIgnoraNiebla;
-  this.objeto.getChildMeshes().forEach(m => m.applyFog = !this.objIgnoraNiebla);
-
-  this.editorSvc.triggerUpdate();
-}
-// =======================================================
-// 5) PropTransform
-// Agrega este helper privado dentro de la clase.
-// =======================================================
-private aplicarMaterialHolograma(
-  mat: StandardMaterial,
-  colorHex: string,
-  brilloIntensidad: number,
-  ignoraNiebla: boolean,
-  texture?: any
-): void {
-  const c3 = Color3.FromHexString(colorHex || '#ffffff');
-  const brillo = this.clampBrightness(brilloIntensidad);
-
-  mat.disableLighting = true;
-  mat.diffuseColor = c3;
-  mat.ambientColor = Color3.Black();
-  mat.specularColor = Color3.Black();
-  mat.backFaceCulling = false;
-  mat.alphaMode = Engine.ALPHA_COMBINE;
-  mat.fogEnabled = !ignoraNiebla;
-  mat.zOffset = -2;
-
-  if (texture) {
-    texture.hasAlpha = true;
-    texture.gammaSpace = true;
-
-    mat.diffuseTexture = texture;
-    mat.useAlphaFromDiffuseTexture = true;
-    mat.opacityTexture = texture;
-
-    mat.emissiveTexture = null as any;
-    mat.emissiveColor = c3.scale(Math.max(0.04, Math.min(0.18, brillo * 0.15)));
-    mat.alpha = 1.0;
-  } else {
-    mat.diffuseTexture = null as any;
-    mat.opacityTexture = null as any;
-    mat.emissiveTexture = null as any;
-    mat.useAlphaFromDiffuseTexture = false;
-
-    mat.emissiveColor = c3.scale(Math.max(0.04, Math.min(0.18, brillo * 0.15)));
-    mat.alpha = Math.max(0.35, Math.min(1.0, brillo));
-  }
-}
   aplicarInteraccion() {
     if (!this.objeto.metadata) this.objeto.metadata = {};
 
@@ -323,4 +339,3 @@ private aplicarMaterialHolograma(
     this.animStatus = '✅ Interacción guardada';
   }
 }
-

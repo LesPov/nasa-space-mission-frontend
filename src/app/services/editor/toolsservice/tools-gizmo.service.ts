@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, GizmoManager, Matrix, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -189,6 +190,10 @@ export class ToolsGizmoService {
       } else if (mesh && this.estadoAntesDeArrastrar) {
         this.historialSvc.registrarAccionTransform(mesh, this.estadoAntesDeArrastrar);
         this.estadoAntesDeArrastrar = null;
+        
+        // 🔥 ACTUALIZAMOS EL DECAL SOLO AL SOLTAR EL CLICK (Rendimiento)
+        if (mesh.metadata?.updateDecal) mesh.metadata.updateDecal();
+
         queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
       }
     };

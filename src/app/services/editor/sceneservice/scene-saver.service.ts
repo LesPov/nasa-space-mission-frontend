@@ -33,7 +33,6 @@ export class SceneSaverService {
     const processNode = (nodo: Node) => {
       if (nodo instanceof AbstractMesh && nodo.metadata?.type) {
         
-        // 🔥 Si por alguna razón un objeto viejo no tiene UID, se lo asignamos antes de guardar
         if (!nodo.metadata.uid) {
             nodo.metadata.uid = window.crypto.randomUUID();
         }
@@ -44,7 +43,6 @@ export class SceneSaverService {
           nodo.metadata?.playerConfig?.selectionRange || nodo.metadata?.selectionRange || null
         );
 
-        // 🔥 AHORA GUARDAMOS EL UID DEL PADRE
         let parentUid = null;
         if (nodo.parent && nodo.parent.name !== '__root__') {
             parentUid = (nodo.parent as AbstractMesh).metadata?.uid || null;
@@ -71,9 +69,9 @@ export class SceneSaverService {
               }
 
               triggers.push({
-                uid: nodo.metadata.uid, // 🔥 GUARDAR UID
+                uid: nodo.metadata.uid,
                 name: nodo.name,
-                parentId: parentUid, // 🔥 GUARDAR UID DEL PADRE
+                parentId: parentUid,
                 position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
                 scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z },
                 properties: { condition: cond, actionType: 'show_message', targetObjectName: '', isRepeatable: nodo.metadata.isRepeatable, isEnabled: nodo.metadata.isEnabled, ...actionProps }
@@ -81,9 +79,9 @@ export class SceneSaverService {
             });
           } else {
             triggers.push({
-              uid: nodo.metadata.uid, // 🔥 GUARDAR UID
+              uid: nodo.metadata.uid,
               name: nodo.name,
-              parentId: parentUid, // 🔥 GUARDAR UID DEL PADRE
+              parentId: parentUid,
               position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
               scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z },
               properties: {
@@ -95,19 +93,21 @@ export class SceneSaverService {
           }
         } else {
           const baseData = {
-            uid: nodo.metadata.uid, // 🔥 GUARDAR UID
+            uid: nodo.metadata.uid,
             name: nodo.name,
-            parentId: parentUid, // 🔥 GUARDAR UID DEL PADRE
+            parentId: parentUid,
             position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
             rotation: { x: rot.x, y: rot.y, z: rot.z },
             scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z }
           };
 
           const propertiesToSave = {
+            color: nodo.metadata.color, // 🔥 COLOR SE GUARDA SIEMPRE
             rol: nodo.metadata.rol,
             isSolid: nodo.metadata.isSolid,
             isSelectable: nodo.metadata.isSelectable,
             ignoraNiebla: nodo.metadata.ignoraNiebla ?? false,
+            esEmisivo: nodo.metadata.esEmisivo ?? false,
             mensaje: nodo.metadata.mensaje,
             respawnTime: nodo.metadata.respawnTime ?? 8, 
             interactDistanceFPS: nodo.metadata.interactDistanceFPS ?? 3.0,
@@ -138,17 +138,26 @@ export class SceneSaverService {
                ...baseData, type: 'video_plane', assetId: nodo.metadata.assetId,
                properties: { videoUrl: nodo.metadata.videoUrl, path: nodo.metadata.videoUrl, ...propertiesToSave }
              });
+          } else if (nodo.metadata.type === 'image_plane') {
+             sceneObjects.push({
+               ...baseData, type: 'image_plane', assetId: nodo.metadata.assetId,
+               properties: { 
+                 imageUrl: nodo.metadata.imageUrl, 
+                 path: nodo.metadata.imageUrl, 
+                 profundidadProyeccion: nodo.metadata.profundidadProyeccion,
+                 anguloProyeccion: nodo.metadata.anguloProyeccion,
+                 ...propertiesToSave 
+               }
+             });
           } else {
-            sceneObjects.push({ ...baseData, type: nodo.metadata.type, properties: { color: nodo.metadata.color, ...propertiesToSave } });
+            sceneObjects.push({ ...baseData, type: nodo.metadata.type, properties: { ...propertiesToSave } });
           }
         }
       }
 
-      // Procesar hijos recursivamente
       nodo.getChildren().forEach(child => processNode(child));
     };
 
-    // Iniciamos el proceso iterando sobre los elementos base (padres)
     this.state.nodosEscena().forEach(nodo => processNode(nodo));
 
     return { sceneObjects, triggers, worldSettings };

@@ -4,7 +4,7 @@
     <div class="field"><label>Pos X</label><input type="number" step="0.1" [ngModel]="localPosX" (ngModelChange)="localPosX = $event; aplicarPosicion()" /></div>
     <div class="field"><label>Pos Y</label><input type="number" step="0.1" [ngModel]="localPosY" (ngModelChange)="localPosY = $event; aplicarPosicion()" /></div>
     <div class="field"><label>Pos Z</label><input type="number" step="0.1" [ngModel]="localPosZ" (ngModelChange)="localPosZ = $event; aplicarPosicion()" /></div>
-    
+
     <div class="field"><label>Rot X</label><input type="number" step="1" [ngModel]="localRotX" (ngModelChange)="localRotX = $event; aplicarRotacion()" /></div>
     <div class="field"><label>Rot Y</label><input type="number" step="1" [ngModel]="localRotY" (ngModelChange)="localRotY = $event; aplicarRotacion()" /></div>
     <div class="field"><label>Rot Z</label><input type="number" step="1" [ngModel]="localRotZ" (ngModelChange)="localRotZ = $event; aplicarRotacion()" /></div>
@@ -15,11 +15,35 @@
   </div>
 </div>
 
-<!-- 🔥 SECCIÓN: COLOR Y CONTRASTE B&N -->
-<div class="section-card" *ngIf="mostrarSeccionColor">
+<div class="section-card" *ngIf="objeto.metadata?.type === 'image_plane'">
   <div class="section-head">
-    <h4>Apariencia Visual (Color)</h4>
+    <h4>Ajustes de Proyección (Decal)</h4>
   </div>
+  <div class="grid-2">
+    <div class="field">
+      <label>Alcance (Metros)</label>
+      <input type="number" step="1" min="1" [(ngModel)]="objProfundidadProyeccion" (ngModelChange)="aplicarProyeccion()" />
+    </div>
+    <div class="field">
+      <label>Girar Imagen (Grados)</label>
+      <input type="number" step="1" [(ngModel)]="objAnguloProyeccion" (ngModelChange)="aplicarProyeccion()" />
+    </div>
+  </div>
+  <p class="help-text" style="color: #60a5fa; margin-top: 8px;">
+    * Si la imagen no llega a la pared/techo, aumenta el <b>Alcance</b> en metros.<br>
+    * Usa escalar (tecla 4) sobre la caja amarilla para hacer la imagen más ancha o alta.
+  </p>
+
+  <button class="btn-secondary full" style="margin-top: 10px;" (click)="forzarRecalculo()">
+    🎯 Forzar Re-proyección en Pared
+  </button>
+</div>
+
+<div class="section-card" *ngIf="mostrarSeccionColor || objeto.metadata?.type === 'image_plane'">
+  <div class="section-head">
+    <h4>Apariencia Visual (Color / Brillo)</h4>
+  </div>
+
   <div class="grid-2">
     <div class="field">
       <label>Color Normal</label>
@@ -28,26 +52,54 @@
         <span class="color-hex-text">{{ objColor.toUpperCase() }}</span>
       </div>
     </div>
+
     <div class="field">
-      <label style="color: #cbd5e1; font-weight: bold;">Color en B&N (Contraste)</label>
+      <label style="color: #cbd5e1; font-weight: bold;">Color en B&N</label>
       <div class="color-picker-wrapper">
         <input type="color" [(ngModel)]="objColorBW" (ngModelChange)="aplicarVisuales()" class="color-picker">
         <span class="color-hex-text">{{ objColorBW.toUpperCase() }}</span>
       </div>
     </div>
   </div>
+
+  <div class="grid-2" style="margin-top: 10px;">
+    <div class="field">
+      <label>Intensidad del brillo</label>
+      <input
+        type="number"
+        step="0.01"
+        min="0"
+        max="2"
+        [(ngModel)]="objBrilloIntensidad"
+        (ngModelChange)="aplicarVisuales()"
+      />
+    </div>
+
+    <div class="field">
+      <label>Valor actual</label>
+      <input
+        type="text"
+        [ngModel]="'x' + (objBrilloIntensidad | number:'1.2-2')"
+        readonly
+      />
+    </div>
+  </div>
+
+  <p class="help-text" *ngIf="objeto.metadata?.type === 'image_plane'" style="color: #60a5fa; margin-top: 8px;">
+    * Sube la intensidad para que la imagen se vea más viva en juego sin volverse blanca.
+    * Valores bajos = más suave. Valores altos = más brillo.
+  </p>
 </div>
 
-<!-- 🔥 NUEVA SECCIÓN: RENDERIZADO Y NIEBLA -->
 <div class="section-card" *ngIf="objeto.metadata?.type !== 'trigger' && objeto.metadata?.type !== 'bubble'">
   <div class="section-head">
     <h4>Renderizado y Efectos</h4>
   </div>
-  
+
   <div class="checkbox-field" style="background: rgba(59, 130, 246, 0.1); padding: 10px; border: 1px solid #3b82f6; border-radius: 6px;">
     <input type="checkbox" id="chkIgnoraNiebla" [(ngModel)]="objIgnoraNiebla" (ngModelChange)="aplicarVisuales()">
     <label for="chkIgnoraNiebla" style="color: #60a5fa; font-weight: bold; cursor: pointer;">
-      👁️ Ignorar Niebla (Visible a lo lejos)
+      👁️ Ignorar Niebla (Brilla nítido a lo lejos)
     </label>
   </div>
 
@@ -57,32 +109,23 @@
       🌟 Brilla en la oscuridad (Neón/Luz Falsa)
     </label>
   </div>
-  
-  <!-- GUIA LOGICA PARA EL USUARIO -->
-  <div style="margin-top: 10px; padding: 10px; background: rgba(250, 204, 21, 0.1); border-left: 4px solid #facc15; border-radius: 4px;">
-    <p class="help-text" style="color: #fde047; margin: 0; font-size: 0.9em; line-height: 1.4;">
-      <b>💡 TRUCO DE LA INDUSTRIA (OPTIMIZACIÓN):</b><br>
-      Las luces reales causan lag y alumbran las paredes del edificio sin querer. Para simular que un edificio tiene una luz en el techo: <br><br>
-      1. Borra la luz real.<br>
-      2. Crea un <b>Plano</b> en el techo y píntalo del color de la luz.<br>
-      3. Activa <b>"Ignorar Niebla"</b> y <b>"Brilla en la oscuridad"</b> a ese plano.<br><br>
-      ¡El plano se verá como un faro gigante a kilómetros de distancia y el edificio quedará oculto en la niebla como quieres!
-    </p>
-  </div>
 </div>
 
 <div class="section-card">
   <div class="section-head">
     <h4>Interacción y Eventos</h4>
   </div>
+
   <div class="grid-2" style="margin-bottom: 10px;">
     <div class="field"><label>Dist. FPS</label><input type="number" step="0.5" [ngModel]="objInteractDistanceFPS" (ngModelChange)="objInteractDistanceFPS = $event; aplicarInteraccion()" /></div>
     <div class="field"><label>Dist. TPS</label><input type="number" step="0.5" [ngModel]="objInteractDistanceTPS" (ngModelChange)="objInteractDistanceTPS = $event; aplicarInteraccion()" /></div>
   </div>
+
   <div class="grid-2">
     <div class="field wide"><label>Mensaje (tecla I)</label><textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarInteraccion()"></textarea></div>
     <div class="field wide"><label>Ejecutar Seq. FPS</label><input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarInteraccion()"/></div>
     <div class="field wide"><label>Ejecutar Seq. TPS</label><input type="text" [ngModel]="objInteractSequenceIdTPS" (ngModelChange)="objInteractSequenceIdTPS = $event; aplicarInteraccion()"/></div>
   </div>
 </div>
+
 <div class="status-line" *ngIf="animStatus">{{ animStatus }}</div>

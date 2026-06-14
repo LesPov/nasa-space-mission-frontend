@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 
@@ -48,9 +49,6 @@ export class EditorPlayerService {
           this.resetMovimientoJugador();
         }
       } else {
-        // 🔥 FIX VITAL: Re-vincular la cámara activa cuando el ratón se vuelve a bloquear
-        // Esto soluciona el bug donde al salir de un modal (como el de Diálogos/Mensajes), 
-        // BabylonJS pierde el contexto de los inputs y el canvas pierde el foco real impidiendo jugar.
         const stateStr = this.state.playState();
         if (stateStr === 'PLAYING' || stateStr === 'EDITING_IN_GAME') {
           const canvas = this.motor3d.engine.getRenderingCanvas();
@@ -60,7 +58,7 @@ export class EditorPlayerService {
               canvas.focus();
               activeCam.detachControl();
               activeCam.attachControl(canvas, true);
-            }, 50); // Pequeño delay para asegurar que el DOM terminó de cerrar el modal
+            }, 50); 
           }
         }
       }
@@ -130,6 +128,11 @@ export class EditorPlayerService {
 
         if (m.metadata?.type?.startsWith('light_') && !m.metadata?.assetId) {
             m.isVisible = false;
+        }
+
+        // 🔥 OCULTAMOS LA CAJA PROYECTORA DEL DECAL, PERO EL DECAL HIJO QUEDA VISIBLE
+        if (m.metadata?.type === 'image_plane') {
+            m.isVisible = false; 
         }
     });
 
@@ -317,7 +320,6 @@ export class EditorPlayerService {
     this.state.playState.set('EDITOR');
     this.resetMovimientoJugador();
     
-    // 🔥 FIX: AHORA SÍ LIMPIAMOS LAS SECUENCIAS PORQUE SALIMOS COMPLETAMENTE DEL JUEGO
     this.sequenceSvc.resetearSecuencias(); 
     this.animSvc.detenerTodasGlobal();
     this.animSvc.limpiarEstados(); 
@@ -363,6 +365,11 @@ export class EditorPlayerService {
                 }
             }
             m.metadata.isPoweredOn = undefined; 
+        }
+
+        // 🔥 DEVOLVEMOS LA CAJA AL ESTADO ORIGINAL EN EL EDITOR
+        if (m.metadata?.type === 'image_plane') {
+            m.isVisible = isAdmin; 
         }
     });
 
@@ -455,7 +462,6 @@ export class EditorPlayerService {
   public resetMovimientoJugador(): void {
     this.inputSvc.resetearInputs();
     this.physicsSvc.resetearFisicas();
-    // 🔥 FIX BUG 1: NO borrar secuencias aquí. Esto permite que el ESC (pausa) no destruya la memoria de las secuencias del Trigger.
     
     this.playerCamSvc.resetearTransiciones();
     this.state.mirandoObjetoInteractuable.set(false);

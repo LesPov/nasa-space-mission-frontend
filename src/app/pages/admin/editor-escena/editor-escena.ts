@@ -1,4 +1,3 @@
-
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -30,7 +29,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public cdr = inject(ChangeDetectorRef);
 
   public editando = false;
-  public cargandoEscena = false; // 🔥 Añadido para controlar la HUD de carga
+  public cargandoEscena = false; 
   
   public episodioIdActivo = 0;
   public mapaActualNombre = '';
@@ -165,7 +164,7 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.objColor = '#ffffff';
       this.objEsSolido = false;
       this.objEsSeleccionable = true;
-    } else if (this.objTipo === 'bubble' || this.objTipo === 'video_plane') {
+    } else if (this.objTipo === 'bubble' || this.objTipo === 'video_plane' || this.objTipo === 'image_plane') {
       this.objRol = 'prop';
       this.objEsSolido = false;
       this.objEsSeleccionable = true;
@@ -173,7 +172,8 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.objRol = 'prop';
     }
     
-    if (this.objTipo !== 'model' && !this.objTipo.startsWith('light_') && this.objTipo !== 'video_plane') {
+    // Si no es un tipo que necesite Asset (video, imagen, luz o modelo), limpiamos el seleccionador.
+    if (this.objTipo !== 'model' && !this.objTipo.startsWith('light_') && this.objTipo !== 'video_plane' && this.objTipo !== 'image_plane') {
       this.objAssetSeleccionado = null;
     }
   }
@@ -188,8 +188,17 @@ export class EditorEscena implements OnInit, OnDestroy {
   cargarAssets() {
     this.epiApiSvc.obtenerAssets().subscribe({
       next: (res) => { 
+        // 🔥 AÑADIMOS PNG, JPG Y TEXTURES AL FILTRO
         this.listaAssets = res.filter((a:any) => 
-          a.type === 'model_glb' || a.type === 'video_mp4' || a.path.endsWith('.mp4') || a.path.endsWith('.webm')
+          a.type === 'model_glb' || 
+          a.type === 'video_mp4' || 
+          a.path.endsWith('.mp4') || 
+          a.path.endsWith('.webm') ||
+          a.type === 'texture_png' ||
+          a.type === 'texture_jpg' ||
+          a.path.endsWith('.png') ||
+          a.path.endsWith('.jpg') ||
+          a.path.endsWith('.jpeg')
         ); 
       },
       error: (err) => console.error('Error al cargar assets', err)

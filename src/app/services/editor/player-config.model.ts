@@ -28,7 +28,7 @@ export interface PlayerClipSequence {
   name: string;
   enabled: boolean;
   repeat: boolean;
-  autoPlay?: boolean; // 🔥 PROPIEDAD AÑADIDA PARA PERMITIR AUTO-EJECUCIÓN SIN TRIGGER
+  autoPlay?: boolean;
   steps: PlayerSequenceStep[];
 }
 
@@ -148,9 +148,10 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
   debug: { showRays: false, showCollider: false, showState: false },
   fog: {
     enabled: false, fogMode: 'linear', color: '#0d1729',
-    startFPS: 0, endFPS: 80, startTPS: 5, endTPS: 120, renderDistanceFPS: 150, renderDistanceTPS: 200,
+    // 🔥 CONFIGURACIÓN MASIVA POR DEFECTO PARA MUNDOS GIGANTES
+    startFPS: 0, endFPS: 50000, startTPS: 5, endTPS: 50000, renderDistanceFPS: 100000, renderDistanceTPS: 100000,
     densityStartFPS: 0, densityEndFPS: 100, densityStartTPS: 0, densityEndTPS: 100,
-    colorBW: '#555555', startFpsBW: 0, endFpsBW: 60, startTpsBW: 5, endTpsBW: 90, renderDistanceFpsBW: 100, renderDistanceTpsBW: 150,
+    colorBW: '#555555', startFpsBW: 0, endFpsBW: 50000, startTpsBW: 5, endTpsBW: 50000, renderDistanceFpsBW: 100000, renderDistanceTpsBW: 100000,
     densityStartFpsBW: 0, densityEndFpsBW: 100, densityStartTpsBW: 0, densityEndTpsBW: 100
   }
 };
@@ -202,6 +203,5 @@ export function createSequenceStep(action: PlayerActionKey = 'idle'): PlayerSequ
 }
 
 export function createPlayerSequence(name = 'Nueva secuencia'): PlayerClipSequence {
-  // 🔥 autoPlay por defecto en false, el usuario lo enciende con el checkbox
   return { id: generarIdCorto(), name, enabled: true, repeat: true, autoPlay: false, steps: [createSequenceStep('idle')] };
 }

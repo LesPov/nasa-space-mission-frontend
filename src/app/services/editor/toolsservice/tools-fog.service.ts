@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, Scene, Vector3, Observer } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -12,8 +11,8 @@ export class ToolsFogService {
   private fogObserver: Observer<Scene> | null = null;
 
   // Variables actuales para interpolación cinematográfica
-  private curStart = 10000;
-  private curEnd = 10000;
+  private curStart = 500000;
+  private curEnd = 500000;
   private curR = 0;
   private curG = 0;
   private curB = 0;
@@ -29,8 +28,8 @@ export class ToolsFogService {
       this.curG = clearColor3.g;
       this.curB = clearColor3.b;
       
-      this.curStart = scene.fogStart || 10000;
-      this.curEnd = scene.fogEnd || 10000;
+      this.curStart = scene.fogStart || 500000;
+      this.curEnd = scene.fogEnd || 500000;
 
       this.fogObserver = scene.onBeforeRenderObservable.add(() => this.updateFogFrame(scene));
     }
@@ -39,7 +38,7 @@ export class ToolsFogService {
   private updateFogFrame(scene: Scene): void {
     const modo = this.state.playState();
     let targetPlayer: AbstractMesh | null = null;
-    let shadowLimit = 10000;
+    let shadowLimit = 500000;
 
     const spawnOrNpc = scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
     targetPlayer = spawnOrNpc || null;
@@ -47,8 +46,8 @@ export class ToolsFogService {
     const isBW = scene.metadata?.globalVisualMode === 'bw';
     const isFPS = this.state.modoVistaPrueba === 'FPS';
 
-    let targetStart = 10000;
-    let targetEnd = 10000;
+    let targetStart = 500000;
+    let targetEnd = 500000;
     let targetR = 0, targetG = 0, targetB = 0;
     let useFog = false;
 
@@ -64,21 +63,21 @@ export class ToolsFogService {
         targetB = targetColorObj.b;
         
         let activeStart = 0;
-        let activeEnd = 50;
-        let activeRenderDistance = 150;
+        let activeEnd = 50000;
+        let activeRenderDistance = 100000;
         let activeDensityStart = 0;
         let activeDensityEnd = 100;
 
         if (isBW) {
           activeStart = isFPS ? (fog.startFpsBW ?? 0) : (fog.startTpsBW ?? 5);
-          activeEnd = isFPS ? (fog.endFpsBW ?? 60) : (fog.endTpsBW ?? 90);
-          activeRenderDistance = isFPS ? (fog.renderDistanceFpsBW ?? 100) : (fog.renderDistanceTpsBW ?? 150);
+          activeEnd = isFPS ? (fog.endFpsBW ?? 50000) : (fog.endTpsBW ?? 50000);
+          activeRenderDistance = isFPS ? (fog.renderDistanceFpsBW ?? 100000) : (fog.renderDistanceTpsBW ?? 100000);
           activeDensityStart = isFPS ? (fog.densityStartFpsBW ?? 0) : (fog.densityStartTpsBW ?? 0);
           activeDensityEnd = isFPS ? (fog.densityEndFpsBW ?? 100) : (fog.densityEndTpsBW ?? 100);
         } else {
           activeStart = isFPS ? (fog.startFPS ?? 0) : (fog.startTPS ?? 5);
-          activeEnd = isFPS ? (fog.endFPS ?? 80) : (fog.endTPS ?? 120);
-          activeRenderDistance = isFPS ? (fog.renderDistanceFPS ?? 150) : (fog.renderDistanceTPS ?? 200);
+          activeEnd = isFPS ? (fog.endFPS ?? 50000) : (fog.endTPS ?? 50000);
+          activeRenderDistance = isFPS ? (fog.renderDistanceFPS ?? 100000) : (fog.renderDistanceTPS ?? 100000);
           activeDensityStart = isFPS ? (fog.densityStartFPS ?? 0) : (fog.densityStartTPS ?? 0);
           activeDensityEnd = isFPS ? (fog.densityEndFPS ?? 100) : (fog.densityEndTPS ?? 100);
         }
@@ -87,8 +86,6 @@ export class ToolsFogService {
         if (targetPlayer && scene.activeCamera) {
           distCamToPlayer = Vector3.Distance(scene.activeCamera.globalPosition, targetPlayer.getAbsolutePosition());
           
-          // 🔥 FIX CINEMÁTICO: Durante la transición limitamos la distancia para que
-          // la niebla se forme antes y el personaje emerja de entre la bruma en el vuelo inicial.
           if (modo === 'TRANSITIONING') {
               distCamToPlayer = Math.min(distCamToPlayer, 8); 
           }
@@ -118,15 +115,14 @@ export class ToolsFogService {
       const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
       const targetColorObj = Color3.FromHexString(globalClearHex);
       targetR = targetColorObj.r; targetG = targetColorObj.g; targetB = targetColorObj.b;
-      targetStart = 10000;
-      targetEnd = 10000;
+      targetStart = 500000;
+      targetEnd = 500000;
 
-      this.motor3d.editorCamera.maxZ += (10000 - this.motor3d.editorCamera.maxZ) * 0.05;
-      this.motor3d.playerCameraFPS.maxZ += (10000 - this.motor3d.playerCameraFPS.maxZ) * 0.05;
-      this.motor3d.playerCameraTPS.maxZ += (10000 - this.motor3d.playerCameraTPS.maxZ) * 0.05;
+      this.motor3d.editorCamera.maxZ += (500000 - this.motor3d.editorCamera.maxZ) * 0.05;
+      this.motor3d.playerCameraFPS.maxZ += (500000 - this.motor3d.playerCameraFPS.maxZ) * 0.05;
+      this.motor3d.playerCameraTPS.maxZ += (500000 - this.motor3d.playerCameraTPS.maxZ) * 0.05;
     }
 
-    // 🔥 ACELERAMOS EL LERP DURANTE LA TRANSICIÓN PARA QUE SE SINCRONICE CON LA ESPIRAL
     const lerpSpeed = modo === 'TRANSITIONING' ? 0.15 : 0.035; 
     
     this.curStart += (targetStart - this.curStart) * lerpSpeed;
@@ -140,7 +136,7 @@ export class ToolsFogService {
       scene.fogStart = this.curStart;
       scene.fogEnd = this.curEnd;
     } else {
-      if (this.curStart > 9000) scene.fogMode = Scene.FOGMODE_NONE;
+      if (this.curStart > 400000) scene.fogMode = Scene.FOGMODE_NONE; // Ajustado límite de apagado
       else {
         scene.fogMode = Scene.FOGMODE_LINEAR;
         scene.fogStart = this.curStart;

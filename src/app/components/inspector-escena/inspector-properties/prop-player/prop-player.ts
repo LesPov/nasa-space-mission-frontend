@@ -39,7 +39,7 @@ export class PropPlayer implements OnInit {
   playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
 
   selectionRange: SelectionRangeConfig = {
-    fpsAdminMax: 10000,
+    fpsAdminMax: 500000, // 🔥 Aumentado para mundos masivos
     fpsUserMax: 3
   };
 
@@ -53,7 +53,7 @@ export class PropPlayer implements OnInit {
       {};
 
     this.selectionRange = {
-      fpsAdminMax: this.normalizarNumero(storedSelection.fpsAdminMax, 10000),
+      fpsAdminMax: this.normalizarNumero(storedSelection.fpsAdminMax, 500000), // 🔥
       fpsUserMax: this.normalizarNumero(storedSelection.fpsUserMax, 3)
     };
 
@@ -79,7 +79,6 @@ export class PropPlayer implements OnInit {
     fog.color = typeof fog.color === 'string' ? fog.color : '#0d1729';
     fog.colorBW = typeof fog.colorBW === 'string' ? fog.colorBW : '#555555';
 
-    // 🔥 Compatibilidad para Densidad de Inicio y Opacidad de Fondo
     fog.densityStartFPS = this.normalizarNumero(fog.densityStartFPS ?? fog.densityFPS ?? fog.densityFps, 0);
     fog.densityEndFPS = this.normalizarNumero(fog.densityEndFPS, 100);
 
@@ -92,21 +91,22 @@ export class PropPlayer implements OnInit {
     fog.densityStartTpsBW = this.normalizarNumero(fog.densityStartTpsBW ?? fog.densityTpsBW, 0);
     fog.densityEndTpsBW = this.normalizarNumero(fog.densityEndTpsBW, 100);
 
+    // 🔥 Defaults altos para no perder visión en mapas masivos
     fog.startFPS = this.normalizarNumero(fog.startFPS, 0);
-    fog.endFPS = this.normalizarNumero(fog.endFPS, 80);
+    fog.endFPS = this.normalizarNumero(fog.endFPS, 50000);
     fog.startTPS = this.normalizarNumero(fog.startTPS, 5);
-    fog.endTPS = this.normalizarNumero(fog.endTPS, 120);
+    fog.endTPS = this.normalizarNumero(fog.endTPS, 50000);
 
-    fog.renderDistanceFPS = this.normalizarNumero(fog.renderDistanceFPS, 150);
-    fog.renderDistanceTPS = this.normalizarNumero(fog.renderDistanceTPS, 200);
+    fog.renderDistanceFPS = this.normalizarNumero(fog.renderDistanceFPS, 100000);
+    fog.renderDistanceTPS = this.normalizarNumero(fog.renderDistanceTPS, 100000);
 
     fog.startFpsBW = this.normalizarNumero(fog.startFpsBW, 0);
-    fog.endFpsBW = this.normalizarNumero(fog.endFpsBW, 60);
+    fog.endFpsBW = this.normalizarNumero(fog.endFpsBW, 50000);
     fog.startTpsBW = this.normalizarNumero(fog.startTpsBW, 5);
-    fog.endTpsBW = this.normalizarNumero(fog.endTpsBW, 90);
+    fog.endTpsBW = this.normalizarNumero(fog.endTpsBW, 50000);
 
-    fog.renderDistanceFpsBW = this.normalizarNumero(fog.renderDistanceFpsBW, 100);
-    fog.renderDistanceTpsBW = this.normalizarNumero(fog.renderDistanceTpsBW, 150);
+    fog.renderDistanceFpsBW = this.normalizarNumero(fog.renderDistanceFpsBW, 100000);
+    fog.renderDistanceTpsBW = this.normalizarNumero(fog.renderDistanceTpsBW, 100000);
 
     this.playerConfig.fog = fog;
   }
@@ -119,7 +119,7 @@ export class PropPlayer implements OnInit {
     if (!this.objeto.metadata) this.objeto.metadata = {};
 
     const selectionPayload = {
-      fpsAdminMax: this.normalizarNumero(this.selectionRange.fpsAdminMax, 10000),
+      fpsAdminMax: this.normalizarNumero(this.selectionRange.fpsAdminMax, 500000), // 🔥
       fpsUserMax: this.normalizarNumero(this.selectionRange.fpsUserMax, 3)
     };
 
@@ -144,14 +144,14 @@ export class PropPlayer implements OnInit {
   restaurarPlayerConfigDefault() {
     this.playerConfig = cloneDefaultPlayerConfig();
     this.selectionRange = {
-      fpsAdminMax: 10000,
+      fpsAdminMax: 500000,
       fpsUserMax: 3
     };
     (this.playerConfig as any).selectionRange = {
-      fpsAdminMax: 10000,
+      fpsAdminMax: 500000,
       fpsUserMax: 3
     };
     this.sincronizarFogCompat();
     this.aplicarPlayerConfig();
   }
-}
+} 

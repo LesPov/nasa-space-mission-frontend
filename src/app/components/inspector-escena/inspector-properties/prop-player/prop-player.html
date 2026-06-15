@@ -38,9 +38,9 @@
     <ng-container *ngIf="playerConfig.fog.enabled">
       
       <div class="field wide" style="margin-bottom: 15px; padding: 10px; background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; border-radius: 6px;">
-        <label style="color: #60a5fa; font-weight: bold; font-size: 13px;">Reglas Visuales</label>
+        <label style="color: #60a5fa; font-weight: bold; font-size: 13px;">Reglas Visuales (Mundos Gigantes)</label>
         <p class="help-text" style="color: #cbd5e1; font-size: 11px; margin-top: 5px;">
-          * <b>Zona Limpia:</b> Desde la cámara hasta la <b>Esfera Azul</b> es Full HD 0% niebla.<br>
+          * Sube la distancia de Corte de Render a <b>50000</b> o más para ver la cordillera entera.<br>
           * <b>Dens. Inicio (Muro):</b> Súbelo para que la niebla arranque espesa y pesada de golpe.<br>
           * <b>Opac. Fondo:</b> Bájalo (ej: 50%) para hacer la niebla lejana transparente y ver el fondo.
         </p>
@@ -70,8 +70,8 @@
           <div class="field"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo FPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndFPS" (ngModelChange)="playerConfig.fog.densityEndFPS = $event; aplicarPlayerConfig()" /></div>
           <div class="field"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo TPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndTPS" (ngModelChange)="playerConfig.fog.densityEndTPS = $event; aplicarPlayerConfig()" /></div>
 
-          <div class="field"><label style="color:#38bdf8; font-weight:bold;">Corte de Render FPS (Z)</label><input type="number" step="1" min="10" [ngModel]="playerConfig.fog.renderDistanceFPS" (ngModelChange)="playerConfig.fog.renderDistanceFPS = $event; aplicarPlayerConfig()" /></div>
-          <div class="field"><label style="color:#fcd34d; font-weight:bold;">Corte de Render TPS (Z)</label><input type="number" step="1" min="10" [ngModel]="playerConfig.fog.renderDistanceTPS" (ngModelChange)="playerConfig.fog.renderDistanceTPS = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#38bdf8; font-weight:bold;">Corte de Render FPS (Z)</label><input type="number" step="100" min="10" [ngModel]="playerConfig.fog.renderDistanceFPS" (ngModelChange)="playerConfig.fog.renderDistanceFPS = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#fcd34d; font-weight:bold;">Corte de Render TPS (Z)</label><input type="number" step="100" min="10" [ngModel]="playerConfig.fog.renderDistanceTPS" (ngModelChange)="playerConfig.fog.renderDistanceTPS = $event; aplicarPlayerConfig()" /></div>
         </div>
       </div>
 
@@ -99,8 +99,8 @@
           <div class="field"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo FPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndFpsBW" (ngModelChange)="playerConfig.fog.densityEndFpsBW = $event; aplicarPlayerConfig()" /></div>
           <div class="field"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo TPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndTpsBW" (ngModelChange)="playerConfig.fog.densityEndTpsBW = $event; aplicarPlayerConfig()" /></div>
 
-          <div class="field"><label style="color:#38bdf8; font-weight:bold;">Corte Render FPS (Z)</label><input type="number" step="1" min="10" [ngModel]="playerConfig.fog.renderDistanceFpsBW" (ngModelChange)="playerConfig.fog.renderDistanceFpsBW = $event; aplicarPlayerConfig()" /></div>
-          <div class="field"><label style="color:#fcd34d; font-weight:bold;">Corte Render TPS (Z)</label><input type="number" step="1" min="10" [ngModel]="playerConfig.fog.renderDistanceTpsBW" (ngModelChange)="playerConfig.fog.renderDistanceTpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#38bdf8; font-weight:bold;">Corte Render FPS (Z)</label><input type="number" step="100" min="10" [ngModel]="playerConfig.fog.renderDistanceFpsBW" (ngModelChange)="playerConfig.fog.renderDistanceFpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label style="color:#fcd34d; font-weight:bold;">Corte Render TPS (Z)</label><input type="number" step="100" min="10" [ngModel]="playerConfig.fog.renderDistanceTpsBW" (ngModelChange)="playerConfig.fog.renderDistanceTpsBW = $event; aplicarPlayerConfig()" /></div>
         </div>
       </div>
     </ng-container>
@@ -121,11 +121,11 @@
       </div>
       <div class="field">
         <label>Dist. Máxima TPS</label>
-        <input type="number" step="0.1" min="1" [ngModel]="playerConfig.camera.tpsMaxRadius" (ngModelChange)="playerConfig.camera.tpsMaxRadius = $event; aplicarPlayerConfig()" title="Tope al alejar la cámara (Zoom out)" />
+        <input type="number" step="10" min="1" [ngModel]="playerConfig.camera.tpsMaxRadius" (ngModelChange)="playerConfig.camera.tpsMaxRadius = $event; aplicarPlayerConfig()" title="Tope al alejar la cámara (Zoom out)" />
       </div>
     </div>
     <p class="help-text" style="margin-top: 10px; color: #4ade80;">
-      * Aumenta la <b>Dist. Mínima TPS</b> a 2 o más si la cámara se acerca tanto que atraviesa la cabeza del personaje.
+      * Aumenta la <b>Dist. Máxima TPS</b> para poder ver todo el paisaje a lo lejos.
     </p>
   </div>
 </div>
@@ -138,7 +138,7 @@
         <label>Admin: distancia máxima</label>
         <input
           type="number"
-          step="0.1"
+          step="100"
           min="0"
           [ngModel]="selectionRange.fpsAdminMax"
           (ngModelChange)="selectionRange.fpsAdminMax = $event; aplicarPlayerConfig()"

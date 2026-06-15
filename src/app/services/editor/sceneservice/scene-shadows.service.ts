@@ -44,6 +44,7 @@ export class SceneShadowsService {
             !m.name.includes('proxyCol') &&
             !m.name.includes('gizmo') &&
             !m.name.includes('highlight') &&
+            !m.name.startsWith('decal_') && // 🔥 PREVENIMOS SOMBRAS RARAS DE LAS MANCHAS DE LUZ
             m.name !== 'centerDragPos' &&
             m.name !== 'debugCollider' &&
             m.name !== 'debugCamBox' &&

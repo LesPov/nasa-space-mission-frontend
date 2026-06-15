@@ -1,3 +1,4 @@
+
 <ng-container *ngIf="!editando">
   <div class="galeria-header">
     <div>
@@ -61,12 +62,8 @@
   </div>
 
   <div class="modal-overlay" *ngIf="editorSvc.showAddObjectModal()" style="z-index: 9999;">
-    <!-- EL CÓDIGO DEL MODAL DE AÑADIR OBJETOS ES EL MISMO QUE YA TIENES... LO DEJO COMO ESTÁ -->
     <div class="modal-box large">
       <h3>Añadir Nuevo Elemento a la Escena</h3>
-      <p style="font-size: 11px; color: #fbbf24; margin-top: -10px;">
-        *Si tienes un objeto seleccionado, el nuevo será su hijo. Puedes pegarlo a la pared rotándolo.
-      </p>
       
       <div class="modal-grid">
         <div class="modal-section">
@@ -75,8 +72,17 @@
             <label class="modal-label">Nombre Único:</label>
             <input type="text" [(ngModel)]="objNombre" class="modal-input" placeholder="Ej: Elemento_1">
           </div>
+
+          <!-- 🔥 CHECKBOX DE PADRE/HIJO (SOLO SI HAY ALGO SELECCIONADO) -->
+          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 5px; background: rgba(251, 191, 36, 0.1); border: 1px solid #fbbf24; padding: 10px; border-radius: 6px;" *ngIf="editorSvc.objetoSeleccionado()">
+            <input type="checkbox" [(ngModel)]="objHacerHijo" id="chkHacerHijo" style="width: 18px; height: 18px; cursor: pointer;">
+            <label for="chkHacerHijo" class="modal-label" style="margin: 0; cursor: pointer; color: #fbbf24; font-weight: bold;">
+              🔗 Crear DENTRO de: {{ editorSvc.objetoSeleccionado()?.name }}
+            </label>
+          </div>
+
           <div class="modal-row" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble' && objTipo !== 'video_plane' && objTipo !== 'image_plane'">
-            <label class="modal-label" style="color: #ffd700;">Rol del Elemento:</label>
+            <label class="modal-label" style="color: #ffd700; margin-top: 10px;">Rol del Elemento:</label>
             <select [(ngModel)]="objRol" class="modal-input" (change)="onRolChange()">
               <option value="prop">🛋️ Decoración / Prop estático</option>
               <option value="spawn_point">🧍‍♂️ Spawn del Jugador</option>
@@ -115,7 +121,7 @@
                 <option value="trigger_compuesto">💠 Trigger Compuesto</option>
                 <option value="bubble">🫧 Burbuja Interactiva (Evento FPS)</option>
                 <option value="video_plane">📺 Pantalla de Video (.mp4)</option>
-                <option value="image_plane">🖼️ Imagen / Proyección Luz (.png/.jpg)</option>
+                <option value="image_plane">🖼️ Proyector / Holograma (.png/.jpg)</option>
               </optgroup>
               <optgroup label="Iluminación">
                 <option value="light_directional">☀️ Luz Direccional (Sol/Rayo)</option>
@@ -149,7 +155,7 @@
                 {{ objTipo === 'video_plane' ? 'Selecciona un Video (.mp4):' : (objTipo === 'image_plane' ? 'Selecciona Imagen Transparente (.png):' : (objTipo.startsWith('light_') ? 'Cuerpo de la luz (Opcional):' : 'Selecciona el modelo guardado:')) }}
               </label>
               <select [(ngModel)]="objAssetSeleccionado" class="modal-input">
-                <option [ngValue]="null" [disabled]="objTipo === 'model'">{{ objTipo === 'video_plane' ? '-- Sin video (Pantalla negra) --' : (objTipo === 'image_plane' ? '-- Sin imagen (Cuadro emisor) --' : (objTipo.startsWith('light_') ? '-- Sin modelo (Usar esfera invisible) --' : '-- Elige un modelo --')) }}</option>
+                <option [ngValue]="null" [disabled]="objTipo === 'model'">{{ objTipo === 'video_plane' ? '-- Sin video (Pantalla negra) --' : (objTipo === 'image_plane' ? '-- Sin imagen (Luz Sólida Blanca) --' : (objTipo.startsWith('light_') ? '-- Sin modelo (Usar esfera invisible) --' : '-- Elige un modelo --')) }}</option>
                 <option *ngFor="let asset of listaAssets" [ngValue]="asset">
                   {{ asset.name }}
                 </option>
@@ -195,7 +201,6 @@
   </div>
 
  <div class="blender-layout">
-    
     <div class="viewport-area" [style.width]="(esAdmin && showInspector) ? 'calc(100% - ' + inspectorWidth + 'px)' : '100%'">
       
       <!-- CONTENEDOR SUPERIOR (Canvas 3D) -->
@@ -221,8 +226,6 @@
         </div>
 
         <div class="canvas-container">
-          
-          <!-- 🔥 BOTONES FLOTANTES EN LOS BORDES DEL CANVAS -->
           <button class="toggle-panel-btn toggle-right" *ngIf="esAdmin" (click)="toggleInspector()" [title]="showInspector ? 'Ocultar Inspector' : 'Mostrar Inspector'">
             {{ showInspector ? '▶' : '◀' }}
           </button>
@@ -230,7 +233,6 @@
             {{ showTimeline ? '▼' : '▲' }}
           </button>
 
-          <!-- TODO LO REFERENTE A HUD ES IGUAL... -->
           <div class="crosshair-ui" *ngIf="editorSvc.playState() === 'PLAYING' && stateSvc.modoVistaPrueba === 'FPS' && editorSvc.ratonBloqueado()" [class.hovering]="editorSvc.mirandoObjetoInteractuable()"></div>
 
           <div class="modern-toast-container" *ngIf="stateSvc.mensajeTriggerHUD() !== null" style="bottom: 120px; z-index: 300;">

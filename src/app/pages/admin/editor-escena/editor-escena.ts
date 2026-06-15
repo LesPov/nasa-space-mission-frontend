@@ -1,3 +1,4 @@
+
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -59,11 +60,10 @@ export class EditorEscena implements OnInit, OnDestroy {
   public objEsSolido: boolean = true;
   public objEsSeleccionable: boolean = true;
   public objMensaje: string = '';
-  public objHacerHijo: boolean = false; // 🔥 NUEVO ESTADO PARA CONTROLAR EL PARENTING
+  public objHacerHijo: boolean = true; // 🔥 POR DEFECTO ESTÁ ACTIVADO SI SE MUESTRA
 
   public vistaPrueba: 'FPS' | 'TPS' = 'FPS';
   
-  // 🔥 ESTADOS PARA OCULTAR PANELES LATERALES/INFERIORES
   public showInspector = true;
   public showTimeline = true;
 
@@ -368,7 +368,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   crearObjeto3D() {
     if(!this.objNombre) return;
     
-    // 🔥 FIX ESCALA RARA: Solo asignamos el padre si la casilla fue marcada manualmente
+    // 🔥 LÓGICA DE PARENTING REPARADA
     const parent = this.objHacerHijo ? (this.editorSvc.objetoSeleccionado() as AbstractMesh | null) : null;
 
     this.editorSvc.agregarObjetoCustom(
@@ -391,7 +391,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.objEsSolido = true;
     this.objEsSeleccionable = true;
     this.objMensaje = '';
-    this.objHacerHijo = false; // Restablecer la casilla de herencia
+    this.objHacerHijo = true; // 🔥 POR DEFECTO VUELVE A TRUE
   }
 
   esObjetoJugable(): boolean {

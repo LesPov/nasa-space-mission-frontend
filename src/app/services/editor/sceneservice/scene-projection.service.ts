@@ -9,6 +9,36 @@ export class SceneProjectionService {
     return Math.max(min, Math.min(max, Number(v)));
   }
 
+  private isFunc(value: any, methodName: string): boolean {
+    return !!value && typeof value[methodName] === 'function';
+  }
+
+  private isDisposedSeguro(value: any): boolean {
+    try {
+      if (!value) return true;
+
+      if (this.isFunc(value, 'isDisposed')) {
+        return value.isDisposed();
+      }
+
+      return false;
+    } catch {
+      return true;
+    }
+  }
+
+  private disposeSeguro(value: any): void {
+    try {
+      if (!value) return;
+
+      if (this.isFunc(value, 'dispose')) {
+        value.dispose();
+      }
+    } catch (error) {
+      console.warn('[SceneProjectionService] Error al disponer recurso:', error);
+    }
+  }
+
   public configurarMaterialProyector(
     mat: StandardMaterial,
     colorHex: string,
@@ -53,12 +83,14 @@ export class SceneProjectionService {
 
     if (Array.isArray(meta.decalMeshes)) {
       meta.decalMeshes.forEach((d: Mesh | null) => {
-        if (d && !d.isDisposed()) d.dispose();
+        if (d && !this.isDisposedSeguro(d)) {
+          this.disposeSeguro(d);
+        }
       });
     }
 
-    if (meta.decalMesh && !meta.decalMesh.isDisposed()) {
-      meta.decalMesh.dispose();
+    if (meta.decalMesh && !this.isDisposedSeguro(meta.decalMesh)) {
+      this.disposeSeguro(meta.decalMesh);
     }
 
     meta.decalMeshes = [];
@@ -67,8 +99,12 @@ export class SceneProjectionService {
   }
 
   public aplicarLogicaHolograma(mesh: Mesh, scene: Scene): void {
+    if (!mesh.metadata) mesh.metadata = {};
+
     // 🔥 OBSERVADOR CINEMÁTICO DE DESVANECIMIENTO (SMOOTHSTEP FADE)
     const fadeObserver = scene.onBeforeRenderObservable.add(() => {
+      if (!mesh || mesh.isDisposed?.()) return;
+
       const currentModeIsBW = scene.metadata?.globalVisualMode === 'bw';
       if (mesh.metadata._lastVisualMode !== currentModeIsBW) {
         mesh.metadata._lastVisualMode = currentModeIsBW;
@@ -76,19 +112,18 @@ export class SceneProjectionService {
       }
 
       const fadeDist = Number(mesh.metadata.fadeDistance ?? 0);
-      
+
       if (fadeDist > 0 && scene.activeCamera) {
         const distanceToCam = Vector3.Distance(scene.activeCamera.globalPosition, mesh.getAbsolutePosition());
-        const fadeStart = fadeDist * 0.5; // Empieza a desvanecer exactamente a la mitad (50%)
-        
+        const fadeStart = fadeDist * 0.5;
+
         let alphaMultiplier = 1.0;
-        
+
         if (distanceToCam >= fadeDist) {
-          alphaMultiplier = 0.0; 
+          alphaMultiplier = 0.0;
         } else if (distanceToCam > fadeStart) {
-          // 🔥 CURVA SMOOTHSTEP: Aceleración y desaceleración cinematográfica para el fade
           let progress = (distanceToCam - fadeStart) / (fadeDist - fadeStart);
-          progress = progress * progress * (3 - 2 * progress); 
+          progress = progress * progress * (3 - 2 * progress);
           alphaMultiplier = Math.max(0, Math.min(1.0, 1.0 - progress));
         }
 
@@ -96,10 +131,9 @@ export class SceneProjectionService {
           const dMat = mesh.metadata.decalMaterial as StandardMaterial;
           const hasTexture = dMat.diffuseTexture != null;
           const brilloBase = Number(mesh.metadata.brilloIntensidad ?? 1.0);
-          
+
           const baseAlpha = hasTexture ? 1.0 : Math.max(0.2, Math.min(1.0, brilloBase * 0.5));
-          
-          // 🔥 FIX: Reducimos tanto la transparencia como la energía de luz (emissive)
+
           dMat.alpha = baseAlpha * alphaMultiplier;
           const colorReal = currentModeIsBW ? mesh.metadata.colorBW : mesh.metadata.color;
           dMat.emissiveColor = Color3.FromHexString(colorReal || '#ffffff').scale(brilloBase * alphaMultiplier);
@@ -107,27 +141,26 @@ export class SceneProjectionService {
 
         if (Array.isArray(mesh.metadata.decalMeshes)) {
           mesh.metadata.decalMeshes.forEach((decal: Mesh) => {
-            if (decal && !decal.isDisposed()) {
+            if (decal && !this.isDisposedSeguro(decal)) {
               decal.visibility = alphaMultiplier > 0 ? 1 : 0;
               decal.alwaysSelectAsActiveMesh = true;
             }
           });
         }
-      } 
+      }
       else if (fadeDist <= 0) {
-        // Restaurar estado si el fade está desactivado (distancia 0)
         if (mesh.metadata.decalMaterial) {
           const dMat = mesh.metadata.decalMaterial as StandardMaterial;
           const hasTexture = dMat.diffuseTexture != null;
           const brilloBase = Number(mesh.metadata.brilloIntensidad ?? 1.0);
           dMat.alpha = hasTexture ? 1.0 : Math.max(0.2, Math.min(1.0, brilloBase * 0.5));
-          
+
           const colorReal = currentModeIsBW ? mesh.metadata.colorBW : mesh.metadata.color;
           dMat.emissiveColor = Color3.FromHexString(colorReal || '#ffffff').scale(brilloBase);
         }
         if (Array.isArray(mesh.metadata.decalMeshes)) {
           mesh.metadata.decalMeshes.forEach((decal: Mesh) => {
-            if (decal && !decal.isDisposed()) {
+            if (decal && !this.isDisposedSeguro(decal)) {
               decal.visibility = 1.0;
               decal.alwaysSelectAsActiveMesh = true;
             }
@@ -143,10 +176,15 @@ export class SceneProjectionService {
       try {
         const isNowBW = scene.metadata?.globalVisualMode === 'bw';
         const colorReal = isNowBW ? mesh.metadata.colorBW : mesh.metadata.color;
-        const decalTexture = (mesh.metadata.decalMaterial as StandardMaterial).diffuseTexture;
-        
+        const decalMat = mesh.metadata.decalMaterial as StandardMaterial | null | undefined;
+        const decalTexture = decalMat?.diffuseTexture ?? null;
+
+        if (!decalMat) {
+          return;
+        }
+
         this.configurarMaterialProyector(
-          mesh.metadata.decalMaterial,
+          decalMat,
           colorReal,
           mesh.metadata.brilloIntensidad,
           mesh.metadata.ignoraNiebla,
@@ -209,7 +247,7 @@ export class SceneProjectionService {
               angle: angulo
             });
 
-            decal.material = mesh.metadata.decalMaterial;
+            decal.material = decalMat;
             decal.setParent(targetMesh);
             decal.isPickable = false;
             decal.receiveShadows = false;
@@ -228,14 +266,22 @@ export class SceneProjectionService {
     mesh.onDisposeObservable.add(() => {
       scene.onBeforeRenderObservable.remove(fadeObserver);
       this.limpiarDecalsImagen(mesh);
-      if (mesh.metadata.decalMaterial && !mesh.metadata.decalMaterial.isDisposed()) {
-        mesh.metadata.decalMaterial.dispose();
+
+      const decalMaterial = mesh.metadata?.decalMaterial;
+      if (decalMaterial && !this.isDisposedSeguro(decalMaterial)) {
+        this.disposeSeguro(decalMaterial);
+      }
+
+      if (mesh.metadata) {
+        mesh.metadata.decalMaterial = null;
+        mesh.metadata.decalMeshes = [];
+        mesh.metadata.decalMesh = null;
       }
     });
 
     // Disparo inicial diferido para asegurar que la escena se actualice
     setTimeout(() => {
-      if (mesh.metadata.updateDecal) mesh.metadata.updateDecal();
+      if (mesh.metadata?.updateDecal) mesh.metadata.updateDecal();
     }, 150);
   }
 }

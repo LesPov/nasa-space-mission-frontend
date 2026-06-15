@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import {
   AbstractMesh,
@@ -74,7 +75,6 @@ export class SceneObjectBuilderService {
     const isVideo = tipo === 'video_plane';
     const isImage = tipo === 'image_plane';
 
-    // 🔥 FIX VITAL: Sanitizar escalas entrantes del Modal para evitar deformaciones
     const safeSizeX = (sizeX !== undefined && sizeX !== null && Number(sizeX) !== 0 && !isNaN(Number(sizeX))) ? Number(sizeX) : 1;
     const safeSizeY = (sizeY !== undefined && sizeY !== null && Number(sizeY) !== 0 && !isNaN(Number(sizeY))) ? Number(sizeY) : 1;
     const safeSizeZ = (sizeZ !== undefined && sizeZ !== null && Number(sizeZ) !== 0 && !isNaN(Number(sizeZ))) ? Number(sizeZ) : 1;
@@ -101,16 +101,17 @@ export class SceneObjectBuilderService {
         const rootNode = result.meshes[0] as Mesh;
         rootNode.name = nombre;
         
-        // 🔥 APLICAR ESCALA SEGURA
         rootNode.scaling = new Vector3(safeSizeX, safeSizeY, safeSizeZ);
 
         if (!rootNode.rotationQuaternion) {
           rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
         }
 
+        // 🔥 LOGICA DE PADRE (SI ESTÁ SELECCIONADA LA OPCIÓN EN EL MODAL)
         if (parentNode) {
           rootNode.position = parentNode.getAbsolutePosition().clone();
           rootNode.setParent(parentNode);
+          rootNode.position = new Vector3(0, 0, 0); // Lo centra perfectamente relativo al padre
         } else {
           rootNode.position = new Vector3(0, 0, 0);
         }
@@ -194,7 +195,6 @@ export class SceneObjectBuilderService {
         } else {
           rootNode.metadata.esEmisivo = false;
           rootNode.metadata.brilloIntensidad = 1.0;
-          // 🔥 ELLIPSOIDES SEGUROS BASADOS EN LA ESCALA LIMPIA
           rootNode.ellipsoid = new Vector3(defaultCollider.sizeX * safeSizeX, defaultCollider.sizeY * safeSizeY, defaultCollider.sizeZ * safeSizeZ);
           rootNode.ellipsoidOffset = new Vector3(defaultCollider.offsetX * safeSizeX, defaultCollider.offsetY * safeSizeY, defaultCollider.offsetZ * safeSizeZ);
         }
@@ -211,38 +211,32 @@ export class SceneObjectBuilderService {
       let mesh!: Mesh;
 
       switch (tipo) {
-        case 'cube':
-          mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene);
-          break;
+        case 'cube': mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene); break;
         case 'sphere':
         case 'bubble':
         case 'light_point':
         case 'light_spot':
-        case 'light_directional':
-          mesh = MeshBuilder.CreateSphere(nombre, { diameter: tipo === 'bubble' ? 1 : 0.4 }, scene);
-          break;
-        case 'cylinder':
-          mesh = MeshBuilder.CreateCylinder(nombre, { height: 1, diameter: 1 }, scene);
-          break;
-        case 'plane':
-          mesh = MeshBuilder.CreateGround(nombre, { width: 1, height: 1 }, scene);
-          break;
-        case 'video_plane':
-          mesh = MeshBuilder.CreatePlane(nombre, { size: 1, sideOrientation: Mesh.DOUBLESIDE }, scene);
-          break;
-        case 'image_plane':
-          mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene);
-          break;
-        default:
-          return;
+        case 'light_directional': mesh = MeshBuilder.CreateSphere(nombre, { diameter: tipo === 'bubble' ? 1 : 0.4 }, scene); break;
+        case 'cylinder': mesh = MeshBuilder.CreateCylinder(nombre, { height: 1, diameter: 1 }, scene); break;
+        case 'plane': mesh = MeshBuilder.CreateGround(nombre, { width: 1, height: 1 }, scene); break;
+        case 'video_plane': mesh = MeshBuilder.CreatePlane(nombre, { size: 1, sideOrientation: Mesh.DOUBLESIDE }, scene); break;
+        case 'image_plane': mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene); break;
+        default: return;
       }
 
-      // 🔥 APLICAR ESCALA SEGURA A PRIMITIVAS
       mesh.scaling = new Vector3(safeSizeX, safeSizeY, safeSizeZ);
 
+      // 🔥 LÓGICA DE PADRE (E HOLOGAMAS)
       if (parentNode) {
         mesh.position = parentNode.getAbsolutePosition().clone();
         mesh.setParent(parentNode);
+        
+        if (tipo === 'image_plane') {
+            // Empujamos el holograma 2 metros atrás (localmente) para que proyecte directamente en la cara de su nuevo padre.
+            mesh.position = new Vector3(0, 0, -2);
+        } else {
+            mesh.position = new Vector3(0, 0, 0); // Para todo lo demás, centrar.
+        }
       } else {
         mesh.position = new Vector3(0, tipo.startsWith('light_') ? 2 : (0.5 * safeSizeY), 0);
       }
@@ -299,7 +293,6 @@ export class SceneObjectBuilderService {
         mesh.receiveShadows = true;
       }
 
-      // 🔥 ELLIPSOIDES SEGUROS BASADOS EN LA ESCALA LIMPIA
       mesh.ellipsoid = new Vector3(defaultCollider.sizeX * safeSizeX, defaultCollider.sizeY * safeSizeY, defaultCollider.sizeZ * safeSizeZ);
       mesh.ellipsoidOffset = new Vector3(defaultCollider.offsetX * safeSizeX, defaultCollider.offsetY * safeSizeY, defaultCollider.offsetZ * safeSizeZ);
 
@@ -346,7 +339,10 @@ export class SceneObjectBuilderService {
         mesh.alwaysSelectAsActiveMesh = true;
         mesh.isVisible = this.state.rolSimulado() === 'admin';
 
-        this.projectionSvc.aplicarLogicaHolograma(mesh, scene);
+        // 🔥 OBLIGA A LA PROYECCIÓN A ESPERAR A ESTAR MONTADO EN EL PADRE ANTES DE DISPARAR
+        setTimeout(() => {
+           this.projectionSvc.aplicarLogicaHolograma(mesh, scene);
+        }, 100);
       } 
       else if (isLight) {
         mesh.metadata.lightColor = colorHex;

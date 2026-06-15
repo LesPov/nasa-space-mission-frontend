@@ -1,3 +1,4 @@
+
 import { Component, Output, EventEmitter, inject, effect, ElementRef, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -84,7 +85,9 @@ export class InspectorOutliner {
     const hijosValidos = nodo.getChildren().filter(child => {
         if (!(child instanceof Mesh) && !(child instanceof Light) && !(child instanceof TransformNode)) return false;
         const nName = child.name.toLowerCase();
-        if (nName.includes('proxycol') || nName.includes('debug') || nName.includes('gizmo') || nName.includes('camerapivot') || nName.startsWith('l_')) return false;
+        
+        // 🔥 FIX OUTLINER: Ocultamos las mallas "decal_" para que no saturen el inspector
+        if (nName.includes('proxycol') || nName.includes('debug') || nName.includes('gizmo') || nName.includes('camerapivot') || nName.startsWith('l_') || nName.startsWith('decal_')) return false;
         
         if (nodo.metadata?.type === 'model' || nodo.metadata?.type?.startsWith('light_')) {
            return !!child.metadata && child.metadata.type; 
@@ -123,8 +126,6 @@ export class InspectorOutliner {
     return hijos.some(h => this.cumpleFiltro(h));
   }
 
-  // 🔥 SOLUCIÓN: Eliminados los estilos en línea y uso de clase CSS para evitar advertencias de seguridad de Angular.
-  // Además se escapan los caracteres especiales para evitar romper la expresión regular.
   resaltarTexto(texto: string): string {
     if (!this.searchTerm) return texto;
     const safeTerm = this.searchTerm.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
@@ -132,10 +133,6 @@ export class InspectorOutliner {
     return texto.replace(regex, `<span class="highlight-search">$1</span>`);
   }
 
-  // ==========================================
-  // 🔥 LÓGICA DE FILTRADO SEGURO
-  // ==========================================
-  
   tieneHijos(nodo: Node): boolean { 
     return this.obtenerHijos(nodo).length > 0; 
   }

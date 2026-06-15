@@ -14,7 +14,6 @@ export class EditorStateService {
   public currentTool = signal<ToolMode>('translate');
 
   public objetoSeleccionado = signal<Node | null>(null);
-  // 🔥 AÑADIDO: 'light' para poder seleccionar la luz interna
   public subObjetoSeleccionado = signal<'collider' | 'camera' | 'light' | null>(null);
 
   public objetoInteractuado = signal<any>(null);
@@ -94,14 +93,16 @@ export class EditorStateService {
     return this.encontrarRaiz(mesh as AbstractMesh) as AbstractMesh | null;
   }
 
-  private esNombreIgnorable(name: string): boolean {
+  // 🔥 FIX PARA OUTLINER Y SELECCIÓN: Filtra las mallas Decal ("decal_...")
+  public esNombreIgnorable(name: string): boolean {
     if(!name) return true;
     const n = name.toLowerCase();
     return (
       n === 'sueloinvisible' || n === 'suelo' || n === 'ground' || n === 'floor' ||
       n === 'terrain' || n === 'camerapivot' || n.includes('eje') ||
       n.includes('gridhelper') || n.includes('gizmo') || n.includes('highlight') ||
-      n.includes('debug') || n.includes('proxycol') || n.includes('skybox')
+      n.includes('debug') || n.includes('proxycol') || n.includes('skybox') ||
+      n.startsWith('decal_') // 🔥 Las manchas de luz ya no se tocan ni estorban
     );
   }
 
@@ -194,4 +195,4 @@ export class EditorStateService {
     this.objetoSeleccionado.set(null);
     this.subObjetoSeleccionado.set(null);
   }
-}
+} 

@@ -1,83 +1,103 @@
 <div class="panel-header">
-  <span class="icon">📁</span>
-  <span>Escena (Outliner)</span>
+  <div style="display: flex; align-items: center; gap: 6px;">
+    <span class="icon">📁</span>
+    <span>Outliner</span>
+  </div>
+  <input 
+    type="text" 
+    class="search-outliner" 
+    placeholder="🔍 Buscar..." 
+    [(ngModel)]="searchTerm" 
+    (input)="onSearchChange()">
 </div>
 
 <div class="outliner-tree">
-  <div class="tree-collection">
+  <div class="tree-collection"
+       (dragover)="onDragOverRoot($event)"
+       (dragleave)="onDragLeaveRoot($event)"
+       (drop)="onDropRoot($event)">
     <span class="icon">📦</span>
-    <span>Raíz de la colección</span>
+    <span>Raíz de la Escena</span>
   </div>
 
   <div class="tree-items">
     
-    <!-- Definimos una plantilla recursiva para poder dibujar infinitos niveles de hijos -->
     <ng-template #nodeTemplate let-nodo="nodo" let-depth="depth">
-      <!-- El div del Nodo en sí -->
-      <div
-        class="node-item"
-        [class.selected]="esSeleccionado(nodo) && !editorSvc.subObjetoSeleccionado()"
-        [class.locked]="esBloqueado(nodo)"
-        [style.padding-left.px]="8 + (depth * 15)"
-        (click)="seleccionarDesdeLista(nodo)"
-      >
-        <div class="node-left">
-          <!-- Si el objeto tiene hijos reales O tiene "sub-items lógicos" (cámara, collider), muestra el botón de expandir -->
-          <span class="tree-expander" 
-                [style.visibility]="(tieneHijos(nodo) || tieneCapsula(nodo) || tieneCamara(nodo) || tieneAnimaciones(nodo)) ? 'visible' : 'hidden'" 
-                (click)="toggleExpandir(nodo, $event)">
-            {{ estaExpandido(nodo) ? '▼' : '▶' }}
-          </span>
-          <span class="node-icon">{{ getIcono(nodo) }}</span>
-          <span class="node-name">{{ nodo.name }}</span>
-        </div>
-
-        <div class="node-right">
-          <span class="badge-icon" *ngIf="tieneAnimaciones(nodo)" title="Tiene animaciones">🏃</span>
-          <span class="badge-icon" *ngIf="tieneCapsula(nodo)" title="Tiene collider">📦</span>
-          <span class="badge-icon" *ngIf="tieneCamara(nodo)" title="Tiene cámara">🎥</span>
-        </div>
-      </div>
-
-      <!-- El contenedor para todo lo que va debajo de este nodo (solo si está expandido) -->
-      <div class="sub-tree-container" *ngIf="estaExpandido(nodo)">
+      <ng-container *ngIf="cumpleFiltro(nodo)">
         
-        <!-- 1. Mostrar Sub-Items lógicos falsos (Cámaras, Colliders, Animaciones) -->
-        <div class="node-item sub-item"
-             *ngIf="nodo?.metadata?.collider?.type !== 'mesh'"
-             [class.selected]="esSubSeleccionado(nodo, 'collider')"
-             [style.padding-left.px]="28 + (depth * 15)"
-             (click)="seleccionarSubItem('physics', 'collider', nodo, $event)">
-          <span class="node-icon">📦</span>
-          <span class="node-name" style="color:#aaa;">Colisión ({{ nodo.metadata?.collider?.type || 'sin tipo' }})</span>
+        <div
+          class="node-item"
+          draggable="true"
+          (dragstart)="onDragStart($event, nodo)"
+          (dragover)="onDragOver($event, nodo)"
+          (dragleave)="onDragLeave($event)"
+          (drop)="onDrop($event, nodo)"
+          (dragend)="onDragEnd($event)"
+          [class.selected]="esSeleccionado(nodo) && !editorSvc.subObjetoSeleccionado()"
+          [class.locked]="esBloqueado(nodo)"
+          [style.padding-left.px]="8 + (depth * 15)"
+          (click)="seleccionarDesdeLista(nodo)"
+        >
+          <div class="node-left">
+            <span class="tree-expander" 
+                  [style.visibility]="puedeExpandirse(nodo) ? 'visible' : 'hidden'" 
+                  (click)="toggleExpandir(nodo, $event)">
+              {{ estaExpandido(nodo) ? '▼' : '▶' }}
+            </span>
+            <span class="node-icon">{{ getIcono(nodo) }}</span>
+            <span class="node-name" [innerHTML]="resaltarTexto(nodo.name)"></span>
+          </div>
+
+          <div class="node-right">
+            <span class="badge-icon" *ngIf="tieneAnimaciones(nodo)" title="Tiene Animaciones">🏃</span>
+            <span class="badge-icon" *ngIf="tieneSecuencias(nodo)" title="Tiene Secuencias">🎞️</span>
+            <span class="badge-icon" *ngIf="tieneCapsula(nodo)" title="Tiene Cuerpo Físico">📦</span>
+            <span class="badge-icon" *ngIf="tieneCamara(nodo)" title="Tiene Cámara FPS">🎥</span>
+            <span class="badge-icon" *ngIf="tieneLuzInterna(nodo)" title="Emite Luz">💡</span>
+          </div>
         </div>
 
-        <div class="node-item sub-item"
-             *ngIf="tieneCamara(nodo)"
-             [class.selected]="esSubSeleccionado(nodo, 'camera')"
-             [style.padding-left.px]="28 + (depth * 15)"
-             (click)="seleccionarSubItem('physics', 'camera', nodo, $event)">
-          <span class="node-icon">🎥</span>
-          <span class="node-name" style="color:#aaa;">Cámara interna FPS</span>
+        <div class="sub-tree-container" *ngIf="estaExpandido(nodo)">
+          
+          <div class="node-item sub-item" *ngIf="tieneCapsula(nodo)" [class.selected]="esSubSeleccionado(nodo, 'collider')" [style.padding-left.px]="28 + (depth * 15)" (click)="seleccionarSubItem('physics', 'collider', nodo, $event)">
+            <span class="node-icon">📦</span><span class="node-name" style="color:#aaa;">Cuerpo Físico</span>
+          </div>
+
+          <div class="node-item sub-item" *ngIf="tieneCamara(nodo)" [class.selected]="esSubSeleccionado(nodo, 'camera')" [style.padding-left.px]="28 + (depth * 15)" (click)="seleccionarSubItem('physics', 'camera', nodo, $event)">
+            <span class="node-icon">🎥</span><span class="node-name" style="color:#aaa;">Cámara FPS</span>
+          </div>
+
+          <div class="node-item sub-item" *ngIf="tieneLuzInterna(nodo)" [class.selected]="esSubSeleccionado(nodo, 'light')" [style.padding-left.px]="28 + (depth * 15)" (click)="seleccionarSubItem('light', 'light', nodo, $event)">
+            <span class="node-icon">💡</span><span class="node-name" style="color:#facc15;">Ubicación Luz</span>
+          </div>
+
+          <div class="node-item sub-item" *ngIf="tieneAnimaciones(nodo)" [style.padding-left.px]="28 + (depth * 15)" (click)="seleccionarSubItem('animation', null, nodo, $event)">
+            <span class="node-icon">🏃</span><span class="node-name" style="color:#aaa;">Animaciones GLB</span>
+          </div>
+
+          <div class="node-item sub-item" *ngIf="tieneSecuencias(nodo)" [style.padding-left.px]="28 + (depth * 15)" (click)="seleccionarSubItem('sequences', null, nodo, $event)">
+            <span class="node-icon">🎞️</span><span class="node-name" style="color:#aaa;">Secuencias Prog.</span>
+          </div>
+
+          <!-- EVENTOS TRIGGER -->
+          <ng-container *ngIf="esTrigger(nodo)">
+            <div class="node-item sub-item" *ngIf="getTriggerConditions(nodo).includes('on_enter')" [style.padding-left.px]="28 + (depth * 15)" (click)="seleccionarSubItem('transform', null, nodo, $event)">
+              <span class="node-icon">🟩</span><span class="node-name" style="color:#4ade80;">Evento: Al Entrar</span>
+            </div>
+            <div class="node-item sub-item" *ngIf="getTriggerConditions(nodo).includes('on_exit')" [style.padding-left.px]="28 + (depth * 15)" (click)="seleccionarSubItem('transform', null, nodo, $event)">
+              <span class="node-icon">🟥</span><span class="node-name" style="color:#f87171;">Evento: Al Salir</span>
+            </div>
+          </ng-container>
+
+          <!-- HIJOS REALES -->
+          <ng-container *ngFor="let childNode of obtenerHijos(nodo)">
+             <ng-container *ngTemplateOutlet="nodeTemplate; context:{ nodo: childNode, depth: depth + 1 }"></ng-container>
+          </ng-container>
+
         </div>
-
-        <div class="node-item sub-item"
-             *ngIf="tieneAnimaciones(nodo)"
-             [style.padding-left.px]="28 + (depth * 15)"
-             (click)="seleccionarSubItem('animation', null, nodo, $event)">
-          <span class="node-icon">🏃</span>
-          <span class="node-name" style="color:#aaa;">Gestor de Animaciones</span>
-        </div>
-
-        <!-- 2. Mostrar Hijos reales (Llamada recursiva a la misma plantilla) -->
-        <ng-container *ngFor="let childNode of obtenerHijos(nodo)">
-           <ng-container *ngTemplateOutlet="nodeTemplate; context:{ nodo: childNode, depth: depth + 1 }"></ng-container>
-        </ng-container>
-
-      </div>
+      </ng-container>
     </ng-template>
 
-    <!-- Iniciamos el bucle principal usando la plantilla, pero SOLO con los nodos que NO tienen padre (los Root) -->
     <ng-container *ngFor="let nodoRaiz of listaNodos">
       <ng-container *ngTemplateOutlet="nodeTemplate; context:{ nodo: nodoRaiz, depth: 0 }"></ng-container>
     </ng-container>

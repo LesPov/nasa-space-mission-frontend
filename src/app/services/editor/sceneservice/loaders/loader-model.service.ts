@@ -41,7 +41,6 @@ export class LoaderModelService {
 
     const path = obj.properties?.path || obj.asset?.path;
     
-    // 🔥 PROTECCIÓN: Si el asset/luz se corrompió y no tiene ruta, evitamos que Babylon colapse
     if (!path) {
       console.warn(`[LoaderModel] El objeto ${obj.name} no tiene una ruta válida de modelo. Se omitirá para no romper la carga.`);
       return Promise.resolve();
@@ -50,14 +49,31 @@ export class LoaderModelService {
     const fullPath = 'http://localhost:4000' + path;
     const lastSlash = fullPath.lastIndexOf('/');
 
+    // 🔥 FIX VITAL: Sanitización extrema para asegurar 100% integridad
+    const posX = obj.position?.x ?? 0;
+    const posY = obj.position?.y ?? 0;
+    const posZ = obj.position?.z ?? 0;
+    
+    const rotX = obj.rotation?.x ?? 0;
+    const rotY = obj.rotation?.y ?? 0;
+    const rotZ = obj.rotation?.z ?? 0;
+    
+    const scaleX = (obj.scale?.x !== undefined && obj.scale?.x !== null && Number(obj.scale?.x) !== 0 && !isNaN(Number(obj.scale?.x))) ? Number(obj.scale.x) : 1;
+    const scaleY = (obj.scale?.y !== undefined && obj.scale?.y !== null && Number(obj.scale?.y) !== 0 && !isNaN(Number(obj.scale?.y))) ? Number(obj.scale.y) : 1;
+    const scaleZ = (obj.scale?.z !== undefined && obj.scale?.z !== null && Number(obj.scale?.z) !== 0 && !isNaN(Number(obj.scale?.z))) ? Number(obj.scale.z) : 1;
+
     return SceneLoader.ImportMeshAsync('', fullPath.substring(0, lastSlash + 1), fullPath.substring(lastSlash + 1), scene).then((result) => {
       const rootNode = result.meshes[0] as Mesh;
       rootNode.name = obj.name;
-      rootNode.position = new Vector3(obj.position.x, obj.position.y, obj.position.z);
-      rootNode.rotationQuaternion = Quaternion.FromEulerAngles(obj.rotation.x, obj.rotation.y, obj.rotation.z);
-      rootNode.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
+      rootNode.position = new Vector3(posX, posY, posZ);
+      rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rotX, rotY, rotZ);
+      rootNode.scaling = new Vector3(scaleX, scaleY, scaleZ);
       rootNode.checkCollisions = false;
       rootNode.isPickable = true;
+
+      // 🔥 ELLIPSOIDES SANITIZADOS
+      rootNode.ellipsoid = new Vector3((savedCollider.sizeX ?? 0.5) * scaleX, (savedCollider.sizeY ?? 0.5) * scaleY, (savedCollider.sizeZ ?? 0.5) * scaleZ);
+      rootNode.ellipsoidOffset = new Vector3((savedCollider.offsetX ?? 0) * scaleX, (savedCollider.offsetY ?? 0) * scaleY, (savedCollider.offsetZ ?? 0) * scaleZ);
 
       result.meshes.forEach(m => {
         if (m !== rootNode) {
@@ -111,7 +127,7 @@ export class LoaderModelService {
         selectionRange: { ...savedPlayerConfig.selectionRange },
         initialHeadLocal,
         parentId: obj.parentId || null,
-        autoAnim: obj.properties?.autoAnim || null // 🔥 RECUPERAMOS ANIMACIÓN PROCEDURAL DE LA BD
+        autoAnim: obj.properties?.autoAnim || null
       };
 
       if (isLight) {
@@ -139,9 +155,6 @@ export class LoaderModelService {
         lightObj.diffuse = Color3.FromHexString(lightColorHex);
         lightObj.specular = new Color3(0, 0, 0);
         if (lightObj.range !== undefined) lightObj.range = obj.properties?.range ?? 50;
-      } else {
-        rootNode.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
-        rootNode.ellipsoidOffset = new Vector3(savedCollider.offsetX * obj.scale.x, savedCollider.offsetY * obj.scale.y, savedCollider.offsetZ * obj.scale.z);
       }
 
       mallasCreadas.set(rootNode.metadata.uid, rootNode);

@@ -1,3 +1,4 @@
+
 import {
   Component,
   Input,
@@ -51,19 +52,20 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   range = 50;
   angle = 60;
 
+  lightPosX = 0;
+  lightPosY = 0;
+  lightPosZ = 0;
+
   public childNodes: AttachedNodeOption[] = [];
   public attachedNodePath: string = '';
   public attachedNodeName: string = '';
-
-  public lightRotationFixX: number = Math.PI;
-  public lightRotationFixY: number = 0;
-  public lightRotationFixZ: number = 0;
 
   animStatus = '';
 
   ngOnInit() {
     this.syncData();
     this.subs.push(
+      this.editorSvc.onGizmoDrag.subscribe(() => this.syncData()),
       this.editorSvc.onMapChanged.subscribe(() => this.syncData())
     );
   }
@@ -77,6 +79,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   ngOnDestroy() {
     this.subs.forEach(s => s.unsubscribe());
   }
+
+  private formatNum(val: number): number { return parseFloat(Number(val || 0).toFixed(3)); }
 
   private getAllAttachableNodes(): Array<TransformNode | AbstractMesh> {
     if (!this.objeto) return [];
@@ -149,7 +153,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   private applyAttachment(light: Light | null) {
     if (!light || !this.objeto) return;
 
-    // 🔥 FIX: Si el usuario selecciona "Estático" el path llega como vacío ("")
     const targetNode = this.attachedNodePath !== "" ? (
       this.resolveNodeByPath(this.attachedNodePath) ||
       this.getAllAttachableNodes().find(n => n.name === this.attachedNodeName) ||
@@ -160,12 +163,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       light.parent = targetNode;
     } else {
       light.parent = this.objeto;
-    }
-
-    // 🔥 FIX VITAL: Al reparentar la luz, debemos forzar su posición local a (0,0,0)
-    // para que no arrastre offsets de huesos anteriores o del mundo.
-    if ((light as any).position) {
-      (light as any).position.copyFromFloats(0, 0, 0);
     }
   }
 
@@ -197,13 +194,13 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.intensity = meta.intensity ?? 1.0;
     this.range = meta.range ?? 50;
     this.angle = meta.angle ?? 60;
+    
+    this.lightPosX = this.formatNum(meta.lightPosX ?? 0);
+    this.lightPosY = this.formatNum(meta.lightPosY ?? 0);
+    this.lightPosZ = this.formatNum(meta.lightPosZ ?? 0);
 
     this.attachedNodePath = meta.attachedNodePath || '';
     this.attachedNodeName = meta.attachedNodeName || '';
-
-    this.lightRotationFixX = typeof meta.lightRotationFixX === 'number' ? meta.lightRotationFixX : Math.PI;
-    this.lightRotationFixY = typeof meta.lightRotationFixY === 'number' ? meta.lightRotationFixY : 0;
-    this.lightRotationFixZ = typeof meta.lightRotationFixZ === 'number' ? meta.lightRotationFixZ : 0;
 
     if (!this.attachedNodePath && this.attachedNodeName) {
       const found = this.getAllAttachableNodes().find(n => n.name === this.attachedNodeName);
@@ -234,10 +231,13 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   aplicarLuz() {
     if (!this.objeto.metadata) this.objeto.metadata = {};
 
-    // 🔥 FIX: Si vaciaron el path, vaciar también el nombre
     if (this.attachedNodePath === "") {
         this.attachedNodeName = "";
     }
+
+    this.objeto.metadata.lightPosX = this.lightPosX;
+    this.objeto.metadata.lightPosY = this.lightPosY;
+    this.objeto.metadata.lightPosZ = this.lightPosZ;
 
     const light = this.getAttachedLight();
 
@@ -259,6 +259,11 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       }
 
       this.applyAttachment(light);
+      
+      // 🔥 APLICAR LA POSICIÓN LOCAL CORRECTAMENTE
+      if ((light as any).position) {
+         (light as any).position.copyFromFloats(this.lightPosX, this.lightPosY, this.lightPosZ);
+      }
     }
 
     const targetNode = this.attachedNodePath !== "" ? (
@@ -276,10 +281,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.objeto.metadata.angle = this.angle;
     this.objeto.metadata.attachedNodeName = this.attachedNodeName;
     this.objeto.metadata.attachedNodePath = this.attachedNodePath;
-
-    this.objeto.metadata.lightRotationFixX = this.lightRotationFixX;
-    this.objeto.metadata.lightRotationFixY = this.lightRotationFixY;
-    this.objeto.metadata.lightRotationFixZ = this.lightRotationFixZ;
 
     if (this.objeto.material) {
       (this.objeto.material as any).emissiveColor = Color3.FromHexString(this.lightColor);

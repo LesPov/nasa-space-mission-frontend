@@ -1,3 +1,4 @@
+
 // src/app/services/editor/editor-state.service.ts
 import { Injectable, signal } from '@angular/core';
 import { Subject } from 'rxjs';
@@ -13,7 +14,8 @@ export class EditorStateService {
   public currentTool = signal<ToolMode>('translate');
 
   public objetoSeleccionado = signal<Node | null>(null);
-  public subObjetoSeleccionado = signal<'collider' | 'camera' | null>(null);
+  // 🔥 AÑADIDO: 'light' para poder seleccionar la luz interna
+  public subObjetoSeleccionado = signal<'collider' | 'camera' | 'light' | null>(null);
 
   public objetoInteractuado = signal<any>(null);
   public nodosEscena = signal<Node[]>([]);
@@ -67,8 +69,6 @@ export class EditorStateService {
     return false;
   }
 
-  // 🔥 NUEVA LÓGICA: Se detiene en el primer objeto válido con metadata
-  // Esto permite seleccionar y mover hijos sin que se obligue a seleccionar el padre máximo.
   encontrarRaiz(mesh: AbstractMesh): Node | null {
     if (!mesh) return null;
     let current: Node | null = mesh;
@@ -82,8 +82,6 @@ export class EditorStateService {
         current = current.parent;
         continue;
       }
-      // Si el objeto fue creado/configurado en el editor, tiene type. 
-      // Al retornar aquí, permitimos agarrar piezas hijas que tienen su propia data.
       if ((current as any).metadata && (current as any).metadata.type) {
         return current;
       }
@@ -92,7 +90,6 @@ export class EditorStateService {
     return null;
   }
 
-  // Alias para mantener coherencia semántica en los raycasts
   resolverObjetoSeleccionable(mesh: AbstractMesh | null): AbstractMesh | null {
     return this.encontrarRaiz(mesh as AbstractMesh) as AbstractMesh | null;
   }

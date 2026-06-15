@@ -1,5 +1,6 @@
+
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, Matrix, Mesh, MeshBuilder, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Color3, Light, Matrix, Mesh, MeshBuilder, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { ToolsSelectionService } from './tools-selection.service';
@@ -12,6 +13,7 @@ export class ToolsDebugService {
 
   public debugCollider: Mesh | null = null;
   public debugCameraBox: Mesh | null = null;
+  public debugLightBox: Mesh | null = null; // 🔥 NUEVO: Esfera indicadora de luz local
   public debugFogStartSphere: Mesh | null = null;
   public debugFogEndSphere: Mesh | null = null;
 
@@ -50,6 +52,7 @@ export class ToolsDebugService {
     if (!selected || (playState !== 'EDITOR' && playState !== 'EDITING_IN_GAME')) {
       if (this.debugCollider) { this.debugCollider.dispose(); this.debugCollider = null; }
       if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
+      if (this.debugLightBox) { this.debugLightBox.dispose(); this.debugLightBox = null; }
       if (this.debugFogStartSphere) { this.debugFogStartSphere.dispose(); this.debugFogStartSphere = null; }
       if (this.debugFogEndSphere) { this.debugFogEndSphere.dispose(); this.debugFogEndSphere = null; }
       return;
@@ -91,6 +94,34 @@ export class ToolsDebugService {
       this.debugCameraBox.isPickable = false;
     } else {
       if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
+    }
+
+    // 🔥 NUEVO: CÁLCULO DEL GIZMO DE LUZ INTERNA
+    if (selected.metadata?.type?.startsWith('light_')) {
+        if (this.debugLightBox) this.debugLightBox.dispose();
+        this.debugLightBox = MeshBuilder.CreateSphere('debugLightBox', { diameter: 0.3 }, scene);
+        
+        const lightObj = selected.getDescendants(false).find(c => c.name.startsWith('l_')) as Light;
+        if (lightObj && lightObj.parent) {
+            this.debugLightBox.parent = lightObj.parent;
+        } else {
+            this.debugLightBox.parent = selected;
+        }
+        
+        this.debugLightBox.position = new Vector3(
+          selected.metadata.lightPosX ?? 0, 
+          selected.metadata.lightPosY ?? 0, 
+          selected.metadata.lightPosZ ?? 0
+        );
+        
+        const matLight = new StandardMaterial('debugLightMat', scene);
+        matLight.wireframe = true;
+        matLight.emissiveColor = new Color3(1, 1, 0); // Amarillo brillante
+        matLight.disableLighting = true;
+        this.debugLightBox.material = matLight;
+        this.debugLightBox.isPickable = false;
+    } else {
+        if (this.debugLightBox) { this.debugLightBox.dispose(); this.debugLightBox = null; }
     }
 
     if (this.debugFogStartSphere) { this.debugFogStartSphere.dispose(); this.debugFogStartSphere = null; }
@@ -161,6 +192,15 @@ export class ToolsDebugService {
     const camMeta = obj.metadata?.camOffset;
     if (camMeta && this.debugCameraBox) {
       this.debugCameraBox.position.set(camMeta.x + breathX, camMeta.y + breathY, camMeta.z + breathZ);
+    }
+    
+    // 🔥 SINCRONIZA LA ESFERA DEBUG DE LUZ SI EL MODELO TIENE HUESOS ANIMADOS
+    if (this.debugLightBox && obj.metadata?.type?.startsWith('light_')) {
+       this.debugLightBox.position.set(
+          (obj.metadata.lightPosX ?? 0) + breathX,
+          (obj.metadata.lightPosY ?? 0) + breathY,
+          (obj.metadata.lightPosZ ?? 0) + breathZ
+       );
     }
 
     const fogAnchor = this.getFogDebugAnchor(obj);

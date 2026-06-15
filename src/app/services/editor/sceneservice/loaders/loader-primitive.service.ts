@@ -33,9 +33,21 @@ export class LoaderPrimitiveService {
       default: return;
     }
 
-    mesh.position = new Vector3(obj.position.x, obj.position.y, obj.position.z);
-    mesh.rotationQuaternion = Quaternion.FromEulerAngles(obj.rotation.x, obj.rotation.y, obj.rotation.z);
-    mesh.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
+    // 🔥 FIX VITAL: Sanitización extrema para asegurar 100% integridad de la escala y posición
+    const posX = obj.position?.x ?? 0;
+    const posY = obj.position?.y ?? 0;
+    const posZ = obj.position?.z ?? 0;
+    mesh.position = new Vector3(posX, posY, posZ);
+
+    const rotX = obj.rotation?.x ?? 0;
+    const rotY = obj.rotation?.y ?? 0;
+    const rotZ = obj.rotation?.z ?? 0;
+    mesh.rotationQuaternion = Quaternion.FromEulerAngles(rotX, rotY, rotZ);
+
+    const scaleX = (obj.scale?.x !== undefined && obj.scale?.x !== null && Number(obj.scale?.x) !== 0 && !isNaN(Number(obj.scale?.x))) ? Number(obj.scale.x) : 1;
+    const scaleY = (obj.scale?.y !== undefined && obj.scale?.y !== null && Number(obj.scale?.y) !== 0 && !isNaN(Number(obj.scale?.y))) ? Number(obj.scale.y) : 1;
+    const scaleZ = (obj.scale?.z !== undefined && obj.scale?.z !== null && Number(obj.scale?.z) !== 0 && !isNaN(Number(obj.scale?.z))) ? Number(obj.scale.z) : 1;
+    mesh.scaling = new Vector3(scaleX, scaleY, scaleZ);
 
     const isSolidSaved = obj.properties?.isSolid ?? true;
     const isIgnoraNieblaSaved = obj.properties?.ignoraNiebla ?? false;
@@ -77,7 +89,7 @@ export class LoaderPrimitiveService {
       playerConfig: savedPlayerConfig,
       selectionRange: { ...savedPlayerConfig.selectionRange },
       parentId: obj.parentId || null,
-      autoAnim: obj.properties?.autoAnim || null // 🔥 RECUPERAMOS ANIMACIÓN PROCEDURAL DE LA BD
+      autoAnim: obj.properties?.autoAnim || null
     };
 
     if (obj.type === 'video_plane') {
@@ -101,8 +113,9 @@ export class LoaderPrimitiveService {
     mesh.applyFog = !isIgnoraNieblaSaved;
     if (obj.type !== 'bubble' && obj.type !== 'video_plane' && obj.type !== 'image_plane') mesh.receiveShadows = true;
 
-    mesh.ellipsoid = new Vector3(savedCollider.sizeX * obj.scale.x, savedCollider.sizeY * obj.scale.y, savedCollider.sizeZ * obj.scale.z);
-    mesh.ellipsoidOffset = new Vector3(savedCollider.offsetX * obj.scale.x, savedCollider.offsetY * obj.scale.y, savedCollider.offsetZ * obj.scale.z);
+    // 🔥 ELLIPSOIDES SANITIZADOS
+    mesh.ellipsoid = new Vector3((savedCollider.sizeX ?? 0.5) * scaleX, (savedCollider.sizeY ?? 0.5) * scaleY, (savedCollider.sizeZ ?? 0.5) * scaleZ);
+    mesh.ellipsoidOffset = new Vector3((savedCollider.offsetX ?? 0) * scaleX, (savedCollider.offsetY ?? 0) * scaleY, (savedCollider.offsetZ ?? 0) * scaleZ);
 
     if (obj.type === 'bubble') {
       const mat = new StandardMaterial('mat_' + obj.name, scene);

@@ -28,8 +28,6 @@ import { SceneUtilsService } from './scene-utils.service';
 import { SceneMaterialService } from './scene-material.service';
 import { SceneShadowsService } from './scene-shadows.service';
 import { SceneNodesService } from './scene-nodes.service';
-
-// 🔥 NUEVOS SERVICIOS IMPORTADOS DE LA REFACTORIZACIÓN
 import { SceneProjectionService } from './scene-projection.service';
 import { BuilderTriggerService } from './builder-trigger.service';
  
@@ -43,7 +41,6 @@ export class SceneObjectBuilderService {
   private shadowsSvc = inject(SceneShadowsService);
   private nodesSvc = inject(SceneNodesService);
 
-  // Sub-Servicios Orquestados
   private projectionSvc = inject(SceneProjectionService);
   private triggerBuilderSvc = inject(BuilderTriggerService);
 
@@ -65,7 +62,6 @@ export class SceneObjectBuilderService {
     parentNode: AbstractMesh | null = null
   ): void {
     
-    // 1. Delegar Triggers al sub-servicio
     if (tipo === 'trigger' || tipo === 'trigger_compuesto') {
       const isComposite = tipo === 'trigger_compuesto';
       this.agregarTriggerCustom(nombre, 'cube', isComposite, mensaje, sizeX, sizeY, sizeZ, parentNode);
@@ -77,6 +73,11 @@ export class SceneObjectBuilderService {
     const isLight = tipo.startsWith('light_');
     const isVideo = tipo === 'video_plane';
     const isImage = tipo === 'image_plane';
+
+    // 🔥 FIX VITAL: Sanitizar escalas entrantes del Modal para evitar deformaciones
+    const safeSizeX = (sizeX !== undefined && sizeX !== null && Number(sizeX) !== 0 && !isNaN(Number(sizeX))) ? Number(sizeX) : 1;
+    const safeSizeY = (sizeY !== undefined && sizeY !== null && Number(sizeY) !== 0 && !isNaN(Number(sizeY))) ? Number(sizeY) : 1;
+    const safeSizeZ = (sizeZ !== undefined && sizeZ !== null && Number(sizeZ) !== 0 && !isNaN(Number(sizeZ))) ? Number(sizeZ) : 1;
 
     const defaultCollider = isModel
       ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
@@ -92,7 +93,6 @@ export class SceneObjectBuilderService {
       return cfg;
     };
 
-    // 2. Importación asíncrona de GLBs (Modelos, o luces con forma física)
     if ((isLight && asset) || (isModel && asset)) {
       const fullPath = 'http://localhost:4000' + asset.path;
       const lastSlash = fullPath.lastIndexOf('/');
@@ -100,7 +100,9 @@ export class SceneObjectBuilderService {
       SceneLoader.ImportMeshAsync('', fullPath.substring(0, lastSlash + 1), fullPath.substring(lastSlash + 1), scene).then((result) => {
         const rootNode = result.meshes[0] as Mesh;
         rootNode.name = nombre;
-        rootNode.scaling = new Vector3(sizeX, sizeY, sizeZ);
+        
+        // 🔥 APLICAR ESCALA SEGURA
+        rootNode.scaling = new Vector3(safeSizeX, safeSizeY, safeSizeZ);
 
         if (!rootNode.rotationQuaternion) {
           rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
@@ -176,10 +178,13 @@ export class SceneObjectBuilderService {
           rootNode.metadata.angle = 60;
           rootNode.metadata.attachedNodePath = '';
           rootNode.metadata.attachedNodeName = '';
+          rootNode.metadata.lightPosX = 0;
+          rootNode.metadata.lightPosY = 0;
+          rootNode.metadata.lightPosZ = 0;
 
           let lightObj: any;
-          if (tipo === 'light_point') lightObj = new PointLight('l_' + nombre, new Vector3(0, 2.5, 0), scene);
-          else if (tipo === 'light_spot') lightObj = new SpotLight('l_' + nombre, new Vector3(0, 2.5, 0), new Vector3(0, -1, 0), Math.PI / 3, 2, scene);
+          if (tipo === 'light_point') lightObj = new PointLight('l_' + nombre, new Vector3(0, 0, 0), scene);
+          else if (tipo === 'light_spot') lightObj = new SpotLight('l_' + nombre, new Vector3(0, 0, 0), new Vector3(0, -1, 0), Math.PI / 3, 2, scene);
           else if (tipo === 'light_directional') lightObj = new DirectionalLight('l_' + nombre, new Vector3(0, -1, 0), scene);
 
           lightObj.parent = rootNode;
@@ -189,8 +194,9 @@ export class SceneObjectBuilderService {
         } else {
           rootNode.metadata.esEmisivo = false;
           rootNode.metadata.brilloIntensidad = 1.0;
-          rootNode.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
-          rootNode.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
+          // 🔥 ELLIPSOIDES SEGUROS BASADOS EN LA ESCALA LIMPIA
+          rootNode.ellipsoid = new Vector3(defaultCollider.sizeX * safeSizeX, defaultCollider.sizeY * safeSizeY, defaultCollider.sizeZ * safeSizeZ);
+          rootNode.ellipsoidOffset = new Vector3(defaultCollider.offsetX * safeSizeX, defaultCollider.offsetY * safeSizeY, defaultCollider.offsetZ * safeSizeZ);
         }
 
         this.shadowsSvc.asignarObjetosASombrasDeLuces();
@@ -201,8 +207,6 @@ export class SceneObjectBuilderService {
       });
       return;
     } 
-    
-    // 3. Creación de Primitivas Nativas y Media Planes
     else {
       let mesh!: Mesh;
 
@@ -215,7 +219,6 @@ export class SceneObjectBuilderService {
         case 'light_point':
         case 'light_spot':
         case 'light_directional':
-          // Todas estas usan esferas base si no tienen Asset
           mesh = MeshBuilder.CreateSphere(nombre, { diameter: tipo === 'bubble' ? 1 : 0.4 }, scene);
           break;
         case 'cylinder':
@@ -234,13 +237,14 @@ export class SceneObjectBuilderService {
           return;
       }
 
-      mesh.scaling = new Vector3(sizeX, sizeY, sizeZ);
+      // 🔥 APLICAR ESCALA SEGURA A PRIMITIVAS
+      mesh.scaling = new Vector3(safeSizeX, safeSizeY, safeSizeZ);
 
       if (parentNode) {
         mesh.position = parentNode.getAbsolutePosition().clone();
         mesh.setParent(parentNode);
       } else {
-        mesh.position = new Vector3(0, tipo.startsWith('light_') ? 2 : (0.5 * sizeY), 0);
+        mesh.position = new Vector3(0, tipo.startsWith('light_') ? 2 : (0.5 * safeSizeY), 0);
       }
 
       const playerConfig = attachSelectionRange(mergePlayerConfig(defaultPlayerConfig));
@@ -295,10 +299,10 @@ export class SceneObjectBuilderService {
         mesh.receiveShadows = true;
       }
 
-      mesh.ellipsoid = new Vector3(defaultCollider.sizeX * sizeX, defaultCollider.sizeY * sizeY, defaultCollider.sizeZ * sizeZ);
-      mesh.ellipsoidOffset = new Vector3(defaultCollider.offsetX * sizeX, defaultCollider.offsetY * sizeY, defaultCollider.offsetZ * sizeZ);
+      // 🔥 ELLIPSOIDES SEGUROS BASADOS EN LA ESCALA LIMPIA
+      mesh.ellipsoid = new Vector3(defaultCollider.sizeX * safeSizeX, defaultCollider.sizeY * safeSizeY, defaultCollider.sizeZ * safeSizeZ);
+      mesh.ellipsoidOffset = new Vector3(defaultCollider.offsetX * safeSizeX, defaultCollider.offsetY * safeSizeY, defaultCollider.offsetZ * safeSizeZ);
 
-      // --- CONFIGURACIÓN ESPECÍFICA DE MATERIALES ---
       if (tipo === 'bubble') {
         const mat = new StandardMaterial('mat_' + nombre, scene);
         mat.emissiveColor = new Color3(0.9, 0.95, 1.0);
@@ -313,7 +317,6 @@ export class SceneObjectBuilderService {
         mesh.material = mat;
         mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
       } 
-      
       else if (tipo === 'video_plane') {
         const mat = new StandardMaterial('mat_' + nombre, scene);
         mat.emissiveColor = new Color3(0, 0, 0);
@@ -328,16 +331,13 @@ export class SceneObjectBuilderService {
         }
         mesh.material = mat;
       } 
-      
       else if (tipo === 'image_plane') {
         const mat = new StandardMaterial('decalMat_' + nombre, scene);
         const isBW = scene.metadata?.globalVisualMode === 'bw';
         const activeColorAUsar = isBW ? mesh.metadata.colorBW : colorHex;
-
         const imageUrl = asset && asset.path ? 'http://localhost:4000' + asset.path : '';
         const tex = imageUrl ? new Texture(imageUrl, scene) : undefined;
 
-        // 🔥 DELEGADO 100% AL NUEVO PROJECTION SERVICE (Ahorro de 200 líneas)
         this.projectionSvc.configurarMaterialProyector(mat, activeColorAUsar, 1.0, false, tex);
         
         mesh.material = mat;
@@ -348,7 +348,6 @@ export class SceneObjectBuilderService {
 
         this.projectionSvc.aplicarLogicaHolograma(mesh, scene);
       } 
-      
       else if (isLight) {
         mesh.metadata.lightColor = colorHex;
         mesh.metadata.intensity = 1.0;
@@ -363,8 +362,8 @@ export class SceneObjectBuilderService {
         mesh.isVisible = this.state.rolSimulado() === 'admin';
 
         let lightObj: any;
-        if (tipo === 'light_point') lightObj = new PointLight('l_' + nombre, new Vector3(0, 2.5, 0), scene);
-        else if (tipo === 'light_spot') lightObj = new SpotLight('l_' + nombre, new Vector3(0, 2.5, 0), new Vector3(0, -1, 0), Math.PI / 3, 2, scene);
+        if (tipo === 'light_point') lightObj = new PointLight('l_' + nombre, new Vector3(0, 0, 0), scene);
+        else if (tipo === 'light_spot') lightObj = new SpotLight('l_' + nombre, new Vector3(0, 0, 0), new Vector3(0, -1, 0), Math.PI / 3, 2, scene);
         else if (tipo === 'light_directional') lightObj = new DirectionalLight('l_' + nombre, new Vector3(0, -1, 0), scene);
 
         lightObj.parent = mesh;
@@ -372,9 +371,7 @@ export class SceneObjectBuilderService {
         lightObj.diffuse = Color3.FromHexString(colorHex);
         lightObj.specular = new Color3(0, 0, 0);
       } 
-      
       else {
-        // Objeto Estándar (Cubo, Esfera...)
         const mat = new StandardMaterial('mat_' + nombre, scene);
         const c3 = Color3.FromHexString(colorHex);
         mat.diffuseColor = c3;

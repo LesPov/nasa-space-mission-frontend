@@ -1,3 +1,4 @@
+
 <div class="section-card">
   <div class="section-head">
     <h4>Propiedades de la Luz</h4>
@@ -29,6 +30,15 @@
       <option value="">-- Suelo / Centro del Modelo (Estático) --</option>
       <option *ngFor="let node of childNodes" [value]="node.value">🦴 Pieza: {{ node.label }}</option>
     </select>
+  </div>
+
+  <div class="section-mini-head" style="margin-top: 15px;">
+    <h5>Ajuste Fino de Posición Local</h5>
+  </div>
+  <div class="grid-3" style="margin-bottom: 15px;">
+    <div class="field"><label>Loc X</label><input type="number" step="0.1" [(ngModel)]="lightPosX" (ngModelChange)="aplicarLuz()" /></div>
+    <div class="field"><label>Loc Y</label><input type="number" step="0.1" [(ngModel)]="lightPosY" (ngModelChange)="aplicarLuz()" /></div>
+    <div class="field"><label>Loc Z</label><input type="number" step="0.1" [(ngModel)]="lightPosZ" (ngModelChange)="aplicarLuz()" /></div>
   </div>
 
   <div class="grid-2">

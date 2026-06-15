@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, HemisphericLight, Node } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
@@ -206,6 +207,9 @@ export class SceneSaverService {
                 path: nodo.metadata.path,
                 attachedNodePath: nodo.metadata.attachedNodePath || '',
                 attachedNodeName: nodo.metadata.attachedNodeName || '',
+                lightPosX: this.safeNumber(nodo.metadata.lightPosX, 0),
+                lightPosY: this.safeNumber(nodo.metadata.lightPosY, 0),
+                lightPosZ: this.safeNumber(nodo.metadata.lightPosZ, 0),
                 ...propertiesToSave
               },
               assetId: nodo.metadata.assetId

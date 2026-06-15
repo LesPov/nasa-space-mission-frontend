@@ -59,6 +59,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public objEsSolido: boolean = true;
   public objEsSeleccionable: boolean = true;
   public objMensaje: string = '';
+  public objHacerHijo: boolean = false; // 🔥 NUEVO ESTADO PARA CONTROLAR EL PARENTING
 
   public vistaPrueba: 'FPS' | 'TPS' = 'FPS';
   
@@ -92,7 +93,6 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  // 🔥 LÓGICA DE BOTONES FLOTANTES Y RAYCAST EXACTO
   toggleInspector() {
     this.showInspector = !this.showInspector;
     this.recalcularMotor();
@@ -104,12 +104,10 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   recalcularMotor() {
-    // Le damos microsegundos al DOM para que aplique el CSS/HTML y luego forzamos al motor 3D a leer su nuevo contenedor
     setTimeout(() => this.motor3dSvc.forzarRedimension(), 10);
     setTimeout(() => this.motor3dSvc.forzarRedimension(), 150);
   }
 
-  // Lógica de resizers manuales...
   iniciarRedimension(event: MouseEvent) {
     if (this.editorSvc.playState() === 'EDITOR' || this.editorSvc.playState() === 'EDITING_IN_GAME') {
       this.isResizing = true;
@@ -370,7 +368,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   crearObjeto3D() {
     if(!this.objNombre) return;
     
-    const parent = this.editorSvc.objetoSeleccionado() as AbstractMesh | null;
+    // 🔥 FIX ESCALA RARA: Solo asignamos el padre si la casilla fue marcada manualmente
+    const parent = this.objHacerHijo ? (this.editorSvc.objetoSeleccionado() as AbstractMesh | null) : null;
 
     this.editorSvc.agregarObjetoCustom(
       this.objTipo, this.objNombre, this.objRol, this.objColor, 
@@ -392,6 +391,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.objEsSolido = true;
     this.objEsSeleccionable = true;
     this.objMensaje = '';
+    this.objHacerHijo = false; // Restablecer la casilla de herencia
   }
 
   esObjetoJugable(): boolean {

@@ -68,6 +68,24 @@
           </div>
       </div>
 
+      <div class="grid-2" style="margin-bottom: 15px; border: 1px solid #444; padding: 10px; border-radius: 6px; background: #1c1c1c;">
+        <div class="field wide">
+          <label style="color: #60a5fa;">Forma Física de la Niebla Local</label>
+          <select [ngModel]="playerConfig.fog.fogShape" (ngModelChange)="playerConfig.fog.fogShape = $event; aplicarPlayerConfig()">
+            <option value="sphere">Esfera (Cielo Abierto)</option>
+            <option value="cylinder">Cilindro (Muro Volumétrico / Silent Hill)</option>
+          </select>
+        </div>
+        <div class="field" *ngIf="playerConfig.fog.fogShape === 'cylinder'">
+          <label style="color: #a78bfa;">Altura Máx. Cilindro (Y)</label>
+          <input type="number" step="0.5" [ngModel]="playerConfig.fog.fogHeightY" (ngModelChange)="playerConfig.fog.fogHeightY = $event; aplicarPlayerConfig()" />
+        </div>
+        <div class="field" *ngIf="playerConfig.fog.fogShape === 'cylinder'">
+          <label style="color: #a78bfa;">Suavizado Superior (Y)</label>
+          <input type="number" step="0.5" [ngModel]="playerConfig.fog.fogFalloffY" (ngModelChange)="playerConfig.fog.fogFalloffY = $event; aplicarPlayerConfig()" />
+        </div>
+      </div>
+
       <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; border: 1px solid #334155; margin-bottom: 15px;">
         <h5 style="margin: 0 0 10px 0; color: #e2e8f0; font-size: 11px; text-transform: uppercase;">Ajustes Color Normal</h5>
         
@@ -109,6 +127,9 @@
         </div>
 
         <div class="grid-2">
+          <div class="field" *ngIf="playerConfig.fog.fogShape === 'cylinder'"><label style="color:#a78bfa">Altura Máx. Cilindro B&N</label><input type="number" step="0.5" [ngModel]="playerConfig.fog.fogHeightYBW" (ngModelChange)="playerConfig.fog.fogHeightYBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field" *ngIf="playerConfig.fog.fogShape === 'cylinder'"><label style="color:#a78bfa">Suavizado Superior B&N</label><input type="number" step="0.5" [ngModel]="playerConfig.fog.fogFalloffYBW" (ngModelChange)="playerConfig.fog.fogFalloffYBW = $event; aplicarPlayerConfig()" /></div>
+        
           <div class="field"><label style="color:#60a5fa">Inicio (Esfera Azul FPS)</label><input type="number" step="1" min="0" [ngModel]="playerConfig.fog.startFpsBW" (ngModelChange)="playerConfig.fog.startFpsBW = $event; aplicarPlayerConfig()" /></div>
           <div class="field"><label style="color:#facc15">Inicio (Esfera Azul TPS)</label><input type="number" step="1" min="0" [ngModel]="playerConfig.fog.startTpsBW" (ngModelChange)="playerConfig.fog.startTpsBW = $event; aplicarPlayerConfig()" /></div>
           

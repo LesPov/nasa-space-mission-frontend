@@ -78,6 +78,13 @@ export class PropPlayer implements OnInit {
     fog.fogMode = fog.fogMode === 'exp' || fog.fogMode === 'exp2' ? fog.fogMode : 'linear';
     fog.density = this.normalizarNumero(fog.density, 0.01);
     
+    // 🔥 CONFIGURACIONES DE FORMA DE NIEBLA
+    fog.fogShape = fog.fogShape || 'cylinder';
+    fog.fogHeightY = this.normalizarNumero(fog.fogHeightY, 4.0);
+    fog.fogFalloffY = this.normalizarNumero(fog.fogFalloffY, 1.5);
+    fog.fogHeightYBW = this.normalizarNumero(fog.fogHeightYBW, 4.0);
+    fog.fogFalloffYBW = this.normalizarNumero(fog.fogFalloffYBW, 1.5);
+    
     // 🔥 OFFSETS DE NIEBLA
     fog.offsetX = this.normalizarNumero(fog.offsetX, 0);
     fog.offsetY = this.normalizarNumero(fog.offsetY, 0);
@@ -160,4 +167,4 @@ export class PropPlayer implements OnInit {
     this.sincronizarFogCompat();
     this.aplicarPlayerConfig();
   }
-} 
+}

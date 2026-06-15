@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Color3, GizmoManager, Matrix, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Light } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -107,7 +106,7 @@ export class ToolsGizmoService {
           
           const basePos = this.debugSvc.getFogBaseLocalPos(mesh);
           mesh.metadata.playerConfig.fog.offsetX = this.debugSvc.debugFogStartSphere.position.x - basePos.x;
-          mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - basePos.y;
+          mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - basePos.y - (this.debugSvc.debugFogStartSphere.scaling.y / 2) + 0.5;
           mesh.metadata.playerConfig.fog.offsetZ = this.debugSvc.debugFogStartSphere.position.z - basePos.z;
         } else {
           mesh.setAbsolutePosition(mesh.getAbsolutePosition().add(event.delta));
@@ -170,7 +169,7 @@ export class ToolsGizmoService {
         this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
         const basePos = this.debugSvc.getFogBaseLocalPos(mesh);
         mesh.metadata.playerConfig.fog.offsetX = this.debugSvc.debugFogStartSphere.position.x - basePos.x;
-        mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - basePos.y;
+        mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - basePos.y - (this.debugSvc.debugFogStartSphere.scaling.y / 2) + 0.5;
         mesh.metadata.playerConfig.fog.offsetZ = this.debugSvc.debugFogStartSphere.position.z - basePos.z;
         this.state.onGizmoDrag.next();
         return;

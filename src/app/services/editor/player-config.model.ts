@@ -85,6 +85,9 @@ export interface PlayerDebugConfig {
 export interface PlayerFogConfig {
   enabled: boolean;
   fogMode: 'linear' | 'exp' | 'exp2';
+  fogShape: 'sphere' | 'cylinder'; 
+  fogHeightY: number; 
+  fogFalloffY: number; 
   density: number;
   offsetX: number;
   offsetY: number;
@@ -110,6 +113,8 @@ export interface PlayerFogConfig {
   renderDistanceFpsBW: number;
   renderDistanceTpsBW: number;
   
+  fogHeightYBW: number; 
+  fogFalloffYBW: number; 
   densityStartFpsBW: number;
   densityEndFpsBW: number;
   densityStartTpsBW: number;
@@ -152,11 +157,11 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
   sequences: [],
   debug: { showRays: false, showCollider: false, showState: false },
   fog: {
-    enabled: false, fogMode: 'linear', density: 0.01, offsetX: 0, offsetY: 0, offsetZ: 0, color: '#0d1729',
+    enabled: false, fogMode: 'linear', fogShape: 'sphere', fogHeightY: 4.0, fogFalloffY: 1.5, density: 0.01, offsetX: 0, offsetY: 0, offsetZ: 0, color: '#0d1729',
     startFPS: 0, endFPS: 50000, startTPS: 5, endTPS: 50000, renderDistanceFPS: 100000, renderDistanceTPS: 100000,
     densityStartFPS: 0, densityEndFPS: 100, densityStartTPS: 0, densityEndTPS: 100,
     colorBW: '#555555', startFpsBW: 0, endFpsBW: 50000, startTpsBW: 5, endTpsBW: 50000, renderDistanceFpsBW: 100000, renderDistanceTpsBW: 100000,
-    densityStartFpsBW: 0, densityEndFpsBW: 100, densityStartTpsBW: 0, densityEndTpsBW: 100
+    fogHeightYBW: 4.0, fogFalloffYBW: 1.5, densityStartFpsBW: 0, densityEndFpsBW: 100, densityStartTpsBW: 0, densityEndTpsBW: 100
   }
 };
 

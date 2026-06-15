@@ -148,10 +148,22 @@ export class ToolsDebugService {
       let activeEnd = isBW ? (isFPS ? (fog.endFpsBW ?? 60) : (fog.endTpsBW ?? 90)) : (isFPS ? (fog.endFPS ?? 80) : (fog.endTPS ?? 120));
 
       const fogAnchor = this.getFogDebugAnchor(selected);
+      const fogShape = fog.fogShape || 'cylinder';
+      const fogHeightY = isBW ? (fog.fogHeightYBW ?? 4.0) : (fog.fogHeightY ?? 4.0);
 
-      // We always create the start sphere because we want the user to be able to drag the Offset, even if activeStart is 0.
-      this.debugFogStartSphere = MeshBuilder.CreateSphere('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2), segments: 32 }, scene);
-      this.debugFogStartSphere.position = fogAnchor.clone();
+      // Descontar la altura visual del personaje para que los cilindros empiecen en los pies reales
+      const yOffsetFromFeet = (selected.metadata?.camOffset?.y || 1.6);
+      const startYPosition = fogAnchor.y - yOffsetFromFeet + (fogHeightY / 2);
+
+      // 🔥 Mostrar cilindros visuales de la zona si el modo de niebla lo requiere
+      if (fogShape === 'cylinder') {
+        this.debugFogStartSphere = MeshBuilder.CreateCylinder('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2), height: fogHeightY, tessellation: 32, cap: Mesh.NO_CAP }, scene);
+        this.debugFogStartSphere.position.set(fogAnchor.x, startYPosition, fogAnchor.z);
+      } else {
+        this.debugFogStartSphere = MeshBuilder.CreateSphere('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2), segments: 32 }, scene);
+        this.debugFogStartSphere.position = fogAnchor.clone();
+      }
+
       this.debugFogStartSphere.parent = selected;
       const matFogStart = new StandardMaterial('debugFogStartMat', scene);
       matFogStart.wireframe = true;
@@ -162,8 +174,14 @@ export class ToolsDebugService {
       this.debugFogStartSphere.isPickable = false;
 
       if (activeEnd > 0.1) {
-        this.debugFogEndSphere = MeshBuilder.CreateSphere('debugFogEndSphere', { diameter: activeEnd * 2, segments: 32 }, scene);
-        this.debugFogEndSphere.position = fogAnchor.clone();
+        if (fogShape === 'cylinder') {
+          this.debugFogEndSphere = MeshBuilder.CreateCylinder('debugFogEndSphere', { diameter: activeEnd * 2, height: fogHeightY, tessellation: 32, cap: Mesh.NO_CAP }, scene);
+          this.debugFogEndSphere.position.set(fogAnchor.x, startYPosition, fogAnchor.z);
+        } else {
+          this.debugFogEndSphere = MeshBuilder.CreateSphere('debugFogEndSphere', { diameter: activeEnd * 2, segments: 32 }, scene);
+          this.debugFogEndSphere.position = fogAnchor.clone();
+        }
+
         this.debugFogEndSphere.parent = selected;
         const matFogEnd = new StandardMaterial('debugFogEndMat', scene);
         matFogEnd.wireframe = true;
@@ -211,12 +229,26 @@ export class ToolsDebugService {
        );
     }
 
+    const fogConfig = obj.metadata?.playerConfig?.fog;
+    const fogShape = fogConfig?.fogShape || 'cylinder';
+    const isBW = this.motor3d.scene?.metadata?.globalVisualMode === 'bw';
+    const fogHeightY = isBW ? (fogConfig?.fogHeightYBW ?? 4.0) : (fogConfig?.fogHeightY ?? 4.0);
+    const yOffsetFromFeet = (obj.metadata?.camOffset?.y || 1.6);
+
     const fogAnchor = this.getFogDebugAnchor(obj);
     if (this.debugFogStartSphere) {
-      this.debugFogStartSphere.position.set(fogAnchor.x + breathX, fogAnchor.y + breathY, fogAnchor.z + breathZ);
+      this.debugFogStartSphere.position.set(
+        fogAnchor.x + breathX, 
+        fogAnchor.y + breathY + (fogShape === 'cylinder' ? (fogHeightY / 2) - yOffsetFromFeet : 0), 
+        fogAnchor.z + breathZ
+      );
     }
     if (this.debugFogEndSphere) {
-      this.debugFogEndSphere.position.set(fogAnchor.x + breathX, fogAnchor.y + breathY, fogAnchor.z + breathZ);
+      this.debugFogEndSphere.position.set(
+        fogAnchor.x + breathX, 
+        fogAnchor.y + breathY + (fogShape === 'cylinder' ? (fogHeightY / 2) - yOffsetFromFeet : 0), 
+        fogAnchor.z + breathZ
+      );
     }
   }
 }

@@ -33,7 +33,6 @@ export class LoaderPrimitiveService {
       default: return;
     }
 
-    // 🔥 FIX VITAL: Sanitización extrema para asegurar 100% integridad de la escala y posición
     const posX = obj.position?.x ?? 0;
     const posY = obj.position?.y ?? 0;
     const posZ = obj.position?.z ?? 0;
@@ -100,11 +99,18 @@ export class LoaderPrimitiveService {
       mesh.metadata.assetId = obj.assetId;
       mesh.metadata.imageUrl = obj.properties?.imageUrl || obj.properties?.path || '';
     }
+    
+    // 🔥 FIX VITAL LUZ SIN MODELO: Rescatar la posición local guardada
     if (obj.type?.startsWith('light_')) {
       mesh.metadata.lightColor = lightColorHex;
       mesh.metadata.intensity = obj.properties?.intensity ?? 1.0;
       mesh.metadata.range = obj.properties?.range ?? 50;
       mesh.metadata.angle = obj.properties?.angle ?? 60;
+      mesh.metadata.lightPosX = obj.properties?.lightPosX ?? 0;
+      mesh.metadata.lightPosY = obj.properties?.lightPosY ?? 0;
+      mesh.metadata.lightPosZ = obj.properties?.lightPosZ ?? 0;
+      mesh.metadata.attachedNodePath = obj.properties?.attachedNodePath || '';
+      mesh.metadata.attachedNodeName = obj.properties?.attachedNodeName || '';
     }
 
     mesh.isPickable = true;
@@ -113,7 +119,6 @@ export class LoaderPrimitiveService {
     mesh.applyFog = !isIgnoraNieblaSaved;
     if (obj.type !== 'bubble' && obj.type !== 'video_plane' && obj.type !== 'image_plane') mesh.receiveShadows = true;
 
-    // 🔥 ELLIPSOIDES SANITIZADOS
     mesh.ellipsoid = new Vector3((savedCollider.sizeX ?? 0.5) * scaleX, (savedCollider.sizeY ?? 0.5) * scaleY, (savedCollider.sizeZ ?? 0.5) * scaleZ);
     mesh.ellipsoidOffset = new Vector3((savedCollider.offsetX ?? 0) * scaleX, (savedCollider.offsetY ?? 0) * scaleY, (savedCollider.offsetZ ?? 0) * scaleZ);
 
@@ -165,8 +170,8 @@ export class LoaderPrimitiveService {
       mesh.isVisible = isAdmin;
 
       let lightObj: any;
-      if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 2.5, 0), scene);
-      else if (obj.type === 'light_spot') lightObj = new SpotLight('l_' + obj.name, new Vector3(0, 2.5, 0), new Vector3(0, -1, 0), (obj.properties?.angle ?? 60) * (Math.PI / 180), 2, scene);
+      if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 0, 0), scene);
+      else if (obj.type === 'light_spot') lightObj = new SpotLight('l_' + obj.name, new Vector3(0, 0, 0), new Vector3(0, -1, 0), (obj.properties?.angle ?? 60) * (Math.PI / 180), 2, scene);
       else if (obj.type === 'light_directional') lightObj = new DirectionalLight('l_' + obj.name, new Vector3(0, -1, 0), scene);
 
       lightObj.parent = mesh;
@@ -174,6 +179,11 @@ export class LoaderPrimitiveService {
       lightObj.diffuse = Color3.FromHexString(lightColorHex);
       lightObj.specular = new Color3(0, 0, 0);
       if (lightObj.range !== undefined) lightObj.range = obj.properties?.range ?? 50;
+
+      // 🔥 FIX VITAL LUZ SIN MODELO: Restaurar la posición real en el mundo 3D
+      if (lightObj.position) {
+          lightObj.position.copyFromFloats(mesh.metadata.lightPosX, mesh.metadata.lightPosY, mesh.metadata.lightPosZ);
+      }
     } else {
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       const activeHexToApply = scene.metadata?.globalVisualMode === 'bw' ? mesh.metadata.colorBW : mesh.metadata.color;

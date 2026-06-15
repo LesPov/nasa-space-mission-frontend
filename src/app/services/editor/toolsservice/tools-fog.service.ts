@@ -91,6 +91,19 @@ export class ToolsFogService {
     `;
   }
 
+  // 🔥 FIX: Limpia totalmente los observadores de niebla para que recargue al 100%
+  public limpiarEstado(): void {
+    if (this.fogObserver && this.motor3d.scene) {
+      this.motor3d.scene.onBeforeRenderObservable.remove(this.fogObserver);
+    }
+    this.fogObserver = null;
+    if (this.fogDonut) {
+      this.fogDonut.dispose();
+      this.fogDonut = null;
+    }
+    this.firstFrame = true;
+  }
+
   private updateDonutMesh(mesh: Mesh, innerRadius: number, outerRadius: number, innerHeight: number, outerHeight: number, tessellation: number = 48) {
       if (innerRadius < 0) innerRadius = 0.1;
       if (outerRadius <= innerRadius) outerRadius = innerRadius + 0.1;
@@ -179,7 +192,6 @@ export class ToolsFogService {
     let activeEnd = 50000;
     let activeDensityEnd = 100;
 
-    // Inicializaciones
     let targetFogHeightStart = 4.0, targetFogHeightEnd = 10.0;
     let targetFogFalloffStart = 1.5, targetFogFalloffEnd = 3.0;
     let targetFogShape = 'sphere';
@@ -387,10 +399,10 @@ export class ToolsFogService {
       if (targetMode !== 'linear') scene.fogDensity = this.curDensity;
       
       scene.fogColor = new Color3(this.curR, this.curG, this.curB);
-      scene.clearColor = new Color4(this.curR, this.curG, this.curB, 1);
+      // 🔥 FIX: Quitamos la orden de pintar scene.clearColor, así el Cielo no se altera por la Niebla.
     } else {
       scene.fogMode = Scene.FOGMODE_NONE; 
-      scene.clearColor = new Color4(this.curR, this.curG, this.curB, 1);
+      // 🔥 FIX: Lo mismo aquí, respetamos el color del usuario configurado en PropWorld
     }
 
     scene.lights.forEach(light => {

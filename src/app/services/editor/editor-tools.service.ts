@@ -1,4 +1,3 @@
-
 import { Injectable, inject, effect } from '@angular/core';
 import { DirectionalLight, KeyboardEventTypes, Matrix, Mesh, PointerEventTypes, SpotLight, TransformNode, Vector3, Ray } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
@@ -52,6 +51,11 @@ export class EditorToolsService {
     });
   }
 
+  // 🔥 FIX: Transmite la orden de limpieza al servicio de niebla
+  limpiarEstado(): void {
+    this.fogSvc.limpiarEstado();
+  }
+
   activarEventosEditor(): void {
     const scene = this.motor3d.scene;
     this.state.playState.set('EDITOR');
@@ -70,7 +74,6 @@ export class EditorToolsService {
             if (!mesh.isPickable || !mesh.isVisible) return false;
             const n = mesh.name.toLowerCase();
             if (n.includes('gizmo') || n.includes('proxycol') || n.includes('suelo') || n.includes('skybox')) return false;
-            // 🔥 FIX SELECCIÓN: El Admin SÍ puede seleccionar los triggers en 1ra persona.
             if (ignoreTriggers && !isAdmin && (n.includes('trigger') || mesh.metadata?.type === 'trigger')) return false;
             return true;
         });
@@ -87,7 +90,6 @@ export class EditorToolsService {
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
 
-      // DOBLE CLICK (Enfocar en modo editor)
       if (pi.type === PointerEventTypes.POINTERDOUBLETAP && pi.event.button === 0) {
         if (isAdmin && playSt === 'EDITOR') {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
@@ -101,10 +103,8 @@ export class EditorToolsService {
         return;
       }
 
-      // CLICK NORMAL (Seleccionar / Deseleccionar / Transicionar)
       if (pi.type === PointerEventTypes.POINTERTAP && pi.event.button === 0) {
         
-        // Comportamiento cuando estamos jugando y somos Admin (1ra persona modo edición)
         if (playSt === 'PLAYING') {
           if (!this.state.ratonBloqueado()) {
             try { canvas?.requestPointerLock(); } catch {}
@@ -133,7 +133,6 @@ export class EditorToolsService {
           return;
         }
 
-        // Comportamiento para modo Editor Puro o Editando en Vivo
         if (isAdmin && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
@@ -162,7 +161,6 @@ export class EditorToolsService {
         }
       }
 
-      // HOVER (Mover el ratón)
       if (pi.type === PointerEventTypes.POINTERMOVE) {
         const now = performance.now();
         if (now - this.lastHoverCheckTime < 40) return;

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import {
   AbstractMesh,
@@ -107,11 +106,10 @@ export class SceneObjectBuilderService {
           rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
         }
 
-        // 🔥 LOGICA DE PADRE (SI ESTÁ SELECCIONADA LA OPCIÓN EN EL MODAL)
         if (parentNode) {
           rootNode.position = parentNode.getAbsolutePosition().clone();
           rootNode.setParent(parentNode);
-          rootNode.position = new Vector3(0, 0, 0); // Lo centra perfectamente relativo al padre
+          rootNode.position = new Vector3(0, 0, 0);
         } else {
           rootNode.position = new Vector3(0, 0, 0);
         }
@@ -192,6 +190,11 @@ export class SceneObjectBuilderService {
           lightObj.intensity = 1.0;
           lightObj.diffuse = Color3.FromHexString(colorHex);
           lightObj.specular = new Color3(0, 0, 0);
+          
+          // 🔥 FIX CREADOR VITAL: Fuerza a iniciar en 0 para que empate la métrica al momento de crearlo.
+          if (lightObj.position) {
+              lightObj.position.copyFromFloats(0, 0, 0);
+          }
         } else {
           rootNode.metadata.esEmisivo = false;
           rootNode.metadata.brilloIntensidad = 1.0;
@@ -232,10 +235,9 @@ export class SceneObjectBuilderService {
         mesh.setParent(parentNode);
         
         if (tipo === 'image_plane') {
-            // Empujamos el holograma 2 metros atrás (localmente) para que proyecte directamente en la cara de su nuevo padre.
             mesh.position = new Vector3(0, 0, -2);
         } else {
-            mesh.position = new Vector3(0, 0, 0); // Para todo lo demás, centrar.
+            mesh.position = new Vector3(0, 0, 0); 
         }
       } else {
         mesh.position = new Vector3(0, tipo.startsWith('light_') ? 2 : (0.5 * safeSizeY), 0);
@@ -339,7 +341,6 @@ export class SceneObjectBuilderService {
         mesh.alwaysSelectAsActiveMesh = true;
         mesh.isVisible = this.state.rolSimulado() === 'admin';
 
-        // 🔥 OBLIGA A LA PROYECCIÓN A ESPERAR A ESTAR MONTADO EN EL PADRE ANTES DE DISPARAR
         setTimeout(() => {
            this.projectionSvc.aplicarLogicaHolograma(mesh, scene);
         }, 100);
@@ -366,6 +367,11 @@ export class SceneObjectBuilderService {
         lightObj.intensity = 1.0;
         lightObj.diffuse = Color3.FromHexString(colorHex);
         lightObj.specular = new Color3(0, 0, 0);
+
+        // 🔥 FIX CREADOR VITAL
+        if (lightObj.position) {
+            lightObj.position.copyFromFloats(0, 0, 0);
+        }
       } 
       else {
         const mat = new StandardMaterial('mat_' + nombre, scene);

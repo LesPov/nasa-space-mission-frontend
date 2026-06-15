@@ -1,4 +1,3 @@
-
 import {
   Component,
   Input,
@@ -286,7 +285,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       (this.objeto.material as any).emissiveColor = Color3.FromHexString(this.lightColor);
     }
 
-    this.editorSvc.triggerUpdate();
+    this.editorSvc.triggerUpdate(); // 🔥 GUARDA EN LA BASE DE DATOS Y EN EL EDITOR
     this.animStatus = '💡 Luz actualizada y re-anclada';
   }
 }

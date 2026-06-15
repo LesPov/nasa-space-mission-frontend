@@ -49,7 +49,6 @@ export class LoaderModelService {
     const fullPath = 'http://localhost:4000' + path;
     const lastSlash = fullPath.lastIndexOf('/');
 
-    // 🔥 FIX VITAL: Sanitización extrema para asegurar 100% integridad
     const posX = obj.position?.x ?? 0;
     const posY = obj.position?.y ?? 0;
     const posZ = obj.position?.z ?? 0;
@@ -71,7 +70,6 @@ export class LoaderModelService {
       rootNode.checkCollisions = false;
       rootNode.isPickable = true;
 
-      // 🔥 ELLIPSOIDES SANITIZADOS
       rootNode.ellipsoid = new Vector3((savedCollider.sizeX ?? 0.5) * scaleX, (savedCollider.sizeY ?? 0.5) * scaleY, (savedCollider.sizeZ ?? 0.5) * scaleZ);
       rootNode.ellipsoidOffset = new Vector3((savedCollider.offsetX ?? 0) * scaleX, (savedCollider.offsetY ?? 0) * scaleY, (savedCollider.offsetZ ?? 0) * scaleZ);
 
@@ -137,10 +135,18 @@ export class LoaderModelService {
         rootNode.metadata.angle = obj.properties?.angle ?? 60;
         rootNode.metadata.attachedNodePath = obj.properties?.attachedNodePath || '';
         rootNode.metadata.attachedNodeName = obj.properties?.attachedNodeName || '';
+        
+        // 🔥 FIX VITAL: CARGAMOS LA POSICIÓN LOCAL
+        const lpx = obj.properties?.lightPosX ?? 0;
+        const lpy = obj.properties?.lightPosY ?? 0;
+        const lpz = obj.properties?.lightPosZ ?? 0;
+        rootNode.metadata.lightPosX = lpx;
+        rootNode.metadata.lightPosY = lpy;
+        rootNode.metadata.lightPosZ = lpz;
 
         let lightObj: any;
-        if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 2.5, 0), scene);
-        else if (obj.type === 'light_spot') lightObj = new SpotLight('l_' + obj.name, new Vector3(0, 2.5, 0), new Vector3(0, -1, 0), (obj.properties?.angle ?? 60) * (Math.PI / 180), 2, scene);
+        if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 0, 0), scene);
+        else if (obj.type === 'light_spot') lightObj = new SpotLight('l_' + obj.name, new Vector3(0, 0, 0), new Vector3(0, -1, 0), (obj.properties?.angle ?? 60) * (Math.PI / 180), 2, scene);
         else if (obj.type === 'light_directional') lightObj = new DirectionalLight('l_' + obj.name, new Vector3(0, -1, 0), scene);
 
         let targetParent: TransformNode | AbstractMesh = rootNode;
@@ -155,6 +161,11 @@ export class LoaderModelService {
         lightObj.diffuse = Color3.FromHexString(lightColorHex);
         lightObj.specular = new Color3(0, 0, 0);
         if (lightObj.range !== undefined) lightObj.range = obj.properties?.range ?? 50;
+
+        // 🔥 FIX VITAL: APLICAMOS LA POSICIÓN LOCAL A LA LUZ DEL MOTOR BABYLON
+        if (lightObj.position) {
+            lightObj.position.copyFromFloats(lpx, lpy, lpz);
+        }
       }
 
       mallasCreadas.set(rootNode.metadata.uid, rootNode);

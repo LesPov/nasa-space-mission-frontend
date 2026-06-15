@@ -63,9 +63,8 @@ export class ToolsGizmoService {
     this.setupDragEvents(centerDragBehavior);
   }
 
-  // LOGICA PARA APLICAR LAS POSICIONES DEL GIZMO DE LA NIEBLA SEGUN LA VISTA ACTUAL (FPS o TPS)
   private updateFogGizmoPosition(mesh: Mesh): void {
-      if (!this.debugSvc.debugFogStartSphere) return; // 🔥 FIX: Prevención de nulos
+      if (!this.debugSvc.debugFogStartSphere) return; 
       
       this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
       

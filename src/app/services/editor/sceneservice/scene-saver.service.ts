@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, HemisphericLight, Node } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
@@ -68,7 +67,7 @@ export class SceneSaverService {
       playerConfig: nodo.metadata?.playerConfig || null,
       selectionRange,
       animationNames: nodo.metadata?.animationNames || [],
-      autoAnim: nodo.metadata?.autoAnim || null // 🔥 AÑADIDO: GURDAMOS LA ANIMACIÓN EN LA BD
+      autoAnim: nodo.metadata?.autoAnim || null 
     };
   }
 
@@ -196,6 +195,7 @@ export class SceneSaverService {
               }
             });
           } else if (nodo.metadata.type?.startsWith('light_')) {
+            // 🔥 FIX: GUARDA LA POSICIÓN RELATIVA DE LA LUZ DENTRO DEL MODELO
             sceneObjects.push({
               ...baseData,
               type: nodo.metadata.type,
@@ -226,6 +226,7 @@ export class SceneSaverService {
               }
             });
           } else if (nodo.metadata.type === 'image_plane') {
+            // 🔥 FIX: AHORA SÍ GUARDA LA DISTANCIA DEL FADE DEL HOLOGRAMA
             sceneObjects.push({
               ...baseData,
               type: 'image_plane',
@@ -240,6 +241,7 @@ export class SceneSaverService {
                 proyeccionRepeticiones: this.safeNumber(nodo.metadata.proyeccionRepeticiones, 1),
                 proyeccionEspaciado: this.safeNumber(nodo.metadata.proyeccionEspaciado, 2),
                 proyeccionEje: nodo.metadata.proyeccionEje || 'Y',
+                fadeDistance: this.safeNumber(nodo.metadata.fadeDistance, 0),
                 ...propertiesToSave
               }
             });

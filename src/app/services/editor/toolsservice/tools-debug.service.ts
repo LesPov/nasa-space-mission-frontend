@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Light, Matrix, Mesh, MeshBuilder, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -47,13 +46,15 @@ export class ToolsDebugService {
     return new Vector3(0, 1.6, 0);
   }
 
+  // AHORA TOMA EL OFFSET FPS O TPS SEGÚN LA CÁMARA
   public getFogDebugAnchor(selected: AbstractMesh): Vector3 {
     const pPos = selected.getAbsolutePosition().clone();
     const fogConfig = selected?.metadata?.playerConfig?.fog;
     if (fogConfig) {
-       pPos.x += this.selectionSvc.normalizarNumero(fogConfig.offsetX, 0);
-       pPos.y += this.selectionSvc.normalizarNumero(fogConfig.offsetY, 0);
-       pPos.z += this.selectionSvc.normalizarNumero(fogConfig.offsetZ, 0);
+       const isFPS = this.state.modoVistaPrueba === 'FPS';
+       pPos.x += this.selectionSvc.normalizarNumero(isFPS ? fogConfig.offsetXFPS : fogConfig.offsetXTPS, 0);
+       pPos.y += this.selectionSvc.normalizarNumero(isFPS ? fogConfig.offsetYFPS : fogConfig.offsetYTPS, 0);
+       pPos.z += this.selectionSvc.normalizarNumero(isFPS ? fogConfig.offsetZFPS : fogConfig.offsetZTPS, 0);
     }
     return pPos;
   }
@@ -149,13 +150,14 @@ export class ToolsDebugService {
 
       const fogAnchor = this.getFogDebugAnchor(selected);
       const fogShape = fog.fogShape || 'cylinder';
-      const fogHeightY = Math.max(0.1, isBW ? (fog.fogHeightYBW ?? 4.0) : (fog.fogHeightY ?? 4.0));
-
-      const startYPosition = fogAnchor.y + (fogHeightY / 2);
+      
+      // LEYENDO ALTURAS FPS/TPS EXACTAS
+      const fogHeightStart = Math.max(0.1, isBW ? (isFPS ? fog.fogHeightYStartFpsBW : fog.fogHeightYStartTpsBW) : (isFPS ? fog.fogHeightYStartFPS : fog.fogHeightYStartTPS));
+      const fogHeightEnd = Math.max(0.1, isBW ? (isFPS ? fog.fogHeightYEndFpsBW : fog.fogHeightYEndTpsBW) : (isFPS ? fog.fogHeightYEndFPS : fog.fogHeightYEndTPS));
 
       if (fogShape === 'cylinder') {
-        this.debugFogStartSphere = MeshBuilder.CreateCylinder('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2), height: fogHeightY, tessellation: 32, cap: Mesh.NO_CAP }, scene);
-        this.debugFogStartSphere.position.set(fogAnchor.x, startYPosition, fogAnchor.z);
+        this.debugFogStartSphere = MeshBuilder.CreateCylinder('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2), height: fogHeightStart, tessellation: 32, cap: Mesh.NO_CAP }, scene);
+        this.debugFogStartSphere.position.set(fogAnchor.x, fogAnchor.y + (fogHeightStart / 2), fogAnchor.z);
       } else {
         this.debugFogStartSphere = MeshBuilder.CreateSphere('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2), segments: 32 }, scene);
         this.debugFogStartSphere.position = fogAnchor.clone();
@@ -172,8 +174,8 @@ export class ToolsDebugService {
 
       if (activeEnd > 0.1) {
         if (fogShape === 'cylinder') {
-          this.debugFogEndSphere = MeshBuilder.CreateCylinder('debugFogEndSphere', { diameter: activeEnd * 2, height: fogHeightY, tessellation: 32, cap: Mesh.NO_CAP }, scene);
-          this.debugFogEndSphere.position.set(fogAnchor.x, startYPosition, fogAnchor.z);
+          this.debugFogEndSphere = MeshBuilder.CreateCylinder('debugFogEndSphere', { diameter: activeEnd * 2, height: fogHeightEnd, tessellation: 32, cap: Mesh.NO_CAP }, scene);
+          this.debugFogEndSphere.position.set(fogAnchor.x, fogAnchor.y + (fogHeightEnd / 2), fogAnchor.z);
         } else {
           this.debugFogEndSphere = MeshBuilder.CreateSphere('debugFogEndSphere', { diameter: activeEnd * 2, segments: 32 }, scene);
           this.debugFogEndSphere.position = fogAnchor.clone();
@@ -229,20 +231,24 @@ export class ToolsDebugService {
     const fogConfig = obj.metadata?.playerConfig?.fog;
     const fogShape = fogConfig?.fogShape || 'cylinder';
     const isBW = this.motor3d.scene?.metadata?.globalVisualMode === 'bw';
-    const fogHeightY = Math.max(0.1, isBW ? (fogConfig?.fogHeightYBW ?? 4.0) : (fogConfig?.fogHeightY ?? 4.0));
+    const isFPS = this.state.modoVistaPrueba === 'FPS';
+    
+    // ALTURAS DE ANIMACIÓN SEGÚN VISTA
+    const fogHeightStart = Math.max(0.1, isBW ? (isFPS ? (fogConfig?.fogHeightYStartFpsBW ?? 4.0) : (fogConfig?.fogHeightYStartTpsBW ?? 4.0)) : (isFPS ? (fogConfig?.fogHeightYStartFPS ?? 4.0) : (fogConfig?.fogHeightYStartTPS ?? 4.0)));
+    const fogHeightEnd = Math.max(0.1, isBW ? (isFPS ? (fogConfig?.fogHeightYEndFpsBW ?? 10.0) : (fogConfig?.fogHeightYEndTpsBW ?? 10.0)) : (isFPS ? (fogConfig?.fogHeightYEndFPS ?? 10.0) : (fogConfig?.fogHeightYEndTPS ?? 10.0)));
 
     const fogAnchor = this.getFogDebugAnchor(obj);
     if (this.debugFogStartSphere) {
       this.debugFogStartSphere.position.set(
         fogAnchor.x + breathX, 
-        fogAnchor.y + breathY + (fogShape === 'cylinder' ? (fogHeightY / 2) : 0), 
+        fogAnchor.y + breathY + (fogShape === 'cylinder' ? (fogHeightStart / 2) : 0), 
         fogAnchor.z + breathZ
       );
     }
     if (this.debugFogEndSphere) {
       this.debugFogEndSphere.position.set(
         fogAnchor.x + breathX, 
-        fogAnchor.y + breathY + (fogShape === 'cylinder' ? (fogHeightY / 2) : 0), 
+        fogAnchor.y + breathY + (fogShape === 'cylinder' ? (fogHeightEnd / 2) : 0), 
         fogAnchor.z + breathZ
       );
     }

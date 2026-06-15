@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Color3, GizmoManager, Matrix, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Light } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -64,6 +63,39 @@ export class ToolsGizmoService {
     this.setupDragEvents(centerDragBehavior);
   }
 
+  // LOGICA PARA APLICAR LAS POSICIONES DEL GIZMO DE LA NIEBLA SEGUN LA VISTA ACTUAL (FPS o TPS)
+  private updateFogGizmoPosition(mesh: Mesh): void {
+      if (!this.debugSvc.debugFogStartSphere) return; // 🔥 FIX: Prevención de nulos
+      
+      this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
+      
+      const playerPos = mesh.getAbsolutePosition();
+      const fogConfig = mesh.metadata.playerConfig.fog;
+      const isBW = this.motor3d.scene?.metadata?.globalVisualMode === 'bw';
+      const isFPS = this.state.modoVistaPrueba === 'FPS';
+      
+      let fogHeightY = 4.0;
+      if (isBW) {
+          fogHeightY = Math.max(0.1, isFPS ? (fogConfig.fogHeightYStartFpsBW ?? 4.0) : (fogConfig.fogHeightYStartTpsBW ?? 4.0));
+      } else {
+          fogHeightY = Math.max(0.1, isFPS ? (fogConfig.fogHeightYStartFPS ?? 4.0) : (fogConfig.fogHeightYStartTPS ?? 4.0));
+      }
+      
+      const shapeOffset = (fogConfig.fogShape === 'cylinder' ? (fogHeightY / 2) : 0);
+      
+      if (isFPS) {
+          mesh.metadata.playerConfig.fog.offsetXFPS = this.debugSvc.debugFogStartSphere.position.x - playerPos.x;
+          mesh.metadata.playerConfig.fog.offsetYFPS = this.debugSvc.debugFogStartSphere.position.y - playerPos.y - shapeOffset;
+          mesh.metadata.playerConfig.fog.offsetZFPS = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
+      } else {
+          mesh.metadata.playerConfig.fog.offsetXTPS = this.debugSvc.debugFogStartSphere.position.x - playerPos.x;
+          mesh.metadata.playerConfig.fog.offsetYTPS = this.debugSvc.debugFogStartSphere.position.y - playerPos.y - shapeOffset;
+          mesh.metadata.playerConfig.fog.offsetZTPS = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
+      }
+      
+      this.state.onGizmoDrag.next();
+  }
+
   private setupDragEvents(centerDragBehavior: PointerDragBehavior): void {
     const onDragStart = () => {
       this.isDraggingGizmo = true;
@@ -103,19 +135,7 @@ export class ToolsGizmoService {
           }
         } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
           this.debugSvc.debugFogStartSphere.setAbsolutePosition(this.debugSvc.debugFogStartSphere.getAbsolutePosition().add(event.delta));
-          this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
-          
-          const playerPos = mesh.getAbsolutePosition();
-          const fogConfig = mesh.metadata.playerConfig.fog;
-          const isBW = this.motor3d.scene?.metadata?.globalVisualMode === 'bw';
-          const fogHeightY = Math.max(0.1, isBW ? (fogConfig.fogHeightYBW ?? 4.0) : (fogConfig.fogHeightY ?? 4.0));
-          const shapeOffset = (fogConfig.fogShape === 'cylinder' ? (fogHeightY / 2) : 0);
-          
-          mesh.metadata.playerConfig.fog.offsetX = this.debugSvc.debugFogStartSphere.position.x - playerPos.x;
-          mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - playerPos.y - shapeOffset;
-          mesh.metadata.playerConfig.fog.offsetZ = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
-          
-          this.state.onGizmoDrag.next();
+          this.updateFogGizmoPosition(mesh);
           return;
         }
         else {
@@ -176,19 +196,7 @@ export class ToolsGizmoService {
       }
 
       if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
-        this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
-        
-        const playerPos = mesh.getAbsolutePosition();
-        const fogConfig = mesh.metadata.playerConfig.fog;
-        const isBW = this.motor3d.scene?.metadata?.globalVisualMode === 'bw';
-        const fogHeightY = Math.max(0.1, isBW ? (fogConfig.fogHeightYBW ?? 4.0) : (fogConfig.fogHeightY ?? 4.0));
-        const shapeOffset = (fogConfig.fogShape === 'cylinder' ? (fogHeightY / 2) : 0);
-        
-        mesh.metadata.playerConfig.fog.offsetX = this.debugSvc.debugFogStartSphere.position.x - playerPos.x;
-        mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - playerPos.y - shapeOffset;
-        mesh.metadata.playerConfig.fog.offsetZ = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
-        
-        this.state.onGizmoDrag.next();
+        this.updateFogGizmoPosition(mesh);
         return;
       }
 
@@ -245,18 +253,12 @@ export class ToolsGizmoService {
         this.debugSvc.actualizarDebugMeshes(mesh);
         this.gizmoManager.attachToMesh(this.debugSvc.debugCollider);
         queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
-      } else if (subSelected === 'camera' && this.debugSvc.debugCameraBox) {
-        queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
-      } else if (subSelected === 'light' && this.debugSvc.debugLightBox) {
-        queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
-      } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
+      } else if (subSelected === 'camera' || subSelected === 'light' || subSelected === 'fog') {
         queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
       } else if (mesh && this.estadoAntesDeArrastrar) {
         this.historialSvc.registrarAccionTransform(mesh, this.estadoAntesDeArrastrar);
         this.estadoAntesDeArrastrar = null;
-        
         if (mesh.metadata?.updateDecal) mesh.metadata.updateDecal();
-
         queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
       }
     };

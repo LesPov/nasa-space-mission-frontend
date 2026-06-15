@@ -1,4 +1,3 @@
-
 export type AnimBinding = string | string[] | null;
 
 export type PlayerActionKey =
@@ -86,13 +85,28 @@ export interface PlayerFogConfig {
   enabled: boolean;
   fogMode: 'linear' | 'exp' | 'exp2';
   fogShape: 'sphere' | 'cylinder'; 
-  fogHeightY: number; 
-  fogFalloffY: number; 
   density: number;
-  offsetX: number;
-  offsetY: number;
-  offsetZ: number;
+
+  // 🔥 OFFSETS INDEPENDIENTES FPS/TPS
+  offsetXFPS: number;
+  offsetYFPS: number;
+  offsetZFPS: number;
+  offsetXTPS: number;
+  offsetYTPS: number;
+  offsetZTPS: number;
+  
+  // 🔥 COLOR NORMAL INDEPENDIENTES FPS/TPS
   color: string;
+  fogHeightYStartFPS: number;
+  fogHeightYEndFPS: number;
+  fogFalloffYStartFPS: number;
+  fogFalloffYEndFPS: number;
+  
+  fogHeightYStartTPS: number;
+  fogHeightYEndTPS: number;
+  fogFalloffYStartTPS: number;
+  fogFalloffYEndTPS: number;
+
   startFPS: number;
   endFPS: number;
   startTPS: number;
@@ -105,7 +119,18 @@ export interface PlayerFogConfig {
   densityStartTPS: number;
   densityEndTPS: number;
 
+  // 🔥 COLOR BLANCO Y NEGRO (B&W) INDEPENDIENTES FPS/TPS
   colorBW: string;
+  fogHeightYStartFpsBW: number;
+  fogHeightYEndFpsBW: number;
+  fogFalloffYStartFpsBW: number;
+  fogFalloffYEndFpsBW: number;
+
+  fogHeightYStartTpsBW: number;
+  fogHeightYEndTpsBW: number;
+  fogFalloffYStartTpsBW: number;
+  fogFalloffYEndTpsBW: number;
+
   startFpsBW: number;
   endFpsBW: number;
   startTpsBW: number;
@@ -113,12 +138,27 @@ export interface PlayerFogConfig {
   renderDistanceFpsBW: number;
   renderDistanceTpsBW: number;
   
-  fogHeightYBW: number; 
-  fogFalloffYBW: number; 
   densityStartFpsBW: number;
   densityEndFpsBW: number;
   densityStartTpsBW: number;
   densityEndTpsBW: number;
+
+  // Variables legacy para migración automática y no perder datos
+  offsetX?: number;
+  offsetY?: number;
+  offsetZ?: number;
+  fogHeightYStart?: number;
+  fogHeightYEnd?: number;
+  fogFalloffYStart?: number;
+  fogFalloffYEnd?: number;
+  fogHeightYStartBW?: number;
+  fogHeightYEndBW?: number;
+  fogFalloffYStartBW?: number;
+  fogFalloffYEndBW?: number;
+  fogHeightY?: number;
+  fogFalloffY?: number;
+  fogHeightYBW?: number;
+  fogFalloffYBW?: number;
 }
 
 export interface PlayerRuntimeConfig {
@@ -157,11 +197,19 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
   sequences: [],
   debug: { showRays: false, showCollider: false, showState: false },
   fog: {
-    enabled: false, fogMode: 'linear', fogShape: 'sphere', fogHeightY: 4.0, fogFalloffY: 1.5, density: 0.01, offsetX: 0, offsetY: 0, offsetZ: 0, color: '#0d1729',
+    enabled: false, fogMode: 'linear', fogShape: 'cylinder', density: 0.01,
+    offsetXFPS: 0, offsetYFPS: 0, offsetZFPS: 0,
+    offsetXTPS: 0, offsetYTPS: 0, offsetZTPS: 0,
+    color: '#0d1729',
+    fogHeightYStartFPS: 4.0, fogHeightYEndFPS: 10.0, fogFalloffYStartFPS: 1.5, fogFalloffYEndFPS: 3.0,
+    fogHeightYStartTPS: 4.0, fogHeightYEndTPS: 10.0, fogFalloffYStartTPS: 1.5, fogFalloffYEndTPS: 3.0,
     startFPS: 0, endFPS: 50000, startTPS: 5, endTPS: 50000, renderDistanceFPS: 100000, renderDistanceTPS: 100000,
     densityStartFPS: 0, densityEndFPS: 100, densityStartTPS: 0, densityEndTPS: 100,
-    colorBW: '#555555', startFpsBW: 0, endFpsBW: 50000, startTpsBW: 5, endTpsBW: 50000, renderDistanceFpsBW: 100000, renderDistanceTpsBW: 100000,
-    fogHeightYBW: 4.0, fogFalloffYBW: 1.5, densityStartFpsBW: 0, densityEndFpsBW: 100, densityStartTpsBW: 0, densityEndTpsBW: 100
+    colorBW: '#555555', 
+    fogHeightYStartFpsBW: 4.0, fogHeightYEndFpsBW: 10.0, fogFalloffYStartFpsBW: 1.5, fogFalloffYEndFpsBW: 3.0,
+    fogHeightYStartTpsBW: 4.0, fogHeightYEndTpsBW: 10.0, fogFalloffYStartTpsBW: 1.5, fogFalloffYEndTpsBW: 3.0,
+    startFpsBW: 0, endFpsBW: 50000, startTpsBW: 5, endTpsBW: 50000, renderDistanceFpsBW: 100000, renderDistanceTpsBW: 100000,
+    densityStartFpsBW: 0, densityEndFpsBW: 100, densityStartTpsBW: 0, densityEndTpsBW: 100
   }
 };
 

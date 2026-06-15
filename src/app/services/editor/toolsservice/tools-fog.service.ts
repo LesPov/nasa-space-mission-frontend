@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, Scene, Vector3, Observer, Mesh, Engine, ShaderMaterial, Effect, VertexData } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -19,16 +18,15 @@ export class ToolsFogService {
   private curB = 0;
   private curDensity = 0.01;
   
-  // Variables suavizadas de la malla física
   private curInner = 0.1;
   private curOuter = 1.0;
-  private curHeight = 4.0;
+  private curHeightStart = 4.0;
+  private curHeightEnd = 10.0;
   private curAlpha = 0; 
 
   private firstFrame = true;
 
   constructor() {
-    // Shaders de la niebla cilíndrica volumétrica
     Effect.ShadersStore['silentFogVertexShader'] = `
       precision highp float;
       attribute vec3 position;
@@ -52,16 +50,29 @@ export class ToolsFogService {
       
       uniform vec3 color;
       uniform float alphaMax;
-      uniform float heightMax;
-      uniform float falloffY;
+      
+      uniform float heightMaxStart;
+      uniform float heightMaxEnd;
+      uniform float falloffYStart;
+      uniform float falloffYEnd;
+      
+      uniform float innerRadius;
+      uniform float outerRadius;
       uniform vec3 playerPos;
 
       void main() {
+          float distXZ = distance(vPositionW.xz, playerPos.xz);
+          
+          float t = clamp((distXZ - innerRadius) / (outerRadius - innerRadius + 0.001), 0.0, 1.0);
+          
+          float currentHeight = mix(heightMaxStart, heightMaxEnd, t);
+          float currentFalloff = mix(falloffYStart, falloffYEnd, t);
+
           float yDist = vPositionW.y - playerPos.y;
           float yFactor = 1.0;
           
-          if (yDist > (heightMax - falloffY)) {
-             yFactor = clamp(1.0 - ((yDist - (heightMax - falloffY)) / falloffY), 0.0, 1.0);
+          if (yDist > (currentHeight - currentFalloff)) {
+             yFactor = clamp(1.0 - ((yDist - (currentHeight - currentFalloff)) / max(0.001, currentFalloff)), 0.0, 1.0);
           }
           if (yDist < 0.0) {
              yFactor = 1.0; 
@@ -69,7 +80,6 @@ export class ToolsFogService {
 
           float finalAlpha = alphaMax * yFactor;
 
-          // Suavizado en los bordes para que parezca humo/niebla
           float edgeSoftness = 0.05;
           if(vUV.y > (1.0 - edgeSoftness)) finalAlpha *= (1.0 - vUV.y) / edgeSoftness;
           if(vUV.y < edgeSoftness) finalAlpha *= vUV.y / edgeSoftness;
@@ -81,8 +91,7 @@ export class ToolsFogService {
     `;
   }
 
-  // 🔥 CREADOR EN TIEMPO REAL DE UN TUBO CON GROSOR (DONA PLANA)
-  private updateDonutMesh(mesh: Mesh, innerRadius: number, outerRadius: number, height: number, tessellation: number = 48) {
+  private updateDonutMesh(mesh: Mesh, innerRadius: number, outerRadius: number, innerHeight: number, outerHeight: number, tessellation: number = 48) {
       if (innerRadius < 0) innerRadius = 0.1;
       if (outerRadius <= innerRadius) outerRadius = innerRadius + 0.1;
       
@@ -95,39 +104,20 @@ export class ToolsFogService {
           const cos = Math.cos(angle);
           const sin = Math.sin(angle);
           
-          // 0: Pared interior abajo
-          positions.push(innerRadius * cos, 0, innerRadius * sin);
-          uvs.push(i / tessellation, 0);
-          // 1: Pared exterior abajo
-          positions.push(outerRadius * cos, 0, outerRadius * sin);
-          uvs.push(i / tessellation, 0);
-          // 2: Pared exterior arriba
-          positions.push(outerRadius * cos, height, outerRadius * sin);
-          uvs.push(i / tessellation, 1);
-          // 3: Pared interior arriba
-          positions.push(innerRadius * cos, height, innerRadius * sin);
-          uvs.push(i / tessellation, 1);
+          positions.push(innerRadius * cos, 0, innerRadius * sin); uvs.push(i / tessellation, 0);
+          positions.push(outerRadius * cos, 0, outerRadius * sin); uvs.push(i / tessellation, 0);
+          positions.push(outerRadius * cos, outerHeight, outerRadius * sin); uvs.push(i / tessellation, 1);
+          positions.push(innerRadius * cos, innerHeight, innerRadius * sin); uvs.push(i / tessellation, 1);
       }
       
       for (let i = 0; i < tessellation; i++) {
           const base = i * 4;
           const next = (i + 1) * 4;
           
-          // Tapa de Abajo
-          indices.push(base, next, base + 1);
-          indices.push(next, next + 1, base + 1);
-          
-          // Muro Exterior
-          indices.push(base + 1, next + 1, base + 2);
-          indices.push(next + 1, next + 2, base + 2);
-          
-          // Tapa de Arriba
-          indices.push(base + 2, next + 2, base + 3);
-          indices.push(next + 2, next + 3, base + 3);
-          
-          // Muro Interior
-          indices.push(base + 3, next + 3, base);
-          indices.push(next + 3, next, base);
+          indices.push(base, next, base + 1); indices.push(next, next + 1, base + 1);
+          indices.push(base + 1, next + 1, base + 2); indices.push(next + 1, next + 2, base + 2);
+          indices.push(base + 2, next + 2, base + 3); indices.push(next + 2, next + 3, base + 3);
+          indices.push(base + 3, next + 3, base); indices.push(next + 3, next, base);
       }
       
       const vertexData = new VertexData();
@@ -155,7 +145,8 @@ export class ToolsFogService {
       
       this.curInner = 0.1;
       this.curOuter = 1.0;
-      this.curHeight = 4.0;
+      this.curHeightStart = 4.0;
+      this.curHeightEnd = 10.0;
       this.curAlpha = 0;
 
       this.firstFrame = true;
@@ -188,12 +179,12 @@ export class ToolsFogService {
     let activeEnd = 50000;
     let activeDensityEnd = 100;
 
-    let targetFogHeightY = 10;
-    let targetFogFalloffY = 3;
+    // Inicializaciones
+    let targetFogHeightStart = 4.0, targetFogHeightEnd = 10.0;
+    let targetFogFalloffStart = 1.5, targetFogFalloffEnd = 3.0;
     let targetFogShape = 'sphere';
     let activeStart = 0;
 
-    // 🔥 VEMOS EL ANILLO EN EL EDITOR SIN DAR PLAY
     const isSelectedInEditor = (modo === 'EDITOR' || modo === 'EDITING_IN_GAME') && this.state.objetoSeleccionado() === targetPlayer;
 
     if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled && (modo === 'PLAYING' || modo === 'TRANSITIONING' || isSelectedInEditor)) {
@@ -215,8 +206,10 @@ export class ToolsFogService {
           rawDensStart = isFPS ? fog.densityStartFpsBW : fog.densityStartTpsBW;
           rawDensEnd = isFPS ? fog.densityEndFpsBW : fog.densityEndTpsBW;
           
-          targetFogHeightY = Math.max(0.1, fog.fogHeightYBW ?? 4.0);
-          targetFogFalloffY = Math.max(0.1, fog.fogFalloffYBW ?? 1.5);
+          targetFogHeightStart = Math.max(0.1, isFPS ? (fog.fogHeightYStartFpsBW ?? 4.0) : (fog.fogHeightYStartTpsBW ?? 4.0));
+          targetFogHeightEnd = Math.max(0.1, isFPS ? (fog.fogHeightYEndFpsBW ?? targetFogHeightStart) : (fog.fogHeightYEndTpsBW ?? targetFogHeightStart));
+          targetFogFalloffStart = Math.max(0.1, isFPS ? (fog.fogFalloffYStartFpsBW ?? 1.5) : (fog.fogFalloffYStartTpsBW ?? 1.5));
+          targetFogFalloffEnd = Math.max(0.1, isFPS ? (fog.fogFalloffYEndFpsBW ?? targetFogFalloffStart) : (fog.fogFalloffYEndTpsBW ?? targetFogFalloffStart));
         } else {
           const colorObj = Color3.FromHexString(fog.color || '#0d1729');
           targetR = colorObj.r; targetG = colorObj.g; targetB = colorObj.b;
@@ -227,8 +220,10 @@ export class ToolsFogService {
           rawDensStart = isFPS ? fog.densityStartFPS : fog.densityStartTPS;
           rawDensEnd = isFPS ? fog.densityEndFPS : fog.densityEndTPS;
           
-          targetFogHeightY = Math.max(0.1, fog.fogHeightY ?? 4.0);
-          targetFogFalloffY = Math.max(0.1, fog.fogFalloffY ?? 1.5);
+          targetFogHeightStart = Math.max(0.1, isFPS ? (fog.fogHeightYStartFPS ?? 4.0) : (fog.fogHeightYStartTPS ?? 4.0));
+          targetFogHeightEnd = Math.max(0.1, isFPS ? (fog.fogHeightYEndFPS ?? targetFogHeightStart) : (fog.fogHeightYEndTPS ?? targetFogHeightStart));
+          targetFogFalloffStart = Math.max(0.1, isFPS ? (fog.fogFalloffYStartFPS ?? 1.5) : (fog.fogFalloffYStartTPS ?? 1.5));
+          targetFogFalloffEnd = Math.max(0.1, isFPS ? (fog.fogFalloffYEndFPS ?? targetFogFalloffStart) : (fog.fogFalloffYEndTPS ?? targetFogFalloffStart));
         }
         
         if (targetMode !== 'linear') {
@@ -298,7 +293,9 @@ export class ToolsFogService {
       if (!this.fogDonut) {
           this.fogDonut = new Mesh('silentFogDonut', scene);
           const shaderMat = new ShaderMaterial("silentFogMat", scene, { vertex: "silentFog", fragment: "silentFog" },
-            { attributes: ["position", "uv"], uniforms: ["worldViewProjection", "world", "color", "alphaMax", "heightMax", "falloffY", "playerPos"], needAlphaBlending: true }
+            { attributes: ["position", "uv"], 
+              uniforms: ["worldViewProjection", "world", "color", "alphaMax", "heightMaxStart", "heightMaxEnd", "falloffYStart", "falloffYEnd", "innerRadius", "outerRadius", "playerPos"], 
+              needAlphaBlending: true }
           );
           shaderMat.backFaceCulling = false; 
           shaderMat.alphaMode = Engine.ALPHA_COMBINE; 
@@ -308,33 +305,33 @@ export class ToolsFogService {
           this.fogDonut.receiveShadows = false; 
           this.fogDonut.applyFog = false; 
           this.curAlpha = 0;
-          this.updateDonutMesh(this.fogDonut, 0.1, 1.0, 1.0, 48); // Ficticio inicial
+          this.updateDonutMesh(this.fogDonut, 0.1, 1.0, 4.0, 10.0, 48);
       }
 
       if (this.fogDonut && targetPlayer) {
           const fog = targetPlayer.metadata.playerConfig.fog;
           const lerpCyl = lerpSpeed * 1.5;
           
-          // 🔥 LÓGICA VITAL: El grosor va EXACTAMENTE desde tu Inicio hasta tu Final
           const targetInnerRadius = Math.max(0.1, activeStart);
           const targetOuterRadius = Math.max(targetInnerRadius + 0.1, activeEnd);
 
           if (this.firstFrame) {
             this.curInner = targetInnerRadius;
             this.curOuter = targetOuterRadius;
-            this.curHeight = targetFogHeightY;
+            this.curHeightStart = targetFogHeightStart;
+            this.curHeightEnd = targetFogHeightEnd;
           } else {
             this.curInner += (targetInnerRadius - this.curInner) * lerpCyl;
             this.curOuter += (targetOuterRadius - this.curOuter) * lerpCyl;
-            this.curHeight += (targetFogHeightY - this.curHeight) * lerpCyl;
+            this.curHeightStart += (targetFogHeightStart - this.curHeightStart) * lerpCyl;
+            this.curHeightEnd += (targetFogHeightEnd - this.curHeightEnd) * lerpCyl;
           }
 
-          // DIBUJA EL ANILLO EN TIEMPO REAL
-          this.updateDonutMesh(this.fogDonut, this.curInner, this.curOuter, this.curHeight, 48);
+          this.updateDonutMesh(this.fogDonut, this.curInner, this.curOuter, this.curHeightStart, this.curHeightEnd, 48);
           
-          const fogOffsetX = Number.isFinite(Number(fog.offsetX)) ? Number(fog.offsetX) : 0;
-          const fogOffsetY = Number.isFinite(Number(fog.offsetY)) ? Number(fog.offsetY) : 0;
-          const fogOffsetZ = Number.isFinite(Number(fog.offsetZ)) ? Number(fog.offsetZ) : 0;
+          const fogOffsetX = isFPS ? (Number.isFinite(Number(fog.offsetXFPS)) ? Number(fog.offsetXFPS) : 0) : (Number.isFinite(Number(fog.offsetXTPS)) ? Number(fog.offsetXTPS) : 0);
+          const fogOffsetY = isFPS ? (Number.isFinite(Number(fog.offsetYFPS)) ? Number(fog.offsetYFPS) : 0) : (Number.isFinite(Number(fog.offsetYTPS)) ? Number(fog.offsetYTPS) : 0);
+          const fogOffsetZ = isFPS ? (Number.isFinite(Number(fog.offsetZFPS)) ? Number(fog.offsetZFPS) : 0) : (Number.isFinite(Number(fog.offsetZTPS)) ? Number(fog.offsetZTPS) : 0);
 
           const pPos = targetPlayer.getAbsolutePosition();
           
@@ -351,14 +348,25 @@ export class ToolsFogService {
           else this.curAlpha += (targetAlpha - this.curAlpha) * lerpCyl;
           
           mat.setFloat("alphaMax", this.curAlpha);
-          mat.setFloat("heightMax", this.curHeight);
-          mat.setFloat("falloffY", targetFogFalloffY);
+          
+          mat.setFloat("heightMaxStart", this.curHeightStart);
+          mat.setFloat("heightMaxEnd", this.curHeightEnd);
+          mat.setFloat("falloffYStart", targetFogFalloffStart);
+          mat.setFloat("falloffYEnd", targetFogFalloffEnd);
+          mat.setFloat("innerRadius", this.curInner);
+          mat.setFloat("outerRadius", this.curOuter);
+          
           mat.setVector3("playerPos", new Vector3(pPos.x + fogOffsetX, pPos.y + fogOffsetY, pPos.z + fogOffsetZ));
       }
     }
     
     if (this.firstFrame) {
-      this.curStart = targetStart; this.curEnd = targetEnd; this.curR = targetR; this.curG = targetG; this.curB = targetB; this.curDensity = targetDensity;
+      this.curStart = targetStart; 
+      this.curEnd = targetEnd; 
+      this.curR = targetR; 
+      this.curG = targetG; 
+      this.curB = targetB; 
+      this.curDensity = targetDensity;
       this.firstFrame = false;
     } else {
       this.curStart += (targetStart - this.curStart) * lerpSpeed;

@@ -101,19 +101,18 @@ export class ToolsGizmoService {
           if (lightObj && (lightObj as any).position) {
               (lightObj as any).position.copyFromFloats(mesh.metadata.lightPosX, mesh.metadata.lightPosY, mesh.metadata.lightPosZ);
           }
-       // DENTRO DE onDraggingCenter y onDraggingGizmo:
         } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
-          // Movemos la malla de debug al arrastrar
           this.debugSvc.debugFogStartSphere.setAbsolutePosition(this.debugSvc.debugFogStartSphere.getAbsolutePosition().add(event.delta));
           this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
           
-          // Obtenemos la posición absoluta actual del Jugador (Player)
           const playerPos = mesh.getAbsolutePosition();
+          const fogConfig = mesh.metadata.playerConfig.fog;
+          const isBW = this.motor3d.scene?.metadata?.globalVisualMode === 'bw';
+          const fogHeightY = Math.max(0.1, isBW ? (fogConfig.fogHeightYBW ?? 4.0) : (fogConfig.fogHeightY ?? 4.0));
+          const shapeOffset = (fogConfig.fogShape === 'cylinder' ? (fogHeightY / 2) : 0);
           
-          // Calculamos el nuevo Offset restando la posición del debug a la posición del Player
           mesh.metadata.playerConfig.fog.offsetX = this.debugSvc.debugFogStartSphere.position.x - playerPos.x;
-          // Ajustamos la Y para que el gizmo represente el suelo del cilindro/esfera
-          mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - playerPos.y;
+          mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - playerPos.y - shapeOffset;
           mesh.metadata.playerConfig.fog.offsetZ = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
           
           this.state.onGizmoDrag.next();
@@ -178,10 +177,17 @@ export class ToolsGizmoService {
 
       if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
         this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
-        const basePos = this.debugSvc.getFogBaseLocalPos(mesh);
-        mesh.metadata.playerConfig.fog.offsetX = this.debugSvc.debugFogStartSphere.position.x - basePos.x;
-        mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - basePos.y;
-        mesh.metadata.playerConfig.fog.offsetZ = this.debugSvc.debugFogStartSphere.position.z - basePos.z;
+        
+        const playerPos = mesh.getAbsolutePosition();
+        const fogConfig = mesh.metadata.playerConfig.fog;
+        const isBW = this.motor3d.scene?.metadata?.globalVisualMode === 'bw';
+        const fogHeightY = Math.max(0.1, isBW ? (fogConfig.fogHeightYBW ?? 4.0) : (fogConfig.fogHeightY ?? 4.0));
+        const shapeOffset = (fogConfig.fogShape === 'cylinder' ? (fogHeightY / 2) : 0);
+        
+        mesh.metadata.playerConfig.fog.offsetX = this.debugSvc.debugFogStartSphere.position.x - playerPos.x;
+        mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - playerPos.y - shapeOffset;
+        mesh.metadata.playerConfig.fog.offsetZ = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
+        
         this.state.onGizmoDrag.next();
         return;
       }

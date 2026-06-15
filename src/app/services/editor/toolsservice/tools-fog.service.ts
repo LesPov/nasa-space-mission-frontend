@@ -1,5 +1,6 @@
+
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, Scene, Vector3, Observer, Mesh, MeshBuilder, Engine, ShaderMaterial, Effect } from '@babylonjs/core';
+import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, Scene, Vector3, Observer, Mesh, Engine, ShaderMaterial, Effect, VertexData } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 
@@ -9,7 +10,7 @@ export class ToolsFogService {
   private state = inject(EditorStateService);
 
   private fogObserver: Observer<Scene> | null = null;
-  private fogCylinder: Mesh | null = null; 
+  private fogDonut: Mesh | null = null; 
 
   private curStart = 500000;
   private curEnd = 500000;
@@ -17,11 +18,17 @@ export class ToolsFogService {
   private curG = 0;
   private curB = 0;
   private curDensity = 0.01;
-  private curCylAlpha = 0; 
+  
+  // Variables suavizadas de la malla física
+  private curInner = 0.1;
+  private curOuter = 1.0;
+  private curHeight = 4.0;
+  private curAlpha = 0; 
+
   private firstFrame = true;
 
   constructor() {
-    // Shaders de la niebla cilíndrica (Perfectos)
+    // Shaders de la niebla cilíndrica volumétrica
     Effect.ShadersStore['silentFogVertexShader'] = `
       precision highp float;
       attribute vec3 position;
@@ -62,6 +69,7 @@ export class ToolsFogService {
 
           float finalAlpha = alphaMax * yFactor;
 
+          // Suavizado en los bordes para que parezca humo/niebla
           float edgeSoftness = 0.05;
           if(vUV.y > (1.0 - edgeSoftness)) finalAlpha *= (1.0 - vUV.y) / edgeSoftness;
           if(vUV.y < edgeSoftness) finalAlpha *= vUV.y / edgeSoftness;
@@ -71,6 +79,63 @@ export class ToolsFogService {
           gl_FragColor = vec4(color, finalAlpha);
       }
     `;
+  }
+
+  // 🔥 CREADOR EN TIEMPO REAL DE UN TUBO CON GROSOR (DONA PLANA)
+  private updateDonutMesh(mesh: Mesh, innerRadius: number, outerRadius: number, height: number, tessellation: number = 48) {
+      if (innerRadius < 0) innerRadius = 0.1;
+      if (outerRadius <= innerRadius) outerRadius = innerRadius + 0.1;
+      
+      const positions = [];
+      const indices = [];
+      const uvs = [];
+      
+      for (let i = 0; i <= tessellation; i++) {
+          const angle = (i / tessellation) * Math.PI * 2;
+          const cos = Math.cos(angle);
+          const sin = Math.sin(angle);
+          
+          // 0: Pared interior abajo
+          positions.push(innerRadius * cos, 0, innerRadius * sin);
+          uvs.push(i / tessellation, 0);
+          // 1: Pared exterior abajo
+          positions.push(outerRadius * cos, 0, outerRadius * sin);
+          uvs.push(i / tessellation, 0);
+          // 2: Pared exterior arriba
+          positions.push(outerRadius * cos, height, outerRadius * sin);
+          uvs.push(i / tessellation, 1);
+          // 3: Pared interior arriba
+          positions.push(innerRadius * cos, height, innerRadius * sin);
+          uvs.push(i / tessellation, 1);
+      }
+      
+      for (let i = 0; i < tessellation; i++) {
+          const base = i * 4;
+          const next = (i + 1) * 4;
+          
+          // Tapa de Abajo
+          indices.push(base, next, base + 1);
+          indices.push(next, next + 1, base + 1);
+          
+          // Muro Exterior
+          indices.push(base + 1, next + 1, base + 2);
+          indices.push(next + 1, next + 2, base + 2);
+          
+          // Tapa de Arriba
+          indices.push(base + 2, next + 2, base + 3);
+          indices.push(next + 2, next + 3, base + 3);
+          
+          // Muro Interior
+          indices.push(base + 3, next + 3, base);
+          indices.push(next + 3, next, base);
+      }
+      
+      const vertexData = new VertexData();
+      vertexData.positions = positions;
+      vertexData.indices = indices;
+      vertexData.uvs = uvs;
+      
+      vertexData.applyToMesh(mesh, true); 
   }
 
   public aplicarNieblaEnTiempoReal(): void {
@@ -87,7 +152,12 @@ export class ToolsFogService {
       this.curStart = scene.fogStart || 500000;
       this.curEnd = scene.fogEnd || 500000;
       this.curDensity = scene.fogDensity || 0.01;
-      this.curCylAlpha = 0;
+      
+      this.curInner = 0.1;
+      this.curOuter = 1.0;
+      this.curHeight = 4.0;
+      this.curAlpha = 0;
+
       this.firstFrame = true;
 
       this.fogObserver = scene.onBeforeRenderObservable.add(() => this.updateFogFrame(scene));
@@ -121,10 +191,12 @@ export class ToolsFogService {
     let targetFogHeightY = 10;
     let targetFogFalloffY = 3;
     let targetFogShape = 'sphere';
+    let activeStart = 0;
 
-    // Se aplica la niebla si estamos jugando o editando y está activada
-    if (modo === 'PLAYING' || modo === 'EDITING_IN_GAME' || modo === 'TRANSITIONING' || (targetPlayer && this.state.subObjetoSeleccionado() === 'fog')) {
-      if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
+    // 🔥 VEMOS EL ANILLO EN EL EDITOR SIN DAR PLAY
+    const isSelectedInEditor = (modo === 'EDITOR' || modo === 'EDITING_IN_GAME') && this.state.objetoSeleccionado() === targetPlayer;
+
+    if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled && (modo === 'PLAYING' || modo === 'TRANSITIONING' || isSelectedInEditor)) {
         useFog = true;
         const fog = targetPlayer.metadata.playerConfig.fog;
         
@@ -133,7 +205,6 @@ export class ToolsFogService {
 
         let rawStart: any = 0, rawEnd: any = 50000, rawRender: any = 100000, rawDensStart: any = 0, rawDensEnd: any = 100;
 
-        // LÓGICA ESTRICTA: Separación Blanco/Negro vs Color
         if (isBW) {
           const colorObj = Color3.FromHexString(fog.colorBW || '#555555');
           targetR = colorObj.r; targetG = colorObj.g; targetB = colorObj.b;
@@ -164,7 +235,7 @@ export class ToolsFogService {
            targetDensity = Number.isFinite(Number(fog.density)) ? Number(fog.density) : 0.01;
         }
 
-        const activeStart = Number.isFinite(Number(rawStart)) ? Math.max(0, Number(rawStart)) : 0;
+        activeStart = Number.isFinite(Number(rawStart)) ? Math.max(0, Number(rawStart)) : 0;
         activeEnd = (Number.isFinite(Number(rawEnd)) && Number(rawEnd) > activeStart) ? Number(rawEnd) : activeStart + 50;
         const activeRenderDistance = (Number.isFinite(Number(rawRender)) && Number(rawRender) > activeEnd) ? Number(rawRender) : activeEnd + 500;
         
@@ -206,16 +277,15 @@ export class ToolsFogService {
             this.motor3d.playerCameraTPS.maxZ += (renderMaxZ - this.motor3d.playerCameraTPS.maxZ) * 0.05;
         }
         shadowLimit = renderMaxZ;
-      }
     }
 
-    const lerpSpeed = (modo === 'TRANSITIONING' || modo === 'PLAYING') ? 0.35 : 0.035; 
+    const lerpSpeed = (modo === 'TRANSITIONING' || modo === 'PLAYING') ? 0.35 : 0.06; 
 
     if (!useFog || targetFogShape === 'sphere') {
-      if (this.fogCylinder) {
-          this.fogCylinder.dispose();
-          this.fogCylinder = null;
-          this.curCylAlpha = 0;
+      if (this.fogDonut) {
+          this.fogDonut.dispose();
+          this.fogDonut = null;
+          this.curAlpha = 0;
       }
       if (!useFog) {
         const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
@@ -225,25 +295,42 @@ export class ToolsFogService {
         targetEnd = 500000;
       }
     } else if (targetFogShape === 'cylinder' && useFog) {
-      if (!this.fogCylinder) {
-          this.fogCylinder = MeshBuilder.CreateCylinder('silentFogMesh', { height: 1, diameter: 1, tessellation: 32, cap: Mesh.NO_CAP }, scene);
+      if (!this.fogDonut) {
+          this.fogDonut = new Mesh('silentFogDonut', scene);
           const shaderMat = new ShaderMaterial("silentFogMat", scene, { vertex: "silentFog", fragment: "silentFog" },
             { attributes: ["position", "uv"], uniforms: ["worldViewProjection", "world", "color", "alphaMax", "heightMax", "falloffY", "playerPos"], needAlphaBlending: true }
           );
-          shaderMat.backFaceCulling = false; shaderMat.alphaMode = Engine.ALPHA_COMBINE; shaderMat.zOffset = -5; 
-          this.fogCylinder.material = shaderMat;
-          this.fogCylinder.isPickable = false; this.fogCylinder.receiveShadows = false; this.fogCylinder.applyFog = false; 
-          this.fogCylinder.scaling.set(0, 0, 0); this.curCylAlpha = 0;
+          shaderMat.backFaceCulling = false; 
+          shaderMat.alphaMode = Engine.ALPHA_COMBINE; 
+          shaderMat.zOffset = -5; 
+          this.fogDonut.material = shaderMat;
+          this.fogDonut.isPickable = false; 
+          this.fogDonut.receiveShadows = false; 
+          this.fogDonut.applyFog = false; 
+          this.curAlpha = 0;
+          this.updateDonutMesh(this.fogDonut, 0.1, 1.0, 1.0, 48); // Ficticio inicial
       }
 
-      if (this.fogCylinder && targetPlayer) {
+      if (this.fogDonut && targetPlayer) {
           const fog = targetPlayer.metadata.playerConfig.fog;
-          const targetDiam = Math.max(15, activeEnd * 2.0); 
           const lerpCyl = lerpSpeed * 1.5;
           
-          this.fogCylinder.scaling.x += (targetDiam - this.fogCylinder.scaling.x) * lerpCyl;
-          this.fogCylinder.scaling.z += (targetDiam - this.fogCylinder.scaling.z) * lerpCyl;
-          this.fogCylinder.scaling.y += (targetFogHeightY - this.fogCylinder.scaling.y) * lerpCyl;
+          // 🔥 LÓGICA VITAL: El grosor va EXACTAMENTE desde tu Inicio hasta tu Final
+          const targetInnerRadius = Math.max(0.1, activeStart);
+          const targetOuterRadius = Math.max(targetInnerRadius + 0.1, activeEnd);
+
+          if (this.firstFrame) {
+            this.curInner = targetInnerRadius;
+            this.curOuter = targetOuterRadius;
+            this.curHeight = targetFogHeightY;
+          } else {
+            this.curInner += (targetInnerRadius - this.curInner) * lerpCyl;
+            this.curOuter += (targetOuterRadius - this.curOuter) * lerpCyl;
+            this.curHeight += (targetFogHeightY - this.curHeight) * lerpCyl;
+          }
+
+          // DIBUJA EL ANILLO EN TIEMPO REAL
+          this.updateDonutMesh(this.fogDonut, this.curInner, this.curOuter, this.curHeight, 48);
           
           const fogOffsetX = Number.isFinite(Number(fog.offsetX)) ? Number(fog.offsetX) : 0;
           const fogOffsetY = Number.isFinite(Number(fog.offsetY)) ? Number(fog.offsetY) : 0;
@@ -251,19 +338,20 @@ export class ToolsFogService {
 
           const pPos = targetPlayer.getAbsolutePosition();
           
-          // Posicionamiento tomando en cuenta el Offset guardado por el Gizmo
-          this.fogCylinder.position.x = pPos.x + fogOffsetX;
-          this.fogCylinder.position.z = pPos.z + fogOffsetZ;
-          this.fogCylinder.position.y = pPos.y + fogOffsetY + (this.fogCylinder.scaling.y / 2); 
+          this.fogDonut.position.x = pPos.x + fogOffsetX;
+          this.fogDonut.position.z = pPos.z + fogOffsetZ;
+          this.fogDonut.position.y = pPos.y + fogOffsetY; 
           
-          const mat = this.fogCylinder.material as ShaderMaterial;
+          const mat = this.fogDonut.material as ShaderMaterial;
           const targetAlpha = Math.min(1.0, (activeDensityEnd / 100));
 
           mat.setColor3("color", new Color3(this.curR, this.curG, this.curB));
-          this.curCylAlpha += (targetAlpha - this.curCylAlpha) * lerpCyl;
           
-          mat.setFloat("alphaMax", this.curCylAlpha);
-          mat.setFloat("heightMax", targetFogHeightY);
+          if (this.firstFrame) this.curAlpha = targetAlpha;
+          else this.curAlpha += (targetAlpha - this.curAlpha) * lerpCyl;
+          
+          mat.setFloat("alphaMax", this.curAlpha);
+          mat.setFloat("heightMax", this.curHeight);
           mat.setFloat("falloffY", targetFogFalloffY);
           mat.setVector3("playerPos", new Vector3(pPos.x + fogOffsetX, pPos.y + fogOffsetY, pPos.z + fogOffsetZ));
       }
@@ -281,12 +369,15 @@ export class ToolsFogService {
       this.curDensity += (targetDensity - this.curDensity) * lerpSpeed;
     }
 
-    if (useFog && targetFogShape === 'sphere') {
+    if (useFog && (modo === 'PLAYING' || modo === 'TRANSITIONING')) {
       if (targetMode === 'exp2') scene.fogMode = Scene.FOGMODE_EXP2;
       else if (targetMode === 'exp') scene.fogMode = Scene.FOGMODE_EXP;
       else scene.fogMode = Scene.FOGMODE_LINEAR;
-      scene.fogStart = this.curStart; scene.fogEnd = this.curEnd;
+      
+      scene.fogStart = this.curStart; 
+      scene.fogEnd = this.curEnd;
       if (targetMode !== 'linear') scene.fogDensity = this.curDensity;
+      
       scene.fogColor = new Color3(this.curR, this.curG, this.curB);
       scene.clearColor = new Color4(this.curR, this.curG, this.curB, 1);
     } else {

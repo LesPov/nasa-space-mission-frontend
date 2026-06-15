@@ -1,7 +1,7 @@
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh, Quaternion, StandardMaterial, Color3, Engine } from '@babylonjs/core';
+import { AbstractMesh, Quaternion, StandardMaterial, Color3, Engine, Vector3 } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { HistorialService } from '../../../../services/historial.service';
@@ -71,7 +71,6 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     );
   }
 
-  // 🔥 SOLUCIÓN 1: Si cambiamos la selección (De padre a hijo), forzamos a refrescar los datos.
   ngOnChanges(changes: SimpleChanges) {
     if (changes['objeto']) {
       this.syncData();
@@ -114,9 +113,13 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
       this.localRotZ = this.formatNum(this.objeto.rotation.z * (180 / Math.PI));
     }
 
-    this.localEscX = this.formatNum(this.objeto.scaling.x);
-    this.localEscY = this.formatNum(this.objeto.scaling.y);
-    this.localEscZ = this.formatNum(this.objeto.scaling.z);
+    // 🔥 FIX MÁGICO: Calculamos la escala GLOBAL real del objeto en el mundo, ignorando los estiramientos del padre.
+    const worldScale = new Vector3();
+    this.objeto.getWorldMatrix().decompose(worldScale);
+    
+    this.localEscX = this.formatNum(Math.abs(worldScale.x));
+    this.localEscY = this.formatNum(Math.abs(worldScale.y));
+    this.localEscZ = this.formatNum(Math.abs(worldScale.z));
 
     const meta = this.objeto.metadata || {};
 
@@ -187,7 +190,20 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
 
   aplicarEscala() {
     this.historialSvc.registrarCambioTransform(this.objeto, () => {
-      this.objeto.scaling.set(this.localEscX, this.localEscY, this.localEscZ);
+      // 🔥 FIX MÁGICO: Aquí hacemos la matemática inversa. Si el usuario escribió un tamaño global "X",
+      // dividimos por la escala del padre para que el objeto tenga exactamente ese tamaño en el mundo.
+      if (this.objeto.parent && (this.objeto.parent as any).getWorldMatrix) {
+          const parentWorldScale = new Vector3();
+          (this.objeto.parent as any).getWorldMatrix().decompose(parentWorldScale);
+          
+          const localX = this.localEscX / (Math.abs(parentWorldScale.x) || 1);
+          const localY = this.localEscY / (Math.abs(parentWorldScale.y) || 1);
+          const localZ = this.localEscZ / (Math.abs(parentWorldScale.z) || 1);
+          
+          this.objeto.scaling.set(localX, localY, localZ);
+      } else {
+          this.objeto.scaling.set(this.localEscX, this.localEscY, this.localEscZ);
+      }
     });
 
     if (this.objeto.metadata?.updateDecal) this.objeto.metadata.updateDecal();

@@ -1,4 +1,3 @@
-
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -11,7 +10,7 @@ import { EditorMapaService } from '../../../../services/editor-mapa.service';
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-physics.html',
-  styleUrls: ['../inspector-properties.css'] // Hereda el CSS maestro
+  styleUrls: ['../inspector-properties.css'] 
 })
 export class PropPhysics implements OnInit, OnDestroy {
   @Input() objeto!: AbstractMesh;
@@ -76,8 +75,21 @@ export class PropPhysics implements OnInit, OnDestroy {
     };
     
     if (this.colliderType !== 'mesh') {
-      this.objeto.ellipsoid = new Vector3(this.colliderSizeX * this.objeto.scaling.x, this.colliderSizeY * this.objeto.scaling.y, this.colliderSizeZ * this.objeto.scaling.z);
-      this.objeto.ellipsoidOffset = new Vector3(this.colliderOffX * this.objeto.scaling.x, this.colliderOffY * this.objeto.scaling.y, this.colliderOffZ * this.objeto.scaling.z);
+      // 🔥 FIX MÁGICO: Calculamos el elipsoide basado en el TAMAÑO GLOBAL, para que las físicas 
+      // nunca se rompan sin importar lo que el piso estirado le haga a la escala local.
+      const ws = new Vector3();
+      this.objeto.getWorldMatrix().decompose(ws);
+      
+      this.objeto.ellipsoid = new Vector3(
+          this.colliderSizeX * Math.abs(ws.x), 
+          this.colliderSizeY * Math.abs(ws.y), 
+          this.colliderSizeZ * Math.abs(ws.z)
+      );
+      this.objeto.ellipsoidOffset = new Vector3(
+          this.colliderOffX * Math.abs(ws.x), 
+          this.colliderOffY * Math.abs(ws.y), 
+          this.colliderOffZ * Math.abs(ws.z)
+      );
     }
     
     if (this.colliderType === 'mesh' && this.editorSvc.subObjetoSeleccionado() === 'collider') {

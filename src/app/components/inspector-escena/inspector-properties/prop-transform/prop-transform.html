@@ -1,16 +1,16 @@
 <div class="section-card">
-  <div class="section-head"><h4>Posición & Escala</h4></div>
+  <div class="section-head"><h4>Posición & Escala (Mundo)</h4></div>
   <div class="grid-3">
     <div class="field">
-      <label>Pos X</label>
+      <label>Pos Local X</label>
       <input type="number" step="0.1" [ngModel]="localPosX" (ngModelChange)="localPosX = $event; aplicarPosicion()" />
     </div>
     <div class="field">
-      <label>Pos Y</label>
+      <label>Pos Local Y</label>
       <input type="number" step="0.1" [ngModel]="localPosY" (ngModelChange)="localPosY = $event; aplicarPosicion()" />
     </div>
     <div class="field">
-      <label>Pos Z</label>
+      <label>Pos Local Z</label>
       <input type="number" step="0.1" [ngModel]="localPosZ" (ngModelChange)="localPosZ = $event; aplicarPosicion()" />
     </div>
 
@@ -28,15 +28,15 @@
     </div>
 
     <div class="field">
-      <label>Escala X</label>
+      <label title="Tamaño real en el mundo, ignorando si el padre está estirado">Tam. Real X</label>
       <input type="number" step="0.1" [ngModel]="localEscX" (ngModelChange)="localEscX = $event; aplicarEscala()" />
     </div>
     <div class="field">
-      <label>Escala Y</label>
+      <label title="Tamaño real en el mundo, ignorando si el padre está estirado">Tam. Real Y</label>
       <input type="number" step="0.1" [ngModel]="localEscY" (ngModelChange)="localEscY = $event; aplicarEscala()" />
     </div>
     <div class="field">
-      <label>Escala Z</label>
+      <label title="Tamaño real en el mundo, ignorando si el padre está estirado">Tam. Real Z</label>
       <input type="number" step="0.1" [ngModel]="localEscZ" (ngModelChange)="localEscZ = $event; aplicarEscala()" />
     </div>
   </div>

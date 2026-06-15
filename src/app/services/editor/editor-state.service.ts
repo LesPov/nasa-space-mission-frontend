@@ -1,5 +1,5 @@
 
-// src/app/services/editor/editor-state.service.ts
+
 import { Injectable, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { Node, AbstractMesh, Mesh, Vector3, Quaternion } from '@babylonjs/core';
@@ -14,7 +14,9 @@ export class EditorStateService {
   public currentTool = signal<ToolMode>('translate');
 
   public objetoSeleccionado = signal<Node | null>(null);
-  public subObjetoSeleccionado = signal<'collider' | 'camera' | 'light' | null>(null);
+  
+  // 🔥 SE HA AÑADIDO 'fog' AL ESTADO DE SUB-OBJETOS SELECCIONADOS
+  public subObjetoSeleccionado = signal<'collider' | 'camera' | 'light' | 'fog' | null>(null);
 
   public objetoInteractuado = signal<any>(null);
   public nodosEscena = signal<Node[]>([]);
@@ -93,7 +95,6 @@ export class EditorStateService {
     return this.encontrarRaiz(mesh as AbstractMesh) as AbstractMesh | null;
   }
 
-  // 🔥 FIX PARA OUTLINER Y SELECCIÓN: Filtra las mallas Decal ("decal_...")
   public esNombreIgnorable(name: string): boolean {
     if(!name) return true;
     const n = name.toLowerCase();
@@ -102,7 +103,7 @@ export class EditorStateService {
       n === 'terrain' || n === 'camerapivot' || n.includes('eje') ||
       n.includes('gridhelper') || n.includes('gizmo') || n.includes('highlight') ||
       n.includes('debug') || n.includes('proxycol') || n.includes('skybox') ||
-      n.startsWith('decal_') // 🔥 Las manchas de luz ya no se tocan ni estorban
+      n.startsWith('decal_') 
     );
   }
 

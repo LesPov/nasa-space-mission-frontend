@@ -91,7 +91,6 @@ export class ToolsGizmoService {
           mesh.metadata.camOffset.y = this.debugSvc.debugCameraBox.position.y;
           mesh.metadata.camOffset.z = this.debugSvc.debugCameraBox.position.z;
         } else if (subSelected === 'light' && this.debugSvc.debugLightBox) {
-          // 🔥 MOVER GIZMO DE LA LUZ
           this.debugSvc.debugLightBox.setAbsolutePosition(this.debugSvc.debugLightBox.getAbsolutePosition().add(event.delta));
           this.centerDragMesh.position.copyFrom(this.debugSvc.debugLightBox.getAbsolutePosition());
           mesh.metadata.lightPosX = this.debugSvc.debugLightBox.position.x;
@@ -102,6 +101,14 @@ export class ToolsGizmoService {
           if (lightObj && (lightObj as any).position) {
               (lightObj as any).position.copyFromFloats(mesh.metadata.lightPosX, mesh.metadata.lightPosY, mesh.metadata.lightPosZ);
           }
+        } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
+          this.debugSvc.debugFogStartSphere.setAbsolutePosition(this.debugSvc.debugFogStartSphere.getAbsolutePosition().add(event.delta));
+          this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
+          
+          const basePos = this.debugSvc.getFogBaseLocalPos(mesh);
+          mesh.metadata.playerConfig.fog.offsetX = this.debugSvc.debugFogStartSphere.position.x - basePos.x;
+          mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - basePos.y;
+          mesh.metadata.playerConfig.fog.offsetZ = this.debugSvc.debugFogStartSphere.position.z - basePos.z;
         } else {
           mesh.setAbsolutePosition(mesh.getAbsolutePosition().add(event.delta));
 
@@ -144,7 +151,6 @@ export class ToolsGizmoService {
         return;
       }
 
-      // 🔥 GIZMO PARA LA LUZ
       if (subSelected === 'light' && this.debugSvc.debugLightBox) {
         this.centerDragMesh.position.copyFrom(this.debugSvc.debugLightBox.getAbsolutePosition());
         mesh.metadata.lightPosX = this.debugSvc.debugLightBox.position.x;
@@ -156,6 +162,16 @@ export class ToolsGizmoService {
             (lightObj as any).position.copyFromFloats(mesh.metadata.lightPosX, mesh.metadata.lightPosY, mesh.metadata.lightPosZ);
         }
         
+        this.state.onGizmoDrag.next();
+        return;
+      }
+
+      if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
+        this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
+        const basePos = this.debugSvc.getFogBaseLocalPos(mesh);
+        mesh.metadata.playerConfig.fog.offsetX = this.debugSvc.debugFogStartSphere.position.x - basePos.x;
+        mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - basePos.y;
+        mesh.metadata.playerConfig.fog.offsetZ = this.debugSvc.debugFogStartSphere.position.z - basePos.z;
         this.state.onGizmoDrag.next();
         return;
       }
@@ -217,11 +233,12 @@ export class ToolsGizmoService {
         queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
       } else if (subSelected === 'light' && this.debugSvc.debugLightBox) {
         queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
+      } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
+        queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
       } else if (mesh && this.estadoAntesDeArrastrar) {
         this.historialSvc.registrarAccionTransform(mesh, this.estadoAntesDeArrastrar);
         this.estadoAntesDeArrastrar = null;
         
-        // 🔥 ACTUALIZAMOS EL DECAL SOLO AL SOLTAR EL CLICK (Rendimiento)
         if (mesh.metadata?.updateDecal) mesh.metadata.updateDecal();
 
         queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
@@ -294,8 +311,10 @@ export class ToolsGizmoService {
       this.gizmoManager.attachToMesh(this.debugSvc.debugCameraBox);
       this.gizmoPivotNode.parent = null;
     } else if (subSelected === 'light' && this.debugSvc.debugLightBox) {
-      // 🔥 ATTACH GIZMO A LA LUZ
       this.gizmoManager.attachToMesh(this.debugSvc.debugLightBox);
+      this.gizmoPivotNode.parent = null;
+    } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
+      this.gizmoManager.attachToMesh(this.debugSvc.debugFogStartSphere);
       this.gizmoPivotNode.parent = null;
     } else if (selected && !subSelected) {
       this.gizmoPivotNode.position.copyFrom(this.centerDragMesh.position);
@@ -329,7 +348,7 @@ export class ToolsGizmoService {
 
   public updateCenterDragMeshRenderState(obj: Mesh | null, subSelected: string | null): void {
       if (obj && !this.isDraggingGizmo) {
-        if (subSelected !== 'collider' && subSelected !== 'camera' && subSelected !== 'light') {
+        if (subSelected !== 'collider' && subSelected !== 'camera' && subSelected !== 'light' && subSelected !== 'fog') {
           if (obj.metadata?.collider && obj.metadata?.collider?.type !== 'mesh') {
             const posMundo = Vector3.TransformCoordinates(
                 new Vector3(obj.metadata.collider.offsetX || 0, obj.metadata.collider.offsetY || 0, obj.metadata.collider.offsetZ || 0), 

@@ -1,4 +1,5 @@
 
+
 import { Component, Output, EventEmitter, inject, effect, ElementRef, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -86,7 +87,6 @@ export class InspectorOutliner {
         if (!(child instanceof Mesh) && !(child instanceof Light) && !(child instanceof TransformNode)) return false;
         const nName = child.name.toLowerCase();
         
-        // 🔥 FIX OUTLINER: Ocultamos las mallas "decal_" para que no saturen el inspector
         if (nName.includes('proxycol') || nName.includes('debug') || nName.includes('gizmo') || nName.includes('camerapivot') || nName.startsWith('l_') || nName.startsWith('decal_')) return false;
         
         if (nodo.metadata?.type === 'model' || nodo.metadata?.type?.startsWith('light_')) {
@@ -174,6 +174,11 @@ export class InspectorOutliner {
     return !!(nodo.metadata.type?.startsWith('light_'));
   }
 
+  tieneNiebla(nodo: Node): boolean {
+    if (!(nodo instanceof AbstractMesh) || !nodo.metadata) return false;
+    return !!nodo.metadata.playerConfig?.fog?.enabled;
+  }
+
   esTrigger(nodo: Node): boolean {
     if (!(nodo instanceof AbstractMesh) || !nodo.metadata) return false;
     return nodo.metadata.type === 'trigger' || nodo.metadata.type === 'trigger_compuesto';
@@ -194,6 +199,7 @@ export class InspectorOutliner {
            this.tieneCapsula(nodo) || 
            this.tieneCamara(nodo) || 
            this.tieneLuzInterna(nodo) || 
+           this.tieneNiebla(nodo) ||
            this.tieneAnimaciones(nodo) || 
            this.tieneSecuencias(nodo) ||
            this.esTrigger(nodo);
@@ -211,7 +217,7 @@ export class InspectorOutliner {
     return this.nodosExpandidos.has(id); 
   }
   
-  seleccionarSubItem(pestana: string, subObj: 'collider' | 'camera' | 'light' | null, nodo: Node, event: Event) { 
+  seleccionarSubItem(pestana: string, subObj: 'collider' | 'camera' | 'light' | 'fog' | null, nodo: Node, event: Event) { 
     event.stopPropagation(); 
     if (this.esBloqueado(nodo)) return; 
     
@@ -235,7 +241,7 @@ export class InspectorOutliner {
     }
   }
   
-  esSubSeleccionado(nodo: Node, subObj: 'collider' | 'camera' | 'light'): boolean { 
+  esSubSeleccionado(nodo: Node, subObj: 'collider' | 'camera' | 'light' | 'fog'): boolean { 
     return this.esSeleccionado(nodo) && this.editorSvc.subObjetoSeleccionado() === subObj; 
   }
   

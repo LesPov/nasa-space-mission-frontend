@@ -1,3 +1,4 @@
+
 <div class="panel-header">
   <div style="display: flex; align-items: center; gap: 6px;">
     <span class="icon">📁</span>
@@ -54,6 +55,7 @@
             <span class="badge-icon" *ngIf="tieneCapsula(nodo)" title="Tiene Cuerpo Físico">📦</span>
             <span class="badge-icon" *ngIf="tieneCamara(nodo)" title="Tiene Cámara FPS">🎥</span>
             <span class="badge-icon" *ngIf="tieneLuzInterna(nodo)" title="Emite Luz">💡</span>
+            <span class="badge-icon" *ngIf="tieneNiebla(nodo)" title="Emite Niebla Local">☁️</span>
           </div>
         </div>
 
@@ -69,6 +71,11 @@
 
           <div class="node-item sub-item" *ngIf="tieneLuzInterna(nodo)" [class.selected]="esSubSeleccionado(nodo, 'light')" [style.padding-left.px]="28 + (depth * 15)" (click)="seleccionarSubItem('light', 'light', nodo, $event)">
             <span class="node-icon">💡</span><span class="node-name" style="color:#facc15;">Ubicación Luz</span>
+          </div>
+
+          <!-- 🔥 SUB-OBJETO PARA MOVER LA NIEBLA VOLUMÉTRICA LOCAL -->
+          <div class="node-item sub-item" *ngIf="tieneNiebla(nodo)" [class.selected]="esSubSeleccionado(nodo, 'fog')" [style.padding-left.px]="28 + (depth * 15)" (click)="seleccionarSubItem('player', 'fog', nodo, $event)">
+            <span class="node-icon">☁️</span><span class="node-name" style="color:#38bdf8;">Centro de Niebla</span>
           </div>
 
           <div class="node-item sub-item" *ngIf="tieneAnimaciones(nodo)" [style.padding-left.px]="28 + (depth * 15)" (click)="seleccionarSubItem('animation', null, nodo, $event)">

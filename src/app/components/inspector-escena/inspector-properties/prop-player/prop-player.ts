@@ -1,3 +1,4 @@
+
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -39,7 +40,7 @@ export class PropPlayer implements OnInit {
   playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
 
   selectionRange: SelectionRangeConfig = {
-    fpsAdminMax: 500000, // 🔥 Aumentado para mundos masivos
+    fpsAdminMax: 500000, 
     fpsUserMax: 3
   };
 
@@ -53,7 +54,7 @@ export class PropPlayer implements OnInit {
       {};
 
     this.selectionRange = {
-      fpsAdminMax: this.normalizarNumero(storedSelection.fpsAdminMax, 500000), // 🔥
+      fpsAdminMax: this.normalizarNumero(storedSelection.fpsAdminMax, 500000), 
       fpsUserMax: this.normalizarNumero(storedSelection.fpsUserMax, 3)
     };
 
@@ -75,6 +76,12 @@ export class PropPlayer implements OnInit {
 
     fog.enabled = !!fog.enabled;
     fog.fogMode = fog.fogMode === 'exp' || fog.fogMode === 'exp2' ? fog.fogMode : 'linear';
+    fog.density = this.normalizarNumero(fog.density, 0.01);
+    
+    // 🔥 OFFSETS DE NIEBLA
+    fog.offsetX = this.normalizarNumero(fog.offsetX, 0);
+    fog.offsetY = this.normalizarNumero(fog.offsetY, 0);
+    fog.offsetZ = this.normalizarNumero(fog.offsetZ, 0);
 
     fog.color = typeof fog.color === 'string' ? fog.color : '#0d1729';
     fog.colorBW = typeof fog.colorBW === 'string' ? fog.colorBW : '#555555';
@@ -91,7 +98,6 @@ export class PropPlayer implements OnInit {
     fog.densityStartTpsBW = this.normalizarNumero(fog.densityStartTpsBW ?? fog.densityTpsBW, 0);
     fog.densityEndTpsBW = this.normalizarNumero(fog.densityEndTpsBW, 100);
 
-    // 🔥 Defaults altos para no perder visión en mapas masivos
     fog.startFPS = this.normalizarNumero(fog.startFPS, 0);
     fog.endFPS = this.normalizarNumero(fog.endFPS, 50000);
     fog.startTPS = this.normalizarNumero(fog.startTPS, 5);
@@ -119,7 +125,7 @@ export class PropPlayer implements OnInit {
     if (!this.objeto.metadata) this.objeto.metadata = {};
 
     const selectionPayload = {
-      fpsAdminMax: this.normalizarNumero(this.selectionRange.fpsAdminMax, 500000), // 🔥
+      fpsAdminMax: this.normalizarNumero(this.selectionRange.fpsAdminMax, 500000), 
       fpsUserMax: this.normalizarNumero(this.selectionRange.fpsUserMax, 3)
     };
 

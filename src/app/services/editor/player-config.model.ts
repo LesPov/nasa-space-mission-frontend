@@ -1,3 +1,4 @@
+
 export type AnimBinding = string | string[] | null;
 
 export type PlayerActionKey =
@@ -84,6 +85,10 @@ export interface PlayerDebugConfig {
 export interface PlayerFogConfig {
   enabled: boolean;
   fogMode: 'linear' | 'exp' | 'exp2';
+  density: number;
+  offsetX: number;
+  offsetY: number;
+  offsetZ: number;
   color: string;
   startFPS: number;
   endFPS: number;
@@ -147,8 +152,7 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
   sequences: [],
   debug: { showRays: false, showCollider: false, showState: false },
   fog: {
-    enabled: false, fogMode: 'linear', color: '#0d1729',
-    // 🔥 CONFIGURACIÓN MASIVA POR DEFECTO PARA MUNDOS GIGANTES
+    enabled: false, fogMode: 'linear', density: 0.01, offsetX: 0, offsetY: 0, offsetZ: 0, color: '#0d1729',
     startFPS: 0, endFPS: 50000, startTPS: 5, endTPS: 50000, renderDistanceFPS: 100000, renderDistanceTPS: 100000,
     densityStartFPS: 0, densityEndFPS: 100, densityStartTPS: 0, densityEndTPS: 100,
     colorBW: '#555555', startFpsBW: 0, endFpsBW: 50000, startTpsBW: 5, endTpsBW: 50000, renderDistanceFpsBW: 100000, renderDistanceTpsBW: 100000,

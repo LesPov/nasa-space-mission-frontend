@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, Scene, Vector3, Observer } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -16,6 +17,7 @@ export class ToolsFogService {
   private curR = 0;
   private curG = 0;
   private curB = 0;
+  private curDensity = 0.01;
   private firstFrame = true; // Bandera para evitar el LERP inicial desde lejos
 
   public aplicarNieblaEnTiempoReal(): void {
@@ -31,6 +33,7 @@ export class ToolsFogService {
       
       this.curStart = scene.fogStart || 500000;
       this.curEnd = scene.fogEnd || 500000;
+      this.curDensity = scene.fogDensity || 0.01;
       this.firstFrame = true;
 
       this.fogObserver = scene.onBeforeRenderObservable.add(() => this.updateFogFrame(scene));
@@ -57,12 +60,19 @@ export class ToolsFogService {
     let targetEnd = 500000;
     let targetR = 0, targetG = 0, targetB = 0;
     let useFog = false;
+    let targetMode = 'linear';
+    let targetDensity = 0.01;
 
     if (modo === 'PLAYING' || modo === 'EDITING_IN_GAME' || modo === 'TRANSITIONING') {
       if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
         useFog = true;
         const fog = targetPlayer.metadata.playerConfig.fog;
         
+        targetMode = fog.fogMode || 'linear';
+        if (targetMode !== 'linear') {
+           targetDensity = Number.isFinite(Number(fog.density)) ? Number(fog.density) : 0.01;
+        }
+
         const activeColor = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
         const targetColorObj = Color3.FromHexString(activeColor);
         targetR = targetColorObj.r;
@@ -75,7 +85,6 @@ export class ToolsFogService {
         let rawDensStart: any = 0;
         let rawDensEnd: any = 100;
 
-        // Leemos crudo de la BD
         if (isBW) {
           rawStart = isFPS ? fog.startFpsBW : fog.startTpsBW;
           rawEnd = isFPS ? fog.endFpsBW : fog.endTpsBW;
@@ -90,8 +99,6 @@ export class ToolsFogService {
           rawDensEnd = isFPS ? fog.densityEndFPS : fog.densityEndTPS;
         }
 
-        // 🔥 SANITIZACIÓN EXTREMA: Protege contra valores 0, null o inválidos en la base de datos
-        // Si el final es 0 (como te pasaba en BW), se fuerza a ser mayor que el inicio para que no crashee la matemática.
         const activeStart = Number.isFinite(Number(rawStart)) ? Math.max(0, Number(rawStart)) : 0;
         const activeEnd = (Number.isFinite(Number(rawEnd)) && Number(rawEnd) > activeStart) ? Number(rawEnd) : activeStart + 50;
         const activeRenderDistance = (Number.isFinite(Number(rawRender)) && Number(rawRender) > activeEnd) ? Number(rawRender) : activeEnd + 500;
@@ -114,7 +121,6 @@ export class ToolsFogService {
 
         const renderMaxZ = Math.max(targetEnd * 1.5, activeRenderDistance + distCamToPlayer);
         
-        // Asignación rápida de distancia de dibujado
         if (this.firstFrame || modo === 'TRANSITIONING') {
             this.motor3d.playerCameraFPS.maxZ = renderMaxZ;
             this.motor3d.playerCameraTPS.maxZ = renderMaxZ;
@@ -149,13 +155,13 @@ export class ToolsFogService {
 
     const lerpSpeed = (modo === 'TRANSITIONING' || modo === 'PLAYING') ? 0.35 : 0.035; 
     
-    // Si es el primer frame, aplicamos los valores de golpe para que no empiece negro o con niebla blanca al cargar
     if (this.firstFrame) {
       this.curStart = targetStart;
       this.curEnd = targetEnd;
       this.curR = targetR;
       this.curG = targetG;
       this.curB = targetB;
+      this.curDensity = targetDensity;
       this.firstFrame = false;
     } else {
       this.curStart += (targetStart - this.curStart) * lerpSpeed;
@@ -163,15 +169,20 @@ export class ToolsFogService {
       this.curR += (targetR - this.curR) * lerpSpeed;
       this.curG += (targetG - this.curG) * lerpSpeed;
       this.curB += (targetB - this.curB) * lerpSpeed;
+      this.curDensity += (targetDensity - this.curDensity) * lerpSpeed;
     }
 
     if (useFog) {
-      scene.fogMode = Scene.FOGMODE_LINEAR;
+      if (targetMode === 'exp2') scene.fogMode = Scene.FOGMODE_EXP2;
+      else if (targetMode === 'exp') scene.fogMode = Scene.FOGMODE_EXP;
+      else scene.fogMode = Scene.FOGMODE_LINEAR;
+      
       scene.fogStart = this.curStart;
       scene.fogEnd = this.curEnd;
+      if (targetMode !== 'linear') scene.fogDensity = this.curDensity;
     } else {
       if (this.curStart > 400000) {
-          scene.fogMode = Scene.FOGMODE_NONE; // Se desactiva la niebla si está muy lejos para salvar rendimiento
+          scene.fogMode = Scene.FOGMODE_NONE; 
       } else {
           scene.fogMode = Scene.FOGMODE_LINEAR;
           scene.fogStart = this.curStart;

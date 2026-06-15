@@ -1,3 +1,4 @@
+
 <button class="btn-ghost small full" style="margin-bottom: 10px;" (click)="restaurarPlayerConfigDefault()">
   🔄 Reset a Valores de Fábrica
 </button>
@@ -40,10 +41,31 @@
       <div class="field wide" style="margin-bottom: 15px; padding: 10px; background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; border-radius: 6px;">
         <label style="color: #60a5fa; font-weight: bold; font-size: 13px;">Reglas Visuales (Mundos Gigantes)</label>
         <p class="help-text" style="color: #cbd5e1; font-size: 11px; margin-top: 5px;">
-          * Sube la distancia de Corte de Render a <b>50000</b> o más para ver la cordillera entera.<br>
           * <b>Dens. Inicio (Muro):</b> Súbelo para que la niebla arranque espesa y pesada de golpe.<br>
-          * <b>Opac. Fondo:</b> Bájalo (ej: 50%) para hacer la niebla lejana transparente y ver el fondo.
+          * <b>Opac. Fondo:</b> Bájalo (ej: 50%) para hacer la niebla lejana transparente y ver el fondo.<br>
+          * <b>Modo Exponencial 2:</b> Espesa cerca, pero permite ver montañas lejos.
         </p>
+      </div>
+
+      <div class="grid-3" style="margin-bottom: 10px;">
+          <div class="field"><label>Centro Niebla X</label><input type="number" step="0.1" [ngModel]="playerConfig.fog.offsetX" (ngModelChange)="playerConfig.fog.offsetX = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label>Centro Niebla Y</label><input type="number" step="0.1" [ngModel]="playerConfig.fog.offsetY" (ngModelChange)="playerConfig.fog.offsetY = $event; aplicarPlayerConfig()" /></div>
+          <div class="field"><label>Centro Niebla Z</label><input type="number" step="0.1" [ngModel]="playerConfig.fog.offsetZ" (ngModelChange)="playerConfig.fog.offsetZ = $event; aplicarPlayerConfig()" /></div>
+      </div>
+
+      <div class="grid-2" style="margin-bottom: 15px;">
+          <div class="field">
+            <label>Modo de Niebla</label>
+            <select [ngModel]="playerConfig.fog.fogMode" (ngModelChange)="playerConfig.fog.fogMode = $event; aplicarPlayerConfig()">
+              <option value="linear">Lineal (Clásica)</option>
+              <option value="exp">Exponencial (Espesa cerca)</option>
+              <option value="exp2">Exponencial Cuadrática</option>
+            </select>
+          </div>
+          <div class="field" *ngIf="playerConfig.fog.fogMode !== 'linear'">
+            <label>Densidad Global</label>
+            <input type="number" step="0.001" min="0" [ngModel]="playerConfig.fog.density" (ngModelChange)="playerConfig.fog.density = $event; aplicarPlayerConfig()" />
+          </div>
       </div>
 
       <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; border: 1px solid #334155; margin-bottom: 15px;">
@@ -64,11 +86,11 @@
           <div class="field"><label style="color:#ef4444">Fin (Esfera Roja FPS)</label><input type="number" step="1" min="1" [ngModel]="playerConfig.fog.endFPS" (ngModelChange)="playerConfig.fog.endFPS = $event; aplicarPlayerConfig()" /></div>
           <div class="field"><label style="color:#facc15">Fin (Esfera Roja TPS)</label><input type="number" step="1" min="1" [ngModel]="playerConfig.fog.endTPS" (ngModelChange)="playerConfig.fog.endTPS = $event; aplicarPlayerConfig()" /></div>
  
-          <div class="field"><label style="color:#10b981; font-weight:bold;">Dens. Inicio FPS (Muro 0-99%)</label><input type="number" step="1" min="0" max="99" [ngModel]="playerConfig.fog.densityStartFPS" (ngModelChange)="playerConfig.fog.densityStartFPS = $event; aplicarPlayerConfig()" /></div>
-          <div class="field"><label style="color:#10b981; font-weight:bold;">Dens. Inicio TPS (Muro 0-99%)</label><input type="number" step="1" min="0" max="99" [ngModel]="playerConfig.fog.densityStartTPS" (ngModelChange)="playerConfig.fog.densityStartTPS = $event; aplicarPlayerConfig()" /></div>
+          <div class="field" *ngIf="playerConfig.fog.fogMode === 'linear'"><label style="color:#10b981; font-weight:bold;">Dens. Inicio FPS (Muro 0-99%)</label><input type="number" step="1" min="0" max="99" [ngModel]="playerConfig.fog.densityStartFPS" (ngModelChange)="playerConfig.fog.densityStartFPS = $event; aplicarPlayerConfig()" /></div>
+          <div class="field" *ngIf="playerConfig.fog.fogMode === 'linear'"><label style="color:#10b981; font-weight:bold;">Dens. Inicio TPS (Muro 0-99%)</label><input type="number" step="1" min="0" max="99" [ngModel]="playerConfig.fog.densityStartTPS" (ngModelChange)="playerConfig.fog.densityStartTPS = $event; aplicarPlayerConfig()" /></div>
 
-          <div class="field"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo FPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndFPS" (ngModelChange)="playerConfig.fog.densityEndFPS = $event; aplicarPlayerConfig()" /></div>
-          <div class="field"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo TPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndTPS" (ngModelChange)="playerConfig.fog.densityEndTPS = $event; aplicarPlayerConfig()" /></div>
+          <div class="field" *ngIf="playerConfig.fog.fogMode === 'linear'"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo FPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndFPS" (ngModelChange)="playerConfig.fog.densityEndFPS = $event; aplicarPlayerConfig()" /></div>
+          <div class="field" *ngIf="playerConfig.fog.fogMode === 'linear'"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo TPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndTPS" (ngModelChange)="playerConfig.fog.densityEndTPS = $event; aplicarPlayerConfig()" /></div>
 
           <div class="field"><label style="color:#38bdf8; font-weight:bold;">Corte de Render FPS (Z)</label><input type="number" step="100" min="10" [ngModel]="playerConfig.fog.renderDistanceFPS" (ngModelChange)="playerConfig.fog.renderDistanceFPS = $event; aplicarPlayerConfig()" /></div>
           <div class="field"><label style="color:#fcd34d; font-weight:bold;">Corte de Render TPS (Z)</label><input type="number" step="100" min="10" [ngModel]="playerConfig.fog.renderDistanceTPS" (ngModelChange)="playerConfig.fog.renderDistanceTPS = $event; aplicarPlayerConfig()" /></div>
@@ -93,11 +115,11 @@
           <div class="field"><label style="color:#ef4444">Fin (Esfera Roja FPS)</label><input type="number" step="1" min="1" [ngModel]="playerConfig.fog.endFpsBW" (ngModelChange)="playerConfig.fog.endFpsBW = $event; aplicarPlayerConfig()" /></div>
           <div class="field"><label style="color:#facc15">Fin (Esfera Roja TPS)</label><input type="number" step="1" min="1" [ngModel]="playerConfig.fog.endTpsBW" (ngModelChange)="playerConfig.fog.endTpsBW = $event; aplicarPlayerConfig()" /></div>
 
-          <div class="field"><label style="color:#10b981; font-weight:bold;">Dens. Inicio FPS (Muro 0-99%)</label><input type="number" step="1" min="0" max="99" [ngModel]="playerConfig.fog.densityStartFpsBW" (ngModelChange)="playerConfig.fog.densityStartFpsBW = $event; aplicarPlayerConfig()" /></div>
-          <div class="field"><label style="color:#10b981; font-weight:bold;">Dens. Inicio TPS (Muro 0-99%)</label><input type="number" step="1" min="0" max="99" [ngModel]="playerConfig.fog.densityStartTpsBW" (ngModelChange)="playerConfig.fog.densityStartTpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field" *ngIf="playerConfig.fog.fogMode === 'linear'"><label style="color:#10b981; font-weight:bold;">Dens. Inicio FPS (Muro 0-99%)</label><input type="number" step="1" min="0" max="99" [ngModel]="playerConfig.fog.densityStartFpsBW" (ngModelChange)="playerConfig.fog.densityStartFpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field" *ngIf="playerConfig.fog.fogMode === 'linear'"><label style="color:#10b981; font-weight:bold;">Dens. Inicio TPS (Muro 0-99%)</label><input type="number" step="1" min="0" max="99" [ngModel]="playerConfig.fog.densityStartTpsBW" (ngModelChange)="playerConfig.fog.densityStartTpsBW = $event; aplicarPlayerConfig()" /></div>
 
-          <div class="field"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo FPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndFpsBW" (ngModelChange)="playerConfig.fog.densityEndFpsBW = $event; aplicarPlayerConfig()" /></div>
-          <div class="field"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo TPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndTpsBW" (ngModelChange)="playerConfig.fog.densityEndTpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field" *ngIf="playerConfig.fog.fogMode === 'linear'"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo FPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndFpsBW" (ngModelChange)="playerConfig.fog.densityEndFpsBW = $event; aplicarPlayerConfig()" /></div>
+          <div class="field" *ngIf="playerConfig.fog.fogMode === 'linear'"><label style="color:#a855f7; font-weight:bold;">Opac. Fondo TPS (Final 1-100%)</label><input type="number" step="1" min="1" max="100" [ngModel]="playerConfig.fog.densityEndTpsBW" (ngModelChange)="playerConfig.fog.densityEndTpsBW = $event; aplicarPlayerConfig()" /></div>
 
           <div class="field"><label style="color:#38bdf8; font-weight:bold;">Corte Render FPS (Z)</label><input type="number" step="100" min="10" [ngModel]="playerConfig.fog.renderDistanceFpsBW" (ngModelChange)="playerConfig.fog.renderDistanceFpsBW = $event; aplicarPlayerConfig()" /></div>
           <div class="field"><label style="color:#fcd34d; font-weight:bold;">Corte Render TPS (Z)</label><input type="number" step="100" min="10" [ngModel]="playerConfig.fog.renderDistanceTpsBW" (ngModelChange)="playerConfig.fog.renderDistanceTpsBW = $event; aplicarPlayerConfig()" /></div>

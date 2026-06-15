@@ -13,11 +13,11 @@ export class ToolsDebugService {
 
   public debugCollider: Mesh | null = null;
   public debugCameraBox: Mesh | null = null;
-  public debugLightBox: Mesh | null = null; // 🔥 NUEVO: Esfera indicadora de luz local
+  public debugLightBox: Mesh | null = null; 
   public debugFogStartSphere: Mesh | null = null;
   public debugFogEndSphere: Mesh | null = null;
 
-  public getFogDebugAnchor(selected: AbstractMesh): Vector3 {
+  public getFogBaseLocalPos(selected: AbstractMesh): Vector3 {
     const meta = selected?.metadata || {};
     const camMeta = meta?.camOffset;
     if ((meta?.rol === 'npc' || meta?.rol === 'spawn_point') && camMeta) {
@@ -45,6 +45,17 @@ export class ToolsDebugService {
       );
     }
     return new Vector3(0, 1.6, 0);
+  }
+
+  public getFogDebugAnchor(selected: AbstractMesh): Vector3 {
+    const basePos = this.getFogBaseLocalPos(selected);
+    const fogConfig = selected?.metadata?.playerConfig?.fog;
+    if (fogConfig) {
+       basePos.x += this.selectionSvc.normalizarNumero(fogConfig.offsetX, 0);
+       basePos.y += this.selectionSvc.normalizarNumero(fogConfig.offsetY, 0);
+       basePos.z += this.selectionSvc.normalizarNumero(fogConfig.offsetZ, 0);
+    }
+    return basePos;
   }
 
   public actualizarDebugMeshes(selected: Mesh | null): void {
@@ -96,7 +107,6 @@ export class ToolsDebugService {
       if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
     }
 
-    // 🔥 NUEVO: CÁLCULO DEL GIZMO DE LUZ INTERNA
     if (selected.metadata?.type?.startsWith('light_')) {
         if (this.debugLightBox) this.debugLightBox.dispose();
         this.debugLightBox = MeshBuilder.CreateSphere('debugLightBox', { diameter: 0.3 }, scene);
@@ -116,7 +126,7 @@ export class ToolsDebugService {
         
         const matLight = new StandardMaterial('debugLightMat', scene);
         matLight.wireframe = true;
-        matLight.emissiveColor = new Color3(1, 1, 0); // Amarillo brillante
+        matLight.emissiveColor = new Color3(1, 1, 0); 
         matLight.disableLighting = true;
         this.debugLightBox.material = matLight;
         this.debugLightBox.isPickable = false;
@@ -139,18 +149,17 @@ export class ToolsDebugService {
 
       const fogAnchor = this.getFogDebugAnchor(selected);
 
-      if (activeStart > 0.1) {
-        this.debugFogStartSphere = MeshBuilder.CreateSphere('debugFogStartSphere', { diameter: activeStart * 2, segments: 32 }, scene);
-        this.debugFogStartSphere.position = fogAnchor.clone();
-        this.debugFogStartSphere.parent = selected;
-        const matFogStart = new StandardMaterial('debugFogStartMat', scene);
-        matFogStart.wireframe = true;
-        matFogStart.emissiveColor = new Color3(0.2, 0.8, 1.0); 
-        matFogStart.alpha = 0.15;
-        matFogStart.disableLighting = true;
-        this.debugFogStartSphere.material = matFogStart;
-        this.debugFogStartSphere.isPickable = false;
-      }
+      // We always create the start sphere because we want the user to be able to drag the Offset, even if activeStart is 0.
+      this.debugFogStartSphere = MeshBuilder.CreateSphere('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2), segments: 32 }, scene);
+      this.debugFogStartSphere.position = fogAnchor.clone();
+      this.debugFogStartSphere.parent = selected;
+      const matFogStart = new StandardMaterial('debugFogStartMat', scene);
+      matFogStart.wireframe = true;
+      matFogStart.emissiveColor = new Color3(0.2, 0.8, 1.0); 
+      matFogStart.alpha = 0.3;
+      matFogStart.disableLighting = true;
+      this.debugFogStartSphere.material = matFogStart;
+      this.debugFogStartSphere.isPickable = false;
 
       if (activeEnd > 0.1) {
         this.debugFogEndSphere = MeshBuilder.CreateSphere('debugFogEndSphere', { diameter: activeEnd * 2, segments: 32 }, scene);
@@ -194,7 +203,6 @@ export class ToolsDebugService {
       this.debugCameraBox.position.set(camMeta.x + breathX, camMeta.y + breathY, camMeta.z + breathZ);
     }
     
-    // 🔥 SINCRONIZA LA ESFERA DEBUG DE LUZ SI EL MODELO TIENE HUESOS ANIMADOS
     if (this.debugLightBox && obj.metadata?.type?.startsWith('light_')) {
        this.debugLightBox.position.set(
           (obj.metadata.lightPosX ?? 0) + breathX,

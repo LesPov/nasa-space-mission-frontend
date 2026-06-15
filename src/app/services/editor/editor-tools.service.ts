@@ -19,11 +19,8 @@ export class EditorToolsService {
   private state = inject(EditorStateService);
   private sceneSvc = inject(EditorSceneService);
   private cameraSvc = inject(EditorCameraService);
-  
-  // 🔥 FIX PARA EL EDITING_IN_GAME: Volver a la cámara del jugador (no del editor)
   private playerCamSvc = inject(PlayerCameraManagerService);
 
-  // Sub-Servicios Orquestados
   private selectionSvc = inject(ToolsSelectionService);
   private highlightSvc = inject(ToolsHighlightService);
   private debugSvc = inject(ToolsDebugService);
@@ -68,11 +65,13 @@ export class EditorToolsService {
     });
 
     const castRayToSelectable = (ray: Ray, ignoreTriggers: boolean = false) => {
+        const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
         const hit = scene.pickWithRay(ray, (mesh) => {
             if (!mesh.isPickable || !mesh.isVisible) return false;
             const n = mesh.name.toLowerCase();
             if (n.includes('gizmo') || n.includes('proxycol') || n.includes('suelo') || n.includes('skybox')) return false;
-            if (ignoreTriggers && (n.includes('trigger') || mesh.metadata?.type === 'trigger')) return false;
+            // 🔥 FIX SELECCIÓN: El Admin SÍ puede seleccionar los triggers en 1ra persona.
+            if (ignoreTriggers && !isAdmin && (n.includes('trigger') || mesh.metadata?.type === 'trigger')) return false;
             return true;
         });
         if (hit && hit.hit && hit.pickedMesh) {
@@ -118,7 +117,6 @@ export class EditorToolsService {
             const rootNode = castRayToSelectable(ray, true); 
             
             if (rootNode) {
-              // 🔥 LÓGICA DE DESELECCIÓN PARA ADMIN FPS
               if (this.state.objetoSeleccionado() === rootNode) {
                 this.state.objetoSeleccionado.set(null);
                 this.state.objetoHovereado.set(null);
@@ -146,11 +144,10 @@ export class EditorToolsService {
           const rootNode = castRayToSelectable(ray);
 
           if (rootNode) {
-            // 🔥 LÓGICA DE DESELECCIÓN PARA MODO EDITOR
             if (this.state.objetoSeleccionado() === rootNode) {
-              this.state.objetoSeleccionado.set(null); // Click al mismo = deseleccionar
+              this.state.objetoSeleccionado.set(null); 
             } else {
-              this.state.objetoSeleccionado.set(rootNode); // Nuevo objeto
+              this.state.objetoSeleccionado.set(rootNode); 
             }
           } else {
             this.state.objetoSeleccionado.set(null);
@@ -159,7 +156,6 @@ export class EditorToolsService {
                 canvas.focus();
                 try { canvas.requestPointerLock(); } catch {}
               }
-              // 🔥 FIX: Retorna a la cámara del jugador y no a la del editor
               this.playerCamSvc.volverAJuego();
             }
           }
@@ -207,7 +203,6 @@ export class EditorToolsService {
             canvas.focus();
             try { canvas.requestPointerLock(); } catch {}
           }
-          // 🔥 FIX: Si estabamos jugando, tocamos para editar en vivo y presionamos ESC, debemos regresar a jugar, no al editor libre
           this.playerCamSvc.volverAJuego();
         }
 

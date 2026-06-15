@@ -48,14 +48,14 @@ export class ToolsDebugService {
   }
 
   public getFogDebugAnchor(selected: AbstractMesh): Vector3 {
-    const basePos = this.getFogBaseLocalPos(selected);
+    const pPos = selected.getAbsolutePosition().clone();
     const fogConfig = selected?.metadata?.playerConfig?.fog;
     if (fogConfig) {
-       basePos.x += this.selectionSvc.normalizarNumero(fogConfig.offsetX, 0);
-       basePos.y += this.selectionSvc.normalizarNumero(fogConfig.offsetY, 0);
-       basePos.z += this.selectionSvc.normalizarNumero(fogConfig.offsetZ, 0);
+       pPos.x += this.selectionSvc.normalizarNumero(fogConfig.offsetX, 0);
+       pPos.y += this.selectionSvc.normalizarNumero(fogConfig.offsetY, 0);
+       pPos.z += this.selectionSvc.normalizarNumero(fogConfig.offsetZ, 0);
     }
-    return basePos;
+    return pPos;
   }
 
   public actualizarDebugMeshes(selected: Mesh | null): void {
@@ -149,13 +149,10 @@ export class ToolsDebugService {
 
       const fogAnchor = this.getFogDebugAnchor(selected);
       const fogShape = fog.fogShape || 'cylinder';
-      const fogHeightY = isBW ? (fog.fogHeightYBW ?? 4.0) : (fog.fogHeightY ?? 4.0);
+      const fogHeightY = Math.max(0.1, isBW ? (fog.fogHeightYBW ?? 4.0) : (fog.fogHeightY ?? 4.0));
 
-      // Descontar la altura visual del personaje para que los cilindros empiecen en los pies reales
-      const yOffsetFromFeet = (selected.metadata?.camOffset?.y || 1.6);
-      const startYPosition = fogAnchor.y - yOffsetFromFeet + (fogHeightY / 2);
+      const startYPosition = fogAnchor.y + (fogHeightY / 2);
 
-      // 🔥 Mostrar cilindros visuales de la zona si el modo de niebla lo requiere
       if (fogShape === 'cylinder') {
         this.debugFogStartSphere = MeshBuilder.CreateCylinder('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2), height: fogHeightY, tessellation: 32, cap: Mesh.NO_CAP }, scene);
         this.debugFogStartSphere.position.set(fogAnchor.x, startYPosition, fogAnchor.z);
@@ -164,7 +161,7 @@ export class ToolsDebugService {
         this.debugFogStartSphere.position = fogAnchor.clone();
       }
 
-      this.debugFogStartSphere.parent = selected;
+      this.debugFogStartSphere.parent = null; 
       const matFogStart = new StandardMaterial('debugFogStartMat', scene);
       matFogStart.wireframe = true;
       matFogStart.emissiveColor = new Color3(0.2, 0.8, 1.0); 
@@ -182,7 +179,7 @@ export class ToolsDebugService {
           this.debugFogEndSphere.position = fogAnchor.clone();
         }
 
-        this.debugFogEndSphere.parent = selected;
+        this.debugFogEndSphere.parent = null; 
         const matFogEnd = new StandardMaterial('debugFogEndMat', scene);
         matFogEnd.wireframe = true;
         matFogEnd.emissiveColor = new Color3(1.0, 0.2, 0.2); 
@@ -232,21 +229,20 @@ export class ToolsDebugService {
     const fogConfig = obj.metadata?.playerConfig?.fog;
     const fogShape = fogConfig?.fogShape || 'cylinder';
     const isBW = this.motor3d.scene?.metadata?.globalVisualMode === 'bw';
-    const fogHeightY = isBW ? (fogConfig?.fogHeightYBW ?? 4.0) : (fogConfig?.fogHeightY ?? 4.0);
-    const yOffsetFromFeet = (obj.metadata?.camOffset?.y || 1.6);
+    const fogHeightY = Math.max(0.1, isBW ? (fogConfig?.fogHeightYBW ?? 4.0) : (fogConfig?.fogHeightY ?? 4.0));
 
     const fogAnchor = this.getFogDebugAnchor(obj);
     if (this.debugFogStartSphere) {
       this.debugFogStartSphere.position.set(
         fogAnchor.x + breathX, 
-        fogAnchor.y + breathY + (fogShape === 'cylinder' ? (fogHeightY / 2) - yOffsetFromFeet : 0), 
+        fogAnchor.y + breathY + (fogShape === 'cylinder' ? (fogHeightY / 2) : 0), 
         fogAnchor.z + breathZ
       );
     }
     if (this.debugFogEndSphere) {
       this.debugFogEndSphere.position.set(
         fogAnchor.x + breathX, 
-        fogAnchor.y + breathY + (fogShape === 'cylinder' ? (fogHeightY / 2) - yOffsetFromFeet : 0), 
+        fogAnchor.y + breathY + (fogShape === 'cylinder' ? (fogHeightY / 2) : 0), 
         fogAnchor.z + breathZ
       );
     }

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, GizmoManager, Matrix, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Light } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -100,15 +101,25 @@ export class ToolsGizmoService {
           if (lightObj && (lightObj as any).position) {
               (lightObj as any).position.copyFromFloats(mesh.metadata.lightPosX, mesh.metadata.lightPosY, mesh.metadata.lightPosZ);
           }
+       // DENTRO DE onDraggingCenter y onDraggingGizmo:
         } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
+          // Movemos la malla de debug al arrastrar
           this.debugSvc.debugFogStartSphere.setAbsolutePosition(this.debugSvc.debugFogStartSphere.getAbsolutePosition().add(event.delta));
           this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
           
-          const basePos = this.debugSvc.getFogBaseLocalPos(mesh);
-          mesh.metadata.playerConfig.fog.offsetX = this.debugSvc.debugFogStartSphere.position.x - basePos.x;
-          mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - basePos.y - (this.debugSvc.debugFogStartSphere.scaling.y / 2) + 0.5;
-          mesh.metadata.playerConfig.fog.offsetZ = this.debugSvc.debugFogStartSphere.position.z - basePos.z;
-        } else {
+          // Obtenemos la posición absoluta actual del Jugador (Player)
+          const playerPos = mesh.getAbsolutePosition();
+          
+          // Calculamos el nuevo Offset restando la posición del debug a la posición del Player
+          mesh.metadata.playerConfig.fog.offsetX = this.debugSvc.debugFogStartSphere.position.x - playerPos.x;
+          // Ajustamos la Y para que el gizmo represente el suelo del cilindro/esfera
+          mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - playerPos.y;
+          mesh.metadata.playerConfig.fog.offsetZ = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
+          
+          this.state.onGizmoDrag.next();
+          return;
+        }
+        else {
           mesh.setAbsolutePosition(mesh.getAbsolutePosition().add(event.delta));
 
           if (mesh.metadata?.collider && mesh.metadata?.collider?.type !== 'mesh') {
@@ -169,7 +180,7 @@ export class ToolsGizmoService {
         this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
         const basePos = this.debugSvc.getFogBaseLocalPos(mesh);
         mesh.metadata.playerConfig.fog.offsetX = this.debugSvc.debugFogStartSphere.position.x - basePos.x;
-        mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - basePos.y - (this.debugSvc.debugFogStartSphere.scaling.y / 2) + 0.5;
+        mesh.metadata.playerConfig.fog.offsetY = this.debugSvc.debugFogStartSphere.position.y - basePos.y;
         mesh.metadata.playerConfig.fog.offsetZ = this.debugSvc.debugFogStartSphere.position.z - basePos.z;
         this.state.onGizmoDrag.next();
         return;

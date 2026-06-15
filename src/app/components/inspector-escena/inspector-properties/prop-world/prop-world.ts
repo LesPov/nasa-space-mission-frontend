@@ -1,3 +1,4 @@
+
 import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -7,7 +8,7 @@ import {
   HemisphericLight,
   Scene,
   Vector3,
-  StandardMaterial // 🔥 Faltaba importar StandardMaterial aquí
+  StandardMaterial
 } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 
@@ -84,6 +85,8 @@ export class PropWorld implements OnInit, OnDestroy {
 
     const isBW = this.visualMode === 'bw';
 
+    this.aplicarFondo();
+
     scene.meshes.forEach(mesh => {
       const meta = mesh.metadata;
       if (!meta) return;
@@ -91,7 +94,6 @@ export class PropWorld implements OnInit, OnDestroy {
       const activeColorHex = isBW ? (meta.colorBW || meta.color || '#ffffff') : (meta.color || '#ffffff');
       const c3 = Color3.FromHexString(activeColorHex);
 
-      // 🔥 1. ACTUALIZA HOLOGRAMAS E IMÁGENES PROYECTADAS EN VIVO
       if (meta.type === 'image_plane' && meta.decalMaterial) {
         const decalMat = meta.decalMaterial as StandardMaterial;
         const brillo = Number(meta.brilloIntensidad ?? 1.0);
@@ -99,7 +101,6 @@ export class PropWorld implements OnInit, OnDestroy {
         decalMat.diffuseColor = c3;
         decalMat.emissiveColor = c3.scale(brillo);
       } 
-      // 🔥 2. ACTUALIZA OBJETOS SÓLIDOS (Cubo, Esfera, Cilindro, Plano)
       else if (['cube', 'sphere', 'cylinder', 'plane'].includes(meta.type)) {
         if (mesh.material && (mesh.material as any).diffuseColor) {
           const mat = mesh.material as StandardMaterial;
@@ -113,7 +114,6 @@ export class PropWorld implements OnInit, OnDestroy {
           }
         }
       }
-      // 🔥 3. ACTUALIZA FUENTES DE LUZ
       else if (meta.type?.startsWith('light_')) {
           if (mesh.material && (mesh.material as any).emissiveColor) {
               (mesh.material as StandardMaterial).emissiveColor = c3;

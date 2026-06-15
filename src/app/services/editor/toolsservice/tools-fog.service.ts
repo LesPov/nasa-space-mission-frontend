@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, Scene, Vector3, Observer, Mesh, MeshBuilder, Engine, ShaderMaterial, Effect } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -22,6 +21,7 @@ export class ToolsFogService {
   private firstFrame = true;
 
   constructor() {
+    // Shaders de la niebla cilíndrica (Perfectos)
     Effect.ShadersStore['silentFogVertexShader'] = `
       precision highp float;
       attribute vec3 position;
@@ -50,22 +50,18 @@ export class ToolsFogService {
       uniform vec3 playerPos;
 
       void main() {
-          // Calculamos la diferencia de altura respecto a los pies del jugador
           float yDist = vPositionW.y - playerPos.y;
           float yFactor = 1.0;
           
-          // Suavizado superior: Si supera la altura menos el falloff, empieza a desvanecerse
           if (yDist > (heightMax - falloffY)) {
              yFactor = clamp(1.0 - ((yDist - (heightMax - falloffY)) / falloffY), 0.0, 1.0);
           }
-          // El suelo siempre es 100% denso
           if (yDist < 0.0) {
              yFactor = 1.0; 
           }
 
           float finalAlpha = alphaMax * yFactor;
 
-          // Desvanecemos los bordes UV superior e inferior geométricos para que no se vea una línea dura
           float edgeSoftness = 0.05;
           if(vUV.y > (1.0 - edgeSoftness)) finalAlpha *= (1.0 - vUV.y) / edgeSoftness;
           if(vUV.y < edgeSoftness) finalAlpha *= vUV.y / edgeSoftness;
@@ -126,47 +122,47 @@ export class ToolsFogService {
     let targetFogFalloffY = 3;
     let targetFogShape = 'sphere';
 
-    if (modo === 'PLAYING' || modo === 'EDITING_IN_GAME' || modo === 'TRANSITIONING') {
+    // Se aplica la niebla si estamos jugando o editando y está activada
+    if (modo === 'PLAYING' || modo === 'EDITING_IN_GAME' || modo === 'TRANSITIONING' || (targetPlayer && this.state.subObjetoSeleccionado() === 'fog')) {
       if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
         useFog = true;
         const fog = targetPlayer.metadata.playerConfig.fog;
         
         targetMode = fog.fogMode || 'linear';
-        if (targetMode !== 'linear') {
-           targetDensity = Number.isFinite(Number(fog.density)) ? Number(fog.density) : 0.01;
-        }
+        targetFogShape = fog.fogShape || 'cylinder';
 
-        const activeColor = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
-        const targetColorObj = Color3.FromHexString(activeColor);
-        targetR = targetColorObj.r;
-        targetG = targetColorObj.g;
-        targetB = targetColorObj.b;
-        
-        let rawStart: any = 0;
-        let rawEnd: any = 50000;
-        let rawRender: any = 100000;
-        let rawDensStart: any = 0;
-        let rawDensEnd: any = 100;
+        let rawStart: any = 0, rawEnd: any = 50000, rawRender: any = 100000, rawDensStart: any = 0, rawDensEnd: any = 100;
 
+        // LÓGICA ESTRICTA: Separación Blanco/Negro vs Color
         if (isBW) {
+          const colorObj = Color3.FromHexString(fog.colorBW || '#555555');
+          targetR = colorObj.r; targetG = colorObj.g; targetB = colorObj.b;
+
           rawStart = isFPS ? fog.startFpsBW : fog.startTpsBW;
           rawEnd = isFPS ? fog.endFpsBW : fog.endTpsBW;
           rawRender = isFPS ? fog.renderDistanceFpsBW : fog.renderDistanceTpsBW;
           rawDensStart = isFPS ? fog.densityStartFpsBW : fog.densityStartTpsBW;
           rawDensEnd = isFPS ? fog.densityEndFpsBW : fog.densityEndTpsBW;
-          targetFogHeightY = fog.fogHeightYBW ?? 4.0;
-          targetFogFalloffY = fog.fogFalloffYBW ?? 1.5;
+          
+          targetFogHeightY = Math.max(0.1, fog.fogHeightYBW ?? 4.0);
+          targetFogFalloffY = Math.max(0.1, fog.fogFalloffYBW ?? 1.5);
         } else {
+          const colorObj = Color3.FromHexString(fog.color || '#0d1729');
+          targetR = colorObj.r; targetG = colorObj.g; targetB = colorObj.b;
+
           rawStart = isFPS ? fog.startFPS : fog.startTPS;
           rawEnd = isFPS ? fog.endFPS : fog.endTPS;
           rawRender = isFPS ? fog.renderDistanceFPS : fog.renderDistanceTPS;
           rawDensStart = isFPS ? fog.densityStartFPS : fog.densityStartTPS;
           rawDensEnd = isFPS ? fog.densityEndFPS : fog.densityEndTPS;
-          targetFogHeightY = fog.fogHeightY ?? 4.0;
-          targetFogFalloffY = fog.fogFalloffY ?? 1.5;
+          
+          targetFogHeightY = Math.max(0.1, fog.fogHeightY ?? 4.0);
+          targetFogFalloffY = Math.max(0.1, fog.fogFalloffY ?? 1.5);
         }
         
-        targetFogShape = fog.fogShape || 'cylinder';
+        if (targetMode !== 'linear') {
+           targetDensity = Number.isFinite(Number(fog.density)) ? Number(fog.density) : 0.01;
+        }
 
         const activeStart = Number.isFinite(Number(rawStart)) ? Math.max(0, Number(rawStart)) : 0;
         activeEnd = (Number.isFinite(Number(rawEnd)) && Number(rawEnd) > activeStart) ? Number(rawEnd) : activeStart + 50;
@@ -181,16 +177,23 @@ export class ToolsFogService {
           if (modo === 'TRANSITIONING') distCamToPlayer = Math.min(distCamToPlayer, 8); 
         }
 
-        const gap = activeEnd - activeStart;
-        const adjustedFogEnd = activeStart + (gap / (activeDensityEnd / 100));
-        const finalAdjustedEnd = activeStart + ((adjustedFogEnd - activeStart) * (1 - (activeDensityStart / 100)));
+        const S = activeStart;
+        const E = activeEnd;
+        const ds = activeDensityStart / 100;
+        const de = activeDensityEnd / 100;
 
-        targetStart = activeStart + distCamToPlayer; 
-        targetEnd = finalAdjustedEnd + distCamToPlayer; 
+        let targetFogStart, targetFogEnd;
+        if (de > ds && E > S) {
+            const range = (E - S) / (de - ds);
+            targetFogStart = S - ds * range;
+            targetFogEnd = targetFogStart + range;
+        } else {
+            targetFogStart = S;
+            targetFogEnd = E;
+        }
 
-        // Eliminamos el 'lookUpBonus' para que el cilindro NO se estire al mirar hacia arriba.
-        // La niebla se mantendrá estática y perfecta en el suelo.
-
+        targetStart = targetFogStart + distCamToPlayer; 
+        targetEnd = targetFogEnd + distCamToPlayer; 
         const renderMaxZ = Math.max(targetEnd * 1.5, activeRenderDistance + distCamToPlayer);
         
         if (this.firstFrame || modo === 'TRANSITIONING') {
@@ -202,105 +205,72 @@ export class ToolsFogService {
             this.motor3d.playerCameraFPS.maxZ += (renderMaxZ - this.motor3d.playerCameraFPS.maxZ) * 0.05;
             this.motor3d.playerCameraTPS.maxZ += (renderMaxZ - this.motor3d.playerCameraTPS.maxZ) * 0.05;
         }
-
         shadowLimit = renderMaxZ;
       }
     }
 
     const lerpSpeed = (modo === 'TRANSITIONING' || modo === 'PLAYING') ? 0.35 : 0.035; 
 
-    // Si se apaga la niebla o pasamos al modo Esfera clásica, destruimos el cilindro
     if (!useFog || targetFogShape === 'sphere') {
       if (this.fogCylinder) {
           this.fogCylinder.dispose();
           this.fogCylinder = null;
           this.curCylAlpha = 0;
       }
-
       if (!useFog) {
-        // Restaurar el color global del cielo
         const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
         const targetColorObj = Color3.FromHexString(globalClearHex);
         targetR = targetColorObj.r; targetG = targetColorObj.g; targetB = targetColorObj.b;
         targetStart = 500000;
         targetEnd = 500000;
-  
-        if (this.firstFrame || modo === 'TRANSITIONING') {
-            this.motor3d.playerCameraFPS.maxZ = 500000;
-            this.motor3d.playerCameraTPS.maxZ = 500000;
-            this.motor3d.editorCamera.maxZ = 500000;
-        } else {
-            this.motor3d.editorCamera.maxZ += (500000 - this.motor3d.editorCamera.maxZ) * 0.05;
-            this.motor3d.playerCameraFPS.maxZ += (500000 - this.motor3d.playerCameraFPS.maxZ) * 0.05;
-            this.motor3d.playerCameraTPS.maxZ += (500000 - this.motor3d.playerCameraTPS.maxZ) * 0.05;
-        }
       }
     } else if (targetFogShape === 'cylinder' && useFog) {
       if (!this.fogCylinder) {
-          this.fogCylinder = MeshBuilder.CreateCylinder('silentFogMesh', { 
-            height: 1, // Altura base, la controlamos con scaling.y
-            diameter: 1, // Diametro base, lo controlamos con scaling.x/.z
-            tessellation: 32,
-            cap: Mesh.NO_CAP // Tubo hueco
-          }, scene);
-          
-          const shaderMat = new ShaderMaterial(
-            "silentFogMat", scene,
-            { vertex: "silentFog", fragment: "silentFog" },
-            {
-              attributes: ["position", "uv"],
-              uniforms: ["worldViewProjection", "world", "color", "alphaMax", "heightMax", "falloffY", "playerPos"],
-              needAlphaBlending: true
-            }
+          this.fogCylinder = MeshBuilder.CreateCylinder('silentFogMesh', { height: 1, diameter: 1, tessellation: 32, cap: Mesh.NO_CAP }, scene);
+          const shaderMat = new ShaderMaterial("silentFogMat", scene, { vertex: "silentFog", fragment: "silentFog" },
+            { attributes: ["position", "uv"], uniforms: ["worldViewProjection", "world", "color", "alphaMax", "heightMax", "falloffY", "playerPos"], needAlphaBlending: true }
           );
-          
-          shaderMat.backFaceCulling = false; // Vemos el interior
-          shaderMat.alphaMode = Engine.ALPHA_COMBINE;
-          shaderMat.zOffset = -5; // Forzamos renderizado sobre los objetos para taparlos
-          
+          shaderMat.backFaceCulling = false; shaderMat.alphaMode = Engine.ALPHA_COMBINE; shaderMat.zOffset = -5; 
           this.fogCylinder.material = shaderMat;
-          this.fogCylinder.isPickable = false;
-          this.fogCylinder.receiveShadows = false;
-          this.fogCylinder.applyFog = false; 
-          
-          this.fogCylinder.scaling.set(0, 0, 0);
-          this.curCylAlpha = 0;
+          this.fogCylinder.isPickable = false; this.fogCylinder.receiveShadows = false; this.fogCylinder.applyFog = false; 
+          this.fogCylinder.scaling.set(0, 0, 0); this.curCylAlpha = 0;
       }
 
       if (this.fogCylinder && targetPlayer) {
-          const targetDiam = Math.max(15, activeEnd * 2.0); // Anillo externo
+          const fog = targetPlayer.metadata.playerConfig.fog;
+          const targetDiam = Math.max(15, activeEnd * 2.0); 
           const lerpCyl = lerpSpeed * 1.5;
           
           this.fogCylinder.scaling.x += (targetDiam - this.fogCylinder.scaling.x) * lerpCyl;
           this.fogCylinder.scaling.z += (targetDiam - this.fogCylinder.scaling.z) * lerpCyl;
           this.fogCylinder.scaling.y += (targetFogHeightY - this.fogCylinder.scaling.y) * lerpCyl;
           
+          const fogOffsetX = Number.isFinite(Number(fog.offsetX)) ? Number(fog.offsetX) : 0;
+          const fogOffsetY = Number.isFinite(Number(fog.offsetY)) ? Number(fog.offsetY) : 0;
+          const fogOffsetZ = Number.isFinite(Number(fog.offsetZ)) ? Number(fog.offsetZ) : 0;
+
           const pPos = targetPlayer.getAbsolutePosition();
-          this.fogCylinder.position.x = pPos.x;
-          this.fogCylinder.position.z = pPos.z;
-          // El cilindro crece desde el centro. Lo subimos para que la base quede a la altura de los pies.
-          this.fogCylinder.position.y = pPos.y + (this.fogCylinder.scaling.y / 2); 
+          
+          // Posicionamiento tomando en cuenta el Offset guardado por el Gizmo
+          this.fogCylinder.position.x = pPos.x + fogOffsetX;
+          this.fogCylinder.position.z = pPos.z + fogOffsetZ;
+          this.fogCylinder.position.y = pPos.y + fogOffsetY + (this.fogCylinder.scaling.y / 2); 
           
           const mat = this.fogCylinder.material as ShaderMaterial;
           const targetAlpha = Math.min(1.0, (activeDensityEnd / 100));
 
           mat.setColor3("color", new Color3(this.curR, this.curG, this.curB));
-          
           this.curCylAlpha += (targetAlpha - this.curCylAlpha) * lerpCyl;
+          
           mat.setFloat("alphaMax", this.curCylAlpha);
           mat.setFloat("heightMax", targetFogHeightY);
           mat.setFloat("falloffY", targetFogFalloffY);
-          mat.setVector3("playerPos", pPos);
+          mat.setVector3("playerPos", new Vector3(pPos.x + fogOffsetX, pPos.y + fogOffsetY, pPos.z + fogOffsetZ));
       }
     }
     
     if (this.firstFrame) {
-      this.curStart = targetStart;
-      this.curEnd = targetEnd;
-      this.curR = targetR;
-      this.curG = targetG;
-      this.curB = targetB;
-      this.curDensity = targetDensity;
+      this.curStart = targetStart; this.curEnd = targetEnd; this.curR = targetR; this.curG = targetG; this.curB = targetB; this.curDensity = targetDensity;
       this.firstFrame = false;
     } else {
       this.curStart += (targetStart - this.curStart) * lerpSpeed;
@@ -312,25 +282,16 @@ export class ToolsFogService {
     }
 
     if (useFog && targetFogShape === 'sphere') {
-      // Usar niebla global nativa
       if (targetMode === 'exp2') scene.fogMode = Scene.FOGMODE_EXP2;
       else if (targetMode === 'exp') scene.fogMode = Scene.FOGMODE_EXP;
       else scene.fogMode = Scene.FOGMODE_LINEAR;
-      
-      scene.fogStart = this.curStart;
-      scene.fogEnd = this.curEnd;
+      scene.fogStart = this.curStart; scene.fogEnd = this.curEnd;
       if (targetMode !== 'linear') scene.fogDensity = this.curDensity;
-      
       scene.fogColor = new Color3(this.curR, this.curG, this.curB);
       scene.clearColor = new Color4(this.curR, this.curG, this.curB, 1);
     } else {
-      // Si usamos Cilindro, apagamos la niebla nativa para no manchar el cielo
       scene.fogMode = Scene.FOGMODE_NONE; 
-      
-      // El color del cielo vuelve a ser el del entorno (Global Clear Color)
-      const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
-      const skyColorObj = Color3.FromHexString(globalClearHex);
-      scene.clearColor = new Color4(skyColorObj.r, skyColorObj.g, skyColorObj.b, 1);
+      scene.clearColor = new Color4(this.curR, this.curG, this.curB, 1);
     }
 
     scene.lights.forEach(light => {

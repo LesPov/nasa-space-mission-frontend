@@ -1,4 +1,3 @@
-
 <button class="btn-ghost small full" style="margin-bottom: 10px;" (click)="restaurarPlayerConfigDefault()">
   🔄 Reset a Valores de Fábrica
 </button>
@@ -76,14 +75,7 @@
             <option value="cylinder">Cilindro (Muro Volumétrico / Silent Hill)</option>
           </select>
         </div>
-        <div class="field" *ngIf="playerConfig.fog.fogShape === 'cylinder'">
-          <label style="color: #a78bfa;">Altura Máx. Cilindro (Y)</label>
-          <input type="number" step="0.5" [ngModel]="playerConfig.fog.fogHeightY" (ngModelChange)="playerConfig.fog.fogHeightY = $event; aplicarPlayerConfig()" />
-        </div>
-        <div class="field" *ngIf="playerConfig.fog.fogShape === 'cylinder'">
-          <label style="color: #a78bfa;">Suavizado Superior (Y)</label>
-          <input type="number" step="0.5" [ngModel]="playerConfig.fog.fogFalloffY" (ngModelChange)="playerConfig.fog.fogFalloffY = $event; aplicarPlayerConfig()" />
-        </div>
+      
       </div>
 
       <div style="background: rgba(255,255,255,0.05); padding: 10px; border-radius: 6px; border: 1px solid #334155; margin-bottom: 15px;">
@@ -98,6 +90,14 @@
         </div>
 
         <div class="grid-2">
+            <div class="field" *ngIf="playerConfig.fog.fogShape === 'cylinder'">
+          <label style="color: #a78bfa;">Altura Máx. Cilindro (Y)</label>
+          <input type="number" step="0.5" [ngModel]="playerConfig.fog.fogHeightY" (ngModelChange)="playerConfig.fog.fogHeightY = $event; aplicarPlayerConfig()" />
+        </div>
+        <div class="field" *ngIf="playerConfig.fog.fogShape === 'cylinder'">
+          <label style="color: #a78bfa;">Suavizado Superior (Y)</label>
+          <input type="number" step="0.5" [ngModel]="playerConfig.fog.fogFalloffY" (ngModelChange)="playerConfig.fog.fogFalloffY = $event; aplicarPlayerConfig()" />
+        </div>
           <div class="field"><label style="color:#60a5fa">Inicio (Esfera Azul FPS)</label><input type="number" step="1" min="0" [ngModel]="playerConfig.fog.startFPS" (ngModelChange)="playerConfig.fog.startFPS = $event; aplicarPlayerConfig()" /></div>
           <div class="field"><label style="color:#facc15">Inicio (Esfera Azul TPS)</label><input type="number" step="1" min="0" [ngModel]="playerConfig.fog.startTPS" (ngModelChange)="playerConfig.fog.startTPS = $event; aplicarPlayerConfig()" /></div>
           

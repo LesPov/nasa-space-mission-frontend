@@ -3,7 +3,8 @@ export type AnimBinding = string | string[] | null;
 export type PlayerActionKey =
   | 'idle' | 'walk' | 'run' | 'jumpStart' | 'jumpLoop' | 'fall' | 'landSoft' | 'landHard'
   | 'climbUp' | 'climbFinish' | 'hangIdle' | 'vault' | 'stepUp' | 'recover' | 'lightOn'
-  | 'lightOff' | 'lightPulse' | 'lightFlicker' | 'playVideo' | 'pauseVideo' | 'stopVideo';
+  | 'lightOff' | 'lightPulse' | 'lightFlicker' | 'playVideo' | 'pauseVideo' | 'stopVideo'
+  | 'stopBaked' | 'procMove' | 'procRotate';
 
 export interface PlayerSequenceStep {
   id: string;
@@ -17,6 +18,9 @@ export interface PlayerSequenceStep {
   lockInput: boolean;
   offsetY: number;
   offsetForward: number;
+  procX: number;
+  procY: number;
+  procZ: number;
 }
 
 export interface PlayerClipSequence {
@@ -24,6 +28,7 @@ export interface PlayerClipSequence {
   name: string;
   enabled: boolean;
   repeat: boolean;
+  autoPlay?: boolean; // 🔥 PROPIEDAD AÑADIDA PARA PERMITIR AUTO-EJECUCIÓN SIN TRIGGER
   steps: PlayerSequenceStep[];
 }
 
@@ -34,6 +39,7 @@ export interface PlayerAnimationBindings {
   stepUp: AnimBinding; recover: AnimBinding; lightOn: AnimBinding; lightOff: AnimBinding;
   lightPulse: AnimBinding; lightFlicker: AnimBinding; playVideo: AnimBinding;
   pauseVideo: AnimBinding; stopVideo: AnimBinding;
+  stopBaked: AnimBinding; procMove: AnimBinding; procRotate: AnimBinding;
 }
 
 export interface PlayerAnimationEnabled {
@@ -42,6 +48,7 @@ export interface PlayerAnimationEnabled {
   hangIdle: boolean; vault: boolean; stepUp: boolean; recover: boolean; lightOn: boolean;
   lightOff: boolean; lightPulse: boolean; lightFlicker: boolean; playVideo: boolean;
   pauseVideo: boolean; stopVideo: boolean;
+  stopBaked: boolean; procMove: boolean; procRotate: boolean;
 }
 
 export interface PlayerMovementConfig {
@@ -85,7 +92,6 @@ export interface PlayerFogConfig {
   renderDistanceFPS: number;
   renderDistanceTPS: number;
   
-  // 🔥 Densidades MODO NORMAL
   densityStartFPS: number;
   densityEndFPS: number;
   densityStartTPS: number;
@@ -99,21 +105,10 @@ export interface PlayerFogConfig {
   renderDistanceFpsBW: number;
   renderDistanceTpsBW: number;
   
-  // 🔥 Densidades MODO BLANCO Y NEGRO
   densityStartFpsBW: number;
   densityEndFpsBW: number;
   densityStartTpsBW: number;
   densityEndTpsBW: number;
-
-  // Legacy variables (por si hay mapas viejos guardados)
-  densityFPS?: number;
-  densityTPS?: number;
-  densityFpsBW?: number;
-  densityTpsBW?: number;
-  densityFps?: number;
-  densityTps?: number;
-  density?: number;
-  densityBW?: number;
 }
 
 export interface PlayerRuntimeConfig {
@@ -140,41 +135,23 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
     fall: ['falling', 'fall'], landSoft: ['land', 'soft landing'], landHard: ['hard landing'], climbUp: ['climb up', 'climb'],
     climbFinish: ['climb finish', 'pull up'], hangIdle: ['hang idle', 'hang'], vault: ['vault'], stepUp: ['step up', 'step'],
     recover: ['recover', 'recovery'], lightOn: null, lightOff: null, lightPulse: null, lightFlicker: null,
-    playVideo: null, pauseVideo: null, stopVideo: null
+    playVideo: null, pauseVideo: null, stopVideo: null,
+    stopBaked: null, procMove: null, procRotate: null
   },
   animationEnabled: {
     idle: true, walk: true, run: true, jumpStart: true, jumpLoop: true, fall: true, landSoft: true, landHard: true,
     climbUp: true, climbFinish: true, hangIdle: true, vault: true, stepUp: true, recover: true, lightOn: true,
-    lightOff: true, lightPulse: true, lightFlicker: true, playVideo: true, pauseVideo: true, stopVideo: true
+    lightOff: true, lightPulse: true, lightFlicker: true, playVideo: true, pauseVideo: true, stopVideo: true,
+    stopBaked: true, procMove: true, procRotate: true
   },
   sequences: [],
   debug: { showRays: false, showCollider: false, showState: false },
   fog: {
-    enabled: false,
-    fogMode: 'linear',
-    color: '#0d1729',
-    startFPS: 0,
-    endFPS: 80,
-    startTPS: 5,
-    endTPS: 120,
-    renderDistanceFPS: 150,
-    renderDistanceTPS: 200,
-    densityStartFPS: 0,
-    densityEndFPS: 100,
-    densityStartTPS: 0,
-    densityEndTPS: 100,
-    
-    colorBW: '#555555',
-    startFpsBW: 0,
-    endFpsBW: 60,
-    startTpsBW: 5,
-    endTpsBW: 90,
-    renderDistanceFpsBW: 100,
-    renderDistanceTpsBW: 150,
-    densityStartFpsBW: 0,
-    densityEndFpsBW: 100,
-    densityStartTpsBW: 0,
-    densityEndTpsBW: 100
+    enabled: false, fogMode: 'linear', color: '#0d1729',
+    startFPS: 0, endFPS: 80, startTPS: 5, endTPS: 120, renderDistanceFPS: 150, renderDistanceTPS: 200,
+    densityStartFPS: 0, densityEndFPS: 100, densityStartTPS: 0, densityEndTPS: 100,
+    colorBW: '#555555', startFpsBW: 0, endFpsBW: 60, startTpsBW: 5, endTpsBW: 90, renderDistanceFpsBW: 100, renderDistanceTpsBW: 150,
+    densityStartFpsBW: 0, densityEndFpsBW: 100, densityStartTpsBW: 0, densityEndTpsBW: 100
   }
 };
 
@@ -200,24 +177,7 @@ export function mergePlayerConfig(partial?: Partial<PlayerRuntimeConfig> | null)
     animationEnabled: { ...base.animationEnabled, ...(partial.animationEnabled || {}) },
     sequences: Array.isArray(partial.sequences) ? structuredClone(partial.sequences) : [],
     debug: { ...base.debug, ...(partial.debug || {}) },
-    fog: {
-      ...base.fog,
-      ...(partial.fog || {}),
-      renderDistanceFPS: partial.fog?.renderDistanceFPS ?? base.fog.renderDistanceFPS,
-      renderDistanceTPS: partial.fog?.renderDistanceTPS ?? base.fog.renderDistanceTPS,
-      renderDistanceFpsBW: partial.fog?.renderDistanceFpsBW ?? base.fog.renderDistanceFpsBW,
-      renderDistanceTpsBW: partial.fog?.renderDistanceTpsBW ?? base.fog.renderDistanceTpsBW,
-      
-      densityStartFPS: partial.fog?.densityStartFPS ?? base.fog.densityStartFPS,
-      densityEndFPS: partial.fog?.densityEndFPS ?? base.fog.densityEndFPS,
-      densityStartTPS: partial.fog?.densityStartTPS ?? base.fog.densityStartTPS,
-      densityEndTPS: partial.fog?.densityEndTPS ?? base.fog.densityEndTPS,
-      
-      densityStartFpsBW: partial.fog?.densityStartFpsBW ?? base.fog.densityStartFpsBW,
-      densityEndFpsBW: partial.fog?.densityEndFpsBW ?? base.fog.densityEndFpsBW,
-      densityStartTpsBW: partial.fog?.densityStartTpsBW ?? base.fog.densityStartTpsBW,
-      densityEndTpsBW: partial.fog?.densityEndTpsBW ?? base.fog.densityEndTpsBW,
-    }
+    fog: { ...base.fog, ...(partial.fog || {}) }
   };
 }
 
@@ -235,19 +195,13 @@ export function createSequenceStep(action: PlayerActionKey = 'idle'): PlayerSequ
   const isCinematic = action !== 'idle' && action !== 'walk' && action !== 'run' && action !== 'fall';
   return {
     id: generarIdCorto(),
-    action,
-    clipOverride: null,
-    durationMs: 1000,
-    speedRatio: 1,
-    blend: 0.08,
-    loop: !isCinematic,
-    allowMovement: !isCinematic,
-    lockInput: isCinematic,
-    offsetY: 0,
-    offsetForward: 0
+    action, clipOverride: null, durationMs: 1000, speedRatio: 1, blend: 0.08,
+    loop: !isCinematic, allowMovement: !isCinematic, lockInput: isCinematic,
+    offsetY: 0, offsetForward: 0, procX: 0, procY: 0, procZ: 0
   };
 }
 
 export function createPlayerSequence(name = 'Nueva secuencia'): PlayerClipSequence {
-  return { id: generarIdCorto(), name, enabled: true, repeat: true, steps: [createSequenceStep('idle')] };
+  // 🔥 autoPlay por defecto en false, el usuario lo enciende con el checkbox
+  return { id: generarIdCorto(), name, enabled: true, repeat: true, autoPlay: false, steps: [createSequenceStep('idle')] };
 }

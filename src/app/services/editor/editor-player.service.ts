@@ -14,8 +14,6 @@ import { PlayerPhysicsService } from './playerservice/player-physics.service';
 import { PlayerSequenceService } from './playerservice/player-sequence.service';
 import { PlayerTriggerService } from './player-trigger.service';
 import { PlayerBubbleService } from './playerservice/player-bubble';
-
-// 🔥 NUEVO SERVICIO INYECTADO
 import { ObjectAnimationService } from './object-animation.service';
 
 @Injectable({ providedIn: 'root' })
@@ -32,7 +30,7 @@ export class EditorPlayerService {
   private sequenceSvc = inject(PlayerSequenceService);
   private triggerSvc = inject(PlayerTriggerService);
   private bubbleSvc = inject(PlayerBubbleService);
-  private autoAnimSvc = inject(ObjectAnimationService); // 🔥 INYECTADO
+  private autoAnimSvc = inject(ObjectAnimationService);
 
   public playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
   private tpsUpdateObserver: Observer<Scene> | null = null;
@@ -121,7 +119,14 @@ export class EditorPlayerService {
                 intensity: lightObj ? (lightObj as any).intensity : null
             });
 
-            this.animSvc.sincronizarAnimaciones(this.motor3d.scene, m as Mesh, mergePlayerConfig(m.metadata.playerConfig));
+            const pConfig = mergePlayerConfig(m.metadata.playerConfig);
+            this.animSvc.sincronizarAnimaciones(this.motor3d.scene, m as Mesh, pConfig);
+
+            // 🔥 INICIAR CLIPS/SECUENCIAS EN AUTO-PLAY PARA EL ENTORNO
+            const autoSeq = pConfig.sequences.find((s: any) => s.autoPlay);
+            if (autoSeq) {
+                this.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, m as Mesh, pConfig);
+            }
         }
 
         if (m.metadata?.type === 'video_plane') {
@@ -154,6 +159,12 @@ export class EditorPlayerService {
     obj.ellipsoidOffset = new Vector3(colMeta.offsetX * obj.scaling.x, colMeta.offsetY * obj.scaling.y, colMeta.offsetZ * obj.scaling.z);
 
     this.animSvc.sincronizarAnimaciones(this.motor3d.scene, obj, this.playerConfig);
+
+    // 🔥 INICIAR CLIPS/SECUENCIAS EN AUTO-PLAY PARA EL JUGADOR (Si es que le pusieron alguna cinemática de intro)
+    const playerAutoSeq = this.playerConfig.sequences.find((s: any) => s.autoPlay);
+    if (playerAutoSeq) {
+        this.sequenceSvc.iniciarSecuenciaEnJuego(playerAutoSeq.id, obj, this.playerConfig);
+    }
     
     this.state.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
     this.state.cameraPivot.isVisible = false;
@@ -173,7 +184,6 @@ export class EditorPlayerService {
       targetLookAt = this.state.cameraPivot!.getAbsolutePosition();
     }
 
-    // 🔥 INICIAR ANIMACIONES PROCEDURALES
     this.autoAnimSvc.startAmbientAutoAnimations();
 
     this.cameraSvc.volarHaciaCamaraJuego(obj.getAbsolutePosition(), targetPos, targetLookAt, vista === 'FPS', () => {
@@ -222,9 +232,7 @@ export class EditorPlayerService {
                 }
               } else {
                 if (target.metadata?.type === 'video_plane') {
-                    if (!target.metadata.isPoweredOn) {
-                        return; 
-                    }
+                    if (!target.metadata.isPoweredOn) return; 
 
                     if (ids.length === 0) {
                         if (target.material instanceof StandardMaterial) {
@@ -353,7 +361,6 @@ export class EditorPlayerService {
     this.animSvc.detenerTodasGlobal();
     this.animSvc.limpiarEstados(); 
 
-    // 🔥 DETENEMOS ANIMACIONES PROCEDURALES
     this.autoAnimSvc.stopAmbientAutoAnimations();
 
     this.triggerSvc.restaurarTriggersParaEditor();

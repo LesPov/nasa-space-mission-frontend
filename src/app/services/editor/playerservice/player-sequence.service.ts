@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { Mesh, Quaternion, Vector3, AbstractMesh, UniversalCamera, Light, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
+import { Mesh, Quaternion, Vector3, UniversalCamera, Light, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
 import { Motor3dService } from '../../motor-3d.service';
 import { PlayerClipSequence, PlayerSequenceStep, PlayerRuntimeConfig } from '../player-config.model';
@@ -46,13 +46,8 @@ export class PlayerSequenceService {
   private getSeqState(mesh: Mesh) {
     if (!this.activeSequences.has(mesh.uniqueId)) {
       this.activeSequences.set(mesh.uniqueId, {
-        id: '',
-        index: 0,
-        elapsedMs: 0,
-        stepEntered: false,
-        jumpTriggered: false,
-        orientationLocked: false,
-        quaternion: null
+        id: '', index: 0, elapsedMs: 0, stepEntered: false,
+        jumpTriggered: false, orientationLocked: false, quaternion: null
       });
     }
     return this.activeSequences.get(mesh.uniqueId)!;
@@ -156,7 +151,6 @@ export class PlayerSequenceService {
       if (state.orientationLocked) this.captureSequenceOrientationState(jugador, state);
       if (step.action === 'jumpStart') state.jumpTriggered = true;
       
-      // 🔥 FIX VIDEO BURN-OUT: Ajustamos el emissiveColor para que no se queme en Blanco y Negro
       if (step.action === 'playVideo' || step.action === 'pauseVideo' || step.action === 'stopVideo') {
           const videoName = step.clipOverride; 
           if (videoName) {
@@ -166,7 +160,6 @@ export class PlayerSequenceService {
                   if (texture && texture instanceof VideoTexture) {
                       if (step.action === 'playVideo') {
                           texture.video.play();
-                          // En lugar de blanco puro (1,1,1), usamos un gris medio para que el contraste B&W no lo destruya
                           videoMesh.material.emissiveColor = new Color3(0.4, 0.4, 0.4); 
                           videoMesh.metadata.isPoweredOn = true; 
                       }
@@ -185,10 +178,61 @@ export class PlayerSequenceService {
               }
           }
       }
-
       state.stepEntered = false;
     } else {
       state.orientationLocked = this.shouldLockOrientationForSequence(step) || state.orientationLocked;
+    }
+
+    // 🔥 FIX: DETENER LA ANIMACIÓN 3D GLB CUANDO SE SOLICITE DURANTE LA SECUENCIA
+    // Solo detenemos las animaciones apuntadas a ESTA linterna, no a las demás.
+    if (step.action === 'stopBaked' || step.clipOverride === 'none') {
+        const myAnimNames = jugador.metadata?.animationNames || [];
+        this.motor3d.scene.animationGroups.forEach(ag => {
+            if (myAnimNames.includes(ag.name)) {
+                if (ag.isPlaying) {
+                    const isTargetingMe = ag.targetedAnimations?.some((ta:any) => {
+                        let current: any = ta.target;
+                        while(current) {
+                            if (current === jugador) return true;
+                            current = current.parent;
+                        }
+                        return false;
+                    });
+                    if (isTargetingMe) {
+                        ag.stop();
+                    }
+                }
+            }
+        });
+    }
+
+    if (step.action === 'procMove' || step.action === 'procRotate') {
+        const durMs = Math.max(1, step.durationMs || 1000);
+        const dtFraction = dtMs / durMs; 
+        
+        if (step.action === 'procRotate') {
+            const rx = (step.procX || 0) * (Math.PI / 180) * dtFraction;
+            const ry = (step.procY || 0) * (Math.PI / 180) * dtFraction;
+            const rz = (step.procZ || 0) * (Math.PI / 180) * dtFraction;
+            
+            if (jugador.rotationQuaternion) {
+                const deltaQ = Quaternion.FromEulerAngles(rx, ry, rz);
+                jugador.rotationQuaternion = jugador.rotationQuaternion.multiply(deltaQ);
+            } else {
+                jugador.rotation.x += rx;
+                jugador.rotation.y += ry;
+                jugador.rotation.z += rz;
+            }
+        }
+        
+        if (step.action === 'procMove') {
+            const dx = (step.procX || 0) * dtFraction;
+            const dy = (step.procY || 0) * dtFraction;
+            const dz = (step.procZ || 0) * dtFraction;
+            jugador.position.x += dx;
+            jugador.position.y += dy;
+            jugador.position.z += dz;
+        }
     }
 
     if (jugador.metadata?.type?.startsWith('light_')) {

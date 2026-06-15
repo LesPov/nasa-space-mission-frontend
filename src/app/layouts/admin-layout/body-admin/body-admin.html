@@ -1,9 +1,9 @@
 <div class="admin-wrapper">
   
-  <!-- Header fijo arriba (Siempre visible) -->
-  <app-header-admin></app-header-admin>
+  <!-- Header fijo arriba (Se oculta en el modo editor 3D) -->
+  <app-header-admin *ngIf="layoutSvc.menuVisible()"></app-header-admin>
 
-  <!-- Menú lateral (Se oculta si el layoutSvc dice false) -->
+  <!-- Menú lateral (Se oculta en el modo editor 3D) -->
   <app-navbar-admin *ngIf="layoutSvc.menuVisible()"></app-navbar-admin>
 
   <!-- CONTENIDO CENTRAL -->

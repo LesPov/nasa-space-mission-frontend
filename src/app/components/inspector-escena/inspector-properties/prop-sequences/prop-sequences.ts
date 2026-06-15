@@ -1,4 +1,3 @@
-
 import { Component, Input, OnInit, OnChanges, SimpleChanges, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -9,27 +8,34 @@ import { PlayerClipSequence, mergePlayerConfig, cloneDefaultPlayerConfig, create
 import { Motor3dService } from '../../../../services/motor-3d.service';
  
 const ACTION_ROWS_CHAR = [
-  { key: 'idle', label: 'Idle / Reposo' }, { key: 'walk', label: 'Walk (Caminar)' }, { key: 'run', label: 'Run (Correr)' },
-  { key: 'playVideo', label: '▶️ Reproducir Video (TV)' },
-  { key: 'pauseVideo', label: '⏸️ Pausar Video (TV)' },
-  { key: 'stopVideo', label: '⏹️ Detener Video (TV)' }
+  { key: 'idle', label: 'Idle / Reposo' }, { key: 'walk', label: 'Walk (Caminar)' }, { key: 'run', label: 'Run (Correr)' }
+];
+
+const ACTION_ROWS_PROP = [
+  { key: 'idle', label: 'Esperar / Pausa' },
+  { key: 'stopBaked', label: '⏹️ Frenar Animación 3D Nativa (GLB)' },
+  { key: 'procMove', label: '↕️ Mover Objeto (Transformación)' },
+  { key: 'procRotate', label: '🔄 Rotar Objeto (Transformación)' },
+  { key: 'playVideo', label: '▶️ Reproducir Video (Si es TV)' },
+  { key: 'pauseVideo', label: '⏸️ Pausar Video (Si es TV)' },
+  { key: 'stopVideo', label: '⏹️ Detener Video (Si es TV)' }
 ];
 
 const ACTION_ROWS_LIGHT = [
-  { key: 'idle', label: 'Luz Fija (Encendida Mantiene Estado)' }, 
-  { key: 'lightOn', label: 'Forzar Encender Luz' }, 
-  { key: 'lightOff', label: 'Forzar Apagar Luz' }, 
-  { key: 'lightPulse', label: 'Parpadeo Suave (Pulsar)' }, 
-  { key: 'lightFlicker', label: 'Parpadeo Roto (Estroboscópico)' }
+  ...ACTION_ROWS_PROP,
+  { key: 'lightOn', label: '💡 Forzar Encender Luz' }, 
+  { key: 'lightOff', label: '🔌 Forzar Apagar Luz' }, 
+  { key: 'lightPulse', label: '💓 Parpadeo Suave (Pulsar)' }, 
+  { key: 'lightFlicker', label: '⚡ Parpadeo Roto (Estroboscópico)' }
 ];
-
+ 
 @Component({
   selector: 'app-prop-sequences',
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-sequences.html',
   styleUrls: ['../inspector-properties.css']
-})
+}) 
 export class PropSequences implements OnInit, OnChanges {
   @Input() objeto!: AbstractMesh;
   private editorSvc = inject(EditorMapaService);
@@ -61,10 +67,13 @@ export class PropSequences implements OnInit, OnChanges {
     this.esPersonaje = this.objeto.metadata?.rol === 'npc' || this.objeto.metadata?.rol === 'spawn_point';
     this.esLuz = this.objeto.metadata?.type?.startsWith('light_');
 
-    if (this.esLuz) {
+    // Asignación inteligente de acciones según el tipo
+    if (this.esPersonaje) {
+        this.actionRows = ACTION_ROWS_CHAR;
+    } else if (this.esLuz) {
         this.actionRows = ACTION_ROWS_LIGHT;
     } else {
-        this.actionRows = ACTION_ROWS_CHAR;
+        this.actionRows = ACTION_ROWS_PROP;
     }
     
     const meta = this.objeto.metadata || {};
@@ -84,10 +93,8 @@ export class PropSequences implements OnInit, OnChanges {
         }
     }
     
-    // Lista temporal para recolectar nombres y luego quitar duplicados
     const rawClips: string[] = [];
 
-    // Agregar animaciones 3D del objeto
     if (myAnimNames.length > 0) {
         const groups = this.motor3dSvc.scene.animationGroups.filter(ag => myAnimNames.includes(ag.name));
         rawClips.push(...groups.map(g => g.name));
@@ -99,14 +106,12 @@ export class PropSequences implements OnInit, OnChanges {
         rawClips.push(...groups.map(g => g.name));
     }
 
-    // Agregar nombres de los Planos de Video
     this.motor3dSvc.scene.meshes.forEach(m => {
         if (m.metadata?.type === 'video_plane') {
             rawClips.push(m.name);
         }
     });
 
-    // 🔥 FIX: Quitar nombres de animaciones duplicadas de la lista para que la interfaz se vea limpia
     this.availableClips = [...new Set(rawClips)];
   }
 

@@ -12,12 +12,12 @@ import { FormsModule } from '@angular/forms';
 import { MiniVisorEscena } from '../../../components/mini-visor-escena/mini-visor-escena';
 import { debounceTime, Subscription } from 'rxjs';
 import { AbstractMesh } from '@babylonjs/core';
-import { GlobalTimeline } from '../../../components/global-timeline/global-timeline'; // 🔥 NUEVO IMPORT
+import { GlobalTimeline } from '../../../components/global-timeline/global-timeline';
 
 @Component({
   selector: 'app-editor-escena',
   standalone: true,
-  imports: [MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule, MiniVisorEscena, GlobalTimeline], // 🔥 AGREGADO AQUÍ
+  imports: [MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule, MiniVisorEscena, GlobalTimeline],
   templateUrl: './editor-escena.html',
   styleUrl: './editor-escena.css',
 }) 
@@ -61,11 +61,15 @@ export class EditorEscena implements OnInit, OnDestroy {
   public objMensaje: string = '';
 
   public vistaPrueba: 'FPS' | 'TPS' = 'FPS';
+  
+  // 🔥 ESTADOS PARA OCULTAR PANELES LATERALES/INFERIORES
+  public showInspector = true;
+  public showTimeline = true;
+
   public inspectorWidth = 350; 
   public isResizing = false;
 
-  // 🔥 NUEVAS VARIABLES PARA EL TIMELINE INFERIOR
-  public timelineHeight = 30; // Altura inicial en porcentaje
+  public timelineHeight = 30; 
   public isResizingTimeline = false;
 
   private fpsInterval: any;
@@ -88,7 +92,24 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  // Lógica de resizers...
+  // 🔥 LÓGICA DE BOTONES FLOTANTES Y RAYCAST EXACTO
+  toggleInspector() {
+    this.showInspector = !this.showInspector;
+    this.recalcularMotor();
+  }
+
+  toggleTimeline() {
+    this.showTimeline = !this.showTimeline;
+    this.recalcularMotor();
+  }
+
+  recalcularMotor() {
+    // Le damos microsegundos al DOM para que aplique el CSS/HTML y luego forzamos al motor 3D a leer su nuevo contenedor
+    setTimeout(() => this.motor3dSvc.forzarRedimension(), 10);
+    setTimeout(() => this.motor3dSvc.forzarRedimension(), 150);
+  }
+
+  // Lógica de resizers manuales...
   iniciarRedimension(event: MouseEvent) {
     if (this.editorSvc.playState() === 'EDITOR' || this.editorSvc.playState() === 'EDITING_IN_GAME') {
       this.isResizing = true;
@@ -113,15 +134,12 @@ export class EditorEscena implements OnInit, OnDestroy {
       }
     }
 
-    // 🔥 CÁLCULO DEL SPLITTER HORIZONTAL DEL TIMELINE INFERIOR
     if (this.isResizingTimeline) {
-      const headerOffset = 70; // Header global
-      const containerHeight = window.innerHeight - headerOffset;
+      const containerHeight = window.innerHeight;
       const bottomY = window.innerHeight - event.clientY;
       
       let newHeight = (bottomY / containerHeight) * 100;
       
-      // Límites: Mínimo 5% (casi cerrado), máximo 70% de la pantalla
       if (newHeight < 5) newHeight = 5; 
       if (newHeight > 70) newHeight = 70;
       
@@ -134,11 +152,11 @@ export class EditorEscena implements OnInit, OnDestroy {
   onMouseUp() {
     if (this.isResizing) {
       this.isResizing = false;
-      this.motor3dSvc.forzarRedimension(); 
+      this.recalcularMotor();
     }
     if (this.isResizingTimeline) {
       this.isResizingTimeline = false;
-      this.motor3dSvc.forzarRedimension();
+      this.recalcularMotor();
     }
   }
 
@@ -179,7 +197,6 @@ export class EditorEscena implements OnInit, OnDestroy {
         if (m.metadata?.type === 'trigger' || (m.metadata?.type?.startsWith('light_') && !m.metadata?.assetId)) {
             m.isVisible = isAdmin;
         }
-        // 🔥 FIX USUARIO FINAL: Apagado y encendido absoluto de ejes y grilla
         if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
             m.isVisible = isAdmin;
             m.setEnabled(isAdmin);

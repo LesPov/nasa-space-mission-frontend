@@ -1,4 +1,3 @@
-
 import {
   Component,
   Input,
@@ -56,8 +55,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   public attachedNodePath: string = '';
   public attachedNodeName: string = '';
 
-  // 🔥 Corrección de orientación para que la luz siga apuntando al piso
-  // cuando el modelo visual está rotado 180°.
   public lightRotationFixX: number = Math.PI;
   public lightRotationFixY: number = 0;
   public lightRotationFixZ: number = 0;
@@ -152,15 +149,23 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   private applyAttachment(light: Light | null) {
     if (!light || !this.objeto) return;
 
-    const targetNode =
+    // 🔥 FIX: Si el usuario selecciona "Estático" el path llega como vacío ("")
+    const targetNode = this.attachedNodePath !== "" ? (
       this.resolveNodeByPath(this.attachedNodePath) ||
       this.getAllAttachableNodes().find(n => n.name === this.attachedNodeName) ||
-      null;
+      null
+    ) : null;
 
     if (targetNode) {
       light.parent = targetNode;
     } else {
       light.parent = this.objeto;
+    }
+
+    // 🔥 FIX VITAL: Al reparentar la luz, debemos forzar su posición local a (0,0,0)
+    // para que no arrastre offsets de huesos anteriores o del mundo.
+    if ((light as any).position) {
+      (light as any).position.copyFromFloats(0, 0, 0);
     }
   }
 
@@ -229,6 +234,11 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   aplicarLuz() {
     if (!this.objeto.metadata) this.objeto.metadata = {};
 
+    // 🔥 FIX: Si vaciaron el path, vaciar también el nombre
+    if (this.attachedNodePath === "") {
+        this.attachedNodeName = "";
+    }
+
     const light = this.getAttachedLight();
 
     if (light) {
@@ -251,10 +261,11 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       this.applyAttachment(light);
     }
 
-    const targetNode =
+    const targetNode = this.attachedNodePath !== "" ? (
       this.resolveNodeByPath(this.attachedNodePath) ||
       this.getAllAttachableNodes().find(n => n.name === this.attachedNodeName) ||
-      null;
+      null
+    ) : null;
 
     this.attachedNodeName = targetNode?.name || '';
     this.attachedNodePath = targetNode ? this.buildNodePath(targetNode) : '';
@@ -275,6 +286,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     }
 
     this.editorSvc.triggerUpdate();
-    this.animStatus = '💡 Luz actualizada';
+    this.animStatus = '💡 Luz actualizada y re-anclada';
   }
 }

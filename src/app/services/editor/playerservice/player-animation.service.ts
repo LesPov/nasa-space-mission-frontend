@@ -1,4 +1,3 @@
-
 import { Injectable } from '@angular/core';
 import { AnimationGroup, Scene, Mesh } from '@babylonjs/core';
 import { PlayerRuntimeConfig, normalizeAnimBinding, PlayerActionKey, PlayerSequenceStep } from '../player-config.model';
@@ -58,8 +57,6 @@ export class PlayerAnimationService {
     state.animacionesJugador = [];
     const metadataNames: string[] = obj.metadata?.animationNames || [];
     
-    // 🔥 FIX VITAL: Función para validar que la animación realmente apunta a este objeto o a sus hijos.
-    // Esto evita que el Player robe animaciones de los NPCs o clones.
     const isTargetingObj = (ag: AnimationGroup) => {
         if (!ag.targetedAnimations) return false;
         return ag.targetedAnimations.some((ta) => {
@@ -91,10 +88,7 @@ export class PlayerAnimationService {
     state.animJumpLoop = this.resolveAnimation(state, anims.jumpLoop, state.animJump);
     state.animFall = this.resolveAnimation(state, anims.fall, state.animJumpLoop || state.animJump);
     state.animLandSoft = this.resolveAnimation(state, anims.landSoft, state.animIdle);
-    
-    // 🔥 AQUÍ ESTABA EL ERROR DE LA T-POSE: Mapeo correcto a landHard
     state.animHardLanding = this.resolveAnimation(state, anims.landHard, state.animLandSoft || state.animIdle);
-    
     state.animClimb = this.resolveAnimation(state, anims.climbUp, state.animIdle);
     state.animClimbFinish = this.resolveAnimation(state, anims.climbFinish, state.animClimb);
     state.animHangIdle = this.resolveAnimation(state, anims.hangIdle, state.animClimb);
@@ -133,7 +127,7 @@ export class PlayerAnimationService {
       case 'playVideo':
       case 'pauseVideo':
       case 'stopVideo':
-          return null; // A estos no se les busca animación física
+          return null; 
       default: return state.animIdle;
     }
   }
@@ -141,6 +135,12 @@ export class PlayerAnimationService {
   public resolveSequenceStepAnimation(mesh: Mesh, step: PlayerSequenceStep): AnimationGroup | null {
     const state = this.getState(mesh);
     const clipOverride = (step.clipOverride || '').trim();
+    
+    // 🔥 FIX VITAL: Si está forzado en "none" o es una acción de freno total, NO DEVUELVE NINGUNA ANIMACIÓN.
+    if (clipOverride.toLowerCase() === 'none' || step.action === 'stopBaked') {
+        return null;
+    }
+
     if (clipOverride) {
       const exact = state.animacionesJugador.find(ag => ag.name.toLowerCase() === clipOverride.toLowerCase());
       if (exact) return exact;
@@ -177,11 +177,9 @@ export class PlayerAnimationService {
       if (state.animActual) { state.animActual.stop(); state.animActual = null; }
       state.animacionesJugador.forEach(a => a.stop());
     });
-    // 🔥 FIX VITAL: YA NO HACEMOS this.states.clear() AQUÍ PARA EVITAR PERDER LA MEMORIA DURANTE EL JUEGO
   }
 
   public limpiarEstados(): void {
-    // 🔥 SOLAMENTE SE LLAMA A ESTO CUANDO DE VERDAD SALIMOS DEL JUEGO
     this.states.clear();
   }
 
@@ -203,6 +201,12 @@ export class PlayerAnimationService {
     const state = this.getState(mesh);
     
     if (seqRuntime.running && seqRuntime.step) {
+      // 🔥 FIX: Si la secuencia explícitamente congela el modelo, no permitimos que continúe.
+      if (seqRuntime.step.clipOverride === 'none' || seqRuntime.step.action === 'stopBaked') {
+          this.playAnim(mesh, null, false, seqRuntime.blend);
+          return;
+      }
+
       const override = this.resolveSequenceStepAnimation(mesh, seqRuntime.step);
       if (override) {
         override.speedRatio = seqRuntime.step.speedRatio || 1;

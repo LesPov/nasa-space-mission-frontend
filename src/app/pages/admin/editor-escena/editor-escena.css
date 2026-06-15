@@ -1,4 +1,3 @@
-/* GALERÍA */
 .galeria-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; }
 .galeria-header h2 { color: #60a5fa; font-size: 28px; }
 .galeria-header p { color: #94a3b8; margin-top: 5px; }
@@ -83,10 +82,10 @@
   display: flex; 
   background-color: #1e1e1e; 
   position: fixed; 
-  top: 70px; 
+  top: 0; /* 🔥 AHORA INICIA DESDE ARRIBA DEL TODO */
   left: 0; 
   width: 100vw; 
-  height: calc(100vh - 70px); 
+  height: 100vh; /* 🔥 AHORA TOMA TODA LA PANTALLA */
   z-index: 950; 
   overflow: hidden;
 }
@@ -108,6 +107,47 @@
   width: 100%;
   min-height: 0;
 }
+
+/* 🔥 ESTILOS PARA LOS BOTONES FLOTANTES (TOGGLE) EN LOS BORDES */
+.toggle-panel-btn {
+  position: absolute;
+  background: #1c1c1c;
+  border: 1px solid #333;
+  color: #aaa;
+  z-index: 990;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  font-size: 10px;
+}
+.toggle-panel-btn:hover {
+  background: #3b82f6;
+  color: white;
+  border-color: #3b82f6;
+}
+
+.toggle-right {
+  right: 0; 
+  top: 50%; 
+  transform: translateY(-50%);
+  width: 16px; 
+  height: 48px; 
+  border-radius: 6px 0 0 6px; 
+  border-right: none;
+}
+
+.toggle-bottom {
+  bottom: 0; 
+  left: 50%; 
+  transform: translateX(-50%);
+  width: 48px; 
+  height: 16px; 
+  border-radius: 6px 6px 0 0; 
+  border-bottom: none;
+}
+
 
 .viewport-topbar {
   height: 40px; 
@@ -153,7 +193,7 @@
 }
 .fps-badge { position: absolute; top: 15px; left: 70px; color: #87c04f; font-family: monospace; font-size: 13px; pointer-events: none; text-shadow: 1px 1px 2px black; z-index: 10; }
 
-/* 🔥 NUEVO: SPLITTER HORIZONTAL PARA LA LÍNEA DE TIEMPO */
+/* 🔥 SPLITTER HORIZONTAL PARA LA LÍNEA DE TIEMPO */
 .horizontal-resizer {
   height: 6px;
   background-color: #1a1a1a;
@@ -201,12 +241,13 @@
 }
 .inspector-wrapper ::ng-deep app-inspector-escena { width: 100% !important; }
 
-/* 🔥 PANTALLA DE CARGA, NOTIFICACIONES Y HUD... (se mantienen igual) */
+/* 🔥 PANTALLA DE CARGA, NOTIFICACIONES Y HUD */
 .loading-overlay { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background-color: #0f172a; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 9999; color: white; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
 .spinner { width: 50px; height: 50px; border: 5px solid rgba(255, 255, 255, 0.1); border-top-color: #3b82f6; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 20px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .loading-overlay h2 { font-size: 24px; margin: 0 0 10px 0; color: #60a5fa; font-weight: bold; }
 .loading-overlay p { color: #94a3b8; font-size: 14px; margin: 0; }
+
 .hud-container { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
 .hud-message { padding: 8px 20px; border-radius: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 4px 15px rgba(0,0,0,0.4); animation: slideDown 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
 .hud-icon { font-size: 16px; }
@@ -214,8 +255,10 @@
 .hud-paused { background-color: rgba(0, 0, 0, 0.65); color: #9ca3af; border: 1px solid rgba(156, 163, 175, 0.4); }
 .hud-editing { background-color: rgba(16, 42, 22, 0.75); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.5); box-shadow: 0 0 15px rgba(74, 222, 128, 0.2); }
 @keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+
 .crosshair-ui { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; background-color: #facc15; border: 1px solid rgba(15, 23, 42, 0.8); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 100; box-shadow: 0 0 6px rgba(250, 204, 21, 0.8); transition: all 0.14s ease-out; }
 .crosshair-ui.hovering { width: 18px; height: 18px; background-color: #38bdf8; border-color: rgba(255, 255, 255, 0.95); box-shadow: 0 0 16px rgba(56, 189, 248, 0.95); transform: translate(-50%, -50%) scale(1.08); }
+
 .rpg-modal { background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); border: 2px solid #3b82f6; border-radius: 12px; width: 450px; max-width: 90vw; box-shadow: 0 20px 50px rgba(0,0,0,0.8), inset 0 0 20px rgba(59, 130, 246, 0.2); overflow: hidden; animation: modalPop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); color: #f8fafc; }
 .rpg-modal-header { background: rgba(15, 23, 42, 0.8); padding: 15px 20px; border-bottom: 1px solid #334155; }
 .rpg-modal-header h3 { margin: 0; color: #60a5fa; font-size: 18px; display: flex; align-items: center; gap: 10px; }
@@ -227,6 +270,7 @@
 .btn-rpg-action { background: #3b82f6; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; transition: all 0.2s; box-shadow: 0 4px 10px rgba(59, 130, 246, 0.4); }
 .btn-rpg-action:hover { background: #2563eb; transform: translateY(-2px); }
 @keyframes modalPop { 0% { opacity: 0; transform: scale(0.9) translateY(20px); } 100% { opacity: 1; transform: scale(1) translateY(0); } }
+
 .modern-toast-container { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 200; pointer-events: none; animation: slideUpFade 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
 .modern-toast-box { background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 12px 24px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 200px; }
 .toast-title { color: #94a3b8; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; margin: 0; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }

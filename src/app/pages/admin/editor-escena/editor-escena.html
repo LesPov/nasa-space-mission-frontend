@@ -54,7 +54,6 @@
 
 <ng-container *ngIf="editando">
   
-  <!-- 🔥 PANTALLA DE CARGA DEL MAPA -->
   <div class="loading-overlay" *ngIf="cargandoEscena">
     <div class="spinner"></div>
     <h2>Cargando Entorno...</h2>
@@ -62,6 +61,7 @@
   </div>
 
   <div class="modal-overlay" *ngIf="editorSvc.showAddObjectModal()" style="z-index: 9999;">
+    <!-- EL CÓDIGO DEL MODAL DE AÑADIR OBJETOS ES EL MISMO QUE YA TIENES... LO DEJO COMO ESTÁ -->
     <div class="modal-box large">
       <h3>Añadir Nuevo Elemento a la Escena</h3>
       <p style="font-size: 11px; color: #fbbf24; margin-top: -10px;">
@@ -182,7 +182,6 @@
       </div>
       <div class="rpg-modal-body">
         <p class="rpg-obj-name">{{ editorSvc.objetoInteractuado()?.name }}</p>
-        
         <div class="rpg-obj-desc">
           <div class="lore-text">
             <p>"{{ editorSvc.objetoInteractuado()?.metadata?.mensaje || 'Un objeto cualquiera en tu camino. No parece hacer nada especial.' }}"</p>
@@ -197,10 +196,10 @@
 
  <div class="blender-layout">
     
-    <div class="viewport-area" [style.width]="esAdmin ? 'calc(100% - ' + inspectorWidth + 'px)' : '100%'">
+    <div class="viewport-area" [style.width]="(esAdmin && showInspector) ? 'calc(100% - ' + inspectorWidth + 'px)' : '100%'">
       
       <!-- CONTENEDOR SUPERIOR (Canvas 3D) -->
-      <div class="canvas-wrapper" [style.height.%]="esAdmin ? 100 - timelineHeight : 100">
+      <div class="canvas-wrapper" [style.height.%]="(esAdmin && showTimeline) ? 100 - timelineHeight : 100">
         <div class="viewport-topbar">
           <div class="vp-left">
             <button class="btn-vp btn-exit" (click)="salirDelEditor()" *ngIf="editorSvc.playState() === 'EDITOR' || !esAdmin">⬅ Menú</button>
@@ -222,6 +221,16 @@
         </div>
 
         <div class="canvas-container">
+          
+          <!-- 🔥 BOTONES FLOTANTES EN LOS BORDES DEL CANVAS -->
+          <button class="toggle-panel-btn toggle-right" *ngIf="esAdmin" (click)="toggleInspector()" [title]="showInspector ? 'Ocultar Inspector' : 'Mostrar Inspector'">
+            {{ showInspector ? '▶' : '◀' }}
+          </button>
+          <button class="toggle-panel-btn toggle-bottom" *ngIf="esAdmin" (click)="toggleTimeline()" [title]="showTimeline ? 'Ocultar Timeline' : 'Mostrar Timeline'">
+            {{ showTimeline ? '▼' : '▲' }}
+          </button>
+
+          <!-- TODO LO REFERENTE A HUD ES IGUAL... -->
           <div class="crosshair-ui" *ngIf="editorSvc.playState() === 'PLAYING' && stateSvc.modoVistaPrueba === 'FPS' && editorSvc.ratonBloqueado()" [class.hovering]="editorSvc.mirandoObjetoInteractuable()"></div>
 
           <div class="modern-toast-container" *ngIf="stateSvc.mensajeTriggerHUD() !== null" style="bottom: 120px; z-index: 300;">
@@ -264,31 +273,31 @@
         </div>
       </div>
       
-      <!-- 🔥 SPLITTER HORIZONTAL DEL TIMELINE (NUEVO) -->
+      <!-- 🔥 SPLITTER HORIZONTAL DEL TIMELINE CONDICIONADO -->
       <div class="horizontal-resizer" 
-           *ngIf="esAdmin"
+           *ngIf="esAdmin && showTimeline"
            (mousedown)="iniciarRedimensionTimeline($event)" 
            [class.resizing]="isResizingTimeline">
         <div class="resizer-grip-h"></div>
       </div>
 
-      <!-- 🔥 PANEL INFERIOR TIMELINE (NUEVO) -->
-      <div class="timeline-wrapper" *ngIf="esAdmin && timelineHeight > 5" [style.height.%]="timelineHeight">
+      <!-- 🔥 PANEL INFERIOR TIMELINE CONDICIONADO -->
+      <div class="timeline-wrapper" *ngIf="esAdmin && showTimeline && timelineHeight > 5" [style.height.%]="timelineHeight">
         <app-global-timeline></app-global-timeline>
       </div>
       
     </div>
     
-    <!-- SPLITTER VERTICAL DEL INSPECTOR DERECHO -->
+    <!-- SPLITTER VERTICAL DEL INSPECTOR DERECHO CONDICIONADO -->
     <div class="layout-resizer" 
-         *ngIf="esAdmin" 
+         *ngIf="esAdmin && showInspector" 
          (mousedown)="iniciarRedimension($event)" 
          [class.resizing]="isResizing">
       <div class="resizer-grip"></div>
     </div>
 
-    <!-- INSPECTOR DERECHO -->
-    <div class="inspector-wrapper" *ngIf="esAdmin" [style.width.px]="inspectorWidth">
+    <!-- INSPECTOR DERECHO CONDICIONADO -->
+    <div class="inspector-wrapper" *ngIf="esAdmin && showInspector" [style.width.px]="inspectorWidth">
       <app-inspector-escena></app-inspector-escena>
     </div>
     

@@ -1,4 +1,3 @@
-
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -114,15 +113,18 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
         }
     }
     
+    // 🔥 FIX: Verificar independientemente de los nombres que SÍ apunten al modelo seleccionado
+    const isTargetingMe = (ag: AnimationGroup) => {
+      if (!ag.targetedAnimations) return false;
+      return ag.targetedAnimations.some((ta: any) => validTargets.has(ta.target));
+    };
+
     if (myAnimNames.length > 0) {
-         let matchedGroups = scene.animationGroups.filter(ag => myAnimNames.includes(ag.name));
+         let matchedGroups = scene.animationGroups.filter(ag => myAnimNames.includes(ag.name) && isTargetingMe(ag));
          if (matchedGroups.length > 0) return matchedGroups;
     }
 
-    let groups = scene.animationGroups.filter((ag: AnimationGroup) => {
-      if (!ag.targetedAnimations || ag.targetedAnimations.length === 0) return false;
-      return ag.targetedAnimations.some((ta: any) => validTargets.has(ta.target));
-    });
+    let groups = scene.animationGroups.filter(isTargetingMe);
 
     return groups;
   }

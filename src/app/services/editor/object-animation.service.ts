@@ -13,6 +13,29 @@ export class ObjectAnimationService {
 
     scene.meshes.forEach((mesh) => {
       const meta = mesh.metadata;
+      
+      // 🔥 FIX GLB Y HUESOS: Detener solo la animación de ESTE mesh específico.
+      // Si hay 10 linternas, solo congela la que tiene el stopBaked activado.
+      if (meta && meta.autoAnim && meta.autoAnim.stopBaked) {
+          const myAnimNames = meta.animationNames || [];
+          scene.animationGroups.forEach(ag => {
+              if (myAnimNames.includes(ag.name)) {
+                  const isTargetingMe = ag.targetedAnimations?.some((ta:any) => {
+                      let current: any = ta.target;
+                      while(current) {
+                          if (current === mesh) return true;
+                          current = current.parent;
+                      }
+                      return false;
+                  });
+                  if (isTargetingMe) {
+                      ag.stop();
+                  }
+              }
+          });
+      }
+
+      // Si tiene una animación procedimental programada
       if (meta && meta.autoAnim && meta.autoAnim.enabled) {
         this.applyAutoAnim(mesh as Mesh, meta.autoAnim);
       }
@@ -36,7 +59,6 @@ export class ObjectAnimationService {
     let anim: Animation;
     let keys = [];
 
-    // Suavizado elegante para todo menos rotación continua
     const easeInOut = new SineEase();
     easeInOut.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
 
@@ -56,7 +78,6 @@ export class ObjectAnimationService {
       anim.setEasingFunction(easeInOut);
 
     } else if (type === 'rotate') {
-      // Rotación es lineal para que no haya parones en el giro
       anim = new Animation('autoRot', 'rotation', fps, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CYCLE);
       const startRot = mesh.rotation.clone();
       const endRot = startRot.clone();

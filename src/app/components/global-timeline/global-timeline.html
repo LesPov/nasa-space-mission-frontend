@@ -1,113 +1,208 @@
 <div class="timeline-shell">
-  <!-- Pestañas del Panel Inferior -->
+  <!-- Pestañas -->
   <div class="timeline-tabs">
-    <button class="tab-btn" [class.active]="activeTab === 'animaciones'" (click)="activeTab = 'animaciones'">
-      <span>🏃</span> Animaciones Ambientales (Bloques)
-    </button>
-    <button class="tab-btn" [class.active]="activeTab === 'prefabs'" (click)="activeTab = 'prefabs'">
-      <span>📦</span> Prefabs (Objetos Inteligentes)
-    </button>
+    <button class="tab-btn" [class.active]="activeTab === 'clips'" (click)="activeTab = 'clips'">🎬 Creador de Clips</button>
+    <button class="tab-btn" [class.active]="activeTab === 'animaciones'" (click)="activeTab = 'animaciones'">🏃 Anim. Auto</button>
+    <button class="tab-btn" [class.active]="activeTab === 'prefabs'" (click)="activeTab = 'prefabs'">📦 Prefabs</button>
   </div>
 
   <div class="timeline-content">
     
     <!-- ============================================== -->
-    <!-- PESTAÑA: ANIMACIONES AMBIENTALES (AUTO-PLAY) -->
+    <!-- PESTAÑA: CLIPS -->
     <!-- ============================================== -->
-    <div *ngIf="activeTab === 'animaciones'" style="padding: 10px; display: flex; flex-direction: column; gap: 15px;">
-      
+    <ng-container *ngIf="activeTab === 'clips'">
       <div *ngIf="!editorSvc.objetoSeleccionado()" class="empty-state">
-        <p>Selecciona un objeto de la escena (ej: un Cubo) para animarlo.</p>
+        <p>Selecciona un objeto para editar sus Clips/Secuencias.</p>
       </div>
-
-      <div *ngIf="editorSvc.objetoSeleccionado()" style="background: #242424; padding: 15px; border-radius: 6px; border: 1px solid #333;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #444; padding-bottom: 10px;">
-          <h4 style="margin: 0; color: #60a5fa;">Animar en Bucle: {{ (editorSvc.objetoSeleccionado()?.name) }}</h4>
-          
-          <div style="display: flex; gap: 8px; align-items: center;">
-            <input type="checkbox" id="chkAutoAnim" [(ngModel)]="autoAnimConfig.enabled" (change)="guardarAutoAnimacion()">
-            <label for="chkAutoAnim" style="color: #4ade80; font-weight: bold; cursor: pointer;">Activar Animación Automática</label>
-          </div>
+      
+      <div *ngIf="editorSvc.objetoSeleccionado()" style="display: flex; flex-direction: column; height: 100%;">
+        
+        <div class="clip-topbar">
+          <button class="btn-primary" (click)="nuevaSecuencia()">+ Nuevo Clip</button>
+          <div style="width: 1px; height: 15px; background: #444; margin: 0 4px;"></div>
+          <button *ngFor="let seq of sequences" class="sequence-chip" [class.active]="seq.id === selectedSequenceId" (click)="seleccionarSecuencia(seq.id)">
+            🎬 {{ seq.name }}
+          </button>
         </div>
 
-        <div style="display: flex; gap: 15px;" [style.opacity]="autoAnimConfig.enabled ? '1' : '0.4'" [style.pointer-events]="autoAnimConfig.enabled ? 'all' : 'none'">
-          
-          <div style="display: flex; flex-direction: column; gap: 5px; width: 150px;">
-            <label style="font-size: 11px; color: #aaa;">Tipo de Movimiento</label>
-            <!-- 🔥 NUEVAS OPCIONES DE ANIMACIÓN AÑADIDAS AQUÍ -->
-            <select [(ngModel)]="autoAnimConfig.type" (change)="guardarAutoAnimacion()" style="background: #111; color: white; padding: 6px; border: 1px solid #444; border-radius: 4px;">
-              <option value="move">Desplazar (Ida y Vuelta)</option>
-              <option value="rotate">Rotar (Giro Continuo)</option>
-              <option value="scale">Escalar (Latido/Pulsar)</option>
-              <option value="float">Flotar (Arriba/Abajo Suave)</option>
-            </select>
+        <div *ngIf="currentSequence" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+          <div class="sequence-settings">
+            <div class="field" style="width: 180px;">
+              <input type="text" [(ngModel)]="currentSequence.name" (ngModelChange)="persist()" placeholder="Nombre del Clip">
+            </div>
+            <div class="checkbox-field highlight">
+              <input type="checkbox" id="chkAutoPlay" [(ngModel)]="currentSequence.autoPlay" (ngModelChange)="persist()">
+              <label for="chkAutoPlay">Auto-Play</label>
+            </div>
+            <div class="checkbox-field">
+              <input type="checkbox" id="chkRepeat" [(ngModel)]="currentSequence.repeat" (ngModelChange)="persist()">
+              <label for="chkRepeat">Bucle Infinito</label>
+            </div>
+            <div style="flex: 1;"></div>
+            <span style="font-size: 9px; color: #666; margin-right: 10px;">ID: {{ currentSequence.id }}</span>
+            <button class="btn-secondary" (click)="probarSecuencia(currentSequence)" *ngIf="editorSvc.objetoSeleccionado()?.metadata?.type !== 'trigger'">▶ Probar</button>
+            <button class="btn-danger" (click)="eliminarSecuencia(currentSequence.id)">🗑️</button>
           </div>
 
-          <div style="display: flex; flex-direction: column; gap: 5px; width: 100px;">
-            <label style="font-size: 11px; color: #aaa;">Eje</label>
-            <!-- El eje se deshabilita si es flotar porque por defecto es Y -->
-            <select [(ngModel)]="autoAnimConfig.axis" (change)="guardarAutoAnimacion()" [disabled]="autoAnimConfig.type === 'float'" style="background: #111; color: white; padding: 6px; border: 1px solid #444; border-radius: 4px;">
-              <option value="X">X (Lados)</option>
-              <option value="Y">Y (Arriba/Abajo)</option>
-              <option value="Z">Z (Profundidad)</option>
-              <option value="ALL" *ngIf="autoAnimConfig.type === 'scale'">Todos</option>
-            </select>
+          <!-- PISTA HORIZONTAL -->
+          <div class="timeline-track">
+            <ng-container *ngFor="let step of currentSequence.steps; let i = index">
+              <div class="step-card" [class.active]="selectedStepIndex === i" (click)="selectedStepIndex = i">
+                <div class="step-header">
+                  <span class="step-num">{{ i + 1 }}</span>
+                  <span class="step-title" [title]="getActionLabel(step.action)">{{ getActionLabel(step.action) }}</span>
+                  <button class="step-del" (click)="quitarPaso(currentSequence, i); $event.stopPropagation()">×</button>
+                </div>
+                <div class="step-info">
+                  <span *ngIf="step.loop" style="color: #60a5fa; font-weight: bold;">🔁 Loop</span>
+                  <span *ngIf="!step.loop"></span>
+                  <span>{{ step.durationMs / 1000 }}s</span>
+                </div>
+              </div>
+              <div class="step-arrow" *ngIf="i < currentSequence.steps.length - 1">➔</div>
+            </ng-container>
+            <button class="add-step-btn" (click)="agregarPaso(currentSequence)">+ Acción</button>
           </div>
 
-          <div style="display: flex; flex-direction: column; gap: 5px; width: 120px;">
-            <label style="font-size: 11px; color: #aaa;">Distancia / Grados</label>
-            <input type="number" [(ngModel)]="autoAnimConfig.amount" (change)="guardarAutoAnimacion()" style="background: #111; color: white; padding: 6px; border: 1px solid #444; border-radius: 4px;">
-          </div>
+          <!-- EDITOR DE PASOS -->
+          <div class="step-editor-panel" *ngIf="currentStep">
+            <h4>Paso {{ selectedStepIndex + 1 }}</h4>
+            <div class="step-editor-grid">
+              
+              <div class="field wide">
+                <label>Comportamiento</label>
+                <select [(ngModel)]="currentStep.action" (ngModelChange)="persist()">
+                  <option *ngFor="let act of actionRows" [value]="act.key">{{ act.label }}</option>
+                </select>
+              </div>
 
-          <div style="display: flex; flex-direction: column; gap: 5px; width: 120px;">
-            <label style="font-size: 11px; color: #aaa;">Duración (Segundos)</label>
-            <input type="number" step="0.5" [(ngModel)]="autoAnimConfig.duration" (change)="guardarAutoAnimacion()" style="background: #111; color: white; padding: 6px; border: 1px solid #444; border-radius: 4px;">
-          </div>
+              <div class="field">
+                <label>Tiempo (ms)</label>
+                <input type="number" step="100" min="100" [(ngModel)]="currentStep.durationMs" (ngModelChange)="persist()">
+              </div>
 
+              <div class="field" *ngIf="currentStep.action !== 'procMove' && currentStep.action !== 'procRotate'">
+                <label>Vel. Anim (x1)</label>
+                <input type="number" step="0.1" min="0.1" [(ngModel)]="currentStep.speedRatio" (ngModelChange)="persist()">
+              </div>
+
+              <ng-container *ngIf="currentStep.action === 'procMove' || currentStep.action === 'procRotate'">
+                <div class="field"><label style="color:#60a5fa">X (Dist/Giro)</label><input type="number" step="0.5" [(ngModel)]="currentStep.procX" (ngModelChange)="persist()"></div>
+                <div class="field"><label style="color:#4ade80">Y (Dist/Giro)</label><input type="number" step="0.5" [(ngModel)]="currentStep.procY" (ngModelChange)="persist()"></div>
+                <div class="field"><label style="color:#f87171">Z (Dist/Giro)</label><input type="number" step="0.5" [(ngModel)]="currentStep.procZ" (ngModelChange)="persist()"></div>
+              </ng-container>
+
+              <ng-container *ngIf="esPersonaje && (currentStep.action === 'walk' || currentStep.action === 'run' || currentStep.action === 'jumpStart')">
+                <div class="field"><label>Mover Adelante (Z)</label><input type="number" step="0.1" [(ngModel)]="currentStep.offsetForward" (ngModelChange)="persist()"></div>
+                <div class="field"><label>Elevarse (Y)</label><input type="number" step="0.1" [(ngModel)]="currentStep.offsetY" (ngModelChange)="persist()"></div>
+              </ng-container>
+
+              <div class="field wide" *ngIf="availableClips.length > 0 && currentStep.action !== 'procMove' && currentStep.action !== 'procRotate'">
+                <label style="color: #c084fc;">Forzar Animación GLB</label>
+                <select [(ngModel)]="currentStep.clipOverride" (ngModelChange)="persist()">
+                  <option value="">-- Por defecto --</option>
+                  <option value="none" style="color: #f87171; font-weight: bold;">🛑 NINGUNA (Congelar)</option>
+                  <option *ngFor="let clip of availableClips" [value]="clip">🎬 {{ clip }}</option>
+                </select>
+              </div>
+
+              <div class="checkbox-field full" style="margin-top: 5px; border-top: 1px solid #333; padding-top: 8px;">
+                <input type="checkbox" id="stepLoop" [(ngModel)]="currentStep.loop" (ngModelChange)="persist()">
+                <label for="stepLoop" style="margin-right: 15px;">🔁 Bucle del paso</label>
+
+                <input type="checkbox" id="stepLock" *ngIf="esPersonaje" [(ngModel)]="currentStep.lockInput" (ngModelChange)="persist()">
+                <label for="stepLock" *ngIf="esPersonaje">🔒 Bloquear controles</label>
+              </div>
+
+            </div>
+          </div>
         </div>
-        <p style="font-size: 11px; color: #888; margin-top: 15px;">* Esta animación iniciará automáticamente cuando le des a "Jugar". Es ideal para plataformas móviles, luces decorativas, engranajes o trampas.</p>
       </div>
+    </ng-container>
 
-    </div>
+    <!-- ============================================== -->
+    <!-- PESTAÑA: AUTO-ANIM -->
+    <!-- ============================================== -->
+    <ng-container *ngIf="activeTab === 'animaciones'">
+      <div *ngIf="!editorSvc.objetoSeleccionado()" class="empty-state"><p>Selecciona un objeto para aplicarle una animación de bucle simple.</p></div>
+
+      <div *ngIf="editorSvc.objetoSeleccionado()" style="padding: 15px;">
+        <div style="background: #242424; padding: 12px; border-radius: 4px; border: 1px solid #333;">
+          <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 10px; margin-bottom: 10px;">
+            <h4 style="margin: 0; color: #60a5fa; font-size: 12px;">Auto-Animación: {{ (editorSvc.objetoSeleccionado()?.name) }}</h4>
+            <div class="checkbox-field highlight">
+              <input type="checkbox" id="chkAutoAnim" [(ngModel)]="autoAnimConfig.enabled" (change)="guardarAutoAnimacion()">
+              <label for="chkAutoAnim">Activar Movimiento</label>
+            </div>
+          </div>
+
+          <div class="step-editor-grid" [style.opacity]="autoAnimConfig.enabled ? '1' : '0.4'" [style.pointer-events]="autoAnimConfig.enabled ? 'all' : 'none'">
+            <div class="field">
+              <label>Tipo</label>
+              <select [(ngModel)]="autoAnimConfig.type" (change)="guardarAutoAnimacion()">
+                <option value="move">Desplazar</option>
+                <option value="rotate">Rotar (Giro)</option>
+                <option value="scale">Escalar (Pulso)</option>
+                <option value="float">Flotar (Y)</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>Eje</label>
+              <select [(ngModel)]="autoAnimConfig.axis" (change)="guardarAutoAnimacion()" [disabled]="autoAnimConfig.type === 'float'">
+                <option value="X">X</option>
+                <option value="Y">Y</option>
+                <option value="Z">Z</option>
+                <option value="ALL" *ngIf="autoAnimConfig.type === 'scale'">Todos</option>
+              </select>
+            </div>
+            <div class="field"><label>Cantidad (Dist/Giro)</label><input type="number" [(ngModel)]="autoAnimConfig.amount" (change)="guardarAutoAnimacion()"></div>
+            <div class="field"><label>Ciclo (Segundos)</label><input type="number" step="0.5" [(ngModel)]="autoAnimConfig.duration" (change)="guardarAutoAnimacion()"></div>
+          </div>
+
+          <div class="checkbox-field" style="margin-top: 10px; border-top: 1px dashed #444; padding-top: 10px;">
+            <input type="checkbox" id="chkStopBaked" [(ngModel)]="autoAnimConfig.stopBaked" (change)="guardarAutoAnimacion()">
+            <label for="chkStopBaked" style="color: #f87171; font-weight: bold;">⏹️ FRENAR animación nativa del GLB.</label>
+          </div>
+        </div>
+      </div>
+    </ng-container>
 
     <!-- ============================================== -->
     <!-- PESTAÑA: PREFABS -->
     <!-- ============================================== -->
-    <div *ngIf="activeTab === 'prefabs'" style="padding: 15px; display: flex; flex-direction: column; gap: 15px; height: 100%; box-sizing: border-box;">
-      
-      <div style="display: flex; gap: 10px; align-items: center; background: #2a2a2a; padding: 10px; border-radius: 6px; border: 1px solid #333;">
-        <span style="font-size: 20px;">💾</span>
-        <div style="display: flex; flex-direction: column;">
-          <b style="color: white; font-size: 13px;">Crear Prefab desde Selección</b>
-          <span style="color: #aaa; font-size: 11px;">Guarda el objeto actual (con sus secuencias y físicas) en la BD.</span>
-        </div>
-        <input type="text" [(ngModel)]="nuevoPrefabNombre" placeholder="Ej: Plataforma_Móvil_01" style="background: #111; border: 1px solid #444; color: white; padding: 6px; border-radius: 4px; flex: 1; margin-left: 20px;">
-        <button (click)="guardarObjetoActualComoPrefab()" [disabled]="!editorSvc.objetoSeleccionado() || !nuevoPrefabNombre || guardandoPrefab" style="background: #3b82f6; color: white; border: none; padding: 6px 15px; border-radius: 4px; font-weight: bold; cursor: pointer;">
-          {{ guardandoPrefab ? 'Guardando...' : 'Guardar' }}
-        </button>
-      </div>
-
-      <div style="flex: 1; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; align-content: flex-start;">
+    <ng-container *ngIf="activeTab === 'prefabs'">
+      <div style="padding: 15px; display: flex; flex-direction: column; gap: 15px; height: 100%;">
         
-        <div *ngIf="prefabsDisponibles.length === 0" style="grid-column: 1 / -1; text-align: center; color: #666; padding: 20px;">
-          No hay prefabs guardados en la base de datos.
+        <div style="display: flex; gap: 10px; align-items: center; background: #232323; padding: 10px; border-radius: 4px; border: 1px solid #333;">
+          <span style="font-size: 20px;">💾</span>
+          <div style="flex: 1;">
+            <b style="color: #fff; font-size: 11px;">Guardar Objeto en BD</b>
+          </div>
+          <input type="text" [(ngModel)]="nuevoPrefabNombre" placeholder="Nombre..." style="background: #111; border: 1px solid #444; color: white; padding: 6px; border-radius: 3px; width: 150px; font-size: 11px;">
+          <button class="btn-primary" (click)="guardarObjetoActualComoPrefab()" [disabled]="!editorSvc.objetoSeleccionado() || !nuevoPrefabNombre || guardandoPrefab">
+            {{ guardandoPrefab ? 'Guardando...' : 'Crear Prefab' }}
+          </button>
         </div>
 
-        <div *ngFor="let prefab of prefabsDisponibles" style="background: #242424; border: 1px solid #444; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start;">
-            <b style="color: #60a5fa; font-size: 13px; text-overflow: ellipsis; overflow: hidden; white-space: nowrap;">{{ prefab.name }}</b>
-            <span style="font-size: 16px;">{{ prefab.type === 'model' ? '🧍' : (prefab.type.startsWith('light') ? '💡' : '📦') }}</span>
-          </div>
-          <span style="color: #aaa; font-size: 10px;">Tipo: {{ prefab.type }}</span>
-          
-          <div style="display: flex; gap: 5px; margin-top: auto;">
-            <button (click)="instanciarPrefab(prefab)" style="flex: 1; background: #2ea043; color: white; border: none; border-radius: 4px; padding: 4px; font-size: 11px; cursor: pointer;">➕ Colocar</button>
-            <button (click)="eliminarPrefab(prefab.id)" style="background: #da3633; color: white; border: none; border-radius: 4px; padding: 4px 8px; font-size: 11px; cursor: pointer;">🗑️</button>
+        <div class="panel-grid">
+          <div *ngIf="prefabsDisponibles.length === 0" style="grid-column: 1 / -1;" class="empty-state"><p>No hay prefabs guardados.</p></div>
+
+          <div *ngFor="let prefab of prefabsDisponibles" class="mini-card">
+            <div class="mini-card-head">
+              <b [title]="prefab.name">{{ prefab.name }}</b>
+              <span>{{ prefab.type === 'model' ? '🧍' : (prefab.type.startsWith('light') ? '💡' : '📦') }}</span>
+            </div>
+            <span style="color: #777; font-size: 9px;">Tipo: {{ prefab.type }}</span>
+            
+            <div style="display: flex; gap: 6px; margin-top: 4px;">
+              <button class="btn-secondary" (click)="instanciarPrefab(prefab)" style="flex: 1;">➕ Instanciar</button>
+              <button class="btn-danger" (click)="eliminarPrefab(prefab.id)">🗑️</button>
+            </div>
           </div>
         </div>
-
       </div>
-    </div>
+    </ng-container>
 
   </div>
 </div>

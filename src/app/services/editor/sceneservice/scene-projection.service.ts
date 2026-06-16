@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, Engine, Mesh, MeshBuilder, Ray, Scene, StandardMaterial, Texture, Vector3 } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
@@ -56,9 +57,8 @@ export class SceneProjectionService {
     mat.specularColor = Color3.Black();
     mat.backFaceCulling = false;
     mat.alphaMode = Engine.ALPHA_COMBINE;
-    mat.disableDepthWrite = true; // 🔥 FIX VITAL: Para que la niebla volumétrica no se corte ni quede detrás
     mat.fogEnabled = !ignoraNiebla;
-    mat.zOffset = -2; // 🔥 FIX Z-FIGHTING: Reducido para no saltarse el depth buffer completo y atravesar la niebla
+    mat.zOffset = -10;
 
     if (texture) {
       texture.hasAlpha = true;

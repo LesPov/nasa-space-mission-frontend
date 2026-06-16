@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { AnimationGroup, Scene, Mesh } from '@babylonjs/core';
-import { PlayerRuntimeConfig, normalizeAnimBinding, PlayerActionKey, PlayerSequenceStep } from '../player-config.model';
+import { PlayerRuntimeConfig, PlayerActionKey, PlayerSequenceStep, normalizeAnimBinding } from '../player-config.model';
 import { EstadoFisico } from './player-physics.service';
 import { SeqRuntime } from './player-sequence.service';
 

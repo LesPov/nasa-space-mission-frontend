@@ -42,6 +42,8 @@ export class PropPlayer implements OnInit {
   activeFogMode: 'FPS' | 'TPS' | 'FPS_BW' | 'TPS_BW' = 'FPS';
   activeFogLevel: number = 0;
 
+  indices12Capas = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
   selectionRange: SelectionRangeConfig = {
     fpsAdminMax: 500000, 
     fpsUserMax: 3
@@ -83,8 +85,8 @@ export class PropPlayer implements OnInit {
 
   getGlobalFogColor(): string {
     const fog = this.playerConfig.fog;
-    if (this.activeFogMode.includes('BW')) return fog.colorBW || '#555555';
-    return fog.color || '#0d1729';
+    if (this.activeFogMode.includes('BW')) return fog.colorBW || '#888888';
+    return fog.color || '#64748b'; 
   }
 
   setGlobalFogColor(val: string): void {
@@ -131,37 +133,42 @@ export class PropPlayer implements OnInit {
     fog.enabled = !!fog.enabled;
     fog.fogMode = fog.fogMode === 'exp' || fog.fogMode === 'exp2' ? fog.fogMode : 'linear';
 
-    fog.color = typeof fog.color === 'string' ? fog.color : '#0d1729';
-    fog.colorBW = typeof fog.colorBW === 'string' ? fog.colorBW : '#555555';
+    fog.color = typeof fog.color === 'string' ? fog.color : '#64748b';
+    fog.colorBW = typeof fog.colorBW === 'string' ? fog.colorBW : '#888888';
 
-    fog.renderDistanceFPS = this.normalizarNumero(fog.renderDistanceFPS, 100000);
-    fog.renderDistanceTPS = this.normalizarNumero(fog.renderDistanceTPS, 100000);
-    fog.renderDistanceFpsBW = this.normalizarNumero(fog.renderDistanceFpsBW, 100000);
-    fog.renderDistanceTpsBW = this.normalizarNumero(fog.renderDistanceTpsBW, 100000);
+    fog.renderDistanceFPS = this.normalizarNumero(fog.renderDistanceFPS, 250); 
+    fog.renderDistanceTPS = this.normalizarNumero(fog.renderDistanceTPS, 250);
+    fog.renderDistanceFpsBW = this.normalizarNumero(fog.renderDistanceFpsBW, 250);
+    fog.renderDistanceTpsBW = this.normalizarNumero(fog.renderDistanceTpsBW, 250);
 
-    const defaultLayers = [5, 35, 100, 100, 35, 5];
-    const defaultHeights = [100, 100, 100, 100, 100, 100]; // 🔥 Inicialización de alturas
+    const defaultLayers12 = [2, 5, 10, 20, 35, 55, 75, 90, 100, 100, 100, 100];
+    const defaultHeights12 = [30, 40, 50, 60, 70, 80, 90, 100, 100, 100, 100, 100]; 
+    const defaultD = [8, 25, 60, 120, 200]; 
+    const defaultH = [5, 12, 25, 45, 80];   
+    const defaultT = [10, 20, 40, 60, 100]; 
 
-    const ensureThicknessAndOffset = (levels: any[], defaultsThick: number[], defaultOffset: number) => {
+    const ensurePerfectFog = (levels: any[]) => {
       if (!levels) return;
       levels.forEach((l, i) => {
-        l.thickness = this.normalizarNumero(l.thickness, defaultsThick[i] ?? 10);
-        l.offsetY = this.normalizarOffset(l.offsetY, defaultOffset);
-        if (!l.layerOpacities || l.layerOpacities.length !== 6) {
-          l.layerOpacities = [...defaultLayers];
+        l.distance = this.normalizarNumero(l.distance, defaultD[i]);
+        l.height = this.normalizarNumero(l.height, defaultH[i]);
+        l.thickness = this.normalizarNumero(l.thickness, defaultT[i]);
+        l.offsetY = this.normalizarOffset(l.offsetY, 0);
+        l.opacity = this.normalizarNumero(l.opacity, i === 0 ? 30 : (i === 4 ? 100 : 50 + (i*10)));
+        
+        if (!l.layerOpacities || l.layerOpacities.length !== 12) {
+          l.layerOpacities = [...defaultLayers12];
         }
-        // 🔥 Asignar arreglo de Alturas Individuales si no existe
-        if (!l.layerHeights || l.layerHeights.length !== 6) {
-          l.layerHeights = [...defaultHeights];
+        if (!l.layerHeights || l.layerHeights.length !== 12) {
+          l.layerHeights = [...defaultHeights12];
         }
       });
     };
     
-    const defaultT = [5, 10, 20, 40, 80];
-    ensureThicknessAndOffset(fog.levelsFPS, defaultT, 0);
-    ensureThicknessAndOffset(fog.levelsTPS, defaultT, 0);
-    ensureThicknessAndOffset(fog.levelsFpsBW, defaultT, 0);
-    ensureThicknessAndOffset(fog.levelsTpsBW, defaultT, 0);
+    ensurePerfectFog(fog.levelsFPS);
+    ensurePerfectFog(fog.levelsTPS);
+    ensurePerfectFog(fog.levelsFpsBW);
+    ensurePerfectFog(fog.levelsTpsBW);
 
     this.playerConfig.fog = fog;
   }
@@ -196,17 +203,64 @@ export class PropPlayer implements OnInit {
     this.aplicarPlayerConfig();
   }
 
+  // 🔥 EVENTO DE CLICKS PARA LAS 12 CAPAS (Izquierdo suma, Derecho Resta)
+  ajustarCapa(lvl: FogLevel, tipo: 'opacity' | 'height', index: number, cantidad: number, event: MouseEvent) {
+    event.preventDefault(); // Previene que salga el menú contextual feo del navegador
+    
+    if (tipo === 'opacity') {
+      let val = (lvl.layerOpacities![index] ?? 0) + cantidad;
+      val = Math.max(0, Math.min(100, val));
+      lvl.layerOpacities![index] = val;
+    } else {
+      let val = (lvl.layerHeights![index] ?? 100) + cantidad;
+      val = Math.max(0, Math.min(100, val));
+      lvl.layerHeights![index] = val;
+    }
+    this.aplicarPlayerConfig();
+  }
+
+  // 🔥 RESTABLECER TODOS LOS ANILLOS A LA CONFIGURACIÓN SILENT HILL
+  restaurarTodaLaNiebla() {
+    const fog = this.playerConfig.fog;
+    fog.enabled = true;
+    fog.color = '#64748b';
+    fog.colorBW = '#888888';
+    fog.renderDistanceFPS = 250;
+    fog.renderDistanceTPS = 250;
+    fog.renderDistanceFpsBW = 250;
+    fog.renderDistanceTpsBW = 250;
+
+    const defaultLayers12 = [2, 5, 10, 20, 35, 55, 75, 90, 100, 100, 100, 100];
+    const defaultHeights12 = [30, 40, 50, 60, 70, 80, 90, 100, 100, 100, 100, 100]; 
+    const defaultD = [8, 25, 60, 120, 200]; 
+    const defaultH = [5, 12, 25, 45, 80];   
+    const defaultT = [10, 20, 40, 60, 100]; 
+
+    const resetArray = (arr: FogLevel[]) => {
+      arr.forEach((l, i) => {
+        l.distance = defaultD[i];
+        l.height = defaultH[i];
+        l.thickness = defaultT[i];
+        l.offsetY = 0;
+        l.opacity = i === 0 ? 30 : (i === 4 ? 100 : 50 + (i*10));
+        l.layerOpacities = [...defaultLayers12];
+        l.layerHeights = [...defaultHeights12];
+        l.color = undefined;
+      });
+    };
+
+    resetArray(fog.levelsFPS);
+    resetArray(fog.levelsTPS);
+    resetArray(fog.levelsFpsBW);
+    resetArray(fog.levelsTpsBW);
+
+    this.aplicarPlayerConfig();
+  }
+
   restaurarPlayerConfigDefault() {
     this.playerConfig = cloneDefaultPlayerConfig();
-    this.selectionRange = {
-      fpsAdminMax: 500000,
-      fpsUserMax: 3
-    };
-    (this.playerConfig as any).selectionRange = {
-      fpsAdminMax: 500000,
-      fpsUserMax: 3
-    };
-    this.sincronizarFogCompat();
-    this.aplicarPlayerConfig();
+    this.selectionRange = { fpsAdminMax: 500000, fpsUserMax: 3 };
+    (this.playerConfig as any).selectionRange = { fpsAdminMax: 500000, fpsUserMax: 3 };
+    this.restaurarTodaLaNiebla(); 
   }
 }

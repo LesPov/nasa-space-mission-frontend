@@ -177,22 +177,23 @@ export class ToolsFogService {
         this.fogWalls[i] = new TransformNode("fogWallGroup_" + i, scene);
         this.fogMats[i] = []; 
         
-        const capasDeGrosor = 6;
+        const capasDeGrosor = 12; // 🔥 AHORA SON 12 CAPAS
         for (let j = capasDeGrosor - 1; j >= 0; j--) {
             const mat = new StandardMaterial(`fogMat_${i}_${j}`, scene);
             mat.disableLighting = true; 
             mat.alphaMode = Engine.ALPHA_COMBINE;
             mat.disableDepthWrite = true; 
-            mat.opacityTexture = this.getGradientTexture(scene);
+            mat.opacityTexture = this.getGradientTexture(scene); // Mantiene solo el corte suave en la parte SUPERIOR para que no parezca un tubo cortado
             mat.fogEnabled = false; 
             this.fogMats[i][j] = mat; 
 
+            // 🔥 SUAVIZADO DE CILINDRO PERFECTO (tessellation 128)
             const shell = MeshBuilder.CreateCylinder(`fogShell_${i}_${j}`, { 
                 diameter: 1, 
                 height: 1, 
                 sideOrientation: Mesh.DOUBLESIDE, 
                 cap: Mesh.NO_CAP,
-                tessellation: 64 
+                tessellation: 128 
             }, scene);
             
             shell.parent = this.fogWalls[i];
@@ -246,22 +247,26 @@ export class ToolsFogService {
       wallGroup.position.set(anchorX, anchorY + (state.height / 2) + state.offsetY, anchorZ);
       
       const isVisible = state.alpha > 0.001;
-      const thickOffsets = [-1, -0.6, -0.2, 0.2, 0.6, 1];
+      
+      // 🔥 ESPACIADO MANUAL DINÁMICO PARA 12 CAPAS (De -1 a 1 equitativo)
+      // Esto reparte las 12 capas en el "Grosor" que hayas definido, sin usar curvas de Gauss
+      const thickOffsets = Array.from({length: 12}, (_, k) => -1 + (k * (2 / 11)));
       
       const curDist = Math.max(0.1, state.dist);
       const halfThick = state.thickness / 2;
 
       const meshes = wallGroup.getChildMeshes();
 
-      // 🔥 LÓGICA VITAL: Opacidades Y ALTURAS INDIVIDUALES.
-      let currentLayers = [5, 35, 100, 100, 35, 5]; 
-      let currentHeights = [100, 100, 100, 100, 100, 100]; 
+      // Valores por defecto si falla el input
+      let currentLayers = [5, 10, 20, 40, 60, 100, 100, 60, 40, 20, 10, 5]; 
+      let currentHeights = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100]; 
       if (activeLevels && activeLevels[i]) {
-          if (activeLevels[i].layerOpacities) currentLayers = activeLevels[i].layerOpacities!;
-          if (activeLevels[i].layerHeights) currentHeights = activeLevels[i].layerHeights!;
+          if (activeLevels[i].layerOpacities && activeLevels[i].layerOpacities!.length === 12) currentLayers = activeLevels[i].layerOpacities!;
+          if (activeLevels[i].layerHeights && activeLevels[i].layerHeights!.length === 12) currentHeights = activeLevels[i].layerHeights!;
       }
 
-      for (let j = 0; j < 6; j++) {
+      // 🔥 BUCLE PARA LAS 12 CAPAS
+      for (let j = 0; j < 12; j++) {
           const shell = meshes.find(m => m.name === `fogShell_${i}_${j}`);
           if (!shell) continue;
 
@@ -272,13 +277,12 @@ export class ToolsFogService {
           const heightRatio = (currentHeights[j] ?? 100) / 100.0;
           shell.scaling.set(localScaleX, heightRatio, localScaleX);
           
-          // 🔥 El cilindro en Babylon crece desde el centro. 
-          // Para evitar que quede "flotando", aplicamos esta fórmula para anclar la base inferior de la malla siempre a su origen en el suelo.
           shell.position.y = -0.5 * (1 - heightRatio);
 
           const mat = this.fogMats[i][j];
           mat.emissiveColor.set(state.r, state.g, state.b);
           
+          // 🔥 Opacidad 100% controlada por tu input manual
           const opacityRatio = (currentLayers[j] ?? 0) / 100.0;
           mat.alpha = state.alpha * opacityRatio; 
       }

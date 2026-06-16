@@ -15,10 +15,20 @@ export class LoaderModelService {
     const isModel = obj.type === 'model';
     const isLight = obj.type?.startsWith('light_');
 
-    const defaultCollider = { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 };
+    const rolSaved = obj.properties?.rol || 'prop';
+    const isProp = rolSaved === 'prop';
+
+    // 🔥 FIX VITAL FÍSICAS: Si es una casa/decoración (prop), el collider DEBE ser 'mesh'
+    // para que el jugador pueda entrar por las puertas y pisar el suelo real.
+    // Si es un personaje (npc/spawn_point), sí usamos 'capsule'.
+    const defaultCollider = isModel 
+      ? (isProp 
+          ? { type: 'mesh', sizeX: 1, sizeY: 1, sizeZ: 1, offsetX: 0, offsetY: 0, offsetZ: 0 } 
+          : { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 })
+      : { type: 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+
     const defaultCamOffset = { x: 0, y: 1.6, z: 0 };
 
-    const rolSaved = obj.properties?.rol || 'prop';
     const isSolidSaved = obj.properties?.isSolid ?? true;
     const isSelectableSaved = obj.properties?.isSelectable ?? true;
     const mensajeSaved = obj.properties?.mensaje || '';
@@ -33,7 +43,8 @@ export class LoaderModelService {
       savedCollider.sizeX = savedCollider.radiusX;
       savedCollider.sizeY = savedCollider.heightY;
       savedCollider.sizeZ = savedCollider.radiusZ;
-      savedCollider.type = 'capsule';
+      // Convertir formatos viejos si los hay a su equivalencia correcta
+      if (savedCollider.type !== 'mesh') savedCollider.type = 'capsule'; 
     }
 
     const savedCamOffset = obj.properties?.camOffset || { ...defaultCamOffset };
@@ -67,16 +78,34 @@ export class LoaderModelService {
       rootNode.position = new Vector3(posX, posY, posZ);
       rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rotX, rotY, rotZ);
       rootNode.scaling = new Vector3(scaleX, scaleY, scaleZ);
+      
+      // La raíz no colisiona, colisionan sus hijos (paredes y suelos reales)
       rootNode.checkCollisions = false;
       rootNode.isPickable = true;
 
       rootNode.ellipsoid = new Vector3((savedCollider.sizeX ?? 0.5) * scaleX, (savedCollider.sizeY ?? 0.5) * scaleY, (savedCollider.sizeZ ?? 0.5) * scaleZ);
       rootNode.ellipsoidOffset = new Vector3((savedCollider.offsetX ?? 0) * scaleX, (savedCollider.offsetY ?? 0) * scaleY, (savedCollider.offsetZ ?? 0) * scaleZ);
 
+      // 🔥 LÓGICA DE FÍSICAS PROFUNDA PARA MODELOS 3D
       result.meshes.forEach(m => {
         if (m !== rootNode) {
-          m.isPickable = true;
-          m.checkCollisions = isSolidSaved;
+          m.isPickable = isSelectableSaved; 
+          
+          const vertices = m.getTotalVertices();
+          if (vertices > 0) {
+              m.checkCollisions = isSolidSaved; 
+              
+              // 🚀 FIX VITAL DE RENDIMIENTO Y FÍSICAS (ELIMINA EL EFECTO LENTO/PEGADO)
+              // Usar banderas nativas de la malla para decirle a Babylon que subdivida los cálculos de choque
+              if (isSolidSaved && vertices > 500 && m instanceof Mesh) {
+                  m.useOctreeForCollisions = true;
+                  m.useOctreeForPicking = true;
+              }
+          } else {
+              // Si es un contenedor vacío exportado de Blender, le apagamos la colisión para no chocar con fantasmas
+              m.checkCollisions = false;
+          }
+          
           m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
           m.receiveShadows = true;
         }
@@ -136,7 +165,6 @@ export class LoaderModelService {
         rootNode.metadata.attachedNodePath = obj.properties?.attachedNodePath || '';
         rootNode.metadata.attachedNodeName = obj.properties?.attachedNodeName || '';
         
-        // 🔥 FIX VITAL: CARGAMOS LA POSICIÓN LOCAL
         const lpx = obj.properties?.lightPosX ?? 0;
         const lpy = obj.properties?.lightPosY ?? 0;
         const lpz = obj.properties?.lightPosZ ?? 0;
@@ -162,7 +190,6 @@ export class LoaderModelService {
         lightObj.specular = new Color3(0, 0, 0);
         if (lightObj.range !== undefined) lightObj.range = obj.properties?.range ?? 50;
 
-        // 🔥 FIX VITAL: APLICAMOS LA POSICIÓN LOCAL A LA LUZ DEL MOTOR BABYLON
         if (lightObj.position) {
             lightObj.position.copyFromFloats(lpx, lpy, lpz);
         }

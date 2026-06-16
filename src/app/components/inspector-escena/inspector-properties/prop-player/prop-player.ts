@@ -1,4 +1,3 @@
-
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -40,7 +39,6 @@ export class PropPlayer implements OnInit {
 
   playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
 
-  // 🔥 Sistema de Pestañas para Niebla
   activeFogMode: 'FPS' | 'TPS' | 'FPS_BW' | 'TPS_BW' = 'FPS';
   activeFogLevel: number = 0;
 
@@ -71,7 +69,6 @@ export class PropPlayer implements OnInit {
     this.sincronizarFogCompat();
   }
 
-  // 🔥 GETTERS Y SETTERS GLOBALES DE LA NIEBLA
   get currentFogLevel(): FogLevel | null {
     if (!this.playerConfig?.fog) return null;
     const fog = this.playerConfig.fog;
@@ -143,6 +140,8 @@ export class PropPlayer implements OnInit {
     fog.renderDistanceTpsBW = this.normalizarNumero(fog.renderDistanceTpsBW, 100000);
 
     const defaultLayers = [5, 35, 100, 100, 35, 5];
+    const defaultHeights = [100, 100, 100, 100, 100, 100]; // 🔥 Inicialización de alturas
+
     const ensureThicknessAndOffset = (levels: any[], defaultsThick: number[], defaultOffset: number) => {
       if (!levels) return;
       levels.forEach((l, i) => {
@@ -151,8 +150,13 @@ export class PropPlayer implements OnInit {
         if (!l.layerOpacities || l.layerOpacities.length !== 6) {
           l.layerOpacities = [...defaultLayers];
         }
+        // 🔥 Asignar arreglo de Alturas Individuales si no existe
+        if (!l.layerHeights || l.layerHeights.length !== 6) {
+          l.layerHeights = [...defaultHeights];
+        }
       });
     };
+    
     const defaultT = [5, 10, 20, 40, 80];
     ensureThicknessAndOffset(fog.levelsFPS, defaultT, 0);
     ensureThicknessAndOffset(fog.levelsTPS, defaultT, 0);

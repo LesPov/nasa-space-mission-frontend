@@ -1,8 +1,11 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Color3, Engine, Mesh, MeshBuilder, Ray, Scene, StandardMaterial, Texture, Vector3 } from '@babylonjs/core';
+import { EditorStateService } from '../editor-state.service';
 
 @Injectable({ providedIn: 'root' })
 export class SceneProjectionService {
+
+  private state = inject(EditorStateService);
 
   public clampNum(v: number, min: number, max: number, fallback = min): number {
     if (Number.isNaN(v) || v === null || v === undefined) return fallback;
@@ -16,11 +19,9 @@ export class SceneProjectionService {
   private isDisposedSeguro(value: any): boolean {
     try {
       if (!value) return true;
-
       if (this.isFunc(value, 'isDisposed')) {
         return value.isDisposed();
       }
-
       return false;
     } catch {
       return true;
@@ -30,7 +31,6 @@ export class SceneProjectionService {
   private disposeSeguro(value: any): void {
     try {
       if (!value) return;
-
       if (this.isFunc(value, 'dispose')) {
         value.dispose();
       }
@@ -56,8 +56,9 @@ export class SceneProjectionService {
     mat.specularColor = Color3.Black();
     mat.backFaceCulling = false;
     mat.alphaMode = Engine.ALPHA_COMBINE;
+    mat.disableDepthWrite = true; // 🔥 FIX VITAL: Para que la niebla volumétrica no se corte ni quede detrás
     mat.fogEnabled = !ignoraNiebla;
-    mat.zOffset = -10;
+    mat.zOffset = -2; // 🔥 FIX Z-FIGHTING: Reducido para no saltarse el depth buffer completo y atravesar la niebla
 
     if (texture) {
       texture.hasAlpha = true;
@@ -101,7 +102,7 @@ export class SceneProjectionService {
   public aplicarLogicaHolograma(mesh: Mesh, scene: Scene): void {
     if (!mesh.metadata) mesh.metadata = {};
 
-    // 🔥 OBSERVADOR CINEMÁTICO DE DESVANECIMIENTO (SMOOTHSTEP FADE)
+    // 🔥 OBSERVADOR CINEMÁTICO DE DESVANECIMIENTO (FADE)
     const fadeObserver = scene.onBeforeRenderObservable.add(() => {
       if (!mesh || mesh.isDisposed?.()) return;
 
@@ -111,11 +112,33 @@ export class SceneProjectionService {
         if (mesh.metadata.updateDecal) mesh.metadata.updateDecal();
       }
 
-      const fadeDist = Number(mesh.metadata.fadeDistance ?? 0);
+      // Vemos si este holograma tiene un Fade explícito configurado
+      let fadeDist = Number(mesh.metadata.fadeDistance ?? 0);
+      let isUsingFogFallback = false;
+
+      // 🔥 LÓGICA VITAL: Si el objeto NO ignora niebla y su Fade está en 0, 
+      // leemos el FOG del jugador para atenuar este panel simulando que la niebla lo oculta.
+      if (fadeDist <= 0 && !mesh.metadata.ignoraNiebla) {
+          const targetPlayer = this.state.jugadorActivo || scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
+          if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
+              // Obtenemos la distancia de renderizado de la niebla base
+              const fog = targetPlayer.metadata.playerConfig.fog;
+              const isFPS = this.state.modoVistaPrueba === 'FPS';
+              const maxZ = currentModeIsBW 
+                  ? (isFPS ? fog.renderDistanceFpsBW : fog.renderDistanceTpsBW)
+                  : (isFPS ? fog.renderDistanceFPS : fog.renderDistanceTPS);
+              
+              if (maxZ && maxZ > 0) {
+                 // Si el objeto está en la mitad del abismo del fog, empieza a desaparecer
+                 fadeDist = maxZ * 0.85; 
+                 isUsingFogFallback = true;
+              }
+          }
+      }
 
       if (fadeDist > 0 && scene.activeCamera) {
         const distanceToCam = Vector3.Distance(scene.activeCamera.globalPosition, mesh.getAbsolutePosition());
-        const fadeStart = fadeDist * 0.5;
+        const fadeStart = isUsingFogFallback ? (fadeDist * 0.7) : (fadeDist * 0.5); // Si es por niebla, aguanta más brillando
 
         let alphaMultiplier = 1.0;
 
@@ -123,7 +146,7 @@ export class SceneProjectionService {
           alphaMultiplier = 0.0;
         } else if (distanceToCam > fadeStart) {
           let progress = (distanceToCam - fadeStart) / (fadeDist - fadeStart);
-          progress = progress * progress * (3 - 2 * progress);
+          progress = progress * progress * (3 - 2 * progress); // Smoothstep
           alphaMultiplier = Math.max(0, Math.min(1.0, 1.0 - progress));
         }
 
@@ -142,7 +165,7 @@ export class SceneProjectionService {
         if (Array.isArray(mesh.metadata.decalMeshes)) {
           mesh.metadata.decalMeshes.forEach((decal: Mesh) => {
             if (decal && !this.isDisposedSeguro(decal)) {
-              decal.visibility = alphaMultiplier > 0 ? 1 : 0;
+              decal.visibility = alphaMultiplier > 0.01 ? 1 : 0;
               decal.alwaysSelectAsActiveMesh = true;
             }
           });

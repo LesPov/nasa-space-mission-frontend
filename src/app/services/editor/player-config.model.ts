@@ -1,4 +1,3 @@
-
 export type AnimBinding = string | string[] | null;
 
 export type PlayerActionKey =
@@ -88,17 +87,18 @@ export interface FogLevel {
   opacity: number;
   thickness: number; 
   offsetY: number;
-  color?: string; // 🔥 NUEVO: Permite tener un color distinto por cada cilindro individual
+  color?: string; 
   layerOpacities?: number[]; 
+  layerHeights?: number[]; // 🔥 NUEVO: Porcentaje de altura por capa
 }
 
-// 🔥 Capas por defecto (Degradado suavizado en los bordes)
+// 🔥 Capas por defecto con Alturas al 100%
 const defaultFogLevels: FogLevel[] = [
-  { distance: 20, height: 10, opacity: 80, thickness: 5, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5] },
-  { distance: 50, height: 15, opacity: 60, thickness: 10, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5] },
-  { distance: 100, height: 25, opacity: 40, thickness: 20, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5] },
-  { distance: 200, height: 40, opacity: 20, thickness: 40, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5] },
-  { distance: 400, height: 60, opacity: 10, thickness: 80, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5] }
+  { distance: 20, height: 10, opacity: 80, thickness: 5, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] },
+  { distance: 50, height: 15, opacity: 60, thickness: 10, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] },
+  { distance: 100, height: 25, opacity: 40, thickness: 20, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] },
+  { distance: 200, height: 40, opacity: 20, thickness: 40, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] },
+  { distance: 400, height: 60, opacity: 10, thickness: 80, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] }
 ];
 
 export interface PlayerFogConfig {

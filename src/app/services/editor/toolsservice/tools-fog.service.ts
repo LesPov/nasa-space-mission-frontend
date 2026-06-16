@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, Observer } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -50,10 +49,10 @@ export class ToolsFogService {
 
     const grad = ctx.createLinearGradient(0, 0, 0, 256);
     grad.addColorStop(0.00, "rgba(255,255,255,0.0)"); 
-    grad.addColorStop(0.20, "rgba(255,255,255,0.2)"); 
-    grad.addColorStop(0.40, "rgba(255,255,255,1.0)"); 
-    grad.addColorStop(0.60, "rgba(255,255,255,1.0)"); 
-    grad.addColorStop(0.80, "rgba(255,255,255,0.2)"); 
+    grad.addColorStop(0.30, "rgba(255,255,255,0.1)"); 
+    grad.addColorStop(0.60, "rgba(255,255,255,0.6)"); 
+    grad.addColorStop(0.85, "rgba(255,255,255,1.0)"); 
+    grad.addColorStop(0.96, "rgba(255,255,255,1.0)"); 
     grad.addColorStop(1.00, "rgba(255,255,255,0.0)"); 
 
     ctx.fillStyle = grad;
@@ -69,7 +68,6 @@ export class ToolsFogService {
     if (!scene) return;
 
     if (!this.fogObserver) {
-      // Tomamos el color inicial de la niebla global
       const globalClearHex = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
       const clearColor3 = Color3.FromHexString(globalClearHex);
       this.curR = clearColor3.r; this.curG = clearColor3.g; this.curB = clearColor3.b;
@@ -101,7 +99,6 @@ export class ToolsFogService {
     let useFog = false;
     let activeLevels: FogLevel[] = [];
     
-    // Obtenemos el color base global para el ambiente profundo
     const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
 
     if ((modo === 'PLAYING' || modo === 'EDITING_IN_GAME' || modo === 'TRANSITIONING') && targetPlayer?.metadata?.playerConfig?.fog?.enabled) {
@@ -181,14 +178,14 @@ export class ToolsFogService {
         this.fogMats[i] = []; 
         
         const capasDeGrosor = 6;
-        for (let j = 0; j < capasDeGrosor; j++) {
+        for (let j = capasDeGrosor - 1; j >= 0; j--) {
             const mat = new StandardMaterial(`fogMat_${i}_${j}`, scene);
             mat.disableLighting = true; 
             mat.alphaMode = Engine.ALPHA_COMBINE;
             mat.disableDepthWrite = true; 
             mat.opacityTexture = this.getGradientTexture(scene);
             mat.fogEnabled = false; 
-            this.fogMats[i].push(mat);
+            this.fogMats[i][j] = mat; 
 
             const shell = MeshBuilder.CreateCylinder(`fogShell_${i}_${j}`, { 
                 diameter: 1, 
@@ -256,26 +253,33 @@ export class ToolsFogService {
 
       const meshes = wallGroup.getChildMeshes();
 
-      // 🔥 LÓGICA VITAL: Extraemos las opacidades personalizadas del nivel actual si existen, 
-      // de lo contrario usamos el array histórico como fallback.
+      // 🔥 LÓGICA VITAL: Opacidades Y ALTURAS INDIVIDUALES.
       let currentLayers = [5, 35, 100, 100, 35, 5]; 
-      if (activeLevels && activeLevels[i] && activeLevels[i].layerOpacities) {
-          currentLayers = activeLevels[i].layerOpacities ?? [5, 35, 100, 100, 35, 5];
+      let currentHeights = [100, 100, 100, 100, 100, 100]; 
+      if (activeLevels && activeLevels[i]) {
+          if (activeLevels[i].layerOpacities) currentLayers = activeLevels[i].layerOpacities!;
+          if (activeLevels[i].layerHeights) currentHeights = activeLevels[i].layerHeights!;
       }
 
       for (let j = 0; j < 6; j++) {
-          const shell = meshes[j];
+          const shell = meshes.find(m => m.name === `fogShell_${i}_${j}`);
+          if (!shell) continue;
+
           const targetRadius = curDist + (thickOffsets[j] * halfThick);
-          const localScale = targetRadius / curDist;
-          shell.scaling.set(localScale, 1, localScale);
+          const localScaleX = targetRadius / curDist;
+          
+          // 🔥 Aplicamos la Altura en %
+          const heightRatio = (currentHeights[j] ?? 100) / 100.0;
+          shell.scaling.set(localScaleX, heightRatio, localScaleX);
+          
+          // 🔥 El cilindro en Babylon crece desde el centro. 
+          // Para evitar que quede "flotando", aplicamos esta fórmula para anclar la base inferior de la malla siempre a su origen en el suelo.
+          shell.position.y = -0.5 * (1 - heightRatio);
 
           const mat = this.fogMats[i][j];
-          
-          // 🔥 Asignamos el color INDEPENDIENTE de este anillo
           mat.emissiveColor.set(state.r, state.g, state.b);
           
-          // Aplicamos la opacidad independiente calculada desde la interfaz (Porcentaje 0-1)
-          const opacityRatio = (currentLayers[j] || 0) / 100.0;
+          const opacityRatio = (currentLayers[j] ?? 0) / 100.0;
           mat.alpha = state.alpha * opacityRatio; 
       }
 

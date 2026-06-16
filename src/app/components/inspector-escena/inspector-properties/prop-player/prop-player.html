@@ -1,4 +1,3 @@
-
 <button class="btn-ghost small full" style="margin-bottom: 10px;" (click)="restaurarPlayerConfigDefault()">
   🔄 Reset a Valores de Fábrica
 </button>
@@ -93,19 +92,39 @@
            </div>
          </div>
 
-         <!-- Matriz de las 6 capas internas -->
+         <!-- 🔥 MATRIZ DE LAS 6 CAPAS CON ALTURAS Y OPACIDAD INDIVIDUAL -->
          <div style="margin-top: 15px; border-top: 1px dashed #475569; padding-top: 15px;">
-            <h5 style="margin: 0 0 8px 0; color: #38bdf8; font-size: 11px; text-transform: uppercase;">Opacidad Interna de las 6 Capas (%)</h5>
-            <p style="font-size: 10px; color: #94a3b8; margin-bottom: 10px; line-height: 1.3;">La Capa 1 es la más pequeña (interna), la Capa 6 es la más ancha (externa). Útil para suavizar bordes.</p>
-            <div class="fog-6-col" *ngIf="lvl.layerOpacities">
-              <div class="field" *ngFor="let idx of [0,1,2,3,4,5]">
-                 <label>Capa {{idx + 1}}</label>
-                 <input type="number" step="1" min="0" max="100" [(ngModel)]="lvl.layerOpacities[idx]" (ngModelChange)="aplicarPlayerConfig()" />
-              </div>
+            <h5 style="margin: 0 0 8px 0; color: #38bdf8; font-size: 11px; text-transform: uppercase;">Ajustes Internos de las 6 Capas</h5>
+            <p style="font-size: 10px; color: #94a3b8; margin-bottom: 10px; line-height: 1.3;">
+              La Capa 1 es la más pequeña (interna), la Capa 6 es la exterior.<br>
+              <strong>Opacidad:</strong> 100% es opaco, 0% es invisible.<br>
+              <strong>Altura:</strong> 100% usa la Altura Total. Valores menores anclan la capa al suelo.
+            </p>
+            
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+                <!-- Fila Opacidad -->
+                <div style="display: flex; align-items: center; gap: 5px;">
+                  <span style="font-size: 10px; color: #fbbf24; font-weight: bold; width: 55px;">Opacidad</span>
+                  <div class="fog-6-col" *ngIf="lvl.layerOpacities" style="margin: 0; flex: 1;">
+                    <div class="field" *ngFor="let idx of [0,1,2,3,4,5]">
+                       <input type="number" step="1" min="0" max="100" [(ngModel)]="lvl.layerOpacities[idx]" (ngModelChange)="aplicarPlayerConfig()" title="Opacidad Capa {{idx + 1}}" />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Fila Altura -->
+                <div style="display: flex; align-items: center; gap: 5px;">
+                  <span style="font-size: 10px; color: #4ade80; font-weight: bold; width: 55px;">Altura %</span>
+                  <div class="fog-6-col" *ngIf="lvl.layerHeights" style="margin: 0; flex: 1;">
+                    <div class="field" *ngFor="let idx of [0,1,2,3,4,5]">
+                       <input type="number" step="1" min="0" max="100" [(ngModel)]="lvl.layerHeights[idx]" (ngModelChange)="aplicarPlayerConfig()" title="Altura Capa {{idx + 1}}" />
+                    </div>
+                  </div>
+                </div>
             </div>
          </div>
-      </div>
 
+      </div>
     </ng-container>
   </div>
 </div>

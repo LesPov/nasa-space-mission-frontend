@@ -314,9 +314,10 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     mat.specularColor = Color3.Black();
     mat.backFaceCulling = false;
     mat.alphaMode = Engine.ALPHA_COMBINE;
+    mat.disableDepthWrite = true; // 🔥 FIX VITAL: Permite a la niebla cubrir correctamente al holograma
     mat.fogEnabled = !ignoraNiebla;
     
-    mat.zOffset = -10; 
+    mat.zOffset = -2; // 🔥 FIX Z-FIGHTING: Reducido para no atravesar la niebla volumétrica
 
     if (texture) {
       texture.hasAlpha = true;

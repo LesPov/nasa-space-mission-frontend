@@ -81,35 +81,46 @@ export interface PlayerDebugConfig {
   showRays: boolean; showCollider: boolean; showState: boolean;
 }
 
+// 🔥 NUEVA INTERFAZ PARA LOS MUROS DE NIEBLA VOLUMÉTRICA
+export interface FogLevel {
+  distance: number;
+  height: number;
+  opacity: number;
+}
+
 export interface PlayerFogConfig {
   enabled: boolean;
   fogMode: 'linear' | 'exp' | 'exp2';
   color: string;
-  startFPS: number;
-  endFPS: number;
-  startTPS: number;
-  endTPS: number;
+  colorBW: string;
+
+  // Global Background Render Distances
   renderDistanceFPS: number;
   renderDistanceTPS: number;
-  
-  densityStartFPS: number;
-  densityEndFPS: number;
-  densityStartTPS: number;
-  densityEndTPS: number;
-
-  colorBW: string;
-  startFpsBW: number;
-  endFpsBW: number;
-  startTpsBW: number;
-  endTpsBW: number;
   renderDistanceFpsBW: number;
   renderDistanceTpsBW: number;
-  
-  densityStartFpsBW: number;
-  densityEndFpsBW: number;
-  densityStartTpsBW: number;
-  densityEndTpsBW: number;
+
+  // 🔥 LOS 5 NIVELES CONFIGURABLES (Muros)
+  levelsFPS: FogLevel[];
+  levelsTPS: FogLevel[];
+  levelsFpsBW: FogLevel[];
+  levelsTpsBW: FogLevel[];
+
+  // Compatibilidad antigua (se mantendrán para no romper mapas viejos)
+  startFPS?: number; endFPS?: number; startTPS?: number; endTPS?: number;
+  densityStartFPS?: number; densityEndFPS?: number; densityStartTPS?: number; densityEndTPS?: number;
+  startFpsBW?: number; endFpsBW?: number; startTpsBW?: number; endTpsBW?: number;
+  densityStartFpsBW?: number; densityEndFpsBW?: number; densityStartTpsBW?: number; densityEndTpsBW?: number;
 }
+
+// Inicialización de los 5 niveles por defecto para que luzca épico desde cero
+const defaultFogLevels: FogLevel[] = [
+  { distance: 20, height: 10, opacity: 80 },  // Muro cercano (muy denso y bajo)
+  { distance: 50, height: 15, opacity: 60 },  // Muro medio
+  { distance: 100, height: 25, opacity: 40 }, // Muro lejano
+  { distance: 200, height: 40, opacity: 20 }, // Montañas
+  { distance: 400, height: 60, opacity: 10 }  // Horizonte
+];
 
 export interface PlayerRuntimeConfig {
   movement: PlayerMovementConfig;
@@ -147,12 +158,13 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
   sequences: [],
   debug: { showRays: false, showCollider: false, showState: false },
   fog: {
-    enabled: false, fogMode: 'linear', color: '#0d1729',
-    // 🔥 CONFIGURACIÓN MASIVA POR DEFECTO PARA MUNDOS GIGANTES
-    startFPS: 0, endFPS: 50000, startTPS: 5, endTPS: 50000, renderDistanceFPS: 100000, renderDistanceTPS: 100000,
-    densityStartFPS: 0, densityEndFPS: 100, densityStartTPS: 0, densityEndTPS: 100,
-    colorBW: '#555555', startFpsBW: 0, endFpsBW: 50000, startTpsBW: 5, endTpsBW: 50000, renderDistanceFpsBW: 100000, renderDistanceTpsBW: 100000,
-    densityStartFpsBW: 0, densityEndFpsBW: 100, densityStartTpsBW: 0, densityEndTpsBW: 100
+    enabled: false, fogMode: 'linear', color: '#0d1729', colorBW: '#555555',
+    renderDistanceFPS: 100000, renderDistanceTPS: 100000,
+    renderDistanceFpsBW: 100000, renderDistanceTpsBW: 100000,
+    levelsFPS: structuredClone(defaultFogLevels),
+    levelsTPS: structuredClone(defaultFogLevels),
+    levelsFpsBW: structuredClone(defaultFogLevels),
+    levelsTpsBW: structuredClone(defaultFogLevels)
   }
 };
 

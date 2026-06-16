@@ -1,37 +1,34 @@
-import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, HemisphericLight, Node } from '@babylonjs/core';
-import { EditorStateService } from '../editor-state.service';
-import { SceneUtilsService } from './scene-utils.service';
+import { Injectable, inject } from '@angular/core'; 
+import { AbstractMesh, Color3, HemisphericLight, Node } from '@babylonjs/core'; 
+import { EditorStateService } from '../editor-state.service'; 
+import { SceneUtilsService } from './scene-utils.service'; 
 import { Motor3dService } from '../../motor-3d.service';
 
 type SavedVector3 = { x: number; y: number; z: number };
 
-@Injectable({ providedIn: 'root' })
-export class SceneSaverService {
-  private motor3d = inject(Motor3dService);
+@Injectable({ providedIn: 'root' }) 
+export class SceneSaverService { 
+  private motor3d = inject(Motor3dService); 
   private state = inject(EditorStateService);
   private utilsSvc = inject(SceneUtilsService);
 
-  private hex7(value: any, fallback: string): string {
-    if (typeof value !== 'string' || !value.trim()) return fallback;
-    const v = value.trim();
-    return v.length >= 7 ? v.substring(0, 7) : fallback;
+  private hex7(value: any, fallback: string): string { 
+    if (typeof value !== 'string' || !value.trim()) return fallback; 
+    const v = value.trim(); 
+    return v.length >= 7 ? v.substring(0, 7) : fallback; 
   }
 
-  private safeNumber(value: any, fallback: number): number {
-    const n = Number(value);
-    return Number.isFinite(n) ? n : fallback;
+  private safeNumber(value: any, fallback: number): number { 
+    const n = Number(value); 
+    return Number.isFinite(n) ? n : fallback; 
   }
 
-  private safeBool(value: any, fallback = false): boolean {
-    return typeof value === 'boolean' ? value : fallback;
+  private safeBool(value: any, fallback = false): boolean { 
+    return typeof value === 'boolean' ? value : fallback; 
   }
 
-  private getRotationEuler(nodo: AbstractMesh): SavedVector3 {
-    const rot = nodo.rotationQuaternion
-      ? nodo.rotationQuaternion.toEulerAngles()
-      : nodo.rotation;
-
+  private getRotationEuler(nodo: AbstractMesh): SavedVector3 { 
+    const rot = nodo.rotationQuaternion ? nodo.rotationQuaternion.toEulerAngles() : nodo.rotation;
     return {
       x: this.safeNumber(rot?.x, 0),
       y: this.safeNumber(rot?.y, 0),
@@ -39,40 +36,41 @@ export class SceneSaverService {
     };
   }
 
-  private getParentUid(nodo: AbstractMesh): string | null {
-    if (nodo.parent && nodo.parent.name !== '__root__') {
-      return (nodo.parent as AbstractMesh).metadata?.uid || null;
-    }
-    return null;
+  private getParentUid(nodo: AbstractMesh): string | null { 
+    if (nodo.parent && nodo.parent.name !== 'root') { 
+      return (nodo.parent as AbstractMesh).metadata?.uid || null; 
+    } 
+    return null; 
   }
 
   private buildCommonProperties(nodo: AbstractMesh, selectionRange: any): any {
-    return {
-      color: this.hex7(nodo.metadata?.color, '#ffffff'),
+    return { 
+      color: this.hex7(nodo.metadata?.color, '#ffffff'), 
       colorBW: this.hex7(nodo.metadata?.colorBW, this.hex7(nodo.metadata?.color, '#ffffff')),
-      rol: nodo.metadata?.rol,
+      rol: nodo.metadata?.rol, 
       isSolid: this.safeBool(nodo.metadata?.isSolid, true),
-      isSelectable: this.safeBool(nodo.metadata?.isSelectable, true),
-      ignoraNiebla: this.safeBool(nodo.metadata?.ignoraNiebla, false),
-      esEmisivo: this.safeBool(nodo.metadata?.esEmisivo, false),
-      brilloIntensidad: this.safeNumber(nodo.metadata?.brilloIntensidad, 1.0),
-      mensaje: nodo.metadata?.mensaje || '',
-      respawnTime: this.safeNumber(nodo.metadata?.respawnTime, 8),
-      interactDistanceFPS: this.safeNumber(nodo.metadata?.interactDistanceFPS, 3.0),
-      interactDistanceTPS: this.safeNumber(nodo.metadata?.interactDistanceTPS, 5.0),
-      interactSequenceIdFPS: nodo.metadata?.interactSequenceIdFPS || '',
-      interactSequenceIdTPS: nodo.metadata?.interactSequenceIdTPS || '',
+      isSelectable: this.safeBool(nodo.metadata?.isSelectable, true), 
+      ignoraNiebla: this.safeBool(nodo.metadata?.ignoraNiebla, false), 
+      esEmisivo: this.safeBool(nodo.metadata?.esEmisivo, false), 
+      brilloIntensidad: this.safeNumber(nodo.metadata?.brilloIntensidad, 1.0), 
+      mensaje: nodo.metadata?.mensaje || '', 
+      respawnTime: this.safeNumber(nodo.metadata?.respawnTime, 8), 
+      interactDistanceFPS: this.safeNumber(nodo.metadata?.interactDistanceFPS, 3.0), 
+      interactDistanceTPS: this.safeNumber(nodo.metadata?.interactDistanceTPS, 5.0), 
+      interactSequenceIdFPS: nodo.metadata?.interactSequenceIdFPS || '', 
+      interactSequenceIdTPS: nodo.metadata?.interactSequenceIdTPS || '', 
       collider: nodo.metadata?.collider,
-      camOffset: nodo.metadata?.camOffset,
-      playerConfig: nodo.metadata?.playerConfig || null,
-      selectionRange,
+      camOffset: nodo.metadata?.camOffset, 
+      // 🔥 FIX LÓGICO: Forzamos la clonación profunda al guardar para que NINGÚN campo nuevo desaparezca
+      playerConfig: nodo.metadata?.playerConfig ? JSON.parse(JSON.stringify(nodo.metadata.playerConfig)) : null, 
+      selectionRange, 
       animationNames: nodo.metadata?.animationNames || [],
       autoAnim: nodo.metadata?.autoAnim || null 
-    };
+    }; 
   }
 
-  public obtenerDatosParaGuardar(): { sceneObjects: any[]; triggers: any[]; worldSettings: any } {
-    const sceneObjects: any[] = [];
+  public obtenerDatosParaGuardar(): { sceneObjects: any[]; triggers: any[]; worldSettings: any } { 
+    const sceneObjects: any[] = []; 
     const triggers: any[] = [];
 
     const scene = this.motor3d.scene;
@@ -84,12 +82,8 @@ export class SceneSaverService {
       clearColorBW: this.hex7(scene.metadata?.globalClearColorBW, '#555555'),
       gravityY: this.safeNumber(scene.gravity?.y, 0),
       ambientIntensity: ambient ? this.safeNumber(ambient.intensity, 0.6) : 0.6,
-      ambientDiffuse: ambient
-        ? this.hex7(ambient.diffuse?.toHexString?.(), '#ffffff')
-        : '#ffffff',
-      ambientGround: ambient
-        ? this.hex7(ambient.groundColor?.toHexString?.(), '#333333')
-        : '#333333',
+      ambientDiffuse: ambient ? this.hex7(ambient.diffuse?.toHexString?.(), '#ffffff') : '#ffffff',
+      ambientGround: ambient ? this.hex7(ambient.groundColor?.toHexString?.(), '#333333') : '#333333',
       ambientDirX: ambient ? this.safeNumber(ambient.direction?.x, 0) : 0,
       ambientDirY: ambient ? this.safeNumber(ambient.direction?.y, 1) : 1,
       ambientDirZ: ambient ? this.safeNumber(ambient.direction?.z, 0) : 0
@@ -195,7 +189,6 @@ export class SceneSaverService {
               }
             });
           } else if (nodo.metadata.type?.startsWith('light_')) {
-            // 🔥 FIX: GUARDA LA POSICIÓN RELATIVA DE LA LUZ DENTRO DEL MODELO
             sceneObjects.push({
               ...baseData,
               type: nodo.metadata.type,
@@ -226,7 +219,6 @@ export class SceneSaverService {
               }
             });
           } else if (nodo.metadata.type === 'image_plane') {
-            // 🔥 FIX: AHORA SÍ GUARDA LA DISTANCIA DEL FADE DEL HOLOGRAMA
             sceneObjects.push({
               ...baseData,
               type: 'image_plane',
@@ -263,5 +255,5 @@ export class SceneSaverService {
     this.state.nodosEscena().forEach(nodo => processNode(nodo));
 
     return { sceneObjects, triggers, worldSettings };
-  }
+  } 
 }

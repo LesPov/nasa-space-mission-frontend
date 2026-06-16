@@ -1,4 +1,3 @@
-
 import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -136,10 +135,10 @@ export class PropWorld implements OnInit, OnDestroy {
       globalClearColorBW: this.clearColorHexBW 
     };
 
-    if (this.editorSvc.playState() === 'EDITOR') {
-      const activeClearHex = this.visualMode === 'bw' ? this.clearColorHexBW : this.clearColorHex;
-      scene.clearColor = Color4.FromHexString(activeClearHex + 'ff');
-    }
+    // 🔥 FIX: Eliminamos el chequeo de "isEditor" para que el cielo cambie 
+    // en tiempo real tanto en el editor normal como durante el testing.
+    const activeClearHex = this.visualMode === 'bw' ? this.clearColorHexBW : this.clearColorHex;
+    scene.clearColor = Color4.FromHexString(activeClearHex + 'ff');
 
     this.editorSvc.triggerUpdate();
   }

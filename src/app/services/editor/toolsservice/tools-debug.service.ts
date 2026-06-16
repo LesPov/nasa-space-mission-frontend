@@ -146,7 +146,10 @@ export class ToolsDebugService {
       const fog = playerConfig.fog;
       
       let activeStart = isBW ? (isFPS ? (fog.startFpsBW ?? 0) : (fog.startTpsBW ?? 5)) : (isFPS ? (fog.startFPS ?? 0) : (fog.startTPS ?? 5));
-      let activeEnd = isBW ? (isFPS ? (fog.endFpsBW ?? 60) : (fog.endTpsBW ?? 90)) : (isFPS ? (fog.endFPS ?? 80) : (fog.endTPS ?? 120));
+      
+      // 🔥 FIX: Aseguramos matemáticamente que el Fin SIEMPRE sea más grande que el Inicio para que no se crucen.
+      let rawEnd = isBW ? (isFPS ? (fog.endFpsBW ?? 60) : (fog.endTpsBW ?? 90)) : (isFPS ? (fog.endFPS ?? 80) : (fog.endTPS ?? 120));
+      let activeEnd = Math.max(activeStart + 0.1, rawEnd);
 
       const fogAnchor = this.getFogDebugAnchor(selected);
       const fogShape = fog.fogShape || 'cylinder';
@@ -155,11 +158,12 @@ export class ToolsDebugService {
       const fogHeightStart = Math.max(0.1, isBW ? (isFPS ? fog.fogHeightYStartFpsBW : fog.fogHeightYStartTpsBW) : (isFPS ? fog.fogHeightYStartFPS : fog.fogHeightYStartTPS));
       const fogHeightEnd = Math.max(0.1, isBW ? (isFPS ? fog.fogHeightYEndFpsBW : fog.fogHeightYEndTpsBW) : (isFPS ? fog.fogHeightYEndFPS : fog.fogHeightYEndTPS));
 
+      // 🔥 FIX: Sumamos 0.05 de radio para evitar Z-Fighting con la Niebla Real Shader
       if (fogShape === 'cylinder') {
-        this.debugFogStartSphere = MeshBuilder.CreateCylinder('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2), height: fogHeightStart, tessellation: 32, cap: Mesh.NO_CAP }, scene);
+        this.debugFogStartSphere = MeshBuilder.CreateCylinder('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2) + 0.05, height: fogHeightStart, tessellation: 32, cap: Mesh.NO_CAP }, scene);
         this.debugFogStartSphere.position.set(fogAnchor.x, fogAnchor.y + (fogHeightStart / 2), fogAnchor.z);
       } else {
-        this.debugFogStartSphere = MeshBuilder.CreateSphere('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2), segments: 32 }, scene);
+        this.debugFogStartSphere = MeshBuilder.CreateSphere('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2) + 0.05, segments: 32 }, scene);
         this.debugFogStartSphere.position = fogAnchor.clone();
       }
 
@@ -173,11 +177,12 @@ export class ToolsDebugService {
       this.debugFogStartSphere.isPickable = false;
 
       if (activeEnd > 0.1) {
+        // 🔥 FIX: Sumamos 0.1 de radio para evitar Z-Fighting
         if (fogShape === 'cylinder') {
-          this.debugFogEndSphere = MeshBuilder.CreateCylinder('debugFogEndSphere', { diameter: activeEnd * 2, height: fogHeightEnd, tessellation: 32, cap: Mesh.NO_CAP }, scene);
+          this.debugFogEndSphere = MeshBuilder.CreateCylinder('debugFogEndSphere', { diameter: (activeEnd * 2) + 0.1, height: fogHeightEnd, tessellation: 32, cap: Mesh.NO_CAP }, scene);
           this.debugFogEndSphere.position.set(fogAnchor.x, fogAnchor.y + (fogHeightEnd / 2), fogAnchor.z);
         } else {
-          this.debugFogEndSphere = MeshBuilder.CreateSphere('debugFogEndSphere', { diameter: activeEnd * 2, segments: 32 }, scene);
+          this.debugFogEndSphere = MeshBuilder.CreateSphere('debugFogEndSphere', { diameter: (activeEnd * 2) + 0.1, segments: 32 }, scene);
           this.debugFogEndSphere.position = fogAnchor.clone();
         }
 
@@ -233,23 +238,26 @@ export class ToolsDebugService {
     const isBW = this.motor3d.scene?.metadata?.globalVisualMode === 'bw';
     const isFPS = this.state.modoVistaPrueba === 'FPS';
     
-    // ALTURAS DE ANIMACIÓN SEGÚN VISTA
     const fogHeightStart = Math.max(0.1, isBW ? (isFPS ? (fogConfig?.fogHeightYStartFpsBW ?? 4.0) : (fogConfig?.fogHeightYStartTpsBW ?? 4.0)) : (isFPS ? (fogConfig?.fogHeightYStartFPS ?? 4.0) : (fogConfig?.fogHeightYStartTPS ?? 4.0)));
     const fogHeightEnd = Math.max(0.1, isBW ? (isFPS ? (fogConfig?.fogHeightYEndFpsBW ?? 10.0) : (fogConfig?.fogHeightYEndTpsBW ?? 10.0)) : (isFPS ? (fogConfig?.fogHeightYEndFPS ?? 10.0) : (fogConfig?.fogHeightYEndTPS ?? 10.0)));
 
     const fogAnchor = this.getFogDebugAnchor(obj);
+    
+    // 🔥 FIX ESTABILIDAD: Fijas al ancla central SIN SUMAR LA RESPIRACIÓN (breath).
+    // Esto garantiza que el cilindro guía jamás tiemble, eliminando la distorsión de líneas.
     if (this.debugFogStartSphere) {
       this.debugFogStartSphere.position.set(
-        fogAnchor.x + breathX, 
-        fogAnchor.y + breathY + (fogShape === 'cylinder' ? (fogHeightStart / 2) : 0), 
-        fogAnchor.z + breathZ
+        fogAnchor.x, 
+        fogAnchor.y + (fogShape === 'cylinder' ? (fogHeightStart / 2) : 0), 
+        fogAnchor.z
       );
     }
+
     if (this.debugFogEndSphere) {
       this.debugFogEndSphere.position.set(
-        fogAnchor.x + breathX, 
-        fogAnchor.y + breathY + (fogShape === 'cylinder' ? (fogHeightEnd / 2) : 0), 
-        fogAnchor.z + breathZ
+        fogAnchor.x, 
+        fogAnchor.y + (fogShape === 'cylinder' ? (fogHeightEnd / 2) : 0), 
+        fogAnchor.z
       );
     }
   }

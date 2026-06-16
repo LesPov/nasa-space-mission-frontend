@@ -1,93 +1,69 @@
-/* Heredamos el grid de la hoja de estilos principal */
 
-.fog-settings-container {
-  background: #0f172a; /* Fondo muy oscuro premium */
-  border: 1px solid #334155;
-  border-radius: 8px;
-  padding: 16px;
-  margin-bottom: 20px;
-  box-shadow: inset 0 2px 10px rgba(0,0,0,0.3);
-}
-
-.fog-panel-title {
-  color: #e2e8f0;
-  font-size: 13px;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  margin-bottom: 18px;
-  padding-bottom: 8px;
-  border-bottom: 1px dashed #475569;
-}
-
-/* ========================================================
-   GRILLA MATRIZ DE 5 COLUMNAS (Como en tu imagen)
-   ======================================================== */
-.fog-5-col {
+.fog-6-col {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 10px;
-  margin-bottom: 12px;
-}
-
-.fog-field {
-  display: flex;
-  flex-direction: column;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
   gap: 6px;
+  margin-bottom: 8px;
+  margin-top: 10px;
 }
 
-/* Estilos de los Textos (Labels) súper personalizados */
-.fog-field label {
-  font-size: 10px;
-  font-weight: 700;
-  white-space: nowrap;
-  letter-spacing: 0.5px;
+.layer-editor {
+  background: rgba(147, 51, 234, 0.05);
+  border-color: rgba(147, 51, 234, 0.3);
+  margin-top: 15px;
 }
 
-/* Colores de las etiquetas según la cámara para identificarlos rápido */
-.lbl-fps-z { color: #38bdf8; } /* Cyan */
-.lbl-tps-z { color: #facc15; } /* Amarillo */
+.layer-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 6px;
+  background: #111;
+  padding: 4px;
+  border-radius: 6px;
+}
 
-.lbl-fps-y { color: #a78bfa; } /* Morado suave */
-.lbl-tps-y { color: #f472b6; } /* Rosa salmón */
+.layer-tabs.sub-tabs {
+  background: #1a1a1a;
+  border-top: 1px solid #222;
+}
 
-.lbl-fps-o { color: #4ade80; } /* Verde neón */
-.lbl-tps-o { color: #fb923c; } /* Naranja */
-
-/* Cajas de Input idénticas a tu diseño */
-.fog-field input {
-  width: 100%;
-  background: #1e293b;
-  border: 1px solid #334155;
+.layer-tab {
+  flex: 1;
+  background: transparent;
+  border: 1px solid transparent;
+  color: #94a3b8;
+  padding: 6px;
   border-radius: 4px;
-  color: #f8fafc;
-  padding: 8px 10px;
-  font-size: 12px;
-  font-family: monospace;
-  outline: none;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
   transition: all 0.2s;
-  box-sizing: border-box;
+  text-align: center;
 }
 
-.fog-field input:focus {
+.layer-tab:hover {
+  background: #334155;
+  color: white;
+}
+
+.layer-tab.active {
+  background: #2563eb;
+  color: white;
   border-color: #3b82f6;
-  background: #0f172a;
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.25);
 }
 
-/* Separadores entre grupos (Z, Y, Opacidad) */
-.fog-separator {
-  height: 1px;
-  background: #1e293b;
-  margin: 16px 0;
+.layer-tab.small {
+  font-size: 10px;
+  padding: 4px;
 }
 
-/* Estilo para los inputs de Color Base y Cortes Render */
-.fog-global-settings {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 15px;
-  margin-bottom: 20px;
-  padding-bottom: 20px;
-  border-bottom: 2px solid #1e293b;
+.layer-tab.small.active {
+  background: #9333ea;
+  border-color: #a855f7;
 }
+
+.color-picker-wrapper { display: flex; align-items: center; gap: 10px; }
+.color-picker { -webkit-appearance: none; border: none; width: 35px; height: 30px; border-radius: 4px; cursor: pointer; padding: 0; background: transparent; }
+.color-picker::-webkit-color-swatch-wrapper { padding: 0; }
+.color-picker::-webkit-color-swatch { border: 1px solid #333; border-radius: 4px; }
+.color-hex-text { color: #888; font-family: monospace; font-size: 11px; }

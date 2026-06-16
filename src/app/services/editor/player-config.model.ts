@@ -1,3 +1,4 @@
+
 export type AnimBinding = string | string[] | null;
 
 export type PlayerActionKey =
@@ -81,12 +82,24 @@ export interface PlayerDebugConfig {
   showRays: boolean; showCollider: boolean; showState: boolean;
 }
 
-// 🔥 NUEVA INTERFAZ PARA LOS MUROS DE NIEBLA VOLUMÉTRICA
 export interface FogLevel {
   distance: number;
   height: number;
   opacity: number;
+  thickness: number; 
+  offsetY: number;
+  color?: string; // 🔥 NUEVO: Permite tener un color distinto por cada cilindro individual
+  layerOpacities?: number[]; 
 }
+
+// 🔥 Capas por defecto (Degradado suavizado en los bordes)
+const defaultFogLevels: FogLevel[] = [
+  { distance: 20, height: 10, opacity: 80, thickness: 5, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5] },
+  { distance: 50, height: 15, opacity: 60, thickness: 10, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5] },
+  { distance: 100, height: 25, opacity: 40, thickness: 20, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5] },
+  { distance: 200, height: 40, opacity: 20, thickness: 40, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5] },
+  { distance: 400, height: 60, opacity: 10, thickness: 80, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5] }
+];
 
 export interface PlayerFogConfig {
   enabled: boolean;
@@ -94,33 +107,21 @@ export interface PlayerFogConfig {
   color: string;
   colorBW: string;
 
-  // Global Background Render Distances
   renderDistanceFPS: number;
   renderDistanceTPS: number;
   renderDistanceFpsBW: number;
   renderDistanceTpsBW: number;
 
-  // 🔥 LOS 5 NIVELES CONFIGURABLES (Muros)
   levelsFPS: FogLevel[];
   levelsTPS: FogLevel[];
   levelsFpsBW: FogLevel[];
   levelsTpsBW: FogLevel[];
 
-  // Compatibilidad antigua (se mantendrán para no romper mapas viejos)
   startFPS?: number; endFPS?: number; startTPS?: number; endTPS?: number;
   densityStartFPS?: number; densityEndFPS?: number; densityStartTPS?: number; densityEndTPS?: number;
   startFpsBW?: number; endFpsBW?: number; startTpsBW?: number; endTpsBW?: number;
   densityStartFpsBW?: number; densityEndFpsBW?: number; densityStartTpsBW?: number; densityEndTpsBW?: number;
 }
-
-// Inicialización de los 5 niveles por defecto para que luzca épico desde cero
-const defaultFogLevels: FogLevel[] = [
-  { distance: 20, height: 10, opacity: 80 },  // Muro cercano (muy denso y bajo)
-  { distance: 50, height: 15, opacity: 60 },  // Muro medio
-  { distance: 100, height: 25, opacity: 40 }, // Muro lejano
-  { distance: 200, height: 40, opacity: 20 }, // Montañas
-  { distance: 400, height: 60, opacity: 10 }  // Horizonte
-];
 
 export interface PlayerRuntimeConfig {
   movement: PlayerMovementConfig;

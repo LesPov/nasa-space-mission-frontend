@@ -1,3 +1,4 @@
+
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -6,7 +7,8 @@ import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import {
   PlayerRuntimeConfig,
   cloneDefaultPlayerConfig,
-  mergePlayerConfig
+  mergePlayerConfig,
+  FogLevel
 } from '../../../../services/editor/player-config.model';
 
 interface SelectionRangeConfig {
@@ -19,7 +21,7 @@ interface SelectionRangeConfig {
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-player.html',
-  styleUrls: ['../inspector-properties.css']
+  styleUrls: ['./prop-player.css', '../inspector-properties.css']
 })
 export class PropPlayer implements OnInit {
   @Input() objeto!: AbstractMesh;
@@ -38,8 +40,12 @@ export class PropPlayer implements OnInit {
 
   playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
 
+  // 🔥 Sistema de Pestañas para Niebla
+  activeFogMode: 'FPS' | 'TPS' | 'FPS_BW' | 'TPS_BW' = 'FPS';
+  activeFogLevel: number = 0;
+
   selectionRange: SelectionRangeConfig = {
-    fpsAdminMax: 500000, // 🔥 Aumentado para mundos masivos
+    fpsAdminMax: 500000, 
     fpsUserMax: 3
   };
 
@@ -53,7 +59,7 @@ export class PropPlayer implements OnInit {
       {};
 
     this.selectionRange = {
-      fpsAdminMax: this.normalizarNumero(storedSelection.fpsAdminMax, 500000), // 🔥
+      fpsAdminMax: this.normalizarNumero(storedSelection.fpsAdminMax, 500000), 
       fpsUserMax: this.normalizarNumero(storedSelection.fpsUserMax, 3)
     };
 
@@ -65,9 +71,61 @@ export class PropPlayer implements OnInit {
     this.sincronizarFogCompat();
   }
 
+  // 🔥 GETTERS Y SETTERS GLOBALES DE LA NIEBLA
+  get currentFogLevel(): FogLevel | null {
+    if (!this.playerConfig?.fog) return null;
+    const fog = this.playerConfig.fog;
+    switch(this.activeFogMode) {
+      case 'FPS': return fog.levelsFPS[this.activeFogLevel];
+      case 'TPS': return fog.levelsTPS[this.activeFogLevel];
+      case 'FPS_BW': return fog.levelsFpsBW[this.activeFogLevel];
+      case 'TPS_BW': return fog.levelsTpsBW[this.activeFogLevel];
+    }
+    return null;
+  }
+
+  getGlobalFogColor(): string {
+    const fog = this.playerConfig.fog;
+    if (this.activeFogMode.includes('BW')) return fog.colorBW || '#555555';
+    return fog.color || '#0d1729';
+  }
+
+  setGlobalFogColor(val: string): void {
+    const fog = this.playerConfig.fog;
+    if (this.activeFogMode.includes('BW')) fog.colorBW = val;
+    else fog.color = val;
+    this.aplicarPlayerConfig();
+  }
+
+  getGlobalRenderDist(): number {
+    const fog = this.playerConfig.fog;
+    switch(this.activeFogMode) {
+      case 'FPS': return fog.renderDistanceFPS;
+      case 'TPS': return fog.renderDistanceTPS;
+      case 'FPS_BW': return fog.renderDistanceFpsBW;
+      case 'TPS_BW': return fog.renderDistanceTpsBW;
+    }
+  }
+
+  setGlobalRenderDist(val: number): void {
+    const fog = this.playerConfig.fog;
+    switch(this.activeFogMode) {
+      case 'FPS': fog.renderDistanceFPS = val; break;
+      case 'TPS': fog.renderDistanceTPS = val; break;
+      case 'FPS_BW': fog.renderDistanceFpsBW = val; break;
+      case 'TPS_BW': fog.renderDistanceTpsBW = val; break;
+    }
+    this.aplicarPlayerConfig();
+  }
+
   private normalizarNumero(valor: any, fallback: number): number {
     const n = Number(valor);
     return Number.isFinite(n) && n >= 0 ? n : fallback;
+  }
+
+  private normalizarOffset(valor: any, fallback: number): number {
+    const n = Number(valor);
+    return Number.isFinite(n) ? n : fallback;
   }
 
   private sincronizarFogCompat(): void {
@@ -79,34 +137,27 @@ export class PropPlayer implements OnInit {
     fog.color = typeof fog.color === 'string' ? fog.color : '#0d1729';
     fog.colorBW = typeof fog.colorBW === 'string' ? fog.colorBW : '#555555';
 
-    fog.densityStartFPS = this.normalizarNumero(fog.densityStartFPS ?? fog.densityFPS ?? fog.densityFps, 0);
-    fog.densityEndFPS = this.normalizarNumero(fog.densityEndFPS, 100);
-
-    fog.densityStartTPS = this.normalizarNumero(fog.densityStartTPS ?? fog.densityTPS ?? fog.densityTps, 0);
-    fog.densityEndTPS = this.normalizarNumero(fog.densityEndTPS, 100);
-
-    fog.densityStartFpsBW = this.normalizarNumero(fog.densityStartFpsBW ?? fog.densityFpsBW, 0);
-    fog.densityEndFpsBW = this.normalizarNumero(fog.densityEndFpsBW, 100);
-
-    fog.densityStartTpsBW = this.normalizarNumero(fog.densityStartTpsBW ?? fog.densityTpsBW, 0);
-    fog.densityEndTpsBW = this.normalizarNumero(fog.densityEndTpsBW, 100);
-
-    // 🔥 Defaults altos para no perder visión en mapas masivos
-    fog.startFPS = this.normalizarNumero(fog.startFPS, 0);
-    fog.endFPS = this.normalizarNumero(fog.endFPS, 50000);
-    fog.startTPS = this.normalizarNumero(fog.startTPS, 5);
-    fog.endTPS = this.normalizarNumero(fog.endTPS, 50000);
-
     fog.renderDistanceFPS = this.normalizarNumero(fog.renderDistanceFPS, 100000);
     fog.renderDistanceTPS = this.normalizarNumero(fog.renderDistanceTPS, 100000);
-
-    fog.startFpsBW = this.normalizarNumero(fog.startFpsBW, 0);
-    fog.endFpsBW = this.normalizarNumero(fog.endFpsBW, 50000);
-    fog.startTpsBW = this.normalizarNumero(fog.startTpsBW, 5);
-    fog.endTpsBW = this.normalizarNumero(fog.endTpsBW, 50000);
-
     fog.renderDistanceFpsBW = this.normalizarNumero(fog.renderDistanceFpsBW, 100000);
     fog.renderDistanceTpsBW = this.normalizarNumero(fog.renderDistanceTpsBW, 100000);
+
+    const defaultLayers = [5, 35, 100, 100, 35, 5];
+    const ensureThicknessAndOffset = (levels: any[], defaultsThick: number[], defaultOffset: number) => {
+      if (!levels) return;
+      levels.forEach((l, i) => {
+        l.thickness = this.normalizarNumero(l.thickness, defaultsThick[i] ?? 10);
+        l.offsetY = this.normalizarOffset(l.offsetY, defaultOffset);
+        if (!l.layerOpacities || l.layerOpacities.length !== 6) {
+          l.layerOpacities = [...defaultLayers];
+        }
+      });
+    };
+    const defaultT = [5, 10, 20, 40, 80];
+    ensureThicknessAndOffset(fog.levelsFPS, defaultT, 0);
+    ensureThicknessAndOffset(fog.levelsTPS, defaultT, 0);
+    ensureThicknessAndOffset(fog.levelsFpsBW, defaultT, 0);
+    ensureThicknessAndOffset(fog.levelsTpsBW, defaultT, 0);
 
     this.playerConfig.fog = fog;
   }
@@ -119,7 +170,7 @@ export class PropPlayer implements OnInit {
     if (!this.objeto.metadata) this.objeto.metadata = {};
 
     const selectionPayload = {
-      fpsAdminMax: this.normalizarNumero(this.selectionRange.fpsAdminMax, 500000), // 🔥
+      fpsAdminMax: this.normalizarNumero(this.selectionRange.fpsAdminMax, 500000), 
       fpsUserMax: this.normalizarNumero(this.selectionRange.fpsUserMax, 3)
     };
 
@@ -154,4 +205,4 @@ export class PropPlayer implements OnInit {
     this.sincronizarFogCompat();
     this.aplicarPlayerConfig();
   }
-} 
+}

@@ -1,14 +1,19 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, Observer } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { FogLevel } from '../player-config.model';
 
-// Clase para mantener la interpolación individual de cada uno de los 5 muros
 class FogWallState { 
   dist = 500; 
   height = 10; 
   alpha = 0; 
+  thickness = 10; 
+  offsetY = 0; 
+  r = 0;
+  g = 0;
+  b = 0;
 }
 
 @Injectable({ providedIn: 'root' }) 
@@ -19,16 +24,13 @@ export class ToolsFogService {
   private fogObserver: Observer<Scene> | null = null; 
   private firstFrame = true;
 
-  // Colores Globales de la Niebla de Fondo Clásica 
   private curR = 0; 
   private curG = 0; 
   private curB = 0; 
   private curStart = 500000; 
   private curEnd = 500000;
 
-  // MUROS FÍSICOS DE NIEBLA (Los 5 niveles) 
   private fogWalls: TransformNode[] = []; 
-  // NODO QUE AGRUPA LAS CAPAS DE GROSOR 
   private fogMats: StandardMaterial[][] = []; 
   private wallStates: FogWallState[] = []; 
   private gradTex: DynamicTexture | null = null;
@@ -39,30 +41,23 @@ export class ToolsFogService {
     }
   }
 
-  // 🔥 GRADIENTE MEJORADO: Diseñado para ocultar edificios.
-  // Abajo es 100% sólido, arriba es invisible.
   private getGradientTexture(scene: Scene): DynamicTexture { 
     if (this.gradTex) return this.gradTex;
 
-    // Textura hiper-liviana 2x128 para crear un degradado 1D
-    const tex = new DynamicTexture("fogGradTex", { width: 2, height: 128 }, scene, false);
+    const tex = new DynamicTexture("fogGradTex", { width: 2, height: 256 }, scene, false);
     tex.hasAlpha = true;
     const ctx = tex.getContext();
 
-    // Gradiente Y (Altura): Diseñado para tapar bases de objetos
-    const grad = ctx.createLinearGradient(0, 0, 0, 128);
-    
-    // Y=0 es la PUNTA del cilindro (Techos visibles)
-    grad.addColorStop(0, "rgba(255,255,255,0)");      // Cúspide: 100% invisible
-    grad.addColorStop(0.15, "rgba(255,255,255,0)");   // Margen extra arriba invisible
-    grad.addColorStop(0.35, "rgba(255,255,255,0.4)"); // Fusión suave a la mitad
-    // Y=128 es el SUELO del cilindro (Bases ocultas)
-    grad.addColorStop(0.6, "rgba(255,255,255,0.95)"); // Desde la mitad ya es casi sólido
-    grad.addColorStop(0.8, "rgba(255,255,255,1)");    // Abajo es pared impenetrable
-    grad.addColorStop(1, "rgba(255,255,255,1)");      // Piso: Sólido total
+    const grad = ctx.createLinearGradient(0, 0, 0, 256);
+    grad.addColorStop(0.00, "rgba(255,255,255,0.0)"); 
+    grad.addColorStop(0.20, "rgba(255,255,255,0.2)"); 
+    grad.addColorStop(0.40, "rgba(255,255,255,1.0)"); 
+    grad.addColorStop(0.60, "rgba(255,255,255,1.0)"); 
+    grad.addColorStop(0.80, "rgba(255,255,255,0.2)"); 
+    grad.addColorStop(1.00, "rgba(255,255,255,0.0)"); 
 
     ctx.fillStyle = grad;
-    ctx.fillRect(0, 0, 2, 128);
+    ctx.fillRect(0, 0, 2, 256);
     tex.update();
 
     this.gradTex = tex;
@@ -74,6 +69,7 @@ export class ToolsFogService {
     if (!scene) return;
 
     if (!this.fogObserver) {
+      // Tomamos el color inicial de la niebla global
       const globalClearHex = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
       const clearColor3 = Color3.FromHexString(globalClearHex);
       this.curR = clearColor3.r; this.curG = clearColor3.g; this.curB = clearColor3.b;
@@ -104,6 +100,9 @@ export class ToolsFogService {
     let targetR = 0, targetG = 0, targetB = 0;
     let useFog = false;
     let activeLevels: FogLevel[] = [];
+    
+    // Obtenemos el color base global para el ambiente profundo
+    const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
 
     if ((modo === 'PLAYING' || modo === 'EDITING_IN_GAME' || modo === 'TRANSITIONING') && targetPlayer?.metadata?.playerConfig?.fog?.enabled) {
       useFog = true;
@@ -140,7 +139,6 @@ export class ToolsFogService {
       this.curStart = renderMaxZ * 0.8;
       this.curEnd = renderMaxZ;
     } else {
-      const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
       const targetColorObj = Color3.FromHexString(globalClearHex);
       targetR = targetColorObj.r; targetG = targetColorObj.g; targetB = targetColorObj.b;
 
@@ -163,9 +161,9 @@ export class ToolsFogService {
       this.curB += (targetB - this.curB) * lerpSpeed;
     }
 
-    scene.clearColor = new Color4(this.curR, this.curG, this.curB, 1);
     scene.fogColor = new Color3(this.curR, this.curG, this.curB);
     scene.fogMode = useFog ? Scene.FOGMODE_LINEAR : Scene.FOGMODE_NONE;
+    
     if (useFog) { scene.fogStart = this.curStart; scene.fogEnd = this.curEnd; }
 
     if (this.fogWalls[0] && this.fogWalls[0].getScene() !== scene) {
@@ -182,41 +180,26 @@ export class ToolsFogService {
         this.fogWalls[i] = new TransformNode("fogWallGroup_" + i, scene);
         this.fogMats[i] = []; 
         
-        const capasDeGrosor = 4;
-
-        // 🔥 LOGICA VOLUMÉTRICA MEJORADA (Degradado Z Real)
-        // Capa 0: Borde Interno (Muy transparente, evita corte cuando pasas cerca) - 15%
-        // Capa 1: Núcleo Interno (Media densidad) - 45%
-        // Capa 2: Núcleo Externo (Muy denso) - 85%
-        // Capa 3: Borde Externo (Totalmente Sólido, oculta el fondo por completo) - 100%
-        const alphaMultipliers = [0.15, 0.45, 0.85, 1.0];
-        const scaleOffsets = [0.85, 0.95, 1.05, 1.15];
-
+        const capasDeGrosor = 6;
         for (let j = 0; j < capasDeGrosor; j++) {
-            
             const mat = new StandardMaterial(`fogMat_${i}_${j}`, scene);
             mat.disableLighting = true; 
             mat.alphaMode = Engine.ALPHA_COMBINE;
             mat.disableDepthWrite = true; 
             mat.opacityTexture = this.getGradientTexture(scene);
             mat.fogEnabled = false; 
-            
-            (mat as any)._layerAlphaMultiplier = alphaMultipliers[j]; 
             this.fogMats[i].push(mat);
 
             const shell = MeshBuilder.CreateCylinder(`fogShell_${i}_${j}`, { 
                 diameter: 1, 
                 height: 1, 
-                sideOrientation: Mesh.DOUBLESIDE, // Importante para que se vea por dentro y fuera
+                sideOrientation: Mesh.DOUBLESIDE, 
                 cap: Mesh.NO_CAP,
-                tessellation: 48 
+                tessellation: 64 
             }, scene);
             
             shell.parent = this.fogWalls[i];
-            
-            const scaleOffset = scaleOffsets[j];
-            shell.scaling.set(scaleOffset, 1, scaleOffset); 
-            
+            shell.scaling.set(1, 1, 1); 
             shell.material = mat;
             shell.isPickable = false;
             shell.checkCollisions = false;
@@ -231,32 +214,69 @@ export class ToolsFogService {
       let tDist = 50000;
       let tHeight = 10;
       let tAlpha = 0;
+      let tThick = 10;
+      let tOffsetY = 0; 
+      let tHex = globalClearHex; 
 
       if (useFog && activeLevels && activeLevels[i]) {
           tDist = Math.max(0.1, activeLevels[i].distance);
           tHeight = Math.max(0.1, activeLevels[i].height);
           tAlpha = Math.max(0, Math.min(100, activeLevels[i].opacity)) / 100;
+          tThick = Math.max(0.1, activeLevels[i].thickness ?? 10);
+          tOffsetY = activeLevels[i].offsetY ?? 0;
+          
+          const fog = targetPlayer?.metadata?.playerConfig?.fog;
+          tHex = activeLevels[i].color || (isBW ? (fog?.colorBW || '#888888') : (fog?.color || '#0d1729'));
       }
+      
+      const tColor = Color3.FromHexString(tHex);
 
       if (this.firstFrame) {
-         state.dist = tDist; state.height = tHeight; state.alpha = tAlpha;
+         state.dist = tDist; state.height = tHeight; state.alpha = tAlpha; state.thickness = tThick; state.offsetY = tOffsetY;
+         state.r = tColor.r; state.g = tColor.g; state.b = tColor.b;
       } else {
          state.dist += (tDist - state.dist) * lerpSpeed;
          state.height += (tHeight - state.height) * lerpSpeed;
          state.alpha += (tAlpha - state.alpha) * lerpSpeed;
+         state.thickness += (tThick - state.thickness) * lerpSpeed;
+         state.offsetY += (tOffsetY - state.offsetY) * lerpSpeed;
+         state.r += (tColor.r - state.r) * lerpSpeed;
+         state.g += (tColor.g - state.g) * lerpSpeed;
+         state.b += (tColor.b - state.b) * lerpSpeed;
       }
 
       wallGroup.scaling.set(state.dist * 2, state.height, state.dist * 2);
-      
-      // Ajuste para que la base del cilindro corte perfectamente con el piso de tu juego
-      wallGroup.position.set(anchorX, anchorY + (state.height / 2), anchorZ);
+      wallGroup.position.set(anchorX, anchorY + (state.height / 2) + state.offsetY, anchorZ);
       
       const isVisible = state.alpha > 0.001;
+      const thickOffsets = [-1, -0.6, -0.2, 0.2, 0.6, 1];
+      
+      const curDist = Math.max(0.1, state.dist);
+      const halfThick = state.thickness / 2;
 
-      for (let j = 0; j < 4; j++) {
+      const meshes = wallGroup.getChildMeshes();
+
+      // 🔥 LÓGICA VITAL: Extraemos las opacidades personalizadas del nivel actual si existen, 
+      // de lo contrario usamos el array histórico como fallback.
+      let currentLayers = [5, 35, 100, 100, 35, 5]; 
+      if (activeLevels && activeLevels[i] && activeLevels[i].layerOpacities) {
+          currentLayers = activeLevels[i].layerOpacities ?? [5, 35, 100, 100, 35, 5];
+      }
+
+      for (let j = 0; j < 6; j++) {
+          const shell = meshes[j];
+          const targetRadius = curDist + (thickOffsets[j] * halfThick);
+          const localScale = targetRadius / curDist;
+          shell.scaling.set(localScale, 1, localScale);
+
           const mat = this.fogMats[i][j];
-          mat.emissiveColor.set(this.curR, this.curG, this.curB);
-          mat.alpha = state.alpha * (mat as any)._layerAlphaMultiplier; 
+          
+          // 🔥 Asignamos el color INDEPENDIENTE de este anillo
+          mat.emissiveColor.set(state.r, state.g, state.b);
+          
+          // Aplicamos la opacidad independiente calculada desde la interfaz (Porcentaje 0-1)
+          const opacityRatio = (currentLayers[j] || 0) / 100.0;
+          mat.alpha = state.alpha * opacityRatio; 
       }
 
       wallGroup.getChildMeshes().forEach((m) => {

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, GizmoManager, Matrix, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Light } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -18,6 +19,7 @@ export class ToolsGizmoService {
   
   public isDraggingGizmo = false;
   private estadoAntesDeArrastrar: any = null;
+  private dragOffset: Vector3 = Vector3.Zero();
 
   public initGizmos(): void {
     const scene = this.motor3d.scene;
@@ -101,6 +103,11 @@ export class ToolsGizmoService {
       const mesh = this.state.objetoSeleccionado() as Mesh;
       if (mesh) {
         this.estadoAntesDeArrastrar = this.historialSvc.obtenerEstado(mesh);
+        
+        // 🔥 FIX SALTO (JUMP) Y EJE Y: Calculamos el offset exacto absoluto en el instante del clic
+        mesh.computeWorldMatrix(true);
+        this.gizmoPivotNode.computeWorldMatrix(true);
+        this.dragOffset = mesh.getAbsolutePosition().subtract(this.gizmoPivotNode.getAbsolutePosition());
       }
     };
 
@@ -203,16 +210,8 @@ export class ToolsGizmoService {
       const pivotPos = this.gizmoPivotNode.getAbsolutePosition();
 
       if (!isNaN(pivotPos.x) && !isNaN(pivotPos.y) && !isNaN(pivotPos.z)) {
-        let localOffset = Vector3.Zero();
-        if (mesh.metadata?.collider && mesh.metadata.collider.type !== 'mesh') {
-          localOffset = new Vector3(mesh.metadata.collider.offsetX || 0, mesh.metadata.collider.offsetY || 0, mesh.metadata.collider.offsetZ || 0);
-        }
-        
-        const rotQuat = this.gizmoPivotNode.rotationQuaternion || Quaternion.FromEulerAngles(this.gizmoPivotNode.rotation.x, this.gizmoPivotNode.rotation.y, this.gizmoPivotNode.rotation.z);
-        const offsetMatrix = Matrix.Compose(this.gizmoPivotNode.scaling, rotQuat, Vector3.Zero());
-        const worldOffset = Vector3.TransformCoordinates(localOffset, offsetMatrix);
-        
-        mesh.setAbsolutePosition(pivotPos.subtract(worldOffset));
+        // 🔥 FIX SALTO: Aplicamos el movimiento usando el Offset puro guardado al hacer clic
+        mesh.setAbsolutePosition(pivotPos.add(this.dragOffset));
       }
 
       if (this.gizmoPivotNode.rotationQuaternion) {

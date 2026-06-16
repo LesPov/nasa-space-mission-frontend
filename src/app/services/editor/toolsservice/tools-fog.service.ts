@@ -203,6 +203,7 @@ export class ToolsFogService {
             shell.checkCollisions = false;
             shell.receiveShadows = false;
             shell.applyFog = false;
+            shell.doNotSyncBoundingInfo = true; // 🔥 Evita cálculos y clics
         }
       }
 

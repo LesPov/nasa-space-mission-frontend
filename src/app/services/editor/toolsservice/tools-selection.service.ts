@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Ray, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -86,12 +87,19 @@ export class ToolsSelectionService {
   public resolverRootDesdeRay(ray: Ray, isAdmin: boolean, centerDragMesh: AbstractMesh): AbstractMesh | null {
     const scene = this.motor3d.scene;
     const playSt = this.state.playState();
+    const jugador = this.state.jugadorActivo;
 
     const hit = scene.pickWithRay(ray, (m) => {
       if (!m.isVisible || !m.isPickable) return false;
+      
+      // 🔥 FIX: IGNORAR AL JUGADOR Y SUS PARTES EN MODO FPS
+      if (this.state.modoVistaPrueba === 'FPS' && jugador && (m === jugador || m.isDescendantOf(jugador))) return false;
+
       const nameStr = m.name.toLowerCase();
       if (nameStr.includes('highlight') || nameStr.includes('gizmo')) return false;
-      if (nameStr.includes('proxycol') || nameStr.includes('suelo') || nameStr.includes('skybox') || nameStr.includes('debug')) return false;
+      
+      // 🔥 FIX NIEBLA: Ignorar los muros y shells de niebla
+      if (nameStr.includes('proxycol') || nameStr.includes('suelo') || nameStr.includes('skybox') || nameStr.includes('debug') || nameStr.includes('fogshell') || nameStr.includes('fogwall')) return false;
       if (m === centerDragMesh) return false;
       if (m.metadata?.type === 'trigger' || nameStr.includes('trigger')) {
           if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') return false;

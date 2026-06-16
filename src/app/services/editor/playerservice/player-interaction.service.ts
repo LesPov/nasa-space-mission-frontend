@@ -1,5 +1,3 @@
-
-// src/app/services/editor/playerservice/player-interaction.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Matrix } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -121,7 +119,9 @@ export class PlayerInteractionService {
           nameStr.includes('skybox') ||
           nameStr.includes('highlight') ||
           nameStr.includes('gizmo') ||
-          nameStr.includes('debug')
+          nameStr.includes('debug') ||
+          nameStr.includes('fogshell') ||
+          nameStr.includes('fogwall')
         ) return false;
 
         return true;
@@ -163,10 +163,11 @@ export class PlayerInteractionService {
       const playerProbe = this.lastInteractionProbePoint;
 
       scene.meshes.forEach(mesh => {
-        if (mesh === jugador || mesh.name.includes('proxyCol') || mesh.name.toLowerCase().includes('suelo') || !mesh.isPickable) return;
+        const nameL = mesh.name.toLowerCase();
+        if (mesh === jugador || nameL.includes('proxycol') || nameL.includes('suelo') || nameL.includes('fog') || !mesh.isPickable) return;
         
         // 🔥 FIX TRIGGERS TPS: Ignorar triggers por completo
-        if (mesh.metadata?.type === 'trigger' || mesh.name.toLowerCase().includes('trigger')) return; 
+        if (mesh.metadata?.type === 'trigger' || nameL.includes('trigger')) return; 
         if (!mesh.isVisible) return;
 
         // 🔥 USAR NUEVA LÓGICA

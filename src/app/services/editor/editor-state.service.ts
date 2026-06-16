@@ -1,5 +1,3 @@
-
-
 import { Injectable, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { Node, AbstractMesh, Mesh, Vector3, Quaternion } from '@babylonjs/core';
@@ -103,7 +101,7 @@ export class EditorStateService {
       n === 'terrain' || n === 'camerapivot' || n.includes('eje') ||
       n.includes('gridhelper') || n.includes('gizmo') || n.includes('highlight') ||
       n.includes('debug') || n.includes('proxycol') || n.includes('skybox') ||
-      n.startsWith('decal_') 
+      n.startsWith('decal_') || n.includes('fogshell') || n.includes('fogwall')
     );
   }
 
@@ -196,4 +194,4 @@ export class EditorStateService {
     this.objetoSeleccionado.set(null);
     this.subObjetoSeleccionado.set(null);
   }
-} 
+}

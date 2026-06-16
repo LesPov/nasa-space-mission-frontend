@@ -69,10 +69,17 @@ export class EditorToolsService {
     });
 
     const castRayToSelectable = (ray: Ray, ignoreTriggers: boolean = false) => {
+        const jugador = this.state.jugadorActivo;
         const hit = scene.pickWithRay(ray, (mesh) => {
             if (!mesh.isPickable || !mesh.isVisible) return false;
+            
+            // 🔥 FIX JUGADOR: Ignorar al jugador y sus hijos en 1ra persona para que el Admin no se seleccione a sí mismo
+            if (this.state.modoVistaPrueba === 'FPS' && jugador && (mesh === jugador || mesh.isDescendantOf(jugador))) {
+                return false;
+            }
+
             const n = mesh.name.toLowerCase();
-            if (n.includes('gizmo') || n.includes('proxycol') || n.includes('suelo') || n.includes('skybox')) return false;
+            if (n.includes('gizmo') || n.includes('proxycol') || n.includes('suelo') || n.includes('skybox') || n.includes('fogshell') || n.includes('fogwall')) return false;
             if (ignoreTriggers && (n.includes('trigger') || mesh.metadata?.type === 'trigger')) return false;
             return true;
         });

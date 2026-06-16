@@ -1,4 +1,3 @@
-
 export type AnimBinding = string | string[] | null;
 
 export type PlayerActionKey =
@@ -85,55 +84,31 @@ export interface PlayerDebugConfig {
 export interface PlayerFogConfig {
   enabled: boolean;
   fogMode: 'linear' | 'exp' | 'exp2';
-  fogShape: 'sphere' | 'cylinder'; 
-  density: number;
-
-  offsetXFPS: number; offsetYFPS: number; offsetZFPS: number;
-  offsetXTPS: number; offsetYTPS: number; offsetZTPS: number;
+  color: string;
+  startFPS: number;
+  endFPS: number;
+  startTPS: number;
+  endTPS: number;
+  renderDistanceFPS: number;
+  renderDistanceTPS: number;
   
-  // 🔥 COLORES NORMALES (4 ETAPAS / 4 ANILLOS)
-  colorStart: string;
-  colorMedio1: string;
-  colorMedio2: string;
-  colorEnd: string;
-  
-  fogHeightYStartFPS: number; fogHeightYMedio1FPS: number; fogHeightYMedio2FPS: number; fogHeightYEndFPS: number;
-  fogFalloffYStartFPS: number; fogFalloffYMedio1FPS: number; fogFalloffYMedio2FPS: number; fogFalloffYEndFPS: number;
-  
-  fogHeightYStartTPS: number; fogHeightYMedio1TPS: number; fogHeightYMedio2TPS: number; fogHeightYEndTPS: number;
-  fogFalloffYStartTPS: number; fogFalloffYMedio1TPS: number; fogFalloffYMedio2TPS: number; fogFalloffYEndTPS: number;
+  densityStartFPS: number;
+  densityEndFPS: number;
+  densityStartTPS: number;
+  densityEndTPS: number;
 
-  startFPS: number; medio1FPS: number; medio2FPS: number; endFPS: number;
-  startTPS: number; medio1TPS: number; medio2TPS: number; endTPS: number;
-  renderDistanceFPS: number; renderDistanceTPS: number;
+  colorBW: string;
+  startFpsBW: number;
+  endFpsBW: number;
+  startTpsBW: number;
+  endTpsBW: number;
+  renderDistanceFpsBW: number;
+  renderDistanceTpsBW: number;
   
-  densityStartFPS: number; densityMedio1FPS: number; densityMedio2FPS: number; densityEndFPS: number;
-  densityStartTPS: number; densityMedio1TPS: number; densityMedio2TPS: number; densityEndTPS: number;
-
-  // 🔥 COLORES BLANCO Y NEGRO (4 ETAPAS / 4 ANILLOS)
-  colorStartBW: string;
-  colorMedio1BW: string;
-  colorMedio2BW: string;
-  colorEndBW: string;
-  
-  fogHeightYStartFpsBW: number; fogHeightYMedio1FpsBW: number; fogHeightYMedio2FpsBW: number; fogHeightYEndFpsBW: number;
-  fogFalloffYStartFpsBW: number; fogFalloffYMedio1FpsBW: number; fogFalloffYMedio2FpsBW: number; fogFalloffYEndFpsBW: number;
-
-  fogHeightYStartTpsBW: number; fogHeightYMedio1TpsBW: number; fogHeightYMedio2TpsBW: number; fogHeightYEndTpsBW: number;
-  fogFalloffYStartTpsBW: number; fogFalloffYMedio1TpsBW: number; fogFalloffYMedio2TpsBW: number; fogFalloffYEndTpsBW: number;
-
-  startFpsBW: number; medio1FpsBW: number; medio2FpsBW: number; endFpsBW: number;
-  startTpsBW: number; medio1TpsBW: number; medio2TpsBW: number; endTpsBW: number;
-  renderDistanceFpsBW: number; renderDistanceTpsBW: number;
-  
-  densityStartFpsBW: number; densityMedio1FpsBW: number; densityMedio2FpsBW: number; densityEndFpsBW: number;
-  densityStartTpsBW: number; densityMedio1TpsBW: number; densityMedio2TpsBW: number; densityEndTpsBW: number;
-
-  // Legacy variables for backward compatibility
-  color?: string; colorBW?: string; 
-  colorMedio?: string; colorMedioBW?: string;
-  medioFPS?: number; medioTPS?: number; medioFpsBW?: number; medioTpsBW?: number;
-  densityMedioFPS?: number; densityMedioTPS?: number; densityMedioFpsBW?: number; densityMedioTpsBW?: number;
+  densityStartFpsBW: number;
+  densityEndFpsBW: number;
+  densityStartTpsBW: number;
+  densityEndTpsBW: number;
 }
 
 export interface PlayerRuntimeConfig {
@@ -172,38 +147,12 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
   sequences: [],
   debug: { showRays: false, showCollider: false, showState: false },
   fog: {
-    enabled: false, fogMode: 'linear', fogShape: 'cylinder', density: 0.01,
-    offsetXFPS: 0, offsetYFPS: 0, offsetZFPS: 0, offsetXTPS: 0, offsetYTPS: 0, offsetZTPS: 0,
-    
-    colorStart: '#0d1729', colorMedio1: '#0d1729', colorMedio2: '#0d1729', colorEnd: '#0d1729',
-    
-    fogHeightYStartFPS: 4.0, fogHeightYMedio1FPS: 6.0, fogHeightYMedio2FPS: 8.0, fogHeightYEndFPS: 10.0,
-    fogFalloffYStartFPS: 1.5, fogFalloffYMedio1FPS: 2.0, fogFalloffYMedio2FPS: 2.5, fogFalloffYEndFPS: 3.0,
-    
-    fogHeightYStartTPS: 4.0, fogHeightYMedio1TPS: 6.0, fogHeightYMedio2TPS: 8.0, fogHeightYEndTPS: 10.0,
-    fogFalloffYStartTPS: 1.5, fogFalloffYMedio1TPS: 2.0, fogFalloffYMedio2TPS: 2.5, fogFalloffYEndTPS: 3.0,
-    
-    startFPS: 5, medio1FPS: 15, medio2FPS: 30, endFPS: 50,
-    startTPS: 5, medio1TPS: 20, medio2TPS: 40, endTPS: 60,
-    renderDistanceFPS: 100000, renderDistanceTPS: 100000,
-    
-    densityStartFPS: 0, densityMedio1FPS: 30, densityMedio2FPS: 60, densityEndFPS: 100,
-    densityStartTPS: 0, densityMedio1TPS: 30, densityMedio2TPS: 60, densityEndTPS: 100,
-    
-    colorStartBW: '#555555', colorMedio1BW: '#555555', colorMedio2BW: '#555555', colorEndBW: '#555555',
-    
-    fogHeightYStartFpsBW: 4.0, fogHeightYMedio1FpsBW: 6.0, fogHeightYMedio2FpsBW: 8.0, fogHeightYEndFpsBW: 10.0,
-    fogFalloffYStartFpsBW: 1.5, fogFalloffYMedio1FpsBW: 2.0, fogFalloffYMedio2FpsBW: 2.5, fogFalloffYEndFpsBW: 3.0,
-    
-    fogHeightYStartTpsBW: 4.0, fogHeightYMedio1TpsBW: 6.0, fogHeightYMedio2TpsBW: 8.0, fogHeightYEndTpsBW: 10.0,
-    fogFalloffYStartTpsBW: 1.5, fogFalloffYMedio1TpsBW: 2.0, fogFalloffYMedio2TpsBW: 2.5, fogFalloffYEndTpsBW: 3.0,
-    
-    startFpsBW: 5, medio1FpsBW: 15, medio2FpsBW: 30, endFpsBW: 50,
-    startTpsBW: 5, medio1TpsBW: 20, medio2TpsBW: 40, endTpsBW: 60,
-    renderDistanceFpsBW: 100000, renderDistanceTpsBW: 100000,
-    
-    densityStartFpsBW: 0, densityMedio1FpsBW: 30, densityMedio2FpsBW: 60, densityEndFpsBW: 100,
-    densityStartTpsBW: 0, densityMedio1TpsBW: 30, densityMedio2TpsBW: 60, densityEndTpsBW: 100
+    enabled: false, fogMode: 'linear', color: '#0d1729',
+    // 🔥 CONFIGURACIÓN MASIVA POR DEFECTO PARA MUNDOS GIGANTES
+    startFPS: 0, endFPS: 50000, startTPS: 5, endTPS: 50000, renderDistanceFPS: 100000, renderDistanceTPS: 100000,
+    densityStartFPS: 0, densityEndFPS: 100, densityStartTPS: 0, densityEndTPS: 100,
+    colorBW: '#555555', startFpsBW: 0, endFpsBW: 50000, startTpsBW: 5, endTpsBW: 50000, renderDistanceFpsBW: 100000, renderDistanceTpsBW: 100000,
+    densityStartFpsBW: 0, densityEndFpsBW: 100, densityStartTpsBW: 0, densityEndTpsBW: 100
   }
 };
 

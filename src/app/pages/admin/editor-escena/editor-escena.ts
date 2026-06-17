@@ -1,4 +1,3 @@
-
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -30,8 +29,16 @@ export class EditorEscena implements OnInit, OnDestroy {
   public epiApiSvc = inject(EpisodiosService);
   public cdr = inject(ChangeDetectorRef);
 
+  // Estados Generales
   public editando = false;
-  public cargandoEscena = false; 
+  public esAdmin: boolean = false;
+  
+  // Estados de Carga Cinematográfica
+  public modalSeleccionModo = false;
+  public cargandoEscena = false;
+  public modalMisionUsuario = false; // 🔥 NUEVO: Modal tipo GTA/Telltale para el usuario
+  public episodioPendienteCarga: any = null;
+  public cargandoTexto = 'Preparando entorno...';
   
   public episodioIdActivo = 0;
   public mapaActualNombre = '';
@@ -48,6 +55,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public archivoSubida: File | null = null;
   public subiendoAsset = false;
 
+  // Objeto Custom UI
   public objNombre: string = 'Objeto_01';
   public objTipo: string = 'cube';
   public objRol: string = 'prop'; 
@@ -56,27 +64,22 @@ export class EditorEscena implements OnInit, OnDestroy {
   public objSizeY: number = 1;
   public objSizeZ: number = 1;
   public objAssetSeleccionado: any = null;
-  
   public objEsSolido: boolean = true;
   public objEsSeleccionable: boolean = true;
   public objMensaje: string = '';
-  public objHacerHijo: boolean = true; // 🔥 POR DEFECTO ESTÁ ACTIVADO SI SE MUESTRA
+  public objHacerHijo: boolean = true; 
 
   public vistaPrueba: 'FPS' | 'TPS' = 'FPS';
   
   public showInspector = true;
   public showTimeline = true;
-
   public inspectorWidth = 350; 
   public isResizing = false;
-
   public timelineHeight = 30; 
   public isResizingTimeline = false;
 
   private fpsInterval: any;
   private autoSaveSub!: Subscription;
-
-  public esAdmin: boolean = false;
 
   ngOnInit() {
     this.esAdmin = this.editorSvc.checkIsAdmin();
@@ -87,22 +90,104 @@ export class EditorEscena implements OnInit, OnDestroy {
       debounceTime(1000) 
     ).subscribe(() => {
       const state = this.editorSvc.playState();
-      if (this.esAdmin && this.editando && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
+      if (this.esAdmin && this.editorSvc.rolSimulado() === 'admin' && this.editando && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
         this.guardarMapaEnBD(true); 
       }
     });
   }
 
-  toggleInspector() {
-    this.showInspector = !this.showInspector;
-    this.recalcularMotor();
+  entrarAlEditor(episodio: any) {
+    this.episodioPendienteCarga = episodio;
+    this.layoutSvc.ocultarMenu();
+    
+    if (this.esAdmin) {
+      this.modalSeleccionModo = true;
+      this.cargandoEscena = false;
+    } else {
+      this.confirmarModoYContinuar('user');
+    }
   }
 
-  toggleTimeline() {
-    this.showTimeline = !this.showTimeline;
-    this.recalcularMotor();
+  confirmarModoYContinuar(modo: 'admin' | 'user') {
+    this.modalSeleccionModo = false;
+    this.cargandoEscena = true;
+    this.layoutSvc.ocultarMenu(); 
+    this.cargandoTexto = modo === 'admin' ? 'Cargando herramientas de creador...' : 'Conectando con el mundo...';
+    
+    this.editorSvc.rolSimulado.set(modo);
+    this.procesarCarga(this.episodioPendienteCarga);
   }
 
+  private procesarCarga(episodio: any) {
+    this.episodioIdActivo = episodio.id;
+    this.mapaActualNombre = episodio.title;
+    this.editando = true; 
+    
+    this.epiApiSvc.obtenerEpisodio(episodio.id).subscribe({
+      next: (res) => {
+        setTimeout(async () => {
+          this.cargandoTexto = 'Preparando modelos, texturas y físicas 3D...';
+          this.motor3dSvc.forzarRedimension(); 
+          this.editorSvc.activarEventosEditor();
+          this.editorSvc.crearSuelo();
+
+          if(res) {
+            await this.editorSvc.cargarEscenaDesdeDatos(res);
+          }
+
+          this.cargandoEscena = false;
+          this.episodioPendienteCarga = null;
+          this.cdr.detectChanges(); 
+
+          // 🔥 LÓGICA DE USUARIO: Inicia el juego pero libera el ratón para mostrar el menú
+          if (this.editorSvc.rolSimulado() === 'user') {
+            setTimeout(() => {
+              const spawnMesh = this.motor3dSvc.scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
+              if (spawnMesh) {
+                this.editorSvc.seleccionarObjeto(spawnMesh);
+                // 1. Iniciamos el motor en modo juego para que la cámara se acomode y el mundo viva
+                this.iniciarModoPrueba();
+                
+                // 2. Extraemos el ratón un instante después y mostramos el menú inmersivo
+                setTimeout(() => {
+                  document.exitPointerLock();
+                  this.modalMisionUsuario = true;
+                  this.cdr.detectChanges();
+                }, 200);
+
+              } else {
+                alert('Este episodio aún no tiene un punto de aparición (Spawn Point). Vuelve más tarde.');
+                this.salirDelEditor();
+              }
+            }, 100);
+          }
+          
+          this.fpsInterval = setInterval(() => {
+            this.fps.set(this.motor3dSvc.currentFps.toFixed(0));
+          }, 500);
+        }, 150); 
+      },
+      error: (err) => {
+        this.cargandoEscena = false;
+        this.modalSeleccionModo = false;
+        alert('Error conectando con el servidor. No se pudo cargar la escena.');
+      }
+    });
+  }
+
+  // 🔥 NUEVA FUNCIÓN: Al hacer clic en "Iniciar Misión" cierra el menú y devuelve el control al juego
+  comenzarMisionUsuario() {
+    this.modalMisionUsuario = false;
+    const canvas = this.motor3dSvc.engine.getRenderingCanvas();
+    if (canvas) {
+      canvas.focus();
+      try { canvas.requestPointerLock(); } catch {}
+    }
+  }
+
+  toggleInspector() { this.showInspector = !this.showInspector; this.recalcularMotor(); }
+  toggleTimeline() { this.showTimeline = !this.showTimeline; this.recalcularMotor(); }
+  
   recalcularMotor() {
     setTimeout(() => this.motor3dSvc.forzarRedimension(), 10);
     setTimeout(() => this.motor3dSvc.forzarRedimension(), 150);
@@ -131,16 +216,12 @@ export class EditorEscena implements OnInit, OnDestroy {
         this.motor3dSvc.forzarRedimension(); 
       }
     }
-
     if (this.isResizingTimeline) {
       const containerHeight = window.innerHeight;
       const bottomY = window.innerHeight - event.clientY;
-      
       let newHeight = (bottomY / containerHeight) * 100;
-      
       if (newHeight < 5) newHeight = 5; 
       if (newHeight > 70) newHeight = 70;
-      
       this.timelineHeight = newHeight;
       this.motor3dSvc.forzarRedimension();
     }
@@ -148,86 +229,28 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   @HostListener('window:mouseup')
   onMouseUp() {
-    if (this.isResizing) {
-      this.isResizing = false;
-      this.recalcularMotor();
-    }
-    if (this.isResizingTimeline) {
-      this.isResizingTimeline = false;
-      this.recalcularMotor();
-    }
+    if (this.isResizing) { this.isResizing = false; this.recalcularMotor(); }
+    if (this.isResizingTimeline) { this.isResizingTimeline = false; this.recalcularMotor(); }
   }
 
   @HostListener('window:keydown', ['$event'])
   manejarAtajos(event: KeyboardEvent) {
     const target = event.target as HTMLElement | null;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) {
-      return; 
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return; 
+
+    // 🔥 FIX MODO USUARIO: Si el usuario pulsa ESC y está jugando, le abrimos el Menú
+    if (this.editorSvc.rolSimulado() === 'user' && this.editorSvc.playState() === 'PLAYING' && event.key === 'Escape') {
+        document.exitPointerLock();
+        this.modalMisionUsuario = true;
+        this.cdr.detectChanges();
+        return;
     }
 
     const state = this.editorSvc.playState();
     if (this.editando && !this.editorSvc.showAddObjectModal() && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
-      if (event.ctrlKey && (event.key === 'z' || event.key === 'Z')) {
-        this.editorSvc.deshacerAccion();
-        event.preventDefault();
-      }
-      if (event.ctrlKey && (event.key === 'c' || event.key === 'C')) {
-        this.editorSvc.copiarObjeto();
-        event.preventDefault();
-      }
-      if (event.ctrlKey && (event.key === 'v' || event.key === 'V')) {
-        this.editorSvc.pegarObjeto();
-        event.preventDefault();
-      }
-    }
-  }
-
-  toggleRolPrueba() {
-    if (this.editorSvc.rolSimulado() === 'admin') {
-      this.editorSvc.rolSimulado.set('user');
-      this.editorSvc.seleccionarObjeto(null);
-    } else {
-      this.editorSvc.rolSimulado.set('admin');
-    }
-    
-    const isAdmin = this.editorSvc.rolSimulado() === 'admin';
-    this.motor3dSvc.scene.meshes.forEach(m => {
-        if (m.metadata?.type === 'trigger' || (m.metadata?.type?.startsWith('light_') && !m.metadata?.assetId)) {
-            m.isVisible = isAdmin;
-        }
-        if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
-            m.isVisible = isAdmin;
-            m.setEnabled(isAdmin);
-        }
-    });
-  }
-
-  onRolChange() {
-    if (this.objRol === 'npc' || this.objRol === 'spawn_point') {
-      this.objTipo = 'model';
-    }
-  }
-
-  onTipoChange() {
-    if (this.objTipo === 'trigger' || this.objTipo === 'trigger_compuesto') {
-      this.objRol = 'prop';
-      this.objEsSolido = false;
-      this.objEsSeleccionable = true;
-    } else if (this.objTipo.startsWith('light_')) {
-      this.objRol = 'prop';
-      this.objColor = '#ffffff';
-      this.objEsSolido = false;
-      this.objEsSeleccionable = true;
-    } else if (this.objTipo === 'bubble' || this.objTipo === 'video_plane' || this.objTipo === 'image_plane') {
-      this.objRol = 'prop';
-      this.objEsSolido = false;
-      this.objEsSeleccionable = true;
-    } else if (this.objTipo !== 'model') {
-      this.objRol = 'prop';
-    }
-    
-    if (this.objTipo !== 'model' && !this.objTipo.startsWith('light_') && this.objTipo !== 'video_plane' && this.objTipo !== 'image_plane') {
-      this.objAssetSeleccionado = null;
+      if (event.ctrlKey && (event.key === 'z' || event.key === 'Z')) { this.editorSvc.deshacerAccion(); event.preventDefault(); }
+      if (event.ctrlKey && (event.key === 'c' || event.key === 'C')) { this.editorSvc.copiarObjeto(); event.preventDefault(); }
+      if (event.ctrlKey && (event.key === 'v' || event.key === 'V')) { this.editorSvc.pegarObjeto(); event.preventDefault(); }
     }
   }
 
@@ -242,15 +265,9 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.epiApiSvc.obtenerAssets().subscribe({
       next: (res) => { 
         this.listaAssets = res.filter((a:any) => 
-          a.type === 'model_glb' || 
-          a.type === 'video_mp4' || 
-          a.path.endsWith('.mp4') || 
-          a.path.endsWith('.webm') ||
-          a.type === 'texture_png' ||
-          a.type === 'texture_jpg' ||
-          a.path.endsWith('.png') ||
-          a.path.endsWith('.jpg') ||
-          a.path.endsWith('.jpeg')
+          a.type === 'model_glb' || a.type === 'video_mp4' || a.path.endsWith('.mp4') || 
+          a.path.endsWith('.webm') || a.type === 'texture_png' || a.type === 'texture_jpg' ||
+          a.path.endsWith('.png') || a.path.endsWith('.jpg') || a.path.endsWith('.jpeg')
         ); 
       },
       error: (err) => console.error('Error al cargar assets', err)
@@ -258,9 +275,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   seleccionarArchivoSubida(event: any) {
-    if (event.target.files && event.target.files.length > 0) {
-      this.archivoSubida = event.target.files[0];
-    }
+    if (event.target.files && event.target.files.length > 0) this.archivoSubida = event.target.files[0];
   }
 
   subirNuevoAsset() {
@@ -275,7 +290,6 @@ export class EditorEscena implements OnInit, OnDestroy {
       },
       error: (err) => {
         this.subiendoAsset = false;
-        console.error("Error subiendo asset:", err);
         alert('Error al subir el archivo. Revisa la consola.');
       }
     });
@@ -295,103 +309,46 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  entrarAlEditor(episodio: any) {
-    this.episodioIdActivo = episodio.id;
-    this.mapaActualNombre = episodio.title;
-    this.editando = true;
-    this.cargandoEscena = true;
-    this.layoutSvc.ocultarMenu(); 
-    
-    this.epiApiSvc.obtenerEpisodio(episodio.id).subscribe({
-      next: (res) => {
-        setTimeout(async () => {
-          this.motor3dSvc.forzarRedimension(); 
-          this.editorSvc.activarEventosEditor();
-          this.editorSvc.crearSuelo();
-
-          if(res) {
-            await this.editorSvc.cargarEscenaDesdeDatos(res);
-          }
-
-          this.cargandoEscena = false;
-          this.cdr.detectChanges(); 
-
-          if (!this.esAdmin) {
-            setTimeout(() => {
-              const spawnMesh = this.motor3dSvc.scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
-              if (spawnMesh) {
-                this.editorSvc.seleccionarObjeto(spawnMesh);
-                this.iniciarModoPrueba();
-              } else {
-                alert('Este mapa no tiene un punto de aparición (Spawn Point). Habla con el creador.');
-                this.salirDelEditor();
-              }
-            }, 100);
-          }
-          
-          this.fpsInterval = setInterval(() => {
-            this.fps.set(this.motor3dSvc.currentFps.toFixed(0));
-          }, 500);
-        }, 150); 
-      },
-      error: (err) => {
-        this.cargandoEscena = false;
-        alert('Error cargando los objetos del mapa');
-      }
-    });
-  }
-
   guardarMapaEnBD(silencioso = false) {
-    if (!this.episodioIdActivo || !this.editando || !this.esAdmin) return;
+    if (!this.episodioIdActivo || !this.editando || this.editorSvc.rolSimulado() !== 'admin') return;
     this.estadoGuardado.set('Guardando...');
     
     const mapData = this.editorSvc.obtenerDatosParaGuardar();
-    
     this.epiApiSvc.guardarMapa(this.episodioIdActivo, mapData).subscribe({
       next: () => {
         this.estadoGuardado.set('Guardado automático ✓');
         if (!silencioso) alert('Mapa guardado exitosamente');
-        
-        setTimeout(() => {
-          if (this.estadoGuardado() === 'Guardado automático ✓') {
-            this.estadoGuardado.set('');
-          }
-        }, 3000);
+        setTimeout(() => { if (this.estadoGuardado() === 'Guardado automático ✓') this.estadoGuardado.set(''); }, 3000);
       },
       error: (err) => {
-        console.error("Error crítico guardando en BD:", err); 
         this.estadoGuardado.set('Error al guardar ⚠️');
       }
     });
   }
 
+  onRolChange() { if (this.objRol === 'npc' || this.objRol === 'spawn_point') this.objTipo = 'model'; }
+  onTipoChange() {
+    if (this.objTipo === 'trigger' || this.objTipo === 'trigger_compuesto') { this.objRol = 'prop'; this.objEsSolido = false; this.objEsSeleccionable = true; } 
+    else if (this.objTipo.startsWith('light_')) { this.objRol = 'prop'; this.objColor = '#ffffff'; this.objEsSolido = false; this.objEsSeleccionable = true; } 
+    else if (this.objTipo === 'bubble' || this.objTipo === 'video_plane' || this.objTipo === 'image_plane') { this.objRol = 'prop'; this.objEsSolido = false; this.objEsSeleccionable = true; } 
+    else if (this.objTipo !== 'model') { this.objRol = 'prop'; }
+    if (this.objTipo !== 'model' && !this.objTipo.startsWith('light_') && this.objTipo !== 'video_plane' && this.objTipo !== 'image_plane') this.objAssetSeleccionado = null;
+  }
+
   crearObjeto3D() {
     if(!this.objNombre) return;
-    
-    // 🔥 LÓGICA DE PARENTING REPARADA
     const parent = this.objHacerHijo ? (this.editorSvc.objetoSeleccionado() as AbstractMesh | null) : null;
-
-    this.editorSvc.agregarObjetoCustom(
-      this.objTipo, this.objNombre, this.objRol, this.objColor, 
-      this.objSizeX, this.objSizeY, this.objSizeZ, this.objAssetSeleccionado,
-      this.objEsSolido, this.objEsSeleccionable, this.objMensaje, parent
-    );
+    this.editorSvc.agregarObjetoCustom(this.objTipo, this.objNombre, this.objRol, this.objColor, this.objSizeX, this.objSizeY, this.objSizeZ, this.objAssetSeleccionado, this.objEsSolido, this.objEsSeleccionable, this.objMensaje, parent);
     this.cerrarModalObjeto();
   }
 
   cerrarModalObjeto() {
     this.editorSvc.showAddObjectModal.set(false);
     this.objNombre = 'Objeto_' + Math.floor(Math.random() * 100);
-    this.objTipo = 'cube';
-    this.objRol = 'prop';
-    this.objColor = '#ffffff';
+    this.objTipo = 'cube'; this.objRol = 'prop'; this.objColor = '#ffffff';
     this.objSizeX = 1; this.objSizeY = 1; this.objSizeZ = 1;
-    this.objAssetSeleccionado = null;
-    this.archivoSubida = null;
-    this.objEsSolido = true;
-    this.objEsSeleccionable = true;
-    this.objMensaje = '';
-    this.objHacerHijo = true; // 🔥 POR DEFECTO VUELVE A TRUE
+    this.objAssetSeleccionado = null; this.archivoSubida = null;
+    this.objEsSolido = true; this.objEsSeleccionable = true; this.objMensaje = ''; this.objHacerHijo = true; 
   }
 
   esObjetoJugable(): boolean {
@@ -402,27 +359,23 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   iniciarModoPrueba() {
     if (!this.esObjetoJugable()) return;
-    if (this.esAdmin) {
-        this.guardarMapaEnBD(true); 
-    }
+    if (this.editorSvc.rolSimulado() === 'admin') this.guardarMapaEnBD(true); 
     this.editorSvc.iniciarModoJuego(this.vistaPrueba);
   }
 
   detenerModoPrueba() {
     if (this.editorSvc.playState() === 'EDITOR') return;
     this.editorSvc.detenerModoJuego(); 
-    if (this.esAdmin) {
-        setTimeout(() => this.guardarMapaEnBD(true), 500);
-    }
+    if (this.editorSvc.rolSimulado() === 'admin') setTimeout(() => this.guardarMapaEnBD(true), 500);
   }
 
-  cerrarInteraccion() {
-    this.editorSvc.cerrarInteraccionJugador();
-  }
+  cerrarInteraccion() { this.editorSvc.cerrarInteraccionJugador(); }
 
   salirDelEditor() {
     this.editando = false; 
     this.cargandoEscena = false;
+    this.modalSeleccionModo = false;
+    this.modalMisionUsuario = false;
     this.layoutSvc.mostrarMenu(); 
     this.editorSvc.limpiarEstado();
     this.cargarEpisodios(); 

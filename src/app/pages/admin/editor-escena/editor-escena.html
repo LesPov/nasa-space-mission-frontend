@@ -1,9 +1,9 @@
-
-<ng-container *ngIf="!editando">
+<!-- PANTALLA PRINCIPAL: SELECCIÓN DE MAPAS -->
+<ng-container *ngIf="!editando && !modalSeleccionModo && !cargandoEscena">
   <div class="galeria-header">
     <div>
       <h2>Tus Mapas / Episodios</h2>
-      <p>Selecciona un episodio o crea uno nuevo para empezar a editar.</p>
+      <p>Selecciona un episodio o crea uno nuevo para empezar a explorar.</p>
     </div>
     <button class="btn-crear-mapa" *ngIf="esAdmin" (click)="showModalMap = true">+ Crear Nuevo Mapa</button>
   </div>
@@ -16,13 +16,12 @@
       
       <div class="card-miniatura">
         <span class="icono-mapa" *ngIf="hoveredEpisodio !== epi.id">🌍</span>
-        
         <ng-container *ngIf="hoveredEpisodio === epi.id">
           <div class="mini-visor-wrapper" (click)="$event.stopPropagation()">
             <app-mini-visor-escena [episodioId]="epi.id"></app-mini-visor-escena>
           </div>
           <button class="btn-entrar-overlay" (click)="entrarAlEditor(epi); $event.stopPropagation();">
-            {{ esAdmin ? 'Entrar al Editor ✏️' : 'Jugar 🎮' }}
+            Entrar a la Escena
           </button>
         </ng-container>
       </div>
@@ -47,57 +46,146 @@
       </div>
       <div class="modal-actions">
         <button class="btn-cancel" (click)="showModalMap = false">Cancelar</button>
-        <button class="btn-confirm" (click)="crearNuevoEpisodio()">Crear y Entrar</button>
+        <button class="btn-confirm" (click)="crearNuevoEpisodio()">Crear Episodio</button>
       </div>
     </div>
   </div>
 </ng-container>
 
-<ng-container *ngIf="editando">
+<!-- ========================================================
+     PANTALLAS DE CARGA Y SELECCIÓN DE ROL (OVERLAYS CINEMÁTICOS)
+     ======================================================== -->
+<div class="cinematic-overlay" *ngIf="modalSeleccionModo || cargandoEscena">
   
-  <div class="loading-overlay" *ngIf="cargandoEscena">
-    <div class="spinner"></div>
-    <h2>Cargando Entorno...</h2>
-    <p>Preparando modelos, texturas y físicas 3D</p>
+  <!-- MODAL DE SELECCIÓN (SOLO ADMINS) -->
+  <div class="mode-selection-modal" *ngIf="modalSeleccionModo">
+    <h2>Selecciona el Modo de Entrada</h2>
+    <p>Elige tu rol para esta sesión. Esto cambiará tu experiencia y herramientas disponibles.</p>
+    
+    <div class="mode-cards-container">
+      <div class="mode-card" (click)="confirmarModoYContinuar('admin')">
+        <div class="mode-icon">🛠️</div>
+        <h3>Modo Creador</h3>
+        <p>Accede al motor completo. Construye la escena, coloca NPCs, edita colisiones, dibuja iluminación y programa las secuencias cinemáticas del episodio.</p>
+      </div>
+      
+      <div class="mode-card user-mode" (click)="confirmarModoYContinuar('user')">
+        <div class="mode-icon">🎮</div>
+        <h3>Modo Jugador</h3>
+        <p>Experimenta el episodio exactamente como lo verá el usuario final. Sin herramientas del editor, sin atajos, inmersión narrativa pura.</p>
+      </div>
+    </div>
+    
+    <button class="btn-cancel mt-4" style="align-self: center;" (click)="salirDelEditor()">Cancelar</button>
   </div>
 
-  <div class="modal-overlay" *ngIf="editorSvc.showAddObjectModal()" style="z-index: 9999;">
+  <!-- SPINNER CINEMÁTICO DE CARGA -->
+  <div class="loading-state" *ngIf="cargandoEscena">
+    <div class="cinematic-spinner"></div>
+    <h2>Conectando al Motor 3D</h2>
+    <p>{{ cargandoTexto }}</p>
+  </div>
+</div>
+
+<!-- FLUJO DE EDICIÓN Y JUEGO -->
+<ng-container *ngIf="editando">
+
+  <!-- ========================================================
+       MODAL DE INICIO DE MISIÓN (INTERFAZ TIPO GTA / TELLTALE)
+       ======================================================== -->
+  <div class="user-mission-overlay" *ngIf="modalMisionUsuario">
+    <!-- Barra Superior -->
+    <div class="mission-topbar">
+      <div class="brand">
+        <h2 style="color: #ef4444; font-weight: 800; margin: 0; text-transform: uppercase;">{{ mapaActualNombre }}</h2>
+        <p style="color: #cbd5e1; font-size: 11px; margin: 0; letter-spacing: 1px;">EL DÍA QUE CAMBIÓ LA HISTORIA</p>
+      </div>
+      
+      <div class="top-actions">
+        <span class="user-tag">[Sesión: {{ esAdmin ? 'ADMIN_SIMULADO' : 'JUGADOR' }}]</span>
+        <button class="btn-mission-exit" (click)="salirDelEditor()">
+          <span class="icon">⏹</span> Salir del Juego
+        </button>
+      </div>
+    </div>
+
+    <!-- Contenedor Principal (Sidebar + Tarjeta) -->
+    <div class="mission-body">
+      <!-- Menú Lateral Izquierdo -->
+      <aside class="mission-sidebar">
+        <button class="nav-btn active"><span class="icon">🎯</span> MISIÓN ACTIVA</button>
+        <button class="nav-btn disabled"><span class="icon">🎒</span> INVENTARIO</button>
+        <button class="nav-btn disabled"><span class="icon">🗺️</span> MAPA</button>
+        <button class="nav-btn disabled"><span class="icon">📖</span> HISTORIA</button>
+        <button class="nav-btn disabled"><span class="icon">⚙️</span> AJUSTES</button>
+        <button class="nav-btn leave" (click)="salirDelEditor()"><span class="icon">🚪</span> SALIR</button>
+
+        <div class="lore-quote">
+          <p>"La historia no la escriben los que obedecen,<br>sino los que se atreven a cambiarla."</p>
+          <span>- Anónimo</span>
+        </div>
+      </aside>
+
+      <!-- Tarjeta Central de Misión -->
+      <main class="mission-content">
+        <div class="mission-card">
+          <div class="card-header">
+            <h4>MISIÓN PRINCIPAL</h4>
+            <h2>{{ mapaActualNombre }}</h2>
+            <span>SITUACIÓN ACTUAL DESCONOCIDA - INGRESA PARA DESCUBRIR</span>
+          </div>
+          
+          <div class="card-image-placeholder">
+            <!-- Espacio para una futura imagen del mapa, por ahora un fondo genérico de escáner -->
+            <div class="scanline"></div>
+          </div>
+          
+          <div class="card-description">
+            <p>Has llegado al punto de control. El entorno ha sido cargado con éxito en el motor físico.</p>
+            <p>Tu objetivo es interactuar con el mundo, descubrir pistas y seguir la línea narrativa diseñada por el creador. Presta atención a tu alrededor y usa el entorno a tu favor.</p>
+          </div>
+
+          <div class="card-objectives">
+            <h4>OBJETIVOS</h4>
+            <ul>
+              <li><span class="dot"></span> Explora el área y analiza los elementos clave.</li>
+              <li><span class="dot"></span> Interactúa con personajes y objetos para avanzar.</li>
+              <li><span class="dot"></span> Sobrevive y descubre la verdad.</li>
+            </ul>
+          </div>
+
+          <button class="btn-start-action" (click)="comenzarMisionUsuario()">
+            INICIAR MISIÓN
+          </button>
+        </div>
+      </main>
+    </div>
+  </div>
+
+
+  <!-- ========================================================
+       MODALES DEL EDITOR DE OBJETOS
+       ======================================================== -->
+  <div class="modal-overlay" *ngIf="editorSvc.showAddObjectModal() && editorSvc.rolSimulado() === 'admin'" style="z-index: 9999;">
+    <!-- Contenido del modal Add Object... -->
     <div class="modal-box large">
       <h3>Añadir Nuevo Elemento a la Escena</h3>
-      
       <div class="modal-grid">
         <div class="modal-section">
           <h4>1. Configuración del Objeto</h4>
-          <div class="modal-row">
-            <label class="modal-label">Nombre Único:</label>
-            <input type="text" [(ngModel)]="objNombre" class="modal-input" placeholder="Ej: Elemento_1">
-          </div>
-
-          <!-- 🔥 CHECKBOX DE PADRE/HIJO (SOLO SI HAY ALGO SELECCIONADO) -->
+          <div class="modal-row"><label class="modal-label">Nombre Único:</label><input type="text" [(ngModel)]="objNombre" class="modal-input" placeholder="Ej: Elemento_1"></div>
           <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 5px; background: rgba(251, 191, 36, 0.1); border: 1px solid #fbbf24; padding: 10px; border-radius: 6px;" *ngIf="editorSvc.objetoSeleccionado()">
             <input type="checkbox" [(ngModel)]="objHacerHijo" id="chkHacerHijo" style="width: 18px; height: 18px; cursor: pointer;">
-            <label for="chkHacerHijo" class="modal-label" style="margin: 0; cursor: pointer; color: #fbbf24; font-weight: bold;">
-              🔗 Crear DENTRO de: {{ editorSvc.objetoSeleccionado()?.name }}
-            </label>
+            <label for="chkHacerHijo" class="modal-label" style="margin: 0; cursor: pointer; color: #fbbf24; font-weight: bold;">🔗 Crear DENTRO de: {{ editorSvc.objetoSeleccionado()?.name }}</label>
           </div>
-
           <div class="modal-row" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble' && objTipo !== 'video_plane' && objTipo !== 'image_plane'">
             <label class="modal-label" style="color: #ffd700; margin-top: 10px;">Rol del Elemento:</label>
-            <select [(ngModel)]="objRol" class="modal-input" (change)="onRolChange()">
-              <option value="prop">🛋️ Decoración / Prop estático</option>
-              <option value="spawn_point">🧍‍♂️ Spawn del Jugador</option>
-              <option value="npc">🤖 NPC / Personaje</option>
-            </select>
+            <select [(ngModel)]="objRol" class="modal-input" (change)="onRolChange()"><option value="prop">🛋️ Decoración / Prop estático</option><option value="spawn_point">🧍‍♂️ Spawn del Jugador</option><option value="npc">🤖 NPC / Personaje</option></select>
           </div>
           <div class="modal-row">
             <label class="modal-label">Tamaño Inicial (Escala X, Y, Z):</label>
-            <div style="display: flex; gap: 10px;">
-              <input type="number" [(ngModel)]="objSizeX" step="0.5" class="modal-input" placeholder="X">
-              <input type="number" [(ngModel)]="objSizeY" step="0.5" class="modal-input" placeholder="Y">
-              <input type="number" [(ngModel)]="objSizeZ" step="0.5" class="modal-input" placeholder="Z">
-            </div>
+            <div style="display: flex; gap: 10px;"><input type="number" [(ngModel)]="objSizeX" step="0.5" class="modal-input"><input type="number" [(ngModel)]="objSizeY" step="0.5" class="modal-input"><input type="number" [(ngModel)]="objSizeZ" step="0.5" class="modal-input"></div>
           </div>
-          
           <div class="modal-row" style="margin-top: 15px;" *ngIf="!objTipo.startsWith('light_')">
             <label class="modal-label" style="color: #4ade80;">Mensaje (Lore o Trigger):</label>
             <textarea [(ngModel)]="objMensaje" class="modal-input" placeholder="Ej: 'Una puerta antigua...'"></textarea>
@@ -109,199 +197,141 @@
           <div class="modal-row">
             <label class="modal-label">Tipo de Forma:</label>
             <select [(ngModel)]="objTipo" class="modal-input" (change)="onTipoChange()" [disabled]="objRol === 'spawn_point' || objRol === 'npc'">
-              <optgroup label="Geometría Básica">
-                <option value="cube">🧊 Cubo Básico</option>
-                <option value="sphere">⚽ Esfera</option>
-                <option value="cylinder">🛢️ Cilindro / Cápsula</option>
-                <option value="plane">🗺️ Plano (Suelo)</option>
-              </optgroup>
-              <optgroup label="Modelos y Scripts">
-                <option value="model">✨ Modelo 3D Importado (.GLB)</option>
-                <option value="trigger">📍 Trigger Normal (1 Acción)</option>
-                <option value="trigger_compuesto">💠 Trigger Compuesto</option>
-                <option value="bubble">🫧 Burbuja Interactiva (Evento FPS)</option>
-                <option value="video_plane">📺 Pantalla de Video (.mp4)</option>
-                <option value="image_plane">🖼️ Proyector / Holograma (.png/.jpg)</option>
-              </optgroup>
-              <optgroup label="Iluminación">
-                <option value="light_directional">☀️ Luz Direccional (Sol/Rayo)</option>
-                <option value="light_spot">🔦 Luz Foco (Spotlight)</option>
-                <option value="light_point">💡 Luz de Punto (Omnidireccional)</option>
-              </optgroup>
+              <optgroup label="Geometría Básica"><option value="cube">🧊 Cubo Básico</option><option value="sphere">⚽ Esfera</option><option value="cylinder">🛢️ Cilindro / Cápsula</option><option value="plane">🗺️ Plano (Suelo)</option></optgroup>
+              <optgroup label="Modelos y Scripts"><option value="model">✨ Modelo 3D Importado (.GLB)</option><option value="trigger">📍 Trigger Normal (1 Acción)</option><option value="trigger_compuesto">💠 Trigger Compuesto</option><option value="bubble">🫧 Burbuja Interactiva (Evento FPS)</option><option value="video_plane">📺 Pantalla de Video (.mp4)</option><option value="image_plane">🖼️ Proyector / Holograma (.png/.jpg)</option></optgroup>
+              <optgroup label="Iluminación"><option value="light_directional">☀️ Luz Direccional (Sol/Rayo)</option><option value="light_spot">🔦 Luz Foco (Spotlight)</option><option value="light_point">💡 Luz de Punto (Omnidireccional)</option></optgroup>
             </select>
           </div>
-          
           <div class="modal-row" *ngIf="objTipo !== 'model' && objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && objTipo !== 'bubble' && objTipo !== 'video_plane'">
             <label class="modal-label">Color del Material / Emisión:</label>
-            <div class="color-picker-wrapper">
-              <input type="color" [(ngModel)]="objColor" class="color-picker">
-              <span class="color-hex-text">{{ objColor.toUpperCase() }}</span>
-            </div>
+            <div class="color-picker-wrapper"><input type="color" [(ngModel)]="objColor" class="color-picker"><span class="color-hex-text">{{ objColor.toUpperCase() }}</span></div>
           </div>
-          
           <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 15px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble' && objTipo !== 'video_plane' && objTipo !== 'image_plane'">
-            <input type="checkbox" [(ngModel)]="objEsSolido" id="chkSolido">
-            <label for="chkSolido" class="modal-label" style="margin: 0; cursor: pointer;">🧱 Objeto Sólido (Bloquea el paso)</label>
+            <input type="checkbox" [(ngModel)]="objEsSolido" id="chkSolido"><label for="chkSolido" class="modal-label" style="margin: 0; cursor: pointer;">🧱 Objeto Sólido (Bloquea el paso)</label>
           </div>
-          
           <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble'">
-            <input type="checkbox" [(ngModel)]="objEsSeleccionable" id="chkSeleccion">
-            <label for="chkSeleccion" class="modal-label" style="margin: 0; cursor: pointer;">🎯 Editable (Se puede tocar con el ratón)</label>
+            <input type="checkbox" [(ngModel)]="objEsSeleccionable" id="chkSeleccion"><label for="chkSeleccion" class="modal-label" style="margin: 0; cursor: pointer;">🎯 Editable (Se puede tocar con el ratón)</label>
           </div>
 
           <div *ngIf="objTipo === 'model' || objTipo.startsWith('light_') || objTipo === 'video_plane' || objTipo === 'image_plane'" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 15px;">
             <div class="modal-row">
-              <label class="modal-label">
-                {{ objTipo === 'video_plane' ? 'Selecciona un Video (.mp4):' : (objTipo === 'image_plane' ? 'Selecciona Imagen Transparente (.png):' : (objTipo.startsWith('light_') ? 'Cuerpo de la luz (Opcional):' : 'Selecciona el modelo guardado:')) }}
-              </label>
+              <label class="modal-label">Selecciona el Asset:</label>
               <select [(ngModel)]="objAssetSeleccionado" class="modal-input">
-                <option [ngValue]="null" [disabled]="objTipo === 'model'">{{ objTipo === 'video_plane' ? '-- Sin video (Pantalla negra) --' : (objTipo === 'image_plane' ? '-- Sin imagen (Luz Sólida Blanca) --' : (objTipo.startsWith('light_') ? '-- Sin modelo (Usar esfera invisible) --' : '-- Elige un modelo --')) }}</option>
-                <option *ngFor="let asset of listaAssets" [ngValue]="asset">
-                  {{ asset.name }}
-                </option>
+                <option [ngValue]="null" [disabled]="objTipo === 'model'">-- Elige una opción --</option>
+                <option *ngFor="let asset of listaAssets" [ngValue]="asset">{{ asset.name }}</option>
               </select>
             </div>
             <div class="upload-box">
-              <p style="margin: 0 0 10px 0; color: #a1a1a1; font-size: 12px;">¿No está en la lista?</p>
               <input type="file" accept=".glb, .obj, .mp4, .webm, .png, .jpg, .jpeg" (change)="seleccionarArchivoSubida($event)" style="font-size: 11px; width: 100%;">
-              <button class="upload-btn" [disabled]="!archivoSubida || subiendoAsset" (click)="subirNuevoAsset()">
-                {{ subiendoAsset ? 'Subiendo...' : 'Subir a BD ☁️' }}
-              </button>
+              <button class="upload-btn" [disabled]="!archivoSubida || subiendoAsset" (click)="subirNuevoAsset()">{{ subiendoAsset ? 'Subiendo...' : 'Subir a BD ☁️' }}</button>
             </div>
           </div>
         </div>
       </div>
-
       <div class="modal-actions">
         <button class="btn-cancel" (click)="cerrarModalObjeto()">Cancelar</button>
-        <button class="btn-confirm" (click)="crearObjeto3D()" [disabled]="objTipo === 'model' && !objAssetSeleccionado">
-          Añadir a la Escena
-        </button>
+        <button class="btn-confirm" (click)="crearObjeto3D()" [disabled]="objTipo === 'model' && !objAssetSeleccionado">Añadir a la Escena</button>
       </div>
     </div>
   </div>
 
   <div class="modal-overlay" *ngIf="editorSvc.playState() === 'INTERACTING'" style="z-index: 1000;">
     <div class="rpg-modal">
-      <div class="rpg-modal-header">
-        <h3>🔍 Inspeccionando Objeto</h3>
-      </div>
+      <div class="rpg-modal-header"><h3>🔍 Inspeccionando Objeto</h3></div>
       <div class="rpg-modal-body">
         <p class="rpg-obj-name">{{ editorSvc.objetoInteractuado()?.name }}</p>
-        <div class="rpg-obj-desc">
-          <div class="lore-text">
-            <p>"{{ editorSvc.objetoInteractuado()?.metadata?.mensaje || 'Un objeto cualquiera en tu camino. No parece hacer nada especial.' }}"</p>
-          </div>
-        </div>
+        <div class="rpg-obj-desc"><div class="lore-text"><p>"{{ editorSvc.objetoInteractuado()?.metadata?.mensaje || 'Un objeto cualquiera.' }}"</p></div></div>
       </div>
-      <div class="rpg-modal-footer">
-        <button class="btn-rpg-action" (click)="cerrarInteraccion()">Continuar Aventura</button>
-      </div>
+      <div class="rpg-modal-footer"><button class="btn-rpg-action" (click)="cerrarInteraccion()">Continuar Aventura</button></div>
     </div>
   </div>
 
- <div class="blender-layout">
-    <div class="viewport-area" [style.width]="(esAdmin && showInspector) ? 'calc(100% - ' + inspectorWidth + 'px)' : '100%'">
+  <!-- ========================================================
+       RENDER PRINCIPAL Y CAPA BABYLON
+       ======================================================== -->
+  <div class="blender-layout">
+    <div class="viewport-area" [style.width]="(editorSvc.rolSimulado() === 'admin' && showInspector) ? 'calc(100% - ' + inspectorWidth + 'px)' : '100%'">
       
       <!-- CONTENEDOR SUPERIOR (Canvas 3D) -->
-      <div class="canvas-wrapper" [style.height.%]="(esAdmin && showTimeline) ? 100 - timelineHeight : 100">
-        <div class="viewport-topbar">
+      <div class="canvas-wrapper" [style.height.%]="(editorSvc.rolSimulado() === 'admin' && showTimeline) ? 100 - timelineHeight : 100">
+        
+        <!-- TOPBAR MÍNIMA O COMPLETA SEGÚN ROL -->
+        <div class="viewport-topbar" *ngIf="editorSvc.rolSimulado() === 'admin'">
           <div class="vp-left">
-            <button class="btn-vp btn-exit" (click)="salirDelEditor()" *ngIf="editorSvc.playState() === 'EDITOR' || !esAdmin">⬅ Menú</button>
+            <button class="btn-vp btn-exit" (click)="salirDelEditor()">⬅ Salir</button>
             <span class="vp-title">{{ mapaActualNombre }}</span>
           </div>
+          
           <div class="vp-right">
-            <ng-container *ngIf="esAdmin">
-              <button class="btn-vp" style="border-color: #facc15;" (click)="toggleRolPrueba()">[Prueba: {{ editorSvc.rolSimulado() | uppercase }}]</button>
-              <select [(ngModel)]="vistaPrueba" class="cam-select" *ngIf="editorSvc.playState() === 'EDITOR'">
-                <option value="FPS">👁️ 1ra Persona</option>
-                <option value="TPS">🧍 3ra Persona</option>
-              </select>
-              <button class="btn-vp btn-play" *ngIf="editorSvc.playState() === 'EDITOR'" [disabled]="!esObjetoJugable()" (click)="iniciarModoPrueba()">▶️ Jugar</button>
-              <span class="sync-status" [class.syncing]="estadoGuardado() === 'Guardando...'" *ngIf="editorSvc.playState() === 'EDITOR'">{{ estadoGuardado() }}</span>
-              <button class="btn-vp btn-save" (click)="guardarMapaEnBD(false)" *ngIf="editorSvc.playState() === 'EDITOR'">💾 Guardar</button>
-            </ng-container>
-            <button class="btn-vp btn-stop" *ngIf="editorSvc.playState() !== 'EDITOR' && esAdmin" (click)="detenerModoPrueba()">⏹️ Salir del Juego</button>
+            <select [(ngModel)]="vistaPrueba" class="cam-select" *ngIf="editorSvc.playState() === 'EDITOR'">
+              <option value="FPS">👁️ 1ra Persona</option>
+              <option value="TPS">🧍 3ra Persona</option>
+            </select>
+            <button class="btn-vp btn-play" *ngIf="editorSvc.playState() === 'EDITOR'" [disabled]="!esObjetoJugable()" (click)="iniciarModoPrueba()">▶️ Jugar</button>
+            <span class="sync-status" [class.syncing]="estadoGuardado() === 'Guardando...'" *ngIf="editorSvc.playState() === 'EDITOR'">{{ estadoGuardado() }}</span>
+            <button class="btn-vp btn-save" (click)="guardarMapaEnBD(false)" *ngIf="editorSvc.playState() === 'EDITOR'">💾 Guardar</button>
+            <button class="btn-vp btn-stop" *ngIf="editorSvc.playState() !== 'EDITOR'" (click)="detenerModoPrueba()">⏹️ Volver al Editor</button>
           </div>
         </div>
 
         <div class="canvas-container">
-          <button class="toggle-panel-btn toggle-right" *ngIf="esAdmin" (click)="toggleInspector()" [title]="showInspector ? 'Ocultar Inspector' : 'Mostrar Inspector'">
-            {{ showInspector ? '▶' : '◀' }}
-          </button>
-          <button class="toggle-panel-btn toggle-bottom" *ngIf="esAdmin" (click)="toggleTimeline()" [title]="showTimeline ? 'Ocultar Timeline' : 'Mostrar Timeline'">
-            {{ showTimeline ? '▼' : '▲' }}
-          </button>
+          <!-- BOTONES FLOTANTES SOLO ADMIN -->
+          <ng-container *ngIf="editorSvc.rolSimulado() === 'admin'">
+            <button class="toggle-panel-btn toggle-right" (click)="toggleInspector()" [title]="showInspector ? 'Ocultar Inspector' : 'Mostrar Inspector'">{{ showInspector ? '▶' : '◀' }}</button>
+            <button class="toggle-panel-btn toggle-bottom" (click)="toggleTimeline()" [title]="showTimeline ? 'Ocultar Timeline' : 'Mostrar Timeline'">{{ showTimeline ? '▼' : '▲' }}</button>
+            <div class="fps-badge">FPS: {{ fps() }}</div>
+            <app-toolbar-escena *ngIf="editorSvc.playState() === 'EDITOR' || editorSvc.playState() === 'EDITING_IN_GAME' || (editorSvc.playState() === 'PLAYING' && !editorSvc.ratonBloqueado())"></app-toolbar-escena>
+          </ng-container>
 
+          <!-- CROSSHAIR, TOASTS Y HUD DE JUEGO (ADMIN Y USER) -->
           <div class="crosshair-ui" *ngIf="editorSvc.playState() === 'PLAYING' && stateSvc.modoVistaPrueba === 'FPS' && editorSvc.ratonBloqueado()" [class.hovering]="editorSvc.mirandoObjetoInteractuable()"></div>
 
           <div class="modern-toast-container" *ngIf="stateSvc.mensajeTriggerHUD() !== null" style="bottom: 120px; z-index: 300;">
               <div class="modern-toast-box" style="background: rgba(30, 58, 138, 0.95); border: 2px solid #60a5fa; box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);">
-                 <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">
-                   📍 {{ stateSvc.mensajeTriggerHUD() }}
-                 </div>
+                 <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">📍 {{ stateSvc.mensajeTriggerHUD() }}</div>
               </div>
           </div>
 
-          <div class="modern-toast-container" *ngIf="stateSvc.playState() === 'PLAYING' && stateSvc.targetInteractuable() && stateSvc.ratonBloqueado() && (stateSvc.showToastE() || stateSvc.showToastI() || (esAdmin && stateSvc.modoVistaPrueba === 'FPS'))">
+          <div class="modern-toast-container" *ngIf="stateSvc.playState() === 'PLAYING' && stateSvc.targetInteractuable() && stateSvc.ratonBloqueado() && (stateSvc.showToastE() || stateSvc.showToastI() || (editorSvc.rolSimulado() === 'admin' && stateSvc.modoVistaPrueba === 'FPS'))">
             <div class="modern-toast-box">
               <div class="toast-title">{{ stateSvc.targetInteractuable()?.name }}</div>
               <div class="toast-actions-grid">
-                <div class="action-item" *ngIf="esAdmin && stateSvc.modoVistaPrueba === 'FPS'">
-                  <kbd class="key-cap">Click</kbd>
-                  <span class="action-label">Editar</span>
+                <div class="action-item" *ngIf="editorSvc.rolSimulado() === 'admin' && stateSvc.modoVistaPrueba === 'FPS'">
+                  <kbd class="key-cap">Click</kbd><span class="action-label">Editar</span>
                 </div>
                 <div class="action-item" *ngIf="stateSvc.showToastE()">
-                  <kbd class="key-cap">E</kbd>
-                  <span class="action-label">Acción</span>
+                  <kbd class="key-cap">E</kbd><span class="action-label">Acción</span>
                 </div>
                 <div class="action-item" *ngIf="stateSvc.showToastI()">
-                  <kbd class="key-cap">I</kbd>
-                  <span class="action-label">Leer</span>
+                  <kbd class="key-cap">I</kbd><span class="action-label">Leer</span>
                 </div>
               </div>
             </div>
           </div>
 
-          <div class="hud-container">
+          <div class="hud-container" *ngIf="!modalMisionUsuario">
             <div class="hud-message hud-playing" *ngIf="editorSvc.playState() === 'PLAYING' && editorSvc.ratonBloqueado()"><span class="hud-icon">🎮</span> "WASD" Mover • "Espacio" Saltar • "V" Cambiar Cámara</div>
-            <div class="hud-message hud-paused" *ngIf="editorSvc.playState() === 'PLAYING' && !editorSvc.ratonBloqueado()"><span class="hud-icon">⏸️</span> Juego Pausado | Click en la pantalla para volver</div>
+            <div class="hud-message hud-paused" *ngIf="editorSvc.playState() === 'PLAYING' && !editorSvc.ratonBloqueado() && editorSvc.rolSimulado() === 'admin'"><span class="hud-icon">⏸️</span> Juego Pausado | Click en la pantalla para volver</div>
             <div class="hud-message hud-editing" *ngIf="editorSvc.playState() === 'EDITING_IN_GAME'"><span class="hud-icon">⚙️</span> MODO EDICIÓN EN VIVO | Click al fondo o "ESC" para volver</div>
           </div>
           
           <app-motor-babylon></app-motor-babylon>
-          <app-toolbar-escena *ngIf="esAdmin && (editorSvc.playState() === 'EDITOR' || editorSvc.playState() === 'EDITING_IN_GAME' || (editorSvc.playState() === 'PLAYING' && !editorSvc.ratonBloqueado()))"></app-toolbar-escena>
-          <div class="fps-badge">FPS: {{ fps() }}</div>
         </div>
       </div>
       
-      <!-- 🔥 SPLITTER HORIZONTAL DEL TIMELINE CONDICIONADO -->
-      <div class="horizontal-resizer" 
-           *ngIf="esAdmin && showTimeline"
-           (mousedown)="iniciarRedimensionTimeline($event)" 
-           [class.resizing]="isResizingTimeline">
-        <div class="resizer-grip-h"></div>
-      </div>
-
-      <!-- 🔥 PANEL INFERIOR TIMELINE CONDICIONADO -->
-      <div class="timeline-wrapper" *ngIf="esAdmin && showTimeline && timelineHeight > 5" [style.height.%]="timelineHeight">
+      <!-- PANEL INFERIOR TIMELINE (SOLO ADMIN) -->
+      <div class="horizontal-resizer" *ngIf="editorSvc.rolSimulado() === 'admin' && showTimeline" (mousedown)="iniciarRedimensionTimeline($event)" [class.resizing]="isResizingTimeline"><div class="resizer-grip-h"></div></div>
+      <div class="timeline-wrapper" *ngIf="editorSvc.rolSimulado() === 'admin' && showTimeline && timelineHeight > 5" [style.height.%]="timelineHeight">
         <app-global-timeline></app-global-timeline>
       </div>
-      
     </div>
     
-    <!-- SPLITTER VERTICAL DEL INSPECTOR DERECHO CONDICIONADO -->
-    <div class="layout-resizer" 
-         *ngIf="esAdmin && showInspector" 
-         (mousedown)="iniciarRedimension($event)" 
-         [class.resizing]="isResizing">
-      <div class="resizer-grip"></div>
-    </div>
-
-    <!-- INSPECTOR DERECHO CONDICIONADO -->
-    <div class="inspector-wrapper" *ngIf="esAdmin && showInspector" [style.width.px]="inspectorWidth">
+    <!-- INSPECTOR DERECHO (SOLO ADMIN) -->
+    <div class="layout-resizer" *ngIf="editorSvc.rolSimulado() === 'admin' && showInspector" (mousedown)="iniciarRedimension($event)" [class.resizing]="isResizing"><div class="resizer-grip"></div></div>
+    <div class="inspector-wrapper" *ngIf="editorSvc.rolSimulado() === 'admin' && showInspector" [style.width.px]="inspectorWidth">
       <app-inspector-escena></app-inspector-escena>
     </div>
     
   </div>
 </ng-container>
+

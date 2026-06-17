@@ -1,4 +1,4 @@
-
+// src/app/services/editor/player-trigger.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
 import { GameSession } from '../../core/engine/game-session';
@@ -6,25 +6,27 @@ import { PlayerSequenceService } from './playerservice/player-sequence.service';
 import { GameStateService } from './game-state.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { GameEntity } from '../../core/engine/entities/game.entity';
+import { LoopManagerService, GamePhase } from '../../core/engine/behaviors/services/loop-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService {
   private sequenceSvc = inject(PlayerSequenceService);
   private gameState = inject(GameStateService);
   private entityManager = inject(EntityManagerService);
+  private loopManager = inject(LoopManagerService);
   private injector = inject(Injector);
 
-  // 🔥 FIX DE DEPENDENCIA CIRCULAR: Getter Lazy
+  // Getter Lazy para evitar Dependencia Circular
   private get session(): GameSession { 
     return this.injector.get(GameSession); 
   }
   
   private activeTriggersInside = new Set<string>();
-  private hudTimeouts = new Map<string, any>();
+  private hudTimeouts = new Map<string, string>(); // Guarda los IDs del LoopManager
 
   public prepararTriggersParaJuego(): void {
     this.activeTriggersInside.clear();
-    this.hudTimeouts.forEach(t => clearTimeout(t));
+    this.hudTimeouts.forEach(id => this.loopManager.unregister(id));
     this.hudTimeouts.clear();
     
     const isAdmin = this.session.isAdminSession();
@@ -43,7 +45,7 @@ export class PlayerTriggerService {
     const isAdmin = this.session.isAdminSession();
     
     this.activeTriggersInside.clear();
-    this.hudTimeouts.forEach(t => clearTimeout(t));
+    this.hudTimeouts.forEach(id => this.loopManager.unregister(id));
     this.hudTimeouts.clear();
 
     this.entityManager.getAllEntities().filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto').forEach(e => {
@@ -119,7 +121,7 @@ export class PlayerTriggerService {
                 if (hudAct === triggerEntity.trigger.mensajeEntrada || hudAct === triggerEntity.trigger.mensaje) {
                     this.session.hudMessage.set(null);
                     if (this.hudTimeouts.has('hud')) {
-                        clearTimeout(this.hudTimeouts.get('hud'));
+                        this.loopManager.unregister(this.hudTimeouts.get('hud')!);
                     }
                 }
             }
@@ -173,15 +175,27 @@ export class PlayerTriggerService {
           this.session.hudMessage.set(mensaje);
           mostroMensaje = true;
           
-          if (this.hudTimeouts.has('hud')) clearTimeout(this.hudTimeouts.get('hud'));
+          if (this.hudTimeouts.has('hud')) {
+              this.loopManager.unregister(this.hudTimeouts.get('hud')!);
+          }
           
-          const timeoutId = setTimeout(() => {
-              if (this.session.hudMessage() === mensaje) {
-                  this.session.hudMessage.set(null);
-              }
-          }, msgTime * 1000); 
+          let elapsed = 0;
+          const msgTimeMs = msgTime * 1000;
+          const loopId = 'HUD_Message_Timeout';
 
-          this.hudTimeouts.set('hud', timeoutId);
+          // 🔥 Eliminado setTimeout. El HUD se esconde con matemática de frames.
+          this.loopManager.register(loopId, GamePhase.LOGIC, (dtMs: number) => {
+              elapsed += dtMs;
+              if (elapsed >= msgTimeMs) {
+                  if (this.session.hudMessage() === mensaje) {
+                      this.session.hudMessage.set(null);
+                  }
+                  this.loopManager.unregister(loopId);
+                  this.hudTimeouts.delete('hud');
+              }
+          });
+
+          this.hudTimeouts.set('hud', loopId);
       }
 
       if (soundUrl && soundUrl.trim() !== '') {

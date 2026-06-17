@@ -1,8 +1,8 @@
-
+// src/app/components/inspector-escena/inspector-properties/prop-trigger/prop-trigger.ts
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh, Quaternion, Vector3 } from '@babylonjs/core';
+import { AbstractMesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorSceneService } from '../../../../services/editor/editor-scene.service';
@@ -22,7 +22,7 @@ export class PropTrigger implements OnInit, OnDestroy {
   private editorSvc = inject(EditorMapaService);
   private sceneSvc = inject(EditorSceneService);
   private historialSvc = inject(HistorialService);
-  private entityManager = inject(EntityManagerService); // 🔥 Inyectado
+  private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -68,29 +68,44 @@ export class PropTrigger implements OnInit, OnDestroy {
     this.localEscY = this.formatNum(this.objeto.scaling.y); 
     this.localEscZ = this.formatNum(this.objeto.scaling.z);
 
-    const meta = this.objeto.metadata || {};
-    this.triggerIsComposite = meta.isComposite ?? false;
-    this.triggerShape = meta.triggerShape || 'cube';
-    this.triggerRepeatable = meta.isRepeatable || false;
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    
+    // 🔥 Ahora tomamos la Entidad como fuente real de la verdad
+    if (entity && entity.trigger) {
+        this.triggerIsComposite = entity.trigger.isComposite ?? false;
+        this.triggerShape = entity.trigger.triggerShape || 'cube';
+        this.triggerRepeatable = entity.trigger.isRepeatable || false;
 
-    this.triggerCondition = meta.condition || 'on_enter';
-    this.objMensaje = meta.mensaje || '';
-    this.objSoundUrl = meta.soundUrl || '';
-    this.triggerTimeNorm = meta.timeNorm ?? 4.5;
-    this.triggerVideoNorm = meta.videoNorm || '';
+        this.triggerCondition = entity.trigger.condition || 'on_enter';
+        this.objMensaje = entity.interaction?.mensaje || entity.trigger.mensaje || '';
+        this.objSoundUrl = entity.trigger.soundUrl || '';
+        this.triggerTimeNorm = entity.trigger.timeNorm ?? 4.5;
+        this.triggerVideoNorm = entity.trigger.videoNorm || '';
 
-    this.triggerConditions = meta.conditions || ['on_enter'];
-    this.triggerMensajeEntrada = meta.mensajeEntrada || '';
-    this.triggerMensajeSalida = meta.mensajeSalida || '';
-    this.triggerSoundEntrada = meta.soundUrlEntrada || '';
-    this.triggerSoundSalida = meta.soundUrlSalida || '';
-    this.triggerSeqEntrada = meta.seqEntrada || '';
-    this.triggerSeqSalida = meta.seqSalida || '';
-    this.triggerTimeEntrada = meta.timeEntrada ?? 4.5;
-    this.triggerTimeSalida = meta.timeSalida ?? 4.5;
-    this.triggerVideoEntrada = meta.videoEntrada || '';
-    this.triggerVideoSalida = meta.videoSalida || '';
-    this.objInteractSequenceIdFPS = meta.interactSequenceId || '';
+        this.triggerConditions = entity.trigger.conditions || ['on_enter'];
+        this.triggerMensajeEntrada = entity.trigger.mensajeEntrada || '';
+        this.triggerMensajeSalida = entity.trigger.mensajeSalida || '';
+        this.triggerSoundEntrada = entity.trigger.soundUrlEntrada || '';
+        this.triggerSoundSalida = entity.trigger.soundUrlSalida || '';
+        this.triggerSeqEntrada = entity.trigger.seqEntrada || '';
+        this.triggerSeqSalida = entity.trigger.seqSalida || '';
+        this.triggerTimeEntrada = entity.trigger.timeEntrada ?? 4.5;
+        this.triggerTimeSalida = entity.trigger.timeSalida ?? 4.5;
+        this.triggerVideoEntrada = entity.trigger.videoEntrada || '';
+        this.triggerVideoSalida = entity.trigger.videoSalida || '';
+        this.objInteractSequenceIdFPS = entity.trigger.interactSequenceId || '';
+    } else {
+        // Fallback temporal si se de-sincronizó (No debería pasar nunca)
+        const meta = this.objeto.metadata || {};
+        this.triggerIsComposite = meta.isComposite ?? false;
+        this.triggerShape = meta.triggerShape || 'cube';
+        this.triggerRepeatable = meta.isRepeatable || false;
+        this.triggerCondition = meta.condition || 'on_enter';
+        this.objMensaje = meta.mensaje || '';
+        this.objSoundUrl = meta.soundUrl || '';
+        this.triggerTimeNorm = meta.timeNorm ?? 4.5;
+        this.triggerVideoNorm = meta.videoNorm || '';
+    }
 
     this.cdr.detectChanges();
   }
@@ -130,36 +145,37 @@ export class PropTrigger implements OnInit, OnDestroy {
   }
 
   aplicarTrigger() {
-    if (!this.objeto.metadata) this.objeto.metadata = {};
-    const meta = this.objeto.metadata;
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (!entity || !entity.trigger) return;
+
+    // 🔥 Guardamos los datos puros y duros directamente en la lógica del Componente
     if (this.triggerIsComposite) {
-        meta.conditions = this.triggerConditions;
-        meta.isRepeatable = this.triggerRepeatable;
-        meta.mensajeEntrada = this.triggerMensajeEntrada.trim();
-        meta.mensajeSalida = this.triggerMensajeSalida.trim();
-        meta.soundUrlEntrada = this.triggerSoundEntrada.trim();
-        meta.soundUrlSalida = this.triggerSoundSalida.trim();
-        meta.seqEntrada = this.triggerSeqEntrada.trim();
-        meta.seqSalida = this.triggerSeqSalida.trim();
-        meta.timeEntrada = this.triggerTimeEntrada;
-        meta.timeSalida = this.triggerTimeSalida;
-        meta.videoEntrada = this.triggerVideoEntrada.trim();
-        meta.videoSalida = this.triggerVideoSalida.trim();
+        entity.trigger.conditions = this.triggerConditions;
+        entity.trigger.isRepeatable = this.triggerRepeatable;
+        entity.trigger.mensajeEntrada = this.triggerMensajeEntrada.trim();
+        entity.trigger.mensajeSalida = this.triggerMensajeSalida.trim();
+        entity.trigger.soundUrlEntrada = this.triggerSoundEntrada.trim();
+        entity.trigger.soundUrlSalida = this.triggerSoundSalida.trim();
+        entity.trigger.seqEntrada = this.triggerSeqEntrada.trim();
+        entity.trigger.seqSalida = this.triggerSeqSalida.trim();
+        entity.trigger.timeEntrada = this.triggerTimeEntrada;
+        entity.trigger.timeSalida = this.triggerTimeSalida;
+        entity.trigger.videoEntrada = this.triggerVideoEntrada.trim();
+        entity.trigger.videoSalida = this.triggerVideoSalida.trim();
     } else {
-        meta.condition = this.triggerCondition;
-        meta.isRepeatable = this.triggerRepeatable;
-        meta.mensaje = this.objMensaje.trim();
-        meta.soundUrl = this.objSoundUrl.trim();
-        meta.interactSequenceId = this.objInteractSequenceIdFPS.trim();
-        meta.timeNorm = this.triggerTimeNorm;
-        meta.videoNorm = this.triggerVideoNorm.trim();
+        entity.trigger.condition = this.triggerCondition;
+        entity.trigger.isRepeatable = this.triggerRepeatable;
+        entity.trigger.mensaje = this.objMensaje.trim();
+        entity.interaction.mensaje = this.objMensaje.trim(); // Sincro cruzada
+        entity.trigger.soundUrl = this.objSoundUrl.trim();
+        entity.trigger.interactSequenceId = this.objInteractSequenceIdFPS.trim();
+        entity.interaction.interactSequenceId = this.objInteractSequenceIdFPS.trim(); 
+        entity.trigger.timeNorm = this.triggerTimeNorm;
+        entity.trigger.videoNorm = this.triggerVideoNorm.trim();
     }
 
-    // 🔥 Sincronizar hacia la Entidad
-    const entity = this.entityManager.getEntityByMesh(this.objeto);
-    if (entity) {
-      entity.syncFromMetadata(); // Absorbe los cambios del JSON
-    }
+    // Le decimos a la entidad que escupa todos los cambios a la malla (metadata) de Babylon.js
+    entity.syncToView();
 
     this.editorSvc.triggerUpdate();
     this.animStatus = '📍 Trigger actualizado y guardado';

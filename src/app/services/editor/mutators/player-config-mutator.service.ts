@@ -16,7 +16,6 @@ export class PlayerConfigMutatorService {
     if (entity) {
        entity.playerConfig = JSON.parse(JSON.stringify(playerConfig));
        entity.selectionRange = JSON.parse(JSON.stringify(selectionRange));
-       // 🔥 Cero dependencias hacia el mesh.metadata nativo para nutrir a la entidad.
        entity.syncToView();
     }
 

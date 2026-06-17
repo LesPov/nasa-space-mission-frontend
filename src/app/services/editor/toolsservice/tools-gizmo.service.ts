@@ -99,7 +99,7 @@ export class ToolsGizmoService {
           entity.playerConfig.fog.offsetZTPS = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
       }
       
-      entity.syncToView(); // 🔥 Cero lectura hacia atrás
+      entity.syncToView(); 
       this.state.onGizmoDrag.next();
   }
 

@@ -1,4 +1,3 @@
-
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -15,6 +14,8 @@ import { debounceTime, Subscription } from 'rxjs';
 import { AbstractMesh } from '@babylonjs/core';
 import { GlobalTimeline } from '../../../components/global-timeline/global-timeline';
 import { GameSession } from '../../../core/engine/game-session';
+import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
+import { GameEntity } from '../../../core/engine/entities/game.entity';
 
 @Component({
   selector: 'app-editor-escena',
@@ -30,7 +31,16 @@ export class EditorEscena implements OnInit, OnDestroy {
   public layoutSvc = inject(LayoutService);
   public epiApiSvc = inject(EpisodiosService);
   public gameSession = inject(GameSession);
+  private eventBus = inject(GameEventBusService);
   public cdr = inject(ChangeDetectorRef);
+
+  // Estados Locales de UI Desacoplados del Engine
+  public hudMessage = signal<string | null>(null);
+  public showToastE = signal<boolean>(false);
+  public showToastI = signal<boolean>(false);
+  public targetInteractuable = signal<GameEntity | null>(null);
+  public hoveredMesh = signal<AbstractMesh | null>(null);
+  public isInteracting = signal<boolean>(false);
 
   // Estados Generales
   public editando = false;
@@ -60,7 +70,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   public archivoSubida: File | null = null;
   public subiendoAsset = false;
 
-  // Objeto Custom UI
   public objNombre: string = 'Objeto_01';
   public objTipo: string = 'cube';
   public objRol: string = 'prop'; 
@@ -85,6 +94,7 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   private fpsInterval: any;
   private autoSaveSub!: Subscription;
+  private eventBusSub!: Subscription;
 
   constructor() {
     effect(() => {
@@ -92,13 +102,12 @@ export class EditorEscena implements OnInit, OnDestroy {
       const state = this.editorSvc.playState();
       const isUser = this.editorSvc.rolSimulado() === 'user';
       
-      // 🔥 PAUSA CINEMÁTICA: Si el usuario pulsa ESC, el ratón se desbloquea.
+      // 🔥 PAUSA CINEMÁTICA
       if (isUser && state === 'PLAYING' && !isLocked && this.misionIniciada && !this.modalMisionUsuario) {
         setTimeout(() => {
           this.modalMisionUsuario = true;
           this.cdr.detectChanges();
           
-          // Hacemos que la cámara viaje a 3ra persona mientras el menú está abierto
           if (this.stateSvc.modoVistaPrueba === 'FPS') {
              this.editorSvc.toggleCameraUser();
           }
@@ -111,6 +120,20 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.esAdmin = this.editorSvc.checkIsAdmin();
     this.cargarEpisodios();
     this.cargarAssets();
+
+    this.eventBusSub = this.eventBus.events$.subscribe(event => {
+      switch (event.type) {
+        case 'HUD_MESSAGE': this.hudMessage.set(event.payload); break;
+        case 'INTERACTION_TARGET':
+          this.targetInteractuable.set(event.payload.entity);
+          this.showToastE.set(event.payload.showE);
+          this.showToastI.set(event.payload.showI);
+          break;
+        case 'HOVER_MESH': this.hoveredMesh.set(event.payload); break;
+        case 'INTERACTING_STATE': this.isInteracting.set(event.payload); break;
+      }
+      this.cdr.detectChanges();
+    });
 
     this.autoSaveSub = this.editorSvc.onMapChanged.pipe(
       debounceTime(1000) 
@@ -162,7 +185,6 @@ export class EditorEscena implements OnInit, OnDestroy {
           await this.editorSvc.cargarEscenaDesdeDatos(res);
         }
 
-        // 🔥 GARANTÍA DE CARGA AAA: Esperamos a que la GPU compile TODOS los shaders
         this.motor3dSvc.scene.executeWhenReady(() => {
           if (this.editorSvc.rolSimulado() === 'user') {
             const spawnMesh = this.motor3dSvc.scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
@@ -170,20 +192,16 @@ export class EditorEscena implements OnInit, OnDestroy {
             if (spawnMesh) {
               this.editorSvc.seleccionarObjeto(spawnMesh);
               
-              // Iniciamos forzando la cámara dentro de la cabeza (1ra persona)
               this.vistaPrueba = 'FPS';
               this.iniciarModoPrueba();
               
-              // Se levanta el telón de carga y mostramos el Menú de inmediato
               this.modalMisionUsuario = true;
               this.cargandoEscena = false;
               this.episodioPendienteCarga = null;
               this.cdr.detectChanges();
 
-              // Mandamos la cámara hacia atrás (TPS) LENTAMENTE
               setTimeout(() => {
                 document.exitPointerLock(); 
-                // isCinematicInitial = true, customFrames = 500 (~8 sec)
                 this.editorSvc.toggleCameraUser(true, 500); 
               }, 100);
 
@@ -192,7 +210,6 @@ export class EditorEscena implements OnInit, OnDestroy {
               this.salirDelEditor();
             }
           } else {
-            // Lógica para Admin
             this.cargandoEscena = false;
             this.episodioPendienteCarga = null;
             this.cdr.detectChanges(); 
@@ -211,16 +228,13 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  // 🔥 ANIMACIÓN SPLIT Y VIAJE A FPS
   comenzarMisionUsuario() {
     this.cerrandoModalUsuario = true; 
     
-    // Si la cámara estaba alejada (TPS), la mandamos de vuelta a los ojos (FPS) LENTAMENTE
     if (this.stateSvc.modoVistaPrueba === 'TPS') {
-       this.editorSvc.toggleCameraUser(false, 150); // 150 frames = 2.5 sec
+       this.editorSvc.toggleCameraUser(false, 150); 
     }
 
-    // Esperamos 2.5s a que termine la animación
     setTimeout(() => {
       this.misionIniciada = true; 
       this.modalMisionUsuario = false;
@@ -423,6 +437,15 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.layoutSvc.mostrarMenu(); 
     this.editorSvc.limpiarEstado();
     this.cargarEpisodios(); 
+    
+    // Reseteamos señales visuales locales
+    this.hudMessage.set(null);
+    this.showToastE.set(false);
+    this.showToastI.set(false);
+    this.targetInteractuable.set(null);
+    this.hoveredMesh.set(null);
+    this.isInteracting.set(false);
+
     if (this.fpsInterval) clearInterval(this.fpsInterval);
   }
 
@@ -431,5 +454,6 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.editorSvc.limpiarEstado();
     if (this.fpsInterval) clearInterval(this.fpsInterval);
     if (this.autoSaveSub) this.autoSaveSub.unsubscribe();
+    if (this.eventBusSub) this.eventBusSub.unsubscribe();
   }
 }

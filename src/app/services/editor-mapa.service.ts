@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Node, AbstractMesh, Vector3 } from '@babylonjs/core';
 
@@ -34,7 +33,6 @@ export class EditorMapaService {
   
   get objetoInteractuado() { return this.state.objetoInteractuado; }
   get nodosEscena() { return this.state.nodosEscena; }
-  get mirandoObjetoInteractuable() { return this.state.mirandoObjetoInteractuable; }
   get ratonBloqueado() { return this.state.ratonBloqueado; }
   get showAddObjectModal() { return this.state.showAddObjectModal; }
 
@@ -47,7 +45,7 @@ export class EditorMapaService {
   limpiarEstado(): void {
     this.scene.limpiarEstado();
     this.state.limpiarEstado();
-    this.tools.limpiarEstado(); // Limpia procesos huérfanos al salir al menú
+    this.tools.limpiarEstado();
   }
 
   activarEventosEditor(): void { this.tools.activarEventosEditor(); }
@@ -90,7 +88,6 @@ export class EditorMapaService {
 
   cerrarInteraccionJugador(): void { this.interaction.cerrarInteraccionJugador(); }
 
-  // 🔥 NUEVA FIRMA: Control de frames para cinemáticas épicas
   toggleCameraUser(isCinematicInitial: boolean = false, customFrames?: number): void { 
     this.playMode.toggleCameraUser(isCinematicInitial, customFrames); 
   }

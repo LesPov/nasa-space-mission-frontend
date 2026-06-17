@@ -1,4 +1,3 @@
-// src/app/services/editor/player-trigger.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
 import { GameSession } from '../../core/engine/game-session';
@@ -7,6 +6,7 @@ import { GameStateService } from './game-state.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { GameEntity } from '../../core/engine/entities/game.entity';
 import { LoopManagerService, GamePhase } from '../../core/engine/behaviors/services/loop-manager.service';
+import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService {
@@ -14,15 +14,16 @@ export class PlayerTriggerService {
   private gameState = inject(GameStateService);
   private entityManager = inject(EntityManagerService);
   private loopManager = inject(LoopManagerService);
+  private eventBus = inject(GameEventBusService);
   private injector = inject(Injector);
 
-  // Getter Lazy para evitar Dependencia Circular
   private get session(): GameSession { 
     return this.injector.get(GameSession); 
   }
   
   private activeTriggersInside = new Set<string>();
-  private hudTimeouts = new Map<string, string>(); // Guarda los IDs del LoopManager
+  private hudTimeouts = new Map<string, string>();
+  private currentHudMessage: string | null = null; // Estado Local de UI en el Runtime
 
   public prepararTriggersParaJuego(): void {
     this.activeTriggersInside.clear();
@@ -117,9 +118,9 @@ export class PlayerTriggerService {
             }
 
             if (!mostroMensajeSalida) {
-                const hudAct = this.session.hudMessage();
-                if (hudAct === triggerEntity.trigger.mensajeEntrada || hudAct === triggerEntity.trigger.mensaje) {
-                    this.session.hudMessage.set(null);
+                if (this.currentHudMessage === triggerEntity.trigger.mensajeEntrada || this.currentHudMessage === triggerEntity.trigger.mensaje) {
+                    this.currentHudMessage = null;
+                    this.eventBus.emit({ type: 'HUD_MESSAGE', payload: null });
                     if (this.hudTimeouts.has('hud')) {
                         this.loopManager.unregister(this.hudTimeouts.get('hud')!);
                     }
@@ -172,7 +173,8 @@ export class PlayerTriggerService {
       let mostroMensaje = false;
 
       if (mensaje && mensaje.trim() !== '') {
-          this.session.hudMessage.set(mensaje);
+          this.currentHudMessage = mensaje;
+          this.eventBus.emit({ type: 'HUD_MESSAGE', payload: mensaje });
           mostroMensaje = true;
           
           if (this.hudTimeouts.has('hud')) {
@@ -183,12 +185,12 @@ export class PlayerTriggerService {
           const msgTimeMs = msgTime * 1000;
           const loopId = 'HUD_Message_Timeout';
 
-          // 🔥 Eliminado setTimeout. El HUD se esconde con matemática de frames.
           this.loopManager.register(loopId, GamePhase.LOGIC, (dtMs: number) => {
               elapsed += dtMs;
               if (elapsed >= msgTimeMs) {
-                  if (this.session.hudMessage() === mensaje) {
-                      this.session.hudMessage.set(null);
+                  if (this.currentHudMessage === mensaje) {
+                      this.currentHudMessage = null;
+                      this.eventBus.emit({ type: 'HUD_MESSAGE', payload: null });
                   }
                   this.loopManager.unregister(loopId);
                   this.hudTimeouts.delete('hud');

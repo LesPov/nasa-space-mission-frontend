@@ -1,6 +1,4 @@
-
 import { Injectable, signal, inject } from '@angular/core';
-import { AbstractMesh } from '@babylonjs/core';
 import { GameEntity } from './entities/game.entity';
 import { EntityManagerService } from './entities/entity-manager.service';
 import { BaseCharacterController } from '../../services/editor/characters/controllers/base-character.controller';
@@ -8,6 +6,7 @@ import { PlayerController } from '../../services/editor/characters/controllers/p
 import { NpcController } from '../../services/editor/characters/controllers/npc.controller';
 import { LoopManagerService } from './behaviors/services/loop-manager.service';
 import { ObjectAnimationService } from '../../services/editor/object-animation.service';
+import { GameEventBusService } from './events/game-event-bus.service';
 
 // Importación de servicios para la inyección del CharacterContext
 import { Motor3dService } from '../../services/motor-3d.service';
@@ -23,20 +22,12 @@ import { CharacterContext } from '../../services/editor/characters/character-con
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
-  // UI Signals (Comunicación Externa)
-  public hudMessage = signal<string | null>(null);
-  public showToastE = signal<boolean>(false);
-  public showToastI = signal<boolean>(false);
-  public targetInteractuable = signal<GameEntity | null>(null);
-  public hoveredMesh = signal<AbstractMesh | null>(null);
-  public pointerLocked = signal<boolean>(false);
-  public isInteracting = signal<boolean>(false);
-
-  // Runtime State (Interno)
+  // Runtime State (Interno y Agnóstico)
   public isPlaying = signal<boolean>(false);
   public isAdminSession = signal<boolean>(false);
   public cameraView = signal<'FPS' | 'TPS'>('FPS');
   public activePlayerEntity = signal<GameEntity | null>(null);
+  public pointerLocked = signal<boolean>(false);
 
   private controllers: Map<string, BaseCharacterController> = new Map();
 
@@ -44,6 +35,7 @@ export class GameSession {
   private entityManager = inject(EntityManagerService);
   private loopManager = inject(LoopManagerService);
   private objectAnimSvc = inject(ObjectAnimationService);
+  private eventBus = inject(GameEventBusService);
 
   // Dependencias para fabricar el CharacterContext
   private motor3d = inject(Motor3dService);
@@ -56,7 +48,7 @@ export class GameSession {
   private triggerSvc = inject(PlayerTriggerService);
   private bubbleSvc = inject(PlayerBubbleService);
 
-  public get proxyColliders(): AbstractMesh[] {
+  public get proxyColliders() {
     return this.motor3d.scene.meshes.filter(m => m.name.includes('proxyCol'));
   }
 
@@ -66,7 +58,12 @@ export class GameSession {
     this.cameraView.set(view);
     this.activePlayerEntity.set(playerEntity);
     this.pointerLocked.set(true);
-    this.isInteracting.set(false);
+
+    // Reseteamos UI enviando eventos al Bus
+    this.eventBus.emit({ type: 'INTERACTION_TARGET', payload: { entity: null, showE: false, showI: false } });
+    this.eventBus.emit({ type: 'HOVER_MESH', payload: null });
+    this.eventBus.emit({ type: 'HUD_MESSAGE', payload: null });
+    this.eventBus.emit({ type: 'INTERACTING_STATE', payload: false });
 
     // Despertar entornos pasivos
     this.triggerSvc.prepararTriggersParaJuego();
@@ -91,8 +88,8 @@ export class GameSession {
     this.inputSvc.iniciarEscuchaTeclado(this.motor3d.scene, {
       onToggleCamera: () => this.toggleCameraUser(),
       onInteractE: () => {
-        const target = this.targetInteractuable();
-        if (target && this.showToastE()) {
+        const target = this.interactSvc.currentTarget;
+        if (target && this.interactSvc.currentShowE) {
           if (target.type === 'bubble') {
             this.bubbleSvc.ejecutarBurbuja(target);
             const seqId = this.cameraView() === 'FPS' ? target.interaction.interactSequenceIdFPS : target.interaction.interactSequenceIdTPS;
@@ -110,8 +107,8 @@ export class GameSession {
         }
       },
       onInteractI: () => {
-        const target = this.targetInteractuable();
-        if (target && this.showToastI()) {
+        const target = this.interactSvc.currentTarget;
+        if (target && this.interactSvc.currentShowI) {
           this.interactSvc.abrirMensajeInteractivo(target, () => {
              const pCtrl = this.controllers.get(playerEntity.uid);
              if (pCtrl) pCtrl.resetPhysicsState();
@@ -148,7 +145,6 @@ export class GameSession {
   public stop(): void {
     this.isPlaying.set(false);
     this.activePlayerEntity.set(null);
-    this.isInteracting.set(false);
     this.pointerLocked.set(false);
 
     this.inputSvc.detenerEscuchaTeclado(this.motor3d.scene);
@@ -158,12 +154,11 @@ export class GameSession {
     this.controllers.forEach(ctrl => ctrl.destroy());
     this.controllers.clear();
 
-    // Limpieza de HUD UI
-    this.hudMessage.set(null);
-    this.showToastE.set(false);
-    this.showToastI.set(false);
-    this.targetInteractuable.set(null);
-    this.hoveredMesh.set(null);
+    // Limpieza de HUD UI enviando el evento
+    this.eventBus.emit({ type: 'INTERACTION_TARGET', payload: { entity: null, showE: false, showI: false } });
+    this.eventBus.emit({ type: 'HOVER_MESH', payload: null });
+    this.eventBus.emit({ type: 'HUD_MESSAGE', payload: null });
+    this.eventBus.emit({ type: 'INTERACTING_STATE', payload: false });
 
     const canvas = this.motor3d.engine.getRenderingCanvas();
     if (canvas && (this as any)._pointerLockListener) {

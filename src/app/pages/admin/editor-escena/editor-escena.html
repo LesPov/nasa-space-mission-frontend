@@ -1,4 +1,3 @@
-
 <!-- PANTALLA PRINCIPAL: SELECCIÓN DE MAPAS -->
 <ng-container *ngIf="!editando && !modalSeleccionModo && !cargandoEscena">
   <div class="galeria-header">
@@ -237,12 +236,12 @@
     </div>
   </div>
 
-  <div class="modal-overlay" *ngIf="gameSession.isInteracting()" style="z-index: 1000;">
+  <div class="modal-overlay" *ngIf="isInteracting()" style="z-index: 1000;">
     <div class="rpg-modal">
       <div class="rpg-modal-header"><h3>🔍 Inspeccionando Objeto</h3></div>
       <div class="rpg-modal-body">
-        <p class="rpg-obj-name">{{ editorSvc.objetoInteractuado()?.name }}</p>
-        <div class="rpg-obj-desc"><div class="lore-text"><p>"{{ editorSvc.objetoInteractuado()?.metadata?.mensaje || 'Un objeto cualquiera.' }}"</p></div></div>
+        <p class="rpg-obj-name">{{ targetInteractuable()?.name }}</p>
+        <div class="rpg-obj-desc"><div class="lore-text"><p>"{{ targetInteractuable()?.interaction?.mensaje || 'Un objeto cualquiera.' }}"</p></div></div>
       </div>
       <div class="rpg-modal-footer"><button class="btn-rpg-action" (click)="cerrarInteraccion()">Continuar Aventura</button></div>
     </div>
@@ -286,25 +285,25 @@
           </ng-container>
 
           <!-- CROSSHAIR, TOASTS Y HUD DE JUEGO (ADMIN Y USER) -->
-          <div class="crosshair-ui" *ngIf="gameSession.isPlaying() && gameSession.cameraView() === 'FPS' && gameSession.pointerLocked()" [class.hovering]="gameSession.hoveredMesh() !== null"></div>
+          <div class="crosshair-ui" *ngIf="gameSession.isPlaying() && gameSession.cameraView() === 'FPS' && gameSession.pointerLocked()" [class.hovering]="hoveredMesh() !== null"></div>
 
-          <div class="modern-toast-container" *ngIf="gameSession.hudMessage() !== null" style="bottom: 120px; z-index: 300;">
+          <div class="modern-toast-container" *ngIf="hudMessage() !== null" style="bottom: 120px; z-index: 300;">
               <div class="modern-toast-box" style="background: rgba(30, 58, 138, 0.95); border: 2px solid #60a5fa; box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);">
-                 <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">📍 {{ gameSession.hudMessage() }}</div>
+                 <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">📍 {{ hudMessage() }}</div>
               </div>
           </div>
 
-          <div class="modern-toast-container" *ngIf="gameSession.isPlaying() && gameSession.targetInteractuable() && gameSession.pointerLocked() && (gameSession.showToastE() || gameSession.showToastI() || (editorSvc.rolSimulado() === 'admin' && gameSession.cameraView() === 'FPS'))">
+          <div class="modern-toast-container" *ngIf="gameSession.isPlaying() && targetInteractuable() && gameSession.pointerLocked() && (showToastE() || showToastI() || (editorSvc.rolSimulado() === 'admin' && gameSession.cameraView() === 'FPS'))">
             <div class="modern-toast-box">
-              <div class="toast-title">{{ gameSession.targetInteractuable()?.name }}</div>
+              <div class="toast-title">{{ targetInteractuable()?.name }}</div>
               <div class="toast-actions-grid">
                 <div class="action-item" *ngIf="editorSvc.rolSimulado() === 'admin' && gameSession.cameraView() === 'FPS'">
                   <kbd class="key-cap">Click</kbd><span class="action-label">Editar</span>
                 </div>
-                <div class="action-item" *ngIf="gameSession.showToastE()">
+                <div class="action-item" *ngIf="showToastE()">
                   <kbd class="key-cap">E</kbd><span class="action-label">Acción</span>
                 </div>
-                <div class="action-item" *ngIf="gameSession.showToastI()">
+                <div class="action-item" *ngIf="showToastI()">
                   <kbd class="key-cap">I</kbd><span class="action-label">Leer</span>
                 </div>
               </div>

@@ -1,21 +1,26 @@
-
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { GameSession } from '../../../core/engine/game-session';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
+import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInteractionService {
   private motor3d = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
+  private eventBus = inject(GameEventBusService);
   private injector = inject(Injector);
 
-  // 🔥 FIX DE DEPENDENCIA CIRCULAR: Getter Lazy
   private get session(): GameSession { 
     return this.injector.get(GameSession); 
   }
+
+  public currentTarget: GameEntity | null = null;
+  public currentShowE: boolean = false;
+  public currentShowI: boolean = false;
+  public currentHoveredMesh: AbstractMesh | null = null;
 
   public lastInteractDistance: number | null = null;
   public lastInteractionProbePoint: Vector3 | null = null;
@@ -217,25 +222,25 @@ export class PlayerInteractionService {
       showI = !!mensajeParaMostrar && mensajeParaMostrar.trim() !== '' && canInteractNow && hitInteractuable.type !== 'bubble';
     }
 
-    if (this.session.targetInteractuable() !== hitInteractuable) {
-      this.session.targetInteractuable.set(hitInteractuable as any);
+    // 🔥 Emitir eventos limpios en caso de cambio de estado interactivo
+    if (this.currentTarget !== hitInteractuable || this.currentShowE !== showE || this.currentShowI !== showI) {
+      this.currentTarget = hitInteractuable;
+      this.currentShowE = showE;
+      this.currentShowI = showI;
+      this.eventBus.emit({ 
+        type: 'INTERACTION_TARGET', 
+        payload: { entity: hitInteractuable, showE, showI } 
+      });
     }
 
-    if (this.session.hoveredMesh() !== hoverSelectable) {
-      this.session.hoveredMesh.set(hoverSelectable);
-    }
-
-    if (this.session.showToastE() !== showE) {
-      this.session.showToastE.set(showE);
-    }
-
-    if (this.session.showToastI() !== showI) {
-      this.session.showToastI.set(showI);
+    if (this.currentHoveredMesh !== hoverSelectable) {
+      this.currentHoveredMesh = hoverSelectable;
+      this.eventBus.emit({ type: 'HOVER_MESH', payload: hoverSelectable });
     }
   }
 
   public abrirMensajeInteractivo(entity: GameEntity, resetMovementCallback: () => void): void {
-    this.session.isInteracting.set(true);
+    this.eventBus.emit({ type: 'INTERACTING_STATE', payload: true });
     this.session.pointerLocked.set(false);
 
     try {

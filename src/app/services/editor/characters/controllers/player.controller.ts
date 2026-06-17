@@ -1,4 +1,3 @@
-
 import { Ray, Vector3, Quaternion } from '@babylonjs/core';
 import { GamePhase } from '../../../../core/engine/behaviors/services/loop-manager.service';
 import { BaseCharacterController } from './base-character.controller';
@@ -245,10 +244,7 @@ export class PlayerController extends BaseCharacterController {
     this.resetPhysicsState();
     this.context.inputSvc.resetearInputs();
     this.context.cameraSvc.resetearTransiciones();
-    this.context.session.hoveredMesh.set(null);
-    this.context.session.targetInteractuable.set(null);
-    this.context.session.showToastE.set(false);
-    this.context.session.showToastI.set(false);
+    
     this.context.animSvc.detenerTodas(this.entity);
     this.context.animSvc.reproducirIdle(this.entity); 
   }

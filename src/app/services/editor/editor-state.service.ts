@@ -17,16 +17,9 @@ export class EditorStateService {
   public objetoInteractuado = signal<any>(null);
   public nodosEscena = signal<Node[]>([]);
 
-  public mirandoObjetoInteractuable = signal<boolean>(false);
   public ratonBloqueado = signal<boolean>(false);
   public showAddObjectModal = signal<boolean>(false);
   public objetoHovereado = signal<AbstractMesh | null>(null);
-
-  public targetInteractuable = signal<AbstractMesh | null>(null);
-  public showToastE = signal<boolean>(false);
-  public showToastI = signal<boolean>(false);
-
-  public mensajeTriggerHUD = signal<string | null>(null);
 
   public onMapChanged = new Subject<void>();
   public onGizmoDrag = new Subject<void>();
@@ -181,11 +174,6 @@ export class EditorStateService {
     this.jugadorActivo = null;
     this.objetoHovereado.set(null);
     this.objetoInteractuado.set(null);
-    this.mirandoObjetoInteractuable.set(false);
-    this.targetInteractuable.set(null);
-    this.showToastE.set(false);
-    this.showToastI.set(false);
-    this.mensajeTriggerHUD.set(null); 
     this.ratonBloqueado.set(false);
     this.objetoSeleccionado.set(null);
     this.subObjetoSeleccionado.set(null);

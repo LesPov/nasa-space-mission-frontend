@@ -1,3 +1,4 @@
+
 import { Vector3 } from '@babylonjs/core';
 import { BaseCharacterController } from './base-character.controller';
 import { CharacterContext } from '../character-context.interface';
@@ -10,8 +11,8 @@ export class PlayerController extends BaseCharacterController {
   }
 
   public update(dtMs: number): void {
-    // Si el ratón no está bloqueado (menú pausa u otro overlay), no procesamos input ni físicas
-    if (!this.context.state.ratonBloqueado()) return;
+    // ❌ ELIMINADO EL RETURN TEMPRANO para que la cámara y gravedad sigan procesando
+    // aunque el ratón no esté bloqueado (ej: cuando estás en el menú de pausa).
 
     const activeCamera = this.context.motor3d.scene.activeCamera;
     if (!activeCamera) return;
@@ -28,8 +29,9 @@ export class PlayerController extends BaseCharacterController {
     // 2. Calcular Secuencias activas para el Player
     const seqRuntime = this.context.sequenceSvc.actualizarSecuencia(dtMs, this.mesh, this.config);
     
-    // 3. Obtener el Input (Vacio si hay secuencia bloqueante)
-    const activeInput = (seqRuntime.lockInput || seqRuntime.freezeOrientation) ? {} : this.context.inputSvc.inputMap;
+    // 3. Obtener el Input (Vacio si hay secuencia bloqueante o si el juego está en pausa/menú)
+    const canMove = this.context.state.ratonBloqueado() && !seqRuntime.lockInput && !seqRuntime.freezeOrientation;
+    const activeInput = canMove ? this.context.inputSvc.inputMap : {};
 
     // 4. Procesar Físicas y Colisiones REAles
     this.context.physicsSvc.aplicarMovimientoYGravedad(
@@ -46,7 +48,7 @@ export class PlayerController extends BaseCharacterController {
     // 5. Reproducir animaciones según las físicas
     this.context.animSvc.gestionarAnimaciones(this.mesh, this.estadoFisico, seqRuntime, this.config);
     
-    // 6. Actualizar seguimiento de Cámara
+    // 6. Actualizar seguimiento de Cámara (AQUÍ ES DONDE SE MANTIENE EL ANCLAJE EN PAUSA)
     this.context.cameraSvc.actualizarPosicionCamara(
       this.mesh, 
       activeCamera, 

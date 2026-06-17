@@ -1,3 +1,4 @@
+
 <!-- PANTALLA PRINCIPAL: SELECCIÓN DE MAPAS -->
 <ng-container *ngIf="!editando && !modalSeleccionModo && !cargandoEscena">
   <div class="galeria-header">
@@ -93,7 +94,7 @@
   <!-- ========================================================
        MODAL DE INICIO DE MISIÓN (INTERFAZ TIPO GTA / TELLTALE)
        ======================================================== -->
-  <div class="user-mission-overlay" *ngIf="modalMisionUsuario">
+  <div class="user-mission-overlay" *ngIf="modalMisionUsuario" [class.closing]="cerrandoModalUsuario">
     <!-- Barra Superior -->
     <div class="mission-topbar">
       <div class="brand">
@@ -132,7 +133,8 @@
           <div class="card-header">
             <h4>MISIÓN PRINCIPAL</h4>
             <h2>{{ mapaActualNombre }}</h2>
-            <span>SITUACIÓN ACTUAL DESCONOCIDA - INGRESA PARA DESCUBRIR</span>
+            <span *ngIf="!misionIniciada">SITUACIÓN ACTUAL DESCONOCIDA - INGRESA PARA DESCUBRIR</span>
+            <span *ngIf="misionIniciada" style="color: #facc15;">JUEGO EN PAUSA - ESPERANDO ÓRDENES</span>
           </div>
           
           <div class="card-image-placeholder">
@@ -155,7 +157,7 @@
           </div>
 
           <button class="btn-start-action" (click)="comenzarMisionUsuario()">
-            INICIAR MISIÓN
+            {{ misionIniciada ? 'REANUDAR PARTIDA' : 'INICIAR MISIÓN' }}
           </button>
         </div>
       </main>
@@ -334,4 +336,3 @@
     
   </div>
 </ng-container>
-

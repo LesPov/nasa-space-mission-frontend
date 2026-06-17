@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import {
   Mesh,
@@ -151,7 +152,8 @@ export class PlayerCameraManagerService {
     this.initialHeadLocal = null;
   }
 
-  public toggleCameraView(jugador: Mesh, config: PlayerRuntimeConfig): void {
+  // 🔥 NUEVA FIRMA: isCinematicInitial define si es la animación lenta y profunda del principio del juego
+  public toggleCameraView(jugador: Mesh, config: PlayerRuntimeConfig, isCinematicInitial: boolean = false): void {
     if (!this.state.jugadorActivo || this.state.playState() !== 'PLAYING' || this.isTransitioningCameras) return;
 
     this.isTransitioningCameras = true;
@@ -159,7 +161,9 @@ export class PlayerCameraManagerService {
     
     const minR = (config.camera.tpsMinRadius ?? 1.5) * scaleNow;
     const maxR = (config.camera.tpsMaxRadius ?? 15) * scaleNow;
-    const targetRadiusRaw = (config.camera.tpsRadius || 5) * scaleNow;
+    
+    // Si es la cinemática inicial, alejamos la cámara hasta el límite máximo
+    const targetRadiusRaw = isCinematicInitial ? maxR : ((config.camera.tpsRadius || 5) * scaleNow);
     const targetRadius = Math.max(minR, Math.min(maxR, targetRadiusRaw));
 
     const ease = new CubicEase();
@@ -170,7 +174,8 @@ export class PlayerCameraManagerService {
     const canvas = this.motor3d.engine.getRenderingCanvas();
     const scene = this.motor3d.scene;
 
-    const framesTransicion = 80;
+    // 🔥 Transición cinemática: 240 frames (4 segundos) para el inicio de menú, 45 frames (0.75 seg) gameplay normal
+    const framesTransicion = isCinematicInitial ? 240 : 45;
 
     this.loopManager.unregister('CameraFadeTransition');
 
@@ -181,26 +186,30 @@ export class PlayerCameraManagerService {
       tpsCam.lowerRadiusLimit = null;
       tpsCam.upperRadiusLimit = null;
 
-      tpsCam.alpha = -(fpsCam.rotation.y || 0) - Math.PI / 2;
-      
-      let currentBeta = (fpsCam.rotation.x || 0) + Math.PI / 2;
-      let targetBeta = currentBeta;
-      if (targetBeta > (Math.PI / 2 - 0.4) && targetBeta < (Math.PI / 2 + 0.4)) {
-         targetBeta -= 0.15; 
+      // 🔥 CORRECCIÓN CLAVE 1: El pivote debe clonar las coordenadas globales de la cámara FPS para no saltar.
+      if (this.state.cameraPivot) {
+        this.state.cameraPivot.position.copyFrom(fpsCam.globalPosition);
       }
 
+      // 🔥 CORRECCIÓN CLAVE 2: No empalmar betas raros, usar la misma orientación exacta
+      tpsCam.alpha = -(fpsCam.rotation.y || 0) - Math.PI / 2;
+      const currentBeta = (fpsCam.rotation.x || 0) + Math.PI / 2;
+      
       tpsCam.beta = currentBeta;
       tpsCam.radius = 0.05; 
+
+      tpsCam.inertialAlphaOffset = 0;
+      tpsCam.inertialBetaOffset = 0;
+      tpsCam.inertialRadiusOffset = 0;
 
       this.currentPivotY = this.currentEyeLevel;
       this.state.modoVistaPrueba = 'TPS';
       scene.activeCamera = tpsCam;
 
-      // 🔥 FASE 2: MIGRACIÓN AL LOOP MANAGER
       this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
           const fadeLimit = Math.min(2.5, targetRadius * 0.5);
           if (tpsCam.radius < fadeLimit) {
-             jugador.visibility = Math.max(0, (tpsCam.radius - 1.0) / (fadeLimit - 1.0));
+             jugador.visibility = Math.max(0, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
              jugador.getChildMeshes().forEach(m => m.visibility = jugador.visibility);
           } else {
              jugador.visibility = 1;
@@ -209,18 +218,18 @@ export class PlayerCameraManagerService {
       });
 
       const animRad = Animation.CreateAndStartAnimation('camRadiusOut', tpsCam, 'radius', 60, framesTransicion, 0.05, targetRadius, 2, ease);
-      Animation.CreateAndStartAnimation('camBetaOut', tpsCam, 'beta', 60, framesTransicion, currentBeta, targetBeta, 2, ease);
 
       animRad?.onAnimationEndObservable.addOnce(() => {
         this.resetearTransiciones();
         tpsCam.checkCollisions = true; 
         jugador.visibility = 1;
         jugador.getChildMeshes().forEach(m => m.visibility = 1);
-        if (canvas) tpsCam.attachControl(canvas, true);
+        if (canvas && this.state.ratonBloqueado()) tpsCam.attachControl(canvas, true);
       });
     } else {
       if (canvas) tpsCam.detachControl();
 
+      // 🔥 MANTENEMOS EL ÁNGULO EXACTO EN EL QUE ESTABA
       const fixedAlpha = tpsCam.alpha;
       const fixedBeta = tpsCam.beta;
 
@@ -230,14 +239,14 @@ export class PlayerCameraManagerService {
 
       this.overrideTargetPivotY = (config.camera.fpsEyeLevel || 1.6) * scaleNow;
 
-      // 🔥 FASE 2: MIGRACIÓN AL LOOP MANAGER
       this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
+          // Bloqueamos cualquier giro accidental que altere el ángulo durante el viaje de regreso
           tpsCam.alpha = fixedAlpha;
           tpsCam.beta = fixedBeta;
 
           const fadeLimit = Math.min(2.5, targetRadius * 0.5);
           if (tpsCam.radius < fadeLimit) {
-             jugador.visibility = Math.max(0, (tpsCam.radius - 1.0) / (fadeLimit - 1.0));
+             jugador.visibility = Math.max(0, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
              jugador.getChildMeshes().forEach(m => m.visibility = jugador.visibility);
           } else {
              jugador.visibility = 1;
@@ -250,8 +259,14 @@ export class PlayerCameraManagerService {
       animRad?.onAnimationEndObservable.addOnce(() => {
         this.state.modoVistaPrueba = 'FPS';
         
+        // Empalmamos la orientación al regresar a la cámara FPS de forma perfecta
         fpsCam.rotation.y = -fixedAlpha - Math.PI / 2;
         fpsCam.rotation.x = fixedBeta - Math.PI / 2;
+
+        // 🔥 Posicionamos la FPS exactamente donde terminó el Pivot de la TPS para borrar micro-saltos
+        if (this.state.cameraPivot) {
+            fpsCam.position.copyFrom(this.state.cameraPivot.getAbsolutePosition());
+        }
         
         scene.activeCamera = fpsCam;
         
@@ -261,7 +276,7 @@ export class PlayerCameraManagerService {
         jugador.visibility = 0;
         jugador.getChildMeshes().forEach(m => m.visibility = 0);
         
-        if (canvas) fpsCam.attachControl(canvas, true);
+        if (canvas && this.state.ratonBloqueado()) fpsCam.attachControl(canvas, true);
       });
     }
   }
@@ -352,7 +367,9 @@ export class PlayerCameraManagerService {
       const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
 
       if (!isNaN(globalPivotPos.x) && !isNaN(globalPivotPos.y) && !isNaN(globalPivotPos.z)) {
-        this.state.cameraPivot.position = Vector3.Lerp(this.state.cameraPivot.position, globalPivotPos, 0.6);
+        // 🔥 CORRECCIÓN CLAVE 3: Si estamos transicionando cinemáticamente, forzamos un lerp más duro para que el target no se escape del centro
+        const lerpSpeed = this.isTransitioningCameras ? 1.0 : 0.6;
+        this.state.cameraPivot.position = Vector3.Lerp(this.state.cameraPivot.position, globalPivotPos, lerpSpeed);
       }
 
       this.motor3d.playerCameraTPS.lockedTarget = this.state.cameraPivot;

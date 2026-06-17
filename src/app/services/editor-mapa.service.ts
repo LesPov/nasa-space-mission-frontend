@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Node, AbstractMesh, Vector3 } from '@babylonjs/core';
 
@@ -46,7 +47,7 @@ export class EditorMapaService {
   limpiarEstado(): void {
     this.scene.limpiarEstado();
     this.state.limpiarEstado();
-    this.tools.limpiarEstado(); // 🔥 FIX NIEBLA: Limpia procesos huérfanos al salir al menú
+    this.tools.limpiarEstado(); // Limpia procesos huérfanos al salir al menú
   }
 
   activarEventosEditor(): void { this.tools.activarEventosEditor(); }
@@ -88,4 +89,7 @@ export class EditorMapaService {
   detenerModoJuego(): void { this.player.detenerModoJuego(); }
 
   cerrarInteraccionJugador(): void { this.interaction.cerrarInteraccionJugador(); }
+
+  // 🔥 NUEVA FIRMA: Añadido soporte para transición cinemática
+  toggleCameraUser(isCinematicInitial: boolean = false): void { this.player.toggleCameraUser(isCinematicInitial); }
 }

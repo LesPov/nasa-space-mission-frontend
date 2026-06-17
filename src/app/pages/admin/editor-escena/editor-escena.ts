@@ -1,4 +1,5 @@
-import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener } from '@angular/core';
+
+import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
 import { ToolbarEscena } from '../../../components/toolbar-escena/toolbar-escena';
@@ -36,7 +37,9 @@ export class EditorEscena implements OnInit, OnDestroy {
   // Estados de Carga Cinematográfica
   public modalSeleccionModo = false;
   public cargandoEscena = false;
-  public modalMisionUsuario = false; // 🔥 NUEVO: Modal tipo GTA/Telltale para el usuario
+  public modalMisionUsuario = false; 
+  public misionIniciada = false; 
+  public cerrandoModalUsuario = false; // 🔥 NUEVO: Controla el efecto de split al cerrar el modal
   public episodioPendienteCarga: any = null;
   public cargandoTexto = 'Preparando entorno...';
   
@@ -81,6 +84,27 @@ export class EditorEscena implements OnInit, OnDestroy {
   private fpsInterval: any;
   private autoSaveSub!: Subscription;
 
+  constructor() {
+    effect(() => {
+      const isLocked = this.editorSvc.ratonBloqueado();
+      const state = this.editorSvc.playState();
+      const isUser = this.editorSvc.rolSimulado() === 'user';
+      
+      // 🔥 PAUSA CINEMÁTICA: Si el usuario pulsa ESC, el ratón se desbloquea.
+      if (isUser && state === 'PLAYING' && !isLocked && this.misionIniciada && !this.modalMisionUsuario) {
+        setTimeout(() => {
+          this.modalMisionUsuario = true;
+          this.cdr.detectChanges();
+          
+          // Hacemos que la cámara viaje a 3ra persona mientras el menú está abierto
+          if (this.stateSvc.modoVistaPrueba === 'FPS') {
+             this.editorSvc.toggleCameraUser();
+          }
+        }, 10);
+      }
+    });
+  }
+
   ngOnInit() {
     this.esAdmin = this.editorSvc.checkIsAdmin();
     this.cargarEpisodios();
@@ -122,50 +146,60 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.episodioIdActivo = episodio.id;
     this.mapaActualNombre = episodio.title;
     this.editando = true; 
+    this.misionIniciada = false; 
+    this.cerrandoModalUsuario = false;
     
     this.epiApiSvc.obtenerEpisodio(episodio.id).subscribe({
-      next: (res) => {
-        setTimeout(async () => {
-          this.cargandoTexto = 'Preparando modelos, texturas y físicas 3D...';
-          this.motor3dSvc.forzarRedimension(); 
-          this.editorSvc.activarEventosEditor();
-          this.editorSvc.crearSuelo();
+      next: async (res) => {
+        this.cargandoTexto = 'Preparando modelos, texturas y físicas 3D...';
+        this.motor3dSvc.forzarRedimension(); 
+        this.editorSvc.activarEventosEditor();
+        this.editorSvc.crearSuelo();
 
-          if(res) {
-            await this.editorSvc.cargarEscenaDesdeDatos(res);
-          }
+        if(res) {
+          await this.editorSvc.cargarEscenaDesdeDatos(res);
+        }
 
-          this.cargandoEscena = false;
-          this.episodioPendienteCarga = null;
-          this.cdr.detectChanges(); 
-
-          // 🔥 LÓGICA DE USUARIO: Inicia el juego pero libera el ratón para mostrar el menú
+        // 🔥 GARANTÍA DE CARGA AAA: Esperamos a que la GPU compile TODOS los shaders
+        this.motor3dSvc.scene.executeWhenReady(() => {
           if (this.editorSvc.rolSimulado() === 'user') {
-            setTimeout(() => {
-              const spawnMesh = this.motor3dSvc.scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
-              if (spawnMesh) {
-                this.editorSvc.seleccionarObjeto(spawnMesh);
-                // 1. Iniciamos el motor en modo juego para que la cámara se acomode y el mundo viva
-                this.iniciarModoPrueba();
-                
-                // 2. Extraemos el ratón un instante después y mostramos el menú inmersivo
-                setTimeout(() => {
-                  document.exitPointerLock();
-                  this.modalMisionUsuario = true;
-                  this.cdr.detectChanges();
-                }, 200);
+            const spawnMesh = this.motor3dSvc.scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
+            
+            if (spawnMesh) {
+              this.editorSvc.seleccionarObjeto(spawnMesh);
+              
+              // Iniciamos forzando la cámara dentro de la cabeza (1ra persona)
+              this.vistaPrueba = 'FPS';
+              this.iniciarModoPrueba();
+              
+              // Se levanta el telón de carga y mostramos el Menú de inmediato (SIN SALTOS)
+              this.modalMisionUsuario = true;
+              this.cargandoEscena = false;
+              this.episodioPendienteCarga = null;
+              this.cdr.detectChanges();
 
-              } else {
-                alert('Este episodio aún no tiene un punto de aparición (Spawn Point). Vuelve más tarde.');
-                this.salirDelEditor();
-              }
-            }, 100);
+              // Mandamos la cámara hacia atrás (TPS) lentamente para tener un fondo cinemático en el menú
+              setTimeout(() => {
+                document.exitPointerLock(); 
+                // true = Activa la cinemática especial lenta y lejana para la pantalla de título
+                this.editorSvc.toggleCameraUser(true); 
+              }, 50);
+
+            } else {
+              alert('Este episodio aún no tiene un punto de aparición (Spawn Point). Vuelve más tarde.');
+              this.salirDelEditor();
+            }
+          } else {
+            // Lógica para Admin (Termina la pantalla de carga e inicia en el editor libre)
+            this.cargandoEscena = false;
+            this.episodioPendienteCarga = null;
+            this.cdr.detectChanges(); 
           }
           
           this.fpsInterval = setInterval(() => {
             this.fps.set(this.motor3dSvc.currentFps.toFixed(0));
           }, 500);
-        }, 150); 
+        });
       },
       error: (err) => {
         this.cargandoEscena = false;
@@ -175,14 +209,27 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  // 🔥 NUEVA FUNCIÓN: Al hacer clic en "Iniciar Misión" cierra el menú y devuelve el control al juego
+  // 🔥 ANIMACIÓN SPLIT Y VIAJE A FPS
   comenzarMisionUsuario() {
-    this.modalMisionUsuario = false;
-    const canvas = this.motor3dSvc.engine.getRenderingCanvas();
-    if (canvas) {
-      canvas.focus();
-      try { canvas.requestPointerLock(); } catch {}
+    this.cerrandoModalUsuario = true; // Activa las clases de animación CSS
+    
+    // Si la cámara estaba alejada (TPS), la mandamos de vuelta a los ojos (FPS)
+    if (this.stateSvc.modoVistaPrueba === 'TPS') {
+       this.editorSvc.toggleCameraUser();
     }
+
+    // Esperamos 600ms a que termine la animación de la interfaz partiéndose por la mitad
+    setTimeout(() => {
+      this.misionIniciada = true; 
+      this.modalMisionUsuario = false;
+      this.cerrandoModalUsuario = false;
+      
+      const canvas = this.motor3dSvc.engine.getRenderingCanvas();
+      if (canvas) {
+        canvas.focus();
+        try { canvas.requestPointerLock(); } catch {}
+      }
+    }, 600); 
   }
 
   toggleInspector() { this.showInspector = !this.showInspector; this.recalcularMotor(); }
@@ -237,14 +284,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   manejarAtajos(event: KeyboardEvent) {
     const target = event.target as HTMLElement | null;
     if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return; 
-
-    // 🔥 FIX MODO USUARIO: Si el usuario pulsa ESC y está jugando, le abrimos el Menú
-    if (this.editorSvc.rolSimulado() === 'user' && this.editorSvc.playState() === 'PLAYING' && event.key === 'Escape') {
-        document.exitPointerLock();
-        this.modalMisionUsuario = true;
-        this.cdr.detectChanges();
-        return;
-    }
 
     const state = this.editorSvc.playState();
     if (this.editando && !this.editorSvc.showAddObjectModal() && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
@@ -376,6 +415,8 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.cargandoEscena = false;
     this.modalSeleccionModo = false;
     this.modalMisionUsuario = false;
+    this.misionIniciada = false;
+    this.cerrandoModalUsuario = false;
     this.layoutSvc.mostrarMenu(); 
     this.editorSvc.limpiarEstado();
     this.cargarEpisodios(); 

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Quaternion, MeshBuilder, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 
@@ -42,7 +43,7 @@ export class EditorPlayerService {
 
   private backupsAnimados: any[] = [];
   
-  // 🔥 REFERENCIAS A LOS CONTROLADORES EN RUNTIME
+  // REFERENCIAS A LOS CONTROLADORES EN RUNTIME
   private activePlayerController: PlayerController | null = null;
   private activeNpcControllers: NpcController[] = [];
 
@@ -73,7 +74,6 @@ export class EditorPlayerService {
     });
   }
 
-  // Empaqueta las dependencias para inyectar en los controladores sin acoplar el constructor
   private getCharacterContext(): CharacterContext {
     return {
       motor3d: this.motor3d,
@@ -95,7 +95,6 @@ export class EditorPlayerService {
     const objMesh = this.state.objetoSeleccionado() as Mesh;
     if (!objMesh) return;
     
-    // Obtenemos la Entidad Pura desde el ECS
     const playerEntity = this.entityManager.getEntityByMesh(objMesh);
     if (!playerEntity) {
         console.error("El objeto seleccionado no tiene una GameEntity asociada.");
@@ -109,7 +108,6 @@ export class EditorPlayerService {
     this.state.modoVistaPrueba = vista;
     this.state.objetoHovereado.set(null);
 
-    // --- MANEJO DE BACKUPS (Editor) ---
     this.state.backupObjetoPosicion = objMesh.position.clone();
     if (objMesh.rotationQuaternion) this.state.backupObjetoRotacionQuat = objMesh.rotationQuaternion.clone();
     else {
@@ -131,7 +129,6 @@ export class EditorPlayerService {
     
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
-    // Limpieza e inicialización de elementos del mundo
     this.motor3d.scene.meshes.forEach(m => {
         if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
             m.isVisible = isAdmin;
@@ -159,7 +156,6 @@ export class EditorPlayerService {
         }
     });
 
-    // --- INSTANCIACIÓN DE CONTROLADORES DE RUNTIME ---
     const context = this.getCharacterContext();
     this.activePlayerController = new PlayerController(playerEntity, context);
 
@@ -167,13 +163,11 @@ export class EditorPlayerService {
     const allNpcs = this.entityManager.getEntitiesByRol('npc');
     
     allNpcs.forEach(npcEntity => {
-        // Ignoramos al propio jugador por si estaba clasificado como NPC
         if (npcEntity.uid === playerEntity.uid) return; 
         
         const mesh = npcEntity.view as Mesh;
         if (!mesh) return;
 
-        // Guardar estado original para restauración
         const lightObj = mesh.getDescendants(false).find(c => c.name.startsWith('l_'));
         this.backupsAnimados.push({
             mesh: mesh,
@@ -183,15 +177,11 @@ export class EditorPlayerService {
             intensity: lightObj ? (lightObj as any).intensity : null
         });
 
-        // Inicializar controlador
         const npcCtrl = new NpcController(npcEntity, context);
         this.activeNpcControllers.push(npcCtrl);
-        
-        // Sincronizar animaciones base
         this.animSvc.sincronizarAnimaciones(this.motor3d.scene, mesh, npcCtrl.config);
     });
 
-    // Preconfigurar física y colisiones visuales para el Player (Babylon specific)
     const colMeta = playerEntity.collider;
     const camMeta = playerEntity.camOffset;
     objMesh.ellipsoid = new Vector3(colMeta.sizeX * objMesh.scaling.x, colMeta.sizeY * objMesh.scaling.y, colMeta.sizeZ * objMesh.scaling.z);
@@ -224,7 +214,7 @@ export class EditorPlayerService {
 
     this.autoAnimSvc.startAmbientAutoAnimations();
 
-    this.cameraSvc.volarHaciaCamaraJuego(objMesh.getAbsolutePosition(), targetPos, targetLookAt, vista === 'FPS', () => {
+    const finishSetup = () => {
         this.motor3d.scene.activeCamera = targetCam;
         this.state.playState.set('PLAYING');
         
@@ -237,9 +227,26 @@ export class EditorPlayerService {
           onInteractI: () => this.handleInteractions(false)
         });
 
-        this.iniciarBucleSecundario(); // Bucle de Controladores
+        // Al usuario no se le pide bloqueo del ratón inmediatamente para que pueda clicar el menú
+        const isUser = this.state.rolSimulado() === 'user';
+        this.iniciarBucleSecundario(!isUser); 
         this.state.triggerUpdate();
-    });
+    };
+
+    if (this.state.rolSimulado() === 'user') {
+        finishSetup();
+    } else {
+        this.cameraSvc.volarHaciaCamaraJuego(objMesh.getAbsolutePosition(), targetPos, targetLookAt, vista === 'FPS', () => {
+            finishSetup();
+        });
+    }
+  }
+
+  // 🔥 ANIMACIÓN CINEMÁTICA ACCESIBLE DESDE AFUERA
+  public toggleCameraUser(isCinematicInitial: boolean = false): void {
+    if (this.state.jugadorActivo && this.activePlayerController) {
+      this.playerCamSvc.toggleCameraView(this.state.jugadorActivo, this.activePlayerController.config, isCinematicInitial);
+    }
   }
 
   private handleInteractions(isActionE: boolean): void {
@@ -307,9 +314,7 @@ export class EditorPlayerService {
       }
   }
 
-  private iniciarBucleSecundario(): void {
-    // 🔥 REGISTRO LIMPIO: Delega el trabajo a los Controladores
-    
+  private iniciarBucleSecundario(requestLock: boolean = true): void {
     if (this.activePlayerController) {
         this.loopManager.register('PlayerLogic', GamePhase.LOGIC, (dtMs: number) => {
             this.activePlayerController!.update(dtMs);
@@ -322,15 +327,16 @@ export class EditorPlayerService {
         });
     });
 
-    // Request Pointer Lock inicial
     const canvas = this.motor3d.engine.getRenderingCanvas();
     if (canvas) { 
-        canvas.focus(); 
-        try { 
-            this.motor3d.scene.activeCamera!.attachControl(canvas, true); 
-            const p = canvas.requestPointerLock(); 
-            if (p) p.catch(() => {});
-        } catch {} 
+        this.motor3d.scene.activeCamera!.attachControl(canvas, true); 
+        if (requestLock) {
+            canvas.focus(); 
+            try { 
+                const p = canvas.requestPointerLock(); 
+                if (p) p.catch(() => {});
+            } catch {} 
+        }
     }
   }
 
@@ -339,7 +345,6 @@ export class EditorPlayerService {
     this.state.playState.set('EDITOR');
     this.resetMovimientoJugador();
     
-    // 🔥 ELIMINAR REGISTROS DEL LOOP MANAGER
     this.loopManager.unregister('PlayerLogic');
     this.activeNpcControllers.forEach(npc => {
         this.loopManager.unregister('NPCLogic_' + npc.entity.uid);
@@ -457,7 +462,6 @@ export class EditorPlayerService {
 
   public resincronizarAnimaciones(mesh: AbstractMesh): void {
      const trueMesh = mesh as Mesh;
-     // Usamos fallback por si es llamado en modo editor puro
      const entity = this.entityManager.getEntityByMesh(mesh);
      const config = entity?.playerConfig || mergePlayerConfig(trueMesh.metadata?.playerConfig || null);
      this.animSvc.sincronizarAnimaciones(this.motor3d.scene, trueMesh, config);

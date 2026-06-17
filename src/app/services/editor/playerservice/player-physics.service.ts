@@ -1,7 +1,5 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, Ray, AbstractMesh, Quaternion } from '@babylonjs/core';
-import { EditorStateService } from '../editor-state.service';
 import { Motor3dService } from '../../motor-3d.service';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../player-config.model';
 import { SeqRuntime } from './player-sequence.service';
@@ -24,7 +22,6 @@ export interface EstadoFisico {
 @Injectable({ providedIn: 'root' })
 export class PlayerPhysicsService {
   private motor3d = inject(Motor3dService);
-  private state = inject(EditorStateService);
 
   private sanitizeForwardDir(dir: Vector3): Vector3 {
     const d = dir.clone();
@@ -38,7 +35,8 @@ export class PlayerPhysicsService {
     inputMap: Record<string, boolean>, 
     seqRuntime: SeqRuntime, 
     activeCamera: any, 
-    estadoFisico: EstadoFisico
+    estadoFisico: EstadoFisico,
+    vista: 'FPS' | 'TPS'
   ): void {
     const jugador = entity.view as Mesh;
     if (!jugador) return;
@@ -74,7 +72,7 @@ export class PlayerPhysicsService {
     const collFn = (m: AbstractMesh) =>
       m.checkCollisions &&
       m !== jugador &&
-      !this.state.isDescendant(m, jugador) &&
+      !m.isDescendantOf(jugador) &&
       !m.name.includes('gridHelper');
 
     if (seqRuntime.running && seqRuntime.step) {
@@ -156,7 +154,7 @@ export class PlayerPhysicsService {
           move.normalize().scaleInPlace(modSpeed);
         }
 
-        if (this.state.modoVistaPrueba === 'TPS' && !seqRuntime.lockInput && !seqRuntime.freezeOrientation) {
+        if (vista === 'TPS' && !seqRuntime.lockInput && !seqRuntime.freezeOrientation) {
           const targetAngle = Math.atan2(move.x, move.z);
           if (!isNaN(targetAngle)) {
             if (!jugador.rotationQuaternion) jugador.rotationQuaternion = Quaternion.Identity();

@@ -1,4 +1,3 @@
-
 import { Vector3 } from '@babylonjs/core';
 import { BaseCharacterController } from './base-character.controller';
 import { CharacterContext } from '../character-context.interface';
@@ -33,7 +32,8 @@ export class PlayerController extends BaseCharacterController {
       activeInput, 
       seqRuntime, 
       activeCamera, 
-      this.estadoFisico 
+      this.estadoFisico,
+      vista
     );
 
     // 5. Reproducir animaciones según las físicas
@@ -44,7 +44,8 @@ export class PlayerController extends BaseCharacterController {
       this.entity, 
       activeCamera, 
       this.estadoFisico, 
-      seqRuntime
+      seqRuntime,
+      vista
     );
     
     // 7. Congelar orientación si estamos trepando/cinemática
@@ -64,4 +65,4 @@ export class PlayerController extends BaseCharacterController {
     this.context.animSvc.detenerTodas(this.entity);
     this.context.animSvc.reproducirIdle(this.entity); 
   }
-}  
+}

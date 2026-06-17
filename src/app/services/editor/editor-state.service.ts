@@ -12,8 +12,6 @@ export class EditorStateService {
   public currentTool = signal<ToolMode>('translate');
 
   public objetoSeleccionado = signal<Node | null>(null);
-  
-  // 🔥 SE HA AÑADIDO 'fog' AL ESTADO DE SUB-OBJETOS SELECCIONADOS
   public subObjetoSeleccionado = signal<'collider' | 'camera' | 'light' | 'fog' | null>(null);
 
   public objetoInteractuado = signal<any>(null);
@@ -35,7 +33,6 @@ export class EditorStateService {
 
   public modoVistaPrueba: 'FPS' | 'TPS' | null = null;
   public jugadorActivo: Mesh | null = null;
-  public cameraPivot: Mesh | null = null;
 
   public proxyColliders: Mesh[] = [];
   public backupObjetoPosicion: Vector3 | null = null;
@@ -182,7 +179,6 @@ export class EditorStateService {
     this.playState.set('EDITOR');
     this.modoVistaPrueba = null;
     this.jugadorActivo = null;
-    this.cameraPivot = null;
     this.objetoHovereado.set(null);
     this.objetoInteractuado.set(null);
     this.mirandoObjetoInteractuable.set(false);

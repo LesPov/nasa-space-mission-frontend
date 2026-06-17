@@ -1,10 +1,8 @@
-
 import { Injectable, inject } from '@angular/core';
 import {
   Mesh, Vector3, Matrix, TransformNode, UniversalCamera,
-  Animation, CubicEase, EasingFunction, Quaternion
+  Animation, CubicEase, EasingFunction, Quaternion, MeshBuilder
 } from '@babylonjs/core';
-import { EditorStateService } from '../editor-state.service';
 import { Motor3dService } from '../../motor-3d.service';
 import { cloneDefaultPlayerConfig } from '../player-config.model';
 import { EstadoFisico } from './player-physics.service';
@@ -15,8 +13,9 @@ import { GameEntity } from '../../../core/engine/entities/game.entity';
 @Injectable({ providedIn: 'root' })
 export class PlayerCameraManagerService {
   private motor3d = inject(Motor3dService);
-  private state = inject(EditorStateService);
   private loopManager = inject(LoopManagerService);
+
+  public cameraPivot: Mesh | null = null;
 
   public currentEyeLevel = 1.6;
   public currentPivotY = 1.5;
@@ -40,6 +39,11 @@ export class PlayerCameraManagerService {
   ): void {
     const jugador = entity.view as Mesh;
     if (!jugador) return;
+
+    if (!this.cameraPivot) {
+      this.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
+      this.cameraPivot.isVisible = false;
+    }
 
     const colMeta = entity.collider;
     const camMeta = entity.camOffset;
@@ -78,12 +82,12 @@ export class PlayerCameraManagerService {
 
     fpsCam.rotation.set(startRot.x || 0, startRot.y || 0, startRot.z || 0);
 
-    if (this.state.cameraPivot) {
+    if (this.cameraPivot) {
       const localPivotPos = new Vector3(camMeta.x || 0, this.currentPivotY / scaleY, camMeta.z || 0);
       jugador.computeWorldMatrix(true);
-      this.state.cameraPivot.position = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
+      this.cameraPivot.position = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
 
-      this.motor3d.playerCameraTPS.lockedTarget = this.state.cameraPivot;
+      this.motor3d.playerCameraTPS.lockedTarget = this.cameraPivot;
       
       const radBase = (config.camera.tpsRadius || 5) * scaleY;
       const minRad = (config.camera.tpsMinRadius ?? 1.5) * scaleY;
@@ -144,9 +148,15 @@ export class PlayerCameraManagerService {
     this.initialHeadLocal = null;
   }
 
-  public toggleCameraView(entity: GameEntity, isCinematicInitial: boolean = false): void {
+  public toggleCameraView(
+    entity: GameEntity, 
+    currentVista: 'FPS' | 'TPS', 
+    isCinematicInitial: boolean = false,
+    isRatonBloqueado: boolean = true,
+    onVistaChanged: (newVista: 'FPS' | 'TPS') => void
+  ): void {
     const jugador = entity.view as Mesh;
-    if (!jugador || this.state.playState() !== 'PLAYING' || this.isTransitioningCameras) return;
+    if (!jugador || this.isTransitioningCameras) return;
 
     this.isTransitioningCameras = true;
     const scaleNow = entity.transform.scale.y || 1;
@@ -170,15 +180,15 @@ export class PlayerCameraManagerService {
 
     this.loopManager.unregister('CameraFadeTransition');
 
-    if (this.state.modoVistaPrueba === 'FPS') {
+    if (currentVista === 'FPS') {
       if (canvas) fpsCam.detachControl();
 
       tpsCam.checkCollisions = false;
       tpsCam.lowerRadiusLimit = null;
       tpsCam.upperRadiusLimit = null;
 
-      if (this.state.cameraPivot) {
-        this.state.cameraPivot.position.copyFrom(fpsCam.globalPosition);
+      if (this.cameraPivot) {
+        this.cameraPivot.position.copyFrom(fpsCam.globalPosition);
       }
 
       tpsCam.alpha = -(fpsCam.rotation.y || 0) - Math.PI / 2;
@@ -192,7 +202,7 @@ export class PlayerCameraManagerService {
       tpsCam.inertialRadiusOffset = 0;
 
       this.currentPivotY = this.currentEyeLevel;
-      this.state.modoVistaPrueba = 'TPS';
+      onVistaChanged('TPS');
       scene.activeCamera = tpsCam;
 
       this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
@@ -213,7 +223,7 @@ export class PlayerCameraManagerService {
         tpsCam.checkCollisions = true; 
         jugador.visibility = 1;
         jugador.getChildMeshes().forEach(m => m.visibility = 1);
-        if (canvas && this.state.ratonBloqueado()) tpsCam.attachControl(canvas, true);
+        if (canvas && isRatonBloqueado) tpsCam.attachControl(canvas, true);
       });
     } else {
       if (canvas) tpsCam.detachControl();
@@ -244,13 +254,13 @@ export class PlayerCameraManagerService {
       const animRad = Animation.CreateAndStartAnimation('camRadiusIn', tpsCam, 'radius', 60, framesTransicion, tpsCam.radius, 0.05, 2, ease);
 
       animRad?.onAnimationEndObservable.addOnce(() => {
-        this.state.modoVistaPrueba = 'FPS';
+        onVistaChanged('FPS');
         
         fpsCam.rotation.y = -fixedAlpha - Math.PI / 2;
         fpsCam.rotation.x = fixedBeta - Math.PI / 2;
 
-        if (this.state.cameraPivot) {
-            fpsCam.position.copyFrom(this.state.cameraPivot.getAbsolutePosition());
+        if (this.cameraPivot) {
+            fpsCam.position.copyFrom(this.cameraPivot.getAbsolutePosition());
         }
         
         scene.activeCamera = fpsCam;
@@ -261,7 +271,7 @@ export class PlayerCameraManagerService {
         jugador.visibility = 0;
         jugador.getChildMeshes().forEach(m => m.visibility = 0);
         
-        if (canvas && this.state.ratonBloqueado()) fpsCam.attachControl(canvas, true);
+        if (canvas && isRatonBloqueado) fpsCam.attachControl(canvas, true);
       });
     }
   }
@@ -270,7 +280,8 @@ export class PlayerCameraManagerService {
     entity: GameEntity,
     activeCamera: any,
     estadoFisico: EstadoFisico,
-    seqRuntime: SeqRuntime
+    seqRuntime: SeqRuntime,
+    vista: 'FPS' | 'TPS'
   ): void {
     const jugador = entity.view as Mesh;
     if (!jugador) return;
@@ -331,7 +342,7 @@ export class PlayerCameraManagerService {
 
     const sequenceLocksInput = seqRuntime.lockInput || seqRuntime.freezeOrientation;
 
-    if (this.state.modoVistaPrueba === 'TPS' && this.state.cameraPivot) {
+    if (vista === 'TPS' && this.cameraPivot) {
       if (!this.isTransitioningCameras) {
         const minRadius = (config.camera.tpsMinRadius ?? 1.5) * scaleY;
         const maxRadius = (config.camera.tpsMaxRadius ?? 15) * scaleY;
@@ -357,13 +368,13 @@ export class PlayerCameraManagerService {
 
       if (!isNaN(globalPivotPos.x) && !isNaN(globalPivotPos.y) && !isNaN(globalPivotPos.z)) {
         const lerpSpeed = this.isTransitioningCameras ? 1.0 : 0.6;
-        this.state.cameraPivot.position = Vector3.Lerp(this.state.cameraPivot.position, globalPivotPos, lerpSpeed);
+        this.cameraPivot.position = Vector3.Lerp(this.cameraPivot.position, globalPivotPos, lerpSpeed);
       }
 
-      this.motor3d.playerCameraTPS.lockedTarget = this.state.cameraPivot;
+      this.motor3d.playerCameraTPS.lockedTarget = this.cameraPivot;
     }
 
-    if (this.state.modoVistaPrueba === 'FPS') {
+    if (vista === 'FPS') {
       const fpsCam = activeCamera as UniversalCamera;
 
       if (!sequenceLocksInput && !seqRuntime.freezeOrientation) {
@@ -385,16 +396,12 @@ export class PlayerCameraManagerService {
     }
   }
 
-  public volverAJuego(): void {
-    // ... logic for returning to game
-  }
-
   public limpiarPivotTPS(): void {
     this.motor3d.playerCameraTPS.lockedTarget = null;
-    if (this.state.cameraPivot && !this.state.cameraPivot.isDisposed()) {
-      try { this.state.cameraPivot.dispose(false, true); } catch {}
+    if (this.cameraPivot && !this.cameraPivot.isDisposed()) {
+      try { this.cameraPivot.dispose(false, true); } catch {}
     }
-    this.state.cameraPivot = null;
+    this.cameraPivot = null;
     this.resetearTransiciones();
   }
 }

@@ -1,11 +1,9 @@
-
 import { Injectable, inject, effect } from '@angular/core';
 import { DirectionalLight, KeyboardEventTypes, Matrix, Mesh, PointerEventTypes, SpotLight, TransformNode, Vector3, Ray } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorCameraService } from './editor-camera.service';
 import { EditorSceneService } from './editor-scene.service';
 import { EditorStateService, ToolMode } from './editor-state.service';
-import { PlayerCameraManagerService } from './playerservice/player-camera.service';
 import { ToolsClipboardService } from './toolsservice/tools-clipboard.service';
 import { ToolsDebugService } from './toolsservice/tools-debug.service';
 import { ToolsFogService } from './toolsservice/tools-fog.service';
@@ -19,9 +17,6 @@ export class EditorToolsService {
   private state = inject(EditorStateService);
   private sceneSvc = inject(EditorSceneService);
   private cameraSvc = inject(EditorCameraService);
-  
-  // 🔥 FIX PARA EL EDITING_IN_GAME: Volver a la cámara del jugador (no del editor)
-  private playerCamSvc = inject(PlayerCameraManagerService);
 
   // Sub-Servicios Orquestados
   private selectionSvc = inject(ToolsSelectionService);
@@ -175,7 +170,7 @@ export class EditorToolsService {
                 try { canvas.requestPointerLock(); } catch {}
               }
               // 🔥 FIX: Retorna a la cámara del jugador y no a la del editor
-              this.playerCamSvc.volverAJuego();
+              this.cameraSvc.volverAJuego();
             }
           }
         }
@@ -223,7 +218,7 @@ export class EditorToolsService {
             try { canvas.requestPointerLock(); } catch {}
           }
           // 🔥 FIX: Si estabamos jugando, tocamos para editar en vivo y presionamos ESC, debemos regresar a jugar, no al editor libre
-          this.playerCamSvc.volverAJuego();
+          this.cameraSvc.volverAJuego();
         }
 
         if (isAdmin && !this.state.showAddObjectModal() && (this.state.playState() === 'EDITOR' || this.state.playState() === 'EDITING_IN_GAME')) {

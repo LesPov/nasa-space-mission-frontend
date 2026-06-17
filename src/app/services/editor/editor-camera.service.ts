@@ -9,11 +9,13 @@ import {
 } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
+import { PlayerCameraManagerService } from './playerservice/player-camera.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorCameraService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
+  private playerCamSvc = inject(PlayerCameraManagerService);
 
   private ultimaPosCamaraLibre: Vector3 | null = null;
   private ultimoTargetCamaraLibre: Vector3 | null = null;
@@ -62,8 +64,8 @@ export class EditorCameraService {
 
     this.ultimaPosCamaraLibre = cam.globalPosition.clone();
 
-    if (this.state.modoVistaPrueba === 'TPS' && this.state.cameraPivot) {
-      this.ultimoTargetCamaraLibre = this.state.cameraPivot.getAbsolutePosition().clone();
+    if (this.state.modoVistaPrueba === 'TPS' && this.playerCamSvc.cameraPivot) {
+      this.ultimoTargetCamaraLibre = this.playerCamSvc.cameraPivot.getAbsolutePosition().clone();
     } else {
       this.ultimoTargetCamaraLibre = cam.globalPosition.add(cam.getDirection(Vector3.Forward()));
     }
@@ -133,7 +135,6 @@ export class EditorCameraService {
     });
   }
 
-  // 🔥 NUEVA LÓGICA: VUELO ESPIRAL ORBITAL HACIA EL JUGADOR
   volarHaciaCamaraJuego(centroEpiral: Vector3, targetPos: Vector3, targetLookAt: Vector3, isFPS: boolean, onComplete: () => void): void {
     const editorCam = this.motor3d.editorCamera;
     editorCam.detachControl();
@@ -141,7 +142,7 @@ export class EditorCameraService {
     const startPos = editorCam.position.clone();
     const startTarget = editorCam.getTarget().clone();
 
-    const frames = 150; // 2.5 segundos (60 FPS)
+    const frames = 150; 
 
     const posAnim = new Animation('camPosIn', 'position', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
     const targetAnim = new Animation('camTargetIn', 'target', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
@@ -149,7 +150,6 @@ export class EditorCameraService {
     const keysPos = [];
     const keysTarget = [];
 
-    // Cálculo Esférico relativo al jugador
     const startOffset = startPos.subtract(centroEpiral);
     const startRadius = startOffset.length();
     const startYaw = Math.atan2(startOffset.x, startOffset.z);
@@ -160,31 +160,25 @@ export class EditorCameraService {
     const endYaw = Math.atan2(endOffset.x, endOffset.z);
     const endPitch = targetPos.y;
 
-    // Calculamos el camino más corto para el giro
     let yawDiff = endYaw - startYaw;
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
     while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
 
-    // 🔥 Agregamos un giro extra cinematográfico (270 grados / 1.5 PI)
     const targetYaw = startYaw + yawDiff + (Math.PI * 1.5);
 
     for (let i = 0; i <= frames; i++) {
       const t = i / frames;
-      // Curva SmoothStep / EaseInOutCubic
       const easeT = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
-      // Interpolar coordenadas esféricas
       const currentRadius = startRadius + (endRadius - startRadius) * easeT;
       const currentYaw = startYaw + (targetYaw - startYaw) * easeT;
       const currentY = startPitch + (endPitch - startPitch) * easeT;
 
-      // Convertir a cartesianas nuevamente
       const posX = centroEpiral.x + currentRadius * Math.sin(currentYaw);
       const posZ = centroEpiral.z + currentRadius * Math.cos(currentYaw);
 
       keysPos.push({ frame: i, value: new Vector3(posX, currentY, posZ) });
 
-      // Animación LERP del objetivo (Target): Primero mira al personaje, luego mira hacia el frente
       let currentTarget;
       if (easeT < 0.6) {
          const tT = easeT / 0.6;
@@ -204,7 +198,6 @@ export class EditorCameraService {
     });
   }
 
-  // 🔥 NUEVA LÓGICA: VUELO ESPIRAL DE SALIDA (Del Jugador hacia la cámara del Editor)
   volverAJuego(): void {
     this.state.playState.set('TRANSITIONING');
     this.state.objetoSeleccionado.set(null);
@@ -218,10 +211,9 @@ export class EditorCameraService {
     if (this.state.modoVistaPrueba === 'FPS') {
       startTarget = startPos.add(startCam.getDirection(Vector3.Forward()));
     } else {
-      startTarget = this.state.cameraPivot ? this.state.cameraPivot.getAbsolutePosition().clone() : startPos.add(Vector3.Forward());
+      startTarget = this.playerCamSvc.cameraPivot ? this.playerCamSvc.cameraPivot.getAbsolutePosition().clone() : startPos.add(Vector3.Forward());
     }
 
-    // Activamos la cámara del editor para hacer la animación
     const editorCam = this.motor3d.editorCamera;
     this.motor3d.scene.activeCamera = editorCam;
     editorCam.position = startPos;
@@ -232,7 +224,7 @@ export class EditorCameraService {
     const endTarget = this.ultimoTargetCamaraLibre || new Vector3(0, 0, 0);
     const centroObj = this.state.jugadorActivo ? this.state.jugadorActivo.getAbsolutePosition().clone() : endTarget.clone();
 
-    const frames = 120; // 2 segundos
+    const frames = 120; 
 
     const posAnim = new Animation('camPosOut', 'position', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
     const targetAnim = new Animation('camTargetOut', 'target', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
@@ -254,7 +246,7 @@ export class EditorCameraService {
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
     while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
 
-    const targetYaw = startYaw + yawDiff + (Math.PI * 1.0); // Giro suave de salida (180 grados)
+    const targetYaw = startYaw + yawDiff + (Math.PI * 1.0); 
 
     for (let i = 0; i <= frames; i++) {
       const t = i / frames;

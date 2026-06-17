@@ -1,4 +1,3 @@
-
 import { Component, inject, OnInit, ChangeDetectorRef, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -290,7 +289,10 @@ export class GlobalTimeline implements OnInit {
   }
 
   instanciarPrefab(prefab: any) {
-    const camTarget = this.editorSvc.state.cameraPivot?.position || new Vector3(0, 1, 0);
+    let camTarget = new Vector3(0, 1, 0);
+    if (this.motor3dSvc.editorCamera && typeof this.motor3dSvc.editorCamera.getTarget === 'function') {
+      camTarget = this.motor3dSvc.editorCamera.getTarget().clone();
+    }
     this.editorSvc.instanciarPrefabFull(prefab, camTarget);
   }
 

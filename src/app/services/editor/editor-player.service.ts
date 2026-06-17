@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Quaternion, MeshBuilder, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 
@@ -190,9 +189,6 @@ export class EditorPlayerService {
         this.sequenceSvc.iniciarSecuenciaEnJuego(playerAutoSeq.id, playerEntity);
     }
     
-    this.state.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
-    this.state.cameraPivot.isVisible = false;
-    
     this.playerCamSvc.inicializarCamaras(playerEntity, vista);
     this.motor3d.scene.render(false, true);
 
@@ -205,7 +201,7 @@ export class EditorPlayerService {
     if (vista === 'FPS') {
       targetLookAt = targetCam.globalPosition.add(targetCam.getDirection(Vector3.Forward()));
     } else {
-      targetLookAt = this.state.cameraPivot!.getAbsolutePosition();
+      targetLookAt = this.playerCamSvc.cameraPivot!.getAbsolutePosition();
     }
 
     this.autoAnimSvc.startAmbientAutoAnimations();
@@ -218,7 +214,7 @@ export class EditorPlayerService {
         this.triggerSvc.prepararTriggersParaJuego();
 
         this.inputSvc.iniciarEscuchaTeclado(this.motor3d.scene, {
-          onToggleCamera: () => this.playerCamSvc.toggleCameraView(playerEntity, false),
+          onToggleCamera: () => this.toggleCameraUser(false),
           onInteractE: () => this.handleInteractions(true),
           onInteractI: () => this.handleInteractions(false)
         });
@@ -239,7 +235,14 @@ export class EditorPlayerService {
 
   public toggleCameraUser(isCinematicInitial: boolean = false): void {
     if (this.state.jugadorActivo && this.activePlayerController) {
-      this.playerCamSvc.toggleCameraView(this.activePlayerController.entity, isCinematicInitial);
+      const currentVista = this.state.modoVistaPrueba || 'TPS';
+      this.playerCamSvc.toggleCameraView(
+        this.activePlayerController.entity, 
+        currentVista,
+        isCinematicInitial,
+        this.state.ratonBloqueado(),
+        (newVista) => { this.state.modoVistaPrueba = newVista; }
+      );
     }
   }
 
@@ -410,8 +413,7 @@ export class EditorPlayerService {
     });
 
     this.playerCamSvc.restaurarCamaraEditor();
-    
-    if (this.state.cameraPivot) { this.state.cameraPivot.dispose(); this.state.cameraPivot = null; }
+    this.playerCamSvc.limpiarPivotTPS();
     
     this.inputSvc.detenerEscuchaTeclado(this.motor3d.scene);
     this.state.proxyColliders.forEach(p => p.dispose()); this.state.proxyColliders = [];

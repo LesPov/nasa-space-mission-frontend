@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -118,8 +117,15 @@ export class PlayerInteractionService {
       });
 
       if (hitCross && hitCross.hit && hitCross.pickedMesh) {
-        const picked = hitCross.pickedMesh as AbstractMesh;
-        const rootEntity = this.entityManager.getEntityByMesh(this.state.resolverObjetoSeleccionable(picked));
+        let current: any = hitCross.pickedMesh;
+        let rootEntity: GameEntity | undefined = undefined;
+        
+        // 🔥 LÓGICA DE RESOLUCIÓN ESC: Buscamos la primera entidad lógica en el árbol
+        while (current && current.name !== '__root__') {
+            rootEntity = this.entityManager.getEntityByMesh(current);
+            if (rootEntity) break;
+            current = current.parent;
+        }
         
         if (rootEntity && rootEntity.view) {
             const selectionDistance = this.getInteractionDistanceToTarget(rootEntity.view, this.lastInteractionProbePoint);
@@ -199,8 +205,6 @@ export class PlayerInteractionService {
       if (hitInteractuable.type === 'bubble') {
         showE = canInteractNow; 
       } else if (hitInteractuable.type === 'video_plane') {
-        // En video, encenderlo o apagarlo requiere E
-        // Aquí asumiremos que está interactuable si canInteractNow
         showE = canInteractNow; 
       } else {
         showE = !!seqIdForView && seqIdForView.trim() !== '' && canInteractNow;

@@ -1,9 +1,13 @@
 import { Behavior, Mesh, Nullable } from '@babylonjs/core';
-
+import { LoopManagerService, GamePhase } from './services/loop-manager.service';
+ 
 export class BubblePulseBehavior implements Behavior<Mesh> {
-  attachedNode: Nullable<Mesh> = null;
-  private target: Mesh | null = null;
-  private observer: any = null;
+  public attachedNode: Nullable<Mesh> = null;
+  private loopManager: LoopManagerService;
+
+  constructor(loopManager: LoopManagerService) {
+    this.loopManager = loopManager;
+  }
 
   get name(): string {
     return 'BubblePulseBehavior';
@@ -12,14 +16,13 @@ export class BubblePulseBehavior implements Behavior<Mesh> {
   init(): void {}
 
   attach(target: Mesh): void {
-    this.target = target;
-    const scene = target.getScene();
+    this.attachedNode = target;
 
-    this.observer = scene.onBeforeRenderObservable.add(() => {
-      if (!this.target || !this.target.isVisible) return;
-      if (!this.target.metadata) return;
+    this.loopManager.register('BubblePulse_' + target.uniqueId, GamePhase.ANIMATION, () => {
+      if (!this.attachedNode || !this.attachedNode.isVisible) return;
+      if (!this.attachedNode.metadata) return;
 
-      const m = this.target;
+      const m = this.attachedNode;
       const time = performance.now() * 0.003;
 
       if (!m.metadata.baseScaleX) {
@@ -48,8 +51,9 @@ export class BubblePulseBehavior implements Behavior<Mesh> {
   }
 
   detach(): void {
-    if (this.target && this.observer) {
-      this.target.getScene().onBeforeRenderObservable.remove(this.observer);
+    if (this.attachedNode) {
+      this.loopManager.unregister('BubblePulse_' + this.attachedNode.uniqueId);
     }
+    this.attachedNode = null;
   }
 }

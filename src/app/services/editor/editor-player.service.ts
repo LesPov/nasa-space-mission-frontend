@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Scene, Observer, Vector3, Quaternion, MeshBuilder, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Vector3, Quaternion, MeshBuilder, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
@@ -15,6 +15,8 @@ import { PlayerSequenceService } from './playerservice/player-sequence.service';
 import { PlayerTriggerService } from './player-trigger.service';
 import { PlayerBubbleService } from './playerservice/player-bubble';
 import { ObjectAnimationService } from './object-animation.service';
+import { LoopManagerService, GamePhase } from '../../core/engine/behaviors/services/loop-manager.service';
+
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayerService {
@@ -31,12 +33,11 @@ export class EditorPlayerService {
   private triggerSvc = inject(PlayerTriggerService);
   private bubbleSvc = inject(PlayerBubbleService);
   private autoAnimSvc = inject(ObjectAnimationService);
+  
+  private loopManager = inject(LoopManagerService);
 
   public playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();
-  private tpsUpdateObserver: Observer<Scene> | null = null;
-  private previewObserver: Observer<Scene> | null = null;
   private npcsYPropsAnimados: Mesh[] = [];
-  
   private backupsAnimados: any[] = [];
 
   constructor() {
@@ -122,7 +123,6 @@ export class EditorPlayerService {
             const pConfig = mergePlayerConfig(m.metadata.playerConfig);
             this.animSvc.sincronizarAnimaciones(this.motor3d.scene, m as Mesh, pConfig);
 
-            // 🔥 INICIAR CLIPS/SECUENCIAS EN AUTO-PLAY PARA EL ENTORNO
             const autoSeq = pConfig.sequences.find((s: any) => s.autoPlay);
             if (autoSeq) {
                 this.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, m as Mesh, pConfig);
@@ -160,7 +160,6 @@ export class EditorPlayerService {
 
     this.animSvc.sincronizarAnimaciones(this.motor3d.scene, obj, this.playerConfig);
 
-    // 🔥 INICIAR CLIPS/SECUENCIAS EN AUTO-PLAY PARA EL JUGADOR (Si es que le pusieron alguna cinemática de intro)
     const playerAutoSeq = this.playerConfig.sequences.find((s: any) => s.autoPlay);
     if (playerAutoSeq) {
         this.sequenceSvc.iniciarSecuenciaEnJuego(playerAutoSeq.id, obj, this.playerConfig);
@@ -283,11 +282,13 @@ export class EditorPlayerService {
 
   private iniciarBuclePrincipal(jugador: Mesh, colMeta: any, camMeta: any): void {
     const scene = this.motor3d.scene;
-    this.tpsUpdateObserver = scene.onBeforeRenderObservable.add(() => {
+    
+    // 🔥 FASE 2: MIGRACIÓN AL LOOP MANAGER
+    // Eliminamos el onBeforeRenderObservable directo y registramos nuestra función en el manager central
+    this.loopManager.register('PlayerMainLoop', GamePhase.LOGIC, (dtMs: number) => {
       if (!this.state.jugadorActivo || this.state.playState() !== 'PLAYING' || !this.state.ratonBloqueado()) return;
 
       const activeCamera = scene.activeCamera;
-      const dtMs = scene.getEngine().getDeltaTime();
       this.playerConfig = mergePlayerConfig(jugador.metadata?.playerConfig || null);
 
       this.triggerSvc.verificarTriggers(jugador);
@@ -357,6 +358,9 @@ export class EditorPlayerService {
     this.state.playState.set('EDITOR');
     this.resetMovimientoJugador();
     
+    // 🔥 FASE 2: Desregistro del Bucle Principal
+    this.loopManager.unregister('PlayerMainLoop');
+
     this.sequenceSvc.resetearSecuencias(); 
     this.animSvc.detenerTodasGlobal();
     this.animSvc.limpiarEstados(); 
@@ -421,7 +425,6 @@ export class EditorPlayerService {
     if (this.state.cameraPivot) { this.state.cameraPivot.dispose(); this.state.cameraPivot = null; }
     
     this.inputSvc.detenerEscuchaTeclado(scene);
-    if (this.tpsUpdateObserver) { scene.onBeforeRenderObservable.remove(this.tpsUpdateObserver); this.tpsUpdateObserver = null; }
     this.state.proxyColliders.forEach(p => p.dispose()); this.state.proxyColliders = [];
 
     this.state.objetoHovereado.set(null); 
@@ -486,8 +489,8 @@ export class EditorPlayerService {
     this.animSvc.sincronizarAnimaciones(this.motor3d.scene, trueMesh, this.playerConfig);
     this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceId, trueMesh, this.playerConfig);
 
-    this.previewObserver = this.motor3d.scene.onBeforeRenderObservable.add(() => {
-      const dtMs = this.motor3d.scene.getEngine().getDeltaTime();
+    // 🔥 FASE 2: Migración del Observer de Prevista
+    this.loopManager.register('PreviewSequence', GamePhase.LOGIC, (dtMs: number) => {
       const runtime = this.sequenceSvc.actualizarSecuencia(dtMs, trueMesh, this.playerConfig);
       
       if (runtime.running && runtime.step) {
@@ -498,10 +501,7 @@ export class EditorPlayerService {
   }
 
   public detenerPreviewSecuencia() {
-    if (this.previewObserver) { 
-        this.motor3d.scene.onBeforeRenderObservable.remove(this.previewObserver); 
-        this.previewObserver = null; 
-    }
+    this.loopManager.unregister('PreviewSequence');
     
     if (this.state.playState() === 'EDITOR') {
         this.sequenceSvc.resetearSecuencias();

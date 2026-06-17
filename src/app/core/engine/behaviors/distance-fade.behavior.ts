@@ -1,9 +1,13 @@
 import { Behavior, Mesh, Scene, Vector3 } from '@babylonjs/core';
-
+import { LoopManagerService, GamePhase } from './services/loop-manager.service';
+ 
 export class DistanceFadeBehavior implements Behavior<Mesh> {
-  // BABYLONJS EXIGE ESTA PROPIEDAD PÚBLICA EN LOS BEHAVIORS
   public attachedNode: Mesh | null = null;
-  private observer: any = null;
+  private loopManager: LoopManagerService;
+
+  constructor(loopManager: LoopManagerService) {
+    this.loopManager = loopManager;
+  }
 
   get name(): string {
     return 'DistanceFadeBehavior';
@@ -15,7 +19,7 @@ export class DistanceFadeBehavior implements Behavior<Mesh> {
     this.attachedNode = target;
     const scene = target.getScene();
 
-    this.observer = scene.onBeforeRenderObservable.add(() => {
+    this.loopManager.register('DistanceFade_' + target.uniqueId, GamePhase.POST_UPDATE, () => {
       if (!this.attachedNode || !this.attachedNode.metadata) return;
       if (this.attachedNode.metadata.ignoraNiebla) {
         this.attachedNode.visibility = 1;
@@ -49,8 +53,8 @@ export class DistanceFadeBehavior implements Behavior<Mesh> {
   }
 
   detach(): void {
-    if (this.attachedNode && this.observer) {
-      this.attachedNode.getScene().onBeforeRenderObservable.remove(this.observer);
+    if (this.attachedNode) {
+      this.loopManager.unregister('DistanceFade_' + this.attachedNode.uniqueId);
     }
     this.attachedNode = null;
   }

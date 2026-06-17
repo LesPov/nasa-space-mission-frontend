@@ -1,10 +1,11 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import {
   Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4,
   UniversalCamera, DefaultRenderingPipeline, Color3, ColorCurves, GlowLayer
 } from '@babylonjs/core';
 import { DynamicCameraBehavior } from '../core/engine/behaviors/dynamic-camera.behavior';
-
+import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
+ 
 @Injectable({
   providedIn: 'root'
 })
@@ -19,6 +20,8 @@ export class Motor3dService {
   public renderingPipeline!: DefaultRenderingPipeline;
   public glowLayer!: GlowLayer; 
   public currentFps: number = 0;
+
+  private loopManager = inject(LoopManagerService);
 
   private readonly TPS_MIN_RADIUS = 0.5;
   private readonly TPS_MAX_RADIUS = 150; 
@@ -40,6 +43,9 @@ export class Motor3dService {
     this.scene.gravity = new Vector3(0, -0.25, 0);
     this.scene.skipPointerMovePicking = true;
 
+    // 🔥 INICIALIZAMOS EL DIRECTOR DE LA ORQUESTA
+    this.loopManager.initialize(this.scene);
+
     // --- CÁMARA EDITOR ---
     this.editorCamera = new ArcRotateCamera('editorCamera', Math.PI / 4, Math.PI / 3, 25, Vector3.Zero(), this.scene);
     this.editorCamera.minZ = 0.1; 
@@ -49,7 +55,7 @@ export class Motor3dService {
     this.editorCamera.attachControl(canvas, true);
     this.editorCamera._panningMouseButton = 2;
     this.editorCamera.allowUpsideDown = false;
-    this.editorCamera.addBehavior(new DynamicCameraBehavior()); // 🔥 Nueva Arquitectura
+    this.editorCamera.addBehavior(new DynamicCameraBehavior(this.loopManager)); 
 
     // --- CÁMARA FPS ---
     this.playerCameraFPS = new UniversalCamera('playerCameraFPS', new Vector3(0, 0, 0), this.scene);
@@ -148,6 +154,7 @@ export class Motor3dService {
 
   detenerMotor(): void {
     if (this.engine) {
+      this.loopManager.dispose();
       this.engine.stopRenderLoop();
       this.scene.dispose();
       this.engine.dispose();

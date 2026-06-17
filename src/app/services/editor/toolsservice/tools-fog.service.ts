@@ -1,9 +1,10 @@
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, Observer } from '@babylonjs/core';
+import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { FogLevel } from '../player-config.model';
-
+import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
+ 
 class FogWallState { 
   dist = 500; 
   height = 10; 
@@ -19,8 +20,9 @@ class FogWallState {
 export class ToolsFogService { 
   private motor3d = inject(Motor3dService); 
   private state = inject(EditorStateService);
+  private loopManager = inject(LoopManagerService);
 
-  private fogObserver: Observer<Scene> | null = null; 
+  private isRegistered = false; 
   private firstFrame = true;
 
   private curR = 0; 
@@ -67,7 +69,7 @@ export class ToolsFogService {
     const scene = this.motor3d.scene; 
     if (!scene) return;
 
-    if (!this.fogObserver) {
+    if (!this.isRegistered) {
       const globalClearHex = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
       const clearColor3 = Color3.FromHexString(globalClearHex);
       this.curR = clearColor3.r; this.curG = clearColor3.g; this.curB = clearColor3.b;
@@ -76,7 +78,9 @@ export class ToolsFogService {
       this.curEnd = scene.fogEnd || 500000;
       this.firstFrame = true;
 
-      this.fogObserver = scene.onBeforeRenderObservable.add(() => this.updateFogFrame(scene));
+      // 🔥 FASE 2: MIGRACIÓN AL LOOP MANAGER EN FASE POST_UPDATE
+      this.loopManager.register('ToolsFogUpdate', GamePhase.POST_UPDATE, () => this.updateFogFrame(scene));
+      this.isRegistered = true;
     }
   }
 

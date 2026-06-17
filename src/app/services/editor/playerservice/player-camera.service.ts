@@ -8,20 +8,20 @@ import {
   Animation,
   CubicEase,
   EasingFunction,
-  Quaternion,
-  Observer,
-  Scene
+  Quaternion
 } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
 import { Motor3dService } from '../../motor-3d.service';
 import { PlayerRuntimeConfig } from '../player-config.model';
 import { EstadoFisico } from './player-physics.service';
 import { SeqRuntime } from './player-sequence.service';
-
+import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
+ 
 @Injectable({ providedIn: 'root' })
 export class PlayerCameraManagerService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
+  private loopManager = inject(LoopManagerService);
 
   public currentEyeLevel = 1.6;
   public currentPivotY = 1.5;
@@ -32,16 +32,11 @@ export class PlayerCameraManagerService {
   public headNode: TransformNode | null = null;
   public initialHeadLocal: Vector3 | null = null;
   
-  private fadeObserver: Observer<Scene> | null = null;
-
   public resetearTransiciones(): void {
     this.isTransitioningCameras = false;
     this.overrideTargetPivotY = null;
     this.idleTime = 0;
-    if (this.fadeObserver) {
-       this.motor3d.scene.onBeforeRenderObservable.remove(this.fadeObserver);
-       this.fadeObserver = null;
-    }
+    this.loopManager.unregister('CameraFadeTransition');
   }
 
   public inicializarCamaras(
@@ -105,9 +100,8 @@ export class PlayerCameraManagerService {
       this.motor3d.playerCameraTPS.lowerRadiusLimit = minRad;
       this.motor3d.playerCameraTPS.upperRadiusLimit = maxRad;
       
-      // 🔥 REFUERZO DE PROTECCIÓN PARA NO ATRAVESAR PISO NI PERSONAJE
       this.motor3d.playerCameraTPS.checkCollisions = true;
-      this.motor3d.playerCameraTPS.collisionRadius = new Vector3(0.25, 0.25, 0.25); // Engrosado de 0.15 a 0.25 para no atravesar muros fácilmente
+      this.motor3d.playerCameraTPS.collisionRadius = new Vector3(0.25, 0.25, 0.25); 
       this.motor3d.playerCameraTPS.upperBetaLimit = (Math.PI / 2) + 0.4;
       
       this.motor3d.playerCameraTPS.wheelPrecision = 15;
@@ -163,7 +157,6 @@ export class PlayerCameraManagerService {
     this.isTransitioningCameras = true;
     const scaleNow = jugador.scaling.y || 1;
     
-    // Asegurar que el radio objetivo está dentro de los nuevos límites configurados
     const minR = (config.camera.tpsMinRadius ?? 1.5) * scaleNow;
     const maxR = (config.camera.tpsMaxRadius ?? 15) * scaleNow;
     const targetRadiusRaw = (config.camera.tpsRadius || 5) * scaleNow;
@@ -177,40 +170,34 @@ export class PlayerCameraManagerService {
     const canvas = this.motor3d.engine.getRenderingCanvas();
     const scene = this.motor3d.scene;
 
-    // Reducimos los frames para que no sea lento pero mantenga suavidad cinematográfica (~1.3 seg)
     const framesTransicion = 80;
 
-    if (this.fadeObserver) {
-        scene.onBeforeRenderObservable.remove(this.fadeObserver);
-        this.fadeObserver = null;
-    }
+    this.loopManager.unregister('CameraFadeTransition');
 
     if (this.state.modoVistaPrueba === 'FPS') {
       if (canvas) fpsCam.detachControl();
 
-      // Desactivamos colisiones y límites durante la transición para evitar rebotes bruscos
       tpsCam.checkCollisions = false;
       tpsCam.lowerRadiusLimit = null;
       tpsCam.upperRadiusLimit = null;
 
       tpsCam.alpha = -(fpsCam.rotation.y || 0) - Math.PI / 2;
       
-      // 🔥 Ajuste cinematográfico: Un poco más arriba de lo que miraba en 1ra persona
       let currentBeta = (fpsCam.rotation.x || 0) + Math.PI / 2;
       let targetBeta = currentBeta;
-      // Si estaba mirando relativamente recto, subimos la cámara para ver la espalda cómodamente
       if (targetBeta > (Math.PI / 2 - 0.4) && targetBeta < (Math.PI / 2 + 0.4)) {
-         targetBeta -= 0.15; // Lo sube un poco
+         targetBeta -= 0.15; 
       }
 
       tpsCam.beta = currentBeta;
-      tpsCam.radius = 0.05; // Evita valor 0 absoluto para que no colapse la matemática esférica
+      tpsCam.radius = 0.05; 
 
       this.currentPivotY = this.currentEyeLevel;
       this.state.modoVistaPrueba = 'TPS';
       scene.activeCamera = tpsCam;
 
-      this.fadeObserver = scene.onBeforeRenderObservable.add(() => {
+      // 🔥 FASE 2: MIGRACIÓN AL LOOP MANAGER
+      this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
           const fadeLimit = Math.min(2.5, targetRadius * 0.5);
           if (tpsCam.radius < fadeLimit) {
              jugador.visibility = Math.max(0, (tpsCam.radius - 1.0) / (fadeLimit - 1.0));
@@ -226,7 +213,7 @@ export class PlayerCameraManagerService {
 
       animRad?.onAnimationEndObservable.addOnce(() => {
         this.resetearTransiciones();
-        tpsCam.checkCollisions = true; // Reactivamos colisiones al terminar
+        tpsCam.checkCollisions = true; 
         jugador.visibility = 1;
         jugador.getChildMeshes().forEach(m => m.visibility = 1);
         if (canvas) tpsCam.attachControl(canvas, true);
@@ -234,8 +221,6 @@ export class PlayerCameraManagerService {
     } else {
       if (canvas) tpsCam.detachControl();
 
-      // Guardamos la rotación EXACTA antes de iniciar la transición
-      // Esto evita que la cámara intente girar si el jugador sigue corriendo hacia adelante
       const fixedAlpha = tpsCam.alpha;
       const fixedBeta = tpsCam.beta;
 
@@ -245,9 +230,8 @@ export class PlayerCameraManagerService {
 
       this.overrideTargetPivotY = (config.camera.fpsEyeLevel || 1.6) * scaleNow;
 
-      this.fadeObserver = scene.onBeforeRenderObservable.add(() => {
-          // Bloqueamos alfa y beta forzadamente durante la transición
-          // Evita que la cámara "salte" y se voltee si el targetPivote atraviesa la lente corriendo
+      // 🔥 FASE 2: MIGRACIÓN AL LOOP MANAGER
+      this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
           tpsCam.alpha = fixedAlpha;
           tpsCam.beta = fixedBeta;
 
@@ -266,7 +250,6 @@ export class PlayerCameraManagerService {
       animRad?.onAnimationEndObservable.addOnce(() => {
         this.state.modoVistaPrueba = 'FPS';
         
-        // Usamos el alpha y beta guardados, garantizando que el jugador mirará hacia donde miraba su TPS
         fpsCam.rotation.y = -fixedAlpha - Math.PI / 2;
         fpsCam.rotation.x = fixedBeta - Math.PI / 2;
         
@@ -346,14 +329,12 @@ export class PlayerCameraManagerService {
 
     if (this.state.modoVistaPrueba === 'TPS' && this.state.cameraPivot) {
       if (!this.isTransitioningCameras) {
-        // 🔥 ACTUALIZA LÍMITES CONSTANTEMENTE EN CASO DE EDITARSE EN VIVO
         const minRadius = (config.camera.tpsMinRadius ?? 1.5) * scaleY;
         const maxRadius = (config.camera.tpsMaxRadius ?? 15) * scaleY;
 
         this.motor3d.playerCameraTPS.lowerRadiusLimit = minRadius;
         this.motor3d.playerCameraTPS.upperRadiusLimit = maxRadius;
 
-        // Obliga a rebotar si la cámara actual se quedó atrapada fuera de los límites editados
         if (this.motor3d.playerCameraTPS.radius < minRadius) {
           this.motor3d.playerCameraTPS.radius = minRadius;
         }
@@ -371,7 +352,6 @@ export class PlayerCameraManagerService {
       const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
 
       if (!isNaN(globalPivotPos.x) && !isNaN(globalPivotPos.y) && !isNaN(globalPivotPos.z)) {
-        // 🔥 Incrementamos la velocidad del LERP a 0.6 para que siga de cerca al personaje sin quedarse tan atrás al correr
         this.state.cameraPivot.position = Vector3.Lerp(this.state.cameraPivot.position, globalPivotPos, 0.6);
       }
 
@@ -399,9 +379,6 @@ export class PlayerCameraManagerService {
       }
     }
   }
-
-
-
 
   public volverAJuego(): void {
     this.state.playState.set('TRANSITIONING');

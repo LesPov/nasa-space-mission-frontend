@@ -6,13 +6,15 @@ import { SceneUtilsService } from '../scene-utils.service';
 import { SceneProjectionService } from '../scene-projection.service';
 import { BubblePulseBehavior } from '../../../../core/engine/behaviors/bubble-pulse.behavior';
 import { DistanceFadeBehavior } from '../../../../core/engine/behaviors/distance-fade.behavior';
-
+import { LoopManagerService } from '../../../../core/engine/behaviors/services/loop-manager.service';
+ 
 @Injectable({ providedIn: 'root' })
 export class LoaderPrimitiveService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
   private utilsSvc = inject(SceneUtilsService);
   private projectionSvc = inject(SceneProjectionService);
+  private loopManager = inject(LoopManagerService); // 🔥 FASE 2: Inyectado para los Behaviors
 
   public cargarPrimitiva(obj: any, mallasCreadas: Map<string, Mesh>): void {
     const scene = this.motor3d.scene;
@@ -123,10 +125,10 @@ export class LoaderPrimitiveService {
     mesh.ellipsoid = new Vector3((savedCollider.sizeX ?? 0.5) * scaleX, (savedCollider.sizeY ?? 0.5) * scaleY, (savedCollider.sizeZ ?? 0.5) * scaleZ);
     mesh.ellipsoidOffset = new Vector3((savedCollider.offsetX ?? 0) * scaleX, (savedCollider.offsetY ?? 0) * scaleY, (savedCollider.offsetZ ?? 0) * scaleZ);
 
-    // 🔥 ADJUNTANDO BEHAVIORS SEGÚN TIPO
+    // 🔥 ADJUNTANDO BEHAVIORS SEGÚN TIPO USANDO LOOP MANAGER
     if (obj.type === 'bubble') {
-      mesh.addBehavior(new BubblePulseBehavior());
-      mesh.addBehavior(new DistanceFadeBehavior());
+      mesh.addBehavior(new BubblePulseBehavior(this.loopManager));
+      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager));
 
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = new Color3(0.9, 0.95, 1.0);
@@ -141,7 +143,7 @@ export class LoaderPrimitiveService {
       mesh.material = mat;
     } 
     else if (obj.type === 'video_plane') {
-      mesh.addBehavior(new DistanceFadeBehavior());
+      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager));
       
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = new Color3(0, 0, 0);
@@ -170,7 +172,7 @@ export class LoaderPrimitiveService {
       this.projectionSvc.aplicarLogicaHolograma(mesh, scene);
     } 
     else if (obj.type?.startsWith('light_')) {
-      mesh.addBehavior(new DistanceFadeBehavior());
+      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager));
 
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = Color3.FromHexString(lightColorHex);

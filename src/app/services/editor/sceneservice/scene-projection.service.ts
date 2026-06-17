@@ -1,12 +1,13 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Color3, Engine, Mesh, MeshBuilder, Ray, Scene, StandardMaterial, Texture, Vector3 } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
-
+import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
+ 
 @Injectable({ providedIn: 'root' })
 export class SceneProjectionService {
 
   private state = inject(EditorStateService);
+  private loopManager = inject(LoopManagerService);
 
   public clampNum(v: number, min: number, max: number, fallback = min): number {
     if (Number.isNaN(v) || v === null || v === undefined) return fallback;
@@ -102,8 +103,10 @@ export class SceneProjectionService {
   public aplicarLogicaHolograma(mesh: Mesh, scene: Scene): void {
     if (!mesh.metadata) mesh.metadata = {};
 
-    // 🔥 OBSERVADOR CINEMÁTICO DE DESVANECIMIENTO (FADE)
-    const fadeObserver = scene.onBeforeRenderObservable.add(() => {
+    const callbackId = 'HologramaFade_' + mesh.uniqueId;
+
+    // 🔥 FASE 2: MIGRACIÓN AL LOOP MANAGER
+    this.loopManager.register(callbackId, GamePhase.POST_UPDATE, () => {
       if (!mesh || mesh.isDisposed?.()) return;
 
       const currentModeIsBW = scene.metadata?.globalVisualMode === 'bw';
@@ -287,7 +290,7 @@ export class SceneProjectionService {
 
     // Limpieza de memoria al destruir el objeto base
     mesh.onDisposeObservable.add(() => {
-      scene.onBeforeRenderObservable.remove(fadeObserver);
+      this.loopManager.unregister(callbackId);
       this.limpiarDecalsImagen(mesh);
 
       const decalMaterial = mesh.metadata?.decalMaterial;

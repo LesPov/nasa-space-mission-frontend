@@ -1,3 +1,4 @@
+
 import { GamePhase } from '../../../../core/engine/behaviors/services/loop-manager.service';
 import { BaseCharacterController } from './base-character.controller';
 import { CharacterContext } from '../character-context.interface';
@@ -10,10 +11,8 @@ export class NpcController extends BaseCharacterController {
   }
 
   public start(): void {
-    // 1. Sincronizamos animaciones
     this.context.animSvc.sincronizarAnimaciones(this.context.motor3d.scene, this.entity);
 
-    // 2. Auto-iniciar secuencia si la tiene configurada
     const autoSeq = this.config.sequences.find((s: any) => s.autoPlay);
     if (autoSeq) {
       this.context.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, this.entity);
@@ -21,17 +20,14 @@ export class NpcController extends BaseCharacterController {
       this.context.animSvc.reproducirIdle(this.entity);
     }
 
-    // 3. Registrarse en el Loop Manager
     this.context.loopManager.register(this.loopId, GamePhase.LOGIC, (dtMs: number) => {
       this.update(dtMs);
     });
   }
 
   protected update(dtMs: number): void {
-    // Calcular rutinas/cinemáticas del NPC
     const seqRuntime = this.context.sequenceSvc.actualizarSecuencia(dtMs, this.entity);
     
-    // Físicas procedurales falsas (Aplicar transformaciones basadas en la secuencia de animación)
     if (seqRuntime.running && seqRuntime.step) {
       const soY = seqRuntime.step.offsetY || 0;
       const soF = seqRuntime.step.offsetForward || 0;
@@ -55,10 +51,8 @@ export class NpcController extends BaseCharacterController {
       this.estadoFisico.isMoving = false;
     }
     
-    // Reproducir animaciones según estado
     this.context.animSvc.gestionarAnimaciones(this.entity, this.estadoFisico, seqRuntime);
     
-    // Congelar rotación si la animación lo requiere
     if (seqRuntime.freezeOrientation) {
       this.context.sequenceSvc.applyLockedOrientationWhileSequence(this.entity);
     }

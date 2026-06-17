@@ -14,6 +14,7 @@ import { MiniVisorEscena } from '../../../components/mini-visor-escena/mini-viso
 import { debounceTime, Subscription } from 'rxjs';
 import { AbstractMesh } from '@babylonjs/core';
 import { GlobalTimeline } from '../../../components/global-timeline/global-timeline';
+import { GameSession } from '../../../core/engine/game-session';
 
 @Component({
   selector: 'app-editor-escena',
@@ -28,6 +29,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public motor3dSvc = inject(Motor3dService);
   public layoutSvc = inject(LayoutService);
   public epiApiSvc = inject(EpisodiosService);
+  public gameSession = inject(GameSession);
   public cdr = inject(ChangeDetectorRef);
 
   // Estados Generales

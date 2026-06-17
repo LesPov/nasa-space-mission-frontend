@@ -3,7 +3,7 @@ import { Component, Input, OnInit, OnChanges, SimpleChanges, inject } from '@ang
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh, AnimationGroup } from '@babylonjs/core';
-import { EditorPlayerService } from '../../../../services/editor/editor-player.service';
+import { EditorPreviewService } from '../../../../services/editor/editor-preview.service';
 import { PlayerClipSequence, mergePlayerConfig } from '../../../../services/editor/player-config.model';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { SequenceMutatorService } from '../../../../services/editor/mutators/sequence-mutator.service';
@@ -27,7 +27,7 @@ const ACTION_ROWS_LIGHT = [...ACTION_ROWS_PROP, { key: 'lightOn', label: '💡 F
 export class PropSequences implements OnInit, OnChanges {
   @Input() objeto!: AbstractMesh;
   
-  private playerSvc = inject(EditorPlayerService);
+  private previewSvc = inject(EditorPreviewService);
   private motor3dSvc = inject(Motor3dService); 
   private sequenceMutator = inject(SequenceMutatorService);
   private entityManager = inject(EntityManagerService);
@@ -108,7 +108,7 @@ export class PropSequences implements OnInit, OnChanges {
     if(this.objeto.metadata.type !== 'trigger'){
         const entity = this.entityManager.getEntityByMesh(this.objeto);
         if (entity) {
-            this.playerSvc.iniciarPreviewSecuencia(entity, seq.id);
+            this.previewSvc.iniciarPreviewSecuencia(entity, seq.id);
             this.animStatus = `Visualizando: ${seq.name}...`;
         }
     }

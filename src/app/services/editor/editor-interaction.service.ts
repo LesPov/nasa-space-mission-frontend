@@ -1,16 +1,15 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { Node } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
-import { EditorPlayerService } from './editor-player.service';
+import { PlayerInputService } from './playerservice/player-input.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorInteractionService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
-  private player = inject(EditorPlayerService);
+  private inputSvc = inject(PlayerInputService);
 
   abrirInteraccionJugador(nodo: Node): void {
     this.state.playState.set('INTERACTING');
@@ -21,7 +20,7 @@ export class EditorInteractionService {
     this.state.ratonBloqueado.set(false);
 
     document.exitPointerLock();
-    this.player.resetMovimientoJugador();
+    this.inputSvc.resetearInputs();
   }
 
   cerrarInteraccionJugador(): void {
@@ -31,7 +30,7 @@ export class EditorInteractionService {
     this.state.objetoHovereado.set(null);
     this.state.mirandoObjetoInteractuable.set(false);
 
-    this.player.resetMovimientoJugador();
+    this.inputSvc.resetearInputs();
 
     const canvas = this.motor3d.engine.getRenderingCanvas();
     if (canvas) {
@@ -44,4 +43,3 @@ export class EditorInteractionService {
     }
   }
 }
-

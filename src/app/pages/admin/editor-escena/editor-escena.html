@@ -237,7 +237,7 @@
     </div>
   </div>
 
-  <div class="modal-overlay" *ngIf="editorSvc.playState() === 'INTERACTING'" style="z-index: 1000;">
+  <div class="modal-overlay" *ngIf="gameSession.isInteracting()" style="z-index: 1000;">
     <div class="rpg-modal">
       <div class="rpg-modal-header"><h3>🔍 Inspeccionando Objeto</h3></div>
       <div class="rpg-modal-body">
@@ -282,29 +282,29 @@
             <button class="toggle-panel-btn toggle-right" (click)="toggleInspector()" [title]="showInspector ? 'Ocultar Inspector' : 'Mostrar Inspector'">{{ showInspector ? '▶' : '◀' }}</button>
             <button class="toggle-panel-btn toggle-bottom" (click)="toggleTimeline()" [title]="showTimeline ? 'Ocultar Timeline' : 'Mostrar Timeline'">{{ showTimeline ? '▼' : '▲' }}</button>
             <div class="fps-badge">FPS: {{ fps() }}</div>
-            <app-toolbar-escena *ngIf="editorSvc.playState() === 'EDITOR' || editorSvc.playState() === 'EDITING_IN_GAME' || (editorSvc.playState() === 'PLAYING' && !editorSvc.ratonBloqueado())"></app-toolbar-escena>
+            <app-toolbar-escena *ngIf="editorSvc.playState() === 'EDITOR' || editorSvc.playState() === 'EDITING_IN_GAME' || (editorSvc.playState() === 'PLAYING' && !gameSession.pointerLocked())"></app-toolbar-escena>
           </ng-container>
 
           <!-- CROSSHAIR, TOASTS Y HUD DE JUEGO (ADMIN Y USER) -->
-          <div class="crosshair-ui" *ngIf="editorSvc.playState() === 'PLAYING' && stateSvc.modoVistaPrueba === 'FPS' && editorSvc.ratonBloqueado()" [class.hovering]="editorSvc.mirandoObjetoInteractuable()"></div>
+          <div class="crosshair-ui" *ngIf="gameSession.isPlaying() && gameSession.cameraView() === 'FPS' && gameSession.pointerLocked()" [class.hovering]="gameSession.hoveredMesh() !== null"></div>
 
-          <div class="modern-toast-container" *ngIf="stateSvc.mensajeTriggerHUD() !== null" style="bottom: 120px; z-index: 300;">
+          <div class="modern-toast-container" *ngIf="gameSession.hudMessage() !== null" style="bottom: 120px; z-index: 300;">
               <div class="modern-toast-box" style="background: rgba(30, 58, 138, 0.95); border: 2px solid #60a5fa; box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);">
-                 <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">📍 {{ stateSvc.mensajeTriggerHUD() }}</div>
+                 <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">📍 {{ gameSession.hudMessage() }}</div>
               </div>
           </div>
 
-          <div class="modern-toast-container" *ngIf="stateSvc.playState() === 'PLAYING' && stateSvc.targetInteractuable() && stateSvc.ratonBloqueado() && (stateSvc.showToastE() || stateSvc.showToastI() || (editorSvc.rolSimulado() === 'admin' && stateSvc.modoVistaPrueba === 'FPS'))">
+          <div class="modern-toast-container" *ngIf="gameSession.isPlaying() && gameSession.targetInteractuable() && gameSession.pointerLocked() && (gameSession.showToastE() || gameSession.showToastI() || (editorSvc.rolSimulado() === 'admin' && gameSession.cameraView() === 'FPS'))">
             <div class="modern-toast-box">
-              <div class="toast-title">{{ stateSvc.targetInteractuable()?.name }}</div>
+              <div class="toast-title">{{ gameSession.targetInteractuable()?.name }}</div>
               <div class="toast-actions-grid">
-                <div class="action-item" *ngIf="editorSvc.rolSimulado() === 'admin' && stateSvc.modoVistaPrueba === 'FPS'">
+                <div class="action-item" *ngIf="editorSvc.rolSimulado() === 'admin' && gameSession.cameraView() === 'FPS'">
                   <kbd class="key-cap">Click</kbd><span class="action-label">Editar</span>
                 </div>
-                <div class="action-item" *ngIf="stateSvc.showToastE()">
+                <div class="action-item" *ngIf="gameSession.showToastE()">
                   <kbd class="key-cap">E</kbd><span class="action-label">Acción</span>
                 </div>
-                <div class="action-item" *ngIf="stateSvc.showToastI()">
+                <div class="action-item" *ngIf="gameSession.showToastI()">
                   <kbd class="key-cap">I</kbd><span class="action-label">Leer</span>
                 </div>
               </div>
@@ -312,8 +312,8 @@
           </div>
 
           <div class="hud-container" *ngIf="!modalMisionUsuario">
-            <div class="hud-message hud-playing" *ngIf="editorSvc.playState() === 'PLAYING' && editorSvc.ratonBloqueado()"><span class="hud-icon">🎮</span> "WASD" Mover • "Espacio" Saltar • "V" Cambiar Cámara</div>
-            <div class="hud-message hud-paused" *ngIf="editorSvc.playState() === 'PLAYING' && !editorSvc.ratonBloqueado() && editorSvc.rolSimulado() === 'admin'"><span class="hud-icon">⏸️</span> Juego Pausado | Click en la pantalla para volver</div>
+            <div class="hud-message hud-playing" *ngIf="gameSession.isPlaying() && gameSession.pointerLocked()"><span class="hud-icon">🎮</span> "WASD" Mover • "Espacio" Saltar • "V" Cambiar Cámara</div>
+            <div class="hud-message hud-paused" *ngIf="gameSession.isPlaying() && !gameSession.pointerLocked() && editorSvc.rolSimulado() === 'admin'"><span class="hud-icon">⏸️</span> Juego Pausado | Click en la pantalla para volver</div>
             <div class="hud-message hud-editing" *ngIf="editorSvc.playState() === 'EDITING_IN_GAME'"><span class="hud-icon">⚙️</span> MODO EDICIÓN EN VIVO | Click al fondo o "ESC" para volver</div>
           </div>
           

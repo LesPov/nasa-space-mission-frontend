@@ -1,11 +1,16 @@
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, Injector } from '@angular/core';
 import { Observer, KeyboardInfo, Scene, KeyboardEventTypes } from '@babylonjs/core';
-import { EditorStateService } from '../editor-state.service';
+import { GameSession } from '../../../core/engine/game-session';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInputService {
-  private state = inject(EditorStateService);
+  private injector = inject(Injector);
+  
+  // 🔥 FIX DE DEPENDENCIA CIRCULAR: Getter Lazy
+  private get session(): GameSession { 
+    return this.injector.get(GameSession); 
+  }
 
   public inputMap: Record<string, boolean> = {};
   public eKeyPressed = false;
@@ -18,7 +23,7 @@ export class PlayerInputService {
     callbacks: { onToggleCamera: () => void, onInteractE: () => void, onInteractI: () => void }
   ): void {
     this.tecladoObserver = scene.onKeyboardObservable.add((kbInfo: KeyboardInfo) => {
-      if (this.state.playState() !== 'PLAYING' || !this.state.ratonBloqueado()) return;
+      if (!this.session.isPlaying() || !this.session.pointerLocked()) return;
 
       const keyStr = kbInfo.event.key ? kbInfo.event.key.toLowerCase() : '';
       const codeStr = kbInfo.event.code ? kbInfo.event.code.toLowerCase() : '';

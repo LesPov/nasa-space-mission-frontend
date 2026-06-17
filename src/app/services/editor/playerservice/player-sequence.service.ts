@@ -1,7 +1,7 @@
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, Injector } from '@angular/core';
 import { Mesh, Quaternion, Vector3, UniversalCamera, Light, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
-import { EditorStateService } from '../editor-state.service';
+import { GameSession } from '../../../core/engine/game-session';
 import { Motor3dService } from '../../motor-3d.service';
 import { PlayerClipSequence, PlayerSequenceStep, cloneDefaultPlayerConfig } from '../player-config.model';
 import { GameStateService } from '../game-state.service';
@@ -22,9 +22,14 @@ export interface SeqRuntime {
 
 @Injectable({ providedIn: 'root' })
 export class PlayerSequenceService {
-  private state = inject(EditorStateService);
   private motor3d = inject(Motor3dService);
   private gameState = inject(GameStateService);
+  private injector = inject(Injector);
+
+  // 🔥 FIX DE DEPENDENCIA CIRCULAR: Getter Lazy
+  private get session(): GameSession { 
+    return this.injector.get(GameSession); 
+  }
 
   private activeSequences = new Map<string, {
     id: string;
@@ -62,7 +67,7 @@ export class PlayerSequenceService {
     return ['climbUp', 'climbFinish', 'hangIdle', 'vault', 'stepUp'].includes(step.action);
   }
 
-  private captureSequenceOrientationState(jugador: Mesh, state: any): void {
+  private captureSequenceOrientationState(jugador: Mesh, state: any, isPlayer: boolean): void {
     jugador.computeWorldMatrix(true);
     if (jugador.rotationQuaternion) {
         state.quaternion = jugador.rotationQuaternion.clone();
@@ -71,7 +76,7 @@ export class PlayerSequenceService {
         jugador.rotationQuaternion = state.quaternion.clone();
     }
     
-    if (this.state.jugadorActivo === jugador) {
+    if (isPlayer) {
         const fpsCam = this.motor3d.playerCameraFPS;
         this.lockedSequenceFPSRotation = fpsCam.rotation.clone();
         const tpsCam = this.motor3d.playerCameraTPS;
@@ -93,12 +98,13 @@ export class PlayerSequenceService {
       jugador.rotation.set(0, 0, 0);
     }
     
-    if (this.state.jugadorActivo === jugador) {
+    const activePlayer = this.session.activePlayerEntity();
+    if (activePlayer && activePlayer.uid === entity.uid) {
         const activeCamera = this.motor3d.scene.activeCamera;
-        if (this.state.modoVistaPrueba === 'FPS' && activeCamera instanceof UniversalCamera && this.lockedSequenceFPSRotation) {
+        if (this.session.cameraView() === 'FPS' && activeCamera instanceof UniversalCamera && this.lockedSequenceFPSRotation) {
           activeCamera.rotation.copyFrom(this.lockedSequenceFPSRotation);
         }
-        if (this.state.modoVistaPrueba === 'TPS' && this.lockedSequenceTPSAlpha !== null && this.lockedSequenceTPSBeta !== null) {
+        if (this.session.cameraView() === 'TPS' && this.lockedSequenceTPSAlpha !== null && this.lockedSequenceTPSBeta !== null) {
           this.motor3d.playerCameraTPS.alpha = this.lockedSequenceTPSAlpha;
           this.motor3d.playerCameraTPS.beta = this.lockedSequenceTPSBeta;
         }
@@ -114,7 +120,6 @@ export class PlayerSequenceService {
     const seqToRun = seqs.find(s => s.id === sequenceId);
     
     if (seqToRun) {
-      // 🔥 NARRATIVA: Impedir inicio si no cumple historia
       if (!this.gameState.evaluateAllConditions(seqToRun.conditions)) {
           console.log(`[Narrativa] Secuencia ${sequenceId} omitida (No cumple requisitos).`);
           return;
@@ -131,7 +136,8 @@ export class PlayerSequenceService {
         jugador.rotationQuaternion = Quaternion.FromEulerAngles(jugador.rotation.x, jugador.rotation.y, jugador.rotation.z);
         jugador.rotation.set(0, 0, 0);
       }
-      this.captureSequenceOrientationState(jugador, state);
+      const isPlayer = this.session.activePlayerEntity()?.uid === entity.uid;
+      this.captureSequenceOrientationState(jugador, state, isPlayer);
     }
   }
 
@@ -163,7 +169,6 @@ export class PlayerSequenceService {
 
     let step = sequence.steps[Math.max(0, Math.min(state.index, sequence.steps.length - 1))] || null;
 
-    // 🔥 NARRATIVA: Saltar pasos que no apliquen a la rama narrativa actual (Ramificación/Skip Reactivo)
     let loopSafeguard = 0;
     while (step && !this.gameState.evaluateAllConditions(step.conditions)) {
         state.index++;
@@ -189,7 +194,10 @@ export class PlayerSequenceService {
     if (state.stepEntered) {
       state.jumpTriggered = false;
       state.orientationLocked = this.shouldLockOrientationForSequence(step);
-      if (jugador && state.orientationLocked) this.captureSequenceOrientationState(jugador, state);
+      if (jugador && state.orientationLocked) {
+        const isPlayer = this.session.activePlayerEntity()?.uid === entity.uid;
+        this.captureSequenceOrientationState(jugador, state, isPlayer);
+      }
       if (step.action === 'jumpStart') state.jumpTriggered = true;
       
       if (step.action === 'playVideo' || step.action === 'pauseVideo' || step.action === 'stopVideo') {
@@ -220,7 +228,6 @@ export class PlayerSequenceService {
           }
       }
 
-      // 🔥 NARRATIVA: Mutar estado del juego o aplicar SetState manual
       if (step.stateMutations) {
           this.gameState.applyMutations(step.stateMutations);
       }

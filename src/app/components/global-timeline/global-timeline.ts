@@ -1,13 +1,14 @@
+
 import { Component, inject, OnInit, ChangeDetectorRef, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { EpisodiosService } from '../../services/api/episodios';
 import { EditorMapaService } from '../../services/editor-mapa.service';
 import { AbstractMesh, Vector3, AnimationGroup, Mesh } from '@babylonjs/core';
-import { EditorPlayerService } from '../../services/editor/editor-player.service';
 import { Motor3dService } from '../../services/motor-3d.service';
 import { PlayerClipSequence, createPlayerSequence, createSequenceStep, cloneDefaultPlayerConfig, mergePlayerConfig } from '../../services/editor/player-config.model';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
+import { EditorPreviewService } from '../../services/editor/editor-preview.service';
 
 const ACTION_ROWS_CHAR = [
   { key: 'idle', label: '🧍 Idle / Reposo' }, 
@@ -41,7 +42,7 @@ const ACTION_ROWS_LIGHT = [
 export class GlobalTimeline implements OnInit {
   public api = inject(EpisodiosService);
   public editorSvc = inject(EditorMapaService);
-  private playerSvc = inject(EditorPlayerService);
+  private previewSvc = inject(EditorPreviewService);
   private motor3dSvc = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
@@ -69,8 +70,6 @@ export class GlobalTimeline implements OnInit {
   public esLuz: boolean = false;
 
   constructor() {
-    // 🔥 EFECTO REACTIVO: Evita que se pierda el foco de los inputs o se borre tu data no guardada
-    // ya que solo recarga la info de la línea de tiempo si realmente seleccionas OTRO objeto.
     effect(() => {
       const obj = this.editorSvc.objetoSeleccionado() as Mesh;
       const objId = obj ? (obj.metadata?.uid || obj.uniqueId.toString()) : null;
@@ -119,7 +118,6 @@ export class GlobalTimeline implements OnInit {
 
     const rawClips: string[] = [];
     
-    // 🔥 LÓGICA SÓLIDA PARA DETECTAR ANIMACIONES (Incluso huesos perdidos dentro del GLB)
     if (obj.metadata?.animationNames && Array.isArray(obj.metadata.animationNames)) {
         rawClips.push(...obj.metadata.animationNames);
     }
@@ -152,7 +150,7 @@ export class GlobalTimeline implements OnInit {
     if (!obj.metadata) obj.metadata = {};
     if (!obj.metadata.playerConfig) obj.metadata.playerConfig = cloneDefaultPlayerConfig();
     obj.metadata.playerConfig.sequences = JSON.parse(JSON.stringify(this.sequences));
-    this.editorSvc.triggerUpdate(); // Dispara el guardado automático
+    this.editorSvc.triggerUpdate();
   }
 
   nuevaSecuencia() {
@@ -197,7 +195,7 @@ export class GlobalTimeline implements OnInit {
     if (obj.metadata.type !== 'trigger') {
         const entity = this.entityManager.getEntityByMesh(obj);
         if (entity) {
-            this.playerSvc.iniciarPreviewSecuencia(entity, seq.id);
+            this.previewSvc.iniciarPreviewSecuencia(entity, seq.id);
         }
     }
   }

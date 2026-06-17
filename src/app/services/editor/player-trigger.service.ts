@@ -1,8 +1,7 @@
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
-import { Motor3dService } from '../motor-3d.service';
-import { EditorStateService } from './editor-state.service';
+import { GameSession } from '../../core/engine/game-session';
 import { PlayerSequenceService } from './playerservice/player-sequence.service';
 import { GameStateService } from './game-state.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
@@ -10,11 +9,15 @@ import { GameEntity } from '../../core/engine/entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService {
-  private motor3d = inject(Motor3dService);
-  private state = inject(EditorStateService);
   private sequenceSvc = inject(PlayerSequenceService);
   private gameState = inject(GameStateService);
   private entityManager = inject(EntityManagerService);
+  private injector = inject(Injector);
+
+  // 🔥 FIX DE DEPENDENCIA CIRCULAR: Getter Lazy
+  private get session(): GameSession { 
+    return this.injector.get(GameSession); 
+  }
   
   private activeTriggersInside = new Set<string>();
   private hudTimeouts = new Map<string, any>();
@@ -24,7 +27,7 @@ export class PlayerTriggerService {
     this.hudTimeouts.forEach(t => clearTimeout(t));
     this.hudTimeouts.clear();
     
-    const isAdmin = this.state.rolSimulado() === 'admin';
+    const isAdmin = this.session.isAdminSession();
 
     this.entityManager.getAllEntities().filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto').forEach(e => {
         if (e.view && e.trigger) {
@@ -37,7 +40,7 @@ export class PlayerTriggerService {
   }
 
   public restaurarTriggersParaEditor(): void {
-    const isAdmin = this.state.rolSimulado() === 'admin';
+    const isAdmin = this.session.isAdminSession();
     
     this.activeTriggersInside.clear();
     this.hudTimeouts.forEach(t => clearTimeout(t));
@@ -69,7 +72,6 @@ export class PlayerTriggerService {
     triggers.forEach(triggerEntity => {
         if (!triggerEntity.trigger || triggerEntity.trigger.isEnabled === false) return;
 
-        // 🔥 NARRATIVA: Verificar si el trigger cumple requisitos de historia para funcionar
         if (!this.gameState.evaluateAllConditions(triggerEntity.trigger.gameConditions)) {
             return;
         }
@@ -113,9 +115,9 @@ export class PlayerTriggerService {
             }
 
             if (!mostroMensajeSalida) {
-                const hudAct = this.state.mensajeTriggerHUD();
+                const hudAct = this.session.hudMessage();
                 if (hudAct === triggerEntity.trigger.mensajeEntrada || hudAct === triggerEntity.trigger.mensaje) {
-                    this.state.mensajeTriggerHUD.set(null);
+                    this.session.hudMessage.set(null);
                     if (this.hudTimeouts.has('hud')) {
                         clearTimeout(this.hudTimeouts.get('hud'));
                     }
@@ -168,14 +170,14 @@ export class PlayerTriggerService {
       let mostroMensaje = false;
 
       if (mensaje && mensaje.trim() !== '') {
-          this.state.mensajeTriggerHUD.set(mensaje);
+          this.session.hudMessage.set(mensaje);
           mostroMensaje = true;
           
           if (this.hudTimeouts.has('hud')) clearTimeout(this.hudTimeouts.get('hud'));
           
           const timeoutId = setTimeout(() => {
-              if (this.state.mensajeTriggerHUD() === mensaje) {
-                  this.state.mensajeTriggerHUD.set(null);
+              if (this.session.hudMessage() === mensaje) {
+                  this.session.hudMessage.set(null);
               }
           }, msgTime * 1000); 
 
@@ -219,7 +221,6 @@ export class PlayerTriggerService {
           }
       }
 
-      // 🔥 NARRATIVA: Mutar estado del juego una vez ejecutado el trigger
       if (triggerEntity.trigger.stateMutations) {
           this.gameState.applyMutations(triggerEntity.trigger.stateMutations);
       }

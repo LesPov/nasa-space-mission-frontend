@@ -5,7 +5,7 @@ import { AbstractMesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
-import { EditorPlayerService } from '../../../services/editor/editor-player.service';
+import { EditorPreviewService } from '../../../services/editor/editor-preview.service';
 
 import { PropTransform } from './prop-transform/prop-transform';
 import { PropTrigger } from './prop-trigger/prop-trigger';
@@ -30,13 +30,13 @@ import { PropVideo } from './prop-video/prop-video';
 })
 export class InspectorProperties implements OnInit, OnDestroy {
   public editorSvc = inject(EditorMapaService);
-  private playerSvc = inject(EditorPlayerService);
+  private previewSvc = inject(EditorPreviewService);
   private cdr = inject(ChangeDetectorRef);
 
   private _pestanaActiva: string = 'transform';
   @Input() set pestanaActiva(val: string) { 
     this._pestanaActiva = val; 
-    this.playerSvc.detenerPreviewSecuencia();
+    this.previewSvc.detenerPreviewSecuencia();
   }
   get pestanaActiva() { return this._pestanaActiva; }
   @Output() pestanaActivaChange = new EventEmitter<string>();
@@ -105,7 +105,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.subs.forEach(s => s.unsubscribe());
-    this.playerSvc.detenerPreviewSecuencia(); 
+    this.previewSvc.detenerPreviewSecuencia(); 
   }
 
   cambiarPestana(tab: string) {

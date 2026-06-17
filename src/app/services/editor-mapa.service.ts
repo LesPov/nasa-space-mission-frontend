@@ -1,9 +1,10 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Node, AbstractMesh, Vector3 } from '@babylonjs/core';
 
 import { EditorToolsService } from './editor/editor-tools.service';
 import { EditorSceneService } from './editor/editor-scene.service';
-import { EditorPlayerService } from './editor/editor-player.service';
+import { EditorPlayModeService } from './editor/editor-play-mode.service';
 import { EditorInteractionService } from './editor/editor-interaction.service';
 import { EditorStateService, ToolMode, PlayState } from './editor/editor-state.service';
 import { EditorCameraService } from './editor/editor-camera.service';
@@ -19,7 +20,7 @@ export class EditorMapaService {
   public state = inject(EditorStateService); 
   private tools = inject(EditorToolsService);
   private scene = inject(EditorSceneService);
-  private player = inject(EditorPlayerService);
+  private playMode = inject(EditorPlayModeService);
   private interaction = inject(EditorInteractionService);
   private camera = inject(EditorCameraService);
   private loader = inject(SceneLoaderService); 
@@ -84,13 +85,13 @@ export class EditorMapaService {
     this.loader.instanciarObjetoDesdePrefab(prefabData, targetPos);
   }
 
-  iniciarModoJuego(vista: 'FPS' | 'TPS'): void { this.player.iniciarModoJuego(vista); }
-  detenerModoJuego(): void { this.player.detenerModoJuego(); }
+  iniciarModoJuego(vista: 'FPS' | 'TPS'): void { this.playMode.iniciarModoJuego(vista); }
+  detenerModoJuego(): void { this.playMode.detenerModoJuego(); }
 
   cerrarInteraccionJugador(): void { this.interaction.cerrarInteraccionJugador(); }
 
   // 🔥 NUEVA FIRMA: Control de frames para cinemáticas épicas
   toggleCameraUser(isCinematicInitial: boolean = false, customFrames?: number): void { 
-    this.player.toggleCameraUser(isCinematicInitial, customFrames); 
+    this.playMode.toggleCameraUser(isCinematicInitial, customFrames); 
   }
 }

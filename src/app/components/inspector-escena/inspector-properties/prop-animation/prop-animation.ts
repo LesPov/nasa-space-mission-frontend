@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { AbstractMesh, AnimationGroup } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
-import { EditorPlayerService } from '../../../../services/editor/editor-player.service';
+import { EditorPreviewService } from '../../../../services/editor/editor-preview.service';
 import { PlayerActionKey, PlayerRuntimeConfig, cloneDefaultPlayerConfig, mergePlayerConfig, normalizeAnimBinding } from '../../../../services/editor/player-config.model';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
@@ -25,7 +25,7 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
   
   private editorSvc = inject(EditorMapaService);
   private motor3dSvc = inject(Motor3dService);
-  private playerSvc = inject(EditorPlayerService);
+  private previewSvc = inject(EditorPreviewService);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
@@ -116,7 +116,6 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
         }
     }
     
-    // 🔥 FIX: Verificar independientemente de los nombres que SÍ apunten al modelo seleccionado
     const isTargetingMe = (ag: AnimationGroup) => {
       if (!ag.targetedAnimations) return false;
       return ag.targetedAnimations.some((ta: any) => validTargets.has(ta.target));
@@ -145,7 +144,6 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
     const metaRuntime = obj.metadata?.playerConfig?.animationRuntime || {};
     const groups = this.getAvailableAnimationGroups(obj);
     
-    // Quitar duplicados por nombre de la lista de visualización
     const uniqueGroups = groups.filter((v, i, a) => a.findIndex(t => (t.name === v.name)) === i);
     
     this.animationClips = uniqueGroups.map(group => {
@@ -166,7 +164,7 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
     if (this.editorSvc.playState() === 'EDITING_IN_GAME') {
        const entity = this.entityManager.getEntityByMesh(this.objeto);
        if (entity) {
-           this.playerSvc.resincronizarAnimaciones(entity);
+           this.previewSvc.resincronizarAnimaciones(entity);
        }
     }
     
@@ -215,7 +213,7 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
 
   reproducirAnimacion(anim: AnimationGroup) { 
     this.detenerAnimaciones(); 
-    this.playerSvc.detenerPreviewSecuencia(); 
+    this.previewSvc.detenerPreviewSecuencia(); 
     anim.reset(); 
     anim.play(true); 
     this.animStatus = `Reproduciendo: ${anim.name}`; 
@@ -226,7 +224,7 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
         clip.group.stop(); 
         clip.playing = false; 
     } 
-    this.playerSvc.detenerPreviewSecuencia(); 
+    this.previewSvc.detenerPreviewSecuencia(); 
     this.animStatus = 'Animación detenida'; 
   }
   

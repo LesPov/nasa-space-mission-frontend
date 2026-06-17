@@ -1,15 +1,21 @@
-import { Injectable, inject } from '@angular/core';
+
+import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
-import { EditorStateService } from '../editor-state.service';
+import { GameSession } from '../../../core/engine/game-session';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInteractionService {
   private motor3d = inject(Motor3dService);
-  private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
+  private injector = inject(Injector);
+
+  // 🔥 FIX DE DEPENDENCIA CIRCULAR: Getter Lazy
+  private get session(): GameSession { 
+    return this.injector.get(GameSession); 
+  }
 
   public lastInteractDistance: number | null = null;
   public lastInteractionProbePoint: Vector3 | null = null;
@@ -19,7 +25,7 @@ export class PlayerInteractionService {
   }
 
   private getRootProxyCollider(rootMesh: AbstractMesh): AbstractMesh | null {
-    return this.state.proxyColliders.find(p => p.parent === rootMesh || p.name === `proxyCol_${rootMesh.name}`) ?? null;
+    return this.session.proxyColliders.find(p => p.parent === rootMesh || p.name === `proxyCol_${rootMesh.name}`) ?? null;
   }
 
   private getClosestPointOnMeshBounds(mesh: AbstractMesh, point: Vector3): Vector3 | null {
@@ -57,7 +63,7 @@ export class PlayerInteractionService {
   private getSelectionMaxDistance(isAdmin: boolean): number {
     let maxAdmin = 10000;
     let maxUser = 3;
-    const playerEntity = this.state.jugadorActivo ? this.entityManager.getEntityByMesh(this.state.jugadorActivo) : null;
+    const playerEntity = this.session.activePlayerEntity();
     if (playerEntity && playerEntity.selectionRange) {
         maxAdmin = playerEntity.selectionRange.fpsAdminMax;
         maxUser = playerEntity.selectionRange.fpsUserMax;
@@ -93,7 +99,7 @@ export class PlayerInteractionService {
     this.lastInteractDistance = null;
     this.lastInteractionProbePoint = this.getInteractionProbePoint(viewMode, jugador, activeCamera, entity);
 
-    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+    const isAdmin = this.session.isAdminSession();
 
     if (viewMode === 'FPS') {
       const centerRay = activeCamera.getForwardRay(10000);
@@ -120,7 +126,6 @@ export class PlayerInteractionService {
         let current: any = hitCross.pickedMesh;
         let rootEntity: GameEntity | undefined = undefined;
         
-        // 🔥 LÓGICA DE RESOLUCIÓN ESC: Buscamos la primera entidad lógica en el árbol
         while (current && current.name !== '__root__') {
             rootEntity = this.entityManager.getEntityByMesh(current);
             if (rootEntity) break;
@@ -185,7 +190,6 @@ export class PlayerInteractionService {
       }
     }
 
-    // Le avisamos a TODOS los modelos si están siendo "Hovereados"
     this.entityManager.getAllEntities().forEach(e => {
         e.isHovered = (e.view === hoverSelectable);
     });
@@ -194,9 +198,9 @@ export class PlayerInteractionService {
     let showI = false;
 
     if (hitInteractuable) {
-      const canInteractNow = this.canActivateInteraction(hitInteractuable, this.state.modoVistaPrueba);
+      const canInteractNow = this.canActivateInteraction(hitInteractuable, this.session.cameraView());
 
-      const seqIdForView = this.state.modoVistaPrueba === 'FPS'
+      const seqIdForView = this.session.cameraView() === 'FPS'
         ? (hitInteractuable.interaction.interactSequenceIdFPS || hitInteractuable.interaction.interactSequenceId)
         : (hitInteractuable.interaction.interactSequenceIdTPS || hitInteractuable.interaction.interactSequenceId);
 
@@ -213,34 +217,26 @@ export class PlayerInteractionService {
       showI = !!mensajeParaMostrar && mensajeParaMostrar.trim() !== '' && canInteractNow && hitInteractuable.type !== 'bubble';
     }
 
-    if (this.state.targetInteractuable() !== hitInteractuable) {
-      this.state.targetInteractuable.set(hitInteractuable as any);
+    if (this.session.targetInteractuable() !== hitInteractuable) {
+      this.session.targetInteractuable.set(hitInteractuable as any);
     }
 
-    if (this.state.mirandoObjetoInteractuable() !== !!hoverSelectable) {
-      this.state.mirandoObjetoInteractuable.set(!!hoverSelectable);
+    if (this.session.hoveredMesh() !== hoverSelectable) {
+      this.session.hoveredMesh.set(hoverSelectable);
     }
 
-    if (this.state.objetoHovereado() !== hoverSelectable) {
-      this.state.objetoHovereado.set(hoverSelectable);
+    if (this.session.showToastE() !== showE) {
+      this.session.showToastE.set(showE);
     }
 
-    if (this.state.showToastE() !== showE) {
-      this.state.showToastE.set(showE);
-    }
-
-    if (this.state.showToastI() !== showI) {
-      this.state.showToastI.set(showI);
+    if (this.session.showToastI() !== showI) {
+      this.session.showToastI.set(showI);
     }
   }
 
   public abrirMensajeInteractivo(entity: GameEntity, resetMovementCallback: () => void): void {
-    this.state.playState.set('INTERACTING');
-    this.state.objetoInteractuado.set(entity);
-    this.state.objetoSeleccionado.set(entity.view);
-    this.state.objetoHovereado.set(null);
-    this.state.mirandoObjetoInteractuable.set(false);
-    this.state.ratonBloqueado.set(false);
+    this.session.isInteracting.set(true);
+    this.session.pointerLocked.set(false);
 
     try {
       if (document.pointerLockElement) document.exitPointerLock();

@@ -1,5 +1,6 @@
+
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Vector3, Quaternion, MeshBuilder, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Vector3, Quaternion, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
@@ -11,7 +12,7 @@ import { PlayerTriggerService } from './player-trigger.service';
 import { PlayerBubbleService } from './playerservice/player-bubble';
 
 @Injectable({ providedIn: 'root' })
-export class EditorPlayerService {
+export class EditorPlayModeService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
   private cameraSvc = inject(EditorCameraService);
@@ -57,7 +58,7 @@ export class EditorPlayerService {
     
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
-    // LIMPIEZA VISUAL DEL EDITOR
+    // LIMPIEZA VISUAL DEL EDITOR ANTES DE EMPEZAR EL JUEGO
     this.motor3d.scene.meshes.forEach(m => {
         if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
             m.isVisible = isAdmin;
@@ -114,7 +115,7 @@ export class EditorPlayerService {
         this.motor3d.scene.activeCamera = targetCam;
         this.state.playState.set('PLAYING');
         
-        // DELEGA LA PARTIDA A LA SESIÓN AGNÓSTICA
+        // DELEGA LA PARTIDA A LA SESIÓN AGNÓSTICA (GameSession)
         this.gameSession.start(playerEntity, vista, isAdmin);
         this.state.triggerUpdate();
         

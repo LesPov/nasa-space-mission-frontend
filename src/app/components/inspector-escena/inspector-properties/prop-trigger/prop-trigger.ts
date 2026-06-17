@@ -7,6 +7,7 @@ import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorSceneService } from '../../../../services/editor/editor-scene.service';
 import { HistorialService } from '../../../../services/historial.service';
+import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
  
 @Component({
   selector: 'app-prop-trigger',
@@ -21,6 +22,7 @@ export class PropTrigger implements OnInit, OnDestroy {
   private editorSvc = inject(EditorMapaService);
   private sceneSvc = inject(EditorSceneService);
   private historialSvc = inject(HistorialService);
+  private entityManager = inject(EntityManagerService); // 🔥 Inyectado
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -93,8 +95,25 @@ export class PropTrigger implements OnInit, OnDestroy {
     this.cdr.detectChanges();
   }
 
-  aplicarPosicion() { this.historialSvc.registrarCambioTransform(this.objeto, () => { this.objeto.position.set(this.localPosX, this.localPosY, this.localPosZ); }); this.editorSvc.triggerUpdate(); }
-  aplicarEscala() { this.historialSvc.registrarCambioTransform(this.objeto, () => { this.objeto.scaling.set(this.localEscX, this.localEscY, this.localEscZ); }); this.editorSvc.triggerUpdate(); }
+  aplicarPosicion() { 
+    this.historialSvc.registrarCambioTransform(this.objeto, () => { this.objeto.position.set(this.localPosX, this.localPosY, this.localPosZ); }); 
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (entity) {
+       entity.syncTransformFromView();
+       entity.syncToView();
+    }
+    this.editorSvc.triggerUpdate(); 
+  }
+
+  aplicarEscala() { 
+    this.historialSvc.registrarCambioTransform(this.objeto, () => { this.objeto.scaling.set(this.localEscX, this.localEscY, this.localEscZ); }); 
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (entity) {
+       entity.syncTransformFromView();
+       entity.syncToView();
+    }
+    this.editorSvc.triggerUpdate(); 
+  }
 
   toggleTriggerCondition(cond: string, event: any) {
     if (event.target.checked) {
@@ -111,6 +130,7 @@ export class PropTrigger implements OnInit, OnDestroy {
   }
 
   aplicarTrigger() {
+    if (!this.objeto.metadata) this.objeto.metadata = {};
     const meta = this.objeto.metadata;
     if (this.triggerIsComposite) {
         meta.conditions = this.triggerConditions;
@@ -134,6 +154,13 @@ export class PropTrigger implements OnInit, OnDestroy {
         meta.timeNorm = this.triggerTimeNorm;
         meta.videoNorm = this.triggerVideoNorm.trim();
     }
+
+    // 🔥 Sincronizar hacia la Entidad
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (entity) {
+      entity.syncFromMetadata(); // Absorbe los cambios del JSON
+    }
+
     this.editorSvc.triggerUpdate();
     this.animStatus = '📍 Trigger actualizado y guardado';
   }

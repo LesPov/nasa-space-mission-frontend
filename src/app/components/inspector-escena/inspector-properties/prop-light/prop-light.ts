@@ -1,3 +1,4 @@
+
 import {
   Component,
   Input,
@@ -22,6 +23,7 @@ import {
 } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
+import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 
 interface AttachedNodeOption {
   label: string;
@@ -39,6 +41,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   @Input() objeto!: AbstractMesh;
 
   private editorSvc = inject(EditorMapaService);
+  private entityManager = inject(EntityManagerService); // 🔥 Inyectado
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -228,15 +231,9 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   }
 
   aplicarLuz() {
-    if (!this.objeto.metadata) this.objeto.metadata = {};
-
     if (this.attachedNodePath === "") {
         this.attachedNodeName = "";
     }
-
-    this.objeto.metadata.lightPosX = this.lightPosX;
-    this.objeto.metadata.lightPosY = this.lightPosY;
-    this.objeto.metadata.lightPosZ = this.lightPosZ;
 
     const light = this.getAttachedLight();
 
@@ -259,7 +256,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
       this.applyAttachment(light);
       
-      // 🔥 APLICAR LA POSICIÓN LOCAL CORRECTAMENTE
       if ((light as any).position) {
          (light as any).position.copyFromFloats(this.lightPosX, this.lightPosY, this.lightPosZ);
       }
@@ -274,18 +270,40 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.attachedNodeName = targetNode?.name || '';
     this.attachedNodePath = targetNode ? this.buildNodePath(targetNode) : '';
 
-    this.objeto.metadata.lightColor = this.lightColor;
-    this.objeto.metadata.intensity = this.intensity;
-    this.objeto.metadata.range = this.range;
-    this.objeto.metadata.angle = this.angle;
-    this.objeto.metadata.attachedNodeName = this.attachedNodeName;
-    this.objeto.metadata.attachedNodePath = this.attachedNodePath;
-
     if (this.objeto.material) {
       (this.objeto.material as any).emissiveColor = Color3.FromHexString(this.lightColor);
     }
 
-    this.editorSvc.triggerUpdate(); // 🔥 GUARDA EN LA BASE DE DATOS Y EN EL EDITOR
+    // 🔥 Sincronizar hacia la Entidad
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (entity) {
+      if (!entity.light) entity.light = { lightColor: '#ffffff', intensity: 1.0, range: 50, angle: 60, lightPosX: 0, lightPosY: 0, lightPosZ: 0, attachedNodePath: '', attachedNodeName: '' };
+      
+      entity.light.lightPosX = this.lightPosX;
+      entity.light.lightPosY = this.lightPosY;
+      entity.light.lightPosZ = this.lightPosZ;
+      entity.light.lightColor = this.lightColor;
+      entity.light.intensity = this.intensity;
+      entity.light.range = this.range;
+      entity.light.angle = this.angle;
+      entity.light.attachedNodeName = this.attachedNodeName;
+      entity.light.attachedNodePath = this.attachedNodePath;
+      
+      entity.syncToView(); // Aplica metadata y guarda los cambios
+    } else {
+      if (!this.objeto.metadata) this.objeto.metadata = {};
+      this.objeto.metadata.lightPosX = this.lightPosX;
+      this.objeto.metadata.lightPosY = this.lightPosY;
+      this.objeto.metadata.lightPosZ = this.lightPosZ;
+      this.objeto.metadata.lightColor = this.lightColor;
+      this.objeto.metadata.intensity = this.intensity;
+      this.objeto.metadata.range = this.range;
+      this.objeto.metadata.angle = this.angle;
+      this.objeto.metadata.attachedNodeName = this.attachedNodeName;
+      this.objeto.metadata.attachedNodePath = this.attachedNodePath;
+    }
+
+    this.editorSvc.triggerUpdate();
     this.animStatus = '💡 Luz actualizada y re-anclada';
   }
 }

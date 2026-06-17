@@ -5,6 +5,7 @@ import { HistorialService } from '../../historial.service';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService, ToolMode } from '../editor-state.service';
 import { ToolsDebugService } from './tools-debug.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsGizmoService {
@@ -12,6 +13,7 @@ export class ToolsGizmoService {
   private state = inject(EditorStateService);
   private historialSvc = inject(HistorialService);
   private debugSvc = inject(ToolsDebugService);
+  private entityManager = inject(EntityManagerService); // 🔥
 
   public gizmoManager!: GizmoManager;
   public centerDragMesh!: Mesh;
@@ -94,6 +96,11 @@ export class ToolsGizmoService {
           mesh.metadata.playerConfig.fog.offsetZTPS = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
       }
       
+      const entity = this.entityManager.getEntityByMesh(mesh);
+      if (entity) {
+          entity.syncFromMetadata();
+      }
+
       this.state.onGizmoDrag.next();
   }
 
@@ -250,12 +257,29 @@ export class ToolsGizmoService {
         this.debugSvc.debugCollider.scaling.set(1, 1, 1);
         this.debugSvc.actualizarDebugMeshes(mesh);
         this.gizmoManager.attachToMesh(this.debugSvc.debugCollider);
+        
+        // 🔥 ACTUALIZA ENTIDAD
+        const entity = this.entityManager.getEntityByMesh(mesh);
+        if (entity) entity.syncFromMetadata();
+
         queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
       } else if (subSelected === 'camera' || subSelected === 'light' || subSelected === 'fog') {
+        // 🔥 ACTUALIZA ENTIDAD
+        const entity = this.entityManager.getEntityByMesh(mesh);
+        if (entity) entity.syncFromMetadata();
+
         queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
       } else if (mesh && this.estadoAntesDeArrastrar) {
         this.historialSvc.registrarAccionTransform(mesh, this.estadoAntesDeArrastrar);
         this.estadoAntesDeArrastrar = null;
+        
+        // 🔥 ACTUALIZA ENTIDAD CON NUEVA TRANSFORMACIÓN
+        const entity = this.entityManager.getEntityByMesh(mesh);
+        if (entity) {
+            entity.syncTransformFromView();
+            entity.syncToView(); // actualiza su propio metadata
+        }
+        
         if (mesh.metadata?.updateDecal) mesh.metadata.updateDecal();
         queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
       }

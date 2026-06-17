@@ -1,19 +1,13 @@
 
 import { Injectable, inject } from '@angular/core'; 
-import { AbstractMesh, Color3, HemisphericLight, Node } from '@babylonjs/core'; 
-import { EditorStateService } from '../editor-state.service'; 
-import { SceneUtilsService } from './scene-utils.service'; 
+import { HemisphericLight } from '@babylonjs/core'; 
 import { Motor3dService } from '../../motor-3d.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
-
-type SavedVector3 = { x: number; y: number; z: number };
 
 @Injectable({ providedIn: 'root' }) 
 export class SceneSaverService { 
   private motor3d = inject(Motor3dService); 
-  private state = inject(EditorStateService);
-  private utilsSvc = inject(SceneUtilsService);
-  private entityManager = inject(EntityManagerService); // 🔥
+  private entityManager = inject(EntityManagerService); 
 
   private hex7(value: any, fallback: string): string { 
     if (typeof value !== 'string' || !value.trim()) return fallback; 
@@ -26,59 +20,7 @@ export class SceneSaverService {
     return Number.isFinite(n) ? n : fallback; 
   }
 
-  private safeBool(value: any, fallback = false): boolean { 
-    return typeof value === 'boolean' ? value : fallback; 
-  }
-
-  private getRotationEuler(nodo: AbstractMesh): SavedVector3 { 
-    const rot = nodo.rotationQuaternion ? nodo.rotationQuaternion.toEulerAngles() : nodo.rotation;
-    return {
-      x: this.safeNumber(rot?.x, 0),
-      y: this.safeNumber(rot?.y, 0),
-      z: this.safeNumber(rot?.z, 0)
-    };
-  }
-
-  private getParentUid(nodo: AbstractMesh): string | null { 
-    if (nodo.parent && nodo.parent.name !== 'root') { 
-      return (nodo.parent as AbstractMesh).metadata?.uid || null; 
-    } 
-    return null; 
-  }
-
-  private buildCommonProperties(nodo: AbstractMesh, selectionRange: any): any {
-    return { 
-      color: this.hex7(nodo.metadata?.color, '#ffffff'), 
-      colorBW: this.hex7(nodo.metadata?.colorBW, this.hex7(nodo.metadata?.color, '#ffffff')),
-      rol: nodo.metadata?.rol, 
-      isSolid: this.safeBool(nodo.metadata?.isSolid, true),
-      isSelectable: this.safeBool(nodo.metadata?.isSelectable, true), 
-      ignoraNiebla: this.safeBool(nodo.metadata?.ignoraNiebla, false), 
-      esEmisivo: this.safeBool(nodo.metadata?.esEmisivo, false), 
-      brilloIntensidad: this.safeNumber(nodo.metadata?.brilloIntensidad, 1.0), 
-      mensaje: nodo.metadata?.mensaje || '', 
-      respawnTime: this.safeNumber(nodo.metadata?.respawnTime, 8), 
-      interactDistanceFPS: this.safeNumber(nodo.metadata?.interactDistanceFPS, 3.0), 
-      interactDistanceTPS: this.safeNumber(nodo.metadata?.interactDistanceTPS, 5.0), 
-      interactSequenceIdFPS: nodo.metadata?.interactSequenceIdFPS || '', 
-      interactSequenceIdTPS: nodo.metadata?.interactSequenceIdTPS || '', 
-      collider: nodo.metadata?.collider,
-      camOffset: nodo.metadata?.camOffset, 
-      playerConfig: nodo.metadata?.playerConfig ? JSON.parse(JSON.stringify(nodo.metadata.playerConfig)) : null, 
-      selectionRange, 
-      animationNames: nodo.metadata?.animationNames || [],
-      autoAnim: nodo.metadata?.autoAnim || null 
-    }; 
-  }
-
   public obtenerDatosParaGuardar(): { sceneObjects: any[]; triggers: any[]; worldSettings: any } { 
-    
-    // 🔥 PASO VITAL: Forzamos la actualización de todas las Entidades 
-    // desde la metadata visual justo antes de guardar la base de datos.
-    this.entityManager.getAllEntities().forEach(entity => {
-      entity.syncFromMetadata();
-    });
-
     const sceneObjects: any[] = []; 
     const triggers: any[] = [];
 
@@ -89,7 +31,7 @@ export class SceneSaverService {
       visualMode: scene.metadata?.globalVisualMode || 'normal',
       clearColor: this.hex7(scene.metadata?.globalClearColor, '#0d1729'),
       clearColorBW: this.hex7(scene.metadata?.globalClearColorBW, '#555555'),
-      gravityY: this.safeNumber(scene.gravity?.y, 0),
+      gravityY: this.safeNumber(scene.gravity?.y, -0.25),
       ambientIntensity: ambient ? this.safeNumber(ambient.intensity, 0.6) : 0.6,
       ambientDiffuse: ambient ? this.hex7(ambient.diffuse?.toHexString?.(), '#ffffff') : '#ffffff',
       ambientGround: ambient ? this.hex7(ambient.groundColor?.toHexString?.(), '#333333') : '#333333',
@@ -98,170 +40,105 @@ export class SceneSaverService {
       ambientDirZ: ambient ? this.safeNumber(ambient.direction?.z, 0) : 0
     };
 
-    const processNode = (nodo: Node) => {
-      if (nodo instanceof AbstractMesh && nodo.metadata?.type) {
-        if (!nodo.metadata.uid) {
-          nodo.metadata.uid = window.crypto.randomUUID();
-        }
+    const allEntities = this.entityManager.getAllEntities();
 
-        const rot = this.getRotationEuler(nodo);
-        const selectionRange = this.utilsSvc.normalizarSelectionRange(
-          nodo.metadata?.playerConfig?.selectionRange || nodo.metadata?.selectionRange || null
-        );
+    allEntities.forEach(entity => {
+      // 1. Sincronizamos la transformación para asegurar tener la posición real
+      entity.syncTransformFromView();
 
-        const parentUid = this.getParentUid(nodo);
+      // 2. Extracción limpia desde las interfaces del ECS
+      if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') {
+        const isComposite = entity.type === 'trigger_compuesto';
+        const rawConditions = entity.view?.metadata?.conditions || ['on_enter'];
 
-        if (nodo.metadata.type === 'trigger') {
-          if (nodo.metadata.isComposite) {
-            const conditions = nodo.metadata.conditions || [];
-            conditions.forEach((cond: string) => {
-              const actionProps: any = {
-                triggerShape: nodo.metadata.triggerShape,
-                isComposite: true
-              };
-
-              if (cond === 'on_enter') {
-                actionProps.mensaje = nodo.metadata.mensajeEntrada || '';
-                actionProps.soundUrl = nodo.metadata.soundUrlEntrada || '';
-                actionProps.seqEntrada = nodo.metadata.seqEntrada || '';
-                actionProps.timeEntrada = nodo.metadata.timeEntrada ?? 4.5;
-                actionProps.videoEntrada = nodo.metadata.videoEntrada || '';
-              }
-
-              if (cond === 'on_exit') {
-                actionProps.mensaje = nodo.metadata.mensajeSalida || '';
-                actionProps.soundUrl = nodo.metadata.soundUrlSalida || '';
-                actionProps.seqSalida = nodo.metadata.seqSalida || '';
-                actionProps.timeSalida = nodo.metadata.timeSalida ?? 4.5;
-                actionProps.videoSalida = nodo.metadata.videoSalida || '';
-              }
-
-              triggers.push({
-                uid: nodo.metadata.uid,
-                name: nodo.name,
-                parentId: parentUid,
-                position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
-                scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z },
-                properties: {
-                  condition: cond,
-                  actionType: 'show_message',
-                  targetObjectName: '',
-                  isRepeatable: nodo.metadata.isRepeatable,
-                  isEnabled: nodo.metadata.isEnabled,
-                  ...actionProps
-                }
-              });
-            });
-          } else {
-            triggers.push({
-              uid: nodo.metadata.uid,
-              name: nodo.name,
-              parentId: parentUid,
-              position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
-              scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z },
-              properties: {
-                condition: nodo.metadata.condition,
-                actionType: 'show_message',
-                targetObjectName: '',
-                isRepeatable: nodo.metadata.isRepeatable,
-                isEnabled: nodo.metadata.isEnabled,
-                triggerShape: nodo.metadata.triggerShape,
-                mensaje: nodo.metadata.mensaje,
-                soundUrl: nodo.metadata.soundUrl,
-                interactSequenceId: nodo.metadata.interactSequenceId,
-                timeNorm: nodo.metadata.timeNorm ?? 4.5,
-                videoNorm: nodo.metadata.videoNorm || '',
-                isComposite: false
-              }
-            });
-          }
+        if (isComposite) {
+          rawConditions.forEach((cond: string) => {
+             const actionProps: any = { triggerShape: entity.view?.metadata?.triggerShape || 'cube', isComposite: true };
+             if (cond === 'on_enter') {
+                actionProps.mensaje = entity.view?.metadata?.mensajeEntrada || '';
+                actionProps.soundUrl = entity.view?.metadata?.soundUrlEntrada || '';
+                actionProps.seqEntrada = entity.view?.metadata?.seqEntrada || '';
+                actionProps.timeEntrada = entity.view?.metadata?.timeEntrada ?? 4.5;
+                actionProps.videoEntrada = entity.view?.metadata?.videoEntrada || '';
+             }
+             if (cond === 'on_exit') {
+                actionProps.mensaje = entity.view?.metadata?.mensajeSalida || '';
+                actionProps.soundUrl = entity.view?.metadata?.soundUrlSalida || '';
+                actionProps.seqSalida = entity.view?.metadata?.seqSalida || '';
+                actionProps.timeSalida = entity.view?.metadata?.timeSalida ?? 4.5;
+                actionProps.videoSalida = entity.view?.metadata?.videoSalida || '';
+             }
+             triggers.push({
+               uid: entity.uid, name: entity.name, parentId: entity.parentId,
+               position: entity.transform.position, scale: entity.transform.scale,
+               properties: { condition: cond, actionType: 'show_message', targetObjectName: '', isRepeatable: entity.view?.metadata?.isRepeatable ?? false, isEnabled: entity.view?.metadata?.isEnabled ?? true, ...actionProps }
+             });
+          });
         } else {
-          const baseData = {
-            uid: nodo.metadata.uid,
-            name: nodo.name,
-            parentId: parentUid,
-            position: { x: nodo.position.x, y: nodo.position.y, z: nodo.position.z },
-            rotation: { x: rot.x, y: rot.y, z: rot.z },
-            scale: { x: nodo.scaling.x, y: nodo.scaling.y, z: nodo.scaling.z }
-          };
+           triggers.push({
+             uid: entity.uid, name: entity.name, parentId: entity.parentId,
+             position: entity.transform.position, scale: entity.transform.scale,
+             properties: {
+               condition: entity.view?.metadata?.condition || 'on_enter', actionType: 'show_message', targetObjectName: '',
+               isRepeatable: entity.view?.metadata?.isRepeatable ?? false, isEnabled: entity.view?.metadata?.isEnabled ?? true,
+               triggerShape: entity.view?.metadata?.triggerShape || 'cube', 
+               mensaje: entity.interaction.mensaje,
+               soundUrl: entity.view?.metadata?.soundUrl || '', 
+               interactSequenceId: entity.interaction.interactSequenceId,
+               timeNorm: entity.view?.metadata?.timeNorm ?? 4.5, 
+               videoNorm: entity.view?.metadata?.videoNorm || '', 
+               isComposite: false
+             }
+           });
+        }
+      } else {
+        // OBJETOS COMUNES Y MODELOS
+        const propertiesToSave = {
+          color: entity.visual.color,
+          colorBW: entity.visual.colorBW,
+          rol: entity.rol,
+          isSolid: entity.visual.isSolid,
+          isSelectable: entity.visual.isSelectable,
+          ignoraNiebla: entity.visual.ignoraNiebla,
+          esEmisivo: entity.visual.esEmisivo,
+          brilloIntensidad: entity.visual.brilloIntensidad,
+          mensaje: entity.interaction.mensaje,
+          interactDistanceFPS: entity.interaction.interactDistanceFPS,
+          interactDistanceTPS: entity.interaction.interactDistanceTPS,
+          interactSequenceIdFPS: entity.interaction.interactSequenceIdFPS,
+          interactSequenceIdTPS: entity.interaction.interactSequenceIdTPS,
+          collider: entity.collider,
+          camOffset: entity.camOffset,
+          playerConfig: entity.playerConfig,
+          selectionRange: entity.selectionRange,
+          animationNames: entity.animationNames,
+          autoAnim: entity.autoAnim,
+          path: entity.visual.path // 🔥 GUARDAMOS EL PATH CON SEGURIDAD
+        };
 
-          const propertiesToSave = this.buildCommonProperties(nodo, selectionRange);
+        const baseData = {
+          uid: entity.uid, name: entity.name, parentId: entity.parentId,
+          position: entity.transform.position, rotation: entity.transform.rotation, scale: entity.transform.scale
+        };
 
-          if (nodo.metadata.type === 'model') {
-            sceneObjects.push({
-              ...baseData,
-              type: 'model',
-              assetId: nodo.metadata.assetId,
-              properties: {
-                path: nodo.metadata.path,
-                ...propertiesToSave
-              }
-            });
-          } else if (nodo.metadata.type?.startsWith('light_')) {
-            sceneObjects.push({
-              ...baseData,
-              type: nodo.metadata.type,
-              properties: {
-                lightColor: nodo.metadata.lightColor,
-                intensity: this.safeNumber(nodo.metadata.intensity, 1.0),
-                range: this.safeNumber(nodo.metadata.range, 50),
-                angle: this.safeNumber(nodo.metadata.angle, 60),
-                path: nodo.metadata.path,
-                attachedNodePath: nodo.metadata.attachedNodePath || '',
-                attachedNodeName: nodo.metadata.attachedNodeName || '',
-                lightPosX: this.safeNumber(nodo.metadata.lightPosX, 0),
-                lightPosY: this.safeNumber(nodo.metadata.lightPosY, 0),
-                lightPosZ: this.safeNumber(nodo.metadata.lightPosZ, 0),
-                ...propertiesToSave
-              },
-              assetId: nodo.metadata.assetId
-            });
-          } else if (nodo.metadata.type === 'video_plane') {
-            sceneObjects.push({
-              ...baseData,
-              type: 'video_plane',
-              assetId: nodo.metadata.assetId,
-              properties: {
-                videoUrl: nodo.metadata.videoUrl,
-                path: nodo.metadata.videoUrl,
-                ...propertiesToSave
-              }
-            });
-          } else if (nodo.metadata.type === 'image_plane') {
-            sceneObjects.push({
-              ...baseData,
-              type: 'image_plane',
-              assetId: nodo.metadata.assetId,
-              properties: {
-                imageUrl: nodo.metadata.imageUrl,
-                path: nodo.metadata.imageUrl,
-                profundidadProyeccion: this.safeNumber(nodo.metadata.profundidadProyeccion, 0.08),
-                anguloProyeccion: this.safeNumber(nodo.metadata.anguloProyeccion, 0),
-                proyeccionAncho: this.safeNumber(nodo.metadata.proyeccionAncho, nodo.scaling.x),
-                proyeccionAlto: this.safeNumber(nodo.metadata.proyeccionAlto, nodo.scaling.y),
-                proyeccionRepeticiones: this.safeNumber(nodo.metadata.proyeccionRepeticiones, 1),
-                proyeccionEspaciado: this.safeNumber(nodo.metadata.proyeccionEspaciado, 2),
-                proyeccionEje: nodo.metadata.proyeccionEje || 'Y',
-                fadeDistance: this.safeNumber(nodo.metadata.fadeDistance, 0),
-                ...propertiesToSave
-              }
-            });
-          } else {
-            sceneObjects.push({
-              ...baseData,
-              type: nodo.metadata.type,
-              properties: {
-                ...propertiesToSave
-              }
-            });
-          }
+        if (entity.type.startsWith('light_') && entity.light) {
+          sceneObjects.push({
+            ...baseData, type: entity.type, assetId: entity.visual.assetId,
+            properties: { ...propertiesToSave, ...entity.light }
+          });
+        } else if ((entity.type === 'video_plane' || entity.type === 'image_plane') && entity.media) {
+          sceneObjects.push({
+            ...baseData, type: entity.type, assetId: entity.visual.assetId,
+            properties: { ...propertiesToSave, ...entity.media }
+          });
+        } else {
+          sceneObjects.push({
+            ...baseData, type: entity.type, assetId: entity.visual.assetId,
+            properties: propertiesToSave
+          });
         }
       }
-
-      nodo.getChildren().forEach(child => processNode(child));
-    };
-
-    this.state.nodosEscena().forEach(nodo => processNode(nodo));
+    });
 
     return { sceneObjects, triggers, worldSettings };
   } 

@@ -1,9 +1,11 @@
+
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh, Vector3 } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
+import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
  
 @Component({
   selector: 'app-prop-physics',
@@ -16,6 +18,7 @@ export class PropPhysics implements OnInit, OnDestroy {
   @Input() objeto!: AbstractMesh;
   
   private editorSvc = inject(EditorMapaService);
+  private entityManager = inject(EntityManagerService); // 🔥 Inyectado
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -66,17 +69,23 @@ export class PropPhysics implements OnInit, OnDestroy {
   }
 
   aplicarCollider() {
-    if (!this.objeto.metadata) this.objeto.metadata = {};
-    
-    this.objeto.metadata.collider = { 
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+
+    const colliderData = { 
         type: this.colliderType, 
         sizeX: this.colliderSizeX, sizeY: this.colliderSizeY, sizeZ: this.colliderSizeZ, 
         offsetX: this.colliderOffX, offsetY: this.colliderOffY, offsetZ: this.colliderOffZ 
     };
+
+    if (entity) {
+      entity.collider = colliderData;
+      entity.syncToView(); // 🔥 Guarda y sincroniza la Entidad
+    } else {
+      if (!this.objeto.metadata) this.objeto.metadata = {};
+      this.objeto.metadata.collider = colliderData;
+    }
     
     if (this.colliderType !== 'mesh') {
-      // 🔥 FIX MÁGICO: Calculamos el elipsoide basado en el TAMAÑO GLOBAL, para que las físicas 
-      // nunca se rompan sin importar lo que el piso estirado le haga a la escala local.
       const ws = new Vector3();
       this.objeto.getWorldMatrix().decompose(ws);
       
@@ -100,8 +109,17 @@ export class PropPhysics implements OnInit, OnDestroy {
   }
 
   aplicarCamara() {
-    if (!this.objeto.metadata) this.objeto.metadata = {};
-    this.objeto.metadata.camOffset = { x: this.camPosX, y: this.camPosY, z: this.camPosZ };
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    const camData = { x: this.camPosX, y: this.camPosY, z: this.camPosZ };
+
+    if (entity) {
+      entity.camOffset = camData;
+      entity.syncToView(); // 🔥 Guarda y sincroniza la Entidad
+    } else {
+      if (!this.objeto.metadata) this.objeto.metadata = {};
+      this.objeto.metadata.camOffset = camData;
+    }
+    
     this.editorSvc.triggerUpdate();
   }
 }

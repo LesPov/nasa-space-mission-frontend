@@ -1,16 +1,26 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { cloneDefaultPlayerConfig, createPlayerSequence, createSequenceStep, PlayerClipSequence } from '../player-config.model';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class SequenceMutatorService {
   private editorSvc = inject(EditorMapaService);
+  private entityManager = inject(EntityManagerService); // 🔥
 
   public persistirSecuencias(objeto: AbstractMesh, sequences: PlayerClipSequence[]): void {
     if (!objeto.metadata) objeto.metadata = {};
     if (!objeto.metadata.playerConfig) objeto.metadata.playerConfig = cloneDefaultPlayerConfig();
     objeto.metadata.playerConfig.sequences = JSON.parse(JSON.stringify(sequences));
+
+    // 🔥 Sincronizar con la entidad
+    const entity = this.entityManager.getEntityByMesh(objeto);
+    if (entity) {
+       entity.syncFromMetadata();
+    }
+
     this.editorSvc.triggerUpdate();
   }
 
@@ -42,7 +52,7 @@ export class SequenceMutatorService {
         }
     }
     seq.steps.push(step); 
-    this.persistirSecuencias(objeto, [seq]); // Simplificado para que el array referenciado actualice la metadata real
+    this.persistirSecuencias(objeto, [seq]); 
   }
 
   public quitarPaso(objeto: AbstractMesh, seq: PlayerClipSequence, index: number): void {

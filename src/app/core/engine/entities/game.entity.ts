@@ -2,10 +2,73 @@
 import { AbstractMesh, Vector3, Quaternion } from '@babylonjs/core';
 import { PlayerRuntimeConfig } from '../../../services/editor/player-config.model';
 
-export interface ColliderComponent { type: string; sizeX: number; sizeY: number; sizeZ: number; offsetX: number; offsetY: number; offsetZ: number; }
-export interface VisualComponent { color: string; colorBW: string; isSolid: boolean; isSelectable: boolean; ignoraNiebla: boolean; esEmisivo: boolean; brilloIntensidad: number; assetId?: number | null; path?: string; }
-export interface InteractionComponent { mensaje: string; interactDistanceFPS: number; interactDistanceTPS: number; interactSequenceIdFPS: string; interactSequenceIdTPS: string; interactSequenceId: string; }
+export interface TransformData {
+  position: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number };
+  scale: { x: number; y: number; z: number };
+}
 
+export interface ColliderComponent { 
+  type: string; 
+  sizeX: number; sizeY: number; sizeZ: number; 
+  offsetX: number; offsetY: number; offsetZ: number; 
+}
+
+export interface VisualComponent { 
+  color: string; 
+  colorBW: string; 
+  isSolid: boolean; 
+  isSelectable: boolean; 
+  ignoraNiebla: boolean; 
+  esEmisivo: boolean; 
+  brilloIntensidad: number; 
+  assetId?: number | null; 
+  path?: string; 
+}
+
+export interface InteractionComponent { 
+  mensaje: string; 
+  interactDistanceFPS: number; 
+  interactDistanceTPS: number; 
+  interactSequenceIdFPS: string; 
+  interactSequenceIdTPS: string; 
+  interactSequenceId: string; 
+}
+
+export interface LightComponent {
+  lightColor: string;
+  intensity: number;
+  range: number;
+  angle: number;
+  lightPosX: number;
+  lightPosY: number;
+  lightPosZ: number;
+  attachedNodePath: string;
+  attachedNodeName: string;
+}
+
+export interface MediaComponent {
+  videoUrl?: string;
+  imageUrl?: string;
+  profundidadProyeccion?: number;
+  anguloProyeccion?: number;
+  proyeccionAncho?: number;
+  proyeccionAlto?: number;
+  proyeccionRepeticiones?: number;
+  proyeccionEspaciado?: number;
+  proyeccionEje?: string;
+  fadeDistance?: number;
+}
+
+export interface SelectionRangeComponent {
+  fpsAdminMax: number;
+  fpsUserMax: number;
+}
+
+/**
+ * FUENTE DE VERDAD DE LA ARQUITECTURA ECS.
+ * La entidad manda. El Mesh solo obedece y representa visualmente.
+ */
 export class GameEntity {
   public uid: string;
   public name: string;
@@ -16,20 +79,23 @@ export class GameEntity {
 
   public view: AbstractMesh | null = null;
 
+  // Componentes de Datos Puros
+  public transform: TransformData;
   public visual: VisualComponent;
   public collider: ColliderComponent;
   public interaction: InteractionComponent;
+  public selectionRange: SelectionRangeComponent;
   
   public playerConfig?: PlayerRuntimeConfig;
-  public trigger?: any;
-  public light?: any;
-  public projection?: any;
+  public light?: LightComponent;
+  public media?: MediaComponent;
   
   public camOffset = { x: 0, y: 1.6, z: 0 };
   public animationNames: string[] = [];
   public autoAnim: any = null;
   public initialHeadLocal?: Vector3;
   
+  // Estado volátil
   public isHovered: boolean = false;
   public currentHoverScale: number = 1.0;
   public isProcessingAction: boolean = false;
@@ -39,6 +105,12 @@ export class GameEntity {
     this.name = name;
     this.type = type;
     this.rol = rol;
+
+    this.transform = {
+      position: { x: 0, y: 0, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 },
+      scale: { x: 1, y: 1, z: 1 }
+    };
 
     this.visual = {
       color: '#ffffff', colorBW: '#ffffff', isSolid: true, isSelectable: true,
@@ -55,19 +127,109 @@ export class GameEntity {
       mensaje: '', interactDistanceFPS: 3.0, interactDistanceTPS: 5.0,
       interactSequenceIdFPS: '', interactSequenceIdTPS: '', interactSequenceId: ''
     };
+
+    this.selectionRange = { fpsAdminMax: 10000, fpsUserMax: 3 };
+
+    if (type.startsWith('light_')) {
+      this.light = { lightColor: '#ffffff', intensity: 1.0, range: 50, angle: 60, lightPosX: 0, lightPosY: 0, lightPosZ: 0, attachedNodePath: '', attachedNodeName: '' };
+    }
+
+    if (type === 'video_plane' || type === 'image_plane') {
+      this.media = { profundidadProyeccion: 10, anguloProyeccion: 0, proyeccionAncho: 2, proyeccionAlto: 2, proyeccionRepeticiones: 1, proyeccionEspaciado: 2, proyeccionEje: 'Y', fadeDistance: 0 };
+    }
   }
 
   public bindView(mesh: AbstractMesh): void {
     this.view = mesh;
     if (!mesh.metadata) mesh.metadata = {};
     mesh.metadata.entityUid = this.uid;
+    this.syncToView(); // Forzamos que la vista se adapte a la entidad de inmediato
   }
 
+  /**
+   * ACTUALIZA LA VISTA (Babylon Mesh) A PARTIR DE LOS DATOS DE LA ENTIDAD.
+   * Esto garantiza retrocompatibilidad inyectando un metadata limpio.
+   */
+  public syncToView(): void {
+    if (!this.view) return;
+
+    // 1. Aplicar Transformaciones al Mesh
+    this.view.position.set(this.transform.position.x, this.transform.position.y, this.transform.position.z);
+    this.view.scaling.set(this.transform.scale.x, this.transform.scale.y, this.transform.scale.z);
+
+    if (this.view.rotationQuaternion) {
+      this.view.rotationQuaternion = Quaternion.FromEulerAngles(this.transform.rotation.x, this.transform.rotation.y, this.transform.rotation.z);
+      this.view.rotation.set(0,0,0);
+    } else {
+      this.view.rotation.set(this.transform.rotation.x, this.transform.rotation.y, this.transform.rotation.z);
+    }
+
+    // 2. Volcar la Entidad Pura al Metadata (Para que los servicios Legacy funcionen)
+    this.view.name = this.name;
+    
+    this.view.metadata = {
+      ...this.view.metadata, // Mantenemos punteros sucios (ej. materials o decals)
+      uid: this.uid,
+      type: this.type,
+      rol: this.rol,
+      parentId: this.parentId,
+      orderIndex: this.orderIndex,
+      
+      color: this.visual.color,
+      colorBW: this.visual.colorBW,
+      isSolid: this.visual.isSolid,
+      isSelectable: this.visual.isSelectable,
+      ignoraNiebla: this.visual.ignoraNiebla,
+      esEmisivo: this.visual.esEmisivo,
+      brilloIntensidad: this.visual.brilloIntensidad,
+      assetId: this.visual.assetId,
+      path: this.visual.path,
+      
+      collider: this.collider,
+      camOffset: this.camOffset,
+      playerConfig: this.playerConfig,
+      selectionRange: this.selectionRange,
+      
+      mensaje: this.interaction.mensaje,
+      interactDistanceFPS: this.interaction.interactDistanceFPS,
+      interactDistanceTPS: this.interaction.interactDistanceTPS,
+      interactSequenceIdFPS: this.interaction.interactSequenceIdFPS,
+      interactSequenceIdTPS: this.interaction.interactSequenceIdTPS,
+      interactSequenceId: this.interaction.interactSequenceId,
+      
+      animationNames: this.animationNames,
+      autoAnim: this.autoAnim,
+      initialHeadLocal: this.initialHeadLocal ? this.initialHeadLocal.clone() : undefined
+    };
+
+    if (this.light) Object.assign(this.view.metadata, this.light);
+    if (this.media) Object.assign(this.view.metadata, this.media);
+  }
+
+  /**
+   * Lee la malla y actualiza la entidad (usado cuando manipulamos el Gizmo)
+   */
+  public syncTransformFromView(): void {
+    if (!this.view) return;
+    this.transform.position = { x: this.view.position.x, y: this.view.position.y, z: this.view.position.z };
+    this.transform.scale = { x: this.view.scaling.x, y: this.view.scaling.y, z: this.view.scaling.z };
+    
+    if (this.view.rotationQuaternion) {
+      const euler = this.view.rotationQuaternion.toEulerAngles();
+      this.transform.rotation = { x: euler.x, y: euler.y, z: euler.z };
+    } else {
+      this.transform.rotation = { x: this.view.rotation.x, y: this.view.rotation.y, z: this.view.rotation.z };
+    }
+  }
+
+  /**
+   * Sincronización Inversa para los Loaders Legacy.
+   */
   public syncFromMetadata(): void {
     if (!this.view || !this.view.metadata) return;
     const meta = this.view.metadata;
 
-    this.name = this.view.name;
+    this.name = this.view.name || this.name;
     this.type = meta.type || this.type;
     this.rol = meta.rol || this.rol;
     this.parentId = meta.parentId || null;
@@ -80,12 +242,13 @@ export class GameEntity {
     this.visual.ignoraNiebla = meta.ignoraNiebla ?? false;
     this.visual.esEmisivo = meta.esEmisivo ?? false;
     this.visual.brilloIntensidad = meta.brilloIntensidad ?? 1.0;
-    this.visual.assetId = meta.assetId;
-    this.visual.path = meta.path;
+    this.visual.assetId = meta.assetId || null;
+    this.visual.path = meta.path || meta.videoUrl || meta.imageUrl || null;
 
     if (meta.collider) this.collider = JSON.parse(JSON.stringify(meta.collider));
     if (meta.camOffset) this.camOffset = JSON.parse(JSON.stringify(meta.camOffset));
     if (meta.playerConfig) this.playerConfig = JSON.parse(JSON.stringify(meta.playerConfig));
+    if (meta.selectionRange) this.selectionRange = JSON.parse(JSON.stringify(meta.selectionRange));
     
     this.interaction.mensaje = meta.mensaje || '';
     this.interaction.interactDistanceFPS = meta.interactDistanceFPS ?? 3.0;
@@ -100,10 +263,13 @@ export class GameEntity {
     if (meta.initialHeadLocal) {
         this.initialHeadLocal = new Vector3(meta.initialHeadLocal.x, meta.initialHeadLocal.y, meta.initialHeadLocal.z);
     }
+    
+    // Al finalizar, forzamos un repintado para mantener consistencia
+    this.syncToView();
   }
 
   public getAbsolutePosition(): Vector3 {
-    if (!this.view) return Vector3.Zero();
+    if (!this.view) return new Vector3(this.transform.position.x, this.transform.position.y, this.transform.position.z);
     return this.view.getAbsolutePosition();
   }
 

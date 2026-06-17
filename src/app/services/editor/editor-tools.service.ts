@@ -12,7 +12,7 @@ import { ToolsFogService } from './toolsservice/tools-fog.service';
 import { ToolsGizmoService } from './toolsservice/tools-gizmo.service';
 import { ToolsHighlightService } from './toolsservice/tools-highlight.service';
 import { ToolsSelectionService } from './toolsservice/tools-selection.service';
- 
+
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
   private motor3d = inject(Motor3dService);
@@ -32,7 +32,6 @@ export class EditorToolsService {
   private gizmoSvc = inject(ToolsGizmoService);
 
   private lastHoverCheckTime = 0;
-  limpiarEstado: any;
 
   constructor() {
     effect(() => {
@@ -54,6 +53,14 @@ export class EditorToolsService {
       this.state.currentTool();
       this.gizmoSvc.actualizarGizmosActivos();
     });
+  }
+
+  // 🔥 MÉTODO FALTANTE AÑADIDO: Limpia los procesos visuales y la niebla al salir al menú
+  public limpiarEstado(): void {
+    this.gizmoSvc.attachGizmoToCurrentSelection(null, null);
+    this.debugSvc.actualizarDebugMeshes(null);
+    this.highlightSvc.actualizarHighlights(null, null);
+    this.fogSvc.limpiarEstado();
   }
 
   activarEventosEditor(): void {

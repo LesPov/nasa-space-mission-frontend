@@ -30,13 +30,28 @@ export class EntityManagerService {
     return this.entitiesByUid.get(uid);
   }
 
+  /**
+   * Obtiene la entidad lógica a partir de la malla de Babylon.
+   * Resuelve el puente vital del ECS.
+   */
   public getEntityByMesh(mesh: AbstractMesh | null | undefined): GameEntity | undefined {
     if (!mesh) return undefined;
-    return this.entitiesByMesh.get(mesh);
+    // Búsqueda en O(1) real.
+    let entity = this.entitiesByMesh.get(mesh);
+    // Fallback por si la malla fue clonada o re-bundeada de forma atípica
+    if (!entity && mesh.metadata?.entityUid) {
+      entity = this.entitiesByUid.get(mesh.metadata.entityUid);
+      if (entity) this.entitiesByMesh.set(mesh, entity);
+    }
+    return entity;
   }
 
   public getAllEntities(): GameEntity[] {
     return Array.from(this.entitiesByUid.values());
+  }
+
+  public getEntitiesByRol(rol: string): GameEntity[] {
+    return this.getAllEntities().filter(e => e.rol === rol);
   }
 
   public clear(): void {

@@ -1,11 +1,14 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { FogLevel, PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../player-config.model';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerConfigMutatorService {
   private editorSvc = inject(EditorMapaService);
+  private entityManager = inject(EntityManagerService); // 🔥
 
   public aplicarPlayerConfig(objeto: AbstractMesh, playerConfig: PlayerRuntimeConfig, selectionRange: any): void {
     if (!objeto.metadata) objeto.metadata = {};
@@ -14,6 +17,12 @@ export class PlayerConfigMutatorService {
 
     objeto.metadata.playerConfig = JSON.parse(JSON.stringify(playerConfig));
     objeto.metadata.selectionRange = JSON.parse(JSON.stringify(selectionRange));
+
+    // 🔥 Sincronizar con la entidad
+    const entity = this.entityManager.getEntityByMesh(objeto);
+    if (entity) {
+       entity.syncFromMetadata();
+    }
 
     this.editorSvc.triggerUpdate();
   }

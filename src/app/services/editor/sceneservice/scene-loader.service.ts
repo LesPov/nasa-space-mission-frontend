@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color4, Mesh, Vector3 } from '@babylonjs/core';
 
@@ -48,12 +49,6 @@ export class SceneLoaderService {
         scene.metadata = { ...scene.metadata, globalClearColor: clearHex, globalClearColorBW: clearHexBW, globalVisualMode: loadedMode };
         this.motor3d.setVisualMode(loadedMode);
         scene.gravity = new Vector3(0, w.gravityY ?? -0.25, 0);
-      } else {
-        const clearHex = '#0d1729';
-        this.envSvc.configurarAmbienteGlobal(scene, { ambientIntensity: 0.6, ambientDiffuse: '#ffffff', ambientGround: '#333333', ambientDirX: 0, ambientDirY: 1, ambientDirZ: 0 });
-        scene.clearColor = Color4.FromHexString(clearHex + 'ff');
-        scene.metadata = { ...scene.metadata, globalClearColor: clearHex, globalClearColorBW: '#555555', globalVisualMode: 'normal' };
-        this.motor3d.setVisualMode('normal');
       }
 
       scene.cameras.forEach(cam => cam.maxZ = 10000);
@@ -67,10 +62,10 @@ export class SceneLoaderService {
       objetosBD.forEach((obj: any) => {
         const isModel = obj.type === 'model';
         const isLight = obj.type?.startsWith('light_');
-        // 🔥 FIX ANTICRASHEOS: Verificamos si realmente existe la ruta del asset antes de intentar cargarlo
-        const hasPath = !!(obj.properties?.path || obj.asset?.path);
 
-        if ((isLight && obj.assetId && hasPath) || (isModel && hasPath)) {
+        // 🔥 FIX ANTICRASHEOS: Si es modelo o luz (que requiere modelo), se lo enviamos a LoaderModel.
+        // Él se encargará de crear una caja roja si falla la ruta en la DB.
+        if (isModel || (isLight && obj.assetId)) {
           promesasCarga.push(this.loaderModelSvc.cargarModeloAsync(obj, mallasCreadas));
         } else {
           this.loaderPrimitiveSvc.cargarPrimitiva(obj, mallasCreadas);
@@ -104,27 +99,19 @@ export class SceneLoaderService {
     });
   }
 
-  // 🔥 LÓGICA VITAL: Instanciar el prefab rescatando toda la estructura
   public instanciarObjetoDesdePrefab(prefabData: any, positionTarget: Vector3): Promise<void> {
     return new Promise((resolve) => {
       const mallasCreadas = new Map<string, Mesh>();
-      
       const propertiesClone = JSON.parse(JSON.stringify(prefabData.properties || {}));
-      
-      // Renovamos IDs de secuencias para que el clon sea independiente
       this.utilsSvc.renovarIdsDeSecuencias(propertiesClone);
 
-      // Simulamos que el Prefab viene de la Base de Datos
       const mockDbObject = {
         uid: window.crypto.randomUUID(), 
         type: prefabData.type,
         name: prefabData.name + '_' + Math.floor(Math.random() * 1000),
         position: { x: positionTarget.x, y: positionTarget.y, z: positionTarget.z },
-        
-        // 🔥 RESCATAMOS LA ROTACIÓN Y ESCALA ORIGINAL DEL PREFAB DESDE LAS PROPIEDADES
         rotation: propertiesClone.rotation || { x: 0, y: 0, z: 0 },
         scale: propertiesClone.scale || { x: 1, y: 1, z: 1 },
-        
         properties: propertiesClone,
         assetId: prefabData.assetId,
         asset: { path: propertiesClone.path }
@@ -132,11 +119,8 @@ export class SceneLoaderService {
 
       const isModel = mockDbObject.type === 'model';
       const isLight = mockDbObject.type?.startsWith('light_');
-      
-      // 🔥 CRÍTICO: Prevenimos el error "undefined" comprobando la ruta de forma segura
-      const hasPath = !!(mockDbObject.properties?.path || mockDbObject.asset?.path);
 
-      if ((isLight && mockDbObject.assetId && hasPath) || (isModel && hasPath)) {
+      if (isModel || (isLight && mockDbObject.assetId)) {
         this.loaderModelSvc.cargarModeloAsync(mockDbObject, mallasCreadas).then(() => {
           this.finalizarPrefab(mallasCreadas);
           resolve();
@@ -153,7 +137,6 @@ export class SceneLoaderService {
     this.shadowsSvc.asignarObjetosASombrasDeLuces();
     this.nodesSvc.actualizarListaNodos();
     
-    // Seleccionar automáticamente el prefab recién clonado para que el usuario pueda moverlo de inmediato
     const iter = mallasCreadas.values().next();
     if (!iter.done) {
        this.state.objetoSeleccionado.set(iter.value);

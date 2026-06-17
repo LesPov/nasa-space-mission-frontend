@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -63,6 +64,15 @@ export class ToolsFogService {
 
     this.gradTex = tex;
     return tex;
+  }
+
+  // 🔥 MÉTODO AÑADIDO: Desregistra el loop para evitar procesos huérfanos
+  public limpiarEstado(): void {
+    if (this.isRegistered) {
+      this.loopManager.unregister('ToolsFogUpdate');
+      this.isRegistered = false;
+      this.firstFrame = true;
+    }
   }
 
   public aplicarNieblaEnTiempoReal(): void { 

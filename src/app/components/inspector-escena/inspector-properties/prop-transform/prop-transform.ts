@@ -1,3 +1,4 @@
+
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -77,16 +78,22 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.localPosY = this.formatNum(this.objeto.position.y);
     this.localPosZ = this.formatNum(this.objeto.position.z);
 
-    const rot = this.objeto.rotationQuaternion ? this.objeto.rotationQuaternion.toEulerAngles() : this.objeto.rotation;
-    this.localRotX = this.formatNum(rot.x * (180 / Math.PI));
-    this.localRotY = this.formatNum(rot.y * (180 / Math.PI));
-    this.localRotZ = this.formatNum(rot.z * (180 / Math.PI));
+    // 🔥 FIX: Mantener convención de euler para no volver loca la UI
+    if (this.objeto.rotationQuaternion) {
+       const euler = this.objeto.rotationQuaternion.toEulerAngles();
+       this.localRotX = this.formatNum(euler.x * (180 / Math.PI));
+       this.localRotY = this.formatNum(euler.y * (180 / Math.PI));
+       this.localRotZ = this.formatNum(euler.z * (180 / Math.PI));
+    } else {
+       this.localRotX = this.formatNum(this.objeto.rotation.x * (180 / Math.PI));
+       this.localRotY = this.formatNum(this.objeto.rotation.y * (180 / Math.PI));
+       this.localRotZ = this.formatNum(this.objeto.rotation.z * (180 / Math.PI));
+    }
 
-    const worldScale = new Vector3();
-    this.objeto.getWorldMatrix().decompose(worldScale);
-    this.localEscX = this.formatNum(Math.abs(worldScale.x));
-    this.localEscY = this.formatNum(Math.abs(worldScale.y));
-    this.localEscZ = this.formatNum(Math.abs(worldScale.z));
+    // 🔥 FIX SCALING: Leer ESCALA LOCAL y no descomponer matrices que den positivos falsos
+    this.localEscX = this.formatNum(this.objeto.scaling.x);
+    this.localEscY = this.formatNum(this.objeto.scaling.y);
+    this.localEscZ = this.formatNum(this.objeto.scaling.z);
 
     const meta = this.objeto.metadata || {};
     this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane', 'image_plane'].includes(meta.type);

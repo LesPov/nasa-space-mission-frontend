@@ -1,22 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import {
-  AbstractMesh,
-  Color3,
-  DirectionalLight,
-  FresnelParameters,
-  Matrix,
-  Mesh,
-  MeshBuilder,
-  PointLight,
-  Quaternion,
-  SceneLoader,
-  SpotLight,
-  StandardMaterial,
-  TransformNode,
-  Vector3,
-  VideoTexture,
-  Texture
+  AbstractMesh, Color3, DirectionalLight, FresnelParameters, Matrix, Mesh, MeshBuilder, PointLight, Quaternion, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3, VideoTexture, Texture
 } from '@babylonjs/core';
 
 import '@babylonjs/loaders';
@@ -33,7 +18,7 @@ import { SceneProjectionService } from './scene-projection.service';
 import { BuilderTriggerService } from './builder-trigger.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
- 
+
 @Injectable({ providedIn: 'root' })
 export class SceneObjectBuilderService {
   private motor3d = inject(Motor3dService);
@@ -51,10 +36,7 @@ export class SceneObjectBuilderService {
     return this.triggerBuilderSvc.reconstruirMallaTrigger(oldMesh, nuevaForma);
   }
 
-  public agregarTriggerCustom(
-    nombre: string, shape: string, isComposite: boolean, mensaje: string,
-    sizeX: number, sizeY: number, sizeZ: number, parentNode: AbstractMesh | null = null
-  ): void {
+  public agregarTriggerCustom(nombre: string, shape: string, isComposite: boolean, mensaje: string, sizeX: number, sizeY: number, sizeZ: number, parentNode: AbstractMesh | null = null): void {
     this.triggerBuilderSvc.agregarTriggerCustom(nombre, shape, isComposite, mensaje, sizeX, sizeY, sizeZ, parentNode);
   }
 
@@ -66,8 +48,7 @@ export class SceneObjectBuilderService {
   ): void {
     
     if (tipo === 'trigger' || tipo === 'trigger_compuesto') {
-      const isComposite = tipo === 'trigger_compuesto';
-      this.agregarTriggerCustom(nombre, 'cube', isComposite, mensaje, sizeX, sizeY, sizeZ, parentNode);
+      this.agregarTriggerCustom(nombre, 'cube', tipo === 'trigger_compuesto', mensaje, sizeX, sizeY, sizeZ, parentNode);
       return;
     }
 
@@ -77,44 +58,66 @@ export class SceneObjectBuilderService {
     const isVideo = tipo === 'video_plane';
     const isImage = tipo === 'image_plane';
 
-    const safeSizeX = (sizeX !== undefined && sizeX !== null && Number(sizeX) !== 0 && !isNaN(Number(sizeX))) ? Number(sizeX) : 1;
-    const safeSizeY = (sizeY !== undefined && sizeY !== null && Number(sizeY) !== 0 && !isNaN(Number(sizeY))) ? Number(sizeY) : 1;
-    const safeSizeZ = (sizeZ !== undefined && sizeZ !== null && Number(sizeZ) !== 0 && !isNaN(Number(sizeZ))) ? Number(sizeZ) : 1;
+    const safeSizeX = this.utilsSvc.normalizarNumero(sizeX, 1);
+    const safeSizeY = this.utilsSvc.normalizarNumero(sizeY, 1);
+    const safeSizeZ = this.utilsSvc.normalizarNumero(sizeZ, 1);
 
-    const defaultCollider = isModel
-      ? { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }
-      : { type: (tipo === 'sphere' || tipo === 'bubble') ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+    // 🔥 1. CREACIÓN DE LA ENTIDAD LÓGICA (ECS FUENTE DE VERDAD)
+    const entity = new GameEntity(window.crypto.randomUUID(), nombre, tipo, isLight ? 'light' : rol);
+    
+    entity.visual.color = colorHex;
+    entity.visual.colorBW = colorHex;
+    entity.visual.isSolid = isSolid;
+    entity.visual.isSelectable = isSelectable;
+    entity.visual.assetId = asset?.id;
+    entity.visual.path = asset?.path;
+    
+    entity.interaction.mensaje = mensaje;
 
-    const defaultCamOffset = isModel ? { x: 0, y: 1.6, z: 0 } : { x: 0, y: 0.8, z: 0 };
-    const defaultPlayerConfig = cloneDefaultPlayerConfig();
+    if (isModel) {
+      entity.collider = { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 };
+    } else {
+      entity.collider = { type: (tipo === 'sphere' || tipo === 'bubble') ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+    }
 
-    const attachSelectionRange = (cfg: any) => {
-      cfg.selectionRange = cfg.selectionRange || { fpsAdminMax: 10000, fpsUserMax: 3 };
-      cfg.selectionRange.fpsAdminMax = this.utilsSvc.normalizarNumero(cfg.selectionRange.fpsAdminMax, 10000);
-      cfg.selectionRange.fpsUserMax = this.utilsSvc.normalizarNumero(cfg.selectionRange.fpsUserMax, 3);
-      return cfg;
-    };
+    entity.playerConfig = mergePlayerConfig(cloneDefaultPlayerConfig());
+    entity.selectionRange = { fpsAdminMax: 10000, fpsUserMax: 3 };
 
+    if (isLight && entity.light) {
+      entity.light.lightColor = colorHex;
+    }
+    if (isVideo && entity.media) {
+      entity.media.videoUrl = asset?.path;
+    }
+    if (isImage && entity.media) {
+      entity.media.imageUrl = asset?.path;
+    }
+
+    if (parentNode) {
+      entity.parentId = parentNode.metadata?.uid || null;
+    }
+
+    // 🔥 2. CREADOR DE LA MALLA VISUAL
     if ((isLight && asset) || (isModel && asset)) {
       const fullPath = 'http://localhost:4000' + asset.path;
       const lastSlash = fullPath.lastIndexOf('/');
 
       SceneLoader.ImportMeshAsync('', fullPath.substring(0, lastSlash + 1), fullPath.substring(lastSlash + 1), scene).then((result) => {
         const rootNode = result.meshes[0] as Mesh;
-        rootNode.name = nombre;
         
         rootNode.scaling = new Vector3(safeSizeX, safeSizeY, safeSizeZ);
+        if (!rootNode.rotationQuaternion) rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
+        if (parentNode) { rootNode.position = parentNode.getAbsolutePosition().clone(); rootNode.setParent(parentNode); rootNode.position = new Vector3(0, 0, 0); } 
+        else { rootNode.position = new Vector3(0, 0, 0); }
 
-        if (!rootNode.rotationQuaternion) {
-          rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
-        }
-
-        if (parentNode) {
-          rootNode.position = parentNode.getAbsolutePosition().clone();
-          rootNode.setParent(parentNode);
-          rootNode.position = new Vector3(0, 0, 0);
+        // 🔥 FIX ECS SCALING: Aplicar escala y pos a la Entidad antes del Binding para evitar que vuelva a 1x1x1
+        entity.transform.position = { x: rootNode.position.x, y: rootNode.position.y, z: rootNode.position.z };
+        entity.transform.scale = { x: rootNode.scaling.x, y: rootNode.scaling.y, z: rootNode.scaling.z };
+        if (rootNode.rotationQuaternion) {
+          const euler = rootNode.rotationQuaternion.toEulerAngles();
+          entity.transform.rotation = { x: euler.x, y: euler.y, z: euler.z };
         } else {
-          rootNode.position = new Vector3(0, 0, 0);
+          entity.transform.rotation = { x: rootNode.rotation.x, y: rootNode.rotation.y, z: rootNode.rotation.z };
         }
 
         rootNode.checkCollisions = false;
@@ -129,85 +132,24 @@ export class SceneObjectBuilderService {
             m.receiveShadows = true;
             m.applyFog = true;
           }
-          if (m.material) {
-            this.materialSvc.ajustarMaterialGLB(m.material);
-          }
+          if (m.material) this.materialSvc.ajustarMaterialGLB(m.material);
         });
 
         const anims = result.animationGroups || [];
         anims.forEach(ag => ag.stop());
+        entity.animationNames = anims.map(a => a.name);
 
-        const playerConfig = attachSelectionRange(mergePlayerConfig(defaultPlayerConfig));
-
-        let initialHeadLocal: Vector3 | null = null;
         if (isModel) {
-          const headNode = rootNode.getChildTransformNodes(false).find(
-            n => n.name.toLowerCase() === 'head' || n.name.toLowerCase() === 'neck' || n.name.toLowerCase().includes('head')
-          ) as TransformNode;
+          const headNode = rootNode.getChildTransformNodes(false).find(n => n.name.toLowerCase().includes('head') || n.name.toLowerCase().includes('neck')) as TransformNode;
           if (headNode) {
             headNode.computeWorldMatrix(true);
             rootNode.computeWorldMatrix(true);
-            initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
+            entity.initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
           }
         }
 
-        rootNode.metadata = {
-          uid: window.crypto.randomUUID(),
-          type: tipo,
-          rol: isLight ? 'light' : rol,
-          assetId: asset.id,
-          path: asset.path,
-          isSolid,
-          isSelectable,
-          mensaje,
-          ignoraNiebla: false,
-          interactDistanceFPS: 3.0,
-          interactDistanceTPS: 5.0,
-          interactSequenceIdFPS: '',
-          interactSequenceIdTPS: '',
-          animationNames: anims.map(a => a.name),
-          collider: { ...defaultCollider },
-          camOffset: { ...defaultCamOffset },
-          playerConfig,
-          selectionRange: { ...playerConfig.selectionRange },
-          initialHeadLocal: isModel ? initialHeadLocal : undefined
-        };
-
-        if (isLight) {
-          rootNode.metadata.lightColor = colorHex;
-          rootNode.metadata.intensity = 1.0;
-          rootNode.metadata.range = 50;
-          rootNode.metadata.angle = 60;
-          rootNode.metadata.attachedNodePath = '';
-          rootNode.metadata.attachedNodeName = '';
-          rootNode.metadata.lightPosX = 0;
-          rootNode.metadata.lightPosY = 0;
-          rootNode.metadata.lightPosZ = 0;
-
-          let lightObj: any;
-          if (tipo === 'light_point') lightObj = new PointLight('l_' + nombre, new Vector3(0, 0, 0), scene);
-          else if (tipo === 'light_spot') lightObj = new SpotLight('l_' + nombre, new Vector3(0, 0, 0), new Vector3(0, -1, 0), Math.PI / 3, 2, scene);
-          else if (tipo === 'light_directional') lightObj = new DirectionalLight('l_' + nombre, new Vector3(0, -1, 0), scene);
-
-          lightObj.parent = rootNode;
-          lightObj.intensity = 1.0;
-          lightObj.diffuse = Color3.FromHexString(colorHex);
-          lightObj.specular = new Color3(0, 0, 0);
-          
-          if (lightObj.position) {
-              lightObj.position.copyFromFloats(0, 0, 0);
-          }
-        } else {
-          rootNode.metadata.esEmisivo = false;
-          rootNode.metadata.brilloIntensidad = 1.0;
-          rootNode.ellipsoid = new Vector3(defaultCollider.sizeX * safeSizeX, defaultCollider.sizeY * safeSizeY, defaultCollider.sizeZ * safeSizeZ);
-          rootNode.ellipsoidOffset = new Vector3(defaultCollider.offsetX * safeSizeX, defaultCollider.offsetY * safeSizeY, defaultCollider.offsetZ * safeSizeZ);
-        }
-
-        // 🔥 LÓGICA ECS INTEGRADA
-        const entity = new GameEntity(rootNode.metadata.uid, nombre, tipo, isLight ? 'light' : rol);
+        // VINCULACIÓN ECS -> VISTA
         entity.bindView(rootNode);
-        entity.syncFromMetadata();
         this.entityManager.addEntity(entity);
 
         this.shadowsSvc.asignarObjetosASombrasDeLuces();
@@ -220,14 +162,10 @@ export class SceneObjectBuilderService {
     } 
     else {
       let mesh!: Mesh;
-
       switch (tipo) {
         case 'cube': mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene); break;
-        case 'sphere':
-        case 'bubble':
-        case 'light_point':
-        case 'light_spot':
-        case 'light_directional': mesh = MeshBuilder.CreateSphere(nombre, { diameter: tipo === 'bubble' ? 1 : 0.4 }, scene); break;
+        case 'sphere': case 'bubble': case 'light_point': case 'light_spot': case 'light_directional': 
+          mesh = MeshBuilder.CreateSphere(nombre, { diameter: tipo === 'bubble' ? 1 : 0.4 }, scene); break;
         case 'cylinder': mesh = MeshBuilder.CreateCylinder(nombre, { height: 1, diameter: 1 }, scene); break;
         case 'plane': mesh = MeshBuilder.CreateGround(nombre, { width: 1, height: 1 }, scene); break;
         case 'video_plane': mesh = MeshBuilder.CreatePlane(nombre, { size: 1, sideOrientation: Mesh.DOUBLESIDE }, scene); break;
@@ -240,57 +178,19 @@ export class SceneObjectBuilderService {
       if (parentNode) {
         mesh.position = parentNode.getAbsolutePosition().clone();
         mesh.setParent(parentNode);
-        
-        if (tipo === 'image_plane') {
-            mesh.position = new Vector3(0, 0, -2);
-        } else {
-            mesh.position = new Vector3(0, 0, 0); 
-        }
+        mesh.position = tipo === 'image_plane' ? new Vector3(0, 0, -2) : new Vector3(0, 0, 0); 
       } else {
-        mesh.position = new Vector3(0, tipo.startsWith('light_') ? 2 : (0.5 * safeSizeY), 0);
+        mesh.position = new Vector3(0, isLight ? 2 : (0.5 * safeSizeY), 0);
       }
 
-      const playerConfig = attachSelectionRange(mergePlayerConfig(defaultPlayerConfig));
-
-      mesh.metadata = {
-        uid: window.crypto.randomUUID(),
-        type: tipo,
-        rol: isLight ? 'light' : rol,
-        color: colorHex,
-        colorBW: colorHex,
-        isSolid,
-        isSelectable,
-        mensaje,
-        ignoraNiebla: false,
-        esEmisivo: false,
-        respawnTime: 8,
-        profundidadProyeccion: 10, 
-        anguloProyeccion: 0,
-        proyeccionAncho: 2,
-        proyeccionAlto: 2,
-        proyeccionRepeticiones: 1,
-        proyeccionEspaciado: 2,
-        proyeccionEje: 'Y',
-        interactDistanceFPS: 3.0,
-        interactDistanceTPS: 5.0,
-        interactSequenceIdFPS: '',
-        interactSequenceIdTPS: '',
-        collider: { ...defaultCollider },
-        camOffset: { ...defaultCamOffset },
-        playerConfig,
-        brilloIntensidad: 1.0,
-        fadeDistance: 0,
-        selectionRange: { ...playerConfig.selectionRange }
-      };
-
-      if (isVideo && asset) {
-        mesh.metadata.assetId = asset.id;
-        mesh.metadata.videoUrl = asset.path;
-      }
-
-      if (isImage && asset) {
-        mesh.metadata.assetId = asset.id;
-        mesh.metadata.imageUrl = asset.path;
+      // 🔥 FIX ECS SCALING: Aplicar escala y pos a la Entidad antes del Binding para evitar que vuelva a 1x1x1
+      entity.transform.position = { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z };
+      entity.transform.scale = { x: mesh.scaling.x, y: mesh.scaling.y, z: mesh.scaling.z };
+      if (mesh.rotationQuaternion) {
+        const euler = mesh.rotationQuaternion.toEulerAngles();
+        entity.transform.rotation = { x: euler.x, y: euler.y, z: euler.z };
+      } else {
+        entity.transform.rotation = { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z };
       }
 
       mesh.isPickable = true;
@@ -302,9 +202,13 @@ export class SceneObjectBuilderService {
         mesh.receiveShadows = true;
       }
 
-      mesh.ellipsoid = new Vector3(defaultCollider.sizeX * safeSizeX, defaultCollider.sizeY * safeSizeY, defaultCollider.sizeZ * safeSizeZ);
-      mesh.ellipsoidOffset = new Vector3(defaultCollider.offsetX * safeSizeX, defaultCollider.offsetY * safeSizeY, defaultCollider.offsetZ * safeSizeZ);
+      mesh.ellipsoid = new Vector3(entity.collider.sizeX * safeSizeX, entity.collider.sizeY * safeSizeY, entity.collider.sizeZ * safeSizeZ);
+      mesh.ellipsoidOffset = new Vector3(entity.collider.offsetX * safeSizeX, entity.collider.offsetY * safeSizeY, entity.collider.offsetZ * safeSizeZ);
 
+      // VINCULACIÓN TEMPRANA ECS -> VISTA (Para que los setup de materiales configuren bien la metadata de compat)
+      entity.bindView(mesh);
+      
+      // Setup Visual
       if (tipo === 'bubble') {
         const mat = new StandardMaterial('mat_' + nombre, scene);
         mat.emissiveColor = new Color3(0.9, 0.95, 1.0);
@@ -323,10 +227,8 @@ export class SceneObjectBuilderService {
         const mat = new StandardMaterial('mat_' + nombre, scene);
         mat.emissiveColor = new Color3(0, 0, 0);
         mat.disableLighting = true;
-
         if (asset && asset.path) {
-          const videoUrl = 'http://localhost:4000' + asset.path;
-          const videoTexture = new VideoTexture('vidTex_' + nombre, videoUrl, scene, false, true, undefined, { autoPlay: false });
+          const videoTexture = new VideoTexture('vidTex_' + nombre, 'http://localhost:4000' + asset.path, scene, false, true, undefined, { autoPlay: false });
           mat.diffuseTexture = videoTexture;
         } else {
           mat.diffuseColor = new Color3(0.1, 0.1, 0.1);
@@ -336,28 +238,18 @@ export class SceneObjectBuilderService {
       else if (tipo === 'image_plane') {
         const mat = new StandardMaterial('decalMat_' + nombre, scene);
         const isBW = scene.metadata?.globalVisualMode === 'bw';
-        const activeColorAUsar = isBW ? mesh.metadata.colorBW : colorHex;
-        const imageUrl = asset && asset.path ? 'http://localhost:4000' + asset.path : '';
-        const tex = imageUrl ? new Texture(imageUrl, scene) : undefined;
+        const activeColorAUsar = isBW ? entity.visual.colorBW : colorHex;
+        const tex = asset?.path ? new Texture('http://localhost:4000' + asset.path, scene) : undefined;
 
         this.projectionSvc.configurarMaterialProyector(mat, activeColorAUsar, 1.0, false, tex);
-        
         mesh.material = mat;
-        mesh.metadata.decalMaterial = mat;
-        mesh.metadata.brilloIntensidad = 1.0;
+        mesh.metadata.decalMaterial = mat; 
         mesh.alwaysSelectAsActiveMesh = true;
         mesh.isVisible = this.state.rolSimulado() === 'admin';
 
-        setTimeout(() => {
-           this.projectionSvc.aplicarLogicaHolograma(mesh, scene);
-        }, 100);
+        setTimeout(() => { this.projectionSvc.aplicarLogicaHolograma(mesh, scene); }, 100);
       } 
       else if (isLight) {
-        mesh.metadata.lightColor = colorHex;
-        mesh.metadata.intensity = 1.0;
-        mesh.metadata.range = 50;
-        mesh.metadata.angle = 60;
-        
         const mat = new StandardMaterial('mat_' + nombre, scene);
         mat.emissiveColor = Color3.FromHexString(colorHex);
         mat.wireframe = true;
@@ -374,10 +266,6 @@ export class SceneObjectBuilderService {
         lightObj.intensity = 1.0;
         lightObj.diffuse = Color3.FromHexString(colorHex);
         lightObj.specular = new Color3(0, 0, 0);
-
-        if (lightObj.position) {
-            lightObj.position.copyFromFloats(0, 0, 0);
-        }
       } 
       else {
         const mat = new StandardMaterial('mat_' + nombre, scene);
@@ -388,21 +276,12 @@ export class SceneObjectBuilderService {
         if (rol === 'spawn_point') {
           mat.alpha = 0.5;
           mat.emissiveColor = new Color3(0, 1, 0);
-        } else if (mesh.metadata.esEmisivo) {
-          mat.emissiveColor = c3.scale(mesh.metadata.brilloIntensidad);
-          mat.disableLighting = false;
         }
-
         mat.maxSimultaneousLights = 16;
         mesh.material = mat;
       }
 
-      // 🔥 LÓGICA ECS INTEGRADA PARA PRIMITIVAS
-      const entity = new GameEntity(mesh.metadata.uid, nombre, tipo, isLight ? 'light' : rol);
-      entity.bindView(mesh);
-      entity.syncFromMetadata();
       this.entityManager.addEntity(entity);
-
       this.shadowsSvc.asignarObjetosASombrasDeLuces();
       this.state.objetoSeleccionado.set(mesh);
       this.nodesSvc.actualizarListaNodos();

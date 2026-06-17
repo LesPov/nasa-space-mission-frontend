@@ -1,9 +1,11 @@
+
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, Engine, Mesh, Quaternion, StandardMaterial, Texture, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { HistorialService } from '../../historial.service';
 import { Motor3dService } from '../../motor-3d.service';
 import { SceneProjectionService } from '../sceneservice/scene-projection.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class TransformMutatorService {
@@ -11,71 +13,91 @@ export class TransformMutatorService {
   private historialSvc = inject(HistorialService);
   private motor3dSvc = inject(Motor3dService);
   private projectionSvc = inject(SceneProjectionService);
+  private entityManager = inject(EntityManagerService); // 🔥
 
   public aplicarPosicion(objeto: AbstractMesh, localPos: { x: number, y: number, z: number }): void {
+    const entity = this.entityManager.getEntityByMesh(objeto);
+    
     this.historialSvc.registrarCambioTransform(objeto, () => {
-      objeto.position.set(localPos.x, localPos.y, localPos.z);
+      if (entity) {
+        entity.transform.position = { ...localPos };
+        entity.syncToView(); // Aplica el cambio y actualiza el metadata
+      } else {
+        objeto.position.set(localPos.x, localPos.y, localPos.z);
+      }
     });
+
     if (objeto.metadata?.updateDecal) objeto.metadata.updateDecal();
     this.editorSvc.triggerUpdate();
   }
 
   public aplicarRotacion(objeto: AbstractMesh, localRotEulerDeg: { x: number, y: number, z: number }): void {
+    const entity = this.entityManager.getEntityByMesh(objeto);
     const rx = localRotEulerDeg.x * (Math.PI / 180);
     const ry = localRotEulerDeg.y * (Math.PI / 180);
     const rz = localRotEulerDeg.z * (Math.PI / 180);
 
     this.historialSvc.registrarCambioTransform(objeto, () => {
-      objeto.rotationQuaternion = Quaternion.FromEulerAngles(rx, ry, rz);
-      objeto.rotation.set(0, 0, 0);
+      if (entity) {
+        entity.transform.rotation = { x: rx, y: ry, z: rz };
+        entity.syncToView();
+      } else {
+        objeto.rotationQuaternion = Quaternion.FromEulerAngles(rx, ry, rz);
+        objeto.rotation.set(0, 0, 0);
+      }
     });
+
     if (objeto.metadata?.updateDecal) objeto.metadata.updateDecal();
     this.editorSvc.triggerUpdate();
   }
 
   public aplicarEscala(objeto: AbstractMesh, localEscReal: { x: number, y: number, z: number }): void {
+    const entity = this.entityManager.getEntityByMesh(objeto);
+    
     this.historialSvc.registrarCambioTransform(objeto, () => {
-      if (objeto.parent && (objeto.parent as any).getWorldMatrix) {
-        const parentWorldScale = new Vector3();
-        (objeto.parent as any).getWorldMatrix().decompose(parentWorldScale);
-        
-        const localX = localEscReal.x / (Math.abs(parentWorldScale.x) || 1);
-        const localY = localEscReal.y / (Math.abs(parentWorldScale.y) || 1);
-        const localZ = localEscReal.z / (Math.abs(parentWorldScale.z) || 1);
-        
-        objeto.scaling.set(localX, localY, localZ);
+      // 🔥 FIX SCALING: Se aplica directamente a la escala local. Nada de WorldMatrix.
+      if (entity) {
+         entity.transform.scale = { x: localEscReal.x, y: localEscReal.y, z: localEscReal.z };
+         entity.syncToView();
       } else {
-        objeto.scaling.set(localEscReal.x, localEscReal.y, localEscReal.z);
+         objeto.scaling.set(localEscReal.x, localEscReal.y, localEscReal.z);
       }
     });
+
     if (objeto.metadata?.updateDecal) objeto.metadata.updateDecal();
     this.editorSvc.triggerUpdate();
   }
 
   public aplicarProyeccion(objeto: AbstractMesh, config: any): void {
-    if (!objeto.metadata) objeto.metadata = {};
+    const entity = this.entityManager.getEntityByMesh(objeto);
+    if (!entity || !entity.media) return;
 
-    objeto.metadata.profundidadProyeccion = this.clampPositive(Number(config.profundidadProyeccion), 0.08, 0.01, 1000);
-    objeto.metadata.anguloProyeccion = Number(config.anguloProyeccion);
-    objeto.metadata.proyeccionAncho = this.clampPositive(Number(config.proyeccionAncho), 1, 0.01, 1000);
-    objeto.metadata.proyeccionAlto = this.clampPositive(Number(config.proyeccionAlto), 1, 0.01, 1000);
-    objeto.metadata.proyeccionRepeticiones = Math.floor(this.clampPositive(Number(config.proyeccionRepeticiones), 1, 1, 50));
-    objeto.metadata.proyeccionEspaciado = Number(config.proyeccionEspaciado);
-    objeto.metadata.proyeccionEje = config.proyeccionEje;
-    objeto.metadata.fadeDistance = Math.max(0, Number(config.fadeDistance));
+    entity.media.profundidadProyeccion = this.clampPositive(Number(config.profundidadProyeccion), 0.08, 0.01, 1000);
+    entity.media.anguloProyeccion = Number(config.anguloProyeccion);
+    entity.media.proyeccionAncho = this.clampPositive(Number(config.proyeccionAncho), 1, 0.01, 1000);
+    entity.media.proyeccionAlto = this.clampPositive(Number(config.proyeccionAlto), 1, 0.01, 1000);
+    entity.media.proyeccionRepeticiones = Math.floor(this.clampPositive(Number(config.proyeccionRepeticiones), 1, 1, 50));
+    entity.media.proyeccionEspaciado = Number(config.proyeccionEspaciado);
+    entity.media.proyeccionEje = config.proyeccionEje;
+    entity.media.fadeDistance = Math.max(0, Number(config.fadeDistance));
 
-    if (objeto.metadata.updateDecal) objeto.metadata.updateDecal();
+    entity.syncToView();
+
+    if (objeto.metadata?.updateDecal) objeto.metadata.updateDecal();
     this.editorSvc.triggerUpdate();
   }
 
   public aplicarVisuales(objeto: AbstractMesh, config: any): void {
-    if (!objeto.metadata) objeto.metadata = {};
+    const entity = this.entityManager.getEntityByMesh(objeto);
+    if (!entity) return;
 
-    objeto.metadata.color = config.color;
-    objeto.metadata.colorBW = config.colorBW;
-    objeto.metadata.ignoraNiebla = config.ignoraNiebla;
-    objeto.metadata.esEmisivo = config.esEmisivo;
-    objeto.metadata.brilloIntensidad = this.clampBrightness(config.brilloIntensidad);
+    entity.visual.color = config.color;
+    entity.visual.colorBW = config.colorBW;
+    entity.visual.ignoraNiebla = config.ignoraNiebla;
+    entity.visual.esEmisivo = config.esEmisivo;
+    entity.visual.brilloIntensidad = this.clampBrightness(config.brilloIntensidad);
+
+    entity.syncToView();
 
     const isBW = this.motor3dSvc.scene.metadata?.globalVisualMode === 'bw';
     const activeColorHex = isBW ? config.colorBW : config.color;
@@ -88,7 +110,6 @@ export class TransformMutatorService {
           this.aplicarMaterialHolograma(decalMat, activeColorHex, config.brilloIntensidad, config.ignoraNiebla, tex);
         }
         if (Array.isArray(objeto.metadata.decalMeshes)) {
-          // SE CORRIGIÓ AQUÍ DECLARANDO EL TIPO (m: AbstractMesh)
           objeto.metadata.decalMeshes.forEach((m: AbstractMesh) => { if (m) m.applyFog = !config.ignoraNiebla; });
         }
       } else {
@@ -111,18 +132,22 @@ export class TransformMutatorService {
     }
 
     objeto.applyFog = !config.ignoraNiebla;
-    // SE CORRIGIÓ AQUÍ DECLARANDO EL TIPO (m: AbstractMesh)
     objeto.getChildMeshes().forEach((m: AbstractMesh) => m.applyFog = !config.ignoraNiebla);
+    
     this.editorSvc.triggerUpdate();
   }
 
   public aplicarInteraccion(objeto: AbstractMesh, config: any): void {
-    if (!objeto.metadata) objeto.metadata = {};
-    objeto.metadata.interactDistanceFPS = config.interactDistanceFPS;
-    objeto.metadata.interactDistanceTPS = config.interactDistanceTPS;
-    objeto.metadata.interactSequenceIdFPS = config.interactSequenceIdFPS.trim();
-    objeto.metadata.interactSequenceIdTPS = config.interactSequenceIdTPS.trim();
-    objeto.metadata.mensaje = config.mensaje.trim();
+    const entity = this.entityManager.getEntityByMesh(objeto);
+    if (!entity) return;
+
+    entity.interaction.interactDistanceFPS = config.interactDistanceFPS;
+    entity.interaction.interactDistanceTPS = config.interactDistanceTPS;
+    entity.interaction.interactSequenceIdFPS = config.interactSequenceIdFPS.trim();
+    entity.interaction.interactSequenceIdTPS = config.interactSequenceIdTPS.trim();
+    entity.interaction.mensaje = config.mensaje.trim();
+    
+    entity.syncToView();
     this.editorSvc.triggerUpdate();
   }
 

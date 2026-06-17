@@ -1,4 +1,4 @@
-
+// src/app/services/editor/sceneservice/scene-object-builder.service.ts
 import { Injectable, inject } from '@angular/core';
 import {
   AbstractMesh, Color3, DirectionalLight, FresnelParameters, Matrix, Mesh, MeshBuilder, PointLight, Quaternion, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3, VideoTexture, Texture
@@ -62,7 +62,7 @@ export class SceneObjectBuilderService {
     const safeSizeY = this.utilsSvc.normalizarNumero(sizeY, 1);
     const safeSizeZ = this.utilsSvc.normalizarNumero(sizeZ, 1);
 
-    // 🔥 1. CREACIÓN DE LA ENTIDAD LÓGICA (ECS FUENTE DE VERDAD)
+    // 🔥 1. FUENTE DE VERDAD: Creación de la Entidad Lógica
     const entity = new GameEntity(window.crypto.randomUUID(), nombre, tipo, isLight ? 'light' : rol);
     
     entity.visual.color = colorHex;
@@ -93,8 +93,14 @@ export class SceneObjectBuilderService {
       entity.media.imageUrl = asset?.path;
     }
 
+    // Configuración de Transformación Base en la Entidad
+    entity.transform.scale = { x: safeSizeX, y: safeSizeY, z: safeSizeZ };
+
     if (parentNode) {
       entity.parentId = parentNode.metadata?.uid || null;
+      entity.transform.position = tipo === 'image_plane' ? { x: 0, y: 0, z: -2 } : { x: 0, y: 0, z: 0 };
+    } else {
+      entity.transform.position = { x: 0, y: isLight ? 2 : (0.5 * safeSizeY), z: 0 };
     }
 
     // 🔥 2. CREADOR DE LA MALLA VISUAL
@@ -105,20 +111,12 @@ export class SceneObjectBuilderService {
       SceneLoader.ImportMeshAsync('', fullPath.substring(0, lastSlash + 1), fullPath.substring(lastSlash + 1), scene).then((result) => {
         const rootNode = result.meshes[0] as Mesh;
         
-        rootNode.scaling = new Vector3(safeSizeX, safeSizeY, safeSizeZ);
-        if (!rootNode.rotationQuaternion) rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rootNode.rotation.x, rootNode.rotation.y, rootNode.rotation.z);
-        if (parentNode) { rootNode.position = parentNode.getAbsolutePosition().clone(); rootNode.setParent(parentNode); rootNode.position = new Vector3(0, 0, 0); } 
-        else { rootNode.position = new Vector3(0, 0, 0); }
-
-        // 🔥 FIX ECS SCALING: Aplicar escala y pos a la Entidad antes del Binding para evitar que vuelva a 1x1x1
-        entity.transform.position = { x: rootNode.position.x, y: rootNode.position.y, z: rootNode.position.z };
-        entity.transform.scale = { x: rootNode.scaling.x, y: rootNode.scaling.y, z: rootNode.scaling.z };
-        if (rootNode.rotationQuaternion) {
-          const euler = rootNode.rotationQuaternion.toEulerAngles();
-          entity.transform.rotation = { x: euler.x, y: euler.y, z: euler.z };
-        } else {
-          entity.transform.rotation = { x: rootNode.rotation.x, y: rootNode.rotation.y, z: rootNode.rotation.z };
+        if (parentNode) { 
+           rootNode.setParent(parentNode); 
         }
+
+        // VINCULACIÓN ECS -> VISTA (Esto le inyecta transformaciones y Metadata)
+        entity.bindView(rootNode);
 
         rootNode.checkCollisions = false;
         rootNode.isPickable = true;
@@ -145,11 +143,10 @@ export class SceneObjectBuilderService {
             headNode.computeWorldMatrix(true);
             rootNode.computeWorldMatrix(true);
             entity.initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
+            entity.syncToView(); // Re-sincronizar el initialHeadLocal
           }
         }
 
-        // VINCULACIÓN ECS -> VISTA
-        entity.bindView(rootNode);
         this.entityManager.addEntity(entity);
 
         this.shadowsSvc.asignarObjetosASombrasDeLuces();
@@ -173,26 +170,13 @@ export class SceneObjectBuilderService {
         default: return;
       }
 
-      mesh.scaling = new Vector3(safeSizeX, safeSizeY, safeSizeZ);
-
       if (parentNode) {
-        mesh.position = parentNode.getAbsolutePosition().clone();
         mesh.setParent(parentNode);
-        mesh.position = tipo === 'image_plane' ? new Vector3(0, 0, -2) : new Vector3(0, 0, 0); 
-      } else {
-        mesh.position = new Vector3(0, isLight ? 2 : (0.5 * safeSizeY), 0);
       }
 
-      // 🔥 FIX ECS SCALING: Aplicar escala y pos a la Entidad antes del Binding para evitar que vuelva a 1x1x1
-      entity.transform.position = { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z };
-      entity.transform.scale = { x: mesh.scaling.x, y: mesh.scaling.y, z: mesh.scaling.z };
-      if (mesh.rotationQuaternion) {
-        const euler = mesh.rotationQuaternion.toEulerAngles();
-        entity.transform.rotation = { x: euler.x, y: euler.y, z: euler.z };
-      } else {
-        entity.transform.rotation = { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z };
-      }
-
+      // VINCULACIÓN ECS -> VISTA
+      entity.bindView(mesh);
+      
       mesh.isPickable = true;
       mesh.checkCollisions = isSolid && !isLight;
       mesh.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
@@ -205,9 +189,6 @@ export class SceneObjectBuilderService {
       mesh.ellipsoid = new Vector3(entity.collider.sizeX * safeSizeX, entity.collider.sizeY * safeSizeY, entity.collider.sizeZ * safeSizeZ);
       mesh.ellipsoidOffset = new Vector3(entity.collider.offsetX * safeSizeX, entity.collider.offsetY * safeSizeY, entity.collider.offsetZ * safeSizeZ);
 
-      // VINCULACIÓN TEMPRANA ECS -> VISTA (Para que los setup de materiales configuren bien la metadata de compat)
-      entity.bindView(mesh);
-      
       // Setup Visual
       if (tipo === 'bubble') {
         const mat = new StandardMaterial('mat_' + nombre, scene);

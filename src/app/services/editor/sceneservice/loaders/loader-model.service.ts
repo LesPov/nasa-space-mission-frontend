@@ -1,4 +1,4 @@
-
+// src/app/services/editor/sceneservice/loaders/loader-model.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DirectionalLight, Matrix, Mesh, MeshBuilder, PointLight, Quaternion, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../../motor-3d.service';
@@ -19,20 +19,15 @@ export class LoaderModelService {
     const isModel = obj.type === 'model';
     const isLight = obj.type?.startsWith('light_');
 
-    const rolSaved = obj.properties?.rol || 'prop';
     const path = obj.properties?.path || obj.asset?.path;
 
-    // 🔥 FIX: PARCHE CONTRA MODELOS ROTOS (CAJA DE ERROR ROJA)
-    // Si la DB guardó el objeto sin path, en lugar de no crear nada, creamos un marcador de error
     if (!path) {
       console.warn(`[LoaderModel] Objeto ${obj.name} sin ruta válida. Creando Malla de Recuperación (Error).`);
-      
       const fallbackMesh = MeshBuilder.CreateBox(obj.name, { size: 1 }, scene);
       const fallbackMat = new StandardMaterial('error_mat', scene);
       fallbackMat.wireframe = true;
-      fallbackMat.emissiveColor = new Color3(1, 0, 0); // Rojo puro brillante
+      fallbackMat.emissiveColor = new Color3(1, 0, 0); 
       fallbackMesh.material = fallbackMat;
-      
       this.aplicarTransformacionesYEntidad(fallbackMesh, obj, mallasCreadas);
       return Promise.resolve();
     }
@@ -42,12 +37,9 @@ export class LoaderModelService {
 
     try {
       const result = await SceneLoader.ImportMeshAsync('', fullPath.substring(0, lastSlash + 1), fullPath.substring(lastSlash + 1), scene);
-      
       const rootNode = result.meshes[0] as Mesh;
       rootNode.name = obj.name;
-
       this.aplicarTransformacionesYEntidad(rootNode, obj, mallasCreadas, result.meshes, result.animationGroups);
-
     } catch (e) {
       console.error(`[LoaderModel] Error catastrofico cargando el GLB ${path}. Creando malla de error.`, e);
       const fallbackMesh = MeshBuilder.CreateBox(obj.name, { size: 1 }, scene);
@@ -55,7 +47,6 @@ export class LoaderModelService {
       fallbackMat.wireframe = true;
       fallbackMat.emissiveColor = new Color3(1, 0, 0); 
       fallbackMesh.material = fallbackMat;
-      
       this.aplicarTransformacionesYEntidad(fallbackMesh, obj, mallasCreadas);
     }
   }
@@ -67,7 +58,7 @@ export class LoaderModelService {
     const rolSaved = obj.properties?.rol || 'prop';
     const isProp = rolSaved === 'prop';
 
-    // Construcción limpia de la Entidad Lógica
+    // 1. FUENTE DE VERDAD: Creación de la Entidad
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, obj.type, rolSaved);
 
     entity.transform.position = { x: obj.position?.x ?? 0, y: obj.position?.y ?? 0, z: obj.position?.z ?? 0 };
@@ -80,7 +71,6 @@ export class LoaderModelService {
 
     entity.parentId = obj.parentId || null;
     
-    // Extracción de Propiedades
     entity.visual.color = obj.properties?.color || '#ffffff';
     entity.visual.colorBW = obj.properties?.colorBW || entity.visual.color;
     entity.visual.isSolid = obj.properties?.isSolid ?? true;
@@ -105,7 +95,6 @@ export class LoaderModelService {
     }
     entity.collider = savedCollider;
 
-    // 🔥 FIX TYPESCRIPT: Asignar valores directamente ya normalizados
     const savedSelectionRange = this.utilsSvc.extraerSelectionRange(obj.properties || obj);
     entity.selectionRange = { ...savedSelectionRange };
     entity.playerConfig = this.utilsSvc.prepararPlayerConfigConSelectionRange(obj.properties?.playerConfig || null, savedSelectionRange);
@@ -125,10 +114,10 @@ export class LoaderModelService {
       entity.light.attachedNodeName = obj.properties?.attachedNodeName || '';
     }
 
-    // APLICAMOS AL MESH Y DELEGAMOS A LA ENTIDAD EL CONTROL
+    // 2. VINCULACIÓN (ECS absorbe al Mesh)
     entity.bindView(rootNode); 
 
-    // Configuración Babylon-Específica
+    // 3. Modificaciones nativas Babylon
     rootNode.checkCollisions = false;
     rootNode.isPickable = true;
     rootNode.ellipsoid = new Vector3((entity.collider.sizeX ?? 0.5) * scaleX, (entity.collider.sizeY ?? 0.5) * scaleY, (entity.collider.sizeZ ?? 0.5) * scaleZ);
@@ -167,6 +156,7 @@ export class LoaderModelService {
         headNode.computeWorldMatrix(true);
         rootNode.computeWorldMatrix(true);
         entity.initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
+        entity.syncToView(); // Re-actualiza el metadata
       }
     }
 
@@ -193,8 +183,6 @@ export class LoaderModelService {
       }
     }
 
-    // 🔥 Forzamos la reinyección del metadata final.
-    entity.syncToView();
     this.entityManager.addEntity(entity);
     mallasCreadas.set(entity.uid, rootNode);
   }

@@ -1,4 +1,4 @@
-
+// src/app/services/editor/sceneservice/loaders/loader-primitive.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DirectionalLight, FresnelParameters, Mesh, MeshBuilder, PointLight, SpotLight, StandardMaterial, Texture, Vector3, VideoTexture } from '@babylonjs/core';
 import { Motor3dService } from '../../../motor-3d.service';
@@ -24,7 +24,7 @@ export class LoaderPrimitiveService {
     const scene = this.motor3d.scene;
     const isAdmin = this.state.rolSimulado() === 'admin';
     
-    // 1. CREAR ENTIDAD Y POBLAR DATOS ANTES DE TOCAR EL MESH
+    // 1. FUENTE DE VERDAD: Crear Entidad Lógica y Poblar sus componentes puros
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, obj.type, obj.properties?.rol || 'prop');
 
     entity.transform.position = { x: obj.position?.x ?? 0, y: obj.position?.y ?? 0, z: obj.position?.z ?? 0 };
@@ -45,7 +45,6 @@ export class LoaderPrimitiveService {
     entity.visual.esEmisivo = obj.properties?.esEmisivo ?? false;
     entity.visual.brilloIntensidad = this.utilsSvc.normalizarNumero(obj.properties?.brilloIntensidad, 1.0);
     
-    // 🔥 FIX TYPESCRIPT: Asignar valores directamente ya normalizados
     const savedSelectionRange = this.utilsSvc.extraerSelectionRange(obj.properties || obj);
     entity.selectionRange = { ...savedSelectionRange };
     entity.playerConfig = this.utilsSvc.prepararPlayerConfigConSelectionRange(obj.properties?.playerConfig || null, savedSelectionRange);
@@ -94,7 +93,7 @@ export class LoaderPrimitiveService {
       entity.light.attachedNodeName = obj.properties?.attachedNodeName || '';
     }
 
-    // 2. CREAR MESH Y VINCULAR
+    // 2. CREAR MESH
     let mesh!: Mesh;
     switch (obj.type) {
       case 'cube': mesh = MeshBuilder.CreateBox(entity.name, { size: 1 }, scene); break;
@@ -104,12 +103,13 @@ export class LoaderPrimitiveService {
       case 'plane': mesh = MeshBuilder.CreateGround(entity.name, { width: 1, height: 1 }, scene); break;
       case 'video_plane': mesh = MeshBuilder.CreatePlane(entity.name, { size: 1, sideOrientation: Mesh.DOUBLESIDE }, scene); break;
       case 'image_plane': mesh = MeshBuilder.CreateBox(entity.name, { size: 1 }, scene); break;
-      default: return; // Safety net
+      default: return;
     }
 
-    entity.bindView(mesh); // Carga todas las transformaciones y metadata seguras
+    // 3. VINCULAR ECS A VISTA: Babylon obedece a las coordenadas y metadatos de entity
+    entity.bindView(mesh); 
     
-    // Configuraciones Babylon Específicas
+    // 4. Configuraciones Babylon Específicas Post-Binding
     mesh.isPickable = true;
     mesh.checkCollisions = entity.visual.isSolid;
     mesh.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;

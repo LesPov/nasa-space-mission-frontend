@@ -1,6 +1,6 @@
-
+// src/app/services/editor/sceneservice/loaders/loader-trigger.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Color3, Mesh, MeshBuilder, StandardMaterial, Vector3 } from '@babylonjs/core';
+import { Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
 import { Motor3dService } from '../../../motor-3d.service';
 import { EditorStateService } from '../../editor-state.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
@@ -10,7 +10,7 @@ import { GameEntity } from '../../../../core/engine/entities/game.entity';
 export class LoaderTriggerService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
-  private entityManager = inject(EntityManagerService); // 🔥
+  private entityManager = inject(EntityManagerService);
 
   public cargarTrigger(trigger: any, mallasCreadas: Map<string, Mesh>): void {
     const scene = this.motor3d.scene;
@@ -18,7 +18,47 @@ export class LoaderTriggerService {
     const shape = trigger.actionProperties?.triggerShape || 'cube';
     const isComposite = trigger.actionProperties?.isComposite ?? false;
 
+    // 1. FUENTE DE VERDAD: Creación de la Entidad
+    const uid = trigger.uid || window.crypto.randomUUID();
+    const entity = new GameEntity(uid, trigger.name, 'trigger', 'trigger');
+
+    entity.transform.position = { x: trigger.position.x, y: trigger.position.y, z: trigger.position.z };
+    entity.transform.scale = { x: trigger.scale?.x ?? 1, y: trigger.scale?.y ?? 1, z: trigger.scale?.z ?? 1 };
+    entity.parentId = trigger.parentId || null;
+
+    entity.trigger = {
+      isComposite: isComposite,
+      triggerShape: shape,
+      conditions: isComposite && trigger.condition ? [trigger.condition] : [],
+      mensajeEntrada: isComposite && trigger.condition === 'on_enter' ? (trigger.actionProperties?.mensaje || '') : '',
+      mensajeSalida: isComposite && trigger.condition === 'on_exit' ? (trigger.actionProperties?.mensaje || '') : '',
+      soundUrlEntrada: isComposite && trigger.condition === 'on_enter' ? (trigger.actionProperties?.soundUrl || '') : '',
+      soundUrlSalida: isComposite && trigger.condition === 'on_exit' ? (trigger.actionProperties?.soundUrl || '') : '',
+      seqEntrada: isComposite && trigger.condition === 'on_enter' ? (trigger.actionProperties?.seqEntrada || '') : '',
+      seqSalida: isComposite && trigger.condition === 'on_exit' ? (trigger.actionProperties?.seqSalida || '') : '',
+      timeEntrada: isComposite && trigger.condition === 'on_enter' ? (trigger.actionProperties?.timeEntrada ?? 4.5) : 4.5,
+      timeSalida: isComposite && trigger.condition === 'on_exit' ? (trigger.actionProperties?.timeSalida ?? 4.5) : 4.5,
+      videoEntrada: isComposite && trigger.condition === 'on_enter' ? (trigger.actionProperties?.videoEntrada || '') : '',
+      videoSalida: isComposite && trigger.condition === 'on_exit' ? (trigger.actionProperties?.videoSalida || '') : '',
+      
+      condition: !isComposite ? (trigger.condition || 'on_enter') : 'on_enter',
+      mensaje: !isComposite ? (trigger.actionProperties?.mensaje || '') : '',
+      soundUrl: !isComposite ? (trigger.actionProperties?.soundUrl || '') : '',
+      interactSequenceId: !isComposite ? (trigger.actionProperties?.interactSequenceId || '') : '',
+      timeNorm: !isComposite ? (trigger.actionProperties?.timeNorm ?? 4.5) : 4.5,
+      videoNorm: !isComposite ? (trigger.actionProperties?.videoNorm || '') : '',
+      
+      isRepeatable: trigger.isRepeatable ?? false,
+      isEnabled: trigger.isEnabled ?? true,
+      hasTriggeredEnter: false,
+      hasTriggeredExit: false,
+      gameConditions: [],
+      stateMutations: []
+    };
+
+    // 2. CREACIÓN O RECUPERACIÓN DE LA MALLA
     let mesh = scene.getMeshByName(trigger.name) as Mesh;
+    
     if (!mesh) {
       switch (shape) {
         case 'sphere': mesh = MeshBuilder.CreateSphere(trigger.name, { diameter: 1 }, scene); break;
@@ -26,10 +66,10 @@ export class LoaderTriggerService {
         default: mesh = MeshBuilder.CreateBox(trigger.name, { size: 1 }, scene); break;
       }
 
-      mesh.position = new Vector3(trigger.position.x, trigger.position.y, trigger.position.z);
-      mesh.scaling = new Vector3(trigger.size.x, trigger.size.y, trigger.size.z);
+      // 3. VINCULACIÓN ECS -> VISTA (Aquí la malla absorbe posición y metadatos)
+      entity.bindView(mesh);
 
-      // 🔥 MATERIAL VERDE NEÓN AL CARGAR LA ESCENA
+      // 4. CONFIGURACIÓN VISUAL BABYLON
       const mat = new StandardMaterial('mat_trigger_' + trigger.name, scene);
       mat.diffuseColor = new Color3(0.0, 1.0, 0.0);
       mat.emissiveColor = new Color3(0.2, 1.0, 0.2);
@@ -43,59 +83,12 @@ export class LoaderTriggerService {
       mesh.checkCollisions = false;
       mesh.isVisible = isAdmin;
 
-      mesh.metadata = {
-        uid: trigger.uid || window.crypto.randomUUID(),
-        type: 'trigger',
-        triggerShape: shape,
-        isComposite: isComposite,
-        parentId: trigger.parentId || null,
-        conditions: [],
-        mensajeEntrada: '', mensajeSalida: '',
-        soundUrlEntrada: '', soundUrlSalida: '',
-        seqEntrada: '', seqSalida: '',
-        timeEntrada: 4.5, timeSalida: 4.5,
-        videoEntrada: '', videoSalida: '',
-        condition: 'on_enter',
-        mensaje: '', soundUrl: '', interactSequenceId: '',
-        timeNorm: 4.5, videoNorm: '',
-        isRepeatable: trigger.isRepeatable,
-        isEnabled: trigger.isEnabled,
-        hasTriggeredEnter: false, hasTriggeredExit: false
-      };
-
-      // 🔥 VINCULAR AL ENTITY MANAGER
-      const entity = new GameEntity(mesh.metadata.uid, trigger.name, 'trigger', 'trigger');
-      entity.bindView(mesh);
-      entity.syncFromMetadata();
       this.entityManager.addEntity(entity);
-
-      mallasCreadas.set(mesh.metadata.uid, mesh);
-    }
-
-    if (isComposite) {
-      if (trigger.condition && !mesh.metadata.conditions.includes(trigger.condition)) {
-        mesh.metadata.conditions.push(trigger.condition);
-      }
-      if (trigger.condition === 'on_enter') {
-        mesh.metadata.mensajeEntrada = trigger.actionProperties?.mensaje || '';
-        mesh.metadata.soundUrlEntrada = trigger.actionProperties?.soundUrl || '';
-        mesh.metadata.seqEntrada = trigger.actionProperties?.seqEntrada || '';
-        mesh.metadata.timeEntrada = trigger.actionProperties?.timeEntrada ?? 4.5;
-        mesh.metadata.videoEntrada = trigger.actionProperties?.videoEntrada || '';
-      } else if (trigger.condition === 'on_exit') {
-        mesh.metadata.mensajeSalida = trigger.actionProperties?.mensaje || '';
-        mesh.metadata.soundUrlSalida = trigger.actionProperties?.soundUrl || '';
-        mesh.metadata.seqSalida = trigger.actionProperties?.seqSalida || '';
-        mesh.metadata.timeSalida = trigger.actionProperties?.timeSalida ?? 4.5;
-        mesh.metadata.videoSalida = trigger.actionProperties?.videoSalida || '';
-      }
+      mallasCreadas.set(entity.uid, mesh);
     } else {
-      mesh.metadata.condition = trigger.condition || 'on_enter';
-      mesh.metadata.mensaje = trigger.actionProperties?.mensaje || '';
-      mesh.metadata.soundUrl = trigger.actionProperties?.soundUrl || '';
-      mesh.metadata.interactSequenceId = trigger.actionProperties?.interactSequenceId || '';
-      mesh.metadata.timeNorm = trigger.actionProperties?.timeNorm ?? 4.5;
-      mesh.metadata.videoNorm = trigger.actionProperties?.videoNorm || '';
+      // Si la malla ya existía, igual la atamos a la entidad
+      entity.bindView(mesh);
+      this.entityManager.addEntity(entity);
     }
   }
 }

@@ -1,3 +1,4 @@
+
 <!-- PANTALLA PRINCIPAL: SELECCIÓN DE MAPAS -->
 <ng-container *ngIf="!editando && !modalSeleccionModo && !cargandoEscena">
   <div class="galeria-header">
@@ -293,17 +294,17 @@
               </div>
           </div>
 
-          <div class="modern-toast-container" *ngIf="gameSession.isPlaying() && targetInteractuable() && gameSession.pointerLocked() && (showToastE() || showToastI() || (editorSvc.rolSimulado() === 'admin' && gameSession.cameraView() === 'FPS'))">
+          <div class="modern-toast-container" *ngIf="gameSession.isPlaying() && targetInteractuable() && gameSession.pointerLocked() && (actionAvailable() || inspectAvailable() || (editorSvc.rolSimulado() === 'admin' && gameSession.cameraView() === 'FPS'))">
             <div class="modern-toast-box">
               <div class="toast-title">{{ targetInteractuable()?.name }}</div>
               <div class="toast-actions-grid">
                 <div class="action-item" *ngIf="editorSvc.rolSimulado() === 'admin' && gameSession.cameraView() === 'FPS'">
                   <kbd class="key-cap">Click</kbd><span class="action-label">Editar</span>
                 </div>
-                <div class="action-item" *ngIf="showToastE()">
+                <div class="action-item" *ngIf="actionAvailable()">
                   <kbd class="key-cap">E</kbd><span class="action-label">Acción</span>
                 </div>
-                <div class="action-item" *ngIf="showToastI()">
+                <div class="action-item" *ngIf="inspectAvailable()">
                   <kbd class="key-cap">I</kbd><span class="action-label">Leer</span>
                 </div>
               </div>

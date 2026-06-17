@@ -1,3 +1,51 @@
 
-<p>juego-pantalla works!</p>
+<div class="juego-container">
+  
+  <div class="loading-overlay" *ngIf="isLoading()">
+    <div class="cinematic-spinner"></div>
+    <h2>Cargando Episodio...</h2>
+  </div>
 
+  <div class="canvas-wrapper" [class.blur]="isInteracting() || (!pointerLocked() && !isLoading())">
+     <app-motor-babylon></app-motor-babylon>
+  </div>
+
+  <div class="crosshair-ui" *ngIf="pointerLocked() && cameraView() === 'FPS'" [class.hovering]="hoveredMesh() !== null"></div>
+
+  <div class="modern-toast-container" *ngIf="hudMessage() !== null" style="bottom: 120px; z-index: 300;">
+      <div class="modern-toast-box" style="background: rgba(30, 58, 138, 0.95); border: 2px solid #60a5fa; box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);">
+         <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">📍 {{ hudMessage() }}</div>
+      </div>
+  </div>
+
+  <div class="modern-toast-container" *ngIf="targetInteractuable() && pointerLocked() && (actionAvailable() || inspectAvailable())">
+    <div class="modern-toast-box">
+      <div class="toast-title">{{ targetInteractuable()?.name }}</div>
+      <div class="toast-actions-grid">
+        <div class="action-item" *ngIf="actionAvailable()">
+          <kbd class="key-cap">E</kbd><span class="action-label">Acción</span>
+        </div>
+        <div class="action-item" *ngIf="inspectAvailable()">
+          <kbd class="key-cap">I</kbd><span class="action-label">Leer</span>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Modal Interaccion -->
+  <div class="modal-overlay" *ngIf="isInteracting()" style="z-index: 1000;">
+    <div class="rpg-modal">
+      <div class="rpg-modal-header"><h3>🔍 Inspección</h3></div>
+      <div class="rpg-modal-body">
+        <p class="rpg-obj-name">{{ targetInteractuable()?.name }}</p>
+        <div class="rpg-obj-desc"><div class="lore-text"><p>"{{ targetInteractuable()?.interaction?.mensaje }}"</p></div></div>
+      </div>
+      <div class="rpg-modal-footer"><button class="btn-rpg-action" (click)="cerrarInteraccion()">Continuar</button></div>
+    </div>
+  </div>
+
+  <div class="pause-overlay" *ngIf="!pointerLocked() && !isLoading() && !isInteracting()">
+     <h2>Juego Pausado</h2>
+     <p>Haz clic para continuar</p>
+  </div>
+</div>

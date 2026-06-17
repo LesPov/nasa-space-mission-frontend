@@ -4,10 +4,10 @@ import { Node, AbstractMesh, Vector3 } from '@babylonjs/core';
 import { EditorToolsService } from './editor/editor-tools.service';
 import { EditorSceneService } from './editor/editor-scene.service';
 import { EditorPlayModeService } from './editor/editor-play-mode.service';
-import { EditorInteractionService } from './editor/editor-interaction.service';
 import { EditorStateService, ToolMode, PlayState } from './editor/editor-state.service';
 import { EditorCameraService } from './editor/editor-camera.service';
 import { SceneLoaderService } from './editor/sceneservice/scene-loader.service'; 
+import { PlayerInteractionService } from './editor/playerservice/player-interaction.service';
 
 export type { ToolMode, PlayState };
 
@@ -20,9 +20,9 @@ export class EditorMapaService {
   private tools = inject(EditorToolsService);
   private scene = inject(EditorSceneService);
   private playMode = inject(EditorPlayModeService);
-  private interaction = inject(EditorInteractionService);
   private camera = inject(EditorCameraService);
   private loader = inject(SceneLoaderService); 
+  private playerInteractSvc = inject(PlayerInteractionService);
 
   get playState() { return this.state.playState; }
   get rolSimulado() { return this.state.rolSimulado; }
@@ -83,10 +83,10 @@ export class EditorMapaService {
     this.loader.instanciarObjetoDesdePrefab(prefabData, targetPos);
   }
 
-  iniciarModoJuego(vista: 'FPS' | 'TPS'): void { this.playMode.iniciarModoJuego(vista); }
-  detenerModoJuego(): void { this.playMode.detenerModoJuego(); }
+  testearEscena(vista: 'FPS' | 'TPS'): void { this.playMode.testearEscena(vista); }
+  detenerPrueba(): void { this.playMode.detenerPrueba(); }
 
-  cerrarInteraccionJugador(): void { this.interaction.cerrarInteraccionJugador(); }
+  cerrarInteraccionJugador(): void { this.playerInteractSvc.cerrarMensajeInteractivo(); }
 
   toggleCameraUser(isCinematicInitial: boolean = false, customFrames?: number): void { 
     this.playMode.toggleCameraUser(isCinematicInitial, customFrames); 

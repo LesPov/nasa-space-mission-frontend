@@ -1,3 +1,4 @@
+
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
 import { GameSession } from '../../core/engine/game-session';
@@ -120,7 +121,7 @@ export class PlayerTriggerService {
             if (!mostroMensajeSalida) {
                 if (this.currentHudMessage === triggerEntity.trigger.mensajeEntrada || this.currentHudMessage === triggerEntity.trigger.mensaje) {
                     this.currentHudMessage = null;
-                    this.eventBus.emit({ type: 'HUD_MESSAGE', payload: null });
+                    this.eventBus.emit({ type: 'MessageRequested', payload: null });
                     if (this.hudTimeouts.has('hud')) {
                         this.loopManager.unregister(this.hudTimeouts.get('hud')!);
                     }
@@ -174,7 +175,7 @@ export class PlayerTriggerService {
 
       if (mensaje && mensaje.trim() !== '') {
           this.currentHudMessage = mensaje;
-          this.eventBus.emit({ type: 'HUD_MESSAGE', payload: mensaje });
+          this.eventBus.emit({ type: 'MessageRequested', payload: mensaje });
           mostroMensaje = true;
           
           if (this.hudTimeouts.has('hud')) {
@@ -190,7 +191,7 @@ export class PlayerTriggerService {
               if (elapsed >= msgTimeMs) {
                   if (this.currentHudMessage === mensaje) {
                       this.currentHudMessage = null;
-                      this.eventBus.emit({ type: 'HUD_MESSAGE', payload: null });
+                      this.eventBus.emit({ type: 'MessageRequested', payload: null });
                   }
                   this.loopManager.unregister(loopId);
                   this.hudTimeouts.delete('hud');

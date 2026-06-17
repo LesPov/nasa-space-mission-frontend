@@ -1,13 +1,11 @@
-
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Vector3, Quaternion, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Quaternion } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { EditorCameraService } from './editor-camera.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
-import { GameSession } from '../../core/engine/game-session';
-import { PlayerCameraManagerService } from './playerservice/player-camera.service';
+import { RuntimeEngineService } from '../../core/engine/runtime-engine.service';
 import { PlayerTriggerService } from './player-trigger.service';
 import { PlayerBubbleService } from './playerservice/player-bubble';
 
@@ -17,14 +15,13 @@ export class EditorPlayModeService {
   private state = inject(EditorStateService);
   private cameraSvc = inject(EditorCameraService);
   private entityManager = inject(EntityManagerService);
-  private gameSession = inject(GameSession);
-  private playerCamSvc = inject(PlayerCameraManagerService);
+  private runtimeEngine = inject(RuntimeEngineService);
   private triggerSvc = inject(PlayerTriggerService);
   private bubbleSvc = inject(PlayerBubbleService);
 
   private backupsAnimados: any[] = [];
   
-  public iniciarModoJuego(vista: 'FPS' | 'TPS'): void {
+  public testearEscena(vista: 'FPS' | 'TPS'): void {
     const objMesh = this.state.objetoSeleccionado() as Mesh;
     if (!objMesh) return;
     
@@ -37,7 +34,7 @@ export class EditorPlayModeService {
     this.state.jugadorActivo = objMesh;
     this.state.objetoHovereado.set(null);
 
-    // BACKUPS
+    // BACKUPS DEL EDITOR
     this.state.backupObjetoPosicion = objMesh.position.clone();
     if (objMesh.rotationQuaternion) this.state.backupObjetoRotacionQuat = objMesh.rotationQuaternion.clone();
     else {
@@ -58,7 +55,7 @@ export class EditorPlayModeService {
     
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
-    // LIMPIEZA VISUAL DEL EDITOR ANTES DE EMPEZAR EL JUEGO
+    // LIMPIEZA VISUAL DEL EDITOR ANTES DE EMPEZAR LA PRUEBA
     this.motor3d.scene.meshes.forEach(m => {
         if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
             m.isVisible = isAdmin;
@@ -67,16 +64,6 @@ export class EditorPlayModeService {
 
         const entity = this.entityManager.getEntityByMesh(m);
         if (entity) {
-            if (entity.type === 'video_plane') {
-                if (m.material instanceof StandardMaterial) {
-                    const tex = m.material.diffuseTexture;
-                    if (tex instanceof VideoTexture) {
-                        tex.video.pause();
-                        tex.video.currentTime = 0;
-                        m.material.emissiveColor = new Color3(0, 0, 0); 
-                    }
-                }
-            }
             if (entity.type.startsWith('light_') && !entity.visual.assetId) {
                 m.isVisible = false;
             }
@@ -98,25 +85,21 @@ export class EditorPlayModeService {
         }
     });
 
-    this.playerCamSvc.inicializarCamaras(playerEntity, vista);
-
     const targetCam = vista === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS;
-    targetCam.getViewMatrix(true);
-    const targetPos = targetCam.globalPosition.clone();
+    let targetLookAt = objMesh.getAbsolutePosition().clone();
+    let targetPos = objMesh.getAbsolutePosition().clone();
     
-    let targetLookAt: Vector3;
     if (vista === 'FPS') {
-      targetLookAt = targetCam.globalPosition.add(targetCam.getDirection(Vector3.Forward()));
+        targetPos.y += playerEntity.playerConfig?.camera?.fpsEyeLevel ?? 1.6;
+        targetLookAt = targetPos.add(objMesh.forward);
     } else {
-      targetLookAt = this.playerCamSvc.cameraPivot!.getAbsolutePosition();
+        targetPos.z -= 5;
+        targetPos.y += 2;
     }
 
     const finishSetup = () => {
-        this.motor3d.scene.activeCamera = targetCam;
         this.state.playState.set('PLAYING');
-        
-        // DELEGA LA PARTIDA A LA SESIÓN AGNÓSTICA (GameSession)
-        this.gameSession.start(playerEntity, vista, isAdmin);
+        this.runtimeEngine.startSession(playerEntity, vista, isAdmin);
         this.state.triggerUpdate();
         
         if (isAdmin) {
@@ -137,10 +120,10 @@ export class EditorPlayModeService {
     }
   }
 
-  public detenerModoJuego(): void {
+  public detenerPrueba(): void {
     this.state.playState.set('EDITOR');
     
-    this.gameSession.stop();
+    this.runtimeEngine.stopSession();
 
     this.triggerSvc.restaurarTriggersParaEditor();
     this.bubbleSvc.restaurarBurbujasParaEditor(); 
@@ -185,14 +168,14 @@ export class EditorPlayModeService {
         }
     });
 
-    this.playerCamSvc.restaurarCamaraEditor();
-    this.playerCamSvc.limpiarPivotTPS();
+    this.cameraSvc.restaurarCamaraLibre();
+    const editorCam = this.motor3d.editorCamera;
+    this.motor3d.scene.activeCamera = editorCam;
     
     if (this.state.jugadorActivo && this.state.backupObjetoPosicion && this.state.backupObjetoRotacionQuat) {
       const entity = this.entityManager.getEntityByMesh(this.state.jugadorActivo);
       if (entity && (entity.rol === 'npc' || entity.rol === 'spawn_point')) {
-        if (this.gameSession.cameraView() === 'FPS') this.state.jugadorActivo.rotationQuaternion = Quaternion.FromEulerAngles(0, (this.motor3d.playerCameraFPS as any).rotation.y, 0);
-        this.state.triggerUpdate();
+        // En modo edición mantenemos la rotación en la que lo dejó el jugador
       } else {
         this.state.jugadorActivo.position = this.state.backupObjetoPosicion;
         this.state.jugadorActivo.rotationQuaternion = this.state.backupObjetoRotacionQuat.clone();
@@ -227,6 +210,6 @@ export class EditorPlayModeService {
   }
 
   public toggleCameraUser(isCinematicInitial: boolean = false, customFrames?: number): void {
-    this.gameSession.toggleCameraUser(isCinematicInitial, customFrames);
+    this.runtimeEngine.toggleCameraUser(isCinematicInitial, customFrames);
   }
 }

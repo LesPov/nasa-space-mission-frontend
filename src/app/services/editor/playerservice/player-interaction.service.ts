@@ -1,3 +1,4 @@
+
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -18,8 +19,8 @@ export class PlayerInteractionService {
   }
 
   public currentTarget: GameEntity | null = null;
-  public currentShowE: boolean = false;
-  public currentShowI: boolean = false;
+  public canInteract: boolean = false;
+  public canInspect: boolean = false;
   public currentHoveredMesh: AbstractMesh | null = null;
 
   public lastInteractDistance: number | null = null;
@@ -223,24 +224,20 @@ export class PlayerInteractionService {
     }
 
     // 🔥 Emitir eventos limpios en caso de cambio de estado interactivo
-    if (this.currentTarget !== hitInteractuable || this.currentShowE !== showE || this.currentShowI !== showI) {
+    if (this.currentTarget !== hitInteractuable || this.canInteract !== showE || this.canInspect !== showI || this.currentHoveredMesh !== hoverSelectable) {
       this.currentTarget = hitInteractuable;
-      this.currentShowE = showE;
-      this.currentShowI = showI;
-      this.eventBus.emit({ 
-        type: 'INTERACTION_TARGET', 
-        payload: { entity: hitInteractuable, showE, showI } 
-      });
-    }
-
-    if (this.currentHoveredMesh !== hoverSelectable) {
+      this.canInteract = showE;
+      this.canInspect = showI;
       this.currentHoveredMesh = hoverSelectable;
-      this.eventBus.emit({ type: 'HOVER_MESH', payload: hoverSelectable });
+      this.eventBus.emit({ 
+        type: 'ObjectFocused', 
+        payload: { entity: hitInteractuable, mesh: hoverSelectable, canInteract: showE, canInspect: showI } 
+      });
     }
   }
 
   public abrirMensajeInteractivo(entity: GameEntity, resetMovementCallback: () => void): void {
-    this.eventBus.emit({ type: 'INTERACTING_STATE', payload: true });
+    this.eventBus.emit({ type: 'InteractionStateChanged', payload: true });
     this.session.pointerLocked.set(false);
 
     try {
@@ -248,5 +245,14 @@ export class PlayerInteractionService {
     } catch {}
 
     resetMovementCallback();
+  }
+
+  public cerrarMensajeInteractivo(): void {
+    this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
+    const canvas = this.motor3d.engine.getRenderingCanvas();
+    if (canvas) {
+      canvas.focus();
+      try { canvas.requestPointerLock(); } catch {}
+    }
   }
 }

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Node } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
@@ -30,7 +31,7 @@ export class EditorInteractionService {
     this.state.objetoHovereado.set(null);
 
     // Emisión agnóstica para limpiar la UI
-    this.eventBus.emit({ type: 'INTERACTING_STATE', payload: false });
+    this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
 
     this.inputSvc.resetearInputs();
 

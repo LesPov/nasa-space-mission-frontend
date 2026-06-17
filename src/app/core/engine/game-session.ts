@@ -1,3 +1,4 @@
+
 import { Injectable, signal, inject } from '@angular/core';
 import { GameEntity } from './entities/game.entity';
 import { EntityManagerService } from './entities/entity-manager.service';
@@ -60,10 +61,10 @@ export class GameSession {
     this.pointerLocked.set(true);
 
     // Reseteamos UI enviando eventos al Bus
-    this.eventBus.emit({ type: 'INTERACTION_TARGET', payload: { entity: null, showE: false, showI: false } });
-    this.eventBus.emit({ type: 'HOVER_MESH', payload: null });
-    this.eventBus.emit({ type: 'HUD_MESSAGE', payload: null });
-    this.eventBus.emit({ type: 'INTERACTING_STATE', payload: false });
+    this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
+    this.eventBus.emit({ type: 'MessageRequested', payload: null });
+    this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
+    this.eventBus.emit({ type: 'GameStarted', payload: { view, isAdmin } });
 
     // Despertar entornos pasivos
     this.triggerSvc.prepararTriggersParaJuego();
@@ -87,9 +88,9 @@ export class GameSession {
     // Arranque de inputs mapeados a la sesión de juego pura
     this.inputSvc.iniciarEscuchaTeclado(this.motor3d.scene, {
       onToggleCamera: () => this.toggleCameraUser(),
-      onInteractE: () => {
+      onAction: () => {
         const target = this.interactSvc.currentTarget;
-        if (target && this.interactSvc.currentShowE) {
+        if (target && this.interactSvc.canInteract) {
           if (target.type === 'bubble') {
             this.bubbleSvc.ejecutarBurbuja(target);
             const seqId = this.cameraView() === 'FPS' ? target.interaction.interactSequenceIdFPS : target.interaction.interactSequenceIdTPS;
@@ -106,9 +107,9 @@ export class GameSession {
           }
         }
       },
-      onInteractI: () => {
+      onInspect: () => {
         const target = this.interactSvc.currentTarget;
-        if (target && this.interactSvc.currentShowI) {
+        if (target && this.interactSvc.canInspect) {
           this.interactSvc.abrirMensajeInteractivo(target, () => {
              const pCtrl = this.controllers.get(playerEntity.uid);
              if (pCtrl) pCtrl.resetPhysicsState();
@@ -135,7 +136,10 @@ export class GameSession {
     const canvas = this.motor3d.engine.getRenderingCanvas();
     if (canvas) {
       const handlePointerLockChange = () => {
-        this.pointerLocked.set(!!document.pointerLockElement);
+        const locked = !!document.pointerLockElement;
+        this.pointerLocked.set(locked);
+        if (locked) this.eventBus.emit({ type: 'GameResumed' });
+        else this.eventBus.emit({ type: 'GamePaused' });
       };
       document.addEventListener('pointerlockchange', handlePointerLockChange);
       (this as any)._pointerLockListener = handlePointerLockChange; 
@@ -155,10 +159,10 @@ export class GameSession {
     this.controllers.clear();
 
     // Limpieza de HUD UI enviando el evento
-    this.eventBus.emit({ type: 'INTERACTION_TARGET', payload: { entity: null, showE: false, showI: false } });
-    this.eventBus.emit({ type: 'HOVER_MESH', payload: null });
-    this.eventBus.emit({ type: 'HUD_MESSAGE', payload: null });
-    this.eventBus.emit({ type: 'INTERACTING_STATE', payload: false });
+    this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
+    this.eventBus.emit({ type: 'MessageRequested', payload: null });
+    this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
+    this.eventBus.emit({ type: 'GameStopped' });
 
     const canvas = this.motor3d.engine.getRenderingCanvas();
     if (canvas && (this as any)._pointerLockListener) {
@@ -175,7 +179,10 @@ export class GameSession {
       this.cameraView(),
       isCinematicInitial,
       true,
-      (newView) => this.cameraView.set(newView),
+      (newView) => {
+        this.cameraView.set(newView);
+        this.eventBus.emit({ type: 'CameraViewChanged', payload: newView });
+      },
       customFrames
     );
   }

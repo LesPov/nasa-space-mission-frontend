@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
@@ -42,13 +43,12 @@ export class PlayerBubbleService {
 
     // Reseteamos el estado interno de interacción y emitimos al bus
     this.interactSvc.currentTarget = null;
-    this.interactSvc.currentShowE = false;
-    this.interactSvc.currentShowI = false;
+    this.interactSvc.canInteract = false;
+    this.interactSvc.canInspect = false;
     this.interactSvc.currentHoveredMesh = null;
 
-    this.eventBus.emit({ type: 'INTERACTION_TARGET', payload: { entity: null, showE: false, showI: false } });
-    this.eventBus.emit({ type: 'HOVER_MESH', payload: null });
-    this.eventBus.emit({ type: 'HUD_MESSAGE', payload: null });
+    this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
+    this.eventBus.emit({ type: 'MessageRequested', payload: null });
   }
 
   public restaurarBurbujasParaEditor(): void {

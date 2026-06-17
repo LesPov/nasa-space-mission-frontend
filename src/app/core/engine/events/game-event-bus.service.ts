@@ -1,13 +1,18 @@
+
 import { Injectable } from '@angular/core';
 import { Subject } from 'rxjs';
 import { GameEntity } from '../entities/game.entity';
 import { AbstractMesh } from '@babylonjs/core';
 
 export type GameEvent = 
-  | { type: 'HUD_MESSAGE', payload: string | null }
-  | { type: 'INTERACTION_TARGET', payload: { entity: GameEntity | null, showE: boolean, showI: boolean } }
-  | { type: 'HOVER_MESH', payload: AbstractMesh | null }
-  | { type: 'INTERACTING_STATE', payload: boolean };
+  | { type: 'MessageRequested', payload: string | null }
+  | { type: 'ObjectFocused', payload: { entity: GameEntity | null, mesh: AbstractMesh | null, canInteract: boolean, canInspect: boolean } }
+  | { type: 'InteractionStateChanged', payload: boolean }
+  | { type: 'GameStarted', payload: { view: 'FPS' | 'TPS', isAdmin: boolean } }
+  | { type: 'GameStopped' }
+  | { type: 'GamePaused' }
+  | { type: 'GameResumed' }
+  | { type: 'CameraViewChanged', payload: 'FPS' | 'TPS' };
 
 @Injectable({ providedIn: 'root' })
 export class GameEventBusService {

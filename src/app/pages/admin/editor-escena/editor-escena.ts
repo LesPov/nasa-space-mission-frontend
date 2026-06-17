@@ -1,3 +1,4 @@
+
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -36,8 +37,8 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   // Estados Locales de UI Desacoplados del Engine
   public hudMessage = signal<string | null>(null);
-  public showToastE = signal<boolean>(false);
-  public showToastI = signal<boolean>(false);
+  public actionAvailable = signal<boolean>(false);
+  public inspectAvailable = signal<boolean>(false);
   public targetInteractuable = signal<GameEntity | null>(null);
   public hoveredMesh = signal<AbstractMesh | null>(null);
   public isInteracting = signal<boolean>(false);
@@ -123,14 +124,14 @@ export class EditorEscena implements OnInit, OnDestroy {
 
     this.eventBusSub = this.eventBus.events$.subscribe(event => {
       switch (event.type) {
-        case 'HUD_MESSAGE': this.hudMessage.set(event.payload); break;
-        case 'INTERACTION_TARGET':
+        case 'MessageRequested': this.hudMessage.set(event.payload); break;
+        case 'ObjectFocused':
           this.targetInteractuable.set(event.payload.entity);
-          this.showToastE.set(event.payload.showE);
-          this.showToastI.set(event.payload.showI);
+          this.hoveredMesh.set(event.payload.mesh);
+          this.actionAvailable.set(event.payload.canInteract);
+          this.inspectAvailable.set(event.payload.canInspect);
           break;
-        case 'HOVER_MESH': this.hoveredMesh.set(event.payload); break;
-        case 'INTERACTING_STATE': this.isInteracting.set(event.payload); break;
+        case 'InteractionStateChanged': this.isInteracting.set(event.payload); break;
       }
       this.cdr.detectChanges();
     });
@@ -416,12 +417,12 @@ export class EditorEscena implements OnInit, OnDestroy {
   iniciarModoPrueba() {
     if (!this.esObjetoJugable()) return;
     if (this.editorSvc.rolSimulado() === 'admin') this.guardarMapaEnBD(true); 
-    this.editorSvc.iniciarModoJuego(this.vistaPrueba);
+    this.editorSvc.testearEscena(this.vistaPrueba);
   }
 
   detenerModoPrueba() {
     if (this.editorSvc.playState() === 'EDITOR') return;
-    this.editorSvc.detenerModoJuego(); 
+    this.editorSvc.detenerPrueba(); 
     if (this.editorSvc.rolSimulado() === 'admin') setTimeout(() => this.guardarMapaEnBD(true), 500);
   }
 
@@ -440,8 +441,8 @@ export class EditorEscena implements OnInit, OnDestroy {
     
     // Reseteamos señales visuales locales
     this.hudMessage.set(null);
-    this.showToastE.set(false);
-    this.showToastI.set(false);
+    this.actionAvailable.set(false);
+    this.inspectAvailable.set(false);
     this.targetInteractuable.set(null);
     this.hoveredMesh.set(null);
     this.isInteracting.set(false);

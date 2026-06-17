@@ -20,7 +20,7 @@ export class PlayerInputService {
 
   public iniciarEscuchaTeclado(
     scene: Scene, 
-    callbacks: { onToggleCamera: () => void, onInteractE: () => void, onInteractI: () => void }
+    callbacks: { onToggleCamera: () => void, onAction: () => void, onInspect: () => void }
   ): void {
     this.tecladoObserver = scene.onKeyboardObservable.add((kbInfo: KeyboardInfo) => {
       if (!this.session.isPlaying() || !this.session.pointerLocked()) return;
@@ -40,8 +40,8 @@ export class PlayerInputService {
           callbacks.onToggleCamera();
         }
 
-        if (keyStr === 'e') callbacks.onInteractE();
-        if (keyStr === 'i') callbacks.onInteractI();
+        if (keyStr === 'e') callbacks.onAction();
+        if (keyStr === 'i') callbacks.onInspect();
       } else {
         this.inputMap[keyStr] = false;
         this.inputMap[codeStr] = false;

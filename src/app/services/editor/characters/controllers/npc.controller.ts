@@ -3,7 +3,7 @@ import { GamePhase } from '../../../../core/engine/behaviors/services/loop-manag
 import { BaseCharacterController } from './base-character.controller';
 import { CharacterContext } from '../character-context.interface';
 import { GameEntity } from '../../../../core/engine/entities/game.entity';
- 
+
 export class NpcController extends BaseCharacterController {
   
   constructor(entity: GameEntity, context: CharacterContext) {
@@ -28,6 +28,7 @@ export class NpcController extends BaseCharacterController {
   protected update(dtMs: number): void {
     const seqRuntime = this.context.sequenceSvc.actualizarSecuencia(dtMs, this.entity);
     
+    // Cinemáticas programadas en el Runtime puestas directamente sobre la posición
     if (seqRuntime.running && seqRuntime.step) {
       const soY = seqRuntime.step.offsetY || 0;
       const soF = seqRuntime.step.offsetForward || 0;

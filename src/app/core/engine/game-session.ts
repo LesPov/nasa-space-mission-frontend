@@ -1,279 +1,187 @@
-import { Injectable, inject, signal } from '@angular/core';
-import { Mesh, StandardMaterial, VideoTexture, Color3, UniversalCamera, Vector3, AbstractMesh, MeshBuilder } from '@babylonjs/core';
-import { Motor3dService } from '../../services/motor-3d.service';
-import { EntityManagerService } from './entities/entity-manager.service';
-import { LoopManagerService, GamePhase } from './behaviors/services/loop-manager.service';
-import { GameEntity } from './entities/game.entity';
 
-import { CharacterContext } from '../../services/editor/characters/character-context.interface';
+import { Injectable, signal, inject } from '@angular/core';
+import { AbstractMesh } from '@babylonjs/core';
+import { GameEntity } from './entities/game.entity';
+import { EntityManagerService } from './entities/entity-manager.service';
+import { BaseCharacterController } from '../../services/editor/characters/controllers/base-character.controller';
 import { PlayerController } from '../../services/editor/characters/controllers/player.controller';
 import { NpcController } from '../../services/editor/characters/controllers/npc.controller';
+import { LoopManagerService } from './behaviors/services/loop-manager.service';
+import { ObjectAnimationService } from '../../services/editor/object-animation.service';
 
+// Importación de servicios para la inyección del CharacterContext
+import { Motor3dService } from '../../services/motor-3d.service';
 import { PlayerAnimationService } from '../../services/editor/playerservice/player-animation.service';
-import { PlayerCameraManagerService } from '../../services/editor/playerservice/player-camera.service';
-import { PlayerInputService } from '../../services/editor/playerservice/player-input.service';
-import { PlayerInteractionService } from '../../services/editor/playerservice/player-interaction.service';
 import { PlayerPhysicsService } from '../../services/editor/playerservice/player-physics.service';
 import { PlayerSequenceService } from '../../services/editor/playerservice/player-sequence.service';
+import { PlayerInputService } from '../../services/editor/playerservice/player-input.service';
+import { PlayerCameraManagerService } from '../../services/editor/playerservice/player-camera.service';
+import { PlayerInteractionService } from '../../services/editor/playerservice/player-interaction.service';
 import { PlayerTriggerService } from '../../services/editor/player-trigger.service';
 import { PlayerBubbleService } from '../../services/editor/playerservice/player-bubble';
-import { ObjectAnimationService } from '../../services/editor/object-animation.service';
+import { CharacterContext } from '../../services/editor/characters/character-context.interface';
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
-  private motor3d = inject(Motor3dService);
-  private entityManager = inject(EntityManagerService);
-  private loopManager = inject(LoopManagerService);
-
-  private inputSvc = inject(PlayerInputService);
-  private physicsSvc = inject(PlayerPhysicsService);
-  private animSvc = inject(PlayerAnimationService);
-  private playerCamSvc = inject(PlayerCameraManagerService);
-  private interactSvc = inject(PlayerInteractionService);
-  private sequenceSvc = inject(PlayerSequenceService);
-  private triggerSvc = inject(PlayerTriggerService);
-  private bubbleSvc = inject(PlayerBubbleService);
-  private autoAnimSvc = inject(ObjectAnimationService);
-
-  // ESTADO DE LA SESIÓN DE JUEGO (Agnóstico del Editor)
-  public isPlaying = signal<boolean>(false);
-  public isInteracting = signal<boolean>(false);
-  public pointerLocked = signal<boolean>(false);
-  public cameraView = signal<'FPS' | 'TPS'>('TPS');
-  public activePlayerEntity = signal<GameEntity | null>(null);
-  public isAdminSession = signal<boolean>(false); 
-
-  // HUD / Interfaz
-  public targetInteractuable = signal<GameEntity | null>(null);
-  public hoveredMesh = signal<AbstractMesh | null>(null);
+  // UI Signals (Comunicación Externa)
+  public hudMessage = signal<string | null>(null);
   public showToastE = signal<boolean>(false);
   public showToastI = signal<boolean>(false);
-  public hudMessage = signal<string | null>(null);
+  public targetInteractuable = signal<GameEntity | null>(null);
+  public hoveredMesh = signal<AbstractMesh | null>(null);
+  public pointerLocked = signal<boolean>(false);
+  public isInteracting = signal<boolean>(false);
 
-  // Físicas en Runtime
-  public proxyColliders: Mesh[] = [];
+  // Runtime State (Interno)
+  public isPlaying = signal<boolean>(false);
+  public isAdminSession = signal<boolean>(false);
+  public cameraView = signal<'FPS' | 'TPS'>('FPS');
+  public activePlayerEntity = signal<GameEntity | null>(null);
 
-  private activePlayerController: PlayerController | null = null;
-  private activeNpcControllers: NpcController[] = [];
+  private controllers: Map<string, BaseCharacterController> = new Map();
 
-  constructor() {
-    document.addEventListener('pointerlockchange', () => {
-      this.pointerLocked.set(!!document.pointerLockElement);
-      if (!this.pointerLocked() && this.isPlaying() && !this.isInteracting()) {
-         this.resetPlayerMovement();
-      }
-    });
+  // Dependencias Generales
+  private entityManager = inject(EntityManagerService);
+  private loopManager = inject(LoopManagerService);
+  private objectAnimSvc = inject(ObjectAnimationService);
+
+  // Dependencias para fabricar el CharacterContext
+  private motor3d = inject(Motor3dService);
+  private animSvc = inject(PlayerAnimationService);
+  private physicsSvc = inject(PlayerPhysicsService);
+  private sequenceSvc = inject(PlayerSequenceService);
+  private inputSvc = inject(PlayerInputService);
+  private cameraSvc = inject(PlayerCameraManagerService);
+  private interactSvc = inject(PlayerInteractionService);
+  private triggerSvc = inject(PlayerTriggerService);
+  private bubbleSvc = inject(PlayerBubbleService);
+
+  public get proxyColliders(): AbstractMesh[] {
+    return this.motor3d.scene.meshes.filter(m => m.name.includes('proxyCol'));
   }
 
-  private getContext(): CharacterContext {
-    return {
+  public start(playerEntity: GameEntity, view: 'FPS' | 'TPS', isAdmin: boolean): void {
+    this.isPlaying.set(true);
+    this.isAdminSession.set(isAdmin);
+    this.cameraView.set(view);
+    this.activePlayerEntity.set(playerEntity);
+    this.pointerLocked.set(true);
+    this.isInteracting.set(false);
+
+    // Despertar entornos pasivos
+    this.triggerSvc.prepararTriggersParaJuego();
+    this.objectAnimSvc.startAmbientAutoAnimations();
+
+    // Empaquetar contexto seguro para controladores
+    const context: CharacterContext = {
       motor3d: this.motor3d,
-      session: this, // LA SESIÓN ES LA FUENTE DE VERDAD DE RUNTIME
+      session: this,
       animSvc: this.animSvc,
       physicsSvc: this.physicsSvc,
       sequenceSvc: this.sequenceSvc,
       inputSvc: this.inputSvc,
-      cameraSvc: this.playerCamSvc,
+      cameraSvc: this.cameraSvc,
       interactSvc: this.interactSvc,
       triggerSvc: this.triggerSvc,
       bubbleSvc: this.bubbleSvc,
       loopManager: this.loopManager
     };
-  }
 
-  public start(playerEntity: GameEntity, initialView: 'FPS'|'TPS', isAdmin: boolean) {
-    this.isAdminSession.set(isAdmin);
-    this.cameraView.set(initialView);
-    this.activePlayerEntity.set(playerEntity);
-    this.isPlaying.set(true);
-    this.isInteracting.set(false);
-
-    this.crearProxysDeColision(playerEntity.view as Mesh);
-
-    const context = this.getContext();
-
-    this.activePlayerController = new PlayerController(playerEntity, context);
-    
-    this.activeNpcControllers = [];
-    this.entityManager.getEntitiesByRol('npc').forEach(npcEntity => {
-      if (npcEntity.uid === playerEntity.uid) return;
-      this.activeNpcControllers.push(new NpcController(npcEntity, context));
-    });
-
-    this.autoAnimSvc.startAmbientAutoAnimations();
-    this.triggerSvc.prepararTriggersParaJuego();
-
+    // Arranque de inputs mapeados a la sesión de juego pura
     this.inputSvc.iniciarEscuchaTeclado(this.motor3d.scene, {
-      onToggleCamera: () => this.toggleCameraUser(false),
-      onInteractE: () => this.handleInteractions(true),
-      onInteractI: () => this.handleInteractions(false)
+      onToggleCamera: () => this.toggleCameraUser(),
+      onInteractE: () => {
+        const target = this.targetInteractuable();
+        if (target && this.showToastE()) {
+          if (target.type === 'bubble') {
+            this.bubbleSvc.ejecutarBurbuja(target);
+            const seqId = this.cameraView() === 'FPS' ? target.interaction.interactSequenceIdFPS : target.interaction.interactSequenceIdTPS;
+            const seqReal = seqId || target.interaction.interactSequenceId;
+            if (seqReal) {
+               const allEntities = this.entityManager.getAllEntities();
+               allEntities.forEach(e => {
+                  if (e.playerConfig && e.playerConfig.sequences) {
+                      const hasSeq = e.playerConfig.sequences.some((s: any) => s.id === seqReal);
+                      if (hasSeq) this.sequenceSvc.iniciarSecuenciaEnJuego(seqReal, e);
+                  }
+               });
+            }
+          }
+        }
+      },
+      onInteractI: () => {
+        const target = this.targetInteractuable();
+        if (target && this.showToastI()) {
+          this.interactSvc.abrirMensajeInteractivo(target, () => {
+             const pCtrl = this.controllers.get(playerEntity.uid);
+             if (pCtrl) pCtrl.resetPhysicsState();
+          });
+        }
+      }
     });
 
-    this.activePlayerController.start();
-    this.activeNpcControllers.forEach(c => c.start());
+    // Orquestación y Spawn de Actores
+    const allEntities = this.entityManager.getAllEntities();
+    for (const entity of allEntities) {
+      if (entity.uid === playerEntity.uid) {
+        const playerCtrl = new PlayerController(entity, context);
+        this.controllers.set(entity.uid, playerCtrl);
+        playerCtrl.start();
+      } else if (entity.rol === 'npc' || entity.rol === 'spawn_point') {
+        const npcCtrl = new NpcController(entity, context);
+        this.controllers.set(entity.uid, npcCtrl);
+        npcCtrl.start();
+      }
+    }
 
+    // Asegurar ratón cautivo del navegador
     const canvas = this.motor3d.engine.getRenderingCanvas();
     if (canvas) {
-       this.motor3d.scene.activeCamera!.attachControl(canvas, true); 
-       if (!isAdmin) {
-           canvas.focus(); 
-           try { const p = canvas.requestPointerLock(); if(p) p.catch(()=>{}); } catch {} 
-       }
+      const handlePointerLockChange = () => {
+        this.pointerLocked.set(!!document.pointerLockElement);
+      };
+      document.addEventListener('pointerlockchange', handlePointerLockChange);
+      (this as any)._pointerLockListener = handlePointerLockChange; 
     }
   }
 
-  public stop() {
+  public stop(): void {
     this.isPlaying.set(false);
-    
-    if (this.activePlayerController) this.activePlayerController.destroy();
-    this.activeNpcControllers.forEach(c => c.destroy());
-    
-    this.activePlayerController = null;
-    this.activeNpcControllers = [];
-
-    this.sequenceSvc.resetearSecuencias(); 
-    this.animSvc.detenerTodasGlobal();
-    this.animSvc.limpiarEstados(); 
-    this.autoAnimSvc.stopAmbientAutoAnimations();
+    this.activePlayerEntity.set(null);
+    this.isInteracting.set(false);
+    this.pointerLocked.set(false);
 
     this.inputSvc.detenerEscuchaTeclado(this.motor3d.scene);
-    this.resetPlayerMovement();
-    
-    this.proxyColliders.forEach(p => p.dispose()); 
-    this.proxyColliders = [];
+    this.objectAnimSvc.stopAmbientAutoAnimations();
 
-    this.targetInteractuable.set(null);
-    this.hoveredMesh.set(null);
+    // Frenado de Controladores
+    this.controllers.forEach(ctrl => ctrl.destroy());
+    this.controllers.clear();
+
+    // Limpieza de HUD UI
+    this.hudMessage.set(null);
     this.showToastE.set(false);
     this.showToastI.set(false);
-    this.hudMessage.set(null);
-    this.activePlayerEntity.set(null);
-  }
+    this.targetInteractuable.set(null);
+    this.hoveredMesh.set(null);
 
-  public toggleCameraUser(isCinematicInitial: boolean = false, customFrames?: number) {
-    if (this.activePlayerEntity() && this.activePlayerController) {
-      this.playerCamSvc.toggleCameraView(
-        this.activePlayerController.entity,
-        this.cameraView(),
-        isCinematicInitial,
-        true,
-        (newVista) => { this.cameraView.set(newVista); },
-        customFrames
-      );
+    const canvas = this.motor3d.engine.getRenderingCanvas();
+    if (canvas && (this as any)._pointerLockListener) {
+      document.removeEventListener('pointerlockchange', (this as any)._pointerLockListener);
     }
   }
 
-  public resetPlayerMovement() {
-    if (this.activePlayerController) {
-      this.activePlayerController.resetAll();
-    } else {
-      this.inputSvc.resetearInputs();
-      this.playerCamSvc.resetearTransiciones();
-      this.targetInteractuable.set(null);
-      this.showToastE.set(false);
-      this.showToastI.set(false);
-      const entity = this.activePlayerEntity();
-      if (entity) {
-        this.animSvc.detenerTodas(entity);
-        this.animSvc.reproducirIdle(entity);
-      }
-    }
-  }
+  public toggleCameraUser(isCinematicInitial: boolean = false, customFrames?: number): void {
+    const playerEntity = this.activePlayerEntity();
+    if (!playerEntity) return;
 
-  private handleInteractions(isActionE: boolean): void {
-    const targetEntity = this.targetInteractuable();
-    if (!targetEntity || !this.interactSvc.canActivateInteraction(targetEntity, this.cameraView())) return;
-
-    if (isActionE) {
-      if (targetEntity.isProcessingAction) return;
-
-      let seqIdString = this.cameraView() === 'FPS' ? targetEntity.interaction.interactSequenceIdFPS : targetEntity.interaction.interactSequenceIdTPS;
-      if (!seqIdString) seqIdString = targetEntity.interaction.interactSequenceId;
-      const ids = seqIdString ? seqIdString.split(',').map(id => id.trim()).filter(Boolean) : [];
-
-      if (targetEntity.type === 'bubble') {
-        this.bubbleSvc.ejecutarBurbuja(targetEntity);
-        if (ids.length > 0) this.executeSequenceFromIds(targetEntity, ids);
-      } else {
-        if (targetEntity.type === 'video_plane') {
-            const mesh = targetEntity.view as Mesh;
-            if (mesh && !mesh.metadata?.isPoweredOn) return; 
-            if (ids.length === 0) {
-                if (mesh?.material instanceof StandardMaterial) {
-                    const tex = mesh.material.diffuseTexture;
-                    if (tex instanceof VideoTexture) {
-                        if (tex.video.paused) {
-                            tex.video.play();
-                            mesh.material.emissiveColor = new Color3(1, 1, 1);
-                        } else {
-                            tex.video.pause();
-                            mesh.material.emissiveColor = new Color3(0.3, 0.3, 0.3); 
-                        }
-                    }
-                }
-                return; 
-            }
-        }
-        if (ids.length > 0) this.executeSequenceFromIds(targetEntity, ids);
-      }
-    } else {
-        this.interactSvc.abrirMensajeInteractivo(targetEntity, () => this.resetPlayerMovement());
-    }
-  }
-
-  private executeSequenceFromIds(targetEntity: GameEntity, ids: string[]): void {
-      targetEntity.isProcessingAction = true;
-      const idxKey = this.cameraView() === 'FPS' ? 'currentSeqIdxFPS' : 'currentSeqIdxTPS';
-      let idx = (targetEntity.view?.metadata as any)?.[idxKey] || 0;
-      if (idx >= ids.length) idx = 0;
-      const idToPlay = ids[idx];
-
-      const triggerAction = () => {
-         this.entityManager.getAllEntities().forEach(e => {
-             if (e.playerConfig?.sequences?.some((s: any) => s.id === idToPlay)) {
-                 this.sequenceSvc.iniciarSecuenciaEnJuego(idToPlay, e);
-             }
-         });
-         targetEntity.isProcessingAction = false;
-         if (targetEntity.view?.metadata) {
-             (targetEntity.view.metadata as any)[idxKey] = (idx + 1) % ids.length;
-         }
-      };
-
-      if (targetEntity.type === 'bubble') {
-          setTimeout(triggerAction, 500);
-      } else {
-          triggerAction();
-      }
-  }
-
-  private crearProxysDeColision(jugador: Mesh): void {
-    const scene = this.motor3d.scene;
-    scene.meshes.forEach(m => {
-      if (m === jugador) return;
-      if (m.name.includes('debug') || m.name.includes('gizmo') || m.name.includes('cameraPivot') || m.name.includes('sueloInvisible') || m.name.includes('proxyCol')) return;
-      
-      const entity = this.entityManager.getEntityByMesh(m as AbstractMesh);
-      if (!entity) return;
-
-      if (entity.visual.isSolid) {
-        if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') return;
-
-        const colMeta = entity.collider;
-        if (colMeta && colMeta.type !== 'mesh' && m === entity.view) {
-          m.checkCollisions = false;
-          m.getChildMeshes().forEach(c => { c.checkCollisions = false; });
-          
-          let proxy: Mesh;
-          if (colMeta.type === 'capsule') proxy = MeshBuilder.CreateCapsule(`proxyCol_${m.name}`, { radius: colMeta.sizeX, height: colMeta.sizeY * 2 }, scene);
-          else if (colMeta.type === 'sphere') proxy = MeshBuilder.CreateSphere(`proxyCol_${m.name}`, { diameterX: colMeta.sizeX * 2, diameterY: colMeta.sizeY * 2, diameterZ: colMeta.sizeZ * 2 }, scene);
-          else proxy = MeshBuilder.CreateBox(`proxyCol_${m.name}`, { width: colMeta.sizeX * 2, height: colMeta.sizeY * 2, depth: colMeta.sizeZ * 2 }, scene);
-          
-          proxy.parent = m; proxy.position = new Vector3(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ);
-          proxy.isVisible = false; proxy.checkCollisions = true;
-          this.proxyColliders.push(proxy);
-        }
-      }
-    });
+    this.cameraSvc.toggleCameraView(
+      playerEntity,
+      this.cameraView(),
+      isCinematicInitial,
+      true,
+      (newView) => this.cameraView.set(newView),
+      customFrames
+    );
   }
 }

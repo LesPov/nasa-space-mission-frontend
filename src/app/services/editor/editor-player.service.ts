@@ -10,7 +10,7 @@ import { PlayerAnimationService } from './playerservice/player-animation.service
 import { PlayerCameraManagerService } from './playerservice/player-camera.service';
 import { PlayerInputService } from './playerservice/player-input.service';
 import { PlayerInteractionService } from './playerservice/player-interaction.service';
-import { PlayerPhysicsService } from './playerservice/player-physics.service';
+import { PlayerPhysicsService, EstadoFisico } from './playerservice/player-physics.service';
 import { PlayerSequenceService } from './playerservice/player-sequence.service';
 import { PlayerTriggerService } from './player-trigger.service';
 import { PlayerBubbleService } from './playerservice/player-bubble';
@@ -40,6 +40,9 @@ export class EditorPlayerService {
   private npcsYPropsAnimados: Mesh[] = [];
   private backupsAnimados: any[] = [];
 
+  // 🔥 NUEVO: El estado físico ahora le pertenece al Player Service, no al Physics Service global
+  private playerEstadoFisico: EstadoFisico = this.crearEstadoFisicoVacio();
+
   constructor() {
     document.addEventListener('pointerlockchange', () => {
       const isLocked = !!document.pointerLockElement;
@@ -65,6 +68,14 @@ export class EditorPlayerService {
         }
       }
     });
+  }
+
+  private crearEstadoFisicoVacio(): EstadoFisico {
+    return {
+      isMoving: false, isRunning: false, isGrounded: true, isJumping: false,
+      isFalling: false, isHardLanding: false, isRecoveringFromFall: false,
+      landingFrame: 0, recoveryFrame: 0, velocidadY: -0.1, highestY: -9999
+    };
   }
 
   public iniciarModoJuego(vista: 'FPS' | 'TPS'): void {
@@ -283,8 +294,6 @@ export class EditorPlayerService {
   private iniciarBuclePrincipal(jugador: Mesh, colMeta: any, camMeta: any): void {
     const scene = this.motor3d.scene;
     
-    // 🔥 FASE 2: MIGRACIÓN AL LOOP MANAGER
-    // Eliminamos el onBeforeRenderObservable directo y registramos nuestra función en el manager central
     this.loopManager.register('PlayerMainLoop', GamePhase.LOGIC, (dtMs: number) => {
       if (!this.state.jugadorActivo || this.state.playState() !== 'PLAYING' || !this.state.ratonBloqueado()) return;
 
@@ -296,19 +305,21 @@ export class EditorPlayerService {
       
       const seqRuntime = this.sequenceSvc.actualizarSecuencia(dtMs, jugador, this.playerConfig);
       
-      const estadoFisico = this.physicsSvc.aplicarMovimientoYGravedad(
+      // 🔥 FIX APLICADO: Pasamos this.playerEstadoFisico para que el servicio lo modifique directamente
+      this.physicsSvc.aplicarMovimientoYGravedad(
         jugador, 
         seqRuntime.lockInput || seqRuntime.freezeOrientation ? {} : this.inputSvc.inputMap, 
         seqRuntime, 
         activeCamera, 
         colMeta, 
         jugador.scaling, 
-        this.playerConfig
+        this.playerConfig,
+        this.playerEstadoFisico
       );
 
-      this.animSvc.gestionarAnimaciones(jugador, estadoFisico, seqRuntime, this.playerConfig);
+      this.animSvc.gestionarAnimaciones(jugador, this.playerEstadoFisico, seqRuntime, this.playerConfig);
       
-      this.playerCamSvc.actualizarPosicionCamara(jugador, activeCamera, estadoFisico, seqRuntime, colMeta, camMeta, jugador.scaling, this.playerConfig);
+      this.playerCamSvc.actualizarPosicionCamara(jugador, activeCamera, this.playerEstadoFisico, seqRuntime, colMeta, camMeta, jugador.scaling, this.playerConfig);
       
       if (seqRuntime.freezeOrientation) this.sequenceSvc.applyLockedOrientationWhileSequence(jugador);
 
@@ -316,10 +327,11 @@ export class EditorPlayerService {
           const npcConfig = mergePlayerConfig(npc.metadata?.playerConfig || null);
           const npcSeq = this.sequenceSvc.actualizarSecuencia(dtMs, npc, npcConfig);
           
-          const npcStateFisico = { 
+          // Creamos estado físico local para el NPC
+          const npcStateFisico: EstadoFisico = { 
               isMoving: false, isRunning: false, isGrounded: true, isJumping: false, 
               isFalling: false, isHardLanding: false, isRecoveringFromFall: false, 
-              landingFrame: 0, recoveryFrame: 0, velocidadY: 0 
+              landingFrame: 0, recoveryFrame: 0, velocidadY: -0.1, highestY: -9999 
           };
           
           if (npcSeq.running && npcSeq.step) {
@@ -358,7 +370,6 @@ export class EditorPlayerService {
     this.state.playState.set('EDITOR');
     this.resetMovimientoJugador();
     
-    // 🔥 FASE 2: Desregistro del Bucle Principal
     this.loopManager.unregister('PlayerMainLoop');
 
     this.sequenceSvc.resetearSecuencias(); 
@@ -489,7 +500,6 @@ export class EditorPlayerService {
     this.animSvc.sincronizarAnimaciones(this.motor3d.scene, trueMesh, this.playerConfig);
     this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceId, trueMesh, this.playerConfig);
 
-    // 🔥 FASE 2: Migración del Observer de Prevista
     this.loopManager.register('PreviewSequence', GamePhase.LOGIC, (dtMs: number) => {
       const runtime = this.sequenceSvc.actualizarSecuencia(dtMs, trueMesh, this.playerConfig);
       
@@ -511,7 +521,9 @@ export class EditorPlayerService {
  
   public resetMovimientoJugador(): void {
     this.inputSvc.resetearInputs();
-    this.physicsSvc.resetearFisicas();
+    
+    // 🔥 FIX APLICADO: Reiniciamos el estado físico que le pertenece a ESTE servicio, no al global
+    this.playerEstadoFisico = this.crearEstadoFisicoVacio();
     
     this.playerCamSvc.resetearTransiciones();
     this.state.mirandoObjetoInteractuable.set(false);

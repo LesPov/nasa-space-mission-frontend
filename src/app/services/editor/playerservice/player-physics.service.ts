@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, Ray, AbstractMesh, Quaternion } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
@@ -17,32 +16,13 @@ export interface EstadoFisico {
   landingFrame: number;
   recoveryFrame: number;
   velocidadY: number;
+  highestY: number; // 🔥 Agregado para que no dependa del servicio global
 }
 
 @Injectable({ providedIn: 'root' })
 export class PlayerPhysicsService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
-
-  public velocidadY = -0.1;
-  public highestY = -9999;
-  public isJumping = false;
-  public isFalling = false;
-  public isHardLanding = false;
-  public isRecoveringFromFall = false;
-  public landingFrame = 0;
-  public recoveryFrame = 0;
-
-  public resetearFisicas(): void {
-    this.velocidadY = -0.1;
-    this.highestY = -9999;
-    this.isJumping = false;
-    this.isFalling = false;
-    this.isHardLanding = false;
-    this.isRecoveringFromFall = false;
-    this.landingFrame = 0;
-    this.recoveryFrame = 0;
-  }
 
   private sanitizeForwardDir(dir: Vector3): Vector3 {
     const d = dir.clone();
@@ -51,6 +31,10 @@ export class PlayerPhysicsService {
     return d.normalize();
   }
 
+  /**
+   * Servicio puramente SIN ESTADO (Stateless).
+   * Muta y calcula directamente sobre el objeto "estadoFisico" provisto en el 8vo argumento.
+   */
   public aplicarMovimientoYGravedad(
     jugador: Mesh, 
     inputMap: Record<string, boolean>, 
@@ -58,18 +42,15 @@ export class PlayerPhysicsService {
     activeCamera: any, 
     colMeta: any, 
     scaleNow: Vector3, 
-    config: PlayerRuntimeConfig
-  ): EstadoFisico {
+    config: PlayerRuntimeConfig,
+    estadoFisico: EstadoFisico
+  ): void {
     const scene = this.motor3d.scene;
     const scaleY = scaleNow.y || 1;
     const playerHalfHeight = (colMeta.sizeY || 0.9) * scaleY;
     const scaleFactor = isNaN(playerHalfHeight) ? 1 : playerHalfHeight / 0.9;
     
     let move = Vector3.Zero();
-    let isMoving = false;
-    let isRunning = false;
-    let isGrounded = false;
-    
     let isCinematicSequence = false;
     let dy = 0;
     let df = 0;
@@ -110,16 +91,16 @@ export class PlayerPhysicsService {
       }
     }
 
-    if (seqRuntime.running && seqRuntime.forceJump && !this.isJumping && !this.isFalling) {
-      this.velocidadY = (config.jump.force || 0.16) * scaleFactor;
-      this.isJumping = true;
+    if (seqRuntime.running && seqRuntime.forceJump && !estadoFisico.isJumping && !estadoFisico.isFalling) {
+      estadoFisico.velocidadY = (config.jump.force || 0.16) * scaleFactor;
+      estadoFisico.isJumping = true;
     }
 
     const rayCol = new Ray(capsuleCenter, Vector3.Down(), playerHalfHeight + (0.15 * scaleY));
     const hitInfo = scene.pickWithRay(rayCol, collFn);
-    isGrounded = hitInfo ? hitInfo.hit : false;
+    estadoFisico.isGrounded = hitInfo ? hitInfo.hit : false;
 
-    if (this.velocidadY > 0) isGrounded = false;
+    if (estadoFisico.velocidadY > 0) estadoFisico.isGrounded = false;
 
     if (isCinematicSequence) {
       jugador.checkCollisions = false;
@@ -130,32 +111,31 @@ export class PlayerPhysicsService {
 
       jugador.computeWorldMatrix(true);
 
-      this.velocidadY = 0;
-      this.highestY = jugador.position.y;
-      this.isJumping = false;
-      this.isFalling = false;
-      isGrounded = true;
-      isMoving = true;
+      estadoFisico.velocidadY = 0;
+      estadoFisico.highestY = jugador.position.y;
+      estadoFisico.isJumping = false;
+      estadoFisico.isFalling = false;
+      estadoFisico.isGrounded = true;
+      estadoFisico.isMoving = true;
 
     } else {
       jugador.checkCollisions = true;
 
-      if (this.isHardLanding) {
-        this.landingFrame++;
-        if (this.landingFrame > (config.physics.landingRecoveryFrames || 60)) {
-          this.isHardLanding = false;
-          this.isRecoveringFromFall = true;
-          this.recoveryFrame = 0;
+      if (estadoFisico.isHardLanding) {
+        estadoFisico.landingFrame++;
+        if (estadoFisico.landingFrame > (config.physics.landingRecoveryFrames || 60)) {
+          estadoFisico.isHardLanding = false;
+          estadoFisico.isRecoveringFromFall = true;
+          estadoFisico.recoveryFrame = 0;
         }
-      } else if (this.isRecoveringFromFall) {
-        this.recoveryFrame++;
-        if (this.recoveryFrame > (config.physics.landingRecoveryFrames || 60)) {
-          this.isRecoveringFromFall = false;
+      } else if (estadoFisico.isRecoveringFromFall) {
+        estadoFisico.recoveryFrame++;
+        if (estadoFisico.recoveryFrame > (config.physics.landingRecoveryFrames || 60)) {
+          estadoFisico.isRecoveringFromFall = false;
         }
       }
 
-      // 🔥 FIX: Reescrita la suma vectorial para captar WASD correctamente
-      if (!this.isHardLanding && !this.isRecoveringFromFall) {
+      if (!estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
         if (inputMap['w']) move.addInPlace(forward);
         if (inputMap['s']) move.subtractInPlace(forward);
         if (inputMap['d']) move.addInPlace(right);
@@ -167,19 +147,16 @@ export class PlayerPhysicsService {
         if (seqRuntime.forceForwardWalk) move.addInPlace(forward.scale((config.movement.walkSpeed || 0.045) * scaleFactor));
       }
 
-      // IMPORTANTE: Si el vector de movimiento tiene longitud, el personaje SI se está moviendo.
-      isMoving = move.lengthSquared() > 0.001;
-      isRunning = !!inputMap['shiftleft'] || !!inputMap['shiftright'] || !!inputMap['shift'] || seqRuntime.forceForwardRun;
+      estadoFisico.isMoving = move.lengthSquared() > 0.001;
+      estadoFisico.isRunning = !!inputMap['shiftleft'] || !!inputMap['shiftright'] || !!inputMap['shift'] || seqRuntime.forceForwardRun;
 
-      if (isMoving && !this.isHardLanding && !this.isRecoveringFromFall) {
-        const modSpeed = (isRunning ? (config.movement.runSpeed || 0.09) : (config.movement.walkSpeed || 0.045)) * scaleFactor;
+      if (estadoFisico.isMoving && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
+        const modSpeed = (estadoFisico.isRunning ? (config.movement.runSpeed || 0.09) : (config.movement.walkSpeed || 0.045)) * scaleFactor;
         
         if (!seqRuntime.running || !seqRuntime.allowMovement) {
-          // Normalizamos y escalamos a la velocidad correcta
           move.normalize().scaleInPlace(modSpeed);
         }
 
-        // ROTAR JUGADOR EN TPS (El jugador debe mirar hacia donde camina)
         if (this.state.modoVistaPrueba === 'TPS' && !seqRuntime.lockInput && !seqRuntime.freezeOrientation) {
           const targetAngle = Math.atan2(move.x, move.z);
           if (!isNaN(targetAngle)) {
@@ -194,64 +171,56 @@ export class PlayerPhysicsService {
       }
 
       // Gravedad y Salto
-      if (isGrounded) {
-        if (this.isFalling || this.isJumping) {
-          const fallDistance = this.highestY - jugador.position.y;
+      if (estadoFisico.isGrounded) {
+        if (estadoFisico.isFalling || estadoFisico.isJumping) {
+          const fallDistance = estadoFisico.highestY - jugador.position.y;
           if (fallDistance > (config.physics.hardLandingThreshold || 2.5) * scaleY) {
-            this.isHardLanding = true;
-            this.landingFrame = 0;
+            estadoFisico.isHardLanding = true;
+            estadoFisico.landingFrame = 0;
             move = Vector3.Zero();
-            isMoving = false; // Se detiene por golpe fuerte
+            estadoFisico.isMoving = false; 
           }
-          this.isFalling = false;
-          this.isJumping = false;
+          estadoFisico.isFalling = false;
+          estadoFisico.isJumping = false;
         }
 
-        this.highestY = jugador.position.y;
-        this.velocidadY = -0.05;
+        estadoFisico.highestY = jugador.position.y;
+        estadoFisico.velocidadY = -0.05;
 
-        // 🔥 FIX: Salto con espacio corregido
-        if ((inputMap[' '] || inputMap['space'] || seqRuntime.forceJump) && !this.isHardLanding && !this.isRecoveringFromFall) {
-          this.velocidadY = (config.jump.force || 0.16) * scaleFactor;
-          this.isJumping = true;
-          isGrounded = false;
+        if ((inputMap[' '] || inputMap['space'] || seqRuntime.forceJump) && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
+          estadoFisico.velocidadY = (config.jump.force || 0.16) * scaleFactor;
+          estadoFisico.isJumping = true;
+          estadoFisico.isGrounded = false;
           inputMap[' '] = false;
           inputMap['space'] = false;
         }
       } else {
-        if (jugador.position.y > this.highestY) this.highestY = jugador.position.y;
+        if (jugador.position.y > estadoFisico.highestY) estadoFisico.highestY = jugador.position.y;
 
-        const gravityMul = this.isJumping ? 0.55 : (config.jump.jumpFallMultiplier || 1.0);
-        this.velocidadY -= (config.jump.gravity || 0.018) * scaleFactor * gravityMul;
+        const gravityMul = estadoFisico.isJumping ? 0.55 : (config.jump.jumpFallMultiplier || 1.0);
+        estadoFisico.velocidadY -= (config.jump.gravity || 0.018) * scaleFactor * gravityMul;
         const maxFallSpeed = config.jump.maxFallSpeed || 0.8;
 
-        if (this.velocidadY < -maxFallSpeed * scaleFactor) {
-          this.velocidadY = -maxFallSpeed * scaleFactor;
+        if (estadoFisico.velocidadY < -maxFallSpeed * scaleFactor) {
+          estadoFisico.velocidadY = -maxFallSpeed * scaleFactor;
         }
 
-        if (this.velocidadY < -0.05) {
-          this.isFalling = true;
-          this.isJumping = false;
-        } else if (this.velocidadY > 0) {
-          this.isJumping = true;
-          this.isFalling = false;
+        if (estadoFisico.velocidadY < -0.05) {
+          estadoFisico.isFalling = true;
+          estadoFisico.isJumping = false;
+        } else if (estadoFisico.velocidadY > 0) {
+          estadoFisico.isJumping = true;
+          estadoFisico.isFalling = false;
         }
       }
 
-      move.y = this.velocidadY;
+      move.y = estadoFisico.velocidadY;
       
       if (isNaN(move.x)) move.x = 0;
       if (isNaN(move.y)) move.y = 0;
       if (isNaN(move.z)) move.z = 0;
       
-      // Mover modelo en el mundo
       jugador.moveWithCollisions(move);
     }
-
-    return {
-      isMoving, isRunning, isGrounded, isJumping: this.isJumping, isFalling: this.isFalling,
-      isHardLanding: this.isHardLanding, isRecoveringFromFall: this.isRecoveringFromFall,
-      landingFrame: this.landingFrame, recoveryFrame: this.recoveryFrame, velocidadY: this.velocidadY
-    };
   }
 }

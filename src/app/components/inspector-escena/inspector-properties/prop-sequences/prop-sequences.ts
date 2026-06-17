@@ -2,32 +2,18 @@ import { Component, Input, OnInit, OnChanges, SimpleChanges, inject } from '@ang
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh, AnimationGroup } from '@babylonjs/core';
-import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorPlayerService } from '../../../../services/editor/editor-player.service';
-import { PlayerClipSequence, mergePlayerConfig, cloneDefaultPlayerConfig, createPlayerSequence, createSequenceStep } from '../../../../services/editor/player-config.model';
+import { PlayerClipSequence, mergePlayerConfig } from '../../../../services/editor/player-config.model';
 import { Motor3dService } from '../../../../services/motor-3d.service';
- 
-const ACTION_ROWS_CHAR = [
-  { key: 'idle', label: 'Idle / Reposo' }, { key: 'walk', label: 'Walk (Caminar)' }, { key: 'run', label: 'Run (Correr)' }
-];
-
+import { SequenceMutatorService } from '../../../../services/editor/mutators/sequence-mutator.service';
+  
+const ACTION_ROWS_CHAR = [{ key: 'idle', label: 'Idle / Reposo' }, { key: 'walk', label: 'Walk (Caminar)' }, { key: 'run', label: 'Run (Correr)' }];
 const ACTION_ROWS_PROP = [
-  { key: 'idle', label: 'Esperar / Pausa' },
-  { key: 'stopBaked', label: '⏹️ Frenar Animación 3D Nativa (GLB)' },
-  { key: 'procMove', label: '↕️ Mover Objeto (Transformación)' },
-  { key: 'procRotate', label: '🔄 Rotar Objeto (Transformación)' },
-  { key: 'playVideo', label: '▶️ Reproducir Video (Si es TV)' },
-  { key: 'pauseVideo', label: '⏸️ Pausar Video (Si es TV)' },
-  { key: 'stopVideo', label: '⏹️ Detener Video (Si es TV)' }
+  { key: 'idle', label: 'Esperar / Pausa' }, { key: 'stopBaked', label: '⏹️ Frenar Animación 3D Nativa' },
+  { key: 'procMove', label: '↕️ Mover Objeto' }, { key: 'procRotate', label: '🔄 Rotar Objeto' },
+  { key: 'playVideo', label: '▶️ Reproducir Video' }, { key: 'pauseVideo', label: '⏸️ Pausar Video' }, { key: 'stopVideo', label: '⏹️ Detener Video' }
 ];
-
-const ACTION_ROWS_LIGHT = [
-  ...ACTION_ROWS_PROP,
-  { key: 'lightOn', label: '💡 Forzar Encender Luz' }, 
-  { key: 'lightOff', label: '🔌 Forzar Apagar Luz' }, 
-  { key: 'lightPulse', label: '💓 Parpadeo Suave (Pulsar)' }, 
-  { key: 'lightFlicker', label: '⚡ Parpadeo Roto (Estroboscópico)' }
-];
+const ACTION_ROWS_LIGHT = [...ACTION_ROWS_PROP, { key: 'lightOn', label: '💡 Forzar Encender Luz' }, { key: 'lightOff', label: '🔌 Forzar Apagar Luz' }, { key: 'lightPulse', label: '💓 Parpadeo Suave' }, { key: 'lightFlicker', label: '⚡ Parpadeo Roto' }];
  
 @Component({
   selector: 'app-prop-sequences',
@@ -38,9 +24,10 @@ const ACTION_ROWS_LIGHT = [
 }) 
 export class PropSequences implements OnInit, OnChanges {
   @Input() objeto!: AbstractMesh;
-  private editorSvc = inject(EditorMapaService);
+  
   private playerSvc = inject(EditorPlayerService);
   private motor3dSvc = inject(Motor3dService); 
+  private sequenceMutator = inject(SequenceMutatorService);
 
   sequences: PlayerClipSequence[] = [];
   selectedSequenceId: string | null = null;
@@ -48,18 +35,11 @@ export class PropSequences implements OnInit, OnChanges {
   animStatus = '';
   
   availableClips: string[] = [];
-  esPersonaje: boolean = false;
-  esLuz: boolean = false;
+  esPersonaje = false;
+  esLuz = false;
 
-  ngOnInit() {
-    this.cargarDatos();
-  }
-
-  ngOnChanges(changes: SimpleChanges) {
-    if (changes['objeto']) {
-      this.cargarDatos();
-    }
-  }
+  ngOnInit() { this.cargarDatos(); }
+  ngOnChanges(changes: SimpleChanges) { if (changes['objeto']) this.cargarDatos(); }
 
   cargarDatos() {
     if (!this.objeto) return;
@@ -67,17 +47,11 @@ export class PropSequences implements OnInit, OnChanges {
     this.esPersonaje = this.objeto.metadata?.rol === 'npc' || this.objeto.metadata?.rol === 'spawn_point';
     this.esLuz = this.objeto.metadata?.type?.startsWith('light_');
 
-    // Asignación inteligente de acciones según el tipo
-    if (this.esPersonaje) {
-        this.actionRows = ACTION_ROWS_CHAR;
-    } else if (this.esLuz) {
-        this.actionRows = ACTION_ROWS_LIGHT;
-    } else {
-        this.actionRows = ACTION_ROWS_PROP;
-    }
+    if (this.esPersonaje) this.actionRows = ACTION_ROWS_CHAR;
+    else if (this.esLuz) this.actionRows = ACTION_ROWS_LIGHT;
+    else this.actionRows = ACTION_ROWS_PROP;
     
-    const meta = this.objeto.metadata || {};
-    const config = mergePlayerConfig(meta.playerConfig || null);
+    const config = mergePlayerConfig(this.objeto.metadata?.playerConfig || null);
     this.sequences = Array.isArray(config.sequences) ? JSON.parse(JSON.stringify(config.sequences)) : [];
     if (this.sequences.length > 0) this.selectedSequenceId = this.sequences[0].id;
 
@@ -85,82 +59,45 @@ export class PropSequences implements OnInit, OnChanges {
     validTargets.add(this.objeto);
     this.objeto.getDescendants(false).forEach(child => validTargets.add(child));
 
-    let myAnimNames: string[] = this.objeto.metadata?.animationNames || [];
-    if (myAnimNames.length === 0) {
-        const childWithAnims = this.objeto.getChildMeshes(false).find(m => m.metadata?.animationNames && m.metadata.animationNames.length > 0);
-        if (childWithAnims) {
-            myAnimNames = childWithAnims.metadata.animationNames;
-        }
-    }
-    
     const rawClips: string[] = [];
-
-    if (myAnimNames.length > 0) {
-        const groups = this.motor3dSvc.scene.animationGroups.filter(ag => myAnimNames.includes(ag.name));
-        rawClips.push(...groups.map(g => g.name));
-    } else {
-        const groups = this.motor3dSvc.scene.animationGroups.filter((ag: AnimationGroup) => {
-          if (!ag.targetedAnimations || ag.targetedAnimations.length === 0) return false;
-          return ag.targetedAnimations.some((ta: any) => validTargets.has(ta.target));
-        });
-        rawClips.push(...groups.map(g => g.name));
-    }
-
-    this.motor3dSvc.scene.meshes.forEach(m => {
-        if (m.metadata?.type === 'video_plane') {
-            rawClips.push(m.name);
+    this.motor3dSvc.scene.animationGroups.forEach((ag: AnimationGroup) => {
+        if (ag.targetedAnimations?.some((ta: any) => validTargets.has(ta.target))) {
+            rawClips.push(ag.name);
         }
     });
 
+    this.motor3dSvc.scene.meshes.forEach(m => {
+        if (m.metadata?.type === 'video_plane') rawClips.push(m.name);
+    });
     this.availableClips = [...new Set(rawClips)];
   }
 
   get currentSequence() { return this.sequences.find(s => s.id === this.selectedSequenceId) || null; }
 
+  // --- DELEGACIÓN ---
   persist() {
-    if (!this.objeto.metadata) this.objeto.metadata = {};
-    if (!this.objeto.metadata.playerConfig) this.objeto.metadata.playerConfig = cloneDefaultPlayerConfig();
-    this.objeto.metadata.playerConfig.sequences = JSON.parse(JSON.stringify(this.sequences));
-    this.editorSvc.triggerUpdate();
+    this.sequenceMutator.persistirSecuencias(this.objeto, this.sequences);
     this.animStatus = 'Paso guardado';
   }
 
   nuevaSecuencia() {
-    const seq = createPlayerSequence(`Secuencia ${this.sequences.length + 1}`);
-    if (!this.esPersonaje && seq.steps.length > 0) {
-        seq.steps[0].action = 'idle';
-        seq.steps[0].loop = true;
-    }
-    this.sequences.push(seq);
-    this.selectedSequenceId = seq.id;
-    this.persist();
+    this.selectedSequenceId = this.sequenceMutator.crearNuevaSecuencia(this.objeto, this.sequences, this.esPersonaje, this.availableClips);
   }
 
   eliminarSecuencia(id: string) {
-    this.sequences = this.sequences.filter(s => s.id !== id);
-    this.selectedSequenceId = this.sequences.length > 0 ? this.sequences[0].id : null;
-    this.persist();
+    this.selectedSequenceId = this.sequenceMutator.eliminarSecuencia(this.objeto, this.sequences, id);
   }
 
   agregarPaso(seq: PlayerClipSequence) { 
-    const step = createSequenceStep(this.esPersonaje ? 'walk' : 'idle');
-    if (!this.esPersonaje) {
-        step.loop = true; 
-        if (this.availableClips.length > 0) {
-            step.clipOverride = this.availableClips[0];
-        }
-    }
-    seq.steps.push(step); 
-    this.persist(); 
+    this.sequenceMutator.agregarPaso(this.objeto, seq, this.esPersonaje, this.availableClips);
   }
   
-  quitarPaso(seq: PlayerClipSequence, i: number) { seq.steps.splice(i, 1); this.persist(); }
+  quitarPaso(seq: PlayerClipSequence, i: number) { 
+    this.sequenceMutator.quitarPaso(this.objeto, seq, i); 
+  }
   
   moverPaso(seq: PlayerClipSequence, index: number, dir: number) {
-    const target = index + dir;
-    if (target < 0 || target >= seq.steps.length) return;
-    const arr = [...seq.steps]; const [item] = arr.splice(index, 1); arr.splice(target, 0, item);
-    seq.steps = arr; this.persist();
+    this.sequenceMutator.moverPaso(this.objeto, seq, index, dir);
   }
 
   probarSecuencia(seq: PlayerClipSequence) {

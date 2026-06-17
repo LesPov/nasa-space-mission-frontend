@@ -3,6 +3,7 @@ import { Mesh, Quaternion, Vector3, UniversalCamera, Light, StandardMaterial, Vi
 import { EditorStateService } from '../editor-state.service';
 import { Motor3dService } from '../../motor-3d.service';
 import { PlayerClipSequence, PlayerSequenceStep, PlayerRuntimeConfig } from '../player-config.model';
+import { GameStateService } from '../game-state.service';
 
 export interface SeqRuntime {
   step: PlayerSequenceStep | null;
@@ -21,6 +22,7 @@ export interface SeqRuntime {
 export class PlayerSequenceService {
   private state = inject(EditorStateService);
   private motor3d = inject(Motor3dService);
+  private gameState = inject(GameStateService);
 
   private activeSequences = new Map<number, {
     id: string;
@@ -100,7 +102,15 @@ export class PlayerSequenceService {
 
   public iniciarSecuenciaEnJuego(sequenceId: string, jugador: Mesh, config: PlayerRuntimeConfig): void {
     const seqs = config.sequences?.filter(s => !!s.enabled) || [];
-    if (seqs.some(s => s.id === sequenceId)) {
+    const seqToRun = seqs.find(s => s.id === sequenceId);
+    
+    if (seqToRun) {
+      // 🔥 NARRATIVA: Impedir inicio si no cumple historia
+      if (!this.gameState.evaluateAllConditions(seqToRun.conditions)) {
+          console.log(`[Narrativa] Secuencia ${sequenceId} omitida (No cumple requisitos).`);
+          return;
+      }
+
       const state = this.getSeqState(jugador);
       state.id = sequenceId;
       state.index = 0;
@@ -139,7 +149,26 @@ export class PlayerSequenceService {
       state.jumpTriggered = false;
     }
 
-    const step = sequence.steps[Math.max(0, Math.min(state.index, sequence.steps.length - 1))] || null;
+    let step = sequence.steps[Math.max(0, Math.min(state.index, sequence.steps.length - 1))] || null;
+
+    // 🔥 NARRATIVA: Saltar pasos que no apliquen a la rama narrativa actual (Ramificación/Skip Reactivo)
+    let loopSafeguard = 0;
+    while (step && !this.gameState.evaluateAllConditions(step.conditions)) {
+        state.index++;
+        if (state.index >= sequence.steps.length) {
+            if (sequence.repeat && loopSafeguard < sequence.steps.length) {
+                state.index = 0;
+                loopSafeguard++;
+            } else {
+                state.id = '';
+                return { step: null, lockInput: false, allowMovement: true, forceForwardWalk: false, forceForwardRun: false, forceJump: false, blend: config.blend.defaultBlend, loop: true, running: false, freezeOrientation: false };
+            }
+        }
+        step = sequence.steps[state.index] || null;
+        state.stepEntered = true;
+        state.elapsedMs = 0;
+    }
+
     if (!step) {
       state.orientationLocked = false;
       return { step: null, lockInput: false, allowMovement: true, forceForwardWalk: false, forceForwardRun: false, forceJump: false, blend: config.blend.defaultBlend, loop: true, running: false, freezeOrientation: false };
@@ -178,13 +207,20 @@ export class PlayerSequenceService {
               }
           }
       }
+
+      // 🔥 NARRATIVA: Mutar estado del juego o aplicar SetState manual
+      if (step.stateMutations) {
+          this.gameState.applyMutations(step.stateMutations);
+      }
+      if (step.action === 'setState' && step.stateKey) {
+          this.gameState.setVar(step.stateKey, step.stateValue);
+      }
+
       state.stepEntered = false;
     } else {
       state.orientationLocked = this.shouldLockOrientationForSequence(step) || state.orientationLocked;
     }
 
-    // 🔥 FIX: DETENER LA ANIMACIÓN 3D GLB CUANDO SE SOLICITE DURANTE LA SECUENCIA
-    // Solo detenemos las animaciones apuntadas a ESTA linterna, no a las demás.
     if (step.action === 'stopBaked' || step.clipOverride === 'none') {
         const myAnimNames = jugador.metadata?.animationNames || [];
         this.motor3d.scene.animationGroups.forEach(ag => {

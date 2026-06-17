@@ -1,10 +1,22 @@
 export type AnimBinding = string | string[] | null;
 
+export interface GameCondition {
+  type: 'var_eq' | 'var_neq' | 'has_item' | 'missing_item' | 'role_eq';
+  key: string;
+  value?: any;
+}
+
+export interface GameStateMutation {
+  type: 'set_var' | 'add_item' | 'remove_item';
+  key: string;
+  value?: any;
+}
+
 export type PlayerActionKey =
   | 'idle' | 'walk' | 'run' | 'jumpStart' | 'jumpLoop' | 'fall' | 'landSoft' | 'landHard'
   | 'climbUp' | 'climbFinish' | 'hangIdle' | 'vault' | 'stepUp' | 'recover' | 'lightOn'
   | 'lightOff' | 'lightPulse' | 'lightFlicker' | 'playVideo' | 'pauseVideo' | 'stopVideo'
-  | 'stopBaked' | 'procMove' | 'procRotate';
+  | 'stopBaked' | 'procMove' | 'procRotate' | 'setState' | 'checkCondition';
 
 export interface PlayerSequenceStep {
   id: string;
@@ -21,6 +33,10 @@ export interface PlayerSequenceStep {
   procX: number;
   procY: number;
   procZ: number;
+  conditions?: GameCondition[];
+  stateMutations?: GameStateMutation[];
+  stateKey?: string;
+  stateValue?: any;
 }
 
 export interface PlayerClipSequence {
@@ -29,6 +45,7 @@ export interface PlayerClipSequence {
   enabled: boolean;
   repeat: boolean;
   autoPlay?: boolean;
+  conditions?: GameCondition[];
   steps: PlayerSequenceStep[];
 }
 
@@ -40,6 +57,7 @@ export interface PlayerAnimationBindings {
   lightPulse: AnimBinding; lightFlicker: AnimBinding; playVideo: AnimBinding;
   pauseVideo: AnimBinding; stopVideo: AnimBinding;
   stopBaked: AnimBinding; procMove: AnimBinding; procRotate: AnimBinding;
+  setState: AnimBinding; checkCondition: AnimBinding;
 }
 
 export interface PlayerAnimationEnabled {
@@ -49,6 +67,7 @@ export interface PlayerAnimationEnabled {
   lightOff: boolean; lightPulse: boolean; lightFlicker: boolean; playVideo: boolean;
   pauseVideo: boolean; stopVideo: boolean;
   stopBaked: boolean; procMove: boolean; procRotate: boolean;
+  setState: boolean; checkCondition: boolean;
 }
 
 export interface PlayerMovementConfig {
@@ -89,10 +108,9 @@ export interface FogLevel {
   offsetY: number;
   color?: string; 
   layerOpacities?: number[]; 
-  layerHeights?: number[]; // 🔥 NUEVO: Porcentaje de altura por capa
+  layerHeights?: number[]; 
 }
 
-// 🔥 Capas por defecto con Alturas al 100%
 const defaultFogLevels: FogLevel[] = [
   { distance: 20, height: 10, opacity: 80, thickness: 5, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] },
   { distance: 50, height: 15, opacity: 60, thickness: 10, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] },
@@ -148,13 +166,13 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
     climbFinish: ['climb finish', 'pull up'], hangIdle: ['hang idle', 'hang'], vault: ['vault'], stepUp: ['step up', 'step'],
     recover: ['recover', 'recovery'], lightOn: null, lightOff: null, lightPulse: null, lightFlicker: null,
     playVideo: null, pauseVideo: null, stopVideo: null,
-    stopBaked: null, procMove: null, procRotate: null
+    stopBaked: null, procMove: null, procRotate: null, setState: null, checkCondition: null
   },
   animationEnabled: {
     idle: true, walk: true, run: true, jumpStart: true, jumpLoop: true, fall: true, landSoft: true, landHard: true,
     climbUp: true, climbFinish: true, hangIdle: true, vault: true, stepUp: true, recover: true, lightOn: true,
     lightOff: true, lightPulse: true, lightFlicker: true, playVideo: true, pauseVideo: true, stopVideo: true,
-    stopBaked: true, procMove: true, procRotate: true
+    stopBaked: true, procMove: true, procRotate: true, setState: true, checkCondition: true
   },
   sequences: [],
   debug: { showRays: false, showCollider: false, showState: false },
@@ -211,10 +229,11 @@ export function createSequenceStep(action: PlayerActionKey = 'idle'): PlayerSequ
     id: generarIdCorto(),
     action, clipOverride: null, durationMs: 1000, speedRatio: 1, blend: 0.08,
     loop: !isCinematic, allowMovement: !isCinematic, lockInput: isCinematic,
-    offsetY: 0, offsetForward: 0, procX: 0, procY: 0, procZ: 0
+    offsetY: 0, offsetForward: 0, procX: 0, procY: 0, procZ: 0,
+    conditions: [], stateMutations: []
   };
 }
 
 export function createPlayerSequence(name = 'Nueva secuencia'): PlayerClipSequence {
-  return { id: generarIdCorto(), name, enabled: true, repeat: true, autoPlay: false, steps: [createSequenceStep('idle')] };
+  return { id: generarIdCorto(), name, enabled: true, repeat: true, autoPlay: false, conditions: [], steps: [createSequenceStep('idle')] };
 }

@@ -127,6 +127,8 @@ export class PlayerAnimationService {
       case 'playVideo':
       case 'pauseVideo':
       case 'stopVideo':
+      case 'setState':
+      case 'checkCondition':
           return null; 
       default: return state.animIdle;
     }
@@ -201,7 +203,6 @@ export class PlayerAnimationService {
     const state = this.getState(mesh);
     
     if (seqRuntime.running && seqRuntime.step) {
-      // 🔥 FIX: Si la secuencia explícitamente congela el modelo, no permitimos que continúe.
       if (seqRuntime.step.clipOverride === 'none' || seqRuntime.step.action === 'stopBaked') {
           this.playAnim(mesh, null, false, seqRuntime.blend);
           return;

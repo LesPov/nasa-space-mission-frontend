@@ -3,12 +3,14 @@ import { AbstractMesh, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { PlayerSequenceService } from './playerservice/player-sequence.service';
+import { GameStateService } from './game-state.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
   private sequenceSvc = inject(PlayerSequenceService);
+  private gameState = inject(GameStateService);
   
   private activeTriggersInside = new Set<string>();
   private hudTimeouts = new Map<string, any>();
@@ -62,6 +64,11 @@ export class PlayerTriggerService {
 
     scene.meshes.forEach(mesh => {
         if (!mesh.metadata || mesh.metadata.type !== 'trigger' || mesh.metadata.isEnabled === false) return;
+
+        // 🔥 NARRATIVA: Verificar si el trigger cumple requisitos de historia para funcionar
+        if (!this.gameState.evaluateAllConditions(mesh.metadata.gameConditions)) {
+            return;
+        }
         
         let conditions: string[] = [];
         if (mesh.metadata.isComposite) {
@@ -77,8 +84,6 @@ export class PlayerTriggerService {
         const isInside = triggerBox.intersectsPoint(probePoint);
         const wasInside = this.activeTriggersInside.has(mesh.name);
 
-        // 🔥 FIX BUG 1: Eliminamos la restricción del primer frame. 
-        // Si el jugador nace o entra al juego dentro del trigger, SE DEBE EJECUTAR para que las luces/secuencias inicien.
         if (isInside && !wasInside) {
             this.activeTriggersInside.add(mesh.name);
             if (conditions.includes('on_enter')) {
@@ -212,6 +217,11 @@ export class PlayerTriggerService {
                   }
               });
           }
+      }
+
+      // 🔥 NARRATIVA: Mutar estado del juego una vez ejecutado el trigger
+      if (triggerMesh.metadata.stateMutations) {
+          this.gameState.applyMutations(triggerMesh.metadata.stateMutations);
       }
 
       if (eventType === 'on_enter') triggerMesh.metadata.hasTriggeredEnter = true;

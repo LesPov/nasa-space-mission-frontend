@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Node, AbstractMesh, Vector3 } from '@babylonjs/core';
 
@@ -90,6 +89,8 @@ export class EditorMapaService {
 
   cerrarInteraccionJugador(): void { this.interaction.cerrarInteraccionJugador(); }
 
-  // 🔥 NUEVA FIRMA: Añadido soporte para transición cinemática
-  toggleCameraUser(isCinematicInitial: boolean = false): void { this.player.toggleCameraUser(isCinematicInitial); }
+  // 🔥 NUEVA FIRMA: Control de frames para cinemáticas épicas
+  toggleCameraUser(isCinematicInitial: boolean = false, customFrames?: number): void { 
+    this.player.toggleCameraUser(isCinematicInitial, customFrames); 
+  }
 }

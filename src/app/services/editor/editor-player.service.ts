@@ -4,7 +4,6 @@ import { AbstractMesh, Mesh, Vector3, Quaternion, MeshBuilder, StandardMaterial,
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { EditorCameraService } from './editor-camera.service';
-import { PlayerRuntimeConfig, mergePlayerConfig } from './player-config.model';
 
 import { PlayerAnimationService } from './playerservice/player-animation.service';
 import { PlayerCameraManagerService } from './playerservice/player-camera.service';
@@ -84,7 +83,8 @@ export class EditorPlayerService {
       cameraSvc: this.playerCamSvc,
       interactSvc: this.interactSvc,
       triggerSvc: this.triggerSvc,
-      bubbleSvc: this.bubbleSvc
+      bubbleSvc: this.bubbleSvc,
+      loopManager: this.loopManager
     };
   }
 
@@ -179,16 +179,8 @@ export class EditorPlayerService {
 
         const npcCtrl = new NpcController(npcEntity, context);
         this.activeNpcControllers.push(npcCtrl);
-        this.animSvc.sincronizarAnimaciones(this.motor3d.scene, npcEntity);
     });
 
-    this.animSvc.sincronizarAnimaciones(this.motor3d.scene, playerEntity);
-
-    const playerAutoSeq = this.activePlayerController.config.sequences.find((s: any) => s.autoPlay);
-    if (playerAutoSeq) {
-        this.sequenceSvc.iniciarSecuenciaEnJuego(playerAutoSeq.id, playerEntity);
-    }
-    
     this.playerCamSvc.inicializarCamaras(playerEntity, vista);
     this.motor3d.scene.render(false, true);
 
@@ -210,7 +202,6 @@ export class EditorPlayerService {
         this.motor3d.scene.activeCamera = targetCam;
         this.state.playState.set('PLAYING');
         
-        this.resetMovimientoJugador();
         this.triggerSvc.prepararTriggersParaJuego();
 
         this.inputSvc.iniciarEscuchaTeclado(this.motor3d.scene, {
@@ -219,8 +210,23 @@ export class EditorPlayerService {
           onInteractI: () => this.handleInteractions(false)
         });
 
-        const isUser = this.state.rolSimulado() === 'user';
-        this.iniciarBucleSecundario(!isUser); 
+        // 🔥 ENCENDIDO DE CONTROLADORES
+        this.activePlayerController?.start();
+        this.activeNpcControllers.forEach(c => c.start());
+
+        const canvas = this.motor3d.engine.getRenderingCanvas();
+        if (canvas) { 
+            this.motor3d.scene.activeCamera!.attachControl(canvas, true); 
+            // 🔥 El Jugador ganará el lock en el Menu. El Admin lo gana directo aquí.
+            if (this.state.rolSimulado() === 'admin') {
+                canvas.focus(); 
+                try { 
+                    const p = canvas.requestPointerLock(); 
+                    if (p) p.catch(() => {});
+                } catch {} 
+            }
+        }
+        
         this.state.triggerUpdate();
     };
 
@@ -233,15 +239,16 @@ export class EditorPlayerService {
     }
   }
 
-  public toggleCameraUser(isCinematicInitial: boolean = false): void {
+  public toggleCameraUser(isCinematicInitial: boolean = false, customFrames?: number): void {
     if (this.state.jugadorActivo && this.activePlayerController) {
       const currentVista = this.state.modoVistaPrueba || 'TPS';
       this.playerCamSvc.toggleCameraView(
         this.activePlayerController.entity, 
         currentVista,
         isCinematicInitial,
-        this.state.ratonBloqueado(),
-        (newVista) => { this.state.modoVistaPrueba = newVista; }
+        true, // Siempre forzar attach
+        (newVista) => { this.state.modoVistaPrueba = newVista; },
+        customFrames // Propagación de frames custom
       );
     }
   }
@@ -313,40 +320,13 @@ export class EditorPlayerService {
       }
   }
 
-  private iniciarBucleSecundario(requestLock: boolean = true): void {
-    if (this.activePlayerController) {
-        this.loopManager.register('PlayerLogic', GamePhase.LOGIC, (dtMs: number) => {
-            this.activePlayerController!.update(dtMs);
-        });
-    }
-
-    this.activeNpcControllers.forEach(npc => {
-        this.loopManager.register('NPCLogic_' + npc.entity.uid, GamePhase.LOGIC, (dtMs: number) => {
-            npc.update(dtMs);
-        });
-    });
-
-    const canvas = this.motor3d.engine.getRenderingCanvas();
-    if (canvas) { 
-        this.motor3d.scene.activeCamera!.attachControl(canvas, true); 
-        if (requestLock) {
-            canvas.focus(); 
-            try { 
-                const p = canvas.requestPointerLock(); 
-                if (p) p.catch(() => {});
-            } catch {} 
-        }
-    }
-  }
-
   public detenerModoJuego(): void {
     this.state.playState.set('EDITOR');
-    this.resetMovimientoJugador();
     
-    this.loopManager.unregister('PlayerLogic');
-    this.activeNpcControllers.forEach(npc => {
-        this.loopManager.unregister('NPCLogic_' + npc.entity.uid);
-    });
+    // 🔥 APAGADO DE CONTROLADORES
+    if (this.activePlayerController) this.activePlayerController.destroy();
+    this.activeNpcControllers.forEach(c => c.destroy());
+    
     this.activePlayerController = null;
     this.activeNpcControllers = [];
 

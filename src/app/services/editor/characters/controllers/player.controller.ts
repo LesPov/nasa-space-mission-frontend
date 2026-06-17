@@ -1,4 +1,4 @@
-import { Vector3 } from '@babylonjs/core';
+import { GamePhase } from '../../../../core/engine/behaviors/services/loop-manager.service';
 import { BaseCharacterController } from './base-character.controller';
 import { CharacterContext } from '../character-context.interface';
 import { GameEntity } from '../../../../core/engine/entities/game.entity';
@@ -9,7 +9,26 @@ export class PlayerController extends BaseCharacterController {
     super(entity, context);
   }
 
-  public update(dtMs: number): void {
+  public start(): void {
+    // 1. Sincronizamos animaciones
+    this.context.animSvc.sincronizarAnimaciones(this.context.motor3d.scene, this.entity);
+
+    // 2. Auto-iniciar secuencia si la tiene configurada
+    const playerAutoSeq = this.config.sequences.find((s: any) => s.autoPlay);
+    if (playerAutoSeq) {
+        this.context.sequenceSvc.iniciarSecuenciaEnJuego(playerAutoSeq.id, this.entity);
+    }
+
+    // 3. Reiniciamos Físicas y Transiciones
+    this.resetAll();
+
+    // 4. Registrarse en el Loop Manager
+    this.context.loopManager.register(this.loopId, GamePhase.LOGIC, (dtMs: number) => {
+      this.update(dtMs);
+    });
+  }
+
+  protected update(dtMs: number): void {
     const activeCamera = this.context.motor3d.scene.activeCamera;
     if (!activeCamera) return;
 

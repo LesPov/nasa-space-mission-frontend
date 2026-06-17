@@ -10,6 +10,7 @@ export abstract class BaseCharacterController {
   public config: PlayerRuntimeConfig;
   public estadoFisico: EstadoFisico;
   protected context: CharacterContext;
+  protected loopId: string;
 
   constructor(entity: GameEntity, context: CharacterContext) {
     this.entity = entity;
@@ -21,8 +22,9 @@ export abstract class BaseCharacterController {
     
     this.mesh = entity.view as Mesh;
     this.context = context;
+    this.loopId = `ControllerLogic_${this.entity.uid}`;
     
-    // 🔥 LECTURA DESDE LA ENTIDAD, NO DESDE METADATA
+    // LECTURA DESDE LA ENTIDAD, NO DESDE METADATA
     this.config = entity.playerConfig || cloneDefaultPlayerConfig();
     
     // El estado Físico pertenece exclusivamente al controlador en runtime
@@ -42,9 +44,22 @@ export abstract class BaseCharacterController {
   }
 
   /**
+   * Conecta el controlador al Motor de Juego.
+   */
+  public abstract start(): void;
+
+  /**
    * Método principal que se ejecutará en el Game Loop mediante el LoopManager.
    */
-  public abstract update(dtMs: number): void;
+  protected abstract update(dtMs: number): void;
+
+  /**
+   * Desconecta el controlador y limpia memoria.
+   */
+  public destroy(): void {
+    this.context.loopManager.unregister(this.loopId);
+    this.context.animSvc.detenerTodas(this.entity);
+  }
 
   /**
    * Resetea el estado físico propio de este actor (Ej. al reiniciar el mapa o hacer respawn).

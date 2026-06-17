@@ -1,5 +1,4 @@
-
-import { Vector3 } from '@babylonjs/core';
+import { GamePhase } from '../../../../core/engine/behaviors/services/loop-manager.service';
 import { BaseCharacterController } from './base-character.controller';
 import { CharacterContext } from '../character-context.interface';
 import { GameEntity } from '../../../../core/engine/entities/game.entity';
@@ -8,15 +7,27 @@ export class NpcController extends BaseCharacterController {
   
   constructor(entity: GameEntity, context: CharacterContext) {
     super(entity, context);
-    
-    // Auto-iniciar secuencia si la tiene configurada
+  }
+
+  public start(): void {
+    // 1. Sincronizamos animaciones
+    this.context.animSvc.sincronizarAnimaciones(this.context.motor3d.scene, this.entity);
+
+    // 2. Auto-iniciar secuencia si la tiene configurada
     const autoSeq = this.config.sequences.find((s: any) => s.autoPlay);
     if (autoSeq) {
       this.context.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, this.entity);
+    } else {
+      this.context.animSvc.reproducirIdle(this.entity);
     }
+
+    // 3. Registrarse en el Loop Manager
+    this.context.loopManager.register(this.loopId, GamePhase.LOGIC, (dtMs: number) => {
+      this.update(dtMs);
+    });
   }
 
-  public update(dtMs: number): void {
+  protected update(dtMs: number): void {
     // Calcular rutinas/cinemáticas del NPC
     const seqRuntime = this.context.sequenceSvc.actualizarSecuencia(dtMs, this.entity);
     

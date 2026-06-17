@@ -39,7 +39,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public cargandoEscena = false;
   public modalMisionUsuario = false; 
   public misionIniciada = false; 
-  public cerrandoModalUsuario = false; // 🔥 NUEVO: Controla el efecto de split al cerrar el modal
+  public cerrandoModalUsuario = false; 
   public episodioPendienteCarga: any = null;
   public cargandoTexto = 'Preparando entorno...';
   
@@ -172,25 +172,25 @@ export class EditorEscena implements OnInit, OnDestroy {
               this.vistaPrueba = 'FPS';
               this.iniciarModoPrueba();
               
-              // Se levanta el telón de carga y mostramos el Menú de inmediato (SIN SALTOS)
+              // Se levanta el telón de carga y mostramos el Menú de inmediato
               this.modalMisionUsuario = true;
               this.cargandoEscena = false;
               this.episodioPendienteCarga = null;
               this.cdr.detectChanges();
 
-              // Mandamos la cámara hacia atrás (TPS) lentamente para tener un fondo cinemático en el menú
+              // Mandamos la cámara hacia atrás (TPS) LENTAMENTE
               setTimeout(() => {
                 document.exitPointerLock(); 
-                // true = Activa la cinemática especial lenta y lejana para la pantalla de título
-                this.editorSvc.toggleCameraUser(true); 
-              }, 50);
+                // isCinematicInitial = true, customFrames = 500 (~8 sec)
+                this.editorSvc.toggleCameraUser(true, 500); 
+              }, 100);
 
             } else {
               alert('Este episodio aún no tiene un punto de aparición (Spawn Point). Vuelve más tarde.');
               this.salirDelEditor();
             }
           } else {
-            // Lógica para Admin (Termina la pantalla de carga e inicia en el editor libre)
+            // Lógica para Admin
             this.cargandoEscena = false;
             this.episodioPendienteCarga = null;
             this.cdr.detectChanges(); 
@@ -211,25 +211,26 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   // 🔥 ANIMACIÓN SPLIT Y VIAJE A FPS
   comenzarMisionUsuario() {
-    this.cerrandoModalUsuario = true; // Activa las clases de animación CSS
+    this.cerrandoModalUsuario = true; 
     
-    // Si la cámara estaba alejada (TPS), la mandamos de vuelta a los ojos (FPS)
+    // Si la cámara estaba alejada (TPS), la mandamos de vuelta a los ojos (FPS) LENTAMENTE
     if (this.stateSvc.modoVistaPrueba === 'TPS') {
-       this.editorSvc.toggleCameraUser();
+       this.editorSvc.toggleCameraUser(false, 150); // 150 frames = 2.5 sec
     }
 
-    // Esperamos 600ms a que termine la animación de la interfaz partiéndose por la mitad
+    // Esperamos 2.5s a que termine la animación
     setTimeout(() => {
       this.misionIniciada = true; 
       this.modalMisionUsuario = false;
       this.cerrandoModalUsuario = false;
+      this.cdr.detectChanges(); 
       
       const canvas = this.motor3dSvc.engine.getRenderingCanvas();
       if (canvas) {
         canvas.focus();
         try { canvas.requestPointerLock(); } catch {}
       }
-    }, 600); 
+    }, 2500); 
   }
 
   toggleInspector() { this.showInspector = !this.showInspector; this.recalcularMotor(); }

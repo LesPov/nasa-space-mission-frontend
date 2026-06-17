@@ -152,8 +152,9 @@ export class PlayerCameraManagerService {
     entity: GameEntity, 
     currentVista: 'FPS' | 'TPS', 
     isCinematicInitial: boolean = false,
-    isRatonBloqueado: boolean = true,
-    onVistaChanged: (newVista: 'FPS' | 'TPS') => void
+    attachControlForce: boolean = true,
+    onVistaChanged: (newVista: 'FPS' | 'TPS') => void,
+    customFrames?: number
   ): void {
     const jugador = entity.view as Mesh;
     if (!jugador || this.isTransitioningCameras) return;
@@ -176,9 +177,12 @@ export class PlayerCameraManagerService {
     const canvas = this.motor3d.engine.getRenderingCanvas();
     const scene = this.motor3d.scene;
 
-    const framesTransicion = isCinematicInitial ? 240 : 45;
+    const framesTransicion = customFrames !== undefined ? customFrames : (isCinematicInitial ? 300 : 45);
 
     this.loopManager.unregister('CameraFadeTransition');
+
+    // 🔥 Fade físicamente absoluto a 2.5 metros
+    const fadeLimit = 2.5 * scaleNow;
 
     if (currentVista === 'FPS') {
       if (canvas) fpsCam.detachControl();
@@ -206,7 +210,6 @@ export class PlayerCameraManagerService {
       scene.activeCamera = tpsCam;
 
       this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
-          const fadeLimit = Math.min(2.5, targetRadius * 0.5);
           if (tpsCam.radius < fadeLimit) {
              jugador.visibility = Math.max(0, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
              jugador.getChildMeshes().forEach(m => m.visibility = jugador.visibility);
@@ -223,7 +226,7 @@ export class PlayerCameraManagerService {
         tpsCam.checkCollisions = true; 
         jugador.visibility = 1;
         jugador.getChildMeshes().forEach(m => m.visibility = 1);
-        if (canvas && isRatonBloqueado) tpsCam.attachControl(canvas, true);
+        if (canvas && attachControlForce) tpsCam.attachControl(canvas, true);
       });
     } else {
       if (canvas) tpsCam.detachControl();
@@ -241,7 +244,6 @@ export class PlayerCameraManagerService {
           tpsCam.alpha = fixedAlpha;
           tpsCam.beta = fixedBeta;
 
-          const fadeLimit = Math.min(2.5, targetRadius * 0.5);
           if (tpsCam.radius < fadeLimit) {
              jugador.visibility = Math.max(0, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
              jugador.getChildMeshes().forEach(m => m.visibility = jugador.visibility);
@@ -271,7 +273,7 @@ export class PlayerCameraManagerService {
         jugador.visibility = 0;
         jugador.getChildMeshes().forEach(m => m.visibility = 0);
         
-        if (canvas && isRatonBloqueado) fpsCam.attachControl(canvas, true);
+        if (canvas && attachControlForce) fpsCam.attachControl(canvas, true);
       });
     }
   }

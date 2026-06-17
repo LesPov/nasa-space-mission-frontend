@@ -1,20 +1,31 @@
 import { Mesh } from '@babylonjs/core';
-import { mergePlayerConfig, PlayerRuntimeConfig } from '../../player-config.model';
+import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../../player-config.model';
 import { EstadoFisico } from '../../playerservice/player-physics.service';
 import { CharacterContext } from '../character-context.interface';
+import { GameEntity } from '../../../../core/engine/entities/game.entity';
  
 export abstract class BaseCharacterController {
+  public entity: GameEntity;
   public mesh: Mesh;
   public config: PlayerRuntimeConfig;
   public estadoFisico: EstadoFisico;
   protected context: CharacterContext;
 
-  constructor(mesh: Mesh, context: CharacterContext) {
-    this.mesh = mesh;
-    this.context = context;
-    this.config = mergePlayerConfig(mesh.metadata?.playerConfig || null);
+  constructor(entity: GameEntity, context: CharacterContext) {
+    this.entity = entity;
     
-    // El estado Físico AHORA pertenece exclusivamente a la entidad.
+    // Verificamos que la entidad tenga su vista bindeada
+    if (!entity.view || !(entity.view instanceof Mesh)) {
+      throw new Error(`[BaseCharacterController] La entidad ${entity.name} no tiene un Mesh válido bindeado.`);
+    }
+    
+    this.mesh = entity.view as Mesh;
+    this.context = context;
+    
+    // 🔥 LECTURA DESDE LA ENTIDAD, NO DESDE METADATA
+    this.config = entity.playerConfig || cloneDefaultPlayerConfig();
+    
+    // El estado Físico pertenece exclusivamente al controlador en runtime
     this.estadoFisico = {
       isMoving: false,
       isRunning: false,
@@ -31,7 +42,7 @@ export abstract class BaseCharacterController {
   }
 
   /**
-   * Método principal que se ejecutará en el Game Loop.
+   * Método principal que se ejecutará en el Game Loop mediante el LoopManager.
    */
   public abstract update(dtMs: number): void;
 

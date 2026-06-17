@@ -1,22 +1,24 @@
-import { Mesh } from '@babylonjs/core';
+import { Vector3 } from '@babylonjs/core';
 import { BaseCharacterController } from './base-character.controller';
 import { CharacterContext } from '../character-context.interface';
+import { GameEntity } from '../../../../core/engine/entities/game.entity';
  
 export class PlayerController extends BaseCharacterController {
   
-  constructor(mesh: Mesh, context: CharacterContext) {
-    super(mesh, context);
+  constructor(entity: GameEntity, context: CharacterContext) {
+    super(entity, context);
   }
 
   public update(dtMs: number): void {
-    // Si el ratón no está bloqueado, el jugador está en el menú pausa, no procesamos lógicas
+    // Si el ratón no está bloqueado (menú pausa u otro overlay), no procesamos input ni físicas
     if (!this.context.state.ratonBloqueado()) return;
 
     const activeCamera = this.context.motor3d.scene.activeCamera;
     if (!activeCamera) return;
 
-    const colMeta = this.mesh.metadata?.collider || { offsetY: 0.9 };
-    const camMeta = this.mesh.metadata?.camOffset || { x: 0, y: 1.6, z: 0 };
+    // 🔥 LEEMOS DIRECTAMENTE DE LA ENTIDAD LÓGICA
+    const colMeta = this.entity.collider;
+    const camMeta = this.entity.camOffset;
     const vista = this.context.state.modoVistaPrueba || 'TPS';
 
     // 1. Lógica de Triggers y Burbujas
@@ -30,7 +32,6 @@ export class PlayerController extends BaseCharacterController {
     const activeInput = (seqRuntime.lockInput || seqRuntime.freezeOrientation) ? {} : this.context.inputSvc.inputMap;
 
     // 4. Procesar Físicas y Colisiones REAles
-    // Pasamos this.estadoFisico para que el servicio lo mute directamente
     this.context.physicsSvc.aplicarMovimientoYGravedad(
       this.mesh, 
       activeInput, 

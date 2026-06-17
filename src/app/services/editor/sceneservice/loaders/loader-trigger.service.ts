@@ -1,12 +1,16 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, Mesh, MeshBuilder, StandardMaterial, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../../motor-3d.service';
 import { EditorStateService } from '../../editor-state.service';
+import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
+import { GameEntity } from '../../../../core/engine/entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
 export class LoaderTriggerService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
+  private entityManager = inject(EntityManagerService); // 🔥
 
   public cargarTrigger(trigger: any, mallasCreadas: Map<string, Mesh>): void {
     const scene = this.motor3d.scene;
@@ -58,6 +62,12 @@ export class LoaderTriggerService {
         isEnabled: trigger.isEnabled,
         hasTriggeredEnter: false, hasTriggeredExit: false
       };
+
+      // 🔥 VINCULAR AL ENTITY MANAGER
+      const entity = new GameEntity(mesh.metadata.uid, trigger.name, 'trigger', 'trigger');
+      entity.bindView(mesh);
+      entity.syncFromMetadata();
+      this.entityManager.addEntity(entity);
 
       mallasCreadas.set(mesh.metadata.uid, mesh);
     }

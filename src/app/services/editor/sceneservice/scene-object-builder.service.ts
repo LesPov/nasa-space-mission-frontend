@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import {
   AbstractMesh,
@@ -30,6 +31,8 @@ import { SceneShadowsService } from './scene-shadows.service';
 import { SceneNodesService } from './scene-nodes.service';
 import { SceneProjectionService } from './scene-projection.service';
 import { BuilderTriggerService } from './builder-trigger.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { GameEntity } from '../../../core/engine/entities/game.entity';
  
 @Injectable({ providedIn: 'root' })
 export class SceneObjectBuilderService {
@@ -40,9 +43,9 @@ export class SceneObjectBuilderService {
   private materialSvc = inject(SceneMaterialService);
   private shadowsSvc = inject(SceneShadowsService);
   private nodesSvc = inject(SceneNodesService);
-
   private projectionSvc = inject(SceneProjectionService);
   private triggerBuilderSvc = inject(BuilderTriggerService);
+  private entityManager = inject(EntityManagerService);
 
   public reconstruirMallaTrigger(oldMesh: AbstractMesh, nuevaForma: string): Mesh {
     return this.triggerBuilderSvc.reconstruirMallaTrigger(oldMesh, nuevaForma);
@@ -191,7 +194,6 @@ export class SceneObjectBuilderService {
           lightObj.diffuse = Color3.FromHexString(colorHex);
           lightObj.specular = new Color3(0, 0, 0);
           
-          // 🔥 FIX CREADOR VITAL: Fuerza a iniciar en 0 para que empate la métrica al momento de crearlo.
           if (lightObj.position) {
               lightObj.position.copyFromFloats(0, 0, 0);
           }
@@ -201,6 +203,12 @@ export class SceneObjectBuilderService {
           rootNode.ellipsoid = new Vector3(defaultCollider.sizeX * safeSizeX, defaultCollider.sizeY * safeSizeY, defaultCollider.sizeZ * safeSizeZ);
           rootNode.ellipsoidOffset = new Vector3(defaultCollider.offsetX * safeSizeX, defaultCollider.offsetY * safeSizeY, defaultCollider.offsetZ * safeSizeZ);
         }
+
+        // 🔥 LÓGICA ECS INTEGRADA
+        const entity = new GameEntity(rootNode.metadata.uid, nombre, tipo, isLight ? 'light' : rol);
+        entity.bindView(rootNode);
+        entity.syncFromMetadata();
+        this.entityManager.addEntity(entity);
 
         this.shadowsSvc.asignarObjetosASombrasDeLuces();
         this.state.objetoSeleccionado.set(rootNode);
@@ -229,7 +237,6 @@ export class SceneObjectBuilderService {
 
       mesh.scaling = new Vector3(safeSizeX, safeSizeY, safeSizeZ);
 
-      // 🔥 LÓGICA DE PADRE (E HOLOGAMAS)
       if (parentNode) {
         mesh.position = parentNode.getAbsolutePosition().clone();
         mesh.setParent(parentNode);
@@ -368,7 +375,6 @@ export class SceneObjectBuilderService {
         lightObj.diffuse = Color3.FromHexString(colorHex);
         lightObj.specular = new Color3(0, 0, 0);
 
-        // 🔥 FIX CREADOR VITAL
         if (lightObj.position) {
             lightObj.position.copyFromFloats(0, 0, 0);
         }
@@ -382,11 +388,20 @@ export class SceneObjectBuilderService {
         if (rol === 'spawn_point') {
           mat.alpha = 0.5;
           mat.emissiveColor = new Color3(0, 1, 0);
+        } else if (mesh.metadata.esEmisivo) {
+          mat.emissiveColor = c3.scale(mesh.metadata.brilloIntensidad);
+          mat.disableLighting = false;
         }
 
         mat.maxSimultaneousLights = 16;
         mesh.material = mat;
       }
+
+      // 🔥 LÓGICA ECS INTEGRADA PARA PRIMITIVAS
+      const entity = new GameEntity(mesh.metadata.uid, nombre, tipo, isLight ? 'light' : rol);
+      entity.bindView(mesh);
+      entity.syncFromMetadata();
+      this.entityManager.addEntity(entity);
 
       this.shadowsSvc.asignarObjetosASombrasDeLuces();
       this.state.objetoSeleccionado.set(mesh);

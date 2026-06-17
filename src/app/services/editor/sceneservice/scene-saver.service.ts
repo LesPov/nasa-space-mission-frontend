@@ -1,8 +1,10 @@
+
 import { Injectable, inject } from '@angular/core'; 
 import { AbstractMesh, Color3, HemisphericLight, Node } from '@babylonjs/core'; 
 import { EditorStateService } from '../editor-state.service'; 
 import { SceneUtilsService } from './scene-utils.service'; 
 import { Motor3dService } from '../../motor-3d.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 type SavedVector3 = { x: number; y: number; z: number };
 
@@ -11,6 +13,7 @@ export class SceneSaverService {
   private motor3d = inject(Motor3dService); 
   private state = inject(EditorStateService);
   private utilsSvc = inject(SceneUtilsService);
+  private entityManager = inject(EntityManagerService); // 🔥
 
   private hex7(value: any, fallback: string): string { 
     if (typeof value !== 'string' || !value.trim()) return fallback; 
@@ -61,7 +64,6 @@ export class SceneSaverService {
       interactSequenceIdTPS: nodo.metadata?.interactSequenceIdTPS || '', 
       collider: nodo.metadata?.collider,
       camOffset: nodo.metadata?.camOffset, 
-      // 🔥 FIX LÓGICO: Forzamos la clonación profunda al guardar para que NINGÚN campo nuevo desaparezca
       playerConfig: nodo.metadata?.playerConfig ? JSON.parse(JSON.stringify(nodo.metadata.playerConfig)) : null, 
       selectionRange, 
       animationNames: nodo.metadata?.animationNames || [],
@@ -70,6 +72,13 @@ export class SceneSaverService {
   }
 
   public obtenerDatosParaGuardar(): { sceneObjects: any[]; triggers: any[]; worldSettings: any } { 
+    
+    // 🔥 PASO VITAL: Forzamos la actualización de todas las Entidades 
+    // desde la metadata visual justo antes de guardar la base de datos.
+    this.entityManager.getAllEntities().forEach(entity => {
+      entity.syncFromMetadata();
+    });
+
     const sceneObjects: any[] = []; 
     const triggers: any[] = [];
 

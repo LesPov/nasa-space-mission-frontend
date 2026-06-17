@@ -1,14 +1,18 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DirectionalLight, Matrix, Mesh, PointLight, Quaternion, SceneLoader, SpotLight, TransformNode, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../../motor-3d.service';
 import { SceneMaterialService } from '../scene-material.service';
 import { SceneUtilsService } from '../scene-utils.service';
+import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
+import { GameEntity } from '../../../../core/engine/entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
 export class LoaderModelService {
   private motor3d = inject(Motor3dService);
   private materialSvc = inject(SceneMaterialService);
   private utilsSvc = inject(SceneUtilsService);
+  private entityManager = inject(EntityManagerService); // 🔥
 
   public cargarModeloAsync(obj: any, mallasCreadas: Map<string, Mesh>): Promise<void> {
     const scene = this.motor3d.scene;
@@ -18,9 +22,6 @@ export class LoaderModelService {
     const rolSaved = obj.properties?.rol || 'prop';
     const isProp = rolSaved === 'prop';
 
-    // 🔥 FIX VITAL FÍSICAS: Si es una casa/decoración (prop), el collider DEBE ser 'mesh'
-    // para que el jugador pueda entrar por las puertas y pisar el suelo real.
-    // Si es un personaje (npc/spawn_point), sí usamos 'capsule'.
     const defaultCollider = isModel 
       ? (isProp 
           ? { type: 'mesh', sizeX: 1, sizeY: 1, sizeZ: 1, offsetX: 0, offsetY: 0, offsetZ: 0 } 
@@ -43,7 +44,6 @@ export class LoaderModelService {
       savedCollider.sizeX = savedCollider.radiusX;
       savedCollider.sizeY = savedCollider.heightY;
       savedCollider.sizeZ = savedCollider.radiusZ;
-      // Convertir formatos viejos si los hay a su equivalencia correcta
       if (savedCollider.type !== 'mesh') savedCollider.type = 'capsule'; 
     }
 
@@ -79,14 +79,12 @@ export class LoaderModelService {
       rootNode.rotationQuaternion = Quaternion.FromEulerAngles(rotX, rotY, rotZ);
       rootNode.scaling = new Vector3(scaleX, scaleY, scaleZ);
       
-      // La raíz no colisiona, colisionan sus hijos (paredes y suelos reales)
       rootNode.checkCollisions = false;
       rootNode.isPickable = true;
 
       rootNode.ellipsoid = new Vector3((savedCollider.sizeX ?? 0.5) * scaleX, (savedCollider.sizeY ?? 0.5) * scaleY, (savedCollider.sizeZ ?? 0.5) * scaleZ);
       rootNode.ellipsoidOffset = new Vector3((savedCollider.offsetX ?? 0) * scaleX, (savedCollider.offsetY ?? 0) * scaleY, (savedCollider.offsetZ ?? 0) * scaleZ);
 
-      // 🔥 LÓGICA DE FÍSICAS PROFUNDA PARA MODELOS 3D
       result.meshes.forEach(m => {
         if (m !== rootNode) {
           m.isPickable = isSelectableSaved; 
@@ -94,15 +92,11 @@ export class LoaderModelService {
           const vertices = m.getTotalVertices();
           if (vertices > 0) {
               m.checkCollisions = isSolidSaved; 
-              
-              // 🚀 FIX VITAL DE RENDIMIENTO Y FÍSICAS (ELIMINA EL EFECTO LENTO/PEGADO)
-              // Usar banderas nativas de la malla para decirle a Babylon que subdivida los cálculos de choque
               if (isSolidSaved && vertices > 500 && m instanceof Mesh) {
                   m.useOctreeForCollisions = true;
                   m.useOctreeForPicking = true;
               }
           } else {
-              // Si es un contenedor vacío exportado de Blender, le apagamos la colisión para no chocar con fantasmas
               m.checkCollisions = false;
           }
           
@@ -194,6 +188,12 @@ export class LoaderModelService {
             lightObj.position.copyFromFloats(lpx, lpy, lpz);
         }
       }
+
+      // 🔥 VINCULAR AL ENTITY MANAGER AL FINALIZAR
+      const entity = new GameEntity(rootNode.metadata.uid, obj.name, obj.type, rolSaved);
+      entity.bindView(rootNode);
+      entity.syncFromMetadata();
+      this.entityManager.addEntity(entity);
 
       mallasCreadas.set(rootNode.metadata.uid, rootNode);
     });

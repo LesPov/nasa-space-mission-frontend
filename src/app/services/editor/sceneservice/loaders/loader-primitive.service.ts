@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DirectionalLight, FresnelParameters, Mesh, MeshBuilder, PointLight, Quaternion, SpotLight, StandardMaterial, Texture, Vector3, VideoTexture } from '@babylonjs/core';
 import { Motor3dService } from '../../../motor-3d.service';
@@ -7,6 +8,8 @@ import { SceneProjectionService } from '../scene-projection.service';
 import { BubblePulseBehavior } from '../../../../core/engine/behaviors/bubble-pulse.behavior';
 import { DistanceFadeBehavior } from '../../../../core/engine/behaviors/distance-fade.behavior';
 import { LoopManagerService } from '../../../../core/engine/behaviors/services/loop-manager.service';
+import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
+import { GameEntity } from '../../../../core/engine/entities/game.entity';
  
 @Injectable({ providedIn: 'root' })
 export class LoaderPrimitiveService {
@@ -14,7 +17,8 @@ export class LoaderPrimitiveService {
   private state = inject(EditorStateService);
   private utilsSvc = inject(SceneUtilsService);
   private projectionSvc = inject(SceneProjectionService);
-  private loopManager = inject(LoopManagerService); // 🔥 FASE 2: Inyectado para los Behaviors
+  private loopManager = inject(LoopManagerService);
+  private entityManager = inject(EntityManagerService); // 🔥
 
   public cargarPrimitiva(obj: any, mallasCreadas: Map<string, Mesh>): void {
     const scene = this.motor3d.scene;
@@ -125,7 +129,6 @@ export class LoaderPrimitiveService {
     mesh.ellipsoid = new Vector3((savedCollider.sizeX ?? 0.5) * scaleX, (savedCollider.sizeY ?? 0.5) * scaleY, (savedCollider.sizeZ ?? 0.5) * scaleZ);
     mesh.ellipsoidOffset = new Vector3((savedCollider.offsetX ?? 0) * scaleX, (savedCollider.offsetY ?? 0) * scaleY, (savedCollider.offsetZ ?? 0) * scaleZ);
 
-    // 🔥 ADJUNTANDO BEHAVIORS SEGÚN TIPO USANDO LOOP MANAGER
     if (obj.type === 'bubble') {
       mesh.addBehavior(new BubblePulseBehavior(this.loopManager));
       mesh.addBehavior(new DistanceFadeBehavior(this.loopManager));
@@ -217,6 +220,12 @@ export class LoaderPrimitiveService {
       mat.fogEnabled = !isIgnoraNieblaSaved;
       mesh.material = mat;
     }
+
+    // 🔥 VINCULAR AL ENTITY MANAGER AL FINALIZAR
+    const entity = new GameEntity(mesh.metadata.uid, obj.name, obj.type, obj.properties?.rol || 'prop');
+    entity.bindView(mesh);
+    entity.syncFromMetadata();
+    this.entityManager.addEntity(entity);
 
     mallasCreadas.set(mesh.metadata.uid, mesh);
   }

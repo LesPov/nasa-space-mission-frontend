@@ -33,6 +33,7 @@ export interface InteractionComponent {
   interactSequenceIdFPS: string; 
   interactSequenceIdTPS: string; 
   interactSequenceId: string; 
+  respawnTime?: number;
 }
 
 export interface LightComponent {
@@ -65,6 +66,34 @@ export interface SelectionRangeComponent {
   fpsUserMax: number;
 }
 
+export interface TriggerComponent {
+  isComposite: boolean;
+  triggerShape: string;
+  conditions: string[];
+  mensajeEntrada: string;
+  mensajeSalida: string;
+  soundUrlEntrada: string;
+  soundUrlSalida: string;
+  seqEntrada: string;
+  seqSalida: string;
+  timeEntrada: number;
+  timeSalida: number;
+  videoEntrada: string;
+  videoSalida: string;
+  condition: string;
+  mensaje: string;
+  soundUrl: string;
+  interactSequenceId: string;
+  timeNorm: number;
+  videoNorm: string;
+  isRepeatable: boolean;
+  isEnabled: boolean;
+  hasTriggeredEnter: boolean;
+  hasTriggeredExit: boolean;
+  gameConditions?: any[];
+  stateMutations?: any[];
+}
+
 /**
  * FUENTE DE VERDAD DE LA ARQUITECTURA ECS.
  * La entidad manda. El Mesh solo obedece y representa visualmente.
@@ -89,6 +118,7 @@ export class GameEntity {
   public playerConfig?: PlayerRuntimeConfig;
   public light?: LightComponent;
   public media?: MediaComponent;
+  public trigger?: TriggerComponent;
   
   public camOffset = { x: 0, y: 1.6, z: 0 };
   public animationNames: string[] = [];
@@ -125,7 +155,8 @@ export class GameEntity {
 
     this.interaction = {
       mensaje: '', interactDistanceFPS: 3.0, interactDistanceTPS: 5.0,
-      interactSequenceIdFPS: '', interactSequenceIdTPS: '', interactSequenceId: ''
+      interactSequenceIdFPS: '', interactSequenceIdTPS: '', interactSequenceId: '',
+      respawnTime: 8
     };
 
     this.selectionRange = { fpsAdminMax: 10000, fpsUserMax: 3 };
@@ -148,12 +179,11 @@ export class GameEntity {
 
   /**
    * ACTUALIZA LA VISTA (Babylon Mesh) A PARTIR DE LOS DATOS DE LA ENTIDAD.
-   * Esto garantiza retrocompatibilidad inyectando un metadata limpio.
+   * Esto empuja datos al metadata SOLO por retrocompatibilidad con las herramientas visuales del Editor.
    */
   public syncToView(): void {
     if (!this.view) return;
 
-    // 1. Aplicar Transformaciones al Mesh
     this.view.position.set(this.transform.position.x, this.transform.position.y, this.transform.position.z);
     this.view.scaling.set(this.transform.scale.x, this.transform.scale.y, this.transform.scale.z);
 
@@ -164,11 +194,10 @@ export class GameEntity {
       this.view.rotation.set(this.transform.rotation.x, this.transform.rotation.y, this.transform.rotation.z);
     }
 
-    // 2. Volcar la Entidad Pura al Metadata (Para que los servicios Legacy funcionen)
     this.view.name = this.name;
     
     this.view.metadata = {
-      ...this.view.metadata, // Mantenemos punteros sucios (ej. materials o decals)
+      ...this.view.metadata,
       uid: this.uid,
       type: this.type,
       rol: this.rol,
@@ -196,6 +225,7 @@ export class GameEntity {
       interactSequenceIdFPS: this.interaction.interactSequenceIdFPS,
       interactSequenceIdTPS: this.interaction.interactSequenceIdTPS,
       interactSequenceId: this.interaction.interactSequenceId,
+      respawnTime: this.interaction.respawnTime,
       
       animationNames: this.animationNames,
       autoAnim: this.autoAnim,
@@ -204,11 +234,9 @@ export class GameEntity {
 
     if (this.light) Object.assign(this.view.metadata, this.light);
     if (this.media) Object.assign(this.view.metadata, this.media);
+    if (this.trigger) Object.assign(this.view.metadata, this.trigger);
   }
 
-  /**
-   * Lee la malla y actualiza la entidad (usado cuando manipulamos el Gizmo)
-   */
   public syncTransformFromView(): void {
     if (!this.view) return;
     this.transform.position = { x: this.view.position.x, y: this.view.position.y, z: this.view.position.z };
@@ -222,9 +250,6 @@ export class GameEntity {
     }
   }
 
-  /**
-   * Sincronización Inversa para los Loaders Legacy.
-   */
   public syncFromMetadata(): void {
     if (!this.view || !this.view.metadata) return;
     const meta = this.view.metadata;
@@ -256,6 +281,7 @@ export class GameEntity {
     this.interaction.interactSequenceIdFPS = meta.interactSequenceIdFPS || '';
     this.interaction.interactSequenceIdTPS = meta.interactSequenceIdTPS || '';
     this.interaction.interactSequenceId = meta.interactSequenceId || '';
+    this.interaction.respawnTime = meta.respawnTime ?? 8;
 
     this.animationNames = meta.animationNames || [];
     this.autoAnim = meta.autoAnim ? JSON.parse(JSON.stringify(meta.autoAnim)) : null;
@@ -264,7 +290,36 @@ export class GameEntity {
         this.initialHeadLocal = new Vector3(meta.initialHeadLocal.x, meta.initialHeadLocal.y, meta.initialHeadLocal.z);
     }
     
-    // Al finalizar, forzamos un repintado para mantener consistencia
+    if (this.type === 'trigger' || this.type === 'trigger_compuesto') {
+      this.trigger = {
+        isComposite: meta.isComposite ?? false,
+        triggerShape: meta.triggerShape || 'cube',
+        conditions: meta.conditions || [],
+        mensajeEntrada: meta.mensajeEntrada || '',
+        mensajeSalida: meta.mensajeSalida || '',
+        soundUrlEntrada: meta.soundUrlEntrada || '',
+        soundUrlSalida: meta.soundUrlSalida || '',
+        seqEntrada: meta.seqEntrada || '',
+        seqSalida: meta.seqSalida || '',
+        timeEntrada: meta.timeEntrada ?? 4.5,
+        timeSalida: meta.timeSalida ?? 4.5,
+        videoEntrada: meta.videoEntrada || '',
+        videoSalida: meta.videoSalida || '',
+        condition: meta.condition || 'on_enter',
+        mensaje: meta.mensaje || '',
+        soundUrl: meta.soundUrl || '',
+        interactSequenceId: meta.interactSequenceId || '',
+        timeNorm: meta.timeNorm ?? 4.5,
+        videoNorm: meta.videoNorm || '',
+        isRepeatable: meta.isRepeatable ?? false,
+        isEnabled: meta.isEnabled ?? true,
+        hasTriggeredEnter: meta.hasTriggeredEnter ?? false,
+        hasTriggeredExit: meta.hasTriggeredExit ?? false,
+        gameConditions: meta.gameConditions || [],
+        stateMutations: meta.stateMutations || []
+      };
+    }
+    
     this.syncToView();
   }
 

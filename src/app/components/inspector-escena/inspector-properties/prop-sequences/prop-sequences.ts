@@ -1,3 +1,4 @@
+
 import { Component, Input, OnInit, OnChanges, SimpleChanges, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -6,6 +7,7 @@ import { EditorPlayerService } from '../../../../services/editor/editor-player.s
 import { PlayerClipSequence, mergePlayerConfig } from '../../../../services/editor/player-config.model';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { SequenceMutatorService } from '../../../../services/editor/mutators/sequence-mutator.service';
+import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
   
 const ACTION_ROWS_CHAR = [{ key: 'idle', label: 'Idle / Reposo' }, { key: 'walk', label: 'Walk (Caminar)' }, { key: 'run', label: 'Run (Correr)' }];
 const ACTION_ROWS_PROP = [
@@ -28,6 +30,7 @@ export class PropSequences implements OnInit, OnChanges {
   private playerSvc = inject(EditorPlayerService);
   private motor3dSvc = inject(Motor3dService); 
   private sequenceMutator = inject(SequenceMutatorService);
+  private entityManager = inject(EntityManagerService);
 
   sequences: PlayerClipSequence[] = [];
   selectedSequenceId: string | null = null;
@@ -103,8 +106,11 @@ export class PropSequences implements OnInit, OnChanges {
   probarSecuencia(seq: PlayerClipSequence) {
     this.persist();
     if(this.objeto.metadata.type !== 'trigger'){
-        this.playerSvc.iniciarPreviewSecuencia(this.objeto, seq.id);
-        this.animStatus = `Visualizando: ${seq.name}...`;
+        const entity = this.entityManager.getEntityByMesh(this.objeto);
+        if (entity) {
+            this.playerSvc.iniciarPreviewSecuencia(entity, seq.id);
+            this.animStatus = `Visualizando: ${seq.name}...`;
+        }
     }
   }
 

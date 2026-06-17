@@ -1,3 +1,4 @@
+
 import { Component, inject, OnInit, ChangeDetectorRef, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -7,6 +8,7 @@ import { AbstractMesh, Vector3, AnimationGroup, Mesh } from '@babylonjs/core';
 import { EditorPlayerService } from '../../services/editor/editor-player.service';
 import { Motor3dService } from '../../services/motor-3d.service';
 import { PlayerClipSequence, createPlayerSequence, createSequenceStep, cloneDefaultPlayerConfig, mergePlayerConfig } from '../../services/editor/player-config.model';
+import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 
 const ACTION_ROWS_CHAR = [
   { key: 'idle', label: '🧍 Idle / Reposo' }, 
@@ -42,6 +44,7 @@ export class GlobalTimeline implements OnInit {
   public editorSvc = inject(EditorMapaService);
   private playerSvc = inject(EditorPlayerService);
   private motor3dSvc = inject(Motor3dService);
+  private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
 
   public activeTab: string = 'clips';
@@ -193,7 +196,10 @@ export class GlobalTimeline implements OnInit {
     this.persist();
     const obj = this.editorSvc.objetoSeleccionado() as Mesh;
     if (obj.metadata.type !== 'trigger') {
-        this.playerSvc.iniciarPreviewSecuencia(obj, seq.id);
+        const entity = this.entityManager.getEntityByMesh(obj);
+        if (entity) {
+            this.playerSvc.iniciarPreviewSecuencia(entity, seq.id);
+        }
     }
   }
 

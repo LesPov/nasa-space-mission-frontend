@@ -1,3 +1,4 @@
+
 import { Vector3 } from '@babylonjs/core';
 import { BaseCharacterController } from './base-character.controller';
 import { CharacterContext } from '../character-context.interface';
@@ -11,13 +12,13 @@ export class NpcController extends BaseCharacterController {
     // Auto-iniciar secuencia si la tiene configurada
     const autoSeq = this.config.sequences.find((s: any) => s.autoPlay);
     if (autoSeq) {
-      this.context.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, this.mesh, this.config);
+      this.context.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, this.entity);
     }
   }
 
   public update(dtMs: number): void {
     // Calcular rutinas/cinemáticas del NPC
-    const seqRuntime = this.context.sequenceSvc.actualizarSecuencia(dtMs, this.mesh, this.config);
+    const seqRuntime = this.context.sequenceSvc.actualizarSecuencia(dtMs, this.entity);
     
     // Físicas procedurales falsas (Aplicar transformaciones basadas en la secuencia de animación)
     if (seqRuntime.running && seqRuntime.step) {
@@ -44,11 +45,11 @@ export class NpcController extends BaseCharacterController {
     }
     
     // Reproducir animaciones según estado
-    this.context.animSvc.gestionarAnimaciones(this.mesh, this.estadoFisico, seqRuntime, this.config);
+    this.context.animSvc.gestionarAnimaciones(this.entity, this.estadoFisico, seqRuntime);
     
     // Congelar rotación si la animación lo requiere
     if (seqRuntime.freezeOrientation) {
-      this.context.sequenceSvc.applyLockedOrientationWhileSequence(this.mesh);
+      this.context.sequenceSvc.applyLockedOrientationWhileSequence(this.entity);
     }
   }
 }

@@ -18,6 +18,7 @@ import { PlayerBubbleService } from './playerservice/player-bubble';
 import { ObjectAnimationService } from './object-animation.service';
 import { LoopManagerService, GamePhase } from '../../core/engine/behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
+import { GameEntity } from '../../core/engine/entities/game.entity';
 
 import { CharacterContext } from './characters/character-context.interface';
 import { PlayerController } from './characters/controllers/player.controller';
@@ -43,7 +44,6 @@ export class EditorPlayerService {
 
   private backupsAnimados: any[] = [];
   
-  // REFERENCIAS A LOS CONTROLADORES EN RUNTIME
   private activePlayerController: PlayerController | null = null;
   private activeNpcControllers: NpcController[] = [];
 
@@ -135,24 +135,25 @@ export class EditorPlayerService {
             m.setEnabled(isAdmin);
         }
 
-        if (m.metadata?.type === 'video_plane') {
-            if (m.material instanceof StandardMaterial) {
-                const tex = m.material.diffuseTexture;
-                if (tex instanceof VideoTexture) {
-                    tex.video.pause();
-                    tex.video.currentTime = 0;
-                    m.material.emissiveColor = new Color3(0, 0, 0); 
+        const entity = this.entityManager.getEntityByMesh(m);
+        if (entity) {
+            if (entity.type === 'video_plane') {
+                if (m.material instanceof StandardMaterial) {
+                    const tex = m.material.diffuseTexture;
+                    if (tex instanceof VideoTexture) {
+                        tex.video.pause();
+                        tex.video.currentTime = 0;
+                        m.material.emissiveColor = new Color3(0, 0, 0); 
+                    }
                 }
+                m.metadata.isPoweredOn = false; 
             }
-            m.metadata.isPoweredOn = false; 
-        }
-
-        if (m.metadata?.type?.startsWith('light_') && !m.metadata?.assetId) {
-            m.isVisible = false;
-        }
-
-        if (m.metadata?.type === 'image_plane') {
-            m.isVisible = false; 
+            if (entity.type.startsWith('light_') && !entity.visual.assetId) {
+                m.isVisible = false;
+            }
+            if (entity.type === 'image_plane') {
+                m.isVisible = false; 
+            }
         }
     });
 
@@ -179,25 +180,20 @@ export class EditorPlayerService {
 
         const npcCtrl = new NpcController(npcEntity, context);
         this.activeNpcControllers.push(npcCtrl);
-        this.animSvc.sincronizarAnimaciones(this.motor3d.scene, mesh, npcCtrl.config);
+        this.animSvc.sincronizarAnimaciones(this.motor3d.scene, npcEntity);
     });
 
-    const colMeta = playerEntity.collider;
-    const camMeta = playerEntity.camOffset;
-    objMesh.ellipsoid = new Vector3(colMeta.sizeX * objMesh.scaling.x, colMeta.sizeY * objMesh.scaling.y, colMeta.sizeZ * objMesh.scaling.z);
-    objMesh.ellipsoidOffset = new Vector3(colMeta.offsetX * objMesh.scaling.x, colMeta.offsetY * objMesh.scaling.y, colMeta.offsetZ * objMesh.scaling.z);
-
-    this.animSvc.sincronizarAnimaciones(this.motor3d.scene, objMesh, this.activePlayerController.config);
+    this.animSvc.sincronizarAnimaciones(this.motor3d.scene, playerEntity);
 
     const playerAutoSeq = this.activePlayerController.config.sequences.find((s: any) => s.autoPlay);
     if (playerAutoSeq) {
-        this.sequenceSvc.iniciarSecuenciaEnJuego(playerAutoSeq.id, objMesh, this.activePlayerController.config);
+        this.sequenceSvc.iniciarSecuenciaEnJuego(playerAutoSeq.id, playerEntity);
     }
     
     this.state.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
     this.state.cameraPivot.isVisible = false;
     
-    this.playerCamSvc.inicializarCamaras(objMesh, colMeta, camMeta, vista, objMesh.scaling, this.activePlayerController.config);
+    this.playerCamSvc.inicializarCamaras(playerEntity, vista);
     this.motor3d.scene.render(false, true);
 
     const targetCam = vista === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS;
@@ -222,12 +218,11 @@ export class EditorPlayerService {
         this.triggerSvc.prepararTriggersParaJuego();
 
         this.inputSvc.iniciarEscuchaTeclado(this.motor3d.scene, {
-          onToggleCamera: () => this.playerCamSvc.toggleCameraView(objMesh, this.activePlayerController!.config),
+          onToggleCamera: () => this.playerCamSvc.toggleCameraView(playerEntity, false),
           onInteractE: () => this.handleInteractions(true),
           onInteractI: () => this.handleInteractions(false)
         });
 
-        // Al usuario no se le pide bloqueo del ratón inmediatamente para que pueda clicar el menú
         const isUser = this.state.rolSimulado() === 'user';
         this.iniciarBucleSecundario(!isUser); 
         this.state.triggerUpdate();
@@ -242,72 +237,73 @@ export class EditorPlayerService {
     }
   }
 
-  // 🔥 ANIMACIÓN CINEMÁTICA ACCESIBLE DESDE AFUERA
   public toggleCameraUser(isCinematicInitial: boolean = false): void {
     if (this.state.jugadorActivo && this.activePlayerController) {
-      this.playerCamSvc.toggleCameraView(this.state.jugadorActivo, this.activePlayerController.config, isCinematicInitial);
+      this.playerCamSvc.toggleCameraView(this.activePlayerController.entity, isCinematicInitial);
     }
   }
 
   private handleInteractions(isActionE: boolean): void {
-      const target = this.state.targetInteractuable();
-      if (!target || !this.interactSvc.canActivateInteraction(target, this.state.modoVistaPrueba)) return;
+      const targetEntity = this.state.targetInteractuable() as unknown as GameEntity;
+      if (!targetEntity || !this.interactSvc.canActivateInteraction(targetEntity, this.state.modoVistaPrueba)) return;
 
       if (isActionE) {
-        if (target.metadata?.isProcessingAction) return;
+        if (targetEntity.isProcessingAction) return;
 
-        let seqIdString = this.state.modoVistaPrueba === 'FPS' ? target.metadata?.interactSequenceIdFPS : target.metadata?.interactSequenceIdTPS;
-        if (!seqIdString) seqIdString = target.metadata?.interactSequenceId;
+        let seqIdString = this.state.modoVistaPrueba === 'FPS' ? targetEntity.interaction.interactSequenceIdFPS : targetEntity.interaction.interactSequenceIdTPS;
+        if (!seqIdString) seqIdString = targetEntity.interaction.interactSequenceId;
         const ids = seqIdString ? seqIdString.split(',').map((id: string) => id.trim()).filter(Boolean) : [];
 
-        if (target.metadata?.type === 'bubble') {
-          this.bubbleSvc.ejecutarBurbuja(target);
-          if (ids.length > 0) this.executeSequenceFromIds(target, ids);
+        if (targetEntity.type === 'bubble') {
+          this.bubbleSvc.ejecutarBurbuja(targetEntity);
+          if (ids.length > 0) this.executeSequenceFromIds(targetEntity, ids);
         } else {
-          if (target.metadata?.type === 'video_plane') {
-              if (!target.metadata.isPoweredOn) return; 
+          if (targetEntity.type === 'video_plane') {
+              const mesh = targetEntity.view as Mesh;
+              if (mesh && !mesh.metadata?.isPoweredOn) return; 
               if (ids.length === 0) {
-                  if (target.material instanceof StandardMaterial) {
-                      const tex = target.material.diffuseTexture;
+                  if (mesh?.material instanceof StandardMaterial) {
+                      const tex = mesh.material.diffuseTexture;
                       if (tex instanceof VideoTexture) {
                           if (tex.video.paused) {
                               tex.video.play();
-                              target.material.emissiveColor = new Color3(1, 1, 1);
+                              mesh.material.emissiveColor = new Color3(1, 1, 1);
                           } else {
                               tex.video.pause();
-                              target.material.emissiveColor = new Color3(0.3, 0.3, 0.3); 
+                              mesh.material.emissiveColor = new Color3(0.3, 0.3, 0.3); 
                           }
                       }
                   }
                   return; 
               }
           }
-          if (ids.length > 0) this.executeSequenceFromIds(target, ids);
+          if (ids.length > 0) this.executeSequenceFromIds(targetEntity, ids);
         }
       } else {
-          const cloneData = { name: target.name, metadata: { mensaje: target.metadata?.mensaje || '' } };
-          this.interactSvc.abrirMensajeInteractivo(cloneData as any, () => this.resetMovimientoJugador());
+          this.interactSvc.abrirMensajeInteractivo(targetEntity, () => this.resetMovimientoJugador());
       }
   }
 
-  private executeSequenceFromIds(target: AbstractMesh, ids: string[]): void {
-      target.metadata.isProcessingAction = true;
+  private executeSequenceFromIds(targetEntity: GameEntity, ids: string[]): void {
+      targetEntity.isProcessingAction = true;
       const idxKey = this.state.modoVistaPrueba === 'FPS' ? 'currentSeqIdxFPS' : 'currentSeqIdxTPS';
-      let idx = target.metadata[idxKey] || 0;
+      let idx = (targetEntity.view?.metadata as any)?.[idxKey] || 0;
       if (idx >= ids.length) idx = 0;
       const idToPlay = ids[idx];
 
       const triggerAction = () => {
-         this.motor3d.scene.meshes.forEach(m => {
-             if (m.metadata?.playerConfig?.sequences?.some((s: any) => s.id === idToPlay)) {
-                 this.sequenceSvc.iniciarSecuenciaEnJuego(idToPlay, m as Mesh, m.metadata.playerConfig);
+         this.entityManager.getAllEntities().forEach(e => {
+             if (e.playerConfig?.sequences?.some((s: any) => s.id === idToPlay)) {
+                 this.sequenceSvc.iniciarSecuenciaEnJuego(idToPlay, e);
              }
          });
-         target.metadata.isProcessingAction = false;
-         target.metadata[idxKey] = (idx + 1) % ids.length;
+         targetEntity.isProcessingAction = false;
+         if (targetEntity.view?.metadata) {
+             (targetEntity.view.metadata as any)[idxKey] = (idx + 1) % ids.length;
+         }
       };
 
-      if (target.metadata?.type === 'bubble') {
+      if (targetEntity.type === 'bubble') {
           setTimeout(triggerAction, 500);
       } else {
           triggerAction();
@@ -341,7 +337,6 @@ export class EditorPlayerService {
   }
 
   public detenerModoJuego(): void {
-    const scene = this.motor3d.scene;
     this.state.playState.set('EDITOR');
     this.resetMovimientoJugador();
     
@@ -386,28 +381,31 @@ export class EditorPlayerService {
             m.isVisible = isAdmin;
         }
 
-        if (m.metadata?.type?.startsWith('light_') && !m.metadata?.assetId) {
-            m.isVisible = isAdmin;
-        }
-
-        if (m.metadata?.type === 'bubble') {
-            m.isVisible = true;
-            m.metadata.isProcessingAction = false;
-        }
-
-        if (m.metadata?.type === 'video_plane') {
-            if (m.material instanceof StandardMaterial) {
-                const tex = m.material.diffuseTexture;
-                if (tex instanceof VideoTexture) {
-                    tex.video.pause();
-                    m.material.emissiveColor = new Color3(1, 1, 1); 
-                }
+        const entity = this.entityManager.getEntityByMesh(m);
+        if (entity) {
+            if (entity.type.startsWith('light_') && !entity.visual.assetId) {
+                m.isVisible = isAdmin;
             }
-            m.metadata.isPoweredOn = undefined; 
-        }
 
-        if (m.metadata?.type === 'image_plane') {
-            m.isVisible = isAdmin; 
+            if (entity.type === 'bubble') {
+                m.isVisible = true;
+                entity.isProcessingAction = false;
+            }
+
+            if (entity.type === 'video_plane') {
+                if (m.material instanceof StandardMaterial) {
+                    const tex = m.material.diffuseTexture;
+                    if (tex instanceof VideoTexture) {
+                        tex.video.pause();
+                        m.material.emissiveColor = new Color3(1, 1, 1); 
+                    }
+                }
+                m.metadata.isPoweredOn = undefined; 
+            }
+
+            if (entity.type === 'image_plane') {
+                m.isVisible = isAdmin; 
+            }
         }
     });
 
@@ -415,7 +413,7 @@ export class EditorPlayerService {
     
     if (this.state.cameraPivot) { this.state.cameraPivot.dispose(); this.state.cameraPivot = null; }
     
-    this.inputSvc.detenerEscuchaTeclado(scene);
+    this.inputSvc.detenerEscuchaTeclado(this.motor3d.scene);
     this.state.proxyColliders.forEach(p => p.dispose()); this.state.proxyColliders = [];
 
     this.state.objetoHovereado.set(null); 
@@ -423,7 +421,8 @@ export class EditorPlayerService {
     this.state.objetoSeleccionado.set(null);
 
     if (this.state.jugadorActivo && this.state.backupObjetoPosicion && this.state.backupObjetoRotacionQuat) {
-      if (this.state.jugadorActivo.metadata?.rol === 'npc' || this.state.jugadorActivo.metadata?.rol === 'spawn_point') {
+      const entity = this.entityManager.getEntityByMesh(this.state.jugadorActivo);
+      if (entity && (entity.rol === 'npc' || entity.rol === 'spawn_point')) {
         if (this.state.modoVistaPrueba === 'FPS') this.state.jugadorActivo.rotationQuaternion = Quaternion.FromEulerAngles(0, (this.motor3d.playerCameraFPS as any).rotation.y, 0);
         this.state.triggerUpdate();
       } else {
@@ -460,34 +459,27 @@ export class EditorPlayerService {
     this.state.triggerUpdate();
   }
 
-  public resincronizarAnimaciones(mesh: AbstractMesh): void {
-     const trueMesh = mesh as Mesh;
-     const entity = this.entityManager.getEntityByMesh(mesh);
-     const config = entity?.playerConfig || mergePlayerConfig(trueMesh.metadata?.playerConfig || null);
-     this.animSvc.sincronizarAnimaciones(this.motor3d.scene, trueMesh, config);
+  public resincronizarAnimaciones(entity: GameEntity): void {
+     this.animSvc.sincronizarAnimaciones(this.motor3d.scene, entity);
   }
 
-  public iniciarPreviewSecuencia(mesh: AbstractMesh, sequenceId: string) {
-    const trueMesh = mesh as Mesh;
-    const entity = this.entityManager.getEntityByMesh(mesh);
-    const config = entity?.playerConfig || mergePlayerConfig(trueMesh.metadata?.playerConfig || null);
-
+  public iniciarPreviewSecuencia(entity: GameEntity, sequenceId: string) {
     if (this.state.playState() !== 'EDITOR') {
-       this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceId, trueMesh, config);
+       this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceId, entity);
        return;
     }
 
     this.detenerPreviewSecuencia();
-    this.animSvc.sincronizarAnimaciones(this.motor3d.scene, trueMesh, config);
-    this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceId, trueMesh, config);
+    this.animSvc.sincronizarAnimaciones(this.motor3d.scene, entity);
+    this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceId, entity);
 
     this.loopManager.register('PreviewSequence', GamePhase.LOGIC, (dtMs: number) => {
-      const runtime = this.sequenceSvc.actualizarSecuencia(dtMs, trueMesh, config);
+      const runtime = this.sequenceSvc.actualizarSecuencia(dtMs, entity);
       
       if (runtime.running && runtime.step) {
-        const override = this.animSvc.resolveSequenceStepAnimation(trueMesh, runtime.step);
-        if (override) { override.speedRatio = runtime.step.speedRatio || 1; this.animSvc.playAnim(trueMesh, override, runtime.loop, runtime.blend); }
-      } else if (!runtime.running) this.animSvc.reproducirIdle(trueMesh);
+        const override = this.animSvc.resolveSequenceStepAnimation(entity, runtime.step);
+        if (override) { override.speedRatio = runtime.step.speedRatio || 1; this.animSvc.playAnim(entity, override, runtime.loop, runtime.blend); }
+      } else if (!runtime.running) this.animSvc.reproducirIdle(entity);
     });
   }
 
@@ -511,8 +503,11 @@ export class EditorPlayerService {
        this.state.showToastE.set(false);
        this.state.showToastI.set(false);
        if (this.state.jugadorActivo) {
-           this.animSvc.detenerTodas(this.state.jugadorActivo);
-           this.animSvc.reproducirIdle(this.state.jugadorActivo); 
+           const entity = this.entityManager.getEntityByMesh(this.state.jugadorActivo);
+           if (entity) {
+             this.animSvc.detenerTodas(entity);
+             this.animSvc.reproducirIdle(entity); 
+           }
        }
     }
   }
@@ -521,13 +516,18 @@ export class EditorPlayerService {
     const scene = this.motor3d.scene;
     scene.meshes.forEach(m => {
       if (m === jugador) return;
-      if (m.name.includes('debug') || m.name.includes('gizmo') || m.name.includes('cameraPivot') || m.name.includes('sueloInvisible') || m.name.includes('proxyCol') || m.metadata?.type === 'trigger') return;
+      if (m.name.includes('debug') || m.name.includes('gizmo') || m.name.includes('cameraPivot') || m.name.includes('sueloInvisible') || m.name.includes('proxyCol')) return;
 
       const root = this.state.encontrarRaiz(m as AbstractMesh);
-      if (root && root instanceof AbstractMesh && root.metadata?.isSolid) {
-        const colMeta = root.metadata.collider;
+      if (!root) return;
+      const entity = this.entityManager.getEntityByMesh(root as AbstractMesh);
+
+      if (entity && entity.visual.isSolid) {
+        if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') return;
+
+        const colMeta = entity.collider;
         if (colMeta && colMeta.type !== 'mesh' && m === root) {
-          this.state.backupColisionesHijos.push({ mesh: m, col: m.checkCollisions });
+          this.state.backupColisionesHijos.push({ mesh: m as AbstractMesh, col: m.checkCollisions });
           m.checkCollisions = false;
           m.getChildMeshes().forEach(c => { this.state.backupColisionesHijos.push({ mesh: c as AbstractMesh, col: c.checkCollisions }); c.checkCollisions = false; });
           

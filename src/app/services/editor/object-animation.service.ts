@@ -1,43 +1,47 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Animation, EasingFunction, SineEase, Vector3, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
+import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class ObjectAnimationService {
   private motor3d = inject(Motor3dService);
+  private entityManager = inject(EntityManagerService);
   private animatables: any[] = [];
 
   public startAmbientAutoAnimations(): void {
     const scene = this.motor3d.scene;
     if (!scene) return;
 
-    scene.meshes.forEach((mesh) => {
-      const meta = mesh.metadata;
-      
-      // 🔥 FIX GLB Y HUESOS: Detener solo la animación de ESTE mesh específico.
-      // Si hay 10 linternas, solo congela la que tiene el stopBaked activado.
-      if (meta && meta.autoAnim && meta.autoAnim.stopBaked) {
-          const myAnimNames = meta.animationNames || [];
+    this.entityManager.getAllEntities().forEach(entity => {
+      const mesh = entity.view as Mesh;
+      if (!mesh) return;
+
+      if (entity.autoAnim && entity.autoAnim.stopBaked) {
+          const myAnimNames = entity.animationNames || [];
           scene.animationGroups.forEach(ag => {
               if (myAnimNames.includes(ag.name)) {
-                  const isTargetingMe = ag.targetedAnimations?.some((ta:any) => {
-                      let current: any = ta.target;
-                      while(current) {
-                          if (current === mesh) return true;
-                          current = current.parent;
+                  if (ag.isPlaying) {
+                      const isTargetingMe = ag.targetedAnimations?.some((ta:any) => {
+                          let current: any = ta.target;
+                          while(current) {
+                              if (current === mesh) return true;
+                              current = current.parent;
+                          }
+                          return false;
+                      });
+                      if (isTargetingMe) {
+                          ag.stop();
                       }
-                      return false;
-                  });
-                  if (isTargetingMe) {
-                      ag.stop();
                   }
               }
           });
       }
 
       // Si tiene una animación procedimental programada
-      if (meta && meta.autoAnim && meta.autoAnim.enabled) {
-        this.applyAutoAnim(mesh as Mesh, meta.autoAnim);
+      if (entity.autoAnim && entity.autoAnim.enabled) {
+        this.applyAutoAnim(mesh, entity.autoAnim);
       }
     });
   }

@@ -1,3 +1,4 @@
+
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -7,6 +8,7 @@ import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorPlayerService } from '../../../../services/editor/editor-player.service';
 import { PlayerActionKey, PlayerRuntimeConfig, cloneDefaultPlayerConfig, mergePlayerConfig, normalizeAnimBinding } from '../../../../services/editor/player-config.model';
 import { Motor3dService } from '../../../../services/motor-3d.service';
+import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 
 interface ActionRow { key: PlayerActionKey; label: string; family: string; keywords: string[]; help: string; }
 interface ClipViewModel { name: string; group: AnimationGroup; targetCount: number; speedRatio: number; loop: boolean; playing: boolean; }
@@ -24,6 +26,7 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
   private editorSvc = inject(EditorMapaService);
   private motor3dSvc = inject(Motor3dService);
   private playerSvc = inject(EditorPlayerService);
+  private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -161,7 +164,10 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
     
     // 🔥 FIX: Resincronizar en vivo si el juego está corriendo y se cambia la animación base
     if (this.editorSvc.playState() === 'EDITING_IN_GAME') {
-       this.playerSvc.resincronizarAnimaciones(this.objeto);
+       const entity = this.entityManager.getEntityByMesh(this.objeto);
+       if (entity) {
+           this.playerSvc.resincronizarAnimaciones(entity);
+       }
     }
     
     this.editorSvc.triggerUpdate();

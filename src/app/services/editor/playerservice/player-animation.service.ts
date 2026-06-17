@@ -1,8 +1,10 @@
+
 import { Injectable } from '@angular/core';
 import { AnimationGroup, Scene, Mesh } from '@babylonjs/core';
-import { PlayerRuntimeConfig, PlayerActionKey, PlayerSequenceStep, normalizeAnimBinding } from '../player-config.model';
+import { PlayerRuntimeConfig, PlayerActionKey, PlayerSequenceStep, normalizeAnimBinding, cloneDefaultPlayerConfig } from '../player-config.model';
 import { EstadoFisico } from './player-physics.service';
 import { SeqRuntime } from './player-sequence.service';
+import { GameEntity } from '../../../core/engine/entities/game.entity';
 
 export interface AnimState {
   animacionesJugador: AnimationGroup[];
@@ -25,18 +27,18 @@ export interface AnimState {
 
 @Injectable({ providedIn: 'root' })
 export class PlayerAnimationService {
-  private states = new Map<number, AnimState>();
+  private states = new Map<string, AnimState>();
 
-  private getState(mesh: Mesh): AnimState {
-    if (!this.states.has(mesh.uniqueId)) {
-      this.states.set(mesh.uniqueId, { 
+  private getState(entityUid: string): AnimState {
+    if (!this.states.has(entityUid)) {
+      this.states.set(entityUid, { 
         animacionesJugador: [], animActual: null, animIdle: null, animWalk: null, animRun: null, 
         animJump: null, animJumpLoop: null, animFall: null, animLandSoft: null, animHardLanding: null, 
         animClimb: null, animClimbFinish: null, animHangIdle: null, animVault: null, animStepUp: null, 
         animRecover: null 
       });
     }
-    return this.states.get(mesh.uniqueId)!;
+    return this.states.get(entityUid)!;
   }
 
   private resolveAnimation(state: AnimState, binding: string | string[] | null, fallback: AnimationGroup | null): AnimationGroup | null {
@@ -52,10 +54,15 @@ export class PlayerAnimationService {
     return fallback;
   }
 
-  public sincronizarAnimaciones(scene: Scene, obj: Mesh, config: PlayerRuntimeConfig): void {
-    const state = this.getState(obj);
+  public sincronizarAnimaciones(scene: Scene, entity: GameEntity): void {
+    const state = this.getState(entity.uid);
+    const obj = entity.view as Mesh;
+    const config = entity.playerConfig || cloneDefaultPlayerConfig();
+
+    if (!obj) return;
+    
     state.animacionesJugador = [];
-    const metadataNames: string[] = obj.metadata?.animationNames || [];
+    const metadataNames: string[] = entity.animationNames || [];
     
     const isTargetingObj = (ag: AnimationGroup) => {
         if (!ag.targetedAnimations) return false;
@@ -120,25 +127,14 @@ export class PlayerAnimationService {
       case 'vault': return state.animVault || state.animJump || state.animIdle;
       case 'stepUp': return state.animStepUp || state.animClimbFinish || state.animIdle;
       case 'recover': return state.animRecover || state.animIdle;
-      case 'lightOn':
-      case 'lightOff':
-      case 'lightPulse':
-      case 'lightFlicker':
-      case 'playVideo':
-      case 'pauseVideo':
-      case 'stopVideo':
-      case 'setState':
-      case 'checkCondition':
-          return null; 
-      default: return state.animIdle;
+      default: return null;
     }
   }
 
-  public resolveSequenceStepAnimation(mesh: Mesh, step: PlayerSequenceStep): AnimationGroup | null {
-    const state = this.getState(mesh);
+  public resolveSequenceStepAnimation(entity: GameEntity, step: PlayerSequenceStep): AnimationGroup | null {
+    const state = this.getState(entity.uid);
     const clipOverride = (step.clipOverride || '').trim();
     
-    // 🔥 FIX VITAL: Si está forzado en "none" o es una acción de freno total, NO DEVUELVE NINGUNA ANIMACIÓN.
     if (clipOverride.toLowerCase() === 'none' || step.action === 'stopBaked') {
         return null;
     }
@@ -152,8 +148,8 @@ export class PlayerAnimationService {
     return this.getAnimationForAction(state, step.action);
   }
 
-  public playAnim(mesh: Mesh, anim: AnimationGroup | null, loop: boolean, blendingSpeed: number = 0.05): void {
-    const state = this.getState(mesh);
+  public playAnim(entity: GameEntity, anim: AnimationGroup | null, loop: boolean, blendingSpeed: number = 0.05): void {
+    const state = this.getState(entity.uid);
     if (!anim) {
       state.animacionesJugador.forEach(a => a.stop());
       state.animActual = null;
@@ -185,8 +181,8 @@ export class PlayerAnimationService {
     this.states.clear();
   }
 
-  public detenerTodas(mesh: Mesh): void {
-    const state = this.getState(mesh);
+  public detenerTodas(entity: GameEntity): void {
+    const state = this.getState(entity.uid);
     if (state.animActual) {
       state.animActual.stop();
       state.animActual = null;
@@ -194,56 +190,57 @@ export class PlayerAnimationService {
     state.animacionesJugador.forEach(a => a.stop());
   }
 
-  public reproducirIdle(mesh: Mesh): void {
-    const state = this.getState(mesh);
-    this.playAnim(mesh, state.animIdle, true);
+  public reproducirIdle(entity: GameEntity): void {
+    const state = this.getState(entity.uid);
+    this.playAnim(entity, state.animIdle, true);
   }
 
-  public gestionarAnimaciones(mesh: Mesh, estadoFisico: EstadoFisico, seqRuntime: SeqRuntime, config: PlayerRuntimeConfig): void {
-    const state = this.getState(mesh);
+  public gestionarAnimaciones(entity: GameEntity, estadoFisico: EstadoFisico, seqRuntime: SeqRuntime): void {
+    const state = this.getState(entity.uid);
+    const config = entity.playerConfig || cloneDefaultPlayerConfig();
     
     if (seqRuntime.running && seqRuntime.step) {
       if (seqRuntime.step.clipOverride === 'none' || seqRuntime.step.action === 'stopBaked') {
-          this.playAnim(mesh, null, false, seqRuntime.blend);
+          this.playAnim(entity, null, false, seqRuntime.blend);
           return;
       }
 
-      const override = this.resolveSequenceStepAnimation(mesh, seqRuntime.step);
+      const override = this.resolveSequenceStepAnimation(entity, seqRuntime.step);
       if (override) {
         override.speedRatio = seqRuntime.step.speedRatio || 1;
-        this.playAnim(mesh, override, seqRuntime.loop, seqRuntime.blend);
+        this.playAnim(entity, override, seqRuntime.loop, seqRuntime.blend);
         return;
       }
     }
 
     if (estadoFisico.isHardLanding) {
-      if (this.isActionEnabled('landHard', config)) this.playAnim(mesh, state.animHardLanding || state.animLandSoft || state.animIdle, false, 0.1);
-      else this.playAnim(mesh, state.animIdle, true, 0.1);
+      if (this.isActionEnabled('landHard', config)) this.playAnim(entity, state.animHardLanding || state.animLandSoft || state.animIdle, false, 0.1);
+      else this.playAnim(entity, state.animIdle, true, 0.1);
     } else if (estadoFisico.isRecoveringFromFall) {
-      if (this.isActionEnabled('recover', config)) this.playAnim(mesh, state.animRecover || state.animIdle, false, 0.05);
-      else this.playAnim(mesh, state.animIdle, true, 0.05);
+      if (this.isActionEnabled('recover', config)) this.playAnim(entity, state.animRecover || state.animIdle, false, 0.05);
+      else this.playAnim(entity, state.animIdle, true, 0.05);
     } else if (estadoFisico.isJumping || estadoFisico.isFalling) {
       if (estadoFisico.isFalling) {
-        if (this.isActionEnabled('fall', config)) this.playAnim(mesh, state.animFall || state.animJumpLoop || state.animJump || state.animIdle, false, 0.08);
-        else this.playAnim(mesh, state.animIdle, true, 0.08);
+        if (this.isActionEnabled('fall', config)) this.playAnim(entity, state.animFall || state.animJumpLoop || state.animJump || state.animIdle, false, 0.08);
+        else this.playAnim(entity, state.animIdle, true, 0.08);
       } else {
-        if (this.isActionEnabled('jumpStart', config)) this.playAnim(mesh, state.animJump || state.animJumpLoop || state.animIdle, false, 0.08);
-        else this.playAnim(mesh, state.animIdle, true, 0.08);
+        if (this.isActionEnabled('jumpStart', config)) this.playAnim(entity, state.animJump || state.animJumpLoop || state.animIdle, false, 0.08);
+        else this.playAnim(entity, state.animIdle, true, 0.08);
       }
     } else {
       const finalBlendSpeed = config.blend.defaultBlend ?? 0.1;
       
       if (estadoFisico.isMoving) {
         if (estadoFisico.isRunning) {
-          if (this.isActionEnabled('run', config)) this.playAnim(mesh, state.animRun || state.animWalk || state.animIdle, true, finalBlendSpeed);
-          else this.playAnim(mesh, state.animIdle, true, finalBlendSpeed);
+          if (this.isActionEnabled('run', config)) this.playAnim(entity, state.animRun || state.animWalk || state.animIdle, true, finalBlendSpeed);
+          else this.playAnim(entity, state.animIdle, true, finalBlendSpeed);
         } else {
-          if (this.isActionEnabled('walk', config)) this.playAnim(mesh, state.animWalk || state.animIdle, true, finalBlendSpeed);
-          else this.playAnim(mesh, state.animIdle, true, finalBlendSpeed);
+          if (this.isActionEnabled('walk', config)) this.playAnim(entity, state.animWalk || state.animIdle, true, finalBlendSpeed);
+          else this.playAnim(entity, state.animIdle, true, finalBlendSpeed);
         }
       } else {
-        if (this.isActionEnabled('idle', config)) this.playAnim(mesh, state.animIdle, true, finalBlendSpeed);
-        else this.playAnim(mesh, null, true, finalBlendSpeed);
+        if (this.isActionEnabled('idle', config)) this.playAnim(entity, state.animIdle, true, finalBlendSpeed);
+        else this.playAnim(entity, null, true, finalBlendSpeed);
       }
     }
   }

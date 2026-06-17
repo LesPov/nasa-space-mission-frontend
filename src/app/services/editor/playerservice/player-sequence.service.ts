@@ -1,9 +1,11 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Quaternion, Vector3, UniversalCamera, Light, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
 import { Motor3dService } from '../../motor-3d.service';
-import { PlayerClipSequence, PlayerSequenceStep, PlayerRuntimeConfig } from '../player-config.model';
+import { PlayerClipSequence, PlayerSequenceStep, cloneDefaultPlayerConfig } from '../player-config.model';
 import { GameStateService } from '../game-state.service';
+import { GameEntity } from '../../../core/engine/entities/game.entity';
 
 export interface SeqRuntime {
   step: PlayerSequenceStep | null;
@@ -24,7 +26,7 @@ export class PlayerSequenceService {
   private motor3d = inject(Motor3dService);
   private gameState = inject(GameStateService);
 
-  private activeSequences = new Map<number, {
+  private activeSequences = new Map<string, {
     id: string;
     index: number;
     elapsedMs: number;
@@ -45,14 +47,14 @@ export class PlayerSequenceService {
     this.lockedSequenceTPSBeta = null;
   }
 
-  private getSeqState(mesh: Mesh) {
-    if (!this.activeSequences.has(mesh.uniqueId)) {
-      this.activeSequences.set(mesh.uniqueId, {
+  private getSeqState(entityUid: string) {
+    if (!this.activeSequences.has(entityUid)) {
+      this.activeSequences.set(entityUid, {
         id: '', index: 0, elapsedMs: 0, stepEntered: false,
         jumpTriggered: false, orientationLocked: false, quaternion: null
       });
     }
-    return this.activeSequences.get(mesh.uniqueId)!;
+    return this.activeSequences.get(entityUid)!;
   }
 
   private shouldLockOrientationForSequence(step: PlayerSequenceStep | null): boolean {
@@ -79,8 +81,11 @@ export class PlayerSequenceService {
     state.orientationLocked = true;
   }
 
-  public applyLockedOrientationWhileSequence(jugador: Mesh): void {
-    const state = this.getSeqState(jugador);
+  public applyLockedOrientationWhileSequence(entity: GameEntity): void {
+    const jugador = entity.view as Mesh;
+    if (!jugador) return;
+    
+    const state = this.getSeqState(entity.uid);
     if (!state.orientationLocked) return;
 
     if (state.quaternion) {
@@ -100,7 +105,11 @@ export class PlayerSequenceService {
     }
   }
 
-  public iniciarSecuenciaEnJuego(sequenceId: string, jugador: Mesh, config: PlayerRuntimeConfig): void {
+  public iniciarSecuenciaEnJuego(sequenceId: string, entity: GameEntity): void {
+    const jugador = entity.view as Mesh;
+    if (!jugador) return;
+    const config = entity.playerConfig || cloneDefaultPlayerConfig();
+
     const seqs = config.sequences?.filter(s => !!s.enabled) || [];
     const seqToRun = seqs.find(s => s.id === sequenceId);
     
@@ -111,7 +120,7 @@ export class PlayerSequenceService {
           return;
       }
 
-      const state = this.getSeqState(jugador);
+      const state = this.getSeqState(entity.uid);
       state.id = sequenceId;
       state.index = 0;
       state.elapsedMs = 0;
@@ -126,9 +135,12 @@ export class PlayerSequenceService {
     }
   }
 
-  public actualizarSecuencia(dtMs: number, jugador: Mesh, config: PlayerRuntimeConfig): SeqRuntime {
+  public actualizarSecuencia(dtMs: number, entity: GameEntity): SeqRuntime {
+    const jugador = entity.view as Mesh;
+    const config = entity.playerConfig || cloneDefaultPlayerConfig();
+
     const seqs = config.sequences?.filter(s => !!s.enabled) || [];
-    const state = this.getSeqState(jugador);
+    const state = this.getSeqState(entity.uid);
     let sequence: PlayerClipSequence | null = null;
     
     const metaActiveId = (config as any)?.activeSequenceId as string | undefined;
@@ -177,7 +189,7 @@ export class PlayerSequenceService {
     if (state.stepEntered) {
       state.jumpTriggered = false;
       state.orientationLocked = this.shouldLockOrientationForSequence(step);
-      if (state.orientationLocked) this.captureSequenceOrientationState(jugador, state);
+      if (jugador && state.orientationLocked) this.captureSequenceOrientationState(jugador, state);
       if (step.action === 'jumpStart') state.jumpTriggered = true;
       
       if (step.action === 'playVideo' || step.action === 'pauseVideo' || step.action === 'stopVideo') {
@@ -221,78 +233,80 @@ export class PlayerSequenceService {
       state.orientationLocked = this.shouldLockOrientationForSequence(step) || state.orientationLocked;
     }
 
-    if (step.action === 'stopBaked' || step.clipOverride === 'none') {
-        const myAnimNames = jugador.metadata?.animationNames || [];
-        this.motor3d.scene.animationGroups.forEach(ag => {
-            if (myAnimNames.includes(ag.name)) {
-                if (ag.isPlaying) {
-                    const isTargetingMe = ag.targetedAnimations?.some((ta:any) => {
-                        let current: any = ta.target;
-                        while(current) {
-                            if (current === jugador) return true;
-                            current = current.parent;
-                        }
-                        return false;
-                    });
-                    if (isTargetingMe) {
-                        ag.stop();
-                    }
-                }
-            }
-        });
-    }
+    if (jugador) {
+      if (step.action === 'stopBaked' || step.clipOverride === 'none') {
+          const myAnimNames = entity.animationNames || [];
+          this.motor3d.scene.animationGroups.forEach(ag => {
+              if (myAnimNames.includes(ag.name)) {
+                  if (ag.isPlaying) {
+                      const isTargetingMe = ag.targetedAnimations?.some((ta:any) => {
+                          let current: any = ta.target;
+                          while(current) {
+                              if (current === jugador) return true;
+                              current = current.parent;
+                          }
+                          return false;
+                      });
+                      if (isTargetingMe) {
+                          ag.stop();
+                      }
+                  }
+              }
+          });
+      }
 
-    if (step.action === 'procMove' || step.action === 'procRotate') {
-        const durMs = Math.max(1, step.durationMs || 1000);
-        const dtFraction = dtMs / durMs; 
-        
-        if (step.action === 'procRotate') {
-            const rx = (step.procX || 0) * (Math.PI / 180) * dtFraction;
-            const ry = (step.procY || 0) * (Math.PI / 180) * dtFraction;
-            const rz = (step.procZ || 0) * (Math.PI / 180) * dtFraction;
-            
-            if (jugador.rotationQuaternion) {
-                const deltaQ = Quaternion.FromEulerAngles(rx, ry, rz);
-                jugador.rotationQuaternion = jugador.rotationQuaternion.multiply(deltaQ);
-            } else {
-                jugador.rotation.x += rx;
-                jugador.rotation.y += ry;
-                jugador.rotation.z += rz;
-            }
-        }
-        
-        if (step.action === 'procMove') {
-            const dx = (step.procX || 0) * dtFraction;
-            const dy = (step.procY || 0) * dtFraction;
-            const dz = (step.procZ || 0) * dtFraction;
-            jugador.position.x += dx;
-            jugador.position.y += dy;
-            jugador.position.z += dz;
-        }
-    }
+      if (step.action === 'procMove' || step.action === 'procRotate') {
+          const durMs = Math.max(1, step.durationMs || 1000);
+          const dtFraction = dtMs / durMs; 
+          
+          if (step.action === 'procRotate') {
+              const rx = (step.procX || 0) * (Math.PI / 180) * dtFraction;
+              const ry = (step.procY || 0) * (Math.PI / 180) * dtFraction;
+              const rz = (step.procZ || 0) * (Math.PI / 180) * dtFraction;
+              
+              if (jugador.rotationQuaternion) {
+                  const deltaQ = Quaternion.FromEulerAngles(rx, ry, rz);
+                  jugador.rotationQuaternion = jugador.rotationQuaternion.multiply(deltaQ);
+              } else {
+                  jugador.rotation.x += rx;
+                  jugador.rotation.y += ry;
+                  jugador.rotation.z += rz;
+              }
+          }
+          
+          if (step.action === 'procMove') {
+              const dx = (step.procX || 0) * dtFraction;
+              const dy = (step.procY || 0) * dtFraction;
+              const dz = (step.procZ || 0) * dtFraction;
+              jugador.position.x += dx;
+              jugador.position.y += dy;
+              jugador.position.z += dz;
+          }
+      }
 
-    if (jugador.metadata?.type?.startsWith('light_')) {
-        const light = jugador.getDescendants(false).find(c => c instanceof Light) as Light;
-        if (light && typeof light.intensity !== 'undefined') {
-            const baseIntensity = jugador.metadata?.intensity ?? 1.0;
-            
-            if (step.action === 'lightOn') {
-                light.intensity = baseIntensity;
-            } else if (step.action === 'lightOff') {
-                light.intensity = 0;
-            } else if (step.action === 'lightPulse') {
-                const freq = step.speedRatio || 1;
-                const timeSec = performance.now() / 1000;
-                light.intensity = baseIntensity * (0.5 + 0.5 * Math.sin(timeSec * Math.PI * 2 * freq));
-            } else if (step.action === 'lightFlicker') {
-                const freq = step.speedRatio || 1;
-                if (Math.random() < (0.1 * freq)) {
-                    light.intensity = Math.random() > 0.5 ? baseIntensity : 0;
-                }
-            } else {
-                light.intensity = baseIntensity;
-            }
-        }
+      if (entity.type.startsWith('light_')) {
+          const light = jugador.getDescendants(false).find(c => c instanceof Light) as Light;
+          if (light && typeof light.intensity !== 'undefined') {
+              const baseIntensity = entity.light?.intensity ?? 1.0;
+              
+              if (step.action === 'lightOn') {
+                  light.intensity = baseIntensity;
+              } else if (step.action === 'lightOff') {
+                  light.intensity = 0;
+              } else if (step.action === 'lightPulse') {
+                  const freq = step.speedRatio || 1;
+                  const timeSec = performance.now() / 1000;
+                  light.intensity = baseIntensity * (0.5 + 0.5 * Math.sin(timeSec * Math.PI * 2 * freq));
+              } else if (step.action === 'lightFlicker') {
+                  const freq = step.speedRatio || 1;
+                  if (Math.random() < (0.1 * freq)) {
+                      light.intensity = Math.random() > 0.5 ? baseIntensity : 0;
+                  }
+              } else {
+                  light.intensity = baseIntensity;
+              }
+          }
+      }
     }
 
     const blend = typeof step.blend === 'number' ? step.blend : config.blend.defaultBlend;

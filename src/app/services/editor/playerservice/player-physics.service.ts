@@ -1,9 +1,11 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, Ray, AbstractMesh, Quaternion } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
 import { Motor3dService } from '../../motor-3d.service';
-import { PlayerRuntimeConfig } from '../player-config.model';
+import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../player-config.model';
 import { SeqRuntime } from './player-sequence.service';
+import { GameEntity } from '../../../core/engine/entities/game.entity';
 
 export interface EstadoFisico {
   isMoving: boolean;
@@ -16,7 +18,7 @@ export interface EstadoFisico {
   landingFrame: number;
   recoveryFrame: number;
   velocidadY: number;
-  highestY: number; // 🔥 Agregado para que no dependa del servicio global
+  highestY: number; 
 }
 
 @Injectable({ providedIn: 'root' })
@@ -31,22 +33,20 @@ export class PlayerPhysicsService {
     return d.normalize();
   }
 
-  /**
-   * Servicio puramente SIN ESTADO (Stateless).
-   * Muta y calcula directamente sobre el objeto "estadoFisico" provisto en el 8vo argumento.
-   */
   public aplicarMovimientoYGravedad(
-    jugador: Mesh, 
+    entity: GameEntity,
     inputMap: Record<string, boolean>, 
     seqRuntime: SeqRuntime, 
     activeCamera: any, 
-    colMeta: any, 
-    scaleNow: Vector3, 
-    config: PlayerRuntimeConfig,
     estadoFisico: EstadoFisico
   ): void {
+    const jugador = entity.view as Mesh;
+    if (!jugador) return;
+    
     const scene = this.motor3d.scene;
-    const scaleY = scaleNow.y || 1;
+    const colMeta = entity.collider;
+    const config = entity.playerConfig || cloneDefaultPlayerConfig();
+    const scaleY = entity.transform.scale.y || 1;
     const playerHalfHeight = (colMeta.sizeY || 0.9) * scaleY;
     const scaleFactor = isNaN(playerHalfHeight) ? 1 : playerHalfHeight / 0.9;
     
@@ -77,7 +77,6 @@ export class PlayerPhysicsService {
       !this.state.isDescendant(m, jugador) &&
       !m.name.includes('gridHelper');
 
-    // MODO CINEMÁTICO PURO
     if (seqRuntime.running && seqRuntime.step) {
       const soY = seqRuntime.step.offsetY || 0;
       const soF = seqRuntime.step.offsetForward || 0;

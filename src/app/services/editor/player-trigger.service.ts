@@ -1,9 +1,12 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { PlayerSequenceService } from './playerservice/player-sequence.service';
 import { GameStateService } from './game-state.service';
+import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
+import { GameEntity } from '../../core/engine/entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService {
@@ -11,6 +14,7 @@ export class PlayerTriggerService {
   private state = inject(EditorStateService);
   private sequenceSvc = inject(PlayerSequenceService);
   private gameState = inject(GameStateService);
+  private entityManager = inject(EntityManagerService);
   
   private activeTriggersInside = new Set<string>();
   private hudTimeouts = new Map<string, any>();
@@ -20,99 +24,97 @@ export class PlayerTriggerService {
     this.hudTimeouts.forEach(t => clearTimeout(t));
     this.hudTimeouts.clear();
     
-    const scene = this.motor3d.scene;
     const isAdmin = this.state.rolSimulado() === 'admin';
 
-    scene.meshes.forEach(m => {
-        if (m.metadata && m.metadata.type === 'trigger') {
-            m.isVisible = isAdmin; 
-            m.metadata.hasTriggeredEnter = false; 
-            m.metadata.hasTriggeredExit = false; 
-            m.metadata.isEnabled = true;
+    this.entityManager.getAllEntities().filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto').forEach(e => {
+        if (e.view && e.trigger) {
+            e.view.isVisible = isAdmin; 
+            e.trigger.hasTriggeredEnter = false; 
+            e.trigger.hasTriggeredExit = false; 
+            e.trigger.isEnabled = true;
         }
     });
   }
 
   public restaurarTriggersParaEditor(): void {
-    const scene = this.motor3d.scene;
     const isAdmin = this.state.rolSimulado() === 'admin';
     
     this.activeTriggersInside.clear();
     this.hudTimeouts.forEach(t => clearTimeout(t));
     this.hudTimeouts.clear();
 
-    scene.meshes.forEach(m => {
-        if (m.metadata && m.metadata.type === 'trigger') {
-            m.isVisible = isAdmin; 
-            m.metadata.hasTriggeredEnter = false; 
-            m.metadata.hasTriggeredExit = false; 
-            m.metadata.isEnabled = true;
+    this.entityManager.getAllEntities().filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto').forEach(e => {
+        if (e.view && e.trigger) {
+            e.view.isVisible = isAdmin; 
+            e.trigger.hasTriggeredEnter = false; 
+            e.trigger.hasTriggeredExit = false; 
+            e.trigger.isEnabled = true;
         }
     });
   }
 
-  public verificarTriggers(jugador: Mesh): void {
+  public verificarTriggers(entity: GameEntity): void {
+    const jugador = entity.view as Mesh;
     if (!jugador) return;
-    const scene = this.motor3d.scene;
 
-    const colMeta = jugador.metadata?.collider || { offsetY: 0.9 };
-    const playerCenterY = colMeta.offsetY * (jugador.scaling.y || 1);
+    const colMeta = entity.collider || { offsetY: 0.9 };
+    const playerCenterY = colMeta.offsetY * (entity.transform.scale.y || 1);
     const playerPos = jugador.getAbsolutePosition();
     
     const probePoint = playerPos.clone();
     probePoint.y += playerCenterY;
 
-    scene.meshes.forEach(mesh => {
-        if (!mesh.metadata || mesh.metadata.type !== 'trigger' || mesh.metadata.isEnabled === false) return;
+    const triggers = this.entityManager.getAllEntities().filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto');
+
+    triggers.forEach(triggerEntity => {
+        if (!triggerEntity.trigger || triggerEntity.trigger.isEnabled === false) return;
 
         // 🔥 NARRATIVA: Verificar si el trigger cumple requisitos de historia para funcionar
-        if (!this.gameState.evaluateAllConditions(mesh.metadata.gameConditions)) {
+        if (!this.gameState.evaluateAllConditions(triggerEntity.trigger.gameConditions)) {
             return;
         }
         
-        let conditions: string[] = [];
-        if (mesh.metadata.isComposite) {
-             conditions = mesh.metadata.conditions || [];
-        } else {
-             conditions = [mesh.metadata.condition || 'on_enter'];
-        }
+        let conditions = triggerEntity.trigger.isComposite ? (triggerEntity.trigger.conditions || []) : [triggerEntity.trigger.condition || 'on_enter'];
         
         if (!conditions.includes('on_enter') && !conditions.includes('on_exit')) return;
+
+        const mesh = triggerEntity.view as AbstractMesh;
+        if (!mesh) return;
 
         mesh.computeWorldMatrix(true);
         const triggerBox = mesh.getBoundingInfo().boundingBox;
         const isInside = triggerBox.intersectsPoint(probePoint);
-        const wasInside = this.activeTriggersInside.has(mesh.name);
+        const wasInside = this.activeTriggersInside.has(triggerEntity.uid);
 
         if (isInside && !wasInside) {
-            this.activeTriggersInside.add(mesh.name);
+            this.activeTriggersInside.add(triggerEntity.uid);
             if (conditions.includes('on_enter')) {
-                this.ejecutarLogicaTrigger(mesh, 'on_enter');
+                this.ejecutarLogicaTrigger(triggerEntity, 'on_enter');
             }
         }
         
         if (!isInside && wasInside) {
-            this.activeTriggersInside.delete(mesh.name);
+            this.activeTriggersInside.delete(triggerEntity.uid);
 
             let mostroMensajeSalida = false;
             if (conditions.includes('on_exit')) {
-                mostroMensajeSalida = this.ejecutarLogicaTrigger(mesh, 'on_exit');
+                mostroMensajeSalida = this.ejecutarLogicaTrigger(triggerEntity, 'on_exit');
             }
             
-            if (!mesh.metadata.isRepeatable) {
+            if (!triggerEntity.trigger.isRepeatable) {
                  const reqEnter = conditions.includes('on_enter');
                  const reqExit = conditions.includes('on_exit');
-                 const doneEnter = !reqEnter || mesh.metadata.hasTriggeredEnter;
-                 const doneExit = !reqExit || mesh.metadata.hasTriggeredExit;
+                 const doneEnter = !reqEnter || triggerEntity.trigger.hasTriggeredEnter;
+                 const doneExit = !reqExit || triggerEntity.trigger.hasTriggeredExit;
 
                  if (doneEnter && doneExit) {
-                     mesh.metadata.isEnabled = false;
+                     triggerEntity.trigger.isEnabled = false;
                  }
             }
 
             if (!mostroMensajeSalida) {
                 const hudAct = this.state.mensajeTriggerHUD();
-                if (hudAct === mesh.metadata.mensajeEntrada || hudAct === mesh.metadata.mensaje) {
+                if (hudAct === triggerEntity.trigger.mensajeEntrada || hudAct === triggerEntity.trigger.mensaje) {
                     this.state.mensajeTriggerHUD.set(null);
                     if (this.hudTimeouts.has('hud')) {
                         clearTimeout(this.hudTimeouts.get('hud'));
@@ -123,12 +125,12 @@ export class PlayerTriggerService {
     });
   }
 
-  private ejecutarLogicaTrigger(triggerMesh: AbstractMesh, eventType: string): boolean {
-      if (triggerMesh.metadata.isEnabled === false) return false;
+  private ejecutarLogicaTrigger(triggerEntity: GameEntity, eventType: string): boolean {
+      if (!triggerEntity.trigger || triggerEntity.trigger.isEnabled === false) return false;
       
-      if (!triggerMesh.metadata.isRepeatable) {
-          if (eventType === 'on_enter' && triggerMesh.metadata.hasTriggeredEnter) return false;
-          if (eventType === 'on_exit' && triggerMesh.metadata.hasTriggeredExit) return false;
+      if (!triggerEntity.trigger.isRepeatable) {
+          if (eventType === 'on_enter' && triggerEntity.trigger.hasTriggeredEnter) return false;
+          if (eventType === 'on_exit' && triggerEntity.trigger.hasTriggeredExit) return false;
       }
 
       let mensaje = '';
@@ -137,27 +139,27 @@ export class PlayerTriggerService {
       let msgTime = 4.5; 
       let videoUrl = ''; 
 
-      if (triggerMesh.metadata.isComposite) {
+      if (triggerEntity.trigger.isComposite) {
           if (eventType === 'on_enter') {
-              mensaje = triggerMesh.metadata.mensajeEntrada;
-              soundUrl = triggerMesh.metadata.soundUrlEntrada;
-              seqIdString = triggerMesh.metadata.seqEntrada;
-              msgTime = triggerMesh.metadata.timeEntrada ?? 4.5;
-              videoUrl = triggerMesh.metadata.videoEntrada ?? '';
+              mensaje = triggerEntity.trigger.mensajeEntrada;
+              soundUrl = triggerEntity.trigger.soundUrlEntrada;
+              seqIdString = triggerEntity.trigger.seqEntrada;
+              msgTime = triggerEntity.trigger.timeEntrada ?? 4.5;
+              videoUrl = triggerEntity.trigger.videoEntrada ?? '';
           } else if (eventType === 'on_exit') {
-              mensaje = triggerMesh.metadata.mensajeSalida;
-              soundUrl = triggerMesh.metadata.soundUrlSalida;
-              seqIdString = triggerMesh.metadata.seqSalida;
-              msgTime = triggerMesh.metadata.timeSalida ?? 4.5;
-              videoUrl = triggerMesh.metadata.videoSalida ?? '';
+              mensaje = triggerEntity.trigger.mensajeSalida;
+              soundUrl = triggerEntity.trigger.soundUrlSalida;
+              seqIdString = triggerEntity.trigger.seqSalida;
+              msgTime = triggerEntity.trigger.timeSalida ?? 4.5;
+              videoUrl = triggerEntity.trigger.videoSalida ?? '';
           }
       } else {
-          if (triggerMesh.metadata.condition === eventType) {
-              mensaje = triggerMesh.metadata.mensaje;
-              soundUrl = triggerMesh.metadata.soundUrl;
-              seqIdString = triggerMesh.metadata.interactSequenceId;
-              msgTime = triggerMesh.metadata.timeNorm ?? 4.5;
-              videoUrl = triggerMesh.metadata.videoNorm ?? '';
+          if (triggerEntity.trigger.condition === eventType) {
+              mensaje = triggerEntity.trigger.mensaje;
+              soundUrl = triggerEntity.trigger.soundUrl;
+              seqIdString = triggerEntity.trigger.interactSequenceId;
+              msgTime = triggerEntity.trigger.timeNorm ?? 4.5;
+              videoUrl = triggerEntity.trigger.videoNorm ?? '';
           } else {
               return false; 
           }
@@ -197,35 +199,33 @@ export class PlayerTriggerService {
           const idsToTrigger = [...new Set(rawIds)];
           
           if (idsToTrigger.length > 0) {
-              const scene = this.motor3d.scene;
-              
               idsToTrigger.forEach(sequenceToFind => {
                   let found = false;
                   
-                  scene.meshes.forEach(m => {
-                      if (m.metadata && m.metadata.playerConfig && m.metadata.playerConfig.sequences) {
-                          const hasSequence = m.metadata.playerConfig.sequences.some((s: any) => s.id === sequenceToFind);
+                  this.entityManager.getAllEntities().forEach(e => {
+                      if (e.playerConfig && e.playerConfig.sequences) {
+                          const hasSequence = e.playerConfig.sequences.some((s: any) => s.id === sequenceToFind);
                           if (hasSequence) {
                               found = true;
-                              this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceToFind, m as Mesh, m.metadata.playerConfig);
+                              this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceToFind, e);
                           }
                       }
                   });
 
                   if (!found) {
-                      console.warn(`⚠️ Trigger ${triggerMesh.name} intentó iniciar la secuencia [${sequenceToFind}] pero ningún objeto en la escena la tiene.`);
+                      console.warn(`⚠️ Trigger ${triggerEntity.name} intentó iniciar la secuencia [${sequenceToFind}] pero ninguna entidad en la escena la tiene.`);
                   }
               });
           }
       }
 
       // 🔥 NARRATIVA: Mutar estado del juego una vez ejecutado el trigger
-      if (triggerMesh.metadata.stateMutations) {
-          this.gameState.applyMutations(triggerMesh.metadata.stateMutations);
+      if (triggerEntity.trigger.stateMutations) {
+          this.gameState.applyMutations(triggerEntity.trigger.stateMutations);
       }
 
-      if (eventType === 'on_enter') triggerMesh.metadata.hasTriggeredEnter = true;
-      if (eventType === 'on_exit') triggerMesh.metadata.hasTriggeredExit = true;
+      if (eventType === 'on_enter') triggerEntity.trigger.hasTriggeredEnter = true;
+      if (eventType === 'on_exit') triggerEntity.trigger.hasTriggeredExit = true;
 
       return mostroMensaje;
   }

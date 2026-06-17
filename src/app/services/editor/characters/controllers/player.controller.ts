@@ -11,58 +11,45 @@ export class PlayerController extends BaseCharacterController {
   }
 
   public update(dtMs: number): void {
-    // ❌ ELIMINADO EL RETURN TEMPRANO para que la cámara y gravedad sigan procesando
-    // aunque el ratón no esté bloqueado (ej: cuando estás en el menú de pausa).
-
     const activeCamera = this.context.motor3d.scene.activeCamera;
     if (!activeCamera) return;
 
-    // 🔥 LEEMOS DIRECTAMENTE DE LA ENTIDAD LÓGICA
-    const colMeta = this.entity.collider;
-    const camMeta = this.entity.camOffset;
     const vista = this.context.state.modoVistaPrueba || 'TPS';
 
     // 1. Lógica de Triggers y Burbujas
-    this.context.triggerSvc.verificarTriggers(this.mesh);
-    this.context.interactSvc.comprobarInteracciones(this.mesh, activeCamera, colMeta, vista);
+    this.context.triggerSvc.verificarTriggers(this.entity);
+    this.context.interactSvc.comprobarInteracciones(this.entity, activeCamera, vista);
     
     // 2. Calcular Secuencias activas para el Player
-    const seqRuntime = this.context.sequenceSvc.actualizarSecuencia(dtMs, this.mesh, this.config);
+    const seqRuntime = this.context.sequenceSvc.actualizarSecuencia(dtMs, this.entity);
     
-    // 3. Obtener el Input (Vacio si hay secuencia bloqueante o si el juego está en pausa/menú)
+    // 3. Obtener el Input
     const canMove = this.context.state.ratonBloqueado() && !seqRuntime.lockInput && !seqRuntime.freezeOrientation;
     const activeInput = canMove ? this.context.inputSvc.inputMap : {};
 
     // 4. Procesar Físicas y Colisiones REAles
     this.context.physicsSvc.aplicarMovimientoYGravedad(
-      this.mesh, 
+      this.entity, 
       activeInput, 
       seqRuntime, 
       activeCamera, 
-      colMeta, 
-      this.mesh.scaling, 
-      this.config,
       this.estadoFisico 
     );
 
     // 5. Reproducir animaciones según las físicas
-    this.context.animSvc.gestionarAnimaciones(this.mesh, this.estadoFisico, seqRuntime, this.config);
+    this.context.animSvc.gestionarAnimaciones(this.entity, this.estadoFisico, seqRuntime);
     
-    // 6. Actualizar seguimiento de Cámara (AQUÍ ES DONDE SE MANTIENE EL ANCLAJE EN PAUSA)
+    // 6. Actualizar seguimiento de Cámara
     this.context.cameraSvc.actualizarPosicionCamara(
-      this.mesh, 
+      this.entity, 
       activeCamera, 
       this.estadoFisico, 
-      seqRuntime, 
-      colMeta, 
-      camMeta, 
-      this.mesh.scaling, 
-      this.config
+      seqRuntime
     );
     
     // 7. Congelar orientación si estamos trepando/cinemática
     if (seqRuntime.freezeOrientation) {
-      this.context.sequenceSvc.applyLockedOrientationWhileSequence(this.mesh);
+      this.context.sequenceSvc.applyLockedOrientationWhileSequence(this.entity);
     }
   }
 
@@ -74,7 +61,7 @@ export class PlayerController extends BaseCharacterController {
     this.context.state.targetInteractuable.set(null);
     this.context.state.showToastE.set(false);
     this.context.state.showToastI.set(false);
-    this.context.animSvc.detenerTodas(this.mesh);
-    this.context.animSvc.reproducirIdle(this.mesh); 
+    this.context.animSvc.detenerTodas(this.entity);
+    this.context.animSvc.reproducirIdle(this.entity); 
   }
-}
+}  

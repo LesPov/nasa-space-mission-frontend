@@ -1,14 +1,16 @@
+
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Vector3, Matrix } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
-import { PlayerBubbleService } from './player-bubble';
- 
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { GameEntity } from '../../../core/engine/entities/game.entity';
+
 @Injectable({ providedIn: 'root' })
 export class PlayerInteractionService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
-  private bubbleSvc = inject(PlayerBubbleService);
+  private entityManager = inject(EntityManagerService);
 
   public lastInteractDistance: number | null = null;
   public lastInteractionProbePoint: Vector3 | null = null;
@@ -17,8 +19,8 @@ export class PlayerInteractionService {
     return Math.max(min, Math.min(max, value));
   }
 
-  private getRootProxyCollider(root: AbstractMesh): AbstractMesh | null {
-    return this.state.proxyColliders.find(p => p.parent === root || p.name === `proxyCol_${root.name}`) ?? null;
+  private getRootProxyCollider(rootMesh: AbstractMesh): AbstractMesh | null {
+    return this.state.proxyColliders.find(p => p.parent === rootMesh || p.name === `proxyCol_${rootMesh.name}`) ?? null;
   }
 
   private getClosestPointOnMeshBounds(mesh: AbstractMesh, point: Vector3): Vector3 | null {
@@ -35,93 +37,81 @@ export class PlayerInteractionService {
     }
   }
 
-  private getInteractionProbePoint(view: 'FPS' | 'TPS', jugador: Mesh, activeCamera: any, colMeta: any): Vector3 {
+  private getInteractionProbePoint(view: 'FPS' | 'TPS', jugador: Mesh, activeCamera: any, entity: GameEntity): Vector3 {
     if (view === 'FPS') {
       return activeCamera?.position ? activeCamera.position.clone() : jugador.getAbsolutePosition().clone();
     }
     jugador.computeWorldMatrix(true);
     return Vector3.TransformCoordinates(
-      new Vector3(colMeta?.offsetX ?? 0, colMeta?.offsetY ?? 0, colMeta?.offsetZ ?? 0),
+      new Vector3(entity.collider?.offsetX ?? 0, entity.collider?.offsetY ?? 0, entity.collider?.offsetZ ?? 0),
       jugador.getWorldMatrix()
     );
   }
 
-  private getInteractionDistanceToTarget(target: AbstractMesh, probePoint: Vector3 | null): number {
-    if (!probePoint) return Number.POSITIVE_INFINITY;
-    const shapeMesh = this.getRootProxyCollider(target) ?? target;
+  private getInteractionDistanceToTarget(targetMesh: AbstractMesh, probePoint: Vector3 | null): number {
+    if (!probePoint || !targetMesh) return Number.POSITIVE_INFINITY;
+    const shapeMesh = this.getRootProxyCollider(targetMesh) ?? targetMesh;
     const closest = this.getClosestPointOnMeshBounds(shapeMesh, probePoint);
-    return closest ? Vector3.Distance(probePoint, closest) : Vector3.Distance(probePoint, target.getAbsolutePosition());
-  }
-
-  private getSelectionRange(): { fpsAdminMax: number; fpsUserMax: number } {
-    const fallback = { fpsAdminMax: 10000, fpsUserMax: 3 };
-
-    const candidates: any[] = [];
-    if (this.state.jugadorActivo?.metadata) candidates.push(this.state.jugadorActivo.metadata);
-    const selected = this.state.objetoSeleccionado() as AbstractMesh | null;
-    if (selected?.metadata) candidates.push(selected.metadata);
-
-    for (const meta of candidates) {
-      const src = meta?.playerConfig?.selectionRange || meta?.selectionRange;
-      if (!src) continue;
-
-      const admin = Number(src.fpsAdminMax);
-      const user = Number(src.fpsUserMax);
-
-      return {
-        fpsAdminMax: Number.isFinite(admin) && admin >= 0 ? admin : fallback.fpsAdminMax,
-        fpsUserMax: Number.isFinite(user) && user >= 0 ? user : fallback.fpsUserMax
-      };
-    }
-
-    return fallback;
+    return closest ? Vector3.Distance(probePoint, closest) : Vector3.Distance(probePoint, targetMesh.getAbsolutePosition());
   }
 
   private getSelectionMaxDistance(isAdmin: boolean): number {
-    const range = this.getSelectionRange();
-    return isAdmin ? range.fpsAdminMax : range.fpsUserMax;
+    let maxAdmin = 10000;
+    let maxUser = 3;
+    const playerEntity = this.state.jugadorActivo ? this.entityManager.getEntityByMesh(this.state.jugadorActivo) : null;
+    if (playerEntity && playerEntity.selectionRange) {
+        maxAdmin = playerEntity.selectionRange.fpsAdminMax;
+        maxUser = playerEntity.selectionRange.fpsUserMax;
+    }
+    return isAdmin ? maxAdmin : maxUser;
   }
 
-  public canActivateInteraction(target: AbstractMesh, view: 'FPS' | 'TPS' | null): boolean {
-    if (!target || this.lastInteractDistance === null || !Number.isFinite(this.lastInteractDistance)) return false;
-    const meta = target.metadata || {};
-    const maxDist = view === 'FPS' ? (meta.interactDistanceFPS ?? 3.0) : (meta.interactDistanceTPS ?? 5.0);
+  private esObjetoInteractuable(entity: GameEntity): boolean {
+    if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') return false; 
+    if (entity.type === 'bubble') return true; 
+
+    const mensaje = entity.interaction.mensaje?.trim() || '';
+    const seqFPS = entity.interaction.interactSequenceIdFPS?.trim() || '';
+    const seqTPS = entity.interaction.interactSequenceIdTPS?.trim() || '';
+    const seqLeg = entity.interaction.interactSequenceId?.trim() || '';
+
+    return (mensaje.length > 0 || seqFPS.length > 0 || seqTPS.length > 0 || seqLeg.length > 0);
+  }
+
+  public canActivateInteraction(targetEntity: GameEntity, view: 'FPS' | 'TPS' | null): boolean {
+    if (!targetEntity || this.lastInteractDistance === null || !Number.isFinite(this.lastInteractDistance)) return false;
+    const maxDist = view === 'FPS' ? (targetEntity.interaction.interactDistanceFPS ?? 3.0) : (targetEntity.interaction.interactDistanceTPS ?? 5.0);
     return this.lastInteractDistance <= maxDist;
   }
 
-  public comprobarInteracciones(jugador: Mesh, activeCamera: any, colMeta: any, viewMode: 'FPS' | 'TPS'): void {
+  public comprobarInteracciones(entity: GameEntity, activeCamera: any, viewMode: 'FPS' | 'TPS'): void {
+    const jugador = entity.view as Mesh;
     const scene = this.motor3d.scene;
 
-    let hitInteractuable: AbstractMesh | null = null;
+    let hitInteractuable: GameEntity | null = null;
     let hoverSelectable: AbstractMesh | null = null;
 
     this.lastInteractDistance = null;
-    this.lastInteractionProbePoint = this.getInteractionProbePoint(viewMode, jugador, activeCamera, colMeta);
+    this.lastInteractionProbePoint = this.getInteractionProbePoint(viewMode, jugador, activeCamera, entity);
 
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
-    const canShowInteraction = (root: AbstractMesh) => this.state.esObjetoInteractuable(root);
 
     if (viewMode === 'FPS') {
       const centerRay = activeCamera.getForwardRay(10000);
 
       const hitCross = scene.pickWithRay(centerRay, (m) => {
-        if (!m.isPickable) return false;
-        if (!m.isVisible) return false;
-
-        // 🔥 FIX TRIGGERS FPS: Ignorar triggers por completo para no preseleccionar
-        if (m.metadata?.type === 'trigger' || m.name.toLowerCase().includes('trigger')) return false; 
+        if (!m.isPickable || !m.isVisible) return false;
+        
+        const targetEntity = this.entityManager.getEntityByMesh(m);
+        if (targetEntity && (targetEntity.type === 'trigger' || targetEntity.type === 'trigger_compuesto')) return false; 
+        
         if (m === jugador || m.isDescendantOf(jugador)) return false;
 
         const nameStr = m.name.toLowerCase();
         if (
-          nameStr.includes('proxycol') ||
-          nameStr.includes('suelo') ||
-          nameStr.includes('skybox') ||
-          nameStr.includes('highlight') ||
-          nameStr.includes('gizmo') ||
-          nameStr.includes('debug') ||
-          nameStr.includes('fogshell') ||
-          nameStr.includes('fogwall')
+          nameStr.includes('proxycol') || nameStr.includes('suelo') || nameStr.includes('skybox') ||
+          nameStr.includes('highlight') || nameStr.includes('gizmo') || nameStr.includes('debug') ||
+          nameStr.includes('fogshell') || nameStr.includes('fogwall')
         ) return false;
 
         return true;
@@ -129,116 +119,98 @@ export class PlayerInteractionService {
 
       if (hitCross && hitCross.hit && hitCross.pickedMesh) {
         const picked = hitCross.pickedMesh as AbstractMesh;
-        if (!this.state.esMeshIgnorable(picked)) {
-          // 🔥 USAR NUEVA LÓGICA
-          const rootNode = this.state.resolverObjetoSeleccionable(picked);
-          
-          if (rootNode) {
-            const selectionDistance = this.getInteractionDistanceToTarget(rootNode, this.lastInteractionProbePoint);
+        const rootEntity = this.entityManager.getEntityByMesh(this.state.resolverObjetoSeleccionable(picked));
+        
+        if (rootEntity && rootEntity.view) {
+            const selectionDistance = this.getInteractionDistanceToTarget(rootEntity.view, this.lastInteractionProbePoint);
             this.lastInteractDistance = selectionDistance;
 
             const selectionMax = this.getSelectionMaxDistance(isAdmin);
-            const interactMax = rootNode.metadata?.interactDistanceFPS ?? 3.0;
-            const isInteractable = canShowInteraction(rootNode);
+            const interactMax = rootEntity.interaction.interactDistanceFPS ?? 3.0;
+            const isInteractable = this.esObjetoInteractuable(rootEntity);
 
             if (isAdmin) {
-              if (selectionDistance <= selectionMax) {
-                hoverSelectable = rootNode;
-              }
-              if (isInteractable && selectionDistance <= interactMax) {
-                hitInteractuable = rootNode;
-              }
+              if (selectionDistance <= selectionMax) hoverSelectable = rootEntity.view;
+              if (isInteractable && selectionDistance <= interactMax) hitInteractuable = rootEntity;
             } else {
               if (isInteractable && selectionDistance <= interactMax) {
-                hoverSelectable = rootNode;
-                hitInteractuable = rootNode;
+                hoverSelectable = rootEntity.view;
+                hitInteractuable = rootEntity;
               }
             }
-          }
         }
       }
     } else {
-      let closestRoot: AbstractMesh | null = null;
+      let closestEntity: GameEntity | null = null;
       let closestDist = Number.POSITIVE_INFINITY;
       const playerProbe = this.lastInteractionProbePoint;
 
-      scene.meshes.forEach(mesh => {
-        const nameL = mesh.name.toLowerCase();
-        if (mesh === jugador || nameL.includes('proxycol') || nameL.includes('suelo') || nameL.includes('fog') || !mesh.isPickable) return;
+      this.entityManager.getAllEntities().forEach(e => {
+        if (e.uid === entity.uid) return;
+        if (e.type === 'trigger' || e.type === 'trigger_compuesto') return;
         
-        // 🔥 FIX TRIGGERS TPS: Ignorar triggers por completo
-        if (mesh.metadata?.type === 'trigger' || nameL.includes('trigger')) return; 
-        if (!mesh.isVisible) return;
+        const mesh = e.view as AbstractMesh;
+        if (!mesh || !mesh.isVisible || !mesh.isPickable) return;
 
-        // 🔥 USAR NUEVA LÓGICA
-        const root = this.state.resolverObjetoSeleccionable(mesh as AbstractMesh);
-        if (!root || (root.metadata?.type === 'trigger' && !isAdmin)) return;
-
-        const selectionDistance = this.getInteractionDistanceToTarget(root, playerProbe);
+        const selectionDistance = this.getInteractionDistanceToTarget(mesh, playerProbe);
         const selectionMax = this.getSelectionMaxDistance(isAdmin);
-        const isInteractable = canShowInteraction(root);
+        const isInteractable = this.esObjetoInteractuable(e);
 
         if (isInteractable) {
-          if (root.metadata?.type !== 'bubble') {
-            const interactMax = root.metadata?.interactDistanceTPS ?? 5.0;
+          if (e.type !== 'bubble') {
+            const interactMax = e.interaction.interactDistanceTPS ?? 5.0;
             if (selectionDistance <= interactMax && selectionDistance < closestDist) {
               closestDist = selectionDistance;
-              closestRoot = root;
+              closestEntity = e;
             }
           }
         } else if (isAdmin && selectionDistance <= selectionMax && selectionDistance < closestDist) {
           closestDist = selectionDistance;
-          closestRoot = root;
+          closestEntity = e;
         }
       });
 
-      if (closestRoot) {
-        hoverSelectable = closestRoot;
+      if (closestEntity && (closestEntity as GameEntity).view) {
+        hoverSelectable = (closestEntity as GameEntity).view;
         this.lastInteractDistance = closestDist;
-        if (canShowInteraction(closestRoot)) {
-          hitInteractuable = closestRoot;
+        if (this.esObjetoInteractuable(closestEntity)) {
+          hitInteractuable = closestEntity;
         }
       }
     }
 
     // Le avisamos a TODOS los modelos si están siendo "Hovereados"
-    scene.meshes.forEach(m => {
-        if (m.metadata) {
-            m.metadata.isHovered = (hoverSelectable === m);
-        }
+    this.entityManager.getAllEntities().forEach(e => {
+        e.isHovered = (e.view === hoverSelectable);
     });
 
     let showE = false;
     let showI = false;
 
     if (hitInteractuable) {
-      const meta = hitInteractuable.metadata || {};
-      const safeView = this.state.modoVistaPrueba;
-      const canInteractNow = this.canActivateInteraction(hitInteractuable, safeView);
+      const canInteractNow = this.canActivateInteraction(hitInteractuable, this.state.modoVistaPrueba);
 
-      const seqIdForView = safeView === 'FPS'
-        ? (meta.interactSequenceIdFPS || meta.interactSequenceId)
-        : (meta.interactSequenceIdTPS || meta.interactSequenceId);
+      const seqIdForView = this.state.modoVistaPrueba === 'FPS'
+        ? (hitInteractuable.interaction.interactSequenceIdFPS || hitInteractuable.interaction.interactSequenceId)
+        : (hitInteractuable.interaction.interactSequenceIdTPS || hitInteractuable.interaction.interactSequenceId);
 
-      const mensajeParaMostrar = meta.mensaje || '';
+      const mensajeParaMostrar = hitInteractuable.interaction.mensaje || '';
 
-      if (meta.type === 'bubble') {
+      if (hitInteractuable.type === 'bubble') {
         showE = canInteractNow; 
-      } else if (meta.type === 'video_plane') {
-        if (!meta.isPoweredOn) {
-            showE = false; 
-        } else {
-            showE = canInteractNow; 
-        }
+      } else if (hitInteractuable.type === 'video_plane') {
+        // En video, encenderlo o apagarlo requiere E
+        // Aquí asumiremos que está interactuable si canInteractNow
+        showE = canInteractNow; 
       } else {
         showE = !!seqIdForView && seqIdForView.trim() !== '' && canInteractNow;
       }
       
-      showI = !!mensajeParaMostrar && mensajeParaMostrar.trim() !== '' && canInteractNow && meta.type !== 'bubble';
+      showI = !!mensajeParaMostrar && mensajeParaMostrar.trim() !== '' && canInteractNow && hitInteractuable.type !== 'bubble';
     }
 
     if (this.state.targetInteractuable() !== hitInteractuable) {
-      this.state.targetInteractuable.set(hitInteractuable);
+      this.state.targetInteractuable.set(hitInteractuable as any);
     }
 
     if (this.state.mirandoObjetoInteractuable() !== !!hoverSelectable) {
@@ -258,10 +230,10 @@ export class PlayerInteractionService {
     }
   }
 
-  public abrirMensajeInteractivo(obj: AbstractMesh, resetMovementCallback: () => void): void {
+  public abrirMensajeInteractivo(entity: GameEntity, resetMovementCallback: () => void): void {
     this.state.playState.set('INTERACTING');
-    this.state.objetoInteractuado.set(obj);
-    this.state.objetoSeleccionado.set(obj);
+    this.state.objetoInteractuado.set(entity);
+    this.state.objetoSeleccionado.set(entity.view);
     this.state.objetoHovereado.set(null);
     this.state.mirandoObjetoInteractuable.set(false);
     this.state.ratonBloqueado.set(false);

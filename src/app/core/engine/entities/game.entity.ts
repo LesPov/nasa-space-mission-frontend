@@ -1,4 +1,3 @@
-
 import { AbstractMesh, Vector3, Quaternion } from '@babylonjs/core';
 import { PlayerRuntimeConfig } from '../../../services/editor/player-config.model';
 
@@ -179,7 +178,7 @@ export class GameEntity {
 
   /**
    * ACTUALIZA LA VISTA (Babylon Mesh) A PARTIR DE LOS DATOS DE LA ENTIDAD.
-   * Esto empuja datos al metadata SOLO por retrocompatibilidad con las herramientas visuales del Editor.
+   * Empujamos a metadata SOLO para compatibilidad con Babylon Inspector interno si hace falta.
    */
   public syncToView(): void {
     if (!this.view) return;
@@ -248,79 +247,6 @@ export class GameEntity {
     } else {
       this.transform.rotation = { x: this.view.rotation.x, y: this.view.rotation.y, z: this.view.rotation.z };
     }
-  }
-
-  public syncFromMetadata(): void {
-    if (!this.view || !this.view.metadata) return;
-    const meta = this.view.metadata;
-
-    this.name = this.view.name || this.name;
-    this.type = meta.type || this.type;
-    this.rol = meta.rol || this.rol;
-    this.parentId = meta.parentId || null;
-    this.orderIndex = meta.orderIndex || 0;
-
-    this.visual.color = meta.color || '#ffffff';
-    this.visual.colorBW = meta.colorBW || '#ffffff';
-    this.visual.isSolid = meta.isSolid ?? true;
-    this.visual.isSelectable = meta.isSelectable ?? true;
-    this.visual.ignoraNiebla = meta.ignoraNiebla ?? false;
-    this.visual.esEmisivo = meta.esEmisivo ?? false;
-    this.visual.brilloIntensidad = meta.brilloIntensidad ?? 1.0;
-    this.visual.assetId = meta.assetId || null;
-    this.visual.path = meta.path || meta.videoUrl || meta.imageUrl || null;
-
-    if (meta.collider) this.collider = JSON.parse(JSON.stringify(meta.collider));
-    if (meta.camOffset) this.camOffset = JSON.parse(JSON.stringify(meta.camOffset));
-    if (meta.playerConfig) this.playerConfig = JSON.parse(JSON.stringify(meta.playerConfig));
-    if (meta.selectionRange) this.selectionRange = JSON.parse(JSON.stringify(meta.selectionRange));
-    
-    this.interaction.mensaje = meta.mensaje || '';
-    this.interaction.interactDistanceFPS = meta.interactDistanceFPS ?? 3.0;
-    this.interaction.interactDistanceTPS = meta.interactDistanceTPS ?? 5.0;
-    this.interaction.interactSequenceIdFPS = meta.interactSequenceIdFPS || '';
-    this.interaction.interactSequenceIdTPS = meta.interactSequenceIdTPS || '';
-    this.interaction.interactSequenceId = meta.interactSequenceId || '';
-    this.interaction.respawnTime = meta.respawnTime ?? 8;
-
-    this.animationNames = meta.animationNames || [];
-    this.autoAnim = meta.autoAnim ? JSON.parse(JSON.stringify(meta.autoAnim)) : null;
-
-    if (meta.initialHeadLocal) {
-        this.initialHeadLocal = new Vector3(meta.initialHeadLocal.x, meta.initialHeadLocal.y, meta.initialHeadLocal.z);
-    }
-    
-    if (this.type === 'trigger' || this.type === 'trigger_compuesto') {
-      this.trigger = {
-        isComposite: meta.isComposite ?? false,
-        triggerShape: meta.triggerShape || 'cube',
-        conditions: meta.conditions || [],
-        mensajeEntrada: meta.mensajeEntrada || '',
-        mensajeSalida: meta.mensajeSalida || '',
-        soundUrlEntrada: meta.soundUrlEntrada || '',
-        soundUrlSalida: meta.soundUrlSalida || '',
-        seqEntrada: meta.seqEntrada || '',
-        seqSalida: meta.seqSalida || '',
-        timeEntrada: meta.timeEntrada ?? 4.5,
-        timeSalida: meta.timeSalida ?? 4.5,
-        videoEntrada: meta.videoEntrada || '',
-        videoSalida: meta.videoSalida || '',
-        condition: meta.condition || 'on_enter',
-        mensaje: meta.mensaje || '',
-        soundUrl: meta.soundUrl || '',
-        interactSequenceId: meta.interactSequenceId || '',
-        timeNorm: meta.timeNorm ?? 4.5,
-        videoNorm: meta.videoNorm || '',
-        isRepeatable: meta.isRepeatable ?? false,
-        isEnabled: meta.isEnabled ?? true,
-        hasTriggeredEnter: meta.hasTriggeredEnter ?? false,
-        hasTriggeredExit: meta.hasTriggeredExit ?? false,
-        gameConditions: meta.gameConditions || [],
-        stateMutations: meta.stateMutations || []
-      };
-    }
-    
-    this.syncToView();
   }
 
   public getAbsolutePosition(): Vector3 {

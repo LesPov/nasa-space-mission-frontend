@@ -124,6 +124,7 @@ export interface PlayerFogConfig {
   fogMode: 'linear' | 'exp' | 'exp2';
   color: string;
   colorBW: string;
+  fogShape?: 'cylinder' | 'sphere'; 
 
   renderDistanceFPS: number;
   renderDistanceTPS: number;
@@ -139,6 +140,12 @@ export interface PlayerFogConfig {
   densityStartFPS?: number; densityEndFPS?: number; densityStartTPS?: number; densityEndTPS?: number;
   startFpsBW?: number; endFpsBW?: number; startTpsBW?: number; endTpsBW?: number;
   densityStartFpsBW?: number; densityEndFpsBW?: number; densityStartTpsBW?: number; densityEndTpsBW?: number;
+
+  fogHeightYStartFPS?: number; fogHeightYStartTPS?: number; fogHeightYStartFpsBW?: number; fogHeightYStartTpsBW?: number;
+  fogHeightYEndFPS?: number; fogHeightYEndTPS?: number; fogHeightYEndFpsBW?: number; fogHeightYEndTpsBW?: number;
+
+  offsetXFPS?: number; offsetYFPS?: number; offsetZFPS?: number;
+  offsetXTPS?: number; offsetYTPS?: number; offsetZTPS?: number;
 }
 
 export interface PlayerRuntimeConfig {

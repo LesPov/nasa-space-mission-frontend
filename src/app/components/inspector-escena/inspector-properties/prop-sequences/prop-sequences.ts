@@ -46,15 +46,17 @@ export class PropSequences implements OnInit, OnChanges {
 
   cargarDatos() {
     if (!this.objeto) return;
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (!entity) return;
     
-    this.esPersonaje = this.objeto.metadata?.rol === 'npc' || this.objeto.metadata?.rol === 'spawn_point';
-    this.esLuz = this.objeto.metadata?.type?.startsWith('light_');
+    this.esPersonaje = entity.rol === 'npc' || entity.rol === 'spawn_point';
+    this.esLuz = entity.type.startsWith('light_');
 
     if (this.esPersonaje) this.actionRows = ACTION_ROWS_CHAR;
     else if (this.esLuz) this.actionRows = ACTION_ROWS_LIGHT;
     else this.actionRows = ACTION_ROWS_PROP;
     
-    const config = mergePlayerConfig(this.objeto.metadata?.playerConfig || null);
+    const config = mergePlayerConfig(entity.playerConfig || null);
     this.sequences = Array.isArray(config.sequences) ? JSON.parse(JSON.stringify(config.sequences)) : [];
     if (this.sequences.length > 0) this.selectedSequenceId = this.sequences[0].id;
 
@@ -70,7 +72,8 @@ export class PropSequences implements OnInit, OnChanges {
     });
 
     this.motor3dSvc.scene.meshes.forEach(m => {
-        if (m.metadata?.type === 'video_plane') rawClips.push(m.name);
+        const checkEnt = this.entityManager.getEntityByMesh(m);
+        if (checkEnt && checkEnt.type === 'video_plane') rawClips.push(m.name);
     });
     this.availableClips = [...new Set(rawClips)];
   }
@@ -105,12 +108,10 @@ export class PropSequences implements OnInit, OnChanges {
 
   probarSecuencia(seq: PlayerClipSequence) {
     this.persist();
-    if(this.objeto.metadata.type !== 'trigger'){
-        const entity = this.entityManager.getEntityByMesh(this.objeto);
-        if (entity) {
-            this.previewSvc.iniciarPreviewSecuencia(entity, seq.id);
-            this.animStatus = `Visualizando: ${seq.name}...`;
-        }
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if(entity && entity.type !== 'trigger'){
+        this.previewSvc.iniciarPreviewSecuencia(entity, seq.id);
+        this.animStatus = `Visualizando: ${seq.name}...`;
     }
   }
 

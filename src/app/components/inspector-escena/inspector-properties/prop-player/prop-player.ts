@@ -1,3 +1,4 @@
+
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -5,6 +6,7 @@ import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig, mergePlayerConfig, FogLevel } from '../../../../services/editor/player-config.model';
 import { PlayerConfigMutatorService } from '../../../../services/editor/mutators/player-config-mutator.service';
+import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 
 interface SelectionRangeConfig {
   fpsAdminMax: number;
@@ -22,6 +24,7 @@ export class PropPlayer implements OnInit {
   @Input() objeto!: AbstractMesh;
 
   private playerConfigMutator = inject(PlayerConfigMutatorService);
+  private entityManager = inject(EntityManagerService);
 
   acordeonesPlayer: Record<string, boolean> = {
     movement: true, jump: false, fog: true, camera: false, selection: false, physics: false, animEnabled: false
@@ -35,16 +38,17 @@ export class PropPlayer implements OnInit {
   selectionRange: SelectionRangeConfig = { fpsAdminMax: 500000, fpsUserMax: 3 };
 
   ngOnInit() {
-    const meta = this.objeto.metadata || {};
-    this.playerConfig = mergePlayerConfig(meta.playerConfig || null);
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (!entity) return;
 
-    const storedSelection = meta.playerConfig?.selectionRange || meta.selectionRange || {};
+    this.playerConfig = mergePlayerConfig(entity.playerConfig || null);
+
+    const storedSelection = entity.selectionRange || {};
     this.selectionRange = {
       fpsAdminMax: Number.isFinite(Number(storedSelection.fpsAdminMax)) ? Number(storedSelection.fpsAdminMax) : 500000, 
       fpsUserMax: Number.isFinite(Number(storedSelection.fpsUserMax)) ? Number(storedSelection.fpsUserMax) : 3
     };
 
-    // Al arrancar forzamos sincronización local antes de enviar la data
     this.aplicarPlayerConfig();
   }
 
@@ -92,8 +96,6 @@ export class PropPlayer implements OnInit {
   }
 
   toggleAcordeon(s: string) { this.acordeonesPlayer[s] = !this.acordeonesPlayer[s]; }
-
-  // --- MÉTODOS DE DELEGACIÓN ---
 
   aplicarPlayerConfig() {
     this.playerConfigMutator.aplicarPlayerConfig(this.objeto, this.playerConfig, this.selectionRange);

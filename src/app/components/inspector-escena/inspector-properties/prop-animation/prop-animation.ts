@@ -67,7 +67,11 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
   }
 
   private ajustarFilasSegunTipo() {
-      const isChar = this.objeto?.metadata?.rol === 'npc' || this.objeto?.metadata?.rol === 'spawn_point';
+      if(!this.objeto) return;
+      const entity = this.entityManager.getEntityByMesh(this.objeto);
+      if(!entity) return;
+
+      const isChar = entity.rol === 'npc' || entity.rol === 'spawn_point';
       if (isChar) {
           this.actionRows = [
             { key: 'idle', label: 'Idle / Reposo', family: 'Base', keywords: ['idle'], help: '' },
@@ -90,31 +94,26 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
 
   syncData() {
     if (!this.objeto) return;
-    const meta = this.objeto.metadata || {};
-    this.playerConfig = mergePlayerConfig(meta.playerConfig || null);
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (!entity) return;
+
+    this.playerConfig = mergePlayerConfig(entity.playerConfig || null);
     
     this.syncBindingDraftsFromConfig();
-    this.syncClipsFromObject(this.objeto);
+    this.syncClipsFromObject(entity);
     
     this.animStatus = 'Animaciones del modelo cargadas.';
     this.cdr.detectChanges();
   }
 
-  private getAvailableAnimationGroups(obj: AbstractMesh): AnimationGroup[] {
+  private getAvailableAnimationGroups(entity: any): AnimationGroup[] {
     const scene = this.motor3dSvc.scene;
     
     const validTargets = new Set();
-    validTargets.add(obj);
-    obj.getDescendants(false).forEach(child => validTargets.add(child));
+    validTargets.add(this.objeto);
+    this.objeto.getDescendants(false).forEach(child => validTargets.add(child));
 
-    let myAnimNames: string[] = obj.metadata?.animationNames || [];
-    
-    if (myAnimNames.length === 0) {
-        const childWithAnims = obj.getChildMeshes(false).find(m => m.metadata?.animationNames && m.metadata.animationNames.length > 0);
-        if (childWithAnims) {
-            myAnimNames = childWithAnims.metadata.animationNames;
-        }
-    }
+    let myAnimNames: string[] = entity.animationNames || [];
     
     const isTargetingMe = (ag: AnimationGroup) => {
       if (!ag.targetedAnimations) return false;
@@ -127,7 +126,6 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
     }
 
     let groups = scene.animationGroups.filter(isTargetingMe);
-
     return groups;
   }
 
@@ -140,9 +138,9 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
     }
   }
 
-  private syncClipsFromObject(obj: AbstractMesh) {
-    const metaRuntime = obj.metadata?.playerConfig?.animationRuntime || {};
-    const groups = this.getAvailableAnimationGroups(obj);
+  private syncClipsFromObject(entity: any) {
+    const metaRuntime = entity.playerConfig?.animationRuntime || {};
+    const groups = this.getAvailableAnimationGroups(entity);
     
     const uniqueGroups = groups.filter((v, i, a) => a.findIndex(t => (t.name === v.name)) === i);
     
@@ -156,16 +154,16 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
   }
 
   private persistPlayerConfig() {
-    if (!this.objeto.metadata) this.objeto.metadata = {};
-    this.objeto.metadata.playerConfig = JSON.parse(JSON.stringify(this.playerConfig));
-    this.objeto.metadata.animationNames = this.animationClips.map(c => c.name);
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (!entity) return;
+
+    entity.playerConfig = JSON.parse(JSON.stringify(this.playerConfig));
+    entity.animationNames = this.animationClips.map(c => c.name);
     
-    // 🔥 FIX: Resincronizar en vivo si el juego está corriendo y se cambia la animación base
+    entity.syncToView();
+
     if (this.editorSvc.playState() === 'EDITING_IN_GAME') {
-       const entity = this.entityManager.getEntityByMesh(this.objeto);
-       if (entity) {
-           this.previewSvc.resincronizarAnimaciones(entity);
-       }
+       this.previewSvc.resincronizarAnimaciones(entity);
     }
     
     this.editorSvc.triggerUpdate();

@@ -1,4 +1,4 @@
-// src/app/components/inspector-escena/inspector-properties/prop-trigger/prop-trigger.ts
+
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -61,72 +61,61 @@ export class PropTrigger implements OnInit, OnDestroy {
 
   syncData() {
     if (!this.objeto) return;
-    this.localPosX = this.formatNum(this.objeto.position.x); 
-    this.localPosY = this.formatNum(this.objeto.position.y); 
-    this.localPosZ = this.formatNum(this.objeto.position.z);
-    this.localEscX = this.formatNum(this.objeto.scaling.x); 
-    this.localEscY = this.formatNum(this.objeto.scaling.y); 
-    this.localEscZ = this.formatNum(this.objeto.scaling.z);
-
     const entity = this.entityManager.getEntityByMesh(this.objeto);
-    
-    // 🔥 Ahora tomamos la Entidad como fuente real de la verdad
-    if (entity && entity.trigger) {
-        this.triggerIsComposite = entity.trigger.isComposite ?? false;
-        this.triggerShape = entity.trigger.triggerShape || 'cube';
-        this.triggerRepeatable = entity.trigger.isRepeatable || false;
+    if (!entity || !entity.trigger) return;
 
-        this.triggerCondition = entity.trigger.condition || 'on_enter';
-        this.objMensaje = entity.interaction?.mensaje || entity.trigger.mensaje || '';
-        this.objSoundUrl = entity.trigger.soundUrl || '';
-        this.triggerTimeNorm = entity.trigger.timeNorm ?? 4.5;
-        this.triggerVideoNorm = entity.trigger.videoNorm || '';
+    this.localPosX = this.formatNum(entity.transform.position.x); 
+    this.localPosY = this.formatNum(entity.transform.position.y); 
+    this.localPosZ = this.formatNum(entity.transform.position.z);
+    this.localEscX = this.formatNum(entity.transform.scale.x); 
+    this.localEscY = this.formatNum(entity.transform.scale.y); 
+    this.localEscZ = this.formatNum(entity.transform.scale.z);
 
-        this.triggerConditions = entity.trigger.conditions || ['on_enter'];
-        this.triggerMensajeEntrada = entity.trigger.mensajeEntrada || '';
-        this.triggerMensajeSalida = entity.trigger.mensajeSalida || '';
-        this.triggerSoundEntrada = entity.trigger.soundUrlEntrada || '';
-        this.triggerSoundSalida = entity.trigger.soundUrlSalida || '';
-        this.triggerSeqEntrada = entity.trigger.seqEntrada || '';
-        this.triggerSeqSalida = entity.trigger.seqSalida || '';
-        this.triggerTimeEntrada = entity.trigger.timeEntrada ?? 4.5;
-        this.triggerTimeSalida = entity.trigger.timeSalida ?? 4.5;
-        this.triggerVideoEntrada = entity.trigger.videoEntrada || '';
-        this.triggerVideoSalida = entity.trigger.videoSalida || '';
-        this.objInteractSequenceIdFPS = entity.trigger.interactSequenceId || '';
-    } else {
-        // Fallback temporal si se de-sincronizó (No debería pasar nunca)
-        const meta = this.objeto.metadata || {};
-        this.triggerIsComposite = meta.isComposite ?? false;
-        this.triggerShape = meta.triggerShape || 'cube';
-        this.triggerRepeatable = meta.isRepeatable || false;
-        this.triggerCondition = meta.condition || 'on_enter';
-        this.objMensaje = meta.mensaje || '';
-        this.objSoundUrl = meta.soundUrl || '';
-        this.triggerTimeNorm = meta.timeNorm ?? 4.5;
-        this.triggerVideoNorm = meta.videoNorm || '';
-    }
+    this.triggerIsComposite = entity.trigger.isComposite ?? false;
+    this.triggerShape = entity.trigger.triggerShape || 'cube';
+    this.triggerRepeatable = entity.trigger.isRepeatable || false;
+
+    this.triggerCondition = entity.trigger.condition || 'on_enter';
+    this.objMensaje = entity.interaction?.mensaje || entity.trigger.mensaje || '';
+    this.objSoundUrl = entity.trigger.soundUrl || '';
+    this.triggerTimeNorm = entity.trigger.timeNorm ?? 4.5;
+    this.triggerVideoNorm = entity.trigger.videoNorm || '';
+
+    this.triggerConditions = entity.trigger.conditions || ['on_enter'];
+    this.triggerMensajeEntrada = entity.trigger.mensajeEntrada || '';
+    this.triggerMensajeSalida = entity.trigger.mensajeSalida || '';
+    this.triggerSoundEntrada = entity.trigger.soundUrlEntrada || '';
+    this.triggerSoundSalida = entity.trigger.soundUrlSalida || '';
+    this.triggerSeqEntrada = entity.trigger.seqEntrada || '';
+    this.triggerSeqSalida = entity.trigger.seqSalida || '';
+    this.triggerTimeEntrada = entity.trigger.timeEntrada ?? 4.5;
+    this.triggerTimeSalida = entity.trigger.timeSalida ?? 4.5;
+    this.triggerVideoEntrada = entity.trigger.videoEntrada || '';
+    this.triggerVideoSalida = entity.trigger.videoSalida || '';
+    this.objInteractSequenceIdFPS = entity.trigger.interactSequenceId || '';
 
     this.cdr.detectChanges();
   }
 
   aplicarPosicion() { 
-    this.historialSvc.registrarCambioTransform(this.objeto, () => { this.objeto.position.set(this.localPosX, this.localPosY, this.localPosZ); }); 
     const entity = this.entityManager.getEntityByMesh(this.objeto);
-    if (entity) {
-       entity.syncTransformFromView();
-       entity.syncToView();
-    }
+    this.historialSvc.registrarCambioTransform(this.objeto, () => { 
+      if(entity) {
+          entity.transform.position = { x: this.localPosX, y: this.localPosY, z: this.localPosZ };
+          entity.syncToView();
+      }
+    }); 
     this.editorSvc.triggerUpdate(); 
   }
 
   aplicarEscala() { 
-    this.historialSvc.registrarCambioTransform(this.objeto, () => { this.objeto.scaling.set(this.localEscX, this.localEscY, this.localEscZ); }); 
     const entity = this.entityManager.getEntityByMesh(this.objeto);
-    if (entity) {
-       entity.syncTransformFromView();
-       entity.syncToView();
-    }
+    this.historialSvc.registrarCambioTransform(this.objeto, () => { 
+      if(entity) {
+          entity.transform.scale = { x: this.localEscX, y: this.localEscY, z: this.localEscZ };
+          entity.syncToView();
+      }
+    }); 
     this.editorSvc.triggerUpdate(); 
   }
 
@@ -148,7 +137,6 @@ export class PropTrigger implements OnInit, OnDestroy {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (!entity || !entity.trigger) return;
 
-    // 🔥 Guardamos los datos puros y duros directamente en la lógica del Componente
     if (this.triggerIsComposite) {
         entity.trigger.conditions = this.triggerConditions;
         entity.trigger.isRepeatable = this.triggerRepeatable;
@@ -166,7 +154,7 @@ export class PropTrigger implements OnInit, OnDestroy {
         entity.trigger.condition = this.triggerCondition;
         entity.trigger.isRepeatable = this.triggerRepeatable;
         entity.trigger.mensaje = this.objMensaje.trim();
-        entity.interaction.mensaje = this.objMensaje.trim(); // Sincro cruzada
+        entity.interaction.mensaje = this.objMensaje.trim(); 
         entity.trigger.soundUrl = this.objSoundUrl.trim();
         entity.trigger.interactSequenceId = this.objInteractSequenceIdFPS.trim();
         entity.interaction.interactSequenceId = this.objInteractSequenceIdFPS.trim(); 
@@ -174,7 +162,6 @@ export class PropTrigger implements OnInit, OnDestroy {
         entity.trigger.videoNorm = this.triggerVideoNorm.trim();
     }
 
-    // Le decimos a la entidad que escupa todos los cambios a la malla (metadata) de Babylon.js
     entity.syncToView();
 
     this.editorSvc.triggerUpdate();

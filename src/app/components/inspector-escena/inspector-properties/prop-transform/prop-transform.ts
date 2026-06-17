@@ -2,10 +2,11 @@
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh, Vector3 } from '@babylonjs/core';
+import { AbstractMesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
+import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 
 @Component({
   selector: 'app-prop-transform',
@@ -19,6 +20,7 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
 
   private editorSvc = inject(EditorMapaService);
   private transformMutator = inject(TransformMutatorService);
+  private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -73,51 +75,45 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
 
   syncData() {
     if (!this.objeto) return;
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (!entity) return;
 
-    this.localPosX = this.formatNum(this.objeto.position.x);
-    this.localPosY = this.formatNum(this.objeto.position.y);
-    this.localPosZ = this.formatNum(this.objeto.position.z);
+    this.localPosX = this.formatNum(entity.transform.position.x);
+    this.localPosY = this.formatNum(entity.transform.position.y);
+    this.localPosZ = this.formatNum(entity.transform.position.z);
 
-    // 🔥 FIX: Mantener convención de euler para no volver loca la UI
-    if (this.objeto.rotationQuaternion) {
-       const euler = this.objeto.rotationQuaternion.toEulerAngles();
-       this.localRotX = this.formatNum(euler.x * (180 / Math.PI));
-       this.localRotY = this.formatNum(euler.y * (180 / Math.PI));
-       this.localRotZ = this.formatNum(euler.z * (180 / Math.PI));
-    } else {
-       this.localRotX = this.formatNum(this.objeto.rotation.x * (180 / Math.PI));
-       this.localRotY = this.formatNum(this.objeto.rotation.y * (180 / Math.PI));
-       this.localRotZ = this.formatNum(this.objeto.rotation.z * (180 / Math.PI));
+    this.localRotX = this.formatNum(entity.transform.rotation.x * (180 / Math.PI));
+    this.localRotY = this.formatNum(entity.transform.rotation.y * (180 / Math.PI));
+    this.localRotZ = this.formatNum(entity.transform.rotation.z * (180 / Math.PI));
+
+    this.localEscX = this.formatNum(entity.transform.scale.x);
+    this.localEscY = this.formatNum(entity.transform.scale.y);
+    this.localEscZ = this.formatNum(entity.transform.scale.z);
+
+    this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane', 'image_plane'].includes(entity.type);
+    
+    this.objColor = entity.visual.color || '#ffffff';
+    this.objColorBW = entity.visual.colorBW || this.objColor;
+    this.objIgnoraNiebla = entity.visual.ignoraNiebla ?? false;
+    this.objEsEmisivo = entity.visual.esEmisivo ?? false;
+    this.objBrilloIntensidad = entity.visual.brilloIntensidad ?? 1.0;
+
+    if (entity.media) {
+      this.objProfundidadProyeccion = entity.media.profundidadProyeccion ?? 0.08;
+      this.objAnguloProyeccion = this.formatNum(entity.media.anguloProyeccion ?? 0);
+      this.objProyeccionAncho = entity.media.proyeccionAncho ?? this.localEscX;
+      this.objProyeccionAlto = entity.media.proyeccionAlto ?? this.localEscY;
+      this.objProyeccionRepeticiones = entity.media.proyeccionRepeticiones ?? 1;
+      this.objProyeccionEspaciado = entity.media.proyeccionEspaciado ?? 2;
+      this.objProyeccionEje = entity.media.proyeccionEje || 'Y';
+      this.objFadeDistance = entity.media.fadeDistance ?? 0;
     }
 
-    // 🔥 FIX SCALING: Leer ESCALA LOCAL y no descomponer matrices que den positivos falsos
-    this.localEscX = this.formatNum(this.objeto.scaling.x);
-    this.localEscY = this.formatNum(this.objeto.scaling.y);
-    this.localEscZ = this.formatNum(this.objeto.scaling.z);
-
-    const meta = this.objeto.metadata || {};
-    this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane', 'image_plane'].includes(meta.type);
-    
-    this.objColor = meta.color || '#ffffff';
-    this.objColorBW = meta.colorBW || this.objColor;
-    this.objIgnoraNiebla = meta.ignoraNiebla ?? false;
-    this.objEsEmisivo = meta.esEmisivo ?? false;
-    this.objBrilloIntensidad = meta.brilloIntensidad ?? 1.0;
-
-    this.objProfundidadProyeccion = meta.profundidadProyeccion ?? 0.08;
-    this.objAnguloProyeccion = this.formatNum(meta.anguloProyeccion ?? 0);
-    this.objProyeccionAncho = meta.proyeccionAncho ?? this.localEscX;
-    this.objProyeccionAlto = meta.proyeccionAlto ?? this.localEscY;
-    this.objProyeccionRepeticiones = meta.proyeccionRepeticiones ?? 1;
-    this.objProyeccionEspaciado = meta.proyeccionEspaciado ?? 2;
-    this.objProyeccionEje = meta.proyeccionEje || 'Y';
-    this.objFadeDistance = meta.fadeDistance ?? 0;
-
-    this.objInteractDistanceFPS = meta.interactDistanceFPS ?? 3.0;
-    this.objInteractDistanceTPS = meta.interactDistanceTPS ?? 5.0;
-    this.objInteractSequenceIdFPS = meta.interactSequenceIdFPS || meta.interactSequenceId || '';
-    this.objInteractSequenceIdTPS = meta.interactSequenceIdTPS || meta.interactSequenceId || '';
-    this.objMensaje = meta.mensaje || '';
+    this.objInteractDistanceFPS = entity.interaction.interactDistanceFPS ?? 3.0;
+    this.objInteractDistanceTPS = entity.interaction.interactDistanceTPS ?? 5.0;
+    this.objInteractSequenceIdFPS = entity.interaction.interactSequenceIdFPS || entity.interaction.interactSequenceId || '';
+    this.objInteractSequenceIdTPS = entity.interaction.interactSequenceIdTPS || entity.interaction.interactSequenceId || '';
+    this.objMensaje = entity.interaction.mensaje || '';
 
     this.cdr.detectChanges();
   }

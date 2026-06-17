@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -8,20 +7,17 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 @Injectable({ providedIn: 'root' })
 export class PlayerConfigMutatorService {
   private editorSvc = inject(EditorMapaService);
-  private entityManager = inject(EntityManagerService); // 🔥
+  private entityManager = inject(EntityManagerService); 
 
   public aplicarPlayerConfig(objeto: AbstractMesh, playerConfig: PlayerRuntimeConfig, selectionRange: any): void {
-    if (!objeto.metadata) objeto.metadata = {};
-    
     this.sincronizarFogCompat(playerConfig);
 
-    objeto.metadata.playerConfig = JSON.parse(JSON.stringify(playerConfig));
-    objeto.metadata.selectionRange = JSON.parse(JSON.stringify(selectionRange));
-
-    // 🔥 Sincronizar con la entidad
     const entity = this.entityManager.getEntityByMesh(objeto);
     if (entity) {
-       entity.syncFromMetadata();
+       entity.playerConfig = JSON.parse(JSON.stringify(playerConfig));
+       entity.selectionRange = JSON.parse(JSON.stringify(selectionRange));
+       // 🔥 Cero dependencias hacia el mesh.metadata nativo para nutrir a la entidad.
+       entity.syncToView();
     }
 
     this.editorSvc.triggerUpdate();

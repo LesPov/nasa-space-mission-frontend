@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core'; 
 import { HemisphericLight } from '@babylonjs/core'; 
 import { Motor3dService } from '../../motor-3d.service';
@@ -49,29 +48,29 @@ export class SceneSaverService {
       // 2. Extracción limpia desde las interfaces del ECS
       if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') {
         const isComposite = entity.type === 'trigger_compuesto';
-        const rawConditions = entity.view?.metadata?.conditions || ['on_enter'];
+        const rawConditions = entity.trigger?.conditions || ['on_enter'];
 
         if (isComposite) {
           rawConditions.forEach((cond: string) => {
-             const actionProps: any = { triggerShape: entity.view?.metadata?.triggerShape || 'cube', isComposite: true };
+             const actionProps: any = { triggerShape: entity.trigger?.triggerShape || 'cube', isComposite: true };
              if (cond === 'on_enter') {
-                actionProps.mensaje = entity.view?.metadata?.mensajeEntrada || '';
-                actionProps.soundUrl = entity.view?.metadata?.soundUrlEntrada || '';
-                actionProps.seqEntrada = entity.view?.metadata?.seqEntrada || '';
-                actionProps.timeEntrada = entity.view?.metadata?.timeEntrada ?? 4.5;
-                actionProps.videoEntrada = entity.view?.metadata?.videoEntrada || '';
+                actionProps.mensaje = entity.trigger?.mensajeEntrada || '';
+                actionProps.soundUrl = entity.trigger?.soundUrlEntrada || '';
+                actionProps.seqEntrada = entity.trigger?.seqEntrada || '';
+                actionProps.timeEntrada = entity.trigger?.timeEntrada ?? 4.5;
+                actionProps.videoEntrada = entity.trigger?.videoEntrada || '';
              }
              if (cond === 'on_exit') {
-                actionProps.mensaje = entity.view?.metadata?.mensajeSalida || '';
-                actionProps.soundUrl = entity.view?.metadata?.soundUrlSalida || '';
-                actionProps.seqSalida = entity.view?.metadata?.seqSalida || '';
-                actionProps.timeSalida = entity.view?.metadata?.timeSalida ?? 4.5;
-                actionProps.videoSalida = entity.view?.metadata?.videoSalida || '';
+                actionProps.mensaje = entity.trigger?.mensajeSalida || '';
+                actionProps.soundUrl = entity.trigger?.soundUrlSalida || '';
+                actionProps.seqSalida = entity.trigger?.seqSalida || '';
+                actionProps.timeSalida = entity.trigger?.timeSalida ?? 4.5;
+                actionProps.videoSalida = entity.trigger?.videoSalida || '';
              }
              triggers.push({
                uid: entity.uid, name: entity.name, parentId: entity.parentId,
                position: entity.transform.position, scale: entity.transform.scale,
-               properties: { condition: cond, actionType: 'show_message', targetObjectName: '', isRepeatable: entity.view?.metadata?.isRepeatable ?? false, isEnabled: entity.view?.metadata?.isEnabled ?? true, ...actionProps }
+               properties: { condition: cond, actionType: 'show_message', targetObjectName: '', isRepeatable: entity.trigger?.isRepeatable ?? false, isEnabled: entity.trigger?.isEnabled ?? true, ...actionProps }
              });
           });
         } else {
@@ -79,14 +78,14 @@ export class SceneSaverService {
              uid: entity.uid, name: entity.name, parentId: entity.parentId,
              position: entity.transform.position, scale: entity.transform.scale,
              properties: {
-               condition: entity.view?.metadata?.condition || 'on_enter', actionType: 'show_message', targetObjectName: '',
-               isRepeatable: entity.view?.metadata?.isRepeatable ?? false, isEnabled: entity.view?.metadata?.isEnabled ?? true,
-               triggerShape: entity.view?.metadata?.triggerShape || 'cube', 
+               condition: entity.trigger?.condition || 'on_enter', actionType: 'show_message', targetObjectName: '',
+               isRepeatable: entity.trigger?.isRepeatable ?? false, isEnabled: entity.trigger?.isEnabled ?? true,
+               triggerShape: entity.trigger?.triggerShape || 'cube', 
                mensaje: entity.interaction.mensaje,
-               soundUrl: entity.view?.metadata?.soundUrl || '', 
+               soundUrl: entity.trigger?.soundUrl || '', 
                interactSequenceId: entity.interaction.interactSequenceId,
-               timeNorm: entity.view?.metadata?.timeNorm ?? 4.5, 
-               videoNorm: entity.view?.metadata?.videoNorm || '', 
+               timeNorm: entity.trigger?.timeNorm ?? 4.5, 
+               videoNorm: entity.trigger?.videoNorm || '', 
                isComposite: false
              }
            });

@@ -72,7 +72,8 @@ export class GlobalTimeline implements OnInit {
   constructor() {
     effect(() => {
       const obj = this.editorSvc.objetoSeleccionado() as Mesh;
-      const objId = obj ? (obj.metadata?.uid || obj.uniqueId.toString()) : null;
+      const entity = this.entityManager.getEntityByMesh(obj);
+      const objId = entity ? entity.uid : null;
       
       if (this.currentObjectId !== objId) {
           this.currentObjectId = objId;
@@ -86,26 +87,24 @@ export class GlobalTimeline implements OnInit {
     this.cargarPrefabs();
   }
 
-  // ==========================================
-  // LÓGICA DE CLIPS Y SECUENCIAS
-  // ==========================================
   cargarClipsDelObjeto() {
     const obj = this.editorSvc.objetoSeleccionado() as Mesh;
-    if (!obj) {
+    const entity = this.entityManager.getEntityByMesh(obj);
+
+    if (!entity) {
       this.sequences = [];
       this.selectedSequenceId = null;
       return;
     }
     
-    this.esPersonaje = obj.metadata?.rol === 'npc' || obj.metadata?.rol === 'spawn_point';
-    this.esLuz = obj.metadata?.type?.startsWith('light_');
+    this.esPersonaje = entity.rol === 'npc' || entity.rol === 'spawn_point';
+    this.esLuz = entity.type.startsWith('light_');
 
     if (this.esPersonaje) this.actionRows = ACTION_ROWS_CHAR;
     else if (this.esLuz) this.actionRows = ACTION_ROWS_LIGHT;
     else this.actionRows = ACTION_ROWS_PROP;
     
-    const meta = obj.metadata || {};
-    const config = mergePlayerConfig(meta.playerConfig || null);
+    const config = mergePlayerConfig(entity.playerConfig || null);
     this.sequences = Array.isArray(config.sequences) ? JSON.parse(JSON.stringify(config.sequences)) : [];
     
     if (this.sequences.length > 0 && (!this.selectedSequenceId || !this.sequences.find(s => s.id === this.selectedSequenceId))) {
@@ -118,18 +117,13 @@ export class GlobalTimeline implements OnInit {
 
     const rawClips: string[] = [];
     
-    if (obj.metadata?.animationNames && Array.isArray(obj.metadata.animationNames)) {
-        rawClips.push(...obj.metadata.animationNames);
+    if (entity.animationNames && Array.isArray(entity.animationNames)) {
+        rawClips.push(...entity.animationNames);
     }
-    
-    obj.getChildMeshes(false).forEach(child => {
-        if (child.metadata?.animationNames && Array.isArray(child.metadata.animationNames)) {
-            rawClips.push(...child.metadata.animationNames);
-        }
-    });
 
     this.motor3dSvc.scene.meshes.forEach(m => {
-        if (m.metadata?.type === 'video_plane') rawClips.push(m.name);
+        const testEnt = this.entityManager.getEntityByMesh(m);
+        if (testEnt && testEnt.type === 'video_plane') rawClips.push(m.name);
     });
 
     this.availableClips = [...new Set(rawClips)];
@@ -145,12 +139,15 @@ export class GlobalTimeline implements OnInit {
   }
 
   persist() {
-    const obj = this.editorSvc.objetoSeleccionado();
+    const obj = this.editorSvc.objetoSeleccionado() as AbstractMesh;
     if (!obj) return;
-    if (!obj.metadata) obj.metadata = {};
-    if (!obj.metadata.playerConfig) obj.metadata.playerConfig = cloneDefaultPlayerConfig();
-    obj.metadata.playerConfig.sequences = JSON.parse(JSON.stringify(this.sequences));
-    this.editorSvc.triggerUpdate();
+    const entity = this.entityManager.getEntityByMesh(obj);
+    if (entity) {
+        if (!entity.playerConfig) entity.playerConfig = cloneDefaultPlayerConfig();
+        entity.playerConfig.sequences = JSON.parse(JSON.stringify(this.sequences));
+        entity.syncToView();
+        this.editorSvc.triggerUpdate();
+    }
   }
 
   nuevaSecuencia() {
@@ -192,11 +189,9 @@ export class GlobalTimeline implements OnInit {
   probarSecuencia(seq: PlayerClipSequence) {
     this.persist();
     const obj = this.editorSvc.objetoSeleccionado() as Mesh;
-    if (obj.metadata.type !== 'trigger') {
-        const entity = this.entityManager.getEntityByMesh(obj);
-        if (entity) {
-            this.previewSvc.iniciarPreviewSecuencia(entity, seq.id);
-        }
+    const entity = this.entityManager.getEntityByMesh(obj);
+    if (entity && entity.type !== 'trigger') {
+        this.previewSvc.iniciarPreviewSecuencia(entity, seq.id);
     }
   }
 
@@ -205,33 +200,27 @@ export class GlobalTimeline implements OnInit {
     return act ? act.label : key;
   }
 
-  // ==========================================
-  // LÓGICA DE ANIMACIÓN BÁSICA (AUTO-ANIM)
-  // ==========================================
   leerAutoAnimacionDelObjeto() {
     const seleccionado = this.editorSvc.objetoSeleccionado() as AbstractMesh;
-    if (seleccionado && seleccionado.metadata) {
-      const savedAnim = seleccionado.metadata.autoAnim;
-      if (savedAnim) {
-        this.autoAnimConfig = { ...savedAnim };
-      } else {
-        this.autoAnimConfig = { enabled: false, type: 'move', axis: 'Y', amount: 5, duration: 2, stopBaked: false };
-      }
-      this.cdr.detectChanges();
+    const entity = this.entityManager.getEntityByMesh(seleccionado);
+    if (entity && entity.autoAnim) {
+      this.autoAnimConfig = { ...entity.autoAnim };
+    } else {
+      this.autoAnimConfig = { enabled: false, type: 'move', axis: 'Y', amount: 5, duration: 2, stopBaked: false };
     }
+    this.cdr.detectChanges();
   }
 
   guardarAutoAnimacion() {
     const seleccionado = this.editorSvc.objetoSeleccionado() as AbstractMesh;
-    if (!seleccionado) return;
-    if (!seleccionado.metadata) seleccionado.metadata = {};
-    seleccionado.metadata.autoAnim = { ...this.autoAnimConfig };
-    this.editorSvc.triggerUpdate(); 
+    const entity = this.entityManager.getEntityByMesh(seleccionado);
+    if (entity) {
+        entity.autoAnim = { ...this.autoAnimConfig };
+        entity.syncToView();
+        this.editorSvc.triggerUpdate(); 
+    }
   }
 
-  // ==========================================
-  // LÓGICA DE PREFABS
-  // ==========================================
   cargarPrefabs() {
     this.api.obtenerPrefabs().subscribe({
       next: (res) => {
@@ -246,32 +235,59 @@ export class GlobalTimeline implements OnInit {
     const seleccionado = this.editorSvc.objetoSeleccionado() as AbstractMesh;
     if (!seleccionado || !this.nuevoPrefabNombre.trim()) return;
 
-    const meta = seleccionado.metadata || {};
-    const propertiesToSave = JSON.parse(JSON.stringify(meta));
-    
-    delete propertiesToSave.uid;
-    delete propertiesToSave.parentId;
-    delete propertiesToSave.isHovered;
-    delete propertiesToSave.currentHoverScale;
-    delete propertiesToSave.baseScaleX;
-    delete propertiesToSave.baseScaleY;
-    delete propertiesToSave.baseScaleZ;
-
-    propertiesToSave.scale = { x: seleccionado.scaling.x, y: seleccionado.scaling.y, z: seleccionado.scaling.z };
-    const rot = seleccionado.rotationQuaternion ? seleccionado.rotationQuaternion.toEulerAngles() : seleccionado.rotation;
-    propertiesToSave.rotation = { x: rot.x, y: rot.y, z: rot.z };
-
-    const assetId = meta.assetId || null;
-    const type = meta.type || 'cube';
-
     this.guardandoPrefab = true;
 
-    this.api.crearPrefab({
+    // Aquí delegarás a PrefabManager en el futuro o se inyectará.
+    // Usaremos la API directamente por ahora asegurando leer Entity y no Metadata.
+    const entity = this.entityManager.getEntityByMesh(seleccionado);
+    if(!entity) {
+       this.guardandoPrefab = false;
+       return;
+    }
+
+    entity.syncTransformFromView();
+
+    const propertiesToSave = {
+      color: entity.visual.color,
+      colorBW: entity.visual.colorBW,
+      rol: entity.rol,
+      isSolid: entity.visual.isSolid,
+      isSelectable: entity.visual.isSelectable,
+      ignoraNiebla: entity.visual.ignoraNiebla,
+      esEmisivo: entity.visual.esEmisivo,
+      brilloIntensidad: entity.visual.brilloIntensidad,
+      mensaje: entity.interaction.mensaje,
+      interactDistanceFPS: entity.interaction.interactDistanceFPS,
+      interactDistanceTPS: entity.interaction.interactDistanceTPS,
+      interactSequenceIdFPS: entity.interaction.interactSequenceIdFPS,
+      interactSequenceIdTPS: entity.interaction.interactSequenceIdTPS,
+      collider: entity.collider,
+      camOffset: entity.camOffset,
+      playerConfig: entity.playerConfig,
+      selectionRange: entity.selectionRange,
+      animationNames: entity.animationNames,
+      autoAnim: entity.autoAnim,
+      path: entity.visual.path,
+      scale: entity.transform.scale,
+      rotation: entity.transform.rotation
+    };
+
+    let finalProperties: any = { ...propertiesToSave };
+
+    if (entity.type.startsWith('light_') && entity.light) {
+      finalProperties = { ...finalProperties, ...entity.light };
+    } else if ((entity.type === 'video_plane' || entity.type === 'image_plane') && entity.media) {
+      finalProperties = { ...finalProperties, ...entity.media };
+    }
+
+    const data = {
       name: this.nuevoPrefabNombre,
-      type: type,
-      assetId: assetId,
-      properties: propertiesToSave
-    }).subscribe({
+      type: entity.type || 'model',
+      assetId: entity.visual.assetId || null,
+      properties: finalProperties
+    };
+
+    this.api.crearPrefab(data).subscribe({
       next: () => {
         this.nuevoPrefabNombre = '';
         this.guardandoPrefab = false;
@@ -301,5 +317,4 @@ export class GlobalTimeline implements OnInit {
         error: () => alert('Error eliminando prefab')
       });
     }
-  }
-}
+  }}

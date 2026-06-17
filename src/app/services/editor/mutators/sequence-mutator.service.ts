@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -8,19 +7,15 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 @Injectable({ providedIn: 'root' })
 export class SequenceMutatorService {
   private editorSvc = inject(EditorMapaService);
-  private entityManager = inject(EntityManagerService); // 🔥
+  private entityManager = inject(EntityManagerService); 
 
   public persistirSecuencias(objeto: AbstractMesh, sequences: PlayerClipSequence[]): void {
-    if (!objeto.metadata) objeto.metadata = {};
-    if (!objeto.metadata.playerConfig) objeto.metadata.playerConfig = cloneDefaultPlayerConfig();
-    objeto.metadata.playerConfig.sequences = JSON.parse(JSON.stringify(sequences));
-
-    // 🔥 Sincronizar con la entidad
     const entity = this.entityManager.getEntityByMesh(objeto);
     if (entity) {
-       entity.syncFromMetadata();
+       if (!entity.playerConfig) entity.playerConfig = cloneDefaultPlayerConfig();
+       entity.playerConfig.sequences = JSON.parse(JSON.stringify(sequences));
+       entity.syncToView();
     }
-
     this.editorSvc.triggerUpdate();
   }
 

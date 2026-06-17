@@ -18,7 +18,7 @@ export class PropPhysics implements OnInit, OnDestroy {
   @Input() objeto!: AbstractMesh;
   
   private editorSvc = inject(EditorMapaService);
-  private entityManager = inject(EntityManagerService); // 🔥 Inyectado
+  private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -45,24 +45,25 @@ export class PropPhysics implements OnInit, OnDestroy {
 
   syncData() {
     if (!this.objeto) return;
-    const meta = this.objeto.metadata || {};
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (!entity) return;
     
-    this.esPersonaje = meta.type === 'model' || meta.rol === 'npc' || meta.rol === 'spawn_point';
+    this.esPersonaje = entity.type === 'model' || entity.rol === 'npc' || entity.rol === 'spawn_point';
     
-    if (meta.collider) {
-      this.colliderType = meta.collider.type || 'box';
-      this.colliderSizeX = this.formatNum(meta.collider.sizeX ?? 0.5);
-      this.colliderSizeY = this.formatNum(meta.collider.sizeY ?? 0.5);
-      this.colliderSizeZ = this.formatNum(meta.collider.sizeZ ?? 0.5);
-      this.colliderOffX = this.formatNum(meta.collider.offsetX ?? 0);
-      this.colliderOffY = this.formatNum(meta.collider.offsetY ?? 0);
-      this.colliderOffZ = this.formatNum(meta.collider.offsetZ ?? 0);
+    if (entity.collider) {
+      this.colliderType = entity.collider.type || 'box';
+      this.colliderSizeX = this.formatNum(entity.collider.sizeX ?? 0.5);
+      this.colliderSizeY = this.formatNum(entity.collider.sizeY ?? 0.5);
+      this.colliderSizeZ = this.formatNum(entity.collider.sizeZ ?? 0.5);
+      this.colliderOffX = this.formatNum(entity.collider.offsetX ?? 0);
+      this.colliderOffY = this.formatNum(entity.collider.offsetY ?? 0);
+      this.colliderOffZ = this.formatNum(entity.collider.offsetZ ?? 0);
     }
 
-    if (meta.camOffset) {
-      this.camPosX = this.formatNum(meta.camOffset.x ?? 0);
-      this.camPosY = this.formatNum(meta.camOffset.y ?? 1.6);
-      this.camPosZ = this.formatNum(meta.camOffset.z ?? 0);
+    if (entity.camOffset) {
+      this.camPosX = this.formatNum(entity.camOffset.x ?? 0);
+      this.camPosY = this.formatNum(entity.camOffset.y ?? 1.6);
+      this.camPosZ = this.formatNum(entity.camOffset.z ?? 0);
     }
     
     this.cdr.detectChanges();
@@ -70,20 +71,15 @@ export class PropPhysics implements OnInit, OnDestroy {
 
   aplicarCollider() {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (!entity) return;
 
-    const colliderData = { 
+    entity.collider = { 
         type: this.colliderType, 
         sizeX: this.colliderSizeX, sizeY: this.colliderSizeY, sizeZ: this.colliderSizeZ, 
         offsetX: this.colliderOffX, offsetY: this.colliderOffY, offsetZ: this.colliderOffZ 
     };
 
-    if (entity) {
-      entity.collider = colliderData;
-      entity.syncToView(); // 🔥 Guarda y sincroniza la Entidad
-    } else {
-      if (!this.objeto.metadata) this.objeto.metadata = {};
-      this.objeto.metadata.collider = colliderData;
-    }
+    entity.syncToView(); 
     
     if (this.colliderType !== 'mesh') {
       const ws = new Vector3();
@@ -110,15 +106,10 @@ export class PropPhysics implements OnInit, OnDestroy {
 
   aplicarCamara() {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
-    const camData = { x: this.camPosX, y: this.camPosY, z: this.camPosZ };
-
-    if (entity) {
-      entity.camOffset = camData;
-      entity.syncToView(); // 🔥 Guarda y sincroniza la Entidad
-    } else {
-      if (!this.objeto.metadata) this.objeto.metadata = {};
-      this.objeto.metadata.camOffset = camData;
-    }
+    if (!entity) return;
+    
+    entity.camOffset = { x: this.camPosX, y: this.camPosY, z: this.camPosZ };
+    entity.syncToView(); 
     
     this.editorSvc.triggerUpdate();
   }

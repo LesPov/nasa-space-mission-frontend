@@ -1,11 +1,11 @@
 
-
 import { Component, Output, EventEmitter, inject, effect, ElementRef, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Node, AbstractMesh, Camera, Light, Mesh, TransformNode } from '@babylonjs/core';
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Component({
   selector: 'app-inspector-outliner',
@@ -16,6 +16,7 @@ import { EditorMapaService } from '../../../services/editor-mapa.service';
 })
 export class InspectorOutliner {
   public editorSvc = inject(EditorMapaService);
+  private entityManager = inject(EntityManagerService);
   private el = inject(ElementRef);
   private cdr = inject(ChangeDetectorRef);
   
@@ -42,7 +43,8 @@ export class InspectorOutliner {
         }
         
         while (current && current.name !== '__root__') {
-          const id = (current as any).metadata?.uid || current.uniqueId.toString();
+          const entityCurrent = this.entityManager.getEntityByMesh(current as AbstractMesh);
+          const id = entityCurrent ? entityCurrent.uid : current.uniqueId.toString();
           if (!this.nodosExpandidos.has(id)) {
             this.nodosExpandidos.add(id);
             changed = true;
@@ -50,7 +52,8 @@ export class InspectorOutliner {
           current = current.parent;
         }
         
-        const myId = (seleccionado as any).metadata?.uid || seleccionado.uniqueId.toString();
+        const entitySel = this.entityManager.getEntityByMesh(seleccionado as AbstractMesh);
+        const myId = entitySel ? entitySel.uid : seleccionado.uniqueId.toString();
         if (!this.nodosExpandidos.has(myId)) {
           this.nodosExpandidos.add(myId);
           changed = true;
@@ -74,8 +77,10 @@ export class InspectorOutliner {
     const nodosRaiz = todosLosNodos.filter(n => !n.parent || n.parent.name === '__root__');
     
     return nodosRaiz.sort((a, b) => {
-      const orderA = (a as any).metadata?.orderIndex ?? 0;
-      const orderB = (b as any).metadata?.orderIndex ?? 0;
+      const eA = this.entityManager.getEntityByMesh(a as AbstractMesh);
+      const eB = this.entityManager.getEntityByMesh(b as AbstractMesh);
+      const orderA = eA ? eA.orderIndex : 0;
+      const orderB = eB ? eB.orderIndex : 0;
       return orderA - orderB;
     });
   }
@@ -89,15 +94,20 @@ export class InspectorOutliner {
         
         if (nName.includes('proxycol') || nName.includes('debug') || nName.includes('gizmo') || nName.includes('camerapivot') || nName.startsWith('l_') || nName.startsWith('decal_')) return false;
         
-        if (nodo.metadata?.type === 'model' || nodo.metadata?.type?.startsWith('light_')) {
-           return !!child.metadata && child.metadata.type; 
+        const parentEntity = this.entityManager.getEntityByMesh(nodo as AbstractMesh);
+        const childEntity = this.entityManager.getEntityByMesh(child as AbstractMesh);
+
+        if (parentEntity && (parentEntity.type === 'model' || parentEntity.type.startsWith('light_'))) {
+           return !!childEntity; 
         }
         return true;
     });
 
     return hijosValidos.sort((a, b) => {
-      const orderA = (a as any).metadata?.orderIndex ?? 0;
-      const orderB = (b as any).metadata?.orderIndex ?? 0;
+      const eA = this.entityManager.getEntityByMesh(a as AbstractMesh);
+      const eB = this.entityManager.getEntityByMesh(b as AbstractMesh);
+      const orderA = eA ? eA.orderIndex : 0;
+      const orderB = eB ? eB.orderIndex : 0;
       return orderA - orderB;
     });
   }
@@ -111,7 +121,8 @@ export class InspectorOutliner {
   }
 
   expandirRecursivo(nodo: Node) {
-    const id = (nodo as any).metadata?.uid || nodo.uniqueId.toString();
+    const entity = this.entityManager.getEntityByMesh(nodo as AbstractMesh);
+    const id = entity ? entity.uid : nodo.uniqueId.toString();
     this.nodosExpandidos.add(id);
     this.obtenerHijos(nodo).forEach(h => this.expandirRecursivo(h));
   }
@@ -142,55 +153,70 @@ export class InspectorOutliner {
   }
   
   esBloqueado(nodo: Node): boolean { 
-    return nodo instanceof Camera || nodo instanceof Light && !nodo.metadata; 
+    const entity = this.entityManager.getEntityByMesh(nodo as AbstractMesh);
+    return nodo instanceof Camera || nodo instanceof Light && !entity; 
   }
 
   tieneCapsula(nodo: Node): boolean {
-    if (!(nodo instanceof AbstractMesh) || !nodo.metadata) return false;
-    const meta = nodo.metadata;
-    if (meta.type === 'trigger' || meta.type === 'trigger_compuesto' || meta.type === 'bubble' || meta.type === 'video_plane' || meta.type === 'image_plane') return false;
-    return !!meta.collider && meta.collider.type !== 'mesh';
+    if (!(nodo instanceof AbstractMesh)) return false;
+    const entity = this.entityManager.getEntityByMesh(nodo);
+    if (!entity) return false;
+    if (entity.type === 'trigger' || entity.type === 'trigger_compuesto' || entity.type === 'bubble' || entity.type === 'video_plane' || entity.type === 'image_plane') return false;
+    return !!entity.collider && entity.collider.type !== 'mesh';
   }
 
   tieneCamara(nodo: Node): boolean {
-    if (!(nodo instanceof AbstractMesh) || !nodo.metadata) return false;
-    const meta = nodo.metadata;
-    return meta.rol === 'npc' || meta.rol === 'spawn_point';
+    if (!(nodo instanceof AbstractMesh)) return false;
+    const entity = this.entityManager.getEntityByMesh(nodo);
+    if (!entity) return false;
+    return entity.rol === 'npc' || entity.rol === 'spawn_point';
   }
 
   tieneAnimaciones(nodo: Node): boolean {
-    if (!(nodo instanceof AbstractMesh) || !nodo.metadata) return false;
-    return !!(nodo.metadata.animationNames && nodo.metadata.animationNames.length > 0);
+    if (!(nodo instanceof AbstractMesh)) return false;
+    const entity = this.entityManager.getEntityByMesh(nodo);
+    if (!entity) return false;
+    return !!(entity.animationNames && entity.animationNames.length > 0);
   }
 
   tieneSecuencias(nodo: Node): boolean {
-    if (!(nodo instanceof AbstractMesh) || !nodo.metadata) return false;
-    const seqs = nodo.metadata.playerConfig?.sequences;
+    if (!(nodo instanceof AbstractMesh)) return false;
+    const entity = this.entityManager.getEntityByMesh(nodo);
+    if (!entity) return false;
+    const seqs = entity.playerConfig?.sequences;
     return !!(seqs && seqs.length > 0);
   }
 
   tieneLuzInterna(nodo: Node): boolean {
-    if (!(nodo instanceof AbstractMesh) || !nodo.metadata) return false;
-    return !!(nodo.metadata.type?.startsWith('light_'));
+    if (!(nodo instanceof AbstractMesh)) return false;
+    const entity = this.entityManager.getEntityByMesh(nodo);
+    if (!entity) return false;
+    return !!(entity.type?.startsWith('light_'));
   }
 
   tieneNiebla(nodo: Node): boolean {
-    if (!(nodo instanceof AbstractMesh) || !nodo.metadata) return false;
-    return !!nodo.metadata.playerConfig?.fog?.enabled;
+    if (!(nodo instanceof AbstractMesh)) return false;
+    const entity = this.entityManager.getEntityByMesh(nodo);
+    if (!entity) return false;
+    return !!entity.playerConfig?.fog?.enabled;
   }
 
   esTrigger(nodo: Node): boolean {
-    if (!(nodo instanceof AbstractMesh) || !nodo.metadata) return false;
-    return nodo.metadata.type === 'trigger' || nodo.metadata.type === 'trigger_compuesto';
+    if (!(nodo instanceof AbstractMesh)) return false;
+    const entity = this.entityManager.getEntityByMesh(nodo);
+    if (!entity) return false;
+    return entity.type === 'trigger' || entity.type === 'trigger_compuesto';
   }
 
   getTriggerConditions(nodo: Node): string[] {
     if (!this.esTrigger(nodo)) return [];
-    const meta = (nodo as AbstractMesh).metadata;
-    if (meta.isComposite) {
-      return meta.conditions || [];
+    const entity = this.entityManager.getEntityByMesh(nodo as AbstractMesh);
+    if (!entity || !entity.trigger) return [];
+    
+    if (entity.trigger.isComposite) {
+      return entity.trigger.conditions || [];
     } else {
-      return meta.condition ? [meta.condition] : [];
+      return entity.trigger.condition ? [entity.trigger.condition] : [];
     }
   }
 
@@ -207,13 +233,15 @@ export class InspectorOutliner {
   
   toggleExpandir(nodo: Node, event: Event) { 
     event.stopPropagation(); 
-    const id = (nodo as any).metadata?.uid || nodo.uniqueId.toString();
+    const entity = this.entityManager.getEntityByMesh(nodo as AbstractMesh);
+    const id = entity ? entity.uid : nodo.uniqueId.toString();
     if (this.nodosExpandidos.has(id)) this.nodosExpandidos.delete(id); 
     else this.nodosExpandidos.add(id); 
   }
   
   estaExpandido(nodo: Node): boolean { 
-    const id = (nodo as any).metadata?.uid || nodo.uniqueId.toString();
+    const entity = this.entityManager.getEntityByMesh(nodo as AbstractMesh);
+    const id = entity ? entity.uid : nodo.uniqueId.toString();
     return this.nodosExpandidos.has(id); 
   }
   
@@ -249,24 +277,24 @@ export class InspectorOutliner {
     if (nodo instanceof Camera) return '🎥';
     if (nodo instanceof Light) return '💡';
     if (nodo instanceof AbstractMesh) {
-      const meta = nodo.metadata;
-      if (!meta) return '📌';
+      const entity = this.entityManager.getEntityByMesh(nodo);
+      if (!entity) return '📌';
       
-      if (meta.type?.startsWith('light_')) return '💡'; 
-      if (meta.type === 'trigger' || meta.type === 'trigger_compuesto') return '📍';
-      if (meta.type === 'bubble') return '🫧';
-      if (meta.type === 'video_plane') return '📺';
-      if (meta.type === 'image_plane') return '🖼️';
+      if (entity.type?.startsWith('light_')) return '💡'; 
+      if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') return '📍';
+      if (entity.type === 'bubble') return '🫧';
+      if (entity.type === 'video_plane') return '📺';
+      if (entity.type === 'image_plane') return '🖼️';
       
-      if (meta.rol === 'spawn_point') return '🧍‍♂️';
-      if (meta.rol === 'npc') return '🤖';
+      if (entity.rol === 'spawn_point') return '🧍‍♂️';
+      if (entity.rol === 'npc') return '🤖';
       
-      if (meta.type === 'model') return '✨';
+      if (entity.type === 'model') return '✨';
       
-      if (meta.type === 'cube' || nodo.name.toLowerCase().includes('cubo')) return '🧊';
-      if (meta.type === 'sphere' || nodo.name.toLowerCase().includes('esfera')) return '⚽';
-      if (meta.type === 'cylinder') return '🛢️';
-      if (meta.type === 'plane') return '🗺️';
+      if (entity.type === 'cube' || nodo.name.toLowerCase().includes('cubo')) return '🧊';
+      if (entity.type === 'sphere' || nodo.name.toLowerCase().includes('esfera')) return '⚽';
+      if (entity.type === 'cylinder') return '🛢️';
+      if (entity.type === 'plane') return '🗺️';
       
       return '📐';
     }
@@ -333,7 +361,9 @@ export class InspectorOutliner {
     } else {
       this.dropAction = 'inside';
       targetEl.classList.add('drag-over-inside');
-      const id = (targetNode as any).metadata?.uid || targetNode.uniqueId.toString();
+      
+      const entity = this.entityManager.getEntityByMesh(targetNode as AbstractMesh);
+      const id = entity ? entity.uid : targetNode.uniqueId.toString();
       this.nodosExpandidos.add(id);
     }
   }
@@ -354,19 +384,25 @@ export class InspectorOutliner {
       return;
     }
 
-    if (!((this.draggedNode as any).metadata)) (this.draggedNode as any).metadata = {};
+    const draggedEntity = this.entityManager.getEntityByMesh(this.draggedNode as AbstractMesh);
+    const targetEntity = this.entityManager.getEntityByMesh(targetNode as AbstractMesh);
 
     if (this.dropAction === 'inside') {
       this.setParentSafe(this.draggedNode, targetNode);
-      (this.draggedNode as any).metadata.parentId = (targetNode as any).metadata?.uid;
-      
-      const siblings = this.obtenerHijos(targetNode);
-      (this.draggedNode as any).metadata.orderIndex = siblings.length;
-
+      if (draggedEntity) {
+          draggedEntity.parentId = targetEntity ? targetEntity.uid : null;
+          const siblings = this.obtenerHijos(targetNode);
+          draggedEntity.orderIndex = siblings.length;
+          draggedEntity.syncToView();
+      }
     } else {
       const newParent = targetNode.parent;
       this.setParentSafe(this.draggedNode, newParent);
-      (this.draggedNode as any).metadata.parentId = newParent ? (newParent as any).metadata?.uid : null;
+      const newParentEntity = newParent ? this.entityManager.getEntityByMesh(newParent as AbstractMesh) : null;
+      
+      if (draggedEntity) {
+          draggedEntity.parentId = newParentEntity ? newParentEntity.uid : null;
+      }
 
       const siblings = newParent ? this.obtenerHijos(newParent) : this.editorSvc.nodosEscena().filter(n => !n.parent || n.parent.name === '__root__');
       const arraySinArrastrado = siblings.filter(n => n !== this.draggedNode);
@@ -379,8 +415,11 @@ export class InspectorOutliner {
       }
 
       arraySinArrastrado.forEach((node, i) => {
-        if (!((node as any).metadata)) (node as any).metadata = {};
-        (node as any).metadata.orderIndex = i;
+        const ent = this.entityManager.getEntityByMesh(node as AbstractMesh);
+        if (ent) {
+            ent.orderIndex = i;
+            ent.syncToView();
+        }
       });
     }
 
@@ -413,16 +452,21 @@ export class InspectorOutliner {
     if (this.draggedNode && this.draggedNode.parent) {
       this.setParentSafe(this.draggedNode, null);
       
-      if (!((this.draggedNode as any).metadata)) (this.draggedNode as any).metadata = {};
-      (this.draggedNode as any).metadata.parentId = null;
+      const draggedEntity = this.entityManager.getEntityByMesh(this.draggedNode as AbstractMesh);
+      if (draggedEntity) {
+          draggedEntity.parentId = null;
+      }
 
       const roots = this.editorSvc.nodosEscena().filter(n => !n.parent || n.parent.name === '__root__');
       const arraySinArrastrado = roots.filter(n => n !== this.draggedNode);
       arraySinArrastrado.push(this.draggedNode);
       
       arraySinArrastrado.forEach((n, i) => { 
-        if(!((n as any).metadata)) (n as any).metadata = {};
-        (n as any).metadata.orderIndex = i; 
+        const ent = this.entityManager.getEntityByMesh(n as AbstractMesh);
+        if (ent) {
+            ent.orderIndex = i;
+            ent.syncToView();
+        }
       });
 
       this.editorSvc.triggerUpdate();

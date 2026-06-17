@@ -1,26 +1,8 @@
 
-import {
-  Component,
-  Input,
-  OnInit,
-  OnDestroy,
-  inject,
-  ChangeDetectorRef,
-  SimpleChanges,
-  OnChanges
-} from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import {
-  AbstractMesh,
-  Color3,
-  PointLight,
-  SpotLight,
-  DirectionalLight,
-  TransformNode,
-  Light,
-  Vector3
-} from '@babylonjs/core';
+import { AbstractMesh, Color3, PointLight, SpotLight, DirectionalLight, TransformNode, Light, Vector3 } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
@@ -41,7 +23,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   @Input() objeto!: AbstractMesh;
 
   private editorSvc = inject(EditorMapaService);
-  private entityManager = inject(EntityManagerService); // 🔥 Inyectado
+  private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -185,24 +167,24 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
   syncData() {
     if (!this.objeto) return;
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (!entity || !entity.light) return;
 
-    const meta = this.objeto.metadata || {};
+    this.isPoint = entity.type === 'light_point';
+    this.isSpot = entity.type === 'light_spot';
+    this.isDirectional = entity.type === 'light_directional';
 
-    this.isPoint = meta.type === 'light_point';
-    this.isSpot = meta.type === 'light_spot';
-    this.isDirectional = meta.type === 'light_directional';
-
-    this.lightColor = meta.lightColor || '#ffffff';
-    this.intensity = meta.intensity ?? 1.0;
-    this.range = meta.range ?? 50;
-    this.angle = meta.angle ?? 60;
+    this.lightColor = entity.light.lightColor || '#ffffff';
+    this.intensity = entity.light.intensity ?? 1.0;
+    this.range = entity.light.range ?? 50;
+    this.angle = entity.light.angle ?? 60;
     
-    this.lightPosX = this.formatNum(meta.lightPosX ?? 0);
-    this.lightPosY = this.formatNum(meta.lightPosY ?? 0);
-    this.lightPosZ = this.formatNum(meta.lightPosZ ?? 0);
+    this.lightPosX = this.formatNum(entity.light.lightPosX ?? 0);
+    this.lightPosY = this.formatNum(entity.light.lightPosY ?? 0);
+    this.lightPosZ = this.formatNum(entity.light.lightPosZ ?? 0);
 
-    this.attachedNodePath = meta.attachedNodePath || '';
-    this.attachedNodeName = meta.attachedNodeName || '';
+    this.attachedNodePath = entity.light.attachedNodePath || '';
+    this.attachedNodeName = entity.light.attachedNodeName || '';
 
     if (!this.attachedNodePath && this.attachedNodeName) {
       const found = this.getAllAttachableNodes().find(n => n.name === this.attachedNodeName);
@@ -274,11 +256,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       (this.objeto.material as any).emissiveColor = Color3.FromHexString(this.lightColor);
     }
 
-    // 🔥 Sincronizar hacia la Entidad
     const entity = this.entityManager.getEntityByMesh(this.objeto);
-    if (entity) {
-      if (!entity.light) entity.light = { lightColor: '#ffffff', intensity: 1.0, range: 50, angle: 60, lightPosX: 0, lightPosY: 0, lightPosZ: 0, attachedNodePath: '', attachedNodeName: '' };
-      
+    if (entity && entity.light) {
       entity.light.lightPosX = this.lightPosX;
       entity.light.lightPosY = this.lightPosY;
       entity.light.lightPosZ = this.lightPosZ;
@@ -289,18 +268,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.light.attachedNodeName = this.attachedNodeName;
       entity.light.attachedNodePath = this.attachedNodePath;
       
-      entity.syncToView(); // Aplica metadata y guarda los cambios
-    } else {
-      if (!this.objeto.metadata) this.objeto.metadata = {};
-      this.objeto.metadata.lightPosX = this.lightPosX;
-      this.objeto.metadata.lightPosY = this.lightPosY;
-      this.objeto.metadata.lightPosZ = this.lightPosZ;
-      this.objeto.metadata.lightColor = this.lightColor;
-      this.objeto.metadata.intensity = this.intensity;
-      this.objeto.metadata.range = this.range;
-      this.objeto.metadata.angle = this.angle;
-      this.objeto.metadata.attachedNodeName = this.attachedNodeName;
-      this.objeto.metadata.attachedNodePath = this.attachedNodePath;
+      entity.syncToView(); 
     }
 
     this.editorSvc.triggerUpdate();

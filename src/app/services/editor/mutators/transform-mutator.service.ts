@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -13,7 +12,7 @@ export class TransformMutatorService {
   private historialSvc = inject(HistorialService);
   private motor3dSvc = inject(Motor3dService);
   private projectionSvc = inject(SceneProjectionService);
-  private entityManager = inject(EntityManagerService); // 🔥
+  private entityManager = inject(EntityManagerService); 
 
   public aplicarPosicion(objeto: AbstractMesh, localPos: { x: number, y: number, z: number }): void {
     const entity = this.entityManager.getEntityByMesh(objeto);
@@ -21,7 +20,7 @@ export class TransformMutatorService {
     this.historialSvc.registrarCambioTransform(objeto, () => {
       if (entity) {
         entity.transform.position = { ...localPos };
-        entity.syncToView(); // Aplica el cambio y actualiza el metadata
+        entity.syncToView(); 
       } else {
         objeto.position.set(localPos.x, localPos.y, localPos.z);
       }
@@ -55,7 +54,6 @@ export class TransformMutatorService {
     const entity = this.entityManager.getEntityByMesh(objeto);
     
     this.historialSvc.registrarCambioTransform(objeto, () => {
-      // 🔥 FIX SCALING: Se aplica directamente a la escala local. Nada de WorldMatrix.
       if (entity) {
          entity.transform.scale = { x: localEscReal.x, y: localEscReal.y, z: localEscReal.z };
          entity.syncToView();
@@ -103,7 +101,7 @@ export class TransformMutatorService {
     const activeColorHex = isBW ? config.colorBW : config.color;
 
     if (objeto.material && objeto.material instanceof StandardMaterial) {
-      if (objeto.metadata.type === 'image_plane') {
+      if (entity.type === 'image_plane') {
         const decalMat = objeto.metadata.decalMaterial as StandardMaterial;
         if (decalMat) {
           const tex = (decalMat.diffuseTexture || decalMat.opacityTexture) as any;

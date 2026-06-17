@@ -1,18 +1,9 @@
 import { Injectable } from '@angular/core';
 import {
-  Engine,
-  Scene,
-  ArcRotateCamera,
-  Vector3,
-  HemisphericLight,
-  Color4,
-  UniversalCamera,
-  DefaultRenderingPipeline,
-  Color3,
-  ColorCurves,
-  GlowLayer,
-  Mesh
+  Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4,
+  UniversalCamera, DefaultRenderingPipeline, Color3, ColorCurves, GlowLayer
 } from '@babylonjs/core';
+import { DynamicCameraBehavior } from '../core/engine/behaviors/dynamic-camera.behavior';
 
 @Injectable({
   providedIn: 'root'
@@ -30,7 +21,7 @@ export class Motor3dService {
   public currentFps: number = 0;
 
   private readonly TPS_MIN_RADIUS = 0.5;
-  private readonly TPS_MAX_RADIUS = 150; // 🔥 Ampliado para permitir zooms más lejanos en TPS si es necesario
+  private readonly TPS_MAX_RADIUS = 150; 
 
   iniciarMotor(canvas: HTMLCanvasElement): void {
     this.engine = new Engine(canvas, true, {
@@ -49,17 +40,18 @@ export class Motor3dService {
     this.scene.gravity = new Vector3(0, -0.25, 0);
     this.scene.skipPointerMovePicking = true;
 
-    // 🔥 CÁMARA DEL EDITOR: Ahora soporta escalas MASIVAS (Mundo Abierto)
+    // --- CÁMARA EDITOR ---
     this.editorCamera = new ArcRotateCamera('editorCamera', Math.PI / 4, Math.PI / 3, 25, Vector3.Zero(), this.scene);
-    this.editorCamera.minZ = 0.1; // Subido a 0.1 para evitar Z-fighting en mundos gigantes
-    this.editorCamera.maxZ = 500000; // 🔥 Visión hasta 500 kilómetros
+    this.editorCamera.minZ = 0.1; 
+    this.editorCamera.maxZ = 500000; 
     this.editorCamera.inertia = 0.8;
     this.editorCamera.panningInertia = 0.8;
     this.editorCamera.attachControl(canvas, true);
     this.editorCamera._panningMouseButton = 2;
     this.editorCamera.allowUpsideDown = false;
+    this.editorCamera.addBehavior(new DynamicCameraBehavior()); // 🔥 Nueva Arquitectura
 
-    // 🔥 CÁMARA FPS MASIVA
+    // --- CÁMARA FPS ---
     this.playerCameraFPS = new UniversalCamera('playerCameraFPS', new Vector3(0, 0, 0), this.scene);
     this.playerCameraFPS.minZ = 0.05;
     this.playerCameraFPS.maxZ = 500000;
@@ -72,7 +64,7 @@ export class Motor3dService {
     this.playerCameraFPS.applyGravity = false;
     this.playerCameraFPS.checkCollisions = false;
 
-    // 🔥 CÁMARA TPS MASIVA
+    // --- CÁMARA TPS ---
     this.playerCameraTPS = new ArcRotateCamera('playerCameraTPS', -Math.PI / 2, Math.PI / 2.5, 10, Vector3.Zero(), this.scene);
     this.playerCameraTPS.minZ = 0.05;
     this.playerCameraTPS.maxZ = 500000;
@@ -83,13 +75,13 @@ export class Motor3dService {
     this.playerCameraTPS.upperRadiusLimit = this.TPS_MAX_RADIUS;
     this.playerCameraTPS._panningMouseButton = 2;
     this.playerCameraTPS.allowUpsideDown = false;
-
     this.playerCameraTPS.checkCollisions = true; 
     this.playerCameraTPS.collisionRadius = new Vector3(0.15, 0.15, 0.15);
     this.playerCameraTPS.upperBetaLimit = (Math.PI / 2) + 0.4; 
 
     this.scene.activeCamera = this.editorCamera;
 
+    // --- PIPELINE Y RENDER ---
     this.renderingPipeline = new DefaultRenderingPipeline('defaultPipeline', false, this.scene, this.scene.cameras);
     this.renderingPipeline.fxaaEnabled = true; 
     this.renderingPipeline.samples = 2;
@@ -99,80 +91,8 @@ export class Motor3dService {
     this.glowLayer = new GlowLayer("glow", this.scene, { mainTextureFixedSize: 1024, blurKernelSize: 32 });
     this.glowLayer.intensity = 0.6; 
 
-    this.scene.onBeforeRenderObservable.add(() => {
-      // 🔥 MATEMÁTICAS PARA NAVEGACIÓN MASIVA EN EL EDITOR
-      if (this.scene.activeCamera === this.editorCamera) {
-        const radius = Math.max(0.1, this.editorCamera.radius);
-        
-        // A mayor radio (más lejos), wheelPrecision DEBE BAJAR para que el zoom sea rapidísimo.
-        // PanningSensibility también DEBE BAJAR para moverse kilómetros al arrastrar.
-        this.editorCamera.wheelPrecision = Math.max(0.01, 50 / radius);
-        this.editorCamera.panningSensibility = Math.max(0.5, 2000 / radius);
-        this.editorCamera.angularSensibilityX = Math.max(500, 3000 / Math.sqrt(radius));
-        this.editorCamera.angularSensibilityY = Math.max(500, 3000 / Math.sqrt(radius));
-      }
-
-      const cam = this.scene.activeCamera;
-      const useFogFade = this.scene.fogMode !== Scene.FOGMODE_NONE && cam;
-      const fogStart = this.scene.fogStart;
-      const fogEnd = this.scene.fogEnd;
-      const time = performance.now() * 0.003;
-
-      this.scene.meshes.forEach(m => {
-          if (!m.metadata) return;
-
-          if (m.metadata.type === 'bubble' || m.metadata.type?.startsWith('light_') || m.metadata.type === 'video_plane') {
-              if (useFogFade && !m.metadata.ignoraNiebla) {
-                  const dist = Vector3.Distance(cam.globalPosition, m.getAbsolutePosition());
-                  let targetVis = 1;
-                  if (dist >= fogEnd) {
-                      targetVis = 0;
-                  } else if (dist > fogStart) {
-                      targetVis = 1.0 - ((dist - fogStart) / (fogEnd - fogStart));
-                      targetVis = Math.pow(targetVis, 1.2); 
-                  }
-                  
-                  m.visibility = targetVis;
-                  m.getChildMeshes().forEach(child => child.visibility = targetVis);
-              } else {
-                  m.visibility = 1;
-                  m.getChildMeshes().forEach(child => child.visibility = 1);
-              }
-          }
-
-          if (m.metadata.type === 'bubble' && m.isVisible) {
-              if (!m.metadata.baseScaleX) {
-                  m.metadata.baseScaleX = m.scaling.x;
-                  m.metadata.baseScaleY = m.scaling.y;
-                  m.metadata.baseScaleZ = m.scaling.z;
-              }
-              
-              const isHovered = m.metadata.isHovered === true;
-              const targetHoverScale = isHovered ? 1.15 : 1.0; 
-              
-              if (m.metadata.currentHoverScale === undefined) m.metadata.currentHoverScale = 1.0;
-              m.metadata.currentHoverScale += (targetHoverScale - m.metadata.currentHoverScale) * 0.15;
-              
-              const pulse = 1 + Math.sin(time + m.uniqueId) * 0.025; 
-              const finalScale = pulse * m.metadata.currentHoverScale;
-              
-              m.scaling.set(
-                  m.metadata.baseScaleX * finalScale,
-                  m.metadata.baseScaleY * finalScale,
-                  m.metadata.baseScaleZ * finalScale
-              );
-              
-              m.billboardMode = Mesh.BILLBOARDMODE_ALL; 
-          }
-      });
-    });
-
     this.scene.onBeforeCameraRenderObservable.add((camera) => {
-      if (camera.name === 'editorCamera') {
-        this.scene.fogEnabled = false;
-      } else {
-        this.scene.fogEnabled = true;
-      }
+      this.scene.fogEnabled = camera.name !== 'editorCamera';
     });
 
     const ambientLight = new HemisphericLight('globalLight', new Vector3(0, 1, 0), this.scene);
@@ -185,9 +105,7 @@ export class Motor3dService {
       this.currentFps = this.engine.getFps();
     });
 
-    window.addEventListener('resize', () => {
-      this.forzarRedimension();
-    });
+    window.addEventListener('resize', () => this.forzarRedimension());
   }
 
   setVisualMode(mode: 'normal' | 'bw'): void {

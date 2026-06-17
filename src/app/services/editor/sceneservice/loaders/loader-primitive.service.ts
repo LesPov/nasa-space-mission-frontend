@@ -4,6 +4,8 @@ import { Motor3dService } from '../../../motor-3d.service';
 import { EditorStateService } from '../../editor-state.service';
 import { SceneUtilsService } from '../scene-utils.service';
 import { SceneProjectionService } from '../scene-projection.service';
+import { BubblePulseBehavior } from '../../../../core/engine/behaviors/bubble-pulse.behavior';
+import { DistanceFadeBehavior } from '../../../../core/engine/behaviors/distance-fade.behavior';
 
 @Injectable({ providedIn: 'root' })
 export class LoaderPrimitiveService {
@@ -100,7 +102,6 @@ export class LoaderPrimitiveService {
       mesh.metadata.imageUrl = obj.properties?.imageUrl || obj.properties?.path || '';
     }
     
-    // 🔥 FIX VITAL LUZ SIN MODELO: Rescatar la posición local guardada
     if (obj.type?.startsWith('light_')) {
       mesh.metadata.lightColor = lightColorHex;
       mesh.metadata.intensity = obj.properties?.intensity ?? 1.0;
@@ -122,7 +123,11 @@ export class LoaderPrimitiveService {
     mesh.ellipsoid = new Vector3((savedCollider.sizeX ?? 0.5) * scaleX, (savedCollider.sizeY ?? 0.5) * scaleY, (savedCollider.sizeZ ?? 0.5) * scaleZ);
     mesh.ellipsoidOffset = new Vector3((savedCollider.offsetX ?? 0) * scaleX, (savedCollider.offsetY ?? 0) * scaleY, (savedCollider.offsetZ ?? 0) * scaleZ);
 
+    // 🔥 ADJUNTANDO BEHAVIORS SEGÚN TIPO
     if (obj.type === 'bubble') {
+      mesh.addBehavior(new BubblePulseBehavior());
+      mesh.addBehavior(new DistanceFadeBehavior());
+
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = new Color3(0.9, 0.95, 1.0);
       mat.diffuseColor = new Color3(0, 0, 0);
@@ -134,8 +139,10 @@ export class LoaderPrimitiveService {
       mat.opacityFresnelParameters.bias = 0.2;
       mat.opacityFresnelParameters.power = 1.5;
       mesh.material = mat;
-      mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
-    } else if (obj.type === 'video_plane') {
+    } 
+    else if (obj.type === 'video_plane') {
+      mesh.addBehavior(new DistanceFadeBehavior());
+      
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = new Color3(0, 0, 0);
       mat.disableLighting = true;
@@ -146,7 +153,8 @@ export class LoaderPrimitiveService {
         mat.diffuseColor = new Color3(0.1, 0.1, 0.1);
       }
       mesh.material = mat;
-    } else if (obj.type === 'image_plane') {
+    } 
+    else if (obj.type === 'image_plane') {
       const mat = new StandardMaterial('decalMat_' + obj.name, scene);
       const activeColorAUsar = scene.metadata?.globalVisualMode === 'bw' ? mesh.metadata.colorBW : mesh.metadata.color;
       const imageUrl = mesh.metadata.imageUrl ? 'http://localhost:4000' + mesh.metadata.imageUrl : '';
@@ -160,7 +168,10 @@ export class LoaderPrimitiveService {
       mesh.alwaysSelectAsActiveMesh = true;
 
       this.projectionSvc.aplicarLogicaHolograma(mesh, scene);
-    } else if (obj.type?.startsWith('light_')) {
+    } 
+    else if (obj.type?.startsWith('light_')) {
+      mesh.addBehavior(new DistanceFadeBehavior());
+
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = Color3.FromHexString(lightColorHex);
       mat.wireframe = true;
@@ -180,11 +191,11 @@ export class LoaderPrimitiveService {
       lightObj.specular = new Color3(0, 0, 0);
       if (lightObj.range !== undefined) lightObj.range = obj.properties?.range ?? 50;
 
-      // 🔥 FIX VITAL LUZ SIN MODELO: Restaurar la posición real en el mundo 3D
       if (lightObj.position) {
           lightObj.position.copyFromFloats(mesh.metadata.lightPosX, mesh.metadata.lightPosY, mesh.metadata.lightPosZ);
       }
-    } else {
+    } 
+    else {
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       const activeHexToApply = scene.metadata?.globalVisualMode === 'bw' ? mesh.metadata.colorBW : mesh.metadata.color;
       const c3 = Color3.FromHexString(activeHexToApply);

@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { StandardMaterial, VideoTexture, Color3, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../../services/motor-3d.service';
 import { GameSession } from './game-session';
-import { PlayerCameraManagerService } from '../../services/editor/playerservice/player-camera.service';
+import { PlayerCameraManagerService } from './systems/player-camera.service';
 import { EntityManagerService } from './entities/entity-manager.service';
 import { GameEntity } from './entities/game.entity';
 import { EpisodiosService } from '../../services/api/episodios';

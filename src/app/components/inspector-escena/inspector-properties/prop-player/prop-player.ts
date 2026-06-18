@@ -4,7 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
-import { PlayerRuntimeConfig, cloneDefaultPlayerConfig, mergePlayerConfig, FogLevel } from '../../../../services/editor/player-config.model';
+import { PlayerRuntimeConfig, cloneDefaultPlayerConfig, mergePlayerConfig, FogLevel } from '../../../../core/engine/models/player-config.model';
 import { PlayerConfigMutatorService } from '../../../../services/editor/mutators/player-config-mutator.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 

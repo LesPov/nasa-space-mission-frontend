@@ -1,11 +1,11 @@
 
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
-import { Motor3dService } from '../../motor-3d.service';
-import { GameSession } from '../../../core/engine/game-session';
-import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
-import { GameEntity } from '../../../core/engine/entities/game.entity';
-import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
+import { Motor3dService } from '../../../services/motor-3d.service';
+import { GameSession } from '../game-session';
+import { EntityManagerService } from '../entities/entity-manager.service';
+import { GameEntity } from '../entities/game.entity';
+import { GameEventBusService } from '../events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInteractionService {

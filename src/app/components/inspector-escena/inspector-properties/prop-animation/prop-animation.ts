@@ -6,7 +6,7 @@ import { AbstractMesh, AnimationGroup } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorPreviewService } from '../../../../services/editor/editor-preview.service';
-import { PlayerActionKey, PlayerRuntimeConfig, cloneDefaultPlayerConfig, mergePlayerConfig, normalizeAnimBinding } from '../../../../services/editor/player-config.model';
+import { PlayerActionKey, PlayerRuntimeConfig, cloneDefaultPlayerConfig, mergePlayerConfig, normalizeAnimBinding } from '../../../../core/engine/models/player-config.model';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 

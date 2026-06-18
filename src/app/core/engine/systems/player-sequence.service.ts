@@ -1,11 +1,11 @@
 
 import { Injectable, inject, Injector } from '@angular/core';
 import { Mesh, Quaternion, Vector3, UniversalCamera, Light, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
-import { GameSession } from '../../../core/engine/game-session';
-import { Motor3dService } from '../../motor-3d.service';
-import { PlayerClipSequence, PlayerSequenceStep, cloneDefaultPlayerConfig } from '../player-config.model';
-import { GameStateService } from '../game-state.service';
-import { GameEntity } from '../../../core/engine/entities/game.entity';
+import { GameSession } from '../game-session';
+import { Motor3dService } from '../../../services/motor-3d.service';
+import { PlayerClipSequence, PlayerSequenceStep, cloneDefaultPlayerConfig } from '../models/player-config.model';
+import { GameStateService } from '../state/game-state.service';
+import { GameEntity } from '../entities/game.entity';
 
 export interface SeqRuntime {
   step: PlayerSequenceStep | null;

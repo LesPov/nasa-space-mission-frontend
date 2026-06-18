@@ -2,7 +2,7 @@ import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
-import { FogLevel } from '../player-config.model';
+import { FogLevel } from '../../../core/engine/models/player-config.model';
 import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
 import { GameSession } from '../../../core/engine/game-session';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';

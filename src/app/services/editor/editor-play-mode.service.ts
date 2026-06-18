@@ -7,8 +7,8 @@ import { EditorStateService } from './editor-state.service';
 import { EditorCameraService } from './editor-camera.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { RuntimeEngineService } from '../../core/engine/runtime-engine.service';
-import { PlayerTriggerService } from './player-trigger.service';
-import { PlayerBubbleService } from './playerservice/player-bubble';
+import { PlayerTriggerService } from '../../core/engine/systems/player-trigger.service';
+import { PlayerBubbleService } from '../../core/engine/systems/player-bubble.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {

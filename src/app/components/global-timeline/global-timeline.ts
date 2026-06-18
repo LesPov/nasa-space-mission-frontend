@@ -6,7 +6,7 @@ import { EpisodiosService } from '../../services/api/episodios';
 import { EditorMapaService } from '../../services/editor-mapa.service';
 import { AbstractMesh, Vector3, AnimationGroup, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../../services/motor-3d.service';
-import { PlayerClipSequence, createPlayerSequence, createSequenceStep, cloneDefaultPlayerConfig, mergePlayerConfig } from '../../services/editor/player-config.model';
+import { PlayerClipSequence, createPlayerSequence, createSequenceStep, cloneDefaultPlayerConfig, mergePlayerConfig } from '../../core/engine/models/player-config.model';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { EditorPreviewService } from '../../services/editor/editor-preview.service';
 

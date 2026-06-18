@@ -1,9 +1,9 @@
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
-import { GameEntity } from '../../../core/engine/entities/game.entity';
-import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
-import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
+import { GameEntity } from '../entities/game.entity';
+import { LoopManagerService, GamePhase } from '../behaviors/services/loop-manager.service';
+import { GameEventBusService } from '../events/game-event-bus.service';
 import { PlayerInteractionService } from './player-interaction.service';
 
 @Injectable({ providedIn: 'root' })

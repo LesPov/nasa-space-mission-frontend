@@ -4,7 +4,7 @@ import {
   AbstractMesh, Color3, DirectionalLight, FresnelParameters, Matrix, Mesh, MeshBuilder, PointLight, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3, VideoTexture, Texture
 } from '@babylonjs/core';
 import '@babylonjs/loaders';
-import { cloneDefaultPlayerConfig, mergePlayerConfig } from '../player-config.model';
+import { cloneDefaultPlayerConfig, mergePlayerConfig } from '../../../core/engine/models/player-config.model';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { HistorialService } from '../../historial.service';

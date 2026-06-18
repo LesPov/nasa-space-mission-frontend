@@ -7,7 +7,7 @@ import { RuntimeEngineService } from '../../../core/engine/runtime-engine.servic
 import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { Subscription } from 'rxjs';
 import { GameSession } from '../../../core/engine/game-session';
-import { PlayerInteractionService } from '../../../services/editor/playerservice/player-interaction.service';
+import { PlayerInteractionService } from '../../../core/engine/systems/player-interaction.service';
 import { Motor3dService } from '../../../services/motor-3d.service';
 
 // --- NUEVOS COMPONENTES UI EXTRAÍDOS ---

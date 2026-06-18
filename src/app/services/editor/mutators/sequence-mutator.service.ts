@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
-import { cloneDefaultPlayerConfig, createPlayerSequence, createSequenceStep, PlayerClipSequence } from '../player-config.model';
+import { cloneDefaultPlayerConfig, createPlayerSequence, createSequenceStep, PlayerClipSequence } from '../../../core/engine/models/player-config.model';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })

@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
-import { FogLevel, PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../player-config.model';
+import { FogLevel, PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../../../core/engine/models/player-config.model';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })

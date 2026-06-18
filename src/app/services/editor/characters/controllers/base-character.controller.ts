@@ -1,7 +1,7 @@
 
 import { Mesh } from '@babylonjs/core';
-import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../../player-config.model';
-import { EstadoFisico } from '../../playerservice/player-physics.service';
+import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../../../../core/engine/models/player-config.model';
+import { EstadoFisico } from '../../../../core/engine/systems/player-physics.service';
 import { CharacterContext } from '../character-context.interface';
 import { GameEntity } from '../../../../core/engine/entities/game.entity';
  

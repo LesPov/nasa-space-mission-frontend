@@ -1,6 +1,6 @@
 
 import { Injectable } from '@angular/core';
-import { mergePlayerConfig } from '../player-config.model';
+import { mergePlayerConfig } from '../../../core/engine/models/player-config.model';
 
 @Injectable({ providedIn: 'root' })
 export class SceneUtilsService {

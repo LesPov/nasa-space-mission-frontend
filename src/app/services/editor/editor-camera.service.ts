@@ -9,7 +9,7 @@ import {
 } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
-import { PlayerCameraManagerService } from './playerservice/player-camera.service';
+import { PlayerCameraManagerService } from '../../core/engine/systems/player-camera.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorCameraService {

@@ -6,19 +6,19 @@ import { BaseCharacterController } from '../../services/editor/characters/contro
 import { PlayerController } from '../../services/editor/characters/controllers/player.controller';
 import { NpcController } from '../../services/editor/characters/controllers/npc.controller';
 import { LoopManagerService } from './behaviors/services/loop-manager.service';
-import { ObjectAnimationService } from '../../services/editor/object-animation.service';
+import { ObjectAnimationService } from './systems/object-animation.service';
 import { GameEventBusService } from './events/game-event-bus.service';
 
 // Importación de servicios para la inyección del CharacterContext
 import { Motor3dService } from '../../services/motor-3d.service';
-import { PlayerAnimationService } from '../../services/editor/playerservice/player-animation.service';
-import { PlayerPhysicsService } from '../../services/editor/playerservice/player-physics.service';
-import { PlayerSequenceService } from '../../services/editor/playerservice/player-sequence.service';
-import { PlayerInputService } from '../../services/editor/playerservice/player-input.service';
-import { PlayerCameraManagerService } from '../../services/editor/playerservice/player-camera.service';
-import { PlayerInteractionService } from '../../services/editor/playerservice/player-interaction.service';
-import { PlayerTriggerService } from '../../services/editor/player-trigger.service';
-import { PlayerBubbleService } from '../../services/editor/playerservice/player-bubble';
+import { PlayerAnimationService } from './systems/player-animation.service';
+import { PlayerPhysicsService } from './systems/player-physics.service';
+import { PlayerSequenceService } from './systems/player-sequence.service';
+import { PlayerInputService } from './systems/player-input.service';
+import { PlayerCameraManagerService } from './systems/player-camera.service';
+import { PlayerInteractionService } from './systems/player-interaction.service';
+import { PlayerTriggerService } from './systems/player-trigger.service';
+import { PlayerBubbleService } from './systems/player-bubble.service';
 import { CharacterContext } from '../../services/editor/characters/character-context.interface';
 import { ToolsFogService } from '../../services/editor/toolsservice/tools-fog.service';
 

@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Node } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
-import { PlayerInputService } from './playerservice/player-input.service';
+import { PlayerInputService } from '../../core/engine/systems/player-input.service';
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })

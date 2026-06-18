@@ -1,13 +1,13 @@
 
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
-import { GameSession } from '../../core/engine/game-session';
-import { PlayerSequenceService } from './playerservice/player-sequence.service';
-import { GameStateService } from './game-state.service';
-import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
-import { GameEntity } from '../../core/engine/entities/game.entity';
-import { LoopManagerService, GamePhase } from '../../core/engine/behaviors/services/loop-manager.service';
-import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
+import { GameSession } from '../game-session';
+import { PlayerSequenceService } from './player-sequence.service';
+import { GameStateService } from '../state/game-state.service';
+import { EntityManagerService } from '../entities/entity-manager.service';
+import { GameEntity } from '../entities/game.entity';
+import { LoopManagerService, GamePhase } from '../behaviors/services/loop-manager.service';
+import { GameEventBusService } from '../events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService {

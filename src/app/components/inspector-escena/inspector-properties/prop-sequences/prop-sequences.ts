@@ -4,7 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh, AnimationGroup } from '@babylonjs/core';
 import { EditorPreviewService } from '../../../../services/editor/editor-preview.service';
-import { PlayerClipSequence, mergePlayerConfig } from '../../../../services/editor/player-config.model';
+import { PlayerClipSequence, mergePlayerConfig } from '../../../../core/engine/models/player-config.model';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { SequenceMutatorService } from '../../../../services/editor/mutators/sequence-mutator.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';

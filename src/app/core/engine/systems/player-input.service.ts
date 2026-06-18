@@ -1,7 +1,7 @@
 
 import { Injectable, inject, Injector } from '@angular/core';
 import { Observer, KeyboardInfo, Scene, KeyboardEventTypes } from '@babylonjs/core';
-import { GameSession } from '../../../core/engine/game-session';
+import { GameSession } from '../game-session';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInputService {

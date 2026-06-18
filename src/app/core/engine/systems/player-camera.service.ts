@@ -3,12 +3,12 @@ import {
   Mesh, Vector3, Matrix, TransformNode, UniversalCamera,
   Animation, CubicEase, EasingFunction, Quaternion, MeshBuilder
 } from '@babylonjs/core';
-import { Motor3dService } from '../../motor-3d.service';
-import { cloneDefaultPlayerConfig } from '../player-config.model';
+import { Motor3dService } from '../../../services/motor-3d.service';
+import { cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { EstadoFisico } from './player-physics.service';
 import { SeqRuntime } from './player-sequence.service';
-import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
-import { GameEntity } from '../../../core/engine/entities/game.entity';
+import { LoopManagerService, GamePhase } from '../behaviors/services/loop-manager.service';
+import { GameEntity } from '../entities/game.entity';
  
 @Injectable({ providedIn: 'root' })
 export class PlayerCameraManagerService {

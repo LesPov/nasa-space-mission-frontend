@@ -1,5 +1,5 @@
 import { AbstractMesh, Vector3, Quaternion } from '@babylonjs/core';
-import { PlayerRuntimeConfig } from '../../../services/editor/player-config.model';
+import { PlayerRuntimeConfig } from '../models/player-config.model';
 
 export interface TransformData {
   position: { x: number; y: number; z: number };

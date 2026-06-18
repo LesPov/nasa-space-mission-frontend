@@ -1,8 +1,8 @@
 
 import { Injectable, inject } from '@angular/core';
 import { GameEntity } from '../../core/engine/entities/game.entity';
-import { PlayerSequenceService } from './playerservice/player-sequence.service';
-import { PlayerAnimationService } from './playerservice/player-animation.service';
+import { PlayerSequenceService } from '../../core/engine/systems/player-sequence.service';
+import { PlayerAnimationService } from '../../core/engine/systems/player-animation.service';
 import { LoopManagerService, GamePhase } from '../../core/engine/behaviors/services/loop-manager.service';
 import { Motor3dService } from '../motor-3d.service';
 

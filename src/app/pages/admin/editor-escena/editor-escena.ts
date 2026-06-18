@@ -17,7 +17,7 @@ import { GlobalTimeline } from '../../../components/global-timeline/global-timel
 import { GameSession } from '../../../core/engine/game-session';
 import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { EditorPlayModeService } from '../../../services/editor/editor-play-mode.service';
-import { PlayerInteractionService } from '../../../services/editor/playerservice/player-interaction.service';
+import { PlayerInteractionService } from '../../../core/engine/systems/player-interaction.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 // --- NUEVOS COMPONENTES UI EXTRAÍDOS ---

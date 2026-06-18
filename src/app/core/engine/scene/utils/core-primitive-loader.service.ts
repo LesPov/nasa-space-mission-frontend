@@ -1,3 +1,4 @@
+// src/app/core/engine/scene/utils/core-primitive-loader.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DirectionalLight, FresnelParameters, Mesh, MeshBuilder, PointLight, SpotLight, StandardMaterial, Texture, Vector3, VideoTexture } from '@babylonjs/core';
@@ -113,8 +114,8 @@ export class CorePrimitiveLoaderService {
     mesh.ellipsoidOffset = new Vector3((entity.collider.offsetX ?? 0) * scaleX, (entity.collider.offsetY ?? 0) * scaleY, (entity.collider.offsetZ ?? 0) * scaleZ);
 
     if (obj.type === 'bubble') {
-      mesh.addBehavior(new BubblePulseBehavior(this.loopManager));
-      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager));
+      mesh.addBehavior(new BubblePulseBehavior(this.loopManager, this.entityManager));
+      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager, this.entityManager));
 
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = new Color3(0.9, 0.95, 1.0);
@@ -130,7 +131,7 @@ export class CorePrimitiveLoaderService {
       mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
     } 
     else if (obj.type === 'video_plane') {
-      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager));
+      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager, this.entityManager));
       
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = new Color3(0, 0, 0);
@@ -159,7 +160,7 @@ export class CorePrimitiveLoaderService {
       this.projectionSvc.aplicarLogicaHolograma(mesh, scene);
     } 
     else if (obj.type?.startsWith('light_') && entity.light) {
-      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager));
+      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager, this.entityManager));
 
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = Color3.FromHexString(entity.light.lightColor);

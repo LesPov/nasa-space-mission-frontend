@@ -1,12 +1,16 @@
+// src/app/services/editor/toolsservice/tools-highlight.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, HighlightLayer, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsHighlightService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
+  private entityManager = inject(EntityManagerService);
 
   public hlHover!: HighlightLayer;
   public hlSelected!: HighlightLayer;
@@ -48,7 +52,9 @@ export class ToolsHighlightService {
     const colorSelected = Color3.FromHexString('#fbbf24');
 
     const addHighlightToAllVisible = (mesh: Mesh, hl: HighlightLayer, color: Color3) => {
-      const isTrigger = mesh.metadata?.type === 'trigger' || mesh.name.toLowerCase().includes('trigger');
+      const entity = this.entityManager.getEntityByMesh(mesh);
+      const isTrigger = entity?.type === 'trigger' || mesh.name.toLowerCase().includes('trigger');
+      
       // 🔥 LÓGICA DE PRESELECCIÓN: Los triggers solo se iluminan en MODO EDITOR puro.
       const canHighlight = mode === 'EDITOR' || !isTrigger;
 
@@ -56,7 +62,8 @@ export class ToolsHighlightService {
         hl.addMesh(mesh, color);
       }
       mesh.getChildMeshes().forEach(c => {
-        const childIsTrigger = c.metadata?.type === 'trigger' || c.name.toLowerCase().includes('trigger');
+        const cEntity = this.entityManager.getEntityByMesh(c);
+        const childIsTrigger = cEntity?.type === 'trigger' || c.name.toLowerCase().includes('trigger');
         const childCanHighlight = mode === 'EDITOR' || !childIsTrigger;
 
         if (c instanceof Mesh && c.isVisible && !c.name.includes('proxyCol') && !c.name.includes('debug') && !c.name.includes('cameraPivot') && childCanHighlight) {

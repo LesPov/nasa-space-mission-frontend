@@ -1,3 +1,5 @@
+// src/app/services/editor/editor-camera.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import {
   Vector3,
@@ -10,20 +12,23 @@ import {
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { PlayerCameraManagerService } from '../../core/engine/systems/player-camera.service';
+import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorCameraService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
   private playerCamSvc = inject(PlayerCameraManagerService);
+  private entityManager = inject(EntityManagerService);
 
   private ultimaPosCamaraLibre: Vector3 | null = null;
   private ultimoTargetCamaraLibre: Vector3 | null = null;
 
   private obtenerEncuadreObjeto(objeto: AbstractMesh): { target: Vector3; radius: number } {
     objeto.computeWorldMatrix(true);
-    const metadata: any = objeto.metadata || {};
-    const collider = metadata.collider;
+    
+    const entity = this.entityManager.getEntityByMesh(objeto);
+    const collider = entity?.collider;
 
     if (collider && collider.type !== 'mesh') {
       const colOffsetX = Number(collider.offsetX || 0);

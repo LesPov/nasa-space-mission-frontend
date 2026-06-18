@@ -1,3 +1,5 @@
+// src/app/services/editor/editor-tools.service.ts
+
 import { Injectable, inject, effect } from '@angular/core';
 import { DirectionalLight, KeyboardEventTypes, Matrix, Mesh, PointerEventTypes, SpotLight, TransformNode, Vector3, Ray } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
@@ -10,13 +12,15 @@ import { ToolsFogService } from './toolsservice/tools-fog.service';
 import { ToolsGizmoService } from './toolsservice/tools-gizmo.service';
 import { ToolsHighlightService } from './toolsservice/tools-highlight.service';
 import { ToolsSelectionService } from './toolsservice/tools-selection.service';
-
+import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
+ 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
   private sceneSvc = inject(EditorSceneService);
   private cameraSvc = inject(EditorCameraService);
+  private entityManager = inject(EntityManagerService);
 
   // Sub-Servicios Orquestados
   private selectionSvc = inject(ToolsSelectionService);
@@ -50,7 +54,6 @@ export class EditorToolsService {
     });
   }
 
-  // 🔥 MÉTODO FALTANTE AÑADIDO: Limpia los procesos visuales y la niebla al salir al menú
   public limpiarEstado(): void {
     this.gizmoSvc.attachGizmoToCurrentSelection(null, null);
     this.debugSvc.actualizarDebugMeshes(null);
@@ -82,7 +85,12 @@ export class EditorToolsService {
 
             const n = mesh.name.toLowerCase();
             if (n.includes('gizmo') || n.includes('proxycol') || n.includes('suelo') || n.includes('skybox') || n.includes('fogshell') || n.includes('fogwall')) return false;
-            if (ignoreTriggers && (n.includes('trigger') || mesh.metadata?.type === 'trigger')) return false;
+            
+            if (ignoreTriggers) {
+               const entity = this.entityManager.getEntityByMesh(mesh);
+               if (entity?.type === 'trigger' || n.includes('trigger')) return false;
+            }
+            
             return true;
         });
         if (hit && hit.hit && hit.pickedMesh) {

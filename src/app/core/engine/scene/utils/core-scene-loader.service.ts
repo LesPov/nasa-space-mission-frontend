@@ -1,3 +1,4 @@
+// src/app/core/engine/scene/utils/core-scene-loader.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { Color4, Mesh, Vector3, HemisphericLight, Color3, Scene, MeshBuilder } from '@babylonjs/core';
@@ -105,7 +106,8 @@ export class CoreSceneLoaderService {
 
     setTimeout(() => {
       mallasCreadas.forEach((mesh) => {
-        if (mesh.metadata?.type === 'image_plane' && mesh.metadata.updateDecal) {
+        const entity = this.entityManager.getEntityByMesh(mesh);
+        if (entity?.type === 'image_plane' && mesh.metadata?.updateDecal) {
           mesh.metadata.updateDecal();
         }
       });

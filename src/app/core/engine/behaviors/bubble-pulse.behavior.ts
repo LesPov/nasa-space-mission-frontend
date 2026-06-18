@@ -1,13 +1,16 @@
+// src/app/core/engine/behaviors/bubble-pulse.behavior.ts
+
 import { Behavior, Mesh, Nullable } from '@babylonjs/core';
 import { LoopManagerService, GamePhase } from './services/loop-manager.service';
+import { EntityManagerService } from '../entities/entity-manager.service';
  
 export class BubblePulseBehavior implements Behavior<Mesh> {
   public attachedNode: Nullable<Mesh> = null;
-  private loopManager: LoopManagerService;
 
-  constructor(loopManager: LoopManagerService) {
-    this.loopManager = loopManager;
-  }
+  constructor(
+    private loopManager: LoopManagerService,
+    private entityManager: EntityManagerService
+  ) {}
 
   get name(): string {
     return 'BubblePulseBehavior';
@@ -20,30 +23,26 @@ export class BubblePulseBehavior implements Behavior<Mesh> {
 
     this.loopManager.register('BubblePulse_' + target.uniqueId, GamePhase.ANIMATION, () => {
       if (!this.attachedNode || !this.attachedNode.isVisible) return;
-      if (!this.attachedNode.metadata) return;
+      
+      const entity = this.entityManager.getEntityByMesh(this.attachedNode);
+      if (!entity) return;
 
       const m = this.attachedNode;
       const time = performance.now() * 0.003;
 
-      if (!m.metadata.baseScaleX) {
-        m.metadata.baseScaleX = m.scaling.x;
-        m.metadata.baseScaleY = m.scaling.y;
-        m.metadata.baseScaleZ = m.scaling.z;
-      }
-      
-      const isHovered = m.metadata.isHovered === true;
+      const isHovered = entity.isHovered === true;
       const targetHoverScale = isHovered ? 1.15 : 1.0; 
       
-      if (m.metadata.currentHoverScale === undefined) m.metadata.currentHoverScale = 1.0;
-      m.metadata.currentHoverScale += (targetHoverScale - m.metadata.currentHoverScale) * 0.15;
+      if (entity.currentHoverScale === undefined) entity.currentHoverScale = 1.0;
+      entity.currentHoverScale += (targetHoverScale - entity.currentHoverScale) * 0.15;
       
       const pulse = 1 + Math.sin(time + m.uniqueId) * 0.025; 
-      const finalScale = pulse * m.metadata.currentHoverScale;
+      const finalScale = pulse * entity.currentHoverScale;
       
       m.scaling.set(
-        m.metadata.baseScaleX * finalScale,
-        m.metadata.baseScaleY * finalScale,
-        m.metadata.baseScaleZ * finalScale
+        (entity.transform.scale.x || 1) * finalScale,
+        (entity.transform.scale.y || 1) * finalScale,
+        (entity.transform.scale.z || 1) * finalScale
       );
       
       m.billboardMode = Mesh.BILLBOARDMODE_ALL;

@@ -19,10 +19,9 @@ export class PlayerTriggerService {
     return this.injector.get(GameSession); 
   }
   
-  // Set para guardar quiénes están actualmente dentro de qué trigger
   private activeTriggersInside = new Set<string>();
 
-  public prepararTriggersParaJuego(): void {
+  public start(): void {
     this.activeTriggersInside.clear();
     const isAdmin = this.session.isAdminSession();
 
@@ -38,7 +37,7 @@ export class PlayerTriggerService {
     });
   }
 
-  public restaurarTriggersParaEditor(): void {
+  public stop(): void {
     this.activeTriggersInside.clear();
     const isAdmin = this.session.isAdminSession();
 
@@ -88,7 +87,6 @@ export class PlayerTriggerService {
         const isInside = triggerBox.intersectsPoint(probePoint);
         const wasInside = this.activeTriggersInside.has(triggerEntity.uid);
 
-        // Evaluamos Entrada
         if (isInside && !wasInside) {
             this.activeTriggersInside.add(triggerEntity.uid);
             if (conditions.includes('on_enter')) {
@@ -96,7 +94,6 @@ export class PlayerTriggerService {
             }
         }
         
-        // Evaluamos Salida
         if (!isInside && wasInside) {
             this.activeTriggersInside.delete(triggerEntity.uid);
 
@@ -104,7 +101,6 @@ export class PlayerTriggerService {
                 this.ejecutarLogicaTrigger(triggerEntity, 'on_exit');
             }
             
-            // Lógica "One Shot" (No repetible)
             if (!triggerEntity.trigger.isRepeatable) {
                  const reqEnter = conditions.includes('on_enter');
                  const reqExit = conditions.includes('on_exit');
@@ -155,12 +151,10 @@ export class PlayerTriggerService {
           }
       }
 
-      // 1. Emisión de Mensaje a UI vía Event Bus
       if (mensaje && mensaje.trim() !== '') {
           this.eventBus.emit({ type: 'MessageRequested', payload: mensaje });
       }
 
-      // 2. Disparo de Audio Nativo
       if (soundUrl && soundUrl.trim() !== '') {
           try {
              const audio = new Audio(soundUrl);
@@ -169,13 +163,10 @@ export class PlayerTriggerService {
           } catch(e) { console.error(e); }
       }
 
-      // 3. Disparo de Video
       if (videoUrl && videoUrl.trim() !== '') {
           console.log("🎬 Reproduciendo Video Cinemático en Trigger:", videoUrl);
-          // TODO: Interfaz de video global si hace falta.
       }
 
-      // 4. Orquestación de Secuencias Remotas
       if (seqIdString && seqIdString.trim() !== '') {
           const rawIds = seqIdString.split(',').map((id: string) => id.trim()).filter(Boolean);
           const idsToTrigger = [...new Set(rawIds)];
@@ -187,12 +178,10 @@ export class PlayerTriggerService {
           }
       }
 
-      // 5. Aplicación de mutaciones lógicas del estado (Historia)
       if (triggerEntity.trigger.stateMutations) {
           this.gameState.applyMutations(triggerEntity.trigger.stateMutations);
       }
 
-      // 6. Marcar el evento como disparado
       if (eventType === 'on_enter') triggerEntity.trigger.hasTriggeredEnter = true;
       if (eventType === 'on_exit') triggerEntity.trigger.hasTriggeredExit = true;
   }

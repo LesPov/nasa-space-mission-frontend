@@ -1,3 +1,4 @@
+// src/app/pages/admin/editor-escena/editor-escena.ts
 
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
@@ -17,7 +18,7 @@ import { GlobalTimeline } from '../../../components/global-timeline/global-timel
 import { GameSession } from '../../../core/engine/game-session';
 import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { EditorPlayModeService } from '../../../services/editor/editor-play-mode.service';
-import { PlayerInteractionService } from '../../../core/engine/systems/player-interaction.service';
+import { RuntimeEngineService } from '../../../core/engine/runtime-engine.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 // --- NUEVOS COMPONENTES UI EXTRAÍDOS ---
@@ -45,10 +46,10 @@ export class EditorEscena implements OnInit, OnDestroy {
   public gameSession = inject(GameSession);
   private eventBus = inject(GameEventBusService);
   private entityManager = inject(EntityManagerService);
+  public runtime = inject(RuntimeEngineService);
   public cdr = inject(ChangeDetectorRef);
   
   public playModeSvc = inject(EditorPlayModeService);
-  public interactSvc = inject(PlayerInteractionService);
 
   public isInteracting = signal<boolean>(false);
 
@@ -124,7 +125,7 @@ export class EditorEscena implements OnInit, OnDestroy {
           if (this.misionIniciada && !this.isInteracting() && this.editorSvc.rolSimulado() === 'user') {
              this.modalMisionUsuario = true;
              if (this.gameSession.cameraView() === 'FPS') {
-                this.playModeSvc.toggleCameraUser(false, 45);
+                this.runtime.toggleCameraUser(false, 45);
              }
           }
           break;
@@ -205,7 +206,7 @@ export class EditorEscena implements OnInit, OnDestroy {
 
               setTimeout(() => {
                 document.exitPointerLock(); 
-                this.playModeSvc.toggleCameraUser(true, 500); 
+                this.runtime.toggleCameraUser(true, 500); 
               }, 100);
 
             } else {
@@ -235,7 +236,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.cerrandoModalUsuario = true; 
     
     if (this.gameSession.cameraView() === 'TPS') {
-       this.playModeSvc.toggleCameraUser(false, 60); 
+       this.runtime.toggleCameraUser(false, 60); 
     }
 
     const canvas = this.motor3dSvc.engine.getRenderingCanvas();
@@ -430,7 +431,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (this.editorSvc.rolSimulado() === 'admin') setTimeout(() => this.guardarMapaEnBD(true), 500);
   }
 
-  cerrarInteraccion() { this.interactSvc.cerrarMensajeInteractivo(); }
+  cerrarInteraccion() { this.runtime.cerrarInteraccion(); }
 
   salirDelEditor() {
     this.editando = false; 

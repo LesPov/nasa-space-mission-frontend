@@ -86,23 +86,20 @@ export class CoreSceneProjectionService {
     if (!entity || !entity.media) return;
 
     if (Array.isArray(entity.media.runtimeDecals)) {
-      entity.media.runtimeDecals.forEach((d) => {
+      entity.media.runtimeDecals.forEach((d: AbstractMesh) => {
         if (d && !this.isDisposedSeguro(d)) {
           this.disposeSeguro(d);
         }
       });
     }
 
-    if (entity.media.runtimeDecalMaterial && !this.isDisposedSeguro(entity.media.runtimeDecalMaterial)) {
-      this.disposeSeguro(entity.media.runtimeDecalMaterial);
-    }
-
-    // 🔥 La Entidad gestiona sus referencias runtime
+    // 🔥 FIX: NO destruimos el `runtimeDecalMaterial` aquí, ya que el proyector sigue vivo.
+    // Solo vaciamos la lista de las proyecciones (decals) generadas.
     entity.media.runtimeDecals = [];
-    entity.media.runtimeDecalMaterial = undefined;
   }
 
   public actualizarProyeccion(mesh: Mesh): void {
+    // 1. Limpiamos las calcomanías viejas
     this.limpiarDecalsImagen(mesh);
 
     const entity = this.entityManager.getEntityByMesh(mesh);
@@ -300,6 +297,16 @@ export class CoreSceneProjectionService {
     mesh.onDisposeObservable.add(() => {
       this.loopManager.unregister(callbackId);
       this.limpiarDecalsImagen(mesh);
+
+      const entity = this.entityManager.getEntityByMesh(mesh);
+      const decalMaterial = entity?.media?.runtimeDecalMaterial;
+      if (decalMaterial && !this.isDisposedSeguro(decalMaterial)) {
+        this.disposeSeguro(decalMaterial);
+      }
+      
+      if (entity?.media) {
+        entity.media.runtimeDecalMaterial = undefined;
+      }
     });
 
     setTimeout(() => {

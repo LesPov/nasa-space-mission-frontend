@@ -1,3 +1,4 @@
+// src/app/services/editor/editor-play-mode.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Quaternion } from '@babylonjs/core';
@@ -7,8 +8,6 @@ import { EditorStateService } from './editor-state.service';
 import { EditorCameraService } from './editor-camera.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { RuntimeEngineService } from '../../core/engine/runtime-engine.service';
-import { PlayerTriggerService } from '../../core/engine/systems/player-trigger.service';
-import { PlayerBubbleService } from '../../core/engine/systems/player-bubble.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
@@ -17,8 +16,6 @@ export class EditorPlayModeService {
   private cameraSvc = inject(EditorCameraService);
   private entityManager = inject(EntityManagerService);
   private runtimeEngine = inject(RuntimeEngineService);
-  private triggerSvc = inject(PlayerTriggerService);
-  private bubbleSvc = inject(PlayerBubbleService);
 
   private backupsAnimados: any[] = [];
   
@@ -100,6 +97,7 @@ export class EditorPlayModeService {
 
     const finishSetup = () => {
         this.state.playState.set('PLAYING');
+        // El Editor invoca al Runtime a través de su Facade (Frontera Limpia)
         this.runtimeEngine.startSession(playerEntity, vista, isAdmin);
         this.state.triggerUpdate();
         
@@ -124,10 +122,8 @@ export class EditorPlayModeService {
   public detenerPrueba(): void {
     this.state.playState.set('EDITOR');
     
+    // El Runtime se apaga a sí mismo, destruyendo estados lógicos de juego
     this.runtimeEngine.stopSession();
-
-    this.triggerSvc.restaurarTriggersParaEditor();
-    this.bubbleSvc.restaurarBurbujasParaEditor(); 
 
     // RESTAURAR BACKUPS DEL EDITOR
     this.backupsAnimados.forEach(b => {
@@ -165,6 +161,9 @@ export class EditorPlayModeService {
             }
             if (entity.type === 'image_plane') {
                 m.isVisible = isAdmin; 
+            }
+            if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') {
+                m.isVisible = isAdmin;
             }
         }
     });
@@ -208,9 +207,5 @@ export class EditorPlayModeService {
       this.motor3d.editorCamera.attachControl(canvas, true);
     }
     this.state.triggerUpdate();
-  }
-
-  public toggleCameraUser(isCinematicInitial: boolean = false, customFrames?: number): void {
-    this.runtimeEngine.toggleCameraUser(isCinematicInitial, customFrames);
   }
 }

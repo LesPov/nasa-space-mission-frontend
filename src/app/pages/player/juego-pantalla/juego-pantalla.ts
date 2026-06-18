@@ -7,11 +7,10 @@ import { RuntimeEngineService } from '../../../core/engine/runtime-engine.servic
 import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { Subscription } from 'rxjs';
 import { GameSession } from '../../../core/engine/game-session';
-import { PlayerInteractionService } from '../../../core/engine/systems/player-interaction.service';
 import { Motor3dService } from '../../../services/motor-3d.service';
 
 import { EpisodiosService } from '../../../services/api/episodios';
- import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
@@ -29,10 +28,9 @@ import { CoreSceneLoaderService } from '../../../core/engine/scene/utils/core-sc
 export class JuegoPantalla implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
-  private runtime = inject(RuntimeEngineService);
+  public runtime = inject(RuntimeEngineService);
   private eventBus = inject(GameEventBusService);
   public gameSession = inject(GameSession);
-  private interactSvc = inject(PlayerInteractionService);
   private motor3dSvc = inject(Motor3dService);
   private cdr = inject(ChangeDetectorRef);
 
@@ -149,7 +147,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   }
 
   cerrarInteraccion() {
-     this.interactSvc.cerrarMensajeInteractivo();
+     this.runtime.cerrarInteraccion();
   }
 
   ngOnDestroy() {

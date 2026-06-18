@@ -1,3 +1,4 @@
+// src/app/core/engine/systems/player-bubble.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
@@ -41,7 +42,6 @@ export class PlayerBubbleService {
 
     this.bubblesOcultas.set(burbujaEntity.uid, { mesh: burbuja, loopId, entity: burbujaEntity });
 
-    // Reseteamos el estado interno de interacción y emitimos al bus
     this.interactSvc.currentTarget = null;
     this.interactSvc.canInteract = false;
     this.interactSvc.canInspect = false;
@@ -51,7 +51,7 @@ export class PlayerBubbleService {
     this.eventBus.emit({ type: 'MessageRequested', payload: null });
   }
 
-  public restaurarBurbujasParaEditor(): void {
+  public stop(): void {
     this.bubblesOcultas.forEach((data, uid) => {
       this.loopManager.unregister(data.loopId);
       if (!data.mesh.isDisposed()) {

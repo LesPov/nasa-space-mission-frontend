@@ -112,13 +112,18 @@ export class TransformMutatorService {
 
     if (objeto.material && objeto.material instanceof StandardMaterial) {
       if (entity.type === 'image_plane') {
-        const decalMat = objeto.metadata.decalMaterial as StandardMaterial;
+        // 🔥 FIX: Eliminado rastro de objeto.metadata. Leemos directamente desde la Entidad
+        const decalMat = entity.media?.runtimeDecalMaterial as StandardMaterial | undefined;
+        
         if (decalMat) {
-          const tex = (decalMat.diffuseTexture || decalMat.opacityTexture) as any;
+          const tex = (decalMat.diffuseTexture || decalMat.opacityTexture) as Texture | null;
           this.projectionSvc.configurarMaterialProyector(decalMat, activeColorHex, config.brilloIntensidad, config.ignoraNiebla, tex);
         }
-        if (Array.isArray(objeto.metadata.decalMeshes)) {
-          objeto.metadata.decalMeshes.forEach((m: AbstractMesh) => { if (m) m.applyFog = !config.ignoraNiebla; });
+        
+        if (Array.isArray(entity.media?.runtimeDecals)) {
+          entity.media!.runtimeDecals.forEach((m: AbstractMesh) => { 
+            if (m) m.applyFog = !config.ignoraNiebla; 
+          });
         }
       } else {
         const objMat = objeto.material as StandardMaterial;

@@ -12,6 +12,7 @@ import { Motor3dService } from '../../services/motor-3d.service';
 import { PlayerTriggerService } from './systems/player-trigger.service';
 import { PlayerFogService } from './systems/player-fog.service';
 import { PlayerCameraManagerService } from './systems/player-camera.service';
+import { PlayerBubbleService } from './systems/player-bubble.service';
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
@@ -23,7 +24,6 @@ export class GameSession {
 
   private controllers: Map<string, BaseCharacterController> = new Map();
 
-  // Inyecciones Básicas de Arranque
   private injector = inject(Injector);
   private entityManager = inject(EntityManagerService);
   private objectAnimSvc = inject(ObjectAnimationService);
@@ -32,6 +32,7 @@ export class GameSession {
   private triggerSvc = inject(PlayerTriggerService);
   private playerFogSvc = inject(PlayerFogService);
   private cameraSvc = inject(PlayerCameraManagerService);
+  private bubbleSvc = inject(PlayerBubbleService);
 
   public get proxyColliders() {
     return this.motor3d.scene.meshes.filter(m => m.name.includes('proxyCol'));
@@ -44,19 +45,16 @@ export class GameSession {
     this.activePlayerEntity.set(playerEntity);
     this.pointerLocked.set(true);
 
-    // Reinicio Lógico del Bucle
     this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
     this.eventBus.emit({ type: 'MessageRequested', payload: null });
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
     this.eventBus.emit({ type: 'GameStarted', payload: { view, isAdmin } });
 
-    // Preparativos Ambientales
-    this.triggerSvc.prepararTriggersParaJuego();
+    // El Runtime autogestiona el inicio de sus subsistemas
+    this.triggerSvc.start();
     this.objectAnimSvc.startAmbientAutoAnimations();
     this.playerFogSvc.start(playerEntity, view);
 
-    // 🔥 DELEGACIÓN ABSOLUTA: Construimos a los controladores y les pasamos el Injector.
-    // Ellos se encargarán de buscar sus servicios y acoplarse al LoopManager.
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
       if (entity.uid === playerEntity.uid) {
@@ -88,10 +86,12 @@ export class GameSession {
     this.activePlayerEntity.set(null);
     this.pointerLocked.set(false);
 
+    // El Runtime autogestiona el apagado de sus subsistemas
     this.objectAnimSvc.stopAmbientAutoAnimations();
     this.playerFogSvc.stop();
+    this.triggerSvc.stop();
+    this.bubbleSvc.stop();
 
-    // Cada controlador se destruirá limpiamente sin romper nada externo
     this.controllers.forEach(ctrl => ctrl.destroy());
     this.controllers.clear();
 

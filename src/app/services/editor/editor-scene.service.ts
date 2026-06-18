@@ -8,6 +8,7 @@ import { SceneObjectBuilderService } from './sceneservice/scene-object-builder.s
 import { SceneSaverService } from './sceneservice/scene-saver.service';
 import { SceneNodesService } from './sceneservice/scene-nodes.service';
 import { EditorStateService } from './editor-state.service';
+import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorSceneService {
@@ -18,6 +19,7 @@ export class EditorSceneService {
   private saverSvc = inject(SceneSaverService);
   private nodesSvc = inject(SceneNodesService);
   private state = inject(EditorStateService);
+  private entityManager = inject(EntityManagerService);
 
   public crearEntornoVisual(): void {
     const scene = this.motor3d.scene;
@@ -76,10 +78,38 @@ export class EditorSceneService {
     this.nodesSvc.limpiarEstado();
   }
 
+  // 🔥 SOLUCIÓN POST-CARGA: Revelar cosas ocultas de los Loaders Agnósticos
+  public revelarEntidadesOcultasParaAdmin(): void {
+    const allEntities = this.entityManager.getAllEntities();
+    allEntities.forEach(e => {
+      if (e.type === 'trigger' || e.type === 'trigger_compuesto' || e.type === 'image_plane' || e.type?.startsWith('light_')) {
+        if (e.view) e.view.isVisible = true;
+      }
+    });
+  }
+
   public cargarEscenaDesdeDatos(dataBD: any): Promise<void> {
     const isAdmin = this.state.rolSimulado() === 'admin';
-    return this.loaderSvc.loadSceneFromData(dataBD, isAdmin).then(() => {
+    return this.loaderSvc.loadSceneFromData(dataBD).then(() => {
+      if (isAdmin) {
+        this.revelarEntidadesOcultasParaAdmin();
+      }
       this.nodesSvc.actualizarListaNodos();
+    });
+  }
+
+  public instanciarPrefabFull(prefabData: any, targetPos: Vector3): void {
+    const isAdmin = this.state.rolSimulado() === 'admin';
+    this.loaderSvc.instantiatePrefab(prefabData, targetPos).then((mallas) => {
+      if (isAdmin) {
+        this.revelarEntidadesOcultasParaAdmin();
+      }
+      this.nodesSvc.actualizarListaNodos();
+      const iter = mallas.values().next();
+      if (!iter.done) {
+        this.state.objetoSeleccionado.set(iter.value);
+        this.state.triggerUpdate();
+      }
     });
   }
 

@@ -65,7 +65,7 @@ export class SceneObjectBuilderService {
     if ((isLight && asset) || (isModel && asset)) {
       await this.modelLoader.cargarModeloAsync(mockDbObject, mallasCreadas);
     } else {
-      this.primitiveLoader.cargarPrimitiva(mockDbObject, mallasCreadas, true);
+      this.primitiveLoader.cargarPrimitiva(mockDbObject, mallasCreadas);
     }
 
     const newMesh = mallasCreadas.get(mockDbObject.uid);

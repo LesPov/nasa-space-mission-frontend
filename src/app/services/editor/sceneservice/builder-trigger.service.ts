@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -54,7 +53,7 @@ export class BuilderTriggerService {
     mat.alpha = 0.4;
     mat.wireframe = true;
     mat.disableLighting = true;
-    mat.maxSimultaneousLights = 16;
+    mat.maxSimultaneousLights = 4; // OPTIMIZACIÓN
     newMesh.material = mat;
 
     newMesh.isPickable = true;
@@ -90,7 +89,7 @@ export class BuilderTriggerService {
     };
 
     const mallasCreadas = new Map<string, Mesh>();
-    this.triggerLoader.cargarTrigger(mockDbObject, mallasCreadas, true);
+    this.triggerLoader.cargarTrigger(mockDbObject, mallasCreadas);
     
     const newMesh = mallasCreadas.get(mockDbObject.uid);
     if (newMesh) {

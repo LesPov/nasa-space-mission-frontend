@@ -10,7 +10,8 @@ export class CoreTriggerLoaderService {
   private motor3d = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
 
-  public cargarTrigger(trigger: any, mallasCreadas: Map<string, Mesh>, isAdmin: boolean): void {
+  // ELIMINADA la dependencia de interfaz (isAdmin).
+  public cargarTrigger(trigger: any, mallasCreadas: Map<string, Mesh>): void {
     const scene = this.motor3d.scene;
     const shape = trigger.actionProperties?.triggerShape || 'cube';
     const isComposite = trigger.actionProperties?.isComposite ?? false;
@@ -69,12 +70,14 @@ export class CoreTriggerLoaderService {
       mat.alpha = 0.4;
       mat.wireframe = true;
       mat.disableLighting = true;
-      mat.maxSimultaneousLights = 16;
+      mat.maxSimultaneousLights = 4;
       mesh.material = mat;
       
       mesh.isPickable = true;
       mesh.checkCollisions = false;
-      mesh.isVisible = isAdmin;
+
+      // EL MOTOR CARGA TODO COMO JUGADOR: El trigger es invisible
+      mesh.isVisible = false;
 
       this.entityManager.addEntity(entity);
       mallasCreadas.set(entity.uid, mesh);

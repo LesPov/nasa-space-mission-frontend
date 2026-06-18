@@ -15,6 +15,7 @@ export class CoreModelLoaderService {
   private utilsSvc = inject(CoreSceneUtilsService);
   private entityManager = inject(EntityManagerService); 
 
+  // ELIMINADA la dependencia de interfaz (isAdmin).
   public async cargarModeloAsync(obj: any, mallasCreadas: Map<string, Mesh>): Promise<void> {
     const scene = this.motor3d.scene;
     const path = obj.properties?.path || obj.asset?.path;
@@ -162,6 +163,9 @@ export class CoreModelLoaderService {
     }
 
     if (isLight && entity.light) {
+      // EL MOTOR CARGA TODO COMO JUGADOR: El gizmo base importado como luz es invisible
+      rootNode.isVisible = false;
+
       let lightObj: any;
       if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 0, 0), scene);
       else if (obj.type === 'light_spot') lightObj = new SpotLight('l_' + obj.name, new Vector3(0, 0, 0), new Vector3(0, -1, 0), entity.light.angle * (Math.PI / 180), 2, scene);

@@ -18,7 +18,8 @@ export class CorePrimitiveLoaderService {
   private loopManager = inject(LoopManagerService);
   private entityManager = inject(EntityManagerService); 
 
-  public cargarPrimitiva(obj: any, mallasCreadas: Map<string, Mesh>, isAdmin: boolean): void {
+  // ELIMINADA la dependencia de interfaz (isAdmin).
+  public cargarPrimitiva(obj: any, mallasCreadas: Map<string, Mesh>): void {
     const scene = this.motor3d.scene;
     
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, obj.type, obj.properties?.rol || 'prop');
@@ -152,10 +153,10 @@ export class CorePrimitiveLoaderService {
       this.projectionSvc.configurarMaterialProyector(mat, activeColorAUsar, entity.visual.brilloIntensidad, entity.visual.ignoraNiebla, tex);
       
       mesh.material = mat;
-      
-      // 🔥 ASIGNACIÓN LIMPIA A LA ENTIDAD
       entity.media.runtimeDecalMaterial = mat;
-      mesh.isVisible = isAdmin;
+
+      // EL MOTOR CARGA TODO COMO JUGADOR: El proyector cúbico base es invisible
+      mesh.isVisible = false;
       mesh.alwaysSelectAsActiveMesh = true;
 
       this.projectionSvc.aplicarLogicaHolograma(mesh, scene);
@@ -166,10 +167,12 @@ export class CorePrimitiveLoaderService {
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = Color3.FromHexString(entity.light.lightColor);
       mat.wireframe = true;
-      mat.maxSimultaneousLights = 16;
+      mat.maxSimultaneousLights = 4;
       mat.fogEnabled = !entity.visual.ignoraNiebla;
       mesh.material = mat;
-      mesh.isVisible = isAdmin;
+
+      // EL MOTOR CARGA TODO COMO JUGADOR: El gizmo esférico de luz es invisible
+      mesh.isVisible = false;
 
       let lightObj: any;
       if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 0, 0), scene);
@@ -202,7 +205,7 @@ export class CorePrimitiveLoaderService {
         mat.disableLighting = false;
       }
 
-      mat.maxSimultaneousLights = 16;
+      mat.maxSimultaneousLights = 4;
       mat.fogEnabled = !entity.visual.ignoraNiebla;
       mesh.material = mat;
     }

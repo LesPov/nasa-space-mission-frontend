@@ -19,6 +19,7 @@ export class CoreSceneShadowsService {
       let sg: any = light.getShadowGenerator();
       if (!sg) {
         if (light instanceof DirectionalLight) {
+          // SOMBRAS ALTA CALIDAD: PCF High para el sol
           const csg = new CascadedShadowGenerator(2048, light);
           csg.usePercentageCloserFiltering = true;
           csg.filteringQuality = ShadowGenerator.QUALITY_HIGH;
@@ -26,9 +27,10 @@ export class CoreSceneShadowsService {
           csg.autoCalcDepthBounds = true; 
           sg = csg;
         } else {
+          // SOMBRAS ALTA CALIDAD MINOR: PCF Medium en vez de Poisson para eliminar el pixelado
           const regularSg = new ShadowGenerator(1024, light as SpotLight);
           regularSg.usePercentageCloserFiltering = true;
-          regularSg.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+          regularSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
           regularSg.setDarkness(0.4);
           sg = regularSg;
         }
@@ -58,7 +60,18 @@ export class CoreSceneShadowsService {
             type !== 'video_plane' &&
             !type?.startsWith('light_');
 
+          // CULLING ESTRICTO: Protege los FPS al obviar props pequeños
+          let isLargeEnough = true;
           if (isValidShadowCaster) {
+            try {
+               m.computeWorldMatrix(true);
+               if (m.getBoundingInfo().diagonalLength < 0.5) {
+                 isLargeEnough = false;
+               }
+            } catch (e) {}
+          }
+
+          if (isValidShadowCaster && isLargeEnough) {
             sg.addShadowCaster(m, false);
             m.receiveShadows = true;
           }

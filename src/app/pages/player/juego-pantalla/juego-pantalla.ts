@@ -1,4 +1,3 @@
-// src/app/pages/player/juego-pantalla/juego-pantalla.ts
 
 import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -9,6 +8,7 @@ import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
 import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { EpisodiosService } from '../../../services/api/episodios';
+import { Motor3dService } from '../../../services/motor-3d.service';
 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
@@ -29,6 +29,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private eventBus = inject(GameEventBusService);
   private cdr = inject(ChangeDetectorRef);
   private epiApiSvc = inject(EpisodiosService);
+  private motor3dSvc = inject(Motor3dService);
 
   public isInteracting = signal<boolean>(false);
   public pointerLocked = signal<boolean>(false);
@@ -38,8 +39,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   public misionIniciada = false;
   public cerrandoModalUsuario = false;
   public mapaActualNombre = '';
+  
+  public fps = signal<string>('0');
 
   private sub!: Subscription;
+  private fpsInterval: any;
   private activeCameraView = 'FPS';
 
   ngOnInit() {
@@ -62,6 +66,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
               document.exitPointerLock(); 
               this.runtime.toggleCameraUser(true, 500); 
             }, 100);
+
+            // FPS Counter local para el modo Jugador Libre
+            this.fpsInterval = setInterval(() => {
+              this.fps.set(this.motor3dSvc.currentFps.toFixed(0));
+            }, 500);
 
           } catch (err: any) {
             alert(err.message);
@@ -142,5 +151,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   ngOnDestroy() {
     this.runtime.shutdownProductionGame();
     if (this.sub) this.sub.unsubscribe();
+    if (this.fpsInterval) clearInterval(this.fpsInterval);
   }
 }

@@ -1,4 +1,3 @@
-// src/app/services/editor/toolsservice/tools-fog.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -97,7 +96,6 @@ export class ToolsFogService {
   private updateFogFrame(scene: Scene): void { 
     const modo = this.state.playState();
     
-    // Si el Runtime entró a jugar, ocultamos los muros del editor y dejamos en paz a Babylon
     if (modo === 'PLAYING' || modo === 'TRANSITIONING') {
        this.fogWalls.forEach(w => w.getChildMeshes().forEach(m => m.isVisible = false));
        return;
@@ -202,12 +200,13 @@ export class ToolsFogService {
             mat.fogEnabled = false; 
             this.fogMats[i][j] = mat; 
 
+            // OPTIMIZACIÓN: Reducción drástica de vértices. De 128 a 32 segmentos. Ahorra 75% del Fill-Rate geométrico.
             const shell = MeshBuilder.CreateCylinder(`fogShell_${i}_${j}`, { 
                 diameter: 1, 
                 height: 1, 
                 sideOrientation: Mesh.DOUBLESIDE, 
                 cap: Mesh.NO_CAP,
-                tessellation: 128 
+                tessellation: 32 
             }, scene);
             
             shell.parent = this.fogWalls[i];
@@ -293,12 +292,12 @@ export class ToolsFogService {
           mat.emissiveColor.set(state.r, state.g, state.b);
           
           const opacityRatio = (currentLayers[j] ?? 0) / 100.0;
-          mat.alpha = state.alpha * opacityRatio; 
-      }
+          const finalAlpha = state.alpha * opacityRatio;
+          mat.alpha = finalAlpha; 
 
-      wallGroup.getChildMeshes().forEach((m) => {
-          m.isVisible = isVisible;
-      });
+          // CULLING DE RENDER: Si la capa es 99.5% transparente, ocultar malla para ahorrar Draw Calls
+          shell.isVisible = isVisible && finalAlpha > 0.005;
+      }
     }
 
     scene.lights.forEach(light => {

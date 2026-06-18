@@ -202,11 +202,13 @@
         </div>
 
         <div class="canvas-container" [style.pointer-events]="modalMisionUsuario ? 'none' : 'all'">
+          <!-- FPS BADGE GLOBAL PARA TODO MODO (EDITOR/JUEGO) -->
+          <div class="fps-badge">FPS: {{ fps() }}</div>
+
           <!-- BOTONES FLOTANTES SOLO ADMIN -->
           <ng-container *ngIf="editorSvc.rolSimulado() === 'admin'">
             <button class="toggle-panel-btn toggle-right" (click)="toggleInspector()" [title]="showInspector ? 'Ocultar Inspector' : 'Mostrar Inspector'">{{ showInspector ? '▶' : '◀' }}</button>
             <button class="toggle-panel-btn toggle-bottom" (click)="toggleTimeline()" [title]="showTimeline ? 'Ocultar Timeline' : 'Mostrar Timeline'">{{ showTimeline ? '▼' : '▲' }}</button>
-            <div class="fps-badge">FPS: {{ fps() }}</div>
             <app-toolbar-escena *ngIf="editorSvc.playState() === 'EDITOR' || editorSvc.playState() === 'EDITING_IN_GAME' || (editorSvc.playState() === 'PLAYING' && !gameSession.pointerLocked())"></app-toolbar-escena>
           </ng-container>
 

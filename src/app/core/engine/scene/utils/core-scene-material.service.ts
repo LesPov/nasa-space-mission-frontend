@@ -1,4 +1,3 @@
-
 import { Injectable } from '@angular/core';
 
 @Injectable({ providedIn: 'root' })
@@ -12,7 +11,8 @@ export class CoreSceneMaterialService {
       return;
     }
     
-    material.maxSimultaneousLights = 16;
+    // OPTIMIZACIÓN: De 16 a 4 luces por píxel. Acelera drásticamente la compilación y ejecución de shaders
+    material.maxSimultaneousLights = 4;
     
     if (material.getClassName().includes('PBR')) {
       material.usePhysicalLightFalloff = false;

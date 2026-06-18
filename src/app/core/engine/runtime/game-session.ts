@@ -1,4 +1,4 @@
-// src/app/core/engine/game-session.ts
+// src/app/core/engine/runtime/game-session.ts
 
 import { Injectable, signal, inject, Injector } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
@@ -34,6 +34,16 @@ export class GameSession {
   private cameraSvc = inject(PlayerCameraManagerService);
   private bubbleSvc = inject(PlayerBubbleService);
 
+  constructor() {
+    this.eventBus.events$.subscribe(event => {
+      if (event.type === 'GameResumed') {
+        this.pointerLocked.set(true);
+      } else if (event.type === 'GamePaused') {
+        this.pointerLocked.set(false);
+      }
+    });
+  }
+
   public get proxyColliders() {
     return this.motor3d.scene.meshes.filter(m => m.name.includes('proxyCol'));
   }
@@ -50,7 +60,6 @@ export class GameSession {
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
     this.eventBus.emit({ type: 'GameStarted', payload: { view, isAdmin } });
 
-    // El Runtime autogestiona el inicio de sus subsistemas
     this.triggerSvc.start();
     this.objectAnimSvc.startAmbientAutoAnimations();
     this.playerFogSvc.start(playerEntity, view);
@@ -67,18 +76,6 @@ export class GameSession {
         npcCtrl.start();
       }
     }
-
-    const canvas = this.motor3d.engine.getRenderingCanvas();
-    if (canvas) {
-      const handlePointerLockChange = () => {
-        const locked = !!document.pointerLockElement;
-        this.pointerLocked.set(locked);
-        if (locked) this.eventBus.emit({ type: 'GameResumed' });
-        else this.eventBus.emit({ type: 'GamePaused' });
-      };
-      document.addEventListener('pointerlockchange', handlePointerLockChange);
-      (this as any)._pointerLockListener = handlePointerLockChange; 
-    }
   }
 
   public stop(): void {
@@ -86,7 +83,6 @@ export class GameSession {
     this.activePlayerEntity.set(null);
     this.pointerLocked.set(false);
 
-    // El Runtime autogestiona el apagado de sus subsistemas
     this.objectAnimSvc.stopAmbientAutoAnimations();
     this.playerFogSvc.stop();
     this.triggerSvc.stop();
@@ -99,11 +95,6 @@ export class GameSession {
     this.eventBus.emit({ type: 'MessageRequested', payload: null });
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
     this.eventBus.emit({ type: 'GameStopped' });
-
-    const canvas = this.motor3d.engine.getRenderingCanvas();
-    if (canvas && (this as any)._pointerLockListener) {
-      document.removeEventListener('pointerlockchange', (this as any)._pointerLockListener);
-    }
   }
 
   public toggleCameraUser(isCinematicInitial: boolean = false, customFrames?: number): void {
@@ -123,4 +114,4 @@ export class GameSession {
       customFrames
     );
   }
-} 
+}

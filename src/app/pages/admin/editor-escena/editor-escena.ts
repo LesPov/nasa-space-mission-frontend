@@ -1,3 +1,5 @@
+// src/app/pages/admin/editor-escena/editor-escena.ts
+
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -20,6 +22,7 @@ import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engin
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { EditorLayoutService } from '../../../services/editor/editor-layout.service';
 import { EditorKeyboardService } from '../../../services/editor/editor-keyboard.service';
+import { InputOrchestratorService } from '../../../core/engine/runtime/systems/input-orchestrator.service';
 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
@@ -48,6 +51,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public runtime = inject(RuntimeEngineService);
   public layoutUI = inject(EditorLayoutService);
   public keyboard = inject(EditorKeyboardService);
+  public inputOrchestrator = inject(InputOrchestratorService);
   public cdr = inject(ChangeDetectorRef);
 
   public playModeSvc = inject(EditorPlayModeService);
@@ -154,7 +158,6 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  // DELEGACIÓN DE EVENTOS GLOBALES AL SERVICIO
   @HostListener('window:mousemove', ['$event'])
   onMouseMove(event: MouseEvent) {
     this.layoutUI.onMouseMove(event);
@@ -274,11 +277,7 @@ export class EditorEscena implements OnInit, OnDestroy {
        this.runtime.toggleCameraUser(true, 60); 
     }
 
-    const canvas = this.motor3dSvc.engine.getRenderingCanvas();
-    if (canvas) {
-      canvas.focus();
-      try { canvas.requestPointerLock(); } catch {}
-    }
+    this.inputOrchestrator.lockPointer();
 
     setTimeout(() => {
       this.misionIniciada = true; 
@@ -286,6 +285,12 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.cerrandoModalUsuario = false;
       this.cdr.detectChanges(); 
     }, 2000); 
+  }
+
+  onCanvasClick() {
+    if (this.misionIniciada && !this.gameSession.pointerLocked() && !this.isInteracting() && !this.modalMisionUsuario) {
+      this.inputOrchestrator.lockPointer();
+    }
   }
 
   cargarEpisodios() {
@@ -411,21 +416,14 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (!this.esObjetoJugable()) return;
     if (this.editorSvc.rolSimulado() === 'admin') {
        this.guardarMapaEnBD(true);
-
-       const canvas = this.motor3dSvc.engine.getRenderingCanvas();
-       if (canvas) {
-           canvas.focus();
-           try { canvas.requestPointerLock(); } catch {}
-       }
+       this.inputOrchestrator.lockPointer();
     }
     this.playModeSvc.testearEscena(this.vistaPrueba);
   }
 
-  // 🔥 RESTAURACIÓN ASÍNCRONA: Esperamos que la carga y limpieza terminen
   async detenerModoPrueba() {
     if (this.editorSvc.playState() === 'EDITOR') return;
     
-    // Mostramos la cortina de carga para ocultar el parpadeo de reconstrucción
     this.cargandoEscena = true;
     this.cargandoTexto = 'Restaurando Editor...';
     this.cdr.detectChanges();
@@ -462,6 +460,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.layoutSvc.mostrarMenu();
     this.editorSvc.limpiarEstado();
+    this.inputOrchestrator.disposeListeners();
     if (this.fpsInterval) clearInterval(this.fpsInterval);
     if (this.autoSaveSub) this.autoSaveSub.unsubscribe();
     if (this.eventBusSub) this.eventBusSub.unsubscribe();

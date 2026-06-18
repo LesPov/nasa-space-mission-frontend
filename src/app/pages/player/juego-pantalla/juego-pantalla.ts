@@ -1,3 +1,4 @@
+// src/app/pages/player/juego-pantalla/juego-pantalla.ts
 
 import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -9,6 +10,7 @@ import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engin
 import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { EpisodiosService } from '../../../services/api/episodios';
 import { Motor3dService } from '../../../services/motor-3d.service';
+import { InputOrchestratorService } from '../../../core/engine/runtime/systems/input-orchestrator.service';
 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
@@ -30,6 +32,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private cdr = inject(ChangeDetectorRef);
   private epiApiSvc = inject(EpisodiosService);
   private motor3dSvc = inject(Motor3dService);
+  private inputOrchestrator = inject(InputOrchestratorService);
 
   public isInteracting = signal<boolean>(false);
   public pointerLocked = signal<boolean>(false);
@@ -120,12 +123,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
        this.runtime.toggleCameraUser(true, 60);
     }
 
-    // FIX: Referencia segura al canvas desde el motor en vez del DOM genérico
-    const canvas = this.motor3dSvc.engine.getRenderingCanvas();
-    if (canvas) {
-      canvas.focus();
-      try { canvas.requestPointerLock(); } catch {}
-    }
+    this.inputOrchestrator.lockPointer();
 
     setTimeout(() => {
       this.misionIniciada = true; 
@@ -133,6 +131,12 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       this.cerrandoModalUsuario = false;
       this.cdr.detectChanges(); 
     }, 2000); 
+  }
+
+  onCanvasClick() {
+    if (this.misionIniciada && !this.pointerLocked() && !this.isInteracting() && !this.modalMisionUsuario) {
+      this.inputOrchestrator.lockPointer();
+    }
   }
 
   salirDelJuego() {
@@ -146,6 +150,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.runtime.shutdownProductionGame();
+    this.inputOrchestrator.disposeListeners();
     if (this.sub) this.sub.unsubscribe();
     if (this.fpsInterval) clearInterval(this.fpsInterval);
   }

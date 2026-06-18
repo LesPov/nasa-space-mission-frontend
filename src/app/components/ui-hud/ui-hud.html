@@ -1,4 +1,3 @@
-
 <div class="crosshair-ui" 
      *ngIf="gameSession.isPlaying() && gameSession.pointerLocked() && gameSession.cameraView() === 'FPS'" 
      [class.hovering]="hoveredMesh() !== null">
@@ -42,7 +41,7 @@
   
   <!-- Jugador Libre o Admin Preview: Pausado -->
   <div class="hud-message hud-paused" *ngIf="gameSession.isPlaying() && !gameSession.pointerLocked() && !gameSession.isAdminSession()">
-    <span class="hud-icon">⏸️</span> Juego Pausado | Reanuda desde el menú
+    <span class="hud-icon">⏸️</span> Juego Pausado | Click en pantalla para reanudar
   </div>
 
   <!-- Modo Editor Probando: Nunca se bloquea conceptualmente, solo para girar cámara -->

@@ -208,7 +208,9 @@
           </div>
         </div>
 
-        <div class="canvas-container" [style.pointer-events]="modalMisionUsuario ? 'none' : 'all'">
+        <div class="canvas-container" 
+             [style.pointer-events]="(modalMisionUsuario && !cerrandoModalUsuario) ? 'none' : 'all'"
+             (click)="onCanvasClick()">
           <!-- FPS BADGE GLOBAL PARA TODO MODO (EDITOR/JUEGO) -->
           <div class="fps-badge">FPS: {{ fps() }}</div>
 

@@ -1,3 +1,5 @@
+// src/app/services/editor/editor-play-mode.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
 
@@ -7,6 +9,7 @@ import { EditorCameraService } from './editor-camera.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.service';
 import { EditorMapaService } from '../editor-mapa.service';
+import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
@@ -16,8 +19,8 @@ export class EditorPlayModeService {
   private cameraSvc = inject(EditorCameraService);
   private entityManager = inject(EntityManagerService);
   private runtimeEngine = inject(RuntimeEngineService);
+  private inputOrchestrator = inject(InputOrchestratorService);
 
-  // 🔥 Arquitectura Inmutable: Guardará el JSON completo de la escena antes de jugar
   private snapshotMemoria: any = null;
   
   public testearEscena(vista: 'FPS' | 'TPS'): void {
@@ -36,13 +39,10 @@ export class EditorPlayModeService {
 
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
-    // 🔥 SNAPSHOT: Capturamos el estado exacto del mundo ANTES de que el juego lo contamine.
-    // Lo hacemos SIEMPRE para asegurar que los cambios de físicas/secuencias no persistan.
     this.snapshotMemoria = this.editorSvc.obtenerDatosParaGuardar();
 
     this.state.objetoSeleccionado.set(null);
 
-    // Ocultar herramientas visuales del editor para el modo juego
     this.motor3d.scene.meshes.forEach(m => {
         if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
             m.isVisible = false;
@@ -102,16 +102,10 @@ export class EditorPlayModeService {
     this.runtimeEngine.stopTestSession();
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
-    // 🔥 RESTAURACIÓN INMUTABLE: Destruimos la escena contaminada y cargamos el Snapshot puro
     if (this.snapshotMemoria) {
-        // 1. Destruir Entidades lógicas
         this.entityManager.clear();
-        
-        // 2. Limpiar estado de selección y referencias de herramientas del Editor
         this.editorSvc.limpiarEstado();
 
-        // 3. Purga estricta de mallas (apisonadora)
-        // Ignoramos los gizmos, el suelo y la grilla base. La cámara del editor no es un Mesh, por lo que no se ve afectada.
         const scene = this.motor3d.scene;
         const meshesToDispose = scene.meshes.filter(m => {
            const n = m.name;
@@ -124,13 +118,10 @@ export class EditorPlayModeService {
             if (!m.isDisposed()) m.dispose(false, true);
         });
 
-        // 4. Reconstruir desde Cero con el Snapshot inmutable
         await this.editorSvc.cargarEscenaDesdeDatos(this.snapshotMemoria);
-
         this.snapshotMemoria = null;
     }
 
-    // Restaurar entorno visual del editor
     this.motor3d.scene.meshes.forEach(m => {
         if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
             m.setEnabled(true);
@@ -151,9 +142,7 @@ export class EditorPlayModeService {
     this.motor3d.scene.activeCamera = editorCam;
     this.state.jugadorActivo = null; 
     
-    if (document.pointerLockElement) {
-        document.exitPointerLock();
-    }
+    this.inputOrchestrator.unlockPointer();
     
     const canvas = this.motor3d.engine.getRenderingCanvas();
     if (canvas) {

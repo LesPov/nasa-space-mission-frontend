@@ -1,9 +1,11 @@
-
 <div class="juego-container">
   
   <app-ui-loading *ngIf="isLoading()" texto="Cargando Episodio..."></app-ui-loading>
 
-  <div class="canvas-wrapper" [class.blur]="isInteracting() || (!pointerLocked() && !isLoading())" [style.pointer-events]="modalMisionUsuario ? 'none' : 'all'">
+  <div class="canvas-wrapper" 
+       [class.blur]="isInteracting() || (!pointerLocked() && !isLoading())" 
+       [style.pointer-events]="(modalMisionUsuario && !cerrandoModalUsuario) ? 'none' : 'all'"
+       (click)="onCanvasClick()">
      <!-- FPS BADGE GLOBALLY VISIBLE -->
      <div class="fps-badge" *ngIf="!isLoading()">FPS: {{ fps() }}</div>
      <app-motor-babylon></app-motor-babylon>

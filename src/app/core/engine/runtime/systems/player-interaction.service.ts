@@ -1,3 +1,4 @@
+// src/app/core/engine/runtime/systems/player-interaction.service.ts
 
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
@@ -6,12 +7,14 @@ import { GameSession } from '../game-session';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
 import { GameEventBusService } from '../../events/game-event-bus.service';
+import { InputOrchestratorService } from './input-orchestrator.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInteractionService {
   private motor3d = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
   private eventBus = inject(GameEventBusService);
+  private inputOrchestrator = inject(InputOrchestratorService);
   private injector = inject(Injector);
  
   private get session(): GameSession { 
@@ -223,7 +226,6 @@ export class PlayerInteractionService {
       showI = !!mensajeParaMostrar && mensajeParaMostrar.trim() !== '' && canInteractNow && hitInteractuable.type !== 'bubble';
     }
 
-    // 🔥 Emitir eventos limpios en caso de cambio de estado interactivo
     if (this.currentTarget !== hitInteractuable || this.canInteract !== showE || this.canInspect !== showI || this.currentHoveredMesh !== hoverSelectable) {
       this.currentTarget = hitInteractuable;
       this.canInteract = showE;
@@ -239,20 +241,12 @@ export class PlayerInteractionService {
   public abrirMensajeInteractivo(entity: GameEntity, resetMovementCallback: () => void): void {
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: true });
     this.session.pointerLocked.set(false);
-
-    try {
-      if (document.pointerLockElement) document.exitPointerLock();
-    } catch {}
-
+    this.inputOrchestrator.unlockPointer();
     resetMovementCallback();
   }
 
   public cerrarMensajeInteractivo(): void {
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
-    const canvas = this.motor3d.engine.getRenderingCanvas();
-    if (canvas) {
-      canvas.focus();
-      try { canvas.requestPointerLock(); } catch {}
-    }
+    this.inputOrchestrator.lockPointer();
   }
 }

@@ -1,4 +1,3 @@
-
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -6,6 +5,7 @@ import { EditorStateService } from '../editor-state.service';
 import { FogLevel } from '../player-config.model';
 import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
 import { GameSession } from '../../../core/engine/game-session';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
  
 class FogWallState { 
   dist = 500; 
@@ -23,6 +23,7 @@ export class ToolsFogService {
   private motor3d = inject(Motor3dService); 
   private state = inject(EditorStateService);
   private loopManager = inject(LoopManagerService);
+  private entityManager = inject(EntityManagerService);
   private injector = inject(Injector);
 
   private isRegistered = false; 
@@ -45,7 +46,6 @@ export class ToolsFogService {
     }
   }
 
-  // Getter Lazy para evitar Dependencia Circular con GameSession
   private get gameSession(): GameSession {
     return this.injector.get(GameSession);
   }
@@ -106,13 +106,15 @@ export class ToolsFogService {
     let targetPlayer: AbstractMesh | null = null; 
     let shadowLimit = 500000;
 
-    // 🔥 Desacople puro: Priorizamos la sesión de juego agnóstica si existe.
     if (isGamePlaying) {
        targetPlayer = this.gameSession.activePlayerEntity()?.view as AbstractMesh || null;
     } else if (this.state.jugadorActivo) {
        targetPlayer = this.state.jugadorActivo;
     } else {
-       targetPlayer = scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc') || null;
+       targetPlayer = scene.meshes.find(m => {
+           const entity = this.entityManager.getEntityByMesh(m);
+           return entity?.rol === 'spawn_point' || entity?.rol === 'npc';
+       }) || null;
     }
 
     const isBW = scene.metadata?.globalVisualMode === 'bw';
@@ -125,9 +127,11 @@ export class ToolsFogService {
     
     const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
 
-    if ((modo === 'PLAYING' || modo === 'EDITING_IN_GAME' || modo === 'TRANSITIONING') && targetPlayer?.metadata?.playerConfig?.fog?.enabled) {
+    const targetEntity = this.entityManager.getEntityByMesh(targetPlayer);
+
+    if ((modo === 'PLAYING' || modo === 'EDITING_IN_GAME' || modo === 'TRANSITIONING') && targetEntity?.playerConfig?.fog?.enabled) {
       useFog = true;
-      const fog = targetPlayer.metadata.playerConfig.fog;
+      const fog = targetEntity.playerConfig.fog;
       
       const activeColor = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
       const targetColorObj = Color3.FromHexString(activeColor);
@@ -141,7 +145,7 @@ export class ToolsFogService {
         ? (isFPS ? fog.levelsFpsBW : fog.levelsTpsBW) 
         : (isFPS ? fog.levelsFPS : fog.levelsTPS);
 
-      let distCamToPlayer = scene.activeCamera ? Vector3.Distance(scene.activeCamera.globalPosition, targetPlayer.getAbsolutePosition()) : 0;
+      let distCamToPlayer = scene.activeCamera && targetPlayer ? Vector3.Distance(scene.activeCamera.globalPosition, targetPlayer.getAbsolutePosition()) : 0;
       if (modo === 'TRANSITIONING') distCamToPlayer = Math.min(distCamToPlayer, 8); 
       
       const renderMaxZ = (Number(renderDistance) || 100000) + distCamToPlayer;
@@ -247,7 +251,7 @@ export class ToolsFogService {
           tThick = Math.max(0.1, activeLevels[i].thickness ?? 10);
           tOffsetY = activeLevels[i].offsetY ?? 0;
           
-          const fog = targetPlayer?.metadata?.playerConfig?.fog;
+          const fog = targetEntity?.playerConfig?.fog;
           tHex = activeLevels[i].color || (isBW ? (fog?.colorBW || '#888888') : (fog?.color || '#0d1729'));
       }
       

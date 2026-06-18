@@ -1,14 +1,17 @@
+
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, Light, Matrix, Mesh, MeshBuilder, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Color3, Light, Mesh, MeshBuilder, StandardMaterial, Vector3, Matrix } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { ToolsSelectionService } from './tools-selection.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsDebugService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
   private selectionSvc = inject(ToolsSelectionService);
+  private entityManager = inject(EntityManagerService);
 
   public debugCollider: Mesh | null = null;
   public debugCameraBox: Mesh | null = null;
@@ -17,39 +20,39 @@ export class ToolsDebugService {
   public debugFogEndSphere: Mesh | null = null;
 
   public getFogBaseLocalPos(selected: AbstractMesh): Vector3 {
-    const meta = selected?.metadata || {};
-    const camMeta = meta?.camOffset;
-    if ((meta?.rol === 'npc' || meta?.rol === 'spawn_point') && camMeta) {
+    const entity = this.entityManager.getEntityByMesh(selected);
+    const camOffset = entity?.camOffset;
+    if (entity && (entity.rol === 'npc' || entity.rol === 'spawn_point') && camOffset) {
       return new Vector3(
-        this.selectionSvc.normalizarNumero(camMeta.x, 0),
-        this.selectionSvc.normalizarNumero(camMeta.y, 1.6),
-        this.selectionSvc.normalizarNumero(camMeta.z, 0)
+        this.selectionSvc.normalizarNumero(camOffset.x, 0),
+        this.selectionSvc.normalizarNumero(camOffset.y, 1.6),
+        this.selectionSvc.normalizarNumero(camOffset.z, 0)
       );
     }
-    if (meta?.initialHeadLocal) {
+    if (entity?.initialHeadLocal) {
       return new Vector3(
-        this.selectionSvc.normalizarNumero(meta.initialHeadLocal.x, 0),
-        this.selectionSvc.normalizarNumero(meta.initialHeadLocal.y, 1.6),
-        this.selectionSvc.normalizarNumero(meta.initialHeadLocal.z, 0)
+        this.selectionSvc.normalizarNumero(entity.initialHeadLocal.x, 0),
+        this.selectionSvc.normalizarNumero(entity.initialHeadLocal.y, 1.6),
+        this.selectionSvc.normalizarNumero(entity.initialHeadLocal.z, 0)
       );
     }
-    const colMeta = meta?.collider;
-    if (colMeta) {
-      const offsetY = this.selectionSvc.normalizarNumero(colMeta.offsetY, 0);
-      const sizeY = this.selectionSvc.normalizarNumero(colMeta.sizeY, 1);
+    const collider = entity?.collider;
+    if (collider) {
+      const offsetY = this.selectionSvc.normalizarNumero(collider.offsetY, 0);
+      const sizeY = this.selectionSvc.normalizarNumero(collider.sizeY, 1);
       return new Vector3(
-        this.selectionSvc.normalizarNumero(colMeta.offsetX, 0),
+        this.selectionSvc.normalizarNumero(collider.offsetX, 0),
         offsetY + Math.max(sizeY, 0.8),
-        this.selectionSvc.normalizarNumero(colMeta.offsetZ, 0)
+        this.selectionSvc.normalizarNumero(collider.offsetZ, 0)
       );
     }
     return new Vector3(0, 1.6, 0);
   }
 
-  // AHORA TOMA EL OFFSET FPS O TPS SEGÚN LA CÁMARA
   public getFogDebugAnchor(selected: AbstractMesh): Vector3 {
     const pPos = selected.getAbsolutePosition().clone();
-    const fogConfig = selected?.metadata?.playerConfig?.fog;
+    const entity = this.entityManager.getEntityByMesh(selected);
+    const fogConfig = entity?.playerConfig?.fog;
     if (fogConfig) {
        const isFPS = this.state.modoVistaPrueba === 'FPS';
        pPos.x += this.selectionSvc.normalizarNumero(isFPS ? fogConfig.offsetXFPS : fogConfig.offsetXTPS, 0);
@@ -71,7 +74,10 @@ export class ToolsDebugService {
     }
 
     const scene = this.motor3d.scene;
-    const colMeta = selected.metadata?.collider;
+    const entity = this.entityManager.getEntityByMesh(selected);
+    if (!entity) return;
+
+    const colMeta = entity.collider;
 
     if (colMeta && colMeta.type !== 'mesh') {
       if (this.debugCollider) this.debugCollider.dispose();
@@ -92,11 +98,11 @@ export class ToolsDebugService {
       if (this.debugCollider) { this.debugCollider.dispose(); this.debugCollider = null; }
     }
 
-    const camMeta = selected.metadata?.camOffset;
-    if (camMeta && (selected.metadata?.rol === 'npc' || selected.metadata?.rol === 'spawn_point')) {
+    const camOffset = entity.camOffset;
+    if (camOffset && (entity.rol === 'npc' || entity.rol === 'spawn_point')) {
       if (this.debugCameraBox) this.debugCameraBox.dispose();
       this.debugCameraBox = MeshBuilder.CreateBox('debugCamBox', { size: 0.25 }, scene);
-      this.debugCameraBox.position = new Vector3(camMeta.x, camMeta.y, camMeta.z);
+      this.debugCameraBox.position = new Vector3(camOffset.x, camOffset.y, camOffset.z);
       this.debugCameraBox.parent = selected;
       const matCam = new StandardMaterial('debugCamMat', scene);
       matCam.wireframe = true;
@@ -108,7 +114,7 @@ export class ToolsDebugService {
       if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
     }
 
-    if (selected.metadata?.type?.startsWith('light_')) {
+    if (entity.type?.startsWith('light_')) {
         if (this.debugLightBox) this.debugLightBox.dispose();
         this.debugLightBox = MeshBuilder.CreateSphere('debugLightBox', { diameter: 0.3 }, scene);
         
@@ -120,9 +126,9 @@ export class ToolsDebugService {
         }
         
         this.debugLightBox.position = new Vector3(
-          selected.metadata.lightPosX ?? 0, 
-          selected.metadata.lightPosY ?? 0, 
-          selected.metadata.lightPosZ ?? 0
+          entity.light?.lightPosX ?? 0, 
+          entity.light?.lightPosY ?? 0, 
+          entity.light?.lightPosZ ?? 0
         );
         
         const matLight = new StandardMaterial('debugLightMat', scene);
@@ -138,27 +144,32 @@ export class ToolsDebugService {
     if (this.debugFogStartSphere) { this.debugFogStartSphere.dispose(); this.debugFogStartSphere = null; }
     if (this.debugFogEndSphere) { this.debugFogEndSphere.dispose(); this.debugFogEndSphere = null; }
 
-    const playerConfig = selected.metadata?.playerConfig;
-    if (playerConfig && playerConfig.fog && playerConfig.fog.enabled && (selected.metadata?.rol === 'npc' || selected.metadata?.rol === 'spawn_point')) {
+    const playerConfig = entity.playerConfig;
+    if (playerConfig && playerConfig.fog && playerConfig.fog.enabled && (entity.rol === 'npc' || entity.rol === 'spawn_point')) {
       
       const isBW = scene.metadata?.globalVisualMode === 'bw';
       const isFPS = this.state.modoVistaPrueba === 'FPS';
       const fog = playerConfig.fog;
       
       let activeStart = isBW ? (isFPS ? (fog.startFpsBW ?? 0) : (fog.startTpsBW ?? 5)) : (isFPS ? (fog.startFPS ?? 0) : (fog.startTPS ?? 5));
-      
-      // 🔥 FIX: Aseguramos matemáticamente que el Fin SIEMPRE sea más grande que el Inicio para que no se crucen.
       let rawEnd = isBW ? (isFPS ? (fog.endFpsBW ?? 60) : (fog.endTpsBW ?? 90)) : (isFPS ? (fog.endFPS ?? 80) : (fog.endTPS ?? 120));
       let activeEnd = Math.max(activeStart + 0.1, rawEnd);
 
       const fogAnchor = this.getFogDebugAnchor(selected);
       const fogShape = fog.fogShape || 'cylinder';
       
-      // LEYENDO ALTURAS FPS/TPS EXACTAS
-      const fogHeightStart = Math.max(0.1, isBW ? (isFPS ? fog.fogHeightYStartFpsBW : fog.fogHeightYStartTpsBW) : (isFPS ? fog.fogHeightYStartFPS : fog.fogHeightYStartTPS));
-      const fogHeightEnd = Math.max(0.1, isBW ? (isFPS ? fog.fogHeightYEndFpsBW : fog.fogHeightYEndTpsBW) : (isFPS ? fog.fogHeightYEndFPS : fog.fogHeightYEndTPS));
+      const hStartFpsBW = fog?.fogHeightYStartFpsBW ?? 4.0;
+      const hStartTpsBW = fog?.fogHeightYStartTpsBW ?? 4.0;
+      const hStartFPS = fog?.fogHeightYStartFPS ?? 4.0;
+      const hStartTPS = fog?.fogHeightYStartTPS ?? 4.0;
+      const fogHeightStart = Math.max(0.1, isBW ? (isFPS ? hStartFpsBW : hStartTpsBW) : (isFPS ? hStartFPS : hStartTPS));
 
-      // 🔥 FIX: Sumamos 0.05 de radio para evitar Z-Fighting con la Niebla Real Shader
+      const hEndFpsBW = fog?.fogHeightYEndFpsBW ?? 10.0;
+      const hEndTpsBW = fog?.fogHeightYEndTpsBW ?? 10.0;
+      const hEndFPS = fog?.fogHeightYEndFPS ?? 10.0;
+      const hEndTPS = fog?.fogHeightYEndTPS ?? 10.0;
+      const fogHeightEnd = Math.max(0.1, isBW ? (isFPS ? hEndFpsBW : hEndTpsBW) : (isFPS ? hEndFPS : hEndTPS));
+
       if (fogShape === 'cylinder') {
         this.debugFogStartSphere = MeshBuilder.CreateCylinder('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2) + 0.05, height: fogHeightStart, tessellation: 32, cap: Mesh.NO_CAP }, scene);
         this.debugFogStartSphere.position.set(fogAnchor.x, fogAnchor.y + (fogHeightStart / 2), fogAnchor.z);
@@ -177,7 +188,6 @@ export class ToolsDebugService {
       this.debugFogStartSphere.isPickable = false;
 
       if (activeEnd > 0.1) {
-        // 🔥 FIX: Sumamos 0.1 de radio para evitar Z-Fighting
         if (fogShape === 'cylinder') {
           this.debugFogEndSphere = MeshBuilder.CreateCylinder('debugFogEndSphere', { diameter: (activeEnd * 2) + 0.1, height: fogHeightEnd, tessellation: 32, cap: Mesh.NO_CAP }, scene);
           this.debugFogEndSphere.position.set(fogAnchor.x, fogAnchor.y + (fogHeightEnd / 2), fogAnchor.z);
@@ -200,51 +210,61 @@ export class ToolsDebugService {
 
   public syncBreathAnimations(obj: Mesh): void {
     if (!obj) return;
+    const entity = this.entityManager.getEntityByMesh(obj);
+    if (!entity) return;
+
     let breathX = 0, breathY = 0, breathZ = 0;
 
-    if (obj.metadata?.initialHeadLocal) {
+    if (entity.initialHeadLocal) {
       const headNode = obj.getChildTransformNodes(false).find((n: any) =>
         n.name.toLowerCase() === 'head' || n.name.toLowerCase() === 'neck' || n.name.toLowerCase().includes('head')
       );
       if (headNode) {
         const currentGlobal = headNode.getAbsolutePosition();
         const currentLocal = Vector3.TransformCoordinates(currentGlobal, Matrix.Invert(obj.getWorldMatrix()));
-        breathX = currentLocal.x - obj.metadata.initialHeadLocal.x;
-        breathY = currentLocal.y - obj.metadata.initialHeadLocal.y;
-        breathZ = currentLocal.z - obj.metadata.initialHeadLocal.z;
+        breathX = currentLocal.x - entity.initialHeadLocal.x;
+        breathY = currentLocal.y - entity.initialHeadLocal.y;
+        breathZ = currentLocal.z - entity.initialHeadLocal.z;
       }
     }
 
-    const colMeta = obj.metadata?.collider;
+    const colMeta = entity.collider;
     if (colMeta && this.debugCollider) {
       this.debugCollider.position.set(colMeta.offsetX + breathX, colMeta.offsetY + breathY, colMeta.offsetZ + breathZ);
     }
 
-    const camMeta = obj.metadata?.camOffset;
-    if (camMeta && this.debugCameraBox) {
-      this.debugCameraBox.position.set(camMeta.x + breathX, camMeta.y + breathY, camMeta.z + breathZ);
+    const camOffset = entity.camOffset;
+    if (camOffset && this.debugCameraBox) {
+      this.debugCameraBox.position.set(camOffset.x + breathX, camOffset.y + breathY, camOffset.z + breathZ);
     }
     
-    if (this.debugLightBox && obj.metadata?.type?.startsWith('light_')) {
+    if (this.debugLightBox && entity.type?.startsWith('light_') && entity.light) {
        this.debugLightBox.position.set(
-          (obj.metadata.lightPosX ?? 0) + breathX,
-          (obj.metadata.lightPosY ?? 0) + breathY,
-          (obj.metadata.lightPosZ ?? 0) + breathZ
+          (entity.light.lightPosX ?? 0) + breathX,
+          (entity.light.lightPosY ?? 0) + breathY,
+          (entity.light.lightPosZ ?? 0) + breathZ
        );
     }
 
-    const fogConfig = obj.metadata?.playerConfig?.fog;
+    const fogConfig = entity.playerConfig?.fog;
     const fogShape = fogConfig?.fogShape || 'cylinder';
     const isBW = this.motor3d.scene?.metadata?.globalVisualMode === 'bw';
     const isFPS = this.state.modoVistaPrueba === 'FPS';
     
-    const fogHeightStart = Math.max(0.1, isBW ? (isFPS ? (fogConfig?.fogHeightYStartFpsBW ?? 4.0) : (fogConfig?.fogHeightYStartTpsBW ?? 4.0)) : (isFPS ? (fogConfig?.fogHeightYStartFPS ?? 4.0) : (fogConfig?.fogHeightYStartTPS ?? 4.0)));
-    const fogHeightEnd = Math.max(0.1, isBW ? (isFPS ? (fogConfig?.fogHeightYEndFpsBW ?? 10.0) : (fogConfig?.fogHeightYEndTpsBW ?? 10.0)) : (isFPS ? (fogConfig?.fogHeightYEndFPS ?? 10.0) : (fogConfig?.fogHeightYEndTPS ?? 10.0)));
+    const hStartFpsBW = fogConfig?.fogHeightYStartFpsBW ?? 4.0;
+    const hStartTpsBW = fogConfig?.fogHeightYStartTpsBW ?? 4.0;
+    const hStartFPS = fogConfig?.fogHeightYStartFPS ?? 4.0;
+    const hStartTPS = fogConfig?.fogHeightYStartTPS ?? 4.0;
+    const fogHeightStart = Math.max(0.1, isBW ? (isFPS ? hStartFpsBW : hStartTpsBW) : (isFPS ? hStartFPS : hStartTPS));
+
+    const hEndFpsBW = fogConfig?.fogHeightYEndFpsBW ?? 10.0;
+    const hEndTpsBW = fogConfig?.fogHeightYEndTpsBW ?? 10.0;
+    const hEndFPS = fogConfig?.fogHeightYEndFPS ?? 10.0;
+    const hEndTPS = fogConfig?.fogHeightYEndTPS ?? 10.0;
+    const fogHeightEnd = Math.max(0.1, isBW ? (isFPS ? hEndFpsBW : hEndTpsBW) : (isFPS ? hEndFPS : hEndTPS));
 
     const fogAnchor = this.getFogDebugAnchor(obj);
     
-    // 🔥 FIX ESTABILIDAD: Fijas al ancla central SIN SUMAR LA RESPIRACIÓN (breath).
-    // Esto garantiza que el cilindro guía jamás tiemble, eliminando la distorsión de líneas.
     if (this.debugFogStartSphere) {
       this.debugFogStartSphere.position.set(
         fogAnchor.x, 

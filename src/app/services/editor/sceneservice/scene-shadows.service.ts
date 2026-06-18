@@ -1,10 +1,13 @@
+
 import { Injectable, inject } from '@angular/core';
 import { CascadedShadowGenerator, DirectionalLight, ShadowGenerator, SpotLight } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class SceneShadowsService {
   private motor3d = inject(Motor3dService);
+  private entityManager = inject(EntityManagerService);
 
   public asignarObjetosASombrasDeLuces(): void {
     const scene = this.motor3d.scene;
@@ -36,23 +39,24 @@ export class SceneShadowsService {
         renderList.length = 0;
         scene.meshes.forEach(m => {
 
-          // Nombres seguros que debemos ignorar al calcular las sombras
           const ignoredNames = ['ejeX', 'ejeY', 'ejeZ', 'gridHelper', 'sueloInvisible'];
-          
+          const entity = this.entityManager.getEntityByMesh(m);
+          const type = entity?.type;
+
           const isValidShadowCaster = m.isVisible &&
             !ignoredNames.includes(m.name) &&
             !m.name.includes('proxyCol') &&
             !m.name.includes('gizmo') &&
             !m.name.includes('highlight') &&
-            !m.name.startsWith('decal_') && // 🔥 PREVENIMOS SOMBRAS RARAS DE LAS MANCHAS DE LUZ
+            !m.name.startsWith('decal_') &&
             m.name !== 'centerDragPos' &&
             m.name !== 'debugCollider' &&
             m.name !== 'debugCamBox' &&
             m.name !== 'debugFogSphere' &&
-            m.metadata?.type !== 'trigger' &&
-            m.metadata?.type !== 'bubble' &&
-            m.metadata?.type !== 'video_plane' &&
-            !m.metadata?.type?.startsWith('light_');
+            type !== 'trigger' &&
+            type !== 'bubble' &&
+            type !== 'video_plane' &&
+            !type?.startsWith('light_');
 
           if (isValidShadowCaster) {
             sg.addShadowCaster(m, false);

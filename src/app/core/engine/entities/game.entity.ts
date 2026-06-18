@@ -1,4 +1,3 @@
-// src/app/core/engine/entities/game.entity.ts
 import { AbstractMesh, Vector3, Quaternion } from '@babylonjs/core';
 import { PlayerRuntimeConfig } from '../../../services/editor/player-config.model';
 
@@ -186,45 +185,13 @@ export class GameEntity {
 
     this.view.name = this.name;
     
+    // 🔥 Purgado: Ya no se inyecta la lógica al runtime de Babylon.
+    // Solo retenemos los atributos temporales de render (Decals, Babylon events, Uid)
     this.view.metadata = {
       ...this.view.metadata,
       uid: this.uid,
-      type: this.type,
-      rol: this.rol,
-      parentId: this.parentId,
-      orderIndex: this.orderIndex,
-      
-      color: this.visual.color,
-      colorBW: this.visual.colorBW,
-      isSolid: this.visual.isSolid,
-      isSelectable: this.visual.isSelectable,
-      ignoraNiebla: this.visual.ignoraNiebla,
-      esEmisivo: this.visual.esEmisivo,
-      brilloIntensidad: this.visual.brilloIntensidad,
-      assetId: this.visual.assetId,
-      path: this.visual.path,
-      
-      collider: this.collider,
-      camOffset: this.camOffset,
-      playerConfig: this.playerConfig,
-      selectionRange: this.selectionRange,
-      
-      mensaje: this.interaction.mensaje,
-      interactDistanceFPS: this.interaction.interactDistanceFPS,
-      interactDistanceTPS: this.interaction.interactDistanceTPS,
-      interactSequenceIdFPS: this.interaction.interactSequenceIdFPS,
-      interactSequenceIdTPS: this.interaction.interactSequenceIdTPS,
-      interactSequenceId: this.interaction.interactSequenceId,
-      respawnTime: this.interaction.respawnTime,
-      
-      animationNames: this.animationNames,
-      autoAnim: this.autoAnim,
-      initialHeadLocal: this.initialHeadLocal ? this.initialHeadLocal.clone() : undefined
+      entityUid: this.uid
     };
-
-    if (this.light) Object.assign(this.view.metadata, this.light);
-    if (this.media) Object.assign(this.view.metadata, this.media);
-    if (this.trigger) Object.assign(this.view.metadata, this.trigger);
   }
 
   public syncTransformFromView(): void {

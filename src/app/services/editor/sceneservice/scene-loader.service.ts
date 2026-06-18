@@ -10,13 +10,15 @@ import { SceneUtilsService } from './scene-utils.service';
 import { LoaderModelService } from './loaders/loader-model.service';
 import { LoaderPrimitiveService } from './loaders/loader-primitive.service';
 import { LoaderTriggerService } from './loaders/loader-trigger.service';
-
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+ 
 @Injectable({ providedIn: 'root' })
 export class SceneLoaderService {
   private motor3d = inject(Motor3dService);
   private envSvc = inject(SceneEnvironmentService);
   private shadowsSvc = inject(SceneShadowsService);
   private utilsSvc = inject(SceneUtilsService);
+  private entityManager = inject(EntityManagerService);
 
   private loaderModelSvc = inject(LoaderModelService);
   private loaderPrimitiveSvc = inject(LoaderPrimitiveService);
@@ -71,9 +73,11 @@ export class SceneLoaderService {
       });
 
       Promise.all(promesasCarga).then(() => {
-        mallasCreadas.forEach((mesh) => {
-          if (mesh.metadata?.parentId) {
-            const parentNode = mallasCreadas.get(mesh.metadata.parentId) || scene.getMeshByName(mesh.metadata.parentId);
+        // 🔥 SOLUCIÓN: Buscamos el parentId desde el ECS, no desde la metadata de la vista
+        mallasCreadas.forEach((mesh, uid) => {
+          const entity = this.entityManager.getEntityByUid(uid);
+          if (entity && entity.parentId) {
+            const parentNode = mallasCreadas.get(entity.parentId) || scene.getMeshByName(entity.parentId);
             if (parentNode) mesh.parent = parentNode;
           }
         });

@@ -1,5 +1,6 @@
+
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Vector3, Quaternion, MeshBuilder, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Vector3, Quaternion, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';

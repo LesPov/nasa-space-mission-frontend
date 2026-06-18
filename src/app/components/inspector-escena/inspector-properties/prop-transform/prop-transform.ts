@@ -30,6 +30,10 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   localEscX = 1; localEscY = 1; localEscZ = 1;
 
   mostrarSeccionColor = false;
+  esImagePlane = false;
+  esTrigger = false;
+  esBubble = false;
+
   objColor = '#ffffff';
   objColorBW = '#ffffff';
   objIgnoraNiebla = false;
@@ -91,6 +95,9 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.localEscZ = this.formatNum(entity.transform.scale.z);
 
     this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane', 'image_plane'].includes(entity.type);
+    this.esImagePlane = entity.type === 'image_plane';
+    this.esTrigger = entity.type === 'trigger' || entity.type === 'trigger_compuesto';
+    this.esBubble = entity.type === 'bubble';
     
     this.objColor = entity.visual.color || '#ffffff';
     this.objColorBW = entity.visual.colorBW || this.objColor;
@@ -117,8 +124,6 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
 
     this.cdr.detectChanges();
   }
-
-  // --- MÉTODOS DE DELEGACIÓN (El componente es tonto) ---
 
   aplicarPosicion() {
     this.transformMutator.aplicarPosicion(this.objeto, { x: this.localPosX, y: this.localPosY, z: this.localPosZ });

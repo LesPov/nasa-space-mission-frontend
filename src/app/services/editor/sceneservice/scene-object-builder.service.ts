@@ -1,11 +1,9 @@
-// src/app/services/editor/sceneservice/scene-object-builder.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import {
-  AbstractMesh, Color3, DirectionalLight, FresnelParameters, Matrix, Mesh, MeshBuilder, PointLight, Quaternion, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3, VideoTexture, Texture
+  AbstractMesh, Color3, DirectionalLight, FresnelParameters, Matrix, Mesh, MeshBuilder, PointLight, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3, VideoTexture, Texture
 } from '@babylonjs/core';
-
 import '@babylonjs/loaders';
-
 import { cloneDefaultPlayerConfig, mergePlayerConfig } from '../player-config.model';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
@@ -62,7 +60,6 @@ export class SceneObjectBuilderService {
     const safeSizeY = this.utilsSvc.normalizarNumero(sizeY, 1);
     const safeSizeZ = this.utilsSvc.normalizarNumero(sizeZ, 1);
 
-    // 🔥 1. FUENTE DE VERDAD: Creación de la Entidad Lógica
     const entity = new GameEntity(window.crypto.randomUUID(), nombre, tipo, isLight ? 'light' : rol);
     
     entity.visual.color = colorHex;
@@ -93,17 +90,16 @@ export class SceneObjectBuilderService {
       entity.media.imageUrl = asset?.path;
     }
 
-    // Configuración de Transformación Base en la Entidad
     entity.transform.scale = { x: safeSizeX, y: safeSizeY, z: safeSizeZ };
 
     if (parentNode) {
-      entity.parentId = parentNode.metadata?.uid || null;
+      const parentEntity = this.entityManager.getEntityByMesh(parentNode);
+      entity.parentId = parentEntity?.uid || null;
       entity.transform.position = tipo === 'image_plane' ? { x: 0, y: 0, z: -2 } : { x: 0, y: 0, z: 0 };
     } else {
       entity.transform.position = { x: 0, y: isLight ? 2 : (0.5 * safeSizeY), z: 0 };
     }
 
-    // 🔥 2. CREADOR DE LA MALLA VISUAL
     if ((isLight && asset) || (isModel && asset)) {
       const fullPath = 'http://localhost:4000' + asset.path;
       const lastSlash = fullPath.lastIndexOf('/');
@@ -115,7 +111,6 @@ export class SceneObjectBuilderService {
            rootNode.setParent(parentNode); 
         }
 
-        // VINCULACIÓN ECS -> VISTA (Esto le inyecta transformaciones y Metadata)
         entity.bindView(rootNode);
 
         rootNode.checkCollisions = false;
@@ -143,12 +138,11 @@ export class SceneObjectBuilderService {
             headNode.computeWorldMatrix(true);
             rootNode.computeWorldMatrix(true);
             entity.initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
-            entity.syncToView(); // Re-sincronizar el initialHeadLocal
+            entity.syncToView(); 
           }
         }
 
         this.entityManager.addEntity(entity);
-
         this.shadowsSvc.asignarObjetosASombrasDeLuces();
         this.state.objetoSeleccionado.set(rootNode);
         this.nodesSvc.actualizarListaNodos();
@@ -174,7 +168,6 @@ export class SceneObjectBuilderService {
         mesh.setParent(parentNode);
       }
 
-      // VINCULACIÓN ECS -> VISTA
       entity.bindView(mesh);
       
       mesh.isPickable = true;
@@ -189,7 +182,6 @@ export class SceneObjectBuilderService {
       mesh.ellipsoid = new Vector3(entity.collider.sizeX * safeSizeX, entity.collider.sizeY * safeSizeY, entity.collider.sizeZ * safeSizeZ);
       mesh.ellipsoidOffset = new Vector3(entity.collider.offsetX * safeSizeX, entity.collider.offsetY * safeSizeY, entity.collider.offsetZ * safeSizeZ);
 
-      // Setup Visual
       if (tipo === 'bubble') {
         const mat = new StandardMaterial('mat_' + nombre, scene);
         mat.emissiveColor = new Color3(0.9, 0.95, 1.0);

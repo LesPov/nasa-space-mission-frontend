@@ -1,3 +1,4 @@
+
 <div class="timeline-shell">
   <!-- Pestañas -->
   <div class="timeline-tabs">
@@ -41,7 +42,7 @@
             </div>
             <div style="flex: 1;"></div>
             <span style="font-size: 9px; color: #666; margin-right: 10px;">ID: {{ currentSequence.id }}</span>
-            <button class="btn-secondary" (click)="probarSecuencia(currentSequence)" *ngIf="editorSvc.objetoSeleccionado()?.metadata?.type !== 'trigger'">▶ Probar</button>
+            <button class="btn-secondary" (click)="probarSecuencia(currentSequence)" *ngIf="!esTrigger">▶ Probar</button>
             <button class="btn-danger" (click)="eliminarSecuencia(currentSequence.id)">🗑️</button>
           </div>
 

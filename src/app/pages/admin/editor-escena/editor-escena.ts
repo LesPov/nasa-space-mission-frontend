@@ -19,6 +19,7 @@ import { GameEventBusService } from '../../../core/engine/events/game-event-bus.
 import { GameEntity } from '../../../core/engine/entities/game.entity';
 import { EditorPlayModeService } from '../../../services/editor/editor-play-mode.service';
 import { PlayerInteractionService } from '../../../services/editor/playerservice/player-interaction.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Component({
   selector: 'app-editor-escena',
@@ -35,6 +36,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public epiApiSvc = inject(EpisodiosService);
   public gameSession = inject(GameSession);
   private eventBus = inject(GameEventBusService);
+  private entityManager = inject(EntityManagerService);
   public cdr = inject(ChangeDetectorRef);
   
   public playModeSvc = inject(EditorPlayModeService);
@@ -124,7 +126,6 @@ export class EditorEscena implements OnInit, OnDestroy {
         case 'GamePaused':
           if (this.misionIniciada && !this.isInteracting() && this.editorSvc.rolSimulado() === 'user') {
              this.modalMisionUsuario = true;
-             // Efecto cinemático al menú (Aleja la cámara)
              if (this.gameSession.cameraView() === 'FPS') {
                 this.playModeSvc.toggleCameraUser(false, 45);
              }
@@ -191,10 +192,12 @@ export class EditorEscena implements OnInit, OnDestroy {
 
         this.motor3dSvc.scene.executeWhenReady(() => {
           if (this.editorSvc.rolSimulado() === 'user') {
-            const spawnMesh = this.motor3dSvc.scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
+            // 🔥 SOLUCIÓN: Buscamos el punto de aparición desde el ECS, no desde la metadata visual
+            const spawnEntity = this.entityManager.getEntitiesByRol('spawn_point')[0] || 
+                                this.entityManager.getEntitiesByRol('npc')[0];
             
-            if (spawnMesh) {
-              this.editorSvc.seleccionarObjeto(spawnMesh);
+            if (spawnEntity && spawnEntity.view) {
+              this.editorSvc.seleccionarObjeto(spawnEntity.view);
               
               this.vistaPrueba = 'FPS';
               this.iniciarModoPrueba();
@@ -235,12 +238,10 @@ export class EditorEscena implements OnInit, OnDestroy {
   comenzarMisionUsuario() {
     this.cerrandoModalUsuario = true; 
     
-    // Si viene de TPS (Menú cinemático), lo regresamos suave a FPS
     if (this.gameSession.cameraView() === 'TPS') {
        this.playModeSvc.toggleCameraUser(false, 60); 
     }
 
-    // EL BLOQUEO DEBE SER SINCRÓNICO AL GESTO DEL USUARIO
     const canvas = this.motor3dSvc.engine.getRenderingCanvas();
     if (canvas) {
       canvas.focus();
@@ -414,9 +415,12 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   esObjetoJugable(): boolean {
-    const obj = this.editorSvc.objetoSeleccionado() as any;
+    const obj = this.editorSvc.objetoSeleccionado() as AbstractMesh;
     if (!obj) return false;
-    return obj.metadata?.rol === 'spawn_point' || obj.metadata?.rol === 'npc';
+    // 🔥 SOLUCIÓN: Buscamos el rol desde la Entidad, no desde la metadata de la vista
+    const entity = this.entityManager.getEntityByMesh(obj);
+    if (!entity) return false;
+    return entity.rol === 'spawn_point' || entity.rol === 'npc';
   }
 
   iniciarModoPrueba() {

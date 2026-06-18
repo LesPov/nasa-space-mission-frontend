@@ -1,12 +1,15 @@
-import { Injectable, signal } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { Node, AbstractMesh, Mesh, Vector3, Quaternion } from '@babylonjs/core';
+import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 
 export type ToolMode = 'select' | 'translate' | 'rotate' | 'scale';
 export type PlayState = 'EDITOR' | 'PLAYING' | 'EDITING_IN_GAME' | 'TRANSITIONING' | 'INTERACTING';
 
 @Injectable({ providedIn: 'root' })
 export class EditorStateService {
+  private entityManager = inject(EntityManagerService);
+
   public playState = signal<PlayState>('EDITOR');
   public rolSimulado = signal<'admin' | 'user'>('admin');
   public currentTool = signal<ToolMode>('translate');
@@ -71,7 +74,8 @@ export class EditorStateService {
         current = current.parent;
         continue;
       }
-      if ((current as any).metadata && (current as any).metadata.type) {
+      const entity = this.entityManager.getEntityByMesh(current as AbstractMesh);
+      if (entity) {
         return current;
       }
       current = current.parent;
@@ -98,28 +102,29 @@ export class EditorStateService {
   esMeshIgnorable(mesh: AbstractMesh | null | undefined): boolean {
     if (!mesh || !mesh.name) return true;
 
-    const meta = (mesh.metadata ?? {}) as any;
     const name = mesh.name.toLowerCase();
-    const isAdmin = this.checkIsAdmin() && this.rolSimulado() === 'admin';
-
-    if (meta.isGround === true) return true;
     if (this.esNombreIgnorable(name)) return true;
+
+    const entity = this.entityManager.getEntityByMesh(mesh);
+    const isAdmin = this.checkIsAdmin() && this.rolSimulado() === 'admin';
 
     if (this.jugadorActivo && (mesh === this.jugadorActivo || this.isDescendant(mesh, this.jugadorActivo))) {
       return true;
     }
 
-    if (meta.type === 'trigger') {
+    if (entity && entity.type === 'trigger') {
         if (isAdmin) {
             return false; 
         }
         return true; 
     }
 
-    if (!isAdmin && meta.isSelectable === false && !meta.mensaje && !meta.interactSequenceId && !meta.interactSequenceIdFPS && !meta.interactSequenceIdTPS && meta.type !== 'bubble') {
-      if (this.playState() === 'PLAYING' || this.playState() === 'INTERACTING') {
-        return true;
-      }
+    if (entity) {
+        if (!isAdmin && entity.visual.isSelectable === false && !entity.interaction.mensaje && !entity.interaction.interactSequenceId && !entity.interaction.interactSequenceIdFPS && !entity.interaction.interactSequenceIdTPS && entity.type !== 'bubble') {
+            if (this.playState() === 'PLAYING' || this.playState() === 'INTERACTING') {
+                return true;
+            }
+        }
     }
     return false;
   }
@@ -136,15 +141,17 @@ export class EditorStateService {
 
     const root = this.resolverObjetoSeleccionable(mesh) as AbstractMesh | null;
     const nodoBase = root ?? mesh;
-    const meta = (nodoBase.metadata ?? mesh.metadata ?? {}) as any;
+    
+    const entity = this.entityManager.getEntityByMesh(nodoBase);
+    if (!entity) return false;
 
-    if (meta.type === 'trigger') return false; 
-    if (meta.type === 'bubble') return true; 
+    if (entity.type === 'trigger') return false; 
+    if (entity.type === 'bubble') return true; 
 
-    const mensaje = typeof meta.mensaje === 'string' ? meta.mensaje.trim() : '';
-    const seqFPS = typeof meta.interactSequenceIdFPS === 'string' ? meta.interactSequenceIdFPS.trim() : '';
-    const seqTPS = typeof meta.interactSequenceIdTPS === 'string' ? meta.interactSequenceIdTPS.trim() : '';
-    const seqLeg = typeof meta.interactSequenceId === 'string' ? meta.interactSequenceId.trim() : '';
+    const mensaje = typeof entity.interaction.mensaje === 'string' ? entity.interaction.mensaje.trim() : '';
+    const seqFPS = typeof entity.interaction.interactSequenceIdFPS === 'string' ? entity.interaction.interactSequenceIdFPS.trim() : '';
+    const seqTPS = typeof entity.interaction.interactSequenceIdTPS === 'string' ? entity.interaction.interactSequenceIdTPS.trim() : '';
+    const seqLeg = typeof entity.interaction.interactSequenceId === 'string' ? entity.interaction.interactSequenceId.trim() : '';
 
     return (mensaje.length > 0 || seqFPS.length > 0 || seqTPS.length > 0 || seqLeg.length > 0);
   }
@@ -155,7 +162,9 @@ export class EditorStateService {
 
     const root = this.resolverObjetoSeleccionable(mesh) as AbstractMesh | null;
     const nodoBase = root ?? mesh;
-    const selectable = nodoBase.metadata?.isSelectable ?? mesh.metadata?.isSelectable ?? true;
+    
+    const entity = this.entityManager.getEntityByMesh(nodoBase);
+    const selectable = entity?.visual?.isSelectable ?? true;
 
     const isAdmin = this.checkIsAdmin() && this.rolSimulado() === 'admin';
 

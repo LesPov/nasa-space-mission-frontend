@@ -210,18 +210,15 @@ export class PlayerSequenceService {
                       if (step.action === 'playVideo') {
                           texture.video.play();
                           videoMesh.material.emissiveColor = new Color3(0.4, 0.4, 0.4); 
-                          videoMesh.metadata.isPoweredOn = true; 
                       }
                       if (step.action === 'pauseVideo') {
                           texture.video.pause();
                           videoMesh.material.emissiveColor = new Color3(0.2, 0.2, 0.2); 
-                          videoMesh.metadata.isPoweredOn = true; 
                       }
                       if (step.action === 'stopVideo') { 
                           texture.video.pause(); 
                           texture.video.currentTime = 0; 
                           videoMesh.material.emissiveColor = new Color3(0, 0, 0); 
-                          videoMesh.metadata.isPoweredOn = false; 
                       }
                   }
               }

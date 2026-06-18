@@ -6,6 +6,7 @@ import { Subscription } from 'rxjs';
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EditorPreviewService } from '../../../services/editor/editor-preview.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 import { PropTransform } from './prop-transform/prop-transform';
 import { PropTrigger } from './prop-trigger/prop-trigger';
@@ -31,6 +32,7 @@ import { PropVideo } from './prop-video/prop-video';
 export class InspectorProperties implements OnInit, OnDestroy {
   public editorSvc = inject(EditorMapaService);
   private previewSvc = inject(EditorPreviewService);
+  private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
 
   private _pestanaActiva: string = 'transform';
@@ -56,12 +58,16 @@ export class InspectorProperties implements OnInit, OnDestroy {
       const obj = this.editorSvc.objetoSeleccionado() as AbstractMesh;
       this.objetoActual = obj || null;
       if (obj) {
-        this.esTrigger = obj.metadata?.type === 'trigger';
-        this.esLuz = obj.metadata?.type?.startsWith('light_');
-        this.esLuzConModelo = this.esLuz && !!obj.metadata?.assetId;
-        this.esBurbuja = obj.metadata?.type === 'bubble';
-        this.esVideo = obj.metadata?.type === 'video_plane';
-        this.esPersonaje = obj.metadata?.type === 'model' || obj.metadata?.rol === 'npc' || obj.metadata?.rol === 'spawn_point';
+        const entity = this.entityManager.getEntityByMesh(obj);
+        const type = entity?.type || 'unknown';
+        const rol = entity?.rol || 'prop';
+
+        this.esTrigger = type === 'trigger' || type === 'trigger_compuesto';
+        this.esLuz = type.startsWith('light_');
+        this.esLuzConModelo = this.esLuz && !!entity?.visual?.assetId;
+        this.esBurbuja = type === 'bubble';
+        this.esVideo = type === 'video_plane';
+        this.esPersonaje = type === 'model' || rol === 'npc' || rol === 'spawn_point';
         
         if (this.esPersonaje) this.familiaResumen = 'Personaje / Player';
         else if (this.esTrigger) this.familiaResumen = 'Trigger de Evento';

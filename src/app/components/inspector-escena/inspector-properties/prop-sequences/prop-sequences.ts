@@ -40,6 +40,7 @@ export class PropSequences implements OnInit, OnChanges {
   availableClips: string[] = [];
   esPersonaje = false;
   esLuz = false;
+  esTrigger = false;
 
   ngOnInit() { this.cargarDatos(); }
   ngOnChanges(changes: SimpleChanges) { if (changes['objeto']) this.cargarDatos(); }
@@ -50,7 +51,8 @@ export class PropSequences implements OnInit, OnChanges {
     if (!entity) return;
     
     this.esPersonaje = entity.rol === 'npc' || entity.rol === 'spawn_point';
-    this.esLuz = entity.type.startsWith('light_');
+    this.esLuz = entity.type?.startsWith('light_') ?? false;
+    this.esTrigger = entity.type === 'trigger' || entity.type === 'trigger_compuesto';
 
     if (this.esPersonaje) this.actionRows = ACTION_ROWS_CHAR;
     else if (this.esLuz) this.actionRows = ACTION_ROWS_LIGHT;
@@ -80,7 +82,6 @@ export class PropSequences implements OnInit, OnChanges {
 
   get currentSequence() { return this.sequences.find(s => s.id === this.selectedSequenceId) || null; }
 
-  // --- DELEGACIÓN ---
   persist() {
     this.sequenceMutator.persistirSecuencias(this.objeto, this.sequences);
     this.animStatus = 'Paso guardado';

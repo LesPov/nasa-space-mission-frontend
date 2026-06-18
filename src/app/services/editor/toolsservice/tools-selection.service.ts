@@ -1,13 +1,14 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Ray, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsSelectionService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
+  private entityManager = inject(EntityManagerService);
 
   public normalizarNumero(valor: any, fallback: number): number {
     const n = Number(valor);
@@ -15,29 +16,35 @@ export class ToolsSelectionService {
   }
 
   public esTriggerMesh(mesh: AbstractMesh | null | undefined): boolean {
-    return !!mesh && (mesh.metadata?.type === 'trigger' || mesh.name?.toLowerCase().includes('trigger'));
+    if (!mesh) return false;
+    const entity = this.entityManager.getEntityByMesh(mesh);
+    return entity?.type === 'trigger' || mesh.name?.toLowerCase().includes('trigger');
   }
 
   public getSelectionRangeConfig(): { fpsAdminMax: number; fpsUserMax: number } {
     const fallback = { fpsAdminMax: 10000, fpsUserMax: 3 };
     const candidates: Array<any> = [];
+    
     const jugadorActivo = this.state.jugadorActivo as AbstractMesh | null;
-    if (jugadorActivo?.metadata) candidates.push(jugadorActivo.metadata);
+    const entJugador = this.entityManager.getEntityByMesh(jugadorActivo);
+    if (entJugador) candidates.push(entJugador);
 
     const seleccionado = this.state.objetoSeleccionado() as AbstractMesh | null;
-    if (seleccionado?.metadata) candidates.push(seleccionado.metadata);
+    const entSeleccionado = this.entityManager.getEntityByMesh(seleccionado);
+    if (entSeleccionado) candidates.push(entSeleccionado);
 
-    const scenePlayer = this.motor3d.scene?.meshes.find(
-      m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc'
-    );
-    if (scenePlayer?.metadata) candidates.push(scenePlayer.metadata);
+    const scenePlayer = this.motor3d.scene?.meshes.find(m => {
+        const ent = this.entityManager.getEntityByMesh(m);
+        return ent?.rol === 'spawn_point' || ent?.rol === 'npc';
+    });
+    const entScenePlayer = this.entityManager.getEntityByMesh(scenePlayer);
+    if (entScenePlayer) candidates.push(entScenePlayer);
 
-    for (const meta of candidates) {
-      const source = meta?.playerConfig?.selectionRange || meta?.selectionRange;
-      if (!source) continue;
+    for (const entity of candidates) {
+      if (!entity.selectionRange) continue;
       return {
-        fpsAdminMax: this.normalizarNumero(source.fpsAdminMax, fallback.fpsAdminMax),
-        fpsUserMax: this.normalizarNumero(source.fpsUserMax, fallback.fpsUserMax)
+        fpsAdminMax: this.normalizarNumero(entity.selectionRange.fpsAdminMax, fallback.fpsAdminMax),
+        fpsUserMax: this.normalizarNumero(entity.selectionRange.fpsUserMax, fallback.fpsUserMax)
       };
     }
     return fallback;
@@ -80,7 +87,8 @@ export class ToolsSelectionService {
 
     const root = this.state.encontrarRaiz(mesh) as AbstractMesh | null;
     const base = root ?? mesh;
-    const selectable = base.metadata?.isSelectable ?? mesh.metadata?.isSelectable ?? true;
+    const entity = this.entityManager.getEntityByMesh(base);
+    const selectable = entity?.visual?.isSelectable ?? true;
     return selectable !== false;
   }
 
@@ -92,16 +100,16 @@ export class ToolsSelectionService {
     const hit = scene.pickWithRay(ray, (m) => {
       if (!m.isVisible || !m.isPickable) return false;
       
-      // 🔥 FIX: IGNORAR AL JUGADOR Y SUS PARTES EN MODO FPS
       if (this.state.modoVistaPrueba === 'FPS' && jugador && (m === jugador || m.isDescendantOf(jugador))) return false;
 
       const nameStr = m.name.toLowerCase();
       if (nameStr.includes('highlight') || nameStr.includes('gizmo')) return false;
       
-      // 🔥 FIX NIEBLA: Ignorar los muros y shells de niebla
       if (nameStr.includes('proxycol') || nameStr.includes('suelo') || nameStr.includes('skybox') || nameStr.includes('debug') || nameStr.includes('fogshell') || nameStr.includes('fogwall')) return false;
       if (m === centerDragMesh) return false;
-      if (m.metadata?.type === 'trigger' || nameStr.includes('trigger')) {
+      
+      const entity = this.entityManager.getEntityByMesh(m);
+      if (entity?.type === 'trigger' || nameStr.includes('trigger')) {
           if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') return false;
       }
       return true;

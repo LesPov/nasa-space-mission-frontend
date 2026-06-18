@@ -1,9 +1,12 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Quaternion, Vector3 } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
 import { EditorStateService } from '../editor-state.service';
 import { EditorSceneService } from '../editor-scene.service';
 import { SceneUtilsService } from '../sceneservice/scene-utils.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { GameEntity } from '../../../core/engine/entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsClipboardService {
@@ -11,6 +14,7 @@ export class ToolsClipboardService {
   private historialSvc = inject(HistorialService);
   private sceneSvc = inject(EditorSceneService);
   private utilsSvc = inject(SceneUtilsService);
+  private entityManager = inject(EntityManagerService);
 
   private objetoEnPortapapeles: AbstractMesh | null = null;
   private listenerCtrlZAgregado = false;
@@ -46,12 +50,16 @@ export class ToolsClipboardService {
 
   public pegarObjeto(): void {
     if (!this.objetoEnPortapapeles) return;
+    
     const objOriginal = this.objetoEnPortapapeles;
+    const entityOriginal = this.entityManager.getEntityByMesh(objOriginal);
+    if (!entityOriginal) return;
+
     let clon: AbstractMesh;
     const nuevoNombre = objOriginal.name + '_Copia_' + Math.floor(Math.random() * 1000);
 
-    const hasAsset = !!objOriginal.metadata?.assetId;
-    const isModelOrLightModel = objOriginal.metadata?.type === 'model' || (objOriginal.metadata?.type?.startsWith('light_') && hasAsset);
+    const hasAsset = !!entityOriginal.visual.assetId;
+    const isModelOrLightModel = entityOriginal.type === 'model' || (entityOriginal.type?.startsWith('light_') && hasAsset);
 
     if (isModelOrLightModel) {
       // Instanciamos el modelo con toda su jerarquía de mallas
@@ -68,15 +76,15 @@ export class ToolsClipboardService {
       clon = objOriginal.clone(nuevoNombre, null) as AbstractMesh;
     }
 
-    // 🔥 FIX VITAL: CLONAR LA LUZ FÍSICA SI ES UNA LUZ (instantiateHierarchy no clona las luces nativas)
-    if (objOriginal.metadata?.type?.startsWith('light_')) {
+    // 🔥 CLONAR LA LUZ FÍSICA NATIVA
+    if (entityOriginal.type?.startsWith('light_')) {
       const originalLight = objOriginal.getDescendants(false).find(c => c.getClassName().includes('Light')) as any;
       if (originalLight) {
          const newLight = originalLight.clone('l_' + nuevoNombre);
          
          let targetParent: any = clon;
-         if (objOriginal.metadata?.attachedNodeName) {
-            const foundNode = clon.getDescendants(false).find((n: any) => n.name === objOriginal.metadata.attachedNodeName);
+         if (entityOriginal.light?.attachedNodeName) {
+            const foundNode = clon.getDescendants(false).find((n: any) => n.name === entityOriginal.light!.attachedNodeName);
             if (foundNode) targetParent = foundNode;
          }
          newLight.parent = targetParent;
@@ -91,19 +99,33 @@ export class ToolsClipboardService {
     else clon.rotation = objOriginal.rotation.clone();
 
     clon.scaling = objOriginal.scaling.clone();
-    clon.metadata = JSON.parse(JSON.stringify(objOriginal.metadata));
     
-    // RENOVAMOS EL UID DE BABYLON Y TODOS LOS IDS DE LAS SECUENCIAS
-    clon.metadata.uid = window.crypto.randomUUID();
-    this.utilsSvc.renovarIdsDeSecuencias(clon.metadata);
+    // 🔥 CLONACIÓN PROFUNDA DE LA ENTIDAD LÓGICA (Fuente de verdad)
+    const newEntity = new GameEntity(window.crypto.randomUUID(), nuevoNombre, entityOriginal.type, entityOriginal.rol);
+    newEntity.transform = JSON.parse(JSON.stringify(entityOriginal.transform));
+    newEntity.visual = JSON.parse(JSON.stringify(entityOriginal.visual));
+    newEntity.collider = JSON.parse(JSON.stringify(entityOriginal.collider));
+    newEntity.interaction = JSON.parse(JSON.stringify(entityOriginal.interaction));
+    newEntity.selectionRange = JSON.parse(JSON.stringify(entityOriginal.selectionRange));
     
-    if (objOriginal.metadata?.initialHeadLocal) {
-      clon.metadata.initialHeadLocal = new Vector3(
-        objOriginal.metadata.initialHeadLocal.x,
-        objOriginal.metadata.initialHeadLocal.y,
-        objOriginal.metadata.initialHeadLocal.z
-      );
+    if (entityOriginal.playerConfig) newEntity.playerConfig = JSON.parse(JSON.stringify(entityOriginal.playerConfig));
+    if (entityOriginal.light) newEntity.light = JSON.parse(JSON.stringify(entityOriginal.light));
+    if (entityOriginal.media) newEntity.media = JSON.parse(JSON.stringify(entityOriginal.media));
+    if (entityOriginal.trigger) newEntity.trigger = JSON.parse(JSON.stringify(entityOriginal.trigger));
+    
+    newEntity.camOffset = JSON.parse(JSON.stringify(entityOriginal.camOffset));
+    newEntity.animationNames = [...entityOriginal.animationNames];
+    newEntity.autoAnim = JSON.parse(JSON.stringify(entityOriginal.autoAnim));
+    if (entityOriginal.initialHeadLocal) {
+       newEntity.initialHeadLocal = entityOriginal.initialHeadLocal.clone();
     }
+
+    // Renovar UIDs en secuencias de la nueva entidad
+    this.utilsSvc.renovarIdsDeSecuencias(newEntity);
+
+    // Vínculo bidireccional y registro en ECS
+    newEntity.bindView(clon);
+    this.entityManager.addEntity(newEntity);
 
     clon.isPickable = true;
 

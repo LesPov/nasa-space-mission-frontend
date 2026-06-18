@@ -2,10 +2,12 @@
 import { Injectable, inject } from '@angular/core';
 import { Color3, Engine, Mesh, MeshBuilder, Ray, Scene, StandardMaterial, Texture, Vector3 } from '@babylonjs/core';
 import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
  
 @Injectable({ providedIn: 'root' })
 export class SceneProjectionService {
   private loopManager = inject(LoopManagerService);
+  private entityManager = inject(EntityManagerService);
 
   public clampNum(v: number, min: number, max: number, fallback = min): number {
     if (Number.isNaN(v) || v === null || v === undefined) return fallback;
@@ -103,9 +105,11 @@ export class SceneProjectionService {
 
     const callbackId = 'HologramaFade_' + mesh.uniqueId;
 
-    // 🔥 FASE 2: MIGRACIÓN AL LOOP MANAGER
     this.loopManager.register(callbackId, GamePhase.POST_UPDATE, () => {
       if (!mesh || mesh.isDisposed?.()) return;
+
+      const entity = this.entityManager.getEntityByMesh(mesh);
+      if (!entity) return;
 
       const currentModeIsBW = scene.metadata?.globalVisualMode === 'bw';
       if (mesh.metadata._lastVisualMode !== currentModeIsBW) {
@@ -113,24 +117,24 @@ export class SceneProjectionService {
         if (mesh.metadata.updateDecal) mesh.metadata.updateDecal();
       }
 
-      // Vemos si este holograma tiene un Fade explícito configurado
-      let fadeDist = Number(mesh.metadata.fadeDistance ?? 0);
+      let fadeDist = Number(entity.media?.fadeDistance ?? 0);
       let isUsingFogFallback = false;
 
-      // 🔥 LÓGICA VITAL: Si el objeto NO ignora niebla y su Fade está en 0, 
-      // leemos el FOG del jugador para atenuar este panel simulando que la niebla lo oculta.
-      if (fadeDist <= 0 && !mesh.metadata.ignoraNiebla) {
-          const targetPlayer = scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
-          if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
-              // Obtenemos la distancia de renderizado de la niebla base
-              const fog = targetPlayer.metadata.playerConfig.fog;
+      if (fadeDist <= 0 && !entity.visual.ignoraNiebla) {
+          const targetPlayer = scene.meshes.find(m => {
+              const ent = this.entityManager.getEntityByMesh(m);
+              return ent?.rol === 'spawn_point' || ent?.rol === 'npc';
+          });
+          const targetEntity = this.entityManager.getEntityByMesh(targetPlayer);
+
+          if (targetEntity && targetEntity.playerConfig?.fog?.enabled) {
+              const fog = targetEntity.playerConfig.fog;
               const isFPS = scene.activeCamera?.name === 'playerCameraFPS';
               const maxZ = currentModeIsBW 
                   ? (isFPS ? fog.renderDistanceFpsBW : fog.renderDistanceTpsBW)
                   : (isFPS ? fog.renderDistanceFPS : fog.renderDistanceTPS);
               
               if (maxZ && maxZ > 0) {
-                 // Si el objeto está en la mitad del abismo del fog, empieza a desaparecer
                  fadeDist = maxZ * 0.85; 
                  isUsingFogFallback = true;
               }
@@ -139,7 +143,7 @@ export class SceneProjectionService {
 
       if (fadeDist > 0 && scene.activeCamera) {
         const distanceToCam = Vector3.Distance(scene.activeCamera.globalPosition, mesh.getAbsolutePosition());
-        const fadeStart = isUsingFogFallback ? (fadeDist * 0.7) : (fadeDist * 0.5); // Si es por niebla, aguanta más brillando
+        const fadeStart = isUsingFogFallback ? (fadeDist * 0.7) : (fadeDist * 0.5); 
 
         let alphaMultiplier = 1.0;
 
@@ -147,19 +151,19 @@ export class SceneProjectionService {
           alphaMultiplier = 0.0;
         } else if (distanceToCam > fadeStart) {
           let progress = (distanceToCam - fadeStart) / (fadeDist - fadeStart);
-          progress = progress * progress * (3 - 2 * progress); // Smoothstep
+          progress = progress * progress * (3 - 2 * progress); 
           alphaMultiplier = Math.max(0, Math.min(1.0, 1.0 - progress));
         }
 
         if (mesh.metadata.decalMaterial) {
           const dMat = mesh.metadata.decalMaterial as StandardMaterial;
           const hasTexture = dMat.diffuseTexture != null;
-          const brilloBase = Number(mesh.metadata.brilloIntensidad ?? 1.0);
+          const brilloBase = Number(entity.visual.brilloIntensidad ?? 1.0);
 
           const baseAlpha = hasTexture ? 1.0 : Math.max(0.2, Math.min(1.0, brilloBase * 0.5));
 
           dMat.alpha = baseAlpha * alphaMultiplier;
-          const colorReal = currentModeIsBW ? mesh.metadata.colorBW : mesh.metadata.color;
+          const colorReal = currentModeIsBW ? entity.visual.colorBW : entity.visual.color;
           dMat.emissiveColor = Color3.FromHexString(colorReal || '#ffffff').scale(brilloBase * alphaMultiplier);
         }
 
@@ -176,10 +180,10 @@ export class SceneProjectionService {
         if (mesh.metadata.decalMaterial) {
           const dMat = mesh.metadata.decalMaterial as StandardMaterial;
           const hasTexture = dMat.diffuseTexture != null;
-          const brilloBase = Number(mesh.metadata.brilloIntensidad ?? 1.0);
+          const brilloBase = Number(entity.visual.brilloIntensidad ?? 1.0);
           dMat.alpha = hasTexture ? 1.0 : Math.max(0.2, Math.min(1.0, brilloBase * 0.5));
 
-          const colorReal = currentModeIsBW ? mesh.metadata.colorBW : mesh.metadata.color;
+          const colorReal = currentModeIsBW ? entity.visual.colorBW : entity.visual.color;
           dMat.emissiveColor = Color3.FromHexString(colorReal || '#ffffff').scale(brilloBase);
         }
         if (Array.isArray(mesh.metadata.decalMeshes)) {
@@ -193,13 +197,15 @@ export class SceneProjectionService {
       }
     });
 
-    // 🔥 LOGICA DEL RAYCAST Y CREACIÓN DE PATRONES (Muro / Decals)
     mesh.metadata.updateDecal = () => {
       this.limpiarDecalsImagen(mesh);
 
+      const entity = this.entityManager.getEntityByMesh(mesh);
+      if (!entity) return;
+
       try {
         const isNowBW = scene.metadata?.globalVisualMode === 'bw';
-        const colorReal = isNowBW ? mesh.metadata.colorBW : mesh.metadata.color;
+        const colorReal = isNowBW ? entity.visual.colorBW : entity.visual.color;
         const decalMat = mesh.metadata.decalMaterial as StandardMaterial | null | undefined;
         const decalTexture = decalMat?.diffuseTexture ?? null;
 
@@ -210,8 +216,8 @@ export class SceneProjectionService {
         this.configurarMaterialProyector(
           decalMat,
           colorReal,
-          mesh.metadata.brilloIntensidad,
-          mesh.metadata.ignoraNiebla,
+          entity.visual.brilloIntensidad,
+          entity.visual.ignoraNiebla,
           decalTexture instanceof Texture ? decalTexture : undefined
         );
 
@@ -226,9 +232,11 @@ export class SceneProjectionService {
           if (m === mesh) return false;
 
           const n = m.name.toLowerCase();
-          if (n.includes('trigger') || m.metadata?.type === 'trigger') return false;
+          const targetEntity = this.entityManager.getEntityByMesh(m);
+          
+          if (targetEntity?.type === 'trigger' || n.includes('trigger')) return false;
           if (n.includes('proxycol') || n.includes('gizmo') || n.includes('debug')) return false;
-          if (m.metadata?.type === 'image_plane' || m.metadata?.type === 'bubble') return false;
+          if (targetEntity?.type === 'image_plane' || targetEntity?.type === 'bubble') return false;
           if (['ejex', 'ejey', 'ejez', 'gridhelper', 'sueloinvisible'].includes(n)) return false;
 
           return true;
@@ -237,11 +245,11 @@ export class SceneProjectionService {
         if (hit && hit.hit && hit.pickedMesh && hit.pickedPoint) {
           const targetMesh = hit.pickedMesh as Mesh;
 
-          const ancho = this.clampNum(Number(mesh.metadata.proyeccionAncho ?? 2), 0.05, 9999);
-          const alto = this.clampNum(Number(mesh.metadata.proyeccionAlto ?? 2), 0.05, 9999);
-          const prof = this.clampNum(Number(mesh.metadata.profundidadProyeccion ?? 10), 0.01, 9999);
+          const ancho = this.clampNum(Number(entity.media?.proyeccionAncho ?? 2), 0.05, 9999);
+          const alto = this.clampNum(Number(entity.media?.proyeccionAlto ?? 2), 0.05, 9999);
+          const prof = this.clampNum(Number(entity.media?.profundidadProyeccion ?? 10), 0.01, 9999);
 
-          let angulo = Number(mesh.metadata.anguloProyeccion ?? 0) * (Math.PI / 180);
+          let angulo = Number(entity.media?.anguloProyeccion ?? 0) * (Math.PI / 180);
           if (mesh.rotationQuaternion) {
             angulo += mesh.rotationQuaternion.toEulerAngles().z;
           } else {
@@ -251,9 +259,9 @@ export class SceneProjectionService {
           const normal = direction.scale(-1).normalize();
           const decalSize = new Vector3(ancho, alto, prof);
 
-          const repeticiones = Math.floor(this.clampNum(Number(mesh.metadata.proyeccionRepeticiones ?? 1), 1, 50));
-          const espaciado = Number(mesh.metadata.proyeccionEspaciado ?? 2);
-          const ejeRepeticion = mesh.metadata.proyeccionEje === 'X' ? mesh.right : mesh.up;
+          const repeticiones = Math.floor(this.clampNum(Number(entity.media?.proyeccionRepeticiones ?? 1), 1, 50));
+          const espaciado = Number(entity.media?.proyeccionEspaciado ?? 2);
+          const ejeRepeticion = entity.media?.proyeccionEje === 'X' ? mesh.right : mesh.up;
 
           const totalDist = (repeticiones - 1) * espaciado;
           const centerDecalPos = hit.pickedPoint.add(direction.scale(prof * 0.5));
@@ -275,7 +283,7 @@ export class SceneProjectionService {
             decal.setParent(targetMesh);
             decal.isPickable = false;
             decal.receiveShadows = false;
-            decal.applyFog = !mesh.metadata.ignoraNiebla;
+            decal.applyFog = !entity.visual.ignoraNiebla;
             decal.alwaysSelectAsActiveMesh = true;
 
             mesh.metadata.decalMeshes.push(decal);
@@ -286,7 +294,6 @@ export class SceneProjectionService {
       }
     };
 
-    // Limpieza de memoria al destruir el objeto base
     mesh.onDisposeObservable.add(() => {
       this.loopManager.unregister(callbackId);
       this.limpiarDecalsImagen(mesh);
@@ -303,7 +310,6 @@ export class SceneProjectionService {
       }
     });
 
-    // Disparo inicial diferido para asegurar que la escena se actualice
     setTimeout(() => {
       if (mesh.metadata?.updateDecal) mesh.metadata.updateDecal();
     }, 150);

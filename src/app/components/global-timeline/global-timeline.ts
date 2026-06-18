@@ -50,17 +50,14 @@ export class GlobalTimeline implements OnInit {
   public activeTab: string = 'clips';
   public currentObjectId: string | null = null;
   
-  // PREFABS
   public prefabsDisponibles: any[] = [];
   public nuevoPrefabNombre: string = '';
   public guardandoPrefab = false;
 
-  // AUTO-ANIM
   public autoAnimConfig = {
     enabled: false, type: 'move', axis: 'Y', amount: 5, duration: 2, stopBaked: false
   };
 
-  // CLIPS (SECUENCIAS)
   public sequences: PlayerClipSequence[] = [];
   public selectedSequenceId: string | null = null;
   public selectedStepIndex: number = -1;
@@ -68,6 +65,7 @@ export class GlobalTimeline implements OnInit {
   public availableClips: string[] = [];
   public esPersonaje: boolean = false;
   public esLuz: boolean = false;
+  public esTrigger: boolean = false;
 
   constructor() {
     effect(() => {
@@ -98,7 +96,8 @@ export class GlobalTimeline implements OnInit {
     }
     
     this.esPersonaje = entity.rol === 'npc' || entity.rol === 'spawn_point';
-    this.esLuz = entity.type.startsWith('light_');
+    this.esLuz = entity.type?.startsWith('light_') ?? false;
+    this.esTrigger = entity.type === 'trigger' || entity.type === 'trigger_compuesto';
 
     if (this.esPersonaje) this.actionRows = ACTION_ROWS_CHAR;
     else if (this.esLuz) this.actionRows = ACTION_ROWS_LIGHT;
@@ -190,7 +189,7 @@ export class GlobalTimeline implements OnInit {
     this.persist();
     const obj = this.editorSvc.objetoSeleccionado() as Mesh;
     const entity = this.entityManager.getEntityByMesh(obj);
-    if (entity && entity.type !== 'trigger') {
+    if (entity && entity.type !== 'trigger' && entity.type !== 'trigger_compuesto') {
         this.previewSvc.iniciarPreviewSecuencia(entity, seq.id);
     }
   }
@@ -237,8 +236,6 @@ export class GlobalTimeline implements OnInit {
 
     this.guardandoPrefab = true;
 
-    // Aquí delegarás a PrefabManager en el futuro o se inyectará.
-    // Usaremos la API directamente por ahora asegurando leer Entity y no Metadata.
     const entity = this.entityManager.getEntityByMesh(seleccionado);
     if(!entity) {
        this.guardandoPrefab = false;

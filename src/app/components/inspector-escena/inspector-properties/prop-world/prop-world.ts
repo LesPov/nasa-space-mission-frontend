@@ -1,3 +1,4 @@
+
 import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -7,12 +8,14 @@ import {
   HemisphericLight,
   Scene,
   Vector3,
-  StandardMaterial
+  StandardMaterial,
+  Mesh
 } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { Motor3dService } from '../../../../services/motor-3d.service';
+import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 
 type VisualMode = 'normal' | 'bw';
 
@@ -26,6 +29,7 @@ type VisualMode = 'normal' | 'bw';
 export class PropWorld implements OnInit, OnDestroy {
   private editorSvc = inject(EditorMapaService);
   private motor3dSvc = inject(Motor3dService);
+  private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -86,34 +90,35 @@ export class PropWorld implements OnInit, OnDestroy {
 
     this.aplicarFondo();
 
-    scene.meshes.forEach(mesh => {
-      const meta = mesh.metadata;
-      if (!meta) return;
+    // 🔥 Iteramos sobre Entidades, no sobre Mallas ciegamente
+    this.entityManager.getAllEntities().forEach(entity => {
+      const mesh = entity.view as Mesh;
+      if (!mesh) return;
 
-      const activeColorHex = isBW ? (meta.colorBW || meta.color || '#ffffff') : (meta.color || '#ffffff');
+      const activeColorHex = isBW ? (entity.visual.colorBW || entity.visual.color || '#ffffff') : (entity.visual.color || '#ffffff');
       const c3 = Color3.FromHexString(activeColorHex);
 
-      if (meta.type === 'image_plane' && meta.decalMaterial) {
-        const decalMat = meta.decalMaterial as StandardMaterial;
-        const brillo = Number(meta.brilloIntensidad ?? 1.0);
+      if (entity.type === 'image_plane' && entity.media?.runtimeDecalMaterial) {
+        const decalMat = entity.media.runtimeDecalMaterial as StandardMaterial;
+        const brillo = Number(entity.visual.brilloIntensidad ?? 1.0);
         
         decalMat.diffuseColor = c3;
         decalMat.emissiveColor = c3.scale(brillo);
       } 
-      else if (['cube', 'sphere', 'cylinder', 'plane'].includes(meta.type)) {
+      else if (['cube', 'sphere', 'cylinder', 'plane', 'model'].includes(entity.type)) {
         if (mesh.material && (mesh.material as any).diffuseColor) {
           const mat = mesh.material as StandardMaterial;
           mat.diffuseColor = c3;
 
-          if (meta.esEmisivo) {
-            const brillo = Number(meta.brilloIntensidad ?? 1.0);
+          if (entity.visual.esEmisivo) {
+            const brillo = Number(entity.visual.brilloIntensidad ?? 1.0);
             mat.emissiveColor = c3.scale(brillo);
           } else {
             mat.emissiveColor = new Color3(0, 0, 0);
           }
         }
       }
-      else if (meta.type?.startsWith('light_')) {
+      else if (entity.type.startsWith('light_')) {
           if (mesh.material && (mesh.material as any).emissiveColor) {
               (mesh.material as StandardMaterial).emissiveColor = c3;
           }
@@ -135,8 +140,6 @@ export class PropWorld implements OnInit, OnDestroy {
       globalClearColorBW: this.clearColorHexBW 
     };
 
-    // 🔥 FIX: Eliminamos el chequeo de "isEditor" para que el cielo cambie 
-    // en tiempo real tanto en el editor normal como durante el testing.
     const activeClearHex = this.visualMode === 'bw' ? this.clearColorHexBW : this.clearColorHex;
     scene.clearColor = Color4.FromHexString(activeClearHex + 'ff');
 

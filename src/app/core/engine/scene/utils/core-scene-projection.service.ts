@@ -1,7 +1,7 @@
 // src/app/core/engine/scene/utils/core-scene-projection.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { Color3, Engine, Mesh, MeshBuilder, Ray, Scene, StandardMaterial, Texture, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Color3, Engine, Mesh, MeshBuilder, Ray, Scene, StandardMaterial, Texture, Vector3 } from '@babylonjs/core';
 import { LoopManagerService, GamePhase } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 
@@ -82,42 +82,42 @@ export class CoreSceneProjectionService {
   }
 
   public limpiarDecalsImagen(mesh: Mesh): void {
-    const meta: any = mesh.metadata || {};
+    const entity = this.entityManager.getEntityByMesh(mesh);
+    if (!entity || !entity.media) return;
 
-    if (Array.isArray(meta.decalMeshes)) {
-      meta.decalMeshes.forEach((d: Mesh | null) => {
+    if (Array.isArray(entity.media.runtimeDecals)) {
+      entity.media.runtimeDecals.forEach((d) => {
         if (d && !this.isDisposedSeguro(d)) {
           this.disposeSeguro(d);
         }
       });
     }
 
-    if (meta.decalMesh && !this.isDisposedSeguro(meta.decalMesh)) {
-      this.disposeSeguro(meta.decalMesh);
+    if (entity.media.runtimeDecalMaterial && !this.isDisposedSeguro(entity.media.runtimeDecalMaterial)) {
+      this.disposeSeguro(entity.media.runtimeDecalMaterial);
     }
 
-    meta.decalMeshes = [];
-    meta.decalMesh = null;
-    mesh.metadata = meta;
+    // 🔥 La Entidad gestiona sus referencias runtime
+    entity.media.runtimeDecals = [];
+    entity.media.runtimeDecalMaterial = undefined;
   }
 
   public actualizarProyeccion(mesh: Mesh): void {
     this.limpiarDecalsImagen(mesh);
 
     const entity = this.entityManager.getEntityByMesh(mesh);
-    if (!entity) return;
+    if (!entity || !entity.media) return;
 
     const scene = mesh.getScene();
 
     try {
       const isNowBW = scene.metadata?.globalVisualMode === 'bw';
       const colorReal = isNowBW ? entity.visual.colorBW : entity.visual.color;
-      const decalMat = mesh.metadata.decalMaterial as StandardMaterial | null | undefined;
+      
+      const decalMat = entity.media.runtimeDecalMaterial;
       const decalTexture = decalMat?.diffuseTexture ?? null;
 
-      if (!decalMat) {
-        return;
-      }
+      if (!decalMat) return;
 
       this.configurarMaterialProyector(
         decalMat,
@@ -151,11 +151,11 @@ export class CoreSceneProjectionService {
       if (hit && hit.hit && hit.pickedMesh && hit.pickedPoint) {
         const targetMesh = hit.pickedMesh as Mesh;
 
-        const ancho = this.clampNum(Number(entity.media?.proyeccionAncho ?? 2), 0.05, 9999);
-        const alto = this.clampNum(Number(entity.media?.proyeccionAlto ?? 2), 0.05, 9999);
-        const prof = this.clampNum(Number(entity.media?.profundidadProyeccion ?? 10), 0.01, 9999);
+        const ancho = this.clampNum(Number(entity.media.proyeccionAncho ?? 2), 0.05, 9999);
+        const alto = this.clampNum(Number(entity.media.proyeccionAlto ?? 2), 0.05, 9999);
+        const prof = this.clampNum(Number(entity.media.profundidadProyeccion ?? 10), 0.01, 9999);
 
-        let angulo = Number(entity.media?.anguloProyeccion ?? 0) * (Math.PI / 180);
+        let angulo = Number(entity.media.anguloProyeccion ?? 0) * (Math.PI / 180);
         if (mesh.rotationQuaternion) {
           angulo += mesh.rotationQuaternion.toEulerAngles().z;
         } else {
@@ -165,15 +165,15 @@ export class CoreSceneProjectionService {
         const normal = direction.scale(-1).normalize();
         const decalSize = new Vector3(ancho, alto, prof);
 
-        const repeticiones = Math.floor(this.clampNum(Number(entity.media?.proyeccionRepeticiones ?? 1), 1, 50));
-        const espaciado = Number(entity.media?.proyeccionEspaciado ?? 2);
-        const ejeRepeticion = entity.media?.proyeccionEje === 'X' ? mesh.right : mesh.up;
+        const repeticiones = Math.floor(this.clampNum(Number(entity.media.proyeccionRepeticiones ?? 1), 1, 50));
+        const espaciado = Number(entity.media.proyeccionEspaciado ?? 2);
+        const ejeRepeticion = entity.media.proyeccionEje === 'X' ? mesh.right : mesh.up;
 
         const totalDist = (repeticiones - 1) * espaciado;
         const centerDecalPos = hit.pickedPoint.add(direction.scale(prof * 0.5));
         const startPos = centerDecalPos.subtract(ejeRepeticion.scale(totalDist * 0.5));
 
-        mesh.metadata.decalMeshes = [];
+        entity.media.runtimeDecals = [];
 
         for (let i = 0; i < repeticiones; i++) {
           const currentDecalPos = startPos.add(ejeRepeticion.scale(i * espaciado));
@@ -192,7 +192,7 @@ export class CoreSceneProjectionService {
           decal.applyFog = !entity.visual.ignoraNiebla;
           decal.alwaysSelectAsActiveMesh = true;
 
-          mesh.metadata.decalMeshes.push(decal);
+          entity.media.runtimeDecals.push(decal);
         }
       }
     } catch (e) {
@@ -201,23 +201,21 @@ export class CoreSceneProjectionService {
   }
 
   public aplicarLogicaHolograma(mesh: Mesh, scene: Scene): void {
-    if (!mesh.metadata) mesh.metadata = {};
-
     const callbackId = 'HologramaFade_' + mesh.uniqueId;
 
     this.loopManager.register(callbackId, GamePhase.POST_UPDATE, () => {
       if (!mesh || mesh.isDisposed?.()) return;
 
       const entity = this.entityManager.getEntityByMesh(mesh);
-      if (!entity) return;
+      if (!entity || !entity.media) return;
 
       const currentModeIsBW = scene.metadata?.globalVisualMode === 'bw';
-      if (mesh.metadata._lastVisualMode !== currentModeIsBW) {
-        mesh.metadata._lastVisualMode = currentModeIsBW;
+      if (entity.media.lastVisualModeBW !== currentModeIsBW) {
+        entity.media.lastVisualModeBW = currentModeIsBW;
         this.actualizarProyeccion(mesh);
       }
 
-      let fadeDist = Number(entity.media?.fadeDistance ?? 0);
+      let fadeDist = Number(entity.media.fadeDistance ?? 0);
       let isUsingFogFallback = false;
 
       if (fadeDist <= 0 && !entity.visual.ignoraNiebla) {
@@ -255,8 +253,8 @@ export class CoreSceneProjectionService {
           alphaMultiplier = Math.max(0, Math.min(1.0, 1.0 - progress));
         }
 
-        if (mesh.metadata.decalMaterial) {
-          const dMat = mesh.metadata.decalMaterial as StandardMaterial;
+        if (entity.media.runtimeDecalMaterial) {
+          const dMat = entity.media.runtimeDecalMaterial as StandardMaterial;
           const hasTexture = dMat.diffuseTexture != null;
           const brilloBase = Number(entity.visual.brilloIntensidad ?? 1.0);
 
@@ -267,8 +265,9 @@ export class CoreSceneProjectionService {
           dMat.emissiveColor = Color3.FromHexString(colorReal || '#ffffff').scale(brilloBase * alphaMultiplier);
         }
 
-        if (Array.isArray(mesh.metadata.decalMeshes)) {
-          mesh.metadata.decalMeshes.forEach((decal: Mesh) => {
+        if (Array.isArray(entity.media.runtimeDecals)) {
+          // CORRECCIÓN: tipado como AbstractMesh
+          entity.media.runtimeDecals.forEach((decal: AbstractMesh) => {
             if (decal && !this.isDisposedSeguro(decal)) {
               decal.visibility = alphaMultiplier > 0.01 ? 1 : 0;
               decal.alwaysSelectAsActiveMesh = true;
@@ -277,8 +276,8 @@ export class CoreSceneProjectionService {
         }
       }
       else if (fadeDist <= 0) {
-        if (mesh.metadata.decalMaterial) {
-          const dMat = mesh.metadata.decalMaterial as StandardMaterial;
+        if (entity.media.runtimeDecalMaterial) {
+          const dMat = entity.media.runtimeDecalMaterial as StandardMaterial;
           const hasTexture = dMat.diffuseTexture != null;
           const brilloBase = Number(entity.visual.brilloIntensidad ?? 1.0);
           dMat.alpha = hasTexture ? 1.0 : Math.max(0.2, Math.min(1.0, brilloBase * 0.5));
@@ -286,8 +285,9 @@ export class CoreSceneProjectionService {
           const colorReal = currentModeIsBW ? entity.visual.colorBW : entity.visual.color;
           dMat.emissiveColor = Color3.FromHexString(colorReal || '#ffffff').scale(brilloBase);
         }
-        if (Array.isArray(mesh.metadata.decalMeshes)) {
-          mesh.metadata.decalMeshes.forEach((decal: Mesh) => {
+        if (Array.isArray(entity.media.runtimeDecals)) {
+          // CORRECCIÓN: tipado como AbstractMesh
+          entity.media.runtimeDecals.forEach((decal: AbstractMesh) => {
             if (decal && !this.isDisposedSeguro(decal)) {
               decal.visibility = 1.0;
               decal.alwaysSelectAsActiveMesh = true;
@@ -300,17 +300,6 @@ export class CoreSceneProjectionService {
     mesh.onDisposeObservable.add(() => {
       this.loopManager.unregister(callbackId);
       this.limpiarDecalsImagen(mesh);
-
-      const decalMaterial = mesh.metadata?.decalMaterial;
-      if (decalMaterial && !this.isDisposedSeguro(decalMaterial)) {
-        this.disposeSeguro(decalMaterial);
-      }
-
-      if (mesh.metadata) {
-        mesh.metadata.decalMaterial = null;
-        mesh.metadata.decalMeshes = [];
-        mesh.metadata.decalMesh = null;
-      }
     });
 
     setTimeout(() => {

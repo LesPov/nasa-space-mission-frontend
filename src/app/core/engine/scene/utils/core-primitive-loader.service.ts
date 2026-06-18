@@ -1,4 +1,3 @@
-// src/app/core/engine/scene/utils/core-primitive-loader.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DirectionalLight, FresnelParameters, Mesh, MeshBuilder, PointLight, SpotLight, StandardMaterial, Texture, Vector3, VideoTexture } from '@babylonjs/core';
@@ -144,7 +143,7 @@ export class CorePrimitiveLoaderService {
       }
       mesh.material = mat;
     } 
-    else if (obj.type === 'image_plane') {
+    else if (obj.type === 'image_plane' && entity.media) {
       const mat = new StandardMaterial('decalMat_' + obj.name, scene);
       const isBW = scene.metadata?.globalVisualMode === 'bw';
       const activeColorAUsar = isBW ? entity.visual.colorBW : entity.visual.color;
@@ -153,7 +152,9 @@ export class CorePrimitiveLoaderService {
       this.projectionSvc.configurarMaterialProyector(mat, activeColorAUsar, entity.visual.brilloIntensidad, entity.visual.ignoraNiebla, tex);
       
       mesh.material = mat;
-      mesh.metadata.decalMaterial = mat;
+      
+      // 🔥 ASIGNACIÓN LIMPIA A LA ENTIDAD
+      entity.media.runtimeDecalMaterial = mat;
       mesh.isVisible = isAdmin;
       mesh.alwaysSelectAsActiveMesh = true;
 

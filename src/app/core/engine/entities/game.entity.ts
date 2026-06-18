@@ -1,4 +1,6 @@
-import { AbstractMesh, Vector3, Quaternion } from '@babylonjs/core';
+// src/app/core/engine/entities/game.entity.ts
+
+import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig } from '../models/player-config.model';
 
 export interface TransformData {
@@ -58,6 +60,12 @@ export interface MediaComponent {
   proyeccionEspaciado?: number;
   proyeccionEje?: string;
   fadeDistance?: number;
+  
+  // 🔥 PROPIEDADES EN TIEMPO DE EJECUCIÓN (No se guardan en BD)
+  // Sustituyen por completo el uso de mesh.metadata
+  runtimeDecals?: AbstractMesh[];
+  runtimeDecalMaterial?: StandardMaterial;
+  lastVisualModeBW?: boolean;
 }
 
 export interface SelectionRangeComponent {
@@ -165,6 +173,7 @@ export class GameEntity {
 
   public bindView(mesh: AbstractMesh): void {
     this.view = mesh;
+    // El único metadato permitido: El puente de conexión ECS
     if (!mesh.metadata) mesh.metadata = {};
     mesh.metadata.entityUid = this.uid;
     this.syncToView(); 
@@ -185,10 +194,8 @@ export class GameEntity {
 
     this.view.name = this.name;
     
-    // 🔥 Purgado: Ya no se inyecta la lógica al runtime de Babylon.
-    // Solo retenemos los atributos temporales de render (Decals, Babylon events, Uid)
+    // Purga estricta
     this.view.metadata = {
-      ...this.view.metadata,
       uid: this.uid,
       entityUid: this.uid
     };

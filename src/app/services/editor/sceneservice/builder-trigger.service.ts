@@ -41,14 +41,11 @@ export class BuilderTriggerService {
     if (entity) {
       if (entity.trigger) entity.trigger.triggerShape = nuevaForma;
       entity.bindView(newMesh); 
-      this.entityManager.addEntity(entity); 
     } else {
       newMesh.position = oldMesh.getAbsolutePosition().clone();
       if (oldMesh.rotationQuaternion) newMesh.rotationQuaternion = oldMesh.rotationQuaternion.clone();
       else newMesh.rotation = oldMesh.rotation.clone();
       newMesh.scaling = oldMesh.scaling.clone();
-      newMesh.metadata = JSON.parse(JSON.stringify(oldMesh.metadata));
-      newMesh.metadata.triggerShape = nuevaForma;
     }
 
     const mat = new StandardMaterial('mat_trigger_' + newMesh.name, scene);

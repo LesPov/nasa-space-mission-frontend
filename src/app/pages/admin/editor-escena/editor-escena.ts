@@ -3,10 +3,10 @@ import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
 import { ToolbarEscena } from '../../../components/toolbar-escena/toolbar-escena';
 import { EditorMapaService } from '../../../services/editor-mapa.service';
-import { EditorStateService } from '../../../services/editor/editor-state.service'; 
+import { EditorStateService } from '../../../services/editor/editor-state.service';
 import { Motor3dService } from '../../../services/motor-3d.service';
 import { LayoutService } from '../../../services/layout.service';
-import { EpisodiosService } from '../../../services/api/episodios'; 
+import { EpisodiosService } from '../../../services/api/episodios';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MiniVisorEscena } from '../../../components/mini-visor-escena/mini-visor-escena';
@@ -28,14 +28,14 @@ import { UiLoading } from '../../../components/ui-loading/ui-loading';
   selector: 'app-editor-escena',
   standalone: true,
   imports: [
-    MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule, 
+    MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule,
     MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiMission, UiLoading
   ],
   templateUrl: './editor-escena.html',
   styleUrl: './editor-escena.css',
-}) 
+})
 export class EditorEscena implements OnInit, OnDestroy {
-  public stateSvc = inject(EditorStateService); 
+  public stateSvc = inject(EditorStateService);
   public editorSvc = inject(EditorMapaService);
   public motor3dSvc = inject(Motor3dService);
   public layoutSvc = inject(LayoutService);
@@ -45,29 +45,29 @@ export class EditorEscena implements OnInit, OnDestroy {
   private entityManager = inject(EntityManagerService);
   public runtime = inject(RuntimeEngineService);
   public cdr = inject(ChangeDetectorRef);
-  
+
   public playModeSvc = inject(EditorPlayModeService);
 
-  public isInteracting = signal<boolean>(false);
+  public isInteracting = signal(false);
 
   public editando = false;
   public esAdmin: boolean = false;
-  
+
   public modalSeleccionModo = false;
   public cargandoEscena = false;
-  public modalMisionUsuario = false; 
-  public misionIniciada = false; 
-  public cerrandoModalUsuario = false; 
+  public modalMisionUsuario = false;
+  public misionIniciada = false;
+  public cerrandoModalUsuario = false;
   public episodioPendienteCarga: any = null;
   public cargandoTexto = 'Preparando entorno...';
-  
+
   public episodioIdActivo = 0;
   public mapaActualNombre = '';
-  public fps = signal<string>('0');
-  public estadoGuardado = signal<string>('Guardado');
-  
+  public fps = signal('0');
+  public estadoGuardado = signal('Guardado');
+
   public listaEpisodios: any[] = [];
-  public hoveredEpisodio: number | null = null; 
+  public hoveredEpisodio: number | null = null;
   public showModalMap = false;
   public nuevoTitulo = '';
   public nuevaDesc = '';
@@ -78,8 +78,8 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   public objNombre: string = 'Objeto_01';
   public objTipo: string = 'cube';
-  public objRol: string = 'prop'; 
-  public objColor: string = '#ffffff'; 
+  public objRol: string = 'prop';
+  public objColor: string = '#ffffff';
   public objSizeX: number = 1;
   public objSizeY: number = 1;
   public objSizeZ: number = 1;
@@ -87,16 +87,16 @@ export class EditorEscena implements OnInit, OnDestroy {
   public objEsSolido: boolean = true;
   public objEsSeleccionable: boolean = true;
   public objMensaje: string = '';
-  public objHacerHijo: boolean = true; 
+  public objHacerHijo: boolean = true;
 
   public vistaPrueba: 'FPS' | 'TPS' = 'FPS';
   private activeCameraView = 'FPS';
-  
+
   public showInspector = true;
   public showTimeline = true;
-  public inspectorWidth = 350; 
+  public inspectorWidth = 350;
   public isResizing = false;
-  public timelineHeight = 30; 
+  public timelineHeight = 30;
   public isResizingTimeline = false;
 
   private fpsInterval: any;
@@ -157,17 +157,17 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  // 🔥 NUEVA FUNCIÓN PARA EL BOTÓN DE NIEBLA (Fuerza limpiar Highlight)
+  // 🔥 Función Integrada y Funcionando. Limpia forzosamente la UI al pulsarse
   toggleNieblaTemporal() {
     this.stateSvc.fogDesactivadoTemporalmente.set(!this.stateSvc.fogDesactivadoTemporalmente());
-    this.recalcularMotor(); 
-    this.editorSvc.triggerUpdate(); // Obliga al highlight a refrescarse
+    this.recalcularMotor();
+    this.editorSvc.triggerUpdate();
   }
 
   entrarAlEditor(episodio: any) {
     this.episodioPendienteCarga = episodio;
     this.layoutSvc.ocultarMenu();
-    
+
     if (this.esAdmin) {
       this.modalSeleccionModo = true;
       this.cargandoEscena = false;
@@ -179,9 +179,9 @@ export class EditorEscena implements OnInit, OnDestroy {
   confirmarModoYContinuar(modo: 'admin' | 'user') {
     this.modalSeleccionModo = false;
     this.cargandoEscena = true;
-    this.layoutSvc.ocultarMenu(); 
+    this.layoutSvc.ocultarMenu();
     this.cargandoTexto = modo === 'admin' ? 'Cargando herramientas de creador...' : 'Conectando con el mundo...';
-    
+
     this.editorSvc.rolSimulado.set(modo);
     this.procesarCarga(this.episodioPendienteCarga);
   }
@@ -189,10 +189,10 @@ export class EditorEscena implements OnInit, OnDestroy {
   private procesarCarga(episodio: any) {
     this.episodioIdActivo = episodio.id;
     this.mapaActualNombre = episodio.title;
-    this.editando = true; 
-    this.misionIniciada = false; 
+    this.editando = true;
+    this.misionIniciada = false;
     this.cerrandoModalUsuario = false;
-    
+
     this.epiApiSvc.obtenerEpisodio(episodio.id).subscribe({
       next: async (res) => {
         setTimeout(() => {
@@ -245,17 +245,17 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   manejarSalidaDeMision() {
-     if (this.editorSvc.rolSimulado() === 'admin') {
-         this.detenerModoPrueba();
-         this.modalMisionUsuario = false;
-     } else {
-         this.salirDelEditor();
-     }
+    if (this.editorSvc.rolSimulado() === 'admin') {
+      this.detenerModoPrueba();
+      this.modalMisionUsuario = false;
+    } else {
+      this.salirDelEditor();
+    }
   }
 
   comenzarMisionUsuario() {
-    this.cerrandoModalUsuario = true; 
-    
+    this.cerrandoModalUsuario = true;
+
     if (this.activeCameraView === 'TPS') {
        this.runtime.toggleCameraUser(false, 60); 
     } else {
@@ -278,7 +278,7 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   toggleInspector() { this.showInspector = !this.showInspector; this.recalcularMotor(); }
   toggleTimeline() { this.showTimeline = !this.showTimeline; this.recalcularMotor(); }
-  
+
   recalcularMotor() {
     setTimeout(() => this.motor3dSvc.forzarRedimension(), 10);
     setTimeout(() => this.motor3dSvc.forzarRedimension(), 150);
@@ -287,7 +287,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   iniciarRedimension(event: MouseEvent) {
     if (this.editorSvc.playState() === 'EDITOR' || this.editorSvc.playState() === 'EDITING_IN_GAME') {
       this.isResizing = true;
-      event.preventDefault(); 
+      event.preventDefault();
     }
   }
 
@@ -304,14 +304,14 @@ export class EditorEscena implements OnInit, OnDestroy {
       const newWidth = window.innerWidth - event.clientX;
       if (newWidth > 250 && newWidth < window.innerWidth * 0.6) {
         this.inspectorWidth = newWidth;
-        this.motor3dSvc.forzarRedimension(); 
+        this.motor3dSvc.forzarRedimension();
       }
     }
     if (this.isResizingTimeline) {
       const containerHeight = window.innerHeight;
       const bottomY = window.innerHeight - event.clientY;
       let newHeight = (bottomY / containerHeight) * 100;
-      if (newHeight < 5) newHeight = 5; 
+      if (newHeight < 5) newHeight = 5;
       if (newHeight > 70) newHeight = 70;
       this.timelineHeight = newHeight;
       this.motor3dSvc.forzarRedimension();
@@ -320,14 +320,20 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   @HostListener('window:mouseup')
   onMouseUp() {
-    if (this.isResizing) { this.isResizing = false; this.recalcularMotor(); }
-    if (this.isResizingTimeline) { this.isResizingTimeline = false; this.recalcularMotor(); }
+    if (this.isResizing) {
+      this.isResizing = false;
+      this.recalcularMotor();
+    }
+    if (this.isResizingTimeline) {
+      this.isResizingTimeline = false;
+      this.recalcularMotor();
+    }
   }
 
   @HostListener('window:keydown', ['$event'])
   manejarAtajos(event: KeyboardEvent) {
     const target = event.target as HTMLElement | null;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return; 
+    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
 
     const state = this.editorSvc.playState();
     if (this.editando && !this.editorSvc.showAddObjectModal() && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
@@ -346,12 +352,13 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   cargarAssets() {
     this.epiApiSvc.obtenerAssets().subscribe({
-      next: (res) => { 
+      next: (res) => {
         this.listaAssets = res.filter((a:any) => 
-          a.type === 'model_glb' || a.type === 'video_mp4' || a.path.endsWith('.mp4') || 
-          a.path.endsWith('.webm') || a.type === 'texture_png' || a.type === 'texture_jpg' ||
+          a.type === 'model_glb' || a.type === 'video_mp4' || 
+          a.path.endsWith('.mp4') || a.path.endsWith('.webm') || 
+          a.type === 'texture_png' || a.type === 'texture_jpg' || 
           a.path.endsWith('.png') || a.path.endsWith('.jpg') || a.path.endsWith('.jpeg')
-        ); 
+        );
       },
       error: (err) => console.error('Error al cargar assets', err)
     });
@@ -369,7 +376,7 @@ export class EditorEscena implements OnInit, OnDestroy {
         this.subiendoAsset = false;
         this.archivoSubida = null;
         alert('Archivo subido correctamente');
-        this.cargarAssets(); 
+        this.cargarAssets();
       },
       error: (err) => {
         this.subiendoAsset = false;
@@ -382,11 +389,11 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (!this.nuevoTitulo) return;
     this.epiApiSvc.crearEpisodio(this.nuevoTitulo, this.nuevaDesc).subscribe({
       next: (res) => {
-        this.listaEpisodios.unshift(res); 
+        this.listaEpisodios.unshift(res);
         this.showModalMap = false;
         this.nuevoTitulo = '';
         this.nuevaDesc = '';
-        this.entrarAlEditor(res); 
+        this.entrarAlEditor(res);
       },
       error: (err) => alert('Error creando episodio')
     });
@@ -395,7 +402,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   guardarMapaEnBD(silencioso = false) {
     if (!this.episodioIdActivo || !this.editando || this.editorSvc.rolSimulado() !== 'admin') return;
     this.estadoGuardado.set('Guardando...');
-    
+
     const mapData = this.editorSvc.obtenerDatosParaGuardar();
     this.epiApiSvc.guardarMapa(this.episodioIdActivo, mapData).subscribe({
       next: () => {
@@ -409,19 +416,32 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  onRolChange() { if (this.objRol === 'npc' || this.objRol === 'spawn_point') this.objTipo = 'model'; }
+  onRolChange() {
+    if (this.objRol === 'npc' || this.objRol === 'spawn_point') this.objTipo = 'model';
+  }
+
   onTipoChange() {
-    if (this.objTipo === 'trigger' || this.objTipo === 'trigger_compuesto') { this.objRol = 'prop'; this.objEsSolido = false; this.objEsSeleccionable = true; } 
-    else if (this.objTipo.startsWith('light_')) { this.objRol = 'prop'; this.objColor = '#ffffff'; this.objEsSolido = false; this.objEsSeleccionable = true; } 
-    else if (this.objTipo === 'bubble' || this.objTipo === 'video_plane' || this.objTipo === 'image_plane') { this.objRol = 'prop'; this.objEsSolido = false; this.objEsSeleccionable = true; } 
-    else if (this.objTipo !== 'model') { this.objRol = 'prop'; }
-    if (this.objTipo !== 'model' && !this.objTipo.startsWith('light_') && this.objTipo !== 'video_plane' && this.objTipo !== 'image_plane') this.objAssetSeleccionado = null;
+    if (this.objTipo === 'trigger' || this.objTipo === 'trigger_compuesto') {
+      this.objRol = 'prop'; this.objEsSolido = false; this.objEsSeleccionable = true;
+    } else if (this.objTipo.startsWith('light_')) {
+      this.objRol = 'prop'; this.objColor = '#ffffff'; this.objEsSolido = false; this.objEsSeleccionable = true;
+    } else if (this.objTipo === 'bubble' || this.objTipo === 'video_plane' || this.objTipo === 'image_plane') {
+      this.objRol = 'prop'; this.objEsSolido = false; this.objEsSeleccionable = true;
+    } else if (this.objTipo !== 'model') {
+      this.objRol = 'prop';
+    }
+    if (this.objTipo !== 'model' && !this.objTipo.startsWith('light_') && this.objTipo !== 'video_plane' && this.objTipo !== 'image_plane') {
+      this.objAssetSeleccionado = null;
+    }
   }
 
   crearObjeto3D() {
     if(!this.objNombre) return;
     const parent = this.objHacerHijo ? (this.editorSvc.objetoSeleccionado() as AbstractMesh | null) : null;
-    this.editorSvc.agregarObjetoCustom(this.objTipo, this.objNombre, this.objRol, this.objColor, this.objSizeX, this.objSizeY, this.objSizeZ, this.objAssetSeleccionado, this.objEsSolido, this.objEsSeleccionable, this.objMensaje, parent);
+    this.editorSvc.agregarObjetoCustom(
+      this.objTipo, this.objNombre, this.objRol, this.objColor, this.objSizeX, this.objSizeY, this.objSizeZ,
+      this.objAssetSeleccionado, this.objEsSolido, this.objEsSeleccionable, this.objMensaje, parent
+    );
     this.cerrarModalObjeto();
   }
 
@@ -431,7 +451,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.objTipo = 'cube'; this.objRol = 'prop'; this.objColor = '#ffffff';
     this.objSizeX = 1; this.objSizeY = 1; this.objSizeZ = 1;
     this.objAssetSeleccionado = null; this.archivoSubida = null;
-    this.objEsSolido = true; this.objEsSeleccionable = true; this.objMensaje = ''; this.objHacerHijo = true; 
+    this.objEsSolido = true; this.objEsSeleccionable = true; this.objMensaje = ''; this.objHacerHijo = true;
   }
 
   esObjetoJugable(): boolean {
@@ -445,8 +465,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   iniciarModoPrueba() {
     if (!this.esObjetoJugable()) return;
     if (this.editorSvc.rolSimulado() === 'admin') {
-       this.guardarMapaEnBD(true); 
-       
+       this.guardarMapaEnBD(true);
+
        // Force focus and lock para atrapar la interacción del botón en el mismo milisegundo
        const canvas = this.motor3dSvc.engine.getRenderingCanvas();
        if (canvas) {
@@ -459,23 +479,25 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   detenerModoPrueba() {
     if (this.editorSvc.playState() === 'EDITOR') return;
-    this.playModeSvc.detenerPrueba(); 
+    this.playModeSvc.detenerPrueba();
     if (this.editorSvc.rolSimulado() === 'admin') setTimeout(() => this.guardarMapaEnBD(true), 500);
   }
 
-  cerrarInteraccion() { this.runtime.cerrarInteraccion(); }
+  cerrarInteraccion() {
+    this.runtime.cerrarInteraccion();
+  }
 
   salirDelEditor() {
-    this.editando = false; 
+    this.editando = false;
     this.cargandoEscena = false;
     this.modalSeleccionModo = false;
     this.modalMisionUsuario = false;
     this.misionIniciada = false;
     this.cerrandoModalUsuario = false;
-    this.layoutSvc.mostrarMenu(); 
+    this.layoutSvc.mostrarMenu();
     this.editorSvc.limpiarEstado();
-    this.cargarEpisodios(); 
-    
+    this.cargarEpisodios();
+
     this.isInteracting.set(false);
     if (this.fpsInterval) clearInterval(this.fpsInterval);
   }

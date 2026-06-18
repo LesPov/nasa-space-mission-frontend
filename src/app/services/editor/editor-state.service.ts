@@ -24,7 +24,7 @@ export class EditorStateService {
   public showAddObjectModal = signal<boolean>(false);
   public objetoHovereado = signal<AbstractMesh | null>(null);
 
-  // 🔥 NUEVO: Control para apagar la niebla temporalmente mientras se edita en vivo
+  // 🔥 Control para apagar la niebla temporalmente mientras se edita en vivo
   public fogDesactivadoTemporalmente = signal<boolean>(false);
 
   public onMapChanged = new Subject<void>();
@@ -98,7 +98,7 @@ export class EditorStateService {
       n === 'terrain' || n === 'camerapivot' || n.includes('eje') ||
       n.includes('gridhelper') || n.includes('gizmo') || n.includes('highlight') ||
       n.includes('debug') || n.includes('proxycol') || n.includes('skybox') ||
-      n.startsWith('decal_') || n.includes('fogshell') || n.includes('fogwall')
+      n.startsWith('decal_') || n.includes('fogshell') || n.includes('fogwall') || n.includes('debugfog')
     );
   }
 
@@ -189,6 +189,6 @@ export class EditorStateService {
     this.ratonBloqueado.set(false);
     this.objetoSeleccionado.set(null);
     this.subObjetoSeleccionado.set(null);
-    this.fogDesactivadoTemporalmente.set(false); // Reseteamos la niebla al salir
+    this.fogDesactivadoTemporalmente.set(false);
   }
 }

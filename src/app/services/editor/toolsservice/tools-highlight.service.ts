@@ -36,12 +36,24 @@ export class ToolsHighlightService {
     const selectId = selected ? selected.uniqueId : null;
 
     if (this.lastHoveredMeshId === hoverId && this.lastSelectedMeshId === selectId) return;
-    
+
     this.lastHoveredMeshId = hoverId;
     this.lastSelectedMeshId = selectId;
 
     this.hlHover.removeAllMeshes();
     this.hlSelected.removeAllMeshes();
+
+    // 🔥 FIX ABSOLUTO PARA LA NIEBLA: Le decimos explícitamente al motor de renderizado
+    // que bajo NINGUNA circunstancia calcule brillos sobre las mallas de la niebla.
+    this.motor3d.scene.meshes.forEach(m => {
+      const n = m.name.toLowerCase();
+      if (n.includes('fogshell') || n.includes('fogwall') || n.includes('debugfog')) {
+        try {
+          this.hlHover.addExcludedMesh(m as Mesh);
+          this.hlSelected.addExcludedMesh(m as Mesh);
+        } catch (e) {}
+      }
+    });
 
     const mode = this.state.playState();
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
@@ -54,8 +66,8 @@ export class ToolsHighlightService {
 
     const addHighlightToAllVisible = (mesh: Mesh, hl: HighlightLayer, color: Color3) => {
       const n = mesh.name.toLowerCase();
-      // 🔥 FIX: Jamás aplicarle Outline a las capas de niebla volumétrica
-      if (n.includes('fogshell') || n.includes('fogwallgroup')) return;
+      // Verificación de seguridad adicional
+      if (n.includes('fogshell') || n.includes('fogwall') || n.includes('debugfog')) return;
 
       const entity = this.entityManager.getEntityByMesh(mesh);
       const isTrigger = entity?.type === 'trigger' || entity?.type === 'trigger_compuesto' || n.includes('trigger');
@@ -68,12 +80,11 @@ export class ToolsHighlightService {
       
       mesh.getChildMeshes().forEach(c => {
         const cn = c.name.toLowerCase();
-        // 🔥 FIX HIJOS: Lo mismo para los hijos de la niebla
-        if (!c.isVisible || cn.includes('proxycol') || cn.includes('debug') || cn.includes('camerapivot') || cn.includes('fogshell') || cn.includes('fogwallgroup')) return;
+        // Ignoramos hijos que sean niebla
+        if (!c.isVisible || cn.includes('proxycol') || cn.includes('debug') || cn.includes('camerapivot') || cn.includes('fogshell') || cn.includes('fogwall') || cn.includes('debugfog')) return;
 
         const cEntity = this.entityManager.getEntityByMesh(c);
         
-        // 🔥 FIX VITAL: Si el hijo pertenece a OTRA entidad (ej. un cofre encima del piso), NO LO RESALTES!
         if (cEntity && cEntity.uid !== entity?.uid) {
             return; 
         }

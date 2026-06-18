@@ -45,7 +45,7 @@ export class EditorToolsService {
       const selected = this.state.objetoSeleccionado() as Mesh;
       const hovered = this.state.objetoHovereado() as Mesh;
       const subSelected = this.state.subObjetoSeleccionado();
-      const fogToggled = this.state.fogDesactivadoTemporalmente(); // 🔥 Forzamos la reactividad para que repinte los Highlights
+      const fogToggled = this.state.fogDesactivadoTemporalmente(); // 🔥 Forzamos la reactividad
 
       if (!this.gizmoSvc.isDraggingGizmo) {
         this.debugSvc.actualizarDebugMeshes(selected);
@@ -78,6 +78,7 @@ export class EditorToolsService {
 
       const n = mesh.name.toLowerCase();
 
+      // 🔥 FIX: Ignoramos rotundamente cualquier malla que conforme la niebla
       if (
         n === 'sueloinvisible' ||
         n.includes('gizmo') ||
@@ -397,4 +398,5 @@ export class EditorToolsService {
 
   deshacerAccion() {
     this.clipboardSvc.deshacerAccion();
-  }}
+  }
+}

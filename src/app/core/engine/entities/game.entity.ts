@@ -1,3 +1,4 @@
+// src/app/core/engine/entities/game.entity.ts
 import { AbstractMesh, Vector3, Quaternion } from '@babylonjs/core';
 import { PlayerRuntimeConfig } from '../../../services/editor/player-config.model';
 
@@ -93,10 +94,6 @@ export interface TriggerComponent {
   stateMutations?: any[];
 }
 
-/**
- * FUENTE DE VERDAD DE LA ARQUITECTURA ECS.
- * La entidad manda. El Mesh solo obedece y representa visualmente.
- */
 export class GameEntity {
   public uid: string;
   public name: string;
@@ -107,7 +104,6 @@ export class GameEntity {
 
   public view: AbstractMesh | null = null;
 
-  // Componentes de Datos Puros
   public transform: TransformData;
   public visual: VisualComponent;
   public collider: ColliderComponent;
@@ -124,7 +120,6 @@ export class GameEntity {
   public autoAnim: any = null;
   public initialHeadLocal?: Vector3;
   
-  // Estado volátil
   public isHovered: boolean = false;
   public currentHoverScale: number = 1.0;
   public isProcessingAction: boolean = false;
@@ -173,13 +168,9 @@ export class GameEntity {
     this.view = mesh;
     if (!mesh.metadata) mesh.metadata = {};
     mesh.metadata.entityUid = this.uid;
-    this.syncToView(); // Forzamos que la vista se adapte a la entidad de inmediato
+    this.syncToView(); 
   }
 
-  /**
-   * ACTUALIZA LA VISTA (Babylon Mesh) A PARTIR DE LOS DATOS DE LA ENTIDAD.
-   * Empujamos a metadata SOLO para compatibilidad con Babylon Inspector interno si hace falta.
-   */
   public syncToView(): void {
     if (!this.view) return;
 
@@ -187,8 +178,8 @@ export class GameEntity {
     this.view.scaling.set(this.transform.scale.x, this.transform.scale.y, this.transform.scale.z);
 
     if (this.view.rotationQuaternion) {
-      this.view.rotationQuaternion = Quaternion.FromEulerAngles(this.transform.rotation.x, this.transform.rotation.y, this.transform.rotation.z);
-      this.view.rotation.set(0,0,0);
+      Quaternion.FromEulerAnglesToRef(this.transform.rotation.x, this.transform.rotation.y, this.transform.rotation.z, this.view.rotationQuaternion);
+      this.view.rotation.set(0, 0, 0);
     } else {
       this.view.rotation.set(this.transform.rotation.x, this.transform.rotation.y, this.transform.rotation.z);
     }

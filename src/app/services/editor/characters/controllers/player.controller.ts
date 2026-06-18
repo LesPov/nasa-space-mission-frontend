@@ -1,3 +1,4 @@
+
 import { Ray, Vector3, Quaternion } from '@babylonjs/core';
 import { GamePhase } from '../../../../core/engine/behaviors/services/loop-manager.service';
 import { BaseCharacterController } from './base-character.controller';
@@ -6,11 +7,23 @@ import { GameEntity } from '../../../../core/engine/entities/game.entity';
 
 export class PlayerController extends BaseCharacterController {
   
+  private currentSeqRuntime: any;
+
   constructor(entity: GameEntity, context: CharacterContext) {
     super(entity, context);
   }
 
   public start(): void {
+    // 🔥 PREVENIR AUTO-COLISIONES (Causa de temblores y atascos en el piso)
+    this.mesh.checkCollisions = true;
+    this.mesh.getChildMeshes().forEach(m => {
+       m.checkCollisions = false;
+    });
+
+    // Pequeño empujón Y para no penetrar el suelo al spawnear
+    this.mesh.position.y += 0.05;
+    this.mesh.computeWorldMatrix(true);
+
     this.context.animSvc.sincronizarAnimaciones(this.context.motor3d.scene, this.entity);
 
     const playerAutoSeq = this.config.sequences.find((s: any) => s.autoPlay);
@@ -20,41 +33,76 @@ export class PlayerController extends BaseCharacterController {
 
     this.resetAll();
 
-    this.context.loopManager.register(this.loopId, GamePhase.LOGIC, (dtMs: number) => {
-      this.update(dtMs);
-    });
+    // Registro estricto de Fases
+    this.context.loopManager.register(this.loopId + '_PHYSICS', GamePhase.PHYSICS, (dtMs: number) => this.physicsUpdate(dtMs));
+    this.context.loopManager.register(this.loopId + '_LOGIC', GamePhase.LOGIC, (dtMs: number) => this.logicUpdate(dtMs));
+    this.context.loopManager.register(this.loopId + '_POST', GamePhase.POST_UPDATE, (dtMs: number) => this.postUpdate(dtMs));
   }
 
-  protected update(dtMs: number): void {
+  protected physicsUpdate(dtMs: number): void {
     const activeCamera = this.context.motor3d.scene.activeCamera;
     if (!activeCamera) return;
 
+    this.currentSeqRuntime = this.context.sequenceSvc.actualizarSecuencia(dtMs, this.entity);
+    const vista = this.context.session.cameraView();
+
+    const canMove = this.context.session.pointerLocked() && !this.currentSeqRuntime.lockInput && !this.currentSeqRuntime.freezeOrientation;
+    const activeInput = canMove ? this.context.inputSvc.inputMap : {};
+
+    // 1. Usamos la Malla en memoria RAM como proxy volumétrico para la colisión de Babylon.js
+    this.aplicarFisicasJugador(activeInput, this.currentSeqRuntime, activeCamera, vista, dtMs);
+
+    // 2. Extraemos el resultado matemático, la Entidad Lógica es la única FUENTE DE VERDAD
+    this.entity.transform.position.x = this.mesh.position.x;
+    this.entity.transform.position.y = this.mesh.position.y;
+    this.entity.transform.position.z = this.mesh.position.z;
+    
+    if (this.mesh.rotationQuaternion) {
+       const euler = this.mesh.rotationQuaternion.toEulerAngles();
+       this.entity.transform.rotation.x = euler.x;
+       this.entity.transform.rotation.y = euler.y;
+       this.entity.transform.rotation.z = euler.z;
+    } else {
+       this.entity.transform.rotation.x = this.mesh.rotation.x;
+       this.entity.transform.rotation.y = this.mesh.rotation.y;
+       this.entity.transform.rotation.z = this.mesh.rotation.z;
+    }
+  }
+
+  protected logicUpdate(dtMs: number): void {
+    const activeCamera = this.context.motor3d.scene.activeCamera;
+    if (!activeCamera) return;
     const vista = this.context.session.cameraView();
 
     this.context.triggerSvc.verificarTriggers(this.entity);
     this.context.interactSvc.comprobarInteracciones(this.entity, activeCamera, vista);
     
-    const seqRuntime = this.context.sequenceSvc.actualizarSecuencia(dtMs, this.entity);
-    
-    const canMove = this.context.session.pointerLocked() && !seqRuntime.lockInput && !seqRuntime.freezeOrientation;
-    const activeInput = canMove ? this.context.inputSvc.inputMap : {};
-
-    // Resolución de Movimiento Físico dentro del controlador
-    this.aplicarFisicasJugador(activeInput, seqRuntime, activeCamera, vista, dtMs);
-
-    this.context.animSvc.gestionarAnimaciones(this.entity, this.estadoFisico, seqRuntime);
+    this.context.animSvc.gestionarAnimaciones(this.entity, this.estadoFisico, this.currentSeqRuntime);
     
     this.context.cameraSvc.actualizarPosicionCamara(
       this.entity, 
       activeCamera, 
       this.estadoFisico, 
-      seqRuntime,
+      this.currentSeqRuntime,
       vista
     );
     
-    if (seqRuntime.freezeOrientation) {
+    if (this.currentSeqRuntime.freezeOrientation) {
       this.context.sequenceSvc.applyLockedOrientationWhileSequence(this.entity);
+      
+      // Sincronizamos la sobreescritura de vuelta hacia la Entidad
+      if (this.mesh.rotationQuaternion) {
+        const euler = this.mesh.rotationQuaternion.toEulerAngles();
+        this.entity.transform.rotation.x = euler.x;
+        this.entity.transform.rotation.y = euler.y;
+        this.entity.transform.rotation.z = euler.z;
+      }
     }
+  }
+
+  protected postUpdate(dtMs: number): void {
+    // 3. Sincronización Final: La Malla obedece a la Entidad y se rinde visualmente.
+    this.entity.syncToView();
   }
 
   private aplicarFisicasJugador(
@@ -112,7 +160,12 @@ export class PlayerController extends BaseCharacterController {
       this.estadoFisico.isJumping = true;
     }
 
-    const rayCol = new Ray(capsuleCenter, Vector3.Down(), playerHalfHeight + (0.15 * scaleY));
+    // 🔥 FIX: RAYCAST ROBUSTO (Inicia en la mitad superior para no fallar si hay penetración)
+    const rayOrigin = capsuleCenter.clone();
+    rayOrigin.y += playerHalfHeight * 0.5; 
+    const rayLength = playerHalfHeight * 1.5 + (0.15 * scaleY);
+    
+    const rayCol = new Ray(rayOrigin, Vector3.Down(), rayLength);
     const hitInfo = scene.pickWithRay(rayCol, collFn);
     this.estadoFisico.isGrounded = hitInfo ? hitInfo.hit : false;
 
@@ -201,7 +254,7 @@ export class PlayerController extends BaseCharacterController {
         }
 
         this.estadoFisico.highestY = this.mesh.position.y;
-        this.estadoFisico.velocidadY = -0.05;
+        this.estadoFisico.velocidadY = -0.05; // Estabilidad para no acumular gravedad infinita
 
         if ((inputMap[' '] || inputMap['space'] || seqRuntime.forceJump) && !this.estadoFisico.isHardLanding && !this.estadoFisico.isRecoveringFromFall) {
           this.estadoFisico.velocidadY = (this.config.jump.force || 0.16) * scaleFactor;

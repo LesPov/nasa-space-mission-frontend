@@ -17,6 +17,8 @@ import { GlobalTimeline } from '../../../components/global-timeline/global-timel
 import { GameSession } from '../../../core/engine/game-session';
 import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
+import { EditorPlayModeService } from '../../../services/editor/editor-play-mode.service';
+import { PlayerInteractionService } from '../../../services/editor/playerservice/player-interaction.service';
 
 @Component({
   selector: 'app-editor-escena',
@@ -34,8 +36,10 @@ export class EditorEscena implements OnInit, OnDestroy {
   public gameSession = inject(GameSession);
   private eventBus = inject(GameEventBusService);
   public cdr = inject(ChangeDetectorRef);
+  
+  public playModeSvc = inject(EditorPlayModeService);
+  public interactSvc = inject(PlayerInteractionService);
 
-  // Estados Locales de UI Desacoplados del Engine
   public hudMessage = signal<string | null>(null);
   public actionAvailable = signal<boolean>(false);
   public inspectAvailable = signal<boolean>(false);
@@ -43,11 +47,9 @@ export class EditorEscena implements OnInit, OnDestroy {
   public hoveredMesh = signal<AbstractMesh | null>(null);
   public isInteracting = signal<boolean>(false);
 
-  // Estados Generales
   public editando = false;
   public esAdmin: boolean = false;
   
-  // Estados de Carga Cinematográfica
   public modalSeleccionModo = false;
   public cargandoEscena = false;
   public modalMisionUsuario = false; 
@@ -99,21 +101,8 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   constructor() {
     effect(() => {
-      const isLocked = this.editorSvc.ratonBloqueado();
-      const state = this.editorSvc.playState();
-      const isUser = this.editorSvc.rolSimulado() === 'user';
-      
-      // 🔥 PAUSA CINEMÁTICA
-      if (isUser && state === 'PLAYING' && !isLocked && this.misionIniciada && !this.modalMisionUsuario) {
-        setTimeout(() => {
-          this.modalMisionUsuario = true;
-          this.cdr.detectChanges();
-          
-          if (this.stateSvc.modoVistaPrueba === 'FPS') {
-             this.editorSvc.toggleCameraUser();
-          }
-        }, 10);
-      }
+      // Dummy effect para evitar warnings
+      this.editorSvc.playState();
     });
   }
 
@@ -132,6 +121,20 @@ export class EditorEscena implements OnInit, OnDestroy {
           this.inspectAvailable.set(event.payload.canInspect);
           break;
         case 'InteractionStateChanged': this.isInteracting.set(event.payload); break;
+        case 'GamePaused':
+          if (this.misionIniciada && !this.isInteracting() && this.editorSvc.rolSimulado() === 'user') {
+             this.modalMisionUsuario = true;
+             // Efecto cinemático al menú (Aleja la cámara)
+             if (this.gameSession.cameraView() === 'FPS') {
+                this.playModeSvc.toggleCameraUser(false, 45);
+             }
+          }
+          break;
+        case 'GameResumed':
+          if (this.editorSvc.rolSimulado() === 'user') {
+             // NO ocultamos el modalMisionUsuario aquí para que la animación de cierre fluya al darle "Reanudar"
+          }
+          break;
       }
       this.cdr.detectChanges();
     });
@@ -203,7 +206,7 @@ export class EditorEscena implements OnInit, OnDestroy {
 
               setTimeout(() => {
                 document.exitPointerLock(); 
-                this.editorSvc.toggleCameraUser(true, 500); 
+                this.playModeSvc.toggleCameraUser(true, 500); 
               }, 100);
 
             } else {
@@ -232,8 +235,16 @@ export class EditorEscena implements OnInit, OnDestroy {
   comenzarMisionUsuario() {
     this.cerrandoModalUsuario = true; 
     
-    if (this.stateSvc.modoVistaPrueba === 'TPS') {
-       this.editorSvc.toggleCameraUser(false, 150); 
+    // Si viene de TPS (Menú cinemático), lo regresamos suave a FPS
+    if (this.gameSession.cameraView() === 'TPS') {
+       this.playModeSvc.toggleCameraUser(false, 60); 
+    }
+
+    // EL BLOQUEO DEBE SER SINCRÓNICO AL GESTO DEL USUARIO
+    const canvas = this.motor3dSvc.engine.getRenderingCanvas();
+    if (canvas) {
+      canvas.focus();
+      try { canvas.requestPointerLock(); } catch {}
     }
 
     setTimeout(() => {
@@ -241,13 +252,7 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.modalMisionUsuario = false;
       this.cerrandoModalUsuario = false;
       this.cdr.detectChanges(); 
-      
-      const canvas = this.motor3dSvc.engine.getRenderingCanvas();
-      if (canvas) {
-        canvas.focus();
-        try { canvas.requestPointerLock(); } catch {}
-      }
-    }, 2500); 
+    }, 2000); 
   }
 
   toggleInspector() { this.showInspector = !this.showInspector; this.recalcularMotor(); }
@@ -417,16 +422,16 @@ export class EditorEscena implements OnInit, OnDestroy {
   iniciarModoPrueba() {
     if (!this.esObjetoJugable()) return;
     if (this.editorSvc.rolSimulado() === 'admin') this.guardarMapaEnBD(true); 
-    this.editorSvc.testearEscena(this.vistaPrueba);
+    this.playModeSvc.testearEscena(this.vistaPrueba);
   }
 
   detenerModoPrueba() {
     if (this.editorSvc.playState() === 'EDITOR') return;
-    this.editorSvc.detenerPrueba(); 
+    this.playModeSvc.detenerPrueba(); 
     if (this.editorSvc.rolSimulado() === 'admin') setTimeout(() => this.guardarMapaEnBD(true), 500);
   }
 
-  cerrarInteraccion() { this.editorSvc.cerrarInteraccionJugador(); }
+  cerrarInteraccion() { this.interactSvc.cerrarMensajeInteractivo(); }
 
   salirDelEditor() {
     this.editando = false; 
@@ -439,7 +444,6 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.editorSvc.limpiarEstado();
     this.cargarEpisodios(); 
     
-    // Reseteamos señales visuales locales
     this.hudMessage.set(null);
     this.actionAvailable.set(false);
     this.inspectAvailable.set(false);

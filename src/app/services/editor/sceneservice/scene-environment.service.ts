@@ -1,12 +1,11 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, Color4, HemisphericLight, MeshBuilder, Scene, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
-import { SceneNodesService } from './scene-nodes.service';
 
 @Injectable({ providedIn: 'root' })
 export class SceneEnvironmentService {
   private motor3d = inject(Motor3dService);
-  private nodesSvc = inject(SceneNodesService);
 
   public crearEntornoVisual(): void {
     const scene = this.motor3d.scene;
@@ -35,7 +34,6 @@ export class SceneEnvironmentService {
     suelo.isVisible = false;
     suelo.isPickable = true;
     suelo.receiveShadows = true;
-    this.nodesSvc.actualizarListaNodos();
   }
 
   public configurarAmbienteGlobal(scene: Scene, props: any): void {

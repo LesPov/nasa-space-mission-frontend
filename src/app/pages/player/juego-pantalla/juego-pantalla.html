@@ -6,10 +6,11 @@
     <h2>Cargando Episodio...</h2>
   </div>
 
-  <div class="canvas-wrapper" [class.blur]="isInteracting() || (!pointerLocked() && !isLoading())">
+  <div class="canvas-wrapper" [class.blur]="isInteracting() || (!pointerLocked() && !isLoading())" [style.pointer-events]="modalMisionUsuario ? 'none' : 'all'">
      <app-motor-babylon></app-motor-babylon>
   </div>
 
+  <!-- CROSSHAIR & TOASTS -->
   <div class="crosshair-ui" *ngIf="pointerLocked() && cameraView() === 'FPS'" [class.hovering]="hoveredMesh() !== null"></div>
 
   <div class="modern-toast-container" *ngIf="hudMessage() !== null" style="bottom: 120px; z-index: 300;">
@@ -32,7 +33,7 @@
     </div>
   </div>
   
-  <!-- Modal Interaccion -->
+  <!-- Modal Interaccion (Diálogos/Lore) -->
   <div class="modal-overlay" *ngIf="isInteracting()" style="z-index: 1000;">
     <div class="rpg-modal">
       <div class="rpg-modal-header"><h3>🔍 Inspección</h3></div>
@@ -44,8 +45,78 @@
     </div>
   </div>
 
-  <div class="pause-overlay" *ngIf="!pointerLocked() && !isLoading() && !isInteracting()">
-     <h2>Juego Pausado</h2>
-     <p>Haz clic para continuar</p>
+  <!-- ========================================================
+       MODAL DE INICIO DE MISIÓN (INTERFAZ TIPO GTA / TELLTALE)
+       ======================================================== -->
+  <div class="user-mission-overlay" *ngIf="modalMisionUsuario && !isLoading()" [class.closing]="cerrandoModalUsuario">
+    
+    <!-- Barra Superior -->
+    <div class="mission-topbar">
+      <div class="brand">
+        <h2 style="color: #ef4444; font-weight: 800; margin: 0; text-transform: uppercase;">{{ mapaActualNombre }}</h2>
+        <p style="color: #cbd5e1; font-size: 11px; margin: 0; letter-spacing: 1px;">EL DÍA QUE CAMBIÓ LA HISTORIA</p>
+      </div>
+      
+      <div class="top-actions">
+        <span class="user-tag">[Sesión: JUGADOR]</span>
+        <button class="btn-mission-exit" (click)="salirDelJuego()">
+          <span class="icon">⏹</span> Salir del Juego
+        </button>
+      </div>
+    </div>
+
+    <!-- Contenedor Principal (Sidebar + Tarjeta) -->
+    <div class="mission-body">
+      
+      <!-- Menú Lateral Izquierdo -->
+      <aside class="mission-sidebar">
+        <button class="nav-btn active"><span class="icon">🎯</span> MISIÓN ACTIVA</button>
+        <button class="nav-btn disabled"><span class="icon">🎒</span> INVENTARIO</button>
+        <button class="nav-btn disabled"><span class="icon">🗺️</span> MAPA</button>
+        <button class="nav-btn disabled"><span class="icon">📖</span> HISTORIA</button>
+        <button class="nav-btn disabled"><span class="icon">⚙️</span> AJUSTES</button>
+        <button class="nav-btn leave" (click)="salirDelJuego()"><span class="icon">🚪</span> SALIR AL MENÚ</button>
+
+        <div class="lore-quote">
+          <p>"La historia no la escriben los que obedecen,<br>sino los que se atreven a cambiarla."</p>
+          <span>- Anónimo</span>
+        </div>
+      </aside>
+
+      <!-- Tarjeta Central de Misión -->
+      <main class="mission-content">
+        <div class="mission-card">
+          <div class="card-header">
+            <h4>MISIÓN PRINCIPAL</h4>
+            <h2>{{ mapaActualNombre }}</h2>
+            <span *ngIf="!misionIniciada">SITUACIÓN ACTUAL DESCONOCIDA - INGRESA PARA DESCUBRIR</span>
+            <span *ngIf="misionIniciada" style="color: #facc15;">JUEGO EN PAUSA - ESPERANDO ÓRDENES</span>
+          </div>
+          
+          <div class="card-image-placeholder">
+            <div class="scanline"></div>
+          </div>
+          
+          <div class="card-description">
+            <p>Has llegado al punto de control. El entorno ha sido cargado con éxito en el motor físico.</p>
+            <p>Tu objetivo es interactuar con el mundo, descubrir pistas y seguir la línea narrativa diseñada por el creador. Presta atención a tu alrededor y usa el entorno a tu favor.</p>
+          </div>
+
+          <div class="card-objectives">
+            <h4>OBJETIVOS</h4>
+            <ul>
+              <li><span class="dot"></span> Explora el área y analiza los elementos clave.</li>
+              <li><span class="dot"></span> Interactúa con personajes y objetos para avanzar.</li>
+              <li><span class="dot"></span> Sobrevive y descubre la verdad.</li>
+            </ul>
+          </div>
+
+          <button class="btn-start-action" (click)="comenzarMisionUsuario()">
+            {{ misionIniciada ? 'REANUDAR PARTIDA' : 'INICIAR MISIÓN' }}
+          </button>
+        </div>
+      </main>
+    </div>
   </div>
+
 </div>

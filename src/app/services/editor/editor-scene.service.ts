@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
 
@@ -8,6 +9,7 @@ import { SceneObjectBuilderService } from './sceneservice/scene-object-builder.s
 import { SceneLoaderService } from './sceneservice/scene-loader.service';
 import { SceneSaverService } from './sceneservice/scene-saver.service';
 import { SceneNodesService } from './sceneservice/scene-nodes.service';
+import { EditorStateService } from './editor-state.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorSceneService {
@@ -18,6 +20,7 @@ export class EditorSceneService {
   private loaderSvc = inject(SceneLoaderService);
   private saverSvc = inject(SceneSaverService);
   private nodesSvc = inject(SceneNodesService);
+  private state = inject(EditorStateService);
 
   // --- MÉTODOS DE ENTORNO ---
   crearEntornoVisual(): void {
@@ -26,6 +29,7 @@ export class EditorSceneService {
 
   crearSuelo(): void {
     this.envSvc.crearSuelo();
+    this.nodesSvc.actualizarListaNodos();
   }
 
   // --- MÉTODOS DE CONSTRUCCIÓN ---
@@ -66,7 +70,10 @@ export class EditorSceneService {
 
   // --- CARGA Y GUARDADO CON LA BD ---
   cargarEscenaDesdeDatos(dataBD: any): Promise<void> {
-    return this.loaderSvc.cargarEscenaDesdeDatos(dataBD);
+    const isAdmin = this.state.rolSimulado() === 'admin';
+    return this.loaderSvc.cargarEscenaDesdeDatos(dataBD, isAdmin).then(() => {
+      this.nodesSvc.actualizarListaNodos();
+    });
   }
 
   obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[], worldSettings: any } {

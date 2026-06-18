@@ -276,7 +276,7 @@
           </div>
         </div>
 
-        <div class="canvas-container">
+        <div class="canvas-container" [style.pointer-events]="modalMisionUsuario ? 'none' : 'all'">
           <!-- BOTONES FLOTANTES SOLO ADMIN -->
           <ng-container *ngIf="editorSvc.rolSimulado() === 'admin'">
             <button class="toggle-panel-btn toggle-right" (click)="toggleInspector()" [title]="showInspector ? 'Ocultar Inspector' : 'Mostrar Inspector'">{{ showInspector ? '▶' : '◀' }}</button>

@@ -1,4 +1,4 @@
-// src/app/services/editor/sceneservice/loaders/loader-model.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DirectionalLight, Matrix, Mesh, MeshBuilder, PointLight, Quaternion, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../../motor-3d.service';
@@ -118,7 +118,7 @@ export class LoaderModelService {
     entity.bindView(rootNode); 
 
     // 3. Modificaciones nativas Babylon
-    rootNode.checkCollisions = false;
+    rootNode.checkCollisions = false; // La raíz sí usará mover pero las físicas globales las pone el controlador
     rootNode.isPickable = true;
     rootNode.ellipsoid = new Vector3((entity.collider.sizeX ?? 0.5) * scaleX, (entity.collider.sizeY ?? 0.5) * scaleY, (entity.collider.sizeZ ?? 0.5) * scaleZ);
     rootNode.ellipsoidOffset = new Vector3((entity.collider.offsetX ?? 0) * scaleX, (entity.collider.offsetY ?? 0) * scaleY, (entity.collider.offsetZ ?? 0) * scaleZ);
@@ -127,14 +127,23 @@ export class LoaderModelService {
       if (m !== rootNode) {
         m.isPickable = entity.visual.isSelectable; 
         const vertices = m.getTotalVertices();
+        
         if (vertices > 0) {
-            m.checkCollisions = entity.visual.isSolid; 
-            if (entity.visual.isSolid && vertices > 500 && m instanceof Mesh) {
-                m.useOctreeForCollisions = true; m.useOctreeForPicking = true;
+            // 🔥 SOLUCIÓN DEFINITIVA A AUTO-COLISIONES DE PERSONAJES
+            // Si el objeto es un personaje/jugador, prohibimos terminantemente 
+            // que sus mallas internas interactúen con el motor de físicas.
+            if (rolSaved === 'npc' || rolSaved === 'spawn_point') {
+                m.checkCollisions = false;
+            } else {
+                m.checkCollisions = entity.visual.isSolid; 
+                if (entity.visual.isSolid && vertices > 500 && m instanceof Mesh) {
+                    m.useOctreeForCollisions = true; m.useOctreeForPicking = true;
+                }
             }
         } else {
             m.checkCollisions = false;
         }
+        
         m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
         m.receiveShadows = true;
       }
@@ -156,7 +165,7 @@ export class LoaderModelService {
         headNode.computeWorldMatrix(true);
         rootNode.computeWorldMatrix(true);
         entity.initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
-        entity.syncToView(); // Re-actualiza el metadata
+        entity.syncToView(); 
       }
     }
 

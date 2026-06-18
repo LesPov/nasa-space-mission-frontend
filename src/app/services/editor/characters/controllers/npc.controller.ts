@@ -6,6 +6,8 @@ import { GameEntity } from '../../../../core/engine/entities/game.entity';
 
 export class NpcController extends BaseCharacterController {
   
+  private currentSeqRuntime: any;
+
   constructor(entity: GameEntity, context: CharacterContext) {
     super(entity, context);
   }
@@ -20,24 +22,24 @@ export class NpcController extends BaseCharacterController {
       this.context.animSvc.reproducirIdle(this.entity);
     }
 
-    this.context.loopManager.register(this.loopId, GamePhase.LOGIC, (dtMs: number) => {
-      this.update(dtMs);
-    });
+    this.context.loopManager.register(this.loopId + '_PHYSICS', GamePhase.PHYSICS, (dtMs: number) => this.physicsUpdate(dtMs));
+    this.context.loopManager.register(this.loopId + '_LOGIC', GamePhase.LOGIC, (dtMs: number) => this.logicUpdate(dtMs));
+    this.context.loopManager.register(this.loopId + '_POST', GamePhase.POST_UPDATE, (dtMs: number) => this.postUpdate(dtMs));
   }
 
-  protected update(dtMs: number): void {
-    const seqRuntime = this.context.sequenceSvc.actualizarSecuencia(dtMs, this.entity);
+  protected physicsUpdate(dtMs: number): void {
+    this.currentSeqRuntime = this.context.sequenceSvc.actualizarSecuencia(dtMs, this.entity);
     
-    // Cinemáticas programadas en el Runtime puestas directamente sobre la posición
-    if (seqRuntime.running && seqRuntime.step) {
-      const soY = seqRuntime.step.offsetY || 0;
-      const soF = seqRuntime.step.offsetForward || 0;
+    if (this.currentSeqRuntime.running && this.currentSeqRuntime.step) {
+      const soY = this.currentSeqRuntime.step.offsetY || 0;
+      const soF = this.currentSeqRuntime.step.offsetForward || 0;
       
       if (soY !== 0 || soF !== 0) {
-        const durSec = Math.max(0.001, seqRuntime.step.durationMs / 1000);
+        const durSec = Math.max(0.001, this.currentSeqRuntime.step.durationMs / 1000);
         const dy = (soY / durSec) * (dtMs / 1000);
         const df = (soF / durSec) * (dtMs / 1000);
         
+        // Malla como proxy volumétrico temporal
         this.mesh.position.y += dy;
         const fwd = this.mesh.forward.clone();
         fwd.y = 0; 
@@ -51,11 +53,40 @@ export class NpcController extends BaseCharacterController {
     } else {
       this.estadoFisico.isMoving = false;
     }
+
+    // Entidad como Fuente de Verdad Matemática
+    this.entity.transform.position.x = this.mesh.position.x;
+    this.entity.transform.position.y = this.mesh.position.y;
+    this.entity.transform.position.z = this.mesh.position.z;
     
-    this.context.animSvc.gestionarAnimaciones(this.entity, this.estadoFisico, seqRuntime);
-    
-    if (seqRuntime.freezeOrientation) {
-      this.context.sequenceSvc.applyLockedOrientationWhileSequence(this.entity);
+    if (this.mesh.rotationQuaternion) {
+       const euler = this.mesh.rotationQuaternion.toEulerAngles();
+       this.entity.transform.rotation.x = euler.x;
+       this.entity.transform.rotation.y = euler.y;
+       this.entity.transform.rotation.z = euler.z;
+    } else {
+       this.entity.transform.rotation.x = this.mesh.rotation.x;
+       this.entity.transform.rotation.y = this.mesh.rotation.y;
+       this.entity.transform.rotation.z = this.mesh.rotation.z;
     }
+  }
+
+  protected logicUpdate(dtMs: number): void {
+    this.context.animSvc.gestionarAnimaciones(this.entity, this.estadoFisico, this.currentSeqRuntime);
+    
+    if (this.currentSeqRuntime.freezeOrientation) {
+      this.context.sequenceSvc.applyLockedOrientationWhileSequence(this.entity);
+      
+      if (this.mesh.rotationQuaternion) {
+        const euler = this.mesh.rotationQuaternion.toEulerAngles();
+        this.entity.transform.rotation.x = euler.x;
+        this.entity.transform.rotation.y = euler.y;
+        this.entity.transform.rotation.z = euler.z;
+      }
+    }
+  }
+
+  protected postUpdate(dtMs: number): void {
+    this.entity.syncToView();
   }
 }

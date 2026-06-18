@@ -20,6 +20,7 @@ import { PlayerInteractionService } from '../../services/editor/playerservice/pl
 import { PlayerTriggerService } from '../../services/editor/player-trigger.service';
 import { PlayerBubbleService } from '../../services/editor/playerservice/player-bubble';
 import { CharacterContext } from '../../services/editor/characters/character-context.interface';
+import { ToolsFogService } from '../../services/editor/toolsservice/tools-fog.service';
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
@@ -48,6 +49,9 @@ export class GameSession {
   private interactSvc = inject(PlayerInteractionService);
   private triggerSvc = inject(PlayerTriggerService);
   private bubbleSvc = inject(PlayerBubbleService);
+  
+  // 🔥 Inyección centralizada de Niebla Volumétrica
+  private fogSvc = inject(ToolsFogService);
 
   public get proxyColliders() {
     return this.motor3d.scene.meshes.filter(m => m.name.includes('proxyCol'));
@@ -69,6 +73,9 @@ export class GameSession {
     // Despertar entornos pasivos
     this.triggerSvc.prepararTriggersParaJuego();
     this.objectAnimSvc.startAmbientAutoAnimations();
+    
+    // 🔥 Arrancar Niebla Oficial del Juego
+    this.fogSvc.aplicarNieblaEnTiempoReal();
 
     // Empaquetar contexto seguro para controladores
     const context: CharacterContext = {
@@ -153,6 +160,12 @@ export class GameSession {
 
     this.inputSvc.detenerEscuchaTeclado(this.motor3d.scene);
     this.objectAnimSvc.stopAmbientAutoAnimations();
+    
+    // Solo apagamos la niebla si estamos saliendo del Standalone,
+    // en el editor la dejamos viva para que el admin la siga viendo.
+    if (!this.isAdminSession()) {
+       this.fogSvc.limpiarEstado();
+    }
 
     // Frenado de Controladores
     this.controllers.forEach(ctrl => ctrl.destroy());

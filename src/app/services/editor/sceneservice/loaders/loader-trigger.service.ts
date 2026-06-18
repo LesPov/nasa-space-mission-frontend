@@ -1,20 +1,17 @@
-// src/app/services/editor/sceneservice/loaders/loader-trigger.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
 import { Motor3dService } from '../../../motor-3d.service';
-import { EditorStateService } from '../../editor-state.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 import { GameEntity } from '../../../../core/engine/entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
 export class LoaderTriggerService {
   private motor3d = inject(Motor3dService);
-  private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
 
-  public cargarTrigger(trigger: any, mallasCreadas: Map<string, Mesh>): void {
+  public cargarTrigger(trigger: any, mallasCreadas: Map<string, Mesh>, isAdmin: boolean): void {
     const scene = this.motor3d.scene;
-    const isAdmin = this.state.rolSimulado() === 'admin';
     const shape = trigger.actionProperties?.triggerShape || 'cube';
     const isComposite = trigger.actionProperties?.isComposite ?? false;
 

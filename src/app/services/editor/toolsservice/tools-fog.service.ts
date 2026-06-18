@@ -1,10 +1,11 @@
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, Color4, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { FogLevel } from '../player-config.model';
 import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
+import { GameSession } from '../../../core/engine/game-session';
  
 class FogWallState { 
   dist = 500; 
@@ -22,6 +23,7 @@ export class ToolsFogService {
   private motor3d = inject(Motor3dService); 
   private state = inject(EditorStateService);
   private loopManager = inject(LoopManagerService);
+  private injector = inject(Injector);
 
   private isRegistered = false; 
   private firstFrame = true;
@@ -41,6 +43,11 @@ export class ToolsFogService {
     for(let i = 0; i < 5; i++) {
       this.wallStates.push(new FogWallState()); 
     }
+  }
+
+  // Getter Lazy para evitar Dependencia Circular con GameSession
+  private get gameSession(): GameSession {
+    return this.injector.get(GameSession);
   }
 
   private getGradientTexture(scene: Scene): DynamicTexture { 
@@ -66,7 +73,6 @@ export class ToolsFogService {
     return tex;
   }
 
-  // 🔥 MÉTODO AÑADIDO: Desregistra el loop para evitar procesos huérfanos
   public limpiarEstado(): void {
     if (this.isRegistered) {
       this.loopManager.unregister('ToolsFogUpdate');
@@ -88,25 +94,29 @@ export class ToolsFogService {
       this.curEnd = scene.fogEnd || 500000;
       this.firstFrame = true;
 
-      // 🔥 FASE 2: MIGRACIÓN AL LOOP MANAGER EN FASE POST_UPDATE
       this.loopManager.register('ToolsFogUpdate', GamePhase.POST_UPDATE, () => this.updateFogFrame(scene));
       this.isRegistered = true;
     }
   }
 
   private updateFogFrame(scene: Scene): void { 
-    const modo = this.state.playState(); 
+    const isGamePlaying = this.gameSession.isPlaying();
+    const modo = isGamePlaying ? 'PLAYING' : this.state.playState();
+    
     let targetPlayer: AbstractMesh | null = null; 
     let shadowLimit = 500000;
 
-    if (this.state.jugadorActivo) {
+    // 🔥 Desacople puro: Priorizamos la sesión de juego agnóstica si existe.
+    if (isGamePlaying) {
+       targetPlayer = this.gameSession.activePlayerEntity()?.view as AbstractMesh || null;
+    } else if (this.state.jugadorActivo) {
        targetPlayer = this.state.jugadorActivo;
     } else {
        targetPlayer = scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc') || null;
     }
 
     const isBW = scene.metadata?.globalVisualMode === 'bw';
-    const isFPS = this.state.modoVistaPrueba === 'FPS';
+    const isFPS = isGamePlaying ? (this.gameSession.cameraView() === 'FPS') : (this.state.modoVistaPrueba === 'FPS');
     const lerpSpeed = (modo === 'TRANSITIONING' || modo === 'PLAYING') ? 0.35 : 0.035; 
 
     let targetR = 0, targetG = 0, targetB = 0;
@@ -191,17 +201,16 @@ export class ToolsFogService {
         this.fogWalls[i] = new TransformNode("fogWallGroup_" + i, scene);
         this.fogMats[i] = []; 
         
-        const capasDeGrosor = 12; // 🔥 AHORA SON 12 CAPAS
+        const capasDeGrosor = 12; 
         for (let j = capasDeGrosor - 1; j >= 0; j--) {
             const mat = new StandardMaterial(`fogMat_${i}_${j}`, scene);
             mat.disableLighting = true; 
             mat.alphaMode = Engine.ALPHA_COMBINE;
             mat.disableDepthWrite = true; 
-            mat.opacityTexture = this.getGradientTexture(scene); // Mantiene solo el corte suave en la parte SUPERIOR para que no parezca un tubo cortado
+            mat.opacityTexture = this.getGradientTexture(scene); 
             mat.fogEnabled = false; 
             this.fogMats[i][j] = mat; 
 
-            // 🔥 SUAVIZADO DE CILINDRO PERFECTO (tessellation 128)
             const shell = MeshBuilder.CreateCylinder(`fogShell_${i}_${j}`, { 
                 diameter: 1, 
                 height: 1, 
@@ -217,7 +226,7 @@ export class ToolsFogService {
             shell.checkCollisions = false;
             shell.receiveShadows = false;
             shell.applyFog = false;
-            shell.doNotSyncBoundingInfo = true; // 🔥 Evita cálculos y clics
+            shell.doNotSyncBoundingInfo = true; 
         }
       }
 
@@ -263,8 +272,6 @@ export class ToolsFogService {
       
       const isVisible = state.alpha > 0.001;
       
-      // 🔥 ESPACIADO MANUAL DINÁMICO PARA 12 CAPAS (De -1 a 1 equitativo)
-      // Esto reparte las 12 capas en el "Grosor" que hayas definido, sin usar curvas de Gauss
       const thickOffsets = Array.from({length: 12}, (_, k) => -1 + (k * (2 / 11)));
       
       const curDist = Math.max(0.1, state.dist);
@@ -272,7 +279,6 @@ export class ToolsFogService {
 
       const meshes = wallGroup.getChildMeshes();
 
-      // Valores por defecto si falla el input
       let currentLayers = [5, 10, 20, 40, 60, 100, 100, 60, 40, 20, 10, 5]; 
       let currentHeights = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100]; 
       if (activeLevels && activeLevels[i]) {
@@ -280,7 +286,6 @@ export class ToolsFogService {
           if (activeLevels[i].layerHeights && activeLevels[i].layerHeights!.length === 12) currentHeights = activeLevels[i].layerHeights!;
       }
 
-      // 🔥 BUCLE PARA LAS 12 CAPAS
       for (let j = 0; j < 12; j++) {
           const shell = meshes.find(m => m.name === `fogShell_${i}_${j}`);
           if (!shell) continue;
@@ -288,7 +293,6 @@ export class ToolsFogService {
           const targetRadius = curDist + (thickOffsets[j] * halfThick);
           const localScaleX = targetRadius / curDist;
           
-          // 🔥 Aplicamos la Altura en %
           const heightRatio = (currentHeights[j] ?? 100) / 100.0;
           shell.scaling.set(localScaleX, heightRatio, localScaleX);
           
@@ -297,7 +301,6 @@ export class ToolsFogService {
           const mat = this.fogMats[i][j];
           mat.emissiveColor.set(state.r, state.g, state.b);
           
-          // 🔥 Opacidad 100% controlada por tu input manual
           const opacityRatio = (currentLayers[j] ?? 0) / 100.0;
           mat.alpha = state.alpha * opacityRatio; 
       }

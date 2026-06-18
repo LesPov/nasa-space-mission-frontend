@@ -1,8 +1,7 @@
-// src/app/services/editor/sceneservice/loaders/loader-primitive.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DirectionalLight, FresnelParameters, Mesh, MeshBuilder, PointLight, SpotLight, StandardMaterial, Texture, Vector3, VideoTexture } from '@babylonjs/core';
 import { Motor3dService } from '../../../motor-3d.service';
-import { EditorStateService } from '../../editor-state.service';
 import { SceneUtilsService } from '../scene-utils.service';
 import { SceneProjectionService } from '../scene-projection.service';
 import { BubblePulseBehavior } from '../../../../core/engine/behaviors/bubble-pulse.behavior';
@@ -14,15 +13,13 @@ import { GameEntity } from '../../../../core/engine/entities/game.entity';
 @Injectable({ providedIn: 'root' })
 export class LoaderPrimitiveService {
   private motor3d = inject(Motor3dService);
-  private state = inject(EditorStateService);
   private utilsSvc = inject(SceneUtilsService);
   private projectionSvc = inject(SceneProjectionService);
   private loopManager = inject(LoopManagerService);
   private entityManager = inject(EntityManagerService); 
 
-  public cargarPrimitiva(obj: any, mallasCreadas: Map<string, Mesh>): void {
+  public cargarPrimitiva(obj: any, mallasCreadas: Map<string, Mesh>, isAdmin: boolean): void {
     const scene = this.motor3d.scene;
-    const isAdmin = this.state.rolSimulado() === 'admin';
     
     // 1. FUENTE DE VERDAD: Crear Entidad Lógica y Poblar sus componentes puros
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, obj.type, obj.properties?.rol || 'prop');
@@ -134,6 +131,7 @@ export class LoaderPrimitiveService {
       mat.opacityFresnelParameters.bias = 0.2;
       mat.opacityFresnelParameters.power = 1.5;
       mesh.material = mat;
+      mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
     } 
     else if (obj.type === 'video_plane') {
       mesh.addBehavior(new DistanceFadeBehavior(this.loopManager));
@@ -151,7 +149,8 @@ export class LoaderPrimitiveService {
     } 
     else if (obj.type === 'image_plane') {
       const mat = new StandardMaterial('decalMat_' + obj.name, scene);
-      const activeColorAUsar = scene.metadata?.globalVisualMode === 'bw' ? entity.visual.colorBW : entity.visual.color;
+      const isBW = scene.metadata?.globalVisualMode === 'bw';
+      const activeColorAUsar = isBW ? entity.visual.colorBW : entity.visual.color;
       const tex = entity.visual.path ? new Texture('http://localhost:4000' + entity.visual.path, scene) : null;
 
       this.projectionSvc.configurarMaterialProyector(mat, activeColorAUsar, entity.visual.brilloIntensidad, entity.visual.ignoraNiebla, tex);

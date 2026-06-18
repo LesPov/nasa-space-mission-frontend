@@ -1,12 +1,10 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, Engine, Mesh, MeshBuilder, Ray, Scene, StandardMaterial, Texture, Vector3 } from '@babylonjs/core';
-import { EditorStateService } from '../editor-state.service';
 import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
  
 @Injectable({ providedIn: 'root' })
 export class SceneProjectionService {
-
-  private state = inject(EditorStateService);
   private loopManager = inject(LoopManagerService);
 
   public clampNum(v: number, min: number, max: number, fallback = min): number {
@@ -122,11 +120,11 @@ export class SceneProjectionService {
       // 🔥 LÓGICA VITAL: Si el objeto NO ignora niebla y su Fade está en 0, 
       // leemos el FOG del jugador para atenuar este panel simulando que la niebla lo oculta.
       if (fadeDist <= 0 && !mesh.metadata.ignoraNiebla) {
-          const targetPlayer = this.state.jugadorActivo || scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
+          const targetPlayer = scene.meshes.find(m => m.metadata?.rol === 'spawn_point' || m.metadata?.rol === 'npc');
           if (targetPlayer && targetPlayer.metadata?.playerConfig?.fog?.enabled) {
               // Obtenemos la distancia de renderizado de la niebla base
               const fog = targetPlayer.metadata.playerConfig.fog;
-              const isFPS = this.state.modoVistaPrueba === 'FPS';
+              const isFPS = scene.activeCamera?.name === 'playerCameraFPS';
               const maxZ = currentModeIsBW 
                   ? (isFPS ? fog.renderDistanceFpsBW : fog.renderDistanceTpsBW)
                   : (isFPS ? fog.renderDistanceFPS : fog.renderDistanceTPS);

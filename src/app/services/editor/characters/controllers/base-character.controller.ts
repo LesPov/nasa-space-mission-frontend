@@ -1,3 +1,4 @@
+
 import { Mesh } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../../player-config.model';
 import { EstadoFisico } from '../../playerservice/player-physics.service';
@@ -49,15 +50,19 @@ export abstract class BaseCharacterController {
   public abstract start(): void;
 
   /**
-   * Método principal que se ejecutará en el Game Loop mediante el LoopManager.
+   * Fases estructurales obligatorias del ECS.
    */
-  protected abstract update(dtMs: number): void;
+  protected abstract physicsUpdate(dtMs: number): void;
+  protected abstract logicUpdate(dtMs: number): void;
+  protected abstract postUpdate(dtMs: number): void;
 
   /**
    * Desconecta el controlador y limpia memoria.
    */
   public destroy(): void {
-    this.context.loopManager.unregister(this.loopId);
+    this.context.loopManager.unregister(this.loopId + '_PHYSICS');
+    this.context.loopManager.unregister(this.loopId + '_LOGIC');
+    this.context.loopManager.unregister(this.loopId + '_POST');
     this.context.animSvc.detenerTodas(this.entity);
   }
 

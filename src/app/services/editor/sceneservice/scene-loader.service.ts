@@ -3,9 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Color4, Mesh, Vector3 } from '@babylonjs/core';
 
 import { Motor3dService } from '../../motor-3d.service';
-import { EditorStateService } from '../editor-state.service';
 import { SceneShadowsService } from './scene-shadows.service';
-import { SceneNodesService } from './scene-nodes.service';
 import { SceneEnvironmentService } from './scene-environment.service';
 import { SceneUtilsService } from './scene-utils.service';
 
@@ -16,17 +14,15 @@ import { LoaderTriggerService } from './loaders/loader-trigger.service';
 @Injectable({ providedIn: 'root' })
 export class SceneLoaderService {
   private motor3d = inject(Motor3dService);
-  private state = inject(EditorStateService);
   private envSvc = inject(SceneEnvironmentService);
   private shadowsSvc = inject(SceneShadowsService);
-  private nodesSvc = inject(SceneNodesService);
   private utilsSvc = inject(SceneUtilsService);
 
   private loaderModelSvc = inject(LoaderModelService);
   private loaderPrimitiveSvc = inject(LoaderPrimitiveService);
   private loaderTriggerSvc = inject(LoaderTriggerService);
 
-  public cargarEscenaDesdeDatos(dataBD: any): Promise<void> {
+  public cargarEscenaDesdeDatos(dataBD: any, isAdmin: boolean): Promise<void> {
     return new Promise((resolve) => {
       if (!dataBD) return resolve();
 
@@ -63,17 +59,15 @@ export class SceneLoaderService {
         const isModel = obj.type === 'model';
         const isLight = obj.type?.startsWith('light_');
 
-        // 🔥 FIX ANTICRASHEOS: Si es modelo o luz (que requiere modelo), se lo enviamos a LoaderModel.
-        // Él se encargará de crear una caja roja si falla la ruta en la DB.
         if (isModel || (isLight && obj.assetId)) {
           promesasCarga.push(this.loaderModelSvc.cargarModeloAsync(obj, mallasCreadas));
         } else {
-          this.loaderPrimitiveSvc.cargarPrimitiva(obj, mallasCreadas);
+          this.loaderPrimitiveSvc.cargarPrimitiva(obj, mallasCreadas, isAdmin);
         }
       });
 
       triggersBD.forEach((trigger: any) => {
-        this.loaderTriggerSvc.cargarTrigger(trigger, mallasCreadas);
+        this.loaderTriggerSvc.cargarTrigger(trigger, mallasCreadas, isAdmin);
       });
 
       Promise.all(promesasCarga).then(() => {
@@ -93,13 +87,12 @@ export class SceneLoaderService {
         }, 150);
 
         this.shadowsSvc.asignarObjetosASombrasDeLuces();
-        this.nodesSvc.actualizarListaNodos();
         resolve();
       });
     });
   }
 
-  public instanciarObjetoDesdePrefab(prefabData: any, positionTarget: Vector3): Promise<void> {
+  public instanciarObjetoDesdePrefab(prefabData: any, positionTarget: Vector3, isAdmin: boolean): Promise<Map<string, Mesh>> {
     return new Promise((resolve) => {
       const mallasCreadas = new Map<string, Mesh>();
       const propertiesClone = JSON.parse(JSON.stringify(prefabData.properties || {}));
@@ -122,25 +115,14 @@ export class SceneLoaderService {
 
       if (isModel || (isLight && mockDbObject.assetId)) {
         this.loaderModelSvc.cargarModeloAsync(mockDbObject, mallasCreadas).then(() => {
-          this.finalizarPrefab(mallasCreadas);
-          resolve();
+          this.shadowsSvc.asignarObjetosASombrasDeLuces();
+          resolve(mallasCreadas);
         });
       } else {
-        this.loaderPrimitiveSvc.cargarPrimitiva(mockDbObject, mallasCreadas);
-        this.finalizarPrefab(mallasCreadas);
-        resolve();
+        this.loaderPrimitiveSvc.cargarPrimitiva(mockDbObject, mallasCreadas, isAdmin);
+        this.shadowsSvc.asignarObjetosASombrasDeLuces();
+        resolve(mallasCreadas);
       }
     });
-  }
-
-  private finalizarPrefab(mallasCreadas: Map<string, Mesh>) {
-    this.shadowsSvc.asignarObjetosASombrasDeLuces();
-    this.nodesSvc.actualizarListaNodos();
-    
-    const iter = mallasCreadas.values().next();
-    if (!iter.done) {
-       this.state.objetoSeleccionado.set(iter.value);
-       this.state.triggerUpdate();
-    }
   }
 }

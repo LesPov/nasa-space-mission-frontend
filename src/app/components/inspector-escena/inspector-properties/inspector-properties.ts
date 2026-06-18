@@ -1,8 +1,8 @@
-
 import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, effect, Input, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AbstractMesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
+import { auditTime } from 'rxjs/operators'; // Añadido AuditTime para aislar Angular
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EditorPreviewService } from '../../../services/editor/editor-preview.service';
@@ -103,8 +103,10 @@ export class InspectorProperties implements OnInit, OnDestroy {
 
   ngOnInit() {
     const refrescar = () => { this.cdr.detectChanges(); };
+
     this.subs.push(
-      this.editorSvc.onGizmoDrag.subscribe(refrescar),
+      // CULLING ANGULAR: Protege los inputs (campos de texto) del Inspector de ser reevaluados a 60 FPS
+      this.editorSvc.onGizmoDrag.pipe(auditTime(150)).subscribe(refrescar),
       this.editorSvc.onMapChanged.subscribe(refrescar)
     );
   }

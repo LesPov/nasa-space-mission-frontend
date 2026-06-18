@@ -1,5 +1,3 @@
-// src/app/services/editor/editor-tools.service.ts
-
 import { Injectable, inject, effect } from '@angular/core';
 import { DirectionalLight, KeyboardEventTypes, Matrix, Mesh, PointerEventTypes, SpotLight, TransformNode, Vector3, Ray } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
@@ -22,7 +20,6 @@ export class EditorToolsService {
   private cameraSvc = inject(EditorCameraService);
   private entityManager = inject(EntityManagerService);
 
-  // Sub-Servicios Orquestados
   private selectionSvc = inject(ToolsSelectionService);
   private highlightSvc = inject(ToolsHighlightService);
   private debugSvc = inject(ToolsDebugService);
@@ -78,7 +75,6 @@ export class EditorToolsService {
         const hit = scene.pickWithRay(ray, (mesh) => {
             if (!mesh.isPickable || !mesh.isVisible) return false;
             
-            // 🔥 FIX JUGADOR: Ignorar al jugador y sus hijos en 1ra persona para que el Admin no se seleccione a sí mismo
             if (this.state.modoVistaPrueba === 'FPS' && jugador && (mesh === jugador || mesh.isDescendantOf(jugador))) {
                 return false;
             }
@@ -106,7 +102,6 @@ export class EditorToolsService {
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
 
-      // DOBLE CLICK (Enfocar en modo editor)
       if (pi.type === PointerEventTypes.POINTERDOUBLETAP && pi.event.button === 0) {
         if (isAdmin && playSt === 'EDITOR') {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
@@ -120,10 +115,8 @@ export class EditorToolsService {
         return;
       }
 
-      // CLICK NORMAL (Seleccionar / Deseleccionar / Transicionar)
       if (pi.type === PointerEventTypes.POINTERTAP && pi.event.button === 0) {
         
-        // Comportamiento cuando estamos jugando y somos Admin (1ra persona modo edición)
         if (playSt === 'PLAYING') {
           if (!this.state.ratonBloqueado()) {
             try { canvas?.requestPointerLock(); } catch {}
@@ -136,7 +129,6 @@ export class EditorToolsService {
             const rootNode = castRayToSelectable(ray, true); 
             
             if (rootNode) {
-              // 🔥 LÓGICA DE DESELECCIÓN PARA ADMIN FPS
               if (this.state.objetoSeleccionado() === rootNode) {
                 this.state.objetoSeleccionado.set(null);
                 this.state.objetoHovereado.set(null);
@@ -153,7 +145,6 @@ export class EditorToolsService {
           return;
         }
 
-        // Comportamiento para modo Editor Puro o Editando en Vivo
         if (isAdmin && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
@@ -164,11 +155,10 @@ export class EditorToolsService {
           const rootNode = castRayToSelectable(ray);
 
           if (rootNode) {
-            // 🔥 LÓGICA DE DESELECCIÓN PARA MODO EDITOR
             if (this.state.objetoSeleccionado() === rootNode) {
-              this.state.objetoSeleccionado.set(null); // Click al mismo = deseleccionar
+              this.state.objetoSeleccionado.set(null); 
             } else {
-              this.state.objetoSeleccionado.set(rootNode); // Nuevo objeto
+              this.state.objetoSeleccionado.set(rootNode); 
             }
           } else {
             this.state.objetoSeleccionado.set(null);
@@ -177,17 +167,16 @@ export class EditorToolsService {
                 canvas.focus();
                 try { canvas.requestPointerLock(); } catch {}
               }
-              // 🔥 FIX: Retorna a la cámara del jugador y no a la del editor
               this.cameraSvc.volverAJuego();
             }
           }
         }
       }
 
-      // HOVER (Mover el ratón)
+      // HOVER (THROTTLEADO A 10 FPS MAX) PARA AHORRAR CPU
       if (pi.type === PointerEventTypes.POINTERMOVE) {
         const now = performance.now();
-        if (now - this.lastHoverCheckTime < 40) return;
+        if (now - this.lastHoverCheckTime < 100) return; // Antes 40ms, ahora 100ms.
         this.lastHoverCheckTime = now;
 
         if (this.state.ratonBloqueado()) return;
@@ -225,7 +214,6 @@ export class EditorToolsService {
             canvas.focus();
             try { canvas.requestPointerLock(); } catch {}
           }
-          // 🔥 FIX: Si estabamos jugando, tocamos para editar en vivo y presionamos ESC, debemos regresar a jugar, no al editor libre
           this.cameraSvc.volverAJuego();
         }
 

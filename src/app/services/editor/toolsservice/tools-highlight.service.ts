@@ -1,5 +1,3 @@
-// src/app/services/editor/toolsservice/tools-highlight.service.ts
-
 import { Injectable, inject } from '@angular/core';
 import { Color3, HighlightLayer, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -15,8 +13,8 @@ export class ToolsHighlightService {
   public hlHover!: HighlightLayer;
   public hlSelected!: HighlightLayer;
 
-  private lastHoveredMesh: Mesh | null = null;
-  private lastSelectedMesh: Mesh | null = null;
+  private lastHoveredMeshId: number | null = null;
+  private lastSelectedMeshId: number | null = null;
 
   public initHighlights(): void {
     const scene = this.motor3d.scene;
@@ -34,10 +32,14 @@ export class ToolsHighlightService {
   public actualizarHighlights(selected: Mesh | null, hovered: Mesh | null): void {
     if (!this.hlHover || !this.hlSelected) return;
 
-    if (this.lastHoveredMesh === hovered && this.lastSelectedMesh === selected) return;
+    const hoverId = hovered ? hovered.uniqueId : null;
+    const selectId = selected ? selected.uniqueId : null;
+
+    // CULLING DE CPU: Evita recomputar si seguimos mirando el mismo objeto.
+    if (this.lastHoveredMeshId === hoverId && this.lastSelectedMeshId === selectId) return;
     
-    this.lastHoveredMesh = hovered;
-    this.lastSelectedMesh = selected;
+    this.lastHoveredMeshId = hoverId;
+    this.lastSelectedMeshId = selectId;
 
     this.hlHover.removeAllMeshes();
     this.hlSelected.removeAllMeshes();
@@ -55,18 +57,20 @@ export class ToolsHighlightService {
       const entity = this.entityManager.getEntityByMesh(mesh);
       const isTrigger = entity?.type === 'trigger' || mesh.name.toLowerCase().includes('trigger');
       
-      // 🔥 LÓGICA DE PRESELECCIÓN: Los triggers solo se iluminan en MODO EDITOR puro.
       const canHighlight = mode === 'EDITOR' || !isTrigger;
 
       if (mesh.isVisible && !mesh.name.includes('proxyCol') && !mesh.name.includes('debug') && !mesh.name.includes('cameraPivot') && canHighlight) {
         hl.addMesh(mesh, color);
       }
+      
       mesh.getChildMeshes().forEach(c => {
+        if (!c.isVisible || c.name.includes('proxyCol') || c.name.includes('debug') || c.name.includes('cameraPivot')) return;
+
         const cEntity = this.entityManager.getEntityByMesh(c);
         const childIsTrigger = cEntity?.type === 'trigger' || c.name.toLowerCase().includes('trigger');
         const childCanHighlight = mode === 'EDITOR' || !childIsTrigger;
 
-        if (c instanceof Mesh && c.isVisible && !c.name.includes('proxyCol') && !c.name.includes('debug') && !c.name.includes('cameraPivot') && childCanHighlight) {
+        if (c instanceof Mesh && childCanHighlight) {
           hl.addMesh(c, color);
         }
       });

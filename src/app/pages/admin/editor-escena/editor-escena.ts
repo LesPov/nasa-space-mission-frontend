@@ -1,5 +1,3 @@
-// src/app/pages/admin/editor-escena/editor-escena.ts
-
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -12,7 +10,7 @@ import { EpisodiosService } from '../../../services/api/episodios';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MiniVisorEscena } from '../../../components/mini-visor-escena/mini-visor-escena';
-import { debounceTime, Subscription } from 'rxjs';
+import { debounceTime, auditTime, Subscription } from 'rxjs';
 import { AbstractMesh } from '@babylonjs/core';
 import { GlobalTimeline } from '../../../components/global-timeline/global-timeline';
 import { GameSession } from '../../../core/engine/runtime/game-session';
@@ -21,7 +19,6 @@ import { EditorPlayModeService } from '../../../services/editor/editor-play-mode
 import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
-// --- NUEVOS COMPONENTES UI EXTRAÍDOS ---
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiMission } from '../../../components/ui-mission/ui-mission';
@@ -142,8 +139,9 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.cdr.detectChanges();
     });
 
+    // CULLING ANGULAR: Guardado automático protegido y desacoplado del movimiento de ratón
     this.autoSaveSub = this.editorSvc.onMapChanged.pipe(
-      debounceTime(1000) 
+      debounceTime(1500) 
     ).subscribe(() => {
       const state = this.editorSvc.playState();
       if (this.esAdmin && this.editorSvc.rolSimulado() === 'admin' && this.editando && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {

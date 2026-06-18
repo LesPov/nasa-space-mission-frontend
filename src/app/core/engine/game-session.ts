@@ -1,4 +1,5 @@
 // src/app/core/engine/game-session.ts
+
 import { Injectable, signal, inject } from '@angular/core';
 import { GameEntity } from './entities/game.entity';
 import { EntityManagerService } from './entities/entity-manager.service';
@@ -74,6 +75,7 @@ export class GameSession {
     const context: CharacterContext = {
       motor3d: this.motor3d,
       session: this,
+      entityManager: this.entityManager,
       animSvc: this.animSvc,
       physicsSvc: this.physicsSvc,
       sequenceSvc: this.sequenceSvc,
@@ -84,38 +86,6 @@ export class GameSession {
       bubbleSvc: this.bubbleSvc,
       loopManager: this.loopManager
     };
-
-    this.inputSvc.iniciarEscuchaTeclado(this.motor3d.scene, {
-      onToggleCamera: () => this.toggleCameraUser(),
-      onAction: () => {
-        const target = this.interactSvc.currentTarget;
-        if (target && this.interactSvc.canInteract) {
-          if (target.type === 'bubble') {
-            this.bubbleSvc.ejecutarBurbuja(target);
-            const seqId = this.cameraView() === 'FPS' ? target.interaction.interactSequenceIdFPS : target.interaction.interactSequenceIdTPS;
-            const seqReal = seqId || target.interaction.interactSequenceId;
-            if (seqReal) {
-               const allEntities = this.entityManager.getAllEntities();
-               allEntities.forEach(e => {
-                  if (e.playerConfig && e.playerConfig.sequences) {
-                      const hasSeq = e.playerConfig.sequences.some((s: any) => s.id === seqReal);
-                      if (hasSeq) this.sequenceSvc.iniciarSecuenciaEnJuego(seqReal, e);
-                  }
-               });
-            }
-          }
-        }
-      },
-      onInspect: () => {
-        const target = this.interactSvc.currentTarget;
-        if (target && this.interactSvc.canInspect) {
-          this.interactSvc.abrirMensajeInteractivo(target, () => {
-             const pCtrl = this.controllers.get(playerEntity.uid);
-             if (pCtrl) pCtrl.resetPhysicsState();
-          });
-        }
-      }
-    });
 
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
@@ -148,7 +118,6 @@ export class GameSession {
     this.activePlayerEntity.set(null);
     this.pointerLocked.set(false);
 
-    this.inputSvc.detenerEscuchaTeclado(this.motor3d.scene);
     this.objectAnimSvc.stopAmbientAutoAnimations();
     
     // Apagar la niebla de runtime

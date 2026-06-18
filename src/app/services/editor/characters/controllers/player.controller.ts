@@ -1,3 +1,4 @@
+// src/app/services/editor/characters/controllers/player.controller.ts
 
 import { Ray, Vector3, Quaternion } from '@babylonjs/core';
 import { GamePhase } from '../../../../core/engine/behaviors/services/loop-manager.service';
@@ -33,10 +34,51 @@ export class PlayerController extends BaseCharacterController {
 
     this.resetAll();
 
+    // 🔥 DELEGAMOS EL INPUT Y LA LÓGICA AL PLAYER
+    this.context.inputSvc.iniciarEscuchaTeclado(this.context.motor3d.scene, {
+      onToggleCamera: () => this.context.session.toggleCameraUser(),
+      onAction: () => this.handleAction(),
+      onInspect: () => this.handleInspect()
+    });
+
     // Registro estricto de Fases
     this.context.loopManager.register(this.loopId + '_PHYSICS', GamePhase.PHYSICS, (dtMs: number) => this.physicsUpdate(dtMs));
     this.context.loopManager.register(this.loopId + '_LOGIC', GamePhase.LOGIC, (dtMs: number) => this.logicUpdate(dtMs));
     this.context.loopManager.register(this.loopId + '_POST', GamePhase.POST_UPDATE, (dtMs: number) => this.postUpdate(dtMs));
+  }
+
+  public override destroy(): void {
+    this.context.inputSvc.detenerEscuchaTeclado(this.context.motor3d.scene);
+    super.destroy();
+  }
+
+  private handleAction(): void {
+    const target = this.context.interactSvc.currentTarget;
+    if (target && this.context.interactSvc.canInteract) {
+      if (target.type === 'bubble') {
+        this.context.bubbleSvc.ejecutarBurbuja(target);
+        const seqId = this.context.session.cameraView() === 'FPS' ? target.interaction.interactSequenceIdFPS : target.interaction.interactSequenceIdTPS;
+        const seqReal = seqId || target.interaction.interactSequenceId;
+        if (seqReal) {
+           const allEntities = this.context.entityManager.getAllEntities();
+           allEntities.forEach(e => {
+              if (e.playerConfig && e.playerConfig.sequences) {
+                  const hasSeq = e.playerConfig.sequences.some((s: any) => s.id === seqReal);
+                  if (hasSeq) this.context.sequenceSvc.iniciarSecuenciaEnJuego(seqReal, e);
+              }
+           });
+        }
+      }
+    }
+  }
+
+  private handleInspect(): void {
+    const target = this.context.interactSvc.currentTarget;
+    if (target && this.context.interactSvc.canInspect) {
+      this.context.interactSvc.abrirMensajeInteractivo(target, () => {
+         this.resetPhysicsState();
+      });
+    }
   }
 
   protected physicsUpdate(dtMs: number): void {

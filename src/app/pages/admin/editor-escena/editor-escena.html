@@ -1,4 +1,3 @@
-
 <!-- PANTALLA PRINCIPAL: SELECCIÓN DE MAPAS -->
 <ng-container *ngIf="!editando && !modalSeleccionModo && !cargandoEscena">
   <div class="galeria-header">
@@ -95,7 +94,7 @@
     [cerrando]="cerrandoModalUsuario" 
     [isAdmin]="esAdmin" 
     (onStart)="comenzarMisionUsuario()" 
-    (onExit)="salirDelEditor()">
+    (onExit)="manejarSalidaDeMision()">
   </app-ui-mission>
 
   <!-- ========================================================

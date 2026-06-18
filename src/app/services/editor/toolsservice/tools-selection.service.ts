@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Ray, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -96,11 +97,18 @@ export class ToolsSelectionService {
     const scene = this.motor3d.scene;
     const playSt = this.state.playState();
     const jugador = this.state.jugadorActivo;
+    const entityPlayer = jugador ? this.entityManager.getEntityByMesh(jugador) : null;
 
     const hit = scene.pickWithRay(ray, (m) => {
       if (!m.isVisible || !m.isPickable) return false;
       
-      if (this.state.modoVistaPrueba === 'FPS' && jugador && (m === jugador || m.isDescendantOf(jugador))) return false;
+      // FIX INFALIBLE: Ignorar usando el cerebro de la Entidad y no jerarquías rotas
+      if (this.state.modoVistaPrueba === 'FPS' && entityPlayer) {
+          const entityHit = this.entityManager.getEntityByMesh(m);
+          if (entityHit && entityHit.uid === entityPlayer.uid) {
+              return false;
+          }
+      }
 
       const nameStr = m.name.toLowerCase();
       if (nameStr.includes('highlight') || nameStr.includes('gizmo')) return false;

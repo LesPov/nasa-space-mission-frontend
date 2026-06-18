@@ -11,7 +11,7 @@ import { EpisodiosService } from '../../../services/api/episodios';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { MiniVisorEscena } from '../../../components/mini-visor-escena/mini-visor-escena';
-import { debounceTime, auditTime, Subscription } from 'rxjs';
+import { debounceTime, Subscription } from 'rxjs';
 import { AbstractMesh } from '@babylonjs/core';
 import { GlobalTimeline } from '../../../components/global-timeline/global-timeline';
 import { GameSession } from '../../../core/engine/runtime/game-session';
@@ -123,24 +123,27 @@ export class EditorEscena implements OnInit, OnDestroy {
         case 'CameraViewChanged':
           this.activeCameraView = event.payload;
           break;
+        case 'GameStarted':
+          // 🔥 AISLAMIENTO: Solo mostramos el modal narrativo si simulamos ser un jugador final
+          if (this.editorSvc.rolSimulado() === 'user') {
+            this.modalMisionUsuario = true;
+            this.misionIniciada = false;
+            this.cerrandoModalUsuario = false;
+          }
+          break;
         case 'GamePaused':
           if (this.misionIniciada && !this.isInteracting() && this.editorSvc.rolSimulado() === 'user') {
              this.modalMisionUsuario = true;
+             this.cerrandoModalUsuario = false;
              if (this.activeCameraView === 'FPS') {
                 this.runtime.toggleCameraUser(false, 45);
              }
-          }
-          break;
-        case 'GameResumed':
-          if (this.editorSvc.rolSimulado() === 'user') {
-             // NO ocultamos el modalMisionUsuario aquí para que la animación fluya
           }
           break;
       }
       this.cdr.detectChanges();
     });
 
-    // CULLING ANGULAR: Guardado automático protegido y desacoplado del movimiento de ratón
     this.autoSaveSub = this.editorSvc.onMapChanged.pipe(
       debounceTime(1500) 
     ).subscribe(() => {
@@ -150,7 +153,7 @@ export class EditorEscena implements OnInit, OnDestroy {
           this.guardarMapaEnBD(true); 
         }
       } catch (e) {
-        console.error('Error durante el disparo de autoguardado, previniendo que la subscripción muera:', e);
+        console.error('Error durante autoguardado:', e);
       }
     });
   }
@@ -202,20 +205,12 @@ export class EditorEscena implements OnInit, OnDestroy {
             
             if (spawnEntity && spawnEntity.view) {
               this.editorSvc.seleccionarObjeto(spawnEntity.view);
-              
               this.vistaPrueba = 'FPS';
               this.iniciarModoPrueba();
               
-              this.modalMisionUsuario = true;
               this.cargandoEscena = false;
               this.episodioPendienteCarga = null;
               this.cdr.detectChanges();
-
-              setTimeout(() => {
-                document.exitPointerLock(); 
-                this.runtime.toggleCameraUser(true, 500); 
-              }, 100);
-
             } else {
               alert('Este episodio aún no tiene un punto de aparición (Spawn Point). Vuelve más tarde.');
               this.salirDelEditor();
@@ -239,11 +234,22 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
+  manejarSalidaDeMision() {
+     if (this.editorSvc.rolSimulado() === 'admin') {
+         this.detenerModoPrueba();
+         this.modalMisionUsuario = false;
+     } else {
+         this.salirDelEditor();
+     }
+  }
+
   comenzarMisionUsuario() {
     this.cerrandoModalUsuario = true; 
     
     if (this.activeCameraView === 'TPS') {
        this.runtime.toggleCameraUser(false, 60); 
+    } else {
+       this.runtime.toggleCameraUser(true, 60); 
     }
 
     const canvas = this.motor3dSvc.engine.getRenderingCanvas();
@@ -428,7 +434,16 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   iniciarModoPrueba() {
     if (!this.esObjetoJugable()) return;
-    if (this.editorSvc.rolSimulado() === 'admin') this.guardarMapaEnBD(true); 
+    if (this.editorSvc.rolSimulado() === 'admin') {
+       this.guardarMapaEnBD(true); 
+       
+       // Force focus and lock para atrapar la interacción del botón en el mismo milisegundo
+       const canvas = this.motor3dSvc.engine.getRenderingCanvas();
+       if (canvas) {
+           canvas.focus();
+           try { canvas.requestPointerLock(); } catch {}
+       }
+    }
     this.playModeSvc.testearEscena(this.vistaPrueba);
   }
 

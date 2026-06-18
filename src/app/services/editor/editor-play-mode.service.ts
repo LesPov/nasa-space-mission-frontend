@@ -1,4 +1,3 @@
-// src/app/services/editor/editor-play-mode.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Quaternion } from '@babylonjs/core';
@@ -97,16 +96,33 @@ export class EditorPlayModeService {
 
     const finishSetup = () => {
         this.state.playState.set('PLAYING');
-        // 🔥 El Editor invoca al Runtime a través de su Facade (Frontera Limpia)
+        // El Editor invoca al Runtime a través de su Facade.
+        // Aquí se emite GameStarted
         this.runtimeEngine.startTestSession(playerEntity, vista, isAdmin);
         this.state.triggerUpdate();
         
+        // 🔥 FIX DEL BUG DE LA CÁMARA ATASCADA EN MODO EDITOR:
+        // Si somos Admin, al darle "Jugar" ya bloqueamos el mouse para ganar el focus del navegador.
+        // Pero Babylon asocia los inputs de la cámara al momento de "attachControl". Si el mouse ya estaba bloqueado,
+        // a veces no detecta el movimiento inicial de la nueva cámara.
+        // Solución: Esperar 100ms y re-asociar el control. Es el mismo efecto que lograbas al cambiar de cámara con "V".
         if (isAdmin) {
-          const canvas = this.motor3d.engine.getRenderingCanvas();
-          if (canvas) {
-            canvas.focus(); 
-            try { const p = canvas.requestPointerLock(); if(p) p.catch(()=>{}); } catch {} 
-          }
+            setTimeout(() => {
+                const canvas = this.motor3d.engine.getRenderingCanvas();
+                if (canvas) {
+                    const activeCam = this.motor3d.scene.activeCamera;
+                    if (activeCam) {
+                        activeCam.detachControl();
+                        activeCam.attachControl(canvas, true);
+                    }
+                    
+                    // Si por alguna razón el ratón se soltó, lo forzamos a volver
+                    if (!document.pointerLockElement) {
+                        canvas.focus();
+                        try { canvas.requestPointerLock(); } catch {}
+                    }
+                }
+            }, 100);
         }
     };
 
@@ -122,7 +138,7 @@ export class EditorPlayModeService {
   public detenerPrueba(): void {
     this.state.playState.set('EDITOR');
     
-    // 🔥 El Runtime detiene los sistemas vivos de juego
+    // El Runtime detiene los sistemas vivos de juego
     this.runtimeEngine.stopTestSession();
 
     // RESTAURAR BACKUPS DEL EDITOR

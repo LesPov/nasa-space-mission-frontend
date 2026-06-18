@@ -54,20 +54,12 @@ export class JuegoPantalla implements OnInit, OnDestroy {
           try {
             this.mapaActualNombre = res?.title || 'Episodio Desconocido';
             
-            // 🔥 AISLAMIENTO TOTAL: La pantalla solo pide arrancar el juego.
-            // Ni se entera de cómo se carga la escena ni qué entidades existen.
             await this.runtime.bootProductionGame(res);
             
             this.isLoading.set(false);
             this.modalMisionUsuario = true;
             this.cdr.detectChanges();
 
-            setTimeout(() => {
-              document.exitPointerLock(); 
-              this.runtime.toggleCameraUser(true, 500); 
-            }, 100);
-
-            // FPS Counter local para el modo Jugador Libre
             this.fpsInterval = setInterval(() => {
               this.fps.set(this.motor3dSvc.currentFps.toFixed(0));
             }, 500);
@@ -105,6 +97,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
           this.pointerLocked.set(false); 
           if (this.misionIniciada && !this.isInteracting()) {
              this.modalMisionUsuario = true;
+             this.cerrandoModalUsuario = false;
              if (this.activeCameraView === 'FPS') {
                 this.runtime.toggleCameraUser(false, 45); 
              }
@@ -123,9 +116,12 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     
     if (this.activeCameraView === 'TPS') {
        this.runtime.toggleCameraUser(false, 60); 
+    } else {
+       this.runtime.toggleCameraUser(true, 60);
     }
 
-    const canvas = document.querySelector('canvas');
+    // FIX: Referencia segura al canvas desde el motor en vez del DOM genérico
+    const canvas = this.motor3dSvc.engine.getRenderingCanvas();
     if (canvas) {
       canvas.focus();
       try { canvas.requestPointerLock(); } catch {}

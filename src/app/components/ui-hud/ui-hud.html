@@ -1,0 +1,47 @@
+
+<!-- Crosshair -->
+<div class="crosshair-ui" 
+     *ngIf="gameSession.isPlaying() && gameSession.cameraView() === 'FPS' && gameSession.pointerLocked()" 
+     [class.hovering]="hoveredMesh() !== null">
+</div>
+
+<!-- Toast: Mensaje Narrativo / UI -->
+<div class="modern-toast-container" *ngIf="hudMessage() !== null" style="bottom: 120px; z-index: 300;">
+    <div class="modern-toast-box" style="background: rgba(30, 58, 138, 0.95); border: 2px solid #60a5fa; box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);">
+       <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">📍 {{ hudMessage() }}</div>
+    </div>
+</div>
+
+<!-- Toast: Interacciones Cercanas -->
+<div class="modern-toast-container" *ngIf="gameSession.isPlaying() && targetInteractuable() && gameSession.pointerLocked() && (actionAvailable() || inspectAvailable() || (isEditor && gameSession.isAdminSession() && gameSession.cameraView() === 'FPS'))">
+  <div class="modern-toast-box">
+    <div class="toast-title">{{ targetInteractuable()?.name }}</div>
+    <div class="toast-actions-grid">
+      <!-- Opción de Editar (Solo Admin) -->
+      <div class="action-item" *ngIf="isEditor && gameSession.isAdminSession() && gameSession.cameraView() === 'FPS'">
+        <kbd class="key-cap">Click</kbd><span class="action-label">Editar</span>
+      </div>
+      <!-- Opción de Evento/Trigger -->
+      <div class="action-item" *ngIf="actionAvailable()">
+        <kbd class="key-cap">E</kbd><span class="action-label">Acción</span>
+      </div>
+      <!-- Opción de Lectura/Inspección -->
+      <div class="action-item" *ngIf="inspectAvailable()">
+        <kbd class="key-cap">I</kbd><span class="action-label">Leer</span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Status Global -->
+<div class="hud-container" *ngIf="!hideStatus">
+  <div class="hud-message hud-playing" *ngIf="gameSession.isPlaying() && gameSession.pointerLocked()">
+    <span class="hud-icon">🎮</span> "WASD" Mover • "Espacio" Saltar • "V" Cambiar Cámara
+  </div>
+  <div class="hud-message hud-paused" *ngIf="gameSession.isPlaying() && !gameSession.pointerLocked() && gameSession.isAdminSession()">
+    <span class="hud-icon">⏸️</span> Juego Pausado | Click en la pantalla para volver
+  </div>
+  <div class="hud-message hud-editing" *ngIf="playState === 'EDITING_IN_GAME'">
+    <span class="hud-icon">⚙️</span> MODO EDICIÓN EN VIVO | Click al fondo o "ESC" para volver
+  </div>
+</div>

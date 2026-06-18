@@ -1,0 +1,18 @@
+
+<div class="inspect-overlay" *ngIf="isInteracting()" style="z-index: 1000;">
+  <div class="rpg-modal">
+    <div class="rpg-modal-header"><h3>🔍 Inspección</h3></div>
+    <div class="rpg-modal-body">
+      <p class="rpg-obj-name">{{ target()?.name }}</p>
+      <div class="rpg-obj-desc">
+        <div class="lore-text">
+          <p>"{{ target()?.interaction?.mensaje || 'Un objeto cualquiera.' }}"</p>
+        </div>
+      </div>
+    </div>
+    <div class="rpg-modal-footer">
+      <button class="btn-rpg-action" (click)="cerrar()">Continuar</button>
+    </div>
+  </div>
+</div>
+]]>

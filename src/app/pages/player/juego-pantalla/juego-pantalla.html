@@ -1,122 +1,28 @@
 
 <div class="juego-container">
   
-  <div class="loading-overlay" *ngIf="isLoading()">
-    <div class="cinematic-spinner"></div>
-    <h2>Cargando Episodio...</h2>
-  </div>
+  <app-ui-loading *ngIf="isLoading()" texto="Cargando Episodio..."></app-ui-loading>
 
   <div class="canvas-wrapper" [class.blur]="isInteracting() || (!pointerLocked() && !isLoading())" [style.pointer-events]="modalMisionUsuario ? 'none' : 'all'">
      <app-motor-babylon></app-motor-babylon>
   </div>
 
-  <!-- CROSSHAIR & TOASTS -->
-  <div class="crosshair-ui" *ngIf="pointerLocked() && cameraView() === 'FPS'" [class.hovering]="hoveredMesh() !== null"></div>
+  <app-ui-hud 
+    [isEditor]="false" 
+    playState="PLAYING" 
+    [hideStatus]="modalMisionUsuario">
+  </app-ui-hud>
 
-  <div class="modern-toast-container" *ngIf="hudMessage() !== null" style="bottom: 120px; z-index: 300;">
-      <div class="modern-toast-box" style="background: rgba(30, 58, 138, 0.95); border: 2px solid #60a5fa; box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);">
-         <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">📍 {{ hudMessage() }}</div>
-      </div>
-  </div>
+  <app-ui-inspect (onClose)="cerrarInteraccion()"></app-ui-inspect>
 
-  <div class="modern-toast-container" *ngIf="targetInteractuable() && pointerLocked() && (actionAvailable() || inspectAvailable())">
-    <div class="modern-toast-box">
-      <div class="toast-title">{{ targetInteractuable()?.name }}</div>
-      <div class="toast-actions-grid">
-        <div class="action-item" *ngIf="actionAvailable()">
-          <kbd class="key-cap">E</kbd><span class="action-label">Acción</span>
-        </div>
-        <div class="action-item" *ngIf="inspectAvailable()">
-          <kbd class="key-cap">I</kbd><span class="action-label">Leer</span>
-        </div>
-      </div>
-    </div>
-  </div>
-  
-  <!-- Modal Interaccion (Diálogos/Lore) -->
-  <div class="modal-overlay" *ngIf="isInteracting()" style="z-index: 1000;">
-    <div class="rpg-modal">
-      <div class="rpg-modal-header"><h3>🔍 Inspección</h3></div>
-      <div class="rpg-modal-body">
-        <p class="rpg-obj-name">{{ targetInteractuable()?.name }}</p>
-        <div class="rpg-obj-desc"><div class="lore-text"><p>"{{ targetInteractuable()?.interaction?.mensaje }}"</p></div></div>
-      </div>
-      <div class="rpg-modal-footer"><button class="btn-rpg-action" (click)="cerrarInteraccion()">Continuar</button></div>
-    </div>
-  </div>
-
-  <!-- ========================================================
-       MODAL DE INICIO DE MISIÓN (INTERFAZ TIPO GTA / TELLTALE)
-       ======================================================== -->
-  <div class="user-mission-overlay" *ngIf="modalMisionUsuario && !isLoading()" [class.closing]="cerrandoModalUsuario">
-    
-    <!-- Barra Superior -->
-    <div class="mission-topbar">
-      <div class="brand">
-        <h2 style="color: #ef4444; font-weight: 800; margin: 0; text-transform: uppercase;">{{ mapaActualNombre }}</h2>
-        <p style="color: #cbd5e1; font-size: 11px; margin: 0; letter-spacing: 1px;">EL DÍA QUE CAMBIÓ LA HISTORIA</p>
-      </div>
-      
-      <div class="top-actions">
-        <span class="user-tag">[Sesión: JUGADOR]</span>
-        <button class="btn-mission-exit" (click)="salirDelJuego()">
-          <span class="icon">⏹</span> Salir del Juego
-        </button>
-      </div>
-    </div>
-
-    <!-- Contenedor Principal (Sidebar + Tarjeta) -->
-    <div class="mission-body">
-      
-      <!-- Menú Lateral Izquierdo -->
-      <aside class="mission-sidebar">
-        <button class="nav-btn active"><span class="icon">🎯</span> MISIÓN ACTIVA</button>
-        <button class="nav-btn disabled"><span class="icon">🎒</span> INVENTARIO</button>
-        <button class="nav-btn disabled"><span class="icon">🗺️</span> MAPA</button>
-        <button class="nav-btn disabled"><span class="icon">📖</span> HISTORIA</button>
-        <button class="nav-btn disabled"><span class="icon">⚙️</span> AJUSTES</button>
-        <button class="nav-btn leave" (click)="salirDelJuego()"><span class="icon">🚪</span> SALIR AL MENÚ</button>
-
-        <div class="lore-quote">
-          <p>"La historia no la escriben los que obedecen,<br>sino los que se atreven a cambiarla."</p>
-          <span>- Anónimo</span>
-        </div>
-      </aside>
-
-      <!-- Tarjeta Central de Misión -->
-      <main class="mission-content">
-        <div class="mission-card">
-          <div class="card-header">
-            <h4>MISIÓN PRINCIPAL</h4>
-            <h2>{{ mapaActualNombre }}</h2>
-            <span *ngIf="!misionIniciada">SITUACIÓN ACTUAL DESCONOCIDA - INGRESA PARA DESCUBRIR</span>
-            <span *ngIf="misionIniciada" style="color: #facc15;">JUEGO EN PAUSA - ESPERANDO ÓRDENES</span>
-          </div>
-          
-          <div class="card-image-placeholder">
-            <div class="scanline"></div>
-          </div>
-          
-          <div class="card-description">
-            <p>Has llegado al punto de control. El entorno ha sido cargado con éxito en el motor físico.</p>
-            <p>Tu objetivo es interactuar con el mundo, descubrir pistas y seguir la línea narrativa diseñada por el creador. Presta atención a tu alrededor y usa el entorno a tu favor.</p>
-          </div>
-
-          <div class="card-objectives">
-            <h4>OBJETIVOS</h4>
-            <ul>
-              <li><span class="dot"></span> Explora el área y analiza los elementos clave.</li>
-              <li><span class="dot"></span> Interactúa con personajes y objetos para avanzar.</li>
-              <li><span class="dot"></span> Sobrevive y descubre la verdad.</li>
-            </ul>
-          </div>
-
-          <button class="btn-start-action" (click)="comenzarMisionUsuario()">
-            {{ misionIniciada ? 'REANUDAR PARTIDA' : 'INICIAR MISIÓN' }}
-          </button>
-        </div>
-      </main>
-    </div>
-  </div>
+  <app-ui-mission 
+    *ngIf="modalMisionUsuario && !isLoading()" 
+    [mapaNombre]="mapaActualNombre" 
+    [misionIniciada]="misionIniciada" 
+    [cerrando]="cerrandoModalUsuario" 
+    [isAdmin]="false" 
+    (onStart)="comenzarMisionUsuario()" 
+    (onExit)="salirDelJuego()">
+  </app-ui-mission>
 
 </div>

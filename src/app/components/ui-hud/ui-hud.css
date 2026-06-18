@@ -1,0 +1,22 @@
+
+.hud-container { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); z-index: 50; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+.hud-message { padding: 8px 20px; border-radius: 20px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 10px; backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); box-shadow: 0 4px 15px rgba(0,0,0,0.4); animation: slideDown 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+.hud-icon { font-size: 16px; }
+.hud-playing { background-color: rgba(0, 0, 0, 0.65); color: #facc15; border: 1px solid rgba(250, 204, 21, 0.4); }
+.hud-paused { background-color: rgba(0, 0, 0, 0.65); color: #9ca3af; border: 1px solid rgba(156, 163, 175, 0.4); }
+.hud-editing { background-color: rgba(16, 42, 22, 0.75); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.5); box-shadow: 0 0 15px rgba(74, 222, 128, 0.2); }
+
+@keyframes slideDown { from { opacity: 0; transform: translateY(-20px); } to { opacity: 1; transform: translateY(0); } }
+
+.crosshair-ui { position: absolute; top: 50%; left: 50%; width: 8px; height: 8px; background-color: #facc15; border: 1px solid rgba(15, 23, 42, 0.8); border-radius: 50%; transform: translate(-50%, -50%); pointer-events: none; z-index: 100; box-shadow: 0 0 6px rgba(250, 204, 21, 0.8); transition: all 0.14s ease-out; }
+.crosshair-ui.hovering { width: 18px; height: 18px; background-color: #38bdf8; border-color: rgba(255, 255, 255, 0.95); box-shadow: 0 0 16px rgba(56, 189, 248, 0.95); transform: translate(-50%, -50%) scale(1.08); }
+
+.modern-toast-container { position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 200; pointer-events: none; animation: slideUpFade 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275); }
+.modern-toast-box { background: rgba(15, 23, 42, 0.85); border: 1px solid rgba(56, 189, 248, 0.3); border-radius: 12px; padding: 12px 24px; box-shadow: 0 10px 25px rgba(0, 0, 0, 0.6); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 200px; }
+.toast-title { color: #94a3b8; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; margin: 0; text-shadow: 0 1px 2px rgba(0,0,0,0.8); }
+.toast-actions-grid { display: grid; grid-auto-flow: column; gap: 16px; align-items: center; }
+.action-item { display: flex; align-items: center; gap: 8px; }
+.key-cap { background: #facc15; color: #111; padding: 4px 8px; border-radius: 6px; font-size: 13px; font-weight: 900; font-family: monospace; box-shadow: 0 3px 0 #ca8a04; line-height: 1; display: inline-block; }
+.action-label { color: #f8fafc; font-size: 14px; font-weight: 600; text-shadow: 0 1px 3px rgba(0,0,0,0.8); }
+
+@keyframes slideUpFade { 0% { opacity: 0; transform: translate(-50%, 20px) scale(0.95); } 100% { opacity: 1; transform: translate(-50%, 0) scale(1); } }

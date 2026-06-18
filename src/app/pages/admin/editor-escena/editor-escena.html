@@ -67,103 +67,36 @@
       <div class="mode-card" (click)="confirmarModoYContinuar('admin')">
         <div class="mode-icon">🛠️</div>
         <h3>Modo Creador</h3>
-        <p>Accede al motor completo. Construye la escena, coloca NPCs, edita colisiones, dibuja iluminación y programa las secuencias cinemáticas del episodio.</p>
+        <p>Accede al motor completo. Construye la escena, edita colisiones y programa las secuencias cinemáticas.</p>
       </div>
       
       <div class="mode-card user-mode" (click)="confirmarModoYContinuar('user')">
         <div class="mode-icon">🎮</div>
         <h3>Modo Jugador</h3>
-        <p>Experimenta el episodio exactamente como lo verá el usuario final. Sin herramientas del editor, sin atajos, inmersión narrativa pura.</p>
+        <p>Experimenta el episodio exactamente como lo verá el usuario final. Sin herramientas del editor.</p>
       </div>
     </div>
     
     <button class="btn-cancel mt-4" style="align-self: center;" (click)="salirDelEditor()">Cancelar</button>
   </div>
 
-  <!-- SPINNER CINEMÁTICO DE CARGA -->
-  <div class="loading-state" *ngIf="cargandoEscena">
-    <div class="cinematic-spinner"></div>
-    <h2>Conectando al Motor 3D</h2>
-    <p>{{ cargandoTexto }}</p>
-  </div>
+  <!-- SPINNER CINEMÁTICO DE CARGA EXTRAÍDO -->
+  <app-ui-loading *ngIf="cargandoEscena" [texto]="cargandoTexto"></app-ui-loading>
 </div>
 
 <!-- FLUJO DE EDICIÓN Y JUEGO -->
 <ng-container *ngIf="editando">
 
-  <!-- ========================================================
-       MODAL DE INICIO DE MISIÓN (INTERFAZ TIPO GTA / TELLTALE)
-       ======================================================== -->
-  <div class="user-mission-overlay" *ngIf="modalMisionUsuario" [class.closing]="cerrandoModalUsuario">
-    <!-- Barra Superior -->
-    <div class="mission-topbar">
-      <div class="brand">
-        <h2 style="color: #ef4444; font-weight: 800; margin: 0; text-transform: uppercase;">{{ mapaActualNombre }}</h2>
-        <p style="color: #cbd5e1; font-size: 11px; margin: 0; letter-spacing: 1px;">EL DÍA QUE CAMBIÓ LA HISTORIA</p>
-      </div>
-      
-      <div class="top-actions">
-        <span class="user-tag">[Sesión: {{ esAdmin ? 'ADMIN_SIMULADO' : 'JUGADOR' }}]</span>
-        <button class="btn-mission-exit" (click)="salirDelEditor()">
-          <span class="icon">⏹</span> Salir del Juego
-        </button>
-      </div>
-    </div>
-
-    <!-- Contenedor Principal (Sidebar + Tarjeta) -->
-    <div class="mission-body">
-      <!-- Menú Lateral Izquierdo -->
-      <aside class="mission-sidebar">
-        <button class="nav-btn active"><span class="icon">🎯</span> MISIÓN ACTIVA</button>
-        <button class="nav-btn disabled"><span class="icon">🎒</span> INVENTARIO</button>
-        <button class="nav-btn disabled"><span class="icon">🗺️</span> MAPA</button>
-        <button class="nav-btn disabled"><span class="icon">📖</span> HISTORIA</button>
-        <button class="nav-btn disabled"><span class="icon">⚙️</span> AJUSTES</button>
-        <button class="nav-btn leave" (click)="salirDelEditor()"><span class="icon">🚪</span> SALIR</button>
-
-        <div class="lore-quote">
-          <p>"La historia no la escriben los que obedecen,<br>sino los que se atreven a cambiarla."</p>
-          <span>- Anónimo</span>
-        </div>
-      </aside>
-
-      <!-- Tarjeta Central de Misión -->
-      <main class="mission-content">
-        <div class="mission-card">
-          <div class="card-header">
-            <h4>MISIÓN PRINCIPAL</h4>
-            <h2>{{ mapaActualNombre }}</h2>
-            <span *ngIf="!misionIniciada">SITUACIÓN ACTUAL DESCONOCIDA - INGRESA PARA DESCUBRIR</span>
-            <span *ngIf="misionIniciada" style="color: #facc15;">JUEGO EN PAUSA - ESPERANDO ÓRDENES</span>
-          </div>
-          
-          <div class="card-image-placeholder">
-            <!-- Espacio para una futura imagen del mapa, por ahora un fondo genérico de escáner -->
-            <div class="scanline"></div>
-          </div>
-          
-          <div class="card-description">
-            <p>Has llegado al punto de control. El entorno ha sido cargado con éxito en el motor físico.</p>
-            <p>Tu objetivo es interactuar con el mundo, descubrir pistas y seguir la línea narrativa diseñada por el creador. Presta atención a tu alrededor y usa el entorno a tu favor.</p>
-          </div>
-
-          <div class="card-objectives">
-            <h4>OBJETIVOS</h4>
-            <ul>
-              <li><span class="dot"></span> Explora el área y analiza los elementos clave.</li>
-              <li><span class="dot"></span> Interactúa con personajes y objetos para avanzar.</li>
-              <li><span class="dot"></span> Sobrevive y descubre la verdad.</li>
-            </ul>
-          </div>
-
-          <button class="btn-start-action" (click)="comenzarMisionUsuario()">
-            {{ misionIniciada ? 'REANUDAR PARTIDA' : 'INICIAR MISIÓN' }}
-          </button>
-        </div>
-      </main>
-    </div>
-  </div>
-
+  <!-- UI DEL JUEGO EXTRAÍDA -->
+  <app-ui-mission 
+    *ngIf="modalMisionUsuario" 
+    [mapaNombre]="mapaActualNombre" 
+    [misionIniciada]="misionIniciada" 
+    [cerrando]="cerrandoModalUsuario" 
+    [isAdmin]="esAdmin" 
+    (onStart)="comenzarMisionUsuario()" 
+    (onExit)="salirDelEditor()">
+  </app-ui-mission>
 
   <!-- ========================================================
        MODALES DEL EDITOR DE OBJETOS
@@ -237,16 +170,8 @@
     </div>
   </div>
 
-  <div class="modal-overlay" *ngIf="isInteracting()" style="z-index: 1000;">
-    <div class="rpg-modal">
-      <div class="rpg-modal-header"><h3>🔍 Inspeccionando Objeto</h3></div>
-      <div class="rpg-modal-body">
-        <p class="rpg-obj-name">{{ targetInteractuable()?.name }}</p>
-        <div class="rpg-obj-desc"><div class="lore-text"><p>"{{ targetInteractuable()?.interaction?.mensaje || 'Un objeto cualquiera.' }}"</p></div></div>
-      </div>
-      <div class="rpg-modal-footer"><button class="btn-rpg-action" (click)="cerrarInteraccion()">Continuar Aventura</button></div>
-    </div>
-  </div>
+  <!-- UI INSPECCIÓN EXTRAÍDA -->
+  <app-ui-inspect (onClose)="cerrarInteraccion()"></app-ui-inspect>
 
   <!-- ========================================================
        RENDER PRINCIPAL Y CAPA BABYLON
@@ -285,37 +210,12 @@
             <app-toolbar-escena *ngIf="editorSvc.playState() === 'EDITOR' || editorSvc.playState() === 'EDITING_IN_GAME' || (editorSvc.playState() === 'PLAYING' && !gameSession.pointerLocked())"></app-toolbar-escena>
           </ng-container>
 
-          <!-- CROSSHAIR, TOASTS Y HUD DE JUEGO (ADMIN Y USER) -->
-          <div class="crosshair-ui" *ngIf="gameSession.isPlaying() && gameSession.cameraView() === 'FPS' && gameSession.pointerLocked()" [class.hovering]="hoveredMesh() !== null"></div>
-
-          <div class="modern-toast-container" *ngIf="hudMessage() !== null" style="bottom: 120px; z-index: 300;">
-              <div class="modern-toast-box" style="background: rgba(30, 58, 138, 0.95); border: 2px solid #60a5fa; box-shadow: 0 0 20px rgba(96, 165, 250, 0.5);">
-                 <div style="color: white; font-size: 16px; font-weight: bold; text-align: center;">📍 {{ hudMessage() }}</div>
-              </div>
-          </div>
-
-          <div class="modern-toast-container" *ngIf="gameSession.isPlaying() && targetInteractuable() && gameSession.pointerLocked() && (actionAvailable() || inspectAvailable() || (editorSvc.rolSimulado() === 'admin' && gameSession.cameraView() === 'FPS'))">
-            <div class="modern-toast-box">
-              <div class="toast-title">{{ targetInteractuable()?.name }}</div>
-              <div class="toast-actions-grid">
-                <div class="action-item" *ngIf="editorSvc.rolSimulado() === 'admin' && gameSession.cameraView() === 'FPS'">
-                  <kbd class="key-cap">Click</kbd><span class="action-label">Editar</span>
-                </div>
-                <div class="action-item" *ngIf="actionAvailable()">
-                  <kbd class="key-cap">E</kbd><span class="action-label">Acción</span>
-                </div>
-                <div class="action-item" *ngIf="inspectAvailable()">
-                  <kbd class="key-cap">I</kbd><span class="action-label">Leer</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div class="hud-container" *ngIf="!modalMisionUsuario">
-            <div class="hud-message hud-playing" *ngIf="gameSession.isPlaying() && gameSession.pointerLocked()"><span class="hud-icon">🎮</span> "WASD" Mover • "Espacio" Saltar • "V" Cambiar Cámara</div>
-            <div class="hud-message hud-paused" *ngIf="gameSession.isPlaying() && !gameSession.pointerLocked() && editorSvc.rolSimulado() === 'admin'"><span class="hud-icon">⏸️</span> Juego Pausado | Click en la pantalla para volver</div>
-            <div class="hud-message hud-editing" *ngIf="editorSvc.playState() === 'EDITING_IN_GAME'"><span class="hud-icon">⚙️</span> MODO EDICIÓN EN VIVO | Click al fondo o "ESC" para volver</div>
-          </div>
+          <!-- HUD DE JUEGO EXTRAÍDO -->
+          <app-ui-hud 
+            [isEditor]="true" 
+            [playState]="editorSvc.playState()" 
+            [hideStatus]="modalMisionUsuario">
+          </app-ui-hud>
           
           <app-motor-babylon></app-motor-babylon>
         </div>

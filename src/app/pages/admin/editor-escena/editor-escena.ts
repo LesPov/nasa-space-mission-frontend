@@ -16,15 +16,23 @@ import { AbstractMesh } from '@babylonjs/core';
 import { GlobalTimeline } from '../../../components/global-timeline/global-timeline';
 import { GameSession } from '../../../core/engine/game-session';
 import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
-import { GameEntity } from '../../../core/engine/entities/game.entity';
 import { EditorPlayModeService } from '../../../services/editor/editor-play-mode.service';
 import { PlayerInteractionService } from '../../../services/editor/playerservice/player-interaction.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
+// --- NUEVOS COMPONENTES UI EXTRAÍDOS ---
+import { UiHud } from '../../../components/ui-hud/ui-hud';
+import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
+import { UiMission } from '../../../components/ui-mission/ui-mission';
+import { UiLoading } from '../../../components/ui-loading/ui-loading';
+
 @Component({
   selector: 'app-editor-escena',
   standalone: true,
-  imports: [MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule, MiniVisorEscena, GlobalTimeline],
+  imports: [
+    MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule, 
+    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiMission, UiLoading
+  ],
   templateUrl: './editor-escena.html',
   styleUrl: './editor-escena.css',
 }) 
@@ -42,11 +50,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   public playModeSvc = inject(EditorPlayModeService);
   public interactSvc = inject(PlayerInteractionService);
 
-  public hudMessage = signal<string | null>(null);
-  public actionAvailable = signal<boolean>(false);
-  public inspectAvailable = signal<boolean>(false);
-  public targetInteractuable = signal<GameEntity | null>(null);
-  public hoveredMesh = signal<AbstractMesh | null>(null);
   public isInteracting = signal<boolean>(false);
 
   public editando = false;
@@ -103,7 +106,6 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   constructor() {
     effect(() => {
-      // Dummy effect para evitar warnings
       this.editorSvc.playState();
     });
   }
@@ -115,14 +117,9 @@ export class EditorEscena implements OnInit, OnDestroy {
 
     this.eventBusSub = this.eventBus.events$.subscribe(event => {
       switch (event.type) {
-        case 'MessageRequested': this.hudMessage.set(event.payload); break;
-        case 'ObjectFocused':
-          this.targetInteractuable.set(event.payload.entity);
-          this.hoveredMesh.set(event.payload.mesh);
-          this.actionAvailable.set(event.payload.canInteract);
-          this.inspectAvailable.set(event.payload.canInspect);
+        case 'InteractionStateChanged': 
+          this.isInteracting.set(event.payload); 
           break;
-        case 'InteractionStateChanged': this.isInteracting.set(event.payload); break;
         case 'GamePaused':
           if (this.misionIniciada && !this.isInteracting() && this.editorSvc.rolSimulado() === 'user') {
              this.modalMisionUsuario = true;
@@ -133,7 +130,7 @@ export class EditorEscena implements OnInit, OnDestroy {
           break;
         case 'GameResumed':
           if (this.editorSvc.rolSimulado() === 'user') {
-             // NO ocultamos el modalMisionUsuario aquí para que la animación de cierre fluya al darle "Reanudar"
+             // NO ocultamos el modalMisionUsuario aquí para que la animación fluya
           }
           break;
       }
@@ -192,7 +189,6 @@ export class EditorEscena implements OnInit, OnDestroy {
 
         this.motor3dSvc.scene.executeWhenReady(() => {
           if (this.editorSvc.rolSimulado() === 'user') {
-            // 🔥 SOLUCIÓN: Buscamos el punto de aparición desde el ECS, no desde la metadata visual
             const spawnEntity = this.entityManager.getEntitiesByRol('spawn_point')[0] || 
                                 this.entityManager.getEntitiesByRol('npc')[0];
             
@@ -417,7 +413,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   esObjetoJugable(): boolean {
     const obj = this.editorSvc.objetoSeleccionado() as AbstractMesh;
     if (!obj) return false;
-    // 🔥 SOLUCIÓN: Buscamos el rol desde la Entidad, no desde la metadata de la vista
     const entity = this.entityManager.getEntityByMesh(obj);
     if (!entity) return false;
     return entity.rol === 'spawn_point' || entity.rol === 'npc';
@@ -448,13 +443,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.editorSvc.limpiarEstado();
     this.cargarEpisodios(); 
     
-    this.hudMessage.set(null);
-    this.actionAvailable.set(false);
-    this.inspectAvailable.set(false);
-    this.targetInteractuable.set(null);
-    this.hoveredMesh.set(null);
     this.isInteracting.set(false);
-
     if (this.fpsInterval) clearInterval(this.fpsInterval);
   }
 

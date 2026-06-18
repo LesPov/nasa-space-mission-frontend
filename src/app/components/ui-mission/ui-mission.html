@@ -1,0 +1,67 @@
+
+<div class="user-mission-overlay" [class.closing]="cerrando">
+  
+  <div class="mission-topbar">
+    <div class="brand">
+      <h2 style="color: #ef4444; font-weight: 800; margin: 0; text-transform: uppercase;">{{ mapaNombre }}</h2>
+      <p style="color: #cbd5e1; font-size: 11px; margin: 0; letter-spacing: 1px;">EL DÍA QUE CAMBIÓ LA HISTORIA</p>
+    </div>
+    
+    <div class="top-actions">
+      <span class="user-tag">[Sesión: {{ isAdmin ? 'ADMIN_SIMULADO' : 'JUGADOR' }}]</span>
+      <button class="btn-mission-exit" (click)="onExit.emit()">
+        <span class="icon">⏹</span> Salir del Juego
+      </button>
+    </div>
+  </div>
+
+  <div class="mission-body">
+    
+    <aside class="mission-sidebar">
+      <button class="nav-btn active"><span class="icon">🎯</span> MISIÓN ACTIVA</button>
+      <button class="nav-btn disabled"><span class="icon">🎒</span> INVENTARIO</button>
+      <button class="nav-btn disabled"><span class="icon">🗺️</span> MAPA</button>
+      <button class="nav-btn disabled"><span class="icon">📖</span> HISTORIA</button>
+      <button class="nav-btn disabled"><span class="icon">⚙️</span> AJUSTES</button>
+      <button class="nav-btn leave" (click)="onExit.emit()"><span class="icon">🚪</span> {{ isAdmin ? 'SALIR' : 'SALIR AL MENÚ' }}</button>
+
+      <div class="lore-quote">
+        <p>"La historia no la escriben los que obedecen,<br>sino los que se atreven a cambiarla."</p>
+        <span>- Anónimo</span>
+      </div>
+    </aside>
+
+    <main class="mission-content">
+      <div class="mission-card">
+        <div class="card-header">
+          <h4>MISIÓN PRINCIPAL</h4>
+          <h2>{{ mapaNombre }}</h2>
+          <span *ngIf="!misionIniciada">SITUACIÓN ACTUAL DESCONOCIDA - INGRESA PARA DESCUBRIR</span>
+          <span *ngIf="misionIniciada" style="color: #facc15;">JUEGO EN PAUSA - ESPERANDO ÓRDENES</span>
+        </div>
+        
+        <div class="card-image-placeholder">
+          <div class="scanline"></div>
+        </div>
+        
+        <div class="card-description">
+          <p>Has llegado al punto de control. El entorno ha sido cargado con éxito en el motor físico.</p>
+          <p>Tu objetivo es interactuar con el mundo, descubrir pistas y seguir la línea narrativa diseñada por el creador. Presta atención a tu alrededor y usa el entorno a tu favor.</p>
+        </div>
+
+        <div class="card-objectives">
+          <h4>OBJETIVOS</h4>
+          <ul>
+            <li><span class="dot"></span> Explora el área y analiza los elementos clave.</li>
+            <li><span class="dot"></span> Interactúa con personajes y objetos para avanzar.</li>
+            <li><span class="dot"></span> Sobrevive y descubre la verdad.</li>
+          </ul>
+        </div>
+
+        <button class="btn-start-action" (click)="onStart.emit()">
+          {{ misionIniciada ? 'REANUDAR PARTIDA' : 'INICIAR MISIÓN' }}
+        </button>
+      </div>
+    </main>
+  </div>
+</div>

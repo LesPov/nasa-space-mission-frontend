@@ -3,9 +3,9 @@
 import { Injectable, signal, inject } from '@angular/core';
 import { GameEntity } from './entities/game.entity';
 import { EntityManagerService } from './entities/entity-manager.service';
-import { BaseCharacterController } from '../../services/editor/characters/controllers/base-character.controller';
-import { PlayerController } from '../../services/editor/characters/controllers/player.controller';
-import { NpcController } from '../../services/editor/characters/controllers/npc.controller';
+import { BaseCharacterController } from './controllers/base-character.controller';
+import { PlayerController } from './controllers/player.controller';
+import { NpcController } from './controllers/npc.controller';
 import { LoopManagerService } from './behaviors/services/loop-manager.service';
 import { ObjectAnimationService } from './systems/object-animation.service';
 import { GameEventBusService } from './events/game-event-bus.service';
@@ -19,7 +19,7 @@ import { PlayerCameraManagerService } from './systems/player-camera.service';
 import { PlayerInteractionService } from './systems/player-interaction.service';
 import { PlayerTriggerService } from './systems/player-trigger.service';
 import { PlayerBubbleService } from './systems/player-bubble.service';
-import { CharacterContext } from '../../services/editor/characters/character-context.interface';
+import { CharacterContext } from './controllers/character-context.interface';
 import { PlayerFogService } from './systems/player-fog.service';
 
 @Injectable({ providedIn: 'root' })
@@ -46,8 +46,6 @@ export class GameSession {
   private interactSvc = inject(PlayerInteractionService);
   private triggerSvc = inject(PlayerTriggerService);
   private bubbleSvc = inject(PlayerBubbleService);
-  
-  // 🔥 Inyección de Niebla Volumétrica del RUNTIME
   private playerFogSvc = inject(PlayerFogService);
 
   public get proxyColliders() {
@@ -69,7 +67,6 @@ export class GameSession {
     this.triggerSvc.prepararTriggersParaJuego();
     this.objectAnimSvc.startAmbientAutoAnimations();
     
-    // 🔥 Arrancar Niebla Oficial del Juego (Runtime seguro)
     this.playerFogSvc.start(playerEntity, view);
 
     const context: CharacterContext = {
@@ -119,8 +116,6 @@ export class GameSession {
     this.pointerLocked.set(false);
 
     this.objectAnimSvc.stopAmbientAutoAnimations();
-    
-    // Apagar la niebla de runtime
     this.playerFogSvc.stop();
 
     this.controllers.forEach(ctrl => ctrl.destroy());

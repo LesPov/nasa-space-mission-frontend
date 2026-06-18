@@ -1,3 +1,5 @@
+// src/app/services/editor/toolsservice/tools-gizmo.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, GizmoManager, Matrix, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Light } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -5,6 +7,7 @@ import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService, ToolMode } from '../editor-state.service';
 import { ToolsDebugService } from './tools-debug.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { CoreSceneProjectionService } from '../../../core/engine/scene/utils/core-scene-projection.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsGizmoService {
@@ -13,6 +16,7 @@ export class ToolsGizmoService {
   private historialSvc = inject(HistorialService);
   private debugSvc = inject(ToolsDebugService);
   private entityManager = inject(EntityManagerService);
+  private projectionSvc = inject(CoreSceneProjectionService);
 
   public gizmoManager!: GizmoManager;
   public centerDragMesh!: Mesh;
@@ -283,9 +287,12 @@ export class ToolsGizmoService {
         if (entity) {
             entity.syncTransformFromView();
             entity.syncToView(); 
+            
+            if (entity.type === 'image_plane') {
+                this.projectionSvc.actualizarProyeccion(mesh);
+            }
         }
         
-        if (mesh.metadata?.updateDecal) mesh.metadata.updateDecal();
         queueMicrotask(() => { this.state.onGizmoDrag.next(); this.state.triggerUpdate(); });
       }
     };

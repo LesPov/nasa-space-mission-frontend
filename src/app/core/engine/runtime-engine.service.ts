@@ -1,4 +1,5 @@
 // src/app/core/engine/runtime-engine.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { StandardMaterial, VideoTexture, Color3, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../../services/motor-3d.service';
@@ -15,32 +16,17 @@ export class RuntimeEngineService {
   private entityManager = inject(EntityManagerService);
 
   public startSession(playerEntity: GameEntity, view: 'FPS' | 'TPS', isAdmin: boolean): void {
+    // 1. Resetear estados lógicos del mundo
     this.resetVideos();
     
-    // 🔥 LIMPIEZA VISUAL PARA STANDALONE (Ocultar helpers del motor)
-    this.motor3d.scene.meshes.forEach(m => {
-      if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
-          m.isVisible = isAdmin;
-          m.setEnabled(isAdmin);
-      }
-
-      const entity = this.entityManager.getEntityByMesh(m);
-      if (entity) {
-          if (entity.type.startsWith('light_') && !entity.visual.assetId) {
-              m.isVisible = false;
-          }
-          if (entity.type === 'image_plane') {
-              m.isVisible = false; 
-          }
-      }
-    });
-
+    // 2. Asignación de cámaras del Runtime puro
     this.playerCamSvc.inicializarCamaras(playerEntity, view);
     
     const targetCam = view === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS;
     targetCam.getViewMatrix(true);
     this.motor3d.scene.activeCamera = targetCam;
 
+    // 3. Iniciar la sesión de juego
     this.gameSession.start(playerEntity, view, isAdmin);
   }
 

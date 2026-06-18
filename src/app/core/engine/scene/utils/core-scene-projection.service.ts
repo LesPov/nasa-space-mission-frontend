@@ -1,3 +1,4 @@
+// src/app/core/engine/scene/utils/core-scene-projection.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { Color3, Engine, Mesh, MeshBuilder, Ray, Scene, StandardMaterial, Texture, Vector3 } from '@babylonjs/core';
@@ -100,6 +101,105 @@ export class CoreSceneProjectionService {
     mesh.metadata = meta;
   }
 
+  public actualizarProyeccion(mesh: Mesh): void {
+    this.limpiarDecalsImagen(mesh);
+
+    const entity = this.entityManager.getEntityByMesh(mesh);
+    if (!entity) return;
+
+    const scene = mesh.getScene();
+
+    try {
+      const isNowBW = scene.metadata?.globalVisualMode === 'bw';
+      const colorReal = isNowBW ? entity.visual.colorBW : entity.visual.color;
+      const decalMat = mesh.metadata.decalMaterial as StandardMaterial | null | undefined;
+      const decalTexture = decalMat?.diffuseTexture ?? null;
+
+      if (!decalMat) {
+        return;
+      }
+
+      this.configurarMaterialProyector(
+        decalMat,
+        colorReal,
+        entity.visual.brilloIntensidad,
+        entity.visual.ignoraNiebla,
+        decalTexture instanceof Texture ? decalTexture : undefined
+      );
+
+      mesh.computeWorldMatrix(true);
+      const origin = mesh.getAbsolutePosition();
+      const direction = mesh.forward;
+
+      const ray = new Ray(origin, direction, 500);
+
+      const hit = scene.pickWithRay(ray, (m) => {
+        if (!m.isPickable || !m.isVisible) return false;
+        if (m === mesh) return false;
+
+        const n = m.name.toLowerCase();
+        const targetEntity = this.entityManager.getEntityByMesh(m);
+        
+        if (targetEntity?.type === 'trigger' || n.includes('trigger')) return false;
+        if (n.includes('proxycol') || n.includes('gizmo') || n.includes('debug')) return false;
+        if (targetEntity?.type === 'image_plane' || targetEntity?.type === 'bubble') return false;
+        if (['ejex', 'ejey', 'ejez', 'gridhelper', 'sueloinvisible'].includes(n)) return false;
+
+        return true;
+      });
+
+      if (hit && hit.hit && hit.pickedMesh && hit.pickedPoint) {
+        const targetMesh = hit.pickedMesh as Mesh;
+
+        const ancho = this.clampNum(Number(entity.media?.proyeccionAncho ?? 2), 0.05, 9999);
+        const alto = this.clampNum(Number(entity.media?.proyeccionAlto ?? 2), 0.05, 9999);
+        const prof = this.clampNum(Number(entity.media?.profundidadProyeccion ?? 10), 0.01, 9999);
+
+        let angulo = Number(entity.media?.anguloProyeccion ?? 0) * (Math.PI / 180);
+        if (mesh.rotationQuaternion) {
+          angulo += mesh.rotationQuaternion.toEulerAngles().z;
+        } else {
+          angulo += mesh.rotation.z;
+        }
+
+        const normal = direction.scale(-1).normalize();
+        const decalSize = new Vector3(ancho, alto, prof);
+
+        const repeticiones = Math.floor(this.clampNum(Number(entity.media?.proyeccionRepeticiones ?? 1), 1, 50));
+        const espaciado = Number(entity.media?.proyeccionEspaciado ?? 2);
+        const ejeRepeticion = entity.media?.proyeccionEje === 'X' ? mesh.right : mesh.up;
+
+        const totalDist = (repeticiones - 1) * espaciado;
+        const centerDecalPos = hit.pickedPoint.add(direction.scale(prof * 0.5));
+        const startPos = centerDecalPos.subtract(ejeRepeticion.scale(totalDist * 0.5));
+
+        mesh.metadata.decalMeshes = [];
+
+        for (let i = 0; i < repeticiones; i++) {
+          const currentDecalPos = startPos.add(ejeRepeticion.scale(i * espaciado));
+
+          const decal = MeshBuilder.CreateDecal('decal_' + mesh.name + '_' + i, targetMesh, {
+            position: currentDecalPos,
+            normal: normal,
+            size: decalSize,
+            angle: angulo
+          });
+
+          decal.material = decalMat;
+          decal.setParent(targetMesh);
+          decal.isPickable = false;
+          decal.receiveShadows = false;
+          decal.applyFog = !entity.visual.ignoraNiebla;
+          decal.alwaysSelectAsActiveMesh = true;
+
+          mesh.metadata.decalMeshes.push(decal);
+        }
+      }
+    } catch (e) {
+      console.warn('Error proyectando imagen con raycast:', e);
+    }
+  }
+
   public aplicarLogicaHolograma(mesh: Mesh, scene: Scene): void {
     if (!mesh.metadata) mesh.metadata = {};
 
@@ -114,7 +214,7 @@ export class CoreSceneProjectionService {
       const currentModeIsBW = scene.metadata?.globalVisualMode === 'bw';
       if (mesh.metadata._lastVisualMode !== currentModeIsBW) {
         mesh.metadata._lastVisualMode = currentModeIsBW;
-        if (mesh.metadata.updateDecal) mesh.metadata.updateDecal();
+        this.actualizarProyeccion(mesh);
       }
 
       let fadeDist = Number(entity.media?.fadeDistance ?? 0);
@@ -197,103 +297,6 @@ export class CoreSceneProjectionService {
       }
     });
 
-    mesh.metadata.updateDecal = () => {
-      this.limpiarDecalsImagen(mesh);
-
-      const entity = this.entityManager.getEntityByMesh(mesh);
-      if (!entity) return;
-
-      try {
-        const isNowBW = scene.metadata?.globalVisualMode === 'bw';
-        const colorReal = isNowBW ? entity.visual.colorBW : entity.visual.color;
-        const decalMat = mesh.metadata.decalMaterial as StandardMaterial | null | undefined;
-        const decalTexture = decalMat?.diffuseTexture ?? null;
-
-        if (!decalMat) {
-          return;
-        }
-
-        this.configurarMaterialProyector(
-          decalMat,
-          colorReal,
-          entity.visual.brilloIntensidad,
-          entity.visual.ignoraNiebla,
-          decalTexture instanceof Texture ? decalTexture : undefined
-        );
-
-        mesh.computeWorldMatrix(true);
-        const origin = mesh.getAbsolutePosition();
-        const direction = mesh.forward;
-
-        const ray = new Ray(origin, direction, 500);
-
-        const hit = scene.pickWithRay(ray, (m) => {
-          if (!m.isPickable || !m.isVisible) return false;
-          if (m === mesh) return false;
-
-          const n = m.name.toLowerCase();
-          const targetEntity = this.entityManager.getEntityByMesh(m);
-          
-          if (targetEntity?.type === 'trigger' || n.includes('trigger')) return false;
-          if (n.includes('proxycol') || n.includes('gizmo') || n.includes('debug')) return false;
-          if (targetEntity?.type === 'image_plane' || targetEntity?.type === 'bubble') return false;
-          if (['ejex', 'ejey', 'ejez', 'gridhelper', 'sueloinvisible'].includes(n)) return false;
-
-          return true;
-        });
-
-        if (hit && hit.hit && hit.pickedMesh && hit.pickedPoint) {
-          const targetMesh = hit.pickedMesh as Mesh;
-
-          const ancho = this.clampNum(Number(entity.media?.proyeccionAncho ?? 2), 0.05, 9999);
-          const alto = this.clampNum(Number(entity.media?.proyeccionAlto ?? 2), 0.05, 9999);
-          const prof = this.clampNum(Number(entity.media?.profundidadProyeccion ?? 10), 0.01, 9999);
-
-          let angulo = Number(entity.media?.anguloProyeccion ?? 0) * (Math.PI / 180);
-          if (mesh.rotationQuaternion) {
-            angulo += mesh.rotationQuaternion.toEulerAngles().z;
-          } else {
-            angulo += mesh.rotation.z;
-          }
-
-          const normal = direction.scale(-1).normalize();
-          const decalSize = new Vector3(ancho, alto, prof);
-
-          const repeticiones = Math.floor(this.clampNum(Number(entity.media?.proyeccionRepeticiones ?? 1), 1, 50));
-          const espaciado = Number(entity.media?.proyeccionEspaciado ?? 2);
-          const ejeRepeticion = entity.media?.proyeccionEje === 'X' ? mesh.right : mesh.up;
-
-          const totalDist = (repeticiones - 1) * espaciado;
-          const centerDecalPos = hit.pickedPoint.add(direction.scale(prof * 0.5));
-          const startPos = centerDecalPos.subtract(ejeRepeticion.scale(totalDist * 0.5));
-
-          mesh.metadata.decalMeshes = [];
-
-          for (let i = 0; i < repeticiones; i++) {
-            const currentDecalPos = startPos.add(ejeRepeticion.scale(i * espaciado));
-
-            const decal = MeshBuilder.CreateDecal('decal_' + mesh.name + '_' + i, targetMesh, {
-              position: currentDecalPos,
-              normal: normal,
-              size: decalSize,
-              angle: angulo
-            });
-
-            decal.material = decalMat;
-            decal.setParent(targetMesh);
-            decal.isPickable = false;
-            decal.receiveShadows = false;
-            decal.applyFog = !entity.visual.ignoraNiebla;
-            decal.alwaysSelectAsActiveMesh = true;
-
-            mesh.metadata.decalMeshes.push(decal);
-          }
-        }
-      } catch (e) {
-        console.warn('Error proyectando imagen con raycast:', e);
-      }
-    };
-
     mesh.onDisposeObservable.add(() => {
       this.loopManager.unregister(callbackId);
       this.limpiarDecalsImagen(mesh);
@@ -311,7 +314,7 @@ export class CoreSceneProjectionService {
     });
 
     setTimeout(() => {
-      if (mesh.metadata?.updateDecal) mesh.metadata.updateDecal();
+      this.actualizarProyeccion(mesh);
     }, 150);
   }
 }

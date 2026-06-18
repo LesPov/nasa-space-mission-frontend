@@ -1,6 +1,7 @@
+// src/app/services/editor/mutators/transform-mutator.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion } from '@babylonjs/core';
+import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { HistorialService } from '../../historial.service';
 import { Motor3dService } from '../../motor-3d.service';
@@ -27,7 +28,9 @@ export class TransformMutatorService {
       }
     });
 
-    if (objeto.metadata?.updateDecal) objeto.metadata.updateDecal();
+    if (entity && entity.type === 'image_plane') {
+       this.projectionSvc.actualizarProyeccion(objeto as Mesh);
+    }
     this.editorSvc.triggerUpdate();
   }
 
@@ -47,7 +50,9 @@ export class TransformMutatorService {
       }
     });
 
-    if (objeto.metadata?.updateDecal) objeto.metadata.updateDecal();
+    if (entity && entity.type === 'image_plane') {
+       this.projectionSvc.actualizarProyeccion(objeto as Mesh);
+    }
     this.editorSvc.triggerUpdate();
   }
 
@@ -63,7 +68,9 @@ export class TransformMutatorService {
       }
     });
 
-    if (objeto.metadata?.updateDecal) objeto.metadata.updateDecal();
+    if (entity && entity.type === 'image_plane') {
+       this.projectionSvc.actualizarProyeccion(objeto as Mesh);
+    }
     this.editorSvc.triggerUpdate();
   }
 
@@ -82,7 +89,9 @@ export class TransformMutatorService {
 
     entity.syncToView();
 
-    if (objeto.metadata?.updateDecal) objeto.metadata.updateDecal();
+    if (entity.type === 'image_plane') {
+       this.projectionSvc.actualizarProyeccion(objeto as Mesh);
+    }
     this.editorSvc.triggerUpdate();
   }
 
@@ -151,9 +160,12 @@ export class TransformMutatorService {
   }
 
   public forzarRecalculoProyeccion(objeto: AbstractMesh): void {
-    if (objeto && objeto.metadata?.updateDecal) {
-      objeto.metadata.updateDecal();
-      this.editorSvc.triggerUpdate();
+    if (objeto) {
+      const entity = this.entityManager.getEntityByMesh(objeto);
+      if (entity && entity.type === 'image_plane') {
+         this.projectionSvc.actualizarProyeccion(objeto as Mesh);
+         this.editorSvc.triggerUpdate();
+      }
     }
   }
 

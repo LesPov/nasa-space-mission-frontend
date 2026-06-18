@@ -1,9 +1,10 @@
+// src/app/core/engine/controllers/base-character.controller.ts
 
 import { Mesh } from '@babylonjs/core';
-import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../../../../core/engine/models/player-config.model';
-import { EstadoFisico } from '../../../../core/engine/systems/player-physics.service';
-import { CharacterContext } from '../character-context.interface';
-import { GameEntity } from '../../../../core/engine/entities/game.entity';
+import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
+import { EstadoFisico } from '../systems/player-physics.service';
+ import { GameEntity } from '../entities/game.entity';
+import { CharacterContext } from './character-context.interface';
  
 export abstract class BaseCharacterController {
   public entity: GameEntity;
@@ -16,7 +17,6 @@ export abstract class BaseCharacterController {
   constructor(entity: GameEntity, context: CharacterContext) {
     this.entity = entity;
     
-    // Verificamos que la entidad tenga su vista bindeada
     if (!entity.view || !(entity.view instanceof Mesh)) {
       throw new Error(`[BaseCharacterController] La entidad ${entity.name} no tiene un Mesh válido bindeado.`);
     }
@@ -25,10 +25,8 @@ export abstract class BaseCharacterController {
     this.context = context;
     this.loopId = `ControllerLogic_${this.entity.uid}`;
     
-    // LECTURA DESDE LA ENTIDAD, NO DESDE METADATA
     this.config = entity.playerConfig || cloneDefaultPlayerConfig();
     
-    // El estado Físico pertenece exclusivamente al controlador en runtime
     this.estadoFisico = {
       isMoving: false,
       isRunning: false,
@@ -44,21 +42,12 @@ export abstract class BaseCharacterController {
     };
   }
 
-  /**
-   * Conecta el controlador al Motor de Juego.
-   */
   public abstract start(): void;
 
-  /**
-   * Fases estructurales obligatorias del ECS.
-   */
   protected abstract physicsUpdate(dtMs: number): void;
   protected abstract logicUpdate(dtMs: number): void;
   protected abstract postUpdate(dtMs: number): void;
 
-  /**
-   * Desconecta el controlador y limpia memoria.
-   */
   public destroy(): void {
     this.context.loopManager.unregister(this.loopId + '_PHYSICS');
     this.context.loopManager.unregister(this.loopId + '_LOGIC');
@@ -66,9 +55,6 @@ export abstract class BaseCharacterController {
     this.context.animSvc.detenerTodas(this.entity);
   }
 
-  /**
-   * Resetea el estado físico propio de este actor (Ej. al reiniciar el mapa o hacer respawn).
-   */
   public resetPhysicsState(): void {
     this.estadoFisico.isMoving = false;
     this.estadoFisico.isRunning = false;

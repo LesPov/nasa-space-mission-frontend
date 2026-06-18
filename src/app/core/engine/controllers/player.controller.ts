@@ -1,10 +1,10 @@
 // src/app/services/editor/characters/controllers/player.controller.ts
 
 import { Ray, Vector3, Quaternion } from '@babylonjs/core';
-import { GamePhase } from '../../../../core/engine/behaviors/services/loop-manager.service';
+import { GamePhase } from '../behaviors/services/loop-manager.service';
 import { BaseCharacterController } from './base-character.controller';
-import { CharacterContext } from '../character-context.interface';
-import { GameEntity } from '../../../../core/engine/entities/game.entity';
+import { CharacterContext } from './character-context.interface';
+import { GameEntity } from '../entities/game.entity';
 
 export class PlayerController extends BaseCharacterController {
   

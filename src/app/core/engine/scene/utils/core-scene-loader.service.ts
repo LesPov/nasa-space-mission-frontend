@@ -9,6 +9,7 @@ import { EntityManagerService } from '../../entities/entity-manager.service';
 import { CoreModelLoaderService } from './core-model-loader.service';
 import { CorePrimitiveLoaderService } from './core-primitive-loader.service';
 import { CoreTriggerLoaderService } from './core-trigger-loader.service';
+import { CoreSceneProjectionService } from './core-scene-projection.service';
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneLoaderService {
@@ -19,6 +20,7 @@ export class CoreSceneLoaderService {
   private loaderModelSvc = inject(CoreModelLoaderService);
   private loaderPrimitiveSvc = inject(CorePrimitiveLoaderService);
   private loaderTriggerSvc = inject(CoreTriggerLoaderService);
+  private projectionSvc = inject(CoreSceneProjectionService);
 
   public createInvisibleFloor(scene: Scene): void {
     const suelo = MeshBuilder.CreateBox('sueloInvisible', { width: 200, depth: 200, height: 1 }, scene);
@@ -107,8 +109,8 @@ export class CoreSceneLoaderService {
     setTimeout(() => {
       mallasCreadas.forEach((mesh) => {
         const entity = this.entityManager.getEntityByMesh(mesh);
-        if (entity?.type === 'image_plane' && mesh.metadata?.updateDecal) {
-          mesh.metadata.updateDecal();
+        if (entity?.type === 'image_plane') {
+          this.projectionSvc.actualizarProyeccion(mesh);
         }
       });
     }, 150);

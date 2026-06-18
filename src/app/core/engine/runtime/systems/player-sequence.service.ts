@@ -3,12 +3,12 @@
 import { Injectable, inject, Injector } from '@angular/core';
 import { Mesh, Quaternion, Vector3, UniversalCamera, Light, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 import { GameSession } from '../game-session';
-import { Motor3dService } from '../../../services/motor-3d.service';
-import { PlayerClipSequence, PlayerSequenceStep, cloneDefaultPlayerConfig } from '../models/player-config.model';
+import { Motor3dService } from '../../../../services/motor-3d.service';
+import { PlayerClipSequence, PlayerSequenceStep, cloneDefaultPlayerConfig } from '../../models/player-config.model';
 import { GameStateService } from '../state/game-state.service';
-import { GameEntity } from '../entities/game.entity';
-import { GameEventBusService } from '../events/game-event-bus.service';
-import { EntityManagerService } from '../entities/entity-manager.service';
+import { GameEntity } from '../../entities/game.entity';
+import { GameEventBusService } from '../../events/game-event-bus.service';
+import { EntityManagerService } from '../../entities/entity-manager.service';
 import { Subscription } from 'rxjs';
 
 export interface SeqRuntime {
@@ -17,7 +17,7 @@ export interface SeqRuntime {
   allowMovement: boolean;
   forceForwardWalk: boolean;
   forceForwardRun: boolean;
-  forceJump: boolean;
+  forceJump: boolean; 
   blend: number;
   loop: boolean;
   running: boolean;

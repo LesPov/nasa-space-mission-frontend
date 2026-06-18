@@ -7,7 +7,7 @@ import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { EditorCameraService } from './editor-camera.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
-import { RuntimeEngineService } from '../../core/engine/runtime-engine.service';
+import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
@@ -97,8 +97,8 @@ export class EditorPlayModeService {
 
     const finishSetup = () => {
         this.state.playState.set('PLAYING');
-        // El Editor invoca al Runtime a través de su Facade (Frontera Limpia)
-        this.runtimeEngine.startSession(playerEntity, vista, isAdmin);
+        // 🔥 El Editor invoca al Runtime a través de su Facade (Frontera Limpia)
+        this.runtimeEngine.startTestSession(playerEntity, vista, isAdmin);
         this.state.triggerUpdate();
         
         if (isAdmin) {
@@ -122,8 +122,8 @@ export class EditorPlayModeService {
   public detenerPrueba(): void {
     this.state.playState.set('EDITOR');
     
-    // El Runtime se apaga a sí mismo, destruyendo estados lógicos de juego
-    this.runtimeEngine.stopSession();
+    // 🔥 El Runtime detiene los sistemas vivos de juego
+    this.runtimeEngine.stopTestSession();
 
     // RESTAURAR BACKUPS DEL EDITOR
     this.backupsAnimados.forEach(b => {

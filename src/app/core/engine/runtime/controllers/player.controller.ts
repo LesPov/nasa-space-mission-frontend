@@ -2,12 +2,12 @@
 
 import { Injector } from '@angular/core';
 import { Quaternion } from '@babylonjs/core';
-import { GamePhase } from '../behaviors/services/loop-manager.service';
+import { GamePhase } from '../../behaviors/services/loop-manager.service';
 import { BaseCharacterController } from './base-character.controller';
-import { GameEntity } from '../entities/game.entity';
+import { GameEntity } from '../../entities/game.entity';
 
 // Servicios de Sistemas Inyectados Dinámicamente
-import { Motor3dService } from '../../../services/motor-3d.service';
+import { Motor3dService } from '../../../../services/motor-3d.service';
 import { GameSession } from '../game-session';
 import { PlayerInputService } from '../systems/player-input.service';
 import { CharacterKinematicsService } from '../systems/character-kinematics.service';
@@ -17,7 +17,7 @@ import { PlayerTriggerService } from '../systems/player-trigger.service';
 import { PlayerInteractionService } from '../systems/player-interaction.service';
 import { PlayerCameraManagerService } from '../systems/player-camera.service';
 import { PlayerBubbleService } from '../systems/player-bubble.service';
-import { EntityManagerService } from '../entities/entity-manager.service';
+import { EntityManagerService } from '../../entities/entity-manager.service';
 
 export class PlayerController extends BaseCharacterController {
   

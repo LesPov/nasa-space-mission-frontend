@@ -1,10 +1,10 @@
 // src/app/core/engine/systems/player-fog.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
-import { Motor3dService } from '../../../services/motor-3d.service';
-import { FogLevel } from '../models/player-config.model';
-import { LoopManagerService, GamePhase } from '../behaviors/services/loop-manager.service';
-import { GameEntity } from '../entities/game.entity';
+import { Motor3dService } from '../../../../services/motor-3d.service';
+import { FogLevel } from '../../models/player-config.model';
+import { LoopManagerService, GamePhase } from '../../behaviors/services/loop-manager.service';
+import { GameEntity } from '../../entities/game.entity';
 
 class FogWallState { 
   dist = 500; 
@@ -12,7 +12,7 @@ class FogWallState {
   alpha = 0; 
   thickness = 10; 
   offsetY = 0; 
-  r = 0;
+  r = 0; 
   g = 0;
   b = 0;
 }

@@ -2,7 +2,7 @@
 import { Component, Input, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
-import { GameSession } from '../../core/engine/game-session';
+import { GameSession } from '../../core/engine/runtime/game-session';
 import { GameEntity } from '../../core/engine/entities/game.entity';
 import { AbstractMesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';

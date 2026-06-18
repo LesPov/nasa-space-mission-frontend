@@ -1,5 +1,5 @@
 import { Injectable, signal } from '@angular/core';
-import { GameCondition, GameStateMutation } from '../models/player-config.model';
+import { GameCondition, GameStateMutation } from '../../models/player-config.model';
 
 @Injectable({ providedIn: 'root' })
 export class GameStateService {

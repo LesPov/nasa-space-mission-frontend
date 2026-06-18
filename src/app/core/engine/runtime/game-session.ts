@@ -1,14 +1,14 @@
 // src/app/core/engine/game-session.ts
 
 import { Injectable, signal, inject, Injector } from '@angular/core';
-import { GameEntity } from './entities/game.entity';
-import { EntityManagerService } from './entities/entity-manager.service';
+import { GameEntity } from '../entities/game.entity';
+import { EntityManagerService } from '../entities/entity-manager.service';
 import { BaseCharacterController } from './controllers/base-character.controller';
 import { PlayerController } from './controllers/player.controller';
 import { NpcController } from './controllers/npc.controller';
 import { ObjectAnimationService } from './systems/object-animation.service';
-import { GameEventBusService } from './events/game-event-bus.service';
-import { Motor3dService } from '../../services/motor-3d.service';
+import { GameEventBusService } from '../events/game-event-bus.service';
+import { Motor3dService } from '../../../services/motor-3d.service';
 import { PlayerTriggerService } from './systems/player-trigger.service';
 import { PlayerFogService } from './systems/player-fog.service';
 import { PlayerCameraManagerService } from './systems/player-camera.service';
@@ -123,4 +123,4 @@ export class GameSession {
       customFrames
     );
   }
-}
+} 

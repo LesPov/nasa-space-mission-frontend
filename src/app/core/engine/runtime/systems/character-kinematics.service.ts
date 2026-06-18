@@ -4,7 +4,7 @@
 import { Injectable } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera } from '@babylonjs/core';
 import { EstadoFisico } from './player-physics.service';
-import { GameEntity } from '../entities/game.entity';
+import { GameEntity } from '../../entities/game.entity';
 import { SeqRuntime } from './player-sequence.service';
 
 @Injectable({ providedIn: 'root' })

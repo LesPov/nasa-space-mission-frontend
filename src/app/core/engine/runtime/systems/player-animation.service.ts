@@ -1,10 +1,10 @@
 
 import { Injectable } from '@angular/core';
 import { AnimationGroup, Scene, Mesh } from '@babylonjs/core';
-import { PlayerRuntimeConfig, PlayerActionKey, PlayerSequenceStep, normalizeAnimBinding, cloneDefaultPlayerConfig } from '../models/player-config.model';
+import { PlayerRuntimeConfig, PlayerActionKey, PlayerSequenceStep, normalizeAnimBinding, cloneDefaultPlayerConfig } from '../../models/player-config.model';
 import { EstadoFisico } from './player-physics.service';
 import { SeqRuntime } from './player-sequence.service';
-import { GameEntity } from '../entities/game.entity';
+import { GameEntity } from '../../entities/game.entity';
 
 export interface AnimState {
   animacionesJugador: AnimationGroup[];

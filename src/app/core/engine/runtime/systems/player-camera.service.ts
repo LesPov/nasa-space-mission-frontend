@@ -3,17 +3,17 @@ import {
   Mesh, Vector3, Matrix, TransformNode, UniversalCamera,
   Animation, CubicEase, EasingFunction, Quaternion, MeshBuilder
 } from '@babylonjs/core';
-import { Motor3dService } from '../../../services/motor-3d.service';
-import { cloneDefaultPlayerConfig } from '../models/player-config.model';
+import { Motor3dService } from '../../../../services/motor-3d.service';
+import { cloneDefaultPlayerConfig } from '../../models/player-config.model';
 import { EstadoFisico } from './player-physics.service';
 import { SeqRuntime } from './player-sequence.service';
-import { LoopManagerService, GamePhase } from '../behaviors/services/loop-manager.service';
-import { GameEntity } from '../entities/game.entity';
+import { LoopManagerService, GamePhase } from '../../behaviors/services/loop-manager.service';
+import { GameEntity } from '../../entities/game.entity';
  
 @Injectable({ providedIn: 'root' })
 export class PlayerCameraManagerService {
   private motor3d = inject(Motor3dService);
-  private loopManager = inject(LoopManagerService);
+  private loopManager = inject(LoopManagerService); 
 
   public cameraPivot: Mesh | null = null;
 

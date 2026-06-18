@@ -1,8 +1,8 @@
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Animation, EasingFunction, SineEase, Vector3, Mesh } from '@babylonjs/core';
-import { Motor3dService } from '../../../services/motor-3d.service';
-import { EntityManagerService } from '../entities/entity-manager.service';
+import { Motor3dService } from '../../../../services/motor-3d.service';
+import { EntityManagerService } from '../../entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class ObjectAnimationService {

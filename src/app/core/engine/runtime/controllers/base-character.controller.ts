@@ -2,10 +2,10 @@
 
 import { Mesh } from '@babylonjs/core';
 import { Injector } from '@angular/core';
-import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
+import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../../models/player-config.model';
 import { EstadoFisico } from '../systems/player-physics.service';
-import { GameEntity } from '../entities/game.entity';
-import { LoopManagerService } from '../behaviors/services/loop-manager.service';
+import { GameEntity } from '../../entities/game.entity';
+import { LoopManagerService } from '../../behaviors/services/loop-manager.service';
  
 export abstract class BaseCharacterController {
   public entity: GameEntity;

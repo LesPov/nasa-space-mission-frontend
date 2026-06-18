@@ -14,7 +14,7 @@ export class PlayerInputService {
 
   public inputMap: Record<string, boolean> = {};
   public eKeyPressed = false;
-  public iKeyPressed = false;
+  public iKeyPressed = false; 
   
   private tecladoObserver: Observer<KeyboardInfo> | null = null;
 

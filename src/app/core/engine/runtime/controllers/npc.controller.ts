@@ -1,12 +1,12 @@
 // src/app/core/engine/controllers/npc.controller.ts
 
 import { Injector } from '@angular/core';
-import { GamePhase } from '../behaviors/services/loop-manager.service';
+import { GamePhase } from '../../behaviors/services/loop-manager.service';
 import { BaseCharacterController } from './base-character.controller';
-import { GameEntity } from '../entities/game.entity';
+import { GameEntity } from '../../entities/game.entity';
 
 // Servicios de Sistemas Inyectados Dinámicamente
-import { Motor3dService } from '../../../services/motor-3d.service';
+import { Motor3dService } from '../../../../services/motor-3d.service';
 import { PlayerAnimationService } from '../systems/player-animation.service';
 import { PlayerSequenceService } from '../systems/player-sequence.service';
 

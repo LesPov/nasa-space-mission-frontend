@@ -1,22 +1,19 @@
+// src/app/pages/player/juego-pantalla/juego-pantalla.ts
 
 import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
-import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
-import { RuntimeEngineService } from '../../../core/engine/runtime-engine.service';
-import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { Subscription } from 'rxjs';
-import { GameSession } from '../../../core/engine/game-session';
-import { Motor3dService } from '../../../services/motor-3d.service';
 
+import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
+import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
+import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { EpisodiosService } from '../../../services/api/episodios';
-import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiMission } from '../../../components/ui-mission/ui-mission';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
-import { CoreSceneLoaderService } from '../../../core/engine/scene/utils/core-scene-loader.service';
 
 @Component({
   selector: 'app-juego-pantalla',
@@ -30,57 +27,46 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private router = inject(Router);
   public runtime = inject(RuntimeEngineService);
   private eventBus = inject(GameEventBusService);
-  public gameSession = inject(GameSession);
-  private motor3dSvc = inject(Motor3dService);
   private cdr = inject(ChangeDetectorRef);
-
   private epiApiSvc = inject(EpisodiosService);
-  private loaderSvc = inject(CoreSceneLoaderService);
-  private entityManager = inject(EntityManagerService);
 
   public isInteracting = signal<boolean>(false);
   public pointerLocked = signal<boolean>(false);
-
   public isLoading = signal<boolean>(true);
-
+  
   public modalMisionUsuario = false;
   public misionIniciada = false;
   public cerrandoModalUsuario = false;
   public mapaActualNombre = '';
 
   private sub!: Subscription;
+  private activeCameraView = 'FPS';
 
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
       this.epiApiSvc.obtenerEpisodio(Number(id)).subscribe({
         next: async (res) => {
-          this.motor3dSvc.forzarRedimension();
-          this.loaderSvc.createInvisibleFloor(this.motor3dSvc.scene);
-          
-          if(res) {
-            await this.loaderSvc.loadSceneFromData(res, false);
+          try {
+            this.mapaActualNombre = res?.title || 'Episodio Desconocido';
+            
+            // 🔥 AISLAMIENTO TOTAL: La pantalla solo pide arrancar el juego.
+            // Ni se entera de cómo se carga la escena ni qué entidades existen.
+            await this.runtime.bootProductionGame(res);
+            
+            this.isLoading.set(false);
+            this.modalMisionUsuario = true;
+            this.cdr.detectChanges();
+
+            setTimeout(() => {
+              document.exitPointerLock(); 
+              this.runtime.toggleCameraUser(true, 500); 
+            }, 100);
+
+          } catch (err: any) {
+            alert(err.message);
+            this.salirDelJuego();
           }
-
-          this.motor3dSvc.scene.executeWhenReady(() => {
-            const spawnEntity = this.entityManager.getEntitiesByRol('spawn_point')[0] || 
-                                this.entityManager.getEntitiesByRol('npc')[0];
-            if (spawnEntity) {
-              this.runtime.startSession(spawnEntity, 'FPS', false);
-              this.mapaActualNombre = res?.title || 'Episodio Desconocido';
-              this.isLoading.set(false);
-              this.modalMisionUsuario = true;
-              this.cdr.detectChanges();
-
-              setTimeout(() => {
-                document.exitPointerLock(); 
-                this.runtime.toggleCameraUser(true, 500); 
-              }, 100);
-            } else {
-              alert('Este episodio aún no tiene un punto de aparición (Spawn Point). Vuelve más tarde.');
-              this.salirDelJuego();
-            }
-          });
         },
         error: (err) => {
           console.error('Error loading game:', err);
@@ -103,11 +89,14 @@ export class JuegoPantalla implements OnInit, OnDestroy {
         case 'InteractionStateChanged': 
           this.isInteracting.set(event.payload); 
           break;
+        case 'CameraViewChanged':
+          this.activeCameraView = event.payload;
+          break;
         case 'GamePaused': 
           this.pointerLocked.set(false); 
           if (this.misionIniciada && !this.isInteracting()) {
              this.modalMisionUsuario = true;
-             if (this.gameSession.cameraView() === 'FPS') {
+             if (this.activeCameraView === 'FPS') {
                 this.runtime.toggleCameraUser(false, 45); 
              }
           }
@@ -123,11 +112,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   comenzarMisionUsuario() {
     this.cerrandoModalUsuario = true; 
     
-    if (this.gameSession.cameraView() === 'TPS') {
+    if (this.activeCameraView === 'TPS') {
        this.runtime.toggleCameraUser(false, 60); 
     }
 
-    const canvas = this.motor3dSvc.engine.getRenderingCanvas();
+    const canvas = document.querySelector('canvas');
     if (canvas) {
       canvas.focus();
       try { canvas.requestPointerLock(); } catch {}
@@ -142,7 +131,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   }
 
   salirDelJuego() {
-    this.runtime.stopSession();
+    this.runtime.shutdownProductionGame();
     this.router.navigate(['/jugador/episodios']);
   }
 
@@ -151,7 +140,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
-    this.runtime.stopSession();
+    this.runtime.shutdownProductionGame();
     if (this.sub) this.sub.unsubscribe();
   }
 }

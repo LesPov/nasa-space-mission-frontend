@@ -4,9 +4,9 @@ import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
 import { GameSession } from '../game-session';
 import { GameStateService } from '../state/game-state.service';
-import { EntityManagerService } from '../entities/entity-manager.service';
-import { GameEntity } from '../entities/game.entity';
-import { GameEventBusService } from '../events/game-event-bus.service';
+import { EntityManagerService } from '../../entities/entity-manager.service';
+import { GameEntity } from '../../entities/game.entity';
+import { GameEventBusService } from '../../events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService {
@@ -16,7 +16,7 @@ export class PlayerTriggerService {
   private injector = inject(Injector);
 
   private get session(): GameSession { 
-    return this.injector.get(GameSession); 
+    return this.injector.get(GameSession);  
   }
   
   private activeTriggersInside = new Set<string>();

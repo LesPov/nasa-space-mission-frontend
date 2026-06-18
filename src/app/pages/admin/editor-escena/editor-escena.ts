@@ -15,10 +15,10 @@ import { MiniVisorEscena } from '../../../components/mini-visor-escena/mini-viso
 import { debounceTime, Subscription } from 'rxjs';
 import { AbstractMesh } from '@babylonjs/core';
 import { GlobalTimeline } from '../../../components/global-timeline/global-timeline';
-import { GameSession } from '../../../core/engine/game-session';
+import { GameSession } from '../../../core/engine/runtime/game-session';
 import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { EditorPlayModeService } from '../../../services/editor/editor-play-mode.service';
-import { RuntimeEngineService } from '../../../core/engine/runtime-engine.service';
+import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 // --- NUEVOS COMPONENTES UI EXTRAÍDOS ---
@@ -93,6 +93,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public objHacerHijo: boolean = true; 
 
   public vistaPrueba: 'FPS' | 'TPS' = 'FPS';
+  private activeCameraView = 'FPS';
   
   public showInspector = true;
   public showTimeline = true;
@@ -121,10 +122,13 @@ export class EditorEscena implements OnInit, OnDestroy {
         case 'InteractionStateChanged': 
           this.isInteracting.set(event.payload); 
           break;
+        case 'CameraViewChanged':
+          this.activeCameraView = event.payload;
+          break;
         case 'GamePaused':
           if (this.misionIniciada && !this.isInteracting() && this.editorSvc.rolSimulado() === 'user') {
              this.modalMisionUsuario = true;
-             if (this.gameSession.cameraView() === 'FPS') {
+             if (this.activeCameraView === 'FPS') {
                 this.runtime.toggleCameraUser(false, 45);
              }
           }
@@ -235,7 +239,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   comenzarMisionUsuario() {
     this.cerrandoModalUsuario = true; 
     
-    if (this.gameSession.cameraView() === 'TPS') {
+    if (this.activeCameraView === 'TPS') {
        this.runtime.toggleCameraUser(false, 60); 
     }
 

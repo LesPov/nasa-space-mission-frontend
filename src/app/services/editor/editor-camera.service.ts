@@ -1,14 +1,15 @@
-// src/app/services/editor/editor-camera.service.ts
-
 import { Injectable, inject } from '@angular/core';
 import {
-  Vector3,
-  Node,
   AbstractMesh,
   Animation,
+  ArcRotateCamera,
+  Camera,
   CubicEase,
-  EasingFunction
+  EasingFunction,
+  Node,
+  Vector3
 } from '@babylonjs/core';
+
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { PlayerCameraManagerService } from '../../core/engine/runtime/systems/player-camera.service';
@@ -24,9 +25,42 @@ export class EditorCameraService {
   private ultimaPosCamaraLibre: Vector3 | null = null;
   private ultimoTargetCamaraLibre: Vector3 | null = null;
 
+  constructor() {
+    const originalActualizar = this.playerCamSvc.actualizarPosicionCamara.bind(this.playerCamSvc);
+    const motor = this.motor3d;
+    
+    this.playerCamSvc.actualizarPosicionCamara = (entity: any, activeCamera: any, estadoFisico: any, seqRuntime: any, vista: any) => {
+      if (activeCamera === motor.editorCamera) {
+         const camaraReal = vista === 'FPS' ? motor.playerCameraFPS : motor.playerCameraTPS;
+         originalActualizar(entity, camaraReal, estadoFisico, seqRuntime, vista);
+         return;
+      }
+      originalActualizar(entity, activeCamera, estadoFisico, seqRuntime, vista);
+    };
+  }
+
+  private obtenerCamaraJuegoActiva(): Camera | null {
+    const scene = this.motor3d.scene;
+    const active = scene?.activeCamera ?? null;
+
+    if (active && active !== this.motor3d.editorCamera) {
+      return active;
+    }
+
+    if (this.state.modoVistaPrueba === 'FPS' && this.motor3d.playerCameraFPS) {
+      return this.motor3d.playerCameraFPS;
+    }
+
+    if (this.state.modoVistaPrueba === 'TPS' && this.motor3d.playerCameraTPS) {
+      return this.motor3d.playerCameraTPS;
+    }
+
+    return this.motor3d.playerCameraFPS ?? this.motor3d.playerCameraTPS ?? null;
+  }
+
   private obtenerEncuadreObjeto(objeto: AbstractMesh): { target: Vector3; radius: number } {
     objeto.computeWorldMatrix(true);
-    
+
     const entity = this.entityManager.getEntityByMesh(objeto);
     const collider = entity?.collider;
 
@@ -44,9 +78,10 @@ export class EditorCameraService {
       const sizeY = Math.max(0.5, Number(collider.sizeY || 1)) * Math.abs(objeto.scaling.y);
       const sizeZ = Math.max(0.5, Number(collider.sizeZ || collider.sizeY || 1)) * Math.abs(objeto.scaling.z);
 
-      const diagonal = Math.sqrt((sizeX*sizeX) + (sizeY*sizeY) + (sizeZ*sizeZ));
-      let radius = Math.max(4.0, diagonal * 2.2); 
-      radius = Math.min(radius, 150); 
+      const diagonal = Math.sqrt((sizeX * sizeX) + (sizeY * sizeY) + (sizeZ * sizeZ));
+      let radius = Math.max(4.0, diagonal * 2.2);
+      radius = Math.min(radius, 1000); // 🔥 FIX: Aumentado el límite de encuadre para que tome pisos gigantes
+
       return { target, radius };
     }
 
@@ -58,9 +93,42 @@ export class EditorCameraService {
 
     const diagonal = size.length();
     let radius = Math.max(4.0, diagonal * 2.0);
-    radius = Math.min(radius, 150); 
+    radius = Math.min(radius, 1000); // 🔥 FIX: Aumentado
 
     return { target, radius };
+  }
+
+  private asegurarCamaraEditorActiva(): void {
+    const scene = this.motor3d.scene;
+    const editorCam = this.motor3d.editorCamera;
+    const canvas = this.motor3d.engine?.getRenderingCanvas();
+
+    if (!scene || !editorCam) return;
+
+    scene.activeCamera = editorCam;
+
+    if (canvas) {
+      try { editorCam.detachControl(); } catch {}
+      try { editorCam.attachControl(canvas, true); } catch {}
+    }
+  }
+
+  private reafirmarCamaraEditorEnSiguienteFrame(): void {
+    const scene = this.motor3d.scene;
+    const editorCam = this.motor3d.editorCamera;
+    const canvas = this.motor3d.engine?.getRenderingCanvas();
+
+    if (!scene || !editorCam) return;
+
+    requestAnimationFrame(() => {
+      if (scene.activeCamera !== editorCam) {
+        scene.activeCamera = editorCam;
+      }
+      if (canvas) {
+        try { editorCam.detachControl(); } catch {}
+        try { editorCam.attachControl(canvas, true); } catch {}
+      }
+    });
   }
 
   guardarEstadoCamaraLibre(): void {
@@ -88,7 +156,9 @@ export class EditorCameraService {
 
   enfocarObjetoEnEditor(objeto: Node): void {
     if (!objeto || !(objeto instanceof AbstractMesh)) return;
-    if (this.state.playState() !== 'EDITOR') return;
+    
+    const state = this.state.playState();
+    if (state !== 'EDITOR' && state !== 'EDITING_IN_GAME') return;
 
     const cam = this.motor3d.editorCamera;
     if (!cam) return;
@@ -99,61 +169,132 @@ export class EditorCameraService {
     ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
 
     const currentTarget = cam.getTarget().clone();
+    
+    const frames = 25;
+    const animTarget = new Animation('camTargInEd', 'target', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    const animRadius = new Animation('camRadInEd', 'radius', 60, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    
+    animTarget.setEasingFunction(ease);
+    animRadius.setEasingFunction(ease);
+    
+    animTarget.setKeys([ { frame: 0, value: currentTarget }, { frame: frames, value: target } ]);
+    animRadius.setKeys([ { frame: 0, value: cam.radius }, { frame: frames, value: radius } ]);
 
-    Animation.CreateAndStartAnimation('camEditorTargetAnim', cam, 'target', 60, 25, currentTarget, target, 2, ease);
-    Animation.CreateAndStartAnimation('camEditorRadiusAnim', cam, 'radius', 60, 25, cam.radius, radius, 2, ease);
+    this.motor3d.scene.beginDirectAnimation(cam, [animTarget, animRadius], 0, frames, false, 1.0);
   }
 
   transicionAEdicionEnVivo(objetoReceptor: Node): void {
-    this.state.playState.set('TRANSITIONING');
-    document.exitPointerLock();
+    if (!objetoReceptor) return;
 
-    let targetPos = Vector3.Zero();
-    let objectRadius = 7;
+    const escena = this.motor3d.scene;
+    const editorCam = this.motor3d.editorCamera;
+    const camaraOrigen = this.obtenerCamaraJuegoActiva();
+
+    if (!escena || !editorCam || !camaraOrigen) {
+      this.state.playState.set('PLAYING');
+      return;
+    }
+
+    this.state.playState.set('TRANSITIONING');
+    this.state.objetoHovereado.set(null);
+
+    try { if (document.pointerLockElement) document.exitPointerLock(); } catch {}
+    
+    try { camaraOrigen.detachControl(); } catch {}
+    try { editorCam.detachControl(); } catch {}
+
+    const startPos = camaraOrigen.globalPosition.clone();
+    const forward = camaraOrigen.getDirection(Vector3.Forward());
+
+    let finalTarget = Vector3.Zero();
+    let finalRadius = 7;
 
     if (objetoReceptor instanceof AbstractMesh) {
       const resultado = this.obtenerEncuadreObjeto(objetoReceptor);
-      targetPos = resultado.target;
-      objectRadius = resultado.radius;
+      finalTarget = resultado.target;
+      finalRadius = resultado.radius;
     } else {
-      targetPos = (objetoReceptor as AbstractMesh).getAbsolutePosition().clone();
+      finalTarget = (objetoReceptor as AbstractMesh).getAbsolutePosition().clone();
     }
 
-    const activeCam = this.motor3d.scene.activeCamera;
-    const startPos = activeCam!.globalPosition.clone();
+    let distToObject = Vector3.Distance(startPos, finalTarget);
+    if (distToObject < 1) distToObject = 1;
 
-    this.motor3d.editorCamera.detachControl();
-    this.motor3d.editorCamera.position = startPos;
-    this.motor3d.editorCamera.setTarget(targetPos);
-    this.motor3d.scene.activeCamera = this.motor3d.editorCamera;
+    const startTarget = startPos.add(forward.scale(distToObject));
+
+    this.asegurarCamaraEditorActiva();
+
+    editorCam.position = startPos.clone();
+    editorCam.setTarget(startTarget.clone());
+
+    const startRadius = editorCam.radius;
+
+    const frames = 45;
+    const animRadius = new Animation('camRadLive', 'radius', 60, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    const animTarget = new Animation('camTargLive', 'target', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
 
     const ease = new CubicEase();
     ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
+    animRadius.setEasingFunction(ease);
+    animTarget.setEasingFunction(ease);
 
-    Animation.CreateAndStartAnimation('camRadius', this.motor3d.editorCamera, 'radius', 60, 90, this.motor3d.editorCamera.radius, objectRadius, 2, ease);
-    const anim = Animation.CreateAndStartAnimation('camBeta', this.motor3d.editorCamera, 'beta', 60, 90, this.motor3d.editorCamera.beta, Math.PI / 3, 2, ease);
+    animRadius.setKeys([
+      { frame: 0, value: startRadius },
+      { frame: frames, value: finalRadius }
+    ]);
 
-    anim?.onAnimationEndObservable.addOnce(() => {
+    animTarget.setKeys([
+      { frame: 0, value: startTarget },
+      { frame: frames, value: finalTarget }
+    ]);
+
+    escena.beginDirectAnimation(editorCam, [animRadius, animTarget], 0, frames, false, 1.0, () => {
       this.state.playState.set('EDITING_IN_GAME');
       this.state.objetoSeleccionado.set(objetoReceptor);
-      this.motor3d.editorCamera.attachControl(this.motor3d.engine.getRenderingCanvas(), true);
+
+      const canvas = this.motor3d.engine.getRenderingCanvas();
+      if (canvas) {
+        canvas.focus();
+        try { editorCam.detachControl(); } catch {}
+        try { editorCam.attachControl(canvas, true); } catch {}
+      }
+      this.reafirmarCamaraEditorEnSiguienteFrame();
     });
   }
 
-  volarHaciaCamaraJuego(centroEpiral: Vector3, targetPos: Vector3, targetLookAt: Vector3, isFPS: boolean, onComplete: () => void): void {
+  volarHaciaCamaraJuego(
+    centroEpiral: Vector3,
+    targetPos: Vector3,
+    targetLookAt: Vector3,
+    isFPS: boolean,
+    onComplete: () => void
+  ): void {
     const editorCam = this.motor3d.editorCamera;
     editorCam.detachControl();
 
     const startPos = editorCam.position.clone();
     const startTarget = editorCam.getTarget().clone();
 
-    const frames = 150; 
+    const frames = 150;
 
-    const posAnim = new Animation('camPosIn', 'position', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
-    const targetAnim = new Animation('camTargetIn', 'target', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
-    
-    const keysPos = [];
-    const keysTarget = [];
+    const posAnim = new Animation(
+      'camPosIn',
+      'position',
+      60,
+      Animation.ANIMATIONTYPE_VECTOR3,
+      Animation.ANIMATIONLOOPMODE_CONSTANT
+    );
+
+    const targetAnim = new Animation(
+      'camTargetIn',
+      'target',
+      60,
+      Animation.ANIMATIONTYPE_VECTOR3,
+      Animation.ANIMATIONLOOPMODE_CONSTANT
+    );
+
+    const keysPos: { frame: number; value: Vector3 }[] = [];
+    const keysTarget: { frame: number; value: Vector3 }[] = [];
 
     const startOffset = startPos.subtract(centroEpiral);
     const startRadius = startOffset.length();
@@ -184,14 +325,15 @@ export class EditorCameraService {
 
       keysPos.push({ frame: i, value: new Vector3(posX, currentY, posZ) });
 
-      let currentTarget;
+      let currentTarget: Vector3;
       if (easeT < 0.6) {
-         const tT = easeT / 0.6;
-         currentTarget = Vector3.Lerp(startTarget, centroEpiral, tT);
+        const tT = easeT / 0.6;
+        currentTarget = Vector3.Lerp(startTarget, centroEpiral, tT);
       } else {
-         const tT = (easeT - 0.6) / 0.4;
-         currentTarget = Vector3.Lerp(centroEpiral, targetLookAt, tT);
+        const tT = (easeT - 0.6) / 0.4;
+        currentTarget = Vector3.Lerp(centroEpiral, targetLookAt, tT);
       }
+
       keysTarget.push({ frame: i, value: currentTarget });
     }
 
@@ -207,83 +349,81 @@ export class EditorCameraService {
     this.state.playState.set('TRANSITIONING');
     this.state.objetoSeleccionado.set(null);
 
-    const startCam = this.motor3d.scene.activeCamera;
-    if (!startCam) return;
-
-    const startPos = startCam.globalPosition.clone();
-    let startTarget: Vector3;
-
-    if (this.state.modoVistaPrueba === 'FPS') {
-      startTarget = startPos.add(startCam.getDirection(Vector3.Forward()));
-    } else {
-      startTarget = this.playerCamSvc.cameraPivot ? this.playerCamSvc.cameraPivot.getAbsolutePosition().clone() : startPos.add(Vector3.Forward());
-    }
-
-    const editorCam = this.motor3d.editorCamera;
-    this.motor3d.scene.activeCamera = editorCam;
-    editorCam.position = startPos;
-    editorCam.setTarget(startTarget);
-    editorCam.detachControl();
-
-    const endPos = this.ultimaPosCamaraLibre || new Vector3(0, 15, -15);
-    const endTarget = this.ultimoTargetCamaraLibre || new Vector3(0, 0, 0);
-    const centroObj = this.state.jugadorActivo ? this.state.jugadorActivo.getAbsolutePosition().clone() : endTarget.clone();
-
-    const frames = 120; 
-
-    const posAnim = new Animation('camPosOut', 'position', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
-    const targetAnim = new Animation('camTargetOut', 'target', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
-    
-    const keysPos = [];
-    const keysTarget = [];
-
-    const startOffset = startPos.subtract(centroObj);
-    const startRadius = startOffset.length();
-    const startYaw = Math.atan2(startOffset.x, startOffset.z);
-    const startPitch = startPos.y;
-
-    const endOffset = endPos.subtract(centroObj);
-    const endRadius = endOffset.length();
-    const endYaw = Math.atan2(endOffset.x, endOffset.z);
-    const endPitch = endPos.y;
-
-    let yawDiff = endYaw - startYaw;
-    while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
-    while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
-
-    const targetYaw = startYaw + yawDiff + (Math.PI * 1.0); 
-
-    for (let i = 0; i <= frames; i++) {
-      const t = i / frames;
-      const easeT = t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
-
-      const currentRadius = startRadius + (endRadius - startRadius) * easeT;
-      const currentYaw = startYaw + (targetYaw - startYaw) * easeT;
-      const currentY = startPitch + (endPitch - startPitch) * easeT;
-
-      const posX = centroObj.x + currentRadius * Math.sin(currentYaw);
-      const posZ = centroObj.z + currentRadius * Math.cos(currentYaw);
-
-      keysPos.push({ frame: i, value: new Vector3(posX, currentY, posZ) });
-
-      let currentTarget;
-      if (easeT < 0.4) {
-         const tT = easeT / 0.4;
-         currentTarget = Vector3.Lerp(startTarget, centroObj, tT);
-      } else {
-         const tT = (easeT - 0.4) / 0.6;
-         currentTarget = Vector3.Lerp(centroObj, endTarget, tT);
-      }
-      keysTarget.push({ frame: i, value: currentTarget });
-    }
-
-    posAnim.setKeys(keysPos);
-    targetAnim.setKeys(keysTarget);
-
-    this.motor3d.scene.beginDirectAnimation(editorCam, [posAnim, targetAnim], 0, frames, false, 1, () => {
+    const escena = this.motor3d.scene;
+    const activeCam = escena.activeCamera as ArcRotateCamera | null;
+    if (!escena || !activeCam) {
       this.state.playState.set('EDITOR');
+      return;
+    }
+
+    const destCam = this.state.modoVistaPrueba === 'FPS'
+      ? this.motor3d.playerCameraFPS
+      : this.motor3d.playerCameraTPS;
+
+    if (!destCam) {
+      this.state.playState.set('EDITOR');
+      return;
+    }
+
+    const endPos = destCam.globalPosition.clone();
+    const endTarget = endPos.add(destCam.getDirection(Vector3.Forward()).scale(10));
+
+    try { activeCam.detachControl(); } catch {}
+
+    const startAlpha = activeCam.alpha;
+    const startBeta = activeCam.beta;
+    const startRadius = activeCam.radius;
+    const startTarget = activeCam.getTarget().clone();
+
+    activeCam.position = endPos.clone();
+    activeCam.setTarget(endTarget.clone());
+
+    let endAlpha = activeCam.alpha;
+    const endBeta = activeCam.beta;
+    const endRadius = activeCam.radius;
+
+    let alphaDiff = endAlpha - startAlpha;
+    while (alphaDiff > Math.PI) alphaDiff -= Math.PI * 2;
+    while (alphaDiff < -Math.PI) alphaDiff += Math.PI * 2;
+    endAlpha = startAlpha + alphaDiff;
+
+    activeCam.alpha = startAlpha;
+    activeCam.beta = startBeta;
+    activeCam.radius = startRadius;
+    activeCam.setTarget(startTarget.clone());
+
+    const frames = 30;
+    const animAlpha = new Animation('camAlphaOut', 'alpha', 60, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    const animBeta = new Animation('camBetaOut', 'beta', 60, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    const animRad = new Animation('camRadOut', 'radius', 60, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    const animTarg = new Animation('camTargOut', 'target', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
+
+    const ease = new CubicEase();
+    ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
+    animAlpha.setEasingFunction(ease);
+    animBeta.setEasingFunction(ease);
+    animRad.setEasingFunction(ease);
+    animTarg.setEasingFunction(ease);
+
+    animAlpha.setKeys([{ frame: 0, value: startAlpha }, { frame: frames, value: endAlpha }]);
+    animBeta.setKeys([{ frame: 0, value: startBeta }, { frame: frames, value: endBeta }]);
+    animRad.setKeys([{ frame: 0, value: startRadius }, { frame: frames, value: endRadius }]);
+    animTarg.setKeys([{ frame: 0, value: startTarget }, { frame: frames, value: endTarget }]);
+
+    escena.beginDirectAnimation(activeCam, [animAlpha, animBeta, animRad, animTarg], 0, frames, false, 1.0, () => {
+      this.state.playState.set('PLAYING');
+      escena.activeCamera = destCam;
+
       const canvas = this.motor3d.engine.getRenderingCanvas();
-      if (canvas) editorCam.attachControl(canvas, true);
+      if (canvas) {
+        canvas.focus();
+        try { destCam.detachControl(); } catch {}
+        try { destCam.attachControl(canvas, true); } catch {}
+
+        if (this.state.modoVistaPrueba === 'FPS') {
+          try { canvas.requestPointerLock(); } catch {}
+        }
+      }
     });
   }
 }

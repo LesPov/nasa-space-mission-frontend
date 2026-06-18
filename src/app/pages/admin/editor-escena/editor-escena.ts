@@ -1,4 +1,3 @@
-
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -122,9 +121,9 @@ export class EditorEscena implements OnInit, OnDestroy {
           break;
         case 'CameraViewChanged':
           this.activeCameraView = event.payload;
+          this.stateSvc.modoVistaPrueba = event.payload;
           break;
         case 'GameStarted':
-          // 🔥 AISLAMIENTO: Solo mostramos el modal narrativo si simulamos ser un jugador final
           if (this.editorSvc.rolSimulado() === 'user') {
             this.modalMisionUsuario = true;
             this.misionIniciada = false;
@@ -158,6 +157,13 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
+  // 🔥 NUEVA FUNCIÓN PARA EL BOTÓN DE NIEBLA (Fuerza limpiar Highlight)
+  toggleNieblaTemporal() {
+    this.stateSvc.fogDesactivadoTemporalmente.set(!this.stateSvc.fogDesactivadoTemporalmente());
+    this.recalcularMotor(); 
+    this.editorSvc.triggerUpdate(); // Obliga al highlight a refrescarse
+  }
+
   entrarAlEditor(episodio: any) {
     this.episodioPendienteCarga = episodio;
     this.layoutSvc.ocultarMenu();
@@ -189,7 +195,11 @@ export class EditorEscena implements OnInit, OnDestroy {
     
     this.epiApiSvc.obtenerEpisodio(episodio.id).subscribe({
       next: async (res) => {
-        this.cargandoTexto = 'Preparando modelos, texturas y físicas 3D...';
+        setTimeout(() => {
+            this.cargandoTexto = 'Preparando modelos, texturas y físicas 3D...';
+            this.cdr.detectChanges();
+        }, 0);
+        
         this.motor3dSvc.forzarRedimension(); 
         this.editorSvc.activarEventosEditor();
         this.editorSvc.crearSuelo();

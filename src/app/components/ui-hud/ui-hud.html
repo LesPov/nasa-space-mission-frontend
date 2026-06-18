@@ -46,8 +46,12 @@
   </div>
 
   <!-- Modo Editor Probando: Nunca se bloquea conceptualmente, solo para girar cámara -->
-  <div class="hud-message hud-playing" style="background-color: rgba(59, 130, 246, 0.75); border: 1px solid rgba(59, 130, 246, 0.5);" *ngIf="playState === 'PLAYING' && isEditor && gameSession.isAdminSession()">
+  <div class="hud-message hud-playing" style="background-color: rgba(59, 130, 246, 0.75); border: 1px solid rgba(59, 130, 246, 0.5);" *ngIf="playState === 'PLAYING' && isEditor && gameSession.isAdminSession() && gameSession.pointerLocked()">
     <span class="hud-icon">🛠️</span> MODO PRUEBA LIBRE | "WASD" Mover • "ESC" Soltar ratón <span *ngIf="gameSession.cameraView() === 'FPS'">• Click para editar</span>
+  </div>
+
+  <div class="hud-message hud-paused" style="border-color: #3b82f6; color: #60a5fa;" *ngIf="playState === 'PLAYING' && isEditor && gameSession.isAdminSession() && !gameSession.pointerLocked()">
+    <span class="hud-icon">🖱️</span> Haz click en el fondo para recuperar la cámara
   </div>
 
   <div class="hud-message hud-editing" *ngIf="playState === 'EDITING_IN_GAME'">

@@ -27,6 +27,9 @@ export class EditorPlayModeService {
 
     this.cameraSvc.guardarEstadoCamaraLibre();
 
+    // 🔥 FIX VITAL: Guardamos la vista seleccionada para que las herramientas sepan cómo comportarse
+    this.state.modoVistaPrueba = vista;
+
     this.state.playState.set('TRANSITIONING');
     this.state.jugadorActivo = objMesh;
     this.state.objetoHovereado.set(null);
@@ -82,7 +85,6 @@ export class EditorPlayModeService {
         }
     });
 
-    const targetCam = vista === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS;
     let targetLookAt = objMesh.getAbsolutePosition().clone();
     let targetPos = objMesh.getAbsolutePosition().clone();
     
@@ -96,16 +98,10 @@ export class EditorPlayModeService {
 
     const finishSetup = () => {
         this.state.playState.set('PLAYING');
-        // El Editor invoca al Runtime a través de su Facade.
-        // Aquí se emite GameStarted
         this.runtimeEngine.startTestSession(playerEntity, vista, isAdmin);
         this.state.triggerUpdate();
         
-        // 🔥 FIX DEL BUG DE LA CÁMARA ATASCADA EN MODO EDITOR:
-        // Si somos Admin, al darle "Jugar" ya bloqueamos el mouse para ganar el focus del navegador.
-        // Pero Babylon asocia los inputs de la cámara al momento de "attachControl". Si el mouse ya estaba bloqueado,
-        // a veces no detecta el movimiento inicial de la nueva cámara.
-        // Solución: Esperar 100ms y re-asociar el control. Es el mismo efecto que lograbas al cambiar de cámara con "V".
+        // Ceder el control a la cámara con absoluta seguridad
         if (isAdmin) {
             setTimeout(() => {
                 const canvas = this.motor3d.engine.getRenderingCanvas();
@@ -114,12 +110,6 @@ export class EditorPlayModeService {
                     if (activeCam) {
                         activeCam.detachControl();
                         activeCam.attachControl(canvas, true);
-                    }
-                    
-                    // Si por alguna razón el ratón se soltó, lo forzamos a volver
-                    if (!document.pointerLockElement) {
-                        canvas.focus();
-                        try { canvas.requestPointerLock(); } catch {}
                     }
                 }
             }, 100);
@@ -137,8 +127,8 @@ export class EditorPlayModeService {
 
   public detenerPrueba(): void {
     this.state.playState.set('EDITOR');
+    this.state.modoVistaPrueba = null; // Limpiamos la variable al salir
     
-    // El Runtime detiene los sistemas vivos de juego
     this.runtimeEngine.stopTestSession();
 
     // RESTAURAR BACKUPS DEL EDITOR
@@ -191,7 +181,7 @@ export class EditorPlayModeService {
     if (this.state.jugadorActivo && this.state.backupObjetoPosicion && this.state.backupObjetoRotacionQuat) {
       const entity = this.entityManager.getEntityByMesh(this.state.jugadorActivo);
       if (entity && (entity.rol === 'npc' || entity.rol === 'spawn_point')) {
-        // En modo edición mantenemos la rotación en la que lo dejó el jugador
+        // Mantenemos rotación final
       } else {
         this.state.jugadorActivo.position = this.state.backupObjetoPosicion;
         this.state.jugadorActivo.rotationQuaternion = this.state.backupObjetoRotacionQuat.clone();

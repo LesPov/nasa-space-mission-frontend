@@ -95,6 +95,7 @@ export class ToolsFogService {
 
   private updateFogFrame(scene: Scene): void { 
     const modo = this.state.playState();
+    const isFogDisabledTemp = this.state.fogDesactivadoTemporalmente(); // 🔥 Comprobamos el botón
     
     if (modo === 'PLAYING' || modo === 'TRANSITIONING') {
        this.fogWalls.forEach(w => w.getChildMeshes().forEach(m => m.isVisible = false));
@@ -124,7 +125,8 @@ export class ToolsFogService {
     const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
     const targetEntity = this.entityManager.getEntityByMesh(targetPlayer);
 
-    if (modo === 'EDITING_IN_GAME' && targetEntity?.playerConfig?.fog?.enabled) {
+    // 🔥 FIX: Solo activamos la niebla si el botón NO está presionado
+    if (modo === 'EDITING_IN_GAME' && targetEntity?.playerConfig?.fog?.enabled && !isFogDisabledTemp) {
       useFog = true;
       const fog = targetEntity.playerConfig.fog;
       
@@ -143,11 +145,7 @@ export class ToolsFogService {
       let distCamToPlayer = scene.activeCamera && targetPlayer ? Vector3.Distance(scene.activeCamera.globalPosition, targetPlayer.getAbsolutePosition()) : 0;
       const renderMaxZ = (Number(renderDistance) || 100000) + distCamToPlayer;
 
-      if (this.firstFrame) {
-          this.motor3d.editorCamera.maxZ = renderMaxZ;
-      } else {
-          this.motor3d.editorCamera.maxZ += (renderMaxZ - this.motor3d.editorCamera.maxZ) * 0.05;
-      }
+      this.motor3d.editorCamera.maxZ = 500000;
       
       shadowLimit = renderMaxZ;
       this.curStart = renderMaxZ * 0.8;
@@ -156,11 +154,7 @@ export class ToolsFogService {
       const targetColorObj = Color3.FromHexString(globalClearHex);
       targetR = targetColorObj.r; targetG = targetColorObj.g; targetB = targetColorObj.b;
 
-      if (this.firstFrame) {
-          this.motor3d.editorCamera.maxZ = 500000;
-      } else {
-          this.motor3d.editorCamera.maxZ += (500000 - this.motor3d.editorCamera.maxZ) * 0.05;
-      }
+      this.motor3d.editorCamera.maxZ = 500000;
     }
 
     if (this.firstFrame) {
@@ -200,7 +194,6 @@ export class ToolsFogService {
             mat.fogEnabled = false; 
             this.fogMats[i][j] = mat; 
 
-            // OPTIMIZACIÓN: Reducción drástica de vértices. De 128 a 32 segmentos. Ahorra 75% del Fill-Rate geométrico.
             const shell = MeshBuilder.CreateCylinder(`fogShell_${i}_${j}`, { 
                 diameter: 1, 
                 height: 1, 
@@ -295,8 +288,10 @@ export class ToolsFogService {
           const finalAlpha = state.alpha * opacityRatio;
           mat.alpha = finalAlpha; 
 
-          // CULLING DE RENDER: Si la capa es 99.5% transparente, ocultar malla para ahorrar Draw Calls
-          shell.isVisible = isVisible && finalAlpha > 0.005;
+          // 🔥 FIX: Forzamos la invisibilidad si la niebla está apagada por el botón
+          const shouldBeVisible = isVisible && finalAlpha > 0.005 && !isFogDisabledTemp;
+          shell.isVisible = shouldBeVisible;
+          shell.isPickable = false;
       }
     }
 

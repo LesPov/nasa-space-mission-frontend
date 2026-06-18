@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Light, Mesh, MeshBuilder, StandardMaterial, Vector3, Matrix } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -77,9 +76,11 @@ export class ToolsDebugService {
     const entity = this.entityManager.getEntityByMesh(selected);
     if (!entity) return;
 
+    const subSelected = this.state.subObjetoSeleccionado();
     const colMeta = entity.collider;
 
-    if (colMeta && colMeta.type !== 'mesh') {
+    // 1. COLLIDER
+    if (colMeta && colMeta.type !== 'mesh' && (subSelected === 'collider' || !subSelected)) {
       if (this.debugCollider) this.debugCollider.dispose();
       if (colMeta.type === 'capsule') this.debugCollider = MeshBuilder.CreateCapsule('debugCollider', { radius: colMeta.sizeX, height: colMeta.sizeY * 2 }, scene);
       else if (colMeta.type === 'sphere') this.debugCollider = MeshBuilder.CreateSphere('debugCollider', { diameterX: colMeta.sizeX * 2, diameterY: colMeta.sizeY * 2, diameterZ: colMeta.sizeZ * 2 }, scene);
@@ -98,8 +99,9 @@ export class ToolsDebugService {
       if (this.debugCollider) { this.debugCollider.dispose(); this.debugCollider = null; }
     }
 
+    // 2. CÁMARA
     const camOffset = entity.camOffset;
-    if (camOffset && (entity.rol === 'npc' || entity.rol === 'spawn_point')) {
+    if (camOffset && (entity.rol === 'npc' || entity.rol === 'spawn_point') && (subSelected === 'camera' || !subSelected)) {
       if (this.debugCameraBox) this.debugCameraBox.dispose();
       this.debugCameraBox = MeshBuilder.CreateBox('debugCamBox', { size: 0.25 }, scene);
       this.debugCameraBox.position = new Vector3(camOffset.x, camOffset.y, camOffset.z);
@@ -114,7 +116,8 @@ export class ToolsDebugService {
       if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
     }
 
-    if (entity.type?.startsWith('light_')) {
+    // 3. LUZ
+    if (entity.type?.startsWith('light_') && (subSelected === 'light' || !subSelected)) {
         if (this.debugLightBox) this.debugLightBox.dispose();
         this.debugLightBox = MeshBuilder.CreateSphere('debugLightBox', { diameter: 0.3 }, scene);
         
@@ -141,11 +144,9 @@ export class ToolsDebugService {
         if (this.debugLightBox) { this.debugLightBox.dispose(); this.debugLightBox = null; }
     }
 
-    if (this.debugFogStartSphere) { this.debugFogStartSphere.dispose(); this.debugFogStartSphere = null; }
-    if (this.debugFogEndSphere) { this.debugFogEndSphere.dispose(); this.debugFogEndSphere = null; }
-
+    // 4. NIEBLA VOLUMÉTRICA 
     const playerConfig = entity.playerConfig;
-    if (playerConfig && playerConfig.fog && playerConfig.fog.enabled && (entity.rol === 'npc' || entity.rol === 'spawn_point')) {
+    if (subSelected === 'fog' && playerConfig && playerConfig.fog && playerConfig.fog.enabled && (entity.rol === 'npc' || entity.rol === 'spawn_point')) {
       
       const isBW = scene.metadata?.globalVisualMode === 'bw';
       const isFPS = this.state.modoVistaPrueba === 'FPS';
@@ -170,6 +171,7 @@ export class ToolsDebugService {
       const hEndTPS = fog?.fogHeightYEndTPS ?? 10.0;
       const fogHeightEnd = Math.max(0.1, isBW ? (isFPS ? hEndFpsBW : hEndTpsBW) : (isFPS ? hEndFPS : hEndTPS));
 
+      if (this.debugFogStartSphere) { this.debugFogStartSphere.dispose(); }
       if (fogShape === 'cylinder') {
         this.debugFogStartSphere = MeshBuilder.CreateCylinder('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2) + 0.05, height: fogHeightStart, tessellation: 32, cap: Mesh.NO_CAP }, scene);
         this.debugFogStartSphere.position.set(fogAnchor.x, fogAnchor.y + (fogHeightStart / 2), fogAnchor.z);
@@ -187,6 +189,7 @@ export class ToolsDebugService {
       this.debugFogStartSphere.material = matFogStart;
       this.debugFogStartSphere.isPickable = false;
 
+      if (this.debugFogEndSphere) { this.debugFogEndSphere.dispose(); this.debugFogEndSphere = null; }
       if (activeEnd > 0.1) {
         if (fogShape === 'cylinder') {
           this.debugFogEndSphere = MeshBuilder.CreateCylinder('debugFogEndSphere', { diameter: (activeEnd * 2) + 0.1, height: fogHeightEnd, tessellation: 32, cap: Mesh.NO_CAP }, scene);
@@ -205,6 +208,9 @@ export class ToolsDebugService {
         this.debugFogEndSphere.material = matFogEnd;
         this.debugFogEndSphere.isPickable = false;
       }
+    } else {
+      if (this.debugFogStartSphere) { this.debugFogStartSphere.dispose(); this.debugFogStartSphere = null; }
+      if (this.debugFogEndSphere) { this.debugFogEndSphere.dispose(); this.debugFogEndSphere = null; }
     }
   }
 

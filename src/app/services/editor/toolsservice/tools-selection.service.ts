@@ -102,7 +102,6 @@ export class ToolsSelectionService {
     const hit = scene.pickWithRay(ray, (m) => {
       if (!m.isVisible || !m.isPickable) return false;
       
-      // FIX INFALIBLE: Ignorar usando el cerebro de la Entidad y no jerarquías rotas
       if (this.state.modoVistaPrueba === 'FPS' && entityPlayer) {
           const entityHit = this.entityManager.getEntityByMesh(m);
           if (entityHit && entityHit.uid === entityPlayer.uid) {
@@ -113,7 +112,16 @@ export class ToolsSelectionService {
       const nameStr = m.name.toLowerCase();
       if (nameStr.includes('highlight') || nameStr.includes('gizmo')) return false;
       
-      if (nameStr.includes('proxycol') || nameStr.includes('suelo') || nameStr.includes('skybox') || nameStr.includes('debug') || nameStr.includes('fogshell') || nameStr.includes('fogwall')) return false;
+      // 🔥 FIX: Ignorar la geometría real de las paredes de niebla
+      if (
+          nameStr.includes('proxycol') || 
+          nameStr.includes('suelo') || 
+          nameStr.includes('skybox') || 
+          nameStr.includes('debug') || 
+          nameStr.includes('fogshell') || 
+          nameStr.includes('fogwall')
+      ) return false;
+
       if (m === centerDragMesh) return false;
       
       const entity = this.entityManager.getEntityByMesh(m);

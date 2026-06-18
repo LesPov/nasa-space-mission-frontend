@@ -6,6 +6,7 @@ import { Node, AbstractMesh, Camera, Light, Mesh, TransformNode } from '@babylon
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { EditorCameraService } from '../../../services/editor/editor-camera.service';
 
 @Component({
   selector: 'app-inspector-outliner',
@@ -17,6 +18,7 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 export class InspectorOutliner {
   public editorSvc = inject(EditorMapaService);
   private entityManager = inject(EntityManagerService);
+  private cameraSvc = inject(EditorCameraService);
   private el = inject(ElementRef);
   private cdr = inject(ChangeDetectorRef);
   
@@ -266,6 +268,7 @@ export class InspectorOutliner {
       this.editorSvc.subObjetoSeleccionado.set(null);
     } else {
       this.editorSvc.seleccionarObjeto(nodo); 
+      this.cameraSvc.enfocarObjetoEnEditor(nodo); 
     }
   }
   
@@ -301,10 +304,6 @@ export class InspectorOutliner {
     return '📌';
   }
 
-  // ==========================================
-  // 🔥 LÓGICA DE DRAG & DROP Y ORDENAMIENTO
-  // ==========================================
-  
   private isDescendant(target: Node, potentialParent: Node): boolean {
     let current = target.parent;
     while (current) {

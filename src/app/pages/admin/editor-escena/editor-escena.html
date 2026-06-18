@@ -189,6 +189,14 @@
           </div>
           
           <div class="vp-right">
+            <!-- 🔥 BOTÓN NUEVO: Toggle Niebla para Edición en Vivo -->
+            <button class="btn-vp" 
+                    *ngIf="editorSvc.playState() === 'EDITING_IN_GAME'" 
+                    (click)="toggleNieblaTemporal()" 
+                    [style.background-color]="stateSvc.fogDesactivadoTemporalmente() ? '#5c2525' : '#3e3e3e'">
+              ☁️ Niebla: {{ stateSvc.fogDesactivadoTemporalmente() ? 'OFF' : 'ON' }}
+            </button>
+
             <select [(ngModel)]="vistaPrueba" class="cam-select" *ngIf="editorSvc.playState() === 'EDITOR'">
               <option value="FPS">👁️ 1ra Persona</option>
               <option value="TPS">🧍 3ra Persona</option>

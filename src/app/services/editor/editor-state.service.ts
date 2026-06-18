@@ -24,6 +24,9 @@ export class EditorStateService {
   public showAddObjectModal = signal<boolean>(false);
   public objetoHovereado = signal<AbstractMesh | null>(null);
 
+  // 🔥 NUEVO: Control para apagar la niebla temporalmente mientras se edita en vivo
+  public fogDesactivadoTemporalmente = signal<boolean>(false);
+
   public onMapChanged = new Subject<void>();
   public onGizmoDrag = new Subject<void>();
 
@@ -186,5 +189,6 @@ export class EditorStateService {
     this.ratonBloqueado.set(false);
     this.objetoSeleccionado.set(null);
     this.subObjetoSeleccionado.set(null);
+    this.fogDesactivadoTemporalmente.set(false); // Reseteamos la niebla al salir
   }
 }

@@ -1,6 +1,17 @@
-
 import { Injectable, inject, effect } from '@angular/core';
-import { DirectionalLight, KeyboardEventTypes, Matrix, Mesh, PointerEventTypes, SpotLight, TransformNode, Vector3, Ray } from '@babylonjs/core';
+import {
+  DirectionalLight,
+  KeyboardEventTypes,
+  Matrix,
+  Mesh,
+  PointerEventTypes,
+  SpotLight,
+  TransformNode,
+  Vector3,
+  Ray,
+  AbstractMesh,
+} from '@babylonjs/core';
+
 import { Motor3dService } from '../motor-3d.service';
 import { EditorCameraService } from './editor-camera.service';
 import { EditorSceneService } from './editor-scene.service';
@@ -10,9 +21,8 @@ import { ToolsDebugService } from './toolsservice/tools-debug.service';
 import { ToolsFogService } from './toolsservice/tools-fog.service';
 import { ToolsGizmoService } from './toolsservice/tools-gizmo.service';
 import { ToolsHighlightService } from './toolsservice/tools-highlight.service';
-import { ToolsSelectionService } from './toolsservice/tools-selection.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
- 
+
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
   private motor3d = inject(Motor3dService);
@@ -21,7 +31,6 @@ export class EditorToolsService {
   private cameraSvc = inject(EditorCameraService);
   private entityManager = inject(EntityManagerService);
 
-  private selectionSvc = inject(ToolsSelectionService);
   private highlightSvc = inject(ToolsHighlightService);
   private debugSvc = inject(ToolsDebugService);
   private clipboardSvc = inject(ToolsClipboardService);
@@ -29,20 +38,21 @@ export class EditorToolsService {
   private gizmoSvc = inject(ToolsGizmoService);
 
   private lastHoverCheckTime = 0;
+  private enforceEditorCameraObserverAdded = false;
 
   constructor() {
     effect(() => {
       const selected = this.state.objetoSeleccionado() as Mesh;
       const hovered = this.state.objetoHovereado() as Mesh;
       const subSelected = this.state.subObjetoSeleccionado();
+      const fogToggled = this.state.fogDesactivadoTemporalmente(); // 🔥 Forzamos la reactividad para que repinte los Highlights
 
       if (!this.gizmoSvc.isDraggingGizmo) {
         this.debugSvc.actualizarDebugMeshes(selected);
       }
-      
+
       this.highlightSvc.actualizarHighlights(selected, hovered);
       this.fogSvc.aplicarNieblaEnTiempoReal();
-      
       this.gizmoSvc.attachGizmoToCurrentSelection(selected, subSelected);
     });
 
@@ -59,6 +69,115 @@ export class EditorToolsService {
     this.fogSvc.limpiarEstado();
   }
 
+  private castRayToSelectable(ray: Ray, isAdmin: boolean): AbstractMesh | null {
+    const scene = this.motor3d.scene;
+    const jugador = this.state.jugadorActivo;
+
+    const hit = scene.pickWithRay(ray, (mesh) => {
+      if (!mesh.isPickable) return false;
+
+      const n = mesh.name.toLowerCase();
+
+      if (
+        n === 'sueloinvisible' ||
+        n.includes('gizmo') ||
+        n.includes('proxycol') ||
+        n.includes('skybox') ||
+        n.includes('fogshell') ||
+        n.includes('fogwall') ||
+        n.includes('debug') ||
+        n.includes('camerapivot')
+      ) {
+        return false;
+      }
+
+      if (jugador && (mesh === jugador || mesh.isDescendantOf(jugador))) {
+        return false;
+      }
+
+      const baseNode = this.state.resolverObjetoSeleccionable(mesh) as AbstractMesh;
+      const entityMesh = this.entityManager.getEntityByMesh(baseNode);
+
+      if (
+        !isAdmin &&
+        (entityMesh?.type === 'trigger' || entityMesh?.type === 'trigger_compuesto' || n.includes('trigger'))
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+
+    if (hit && hit.hit && hit.pickedMesh) {
+      return this.state.resolverObjetoSeleccionable(hit.pickedMesh);
+    }
+
+    return null;
+  }
+
+  private asegurarEditorCameraEnEdicionEnVivo(): void {
+    const scene = this.motor3d.scene;
+    const editorCam = this.motor3d.editorCamera;
+    const canvas = this.motor3d.engine.getRenderingCanvas();
+
+    if (!scene || !editorCam) return;
+
+    if (this.state.playState() === 'EDITING_IN_GAME' && scene.activeCamera !== editorCam) {
+      scene.activeCamera = editorCam;
+
+      if (canvas) {
+        try { editorCam.detachControl(); } catch {}
+        try { editorCam.attachControl(canvas, true); } catch {}
+      }
+    }
+  }
+
+  private manejarFPSAdminSelection(canvas: HTMLCanvasElement | null, isLocked: boolean): void {
+    const scene = this.motor3d.scene;
+    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+
+    if (this.state.modoVistaPrueba !== 'FPS') {
+      if (!isLocked && canvas) {
+        try { canvas.requestPointerLock(); } catch {}
+      }
+      return;
+    }
+
+    const ray = isLocked
+      ? scene.activeCamera!.getForwardRay(10000)
+      : scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
+
+    ray.length = 10000;
+
+    const rootNode = this.castRayToSelectable(ray, isAdmin);
+
+    if (rootNode) {
+      if (document.pointerLockElement) {
+        try { document.exitPointerLock(); } catch {}
+      }
+
+      if (this.state.objetoSeleccionado() === rootNode) {
+        this.state.objetoSeleccionado.set(null);
+        this.state.objetoHovereado.set(null);
+        if (canvas) { try { canvas.requestPointerLock(); } catch {} }
+        return;
+      }
+
+      this.state.objetoSeleccionado.set(rootNode);
+      this.state.objetoHovereado.set(rootNode);
+
+      this.cameraSvc.transicionAEdicionEnVivo(rootNode);
+      return;
+    }
+
+    this.state.objetoSeleccionado.set(null);
+    this.state.objetoHovereado.set(null);
+
+    if (!isLocked && canvas) {
+      try { canvas.requestPointerLock(); } catch {}
+    }
+  }
+
   activarEventosEditor(): void {
     const scene = this.motor3d.scene;
     this.state.playState.set('EDITOR');
@@ -67,42 +186,24 @@ export class EditorToolsService {
     this.gizmoSvc.initGizmos();
     this.clipboardSvc.initKeyboardListeners();
 
+    if (!this.enforceEditorCameraObserverAdded) {
+      this.enforceEditorCameraObserverAdded = true;
+      this.motor3d.scene.onBeforeRenderObservable.add(() => {
+        if (this.state.playState() === 'EDITING_IN_GAME') {
+          this.asegurarEditorCameraEnEdicionEnVivo();
+        }
+      });
+    }
+
     this.gizmoSvc.gizmoManager.utilityLayer.utilityLayerScene.onPointerObservable.add((pi) => {
       this.gizmoSvc.syncCenterDragMeshVisuals(pi);
     });
-
-    const castRayToSelectable = (ray: Ray, ignoreTriggers: boolean = false) => {
-        const jugador = this.state.jugadorActivo;
-        const entityPlayer = jugador ? this.entityManager.getEntityByMesh(jugador) : null;
-
-        const hit = scene.pickWithRay(ray, (mesh) => {
-            if (!mesh.isPickable || !mesh.isVisible) return false;
-            
-            // FIX INFALIBLE: Ignorar usando el UID del Entity, garantiza que el rayo pase de largo el cuerpo.
-            const entityMesh = this.entityManager.getEntityByMesh(mesh);
-            if (entityPlayer && entityMesh && entityMesh.uid === entityPlayer.uid) {
-                return false;
-            }
-
-            const n = mesh.name.toLowerCase();
-            if (n.includes('gizmo') || n.includes('proxycol') || n.includes('suelo') || n.includes('skybox') || n.includes('fogshell') || n.includes('fogwall')) return false;
-            
-            if (ignoreTriggers) {
-               if (entityMesh?.type === 'trigger' || n.includes('trigger')) return false;
-            }
-            
-            return true;
-        });
-        if (hit && hit.hit && hit.pickedMesh) {
-            return this.state.resolverObjetoSeleccionable(hit.pickedMesh);
-        }
-        return null;
-    };
 
     scene.onPointerObservable.add((pi) => {
       const canvas = this.motor3d.engine.getRenderingCanvas();
       const playSt = this.state.playState();
       const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+      const isLocked = !!document.pointerLockElement;
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
 
@@ -110,7 +211,7 @@ export class EditorToolsService {
         if (isAdmin && playSt === 'EDITOR') {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
-          const rootNode = castRayToSelectable(ray);
+          const rootNode = this.castRayToSelectable(ray, isAdmin);
           if (rootNode) {
             this.state.objetoSeleccionado.set(rootNode);
             this.cameraSvc.enfocarObjetoEnEditor(rootNode);
@@ -119,75 +220,48 @@ export class EditorToolsService {
         return;
       }
 
-      if (pi.type === PointerEventTypes.POINTERTAP && pi.event.button === 0) {
-        
+      if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
         if (playSt === 'PLAYING') {
-          const isLocked = !!document.pointerLockElement;
-
           if (!isAdmin) {
-             if (!isLocked) {
-               try { canvas?.requestPointerLock(); } catch {}
-             }
-             return;
-          } else {
-             // Admin en Prueba Libre
-             if (!isLocked && canvas) {
-                 try { canvas.requestPointerLock(); } catch {}
-                 return; // Bloquea y no hace raycast
-             }
-
-             // Si está bloqueado, pero en 3ra Persona, no hace nada (modo exploración puro)
-             if (this.state.modoVistaPrueba !== 'FPS') return; 
-
-             // Si está en 1ra persona, castear rayo en el centro
-             let ray: Ray;
-             if (this.motor3d.engine) {
-                 ray = scene.createPickingRay(this.motor3d.engine.getRenderWidth() / 2, this.motor3d.engine.getRenderHeight() / 2, Matrix.Identity(), scene.activeCamera);
-             } else {
-                 ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
-             }
-             
-             ray.length = 10000;
-             const rootNode = castRayToSelectable(ray, true); 
-             
-             if (rootNode) {
-               if (this.state.objetoSeleccionado() === rootNode) {
-                 this.state.objetoSeleccionado.set(null);
-                 this.state.objetoHovereado.set(null);
-               } else {
-                 this.state.objetoSeleccionado.set(rootNode);
-                 this.state.objetoHovereado.set(rootNode);
-                 this.cameraSvc.transicionAEdicionEnVivo(rootNode);
-               }
-             } else {
-               this.state.objetoSeleccionado.set(null);
-               this.state.objetoHovereado.set(null);
-             }
+            if (!isLocked) {
+              try { canvas?.requestPointerLock(); } catch {}
+            }
+            return;
           }
+
+          this.manejarFPSAdminSelection(canvas, isLocked);
           return;
         }
+      }
 
+      if (pi.type === PointerEventTypes.POINTERTAP && pi.event.button === 0) {
         if (isAdmin && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
 
-          const hitGizmo = scene.pickWithRay(ray, (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo') || mesh === this.gizmoSvc.centerDragMesh);
+          const hitGizmo = scene.pickWithRay(
+            ray,
+            (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo') || mesh === this.gizmoSvc.centerDragMesh
+          );
           if (hitGizmo && hitGizmo.hit) return;
 
-          const rootNode = castRayToSelectable(ray);
+          const rootNode = this.castRayToSelectable(ray, isAdmin);
 
           if (rootNode) {
             if (this.state.objetoSeleccionado() === rootNode) {
-              this.state.objetoSeleccionado.set(null); 
+              this.state.objetoSeleccionado.set(null);
             } else {
-              this.state.objetoSeleccionado.set(rootNode); 
+              this.state.objetoSeleccionado.set(rootNode);
+              if (playSt === 'EDITOR') {
+                this.cameraSvc.enfocarObjetoEnEditor(rootNode);
+              }
             }
           } else {
             this.state.objetoSeleccionado.set(null);
+
             if (playSt === 'EDITING_IN_GAME') {
               if (canvas) {
                 canvas.focus();
-                try { canvas.requestPointerLock(); } catch {}
               }
               this.cameraSvc.volverAJuego();
             }
@@ -195,29 +269,27 @@ export class EditorToolsService {
         }
       }
 
-      // HOVER (THROTTLEADO A 10 FPS MAX) PARA AHORRAR CPU
       if (pi.type === PointerEventTypes.POINTERMOVE) {
         const now = performance.now();
-        if (now - this.lastHoverCheckTime < 100) return; 
+        if (now - this.lastHoverCheckTime < 100) return;
         this.lastHoverCheckTime = now;
 
         if (playSt === 'PLAYING') {
-          let ray: Ray;
-          const isLocked = !!document.pointerLockElement;
-
-          if (isAdmin) {
-             if (this.state.modoVistaPrueba !== 'FPS' || !isLocked) {
-                 this.state.objetoHovereado.set(null);
-                 return;
-             }
-             ray = scene.createPickingRay(this.motor3d.engine.getRenderWidth() / 2, this.motor3d.engine.getRenderHeight() / 2, Matrix.Identity(), scene.activeCamera);
-          } else {
-             if (!isLocked) return; 
-             ray = scene.createPickingRay(this.motor3d.engine.getRenderWidth() / 2, this.motor3d.engine.getRenderHeight() / 2, Matrix.Identity(), scene.activeCamera);
+          if (!isAdmin) {
+            this.state.objetoHovereado.set(null);
+            return;
           }
-          
-          ray.length = 10000;
-          const rootNode = castRayToSelectable(ray, true); 
+
+          if (this.state.modoVistaPrueba !== 'FPS') {
+            this.state.objetoHovereado.set(null);
+            return;
+          }
+
+          const ray = isLocked
+            ? scene.activeCamera!.getForwardRay(10000)
+            : scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
+
+          const rootNode = this.castRayToSelectable(ray, isAdmin);
           this.state.objetoHovereado.set(rootNode);
           return;
         }
@@ -228,13 +300,16 @@ export class EditorToolsService {
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
           ray.length = 10000;
 
-          const hitGizmo = scene.pickWithRay(ray, (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo') || mesh === this.gizmoSvc.centerDragMesh);
+          const hitGizmo = scene.pickWithRay(
+            ray,
+            (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo') || mesh === this.gizmoSvc.centerDragMesh
+          );
           if (hitGizmo && hitGizmo.hit) {
             this.state.objetoHovereado.set(null);
             return;
           }
 
-          const rootNode = castRayToSelectable(ray);
+          const rootNode = this.castRayToSelectable(ray, isAdmin);
           this.state.objetoHovereado.set(rootNode);
         }
       }
@@ -242,22 +317,20 @@ export class EditorToolsService {
 
     scene.onKeyboardObservable.add((kbInfo) => {
       const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
-        
-        // 🔥 Lógica ESC: Si estoy jugando y soy Admin, solo suelto el ratón sin detener el juego.
         if (kbInfo.event.key === 'Escape') {
-            if (this.state.playState() === 'PLAYING' && isAdmin) {
-                if (document.pointerLockElement) {
-                    document.exitPointerLock();
-                }
-            } else if (this.state.playState() === 'EDITING_IN_GAME') {
-                const canvas = this.motor3d.engine.getRenderingCanvas();
-                if (canvas) {
-                    canvas.focus();
-                    try { canvas.requestPointerLock(); } catch {}
-                }
-                this.cameraSvc.volverAJuego();
+          if (this.state.playState() === 'PLAYING' && isAdmin) {
+            if (document.pointerLockElement) {
+              document.exitPointerLock();
             }
+          } else if (this.state.playState() === 'EDITING_IN_GAME') {
+            const canvas = this.motor3d.engine.getRenderingCanvas();
+            if (canvas) {
+              canvas.focus();
+            }
+            this.cameraSvc.volverAJuego();
+          }
         }
 
         if (isAdmin && !this.state.showAddObjectModal() && (this.state.playState() === 'EDITOR' || this.state.playState() === 'EDITING_IN_GAME')) {
@@ -275,7 +348,9 @@ export class EditorToolsService {
     });
 
     this.state.onMapChanged.subscribe(() => {
-      if (!this.gizmoSvc.isDraggingGizmo) this.debugSvc.actualizarDebugMeshes(this.state.objetoSeleccionado() as Mesh);
+      if (!this.gizmoSvc.isDraggingGizmo) {
+        this.debugSvc.actualizarDebugMeshes(this.state.objetoSeleccionado() as Mesh);
+      }
       this.fogSvc.aplicarNieblaEnTiempoReal();
     });
 
@@ -312,7 +387,14 @@ export class EditorToolsService {
     this.gizmoSvc.actualizarGizmosActivos();
   }
 
-  copiarObjeto() { this.clipboardSvc.copiarObjeto(); }
-  pegarObjeto() { this.clipboardSvc.pegarObjeto(); }
-  deshacerAccion() { this.clipboardSvc.deshacerAccion(); }
-}
+  copiarObjeto() {
+    this.clipboardSvc.copiarObjeto();
+  }
+
+  pegarObjeto() {
+    this.clipboardSvc.pegarObjeto();
+  }
+
+  deshacerAccion() {
+    this.clipboardSvc.deshacerAccion();
+  }}

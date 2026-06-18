@@ -35,7 +35,6 @@ export class ToolsHighlightService {
     const hoverId = hovered ? hovered.uniqueId : null;
     const selectId = selected ? selected.uniqueId : null;
 
-    // CULLING DE CPU: Evita recomputar si seguimos mirando el mismo objeto.
     if (this.lastHoveredMeshId === hoverId && this.lastSelectedMeshId === selectId) return;
     
     this.lastHoveredMeshId = hoverId;
@@ -54,21 +53,33 @@ export class ToolsHighlightService {
     const colorSelected = Color3.FromHexString('#fbbf24');
 
     const addHighlightToAllVisible = (mesh: Mesh, hl: HighlightLayer, color: Color3) => {
-      const entity = this.entityManager.getEntityByMesh(mesh);
-      const isTrigger = entity?.type === 'trigger' || mesh.name.toLowerCase().includes('trigger');
-      
-      const canHighlight = mode === 'EDITOR' || !isTrigger;
+      const n = mesh.name.toLowerCase();
+      // 🔥 FIX: Jamás aplicarle Outline a las capas de niebla volumétrica
+      if (n.includes('fogshell') || n.includes('fogwallgroup')) return;
 
-      if (mesh.isVisible && !mesh.name.includes('proxyCol') && !mesh.name.includes('debug') && !mesh.name.includes('cameraPivot') && canHighlight) {
+      const entity = this.entityManager.getEntityByMesh(mesh);
+      const isTrigger = entity?.type === 'trigger' || entity?.type === 'trigger_compuesto' || n.includes('trigger');
+      
+      const canHighlight = mode === 'EDITOR' || isAdmin || !isTrigger;
+
+      if (mesh.isVisible && !n.includes('proxycol') && !n.includes('debug') && !n.includes('camerapivot') && canHighlight) {
         hl.addMesh(mesh, color);
       }
       
       mesh.getChildMeshes().forEach(c => {
-        if (!c.isVisible || c.name.includes('proxyCol') || c.name.includes('debug') || c.name.includes('cameraPivot')) return;
+        const cn = c.name.toLowerCase();
+        // 🔥 FIX HIJOS: Lo mismo para los hijos de la niebla
+        if (!c.isVisible || cn.includes('proxycol') || cn.includes('debug') || cn.includes('camerapivot') || cn.includes('fogshell') || cn.includes('fogwallgroup')) return;
 
         const cEntity = this.entityManager.getEntityByMesh(c);
-        const childIsTrigger = cEntity?.type === 'trigger' || c.name.toLowerCase().includes('trigger');
-        const childCanHighlight = mode === 'EDITOR' || !childIsTrigger;
+        
+        // 🔥 FIX VITAL: Si el hijo pertenece a OTRA entidad (ej. un cofre encima del piso), NO LO RESALTES!
+        if (cEntity && cEntity.uid !== entity?.uid) {
+            return; 
+        }
+
+        const childIsTrigger = cEntity?.type === 'trigger' || cEntity?.type === 'trigger_compuesto' || cn.includes('trigger');
+        const childCanHighlight = mode === 'EDITOR' || isAdmin || !childIsTrigger;
 
         if (c instanceof Mesh && childCanHighlight) {
           hl.addMesh(c, color);

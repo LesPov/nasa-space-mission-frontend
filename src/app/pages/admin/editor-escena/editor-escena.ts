@@ -1,3 +1,4 @@
+
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -143,9 +144,13 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.autoSaveSub = this.editorSvc.onMapChanged.pipe(
       debounceTime(1500) 
     ).subscribe(() => {
-      const state = this.editorSvc.playState();
-      if (this.esAdmin && this.editorSvc.rolSimulado() === 'admin' && this.editando && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
-        this.guardarMapaEnBD(true); 
+      try {
+        const state = this.editorSvc.playState();
+        if (this.esAdmin && this.editorSvc.rolSimulado() === 'admin' && this.editando && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
+          this.guardarMapaEnBD(true); 
+        }
+      } catch (e) {
+        console.error('Error durante el disparo de autoguardado, previniendo que la subscripción muera:', e);
       }
     });
   }

@@ -54,6 +54,8 @@ export class CorePrimitiveLoaderService {
     entity.interaction.interactDistanceTPS = this.utilsSvc.normalizarNumero(obj.properties?.interactDistanceTPS, 5.0);
     entity.interaction.interactSequenceIdFPS = obj.properties?.interactSequenceIdFPS || '';
     entity.interaction.interactSequenceIdTPS = obj.properties?.interactSequenceIdTPS || '';
+    entity.interaction.interactSequenceId = obj.properties?.interactSequenceId || '';
+    entity.interaction.respawnTime = this.utilsSvc.normalizarNumero(obj.properties?.respawnTime, 8);
     
     entity.camOffset = obj.properties?.camOffset || { x: 0, y: 0.8, z: 0 };
     entity.autoAnim = obj.properties?.autoAnim || null;

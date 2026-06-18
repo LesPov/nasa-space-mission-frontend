@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core'; 
 import { HemisphericLight } from '@babylonjs/core'; 
 import { Motor3dService } from '../../motor-3d.service';
@@ -106,6 +107,8 @@ export class SceneSaverService {
           interactDistanceTPS: entity.interaction.interactDistanceTPS,
           interactSequenceIdFPS: entity.interaction.interactSequenceIdFPS,
           interactSequenceIdTPS: entity.interaction.interactSequenceIdTPS,
+          interactSequenceId: entity.interaction.interactSequenceId,
+          respawnTime: entity.interaction.respawnTime,
           collider: entity.collider,
           camOffset: entity.camOffset,
           playerConfig: entity.playerConfig,
@@ -126,9 +129,15 @@ export class SceneSaverService {
             properties: { ...propertiesToSave, ...entity.light }
           });
         } else if ((entity.type === 'video_plane' || entity.type === 'image_plane') && entity.media) {
+          // Eliminamos las referencias circulares nativas de Babylon en un clon seguro
+          const mediaSafe = { ...entity.media };
+          delete mediaSafe.runtimeDecals;
+          delete mediaSafe.runtimeDecalMaterial;
+          delete mediaSafe.lastVisualModeBW;
+
           sceneObjects.push({
             ...baseData, type: entity.type, assetId: entity.visual.assetId,
-            properties: { ...propertiesToSave, ...entity.media }
+            properties: { ...propertiesToSave, ...mediaSafe }
           });
         } else {
           sceneObjects.push({

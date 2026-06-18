@@ -258,6 +258,8 @@ export class GlobalTimeline implements OnInit {
       interactDistanceTPS: entity.interaction.interactDistanceTPS,
       interactSequenceIdFPS: entity.interaction.interactSequenceIdFPS,
       interactSequenceIdTPS: entity.interaction.interactSequenceIdTPS,
+      interactSequenceId: entity.interaction.interactSequenceId,
+      respawnTime: entity.interaction.respawnTime,
       collider: entity.collider,
       camOffset: entity.camOffset,
       playerConfig: entity.playerConfig,
@@ -274,7 +276,11 @@ export class GlobalTimeline implements OnInit {
     if (entity.type.startsWith('light_') && entity.light) {
       finalProperties = { ...finalProperties, ...entity.light };
     } else if ((entity.type === 'video_plane' || entity.type === 'image_plane') && entity.media) {
-      finalProperties = { ...finalProperties, ...entity.media };
+      const mediaSafe = { ...entity.media };
+      delete mediaSafe.runtimeDecals;
+      delete mediaSafe.runtimeDecalMaterial;
+      delete mediaSafe.lastVisualModeBW;
+      finalProperties = { ...finalProperties, ...mediaSafe };
     }
 
     const data = {
@@ -314,4 +320,5 @@ export class GlobalTimeline implements OnInit {
         error: () => alert('Error eliminando prefab')
       });
     }
-  }}
+  }
+}

@@ -84,6 +84,8 @@ export class CoreModelLoaderService {
     entity.interaction.interactDistanceTPS = this.utilsSvc.normalizarNumero(obj.properties?.interactDistanceTPS, 5.0);
     entity.interaction.interactSequenceIdFPS = obj.properties?.interactSequenceIdFPS || '';
     entity.interaction.interactSequenceIdTPS = obj.properties?.interactSequenceIdTPS || '';
+    entity.interaction.interactSequenceId = obj.properties?.interactSequenceId || '';
+    entity.interaction.respawnTime = this.utilsSvc.normalizarNumero(obj.properties?.respawnTime, 8);
 
     const defaultCollider = isModel ? (isProp ? { type: 'mesh', sizeX: 1, sizeY: 1, sizeZ: 1, offsetX: 0, offsetY: 0, offsetZ: 0 } : { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }) : { type: 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
     const savedCollider = obj.properties?.collider || obj.properties?.capsule || { ...defaultCollider };

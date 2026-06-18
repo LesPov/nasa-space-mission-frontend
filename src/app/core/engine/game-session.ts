@@ -21,6 +21,7 @@ import { PlayerTriggerService } from './systems/player-trigger.service';
 import { PlayerBubbleService } from './systems/player-bubble.service';
 import { CharacterContext } from './controllers/character-context.interface';
 import { PlayerFogService } from './systems/player-fog.service';
+import { CharacterKinematicsService } from './systems/character-kinematics.service';
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
@@ -40,6 +41,7 @@ export class GameSession {
   private motor3d = inject(Motor3dService);
   private animSvc = inject(PlayerAnimationService);
   private physicsSvc = inject(PlayerPhysicsService);
+  private kinematicsSvc = inject(CharacterKinematicsService);
   private sequenceSvc = inject(PlayerSequenceService);
   private inputSvc = inject(PlayerInputService);
   private cameraSvc = inject(PlayerCameraManagerService);
@@ -75,6 +77,7 @@ export class GameSession {
       entityManager: this.entityManager,
       animSvc: this.animSvc,
       physicsSvc: this.physicsSvc,
+      kinematicsSvc: this.kinematicsSvc,
       sequenceSvc: this.sequenceSvc,
       inputSvc: this.inputSvc,
       cameraSvc: this.cameraSvc,

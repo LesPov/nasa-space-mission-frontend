@@ -1,3 +1,4 @@
+// src/app/core/engine/events/game-event-bus.service.ts
 
 import { Injectable } from '@angular/core';
 import { Subject } from 'rxjs';
@@ -12,7 +13,8 @@ export type GameEvent =
   | { type: 'GameStopped' }
   | { type: 'GamePaused' }
   | { type: 'GameResumed' }
-  | { type: 'CameraViewChanged', payload: 'FPS' | 'TPS' };
+  | { type: 'CameraViewChanged', payload: 'FPS' | 'TPS' }
+  | { type: 'SequenceTriggered', payload: { sequenceId: string } }; // 🔥 Nuevo evento para orquestar secuencias remotas
 
 @Injectable({ providedIn: 'root' })
 export class GameEventBusService {

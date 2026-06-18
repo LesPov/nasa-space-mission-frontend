@@ -1,3 +1,4 @@
+// src/app/core/engine/systems/player-sequence.service.ts
 
 import { Injectable, inject, Injector } from '@angular/core';
 import { Mesh, Quaternion, Vector3, UniversalCamera, Light, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
@@ -6,6 +7,9 @@ import { Motor3dService } from '../../../services/motor-3d.service';
 import { PlayerClipSequence, PlayerSequenceStep, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { GameStateService } from '../state/game-state.service';
 import { GameEntity } from '../entities/game.entity';
+import { GameEventBusService } from '../events/game-event-bus.service';
+import { EntityManagerService } from '../entities/entity-manager.service';
+import { Subscription } from 'rxjs';
 
 export interface SeqRuntime {
   step: PlayerSequenceStep | null;
@@ -24,7 +28,11 @@ export interface SeqRuntime {
 export class PlayerSequenceService {
   private motor3d = inject(Motor3dService);
   private gameState = inject(GameStateService);
+  private eventBus = inject(GameEventBusService);
+  private entityManager = inject(EntityManagerService);
   private injector = inject(Injector);
+
+  private eventSub!: Subscription;
 
   // 🔥 FIX DE DEPENDENCIA CIRCULAR: Getter Lazy
   private get session(): GameSession { 
@@ -44,6 +52,15 @@ export class PlayerSequenceService {
   public lockedSequenceFPSRotation: Vector3 | null = null;
   public lockedSequenceTPSAlpha: number | null = null;
   public lockedSequenceTPSBeta: number | null = null;
+
+  constructor() {
+    // 🔥 Escuchamos cuando un Trigger dispara una secuencia por ID
+    this.eventSub = this.eventBus.events$.subscribe(event => {
+      if (event.type === 'SequenceTriggered') {
+        this.buscarEIniciarSecuenciaPorId(event.payload.sequenceId);
+      }
+    });
+  }
 
   public resetearSecuencias(): void {
     this.activeSequences.clear();
@@ -111,6 +128,29 @@ export class PlayerSequenceService {
     }
   }
 
+  /**
+   * Busca en toda la base de entidades si alguna contiene la secuencia solicitada.
+   * Centraliza la búsqueda y previene dobles ejecuciones.
+   */
+  private buscarEIniciarSecuenciaPorId(sequenceId: string): void {
+    let found = false;
+    const allEntities = this.entityManager.getAllEntities();
+
+    for (const e of allEntities) {
+      if (e.playerConfig && e.playerConfig.sequences) {
+        const hasSeq = e.playerConfig.sequences.some((s: any) => s.id === sequenceId);
+        if (hasSeq) {
+          found = true;
+          this.iniciarSecuenciaEnJuego(sequenceId, e);
+        }
+      }
+    }
+
+    if (!found) {
+      console.warn(`⚠️ Se intentó iniciar la secuencia [${sequenceId}] pero ninguna entidad en la escena la posee.`);
+    }
+  }
+
   public iniciarSecuenciaEnJuego(sequenceId: string, entity: GameEntity): void {
     const jugador = entity.view as Mesh;
     if (!jugador) return;
@@ -121,11 +161,15 @@ export class PlayerSequenceService {
     
     if (seqToRun) {
       if (!this.gameState.evaluateAllConditions(seqToRun.conditions)) {
-          console.log(`[Narrativa] Secuencia ${sequenceId} omitida (No cumple requisitos).`);
+          console.log(`[Narrativa] Secuencia ${sequenceId} omitida (No cumple requisitos de historia).`);
           return;
       }
 
       const state = this.getSeqState(entity.uid);
+      
+      // Prevenir reinicio si ya está corriendo la misma secuencia
+      if (state.id === sequenceId) return;
+
       state.id = sequenceId;
       state.index = 0;
       state.elapsedMs = 0;

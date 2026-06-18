@@ -1,4 +1,4 @@
-// src/app/services/editor/characters/character-context.interface.ts
+// src/app/core/engine/controllers/character-context.interface.ts
 
 import { LoopManagerService } from "../behaviors/services/loop-manager.service";
 import { GameSession } from "../game-session";
@@ -12,6 +12,7 @@ import { PlayerInteractionService } from "../systems/player-interaction.service"
 import { PlayerPhysicsService } from "../systems/player-physics.service";
 import { PlayerSequenceService } from "../systems/player-sequence.service";
 import { EntityManagerService } from "../entities/entity-manager.service";
+import { CharacterKinematicsService } from "../systems/character-kinematics.service";
 
 /**
  * Agrupa todas las dependencias (Servicios "Stateless") que necesitan 
@@ -23,6 +24,7 @@ export interface CharacterContext {
   entityManager: EntityManagerService;
   animSvc: PlayerAnimationService;
   physicsSvc: PlayerPhysicsService;
+  kinematicsSvc: CharacterKinematicsService;
   sequenceSvc: PlayerSequenceService;
   inputSvc: PlayerInputService;
   cameraSvc: PlayerCameraManagerService;

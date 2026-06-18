@@ -1,30 +1,34 @@
 // src/app/core/engine/controllers/base-character.controller.ts
 
 import { Mesh } from '@babylonjs/core';
+import { Injector } from '@angular/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { EstadoFisico } from '../systems/player-physics.service';
- import { GameEntity } from '../entities/game.entity';
-import { CharacterContext } from './character-context.interface';
+import { GameEntity } from '../entities/game.entity';
+import { LoopManagerService } from '../behaviors/services/loop-manager.service';
  
 export abstract class BaseCharacterController {
   public entity: GameEntity;
   public mesh: Mesh;
   public config: PlayerRuntimeConfig;
   public estadoFisico: EstadoFisico;
-  protected context: CharacterContext;
+  protected injector: Injector;
+  protected loopManager: LoopManagerService;
   protected loopId: string;
 
-  constructor(entity: GameEntity, context: CharacterContext) {
+  constructor(entity: GameEntity, injector: Injector) {
     this.entity = entity;
+    this.injector = injector;
     
     if (!entity.view || !(entity.view instanceof Mesh)) {
       throw new Error(`[BaseCharacterController] La entidad ${entity.name} no tiene un Mesh válido bindeado.`);
     }
     
     this.mesh = entity.view as Mesh;
-    this.context = context;
+    this.loopManager = this.injector.get(LoopManagerService);
     this.loopId = `ControllerLogic_${this.entity.uid}`;
     
+    // 🔥 La Entidad Lógica es la única fuente de verdad, nada de mesh.metadata
     this.config = entity.playerConfig || cloneDefaultPlayerConfig();
     
     this.estadoFisico = {
@@ -49,10 +53,10 @@ export abstract class BaseCharacterController {
   protected abstract postUpdate(dtMs: number): void;
 
   public destroy(): void {
-    this.context.loopManager.unregister(this.loopId + '_PHYSICS');
-    this.context.loopManager.unregister(this.loopId + '_LOGIC');
-    this.context.loopManager.unregister(this.loopId + '_POST');
-    this.context.animSvc.detenerTodas(this.entity);
+    // Al destruir, el controlador corta sus propios hilos con el motor de juego
+    this.loopManager.unregister(this.loopId + '_PHYSICS');
+    this.loopManager.unregister(this.loopId + '_LOGIC');
+    this.loopManager.unregister(this.loopId + '_POST');
   }
 
   public resetPhysicsState(): void {

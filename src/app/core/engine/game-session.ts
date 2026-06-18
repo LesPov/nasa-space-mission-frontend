@@ -1,27 +1,17 @@
 // src/app/core/engine/game-session.ts
 
-import { Injectable, signal, inject } from '@angular/core';
+import { Injectable, signal, inject, Injector } from '@angular/core';
 import { GameEntity } from './entities/game.entity';
 import { EntityManagerService } from './entities/entity-manager.service';
 import { BaseCharacterController } from './controllers/base-character.controller';
 import { PlayerController } from './controllers/player.controller';
 import { NpcController } from './controllers/npc.controller';
-import { LoopManagerService } from './behaviors/services/loop-manager.service';
 import { ObjectAnimationService } from './systems/object-animation.service';
 import { GameEventBusService } from './events/game-event-bus.service';
-
 import { Motor3dService } from '../../services/motor-3d.service';
-import { PlayerAnimationService } from './systems/player-animation.service';
-import { PlayerPhysicsService } from './systems/player-physics.service';
-import { PlayerSequenceService } from './systems/player-sequence.service';
-import { PlayerInputService } from './systems/player-input.service';
-import { PlayerCameraManagerService } from './systems/player-camera.service';
-import { PlayerInteractionService } from './systems/player-interaction.service';
 import { PlayerTriggerService } from './systems/player-trigger.service';
-import { PlayerBubbleService } from './systems/player-bubble.service';
-import { CharacterContext } from './controllers/character-context.interface';
 import { PlayerFogService } from './systems/player-fog.service';
-import { CharacterKinematicsService } from './systems/character-kinematics.service';
+import { PlayerCameraManagerService } from './systems/player-camera.service';
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
@@ -33,22 +23,15 @@ export class GameSession {
 
   private controllers: Map<string, BaseCharacterController> = new Map();
 
+  // Inyecciones Básicas de Arranque
+  private injector = inject(Injector);
   private entityManager = inject(EntityManagerService);
-  private loopManager = inject(LoopManagerService);
   private objectAnimSvc = inject(ObjectAnimationService);
   private eventBus = inject(GameEventBusService);
-
   private motor3d = inject(Motor3dService);
-  private animSvc = inject(PlayerAnimationService);
-  private physicsSvc = inject(PlayerPhysicsService);
-  private kinematicsSvc = inject(CharacterKinematicsService);
-  private sequenceSvc = inject(PlayerSequenceService);
-  private inputSvc = inject(PlayerInputService);
-  private cameraSvc = inject(PlayerCameraManagerService);
-  private interactSvc = inject(PlayerInteractionService);
   private triggerSvc = inject(PlayerTriggerService);
-  private bubbleSvc = inject(PlayerBubbleService);
   private playerFogSvc = inject(PlayerFogService);
+  private cameraSvc = inject(PlayerCameraManagerService);
 
   public get proxyColliders() {
     return this.motor3d.scene.meshes.filter(m => m.name.includes('proxyCol'));
@@ -61,40 +44,27 @@ export class GameSession {
     this.activePlayerEntity.set(playerEntity);
     this.pointerLocked.set(true);
 
+    // Reinicio Lógico del Bucle
     this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
     this.eventBus.emit({ type: 'MessageRequested', payload: null });
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
     this.eventBus.emit({ type: 'GameStarted', payload: { view, isAdmin } });
 
+    // Preparativos Ambientales
     this.triggerSvc.prepararTriggersParaJuego();
     this.objectAnimSvc.startAmbientAutoAnimations();
-    
     this.playerFogSvc.start(playerEntity, view);
 
-    const context: CharacterContext = {
-      motor3d: this.motor3d,
-      session: this,
-      entityManager: this.entityManager,
-      animSvc: this.animSvc,
-      physicsSvc: this.physicsSvc,
-      kinematicsSvc: this.kinematicsSvc,
-      sequenceSvc: this.sequenceSvc,
-      inputSvc: this.inputSvc,
-      cameraSvc: this.cameraSvc,
-      interactSvc: this.interactSvc,
-      triggerSvc: this.triggerSvc,
-      bubbleSvc: this.bubbleSvc,
-      loopManager: this.loopManager
-    };
-
+    // 🔥 DELEGACIÓN ABSOLUTA: Construimos a los controladores y les pasamos el Injector.
+    // Ellos se encargarán de buscar sus servicios y acoplarse al LoopManager.
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
       if (entity.uid === playerEntity.uid) {
-        const playerCtrl = new PlayerController(entity, context);
+        const playerCtrl = new PlayerController(entity, this.injector);
         this.controllers.set(entity.uid, playerCtrl);
         playerCtrl.start();
       } else if (entity.rol === 'npc' || entity.rol === 'spawn_point') {
-        const npcCtrl = new NpcController(entity, context);
+        const npcCtrl = new NpcController(entity, this.injector);
         this.controllers.set(entity.uid, npcCtrl);
         npcCtrl.start();
       }
@@ -121,6 +91,7 @@ export class GameSession {
     this.objectAnimSvc.stopAmbientAutoAnimations();
     this.playerFogSvc.stop();
 
+    // Cada controlador se destruirá limpiamente sin romper nada externo
     this.controllers.forEach(ctrl => ctrl.destroy());
     this.controllers.clear();
 

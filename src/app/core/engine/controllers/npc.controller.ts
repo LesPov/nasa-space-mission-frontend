@@ -1,34 +1,52 @@
+// src/app/core/engine/controllers/npc.controller.ts
 
+import { Injector } from '@angular/core';
 import { GamePhase } from '../behaviors/services/loop-manager.service';
 import { BaseCharacterController } from './base-character.controller';
-import { CharacterContext } from './character-context.interface';
 import { GameEntity } from '../entities/game.entity';
+
+// Servicios de Sistemas Inyectados Dinámicamente
+import { Motor3dService } from '../../../services/motor-3d.service';
+import { PlayerAnimationService } from '../systems/player-animation.service';
+import { PlayerSequenceService } from '../systems/player-sequence.service';
 
 export class NpcController extends BaseCharacterController {
   
   private currentSeqRuntime: any;
+  
+  private motor3d: Motor3dService;
+  private animSvc: PlayerAnimationService;
+  private sequenceSvc: PlayerSequenceService;
 
-  constructor(entity: GameEntity, context: CharacterContext) {
-    super(entity, context);
+  constructor(entity: GameEntity, injector: Injector) {
+    super(entity, injector);
+    this.motor3d = this.injector.get(Motor3dService);
+    this.animSvc = this.injector.get(PlayerAnimationService);
+    this.sequenceSvc = this.injector.get(PlayerSequenceService);
   }
 
   public start(): void {
-    this.context.animSvc.sincronizarAnimaciones(this.context.motor3d.scene, this.entity);
+    this.animSvc.sincronizarAnimaciones(this.motor3d.scene, this.entity);
 
     const autoSeq = this.config.sequences.find((s: any) => s.autoPlay);
     if (autoSeq) {
-      this.context.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, this.entity);
+      this.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, this.entity);
     } else {
-      this.context.animSvc.reproducirIdle(this.entity);
+      this.animSvc.reproducirIdle(this.entity);
     }
 
-    this.context.loopManager.register(this.loopId + '_PHYSICS', GamePhase.PHYSICS, (dtMs: number) => this.physicsUpdate(dtMs));
-    this.context.loopManager.register(this.loopId + '_LOGIC', GamePhase.LOGIC, (dtMs: number) => this.logicUpdate(dtMs));
-    this.context.loopManager.register(this.loopId + '_POST', GamePhase.POST_UPDATE, (dtMs: number) => this.postUpdate(dtMs));
+    this.loopManager.register(this.loopId + '_PHYSICS', GamePhase.PHYSICS, (dtMs: number) => this.physicsUpdate(dtMs));
+    this.loopManager.register(this.loopId + '_LOGIC', GamePhase.LOGIC, (dtMs: number) => this.logicUpdate(dtMs));
+    this.loopManager.register(this.loopId + '_POST', GamePhase.POST_UPDATE, (dtMs: number) => this.postUpdate(dtMs));
+  }
+
+  public override destroy(): void {
+    this.animSvc.detenerTodas(this.entity);
+    super.destroy(); // Corta hilos
   }
 
   protected physicsUpdate(dtMs: number): void {
-    this.currentSeqRuntime = this.context.sequenceSvc.actualizarSecuencia(dtMs, this.entity);
+    this.currentSeqRuntime = this.sequenceSvc.actualizarSecuencia(dtMs, this.entity);
     
     if (this.currentSeqRuntime.running && this.currentSeqRuntime.step) {
       const soY = this.currentSeqRuntime.step.offsetY || 0;
@@ -72,10 +90,10 @@ export class NpcController extends BaseCharacterController {
   }
 
   protected logicUpdate(dtMs: number): void {
-    this.context.animSvc.gestionarAnimaciones(this.entity, this.estadoFisico, this.currentSeqRuntime);
+    this.animSvc.gestionarAnimaciones(this.entity, this.estadoFisico, this.currentSeqRuntime);
     
     if (this.currentSeqRuntime.freezeOrientation) {
-      this.context.sequenceSvc.applyLockedOrientationWhileSequence(this.entity);
+      this.sequenceSvc.applyLockedOrientationWhileSequence(this.entity);
       
       if (this.mesh.rotationQuaternion) {
         const euler = this.mesh.rotationQuaternion.toEulerAngles();

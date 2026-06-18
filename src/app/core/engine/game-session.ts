@@ -1,4 +1,4 @@
-
+// src/app/core/engine/game-session.ts
 import { Injectable, signal, inject } from '@angular/core';
 import { GameEntity } from './entities/game.entity';
 import { EntityManagerService } from './entities/entity-manager.service';
@@ -9,7 +9,6 @@ import { LoopManagerService } from './behaviors/services/loop-manager.service';
 import { ObjectAnimationService } from './systems/object-animation.service';
 import { GameEventBusService } from './events/game-event-bus.service';
 
-// Importación de servicios para la inyección del CharacterContext
 import { Motor3dService } from '../../services/motor-3d.service';
 import { PlayerAnimationService } from './systems/player-animation.service';
 import { PlayerPhysicsService } from './systems/player-physics.service';
@@ -20,11 +19,10 @@ import { PlayerInteractionService } from './systems/player-interaction.service';
 import { PlayerTriggerService } from './systems/player-trigger.service';
 import { PlayerBubbleService } from './systems/player-bubble.service';
 import { CharacterContext } from '../../services/editor/characters/character-context.interface';
-import { ToolsFogService } from '../../services/editor/toolsservice/tools-fog.service';
+import { PlayerFogService } from './systems/player-fog.service';
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
-  // Runtime State (Interno y Agnóstico)
   public isPlaying = signal<boolean>(false);
   public isAdminSession = signal<boolean>(false);
   public cameraView = signal<'FPS' | 'TPS'>('FPS');
@@ -33,13 +31,11 @@ export class GameSession {
 
   private controllers: Map<string, BaseCharacterController> = new Map();
 
-  // Dependencias Generales
   private entityManager = inject(EntityManagerService);
   private loopManager = inject(LoopManagerService);
   private objectAnimSvc = inject(ObjectAnimationService);
   private eventBus = inject(GameEventBusService);
 
-  // Dependencias para fabricar el CharacterContext
   private motor3d = inject(Motor3dService);
   private animSvc = inject(PlayerAnimationService);
   private physicsSvc = inject(PlayerPhysicsService);
@@ -50,8 +46,8 @@ export class GameSession {
   private triggerSvc = inject(PlayerTriggerService);
   private bubbleSvc = inject(PlayerBubbleService);
   
-  // 🔥 Inyección centralizada de Niebla Volumétrica
-  private fogSvc = inject(ToolsFogService);
+  // 🔥 Inyección de Niebla Volumétrica del RUNTIME
+  private playerFogSvc = inject(PlayerFogService);
 
   public get proxyColliders() {
     return this.motor3d.scene.meshes.filter(m => m.name.includes('proxyCol'));
@@ -64,20 +60,17 @@ export class GameSession {
     this.activePlayerEntity.set(playerEntity);
     this.pointerLocked.set(true);
 
-    // Reseteamos UI enviando eventos al Bus
     this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
     this.eventBus.emit({ type: 'MessageRequested', payload: null });
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
     this.eventBus.emit({ type: 'GameStarted', payload: { view, isAdmin } });
 
-    // Despertar entornos pasivos
     this.triggerSvc.prepararTriggersParaJuego();
     this.objectAnimSvc.startAmbientAutoAnimations();
     
-    // 🔥 Arrancar Niebla Oficial del Juego
-    this.fogSvc.aplicarNieblaEnTiempoReal();
+    // 🔥 Arrancar Niebla Oficial del Juego (Runtime seguro)
+    this.playerFogSvc.start(playerEntity, view);
 
-    // Empaquetar contexto seguro para controladores
     const context: CharacterContext = {
       motor3d: this.motor3d,
       session: this,
@@ -92,7 +85,6 @@ export class GameSession {
       loopManager: this.loopManager
     };
 
-    // Arranque de inputs mapeados a la sesión de juego pura
     this.inputSvc.iniciarEscuchaTeclado(this.motor3d.scene, {
       onToggleCamera: () => this.toggleCameraUser(),
       onAction: () => {
@@ -125,7 +117,6 @@ export class GameSession {
       }
     });
 
-    // Orquestación y Spawn de Actores
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
       if (entity.uid === playerEntity.uid) {
@@ -139,7 +130,6 @@ export class GameSession {
       }
     }
 
-    // Asegurar ratón cautivo del navegador
     const canvas = this.motor3d.engine.getRenderingCanvas();
     if (canvas) {
       const handlePointerLockChange = () => {
@@ -161,17 +151,12 @@ export class GameSession {
     this.inputSvc.detenerEscuchaTeclado(this.motor3d.scene);
     this.objectAnimSvc.stopAmbientAutoAnimations();
     
-    // Solo apagamos la niebla si estamos saliendo del Standalone,
-    // en el editor la dejamos viva para que el admin la siga viendo.
-    if (!this.isAdminSession()) {
-       this.fogSvc.limpiarEstado();
-    }
+    // Apagar la niebla de runtime
+    this.playerFogSvc.stop();
 
-    // Frenado de Controladores
     this.controllers.forEach(ctrl => ctrl.destroy());
     this.controllers.clear();
 
-    // Limpieza de HUD UI enviando el evento
     this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
     this.eventBus.emit({ type: 'MessageRequested', payload: null });
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
@@ -194,6 +179,7 @@ export class GameSession {
       true,
       (newView) => {
         this.cameraView.set(newView);
+        this.playerFogSvc.setView(newView);
         this.eventBus.emit({ type: 'CameraViewChanged', payload: newView });
       },
       customFrames

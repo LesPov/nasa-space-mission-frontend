@@ -1,12 +1,12 @@
 
 import { Injectable, inject } from '@angular/core';
 import { Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
-import { Motor3dService } from '../../../motor-3d.service';
-import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
-import { GameEntity } from '../../../../core/engine/entities/game.entity';
+import { Motor3dService } from '../../../../services/motor-3d.service';
+import { EntityManagerService } from '../../entities/entity-manager.service';
+import { GameEntity } from '../../entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
-export class LoaderTriggerService {
+export class CoreTriggerLoaderService {
   private motor3d = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
 
@@ -15,7 +15,6 @@ export class LoaderTriggerService {
     const shape = trigger.actionProperties?.triggerShape || 'cube';
     const isComposite = trigger.actionProperties?.isComposite ?? false;
 
-    // 1. FUENTE DE VERDAD: Creación de la Entidad
     const uid = trigger.uid || window.crypto.randomUUID();
     const entity = new GameEntity(uid, trigger.name, 'trigger', 'trigger');
 
@@ -53,7 +52,6 @@ export class LoaderTriggerService {
       stateMutations: []
     };
 
-    // 2. CREACIÓN O RECUPERACIÓN DE LA MALLA
     let mesh = scene.getMeshByName(trigger.name) as Mesh;
     
     if (!mesh) {
@@ -63,10 +61,8 @@ export class LoaderTriggerService {
         default: mesh = MeshBuilder.CreateBox(trigger.name, { size: 1 }, scene); break;
       }
 
-      // 3. VINCULACIÓN ECS -> VISTA (Aquí la malla absorbe posición y metadatos)
       entity.bindView(mesh);
 
-      // 4. CONFIGURACIÓN VISUAL BABYLON
       const mat = new StandardMaterial('mat_trigger_' + trigger.name, scene);
       mat.diffuseColor = new Color3(0.0, 1.0, 0.0);
       mat.emissiveColor = new Color3(0.2, 1.0, 0.2);
@@ -83,7 +79,6 @@ export class LoaderTriggerService {
       this.entityManager.addEntity(entity);
       mallasCreadas.set(entity.uid, mesh);
     } else {
-      // Si la malla ya existía, igual la atamos a la entidad
       entity.bindView(mesh);
       this.entityManager.addEntity(entity);
     }

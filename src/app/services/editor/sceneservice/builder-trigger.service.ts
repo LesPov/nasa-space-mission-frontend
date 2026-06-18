@@ -1,13 +1,13 @@
-// src/app/services/editor/sceneservice/builder-trigger.service.ts
+
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { SceneNodesService } from './scene-nodes.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
-import { GameEntity } from '../../../core/engine/entities/game.entity';
- 
+import { CoreTriggerLoaderService } from '../../../core/engine/scene/utils/core-trigger-loader.service';
+  
 @Injectable({ providedIn: 'root' })
 export class BuilderTriggerService {
   private motor3d = inject(Motor3dService);
@@ -15,6 +15,7 @@ export class BuilderTriggerService {
   private historialSvc = inject(HistorialService);
   private nodesSvc = inject(SceneNodesService);
   private entityManager = inject(EntityManagerService);
+  private triggerLoader = inject(CoreTriggerLoaderService);
 
   public reconstruirMallaTrigger(oldMesh: AbstractMesh, nuevaForma: string): Mesh {
     const scene = this.motor3d.scene;
@@ -37,13 +38,11 @@ export class BuilderTriggerService {
       newMesh.setParent(oldMesh.parent);
     }
 
-    // 1. Si tenemos Entidad, la Malla absorbe todo de ella
     if (entity) {
       if (entity.trigger) entity.trigger.triggerShape = nuevaForma;
-      entity.bindView(newMesh); // Empuja pos, rot, scale y metadata
-      this.entityManager.addEntity(entity); // Actualiza la referencia en el Manager
+      entity.bindView(newMesh); 
+      this.entityManager.addEntity(entity); 
     } else {
-      // Fallback de emergencia si la entidad se perdió
       newMesh.position = oldMesh.getAbsolutePosition().clone();
       if (oldMesh.rotationQuaternion) newMesh.rotationQuaternion = oldMesh.rotationQuaternion.clone();
       else newMesh.rotation = oldMesh.rotation.clone();
@@ -52,7 +51,6 @@ export class BuilderTriggerService {
       newMesh.metadata.triggerShape = nuevaForma;
     }
 
-    // 2. Configuración Visual Exclusiva de Babylon
     const mat = new StandardMaterial('mat_trigger_' + newMesh.name, scene);
     mat.diffuseColor = new Color3(0.0, 1.0, 0.0);
     mat.emissiveColor = new Color3(0.2, 1.0, 0.2);
@@ -76,92 +74,34 @@ export class BuilderTriggerService {
   }
 
   public agregarTriggerCustom(
-    nombre: string,
-    shape: string,
-    isComposite: boolean,
-    mensaje: string,
-    sizeX: number,
-    sizeY: number,
-    sizeZ: number,
-    parentNode: AbstractMesh | null = null
+    nombre: string, shape: string, isComposite: boolean, mensaje: string, 
+    sizeX: number, sizeY: number, sizeZ: number, parentNode: AbstractMesh | null = null
   ): void {
-    const scene = this.motor3d.scene;
-    
-    // 1. FUENTE DE VERDAD: Crear y poblar Entidad Lógica primero
-    const uid = window.crypto.randomUUID();
-    const entity = new GameEntity(uid, nombre, 'trigger', 'trigger');
-
-    entity.transform.scale = { x: sizeX, y: sizeY, z: sizeZ };
-
-    if (parentNode) {
-      entity.parentId = parentNode.metadata?.uid || null;
-      entity.transform.position = { x: 0, y: 0, z: 0 };
-    } else {
-      entity.transform.position = { x: 0, y: sizeY / 2, z: 0 };
-    }
-
-    entity.trigger = {
-      isComposite: isComposite,
-      triggerShape: shape || 'cube',
-      conditions: isComposite ? ['on_enter'] : [],
-      mensajeEntrada: isComposite ? mensaje : '',
-      mensajeSalida: '',
-      soundUrlEntrada: '',
-      soundUrlSalida: '',
-      seqEntrada: '',
-      seqSalida: '',
-      timeEntrada: 4.5,
-      timeSalida: 4.5,
-      videoEntrada: '',
-      videoSalida: '',
-      condition: 'on_enter',
-      mensaje: isComposite ? '' : mensaje,
-      soundUrl: '',
-      interactSequenceId: '',
-      timeNorm: 4.5,
-      videoNorm: '',
-      isRepeatable: false,
-      isEnabled: true,
-      hasTriggeredEnter: false,
-      hasTriggeredExit: false,
-      gameConditions: [],
-      stateMutations: []
+    const mockDbObject = {
+      uid: window.crypto.randomUUID(),
+      name: nombre,
+      type: 'trigger',
+      position: parentNode ? {x:0, y:0, z:0} : { x: 0, y: sizeY / 2, z: 0 },
+      scale: { x: sizeX, y: sizeY, z: sizeZ },
+      parentId: parentNode?.metadata?.uid || null,
+      condition: isComposite ? 'on_enter' : 'on_enter',
+      actionProperties: {
+         isComposite: isComposite,
+         triggerShape: shape || 'cube',
+         mensaje: mensaje
+      }
     };
 
-    // 2. CREAR MALLA
-    let mesh!: Mesh;
-    switch (shape) {
-      case 'sphere': mesh = MeshBuilder.CreateSphere(nombre, { diameter: 1 }, scene); break;
-      case 'cylinder': mesh = MeshBuilder.CreateCylinder(nombre, { height: 1, diameter: 1 }, scene); break;
-      default: mesh = MeshBuilder.CreateBox(nombre, { size: 1 }, scene); break;
+    const mallasCreadas = new Map<string, Mesh>();
+    this.triggerLoader.cargarTrigger(mockDbObject, mallasCreadas, true);
+    
+    const newMesh = mallasCreadas.get(mockDbObject.uid);
+    if (newMesh) {
+      if (parentNode) newMesh.setParent(parentNode);
+      this.state.objetoSeleccionado.set(newMesh);
+      this.nodesSvc.actualizarListaNodos();
+      this.historialSvc.registrarAccionCrear(newMesh);
+      this.state.triggerUpdate();
     }
-
-    if (parentNode) {
-      mesh.setParent(parentNode);
-    }
-
-    // 3. VINCULAR LA VISTA: La malla adquiere la posición y escala de la entidad
-    entity.bindView(mesh);
-
-    // 4. CONFIGURACIÓN VISUAL
-    const mat = new StandardMaterial('mat_trigger_' + nombre, scene);
-    mat.diffuseColor = new Color3(0.0, 1.0, 0.0);
-    mat.emissiveColor = new Color3(0.2, 1.0, 0.2);
-    mat.alpha = 0.4;
-    mat.wireframe = true;
-    mat.disableLighting = true;
-    mat.maxSimultaneousLights = 16;
-    mesh.material = mat;
-
-    mesh.isPickable = true;
-    mesh.checkCollisions = false;
-    mesh.isVisible = this.state.rolSimulado() === 'admin';
-
-    // 5. REGISTRAR EN EL MOTOR Y ECS
-    this.entityManager.addEntity(entity);
-    this.state.objetoSeleccionado.set(mesh);
-    this.nodesSvc.actualizarListaNodos();
-    this.historialSvc.registrarAccionCrear(mesh);
-    this.state.triggerUpdate();
   }
 }

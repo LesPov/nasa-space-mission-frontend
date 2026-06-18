@@ -1,27 +1,26 @@
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DirectionalLight, FresnelParameters, Mesh, MeshBuilder, PointLight, SpotLight, StandardMaterial, Texture, Vector3, VideoTexture } from '@babylonjs/core';
-import { Motor3dService } from '../../../motor-3d.service';
-import { SceneUtilsService } from '../scene-utils.service';
-import { SceneProjectionService } from '../scene-projection.service';
-import { BubblePulseBehavior } from '../../../../core/engine/behaviors/bubble-pulse.behavior';
-import { DistanceFadeBehavior } from '../../../../core/engine/behaviors/distance-fade.behavior';
-import { LoopManagerService } from '../../../../core/engine/behaviors/services/loop-manager.service';
-import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
-import { GameEntity } from '../../../../core/engine/entities/game.entity';
+import { Motor3dService } from '../../../../services/motor-3d.service';
+import { CoreSceneUtilsService } from '../utils/core-scene-utils.service';
+import { CoreSceneProjectionService } from '../utils/core-scene-projection.service';
+import { BubblePulseBehavior } from '../../behaviors/bubble-pulse.behavior';
+import { DistanceFadeBehavior } from '../../behaviors/distance-fade.behavior';
+import { LoopManagerService } from '../../behaviors/services/loop-manager.service';
+import { EntityManagerService } from '../../entities/entity-manager.service';
+import { GameEntity } from '../../entities/game.entity';
  
 @Injectable({ providedIn: 'root' })
-export class LoaderPrimitiveService {
+export class CorePrimitiveLoaderService {
   private motor3d = inject(Motor3dService);
-  private utilsSvc = inject(SceneUtilsService);
-  private projectionSvc = inject(SceneProjectionService);
+  private utilsSvc = inject(CoreSceneUtilsService);
+  private projectionSvc = inject(CoreSceneProjectionService);
   private loopManager = inject(LoopManagerService);
   private entityManager = inject(EntityManagerService); 
 
   public cargarPrimitiva(obj: any, mallasCreadas: Map<string, Mesh>, isAdmin: boolean): void {
     const scene = this.motor3d.scene;
     
-    // 1. FUENTE DE VERDAD: Crear Entidad Lógica y Poblar sus componentes puros
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, obj.type, obj.properties?.rol || 'prop');
 
     entity.transform.position = { x: obj.position?.x ?? 0, y: obj.position?.y ?? 0, z: obj.position?.z ?? 0 };
@@ -90,7 +89,6 @@ export class LoaderPrimitiveService {
       entity.light.attachedNodeName = obj.properties?.attachedNodeName || '';
     }
 
-    // 2. CREAR MESH
     let mesh!: Mesh;
     switch (obj.type) {
       case 'cube': mesh = MeshBuilder.CreateBox(entity.name, { size: 1 }, scene); break;
@@ -103,10 +101,8 @@ export class LoaderPrimitiveService {
       default: return;
     }
 
-    // 3. VINCULAR ECS A VISTA: Babylon obedece a las coordenadas y metadatos de entity
     entity.bindView(mesh); 
     
-    // 4. Configuraciones Babylon Específicas Post-Binding
     mesh.isPickable = true;
     mesh.checkCollisions = entity.visual.isSolid;
     mesh.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;

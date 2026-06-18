@@ -5,8 +5,8 @@ import { Node, AbstractMesh, Vector3 } from '@babylonjs/core';
 import { EditorToolsService } from './editor/editor-tools.service';
 import { EditorSceneService } from './editor/editor-scene.service';
 import { EditorStateService, ToolMode, PlayState } from './editor/editor-state.service';
-import { SceneLoaderService } from './editor/sceneservice/scene-loader.service'; 
-
+import { CoreSceneLoaderService } from '../core/engine/scene/utils/core-scene-loader.service';
+ 
 export type { ToolMode, PlayState };
 
 @Injectable({
@@ -17,7 +17,7 @@ export class EditorMapaService {
   public state = inject(EditorStateService); 
   private tools = inject(EditorToolsService);
   private scene = inject(EditorSceneService);
-  private loader = inject(SceneLoaderService); 
+  private loader = inject(CoreSceneLoaderService); 
 
   get playState() { return this.state.playState; }
   get rolSimulado() { return this.state.rolSimulado; }
@@ -76,7 +76,7 @@ export class EditorMapaService {
 
   instanciarPrefabFull(prefabData: any, targetPos: Vector3): void {
     const isAdmin = this.state.rolSimulado() === 'admin';
-    this.loader.instanciarObjetoDesdePrefab(prefabData, targetPos, isAdmin).then((mallas) => {
+    this.loader.instantiatePrefab(prefabData, targetPos, isAdmin).then((mallas) => {
       this.scene.actualizarListaNodos();
       const iter = mallas.values().next();
       if (!iter.done) {

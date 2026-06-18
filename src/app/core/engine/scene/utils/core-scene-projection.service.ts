@@ -1,11 +1,11 @@
 
 import { Injectable, inject } from '@angular/core';
 import { Color3, Engine, Mesh, MeshBuilder, Ray, Scene, StandardMaterial, Texture, Vector3 } from '@babylonjs/core';
-import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
-import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
- 
+import { LoopManagerService, GamePhase } from '../../behaviors/services/loop-manager.service';
+import { EntityManagerService } from '../../entities/entity-manager.service';
+
 @Injectable({ providedIn: 'root' })
-export class SceneProjectionService {
+export class CoreSceneProjectionService {
   private loopManager = inject(LoopManagerService);
   private entityManager = inject(EntityManagerService);
 
@@ -37,7 +37,7 @@ export class SceneProjectionService {
         value.dispose();
       }
     } catch (error) {
-      console.warn('[SceneProjectionService] Error al disponer recurso:', error);
+      console.warn('[CoreSceneProjectionService] Error al disponer recurso:', error);
     }
   }
 

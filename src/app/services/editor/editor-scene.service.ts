@@ -1,47 +1,57 @@
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh } from '@babylonjs/core';
-
-// Inyección de Sub-servicios orquestados
-import { SceneEnvironmentService } from './sceneservice/scene-environment.service';
-import { SceneShadowsService } from './sceneservice/scene-shadows.service';
+import { AbstractMesh, Mesh, Vector3, MeshBuilder, Color4 } from '@babylonjs/core';
+import { Motor3dService } from '../motor-3d.service';
+import { CoreSceneLoaderService } from '../../core/engine/scene/utils/core-scene-loader.service';
+import { CoreSceneShadowsService } from '../../core/engine/scene/utils/core-scene-shadows.service';
 import { SceneObjectBuilderService } from './sceneservice/scene-object-builder.service';
-import { SceneLoaderService } from './sceneservice/scene-loader.service';
 import { SceneSaverService } from './sceneservice/scene-saver.service';
 import { SceneNodesService } from './sceneservice/scene-nodes.service';
 import { EditorStateService } from './editor-state.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorSceneService {
-  
-  private envSvc = inject(SceneEnvironmentService);
-  private shadowsSvc = inject(SceneShadowsService);
+  private motor3d = inject(Motor3dService);
+  private loaderSvc = inject(CoreSceneLoaderService);
+  private shadowsSvc = inject(CoreSceneShadowsService);
   private builderSvc = inject(SceneObjectBuilderService);
-  private loaderSvc = inject(SceneLoaderService);
   private saverSvc = inject(SceneSaverService);
   private nodesSvc = inject(SceneNodesService);
   private state = inject(EditorStateService);
 
-  // --- MÉTODOS DE ENTORNO ---
-  crearEntornoVisual(): void {
-    this.envSvc.crearEntornoVisual();
+  public crearEntornoVisual(): void {
+    const scene = this.motor3d.scene;
+    const size = 50;
+    MeshBuilder.CreateLines('ejeX', { points: [new Vector3(-size, 0, 0), new Vector3(size, 0, 0)], colors: [new Color4(1, 0.2, 0.2, 1), new Color4(1, 0.2, 0.2, 1)] }, scene).isPickable = false;
+    MeshBuilder.CreateLines('ejeY', { points: [new Vector3(0, -size, 0), new Vector3(0, size, 0)], colors: [new Color4(0.2, 1, 0.2, 1), new Color4(0.2, 1, 0.2, 1)] }, scene).isPickable = false;
+    MeshBuilder.CreateLines('ejeZ', { points: [new Vector3(0, 0, -size), new Vector3(0, 0, size)], colors: [new Color4(0.2, 0.5, 1, 1), new Color4(0.2, 0.5, 1, 1)] }, scene).isPickable = false;
+
+    const ptsGrid: Vector3[][] = [];
+    const colorsGrid: Color4[][] = [];
+    const colorGris = new Color4(0.3, 0.3, 0.3, 0.5);
+
+    for (let i = -60; i <= 60; i += 2) {
+      if (i === 0) continue;
+      ptsGrid.push([new Vector3(i, 0, -60), new Vector3(i, 0, 60)]); colorsGrid.push([colorGris, colorGris]);
+      ptsGrid.push([new Vector3(-60, 0, i), new Vector3(60, 0, i)]); colorsGrid.push([colorGris, colorGris]);
+    }
+    MeshBuilder.CreateLineSystem('gridHelper', { lines: ptsGrid, colors: colorsGrid }, scene).isPickable = false;
   }
 
-  crearSuelo(): void {
-    this.envSvc.crearSuelo();
+  public crearSuelo(): void {
+    this.loaderSvc.createInvisibleFloor(this.motor3d.scene);
     this.nodesSvc.actualizarListaNodos();
   }
 
-  // --- MÉTODOS DE CONSTRUCCIÓN ---
-  reconstruirMallaTrigger(oldMesh: AbstractMesh, nuevaForma: string): Mesh {
+  public reconstruirMallaTrigger(oldMesh: AbstractMesh, nuevaForma: string): Mesh {
     return this.builderSvc.reconstruirMallaTrigger(oldMesh, nuevaForma);
   }
 
-  agregarTriggerCustom(nombre: string, shape: string, isComposite: boolean, mensaje: string, sizeX: number, sizeY: number, sizeZ: number, parentNode: AbstractMesh | null = null): void {
+  public agregarTriggerCustom(nombre: string, shape: string, isComposite: boolean, mensaje: string, sizeX: number, sizeY: number, sizeZ: number, parentNode: AbstractMesh | null = null): void {
     this.builderSvc.agregarTriggerCustom(nombre, shape, isComposite, mensaje, sizeX, sizeY, sizeZ, parentNode);
   }
 
-  agregarObjetoCustom(
+  public agregarObjetoCustom(
     tipo: string, nombre: string, rol: string, colorHex: string,
     sizeX: number, sizeY: number, sizeZ: number, asset?: any,
     isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = '',
@@ -50,33 +60,30 @@ export class EditorSceneService {
     this.builderSvc.agregarObjetoCustom(tipo, nombre, rol, colorHex, sizeX, sizeY, sizeZ, asset, isSolid, isSelectable, mensaje, parentNode);
   }
 
-  // --- SOMBRAS Y RENDER ---
-  asignarObjetosASombrasDeLuces(): void {
+  public asignarObjetosASombrasDeLuces(): void {
     this.shadowsSvc.asignarObjetosASombrasDeLuces();
   }
 
-  // --- GESTIÓN DE NODOS Y MEMORIA ---
-  actualizarListaNodos(): void {
+  public actualizarListaNodos(): void {
     this.nodesSvc.actualizarListaNodos();
   }
 
-  eliminarSeleccionado(): void {
+  public eliminarSeleccionado(): void {
     this.nodesSvc.eliminarSeleccionado();
   }
 
-  limpiarEstado(): void {
+  public limpiarEstado(): void {
     this.nodesSvc.limpiarEstado();
   }
 
-  // --- CARGA Y GUARDADO CON LA BD ---
-  cargarEscenaDesdeDatos(dataBD: any): Promise<void> {
+  public cargarEscenaDesdeDatos(dataBD: any): Promise<void> {
     const isAdmin = this.state.rolSimulado() === 'admin';
-    return this.loaderSvc.cargarEscenaDesdeDatos(dataBD, isAdmin).then(() => {
+    return this.loaderSvc.loadSceneFromData(dataBD, isAdmin).then(() => {
       this.nodesSvc.actualizarListaNodos();
     });
   }
 
-  obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[], worldSettings: any } {
+  public obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[], worldSettings: any } {
     return this.saverSvc.obtenerDatosParaGuardar();
   }
 }

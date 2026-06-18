@@ -1,7 +1,8 @@
+
 import { Injectable } from '@angular/core';
 
 @Injectable({ providedIn: 'root' })
-export class SceneMaterialService {
+export class CoreSceneMaterialService {
   
   public ajustarMaterialGLB(material: any): void {
     if (!material) return;

@@ -1,9 +1,10 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { HistorialService } from '../../historial.service';
 import { Motor3dService } from '../../motor-3d.service';
-import { SceneProjectionService } from '../sceneservice/scene-projection.service';
+import { CoreSceneProjectionService } from '../../../core/engine/scene/utils/core-scene-projection.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
@@ -11,7 +12,7 @@ export class TransformMutatorService {
   private editorSvc = inject(EditorMapaService);
   private historialSvc = inject(HistorialService);
   private motor3dSvc = inject(Motor3dService);
-  private projectionSvc = inject(SceneProjectionService);
+  private projectionSvc = inject(CoreSceneProjectionService);
   private entityManager = inject(EntityManagerService); 
 
   public aplicarPosicion(objeto: AbstractMesh, localPos: { x: number, y: number, z: number }): void {
@@ -70,11 +71,11 @@ export class TransformMutatorService {
     const entity = this.entityManager.getEntityByMesh(objeto);
     if (!entity || !entity.media) return;
 
-    entity.media.profundidadProyeccion = this.clampPositive(Number(config.profundidadProyeccion), 0.08, 0.01, 1000);
+    entity.media.profundidadProyeccion = this.projectionSvc.clampNum(Number(config.profundidadProyeccion), 0.08, 1000, 0.01);
     entity.media.anguloProyeccion = Number(config.anguloProyeccion);
-    entity.media.proyeccionAncho = this.clampPositive(Number(config.proyeccionAncho), 1, 0.01, 1000);
-    entity.media.proyeccionAlto = this.clampPositive(Number(config.proyeccionAlto), 1, 0.01, 1000);
-    entity.media.proyeccionRepeticiones = Math.floor(this.clampPositive(Number(config.proyeccionRepeticiones), 1, 1, 50));
+    entity.media.proyeccionAncho = this.projectionSvc.clampNum(Number(config.proyeccionAncho), 1, 1000, 0.01);
+    entity.media.proyeccionAlto = this.projectionSvc.clampNum(Number(config.proyeccionAlto), 1, 1000, 0.01);
+    entity.media.proyeccionRepeticiones = Math.floor(this.projectionSvc.clampNum(Number(config.proyeccionRepeticiones), 1, 50, 1));
     entity.media.proyeccionEspaciado = Number(config.proyeccionEspaciado);
     entity.media.proyeccionEje = config.proyeccionEje;
     entity.media.fadeDistance = Math.max(0, Number(config.fadeDistance));
@@ -105,7 +106,7 @@ export class TransformMutatorService {
         const decalMat = objeto.metadata.decalMaterial as StandardMaterial;
         if (decalMat) {
           const tex = (decalMat.diffuseTexture || decalMat.opacityTexture) as any;
-          this.aplicarMaterialHolograma(decalMat, activeColorHex, config.brilloIntensidad, config.ignoraNiebla, tex);
+          this.projectionSvc.configurarMaterialProyector(decalMat, activeColorHex, config.brilloIntensidad, config.ignoraNiebla, tex);
         }
         if (Array.isArray(objeto.metadata.decalMeshes)) {
           objeto.metadata.decalMeshes.forEach((m: AbstractMesh) => { if (m) m.applyFog = !config.ignoraNiebla; });
@@ -159,43 +160,5 @@ export class TransformMutatorService {
   private clampBrightness(v: number): number {
     if (Number.isNaN(v) || v === null || v === undefined) return 1.0;
     return Math.max(0, Math.min(10, Number(v)));
-  }
-
-  private clampPositive(v: number, fallback: number, min = 0.01, max = 9999): number {
-    if (Number.isNaN(v) || v === null || v === undefined) return fallback;
-    return Math.max(min, Math.min(max, Number(v)));
-  }
-
-  private aplicarMaterialHolograma(mat: StandardMaterial, colorHex: string, brilloIntensidad: number, ignoraNiebla: boolean, texture?: any): void {
-    const c3 = Color3.FromHexString(colorHex || '#ffffff');
-    const brillo = this.clampBrightness(brilloIntensidad);
-
-    mat.disableLighting = true;
-    mat.diffuseColor = c3;
-    mat.ambientColor = Color3.Black();
-    mat.specularColor = Color3.Black();
-    mat.backFaceCulling = false;
-    mat.alphaMode = Engine.ALPHA_COMBINE;
-    mat.disableDepthWrite = true; 
-    mat.fogEnabled = !ignoraNiebla;
-    mat.zOffset = -2; 
-
-    if (texture) {
-      texture.hasAlpha = true;
-      texture.gammaSpace = true;
-      mat.diffuseTexture = texture;
-      mat.useAlphaFromDiffuseTexture = true;
-      mat.opacityTexture = texture;
-      mat.emissiveTexture = null as any;
-      mat.emissiveColor = c3.scale(brillo);
-      mat.alpha = 1.0;
-    } else {
-      mat.diffuseTexture = null as any;
-      mat.opacityTexture = null as any;
-      mat.emissiveTexture = null as any;
-      mat.useAlphaFromDiffuseTexture = false;
-      mat.emissiveColor = c3.scale(brillo);
-      mat.alpha = Math.max(0.2, Math.min(1.0, brillo * 0.5));
-    }
   }
 }

@@ -1,28 +1,26 @@
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, DirectionalLight, Matrix, Mesh, MeshBuilder, PointLight, Quaternion, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
-import { Motor3dService } from '../../../motor-3d.service';
-import { SceneMaterialService } from '../scene-material.service';
-import { SceneUtilsService } from '../scene-utils.service';
-import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
-import { GameEntity } from '../../../../core/engine/entities/game.entity';
+import { AbstractMesh, Color3, DirectionalLight, Matrix, Mesh, MeshBuilder, PointLight, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
+import '@babylonjs/loaders';
+import { Motor3dService } from '../../../../services/motor-3d.service';
+import { CoreSceneMaterialService } from '../utils/core-scene-material.service';
+import { CoreSceneUtilsService } from '../utils/core-scene-utils.service';
+import { EntityManagerService } from '../../entities/entity-manager.service';
+import { GameEntity } from '../../entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
-export class LoaderModelService {
+export class CoreModelLoaderService {
   private motor3d = inject(Motor3dService);
-  private materialSvc = inject(SceneMaterialService);
-  private utilsSvc = inject(SceneUtilsService);
+  private materialSvc = inject(CoreSceneMaterialService);
+  private utilsSvc = inject(CoreSceneUtilsService);
   private entityManager = inject(EntityManagerService); 
 
   public async cargarModeloAsync(obj: any, mallasCreadas: Map<string, Mesh>): Promise<void> {
     const scene = this.motor3d.scene;
-    const isModel = obj.type === 'model';
-    const isLight = obj.type?.startsWith('light_');
-
     const path = obj.properties?.path || obj.asset?.path;
 
     if (!path) {
-      console.warn(`[LoaderModel] Objeto ${obj.name} sin ruta válida. Creando Malla de Recuperación (Error).`);
+      console.warn(`[CoreModelLoader] Objeto ${obj.name} sin ruta válida. Creando Malla de Recuperación (Error).`);
       const fallbackMesh = MeshBuilder.CreateBox(obj.name, { size: 1 }, scene);
       const fallbackMat = new StandardMaterial('error_mat', scene);
       fallbackMat.wireframe = true;
@@ -41,7 +39,7 @@ export class LoaderModelService {
       rootNode.name = obj.name;
       this.aplicarTransformacionesYEntidad(rootNode, obj, mallasCreadas, result.meshes, result.animationGroups);
     } catch (e) {
-      console.error(`[LoaderModel] Error catastrofico cargando el GLB ${path}. Creando malla de error.`, e);
+      console.error(`[CoreModelLoader] Error catastrofico cargando el GLB ${path}. Creando malla de error.`, e);
       const fallbackMesh = MeshBuilder.CreateBox(obj.name, { size: 1 }, scene);
       const fallbackMat = new StandardMaterial('error_mat', scene);
       fallbackMat.wireframe = true;
@@ -58,7 +56,6 @@ export class LoaderModelService {
     const rolSaved = obj.properties?.rol || 'prop';
     const isProp = rolSaved === 'prop';
 
-    // 1. FUENTE DE VERDAD: Creación de la Entidad
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, obj.type, rolSaved);
 
     entity.transform.position = { x: obj.position?.x ?? 0, y: obj.position?.y ?? 0, z: obj.position?.z ?? 0 };
@@ -114,11 +111,9 @@ export class LoaderModelService {
       entity.light.attachedNodeName = obj.properties?.attachedNodeName || '';
     }
 
-    // 2. VINCULACIÓN (ECS absorbe al Mesh)
     entity.bindView(rootNode); 
 
-    // 3. Modificaciones nativas Babylon
-    rootNode.checkCollisions = false; // La raíz sí usará mover pero las físicas globales las pone el controlador
+    rootNode.checkCollisions = false; 
     rootNode.isPickable = true;
     rootNode.ellipsoid = new Vector3((entity.collider.sizeX ?? 0.5) * scaleX, (entity.collider.sizeY ?? 0.5) * scaleY, (entity.collider.sizeZ ?? 0.5) * scaleZ);
     rootNode.ellipsoidOffset = new Vector3((entity.collider.offsetX ?? 0) * scaleX, (entity.collider.offsetY ?? 0) * scaleY, (entity.collider.offsetZ ?? 0) * scaleZ);
@@ -129,9 +124,6 @@ export class LoaderModelService {
         const vertices = m.getTotalVertices();
         
         if (vertices > 0) {
-            // 🔥 SOLUCIÓN DEFINITIVA A AUTO-COLISIONES DE PERSONAJES
-            // Si el objeto es un personaje/jugador, prohibimos terminantemente 
-            // que sus mallas internas interactúen con el motor de físicas.
             if (rolSaved === 'npc' || rolSaved === 'spawn_point') {
                 m.checkCollisions = false;
             } else {

@@ -1,11 +1,11 @@
 
 import { Injectable, inject } from '@angular/core';
 import { CascadedShadowGenerator, DirectionalLight, ShadowGenerator, SpotLight } from '@babylonjs/core';
-import { Motor3dService } from '../../motor-3d.service';
-import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { Motor3dService } from '../../../../services/motor-3d.service';
+import { EntityManagerService } from '../../entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
-export class SceneShadowsService {
+export class CoreSceneShadowsService {
   private motor3d = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
 

@@ -1,12 +1,11 @@
-// src/app/services/editor/toolsservice/tools-fog.service.ts
+// src/app/core/engine/systems/player-fog.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
-import { Motor3dService } from '../../motor-3d.service';
-import { EditorStateService } from '../editor-state.service';
-import { FogLevel } from '../../../core/engine/models/player-config.model';
-import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
-import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
- 
+import { Motor3dService } from '../../../services/motor-3d.service';
+import { FogLevel } from '../models/player-config.model';
+import { LoopManagerService, GamePhase } from '../behaviors/services/loop-manager.service';
+import { GameEntity } from '../entities/game.entity';
+
 class FogWallState { 
   dist = 500; 
   height = 10; 
@@ -19,11 +18,9 @@ class FogWallState {
 }
 
 @Injectable({ providedIn: 'root' }) 
-export class ToolsFogService { 
+export class PlayerFogService { 
   private motor3d = inject(Motor3dService); 
-  private state = inject(EditorStateService);
   private loopManager = inject(LoopManagerService);
-  private entityManager = inject(EntityManagerService);
 
   private isRegistered = false; 
   private firstFrame = true;
@@ -38,6 +35,9 @@ export class ToolsFogService {
   private fogMats: StandardMaterial[][] = []; 
   private wallStates: FogWallState[] = []; 
   private gradTex: DynamicTexture | null = null;
+  
+  private playerEntity: GameEntity | null = null;
+  private currentView: 'FPS'|'TPS' = 'FPS';
 
   constructor() { 
     for(let i = 0; i < 5; i++) {
@@ -48,7 +48,7 @@ export class ToolsFogService {
   private getGradientTexture(scene: Scene): DynamicTexture { 
     if (this.gradTex) return this.gradTex;
 
-    const tex = new DynamicTexture("fogGradTex", { width: 2, height: 256 }, scene, false);
+    const tex = new DynamicTexture("playerFogGradTex", { width: 2, height: 256 }, scene, false);
     tex.hasAlpha = true;
     const ctx = tex.getContext();
 
@@ -68,15 +68,13 @@ export class ToolsFogService {
     return tex;
   }
 
-  public limpiarEstado(): void {
-    if (this.isRegistered) {
-      this.loopManager.unregister('ToolsFogUpdate');
-      this.isRegistered = false;
-      this.firstFrame = true;
-    }
+  public setView(view: 'FPS'|'TPS'): void {
+      this.currentView = view;
   }
 
-  public aplicarNieblaEnTiempoReal(): void { 
+  public start(playerEntity: GameEntity, view: 'FPS'|'TPS'): void {
+    this.playerEntity = playerEntity;
+    this.currentView = view;
     const scene = this.motor3d.scene; 
     if (!scene) return;
 
@@ -89,46 +87,39 @@ export class ToolsFogService {
       this.curEnd = scene.fogEnd || 500000;
       this.firstFrame = true;
 
-      this.loopManager.register('ToolsFogUpdate', GamePhase.POST_UPDATE, () => this.updateFogFrame(scene));
+      this.loopManager.register('PlayerFogUpdate', GamePhase.POST_UPDATE, () => this.updateFogFrame(scene));
       this.isRegistered = true;
     }
   }
 
-  private updateFogFrame(scene: Scene): void { 
-    const modo = this.state.playState();
-    
-    // Si el Runtime entró a jugar, ocultamos los muros del editor y dejamos en paz a Babylon
-    if (modo === 'PLAYING' || modo === 'TRANSITIONING') {
-       this.fogWalls.forEach(w => w.getChildMeshes().forEach(m => m.isVisible = false));
-       return;
+  public stop(): void {
+    if (this.isRegistered) {
+      this.loopManager.unregister('PlayerFogUpdate');
+      this.isRegistered = false;
+      this.firstFrame = true;
+      
+      this.fogWalls.forEach(w => w.getChildMeshes().forEach(m => m.isVisible = false));
     }
-    
-    let targetPlayer: AbstractMesh | null = null; 
+    this.playerEntity = null;
+  }
+
+  private updateFogFrame(scene: Scene): void { 
+    const targetPlayer = this.playerEntity?.view as AbstractMesh || null; 
     let shadowLimit = 500000;
 
-    if (this.state.jugadorActivo) {
-       targetPlayer = this.state.jugadorActivo;
-    } else {
-       targetPlayer = scene.meshes.find(m => {
-           const entity = this.entityManager.getEntityByMesh(m);
-           return entity?.rol === 'spawn_point' || entity?.rol === 'npc';
-       }) || null;
-    }
-
     const isBW = scene.metadata?.globalVisualMode === 'bw';
-    const isFPS = this.state.modoVistaPrueba === 'FPS';
-    const lerpSpeed = 0.035; 
+    const isFPS = this.currentView === 'FPS';
+    const lerpSpeed = 0.35; 
 
     let targetR = 0, targetG = 0, targetB = 0;
     let useFog = false;
     let activeLevels: FogLevel[] = [];
     
     const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
-    const targetEntity = this.entityManager.getEntityByMesh(targetPlayer);
 
-    if (modo === 'EDITING_IN_GAME' && targetEntity?.playerConfig?.fog?.enabled) {
+    if (this.playerEntity?.playerConfig?.fog?.enabled) {
       useFog = true;
-      const fog = targetEntity.playerConfig.fog;
+      const fog = this.playerEntity.playerConfig.fog;
       
       const activeColor = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
       const targetColorObj = Color3.FromHexString(activeColor);
@@ -143,12 +134,18 @@ export class ToolsFogService {
         : (isFPS ? fog.levelsFPS : fog.levelsTPS);
 
       let distCamToPlayer = scene.activeCamera && targetPlayer ? Vector3.Distance(scene.activeCamera.globalPosition, targetPlayer.getAbsolutePosition()) : 0;
+      distCamToPlayer = Math.min(distCamToPlayer, 8); 
+      
       const renderMaxZ = (Number(renderDistance) || 100000) + distCamToPlayer;
 
       if (this.firstFrame) {
+          this.motor3d.playerCameraFPS.maxZ = renderMaxZ;
+          this.motor3d.playerCameraTPS.maxZ = renderMaxZ;
           this.motor3d.editorCamera.maxZ = renderMaxZ;
       } else {
           this.motor3d.editorCamera.maxZ += (renderMaxZ - this.motor3d.editorCamera.maxZ) * 0.05;
+          this.motor3d.playerCameraFPS.maxZ += (renderMaxZ - this.motor3d.playerCameraFPS.maxZ) * 0.05;
+          this.motor3d.playerCameraTPS.maxZ += (renderMaxZ - this.motor3d.playerCameraTPS.maxZ) * 0.05;
       }
       
       shadowLimit = renderMaxZ;
@@ -159,9 +156,13 @@ export class ToolsFogService {
       targetR = targetColorObj.r; targetG = targetColorObj.g; targetB = targetColorObj.b;
 
       if (this.firstFrame) {
+          this.motor3d.playerCameraFPS.maxZ = 500000;
+          this.motor3d.playerCameraTPS.maxZ = 500000;
           this.motor3d.editorCamera.maxZ = 500000;
       } else {
           this.motor3d.editorCamera.maxZ += (500000 - this.motor3d.editorCamera.maxZ) * 0.05;
+          this.motor3d.playerCameraFPS.maxZ += (500000 - this.motor3d.playerCameraFPS.maxZ) * 0.05;
+          this.motor3d.playerCameraTPS.maxZ += (500000 - this.motor3d.playerCameraTPS.maxZ) * 0.05;
       }
     }
 
@@ -189,12 +190,12 @@ export class ToolsFogService {
 
     for (let i = 0; i < 5; i++) {
       if (!this.fogWalls[i]) {
-        this.fogWalls[i] = new TransformNode("fogWallGroup_" + i, scene);
+        this.fogWalls[i] = new TransformNode("playerFogWallGroup_" + i, scene);
         this.fogMats[i] = []; 
         
         const capasDeGrosor = 12; 
         for (let j = capasDeGrosor - 1; j >= 0; j--) {
-            const mat = new StandardMaterial(`fogMat_${i}_${j}`, scene);
+            const mat = new StandardMaterial(`playerFogMat_${i}_${j}`, scene);
             mat.disableLighting = true; 
             mat.alphaMode = Engine.ALPHA_COMBINE;
             mat.disableDepthWrite = true; 
@@ -202,7 +203,7 @@ export class ToolsFogService {
             mat.fogEnabled = false; 
             this.fogMats[i][j] = mat; 
 
-            const shell = MeshBuilder.CreateCylinder(`fogShell_${i}_${j}`, { 
+            const shell = MeshBuilder.CreateCylinder(`playerFogShell_${i}_${j}`, { 
                 diameter: 1, 
                 height: 1, 
                 sideOrientation: Mesh.DOUBLESIDE, 
@@ -238,7 +239,7 @@ export class ToolsFogService {
           tThick = Math.max(0.1, activeLevels[i].thickness ?? 10);
           tOffsetY = activeLevels[i].offsetY ?? 0;
           
-          const fog = targetEntity?.playerConfig?.fog;
+          const fog = this.playerEntity?.playerConfig?.fog;
           tHex = activeLevels[i].color || (isBW ? (fog?.colorBW || '#888888') : (fog?.color || '#0d1729'));
       }
       
@@ -262,12 +263,9 @@ export class ToolsFogService {
       wallGroup.position.set(anchorX, anchorY + (state.height / 2) + state.offsetY, anchorZ);
       
       const isVisible = state.alpha > 0.001;
-      
       const thickOffsets = Array.from({length: 12}, (_, k) => -1 + (k * (2 / 11)));
-      
       const curDist = Math.max(0.1, state.dist);
       const halfThick = state.thickness / 2;
-
       const meshes = wallGroup.getChildMeshes();
 
       let currentLayers = [5, 10, 20, 40, 60, 100, 100, 60, 40, 20, 10, 5]; 
@@ -278,7 +276,7 @@ export class ToolsFogService {
       }
 
       for (let j = 0; j < 12; j++) {
-          const shell = meshes.find(m => m.name === `fogShell_${i}_${j}`);
+          const shell = meshes.find(m => m.name === `playerFogShell_${i}_${j}`);
           if (!shell) continue;
 
           const targetRadius = curDist + (thickOffsets[j] * halfThick);
@@ -286,7 +284,6 @@ export class ToolsFogService {
           
           const heightRatio = (currentHeights[j] ?? 100) / 100.0;
           shell.scaling.set(localScaleX, heightRatio, localScaleX);
-          
           shell.position.y = -0.5 * (1 - heightRatio);
 
           const mat = this.fogMats[i][j];

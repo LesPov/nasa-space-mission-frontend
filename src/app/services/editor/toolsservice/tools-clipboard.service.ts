@@ -4,7 +4,7 @@ import { AbstractMesh, Quaternion, Vector3 } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
 import { EditorStateService } from '../editor-state.service';
 import { EditorSceneService } from '../editor-scene.service';
-import { SceneUtilsService } from '../sceneservice/scene-utils.service';
+import { CoreSceneUtilsService } from '../../../core/engine/scene/utils/core-scene-utils.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
 
@@ -13,7 +13,7 @@ export class ToolsClipboardService {
   private state = inject(EditorStateService);
   private historialSvc = inject(HistorialService);
   private sceneSvc = inject(EditorSceneService);
-  private utilsSvc = inject(SceneUtilsService);
+  private utilsSvc = inject(CoreSceneUtilsService);
   private entityManager = inject(EntityManagerService);
 
   private objetoEnPortapapeles: AbstractMesh | null = null;
@@ -62,7 +62,6 @@ export class ToolsClipboardService {
     const isModelOrLightModel = entityOriginal.type === 'model' || (entityOriginal.type?.startsWith('light_') && hasAsset);
 
     if (isModelOrLightModel) {
-      // Instanciamos el modelo con toda su jerarquía de mallas
       const parentClone = objOriginal.instantiateHierarchy(null, { doNotInstantiate: true });
       clon = parentClone as AbstractMesh;
       clon.name = nuevoNombre;
@@ -76,7 +75,6 @@ export class ToolsClipboardService {
       clon = objOriginal.clone(nuevoNombre, null) as AbstractMesh;
     }
 
-    // 🔥 CLONAR LA LUZ FÍSICA NATIVA
     if (entityOriginal.type?.startsWith('light_')) {
       const originalLight = objOriginal.getDescendants(false).find(c => c.getClassName().includes('Light')) as any;
       if (originalLight) {
@@ -100,7 +98,6 @@ export class ToolsClipboardService {
 
     clon.scaling = objOriginal.scaling.clone();
     
-    // 🔥 CLONACIÓN PROFUNDA DE LA ENTIDAD LÓGICA (Fuente de verdad)
     const newEntity = new GameEntity(window.crypto.randomUUID(), nuevoNombre, entityOriginal.type, entityOriginal.rol);
     newEntity.transform = JSON.parse(JSON.stringify(entityOriginal.transform));
     newEntity.visual = JSON.parse(JSON.stringify(entityOriginal.visual));
@@ -120,10 +117,8 @@ export class ToolsClipboardService {
        newEntity.initialHeadLocal = entityOriginal.initialHeadLocal.clone();
     }
 
-    // Renovar UIDs en secuencias de la nueva entidad
     this.utilsSvc.renovarIdsDeSecuencias(newEntity);
 
-    // Vínculo bidireccional y registro en ECS
     newEntity.bindView(clon);
     this.entityManager.addEntity(newEntity);
 

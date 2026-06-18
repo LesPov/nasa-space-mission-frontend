@@ -18,6 +18,8 @@ import { GameEventBusService } from '../../../core/engine/events/game-event-bus.
 import { EditorPlayModeService } from '../../../services/editor/editor-play-mode.service';
 import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { EditorLayoutService } from '../../../services/editor/editor-layout.service';
+import { EditorKeyboardService } from '../../../services/editor/editor-keyboard.service';
 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
@@ -44,6 +46,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   private eventBus = inject(GameEventBusService);
   private entityManager = inject(EntityManagerService);
   public runtime = inject(RuntimeEngineService);
+  public layoutUI = inject(EditorLayoutService);
+  public keyboard = inject(EditorKeyboardService);
   public cdr = inject(ChangeDetectorRef);
 
   public playModeSvc = inject(EditorPlayModeService);
@@ -91,13 +95,6 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   public vistaPrueba: 'FPS' | 'TPS' = 'FPS';
   private activeCameraView = 'FPS';
-
-  public showInspector = true;
-  public showTimeline = true;
-  public inspectorWidth = 350;
-  public isResizing = false;
-  public timelineHeight = 30;
-  public isResizingTimeline = false;
 
   private fpsInterval: any;
   private autoSaveSub!: Subscription;
@@ -157,10 +154,25 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  // 🔥 Función Integrada y Funcionando. Limpia forzosamente la UI al pulsarse
+  // DELEGACIÓN DE EVENTOS GLOBALES AL SERVICIO
+  @HostListener('window:mousemove', ['$event'])
+  onMouseMove(event: MouseEvent) {
+    this.layoutUI.onMouseMove(event);
+  }
+
+  @HostListener('window:mouseup')
+  onMouseUp() {
+    this.layoutUI.onMouseUp();
+  }
+
+  @HostListener('window:keydown', ['$event'])
+  manejarAtajos(event: KeyboardEvent) {
+    this.keyboard.handleKeydown(event, this.editando);
+  }
+
   toggleNieblaTemporal() {
     this.stateSvc.fogDesactivadoTemporalmente.set(!this.stateSvc.fogDesactivadoTemporalmente());
-    this.recalcularMotor();
+    setTimeout(() => this.motor3dSvc.forzarRedimension(), 10);
     this.editorSvc.triggerUpdate();
   }
 
@@ -274,73 +286,6 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.cerrandoModalUsuario = false;
       this.cdr.detectChanges(); 
     }, 2000); 
-  }
-
-  toggleInspector() { this.showInspector = !this.showInspector; this.recalcularMotor(); }
-  toggleTimeline() { this.showTimeline = !this.showTimeline; this.recalcularMotor(); }
-
-  recalcularMotor() {
-    setTimeout(() => this.motor3dSvc.forzarRedimension(), 10);
-    setTimeout(() => this.motor3dSvc.forzarRedimension(), 150);
-  }
-
-  iniciarRedimension(event: MouseEvent) {
-    if (this.editorSvc.playState() === 'EDITOR' || this.editorSvc.playState() === 'EDITING_IN_GAME') {
-      this.isResizing = true;
-      event.preventDefault();
-    }
-  }
-
-  iniciarRedimensionTimeline(event: MouseEvent) {
-    if (this.editorSvc.playState() === 'EDITOR' || this.editorSvc.playState() === 'EDITING_IN_GAME') {
-      this.isResizingTimeline = true;
-      event.preventDefault();
-    }
-  }
-
-  @HostListener('window:mousemove', ['$event'])
-  onMouseMove(event: MouseEvent) {
-    if (this.isResizing) {
-      const newWidth = window.innerWidth - event.clientX;
-      if (newWidth > 250 && newWidth < window.innerWidth * 0.6) {
-        this.inspectorWidth = newWidth;
-        this.motor3dSvc.forzarRedimension();
-      }
-    }
-    if (this.isResizingTimeline) {
-      const containerHeight = window.innerHeight;
-      const bottomY = window.innerHeight - event.clientY;
-      let newHeight = (bottomY / containerHeight) * 100;
-      if (newHeight < 5) newHeight = 5;
-      if (newHeight > 70) newHeight = 70;
-      this.timelineHeight = newHeight;
-      this.motor3dSvc.forzarRedimension();
-    }
-  }
-
-  @HostListener('window:mouseup')
-  onMouseUp() {
-    if (this.isResizing) {
-      this.isResizing = false;
-      this.recalcularMotor();
-    }
-    if (this.isResizingTimeline) {
-      this.isResizingTimeline = false;
-      this.recalcularMotor();
-    }
-  }
-
-  @HostListener('window:keydown', ['$event'])
-  manejarAtajos(event: KeyboardEvent) {
-    const target = event.target as HTMLElement | null;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-
-    const state = this.editorSvc.playState();
-    if (this.editando && !this.editorSvc.showAddObjectModal() && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
-      if (event.ctrlKey && (event.key === 'z' || event.key === 'Z')) { this.editorSvc.deshacerAccion(); event.preventDefault(); }
-      if (event.ctrlKey && (event.key === 'c' || event.key === 'C')) { this.editorSvc.copiarObjeto(); event.preventDefault(); }
-      if (event.ctrlKey && (event.key === 'v' || event.key === 'V')) { this.editorSvc.pegarObjeto(); event.preventDefault(); }
-    }
   }
 
   cargarEpisodios() {
@@ -467,7 +412,6 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (this.editorSvc.rolSimulado() === 'admin') {
        this.guardarMapaEnBD(true);
 
-       // Force focus and lock para atrapar la interacción del botón en el mismo milisegundo
        const canvas = this.motor3dSvc.engine.getRenderingCanvas();
        if (canvas) {
            canvas.focus();
@@ -477,10 +421,23 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.playModeSvc.testearEscena(this.vistaPrueba);
   }
 
-  detenerModoPrueba() {
+  // 🔥 RESTAURACIÓN ASÍNCRONA: Esperamos que la carga y limpieza terminen
+  async detenerModoPrueba() {
     if (this.editorSvc.playState() === 'EDITOR') return;
-    this.playModeSvc.detenerPrueba();
-    if (this.editorSvc.rolSimulado() === 'admin') setTimeout(() => this.guardarMapaEnBD(true), 500);
+    
+    // Mostramos la cortina de carga para ocultar el parpadeo de reconstrucción
+    this.cargandoEscena = true;
+    this.cargandoTexto = 'Restaurando Editor...';
+    this.cdr.detectChanges();
+
+    await this.playModeSvc.detenerPrueba();
+
+    this.cargandoEscena = false;
+    this.cdr.detectChanges();
+
+    if (this.editorSvc.rolSimulado() === 'admin') {
+        setTimeout(() => this.guardarMapaEnBD(true), 500);
+    }
   }
 
   cerrarInteraccion() {

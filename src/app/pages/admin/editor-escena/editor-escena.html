@@ -176,10 +176,10 @@
        RENDER PRINCIPAL Y CAPA BABYLON
        ======================================================== -->
   <div class="blender-layout">
-    <div class="viewport-area" [style.width]="(editorSvc.rolSimulado() === 'admin' && showInspector) ? 'calc(100% - ' + inspectorWidth + 'px)' : '100%'">
+    <div class="viewport-area" [style.width]="(editorSvc.rolSimulado() === 'admin' && layoutUI.showInspector()) ? 'calc(100% - ' + layoutUI.inspectorWidth() + 'px)' : '100%'">
       
       <!-- CONTENEDOR SUPERIOR (Canvas 3D) -->
-      <div class="canvas-wrapper" [style.height.%]="(editorSvc.rolSimulado() === 'admin' && showTimeline) ? 100 - timelineHeight : 100">
+      <div class="canvas-wrapper" [style.height.%]="(editorSvc.rolSimulado() === 'admin' && layoutUI.showTimeline()) ? 100 - layoutUI.timelineHeight() : 100">
         
         <!-- TOPBAR MÍNIMA O COMPLETA SEGÚN ROL -->
         <div class="viewport-topbar" *ngIf="editorSvc.rolSimulado() === 'admin'">
@@ -214,8 +214,8 @@
 
           <!-- BOTONES FLOTANTES SOLO ADMIN -->
           <ng-container *ngIf="editorSvc.rolSimulado() === 'admin'">
-            <button class="toggle-panel-btn toggle-right" (click)="toggleInspector()" [title]="showInspector ? 'Ocultar Inspector' : 'Mostrar Inspector'">{{ showInspector ? '▶' : '◀' }}</button>
-            <button class="toggle-panel-btn toggle-bottom" (click)="toggleTimeline()" [title]="showTimeline ? 'Ocultar Timeline' : 'Mostrar Timeline'">{{ showTimeline ? '▼' : '▲' }}</button>
+            <button class="toggle-panel-btn toggle-right" (click)="layoutUI.toggleInspector()" [title]="layoutUI.showInspector() ? 'Ocultar Inspector' : 'Mostrar Inspector'">{{ layoutUI.showInspector() ? '▶' : '◀' }}</button>
+            <button class="toggle-panel-btn toggle-bottom" (click)="layoutUI.toggleTimeline()" [title]="layoutUI.showTimeline() ? 'Ocultar Timeline' : 'Mostrar Timeline'">{{ layoutUI.showTimeline() ? '▼' : '▲' }}</button>
             <app-toolbar-escena *ngIf="editorSvc.playState() === 'EDITOR' || editorSvc.playState() === 'EDITING_IN_GAME' || (editorSvc.playState() === 'PLAYING' && !gameSession.pointerLocked())"></app-toolbar-escena>
           </ng-container>
 
@@ -231,15 +231,15 @@
       </div>
       
       <!-- PANEL INFERIOR TIMELINE (SOLO ADMIN) -->
-      <div class="horizontal-resizer" *ngIf="editorSvc.rolSimulado() === 'admin' && showTimeline" (mousedown)="iniciarRedimensionTimeline($event)" [class.resizing]="isResizingTimeline"><div class="resizer-grip-h"></div></div>
-      <div class="timeline-wrapper" *ngIf="editorSvc.rolSimulado() === 'admin' && showTimeline && timelineHeight > 5" [style.height.%]="timelineHeight">
+      <div class="horizontal-resizer" *ngIf="editorSvc.rolSimulado() === 'admin' && layoutUI.showTimeline()" (mousedown)="layoutUI.startResizeTimeline($event)" [class.resizing]="layoutUI.isResizingTimeline()"><div class="resizer-grip-h"></div></div>
+      <div class="timeline-wrapper" *ngIf="editorSvc.rolSimulado() === 'admin' && layoutUI.showTimeline() && layoutUI.timelineHeight() > 5" [style.height.%]="layoutUI.timelineHeight()">
         <app-global-timeline></app-global-timeline>
       </div>
     </div>
     
     <!-- INSPECTOR DERECHO (SOLO ADMIN) -->
-    <div class="layout-resizer" *ngIf="editorSvc.rolSimulado() === 'admin' && showInspector" (mousedown)="iniciarRedimension($event)" [class.resizing]="isResizing"><div class="resizer-grip"></div></div>
-    <div class="inspector-wrapper" *ngIf="editorSvc.rolSimulado() === 'admin' && showInspector" [style.width.px]="inspectorWidth">
+    <div class="layout-resizer" *ngIf="editorSvc.rolSimulado() === 'admin' && layoutUI.showInspector()" (mousedown)="layoutUI.startResize($event)" [class.resizing]="layoutUI.isResizing()"><div class="resizer-grip"></div></div>
+    <div class="inspector-wrapper" *ngIf="editorSvc.rolSimulado() === 'admin' && layoutUI.showInspector()" [style.width.px]="layoutUI.inspectorWidth()">
       <app-inspector-escena></app-inspector-escena>
     </div>
     

@@ -1,22 +1,24 @@
-
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Quaternion } from '@babylonjs/core';
+import { AbstractMesh, Mesh } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { EditorCameraService } from './editor-camera.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.service';
+import { EditorMapaService } from '../editor-mapa.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
+  private editorSvc = inject(EditorMapaService);
   private cameraSvc = inject(EditorCameraService);
   private entityManager = inject(EntityManagerService);
   private runtimeEngine = inject(RuntimeEngineService);
 
-  private backupsAnimados: any[] = [];
+  // 🔥 Arquitectura Inmutable: Guardará el JSON completo de la escena antes de jugar
+  private snapshotMemoria: any = null;
   
   public testearEscena(vista: 'FPS' | 'TPS'): void {
     const objMesh = this.state.objetoSeleccionado() as Mesh;
@@ -27,61 +29,30 @@ export class EditorPlayModeService {
 
     this.cameraSvc.guardarEstadoCamaraLibre();
 
-    // 🔥 FIX VITAL: Guardamos la vista seleccionada para que las herramientas sepan cómo comportarse
     this.state.modoVistaPrueba = vista;
-
     this.state.playState.set('TRANSITIONING');
     this.state.jugadorActivo = objMesh;
     this.state.objetoHovereado.set(null);
 
-    // BACKUPS DEL EDITOR
-    this.state.backupObjetoPosicion = objMesh.position.clone();
-    if (objMesh.rotationQuaternion) this.state.backupObjetoRotacionQuat = objMesh.rotationQuaternion.clone();
-    else {
-      this.state.backupObjetoRotacionQuat = Quaternion.FromEulerAngles(objMesh.rotation.x, objMesh.rotation.y, objMesh.rotation.z);
-      objMesh.rotationQuaternion = this.state.backupObjetoRotacionQuat.clone();
-    }
-    this.state.backupObjetoVisibilidad = objMesh.isVisible;
-    this.state.backupColisionJugador = objMesh.checkCollisions;
-    this.state.backupColisionesHijos = [];
-    objMesh.getChildMeshes().forEach((m: AbstractMesh) => {
-      this.state.backupColisionesHijos.push({ mesh: m, col: m.checkCollisions });
-      m.checkCollisions = false;
-    });
-    objMesh.checkCollisions = true;
-    this.state.objetoSeleccionado.set(null);
-
-    this.backupsAnimados = []; 
-    
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
-    // LIMPIEZA VISUAL DEL EDITOR ANTES DE EMPEZAR LA PRUEBA
+    // 🔥 SNAPSHOT: Capturamos el estado exacto del mundo ANTES de que el juego lo contamine.
+    // Lo hacemos SIEMPRE para asegurar que los cambios de físicas/secuencias no persistan.
+    this.snapshotMemoria = this.editorSvc.obtenerDatosParaGuardar();
+
+    this.state.objetoSeleccionado.set(null);
+
+    // Ocultar herramientas visuales del editor para el modo juego
     this.motor3d.scene.meshes.forEach(m => {
         if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
-            m.isVisible = isAdmin;
-            m.setEnabled(isAdmin);
+            m.isVisible = false;
+            m.setEnabled(false);
         }
 
         const entity = this.entityManager.getEntityByMesh(m);
         if (entity) {
-            if (entity.type.startsWith('light_') && !entity.visual.assetId) {
-                m.isVisible = false;
-            }
-            if (entity.type === 'image_plane') {
-                m.isVisible = false; 
-            }
-            
-            // Backup NPCS
-            if (entity.rol === 'npc' && m instanceof Mesh) {
-                const lightObj = m.getDescendants(false).find(c => c.name.startsWith('l_'));
-                this.backupsAnimados.push({
-                    mesh: m,
-                    pos: m.position.clone(),
-                    rot: m.rotation.clone(),
-                    rotQ: m.rotationQuaternion ? m.rotationQuaternion.clone() : null,
-                    intensity: lightObj ? (lightObj as any).intensity : null
-                });
-            }
+            if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = false;
+            if (entity.type === 'image_plane') m.isVisible = false; 
         }
     });
 
@@ -101,7 +72,6 @@ export class EditorPlayModeService {
         this.runtimeEngine.startTestSession(playerEntity, vista, isAdmin);
         this.state.triggerUpdate();
         
-        // Ceder el control a la cámara con absoluta seguridad
         if (isAdmin) {
             setTimeout(() => {
                 const canvas = this.motor3d.engine.getRenderingCanvas();
@@ -125,84 +95,61 @@ export class EditorPlayModeService {
     }
   }
 
-  public detenerPrueba(): void {
+  public async detenerPrueba(): Promise<void> {
     this.state.playState.set('EDITOR');
-    this.state.modoVistaPrueba = null; // Limpiamos la variable al salir
+    this.state.modoVistaPrueba = null; 
     
     this.runtimeEngine.stopTestSession();
-
-    // RESTAURAR BACKUPS DEL EDITOR
-    this.backupsAnimados.forEach(b => {
-        if (b.mesh && !b.mesh.isDisposed()) {
-            b.mesh.position.copyFrom(b.pos);
-            if (b.rotQ) {
-                if (!b.mesh.rotationQuaternion) b.mesh.rotationQuaternion = Quaternion.Identity();
-                b.mesh.rotationQuaternion.copyFrom(b.rotQ);
-            } else {
-                b.mesh.rotationQuaternion = null;
-                b.mesh.rotation.copyFrom(b.rot);
-            }
-            if (b.intensity !== null) {
-                const lightObj = b.mesh.getDescendants(false).find((c: any) => c.name.startsWith('l_'));
-                if (lightObj) (lightObj as any).intensity = b.intensity;
-            }
-        }
-    });
-    this.backupsAnimados = [];
-
     const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+
+    // 🔥 RESTAURACIÓN INMUTABLE: Destruimos la escena contaminada y cargamos el Snapshot puro
+    if (this.snapshotMemoria) {
+        // 1. Destruir Entidades lógicas
+        this.entityManager.clear();
+        
+        // 2. Limpiar estado de selección y referencias de herramientas del Editor
+        this.editorSvc.limpiarEstado();
+
+        // 3. Purga estricta de mallas (apisonadora)
+        // Ignoramos los gizmos, el suelo y la grilla base. La cámara del editor no es un Mesh, por lo que no se ve afectada.
+        const scene = this.motor3d.scene;
+        const meshesToDispose = scene.meshes.filter(m => {
+           const n = m.name;
+           return !['sueloInvisible', 'ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(n) &&
+                  !n.includes('gizmo') && 
+                  !n.includes('highlight');
+        });
+        
+        meshesToDispose.forEach(m => {
+            if (!m.isDisposed()) m.dispose(false, true);
+        });
+
+        // 4. Reconstruir desde Cero con el Snapshot inmutable
+        await this.editorSvc.cargarEscenaDesdeDatos(this.snapshotMemoria);
+
+        this.snapshotMemoria = null;
+    }
+
+    // Restaurar entorno visual del editor
     this.motor3d.scene.meshes.forEach(m => {
         if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
-            m.setEnabled(isAdmin);
-            m.isVisible = isAdmin;
+            m.setEnabled(true);
+            m.isVisible = true;
         }
 
         const entity = this.entityManager.getEntityByMesh(m);
         if (entity) {
-            if (entity.type.startsWith('light_') && !entity.visual.assetId) {
-                m.isVisible = isAdmin;
-            }
-            if (entity.type === 'bubble') {
-                m.isVisible = true;
-            }
-            if (entity.type === 'image_plane') {
-                m.isVisible = isAdmin; 
-            }
-            if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') {
-                m.isVisible = isAdmin;
-            }
+            if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = isAdmin;
+            if (entity.type === 'bubble') m.isVisible = true;
+            if (entity.type === 'image_plane') m.isVisible = isAdmin; 
+            if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') m.isVisible = isAdmin;
         }
     });
 
     this.cameraSvc.restaurarCamaraLibre();
     const editorCam = this.motor3d.editorCamera;
     this.motor3d.scene.activeCamera = editorCam;
-    
-    if (this.state.jugadorActivo && this.state.backupObjetoPosicion && this.state.backupObjetoRotacionQuat) {
-      const entity = this.entityManager.getEntityByMesh(this.state.jugadorActivo);
-      if (entity && (entity.rol === 'npc' || entity.rol === 'spawn_point')) {
-        // Mantenemos rotación final
-      } else {
-        this.state.jugadorActivo.position = this.state.backupObjetoPosicion;
-        this.state.jugadorActivo.rotationQuaternion = this.state.backupObjetoRotacionQuat.clone();
-      }
-      
-      this.state.jugadorActivo.isVisible = this.state.backupObjetoVisibilidad;
-      this.state.jugadorActivo.visibility = 1;
-      this.state.jugadorActivo.getChildMeshes().forEach(m => {
-          m.isVisible = true;
-          m.visibility = 1;
-      });
-      
-      this.state.jugadorActivo.checkCollisions = this.state.backupColisionJugador;
-      this.state.backupColisionesHijos.forEach(item => { if (item.mesh) item.mesh.checkCollisions = item.col; });
-      this.state.backupColisionesHijos = [];
-    }
-    
-    if (this.state.jugadorActivo) this.state.objetoSeleccionado.set(this.state.jugadorActivo);
     this.state.jugadorActivo = null; 
-    this.state.backupObjetoPosicion = null; 
-    this.state.backupObjetoRotacionQuat = null; 
     
     if (document.pointerLockElement) {
         document.exitPointerLock();
@@ -210,8 +157,9 @@ export class EditorPlayModeService {
     
     const canvas = this.motor3d.engine.getRenderingCanvas();
     if (canvas) {
-      this.motor3d.editorCamera.attachControl(canvas, true);
+      editorCam.attachControl(canvas, true);
     }
+    
     this.state.triggerUpdate();
   }
 }

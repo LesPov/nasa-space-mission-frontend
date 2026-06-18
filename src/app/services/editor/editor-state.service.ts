@@ -33,13 +33,6 @@ export class EditorStateService {
   public modoVistaPrueba: 'FPS' | 'TPS' | null = null;
   public jugadorActivo: Mesh | null = null;
 
-  public proxyColliders: Mesh[] = [];
-  public backupObjetoPosicion: Vector3 | null = null;
-  public backupObjetoRotacionQuat: Quaternion | null = null;
-  public backupObjetoVisibilidad: boolean = true;
-  public backupColisionJugador: boolean = true;
-  public backupColisionesHijos: { mesh: AbstractMesh; col: boolean }[] = [];
-
   triggerUpdate(): void {
     this.onMapChanged.next();
   }

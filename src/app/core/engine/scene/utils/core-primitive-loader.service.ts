@@ -1,14 +1,14 @@
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DirectionalLight, FresnelParameters, Mesh, MeshBuilder, PointLight, SpotLight, StandardMaterial, Texture, Vector3, VideoTexture } from '@babylonjs/core';
-import { Motor3dService } from '../../../../services/motor-3d.service';
-import { CoreSceneUtilsService } from '../utils/core-scene-utils.service';
+ import { CoreSceneUtilsService } from '../utils/core-scene-utils.service';
 import { CoreSceneProjectionService } from '../utils/core-scene-projection.service';
 import { BubblePulseBehavior } from '../../behaviors/bubble-pulse.behavior';
 import { DistanceFadeBehavior } from '../../behaviors/distance-fade.behavior';
 import { LoopManagerService } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
+import { Motor3dService } from '../../../../services/motor-3d.service';
  
 @Injectable({ providedIn: 'root' })
 export class CorePrimitiveLoaderService {
@@ -146,7 +146,7 @@ export class CorePrimitiveLoaderService {
       }
       mesh.material = mat;
     } 
-    else if (obj.type === 'image_plane' && entity.media) {
+    else if (obj.type === 'image_plane' && entity.media && entity.mediaRuntime) {
       const mat = new StandardMaterial('decalMat_' + obj.name, scene);
       const isBW = scene.metadata?.globalVisualMode === 'bw';
       const activeColorAUsar = isBW ? entity.visual.colorBW : entity.visual.color;
@@ -155,7 +155,7 @@ export class CorePrimitiveLoaderService {
       this.projectionSvc.configurarMaterialProyector(mat, activeColorAUsar, entity.visual.brilloIntensidad, entity.visual.ignoraNiebla, tex);
       
       mesh.material = mat;
-      entity.media.runtimeDecalMaterial = mat;
+      entity.mediaRuntime.runtimeDecalMaterial = mat;
 
       mesh.isVisible = false;
       mesh.alwaysSelectAsActiveMesh = true;

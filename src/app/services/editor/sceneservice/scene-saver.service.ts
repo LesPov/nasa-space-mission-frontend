@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { HemisphericLight } from '@babylonjs/core'; 
 import { Motor3dService } from '../../motor-3d.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
-import { LightComponent, MediaComponent, PhysicsComponent, PlayerStateComponent, TransformComponent, TriggerComponent, VisualComponent } from '../../../core/engine/entities/game.entity';
+import { LightComponent, MediaConfigComponent, PhysicsComponent, PlayerConfigComponent, TransformComponent, TriggerConfigComponent, VisualComponent } from '../../../core/engine/entities/game.entity';
 
 @Injectable({ providedIn: 'root' }) 
 export class SceneSaverService { 
@@ -51,12 +51,12 @@ export class SceneSaverService {
 
       const transform = entity.getComponent<TransformComponent>('transform')!;
       const visual = entity.getComponent<VisualComponent>('visual')!;
-      const interaction = entity.interaction; // Mantenemos el fallback para no alargar más el código
-      const playerState = entity.getComponent<PlayerStateComponent>('playerState')!;
+      const interaction = entity.interaction; 
+      const playerConfig = entity.getComponent<PlayerConfigComponent>('playerConfig')!;
       const physics = entity.getComponent<PhysicsComponent>('physics')!;
       const light = entity.getComponent<LightComponent>('light');
-      const media = entity.getComponent<MediaComponent>('media');
-      const trigger = entity.getComponent<TriggerComponent>('trigger');
+      const media = entity.getComponent<MediaConfigComponent>('mediaConfig');
+      const trigger = entity.getComponent<TriggerConfigComponent>('triggerConfig');
 
       if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') {
         const isComposite = entity.type === 'trigger_compuesto';
@@ -82,7 +82,7 @@ export class SceneSaverService {
              triggersDelta.push({
                uid: entity.uid, name: entity.name, parentId: entity.parentId,
                position: transform.position, scale: transform.scale,
-               properties: { condition: cond, actionType: 'show_message', targetObjectName: '', isRepeatable: trigger?.isRepeatable ?? false, isEnabled: trigger?.isEnabled ?? true, ...actionProps }
+               properties: { condition: cond, actionType: 'show_message', targetObjectName: '', isRepeatable: trigger?.isRepeatable ?? false, ...actionProps }
              });
           });
         } else {
@@ -91,7 +91,7 @@ export class SceneSaverService {
              position: transform.position, scale: transform.scale,
              properties: {
                condition: trigger?.condition || 'on_enter', actionType: 'show_message', targetObjectName: '',
-               isRepeatable: trigger?.isRepeatable ?? false, isEnabled: trigger?.isEnabled ?? true,
+               isRepeatable: trigger?.isRepeatable ?? false,
                triggerShape: trigger?.triggerShape || 'cube', 
                mensaje: interaction.mensaje,
                soundUrl: trigger?.soundUrl || '', 
@@ -121,11 +121,11 @@ export class SceneSaverService {
           interactSequenceId: interaction.interactSequenceId,
           respawnTime: interaction.respawnTime,
           collider: physics,
-          camOffset: playerState.camOffset,
-          playerConfig: playerState.playerConfig,
-          selectionRange: playerState.selectionRange,
-          animationNames: playerState.animationNames,
-          autoAnim: playerState.autoAnim,
+          camOffset: playerConfig.camOffset,
+          playerConfig: playerConfig.playerConfig,
+          selectionRange: playerConfig.selectionRange,
+          animationNames: playerConfig.animationNames,
+          autoAnim: playerConfig.autoAnim,
           path: visual.path 
         };
 
@@ -140,14 +140,10 @@ export class SceneSaverService {
             properties: { ...propertiesToSave, ...light }
           });
         } else if ((entity.type === 'video_plane' || entity.type === 'image_plane') && media) {
-          const mediaSafe: any = { ...media };
-          delete mediaSafe.runtimeDecals;
-          delete mediaSafe.runtimeDecalMaterial;
-          delete mediaSafe.lastVisualModeBW;
-
+          // 🔥 Ya no hay que borrar `runtimeDecals` porque media es MediaConfigComponent puro.
           sceneObjectsDelta.push({
             ...baseData, type: entity.type, assetId: visual.assetId,
-            properties: { ...propertiesToSave, ...mediaSafe }
+            properties: { ...propertiesToSave, ...media }
           });
         } else {
           sceneObjectsDelta.push({

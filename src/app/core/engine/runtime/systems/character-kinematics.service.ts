@@ -1,7 +1,7 @@
 
 import { Injectable } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
-import { GameEntity, PlayerStateComponent } from '../../entities/game.entity';
+import { GameEntity } from '../../entities/game.entity';
 import { SeqRuntime } from './player-sequence.service';
 
 @Injectable({ providedIn: 'root' })
@@ -18,7 +18,8 @@ export class CharacterKinematicsService {
     const mesh = entity.view as Mesh;
     if (!mesh) return;
 
-    const playerState = entity.getComponent<PlayerStateComponent>('playerState')!;
+    // 🔥 Se mapea a Runtime puro
+    const playerState = entity.playerRuntime;
     const estadoFisico = playerState.physicsState;
     const intentions = playerState.intentions;
     const colMeta = entity.collider;

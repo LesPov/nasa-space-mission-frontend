@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EpisodiosService } from '../api/episodios';
@@ -8,10 +9,6 @@ export class PrefabManagerService {
   private api = inject(EpisodiosService);
   private entityManager = inject(EntityManagerService);
 
-  /**
-   * Toma un objeto de la escena, extrae toda su metadata (PlayerConfig, Sequences, Físicas)
-   * y lo guarda en la Base de Datos como un PREFAB reutilizable.
-   */
   public createPrefabFromMesh(mesh: AbstractMesh, prefabName: string): Promise<any> {
     return new Promise((resolve, reject) => {
       const entity = this.entityManager.getEntityByMesh(mesh);
@@ -53,11 +50,8 @@ export class PrefabManagerService {
       if (entity.type.startsWith('light_') && entity.light) {
         finalProperties = { ...finalProperties, ...entity.light };
       } else if ((entity.type === 'video_plane' || entity.type === 'image_plane') && entity.media) {
-        const mediaSafe: any = { ...entity.media };
-        delete mediaSafe.runtimeDecals;
-        delete mediaSafe.runtimeDecalMaterial;
-        delete mediaSafe.lastVisualModeBW;
-        finalProperties = { ...finalProperties, ...mediaSafe };
+        // 🔥 Al estar separado el MediaConfigComponent del Runtime, no hay que limpiar variables basura.
+        finalProperties = { ...finalProperties, ...entity.media };
       }
 
       const data = {

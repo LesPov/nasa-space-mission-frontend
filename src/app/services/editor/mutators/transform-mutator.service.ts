@@ -118,15 +118,16 @@ export class TransformMutatorService {
 
     if (objeto.material && objeto.material instanceof StandardMaterial) {
       if (entity.type === 'image_plane') {
-        const decalMat = entity.media?.runtimeDecalMaterial as StandardMaterial | undefined;
+        // 🔥 Se mapea a Runtime puro
+        const decalMat = entity.mediaRuntime?.runtimeDecalMaterial as StandardMaterial | undefined;
         
         if (decalMat) {
           const tex = (decalMat.diffuseTexture || decalMat.opacityTexture) as Texture | null;
           this.projectionSvc.configurarMaterialProyector(decalMat, activeColorHex, config.brilloIntensidad, config.ignoraNiebla, tex);
         }
         
-        if (Array.isArray(entity.media?.runtimeDecals)) {
-          entity.media!.runtimeDecals.forEach((m: AbstractMesh) => { 
+        if (Array.isArray(entity.mediaRuntime?.runtimeDecals)) {
+          entity.mediaRuntime!.runtimeDecals.forEach((m: AbstractMesh) => { 
             if (m) m.applyFog = !config.ignoraNiebla; 
           });
         }

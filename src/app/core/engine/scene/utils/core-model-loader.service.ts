@@ -123,7 +123,6 @@ export class CoreModelLoaderService {
 
     subMeshes.forEach(m => {
       const nameL = m.name.toLowerCase();
-      // 🔥 FIX: Aplicar Tags a proxies y decals basados en nombres del GLB original en carga, NO en tiempo real.
       if (nameL.includes('proxycol')) Tags.AddTagsTo(m, "proxy_collider ignore_raycast system_element");
       if (nameL.startsWith('decal_')) Tags.AddTagsTo(m, "decal system_element ignore_raycast");
 
@@ -161,10 +160,10 @@ export class CoreModelLoaderService {
 
     if (isModel) {
       const headNode = rootNode.getChildTransformNodes(false).find(n => n.name.toLowerCase() === 'head' || n.name.toLowerCase() === 'neck' || n.name.toLowerCase().includes('head')) as TransformNode;
-      if (headNode) {
+      if (headNode && entity.playerRuntime) {
         headNode.computeWorldMatrix(true);
         rootNode.computeWorldMatrix(true);
-        entity.initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
+        entity.playerRuntime.initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
         entity.syncToView(); 
       }
     }

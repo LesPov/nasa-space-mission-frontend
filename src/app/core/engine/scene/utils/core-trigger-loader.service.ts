@@ -10,7 +10,6 @@ export class CoreTriggerLoaderService {
   private motor3d = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
 
-  // ELIMINADA la dependencia de interfaz (isAdmin).
   public cargarTrigger(trigger: any, mallasCreadas: Map<string, Mesh>): void {
     const scene = this.motor3d.scene;
     const shape = trigger.actionProperties?.triggerShape || 'cube';
@@ -46,12 +45,16 @@ export class CoreTriggerLoaderService {
       videoNorm: !isComposite ? (trigger.actionProperties?.videoNorm || '') : '',
       
       isRepeatable: trigger.isRepeatable ?? false,
-      isEnabled: trigger.isEnabled ?? true,
-      hasTriggeredEnter: false,
-      hasTriggeredExit: false,
       gameConditions: [],
       stateMutations: []
     };
+
+    // 🔥 Estado Runtime Aislado
+    if (entity.triggerRuntime) {
+       entity.triggerRuntime.isEnabled = trigger.isEnabled ?? true;
+       entity.triggerRuntime.hasTriggeredEnter = false;
+       entity.triggerRuntime.hasTriggeredExit = false;
+    }
 
     let mesh = scene.getMeshByName(trigger.name) as Mesh;
     
@@ -75,8 +78,6 @@ export class CoreTriggerLoaderService {
       
       mesh.isPickable = true;
       mesh.checkCollisions = false;
-
-      // EL MOTOR CARGA TODO COMO JUGADOR: El trigger es invisible
       mesh.isVisible = false;
 
       this.entityManager.addEntity(entity);

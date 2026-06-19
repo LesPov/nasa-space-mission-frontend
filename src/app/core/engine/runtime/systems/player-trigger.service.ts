@@ -27,11 +27,11 @@ export class PlayerTriggerService {
     this.entityManager.getAllEntities()
       .filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto')
       .forEach(e => {
-        if (e.view && e.trigger) {
+        if (e.view && e.triggerRuntime) {
             e.view.isVisible = isDebugMode; 
-            e.trigger.hasTriggeredEnter = false; 
-            e.trigger.hasTriggeredExit = false; 
-            e.trigger.isEnabled = true;
+            e.triggerRuntime.hasTriggeredEnter = false; 
+            e.triggerRuntime.hasTriggeredExit = false; 
+            e.triggerRuntime.isEnabled = true;
         }
     });
   }
@@ -43,11 +43,11 @@ export class PlayerTriggerService {
     this.entityManager.getAllEntities()
       .filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto')
       .forEach(e => {
-        if (e.view && e.trigger) {
+        if (e.view && e.triggerRuntime) {
             e.view.isVisible = isDebugMode; 
-            e.trigger.hasTriggeredEnter = false; 
-            e.trigger.hasTriggeredExit = false; 
-            e.trigger.isEnabled = true;
+            e.triggerRuntime.hasTriggeredEnter = false; 
+            e.triggerRuntime.hasTriggeredExit = false; 
+            e.triggerRuntime.isEnabled = true;
         }
     });
   }
@@ -66,7 +66,8 @@ export class PlayerTriggerService {
     const triggers = this.entityManager.getAllEntities().filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto');
 
     triggers.forEach(triggerEntity => {
-        if (!triggerEntity.trigger || triggerEntity.trigger.isEnabled === false) return;
+        // 🔥 Se mapea a Runtime puro
+        if (!triggerEntity.trigger || triggerEntity.triggerRuntime?.isEnabled === false) return;
 
         if (!this.gameState.evaluateAllConditions(triggerEntity.trigger.gameConditions)) {
             return;
@@ -103,11 +104,11 @@ export class PlayerTriggerService {
             if (!triggerEntity.trigger.isRepeatable) {
                  const reqEnter = conditions.includes('on_enter');
                  const reqExit = conditions.includes('on_exit');
-                 const doneEnter = !reqEnter || triggerEntity.trigger.hasTriggeredEnter;
-                 const doneExit = !reqExit || triggerEntity.trigger.hasTriggeredExit;
+                 const doneEnter = !reqEnter || triggerEntity.triggerRuntime?.hasTriggeredEnter;
+                 const doneExit = !reqExit || triggerEntity.triggerRuntime?.hasTriggeredExit;
 
-                 if (doneEnter && doneExit) {
-                     triggerEntity.trigger.isEnabled = false;
+                 if (doneEnter && doneExit && triggerEntity.triggerRuntime) {
+                     triggerEntity.triggerRuntime.isEnabled = false;
                  }
             }
         }
@@ -115,11 +116,11 @@ export class PlayerTriggerService {
   }
 
   private ejecutarLogicaTrigger(triggerEntity: GameEntity, eventType: string): void {
-      if (!triggerEntity.trigger || triggerEntity.trigger.isEnabled === false) return;
+      if (!triggerEntity.trigger || triggerEntity.triggerRuntime?.isEnabled === false) return;
       
       if (!triggerEntity.trigger.isRepeatable) {
-          if (eventType === 'on_enter' && triggerEntity.trigger.hasTriggeredEnter) return;
-          if (eventType === 'on_exit' && triggerEntity.trigger.hasTriggeredExit) return;
+          if (eventType === 'on_enter' && triggerEntity.triggerRuntime?.hasTriggeredEnter) return;
+          if (eventType === 'on_exit' && triggerEntity.triggerRuntime?.hasTriggeredExit) return;
       }
 
       let mensaje = '';
@@ -181,7 +182,7 @@ export class PlayerTriggerService {
           this.gameState.applyMutations(triggerEntity.trigger.stateMutations);
       }
 
-      if (eventType === 'on_enter') triggerEntity.trigger.hasTriggeredEnter = true;
-      if (eventType === 'on_exit') triggerEntity.trigger.hasTriggeredExit = true;
+      if (eventType === 'on_enter' && triggerEntity.triggerRuntime) triggerEntity.triggerRuntime.hasTriggeredEnter = true;
+      if (eventType === 'on_exit' && triggerEntity.triggerRuntime) triggerEntity.triggerRuntime.hasTriggeredExit = true;
   }
 }

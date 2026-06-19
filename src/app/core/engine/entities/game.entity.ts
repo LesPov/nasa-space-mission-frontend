@@ -5,7 +5,7 @@ import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/
 import { PlayerRuntimeConfig } from '../models/player-config.model';
 
 // ==========================================
-// 1. DEFINICIÓN DE COMPONENTES ECS
+// 1. DEFINICIÓN DE COMPONENTES ECS (CONFIGURACIÓN GUARDABLE)
 // ==========================================
 
 export class TransformComponent {
@@ -69,7 +69,7 @@ export class LightComponent {
   ) {}
 }
 
-export class MediaComponent {
+export class MediaConfigComponent {
   constructor(
     public videoUrl = '', 
     public imageUrl = '', 
@@ -80,14 +80,11 @@ export class MediaComponent {
     public proyeccionRepeticiones = 1, 
     public proyeccionEspaciado = 2, 
     public proyeccionEje = 'Y', 
-    public fadeDistance = 0, 
-    public runtimeDecals: AbstractMesh[] = [], 
-    public runtimeDecalMaterial?: StandardMaterial, 
-    public lastVisualModeBW?: boolean
+    public fadeDistance = 0
   ) {}
 }
 
-export class TriggerComponent {
+export class TriggerConfigComponent {
   constructor(
     public isComposite = false, 
     public triggerShape = 'cube', 
@@ -109,23 +106,44 @@ export class TriggerComponent {
     public timeNorm = 4.5, 
     public videoNorm = '', 
     public isRepeatable = false, 
-    public isEnabled = true, 
-    public hasTriggeredEnter = false, 
-    public hasTriggeredExit = false, 
     public gameConditions: any[] = [], 
     public stateMutations: any[] = []
   ) {}
 }
 
-export class PlayerStateComponent {
+export class PlayerConfigComponent {
   constructor(
     public playerConfig?: PlayerRuntimeConfig,
     public selectionRange = { fpsAdminMax: 10000, fpsUserMax: 3 },
     public camOffset = { x: 0, y: 1.6, z: 0 },
     public animationNames: string[] = [],
-    public autoAnim: any = null,
+    public autoAnim: any = null
+  ) {}
+}
+
+// ==========================================
+// 2. DEFINICIÓN DE COMPONENTES ECS (ESTADO RUNTIME VOLÁTIL)
+// ==========================================
+
+export class MediaRuntimeComponent {
+  constructor(
+    public runtimeDecals: AbstractMesh[] = [], 
+    public runtimeDecalMaterial?: StandardMaterial, 
+    public lastVisualModeBW?: boolean
+  ) {}
+}
+
+export class TriggerRuntimeComponent {
+  constructor(
+    public isEnabled = true, 
+    public hasTriggeredEnter = false, 
+    public hasTriggeredExit = false
+  ) {}
+}
+
+export class PlayerRuntimeComponent {
+  constructor(
     public initialHeadLocal?: Vector3,
-    
     public intentions = {
       moveForward: false,
       moveBackward: false,
@@ -134,7 +152,6 @@ export class PlayerStateComponent {
       run: false,
       jump: false
     },
-    
     public physicsState = {
       isMoving: false, 
       isRunning: false, 
@@ -151,9 +168,8 @@ export class PlayerStateComponent {
   ) {}
 }
 
-
 // ==========================================
-// 2. ENTIDAD BASE (ECS CONTENEDOR)
+// 3. ENTIDAD BASE (ECS CONTENEDOR)
 // ==========================================
 
 export class GameEntity {
@@ -170,6 +186,7 @@ export class GameEntity {
 
   private components = new Map<string, any>();
 
+  // Estado efímero de UI/Editor
   public isHovered: boolean = false;
   public currentHoverScale: number = 1.0;
   public isProcessingAction: boolean = false;
@@ -180,20 +197,30 @@ export class GameEntity {
     this.type = type;
     this.rol = rol;
 
+    // Configuración persistente (Guardable en BD)
     this.addComponent('transform', new TransformComponent());
     this.addComponent('visual', new VisualComponent());
     
     const isSphere = type === 'sphere' || type === 'bubble';
     this.addComponent('physics', new PhysicsComponent(isSphere ? 'sphere' : 'box'));
     this.addComponent('interaction', new InteractionComponent());
-    this.addComponent('playerState', new PlayerStateComponent());
+    this.addComponent('playerConfig', new PlayerConfigComponent());
+
+    // Estado Runtime (Volátil, No se guarda en BD)
+    this.addComponent('playerRuntime', new PlayerRuntimeComponent());
 
     if (type.startsWith('light_')) {
       this.addComponent('light', new LightComponent());
     }
 
     if (type === 'video_plane' || type === 'image_plane') {
-      this.addComponent('media', new MediaComponent());
+      this.addComponent('mediaConfig', new MediaConfigComponent());
+      this.addComponent('mediaRuntime', new MediaRuntimeComponent());
+    }
+
+    if (type === 'trigger' || type === 'trigger_compuesto') {
+      this.addComponent('triggerConfig', new TriggerConfigComponent());
+      this.addComponent('triggerRuntime', new TriggerRuntimeComponent());
     }
   }
 
@@ -219,7 +246,7 @@ export class GameEntity {
   }
 
   // ==========================================
-  // GETTERS DE COMPATIBILIDAD
+  // GETTERS DE COMPATIBILIDAD (Configuración)
   // ==========================================
   get transform(): TransformComponent { return this.getComponent<TransformComponent>('transform')!; }
   set transform(v) { this.addComponent('transform', v); }
@@ -236,29 +263,36 @@ export class GameEntity {
   get light(): LightComponent | undefined { return this.getComponent<LightComponent>('light'); }
   set light(v) { if(v) this.addComponent('light', v); }
 
-  get media(): MediaComponent | undefined { return this.getComponent<MediaComponent>('media'); }
-  set media(v) { if(v) this.addComponent('media', v); }
+  get media(): MediaConfigComponent | undefined { return this.getComponent<MediaConfigComponent>('mediaConfig'); }
+  set media(v) { if(v) this.addComponent('mediaConfig', v); }
 
-  get trigger(): TriggerComponent | undefined { return this.getComponent<TriggerComponent>('trigger'); }
-  set trigger(v) { if(v) this.addComponent('trigger', v); }
+  get trigger(): TriggerConfigComponent | undefined { return this.getComponent<TriggerConfigComponent>('triggerConfig'); }
+  set trigger(v) { if(v) this.addComponent('triggerConfig', v); }
 
-  get playerConfig() { return this.getComponent<PlayerStateComponent>('playerState')?.playerConfig; }
-  set playerConfig(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.playerConfig = v; }
+  get playerConfig() { return this.getComponent<PlayerConfigComponent>('playerConfig')?.playerConfig; }
+  set playerConfig(v) { const p = this.getComponent<PlayerConfigComponent>('playerConfig'); if(p) p.playerConfig = v; }
   
-  get selectionRange() { return this.getComponent<PlayerStateComponent>('playerState')!.selectionRange; }
-  set selectionRange(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.selectionRange = v; }
+  get selectionRange() { return this.getComponent<PlayerConfigComponent>('playerConfig')!.selectionRange; }
+  set selectionRange(v) { const p = this.getComponent<PlayerConfigComponent>('playerConfig'); if(p) p.selectionRange = v; }
   
-  get camOffset() { return this.getComponent<PlayerStateComponent>('playerState')!.camOffset; }
-  set camOffset(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.camOffset = v; }
+  get camOffset() { return this.getComponent<PlayerConfigComponent>('playerConfig')!.camOffset; }
+  set camOffset(v) { const p = this.getComponent<PlayerConfigComponent>('playerConfig'); if(p) p.camOffset = v; }
 
-  get animationNames() { return this.getComponent<PlayerStateComponent>('playerState')!.animationNames; }
-  set animationNames(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.animationNames = v; }
+  get animationNames() { return this.getComponent<PlayerConfigComponent>('playerConfig')!.animationNames; }
+  set animationNames(v) { const p = this.getComponent<PlayerConfigComponent>('playerConfig'); if(p) p.animationNames = v; }
 
-  get autoAnim() { return this.getComponent<PlayerStateComponent>('playerState')!.autoAnim; }
-  set autoAnim(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.autoAnim = v; }
+  get autoAnim() { return this.getComponent<PlayerConfigComponent>('playerConfig')!.autoAnim; }
+  set autoAnim(v) { const p = this.getComponent<PlayerConfigComponent>('playerConfig'); if(p) p.autoAnim = v; }
 
-  get initialHeadLocal() { return this.getComponent<PlayerStateComponent>('playerState')?.initialHeadLocal; }
-  set initialHeadLocal(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.initialHeadLocal = v; }
+  // ==========================================
+  // GETTERS DE ESTADO RUNTIME
+  // ==========================================
+  get mediaRuntime(): MediaRuntimeComponent | undefined { return this.getComponent<MediaRuntimeComponent>('mediaRuntime'); }
+  get triggerRuntime(): TriggerRuntimeComponent | undefined { return this.getComponent<TriggerRuntimeComponent>('triggerRuntime'); }
+  get playerRuntime(): PlayerRuntimeComponent { return this.getComponent<PlayerRuntimeComponent>('playerRuntime')!; }
+
+  get initialHeadLocal() { return this.playerRuntime.initialHeadLocal; }
+  set initialHeadLocal(v) { this.playerRuntime.initialHeadLocal = v; }
 
   // ==========================================
   // VIEW BINDING
@@ -272,7 +306,7 @@ export class GameEntity {
 
   public syncToView(): void {
     if (!this.view) return;
-    const t = this.getComponent<TransformComponent>('transform')!;
+    const t = this.transform;
 
     this.view.position.set(t.position.x, t.position.y, t.position.z);
     this.view.scaling.set(t.scale.x, t.scale.y, t.scale.z);
@@ -290,7 +324,7 @@ export class GameEntity {
 
   public syncTransformFromView(): void {
     if (!this.view) return;
-    const t = this.getComponent<TransformComponent>('transform')!;
+    const t = this.transform;
 
     t.position = { x: this.view.position.x, y: this.view.position.y, z: this.view.position.z };
     t.scale = { x: this.view.scaling.x, y: this.view.scaling.y, z: this.view.scaling.z };
@@ -306,7 +340,7 @@ export class GameEntity {
 
   public getAbsolutePosition(): Vector3 {
     if (!this.view) {
-      const t = this.getComponent<TransformComponent>('transform')!;
+      const t = this.transform;
       return new Vector3(t.position.x, t.position.y, t.position.z);
     }
     return this.view.getAbsolutePosition();

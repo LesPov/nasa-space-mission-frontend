@@ -97,8 +97,9 @@ export class PropWorld implements OnInit, OnDestroy {
       const activeColorHex = isBW ? (entity.visual.colorBW || entity.visual.color || '#ffffff') : (entity.visual.color || '#ffffff');
       const c3 = Color3.FromHexString(activeColorHex);
 
-      if (entity.type === 'image_plane' && entity.media?.runtimeDecalMaterial) {
-        const decalMat = entity.media.runtimeDecalMaterial as StandardMaterial;
+      // 🔥 Se mapea a Runtime puro para la textura generada proceduralmente
+      if (entity.type === 'image_plane' && entity.mediaRuntime?.runtimeDecalMaterial) {
+        const decalMat = entity.mediaRuntime.runtimeDecalMaterial as StandardMaterial;
         const brillo = Number(entity.visual.brilloIntensidad ?? 1.0);
         
         decalMat.diffuseColor = c3;

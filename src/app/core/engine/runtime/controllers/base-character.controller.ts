@@ -1,9 +1,10 @@
+
 // src/app/core/engine/runtime/controllers/base-character.controller.ts
 
 import { Mesh } from '@babylonjs/core';
 import { Injector } from '@angular/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../../models/player-config.model';
-import { GameEntity, PlayerStateComponent } from '../../entities/game.entity';
+import { GameEntity } from '../../entities/game.entity';
 import { LoopManagerService, IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { EstadoFisico } from '../systems/player-physics.service';
 
@@ -35,8 +36,9 @@ export abstract class BaseCharacterController implements IUpdatable {
     return this.loopId; 
   }
 
+  // 🔥 Se mapea a Runtime puro
   public get estadoFisico(): EstadoFisico {
-    return this.entity.getComponent<PlayerStateComponent>('playerState')!.physicsState;
+    return this.entity.playerRuntime.physicsState;
   }
 
   public abstract start(): void;
@@ -46,7 +48,6 @@ export abstract class BaseCharacterController implements IUpdatable {
   public abstract postUpdate(dtMs: number): void;
 
   public destroy(): void {
-    // Al destruir, el controlador se da de baja del motor global
     this.loopManager.unregisterSystem(this.id);
   }
 

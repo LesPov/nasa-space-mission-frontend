@@ -74,8 +74,9 @@ export class CoreSceneLoaderService {
 
     scene.cameras.forEach(cam => cam.maxZ = 10000);
 
-    const objetosBD = Array.isArray(dataBD) ? dataBD : (dataBD.sceneObjects || []);
-    const triggersBD = Array.isArray(dataBD) ? [] : (dataBD.triggers || []);
+    // 🔥 FIX: Permite cargar los datos tanto del API (sceneObjects) como del Snapshot de Memoria (sceneObjectsDelta)
+    const objetosBD = Array.isArray(dataBD) ? dataBD : (dataBD.sceneObjects || dataBD.sceneObjectsDelta || []);
+    const triggersBD = Array.isArray(dataBD) ? [] : (dataBD.triggers || dataBD.triggersDelta || []);
 
     const promesasCarga: any[] = [];
     const mallasCreadas = new Map<string, Mesh>();

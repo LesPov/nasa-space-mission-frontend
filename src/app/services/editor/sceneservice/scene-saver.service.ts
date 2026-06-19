@@ -21,7 +21,7 @@ export class SceneSaverService {
     return Number.isFinite(n) ? n : fallback; 
   }
 
-  public obtenerDatosParaGuardar(): { sceneObjectsDelta: any[]; triggersDelta: any[]; deletedObjects: string[]; deletedTriggers: string[]; worldSettings: any } { 
+  public obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[]; triggersDelta: any[]; deletedObjects: string[]; deletedTriggers: string[]; worldSettings: any } { 
     const sceneObjectsDelta: any[] = []; 
     const triggersDelta: any[] = [];
 
@@ -44,8 +44,8 @@ export class SceneSaverService {
     const allEntities = this.entityManager.getAllEntities();
 
     allEntities.forEach(entity => {
-      // 🔥 DIRTY TRACKING: Solo procesamos los que sufrieron cambios
-      if (!entity.isDirty) return;
+      // 🔥 DIRTY TRACKING: Procesamos todo si es "forceFull" (como en el modo Test), sino solo Deltas
+      if (!forceFull && !entity.isDirty) return;
 
       entity.syncTransformFromView();
 

@@ -38,7 +38,8 @@ export class EditorPlayModeService {
 
     const isDebugMode = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
-    this.snapshotMemoria = this.editorSvc.obtenerDatosParaGuardar();
+    // Capturamos TODO el mapa completo para tener el estado inicial de referencia
+    this.snapshotMemoria = this.editorSvc.obtenerDatosParaGuardar(true);
 
     this.state.objetoSeleccionado.set(null);
 
@@ -102,15 +103,54 @@ export class EditorPlayModeService {
     const isDebugMode = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
     if (this.snapshotMemoria) {
+        // 1. CAPTURAR EDICIONES HECHAS DURANTE EL TEST EN 1ra PERSONA
+        const cambiosEnPlay = this.editorSvc.obtenerDatosParaGuardar(false);
+
+        // 2. FUSIONAR CAMBIOS DE OBJETOS EN EL SNAPSHOT
+        cambiosEnPlay.sceneObjectsDelta.forEach(delta => {
+            const index = this.snapshotMemoria.sceneObjectsDelta.findIndex((o: any) => o.uid === delta.uid);
+            if (index !== -1) {
+                this.snapshotMemoria.sceneObjectsDelta[index] = delta;
+            } else {
+                this.snapshotMemoria.sceneObjectsDelta.push(delta);
+            }
+        });
+
+        // 3. FUSIONAR CAMBIOS DE TRIGGERS
+        cambiosEnPlay.triggersDelta.forEach(delta => {
+            const index = this.snapshotMemoria.triggersDelta.findIndex((o: any) => o.uid === delta.uid);
+            if (index !== -1) {
+                this.snapshotMemoria.triggersDelta[index] = delta;
+            } else {
+                this.snapshotMemoria.triggersDelta.push(delta);
+            }
+        });
+
+        // 4. APLICAR ELIMINACIONES QUE SE HAYAN HECHO EN MODO TEST
+        if (cambiosEnPlay.deletedObjects.length > 0) {
+            this.snapshotMemoria.sceneObjectsDelta = this.snapshotMemoria.sceneObjectsDelta.filter((o: any) => !cambiosEnPlay.deletedObjects.includes(o.uid));
+            this.snapshotMemoria.deletedObjects = [...new Set([...this.snapshotMemoria.deletedObjects, ...cambiosEnPlay.deletedObjects])];
+        }
+
+        if (cambiosEnPlay.deletedTriggers.length > 0) {
+            this.snapshotMemoria.triggersDelta = this.snapshotMemoria.triggersDelta.filter((o: any) => !cambiosEnPlay.deletedTriggers.includes(o.uid));
+            this.snapshotMemoria.deletedTriggers = [...new Set([...this.snapshotMemoria.deletedTriggers, ...cambiosEnPlay.deletedTriggers])];
+        }
+
         this.entityManager.clear();
         this.editorSvc.limpiarEstado();
 
         const scene = this.motor3d.scene;
+        
+        // 🔥 FIX: Impedimos estrictamente que la limpieza de recarga borre la geometría de la niebla
         const meshesToDispose = scene.meshes.filter(m => {
-           const n = m.name;
-           return !['sueloInvisible', 'ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(n) &&
+           const n = m.name.toLowerCase();
+           return !['sueloinvisible', 'ejex', 'ejey', 'ejez', 'gridhelper'].includes(n) &&
                   !n.includes('gizmo') && 
-                  !n.includes('highlight');
+                  !n.includes('highlight') &&
+                  !n.includes('fogshell') &&
+                  !n.includes('fogwall') &&
+                  !n.includes('debug');
         });
         
         meshesToDispose.forEach(m => {

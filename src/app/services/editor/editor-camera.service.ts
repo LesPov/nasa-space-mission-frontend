@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import {
   AbstractMesh,
@@ -20,11 +21,8 @@ export class EditorCameraService {
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
 
-  private ultimaPosCamaraLibre: Vector3 | null = null;
-  private ultimoTargetCamaraLibre: Vector3 | null = null;
-
-  // 🔥 ELIMINADO EL MONKEY PATCHING PELIGROSO EN EL CONSTRUCTOR.
-  // El Runtime ahora es inteligente e ignora la 'editorCamera' directamente.
+  // 🔥 FIX: Guardamos el estado real y exacto de la cámara orbital (Radio, Ángulos, Target)
+  private editorCamState: { target: Vector3; radius: number; alpha: number; beta: number } | null = null;
 
   private obtenerCamaraJuegoActiva(): Camera | null {
     const scene = this.motor3d.scene;
@@ -118,28 +116,28 @@ export class EditorCameraService {
     });
   }
 
+  // 🔥 FIX: Captura perfecta del estado para que no quede lenta al regresar
   guardarEstadoCamaraLibre(): void {
-    const cam = this.motor3d.scene?.activeCamera;
-    if (!cam) return;
-
-    this.ultimaPosCamaraLibre = cam.globalPosition.clone();
-
-    if (this.state.modoVistaPrueba === 'TPS') {
-       // La pivote TPS se eliminó del motor para no romper dependencias, se asume la rotación frontal
-       this.ultimoTargetCamaraLibre = cam.globalPosition.add(cam.getDirection(Vector3.Forward()));
-    } else {
-      this.ultimoTargetCamaraLibre = cam.globalPosition.add(cam.getDirection(Vector3.Forward()));
-    }
-  }
-
-  restaurarCamaraLibre(): void {
     const editorCam = this.motor3d.editorCamera;
     if (!editorCam) return;
 
-    if (this.ultimaPosCamaraLibre && this.ultimoTargetCamaraLibre) {
-      editorCam.position = this.ultimaPosCamaraLibre.clone();
-      editorCam.setTarget(this.ultimoTargetCamaraLibre.clone());
-    }
+    this.editorCamState = {
+      target: editorCam.getTarget().clone(),
+      radius: editorCam.radius,
+      alpha: editorCam.alpha,
+      beta: editorCam.beta
+    };
+  }
+
+  // 🔥 FIX: Restaura los ángulos y el radio para conservar la fluidez
+  restaurarCamaraLibre(): void {
+    const editorCam = this.motor3d.editorCamera;
+    if (!editorCam || !this.editorCamState) return;
+
+    editorCam.setTarget(this.editorCamState.target.clone());
+    editorCam.radius = this.editorCamState.radius;
+    editorCam.alpha = this.editorCamState.alpha;
+    editorCam.beta = this.editorCamState.beta;
   }
 
   enfocarObjetoEnEditor(objeto: Node): void {

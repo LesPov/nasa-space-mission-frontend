@@ -61,8 +61,8 @@ export class EditorMapaService {
     return this.scene.cargarEscenaDesdeDatos(dataBD); 
   }
   
-  obtenerDatosParaGuardar(): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], worldSettings: any } { 
-    return this.scene.obtenerDatosParaGuardar(); 
+  obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], worldSettings: any } { 
+    return this.scene.obtenerDatosParaGuardar(forceFull); 
   }
   
   agregarObjetoCustom(

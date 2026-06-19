@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -95,7 +96,7 @@ export class ToolsFogService {
 
   private updateFogFrame(scene: Scene): void { 
     const modo = this.state.playState();
-    const isFogDisabledTemp = this.state.fogDesactivadoTemporalmente(); // 🔥 Comprobamos el botón
+    const isFogDisabledTemp = this.state.fogDesactivadoTemporalmente(); 
     
     if (modo === 'PLAYING' || modo === 'TRANSITIONING') {
        this.fogWalls.forEach(w => w.getChildMeshes().forEach(m => m.isVisible = false));
@@ -125,7 +126,6 @@ export class ToolsFogService {
     const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
     const targetEntity = this.entityManager.getEntityByMesh(targetPlayer);
 
-    // 🔥 FIX: Solo activamos la niebla si el botón NO está presionado
     if (modo === 'EDITING_IN_GAME' && targetEntity?.playerConfig?.fog?.enabled && !isFogDisabledTemp) {
       useFog = true;
       const fog = targetEntity.playerConfig.fog;
@@ -170,7 +170,9 @@ export class ToolsFogService {
     
     if (useFog) { scene.fogStart = this.curStart; scene.fogEnd = this.curEnd; }
 
-    if (this.fogWalls[0] && this.fogWalls[0].getScene() !== scene) {
+    // 🔥 FIX: Auto-Reparación de la Niebla
+    if (this.fogWalls[0] && (this.fogWalls[0].getScene() !== scene || this.fogWalls[0].isDisposed() || this.fogWalls[0].getChildMeshes().length === 0)) {
+        this.fogWalls.forEach(w => { if(!w.isDisposed()) w.dispose(); });
         this.fogWalls = [];
         this.fogMats = [];
     }
@@ -288,7 +290,6 @@ export class ToolsFogService {
           const finalAlpha = state.alpha * opacityRatio;
           mat.alpha = finalAlpha; 
 
-          // 🔥 FIX: Forzamos la invisibilidad si la niebla está apagada por el botón
           const shouldBeVisible = isVisible && finalAlpha > 0.005 && !isFogDisabledTemp;
           shell.isVisible = shouldBeVisible;
           shell.isPickable = false;

@@ -112,7 +112,7 @@ export class EditorSceneService {
     });
   }
 
-  public obtenerDatosParaGuardar(): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], worldSettings: any } {
-    return this.saverSvc.obtenerDatosParaGuardar();
+  public obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], worldSettings: any } {
+    return this.saverSvc.obtenerDatosParaGuardar(forceFull);
   }
 }

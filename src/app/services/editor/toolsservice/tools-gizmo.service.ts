@@ -326,7 +326,7 @@ export class ToolsGizmoService {
     this.gizmoManager.scaleGizmoEnabled = false;
 
     const modo = this.state.playState();
-    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+    const isAdmin = this.state.checkIsAdmin();
 
     if (!isAdmin || modo === 'PLAYING' || modo === 'INTERACTING' || modo === 'TRANSITIONING') return;
 
@@ -346,7 +346,7 @@ export class ToolsGizmoService {
     if (!this.gizmoManager) return;
 
     const modoJuego = this.state.playState();
-    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+    const isAdmin = this.state.checkIsAdmin();
 
     if (modoJuego === 'PLAYING' || modoJuego === 'TRANSITIONING' || modoJuego === 'INTERACTING' || !isAdmin) {
       this.gizmoManager.attachToMesh(null);

@@ -1,3 +1,5 @@
+// src/app/services/editor/toolsservice/tools-highlight.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, HighlightLayer, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -43,8 +45,6 @@ export class ToolsHighlightService {
     this.hlHover.removeAllMeshes();
     this.hlSelected.removeAllMeshes();
 
-    // 🔥 FIX ABSOLUTO PARA LA NIEBLA: Le decimos explícitamente al motor de renderizado
-    // que bajo NINGUNA circunstancia calcule brillos sobre las mallas de la niebla.
     this.motor3d.scene.meshes.forEach(m => {
       const n = m.name.toLowerCase();
       if (n.includes('fogshell') || n.includes('fogwall') || n.includes('debugfog')) {
@@ -56,17 +56,15 @@ export class ToolsHighlightService {
     });
 
     const mode = this.state.playState();
-    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+    const isAdmin = this.state.checkIsAdmin();
 
     if (mode !== 'EDITOR' && mode !== 'EDITING_IN_GAME' && !(mode === 'PLAYING' && isAdmin)) return;
-    if (!isAdmin && (mode === 'EDITOR' || mode === 'EDITING_IN_GAME')) return;
 
     const colorHover = Color3.FromHexString('#3b82f6');
     const colorSelected = Color3.FromHexString('#fbbf24');
 
     const addHighlightToAllVisible = (mesh: Mesh, hl: HighlightLayer, color: Color3) => {
       const n = mesh.name.toLowerCase();
-      // Verificación de seguridad adicional
       if (n.includes('fogshell') || n.includes('fogwall') || n.includes('debugfog')) return;
 
       const entity = this.entityManager.getEntityByMesh(mesh);
@@ -80,7 +78,6 @@ export class ToolsHighlightService {
       
       mesh.getChildMeshes().forEach(c => {
         const cn = c.name.toLowerCase();
-        // Ignoramos hijos que sean niebla
         if (!c.isVisible || cn.includes('proxycol') || cn.includes('debug') || cn.includes('camerapivot') || cn.includes('fogshell') || cn.includes('fogwall') || cn.includes('debugfog')) return;
 
         const cEntity = this.entityManager.getEntityByMesh(c);

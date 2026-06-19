@@ -1,6 +1,7 @@
+<!-- src/app/pages/admin/editor-escena/editor-escena.html -->
 
 <!-- PANTALLA PRINCIPAL: SELECCIÓN DE MAPAS -->
-<ng-container *ngIf="!editando && !modalSeleccionModo && !cargandoEscena">
+<ng-container *ngIf="!editando && !cargandoEscena">
   <div class="galeria-header">
     <div>
       <h2>Tus Mapas / Episodios</h2>
@@ -12,8 +13,7 @@
   <div class="grid-mapas">
     <div class="card-mapa" *ngFor="let epi of listaEpisodios" 
          (mouseenter)="hoveredEpisodio = epi.id" 
-         (mouseleave)="hoveredEpisodio = null"
-         (click)="entrarAlEditor(epi)">
+         (mouseleave)="hoveredEpisodio = null">
       
       <div class="card-miniatura">
         <span class="icono-mapa" *ngIf="hoveredEpisodio !== epi.id">🌍</span>
@@ -21,13 +21,20 @@
           <div class="mini-visor-wrapper" (click)="$event.stopPropagation()">
             <app-mini-visor-escena [episodioId]="epi.id"></app-mini-visor-escena>
           </div>
-          <button class="btn-entrar-overlay" (click)="entrarAlEditor(epi); $event.stopPropagation();">
-            Entrar a la Escena
-          </button>
+          
+          <!-- 🔥 DOS BOTONES SEPARADOS PARA NO MEZCLAR FLUJOS 🔥 -->
+          <div style="position: absolute; top: 10px; right: 10px; display: flex; gap: 8px; z-index: 10;">
+             <button class="btn-entrar-overlay" style="position: static; background-color: #10b981;" (click)="jugarModoFinal(epi); $event.stopPropagation();">
+               ▶ Jugar Final
+             </button>
+             <button class="btn-entrar-overlay" style="position: static;" (click)="entrarAlEditor(epi); $event.stopPropagation();">
+               🛠 Editar Escena
+             </button>
+          </div>
         </ng-container>
       </div>
       
-      <div class="card-info">
+      <div class="card-info" (click)="entrarAlEditor(epi)">
         <h3>{{ epi.title }}</h3>
         <p>ID: {{ epi.id }}</p>
       </div>
@@ -53,56 +60,16 @@
   </div>
 </ng-container>
 
-<!-- ========================================================
-     PANTALLAS DE CARGA Y SELECCIÓN DE ROL (OVERLAYS CINEMÁTICOS)
-     ======================================================== -->
-<div class="cinematic-overlay" *ngIf="modalSeleccionModo || cargandoEscena">
-  
-  <!-- MODAL DE SELECCIÓN (SOLO ADMINS) -->
-  <div class="mode-selection-modal" *ngIf="modalSeleccionModo">
-    <h2>Selecciona el Modo de Entrada</h2>
-    <p>Elige tu rol para esta sesión. Esto cambiará tu experiencia y herramientas disponibles.</p>
-    
-    <div class="mode-cards-container">
-      <div class="mode-card" (click)="confirmarModoYContinuar('admin')">
-        <div class="mode-icon">🛠️</div>
-        <h3>Modo Creador</h3>
-        <p>Accede al motor completo. Construye la escena, edita colisiones y programa las secuencias cinemáticas.</p>
-      </div>
-      
-      <div class="mode-card user-mode" (click)="confirmarModoYContinuar('user')">
-        <div class="mode-icon">🎮</div>
-        <h3>Modo Jugador</h3>
-        <p>Experimenta el episodio exactamente como lo verá el usuario final. Sin herramientas del editor.</p>
-      </div>
-    </div>
-    
-    <button class="btn-cancel mt-4" style="align-self: center;" (click)="salirDelEditor()">Cancelar</button>
-  </div>
-
-  <!-- SPINNER CINEMÁTICO DE CARGA EXTRAÍDO -->
-  <app-ui-loading *ngIf="cargandoEscena" [texto]="cargandoTexto"></app-ui-loading>
+<!-- SPINNER CINEMÁTICO DE CARGA -->
+<div class="cinematic-overlay" *ngIf="cargandoEscena">
+  <app-ui-loading [texto]="cargandoTexto"></app-ui-loading>
 </div>
 
-<!-- FLUJO DE EDICIÓN Y JUEGO -->
+<!-- FLUJO DE EDICIÓN -->
 <ng-container *ngIf="editando">
 
-  <!-- UI DEL JUEGO EXTRAÍDA -->
-  <app-ui-mission 
-    *ngIf="modalMisionUsuario" 
-    [mapaNombre]="mapaActualNombre" 
-    [misionIniciada]="misionIniciada" 
-    [cerrando]="cerrandoModalUsuario" 
-    [isDebugMode]="esAdmin && editorSvc.rolSimulado() === 'admin'" 
-    (onStart)="comenzarMisionUsuario()" 
-    (onExit)="manejarSalidaDeMision()">
-  </app-ui-mission>
-
-  <!-- ========================================================
-       MODALES DEL EDITOR DE OBJETOS
-       ======================================================== -->
-  <div class="modal-overlay" *ngIf="editorSvc.showAddObjectModal() && editorSvc.rolSimulado() === 'admin'" style="z-index: 9999;">
-    <!-- Contenido del modal Add Object... -->
+  <!-- MODALES DEL EDITOR DE OBJETOS -->
+  <div class="modal-overlay" *ngIf="editorSvc.showAddObjectModal()" style="z-index: 9999;">
     <div class="modal-box large">
       <h3>Añadir Nuevo Elemento a la Escena</h3>
       <div class="modal-grid">
@@ -170,27 +137,21 @@
     </div>
   </div>
 
-  <!-- UI INSPECCIÓN EXTRAÍDA -->
   <app-ui-inspect (onClose)="cerrarInteraccion()"></app-ui-inspect>
 
-  <!-- ========================================================
-       RENDER PRINCIPAL Y CAPA BABYLON
-       ======================================================== -->
+  <!-- RENDER PRINCIPAL Y CAPA BABYLON -->
   <div class="blender-layout">
-    <div class="viewport-area" [style.width]="(editorSvc.rolSimulado() === 'admin' && layoutUI.showInspector()) ? 'calc(100% - ' + layoutUI.inspectorWidth() + 'px)' : '100%'">
+    <div class="viewport-area" [style.width]="layoutUI.showInspector() ? 'calc(100% - ' + layoutUI.inspectorWidth() + 'px)' : '100%'">
       
-      <!-- CONTENEDOR SUPERIOR (Canvas 3D) -->
-      <div class="canvas-wrapper" [style.height.%]="(editorSvc.rolSimulado() === 'admin' && layoutUI.showTimeline()) ? 100 - layoutUI.timelineHeight() : 100">
+      <div class="canvas-wrapper" [style.height.%]="layoutUI.showTimeline() ? 100 - layoutUI.timelineHeight() : 100">
         
-        <!-- TOPBAR MÍNIMA O COMPLETA SEGÚN ROL -->
-        <div class="viewport-topbar" *ngIf="editorSvc.rolSimulado() === 'admin'">
+        <div class="viewport-topbar">
           <div class="vp-left">
             <button class="btn-vp btn-exit" (click)="salirDelEditor()">⬅ Salir</button>
             <span class="vp-title">{{ mapaActualNombre }}</span>
           </div>
           
           <div class="vp-right">
-            <!-- 🔥 BOTÓN NUEVO: Toggle Niebla para Edición en Vivo -->
             <button class="btn-vp" 
                     *ngIf="editorSvc.playState() === 'EDITING_IN_GAME'" 
                     (click)="toggleNieblaTemporal()" 
@@ -202,46 +163,40 @@
               <option value="FPS">👁️ 1ra Persona</option>
               <option value="TPS">🧍 3ra Persona</option>
             </select>
-            <button class="btn-vp btn-play" *ngIf="editorSvc.playState() === 'EDITOR'" [disabled]="!esObjetoJugable()" (click)="iniciarModoPrueba()">▶️ Jugar</button>
+            <button class="btn-vp btn-play" *ngIf="editorSvc.playState() === 'EDITOR'" [disabled]="!esObjetoJugable()" (click)="iniciarModoPrueba()">▶️ Jugar Preview</button>
             <span class="sync-status" [class.syncing]="estadoGuardado() === 'Guardando...'" *ngIf="editorSvc.playState() === 'EDITOR'">{{ estadoGuardado() }}</span>
             <button class="btn-vp btn-save" (click)="guardarMapaEnBD(false)" *ngIf="editorSvc.playState() === 'EDITOR'">💾 Guardar</button>
             <button class="btn-vp btn-stop" *ngIf="editorSvc.playState() !== 'EDITOR'" (click)="detenerModoPrueba()">⏹️ Volver al Editor</button>
           </div>
         </div>
 
-        <div class="canvas-container" 
-             [style.pointer-events]="(modalMisionUsuario && !cerrandoModalUsuario) ? 'none' : 'all'"
-             (click)="onCanvasClick()">
-          <!-- FPS BADGE GLOBAL PARA TODO MODO (EDITOR/JUEGO) -->
+        <div class="canvas-container" (click)="onCanvasClick()">
           <div class="fps-badge">FPS: {{ fps() }}</div>
 
-          <!-- BOTONES FLOTANTES SOLO ADMIN -->
-          <ng-container *ngIf="editorSvc.rolSimulado() === 'admin'">
+          <ng-container>
             <button class="toggle-panel-btn toggle-right" (click)="layoutUI.toggleInspector()" [title]="layoutUI.showInspector() ? 'Ocultar Inspector' : 'Mostrar Inspector'">{{ layoutUI.showInspector() ? '▶' : '◀' }}</button>
             <button class="toggle-panel-btn toggle-bottom" (click)="layoutUI.toggleTimeline()" [title]="layoutUI.showTimeline() ? 'Ocultar Timeline' : 'Mostrar Timeline'">{{ layoutUI.showTimeline() ? '▼' : '▲' }}</button>
             <app-toolbar-escena *ngIf="editorSvc.playState() === 'EDITOR' || editorSvc.playState() === 'EDITING_IN_GAME' || (editorSvc.playState() === 'PLAYING' && !gameSession.pointerLocked())"></app-toolbar-escena>
           </ng-container>
 
-          <!-- HUD DE JUEGO EXTRAÍDO -->
           <app-ui-hud 
-            [playState]="editorSvc.playState()" 
-            [hideStatus]="modalMisionUsuario">
+            [playState]="editorSvc.playState()">
           </app-ui-hud>
           
           <app-motor-babylon></app-motor-babylon>
         </div>
       </div>
       
-      <!-- PANEL INFERIOR TIMELINE (SOLO ADMIN) -->
-      <div class="horizontal-resizer" *ngIf="editorSvc.rolSimulado() === 'admin' && layoutUI.showTimeline()" (mousedown)="layoutUI.startResizeTimeline($event)" [class.resizing]="layoutUI.isResizingTimeline()"><div class="resizer-grip-h"></div></div>
-      <div class="timeline-wrapper" *ngIf="editorSvc.rolSimulado() === 'admin' && layoutUI.showTimeline() && layoutUI.timelineHeight() > 5" [style.height.%]="layoutUI.timelineHeight()">
+      <!-- PANEL INFERIOR TIMELINE -->
+      <div class="horizontal-resizer" *ngIf="layoutUI.showTimeline()" (mousedown)="layoutUI.startResizeTimeline($event)" [class.resizing]="layoutUI.isResizingTimeline()"><div class="resizer-grip-h"></div></div>
+      <div class="timeline-wrapper" *ngIf="layoutUI.showTimeline() && layoutUI.timelineHeight() > 5" [style.height.%]="layoutUI.timelineHeight()">
         <app-global-timeline></app-global-timeline>
       </div>
     </div>
     
-    <!-- INSPECTOR DERECHO (SOLO ADMIN) -->
-    <div class="layout-resizer" *ngIf="editorSvc.rolSimulado() === 'admin' && layoutUI.showInspector()" (mousedown)="layoutUI.startResize($event)" [class.resizing]="layoutUI.isResizing()"><div class="resizer-grip"></div></div>
-    <div class="inspector-wrapper" *ngIf="editorSvc.rolSimulado() === 'admin' && layoutUI.showInspector()" [style.width.px]="layoutUI.inspectorWidth()">
+    <!-- INSPECTOR DERECHO -->
+    <div class="layout-resizer" *ngIf="layoutUI.showInspector()" (mousedown)="layoutUI.startResize($event)" [class.resizing]="layoutUI.isResizing()"><div class="resizer-grip"></div></div>
+    <div class="inspector-wrapper" *ngIf="layoutUI.showInspector()" [style.width.px]="layoutUI.inspectorWidth()">
       <app-inspector-escena></app-inspector-escena>
     </div>
     

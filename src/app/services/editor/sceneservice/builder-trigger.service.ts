@@ -1,3 +1,4 @@
+// src/app/services/editor/sceneservice/builder-trigger.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
@@ -55,12 +56,12 @@ export class BuilderTriggerService {
     mat.alpha = 0.4;
     mat.wireframe = true;
     mat.disableLighting = true;
-    mat.maxSimultaneousLights = 4; // OPTIMIZACIÓN
+    mat.maxSimultaneousLights = 4;
     newMesh.material = mat;
 
     newMesh.isPickable = true;
     newMesh.checkCollisions = false;
-    newMesh.isVisible = this.state.rolSimulado() === 'admin';
+    newMesh.isVisible = this.state.checkIsAdmin();
 
     if (this.state.objetoSeleccionado() === oldMesh) {
       this.state.objetoSeleccionado.set(newMesh);

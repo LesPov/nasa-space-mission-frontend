@@ -1,3 +1,4 @@
+// src/app/services/editor/editor-scene.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, MeshBuilder, Color4 } from '@babylonjs/core';
@@ -88,7 +89,7 @@ export class EditorSceneService {
   }
 
   public cargarEscenaDesdeDatos(dataBD: any): Promise<void> {
-    const isAdmin = this.state.rolSimulado() === 'admin';
+    const isAdmin = this.state.checkIsAdmin();
     return this.loaderSvc.loadSceneFromData(dataBD).then(() => {
       if (isAdmin) {
         this.revelarEntidadesOcultasParaAdmin();
@@ -98,7 +99,7 @@ export class EditorSceneService {
   }
 
   public instanciarPrefabFull(prefabData: any, targetPos: Vector3): void {
-    const isAdmin = this.state.rolSimulado() === 'admin';
+    const isAdmin = this.state.checkIsAdmin();
     this.loaderSvc.instantiatePrefab(prefabData, targetPos).then((mallas) => {
       if (isAdmin) {
         this.revelarEntidadesOcultasParaAdmin();

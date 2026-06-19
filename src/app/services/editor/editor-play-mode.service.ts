@@ -1,3 +1,4 @@
+// src/app/services/editor/editor-play-mode.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
@@ -36,11 +37,9 @@ export class EditorPlayModeService {
     this.state.jugadorActivo = objMesh;
     this.state.objetoHovereado.set(null);
 
-    const isDebugMode = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+    const isDebugMode = this.state.checkIsAdmin();
 
-    // Capturamos TODO el mapa completo para tener el estado inicial de referencia
     this.snapshotMemoria = this.editorSvc.obtenerDatosParaGuardar(true);
-
     this.state.objetoSeleccionado.set(null);
 
     this.motor3d.scene.meshes.forEach(m => {
@@ -72,27 +71,21 @@ export class EditorPlayModeService {
         this.runtimeEngine.startTestSession(playerEntity, vista, isDebugMode);
         this.state.triggerUpdate();
         
-        if (isDebugMode) {
-            setTimeout(() => {
-                const canvas = this.motor3d.engine.getRenderingCanvas();
-                if (canvas) {
-                    const activeCam = this.motor3d.scene.activeCamera;
-                    if (activeCam) {
-                        activeCam.detachControl();
-                        activeCam.attachControl(canvas, true);
-                    }
+        setTimeout(() => {
+            const canvas = this.motor3d.engine.getRenderingCanvas();
+            if (canvas) {
+                const activeCam = this.motor3d.scene.activeCamera;
+                if (activeCam) {
+                    activeCam.detachControl();
+                    activeCam.attachControl(canvas, true);
                 }
-            }, 100);
-        }
+            }
+        }, 100);
     };
 
-    if (this.state.rolSimulado() === 'user') {
+    this.cameraSvc.volarHaciaCamaraJuego(objMesh.getAbsolutePosition(), targetPos, targetLookAt, vista === 'FPS', () => {
         finishSetup();
-    } else {
-        this.cameraSvc.volarHaciaCamaraJuego(objMesh.getAbsolutePosition(), targetPos, targetLookAt, vista === 'FPS', () => {
-            finishSetup();
-        });
-    }
+    });
   }
 
   public async detenerPrueba(): Promise<void> {
@@ -100,13 +93,11 @@ export class EditorPlayModeService {
     this.state.modoVistaPrueba = null; 
     
     this.runtimeEngine.stopTestSession();
-    const isDebugMode = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+    const isDebugMode = this.state.checkIsAdmin();
 
     if (this.snapshotMemoria) {
-        // 1. CAPTURAR EDICIONES HECHAS DURANTE EL TEST EN 1ra PERSONA
         const cambiosEnPlay = this.editorSvc.obtenerDatosParaGuardar(false);
 
-        // 2. FUSIONAR CAMBIOS DE OBJETOS EN EL SNAPSHOT
         cambiosEnPlay.sceneObjectsDelta.forEach(delta => {
             const index = this.snapshotMemoria.sceneObjectsDelta.findIndex((o: any) => o.uid === delta.uid);
             if (index !== -1) {
@@ -116,7 +107,6 @@ export class EditorPlayModeService {
             }
         });
 
-        // 3. FUSIONAR CAMBIOS DE TRIGGERS
         cambiosEnPlay.triggersDelta.forEach(delta => {
             const index = this.snapshotMemoria.triggersDelta.findIndex((o: any) => o.uid === delta.uid);
             if (index !== -1) {
@@ -126,7 +116,6 @@ export class EditorPlayModeService {
             }
         });
 
-        // 4. APLICAR ELIMINACIONES QUE SE HAYAN HECHO EN MODO TEST
         if (cambiosEnPlay.deletedObjects.length > 0) {
             this.snapshotMemoria.sceneObjectsDelta = this.snapshotMemoria.sceneObjectsDelta.filter((o: any) => !cambiosEnPlay.deletedObjects.includes(o.uid));
             this.snapshotMemoria.deletedObjects = [...new Set([...this.snapshotMemoria.deletedObjects, ...cambiosEnPlay.deletedObjects])];
@@ -142,7 +131,6 @@ export class EditorPlayModeService {
 
         const scene = this.motor3d.scene;
         
-        // 🔥 FIX: Impedimos estrictamente que la limpieza de recarga borre la geometría de la niebla
         const meshesToDispose = scene.meshes.filter(m => {
            const n = m.name.toLowerCase();
            return !['sueloinvisible', 'ejex', 'ejey', 'ejez', 'gridhelper'].includes(n) &&

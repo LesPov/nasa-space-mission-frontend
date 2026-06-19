@@ -1,3 +1,4 @@
+
 // src/app/pages/player/juego-pantalla/juego-pantalla.ts
 
 import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
@@ -11,6 +12,7 @@ import { GameEventBusService } from '../../../core/engine/events/game-event-bus.
 import { EpisodiosService } from '../../../services/api/episodios';
 import { Motor3dService } from '../../../services/motor-3d.service';
 import { InputOrchestratorService } from '../../../core/engine/runtime/systems/input-orchestrator.service';
+import { AuthService } from '../../../core/services/auth';
 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
@@ -33,6 +35,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private epiApiSvc = inject(EpisodiosService);
   private motor3dSvc = inject(Motor3dService);
   private inputOrchestrator = inject(InputOrchestratorService);
+  private authSvc = inject(AuthService);
 
   public isInteracting = signal<boolean>(false);
   public pointerLocked = signal<boolean>(false);
@@ -76,9 +79,9 @@ export class JuegoPantalla implements OnInit, OnDestroy {
           console.error('Error loading game:', err);
           this.isLoading.set(false);
           
-          if (err.status === 403) {
+          if (err.status === 403 || err.status === 401) {
               this.mapaActualNombre = 'Acceso Denegado (403)';
-              alert(`🛑 ACCESO DENEGADO 🛑\n\nTu servidor bloqueó el acceso. Como eres "usuario", no puedes jugar episodios ocultos.\n\nSOLUCIÓN:\nVe a tu base de datos y pon "isPublished = 1" en el episodio con ID ${id}`);
+              alert(`🛑 ACCESO DENEGADO 🛑\n\nTu servidor bloqueó el acceso. El episodio requiere inicio de sesión válido o está oculto.`);
           } else {
               this.mapaActualNombre = 'Error de Servidor';
               alert('Error al cargar el mapa. Verifica la consola y que tu backend esté corriendo.');
@@ -141,7 +144,12 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
   salirDelJuego() {
     this.runtime.shutdownProductionGame();
-    this.router.navigate(['/jugador/episodios']);
+    // 🔥 SOLUCIÓN: Ruta correcta del editor en Angular
+    if (this.authSvc.isAdmin()) {
+        this.router.navigate(['/admin/editor-escena']);
+    } else {
+        this.router.navigate(['/jugador/episodios']);
+    }
   }
 
   cerrarInteraccion() {

@@ -1,3 +1,4 @@
+// src/app/services/editor-mapa.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { Node, AbstractMesh, Vector3 } from '@babylonjs/core';
@@ -20,7 +21,6 @@ export class EditorMapaService {
   private loader = inject(CoreSceneLoaderService); 
 
   get playState() { return this.state.playState; }
-  get rolSimulado() { return this.state.rolSimulado; }
   get currentTool() { return this.state.currentTool; }
   
   get objetoSeleccionado() { return this.state.objetoSeleccionado; }

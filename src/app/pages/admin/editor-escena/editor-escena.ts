@@ -27,7 +27,6 @@ import { InputOrchestratorService } from '../../../core/engine/runtime/systems/i
 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
-import { UiMission } from '../../../components/ui-mission/ui-mission';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
 
 @Component({
@@ -35,7 +34,7 @@ import { UiLoading } from '../../../components/ui-loading/ui-loading';
   standalone: true,
   imports: [
     MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule,
-    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiMission, UiLoading
+    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading
   ],
   templateUrl: './editor-escena.html',
   styleUrl: './editor-escena.css',
@@ -62,11 +61,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public editando = false;
   public esAdmin: boolean = false;
 
-  public modalSeleccionModo = false;
   public cargandoEscena = false;
-  public modalMisionUsuario = false;
-  public misionIniciada = false;
-  public cerrandoModalUsuario = false;
   public episodioPendienteCarga: any = null;
   public cargandoTexto = 'Preparando entorno...';
 
@@ -125,22 +120,6 @@ export class EditorEscena implements OnInit, OnDestroy {
           this.activeCameraView = event.payload;
           this.stateSvc.modoVistaPrueba = event.payload;
           break;
-        case 'GameStarted':
-          if (this.editorSvc.rolSimulado() === 'user') {
-            this.modalMisionUsuario = true;
-            this.misionIniciada = false;
-            this.cerrandoModalUsuario = false;
-          }
-          break;
-        case 'GamePaused':
-          if (this.misionIniciada && !this.isInteracting() && this.editorSvc.rolSimulado() === 'user') {
-             this.modalMisionUsuario = true;
-             this.cerrandoModalUsuario = false;
-             if (this.activeCameraView === 'FPS') {
-                this.runtime.toggleCameraUser(false, 45);
-             }
-          }
-          break;
       }
       this.cdr.detectChanges();
     });
@@ -150,7 +129,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     ).subscribe(() => {
       try {
         const state = this.editorSvc.playState();
-        if (this.esAdmin && this.editorSvc.rolSimulado() === 'admin' && this.editando && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
+        if (this.esAdmin && this.editando && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
           this.guardarMapaEnBD(true); 
         }
       } catch (e) {
@@ -180,34 +159,23 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.editorSvc.triggerUpdate();
   }
 
+  jugarModoFinal(episodio: any) {
+    // 🔥 SOLUCIÓN: Cambiado de /jugador/juego/ a /jugador/jugar/ para que coincida con app.routes.ts
+    window.open(`/jugador/jugar/${episodio.id}`, '_blank');
+  }
+
   entrarAlEditor(episodio: any) {
     this.episodioPendienteCarga = episodio;
     this.layoutSvc.ocultarMenu();
-
-    if (this.esAdmin) {
-      this.modalSeleccionModo = true;
-      this.cargandoEscena = false;
-    } else {
-      this.confirmarModoYContinuar('user');
-    }
-  }
-
-  confirmarModoYContinuar(modo: 'admin' | 'user') {
-    this.modalSeleccionModo = false;
     this.cargandoEscena = true;
-    this.layoutSvc.ocultarMenu();
-    this.cargandoTexto = modo === 'admin' ? 'Cargando herramientas de creador...' : 'Conectando con el mundo...';
-
-    this.editorSvc.rolSimulado.set(modo);
-    this.procesarCarga(this.episodioPendienteCarga);
+    this.cargandoTexto = 'Cargando herramientas de creador...';
+    this.procesarCarga(episodio);
   }
 
   private procesarCarga(episodio: any) {
     this.episodioIdActivo = episodio.id;
     this.mapaActualNombre = episodio.title;
     this.editando = true;
-    this.misionIniciada = false;
-    this.cerrandoModalUsuario = false;
 
     this.epiApiSvc.obtenerEpisodio(episodio.id).subscribe({
       next: async (res) => {
@@ -225,27 +193,9 @@ export class EditorEscena implements OnInit, OnDestroy {
         }
 
         this.motor3dSvc.scene.executeWhenReady(() => {
-          if (this.editorSvc.rolSimulado() === 'user') {
-            const spawnEntity = this.entityManager.getEntitiesByRol('spawn_point')[0] || 
-                                this.entityManager.getEntitiesByRol('npc')[0];
-            
-            if (spawnEntity && spawnEntity.view) {
-              this.editorSvc.seleccionarObjeto(spawnEntity.view);
-              this.vistaPrueba = 'FPS';
-              this.iniciarModoPrueba();
-              
-              this.cargandoEscena = false;
-              this.episodioPendienteCarga = null;
-              this.cdr.detectChanges();
-            } else {
-              alert('Este episodio aún no tiene un punto de aparición (Spawn Point). Vuelve más tarde.');
-              this.salirDelEditor();
-            }
-          } else {
-            this.cargandoEscena = false;
-            this.episodioPendienteCarga = null;
-            this.cdr.detectChanges(); 
-          }
+          this.cargandoEscena = false;
+          this.episodioPendienteCarga = null;
+          this.cdr.detectChanges(); 
           
           this.fpsInterval = setInterval(() => {
             this.fps.set(this.motor3dSvc.currentFps.toFixed(0));
@@ -254,42 +204,13 @@ export class EditorEscena implements OnInit, OnDestroy {
       },
       error: (err) => {
         this.cargandoEscena = false;
-        this.modalSeleccionModo = false;
         alert('Error conectando con el servidor. No se pudo cargar la escena.');
       }
     });
   }
 
-  manejarSalidaDeMision() {
-    if (this.editorSvc.rolSimulado() === 'admin') {
-      this.detenerModoPrueba();
-      this.modalMisionUsuario = false;
-    } else {
-      this.salirDelEditor();
-    }
-  }
-
-  comenzarMisionUsuario() {
-    this.cerrandoModalUsuario = true;
-
-    if (this.activeCameraView === 'TPS') {
-       this.runtime.toggleCameraUser(false, 60); 
-    } else {
-       this.runtime.toggleCameraUser(true, 60); 
-    }
-
-    this.inputOrchestrator.lockPointer();
-
-    setTimeout(() => {
-      this.misionIniciada = true; 
-      this.modalMisionUsuario = false;
-      this.cerrandoModalUsuario = false;
-      this.cdr.detectChanges(); 
-    }, 2000); 
-  }
-
   onCanvasClick() {
-    if (this.misionIniciada && !this.gameSession.pointerLocked() && !this.isInteracting() && !this.modalMisionUsuario) {
+    if (this.editorSvc.playState() === 'PLAYING' && !this.gameSession.pointerLocked() && !this.isInteracting()) {
       this.inputOrchestrator.lockPointer();
     }
   }
@@ -351,13 +272,12 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   guardarMapaEnBD(silencioso = false) {
-    if (!this.episodioIdActivo || !this.editando || this.editorSvc.rolSimulado() !== 'admin') return;
+    if (!this.episodioIdActivo || !this.editando || !this.esAdmin) return;
     this.estadoGuardado.set('Guardando...');
 
     const mapData = this.editorSvc.obtenerDatosParaGuardar();
     this.epiApiSvc.guardarMapa(this.episodioIdActivo, mapData).subscribe({
       next: () => {
-        // 🔥 Limpiar flags Dirty después de un guardado exitoso
         this.entityManager.clearDirtyFlags();
         this.entityManager.clearDeletedRecords();
 
@@ -419,10 +339,8 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   iniciarModoPrueba() {
     if (!this.esObjetoJugable()) return;
-    if (this.editorSvc.rolSimulado() === 'admin') {
-       this.guardarMapaEnBD(true);
-       this.inputOrchestrator.lockPointer();
-    }
+    this.guardarMapaEnBD(true);
+    this.inputOrchestrator.lockPointer();
     this.playModeSvc.testearEscena(this.vistaPrueba);
   }
 
@@ -438,9 +356,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.cargandoEscena = false;
     this.cdr.detectChanges();
 
-    if (this.editorSvc.rolSimulado() === 'admin') {
-        setTimeout(() => this.guardarMapaEnBD(true), 500);
-    }
+    setTimeout(() => this.editorSvc.triggerUpdate(), 500);
   }
 
   cerrarInteraccion() {
@@ -450,10 +366,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   salirDelEditor() {
     this.editando = false;
     this.cargandoEscena = false;
-    this.modalSeleccionModo = false;
-    this.modalMisionUsuario = false;
-    this.misionIniciada = false;
-    this.cerrandoModalUsuario = false;
     this.layoutSvc.mostrarMenu();
     this.editorSvc.limpiarEstado();
     this.cargarEpisodios();

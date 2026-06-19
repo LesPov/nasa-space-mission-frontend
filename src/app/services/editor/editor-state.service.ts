@@ -1,3 +1,5 @@
+// src/app/services/editor/editor-state.service.ts
+
 import { Injectable, inject, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { Node, AbstractMesh, Mesh, Vector3, Quaternion } from '@babylonjs/core';
@@ -11,7 +13,6 @@ export class EditorStateService {
   private entityManager = inject(EntityManagerService);
 
   public playState = signal<PlayState>('EDITOR');
-  public rolSimulado = signal<'admin' | 'user'>('admin');
   public currentTool = signal<ToolMode>('translate');
 
   public objetoSeleccionado = signal<Node | null>(null);
@@ -24,7 +25,6 @@ export class EditorStateService {
   public showAddObjectModal = signal<boolean>(false);
   public objetoHovereado = signal<AbstractMesh | null>(null);
 
-  // 🔥 Control para apagar la niebla temporalmente mientras se edita en vivo
   public fogDesactivadoTemporalmente = signal<boolean>(false);
 
   public onMapChanged = new Subject<void>();
@@ -102,16 +102,14 @@ export class EditorStateService {
     if (this.esNombreIgnorable(name)) return true;
 
     const entity = this.entityManager.getEntityByMesh(mesh);
-    const isAdmin = this.checkIsAdmin() && this.rolSimulado() === 'admin';
+    const isAdmin = this.checkIsAdmin();
 
     if (this.jugadorActivo && (mesh === this.jugadorActivo || this.isDescendant(mesh, this.jugadorActivo))) {
       return true;
     }
 
     if (entity && entity.type === 'trigger') {
-        if (isAdmin) {
-            return false; 
-        }
+        if (isAdmin) return false; 
         return true; 
     }
 
@@ -161,8 +159,7 @@ export class EditorStateService {
     
     const entity = this.entityManager.getEntityByMesh(nodoBase);
     const selectable = entity?.visual?.isSelectable ?? true;
-
-    const isAdmin = this.checkIsAdmin() && this.rolSimulado() === 'admin';
+    const isAdmin = this.checkIsAdmin();
 
     if (this.playState() === 'PLAYING' || this.playState() === 'INTERACTING') {
       return this.esObjetoInteractuable(nodoBase);

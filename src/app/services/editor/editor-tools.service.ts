@@ -1,3 +1,5 @@
+// src/app/services/editor/editor-tools.service.ts
+
 import { Injectable, inject, effect } from '@angular/core';
 import {
   DirectionalLight,
@@ -45,7 +47,7 @@ export class EditorToolsService {
       const selected = this.state.objetoSeleccionado() as Mesh;
       const hovered = this.state.objetoHovereado() as Mesh;
       const subSelected = this.state.subObjetoSeleccionado();
-      const fogToggled = this.state.fogDesactivadoTemporalmente(); // 🔥 Forzamos la reactividad
+      const fogToggled = this.state.fogDesactivadoTemporalmente(); 
 
       if (!this.gizmoSvc.isDraggingGizmo) {
         this.debugSvc.actualizarDebugMeshes(selected);
@@ -78,7 +80,6 @@ export class EditorToolsService {
 
       const n = mesh.name.toLowerCase();
 
-      // 🔥 FIX: Ignoramos rotundamente cualquier malla que conforme la niebla
       if (
         n === 'sueloinvisible' ||
         n.includes('gizmo') ||
@@ -135,7 +136,7 @@ export class EditorToolsService {
 
   private manejarFPSAdminSelection(canvas: HTMLCanvasElement | null, isLocked: boolean): void {
     const scene = this.motor3d.scene;
-    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+    const isAdmin = this.state.checkIsAdmin();
 
     if (this.state.modoVistaPrueba !== 'FPS') {
       if (!isLocked && canvas) {
@@ -203,7 +204,7 @@ export class EditorToolsService {
     scene.onPointerObservable.add((pi) => {
       const canvas = this.motor3d.engine.getRenderingCanvas();
       const playSt = this.state.playState();
-      const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+      const isAdmin = this.state.checkIsAdmin();
       const isLocked = !!document.pointerLockElement;
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
@@ -223,14 +224,9 @@ export class EditorToolsService {
 
       if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
         if (playSt === 'PLAYING') {
-          if (!isAdmin) {
-            if (!isLocked) {
-              try { canvas?.requestPointerLock(); } catch {}
-            }
-            return;
+          if (isAdmin) {
+             this.manejarFPSAdminSelection(canvas, isLocked);
           }
-
-          this.manejarFPSAdminSelection(canvas, isLocked);
           return;
         }
       }
@@ -317,7 +313,7 @@ export class EditorToolsService {
     });
 
     scene.onKeyboardObservable.add((kbInfo) => {
-      const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+      const isAdmin = this.state.checkIsAdmin();
 
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
         if (kbInfo.event.key === 'Escape') {

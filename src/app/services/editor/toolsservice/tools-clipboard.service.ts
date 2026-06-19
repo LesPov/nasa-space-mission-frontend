@@ -1,3 +1,4 @@
+// src/app/services/editor/toolsservice/tools-clipboard.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Quaternion, Vector3 } from '@babylonjs/core';
@@ -27,7 +28,7 @@ export class ToolsClipboardService {
   }
 
   private manejarCtrlZGlobal = (event: KeyboardEvent) => {
-    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+    const isAdmin = this.state.checkIsAdmin();
     if (!isAdmin) return;
 
     const playState = this.state.playState();

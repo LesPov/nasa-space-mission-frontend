@@ -4,10 +4,10 @@ import { Mesh } from '@babylonjs/core';
 import { Injector } from '@angular/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../../models/player-config.model';
 import { GameEntity, PlayerStateComponent } from '../../entities/game.entity';
-import { LoopManagerService } from '../../behaviors/services/loop-manager.service';
+import { LoopManagerService, IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { EstadoFisico } from '../systems/player-physics.service';
 
-export abstract class BaseCharacterController {
+export abstract class BaseCharacterController implements IUpdatable {
   public entity: GameEntity;
   public mesh: Mesh;
   public config: PlayerRuntimeConfig;
@@ -30,22 +30,24 @@ export abstract class BaseCharacterController {
     this.config = entity.playerConfig || cloneDefaultPlayerConfig();
   }
 
-  // 🔥 NUEVO: Obtenemos el estado físico directamente de la Entidad como única fuente de verdad.
+  // Identificador para el LoopManager
+  public get id(): string { 
+    return this.loopId; 
+  }
+
   public get estadoFisico(): EstadoFisico {
     return this.entity.getComponent<PlayerStateComponent>('playerState')!.physicsState;
   }
 
   public abstract start(): void;
 
-  protected abstract physicsUpdate(dtMs: number): void;
-  protected abstract logicUpdate(dtMs: number): void;
-  protected abstract postUpdate(dtMs: number): void;
+  public abstract physicsUpdate(dtMs: number): void;
+  public abstract update(dtMs: number): void; // Lógica principal
+  public abstract postUpdate(dtMs: number): void;
 
   public destroy(): void {
-    // Al destruir, el controlador corta sus propios hilos con el motor de juego
-    this.loopManager.unregister(this.loopId + '_PHYSICS');
-    this.loopManager.unregister(this.loopId + '_LOGIC');
-    this.loopManager.unregister(this.loopId + '_POST');
+    // Al destruir, el controlador se da de baja del motor global
+    this.loopManager.unregisterSystem(this.id);
   }
 
   public resetPhysicsState(): void {

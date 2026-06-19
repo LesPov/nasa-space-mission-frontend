@@ -2,11 +2,11 @@
 
 import { Injector } from '@angular/core';
 import { Quaternion } from '@babylonjs/core';
-import { GamePhase } from '../../behaviors/services/loop-manager.service';
 import { BaseCharacterController } from './base-character.controller';
 import { GameEntity, PlayerStateComponent } from '../../entities/game.entity';
 
 // Servicios de Sistemas Inyectados Dinámicamente
+import { Motor3dService } from '../../../../services/motor-3d.service';
 import { GameSession } from '../game-session';
 import { PlayerInputService } from '../systems/player-input.service';
 import { CharacterKinematicsService } from '../systems/character-kinematics.service';
@@ -17,7 +17,6 @@ import { PlayerInteractionService } from '../systems/player-interaction.service'
 import { PlayerCameraManagerService } from '../systems/player-camera.service';
 import { PlayerBubbleService } from '../systems/player-bubble.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
-import { Motor3dService } from '../../../../services/motor-3d.service';
 
 export class PlayerController extends BaseCharacterController {
   
@@ -73,9 +72,8 @@ export class PlayerController extends BaseCharacterController {
       onInspect: () => this.handleInspect()
     });
 
-    this.loopManager.register(this.loopId + '_PHYSICS', GamePhase.PHYSICS, (dtMs: number) => this.physicsUpdate(dtMs));
-    this.loopManager.register(this.loopId + '_LOGIC', GamePhase.LOGIC, (dtMs: number) => this.logicUpdate(dtMs));
-    this.loopManager.register(this.loopId + '_POST', GamePhase.POST_UPDATE, (dtMs: number) => this.postUpdate(dtMs));
+    // 🔥 El Controlador se inyecta en el Motor (LoopManager) para su auto-ejecución
+    this.loopManager.registerSystem(this);
   }
 
   public override destroy(): void {
@@ -122,7 +120,7 @@ export class PlayerController extends BaseCharacterController {
     }
   }
 
-  protected physicsUpdate(dtMs: number): void {
+  public physicsUpdate(dtMs: number): void {
     const activeCamera = this.motor3d.scene.activeCamera;
     if (!activeCamera) return;
 
@@ -131,7 +129,6 @@ export class PlayerController extends BaseCharacterController {
 
     const canMove = this.session.pointerLocked() && !this.currentSeqRuntime.lockInput && !this.currentSeqRuntime.freezeOrientation;
     
-    // 🔥 NUEVO: El controlador no envía variables primitivas al sistema, traduce hardware a Intenciones.
     const stateComp = this.entity.getComponent<PlayerStateComponent>('playerState')!;
     if (canMove) {
         stateComp.intentions.moveForward = !!this.inputSvc.inputMap['w'];
@@ -141,7 +138,6 @@ export class PlayerController extends BaseCharacterController {
         stateComp.intentions.run = !!this.inputSvc.inputMap['shiftleft'] || !!this.inputSvc.inputMap['shiftright'] || !!this.inputSvc.inputMap['shift'];
         stateComp.intentions.jump = !!this.inputSvc.inputMap[' '] || !!this.inputSvc.inputMap['space'];
         
-        // Consumimos el salto para evitar activaciones múltiples fantasma
         if (stateComp.intentions.jump) {
             this.inputSvc.inputMap[' '] = false;
             this.inputSvc.inputMap['space'] = false;
@@ -155,7 +151,6 @@ export class PlayerController extends BaseCharacterController {
         stateComp.intentions.jump = false;
     }
 
-    // 🔥 NUEVO: El sistema Kinematics toma toda la Entidad (incluyendo intenciones) y calcula sobre ella
     this.kinematicsSvc.updateKinematics(
       this.motor3d.scene,
       this.entity,
@@ -166,7 +161,7 @@ export class PlayerController extends BaseCharacterController {
     );
   }
 
-  protected logicUpdate(dtMs: number): void {
+  public update(dtMs: number): void {
     const activeCamera = this.motor3d.scene.activeCamera;
     if (!activeCamera) return;
     const vista = this.session.cameraView();
@@ -196,8 +191,7 @@ export class PlayerController extends BaseCharacterController {
     }
   }
 
-  protected postUpdate(dtMs: number): void {
-    // 🔥 NUEVO: La Entidad ya contiene las matemáticas perfectas de Kinematics, ordenamos renderizar a Babylon
+  public postUpdate(dtMs: number): void {
     this.entity.syncToView();
   }
 }

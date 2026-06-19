@@ -1,7 +1,6 @@
-// src/app/core/engine/controllers/npc.controller.ts
+// src/app/core/engine/runtime/controllers/npc.controller.ts
 
 import { Injector } from '@angular/core';
-import { GamePhase } from '../../behaviors/services/loop-manager.service';
 import { BaseCharacterController } from './base-character.controller';
 import { GameEntity } from '../../entities/game.entity';
 
@@ -35,17 +34,16 @@ export class NpcController extends BaseCharacterController {
       this.animSvc.reproducirIdle(this.entity);
     }
 
-    this.loopManager.register(this.loopId + '_PHYSICS', GamePhase.PHYSICS, (dtMs: number) => this.physicsUpdate(dtMs));
-    this.loopManager.register(this.loopId + '_LOGIC', GamePhase.LOGIC, (dtMs: number) => this.logicUpdate(dtMs));
-    this.loopManager.register(this.loopId + '_POST', GamePhase.POST_UPDATE, (dtMs: number) => this.postUpdate(dtMs));
+    // 🔥 El Controlador se inyecta en el Motor (LoopManager) para su auto-ejecución
+    this.loopManager.registerSystem(this);
   }
 
   public override destroy(): void {
     this.animSvc.detenerTodas(this.entity);
-    super.destroy(); // Corta hilos
+    super.destroy(); 
   }
 
-  protected physicsUpdate(dtMs: number): void {
+  public physicsUpdate(dtMs: number): void {
     this.currentSeqRuntime = this.sequenceSvc.actualizarSecuencia(dtMs, this.entity);
     
     if (this.currentSeqRuntime.running && this.currentSeqRuntime.step) {
@@ -57,7 +55,7 @@ export class NpcController extends BaseCharacterController {
         const dy = (soY / durSec) * (dtMs / 1000);
         const df = (soF / durSec) * (dtMs / 1000);
         
-        // Malla como proxy volumétrico temporal
+        // Malla como proxy volumétrico temporal (Se refactorizará en Fase 2 final)
         this.mesh.position.y += dy;
         const fwd = this.mesh.forward.clone();
         fwd.y = 0; 
@@ -89,7 +87,7 @@ export class NpcController extends BaseCharacterController {
     }
   }
 
-  protected logicUpdate(dtMs: number): void {
+  public update(dtMs: number): void {
     this.animSvc.gestionarAnimaciones(this.entity, this.estadoFisico, this.currentSeqRuntime);
     
     if (this.currentSeqRuntime.freezeOrientation) {
@@ -104,7 +102,7 @@ export class NpcController extends BaseCharacterController {
     }
   }
 
-  protected postUpdate(dtMs: number): void {
+  public postUpdate(dtMs: number): void {
     this.entity.syncToView();
   }
 }

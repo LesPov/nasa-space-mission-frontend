@@ -12,32 +12,19 @@ import {
 
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
-import { PlayerCameraManagerService } from '../../core/engine/runtime/systems/player-camera.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorCameraService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
-  private playerCamSvc = inject(PlayerCameraManagerService);
   private entityManager = inject(EntityManagerService);
 
   private ultimaPosCamaraLibre: Vector3 | null = null;
   private ultimoTargetCamaraLibre: Vector3 | null = null;
 
-  constructor() {
-    const originalActualizar = this.playerCamSvc.actualizarPosicionCamara.bind(this.playerCamSvc);
-    const motor = this.motor3d;
-    
-    this.playerCamSvc.actualizarPosicionCamara = (entity: any, activeCamera: any, estadoFisico: any, seqRuntime: any, vista: any) => {
-      if (activeCamera === motor.editorCamera) {
-         const camaraReal = vista === 'FPS' ? motor.playerCameraFPS : motor.playerCameraTPS;
-         originalActualizar(entity, camaraReal, estadoFisico, seqRuntime, vista);
-         return;
-      }
-      originalActualizar(entity, activeCamera, estadoFisico, seqRuntime, vista);
-    };
-  }
+  // 🔥 ELIMINADO EL MONKEY PATCHING PELIGROSO EN EL CONSTRUCTOR.
+  // El Runtime ahora es inteligente e ignora la 'editorCamera' directamente.
 
   private obtenerCamaraJuegoActiva(): Camera | null {
     const scene = this.motor3d.scene;
@@ -80,7 +67,7 @@ export class EditorCameraService {
 
       const diagonal = Math.sqrt((sizeX * sizeX) + (sizeY * sizeY) + (sizeZ * sizeZ));
       let radius = Math.max(4.0, diagonal * 2.2);
-      radius = Math.min(radius, 1000); // 🔥 FIX: Aumentado el límite de encuadre para que tome pisos gigantes
+      radius = Math.min(radius, 1000); 
 
       return { target, radius };
     }
@@ -93,7 +80,7 @@ export class EditorCameraService {
 
     const diagonal = size.length();
     let radius = Math.max(4.0, diagonal * 2.0);
-    radius = Math.min(radius, 1000); // 🔥 FIX: Aumentado
+    radius = Math.min(radius, 1000); 
 
     return { target, radius };
   }
@@ -137,8 +124,9 @@ export class EditorCameraService {
 
     this.ultimaPosCamaraLibre = cam.globalPosition.clone();
 
-    if (this.state.modoVistaPrueba === 'TPS' && this.playerCamSvc.cameraPivot) {
-      this.ultimoTargetCamaraLibre = this.playerCamSvc.cameraPivot.getAbsolutePosition().clone();
+    if (this.state.modoVistaPrueba === 'TPS') {
+       // La pivote TPS se eliminó del motor para no romper dependencias, se asume la rotación frontal
+       this.ultimoTargetCamaraLibre = cam.globalPosition.add(cam.getDirection(Vector3.Forward()));
     } else {
       this.ultimoTargetCamaraLibre = cam.globalPosition.add(cam.getDirection(Vector3.Forward()));
     }

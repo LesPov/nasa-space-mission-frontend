@@ -181,7 +181,6 @@ export class PlayerCameraManagerService {
 
     this.loopManager.unregister('CameraFadeTransition');
 
-    // 🔥 Fade físicamente absoluto a 2.5 metros
     const fadeLimit = 2.5 * scaleNow;
 
     if (currentVista === 'FPS') {
@@ -285,6 +284,9 @@ export class PlayerCameraManagerService {
     seqRuntime: SeqRuntime,
     vista: 'FPS' | 'TPS'
   ): void {
+    // 🔥 FIX ARQUITECTÓNICO: Si la cámara activa es la del editor, abortar. Desacopla 100%.
+    if (activeCamera && activeCamera.name === 'editorCamera') return;
+
     const jugador = entity.view as Mesh;
     if (!jugador) return;
 

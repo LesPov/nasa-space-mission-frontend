@@ -1,4 +1,3 @@
-
 import { Injectable, inject, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { Node, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
@@ -25,6 +24,9 @@ export class EditorStateService {
   public objetoHovereado = signal<AbstractMesh | null>(null);
 
   public fogDesactivadoTemporalmente = signal<boolean>(false);
+  
+  // 🔥 NUEVO: Signal para mostrar la previsualización puramente visual de la UI
+  public previewMissionModal = signal<boolean>(false);
 
   public onMapChanged = new Subject<void>();
   public onGizmoDrag = new Subject<void>();
@@ -85,7 +87,6 @@ export class EditorStateService {
   esMeshIgnorable(mesh: AbstractMesh | null | undefined): boolean {
     if (!mesh) return true;
 
-    // Validación limpia basada en Tags de Babylon en lugar de Hardcoding de nombres
     if (Tags.MatchesQuery(mesh, "system_element || editor_only || fog_element || debug_element || proxy_collider || invisible_floor")) {
         return true;
     }
@@ -169,5 +170,6 @@ export class EditorStateService {
     this.objetoSeleccionado.set(null);
     this.subObjetoSeleccionado.set(null);
     this.fogDesactivadoTemporalmente.set(false);
+    this.previewMissionModal.set(false); // Resetea la previsualización al salir
   }
 }

@@ -11,8 +11,8 @@
       </ng-container>
 
       <ng-container *ngIf="isDebugMode">
-        <input type="text" [ngModel]="episodio?.title" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui.primaryColor" style="background: rgba(0,0,0,0.5); border: 1px dashed #64748b; font-weight: 800; font-size: 24px; text-transform: uppercase; width: 300px; outline: none; padding: 4px; border-radius: 4px;" title="Modificar Título del Episodio" />
-        <p style="color: #60a5fa; font-size: 11px; margin: 0; letter-spacing: 1px; padding-top: 4px;">MODO EDICIÓN (PREVIEW)</p>
+        <input type="text" [ngModel]="episodio?.title" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui.primaryColor" style="background: rgba(0,0,0,0.5); border: 1px dashed #64748b; font-weight: 800; text-transform: uppercase; outline: none; padding: 4px; border-radius: 4px;" title="Modificar Título del Episodio" />
+        <p style="color: #60a5fa; margin: 0; letter-spacing: 1px; padding-top: 4px;">MODO EDICIÓN (PREVIEW)</p>
       </ng-container>
     </div>
     
@@ -31,7 +31,7 @@
       <button class="nav-btn" [class.disabled]="!tieneInventario"><span class="icon">🎒</span> INVENTARIO</button>
       <button class="nav-btn" [class.disabled]="!tieneMapaUnLocker"><span class="icon">🗺️</span> MAPA</button>
       <button class="nav-btn" [class.disabled]="!tieneHistoria"><span class="icon">📖</span> HISTORIA</button>
-      <button class="nav-btn leave" (click)="onExit.emit()"><span class="icon">🚪</span> {{ isDebugMode ? 'SALIR AL EDITOR' : 'SALIR AL MENÚ' }}</button>
+      <button class="nav-btn leave" (click)="onExit.emit()"><span class="icon">🚪</span> {{ isPreviewOnly ? 'CERRAR VISTA PREVIA' : (isDebugMode ? 'SALIR AL EDITOR' : 'SALIR AL MENÚ') }}</button>
 
       <div class="lore-quote">
         <p [style.color]="ui.textColor" style="font-style: italic;">{{ ui.loreQuote }}</p>
@@ -41,40 +41,45 @@
 
     <main class="mission-content">
       <div class="mission-card" [style.background]="ui.bgColor">
-        <div class="card-header">
-          <h4 [style.color]="ui.textColor">MISIÓN PRINCIPAL</h4>
-          
-          <h2 *ngIf="!isDebugMode" [style.color]="ui.primaryColor">{{ episodio?.title || 'Sin Título' }}</h2>
-          <input *ngIf="isDebugMode" type="text" [ngModel]="episodio?.title" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui.primaryColor" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; font-size: 28px; font-weight: 900; text-transform: uppercase; text-align: center; width: 100%; outline: none; margin: 5px 0; border-radius: 4px;" />
-          
-          <span *ngIf="!misionIniciada" [style.color]="ui.textColor">INICIANDO SIMULACIÓN NEURAL...</span>
-          <span *ngIf="misionIniciada" [style.color]="ui.primaryColor">SIMULACIÓN EN PAUSA</span>
-        </div>
         
-        <div class="card-image-placeholder" 
-             [style.background-image]="episodio?.thumbnailUrl ? 'url(http://localhost:4000' + episodio.thumbnailUrl + ')' : 'none'"
-             [style.background-size]="'cover'"
-             [style.background-position]="'center'">
-          <div class="scanline" *ngIf="!episodio?.thumbnailUrl"></div>
-        </div>
-        
-        <div class="card-description">
-          <p *ngIf="!isDebugMode" [style.color]="ui.textColor">{{ episodio?.description || 'No hay descripción disponible. Explora bajo tu propio riesgo.' }}</p>
-          <textarea *ngIf="isDebugMode" [ngModel]="episodio?.description" (ngModelChange)="cambiarDesc($event)" [style.color]="ui.textColor" rows="4" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; width: 100%; font-size: 14px; font-family: inherit; resize: vertical; outline: none; padding: 10px; border-radius: 6px; box-sizing: border-box;" placeholder="Escribe la descripción de la misión aquí..."></textarea>
+        <!-- 🔥 FIX: Todo el contenido va dentro de una zona scrolleable para que la carta no crezca infinito -->
+        <div class="card-scroll-area">
+          <div class="card-header">
+            <h4 [style.color]="ui.textColor">MISIÓN PRINCIPAL</h4>
+            
+            <h2 *ngIf="!isDebugMode" [style.color]="ui.primaryColor">{{ episodio?.title || 'Sin Título' }}</h2>
+            <input *ngIf="isDebugMode" type="text" [ngModel]="episodio?.title" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui.primaryColor" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; font-size: clamp(16px, 2.5vw, 24px); font-weight: 900; text-transform: uppercase; text-align: center; width: 100%; outline: none; margin: 5px 0; border-radius: 4px;" />
+            
+            <span *ngIf="!misionIniciada" [style.color]="ui.textColor">INICIANDO SIMULACIÓN NEURAL...</span>
+            <span *ngIf="misionIniciada" [style.color]="ui.primaryColor">SIMULACIÓN EN PAUSA</span>
+          </div>
+          
+          <div class="card-image-placeholder" 
+               [style.background-image]="episodio?.thumbnailUrl ? 'url(http://localhost:4000' + episodio.thumbnailUrl + ')' : 'none'"
+               [style.background-size]="'cover'"
+               [style.background-position]="'center'">
+            <div class="scanline" *ngIf="!episodio?.thumbnailUrl"></div>
+          </div>
+          
+          <div class="card-description">
+            <p *ngIf="!isDebugMode" [style.color]="ui.textColor">{{ episodio?.description || 'No hay descripción disponible. Explora bajo tu propio riesgo.' }}</p>
+            <textarea *ngIf="isDebugMode" [ngModel]="episodio?.description" (ngModelChange)="cambiarDesc($event)" [style.color]="ui.textColor" rows="3" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; width: 100%; font-size: clamp(11px, 1.5vw, 13px); font-family: inherit; resize: vertical; outline: none; padding: 10px; border-radius: 6px; box-sizing: border-box;" placeholder="Escribe la descripción de la misión aquí..."></textarea>
+          </div>
+
+          <div class="card-objectives" [style.border-left-color]="ui.primaryColor" style="background: rgba(0,0,0,0.4);">
+            <h4 [style.color]="ui.primaryColor">OBJETIVOS ACTUALES</h4>
+            <ul>
+              <li *ngIf="objetivosActuales.length === 0" [style.color]="ui.textColor"><span class="dot" [style.background]="ui.primaryColor"></span> <i>Buscando señal...</i></li>
+              <li *ngFor="let obj of objetivosActuales" [style.color]="ui.textColor">
+                <span class="dot" [style.background]="ui.primaryColor"></span> {{ obj }}
+              </li>
+            </ul>
+          </div>
         </div>
 
-        <div class="card-objectives" [style.border-left-color]="ui.primaryColor" style="background: rgba(0,0,0,0.4);">
-          <h4 [style.color]="ui.primaryColor">OBJETIVOS ACTUALES</h4>
-          <ul>
-            <li *ngIf="objetivosActuales.length === 0" [style.color]="ui.textColor"><span class="dot" [style.background]="ui.primaryColor"></span> <i>Buscando señal...</i></li>
-            <li *ngFor="let obj of objetivosActuales" [style.color]="ui.textColor">
-              <span class="dot" [style.background]="ui.primaryColor"></span> {{ obj }}
-            </li>
-          </ul>
-        </div>
-
+        <!-- 🔥 FIX: El botón está fuera del scroll, siempre anclado al fondo -->
         <button class="btn-start-action" [style.background]="ui.primaryColor" (click)="onStart.emit()">
-          {{ misionIniciada ? 'REANUDAR PARTIDA' : (isDebugMode ? 'PROBAR MISIÓN' : 'INICIAR MISIÓN') }}
+          {{ isPreviewOnly ? 'CERRAR VISTA PREVIA' : (misionIniciada ? 'REANUDAR PARTIDA' : (isDebugMode ? 'PROBAR MISIÓN' : 'INICIAR MISIÓN')) }}
         </button>
       </div>
     </main>

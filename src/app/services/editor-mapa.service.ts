@@ -1,5 +1,3 @@
-// src/app/services/editor-mapa.service.ts
-
 import { Injectable, inject } from '@angular/core';
 import { Node, AbstractMesh, Vector3 } from '@babylonjs/core';
 

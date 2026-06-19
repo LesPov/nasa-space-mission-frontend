@@ -18,7 +18,7 @@ type VisualMode = 'normal' | 'bw';
   styleUrls: ['./prop-world.css']
 })
 export class PropWorld implements OnInit, OnDestroy {
-  private editorSvc = inject(EditorMapaService);
+  public editorSvc = inject(EditorMapaService); // 🔥 Public para el HTML
   private motor3dSvc = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
@@ -37,7 +37,6 @@ export class PropWorld implements OnInit, OnDestroy {
   gravedadY = -0.25;
   visualMode: VisualMode = 'normal';
 
-  // 🔥 Variables para la personalización de la UI del Modal
   uiPrimaryColor = '#ef4444';
   uiBgColor = '#0f172a';
   uiTextColor = '#f8fafc';
@@ -57,7 +56,15 @@ export class PropWorld implements OnInit, OnDestroy {
     this.subs.forEach(s => s.unsubscribe());
   }
 
-  // 🔥 FIX PARA EL ERROR DE ANGULAR (trackBy)
+  // 🔥 NUEVO: Función para alternar el modal de Preview UI
+  isPreviewVisible(): boolean {
+    return this.editorSvc.state.previewMissionModal();
+  }
+
+  toggleUIPreview(): void {
+    this.editorSvc.state.previewMissionModal.set(!this.editorSvc.state.previewMissionModal());
+  }
+
   trackByIndex(index: number, obj: any): any {
     return index;
   }
@@ -84,7 +91,6 @@ export class PropWorld implements OnInit, OnDestroy {
 
     this.gravedadY = scene.gravity?.y ?? -0.25;
 
-    // 🔥 Leer UI Settings
     const ui = scene.metadata?.uiSettings || {};
     this.uiPrimaryColor = ui.primaryColor || '#ef4444';
     this.uiBgColor = ui.bgColor || '#0f172a';

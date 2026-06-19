@@ -1,4 +1,3 @@
-
 <!-- PANTALLA PRINCIPAL: SELECCIÓN DE MAPAS -->
 <ng-container *ngIf="!editando && !cargandoEscena">
   <div class="galeria-header">
@@ -136,20 +135,6 @@
 
   <app-ui-inspect (onClose)="cerrarInteraccion()"></app-ui-inspect>
 
-  <!-- 🔥 SECCIÓN MEJORADA: Modal de previsualización que envía cambios de texto al editor -->
-  <app-ui-mission 
-    *ngIf="mostrarModalMisionPreview" 
-    [episodio]="episodioCompletoData"
-    [liveUiSettings]="motor3dSvc.scene.metadata?.uiSettings"
-    [misionIniciada]="misionIniciada" 
-    [cerrando]="cerrandoModalMision" 
-    [isDebugMode]="true" 
-    (mapaNombreChange)="mapaActualNombre = $event; episodioCompletoData.title = $event;"
-    (mapaDescChange)="episodioCompletoData.description = $event;"
-    (onStart)="comenzarMisionPreview()" 
-    (onExit)="detenerModoPrueba()">
-  </app-ui-mission>
-
   <!-- RENDER PRINCIPAL Y CAPA BABYLON -->
   <div class="blender-layout">
     <div class="viewport-area" [style.width]="layoutUI.showInspector() ? 'calc(100% - ' + layoutUI.inspectorWidth() + 'px)' : '100%'">
@@ -181,6 +166,7 @@
           </div>
         </div>
 
+        <!-- 🔥 AQUÍ METEMOS EL MODAL: overlayará el canvas, pero NO tapará el Inspector -->
         <div class="canvas-container" (click)="onCanvasClick()">
           <div class="fps-badge">FPS: {{ fps() }}</div>
 
@@ -193,6 +179,21 @@
           <app-ui-hud 
             [playState]="editorSvc.playState()">
           </app-ui-hud>
+          
+          <!-- 🔥 EL MODAL ESTRELLA AHORA ESTÁ AQUÍ Y CONDICIONADO -->
+          <app-ui-mission 
+            *ngIf="mostrarModalMisionPreview || editorSvc.state.previewMissionModal()" 
+            [episodio]="episodioCompletoData"
+            [liveUiSettings]="motor3dSvc.scene.metadata?.uiSettings"
+            [misionIniciada]="misionIniciada" 
+            [cerrando]="cerrandoModalMision" 
+            [isDebugMode]="true" 
+            [isPreviewOnly]="editorSvc.state.previewMissionModal() && !mostrarModalMisionPreview"
+            (mapaNombreChange)="mapaActualNombre = $event; episodioCompletoData.title = $event;"
+            (mapaDescChange)="episodioCompletoData.description = $event;"
+            (onStart)="handleMissionStart()" 
+            (onExit)="handleMissionExit()">
+          </app-ui-mission>
           
           <app-motor-babylon></app-motor-babylon>
         </div>
@@ -213,3 +214,4 @@
     
   </div>
 </ng-container>
+

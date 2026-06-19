@@ -1,3 +1,4 @@
+
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { Router } from '@angular/router';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
@@ -166,7 +167,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   jugarModoFinal(episodio: any) {
-    // Usamos el router de Angular en la misma SPA para no perder la sesión ni recargar el navegador
     this.router.navigate(['/jugador/jugar', episodio.id]);
   }
 
@@ -376,6 +376,23 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.cerrandoModalMision = false;
       this.cdr.detectChanges(); 
     }, 2000); 
+  }
+
+  // 🔥 NUEVO: Manejador Wrapper para el Modal UI (Cerrar vs Jugar)
+  handleMissionStart() {
+    if (this.editorSvc.state.previewMissionModal() && !this.mostrarModalMisionPreview) {
+       this.editorSvc.state.previewMissionModal.set(false);
+    } else {
+       this.comenzarMisionPreview();
+    }
+  }
+
+  handleMissionExit() {
+    if (this.editorSvc.state.previewMissionModal() && !this.mostrarModalMisionPreview) {
+       this.editorSvc.state.previewMissionModal.set(false);
+    } else {
+       this.detenerModoPrueba();
+    }
   }
 
   async detenerModoPrueba() {

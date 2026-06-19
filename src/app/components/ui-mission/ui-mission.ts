@@ -17,6 +17,7 @@ export class UiMission implements OnChanges {
   @Input() cerrando = false;
   @Input() isDebugMode = false;
   @Input() liveUiSettings: any = null; 
+  @Input() isPreviewOnly = false; // 🔥 NUEVO: Indica si solo es una vista previa del editor
 
   @Output() onStart = new EventEmitter<void>();
   @Output() onExit = new EventEmitter<void>();

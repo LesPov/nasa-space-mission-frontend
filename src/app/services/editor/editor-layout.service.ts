@@ -1,3 +1,4 @@
+
 import { Injectable, inject, signal } from '@angular/core';
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
@@ -10,8 +11,13 @@ export class EditorLayoutService {
   // Estado reactivo de los paneles de la UI
   public showInspector = signal<boolean>(true);
   public showTimeline = signal<boolean>(true);
-  public inspectorWidth = signal<number>(350);
-  public timelineHeight = signal<number>(30);
+  
+  // 🔥 FIX: Aumentamos el tamaño inicial del panel derecho (Inspector) para mayor comodidad visual
+  public inspectorWidth = signal<number>(450); 
+  
+  // 🔥 FIX: Reducimos un poco el alto del timeline para dejar más espacio al canvas
+  public timelineHeight = signal<number>(25); 
+  
   public isResizing = signal<boolean>(false);
   public isResizingTimeline = signal<boolean>(false);
 

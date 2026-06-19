@@ -15,7 +15,6 @@ import { Subscription } from 'rxjs';
   styleUrls: ['./ui-hud.css']
 })
 export class UiHud implements OnInit, OnDestroy {
-  @Input() isEditor = false;
   @Input() playState = 'PLAYING';
   @Input() hideStatus = false;
 

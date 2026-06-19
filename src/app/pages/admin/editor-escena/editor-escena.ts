@@ -31,7 +31,7 @@ import { UiMission } from '../../../components/ui-mission/ui-mission';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
 
 @Component({
-  selector: 'app-editor-escena',
+  selector: 'app-editor-escena', 
   standalone: true,
   imports: [
     MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule,

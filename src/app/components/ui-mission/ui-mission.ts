@@ -13,7 +13,7 @@ export class UiMission {
   @Input() mapaNombre = '';
   @Input() misionIniciada = false;
   @Input() cerrando = false;
-  @Input() isAdmin = false;
+  @Input() isDebugMode = false;
 
   @Output() onStart = new EventEmitter<void>();
   @Output() onExit = new EventEmitter<void>();

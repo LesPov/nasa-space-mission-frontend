@@ -75,8 +75,7 @@ export class EditorMapaService {
   }
 
   instanciarPrefabFull(prefabData: any, targetPos: Vector3): void {
-    const isAdmin = this.state.rolSimulado() === 'admin';
-    this.loader.instantiatePrefab(prefabData, targetPos, isAdmin).then((mallas) => {
+    this.loader.instantiatePrefab(prefabData, targetPos).then((mallas) => {
       this.scene.actualizarListaNodos();
       const iter = mallas.values().next();
       if (!iter.done) {

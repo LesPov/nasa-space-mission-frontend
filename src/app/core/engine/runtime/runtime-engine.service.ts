@@ -1,4 +1,3 @@
-// src/app/core/engine/runtime-engine.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { StandardMaterial, VideoTexture, Color3, Mesh } from '@babylonjs/core';
@@ -26,7 +25,7 @@ export class RuntimeEngineService {
     this.motor3d.forzarRedimension();
     this.loaderSvc.createInvisibleFloor(this.motor3d.scene);
     
-    await this.loaderSvc.loadSceneFromData(episodeData, false);
+    await this.loaderSvc.loadSceneFromData(episodeData);
 
     return new Promise((resolve, reject) => {
       this.motor3d.scene.executeWhenReady(() => {
@@ -60,7 +59,7 @@ export class RuntimeEngineService {
   // ==========================================
   // MODO TEST (PUENTE CON EL EDITOR)
   // ==========================================
-  public startTestSession(playerEntity: GameEntity, view: 'FPS' | 'TPS', isAdmin: boolean): void {
+  public startTestSession(playerEntity: GameEntity, view: 'FPS' | 'TPS', isDebugMode: boolean): void {
     this.resetVideos();
     this.playerCamSvc.inicializarCamaras(playerEntity, view);
     
@@ -68,7 +67,7 @@ export class RuntimeEngineService {
     targetCam.getViewMatrix(true);
     this.motor3d.scene.activeCamera = targetCam;
 
-    this.gameSession.start(playerEntity, view, isAdmin);
+    this.gameSession.start(playerEntity, view, isDebugMode);
   }
 
   public stopTestSession(): void {

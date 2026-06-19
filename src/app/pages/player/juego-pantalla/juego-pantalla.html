@@ -12,7 +12,6 @@
   </div>
 
   <app-ui-hud 
-    [isEditor]="false" 
     playState="PLAYING" 
     [hideStatus]="modalMisionUsuario">
   </app-ui-hud>
@@ -24,7 +23,7 @@
     [mapaNombre]="mapaActualNombre" 
     [misionIniciada]="misionIniciada" 
     [cerrando]="cerrandoModalUsuario" 
-    [isAdmin]="false" 
+    [isDebugMode]="false" 
     (onStart)="comenzarMisionUsuario()" 
     (onExit)="salirDelJuego()">
   </app-ui-mission>

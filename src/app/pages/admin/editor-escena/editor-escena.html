@@ -1,3 +1,4 @@
+
 <!-- PANTALLA PRINCIPAL: SELECCIÓN DE MAPAS -->
 <ng-container *ngIf="!editando && !modalSeleccionModo && !cargandoEscena">
   <div class="galeria-header">
@@ -92,7 +93,7 @@
     [mapaNombre]="mapaActualNombre" 
     [misionIniciada]="misionIniciada" 
     [cerrando]="cerrandoModalUsuario" 
-    [isAdmin]="esAdmin" 
+    [isDebugMode]="esAdmin && editorSvc.rolSimulado() === 'admin'" 
     (onStart)="comenzarMisionUsuario()" 
     (onExit)="manejarSalidaDeMision()">
   </app-ui-mission>
@@ -223,7 +224,6 @@
 
           <!-- HUD DE JUEGO EXTRAÍDO -->
           <app-ui-hud 
-            [isEditor]="true" 
             [playState]="editorSvc.playState()" 
             [hideStatus]="modalMisionUsuario">
           </app-ui-hud>

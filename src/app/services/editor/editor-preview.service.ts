@@ -47,6 +47,12 @@ export class EditorPreviewService {
     if (this.previewEntity) {
       this.loopManager.unregister(this.previewLoopId);
       this.animSvc.detenerTodas(this.previewEntity);
+      this.sequenceSvc.detenerSecuencia(this.previewEntity.uid);
+      
+      // Restauramos el Transform desde la entidad, garantizando que el mesh
+      // vuelve a donde estaba antes del preview, sin contaminar la lógica en runtime.
+      this.previewEntity.syncToView();
+      
       this.previewEntity = null;
     }
   }

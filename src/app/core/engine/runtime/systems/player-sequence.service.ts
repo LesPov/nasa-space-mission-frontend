@@ -1,4 +1,3 @@
-// src/app/core/engine/systems/player-sequence.service.ts
 
 import { Injectable, inject, Injector } from '@angular/core';
 import { Mesh, Quaternion, Vector3, UniversalCamera, Light, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
@@ -34,7 +33,6 @@ export class PlayerSequenceService {
 
   private eventSub!: Subscription;
 
-  // 🔥 FIX DE DEPENDENCIA CIRCULAR: Getter Lazy
   private get session(): GameSession { 
     return this.injector.get(GameSession); 
   }
@@ -54,7 +52,6 @@ export class PlayerSequenceService {
   public lockedSequenceTPSBeta: number | null = null;
 
   constructor() {
-    // 🔥 Escuchamos cuando un Trigger dispara una secuencia por ID
     this.eventSub = this.eventBus.events$.subscribe(event => {
       if (event.type === 'SequenceTriggered') {
         this.buscarEIniciarSecuenciaPorId(event.payload.sequenceId);
@@ -67,6 +64,10 @@ export class PlayerSequenceService {
     this.lockedSequenceFPSRotation = null;
     this.lockedSequenceTPSAlpha = null;
     this.lockedSequenceTPSBeta = null;
+  }
+
+  public detenerSecuencia(entityUid: string): void {
+    this.activeSequences.delete(entityUid);
   }
 
   private getSeqState(entityUid: string) {
@@ -128,10 +129,6 @@ export class PlayerSequenceService {
     }
   }
 
-  /**
-   * Busca en toda la base de entidades si alguna contiene la secuencia solicitada.
-   * Centraliza la búsqueda y previene dobles ejecuciones.
-   */
   private buscarEIniciarSecuenciaPorId(sequenceId: string): void {
     let found = false;
     const allEntities = this.entityManager.getAllEntities();
@@ -161,13 +158,10 @@ export class PlayerSequenceService {
     
     if (seqToRun) {
       if (!this.gameState.evaluateAllConditions(seqToRun.conditions)) {
-          console.log(`[Narrativa] Secuencia ${sequenceId} omitida (No cumple requisitos de historia).`);
           return;
       }
 
       const state = this.getSeqState(entity.uid);
-      
-      // Prevenir reinicio si ya está corriendo la misma secuencia
       if (state.id === sequenceId) return;
 
       state.id = sequenceId;

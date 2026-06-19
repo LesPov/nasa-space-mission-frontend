@@ -1,4 +1,3 @@
-// src/app/core/engine/runtime/systems/player-interaction.service.ts
 
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
@@ -69,7 +68,7 @@ export class PlayerInteractionService {
     return closest ? Vector3.Distance(probePoint, closest) : Vector3.Distance(probePoint, targetMesh.getAbsolutePosition());
   }
 
-  private getSelectionMaxDistance(isAdmin: boolean): number {
+  private getSelectionMaxDistance(isDebugMode: boolean): number {
     let maxAdmin = 10000;
     let maxUser = 3;
     const playerEntity = this.session.activePlayerEntity();
@@ -77,7 +76,7 @@ export class PlayerInteractionService {
         maxAdmin = playerEntity.selectionRange.fpsAdminMax;
         maxUser = playerEntity.selectionRange.fpsUserMax;
     }
-    return isAdmin ? maxAdmin : maxUser;
+    return isDebugMode ? maxAdmin : maxUser;
   }
 
   private esObjetoInteractuable(entity: GameEntity): boolean {
@@ -108,7 +107,7 @@ export class PlayerInteractionService {
     this.lastInteractDistance = null;
     this.lastInteractionProbePoint = this.getInteractionProbePoint(viewMode, jugador, activeCamera, entity);
 
-    const isAdmin = this.session.isAdminSession();
+    const isDebugMode = this.session.isDebugMode();
 
     if (viewMode === 'FPS') {
       const centerRay = activeCamera.getForwardRay(10000);
@@ -145,11 +144,11 @@ export class PlayerInteractionService {
             const selectionDistance = this.getInteractionDistanceToTarget(rootEntity.view, this.lastInteractionProbePoint);
             this.lastInteractDistance = selectionDistance;
 
-            const selectionMax = this.getSelectionMaxDistance(isAdmin);
+            const selectionMax = this.getSelectionMaxDistance(isDebugMode);
             const interactMax = rootEntity.interaction.interactDistanceFPS ?? 3.0;
             const isInteractable = this.esObjetoInteractuable(rootEntity);
 
-            if (isAdmin) {
+            if (isDebugMode) {
               if (selectionDistance <= selectionMax) hoverSelectable = rootEntity.view;
               if (isInteractable && selectionDistance <= interactMax) hitInteractuable = rootEntity;
             } else {
@@ -173,7 +172,7 @@ export class PlayerInteractionService {
         if (!mesh || !mesh.isVisible || !mesh.isPickable) return;
 
         const selectionDistance = this.getInteractionDistanceToTarget(mesh, playerProbe);
-        const selectionMax = this.getSelectionMaxDistance(isAdmin);
+        const selectionMax = this.getSelectionMaxDistance(isDebugMode);
         const isInteractable = this.esObjetoInteractuable(e);
 
         if (isInteractable) {
@@ -184,7 +183,7 @@ export class PlayerInteractionService {
               closestEntity = e;
             }
           }
-        } else if (isAdmin && selectionDistance <= selectionMax && selectionDistance < closestDist) {
+        } else if (isDebugMode && selectionDistance <= selectionMax && selectionDistance < closestDist) {
           closestDist = selectionDistance;
           closestEntity = e;
         }

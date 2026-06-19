@@ -1,5 +1,4 @@
 
-
 <div class="user-mission-overlay" [class.closing]="cerrando">
   
   <div class="mission-topbar">
@@ -9,7 +8,7 @@
     </div>
     
     <div class="top-actions">
-      <span class="user-tag">[Sesión: {{ isAdmin ? 'ADMIN_SIMULADO' : 'JUGADOR' }}]</span>
+      <span class="user-tag">[Sesión: {{ isDebugMode ? 'CREADOR (DEBUG)' : 'JUGADOR' }}]</span>
       <button class="btn-mission-exit" (click)="onExit.emit()">
         <span class="icon">⏹</span> Salir del Juego
       </button>
@@ -24,7 +23,7 @@
       <button class="nav-btn disabled"><span class="icon">🗺️</span> MAPA</button>
       <button class="nav-btn disabled"><span class="icon">📖</span> HISTORIA</button>
       <button class="nav-btn disabled"><span class="icon">⚙️</span> AJUSTES</button>
-      <button class="nav-btn leave" (click)="onExit.emit()"><span class="icon">🚪</span> {{ isAdmin ? 'SALIR' : 'SALIR AL MENÚ' }}</button>
+      <button class="nav-btn leave" (click)="onExit.emit()"><span class="icon">🚪</span> {{ isDebugMode ? 'SALIR AL EDITOR' : 'SALIR AL MENÚ' }}</button>
 
       <div class="lore-quote">
         <p>"La historia no la escriben los que obedecen,<br>sino los que se atreven a cambiarla."</p>

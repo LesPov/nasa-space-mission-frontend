@@ -51,8 +51,7 @@ export class CoreSceneLoaderService {
     if (oldSun) oldSun.dispose();
   }
 
-  // @deprecated param: isAdminOrDeprecated - Se mantiene en firma por si alguien lo inyecta desde RuntimeEngine, pero se ignora.
-  public async loadSceneFromData(dataBD: any, isAdminOrDeprecated?: boolean): Promise<void> {
+  public async loadSceneFromData(dataBD: any): Promise<void> {
     if (!dataBD) return;
 
     const scene = this.motor3d.scene;
@@ -81,7 +80,6 @@ export class CoreSceneLoaderService {
     const promesasCarga: any[] = [];
     const mallasCreadas = new Map<string, Mesh>();
 
-    // Carga agnóstica estricta. El motor ya no sabe qué es un Admin.
     objetosBD.forEach((obj: any) => {
       const isModel = obj.type === 'model';
       const isLight = obj.type?.startsWith('light_');
@@ -119,7 +117,7 @@ export class CoreSceneLoaderService {
     this.shadowsSvc.asignarObjetosASombrasDeLuces();
   }
 
-  public async instantiatePrefab(prefabData: any, positionTarget: Vector3, isAdminOrDeprecated?: boolean): Promise<Map<string, Mesh>> {
+  public async instantiatePrefab(prefabData: any, positionTarget: Vector3): Promise<Map<string, Mesh>> {
     const mallasCreadas = new Map<string, Mesh>();
     const propertiesClone = JSON.parse(JSON.stringify(prefabData.properties || {}));
     this.utilsSvc.renovarIdsDeSecuencias(propertiesClone);

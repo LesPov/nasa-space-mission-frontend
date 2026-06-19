@@ -1,4 +1,3 @@
-// src/app/core/engine/systems/player-trigger.service.ts
 
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
@@ -23,13 +22,13 @@ export class PlayerTriggerService {
 
   public start(): void {
     this.activeTriggersInside.clear();
-    const isAdmin = this.session.isAdminSession();
+    const isDebugMode = this.session.isDebugMode();
 
     this.entityManager.getAllEntities()
       .filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto')
       .forEach(e => {
         if (e.view && e.trigger) {
-            e.view.isVisible = isAdmin; 
+            e.view.isVisible = isDebugMode; 
             e.trigger.hasTriggeredEnter = false; 
             e.trigger.hasTriggeredExit = false; 
             e.trigger.isEnabled = true;
@@ -39,13 +38,13 @@ export class PlayerTriggerService {
 
   public stop(): void {
     this.activeTriggersInside.clear();
-    const isAdmin = this.session.isAdminSession();
+    const isDebugMode = this.session.isDebugMode();
 
     this.entityManager.getAllEntities()
       .filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto')
       .forEach(e => {
         if (e.view && e.trigger) {
-            e.view.isVisible = isAdmin; 
+            e.view.isVisible = isDebugMode; 
             e.trigger.hasTriggeredEnter = false; 
             e.trigger.hasTriggeredExit = false; 
             e.trigger.isEnabled = true;

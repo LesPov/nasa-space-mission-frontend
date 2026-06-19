@@ -1,4 +1,3 @@
-// src/app/services/editor/editor-play-mode.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
@@ -37,7 +36,7 @@ export class EditorPlayModeService {
     this.state.jugadorActivo = objMesh;
     this.state.objetoHovereado.set(null);
 
-    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+    const isDebugMode = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
     this.snapshotMemoria = this.editorSvc.obtenerDatosParaGuardar();
 
@@ -69,10 +68,10 @@ export class EditorPlayModeService {
 
     const finishSetup = () => {
         this.state.playState.set('PLAYING');
-        this.runtimeEngine.startTestSession(playerEntity, vista, isAdmin);
+        this.runtimeEngine.startTestSession(playerEntity, vista, isDebugMode);
         this.state.triggerUpdate();
         
-        if (isAdmin) {
+        if (isDebugMode) {
             setTimeout(() => {
                 const canvas = this.motor3d.engine.getRenderingCanvas();
                 if (canvas) {
@@ -100,7 +99,7 @@ export class EditorPlayModeService {
     this.state.modoVistaPrueba = null; 
     
     this.runtimeEngine.stopTestSession();
-    const isAdmin = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
+    const isDebugMode = this.state.checkIsAdmin() && this.state.rolSimulado() === 'admin';
 
     if (this.snapshotMemoria) {
         this.entityManager.clear();
@@ -130,10 +129,10 @@ export class EditorPlayModeService {
 
         const entity = this.entityManager.getEntityByMesh(m);
         if (entity) {
-            if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = isAdmin;
+            if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = isDebugMode;
             if (entity.type === 'bubble') m.isVisible = true;
-            if (entity.type === 'image_plane') m.isVisible = isAdmin; 
-            if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') m.isVisible = isAdmin;
+            if (entity.type === 'image_plane') m.isVisible = isDebugMode; 
+            if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') m.isVisible = isDebugMode;
         }
     });
 

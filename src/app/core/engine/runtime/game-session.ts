@@ -1,4 +1,3 @@
-// src/app/core/engine/runtime/game-session.ts
 
 import { Injectable, signal, inject, Injector } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
@@ -13,11 +12,12 @@ import { PlayerTriggerService } from './systems/player-trigger.service';
 import { PlayerFogService } from './systems/player-fog.service';
 import { PlayerCameraManagerService } from './systems/player-camera.service';
 import { PlayerBubbleService } from './systems/player-bubble.service';
+import { PlayerSequenceService } from './systems/player-sequence.service';
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
   public isPlaying = signal<boolean>(false);
-  public isAdminSession = signal<boolean>(false);
+  public isDebugMode = signal<boolean>(false);
   public cameraView = signal<'FPS' | 'TPS'>('FPS');
   public activePlayerEntity = signal<GameEntity | null>(null);
   public pointerLocked = signal<boolean>(false);
@@ -48,9 +48,9 @@ export class GameSession {
     return this.motor3d.scene.meshes.filter(m => m.name.includes('proxyCol'));
   }
 
-  public start(playerEntity: GameEntity, view: 'FPS' | 'TPS', isAdmin: boolean): void {
+  public start(playerEntity: GameEntity, view: 'FPS' | 'TPS', isDebugMode: boolean): void {
     this.isPlaying.set(true);
-    this.isAdminSession.set(isAdmin);
+    this.isDebugMode.set(isDebugMode);
     this.cameraView.set(view);
     this.activePlayerEntity.set(playerEntity);
     this.pointerLocked.set(true);
@@ -58,7 +58,11 @@ export class GameSession {
     this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
     this.eventBus.emit({ type: 'MessageRequested', payload: null });
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
-    this.eventBus.emit({ type: 'GameStarted', payload: { view, isAdmin } });
+    this.eventBus.emit({ type: 'GameStarted', payload: { view, isDebugMode } });
+
+    // Limpiamos las secuencias previas del preview o sesiones pasadas
+    const sequenceSvc = this.injector.get(PlayerSequenceService);
+    sequenceSvc.resetearSecuencias();
 
     this.triggerSvc.start();
     this.objectAnimSvc.startAmbientAutoAnimations();
@@ -87,6 +91,9 @@ export class GameSession {
     this.playerFogSvc.stop();
     this.triggerSvc.stop();
     this.bubbleSvc.stop();
+
+    const sequenceSvc = this.injector.get(PlayerSequenceService);
+    sequenceSvc.resetearSecuencias();
 
     this.controllers.forEach(ctrl => ctrl.destroy());
     this.controllers.clear();

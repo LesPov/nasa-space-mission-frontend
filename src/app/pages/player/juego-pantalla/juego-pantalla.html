@@ -1,7 +1,6 @@
-<!-- src/app/pages/player/juego-pantalla/juego-pantalla.html -->
 <div class="juego-container">
   
-  <app-ui-loading *ngIf="isLoading()" texto="Cargando Episodio..."></app-ui-loading>
+  <app-ui-loading *ngIf="isLoading()" texto="Cargando Entorno 3D..."></app-ui-loading>
 
   <div class="canvas-wrapper" 
        [class.blur]="isInteracting() || (!pointerLocked() && !isLoading())" 
@@ -18,11 +17,11 @@
 
   <app-ui-inspect (onClose)="cerrarInteraccion()"></app-ui-inspect>
 
-  <!-- 🔥 El Admin inyecta su estado Debug al UI Mission -->
+  <!-- 🔥 Se pasan los objetos completos del episodio y la partida -->
   <app-ui-mission 
     *ngIf="modalMisionUsuario && !isLoading()" 
-    [mapaNombre]="mapaActualNombre" 
-    (mapaNombreChange)="mapaActualNombre = $event"
+    [episodio]="episodioActual"
+    [playerState]="playerStateActual"
     [misionIniciada]="misionIniciada" 
     [cerrando]="cerrandoModalUsuario" 
     [isDebugMode]="isAdmin" 

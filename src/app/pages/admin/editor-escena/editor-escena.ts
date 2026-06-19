@@ -1,7 +1,5 @@
-
-// src/app/pages/admin/editor-escena/editor-escena.ts
-
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
+import { Router } from '@angular/router';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
 import { ToolbarEscena } from '../../../components/toolbar-escena/toolbar-escena';
@@ -28,13 +26,14 @@ import { InputOrchestratorService } from '../../../core/engine/runtime/systems/i
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
+import { UiMission } from '../../../components/ui-mission/ui-mission';
 
 @Component({
   selector: 'app-editor-escena', 
   standalone: true,
   imports: [
     MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule,
-    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading
+    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading, UiMission
   ],
   templateUrl: './editor-escena.html',
   styleUrl: './editor-escena.css',
@@ -53,6 +52,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public keyboard = inject(EditorKeyboardService);
   public inputOrchestrator = inject(InputOrchestratorService);
   public cdr = inject(ChangeDetectorRef);
+  private router = inject(Router);
 
   public playModeSvc = inject(EditorPlayModeService);
 
@@ -67,6 +67,11 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   public episodioIdActivo = 0;
   public mapaActualNombre = '';
+  public episodioCompletoData: any = null;
+  public mostrarModalMisionPreview = false;
+  public cerrandoModalMision = false; 
+  public misionIniciada = false;
+
   public fps = signal('0');
   public estadoGuardado = signal('Guardado');
 
@@ -120,6 +125,13 @@ export class EditorEscena implements OnInit, OnDestroy {
           this.activeCameraView = event.payload;
           this.stateSvc.modoVistaPrueba = event.payload;
           break;
+        case 'GamePaused': 
+          if (this.editorSvc.playState() === 'PLAYING') {
+              this.mostrarModalMisionPreview = true;
+              this.cerrandoModalMision = false;
+              if (this.activeCameraView === 'FPS') this.runtime.toggleCameraUser(false, 45);
+          }
+          break;
       }
       this.cdr.detectChanges();
     });
@@ -139,19 +151,13 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   @HostListener('window:mousemove', ['$event'])
-  onMouseMove(event: MouseEvent) {
-    this.layoutUI.onMouseMove(event);
-  }
+  onMouseMove(event: MouseEvent) { this.layoutUI.onMouseMove(event); }
 
   @HostListener('window:mouseup')
-  onMouseUp() {
-    this.layoutUI.onMouseUp();
-  }
+  onMouseUp() { this.layoutUI.onMouseUp(); }
 
   @HostListener('window:keydown', ['$event'])
-  manejarAtajos(event: KeyboardEvent) {
-    this.keyboard.handleKeydown(event, this.editando);
-  }
+  manejarAtajos(event: KeyboardEvent) { this.keyboard.handleKeydown(event, this.editando); }
 
   toggleNieblaTemporal() {
     this.stateSvc.fogDesactivadoTemporalmente.set(!this.stateSvc.fogDesactivadoTemporalmente());
@@ -160,8 +166,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   jugarModoFinal(episodio: any) {
-    // 🔥 SOLUCIÓN: Cambiado de /jugador/juego/ a /jugador/jugar/ para que coincida con app.routes.ts
-    window.open(`/jugador/jugar/${episodio.id}`, '_blank');
+    // Usamos el router de Angular en la misma SPA para no perder la sesión ni recargar el navegador
+    this.router.navigate(['/jugador/jugar', episodio.id]);
   }
 
   entrarAlEditor(episodio: any) {
@@ -179,6 +185,8 @@ export class EditorEscena implements OnInit, OnDestroy {
 
     this.epiApiSvc.obtenerEpisodio(episodio.id).subscribe({
       next: async (res) => {
+        this.episodioCompletoData = res?.episode || res; 
+        
         setTimeout(() => {
             this.cargandoTexto = 'Preparando modelos, texturas y físicas 3D...';
             this.cdr.detectChanges();
@@ -210,7 +218,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   onCanvasClick() {
-    if (this.editorSvc.playState() === 'PLAYING' && !this.gameSession.pointerLocked() && !this.isInteracting()) {
+    if (this.editorSvc.playState() === 'PLAYING' && !this.gameSession.pointerLocked() && !this.isInteracting() && !this.mostrarModalMisionPreview) {
       this.inputOrchestrator.lockPointer();
     }
   }
@@ -276,7 +284,14 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.estadoGuardado.set('Guardando...');
 
     const mapData = this.editorSvc.obtenerDatosParaGuardar();
-    this.epiApiSvc.guardarMapa(this.episodioIdActivo, mapData).subscribe({
+    
+    const payload = {
+       ...mapData,
+       title: this.episodioCompletoData?.title,
+       description: this.episodioCompletoData?.description
+    };
+
+    this.epiApiSvc.guardarMapa(this.episodioIdActivo, payload).subscribe({
       next: () => {
         this.entityManager.clearDirtyFlags();
         this.entityManager.clearDeletedRecords();
@@ -340,13 +355,33 @@ export class EditorEscena implements OnInit, OnDestroy {
   iniciarModoPrueba() {
     if (!this.esObjetoJugable()) return;
     this.guardarMapaEnBD(true);
-    this.inputOrchestrator.lockPointer();
+    
+    this.mostrarModalMisionPreview = true;
+    this.misionIniciada = false;
+    
     this.playModeSvc.testearEscena(this.vistaPrueba);
+  }
+
+  comenzarMisionPreview() {
+    this.cerrandoModalMision = true;
+    
+    if (this.activeCameraView === 'TPS') this.runtime.toggleCameraUser(false, 60); 
+    else this.runtime.toggleCameraUser(true, 60);
+
+    this.inputOrchestrator.lockPointer();
+
+    setTimeout(() => {
+      this.misionIniciada = true; 
+      this.mostrarModalMisionPreview = false;
+      this.cerrandoModalMision = false;
+      this.cdr.detectChanges(); 
+    }, 2000); 
   }
 
   async detenerModoPrueba() {
     if (this.editorSvc.playState() === 'EDITOR') return;
     
+    this.mostrarModalMisionPreview = false;
     this.cargandoEscena = true;
     this.cargandoTexto = 'Restaurando Editor...';
     this.cdr.detectChanges();

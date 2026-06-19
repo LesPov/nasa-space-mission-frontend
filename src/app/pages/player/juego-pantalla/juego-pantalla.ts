@@ -1,9 +1,7 @@
-// src/app/pages/player/juego-pantalla/juego-pantalla.ts
-
 import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Subscription } from 'rxjs';
+import { Subscription, forkJoin } from 'rxjs';
 
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
@@ -12,6 +10,7 @@ import { EpisodiosService } from '../../../services/api/episodios';
 import { Motor3dService } from '../../../services/motor-3d.service';
 import { InputOrchestratorService } from '../../../core/engine/runtime/systems/input-orchestrator.service';
 import { AuthService } from '../../../core/services/auth';
+import { GameStateService } from '../../../core/engine/runtime/state/game-state.service'; 
 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
@@ -35,6 +34,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private motor3dSvc = inject(Motor3dService);
   private inputOrchestrator = inject(InputOrchestratorService);
   private authSvc = inject(AuthService);
+  private gameStateSvc = inject(GameStateService); 
 
   public isInteracting = signal<boolean>(false);
   public pointerLocked = signal<boolean>(false);
@@ -43,7 +43,9 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   public modalMisionUsuario = false;
   public misionIniciada = false;
   public cerrandoModalUsuario = false;
-  public mapaActualNombre = '';
+  
+  public episodioActual: any = null;
+  public playerStateActual: any = null;
   
   public fps = signal<string>('0');
 
@@ -58,13 +60,18 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
-      this.epiApiSvc.obtenerEpisodio(Number(id)).subscribe({
+      forkJoin({
+        episodio: this.epiApiSvc.obtenerEpisodio(Number(id)),
+        partida: this.epiApiSvc.cargarEstadoJugador(Number(id), 1)
+      }).subscribe({
         next: async (res) => {
           try {
-            this.mapaActualNombre = res?.title || 'Episodio Desconocido';
+            this.episodioActual = res.episodio?.episode || res.episodio; 
+            this.playerStateActual = res.partida;
+
+            this.gameStateSvc.loadGame(this.playerStateActual);
             
-            // 🔥 El Admin inyecta su estado Debug
-            await this.runtime.bootProductionGame(res, this.isAdmin);
+            await this.runtime.bootProductionGame(res.episodio, this.isAdmin);
             
             this.isLoading.set(false);
             this.modalMisionUsuario = true;
@@ -82,14 +89,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
         error: (err) => {
           console.error('Error loading game:', err);
           this.isLoading.set(false);
-          
-          if (err.status === 403 || err.status === 401) {
-              this.mapaActualNombre = 'Acceso Denegado (403)';
-              alert(`🛑 ACCESO DENEGADO 🛑\n\nTu servidor bloqueó el acceso. El episodio requiere inicio de sesión válido o está oculto.`);
-          } else {
-              this.mapaActualNombre = 'Error de Servidor';
-              alert('Error al cargar el mapa. Verifica la consola y que tu backend esté corriendo.');
-          }
+          alert('Error al cargar el mapa o la partida. Verifica tu conexión.');
           this.salirDelJuego();
         }
       });
@@ -133,9 +133,19 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     this.inputOrchestrator.lockPointer();
 
     setTimeout(() => {
+      const esPrimeraVez = !this.misionIniciada;
       this.misionIniciada = true; 
       this.modalMisionUsuario = false;
       this.cerrandoModalUsuario = false;
+      
+      // 🔥 LÓGICA DE CINEMÁTICA INICIAL 🔥
+      if (esPrimeraVez && this.episodioActual?.uiSettings?.initialSequence) {
+         this.eventBus.emit({ 
+           type: 'SequenceTriggered', 
+           payload: { sequenceId: this.episodioActual.uiSettings.initialSequence } 
+         });
+      }
+
       this.cdr.detectChanges(); 
     }, 2000); 
   }
@@ -147,6 +157,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   }
 
   salirDelJuego() {
+    if (this.episodioActual && this.playerStateActual) {
+      const stateToSave = this.gameStateSvc.getSaveData();
+      this.epiApiSvc.guardarEstadoJugador(this.episodioActual.id, 1, stateToSave).subscribe();
+    }
+
     this.runtime.shutdownProductionGame();
     if (this.isAdmin) {
         this.router.navigate(['/admin/editor-escena']);

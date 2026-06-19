@@ -1,16 +1,7 @@
-
 import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import {
-  Color3,
-  Color4,
-  HemisphericLight,
-  Scene,
-  Vector3,
-  StandardMaterial,
-  Mesh
-} from '@babylonjs/core';
+import { Color3, Color4, HemisphericLight, Scene, Vector3, StandardMaterial, Mesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
@@ -21,7 +12,7 @@ type VisualMode = 'normal' | 'bw';
 
 @Component({
   selector: 'app-prop-world',
-  standalone: true,
+  standalone: true, 
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-world.html',
   styleUrls: ['./prop-world.css']
@@ -46,6 +37,15 @@ export class PropWorld implements OnInit, OnDestroy {
   gravedadY = -0.25;
   visualMode: VisualMode = 'normal';
 
+  // 🔥 Variables para la personalización de la UI del Modal
+  uiPrimaryColor = '#ef4444';
+  uiBgColor = '#0f172a';
+  uiTextColor = '#f8fafc';
+  uiLoreQuote = '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."';
+  uiLoreAuthor = 'Anónimo';
+  uiInitialSequence = ''; 
+  uiObjetivosBase: string[] = ['Explora el área y analiza los elementos clave.'];
+
   ngOnInit() {
     this.leerEstadoActual();
     this.subs.push(
@@ -55,6 +55,11 @@ export class PropWorld implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.subs.forEach(s => s.unsubscribe());
+  }
+
+  // 🔥 FIX PARA EL ERROR DE ANGULAR (trackBy)
+  trackByIndex(index: number, obj: any): any {
+    return index;
   }
 
   leerEstadoActual() {
@@ -78,7 +83,45 @@ export class PropWorld implements OnInit, OnDestroy {
     }
 
     this.gravedadY = scene.gravity?.y ?? -0.25;
+
+    // 🔥 Leer UI Settings
+    const ui = scene.metadata?.uiSettings || {};
+    this.uiPrimaryColor = ui.primaryColor || '#ef4444';
+    this.uiBgColor = ui.bgColor || '#0f172a';
+    this.uiTextColor = ui.textColor || '#f8fafc';
+    this.uiLoreQuote = ui.loreQuote || '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."';
+    this.uiLoreAuthor = ui.loreAuthor || 'Anónimo';
+    this.uiInitialSequence = ui.initialSequence || '';
+    this.uiObjetivosBase = Array.isArray(ui.objetivos) && ui.objetivos.length > 0 ? ui.objetivos : ['Explora el área y analiza los elementos clave.'];
+
     this.cdr.detectChanges();
+  }
+
+  aplicarUISettings() {
+    const scene = this.motor3dSvc.scene;
+    scene.metadata = { 
+      ...scene.metadata, 
+      uiSettings: {
+        primaryColor: this.uiPrimaryColor,
+        bgColor: this.uiBgColor,
+        textColor: this.uiTextColor,
+        loreQuote: this.uiLoreQuote,
+        loreAuthor: this.uiLoreAuthor,
+        initialSequence: this.uiInitialSequence,
+        objetivos: [...this.uiObjetivosBase]
+      }
+    };
+    this.editorSvc.triggerUpdate();
+  }
+
+  agregarObjetivoUI() {
+    this.uiObjetivosBase.push('Nuevo objetivo...');
+    this.aplicarUISettings();
+  }
+
+  eliminarObjetivoUI(index: number) {
+    this.uiObjetivosBase.splice(index, 1);
+    this.aplicarUISettings();
   }
 
   aplicarModoVisualCambiado() {
@@ -87,7 +130,6 @@ export class PropWorld implements OnInit, OnDestroy {
     this.motor3dSvc.setVisualMode(this.visualMode);
 
     const isBW = this.visualMode === 'bw';
-
     this.aplicarFondo();
 
     this.entityManager.getAllEntities().forEach(entity => {
@@ -97,11 +139,9 @@ export class PropWorld implements OnInit, OnDestroy {
       const activeColorHex = isBW ? (entity.visual.colorBW || entity.visual.color || '#ffffff') : (entity.visual.color || '#ffffff');
       const c3 = Color3.FromHexString(activeColorHex);
 
-      // 🔥 Se mapea a Runtime puro para la textura generada proceduralmente
       if (entity.type === 'image_plane' && entity.mediaRuntime?.runtimeDecalMaterial) {
         const decalMat = entity.mediaRuntime.runtimeDecalMaterial as StandardMaterial;
         const brillo = Number(entity.visual.brilloIntensidad ?? 1.0);
-        
         decalMat.diffuseColor = c3;
         decalMat.emissiveColor = c3.scale(brillo);
       } 

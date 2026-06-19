@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core'; 
 import { HemisphericLight } from '@babylonjs/core'; 
 import { Motor3dService } from '../../motor-3d.service';
@@ -21,7 +20,7 @@ export class SceneSaverService {
     return Number.isFinite(n) ? n : fallback; 
   }
 
-  public obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[]; triggersDelta: any[]; deletedObjects: string[]; deletedTriggers: string[]; worldSettings: any } { 
+  public obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[]; triggersDelta: any[]; deletedObjects: string[]; deletedTriggers: string[]; worldSettings: any; uiSettings: any } { 
     const sceneObjectsDelta: any[] = []; 
     const triggersDelta: any[] = [];
 
@@ -41,10 +40,12 @@ export class SceneSaverService {
       ambientDirZ: ambient ? this.safeNumber(ambient.direction?.z, 0) : 0
     };
 
+    // 🔥 EXTRAEMOS LA CONFIGURACIÓN DE LA UI DEL MODAL
+    const uiSettings = scene.metadata?.uiSettings || {};
+
     const allEntities = this.entityManager.getAllEntities();
 
     allEntities.forEach(entity => {
-      // 🔥 DIRTY TRACKING: Procesamos todo si es "forceFull" (como en el modo Test), sino solo Deltas
       if (!forceFull && !entity.isDirty) return;
 
       entity.syncTransformFromView();
@@ -103,7 +104,6 @@ export class SceneSaverService {
            });
         }
       } else {
-        // OBJETOS COMUNES Y MODELOS
         const propertiesToSave = {
           color: visual.color,
           colorBW: visual.colorBW,
@@ -140,7 +140,6 @@ export class SceneSaverService {
             properties: { ...propertiesToSave, ...light }
           });
         } else if ((entity.type === 'video_plane' || entity.type === 'image_plane') && media) {
-          // 🔥 Ya no hay que borrar `runtimeDecals` porque media es MediaConfigComponent puro.
           sceneObjectsDelta.push({
             ...baseData, type: entity.type, assetId: visual.assetId,
             properties: { ...propertiesToSave, ...media }
@@ -159,7 +158,8 @@ export class SceneSaverService {
       triggersDelta, 
       deletedObjects: [...this.entityManager.deletedObjects], 
       deletedTriggers: [...this.entityManager.deletedTriggers], 
-      worldSettings 
+      worldSettings,
+      uiSettings // 🔥 Retornamos el uiSettings para el Backend
     };
   } 
 }

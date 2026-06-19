@@ -1,25 +1,25 @@
-<!-- src/app/components/ui-mission/ui-mission.html -->
 
 <div class="user-mission-overlay" [class.closing]="cerrando">
   
   <div class="mission-topbar">
     <div class="brand">
       <ng-container *ngIf="!isDebugMode">
-        <h2 style="color: #ef4444; font-weight: 800; margin: 0; text-transform: uppercase;">{{ mapaNombre }}</h2>
-        <p style="color: #cbd5e1; font-size: 11px; margin: 0; letter-spacing: 1px;">EL DÍA QUE CAMBIÓ LA HISTORIA</p>
+        <h2 [style.color]="ui.primaryColor" style="font-weight: 800; margin: 0; text-transform: uppercase;">
+          {{ episodio?.title || 'EPISODIO DESCONOCIDO' }}
+        </h2>
+        <p style="color: #94a3b8; font-size: 11px; margin: 0; letter-spacing: 1px;">SISTEMA EN LÍNEA</p>
       </ng-container>
 
       <ng-container *ngIf="isDebugMode">
-        <!-- 🔥 Inputs editables para el creador (Admin) -->
-        <input type="text" [(ngModel)]="mapaNombre" (ngModelChange)="mapaNombreChange.emit($event)" style="background: transparent; border: 1px dashed #ef4444; color: #ef4444; font-weight: 800; font-size: 24px; text-transform: uppercase; width: 300px; outline: none; padding: 2px;" title="Modificar Título del Episodio" />
-        <p style="color: #60a5fa; font-size: 11px; margin: 0; letter-spacing: 1px;">MODO EDICIÓN (DEBUG)</p>
+        <input type="text" [ngModel]="episodio?.title" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui.primaryColor" style="background: rgba(0,0,0,0.5); border: 1px dashed #64748b; font-weight: 800; font-size: 24px; text-transform: uppercase; width: 300px; outline: none; padding: 4px; border-radius: 4px;" title="Modificar Título del Episodio" />
+        <p style="color: #60a5fa; font-size: 11px; margin: 0; letter-spacing: 1px; padding-top: 4px;">MODO EDICIÓN (PREVIEW)</p>
       </ng-container>
     </div>
     
     <div class="top-actions">
-      <span class="user-tag">[Sesión: {{ isDebugMode ? 'CREADOR (DEBUG)' : 'JUGADOR' }}]</span>
-      <button class="btn-mission-exit" (click)="onExit.emit()">
-        <span class="icon">⏹</span> Salir del Juego
+      <span class="user-tag" [style.color]="ui.primaryColor" [style.border-color]="ui.primaryColor">[Sesión: {{ isDebugMode ? 'CREADOR' : 'JUGADOR' }}]</span>
+      <button class="btn-mission-exit" (click)="onExit.emit()" [style.background-color]="ui.primaryColor">
+        <span class="icon">⏹</span> Salir
       </button>
     </div>
   </div>
@@ -27,51 +27,54 @@
   <div class="mission-body">
     
     <aside class="mission-sidebar">
-      <button class="nav-btn active"><span class="icon">🎯</span> MISIÓN ACTIVA</button>
-      <button class="nav-btn disabled"><span class="icon">🎒</span> INVENTARIO</button>
-      <button class="nav-btn disabled"><span class="icon">🗺️</span> MAPA</button>
-      <button class="nav-btn disabled"><span class="icon">📖</span> HISTORIA</button>
-      <button class="nav-btn disabled"><span class="icon">⚙️</span> AJUSTES</button>
+      <button class="nav-btn active" [ngStyle]="{'border-left-color': ui.primaryColor, 'color': ui.primaryColor, 'background': 'linear-gradient(90deg, ' + getPrimaryColorWithAlpha(0.15) + ' 0%, transparent 100%)'}"><span class="icon">🎯</span> MISIÓN ACTIVA</button>
+      <button class="nav-btn" [class.disabled]="!tieneInventario"><span class="icon">🎒</span> INVENTARIO</button>
+      <button class="nav-btn" [class.disabled]="!tieneMapaUnLocker"><span class="icon">🗺️</span> MAPA</button>
+      <button class="nav-btn" [class.disabled]="!tieneHistoria"><span class="icon">📖</span> HISTORIA</button>
       <button class="nav-btn leave" (click)="onExit.emit()"><span class="icon">🚪</span> {{ isDebugMode ? 'SALIR AL EDITOR' : 'SALIR AL MENÚ' }}</button>
 
       <div class="lore-quote">
-        <p>"La historia no la escriben los que obedecen,<br>sino los que se atreven a cambiarla."</p>
-        <span>- Anónimo</span>
+        <p [style.color]="ui.textColor" style="font-style: italic;">{{ ui.loreQuote }}</p>
+        <span [style.color]="ui.primaryColor" style="font-weight: bold;">- {{ ui.loreAuthor }}</span>
       </div>
     </aside>
 
     <main class="mission-content">
-      <div class="mission-card">
+      <div class="mission-card" [style.background]="ui.bgColor">
         <div class="card-header">
-          <h4>MISIÓN PRINCIPAL</h4>
+          <h4 [style.color]="ui.textColor">MISIÓN PRINCIPAL</h4>
           
-          <h2 *ngIf="!isDebugMode">{{ mapaNombre }}</h2>
-          <input *ngIf="isDebugMode" type="text" [(ngModel)]="mapaNombre" (ngModelChange)="mapaNombreChange.emit($event)" style="background: transparent; border: 1px dashed #ef4444; color: #ef4444; font-size: 28px; font-weight: 900; text-transform: uppercase; text-align: center; width: 100%; outline: none; margin: 5px 0;" />
+          <h2 *ngIf="!isDebugMode" [style.color]="ui.primaryColor">{{ episodio?.title || 'Sin Título' }}</h2>
+          <input *ngIf="isDebugMode" type="text" [ngModel]="episodio?.title" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui.primaryColor" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; font-size: 28px; font-weight: 900; text-transform: uppercase; text-align: center; width: 100%; outline: none; margin: 5px 0; border-radius: 4px;" />
           
-          <span *ngIf="!misionIniciada">SITUACIÓN ACTUAL DESCONOCIDA - INGRESA PARA DESCUBRIR</span>
-          <span *ngIf="misionIniciada" style="color: #facc15;">JUEGO EN PAUSA - ESPERANDO ÓRDENES</span>
+          <span *ngIf="!misionIniciada" [style.color]="ui.textColor">INICIANDO SIMULACIÓN NEURAL...</span>
+          <span *ngIf="misionIniciada" [style.color]="ui.primaryColor">SIMULACIÓN EN PAUSA</span>
         </div>
         
-        <div class="card-image-placeholder">
-          <div class="scanline"></div>
+        <div class="card-image-placeholder" 
+             [style.background-image]="episodio?.thumbnailUrl ? 'url(http://localhost:4000' + episodio.thumbnailUrl + ')' : 'none'"
+             [style.background-size]="'cover'"
+             [style.background-position]="'center'">
+          <div class="scanline" *ngIf="!episodio?.thumbnailUrl"></div>
         </div>
         
         <div class="card-description">
-          <p>Has llegado al punto de control. El entorno ha sido cargado con éxito en el motor físico.</p>
-          <p>Tu objetivo es interactuar con el mundo, descubrir pistas y seguir la línea narrativa diseñada por el creador. Presta atención a tu alrededor y usa el entorno a tu favor.</p>
+          <p *ngIf="!isDebugMode" [style.color]="ui.textColor">{{ episodio?.description || 'No hay descripción disponible. Explora bajo tu propio riesgo.' }}</p>
+          <textarea *ngIf="isDebugMode" [ngModel]="episodio?.description" (ngModelChange)="cambiarDesc($event)" [style.color]="ui.textColor" rows="4" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; width: 100%; font-size: 14px; font-family: inherit; resize: vertical; outline: none; padding: 10px; border-radius: 6px; box-sizing: border-box;" placeholder="Escribe la descripción de la misión aquí..."></textarea>
         </div>
 
-        <div class="card-objectives">
-          <h4>OBJETIVOS</h4>
+        <div class="card-objectives" [style.border-left-color]="ui.primaryColor" style="background: rgba(0,0,0,0.4);">
+          <h4 [style.color]="ui.primaryColor">OBJETIVOS ACTUALES</h4>
           <ul>
-            <li><span class="dot"></span> Explora el área y analiza los elementos clave.</li>
-            <li><span class="dot"></span> Interactúa con personajes y objetos para avanzar.</li>
-            <li><span class="dot"></span> Sobrevive y descubre la verdad.</li>
+            <li *ngIf="objetivosActuales.length === 0" [style.color]="ui.textColor"><span class="dot" [style.background]="ui.primaryColor"></span> <i>Buscando señal...</i></li>
+            <li *ngFor="let obj of objetivosActuales" [style.color]="ui.textColor">
+              <span class="dot" [style.background]="ui.primaryColor"></span> {{ obj }}
+            </li>
           </ul>
         </div>
 
-        <button class="btn-start-action" (click)="onStart.emit()">
-          {{ misionIniciada ? 'REANUDAR PARTIDA' : 'INICIAR MISIÓN' }}
+        <button class="btn-start-action" [style.background]="ui.primaryColor" (click)="onStart.emit()">
+          {{ misionIniciada ? 'REANUDAR PARTIDA' : (isDebugMode ? 'PROBAR MISIÓN' : 'INICIAR MISIÓN') }}
         </button>
       </div>
     </main>

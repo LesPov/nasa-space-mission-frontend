@@ -347,8 +347,27 @@ export class GameEntity {
   }
 
   public destroyView(): void {
-    if (this.view && !this.view.isDisposed()) {
-      this.view.dispose();
+    // 🔥 Destrucción profunda de sub-elementos generados procedimentalmente
+    if (this.mediaRuntime) {
+      if (Array.isArray(this.mediaRuntime.runtimeDecals)) {
+        this.mediaRuntime.runtimeDecals.forEach((d: AbstractMesh) => {
+          if (d && typeof d.isDisposed === 'function' && !d.isDisposed()) {
+              d.dispose(false, true);
+          }
+        });
+      }
+      if (this.mediaRuntime.runtimeDecalMaterial) {
+        // Corrección de Typings de BabylonJS: dispose() siempre existe en materials, 
+        // pero isDisposed no está explícitamente en la firma de StandardMaterial en esta versión.
+        try { 
+            this.mediaRuntime.runtimeDecalMaterial.dispose(); 
+        } catch (e) {}
+      }
+      this.mediaRuntime.runtimeDecals = [];
+    }
+
+    if (this.view && typeof this.view.isDisposed === 'function' && !this.view.isDisposed()) {
+      this.view.dispose(false, true); // true = Destruir Materiales vinculados
     }
     this.view = null;
   }

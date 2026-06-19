@@ -1,7 +1,8 @@
+
 // src/app/services/editor/editor-play-mode.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
@@ -42,8 +43,9 @@ export class EditorPlayModeService {
     this.snapshotMemoria = this.editorSvc.obtenerDatosParaGuardar(true);
     this.state.objetoSeleccionado.set(null);
 
+    // 🔥 Ocultar elementos del editor por Tags en lugar de hardcoding
     this.motor3d.scene.meshes.forEach(m => {
-        if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
+        if (Tags.MatchesQuery(m, "editor_only")) {
             m.isVisible = false;
             m.setEnabled(false);
         }
@@ -126,19 +128,14 @@ export class EditorPlayModeService {
             this.snapshotMemoria.deletedTriggers = [...new Set([...this.snapshotMemoria.deletedTriggers, ...cambiosEnPlay.deletedTriggers])];
         }
 
+        // 🔥 Limpieza Total y Estructurada
         this.entityManager.clear();
         this.editorSvc.limpiarEstado();
 
         const scene = this.motor3d.scene;
         
         const meshesToDispose = scene.meshes.filter(m => {
-           const n = m.name.toLowerCase();
-           return !['sueloinvisible', 'ejex', 'ejey', 'ejez', 'gridhelper'].includes(n) &&
-                  !n.includes('gizmo') && 
-                  !n.includes('highlight') &&
-                  !n.includes('fogshell') &&
-                  !n.includes('fogwall') &&
-                  !n.includes('debug');
+           return !Tags.MatchesQuery(m, "system_element");
         });
         
         meshesToDispose.forEach(m => {
@@ -149,8 +146,9 @@ export class EditorPlayModeService {
         this.snapshotMemoria = null;
     }
 
+    // 🔥 Restaurar visibilidad usando Tags
     this.motor3d.scene.meshes.forEach(m => {
-        if (['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].includes(m.name)) {
+        if (Tags.MatchesQuery(m, "editor_only")) {
             m.setEnabled(true);
             m.isVisible = true;
         }

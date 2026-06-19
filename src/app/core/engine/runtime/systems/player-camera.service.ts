@@ -2,7 +2,7 @@
 import { Injectable, inject } from '@angular/core';
 import {
   Mesh, Vector3, Matrix, TransformNode, UniversalCamera,
-  Animation, CubicEase, EasingFunction, Quaternion, MeshBuilder
+  Animation, CubicEase, EasingFunction, Quaternion, MeshBuilder, Tags
 } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { cloneDefaultPlayerConfig } from '../../models/player-config.model';
@@ -44,6 +44,7 @@ export class PlayerCameraManagerService {
     if (!this.cameraPivot) {
       this.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
       this.cameraPivot.isVisible = false;
+      Tags.AddTagsTo(this.cameraPivot, "system_element ignore_raycast");
     }
 
     const colMeta = entity.collider;
@@ -260,7 +261,6 @@ export class PlayerCameraManagerService {
     seqRuntime: SeqRuntime,
     vista: 'FPS' | 'TPS'
   ): void {
-    // Si la cámara activa no pertenece al jugador, el controlador aborta (Aislamiento Total del Runtime)
     if (activeCamera !== this.motor3d.playerCameraFPS && activeCamera !== this.motor3d.playerCameraTPS) return;
 
     const jugador = entity.view as Mesh;

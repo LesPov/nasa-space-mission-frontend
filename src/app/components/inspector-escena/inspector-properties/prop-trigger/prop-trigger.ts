@@ -102,6 +102,7 @@ export class PropTrigger implements OnInit, OnDestroy {
     this.historialSvc.registrarCambioTransform(this.objeto, () => { 
       if(entity) {
           entity.transform.position = { x: this.localPosX, y: this.localPosY, z: this.localPosZ };
+          entity.isDirty = true;
           entity.syncToView();
       }
     }); 
@@ -113,6 +114,7 @@ export class PropTrigger implements OnInit, OnDestroy {
     this.historialSvc.registrarCambioTransform(this.objeto, () => { 
       if(entity) {
           entity.transform.scale = { x: this.localEscX, y: this.localEscY, z: this.localEscZ };
+          entity.isDirty = true;
           entity.syncToView();
       }
     }); 
@@ -162,6 +164,7 @@ export class PropTrigger implements OnInit, OnDestroy {
         entity.trigger.videoNorm = this.triggerVideoNorm.trim();
     }
 
+    entity.isDirty = true;
     entity.syncToView();
 
     this.editorSvc.triggerUpdate();

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -14,6 +15,7 @@ export class SequenceMutatorService {
     if (entity) {
        if (!entity.playerConfig) entity.playerConfig = cloneDefaultPlayerConfig();
        entity.playerConfig.sequences = JSON.parse(JSON.stringify(sequences));
+       entity.isDirty = true;
        entity.syncToView();
     }
     this.editorSvc.triggerUpdate();

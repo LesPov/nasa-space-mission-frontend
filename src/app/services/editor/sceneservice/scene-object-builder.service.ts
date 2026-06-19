@@ -8,6 +8,7 @@ import { CorePrimitiveLoaderService } from '../../../core/engine/scene/utils/cor
 import { CoreModelLoaderService } from '../../../core/engine/scene/utils/core-model-loader.service';
 import { CoreSceneShadowsService } from '../../../core/engine/scene/utils/core-scene-shadows.service';
 import { BuilderTriggerService } from './builder-trigger.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class SceneObjectBuilderService {
@@ -18,6 +19,7 @@ export class SceneObjectBuilderService {
   private primitiveLoader = inject(CorePrimitiveLoaderService);
   private shadowsSvc = inject(CoreSceneShadowsService);
   private triggerBuilderSvc = inject(BuilderTriggerService);
+  private entityManager = inject(EntityManagerService);
 
   public reconstruirMallaTrigger(oldMesh: AbstractMesh, nuevaForma: string): Mesh {
     return this.triggerBuilderSvc.reconstruirMallaTrigger(oldMesh, nuevaForma);
@@ -70,6 +72,8 @@ export class SceneObjectBuilderService {
 
     const newMesh = mallasCreadas.get(mockDbObject.uid);
     if (newMesh) {
+      const ent = this.entityManager.getEntityByMesh(newMesh);
+      if (ent) ent.isDirty = true;
       if (parentNode) newMesh.setParent(parentNode);
       this.shadowsSvc.asignarObjetosASombrasDeLuces();
       this.state.objetoSeleccionado.set(newMesh);

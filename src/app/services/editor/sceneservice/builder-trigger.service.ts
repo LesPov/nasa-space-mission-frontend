@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -39,6 +40,7 @@ export class BuilderTriggerService {
 
     if (entity) {
       if (entity.trigger) entity.trigger.triggerShape = nuevaForma;
+      entity.isDirty = true;
       entity.bindView(newMesh); 
     } else {
       newMesh.position = oldMesh.getAbsolutePosition().clone();
@@ -93,6 +95,8 @@ export class BuilderTriggerService {
     
     const newMesh = mallasCreadas.get(mockDbObject.uid);
     if (newMesh) {
+      const ent = this.entityManager.getEntityByMesh(newMesh);
+      if (ent) ent.isDirty = true;
       if (parentNode) newMesh.setParent(parentNode);
       this.state.objetoSeleccionado.set(newMesh);
       this.nodesSvc.actualizarListaNodos();

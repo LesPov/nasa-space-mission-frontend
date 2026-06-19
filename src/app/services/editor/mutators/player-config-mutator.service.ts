@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -16,6 +17,7 @@ export class PlayerConfigMutatorService {
     if (entity) {
        entity.playerConfig = JSON.parse(JSON.stringify(playerConfig));
        entity.selectionRange = JSON.parse(JSON.stringify(selectionRange));
+       entity.isDirty = true;
        entity.syncToView();
     }
 

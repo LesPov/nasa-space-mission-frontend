@@ -1,3 +1,4 @@
+
 // src/app/pages/admin/editor-escena/editor-escena.ts
 
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
@@ -356,6 +357,10 @@ export class EditorEscena implements OnInit, OnDestroy {
     const mapData = this.editorSvc.obtenerDatosParaGuardar();
     this.epiApiSvc.guardarMapa(this.episodioIdActivo, mapData).subscribe({
       next: () => {
+        // 🔥 Limpiar flags Dirty después de un guardado exitoso
+        this.entityManager.clearDirtyFlags();
+        this.entityManager.clearDeletedRecords();
+
         this.estadoGuardado.set('Guardado automático ✓');
         if (!silencioso) alert('Mapa guardado exitosamente');
         setTimeout(() => { if (this.estadoGuardado() === 'Guardado automático ✓') this.estadoGuardado.set(''); }, 3000);

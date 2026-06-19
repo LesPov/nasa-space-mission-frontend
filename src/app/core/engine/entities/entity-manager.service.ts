@@ -8,6 +8,10 @@ export class EntityManagerService {
   private entitiesByUid = new Map<string, GameEntity>();
   private entitiesByMesh = new Map<AbstractMesh, GameEntity>();
 
+  // 🔥 DIRTY TRACKING: Mantener registro de lo que se eliminó para el Backend Delta Update
+  public deletedObjects: string[] = [];
+  public deletedTriggers: string[] = [];
+
   public addEntity(entity: GameEntity): void {
     this.entitiesByUid.set(entity.uid, entity);
     if (entity.view) {
@@ -18,6 +22,12 @@ export class EntityManagerService {
   public removeEntity(uid: string): void {
     const entity = this.entitiesByUid.get(uid);
     if (entity) {
+      if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') {
+          this.deletedTriggers.push(entity.uid);
+      } else {
+          this.deletedObjects.push(entity.uid);
+      }
+
       if (entity.view) {
         this.entitiesByMesh.delete(entity.view);
         entity.destroyView();
@@ -30,15 +40,9 @@ export class EntityManagerService {
     return this.entitiesByUid.get(uid);
   }
 
-  /**
-   * Obtiene la entidad lógica a partir de la malla de Babylon.
-   * Resuelve el puente vital del ECS.
-   */
   public getEntityByMesh(mesh: AbstractMesh | null | undefined): GameEntity | undefined {
     if (!mesh) return undefined;
-    // Búsqueda en O(1) real.
     let entity = this.entitiesByMesh.get(mesh);
-    // Fallback por si la malla fue clonada o re-bundeada de forma atípica
     if (!entity && mesh.metadata?.entityUid) {
       entity = this.entitiesByUid.get(mesh.metadata.entityUid);
       if (entity) this.entitiesByMesh.set(mesh, entity);
@@ -54,9 +58,19 @@ export class EntityManagerService {
     return this.getAllEntities().filter(e => e.rol === rol);
   }
 
+  public clearDeletedRecords(): void {
+    this.deletedObjects = [];
+    this.deletedTriggers = [];
+  }
+
+  public clearDirtyFlags(): void {
+    this.entitiesByUid.forEach(e => e.isDirty = false);
+  }
+
   public clear(): void {
     this.entitiesByUid.forEach(entity => entity.destroyView());
     this.entitiesByUid.clear();
     this.entitiesByMesh.clear();
+    this.clearDeletedRecords();
   }
 }

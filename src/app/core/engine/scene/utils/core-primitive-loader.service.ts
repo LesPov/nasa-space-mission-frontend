@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DirectionalLight, FresnelParameters, Mesh, MeshBuilder, PointLight, SpotLight, StandardMaterial, Texture, Vector3, VideoTexture } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
@@ -18,7 +17,6 @@ export class CorePrimitiveLoaderService {
   private loopManager = inject(LoopManagerService);
   private entityManager = inject(EntityManagerService); 
 
-  // ELIMINADA la dependencia de interfaz (isAdmin).
   public cargarPrimitiva(obj: any, mallasCreadas: Map<string, Mesh>): void {
     const scene = this.motor3d.scene;
     
@@ -63,12 +61,12 @@ export class CorePrimitiveLoaderService {
     if (obj.type === 'video_plane' && entity.media) {
       entity.visual.assetId = obj.assetId;
       entity.visual.path = obj.properties?.videoUrl || obj.properties?.path || '';
-      entity.media.videoUrl = entity.visual.path;
+      entity.media.videoUrl = entity.visual.path || '';
     }
     if (obj.type === 'image_plane' && entity.media) {
       entity.visual.assetId = obj.assetId;
       entity.visual.path = obj.properties?.imageUrl || obj.properties?.path || '';
-      entity.media.imageUrl = entity.visual.path;
+      entity.media.imageUrl = entity.visual.path || '';
       
       entity.media.profundidadProyeccion = obj.properties?.profundidadProyeccion ?? 10;
       entity.media.anguloProyeccion = obj.properties?.anguloProyeccion ?? 0;
@@ -157,7 +155,6 @@ export class CorePrimitiveLoaderService {
       mesh.material = mat;
       entity.media.runtimeDecalMaterial = mat;
 
-      // EL MOTOR CARGA TODO COMO JUGADOR: El proyector cúbico base es invisible
       mesh.isVisible = false;
       mesh.alwaysSelectAsActiveMesh = true;
 
@@ -173,7 +170,6 @@ export class CorePrimitiveLoaderService {
       mat.fogEnabled = !entity.visual.ignoraNiebla;
       mesh.material = mat;
 
-      // EL MOTOR CARGA TODO COMO JUGADOR: El gizmo esférico de luz es invisible
       mesh.isVisible = false;
 
       let lightObj: any;

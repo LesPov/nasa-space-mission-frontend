@@ -1,3 +1,4 @@
+
 // src/app/services/editor/mutators/transform-mutator.service.ts
 
 import { Injectable, inject } from '@angular/core';
@@ -22,6 +23,7 @@ export class TransformMutatorService {
     this.historialSvc.registrarCambioTransform(objeto, () => {
       if (entity) {
         entity.transform.position = { ...localPos };
+        entity.isDirty = true;
         entity.syncToView(); 
       } else {
         objeto.position.set(localPos.x, localPos.y, localPos.z);
@@ -43,6 +45,7 @@ export class TransformMutatorService {
     this.historialSvc.registrarCambioTransform(objeto, () => {
       if (entity) {
         entity.transform.rotation = { x: rx, y: ry, z: rz };
+        entity.isDirty = true;
         entity.syncToView();
       } else {
         objeto.rotationQuaternion = Quaternion.FromEulerAngles(rx, ry, rz);
@@ -62,6 +65,7 @@ export class TransformMutatorService {
     this.historialSvc.registrarCambioTransform(objeto, () => {
       if (entity) {
          entity.transform.scale = { x: localEscReal.x, y: localEscReal.y, z: localEscReal.z };
+         entity.isDirty = true;
          entity.syncToView();
       } else {
          objeto.scaling.set(localEscReal.x, localEscReal.y, localEscReal.z);
@@ -87,6 +91,7 @@ export class TransformMutatorService {
     entity.media.proyeccionEje = config.proyeccionEje;
     entity.media.fadeDistance = Math.max(0, Number(config.fadeDistance));
 
+    entity.isDirty = true;
     entity.syncToView();
 
     if (entity.type === 'image_plane') {
@@ -105,6 +110,7 @@ export class TransformMutatorService {
     entity.visual.esEmisivo = config.esEmisivo;
     entity.visual.brilloIntensidad = this.clampBrightness(config.brilloIntensidad);
 
+    entity.isDirty = true;
     entity.syncToView();
 
     const isBW = this.motor3dSvc.scene.metadata?.globalVisualMode === 'bw';
@@ -112,7 +118,6 @@ export class TransformMutatorService {
 
     if (objeto.material && objeto.material instanceof StandardMaterial) {
       if (entity.type === 'image_plane') {
-        // 🔥 FIX: Eliminado rastro de objeto.metadata. Leemos directamente desde la Entidad
         const decalMat = entity.media?.runtimeDecalMaterial as StandardMaterial | undefined;
         
         if (decalMat) {
@@ -160,6 +165,7 @@ export class TransformMutatorService {
     entity.interaction.interactSequenceIdTPS = config.interactSequenceIdTPS.trim();
     entity.interaction.mensaje = config.mensaje.trim();
     
+    entity.isDirty = true;
     entity.syncToView();
     this.editorSvc.triggerUpdate();
   }

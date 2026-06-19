@@ -1,105 +1,136 @@
+
 // src/app/core/engine/entities/game.entity.ts
 
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig } from '../models/player-config.model';
 
-export interface TransformData {
-  position: { x: number; y: number; z: number };
-  rotation: { x: number; y: number; z: number };
-  scale: { x: number; y: number; z: number };
+// ==========================================
+// 1. DEFINICIÓN DE COMPONENTES ECS
+// ==========================================
+
+export class TransformComponent {
+  constructor(
+    public position = { x: 0, y: 0, z: 0 },
+    public rotation = { x: 0, y: 0, z: 0 },
+    public scale = { x: 1, y: 1, z: 1 }
+  ) {}
 }
 
-export interface ColliderComponent { 
-  type: string; 
-  sizeX: number; sizeY: number; sizeZ: number; 
-  offsetX: number; offsetY: number; offsetZ: number; 
+export class VisualComponent {
+  constructor(
+    public color = '#ffffff', 
+    public colorBW = '#ffffff', 
+    public isSolid = true, 
+    public isSelectable = true, 
+    public ignoraNiebla = false, 
+    public esEmisivo = false, 
+    public brilloIntensidad = 1.0, 
+    public assetId?: number | null, 
+    public path?: string
+  ) {}
 }
 
-export interface VisualComponent { 
-  color: string; 
-  colorBW: string; 
-  isSolid: boolean; 
-  isSelectable: boolean; 
-  ignoraNiebla: boolean; 
-  esEmisivo: boolean; 
-  brilloIntensidad: number; 
-  assetId?: number | null; 
-  path?: string; 
+export class PhysicsComponent {
+  constructor(
+    public type = 'box', 
+    public sizeX = 0.5, 
+    public sizeY = 0.5, 
+    public sizeZ = 0.5, 
+    public offsetX = 0, 
+    public offsetY = 0, 
+    public offsetZ = 0
+  ) {}
 }
 
-export interface InteractionComponent { 
-  mensaje: string; 
-  interactDistanceFPS: number; 
-  interactDistanceTPS: number; 
-  interactSequenceIdFPS: string; 
-  interactSequenceIdTPS: string; 
-  interactSequenceId: string; 
-  respawnTime?: number;
+export class InteractionComponent {
+  constructor(
+    public mensaje = '', 
+    public interactDistanceFPS = 3.0, 
+    public interactDistanceTPS = 5.0, 
+    public interactSequenceIdFPS = '', 
+    public interactSequenceIdTPS = '', 
+    public interactSequenceId = '', 
+    public respawnTime = 8
+  ) {}
 }
 
-export interface LightComponent {
-  lightColor: string;
-  intensity: number;
-  range: number;
-  angle: number;
-  lightPosX: number;
-  lightPosY: number;
-  lightPosZ: number;
-  attachedNodePath: string;
-  attachedNodeName: string;
+export class LightComponent {
+  constructor(
+    public lightColor = '#ffffff', 
+    public intensity = 1.0, 
+    public range = 50, 
+    public angle = 60, 
+    public lightPosX = 0, 
+    public lightPosY = 0, 
+    public lightPosZ = 0, 
+    public attachedNodePath = '', 
+    public attachedNodeName = ''
+  ) {}
 }
 
-export interface MediaComponent {
-  videoUrl?: string;
-  imageUrl?: string;
-  profundidadProyeccion?: number;
-  anguloProyeccion?: number;
-  proyeccionAncho?: number;
-  proyeccionAlto?: number;
-  proyeccionRepeticiones?: number;
-  proyeccionEspaciado?: number;
-  proyeccionEje?: string;
-  fadeDistance?: number;
-  
-  // 🔥 PROPIEDADES EN TIEMPO DE EJECUCIÓN (No se guardan en BD)
-  // Sustituyen por completo el uso de mesh.metadata
-  runtimeDecals?: AbstractMesh[];
-  runtimeDecalMaterial?: StandardMaterial;
-  lastVisualModeBW?: boolean;
+export class MediaComponent {
+  constructor(
+    public videoUrl = '', 
+    public imageUrl = '', 
+    public profundidadProyeccion = 10, 
+    public anguloProyeccion = 0, 
+    public proyeccionAncho = 2, 
+    public proyeccionAlto = 2, 
+    public proyeccionRepeticiones = 1, 
+    public proyeccionEspaciado = 2, 
+    public proyeccionEje = 'Y', 
+    public fadeDistance = 0, 
+    public runtimeDecals: AbstractMesh[] = [], 
+    public runtimeDecalMaterial?: StandardMaterial, 
+    public lastVisualModeBW?: boolean
+  ) {}
 }
 
-export interface SelectionRangeComponent {
-  fpsAdminMax: number;
-  fpsUserMax: number;
+export class TriggerComponent {
+  constructor(
+    public isComposite = false, 
+    public triggerShape = 'cube', 
+    public conditions: string[] = [], 
+    public mensajeEntrada = '', 
+    public mensajeSalida = '', 
+    public soundUrlEntrada = '', 
+    public soundUrlSalida = '', 
+    public seqEntrada = '', 
+    public seqSalida = '', 
+    public timeEntrada = 4.5, 
+    public timeSalida = 4.5, 
+    public videoEntrada = '', 
+    public videoSalida = '', 
+    public condition = 'on_enter', 
+    public mensaje = '', 
+    public soundUrl = '', 
+    public interactSequenceId = '', 
+    public timeNorm = 4.5, 
+    public videoNorm = '', 
+    public isRepeatable = false, 
+    public isEnabled = true, 
+    public hasTriggeredEnter = false, 
+    public hasTriggeredExit = false, 
+    public gameConditions: any[] = [], 
+    public stateMutations: any[] = []
+  ) {}
 }
 
-export interface TriggerComponent {
-  isComposite: boolean;
-  triggerShape: string;
-  conditions: string[];
-  mensajeEntrada: string;
-  mensajeSalida: string;
-  soundUrlEntrada: string;
-  soundUrlSalida: string;
-  seqEntrada: string;
-  seqSalida: string;
-  timeEntrada: number;
-  timeSalida: number;
-  videoEntrada: string;
-  videoSalida: string;
-  condition: string;
-  mensaje: string;
-  soundUrl: string;
-  interactSequenceId: string;
-  timeNorm: number;
-  videoNorm: string;
-  isRepeatable: boolean;
-  isEnabled: boolean;
-  hasTriggeredEnter: boolean;
-  hasTriggeredExit: boolean;
-  gameConditions?: any[];
-  stateMutations?: any[];
+export class PlayerStateComponent {
+  constructor(
+    public playerConfig?: PlayerRuntimeConfig,
+    public selectionRange = { fpsAdminMax: 10000, fpsUserMax: 3 },
+    public camOffset = { x: 0, y: 1.6, z: 0 },
+    public animationNames: string[] = [],
+    public autoAnim: any = null,
+    public initialHeadLocal?: Vector3
+  ) {}
 }
+
+
+// ==========================================
+// 2. ENTIDAD BASE (ECS CONTENEDOR)
+// ==========================================
 
 export class GameEntity {
   public uid: string;
@@ -110,23 +141,14 @@ export class GameEntity {
   public orderIndex: number = 0;
 
   public view: AbstractMesh | null = null;
+  
+  // 🔥 DIRTY TRACKING: Si es true, el SceneSaverService la enviará al backend.
+  public isDirty: boolean = true; 
 
-  public transform: TransformData;
-  public visual: VisualComponent;
-  public collider: ColliderComponent;
-  public interaction: InteractionComponent;
-  public selectionRange: SelectionRangeComponent;
-  
-  public playerConfig?: PlayerRuntimeConfig;
-  public light?: LightComponent;
-  public media?: MediaComponent;
-  public trigger?: TriggerComponent;
-  
-  public camOffset = { x: 0, y: 1.6, z: 0 };
-  public animationNames: string[] = [];
-  public autoAnim: any = null;
-  public initialHeadLocal?: Vector3;
-  
+  // 🔥 MAPA CENTRAL DE COMPONENTES ECS
+  private components = new Map<string, any>();
+
+  // Variables volátiles de Runtime (No se guardan en BD, no son componentes)
   public isHovered: boolean = false;
   public currentHoverScale: number = 1.0;
   public isProcessingAction: boolean = false;
@@ -137,43 +159,95 @@ export class GameEntity {
     this.type = type;
     this.rol = rol;
 
-    this.transform = {
-      position: { x: 0, y: 0, z: 0 },
-      rotation: { x: 0, y: 0, z: 0 },
-      scale: { x: 1, y: 1, z: 1 }
-    };
+    // Inicializamos los componentes básicos que todos tienen
+    this.addComponent('transform', new TransformComponent());
+    this.addComponent('visual', new VisualComponent());
+    
+    const isSphere = type === 'sphere' || type === 'bubble';
+    this.addComponent('physics', new PhysicsComponent(isSphere ? 'sphere' : 'box'));
+    this.addComponent('interaction', new InteractionComponent());
+    this.addComponent('playerState', new PlayerStateComponent());
 
-    this.visual = {
-      color: '#ffffff', colorBW: '#ffffff', isSolid: true, isSelectable: true,
-      ignoraNiebla: false, esEmisivo: false, brilloIntensidad: 1.0
-    };
-
-    this.collider = {
-      type: type === 'sphere' || type === 'bubble' ? 'sphere' : 'box',
-      sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5,
-      offsetX: 0, offsetY: 0, offsetZ: 0
-    };
-
-    this.interaction = {
-      mensaje: '', interactDistanceFPS: 3.0, interactDistanceTPS: 5.0,
-      interactSequenceIdFPS: '', interactSequenceIdTPS: '', interactSequenceId: '',
-      respawnTime: 8
-    };
-
-    this.selectionRange = { fpsAdminMax: 10000, fpsUserMax: 3 };
-
+    // Componentes específicos por tipo
     if (type.startsWith('light_')) {
-      this.light = { lightColor: '#ffffff', intensity: 1.0, range: 50, angle: 60, lightPosX: 0, lightPosY: 0, lightPosZ: 0, attachedNodePath: '', attachedNodeName: '' };
+      this.addComponent('light', new LightComponent());
     }
 
     if (type === 'video_plane' || type === 'image_plane') {
-      this.media = { profundidadProyeccion: 10, anguloProyeccion: 0, proyeccionAncho: 2, proyeccionAlto: 2, proyeccionRepeticiones: 1, proyeccionEspaciado: 2, proyeccionEje: 'Y', fadeDistance: 0 };
+      this.addComponent('media', new MediaComponent());
     }
   }
 
+  // ==========================================
+  // API ECS (Entity-Component-System)
+  // ==========================================
+  public addComponent<T>(key: string, component: T): void {
+    this.components.set(key, component);
+    this.isDirty = true;
+  }
+
+  public getComponent<T>(key: string): T | undefined {
+    return this.components.get(key) as T;
+  }
+
+  public hasComponent(key: string): boolean {
+    return this.components.has(key);
+  }
+
+  public removeComponent(key: string): void {
+    this.components.delete(key);
+    this.isDirty = true;
+  }
+
+  // ==========================================
+  // GETTERS DE COMPATIBILIDAD (Para no romper el proyecto mientras refactorizamos todos los systems)
+  // ==========================================
+  get transform(): TransformComponent { return this.getComponent<TransformComponent>('transform')!; }
+  set transform(v) { this.addComponent('transform', v); }
+
+  get visual(): VisualComponent { return this.getComponent<VisualComponent>('visual')!; }
+  set visual(v) { this.addComponent('visual', v); }
+
+  get collider(): PhysicsComponent { return this.getComponent<PhysicsComponent>('physics')!; }
+  set collider(v) { this.addComponent('physics', v); }
+
+  get interaction(): InteractionComponent { return this.getComponent<InteractionComponent>('interaction')!; }
+  set interaction(v) { this.addComponent('interaction', v); }
+
+  get light(): LightComponent | undefined { return this.getComponent<LightComponent>('light'); }
+  set light(v) { if(v) this.addComponent('light', v); }
+
+  get media(): MediaComponent | undefined { return this.getComponent<MediaComponent>('media'); }
+  set media(v) { if(v) this.addComponent('media', v); }
+
+  get trigger(): TriggerComponent | undefined { return this.getComponent<TriggerComponent>('trigger'); }
+  set trigger(v) { if(v) this.addComponent('trigger', v); }
+
+  // Atajos hacia PlayerStateComponent
+  get playerConfig() { return this.getComponent<PlayerStateComponent>('playerState')?.playerConfig; }
+  set playerConfig(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.playerConfig = v; }
+  
+  get selectionRange() { return this.getComponent<PlayerStateComponent>('playerState')!.selectionRange; }
+  set selectionRange(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.selectionRange = v; }
+  
+  get camOffset() { return this.getComponent<PlayerStateComponent>('playerState')!.camOffset; }
+  set camOffset(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.camOffset = v; }
+
+  get animationNames() { return this.getComponent<PlayerStateComponent>('playerState')!.animationNames; }
+  set animationNames(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.animationNames = v; }
+
+  get autoAnim() { return this.getComponent<PlayerStateComponent>('playerState')!.autoAnim; }
+  set autoAnim(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.autoAnim = v; }
+
+  get initialHeadLocal() { return this.getComponent<PlayerStateComponent>('playerState')?.initialHeadLocal; }
+  set initialHeadLocal(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.initialHeadLocal = v; }
+
+
+  // ==========================================
+  // VIEW BINDING
+  // ==========================================
   public bindView(mesh: AbstractMesh): void {
     this.view = mesh;
-    // El único metadato permitido: El puente de conexión ECS
     if (!mesh.metadata) mesh.metadata = {};
     mesh.metadata.entityUid = this.uid;
     this.syncToView(); 
@@ -181,41 +255,43 @@ export class GameEntity {
 
   public syncToView(): void {
     if (!this.view) return;
+    const t = this.getComponent<TransformComponent>('transform')!;
 
-    this.view.position.set(this.transform.position.x, this.transform.position.y, this.transform.position.z);
-    this.view.scaling.set(this.transform.scale.x, this.transform.scale.y, this.transform.scale.z);
+    this.view.position.set(t.position.x, t.position.y, t.position.z);
+    this.view.scaling.set(t.scale.x, t.scale.y, t.scale.z);
 
     if (this.view.rotationQuaternion) {
-      Quaternion.FromEulerAnglesToRef(this.transform.rotation.x, this.transform.rotation.y, this.transform.rotation.z, this.view.rotationQuaternion);
+      Quaternion.FromEulerAnglesToRef(t.rotation.x, t.rotation.y, t.rotation.z, this.view.rotationQuaternion);
       this.view.rotation.set(0, 0, 0);
     } else {
-      this.view.rotation.set(this.transform.rotation.x, this.transform.rotation.y, this.transform.rotation.z);
+      this.view.rotation.set(t.rotation.x, t.rotation.y, t.rotation.z);
     }
 
     this.view.name = this.name;
-    
-    // Purga estricta
-    this.view.metadata = {
-      uid: this.uid,
-      entityUid: this.uid
-    };
+    this.view.metadata = { uid: this.uid, entityUid: this.uid };
   }
 
   public syncTransformFromView(): void {
     if (!this.view) return;
-    this.transform.position = { x: this.view.position.x, y: this.view.position.y, z: this.view.position.z };
-    this.transform.scale = { x: this.view.scaling.x, y: this.view.scaling.y, z: this.view.scaling.z };
+    const t = this.getComponent<TransformComponent>('transform')!;
+
+    t.position = { x: this.view.position.x, y: this.view.position.y, z: this.view.position.z };
+    t.scale = { x: this.view.scaling.x, y: this.view.scaling.y, z: this.view.scaling.z };
     
     if (this.view.rotationQuaternion) {
       const euler = this.view.rotationQuaternion.toEulerAngles();
-      this.transform.rotation = { x: euler.x, y: euler.y, z: euler.z };
+      t.rotation = { x: euler.x, y: euler.y, z: euler.z };
     } else {
-      this.transform.rotation = { x: this.view.rotation.x, y: this.view.rotation.y, z: this.view.rotation.z };
+      t.rotation = { x: this.view.rotation.x, y: this.view.rotation.y, z: this.view.rotation.z };
     }
+    this.isDirty = true;
   }
 
   public getAbsolutePosition(): Vector3 {
-    if (!this.view) return new Vector3(this.transform.position.x, this.transform.position.y, this.transform.position.z);
+    if (!this.view) {
+      const t = this.getComponent<TransformComponent>('transform')!;
+      return new Vector3(t.position.x, t.position.y, t.position.z);
+    }
     return this.view.getAbsolutePosition();
   }
 

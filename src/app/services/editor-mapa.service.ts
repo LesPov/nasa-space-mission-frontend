@@ -61,7 +61,7 @@ export class EditorMapaService {
     return this.scene.cargarEscenaDesdeDatos(dataBD); 
   }
   
-  obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[], worldSettings: any } { 
+  obtenerDatosParaGuardar(): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], worldSettings: any } { 
     return this.scene.obtenerDatosParaGuardar(); 
   }
   

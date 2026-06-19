@@ -78,7 +78,6 @@ export class EditorSceneService {
     this.nodesSvc.limpiarEstado();
   }
 
-  // 🔥 SOLUCIÓN POST-CARGA: Revelar cosas ocultas de los Loaders Agnósticos
   public revelarEntidadesOcultasParaAdmin(): void {
     const allEntities = this.entityManager.getAllEntities();
     allEntities.forEach(e => {
@@ -113,7 +112,7 @@ export class EditorSceneService {
     });
   }
 
-  public obtenerDatosParaGuardar(): { sceneObjects: any[], triggers: any[], worldSettings: any } {
+  public obtenerDatosParaGuardar(): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], worldSettings: any } {
     return this.saverSvc.obtenerDatosParaGuardar();
   }
 }

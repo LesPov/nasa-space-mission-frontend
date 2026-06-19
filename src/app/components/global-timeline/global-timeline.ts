@@ -1,4 +1,3 @@
-
 import { Component, inject, OnInit, ChangeDetectorRef, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -276,7 +275,7 @@ export class GlobalTimeline implements OnInit {
     if (entity.type.startsWith('light_') && entity.light) {
       finalProperties = { ...finalProperties, ...entity.light };
     } else if ((entity.type === 'video_plane' || entity.type === 'image_plane') && entity.media) {
-      const mediaSafe = { ...entity.media };
+      const mediaSafe: any = { ...entity.media };
       delete mediaSafe.runtimeDecals;
       delete mediaSafe.runtimeDecalMaterial;
       delete mediaSafe.lastVisualModeBW;

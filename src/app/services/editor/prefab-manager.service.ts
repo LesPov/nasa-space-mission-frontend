@@ -53,7 +53,7 @@ export class PrefabManagerService {
       if (entity.type.startsWith('light_') && entity.light) {
         finalProperties = { ...finalProperties, ...entity.light };
       } else if ((entity.type === 'video_plane' || entity.type === 'image_plane') && entity.media) {
-        const mediaSafe = { ...entity.media };
+        const mediaSafe: any = { ...entity.media };
         delete mediaSafe.runtimeDecals;
         delete mediaSafe.runtimeDecalMaterial;
         delete mediaSafe.lastVisualModeBW;

@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DirectionalLight, Matrix, Mesh, MeshBuilder, PointLight, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
 import '@babylonjs/loaders';
@@ -15,7 +16,6 @@ export class CoreModelLoaderService {
   private utilsSvc = inject(CoreSceneUtilsService);
   private entityManager = inject(EntityManagerService); 
 
-  // ELIMINADA la dependencia de interfaz (isAdmin).
   public async cargarModeloAsync(obj: any, mallasCreadas: Map<string, Mesh>): Promise<void> {
     const scene = this.motor3d.scene;
     const path = obj.properties?.path || obj.asset?.path;
@@ -104,6 +104,7 @@ export class CoreModelLoaderService {
 
     if (isLight && entity.light) {
       entity.light.lightColor = obj.properties?.lightColor?.substring(0, 7) || '#ffffff';
+      entity.light.lightColorBW = obj.properties?.lightColorBW?.substring(0, 7) || entity.light.lightColor;
       entity.light.intensity = obj.properties?.intensity ?? 1.0;
       entity.light.range = obj.properties?.range ?? 50;
       entity.light.angle = obj.properties?.angle ?? 60;
@@ -165,7 +166,6 @@ export class CoreModelLoaderService {
     }
 
     if (isLight && entity.light) {
-      // EL MOTOR CARGA TODO COMO JUGADOR: El gizmo base importado como luz es invisible
       rootNode.isVisible = false;
 
       let lightObj: any;
@@ -181,8 +181,13 @@ export class CoreModelLoaderService {
 
       lightObj.parent = targetParent;
       lightObj.intensity = entity.light.intensity;
-      lightObj.diffuse = Color3.FromHexString(entity.light.lightColor);
+      
+      const isBW = scene.metadata?.globalVisualMode === 'bw';
+      const activeColor = isBW ? entity.light.lightColorBW : entity.light.lightColor;
+
+      lightObj.diffuse = Color3.FromHexString(activeColor);
       lightObj.specular = new Color3(0, 0, 0);
+      
       if (lightObj.range !== undefined) lightObj.range = entity.light.range;
 
       if (lightObj.position) {

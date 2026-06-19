@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import {
   Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4,
@@ -43,7 +44,6 @@ export class Motor3dService {
     this.scene.gravity = new Vector3(0, -0.25, 0);
     this.scene.skipPointerMovePicking = true;
 
-    // 🔥 INICIALIZAMOS EL DIRECTOR DE LA ORQUESTA
     this.loopManager.initialize(this.scene);
 
     // --- CÁMARA EDITOR ---
@@ -117,28 +117,19 @@ export class Motor3dService {
   setVisualMode(mode: 'normal' | 'bw'): void {
     if (!this.renderingPipeline) return;
     const isBw = mode === 'bw';
-    const curves = new ColorCurves();
 
-    if (isBw) {
-      curves.globalSaturation = -100; 
-      curves.globalHue = 0;
-      curves.globalDensity = 0;
-    }
-
-    this.renderingPipeline.imageProcessing.colorCurvesEnabled = isBw;
-    if (isBw) this.renderingPipeline.imageProcessing.colorCurves = curves;
+    // Se deshabilita ColorCurves en el Post Process global para que las luces coloreadas sean visibles en Blanco y Negro.
+    this.renderingPipeline.imageProcessing.colorCurvesEnabled = false;
     this.renderingPipeline.imageProcessing.exposure = isBw ? 0.98 : 1.0;
     this.renderingPipeline.imageProcessing.contrast = isBw ? 1.15 : 1.0; 
 
-    this.scene.imageProcessingConfiguration.colorCurvesEnabled = isBw;
-    if (isBw) this.scene.imageProcessingConfiguration.colorCurves = curves;
+    this.scene.imageProcessingConfiguration.colorCurvesEnabled = false;
     this.scene.imageProcessingConfiguration.exposure = isBw ? 0.98 : 1.0;
     this.scene.imageProcessingConfiguration.contrast = isBw ? 1.15 : 1.0;
 
     this.scene.materials.forEach(mat => {
       if ((mat as any).imageProcessingConfiguration) {
-        (mat as any).imageProcessingConfiguration.colorCurvesEnabled = isBw;
-        if (isBw) (mat as any).imageProcessingConfiguration.colorCurves = curves;
+        (mat as any).imageProcessingConfiguration.colorCurvesEnabled = false;
         (mat as any).imageProcessingConfiguration.exposure = isBw ? 0.98 : 1.0;
         (mat as any).imageProcessingConfiguration.contrast = isBw ? 1.15 : 1.0;
       }

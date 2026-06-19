@@ -90,7 +90,6 @@ export class PropWorld implements OnInit, OnDestroy {
 
     this.aplicarFondo();
 
-    // 🔥 Iteramos sobre Entidades, no sobre Mallas ciegamente
     this.entityManager.getAllEntities().forEach(entity => {
       const mesh = entity.view as Mesh;
       if (!mesh) return;
@@ -119,12 +118,15 @@ export class PropWorld implements OnInit, OnDestroy {
         }
       }
       else if (entity.type.startsWith('light_')) {
+          const activeLightColorHex = isBW ? (entity.light?.lightColorBW || entity.light?.lightColor || '#ffffff') : (entity.light?.lightColor || '#ffffff');
+          const c3Light = Color3.FromHexString(activeLightColorHex);
+
           if (mesh.material && (mesh.material as any).emissiveColor) {
-              (mesh.material as StandardMaterial).emissiveColor = c3;
+              (mesh.material as StandardMaterial).emissiveColor = c3Light;
           }
           const lightObj = mesh.getDescendants(false).find(c => c.name.startsWith('l_')) as any;
           if (lightObj && lightObj.diffuse) {
-              lightObj.diffuse = c3;
+              lightObj.diffuse = c3Light;
           }
       }
     });

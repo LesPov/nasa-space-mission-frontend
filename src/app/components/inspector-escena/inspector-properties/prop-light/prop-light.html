@@ -1,14 +1,24 @@
 
+
 <div class="section-card">
   <div class="section-head">
     <h4>Propiedades de la Luz</h4>
   </div>
 
-  <div class="field" style="margin-bottom: 15px;">
-    <label>Color de Emisión</label>
-    <div class="color-picker-wrapper">
-      <input type="color" [(ngModel)]="lightColor" (ngModelChange)="aplicarLuz()" class="color-picker">
-      <span class="color-hex-text">{{ lightColor.toUpperCase() }}</span>
+  <div class="grid-2" style="margin-bottom: 15px;">
+    <div class="field">
+      <label>Color Normal</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="lightColor" (ngModelChange)="aplicarLuz()" class="color-picker">
+        <span class="color-hex-text">{{ lightColor.toUpperCase() }}</span>
+      </div>
+    </div>
+    <div class="field">
+      <label style="color: #cbd5e1; font-weight: bold;">Color en B&N</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="lightColorBW" (ngModelChange)="aplicarLuz()" class="color-picker">
+        <span class="color-hex-text">{{ lightColorBW.toUpperCase() }}</span>
+      </div>
     </div>
   </div>
 

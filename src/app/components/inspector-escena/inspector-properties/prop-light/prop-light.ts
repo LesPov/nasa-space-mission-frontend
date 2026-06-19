@@ -1,4 +1,5 @@
 
+
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -6,6 +7,7 @@ import { AbstractMesh, Color3, PointLight, SpotLight, DirectionalLight, Transfor
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
+import { Motor3dService } from '../../../../services/motor-3d.service';
 
 interface AttachedNodeOption {
   label: string;
@@ -23,6 +25,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   @Input() objeto!: AbstractMesh;
 
   private editorSvc = inject(EditorMapaService);
+  private motor3dSvc = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
@@ -32,6 +35,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   isDirectional = false;
 
   lightColor = '#ffffff';
+  lightColorBW = '#ffffff';
   intensity = 1.0;
   range = 50;
   angle = 60;
@@ -175,6 +179,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.isDirectional = entity.type === 'light_directional';
 
     this.lightColor = entity.light.lightColor || '#ffffff';
+    this.lightColorBW = entity.light.lightColorBW || this.lightColor;
     this.intensity = entity.light.intensity ?? 1.0;
     this.range = entity.light.range ?? 50;
     this.angle = entity.light.angle ?? 60;
@@ -218,10 +223,12 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     }
 
     const light = this.getAttachedLight();
+    const isBW = this.motor3dSvc.scene?.metadata?.globalVisualMode === 'bw';
+    const activeColor = isBW ? this.lightColorBW : this.lightColor;
 
     if (light) {
       light.intensity = this.intensity;
-      light.diffuse = Color3.FromHexString(this.lightColor);
+      light.diffuse = Color3.FromHexString(activeColor);
 
       if (light instanceof PointLight || light instanceof SpotLight) {
         light.range = this.range;
@@ -253,7 +260,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.attachedNodePath = targetNode ? this.buildNodePath(targetNode) : '';
 
     if (this.objeto.material) {
-      (this.objeto.material as any).emissiveColor = Color3.FromHexString(this.lightColor);
+      (this.objeto.material as any).emissiveColor = Color3.FromHexString(activeColor);
     }
 
     const entity = this.entityManager.getEntityByMesh(this.objeto);
@@ -262,6 +269,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.light.lightPosY = this.lightPosY;
       entity.light.lightPosZ = this.lightPosZ;
       entity.light.lightColor = this.lightColor;
+      entity.light.lightColorBW = this.lightColorBW;
       entity.light.intensity = this.intensity;
       entity.light.range = this.range;
       entity.light.angle = this.angle;

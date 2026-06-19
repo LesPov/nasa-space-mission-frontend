@@ -1,3 +1,4 @@
+
 // src/app/core/engine/entities/game.entity.ts
 
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
@@ -56,6 +57,7 @@ export class InteractionComponent {
 export class LightComponent {
   constructor(
     public lightColor = '#ffffff', 
+    public lightColorBW = '#ffffff', 
     public intensity = 1.0, 
     public range = 50, 
     public angle = 60, 
@@ -124,7 +126,6 @@ export class PlayerStateComponent {
     public autoAnim: any = null,
     public initialHeadLocal?: Vector3,
     
-    // 🔥 NUEVO: Intenciones abstractas derivadas del Input
     public intentions = {
       moveForward: false,
       moveBackward: false,
@@ -134,7 +135,6 @@ export class PlayerStateComponent {
       jump: false
     },
     
-    // 🔥 NUEVO: Estado físico volcado desde el Controlador a la Entidad
     public physicsState = {
       isMoving: false, 
       isRunning: false, 
@@ -166,13 +166,10 @@ export class GameEntity {
 
   public view: AbstractMesh | null = null;
   
-  // 🔥 DIRTY TRACKING: Si es true, el SceneSaverService la enviará al backend.
   public isDirty: boolean = true; 
 
-  // 🔥 MAPA CENTRAL DE COMPONENTES ECS
   private components = new Map<string, any>();
 
-  // Variables volátiles de Runtime (No se guardan en BD, no son componentes)
   public isHovered: boolean = false;
   public currentHoverScale: number = 1.0;
   public isProcessingAction: boolean = false;
@@ -183,7 +180,6 @@ export class GameEntity {
     this.type = type;
     this.rol = rol;
 
-    // Inicializamos los componentes básicos que todos tienen
     this.addComponent('transform', new TransformComponent());
     this.addComponent('visual', new VisualComponent());
     
@@ -192,7 +188,6 @@ export class GameEntity {
     this.addComponent('interaction', new InteractionComponent());
     this.addComponent('playerState', new PlayerStateComponent());
 
-    // Componentes específicos por tipo
     if (type.startsWith('light_')) {
       this.addComponent('light', new LightComponent());
     }
@@ -224,7 +219,7 @@ export class GameEntity {
   }
 
   // ==========================================
-  // GETTERS DE COMPATIBILIDAD (Para no romper el proyecto mientras refactorizamos todos los systems)
+  // GETTERS DE COMPATIBILIDAD
   // ==========================================
   get transform(): TransformComponent { return this.getComponent<TransformComponent>('transform')!; }
   set transform(v) { this.addComponent('transform', v); }
@@ -247,7 +242,6 @@ export class GameEntity {
   get trigger(): TriggerComponent | undefined { return this.getComponent<TriggerComponent>('trigger'); }
   set trigger(v) { if(v) this.addComponent('trigger', v); }
 
-  // Atajos hacia PlayerStateComponent
   get playerConfig() { return this.getComponent<PlayerStateComponent>('playerState')?.playerConfig; }
   set playerConfig(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.playerConfig = v; }
   
@@ -265,7 +259,6 @@ export class GameEntity {
 
   get initialHeadLocal() { return this.getComponent<PlayerStateComponent>('playerState')?.initialHeadLocal; }
   set initialHeadLocal(v) { const p = this.getComponent<PlayerStateComponent>('playerState'); if(p) p.initialHeadLocal = v; }
-
 
   // ==========================================
   // VIEW BINDING

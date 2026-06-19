@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DirectionalLight, FresnelParameters, Mesh, MeshBuilder, PointLight, SpotLight, StandardMaterial, Texture, Vector3, VideoTexture } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
@@ -80,6 +81,7 @@ export class CorePrimitiveLoaderService {
     
     if (obj.type?.startsWith('light_') && entity.light) {
       entity.light.lightColor = obj.properties?.lightColor?.substring(0, 7) || '#ffffff';
+      entity.light.lightColorBW = obj.properties?.lightColorBW?.substring(0, 7) || entity.light.lightColor;
       entity.light.intensity = obj.properties?.intensity ?? 1.0;
       entity.light.range = obj.properties?.range ?? 50;
       entity.light.angle = obj.properties?.angle ?? 60;
@@ -163,8 +165,11 @@ export class CorePrimitiveLoaderService {
     else if (obj.type?.startsWith('light_') && entity.light) {
       mesh.addBehavior(new DistanceFadeBehavior(this.loopManager, this.entityManager));
 
+      const isBW = scene.metadata?.globalVisualMode === 'bw';
+      const activeColor = isBW ? entity.light.lightColorBW : entity.light.lightColor;
+
       const mat = new StandardMaterial('mat_' + obj.name, scene);
-      mat.emissiveColor = Color3.FromHexString(entity.light.lightColor);
+      mat.emissiveColor = Color3.FromHexString(activeColor);
       mat.wireframe = true;
       mat.maxSimultaneousLights = 4;
       mat.fogEnabled = !entity.visual.ignoraNiebla;
@@ -179,8 +184,9 @@ export class CorePrimitiveLoaderService {
 
       lightObj.parent = mesh;
       lightObj.intensity = entity.light.intensity;
-      lightObj.diffuse = Color3.FromHexString(entity.light.lightColor);
+      lightObj.diffuse = Color3.FromHexString(activeColor);
       lightObj.specular = new Color3(0, 0, 0);
+      
       if (lightObj.range !== undefined) lightObj.range = entity.light.range;
 
       if (lightObj.position) {

@@ -1,10 +1,7 @@
 // src/app/core/engine/runtime/controllers/npc.controller.ts
-
 import { Injector } from '@angular/core';
 import { BaseCharacterController } from './base-character.controller';
 import { GameEntity } from '../../entities/game.entity';
-
-// Servicios de Sistemas Inyectados Dinámicamente
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { PlayerAnimationService } from '../systems/player-animation.service';
 import { PlayerSequenceService } from '../systems/player-sequence.service';
@@ -12,7 +9,6 @@ import { PlayerSequenceService } from '../systems/player-sequence.service';
 export class NpcController extends BaseCharacterController {
   
   private currentSeqRuntime: any;
-  
   private motor3d: Motor3dService;
   private animSvc: PlayerAnimationService;
   private sequenceSvc: PlayerSequenceService;
@@ -34,7 +30,6 @@ export class NpcController extends BaseCharacterController {
       this.animSvc.reproducirIdle(this.entity);
     }
 
-    // 🔥 El Controlador se inyecta en el Motor (LoopManager) para su auto-ejecución
     this.loopManager.registerSystem(this);
   }
 
@@ -55,7 +50,6 @@ export class NpcController extends BaseCharacterController {
         const dy = (soY / durSec) * (dtMs / 1000);
         const df = (soF / durSec) * (dtMs / 1000);
         
-        // Malla como proxy volumétrico temporal (Se refactorizará en Fase 2 final)
         this.mesh.position.y += dy;
         const fwd = this.mesh.forward.clone();
         fwd.y = 0; 
@@ -70,7 +64,6 @@ export class NpcController extends BaseCharacterController {
       this.estadoFisico.isMoving = false;
     }
 
-    // Entidad como Fuente de Verdad Matemática
     this.entity.transform.position.x = this.mesh.position.x;
     this.entity.transform.position.y = this.mesh.position.y;
     this.entity.transform.position.z = this.mesh.position.z;

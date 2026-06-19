@@ -1,3 +1,4 @@
+// src/app/core/engine/runtime/systems/character-kinematics.service.ts
 
 import { Injectable } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
@@ -18,7 +19,6 @@ export class CharacterKinematicsService {
     const mesh = entity.view as Mesh;
     if (!mesh) return;
 
-    // 🔥 Se mapea a Runtime puro
     const playerState = entity.playerRuntime;
     const estadoFisico = playerState.physicsState;
     const intentions = playerState.intentions;
@@ -42,16 +42,12 @@ export class CharacterKinematicsService {
     const collFn = (m: any) =>
       m.checkCollisions && m !== mesh && !m.isDescendantOf(mesh) && !Tags.MatchesQuery(m, "system_element || editor_only || fog_element");
 
+    // 🔥 Ahora consumimos el Vector de Root Motion purificado, no recalculamos matemática de la secuencia
     if (seqRuntime.running && seqRuntime.step) {
-      const soY = seqRuntime.step.offsetY || 0;
-      const soF = seqRuntime.step.offsetForward || 0;
-
-      if (soY !== 0 || soF !== 0 || seqRuntime.lockInput || seqRuntime.freezeOrientation) {
+      if (seqRuntime.rootMotion && (seqRuntime.rootMotion.y !== 0 || seqRuntime.rootMotion.z !== 0 || seqRuntime.lockInput || seqRuntime.freezeOrientation)) {
         isCinematicSequence = true;
-        const dtSec = dtMs / 1000;
-        const durSec = Math.max(0.001, seqRuntime.step.durationMs / 1000);
-        dy = (soY / durSec) * dtSec;
-        df = (soF / durSec) * dtSec;
+        dy = seqRuntime.rootMotion.y;
+        df = seqRuntime.rootMotion.z;
       }
     }
 

@@ -1,4 +1,3 @@
-
 // src/app/core/engine/entities/game.entity.ts
 
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
@@ -125,6 +124,14 @@ export class PlayerConfigComponent {
 // 2. DEFINICIÓN DE COMPONENTES ECS (ESTADO RUNTIME VOLÁTIL)
 // ==========================================
 
+export class UIEditorStateComponent {
+  constructor(
+    public isHovered = false,
+    public currentHoverScale = 1.0,
+    public isProcessingAction = false
+  ) {}
+}
+
 export class MediaRuntimeComponent {
   constructor(
     public runtimeDecals: AbstractMesh[] = [], 
@@ -181,15 +188,9 @@ export class GameEntity {
   public orderIndex: number = 0;
 
   public view: AbstractMesh | null = null;
-  
   public isDirty: boolean = true; 
 
   private components = new Map<string, any>();
-
-  // Estado efímero de UI/Editor
-  public isHovered: boolean = false;
-  public currentHoverScale: number = 1.0;
-  public isProcessingAction: boolean = false;
 
   constructor(uid: string, name: string, type: string, rol: string = 'prop') {
     this.uid = uid;
@@ -208,6 +209,7 @@ export class GameEntity {
 
     // Estado Runtime (Volátil, No se guarda en BD)
     this.addComponent('playerRuntime', new PlayerRuntimeComponent());
+    this.addComponent('uiState', new UIEditorStateComponent());
 
     if (type.startsWith('light_')) {
       this.addComponent('light', new LightComponent());
@@ -285,14 +287,25 @@ export class GameEntity {
   set autoAnim(v) { const p = this.getComponent<PlayerConfigComponent>('playerConfig'); if(p) p.autoAnim = v; }
 
   // ==========================================
-  // GETTERS DE ESTADO RUNTIME
+  // GETTERS DE ESTADO RUNTIME (Aislados del Core)
   // ==========================================
   get mediaRuntime(): MediaRuntimeComponent | undefined { return this.getComponent<MediaRuntimeComponent>('mediaRuntime'); }
   get triggerRuntime(): TriggerRuntimeComponent | undefined { return this.getComponent<TriggerRuntimeComponent>('triggerRuntime'); }
   get playerRuntime(): PlayerRuntimeComponent { return this.getComponent<PlayerRuntimeComponent>('playerRuntime')!; }
+  get uiState(): UIEditorStateComponent { return this.getComponent<UIEditorStateComponent>('uiState')!; }
 
   get initialHeadLocal() { return this.playerRuntime.initialHeadLocal; }
   set initialHeadLocal(v) { this.playerRuntime.initialHeadLocal = v; }
+
+  // Getter/Setter retrocompatible para la UI efímera
+  get isHovered(): boolean { return this.uiState.isHovered; }
+  set isHovered(v: boolean) { this.uiState.isHovered = v; }
+
+  get currentHoverScale(): number { return this.uiState.currentHoverScale; }
+  set currentHoverScale(v: number) { this.uiState.currentHoverScale = v; }
+
+  get isProcessingAction(): boolean { return this.uiState.isProcessingAction; }
+  set isProcessingAction(v: boolean) { this.uiState.isProcessingAction = v; }
 
   // ==========================================
   // VIEW BINDING
@@ -347,7 +360,6 @@ export class GameEntity {
   }
 
   public destroyView(): void {
-    // 🔥 Destrucción profunda de sub-elementos generados procedimentalmente
     if (this.mediaRuntime) {
       if (Array.isArray(this.mediaRuntime.runtimeDecals)) {
         this.mediaRuntime.runtimeDecals.forEach((d: AbstractMesh) => {
@@ -357,17 +369,13 @@ export class GameEntity {
         });
       }
       if (this.mediaRuntime.runtimeDecalMaterial) {
-        // Corrección de Typings de BabylonJS: dispose() siempre existe en materials, 
-        // pero isDisposed no está explícitamente en la firma de StandardMaterial en esta versión.
-        try { 
-            this.mediaRuntime.runtimeDecalMaterial.dispose(); 
-        } catch (e) {}
+        try { this.mediaRuntime.runtimeDecalMaterial.dispose(); } catch (e) {}
       }
       this.mediaRuntime.runtimeDecals = [];
     }
 
     if (this.view && typeof this.view.isDisposed === 'function' && !this.view.isDisposed()) {
-      this.view.dispose(false, true); // true = Destruir Materiales vinculados
+      this.view.dispose(false, true);
     }
     this.view = null;
   }

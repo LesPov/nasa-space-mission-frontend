@@ -1,6 +1,4 @@
-
 // src/app/core/engine/runtime/controllers/base-character.controller.ts
-
 import { Mesh } from '@babylonjs/core';
 import { Injector } from '@angular/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../../models/player-config.model';
@@ -31,12 +29,10 @@ export abstract class BaseCharacterController implements IUpdatable {
     this.config = entity.playerConfig || cloneDefaultPlayerConfig();
   }
 
-  // Identificador para el LoopManager
   public get id(): string { 
     return this.loopId; 
   }
 
-  // 🔥 Se mapea a Runtime puro
   public get estadoFisico(): EstadoFisico {
     return this.entity.playerRuntime.physicsState;
   }

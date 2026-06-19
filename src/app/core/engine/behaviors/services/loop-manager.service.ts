@@ -1,3 +1,4 @@
+// src/app/core/engine/behaviors/services/loop-manager.service.ts
 import { Injectable } from '@angular/core';
 import { Scene, Observer } from '@babylonjs/core';
 
@@ -12,12 +13,12 @@ export enum GamePhase {
 
 type LoopCallback = (deltaTimeMs: number) => void;
 
-// 🔥 NUEVO: Interfaz ECS para que el motor ejecute sistemas completos
+// Interfaz ECS para que el motor ejecute sistemas y controladores completos
 export interface IUpdatable {
   id: string;
   preUpdate?(dtMs: number): void;
   physicsUpdate?(dtMs: number): void;
-  update?(dtMs: number): void; // Fase Lógica
+  update?(dtMs: number): void; // Fase Lógica principal
   animationUpdate?(dtMs: number): void;
   cameraUpdate?(dtMs: number): void;
   postUpdate?(dtMs: number): void;
@@ -28,10 +29,10 @@ export class LoopManagerService {
   private scene: Scene | null = null;
   private observer: Observer<Scene> | null = null;
 
-  // Colecciones de funciones legadas (Para compatibilidad con Behaviors antiguos)
+  // Colecciones para compatibilidad con comportamientos individuales (Behaviors)
   private phases: Map<GamePhase, Map<string, LoopCallback>> = new Map();
 
-  // 🔥 NUEVO: Registro central de Controladores y Sistemas
+  // Registro central de Controladores y Sistemas
   private updatables = new Map<string, IUpdatable>();
 
   constructor() {
@@ -65,7 +66,7 @@ export class LoopManagerService {
     this.scene = null;
   }
 
-  // 🔥 NUEVO: Registra un Controlador/Sistema en el motor
+  // Registra un Controlador/Sistema en el motor
   public registerSystem(system: IUpdatable): void {
     this.updatables.set(system.id, system);
   }
@@ -74,7 +75,7 @@ export class LoopManagerService {
     this.updatables.delete(id);
   }
 
-  // Mantiene compatibilidad con módulos que aún no sean IUpdatable
+  // Mantiene compatibilidad con módulos legacy
   public register(id: string, phase: GamePhase, callback: LoopCallback): void {
     const phaseMap = this.phases.get(phase);
     if (phaseMap) {
@@ -111,7 +112,7 @@ export class LoopManagerService {
       });
     }
 
-    // 🔥 NUEVO: Ejecutar los Controladores registrados según la fase actual
+    // Ejecutar los Controladores registrados según la fase actual
     this.updatables.forEach((sys) => {
       try {
         if (phase === GamePhase.PRE_UPDATE && sys.preUpdate) sys.preUpdate(dtMs);

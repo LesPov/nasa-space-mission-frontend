@@ -1,4 +1,4 @@
-
+// src/app/core/engine/runtime/game-session.ts
 import { Injectable, signal, inject, Injector } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';

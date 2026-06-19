@@ -1,11 +1,7 @@
-
 // src/app/core/engine/runtime/controllers/player.controller.ts
-
 import { Injector } from '@angular/core';
-import { Quaternion } from '@babylonjs/core';
 import { BaseCharacterController } from './base-character.controller';
 import { GameEntity } from '../../entities/game.entity';
-
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { GameSession } from '../game-session';
 import { PlayerInputService } from '../systems/player-input.service';
@@ -128,7 +124,6 @@ export class PlayerController extends BaseCharacterController {
 
     const canMove = this.session.pointerLocked() && !this.currentSeqRuntime.lockInput && !this.currentSeqRuntime.freezeOrientation;
     
-    // 🔥 Se mapea a Runtime puro
     const stateComp = this.entity.playerRuntime;
     if (canMove) {
         stateComp.intentions.moveForward = !!this.inputSvc.inputMap['w'];

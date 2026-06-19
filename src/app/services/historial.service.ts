@@ -1,7 +1,8 @@
 
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Vector3, AbstractMesh, Quaternion, Node } from '@babylonjs/core';
-
+import { EntityManagerService } from '../core/engine/entities/entity-manager.service';
+ 
 export type TipoAccion = 'transform' | 'crear' | 'eliminar';
 
 export interface EstadoTransform {
@@ -21,6 +22,7 @@ export interface AccionHistorial {
   providedIn: 'root'
 })
 export class HistorialService {
+  private entityManager = inject(EntityManagerService); // 🔥 Inyectamos el ECS
   private historial: AccionHistorial[] = [];
   private readonly MAX_HISTORIAL = 50;
 
@@ -69,7 +71,6 @@ export class HistorialService {
       rotIgual = this.vectoresIguales(estadoAnterior.rotation, estadoNuevo.rotation);
     }
 
-    // Si el usuario no movió el objeto nada, no ensuciamos el historial
     if (posIgual && escIgual && rotIgual) {
       return;
     }
@@ -129,7 +130,26 @@ export class HistorialService {
 
     if (ultimaAccion.tipo === 'crear') {
       console.log(`⏪ [Historial] Deshaciendo creación de: ${mesh.name}`);
-      this.disposeCompleto(mesh);
+      
+      const descendientes = mesh.getDescendants(false);
+      
+      // 🔥 NUEVO: Deshacer (Eliminar) limpiando el ECS
+      const entity = this.entityManager.getEntityByMesh(mesh);
+      if (entity) {
+          this.entityManager.removeEntity(entity.uid);
+      } else {
+          this.disposeCompleto(mesh);
+      }
+
+      descendientes.forEach(desc => {
+          if (desc instanceof AbstractMesh) {
+              const childEntity = this.entityManager.getEntityByMesh(desc);
+              if (childEntity) {
+                  this.entityManager.removeEntity(childEntity.uid);
+              }
+          }
+      });
+
       return true;
     }
 
@@ -148,7 +168,6 @@ export class HistorialService {
             nodo.dispose();
           }
         } catch {
-          // silenciar error
         }
       }
     }
@@ -158,7 +177,6 @@ export class HistorialService {
         mesh.dispose(false, true);
       }
     } catch {
-      // silenciar error
     }
   }
 

@@ -5,7 +5,7 @@
       <h2>Tus Mapas / Episodios</h2>
       <p>Selecciona un episodio o crea uno nuevo para empezar a explorar.</p>
     </div>
-    <button class="btn-crear-mapa" *ngIf="esAdmin" (click)="showModalMap = true">+ Crear Nuevo Mapa</button>
+    <button class="btn-crear-mapa" *ngIf="esAdmin" (click)="abrirModalMision(false)">+ Crear Nuevo Mapa</button>
   </div>
 
   <div class="grid-mapas">
@@ -36,25 +36,16 @@
       </div>
     </div>
   </div>
-
-  <div class="modal-overlay" *ngIf="showModalMap">
-    <div class="modal-box">
-      <h3>Crear Nuevo Episodio</h3>
-      <div class="modal-row">
-        <label class="modal-label">Título del Episodio:</label>
-        <input type="text" [(ngModel)]="nuevoTitulo" class="modal-input">
-      </div>
-      <div class="modal-row">
-        <label class="modal-label">Descripción breve:</label>
-        <textarea [(ngModel)]="nuevaDesc" class="modal-input"></textarea>
-      </div>
-      <div class="modal-actions">
-        <button class="btn-cancel" (click)="showModalMap = false">Cancelar</button>
-        <button class="btn-confirm" (click)="crearNuevoEpisodio()">Crear Episodio</button>
-      </div>
-    </div>
-  </div>
 </ng-container>
+
+<!-- MODAL UNIFICADO DE MISIÓN (CREACIÓN Y EDICIÓN) -->
+<app-mission-modal 
+  *ngIf="showMissionModal" 
+  [mode]="missionModalMode" 
+  [initialData]="missionModalData"
+  (onSave)="guardarMisionModal($event)" 
+  (onCancel)="showMissionModal = false">
+</app-mission-modal>
 
 <!-- SPINNER CINEMÁTICO DE CARGA -->
 <div class="cinematic-overlay" *ngIf="cargandoEscena">
@@ -145,6 +136,8 @@
           <div class="vp-left">
             <button class="btn-vp btn-exit" (click)="salirDelEditor()">⬅ Salir</button>
             <span class="vp-title">{{ mapaActualNombre }}</span>
+            <button class="btn-vp" *ngIf="editorSvc.playState() === 'EDITOR'" (click)="abrirModalMision(true)">⚙️ Misión</button>
+            <button class="btn-vp" *ngIf="editorSvc.playState() === 'EDITOR'" (click)="togglePreviewMission()" [style.color]="editorSvc.state.previewMissionModal() ? '#60a5fa' : ''">👁️ UI</button>
           </div>
           
           <div class="vp-right">
@@ -166,7 +159,6 @@
           </div>
         </div>
 
-        <!-- 🔥 AQUÍ METEMOS EL MODAL: overlayará el canvas, pero NO tapará el Inspector -->
         <div class="canvas-container" (click)="onCanvasClick()">
           <div class="fps-badge">FPS: {{ fps() }}</div>
 
@@ -180,7 +172,6 @@
             [playState]="editorSvc.playState()">
           </app-ui-hud>
           
-          <!-- 🔥 EL MODAL ESTRELLA AHORA ESTÁ AQUÍ Y CONDICIONADO -->
           <app-ui-mission 
             *ngIf="mostrarModalMisionPreview || editorSvc.state.previewMissionModal()" 
             [episodio]="episodioCompletoData"
@@ -214,4 +205,3 @@
     
   </div>
 </ng-container>
-

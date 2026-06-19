@@ -1,5 +1,8 @@
-
-<div class="user-mission-overlay" [class.closing]="cerrando">
+<div class="user-mission-overlay" 
+     [class.closing]="cerrando"
+     [style.background]="hexToRgba(ui.overlayColor, ui.overlayOpacity)"
+     [style.backdrop-filter]="'blur(' + ui.blurIntensity + 'px)'"
+     [style.-webkit-backdrop-filter]="'blur(' + ui.blurIntensity + 'px)'">
   
   <div class="mission-topbar">
     <div class="brand">
@@ -40,10 +43,13 @@
     </aside>
 
     <main class="mission-content">
-      <div class="mission-card" [style.background]="ui.bgColor">
+      <div class="mission-card" 
+           [style.background]="hexToRgba(ui.bgColor, ui.bgOpacity)"
+           [style.border-radius.px]="ui.borderRadius"
+           [style.max-width.px]="ui.maxWidth"
+           [style.box-shadow]="ui.shadows">
         
-        <!-- 🔥 FIX: Todo el contenido va dentro de una zona scrolleable para que la carta no crezca infinito -->
-        <div class="card-scroll-area">
+        <div class="card-scroll-area" [style.padding.px]="ui.padding">
           <div class="card-header">
             <h4 [style.color]="ui.textColor">MISIÓN PRINCIPAL</h4>
             
@@ -74,11 +80,22 @@
                 <span class="dot" [style.background]="ui.primaryColor"></span> {{ obj }}
               </li>
             </ul>
+
+            <ng-container *ngIf="recompensasActuales.length > 0">
+              <h4 [style.color]="ui.primaryColor" style="margin-top: 15px;">RECOMPENSAS</h4>
+              <ul>
+                <li *ngFor="let rec of recompensasActuales" [style.color]="ui.textColor">
+                  <span class="dot" [style.background]="ui.primaryColor"></span> {{ rec }}
+                </li>
+              </ul>
+            </ng-container>
           </div>
         </div>
 
-        <!-- 🔥 FIX: El botón está fuera del scroll, siempre anclado al fondo -->
-        <button class="btn-start-action" [style.background]="ui.primaryColor" (click)="onStart.emit()">
+        <button class="btn-start-action" 
+                [style.background]="ui.primaryColor" 
+                [style.border-radius]="'0 0 ' + ui.borderRadius + 'px ' + ui.borderRadius + 'px'"
+                (click)="onStart.emit()">
           {{ isPreviewOnly ? 'CERRAR VISTA PREVIA' : (misionIniciada ? 'REANUDAR PARTIDA' : (isDebugMode ? 'PROBAR MISIÓN' : 'INICIAR MISIÓN')) }}
         </button>
       </div>

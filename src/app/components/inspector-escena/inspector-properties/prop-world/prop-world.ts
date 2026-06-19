@@ -18,7 +18,7 @@ type VisualMode = 'normal' | 'bw';
   styleUrls: ['./prop-world.css']
 })
 export class PropWorld implements OnInit, OnDestroy {
-  public editorSvc = inject(EditorMapaService); // 🔥 Public para el HTML
+  public editorSvc = inject(EditorMapaService);
   private motor3dSvc = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
@@ -37,14 +37,6 @@ export class PropWorld implements OnInit, OnDestroy {
   gravedadY = -0.25;
   visualMode: VisualMode = 'normal';
 
-  uiPrimaryColor = '#ef4444';
-  uiBgColor = '#0f172a';
-  uiTextColor = '#f8fafc';
-  uiLoreQuote = '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."';
-  uiLoreAuthor = 'Anónimo';
-  uiInitialSequence = ''; 
-  uiObjetivosBase: string[] = ['Explora el área y analiza los elementos clave.'];
-
   ngOnInit() {
     this.leerEstadoActual();
     this.subs.push(
@@ -54,19 +46,6 @@ export class PropWorld implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.subs.forEach(s => s.unsubscribe());
-  }
-
-  // 🔥 NUEVO: Función para alternar el modal de Preview UI
-  isPreviewVisible(): boolean {
-    return this.editorSvc.state.previewMissionModal();
-  }
-
-  toggleUIPreview(): void {
-    this.editorSvc.state.previewMissionModal.set(!this.editorSvc.state.previewMissionModal());
-  }
-
-  trackByIndex(index: number, obj: any): any {
-    return index;
   }
 
   leerEstadoActual() {
@@ -91,43 +70,7 @@ export class PropWorld implements OnInit, OnDestroy {
 
     this.gravedadY = scene.gravity?.y ?? -0.25;
 
-    const ui = scene.metadata?.uiSettings || {};
-    this.uiPrimaryColor = ui.primaryColor || '#ef4444';
-    this.uiBgColor = ui.bgColor || '#0f172a';
-    this.uiTextColor = ui.textColor || '#f8fafc';
-    this.uiLoreQuote = ui.loreQuote || '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."';
-    this.uiLoreAuthor = ui.loreAuthor || 'Anónimo';
-    this.uiInitialSequence = ui.initialSequence || '';
-    this.uiObjetivosBase = Array.isArray(ui.objetivos) && ui.objetivos.length > 0 ? ui.objetivos : ['Explora el área y analiza los elementos clave.'];
-
     this.cdr.detectChanges();
-  }
-
-  aplicarUISettings() {
-    const scene = this.motor3dSvc.scene;
-    scene.metadata = { 
-      ...scene.metadata, 
-      uiSettings: {
-        primaryColor: this.uiPrimaryColor,
-        bgColor: this.uiBgColor,
-        textColor: this.uiTextColor,
-        loreQuote: this.uiLoreQuote,
-        loreAuthor: this.uiLoreAuthor,
-        initialSequence: this.uiInitialSequence,
-        objetivos: [...this.uiObjetivosBase]
-      }
-    };
-    this.editorSvc.triggerUpdate();
-  }
-
-  agregarObjetivoUI() {
-    this.uiObjetivosBase.push('Nuevo objetivo...');
-    this.aplicarUISettings();
-  }
-
-  eliminarObjetivoUI(index: number) {
-    this.uiObjetivosBase.splice(index, 1);
-    this.aplicarUISettings();
   }
 
   aplicarModoVisualCambiado() {

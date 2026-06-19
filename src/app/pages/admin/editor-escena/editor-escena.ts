@@ -1,4 +1,3 @@
-
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { Router } from '@angular/router';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
@@ -28,13 +27,14 @@ import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
 import { UiMission } from '../../../components/ui-mission/ui-mission';
+import { MissionModalComponent } from '../../../components/mission-modal/mission-modal';
 
 @Component({
   selector: 'app-editor-escena', 
   standalone: true,
   imports: [
     MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule,
-    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading, UiMission
+    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading, UiMission, MissionModalComponent
   ],
   templateUrl: './editor-escena.html',
   styleUrl: './editor-escena.css',
@@ -73,14 +73,16 @@ export class EditorEscena implements OnInit, OnDestroy {
   public cerrandoModalMision = false; 
   public misionIniciada = false;
 
+  // Estado del Nuevo Mission Modal Unificado
+  public showMissionModal = false;
+  public missionModalMode: 'create' | 'edit' = 'create';
+  public missionModalData: any = null;
+
   public fps = signal('0');
   public estadoGuardado = signal('Guardado');
 
   public listaEpisodios: any[] = [];
   public hoveredEpisodio: number | null = null;
-  public showModalMap = false;
-  public nuevoTitulo = '';
-  public nuevaDesc = '';
 
   public listaAssets: any[] = [];
   public archivoSubida: File | null = null;
@@ -164,6 +166,10 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.stateSvc.fogDesactivadoTemporalmente.set(!this.stateSvc.fogDesactivadoTemporalmente());
     setTimeout(() => this.motor3dSvc.forzarRedimension(), 10);
     this.editorSvc.triggerUpdate();
+  }
+
+  togglePreviewMission() {
+    this.stateSvc.previewMissionModal.set(!this.stateSvc.previewMissionModal());
   }
 
   jugarModoFinal(episodio: any) {
@@ -265,18 +271,63 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  crearNuevoEpisodio() {
-    if (!this.nuevoTitulo) return;
-    this.epiApiSvc.crearEpisodio(this.nuevoTitulo, this.nuevaDesc).subscribe({
-      next: (res) => {
-        this.listaEpisodios.unshift(res);
-        this.showModalMap = false;
-        this.nuevoTitulo = '';
-        this.nuevaDesc = '';
-        this.entrarAlEditor(res);
-      },
-      error: (err) => alert('Error creando episodio')
-    });
+  // --- LÓGICA DEL NUEVO MISSION MODAL UNIFICADO ---
+  abrirModalMision(esEdicion: boolean) {
+    this.missionModalMode = esEdicion ? 'edit' : 'create';
+    if (esEdicion) {
+      const uiSettings = this.motor3dSvc.scene?.metadata?.uiSettings || {};
+      this.missionModalData = {
+        title: this.episodioCompletoData?.title || '',
+        description: this.episodioCompletoData?.description || '',
+        ...uiSettings
+      };
+    } else {
+      this.missionModalData = null;
+    }
+    this.showMissionModal = true;
+  }
+
+  guardarMisionModal(data: any) {
+    if (this.missionModalMode === 'create') {
+      this.cargandoEscena = true;
+      this.cargandoTexto = 'Creando episodio...';
+      this.epiApiSvc.crearEpisodio(data.title, data.description).subscribe({
+        next: (res) => {
+          this.listaEpisodios.unshift(res);
+          this.showMissionModal = false;
+          this.entrarAlEditor(res);
+
+          // Aseguramos que la configuración avanzada se inyecte en el nuevo mapa recién cargado
+          const interval = setInterval(() => {
+            if (!this.cargandoEscena && this.motor3dSvc.scene) {
+               this.motor3dSvc.scene.metadata = { ...(this.motor3dSvc.scene.metadata || {}), uiSettings: data };
+               this.episodioCompletoData.uiSettings = data;
+               this.guardarMapaEnBD(true);
+               clearInterval(interval);
+            }
+          }, 500);
+        },
+        error: (err) => {
+          this.cargandoEscena = false;
+          alert('Error creando episodio');
+        }
+      });
+    } else {
+      // Modo Edición
+      this.episodioCompletoData.title = data.title;
+      this.episodioCompletoData.description = data.description;
+      this.mapaActualNombre = data.title;
+
+      const scene = this.motor3dSvc.scene;
+      if (scene) {
+        scene.metadata = {
+          ...scene.metadata,
+          uiSettings: { ...data }
+        };
+      }
+      this.editorSvc.triggerUpdate();
+      this.showMissionModal = false;
+    }
   }
 
   guardarMapaEnBD(silencioso = false) {
@@ -378,7 +429,6 @@ export class EditorEscena implements OnInit, OnDestroy {
     }, 2000); 
   }
 
-  // 🔥 NUEVO: Manejador Wrapper para el Modal UI (Cerrar vs Jugar)
   handleMissionStart() {
     if (this.editorSvc.state.previewMissionModal() && !this.mostrarModalMisionPreview) {
        this.editorSvc.state.previewMissionModal.set(false);

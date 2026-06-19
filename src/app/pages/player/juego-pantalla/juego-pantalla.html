@@ -1,3 +1,4 @@
+<!-- src/app/pages/player/juego-pantalla/juego-pantalla.html -->
 <div class="juego-container">
   
   <app-ui-loading *ngIf="isLoading()" texto="Cargando Episodio..."></app-ui-loading>
@@ -6,7 +7,6 @@
        [class.blur]="isInteracting() || (!pointerLocked() && !isLoading())" 
        [style.pointer-events]="(modalMisionUsuario && !cerrandoModalUsuario) ? 'none' : 'all'"
        (click)="onCanvasClick()">
-     <!-- FPS BADGE GLOBALLY VISIBLE -->
      <div class="fps-badge" *ngIf="!isLoading()">FPS: {{ fps() }}</div>
      <app-motor-babylon></app-motor-babylon>
   </div>
@@ -18,12 +18,14 @@
 
   <app-ui-inspect (onClose)="cerrarInteraccion()"></app-ui-inspect>
 
+  <!-- 🔥 El Admin inyecta su estado Debug al UI Mission -->
   <app-ui-mission 
     *ngIf="modalMisionUsuario && !isLoading()" 
     [mapaNombre]="mapaActualNombre" 
+    (mapaNombreChange)="mapaActualNombre = $event"
     [misionIniciada]="misionIniciada" 
     [cerrando]="cerrandoModalUsuario" 
-    [isDebugMode]="false" 
+    [isDebugMode]="isAdmin" 
     (onStart)="comenzarMisionUsuario()" 
     (onExit)="salirDelJuego()">
   </app-ui-mission>

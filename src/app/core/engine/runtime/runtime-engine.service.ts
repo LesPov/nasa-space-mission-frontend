@@ -1,3 +1,4 @@
+// src/app/core/engine/runtime/runtime-engine.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { StandardMaterial, VideoTexture, Color3, Mesh } from '@babylonjs/core';
@@ -21,7 +22,7 @@ export class RuntimeEngineService {
   // ==========================================
   // MODO PRODUCCIÓN (JUEGO PURO SIN EDITOR)
   // ==========================================
-  public async bootProductionGame(episodeData: any): Promise<GameEntity> {
+  public async bootProductionGame(episodeData: any, isDebugMode: boolean = false): Promise<GameEntity> {
     this.motor3d.forzarRedimension();
     this.loaderSvc.createInvisibleFloor(this.motor3d.scene);
     
@@ -43,7 +44,8 @@ export class RuntimeEngineService {
         targetCam.getViewMatrix(true);
         this.motor3d.scene.activeCamera = targetCam;
 
-        this.gameSession.start(spawnEntity, 'FPS', false);
+        // 🔥 Se pasa el flag de Debug para heredar poderes de Administrador si corresponde
+        this.gameSession.start(spawnEntity, 'FPS', isDebugMode);
         resolve(spawnEntity);
       });
     });

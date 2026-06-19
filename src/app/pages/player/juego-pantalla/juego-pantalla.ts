@@ -1,4 +1,3 @@
-
 // src/app/pages/player/juego-pantalla/juego-pantalla.ts
 
 import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
@@ -52,6 +51,10 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private fpsInterval: any;
   private activeCameraView = 'FPS';
 
+  public get isAdmin(): boolean {
+    return this.authSvc.isAdmin();
+  }
+
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
@@ -60,7 +63,8 @@ export class JuegoPantalla implements OnInit, OnDestroy {
           try {
             this.mapaActualNombre = res?.title || 'Episodio Desconocido';
             
-            await this.runtime.bootProductionGame(res);
+            // 🔥 El Admin inyecta su estado Debug
+            await this.runtime.bootProductionGame(res, this.isAdmin);
             
             this.isLoading.set(false);
             this.modalMisionUsuario = true;
@@ -144,8 +148,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
   salirDelJuego() {
     this.runtime.shutdownProductionGame();
-    // 🔥 SOLUCIÓN: Ruta correcta del editor en Angular
-    if (this.authSvc.isAdmin()) {
+    if (this.isAdmin) {
         this.router.navigate(['/admin/editor-escena']);
     } else {
         this.router.navigate(['/jugador/episodios']);

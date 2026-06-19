@@ -1,10 +1,19 @@
+<!-- src/app/components/ui-mission/ui-mission.html -->
 
 <div class="user-mission-overlay" [class.closing]="cerrando">
   
   <div class="mission-topbar">
     <div class="brand">
-      <h2 style="color: #ef4444; font-weight: 800; margin: 0; text-transform: uppercase;">{{ mapaNombre }}</h2>
-      <p style="color: #cbd5e1; font-size: 11px; margin: 0; letter-spacing: 1px;">EL DÍA QUE CAMBIÓ LA HISTORIA</p>
+      <ng-container *ngIf="!isDebugMode">
+        <h2 style="color: #ef4444; font-weight: 800; margin: 0; text-transform: uppercase;">{{ mapaNombre }}</h2>
+        <p style="color: #cbd5e1; font-size: 11px; margin: 0; letter-spacing: 1px;">EL DÍA QUE CAMBIÓ LA HISTORIA</p>
+      </ng-container>
+
+      <ng-container *ngIf="isDebugMode">
+        <!-- 🔥 Inputs editables para el creador (Admin) -->
+        <input type="text" [(ngModel)]="mapaNombre" (ngModelChange)="mapaNombreChange.emit($event)" style="background: transparent; border: 1px dashed #ef4444; color: #ef4444; font-weight: 800; font-size: 24px; text-transform: uppercase; width: 300px; outline: none; padding: 2px;" title="Modificar Título del Episodio" />
+        <p style="color: #60a5fa; font-size: 11px; margin: 0; letter-spacing: 1px;">MODO EDICIÓN (DEBUG)</p>
+      </ng-container>
     </div>
     
     <div class="top-actions">
@@ -35,7 +44,10 @@
       <div class="mission-card">
         <div class="card-header">
           <h4>MISIÓN PRINCIPAL</h4>
-          <h2>{{ mapaNombre }}</h2>
+          
+          <h2 *ngIf="!isDebugMode">{{ mapaNombre }}</h2>
+          <input *ngIf="isDebugMode" type="text" [(ngModel)]="mapaNombre" (ngModelChange)="mapaNombreChange.emit($event)" style="background: transparent; border: 1px dashed #ef4444; color: #ef4444; font-size: 28px; font-weight: 900; text-transform: uppercase; text-align: center; width: 100%; outline: none; margin: 5px 0;" />
+          
           <span *ngIf="!misionIniciada">SITUACIÓN ACTUAL DESCONOCIDA - INGRESA PARA DESCUBRIR</span>
           <span *ngIf="misionIniciada" style="color: #facc15;">JUEGO EN PAUSA - ESPERANDO ÓRDENES</span>
         </div>

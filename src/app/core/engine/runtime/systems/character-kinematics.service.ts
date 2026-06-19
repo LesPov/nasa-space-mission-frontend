@@ -1,4 +1,3 @@
-// src/app/core/engine/runtime/systems/character-kinematics.service.ts
 
 import { Injectable } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera } from '@babylonjs/core';
@@ -71,8 +70,6 @@ export class CharacterKinematicsService {
       );
     }
 
-    // 🔥 NUEVO: ENTITY AS SOURCE OF TRUTH
-    // Extraemos la posición garantizada de Babylon y la volcamos al Transform puro de la Entidad
     entity.transform.position.x = mesh.position.x;
     entity.transform.position.y = mesh.position.y;
     entity.transform.position.z = mesh.position.z;

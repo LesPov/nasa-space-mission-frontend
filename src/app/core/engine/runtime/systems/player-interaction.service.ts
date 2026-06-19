@@ -68,15 +68,12 @@ export class PlayerInteractionService {
     return closest ? Vector3.Distance(probePoint, closest) : Vector3.Distance(probePoint, targetMesh.getAbsolutePosition());
   }
 
-  private getSelectionMaxDistance(isDebugMode: boolean): number {
-    let maxAdmin = 10000;
-    let maxUser = 3;
+  private getSelectionMaxDistance(): number {
     const playerEntity = this.session.activePlayerEntity();
     if (playerEntity && playerEntity.selectionRange) {
-        maxAdmin = playerEntity.selectionRange.fpsAdminMax;
-        maxUser = playerEntity.selectionRange.fpsUserMax;
+        return playerEntity.selectionRange.fpsUserMax;
     }
-    return isDebugMode ? maxAdmin : maxUser;
+    return 3;
   }
 
   private esObjetoInteractuable(entity: GameEntity): boolean {
@@ -98,6 +95,14 @@ export class PlayerInteractionService {
   }
 
   public comprobarInteracciones(entity: GameEntity, activeCamera: any, viewMode: 'FPS' | 'TPS'): void {
+    if (!this.session.isPlaying() || !this.session.pointerLocked()) {
+      this.currentTarget = null;
+      this.canInteract = false;
+      this.canInspect = false;
+      this.currentHoveredMesh = null;
+      return;
+    }
+
     const jugador = entity.view as Mesh;
     const scene = this.motor3d.scene;
 
@@ -106,8 +111,6 @@ export class PlayerInteractionService {
 
     this.lastInteractDistance = null;
     this.lastInteractionProbePoint = this.getInteractionProbePoint(viewMode, jugador, activeCamera, entity);
-
-    const isDebugMode = this.session.isDebugMode();
 
     if (viewMode === 'FPS') {
       const centerRay = activeCamera.getForwardRay(10000);
@@ -144,18 +147,12 @@ export class PlayerInteractionService {
             const selectionDistance = this.getInteractionDistanceToTarget(rootEntity.view, this.lastInteractionProbePoint);
             this.lastInteractDistance = selectionDistance;
 
-            const selectionMax = this.getSelectionMaxDistance(isDebugMode);
             const interactMax = rootEntity.interaction.interactDistanceFPS ?? 3.0;
             const isInteractable = this.esObjetoInteractuable(rootEntity);
 
-            if (isDebugMode) {
-              if (selectionDistance <= selectionMax) hoverSelectable = rootEntity.view;
-              if (isInteractable && selectionDistance <= interactMax) hitInteractuable = rootEntity;
-            } else {
-              if (isInteractable && selectionDistance <= interactMax) {
-                hoverSelectable = rootEntity.view;
-                hitInteractuable = rootEntity;
-              }
+            if (isInteractable && selectionDistance <= interactMax) {
+              hoverSelectable = rootEntity.view;
+              hitInteractuable = rootEntity;
             }
         }
       }
@@ -172,20 +169,14 @@ export class PlayerInteractionService {
         if (!mesh || !mesh.isVisible || !mesh.isPickable) return;
 
         const selectionDistance = this.getInteractionDistanceToTarget(mesh, playerProbe);
-        const selectionMax = this.getSelectionMaxDistance(isDebugMode);
         const isInteractable = this.esObjetoInteractuable(e);
 
-        if (isInteractable) {
-          if (e.type !== 'bubble') {
+        if (isInteractable && e.type !== 'bubble') {
             const interactMax = e.interaction.interactDistanceTPS ?? 5.0;
             if (selectionDistance <= interactMax && selectionDistance < closestDist) {
               closestDist = selectionDistance;
               closestEntity = e;
             }
-          }
-        } else if (isDebugMode && selectionDistance <= selectionMax && selectionDistance < closestDist) {
-          closestDist = selectionDistance;
-          closestEntity = e;
         }
       });
 
@@ -197,10 +188,6 @@ export class PlayerInteractionService {
         }
       }
     }
-
-    this.entityManager.getAllEntities().forEach(e => {
-        e.isHovered = (e.view === hoverSelectable);
-    });
 
     let showE = false;
     let showI = false;

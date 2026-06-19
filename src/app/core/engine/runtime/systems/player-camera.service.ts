@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import {
   Mesh, Vector3, Matrix, TransformNode, UniversalCamera,
@@ -9,7 +10,7 @@ import { EstadoFisico } from './player-physics.service';
 import { SeqRuntime } from './player-sequence.service';
 import { LoopManagerService, GamePhase } from '../../behaviors/services/loop-manager.service';
 import { GameEntity } from '../../entities/game.entity';
- 
+
 @Injectable({ providedIn: 'root' })
 export class PlayerCameraManagerService {
   private motor3d = inject(Motor3dService);
@@ -121,31 +122,6 @@ export class PlayerCameraManagerService {
       jugador.visibility = 1;
       jugador.getChildMeshes().forEach(m => m.visibility = 1);
     }
-  }
-
-  public restaurarCamaraEditor(): void {
-    const scene = this.motor3d.scene;
-    const currentCam = scene.activeCamera;
-
-    if (currentCam && currentCam !== this.motor3d.editorCamera) {
-      const camPos = currentCam.globalPosition.clone();
-      const camTarget = camPos.add(currentCam.getDirection(Vector3.Forward()).scale(10));
-      this.motor3d.editorCamera.position = camPos;
-      this.motor3d.editorCamera.setTarget(camTarget);
-    }
-
-    this.motor3d.playerCameraFPS.detachControl();
-    this.motor3d.playerCameraTPS.detachControl();
-
-    scene.activeCamera = this.motor3d.editorCamera;
-    const canvas = this.motor3d.engine.getRenderingCanvas();
-    if (canvas) {
-      this.motor3d.editorCamera.attachControl(canvas, true);
-    }
-
-    this.resetearTransiciones();
-    this.headNode = null;
-    this.initialHeadLocal = null;
   }
 
   public toggleCameraView(
@@ -284,8 +260,8 @@ export class PlayerCameraManagerService {
     seqRuntime: SeqRuntime,
     vista: 'FPS' | 'TPS'
   ): void {
-    // 🔥 FIX ARQUITECTÓNICO: Si la cámara activa es la del editor, abortar. Desacopla 100%.
-    if (activeCamera && activeCamera.name === 'editorCamera') return;
+    // Si la cámara activa no pertenece al jugador, el controlador aborta (Aislamiento Total del Runtime)
+    if (activeCamera !== this.motor3d.playerCameraFPS && activeCamera !== this.motor3d.playerCameraTPS) return;
 
     const jugador = entity.view as Mesh;
     if (!jugador) return;

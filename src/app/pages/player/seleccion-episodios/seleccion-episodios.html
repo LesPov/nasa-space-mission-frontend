@@ -1,3 +1,50 @@
 
-<p>seleccion-episodios works!</p>
+<div class="seleccion-container">
+  
+  <div class="galeria-header">
+    <div class="header-content">
+      <h2>Misiones Disponibles</h2>
+      <p>Selecciona un episodio para comenzar tu aventura interactiva.</p>
+    </div>
+    <div class="user-info">
+      <span class="user-badge">👤 {{ authSvc.currentUser()?.username }}</span>
+      <button class="btn-logout" (click)="cerrarSesion()">Cerrar Sesión</button>
+    </div>
+  </div>
 
+  <div *ngIf="cargando" class="loading-state">
+    <p>Cargando archivos del servidor...</p>
+  </div>
+
+  <div *ngIf="!cargando && listaEpisodios.length === 0" class="loading-state">
+    <p>Aún no hay misiones disponibles. El administrador debe crear mapas primero.</p>
+  </div>
+
+  <div class="grid-mapas" *ngIf="!cargando && listaEpisodios.length > 0">
+    <div class="card-mapa" *ngFor="let epi of listaEpisodios" 
+         (mouseenter)="hoveredEpisodio = epi.id" 
+         (mouseleave)="hoveredEpisodio = null">
+      
+      <div class="card-miniatura">
+        <span class="icono-mapa" *ngIf="hoveredEpisodio !== epi.id">🌍</span>
+        
+        <!-- Renderiza el motor 3D en pequeño cuando pasa el ratón por encima -->
+        <ng-container *ngIf="hoveredEpisodio === epi.id">
+          <div class="mini-visor-wrapper">
+            <app-mini-visor-escena [episodioId]="epi.id"></app-mini-visor-escena>
+          </div>
+        </ng-container>
+      </div>
+      
+      <div class="card-info">
+        <h3>{{ epi.title }}</h3>
+        <p>{{ epi.description || 'Esta misión aún no tiene una descripción oficial. Entra bajo tu propio riesgo.' }}</p>
+        
+        <button class="btn-jugar" (click)="jugarEpisodio(epi.id)">
+          ▶ Jugar Misión
+        </button>
+      </div>
+
+    </div>
+  </div>
+</div>

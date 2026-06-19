@@ -1,7 +1,8 @@
 import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
-import { Subscription, forkJoin } from 'rxjs';
+import { Subscription, forkJoin, of } from 'rxjs';
+import { catchError } from 'rxjs/operators'; // 🔥 FIX: Importación requerida
 
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
@@ -62,7 +63,13 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     if (id) {
       forkJoin({
         episodio: this.epiApiSvc.obtenerEpisodio(Number(id)),
-        partida: this.epiApiSvc.cargarEstadoJugador(Number(id), 1)
+        // 🔥 FIX: Hacemos que la carga de partida sea inmortal. Si el server falla, devuelve un perfil en blanco.
+        partida: this.epiApiSvc.cargarEstadoJugador(Number(id), 1).pipe(
+          catchError(err => {
+            console.warn('[JuegoPantalla] No se pudo cargar estado guardado, usando partida limpia', err);
+            return of({ worldState: {}, inventory: [] });
+          })
+        )
       }).subscribe({
         next: async (res) => {
           try {
@@ -73,7 +80,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
             
             await this.runtime.bootProductionGame(res.episodio, this.isAdmin);
             
-            // 🔥 Fix Angular Error: Actualizamos las señales de forma atómica antes del ChangeDetection
             this.isLoading.set(false);
             this.modalMisionUsuario = true;
             this.cdr.detectChanges();
@@ -90,7 +96,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
         error: (err) => {
           console.error('Error loading game:', err);
           this.isLoading.set(false);
-          alert('Error al cargar el mapa o la partida. Verifica tu conexión.');
+          alert('Error crítico al cargar el mapa. Verifica tu conexión.');
           this.salirDelJuego();
         }
       });
@@ -158,7 +164,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
   salirDelJuego() {
     if (this.episodioActual && this.playerStateActual) {
-      // 🔥 Ahora getSaveData() está curado y no tirará error 500
       const stateToSave = this.gameStateSvc.getSaveData();
       this.epiApiSvc.guardarEstadoJugador(this.episodioActual.id, 1, stateToSave).subscribe();
     }
@@ -181,4 +186,4 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     if (this.sub) this.sub.unsubscribe();
     if (this.fpsInterval) clearInterval(this.fpsInterval);
   }
-} 
+}

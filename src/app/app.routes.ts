@@ -26,16 +26,18 @@ export const routes: Routes = [
     component: HomeMenu, 
     canActivate: [authGuard] 
   },
-  { 
-    path: 'jugador/episodios', 
-    component: SeleccionEpisodios, 
-    canActivate: [authGuard] 
-  },
-  { 
-    path: 'jugador/jugar/:id', 
-    component: JuegoPantalla, 
-    canActivate: [authGuard] 
-  }, 
+ { 
+  path: 'jugador/episodios', 
+  component: SeleccionEpisodios, 
+  canActivate: [authGuard, roleGuard], 
+  data: { role: 'user' } 
+},
+{ 
+  path: 'jugador/jugar/:id', 
+  component: JuegoPantalla, 
+  canActivate: [authGuard, roleGuard], 
+  data: { role: 'user' } 
+},
 
   // ZONA DE ADMINISTRADOR (Súper protegida, requiere rol 'admin')
   { 

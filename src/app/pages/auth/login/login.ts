@@ -31,11 +31,12 @@ export class Login {
     this.authSvc.login(this.username, this.password).subscribe({
       next: (res) => {
         this.loading.set(false);
-        // La API devuelve el rol. Redirigimos según quién sea:
+        // 🔥 FIX: Redirigimos a las rutas correctas dependiendo del rol
         if (res.rol === 'admin') {
-          this.router.navigate(['/admin']);
+          this.router.navigate(['/admin/editor-escena']);
         } else {
-          this.router.navigate(['/menu']);
+          // El usuario normal va a su lobby de selección
+          this.router.navigate(['/jugador/episodios']);
         }
       },
       error: (err) => {

@@ -2,9 +2,10 @@ import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angula
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
+
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { Motor3dService } from '../../../../services/motor-3d.service';
- 
+
 @Component({
   selector: 'app-prop-mission',
   standalone: true, 
@@ -18,42 +19,28 @@ export class PropMission implements OnInit, OnDestroy {
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
-  // Acordeones
-  public acordeones: Record<string, boolean> = {
-    general: true,
-    objetivos: false,
-    recompensas: false,
-    apariencia: false,
-    avanzado: false
-  };
-
-  public formData = {
-    title: '',
-    description: '',
-    initialSequence: '',
-    loreQuote: '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."',
-    loreAuthor: 'Anónimo',
-    objetivos: [] as string[],
-    recompensas: [] as string[],
-    
+  // Valores por defecto
+  public uiSettings = {
     primaryColor: '#ef4444',
     bgColor: '#0f172a',
     bgOpacity: 0.85,
     textColor: '#cbd5e1',
-    overlayColor: '#050508',
-    overlayOpacity: 0.7,
-    blurIntensity: 8,
-    borderRadius: 12,
-    padding: 20,
-    shadows: '0 20px 50px rgba(0,0,0,0.8)',
-    maxWidth: 650
+    loreQuote: '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."',
+    loreAuthor: 'Anónimo',
+    initialSequence: '',
+    objetivos: '',
+    recompensas: ''
   };
 
   ngOnInit() {
     this.leerEstadoActual();
-    // Escuchamos por si alguien editó el título directo en el Canvas
+    
+    // Escuchamos por si ocurre un deshacer (Ctrl+Z) o carga externa para refrescar los datos
     this.subs.push(
-      this.editorSvc.onMapChanged.subscribe(() => this.leerEstadoActual())
+      this.editorSvc.onMapChanged.subscribe(() => {
+         // No forzamos lectura aquí para no interrumpir al usuario mientras teclea,
+         // el ngModel ya mantiene el estado visual en sincronía.
+      })
     );
   }
 
@@ -61,62 +48,54 @@ export class PropMission implements OnInit, OnDestroy {
     this.subs.forEach(s => s.unsubscribe());
   }
 
-  toggleAcordeon(seccion: string) {
-    this.acordeones[seccion] = !this.acordeones[seccion];
-  }
-
-  trackByIndex(index: number, obj: any): any { return index; }
-
-  addObjective() { this.formData.objetivos.push('Nuevo objetivo...'); this.aplicarCambios(); }
-  removeObjective(i: number) { this.formData.objetivos.splice(i, 1); this.aplicarCambios(); }
-
-  addReward() { this.formData.recompensas.push('Nueva recompensa...'); this.aplicarCambios(); }
-  removeReward(i: number) { this.formData.recompensas.splice(i, 1); this.aplicarCambios(); }
-
   leerEstadoActual() {
-    const dataEpi = this.editorSvc.episodioActualData() || {};
-    const ui = this.motor3dSvc.scene?.metadata?.uiSettings || dataEpi.uiSettings || {};
+    const scene = this.motor3dSvc.scene;
+    if (!scene) return;
 
-    this.formData.title = dataEpi.title || '';
-    this.formData.description = dataEpi.description || '';
-    
-    this.formData.primaryColor = ui.primaryColor || '#ef4444';
-    this.formData.bgColor = ui.bgColor || '#0f172a';
-    this.formData.bgOpacity = ui.bgOpacity ?? 0.85;
-    this.formData.textColor = ui.textColor || '#cbd5e1';
-    this.formData.loreQuote = ui.loreQuote || '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."';
-    this.formData.loreAuthor = ui.loreAuthor || 'Anónimo';
-    this.formData.initialSequence = ui.initialSequence || '';
+    const metadataUI = scene.metadata?.uiSettings || {};
 
-    this.formData.overlayColor = ui.overlayColor || '#050508';
-    this.formData.overlayOpacity = ui.overlayOpacity ?? 0.7;
-    this.formData.blurIntensity = ui.blurIntensity ?? 8;
-    this.formData.borderRadius = ui.borderRadius ?? 12;
-    this.formData.padding = ui.padding ?? 20;
-    this.formData.maxWidth = ui.maxWidth ?? 650;
-    this.formData.shadows = ui.shadows || '0 20px 50px rgba(0,0,0,0.8)';
-
-    this.formData.objetivos = Array.isArray(ui.objetivos) ? [...ui.objetivos] : ['Explora el área y analiza los elementos clave.'];
-    this.formData.recompensas = Array.isArray(ui.recompensas) ? [...ui.recompensas] : [];
+    this.uiSettings = {
+      primaryColor: metadataUI.primaryColor || '#ef4444',
+      bgColor: metadataUI.bgColor || '#0f172a',
+      bgOpacity: metadataUI.bgOpacity ?? 0.85,
+      textColor: metadataUI.textColor || '#cbd5e1',
+      loreQuote: metadataUI.loreQuote || '',
+      loreAuthor: metadataUI.loreAuthor || '',
+      initialSequence: metadataUI.initialSequence || '',
+      // Extraemos los Arrays y los convertimos en texto con saltos de línea para el textarea
+      objetivos: Array.isArray(metadataUI.objetivos) ? metadataUI.objetivos.join('\n') : (metadataUI.objetivos || ''),
+      recompensas: Array.isArray(metadataUI.recompensas) ? metadataUI.recompensas.join('\n') : (metadataUI.recompensas || '')
+    };
 
     this.cdr.detectChanges();
   }
 
   aplicarCambios() {
-    const dataEpi = this.editorSvc.episodioActualData() || {};
-    dataEpi.title = this.formData.title;
-    dataEpi.description = this.formData.description;
-
     const scene = this.motor3dSvc.scene;
-    if (scene) {
-      scene.metadata = { 
-        ...(scene.metadata || {}), 
-        uiSettings: JSON.parse(JSON.stringify(this.formData)) 
-      };
+    if (!scene) return;
+
+    // Procesamos los textos separando por salto de línea para generar los Arrays limpios
+    const objetivosArray = this.uiSettings.objetivos.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+    const recompensasArray = this.uiSettings.recompensas.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+
+    const newSettings = {
+      ...this.uiSettings,
+      objetivos: objetivosArray,
+      recompensas: recompensasArray
+    };
+
+    // Sobrescribimos en el motor (Esto alimenta en vivo al componente ui-mission)
+    scene.metadata = { 
+      ...(scene.metadata || {}), 
+      uiSettings: newSettings 
+    };
+
+    // Actualizamos el objeto del episodio en memoria para que el autoguardado lo envíe al Backend
+    const epiData = this.editorSvc.episodioActualData();
+    if (epiData) {
+      epiData.uiSettings = newSettings;
     }
 
-    // Inyectamos de vuelta al Signal para que todos se enteren
-    this.editorSvc.episodioActualData.set(dataEpi);
-    this.editorSvc.triggerUpdate(); // Obliga a Angular/Babylon a renderizar
+    this.editorSvc.triggerUpdate(); 
   }
 }

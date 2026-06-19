@@ -1,116 +1,81 @@
-<div class="accordion-section" [class.expanded]="acordeones['general']">
-  <div class="accordion-header" (click)="toggleAcordeon('general')"><h4>▶ Información General</h4></div>
-  <div class="accordion-content" *ngIf="acordeones['general']">
-    <div class="field wide" style="margin-bottom: 8px;">
-      <label>Título del Episodio</label>
-      <input type="text" [(ngModel)]="formData.title" (ngModelChange)="aplicarCambios()">
+<div class="section-card">
+  <div class="section-head">
+    <h4>Diseño Visual del Modal</h4>
+  </div>
+
+  <div class="grid-2">
+    <div class="field">
+      <label>Color Principal (Acentos)</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="uiSettings.primaryColor" (ngModelChange)="aplicarCambios()" class="color-picker">
+        <span class="color-hex-text">{{ uiSettings.primaryColor.toUpperCase() }}</span>
+      </div>
     </div>
-    <div class="field wide" style="margin-bottom: 8px;">
-      <label>Descripción</label>
-      <textarea rows="3" [(ngModel)]="formData.description" (ngModelChange)="aplicarCambios()"></textarea>
+
+    <div class="field">
+      <label>Color de Fondo</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="uiSettings.bgColor" (ngModelChange)="aplicarCambios()" class="color-picker">
+        <span class="color-hex-text">{{ uiSettings.bgColor.toUpperCase() }}</span>
+      </div>
     </div>
-    <div class="field wide" style="margin-bottom: 8px;">
-      <label>Frase Lore (Célebre)</label>
-      <textarea rows="2" [(ngModel)]="formData.loreQuote" (ngModelChange)="aplicarCambios()"></textarea>
+  </div>
+
+  <div class="grid-2" style="margin-top: 10px;">
+    <div class="field">
+      <label>Opacidad del Fondo</label>
+      <input type="number" step="0.05" min="0" max="1" [(ngModel)]="uiSettings.bgOpacity" (ngModelChange)="aplicarCambios()" />
     </div>
-    <div class="field wide">
-      <label>Autor de la Frase</label>
-      <input type="text" [(ngModel)]="formData.loreAuthor" (ngModelChange)="aplicarCambios()">
+    <div class="field">
+      <label>Color de Texto (Secundario)</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="uiSettings.textColor" (ngModelChange)="aplicarCambios()" class="color-picker">
+        <span class="color-hex-text">{{ uiSettings.textColor.toUpperCase() }}</span>
+      </div>
     </div>
   </div>
 </div>
 
-<div class="accordion-section" [class.expanded]="acordeones['objetivos']">
-  <div class="accordion-header" (click)="toggleAcordeon('objetivos')"><h4>▶ Objetivos y Recompensas</h4></div>
-  <div class="accordion-content" *ngIf="acordeones['objetivos']">
-    
-    <label class="modal-label" style="color: #60a5fa; display:block; margin-bottom: 5px;">Misiones Iniciales:</label>
-    <div *ngFor="let obj of formData.objetivos; let i = index; trackBy: trackByIndex" style="display: flex; gap: 5px; margin-bottom: 5px;">
-      <input type="text" [(ngModel)]="formData.objetivos[i]" (ngModelChange)="aplicarCambios()" style="flex:1; background: #111; color: white; border: 1px solid #444; border-radius: 4px; padding: 6px; font-size: 11px;">
-      <button (click)="removeObjective(i)" class="btn-danger" style="padding: 0 8px;">X</button>
-    </div>
-    <button (click)="addObjective()" class="btn-primary full" style="margin-bottom: 15px; margin-top: 5px;">+ Añadir Objetivo</button>
-
-    <label class="modal-label" style="color: #fbbf24; display:block; margin-bottom: 5px;">Recompensas Fin de Nivel:</label>
-    <div *ngFor="let rec of formData.recompensas; let i = index; trackBy: trackByIndex" style="display: flex; gap: 5px; margin-bottom: 5px;">
-      <input type="text" [(ngModel)]="formData.recompensas[i]" (ngModelChange)="aplicarCambios()" style="flex:1; background: #111; color: white; border: 1px solid #444; border-radius: 4px; padding: 6px; font-size: 11px;">
-      <button (click)="removeReward(i)" class="btn-danger" style="padding: 0 8px;">X</button>
-    </div>
-    <button (click)="addReward()" class="btn-primary full" style="margin-top: 5px;">+ Añadir Recompensa</button>
-
+<div class="section-card">
+  <div class="section-head">
+    <h4>Lore y Narrativa (Panel Lateral)</h4>
+  </div>
+  
+  <div class="field wide" style="margin-bottom: 10px;">
+    <label>Cita de Lore (Ambientación)</label>
+    <textarea rows="3" [(ngModel)]="uiSettings.loreQuote" (ngModelChange)="aplicarCambios()" placeholder='"Una frase misteriosa sobre el mundo..."'></textarea>
+  </div>
+  
+  <div class="field wide">
+    <label>Autor de la Cita</label>
+    <input type="text" [(ngModel)]="uiSettings.loreAuthor" (ngModelChange)="aplicarCambios()" placeholder="Ej: Superviviente Anónimo" />
   </div>
 </div>
 
-<div class="accordion-section" [class.expanded]="acordeones['apariencia']">
-  <div class="accordion-header" (click)="toggleAcordeon('apariencia')"><h4>▶ Estilos y Glassmorphism</h4></div>
-  <div class="accordion-content" *ngIf="acordeones['apariencia']">
-    
-    <div class="grid-2" style="margin-bottom: 10px;">
-      <div class="field">
-        <label>Acento Visual</label>
-        <div class="color-picker-wrapper"><input type="color" [(ngModel)]="formData.primaryColor" (ngModelChange)="aplicarCambios()" class="color-picker"></div>
-      </div>
-      <div class="field">
-        <label>Color de Textos</label>
-        <div class="color-picker-wrapper"><input type="color" [(ngModel)]="formData.textColor" (ngModelChange)="aplicarCambios()" class="color-picker"></div>
-      </div>
-      <div class="field">
-        <label>Fondo de Tarjeta</label>
-        <div class="color-picker-wrapper"><input type="color" [(ngModel)]="formData.bgColor" (ngModelChange)="aplicarCambios()" class="color-picker"></div>
-      </div>
-      <div class="field">
-        <label>Overlay Oscuro</label>
-        <div class="color-picker-wrapper"><input type="color" [(ngModel)]="formData.overlayColor" (ngModelChange)="aplicarCambios()" class="color-picker"></div>
-      </div>
-    </div>
+<div class="section-card">
+  <div class="section-head">
+    <h4>Objetivos y Recompensas</h4>
+  </div>
+  <p class="help-text" style="margin-bottom: 10px;">Escribe cada objetivo o recompensa en una línea nueva. El sistema los separará automáticamente como una lista con viñetas.</p>
 
-    <div class="field wide" style="margin-bottom: 8px;">
-      <label>Opacidad de Tarjeta ({{ formData.bgOpacity }})</label>
-      <input type="range" min="0" max="1" step="0.05" [(ngModel)]="formData.bgOpacity" (ngModelChange)="aplicarCambios()">
-    </div>
-    
-    <div class="field wide" style="margin-bottom: 8px;">
-      <label>Opacidad de Overlay ({{ formData.overlayOpacity }})</label>
-      <input type="range" min="0" max="1" step="0.05" [(ngModel)]="formData.overlayOpacity" (ngModelChange)="aplicarCambios()">
-    </div>
+  <div class="field wide" style="margin-bottom: 15px;">
+    <label style="color: #60a5fa; font-weight: bold;">Objetivos de la Misión</label>
+    <textarea rows="4" [(ngModel)]="uiSettings.objetivos" (ngModelChange)="aplicarCambios()" placeholder="Encuentra la llave roja.&#10;Sobrevive a la horda."></textarea>
+  </div>
 
-    <div class="field wide" style="margin-bottom: 8px;">
-      <label>Desenfoque / Blur ({{ formData.blurIntensity }}px)</label>
-      <input type="range" min="0" max="30" step="1" [(ngModel)]="formData.blurIntensity" (ngModelChange)="aplicarCambios()">
-    </div>
-
-    <div class="grid-2">
-      <div class="field">
-        <label>Esquinas ({{ formData.borderRadius }}px)</label>
-        <input type="number" [(ngModel)]="formData.borderRadius" (ngModelChange)="aplicarCambios()">
-      </div>
-      <div class="field">
-        <label>Espaciado ({{ formData.padding }}px)</label>
-        <input type="number" [(ngModel)]="formData.padding" (ngModelChange)="aplicarCambios()">
-      </div>
-    </div>
-
+  <div class="field wide">
+    <label style="color: #4ade80; font-weight: bold;">Recompensas al Completar</label>
+    <textarea rows="3" [(ngModel)]="uiSettings.recompensas" (ngModelChange)="aplicarCambios()" placeholder="100 Monedas de Oro&#10;Rifle de Asalto"></textarea>
   </div>
 </div>
 
-<div class="accordion-section" [class.expanded]="acordeones['avanzado']">
-  <div class="accordion-header" (click)="toggleAcordeon('avanzado')"><h4>▶ Config. Avanzada</h4></div>
-  <div class="accordion-content" *ngIf="acordeones['avanzado']">
-    
-    <div class="field wide" style="margin-bottom: 8px;">
-      <label style="color: #60a5fa;">▶️ Auto-Play de Clip al Iniciar (ID)</label>
-      <input type="text" [(ngModel)]="formData.initialSequence" (ngModelChange)="aplicarCambios()" placeholder="Ej: seq_inicio123">
-    </div>
-
-    <div class="field wide" style="margin-bottom: 8px;">
-      <label>Sombra de Tarjeta (CSS)</label>
-      <input type="text" [(ngModel)]="formData.shadows" (ngModelChange)="aplicarCambios()">
-    </div>
-
-    <div class="field wide" style="margin-bottom: 8px;">
-      <label>Ancho Máximo Tarjeta ({{ formData.maxWidth }}px)</label>
-      <input type="number" [(ngModel)]="formData.maxWidth" (ngModelChange)="aplicarCambios()">
-    </div>
-
+<div class="section-card">
+  <div class="section-head">
+    <h4>Cinemática Inicial</h4>
   </div>
+  <div class="field wide">
+    <label>ID de la Secuencia al Iniciar (Opcional)</label>
+    <input type="text" [(ngModel)]="uiSettings.initialSequence" (ngModelChange)="aplicarCambios()" placeholder="Ej: seq_intro_01" />
+  </div>
+  <p class="help-text" style="margin-top: 5px;">Si pones el ID de una Secuencia/Clip, se reproducirá automáticamente cuando el jugador cierre este modal de Misión e inicie la partida.</p>
 </div>

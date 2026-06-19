@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
@@ -46,7 +45,9 @@ export class PlayerFogService {
   }
 
   private getGradientTexture(scene: Scene): DynamicTexture { 
-    if (this.gradTex) return this.gradTex;
+    if (this.gradTex) {
+      return this.gradTex;
+    }
 
     const tex = new DynamicTexture("playerFogGradTex", { width: 2, height: 256 }, scene, false);
     tex.hasAlpha = true;
@@ -98,9 +99,21 @@ export class PlayerFogService {
       this.isRegistered = false;
       this.firstFrame = true;
       
-      this.fogWalls.forEach(w => w.getChildMeshes().forEach(m => m.isVisible = false));
+      this.fogWalls.forEach(w => {
+        if (w && !w.isDisposed()) {
+          w.dispose();
+        }
+      });
     }
+    
     this.playerEntity = null;
+    this.fogWalls = [];
+    this.fogMats = [];
+    
+    if (this.gradTex) {
+      try { this.gradTex.dispose(); } catch(e) {}
+    }
+    this.gradTex = null;
   }
 
   private updateFogFrame(scene: Scene): void { 

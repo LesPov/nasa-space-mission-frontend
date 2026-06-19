@@ -1,8 +1,8 @@
-import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription, forkJoin, of } from 'rxjs';
-import { catchError } from 'rxjs/operators'; // 🔥 FIX: Importación requerida
+import { catchError } from 'rxjs/operators';
 
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
@@ -58,12 +58,23 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     return this.authSvc.isAdmin();
   }
 
+  @HostListener('window:keydown', ['$event'])
+  handleKeyDown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && this.misionIniciada && !this.modalMisionUsuario) {
+      if (document.pointerLockElement) {
+        document.exitPointerLock();
+      } else {
+        // Fuerza la pausa explícitamente cuando no hay pointerLock nativo
+        this.eventBus.emit({ type: 'GamePaused' });
+      }
+    }
+  }
+
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
       forkJoin({
         episodio: this.epiApiSvc.obtenerEpisodio(Number(id)),
-        // 🔥 FIX: Hacemos que la carga de partida sea inmortal. Si el server falla, devuelve un perfil en blanco.
         partida: this.epiApiSvc.cargarEstadoJugador(Number(id), 1).pipe(
           catchError(err => {
             console.warn('[JuegoPantalla] No se pudo cargar estado guardado, usando partida limpia', err);

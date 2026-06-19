@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -46,7 +45,9 @@ export class ToolsFogService {
   }
 
   private getGradientTexture(scene: Scene): DynamicTexture { 
-    if (this.gradTex) return this.gradTex;
+    if (this.gradTex) {
+      return this.gradTex;
+    }
 
     const tex = new DynamicTexture("fogGradTex", { width: 2, height: 256 }, scene, false);
     tex.hasAlpha = true;
@@ -74,6 +75,20 @@ export class ToolsFogService {
       this.isRegistered = false;
       this.firstFrame = true;
     }
+
+    this.fogWalls.forEach(w => {
+        if (w && !w.isDisposed()) {
+            w.dispose();
+        }
+    });
+
+    this.fogWalls = [];
+    this.fogMats = [];
+    
+    if (this.gradTex) {
+        try { this.gradTex.dispose(); } catch(e) {}
+    }
+    this.gradTex = null;
   }
 
   public aplicarNieblaEnTiempoReal(): void { 

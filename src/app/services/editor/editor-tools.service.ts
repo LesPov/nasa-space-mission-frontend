@@ -24,6 +24,7 @@ import { ToolsFogService } from './toolsservice/tools-fog.service';
 import { ToolsGizmoService } from './toolsservice/tools-gizmo.service';
 import { ToolsHighlightService } from './toolsservice/tools-highlight.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
+import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
@@ -32,6 +33,7 @@ export class EditorToolsService {
   private sceneSvc = inject(EditorSceneService);
   private cameraSvc = inject(EditorCameraService);
   private entityManager = inject(EntityManagerService);
+  private eventBus = inject(GameEventBusService);
 
   private highlightSvc = inject(ToolsHighlightService);
   private debugSvc = inject(ToolsDebugService);
@@ -186,7 +188,6 @@ export class EditorToolsService {
       });
     }
 
-    // 🔥 SISTEMA DE SINCRONIZACIÓN PASIVA DEL ECS AL MOVER GIZMOS
     if (!this.isGizmoSyncAttached) {
       this.state.onGizmoDrag.subscribe(() => {
          this.syncEntityFromGizmoDrag();
@@ -317,6 +318,9 @@ export class EditorToolsService {
           if (this.state.playState() === 'PLAYING' && isAdmin) {
             if (document.pointerLockElement) {
               document.exitPointerLock();
+            } else {
+              // 🔥 FIX: Fuerza el GamePaused si el puntero NO estaba bloqueado nativamente
+              this.eventBus.emit({ type: 'GamePaused' });
             }
           } else if (this.state.playState() === 'EDITING_IN_GAME') {
             const canvas = this.motor3d.engine.getRenderingCanvas();
@@ -376,7 +380,6 @@ export class EditorToolsService {
     this.setToolMode('translate');
   }
 
-  // 🔥 Lógica maestra que transfiere del Debug Mesh visual al ECS sin acoplar
   private syncEntityFromGizmoDrag(): void {
     const mesh = this.state.objetoSeleccionado() as Mesh;
     const subSelected = this.state.subObjetoSeleccionado();
@@ -390,7 +393,6 @@ export class EditorToolsService {
       entity.collider.offsetY = this.debugSvc.debugCollider.position.y;
       entity.collider.offsetZ = this.debugSvc.debugCollider.position.z;
 
-      // Aplicamos el escalado real solo si se soltó el mouse
       if (!this.gizmoSvc.isDraggingGizmo) {
         if (this.debugSvc.debugCollider.scaling.x !== 1 || this.debugSvc.debugCollider.scaling.y !== 1 || this.debugSvc.debugCollider.scaling.z !== 1) {
           entity.collider.sizeX *= this.debugSvc.debugCollider.scaling.x;

@@ -1,10 +1,8 @@
-
-// src/app/core/engine/systems/character-kinematics.service.ts
+// src/app/core/engine/runtime/systems/character-kinematics.service.ts
 
 import { Injectable } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera } from '@babylonjs/core';
-import { EstadoFisico } from './player-physics.service';
-import { GameEntity } from '../../entities/game.entity';
+import { GameEntity, PlayerStateComponent } from '../../entities/game.entity';
 import { SeqRuntime } from './player-sequence.service';
 
 @Injectable({ providedIn: 'root' })
@@ -12,15 +10,18 @@ export class CharacterKinematicsService {
   
   public updateKinematics(
     scene: Scene,
-    mesh: Mesh,
     entity: GameEntity,
-    estadoFisico: EstadoFisico,
-    inputMap: Record<string, boolean>,
     seqRuntime: SeqRuntime,
     activeCamera: Camera,
     vista: 'FPS' | 'TPS',
     dtMs: number
   ): void {
+    const mesh = entity.view as Mesh;
+    if (!mesh) return;
+
+    const playerState = entity.getComponent<PlayerStateComponent>('playerState')!;
+    const estadoFisico = playerState.physicsState;
+    const intentions = playerState.intentions;
     const colMeta = entity.collider;
     const scaleY = entity.transform.scale.y || 1;
     const playerHalfHeight = (colMeta.sizeY || 0.9) * scaleY;
@@ -47,7 +48,7 @@ export class CharacterKinematicsService {
 
       if (soY !== 0 || soF !== 0 || seqRuntime.lockInput || seqRuntime.freezeOrientation) {
         isCinematicSequence = true;
-        const dtSec = scene.getEngine().getDeltaTime() / 1000;
+        const dtSec = dtMs / 1000;
         const durSec = Math.max(0.001, seqRuntime.step.durationMs / 1000);
         dy = (soY / durSec) * dtSec;
         df = (soF / durSec) * dtSec;
@@ -65,9 +66,26 @@ export class CharacterKinematicsService {
       this.applyCinematicMovement(mesh, dy, df, estadoFisico);
     } else {
       this.applyNormalMovement(
-        mesh, config, estadoFisico, inputMap, seqRuntime, 
+        mesh, config, estadoFisico, intentions, seqRuntime, 
         move, forward, right, vista, scaleFactor, scaleY
       );
+    }
+
+    // 🔥 NUEVO: ENTITY AS SOURCE OF TRUTH
+    // Extraemos la posición garantizada de Babylon y la volcamos al Transform puro de la Entidad
+    entity.transform.position.x = mesh.position.x;
+    entity.transform.position.y = mesh.position.y;
+    entity.transform.position.z = mesh.position.z;
+    
+    if (mesh.rotationQuaternion) {
+       const euler = mesh.rotationQuaternion.toEulerAngles();
+       entity.transform.rotation.x = euler.x;
+       entity.transform.rotation.y = euler.y;
+       entity.transform.rotation.z = euler.z;
+    } else {
+       entity.transform.rotation.x = mesh.rotation.x;
+       entity.transform.rotation.y = mesh.rotation.y;
+       entity.transform.rotation.z = mesh.rotation.z;
     }
   }
 
@@ -93,7 +111,7 @@ export class CharacterKinematicsService {
     playerHalfHeight: number, 
     scaleY: number, 
     collFn: (m: any) => boolean, 
-    estadoFisico: EstadoFisico
+    estadoFisico: any
   ): void {
     const rayOrigin = capsuleCenter.clone();
     rayOrigin.y += playerHalfHeight * 0.5; 
@@ -113,7 +131,7 @@ export class CharacterKinematicsService {
     return d.normalize();
   }
 
-  private applyCinematicMovement(mesh: Mesh, dy: number, df: number, estadoFisico: EstadoFisico): void {
+  private applyCinematicMovement(mesh: Mesh, dy: number, df: number, estadoFisico: any): void {
     mesh.checkCollisions = false;
     const pForward = this.sanitizeForwardDir(mesh.getDirection(Vector3.Forward()));
 
@@ -133,8 +151,8 @@ export class CharacterKinematicsService {
   private applyNormalMovement(
     mesh: Mesh, 
     config: any, 
-    estadoFisico: EstadoFisico, 
-    inputMap: Record<string, boolean>, 
+    estadoFisico: any, 
+    intentions: any, 
     seqRuntime: SeqRuntime, 
     move: Vector3, 
     forward: Vector3, 
@@ -148,10 +166,10 @@ export class CharacterKinematicsService {
     this.calculateLandingRecovery(estadoFisico, config);
 
     if (!estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
-      if (inputMap['w']) move.addInPlace(forward);
-      if (inputMap['s']) move.subtractInPlace(forward);
-      if (inputMap['d']) move.addInPlace(right);
-      if (inputMap['a']) move.subtractInPlace(right);
+      if (intentions.moveForward) move.addInPlace(forward);
+      if (intentions.moveBackward) move.subtractInPlace(forward);
+      if (intentions.moveRight) move.addInPlace(right);
+      if (intentions.moveLeft) move.subtractInPlace(right);
     }
 
     if (seqRuntime.running && seqRuntime.allowMovement) {
@@ -160,7 +178,7 @@ export class CharacterKinematicsService {
     }
 
     estadoFisico.isMoving = move.lengthSquared() > 0.001;
-    estadoFisico.isRunning = !!inputMap['shiftleft'] || !!inputMap['shiftright'] || !!inputMap['shift'] || seqRuntime.forceForwardRun;
+    estadoFisico.isRunning = intentions.run || seqRuntime.forceForwardRun;
 
     if (estadoFisico.isMoving && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
       const modSpeed = (estadoFisico.isRunning ? (config.movement.runSpeed || 0.09) : (config.movement.walkSpeed || 0.045)) * scaleFactor;
@@ -182,7 +200,7 @@ export class CharacterKinematicsService {
       }
     }
 
-    this.calculateGravityAndJump(mesh, estadoFisico, config, inputMap, seqRuntime, move, scaleFactor, scaleY);
+    this.calculateGravityAndJump(mesh, estadoFisico, config, intentions, seqRuntime, move, scaleFactor, scaleY);
 
     if (isNaN(move.x)) move.x = 0;
     if (isNaN(move.y)) move.y = 0;
@@ -191,7 +209,7 @@ export class CharacterKinematicsService {
     mesh.moveWithCollisions(move);
   }
 
-  private calculateLandingRecovery(estadoFisico: EstadoFisico, config: any): void {
+  private calculateLandingRecovery(estadoFisico: any, config: any): void {
     if (estadoFisico.isHardLanding) {
       estadoFisico.landingFrame++;
       if (estadoFisico.landingFrame > (config.physics.landingRecoveryFrames || 60)) {
@@ -209,9 +227,9 @@ export class CharacterKinematicsService {
 
   private calculateGravityAndJump(
     mesh: Mesh, 
-    estadoFisico: EstadoFisico, 
+    estadoFisico: any, 
     config: any, 
-    inputMap: Record<string, boolean>, 
+    intentions: any, 
     seqRuntime: SeqRuntime, 
     move: Vector3, 
     scaleFactor: number, 
@@ -233,12 +251,11 @@ export class CharacterKinematicsService {
       estadoFisico.highestY = mesh.position.y;
       estadoFisico.velocidadY = -0.05; 
 
-      if ((inputMap[' '] || inputMap['space'] || seqRuntime.forceJump) && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
+      if ((intentions.jump || seqRuntime.forceJump) && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
         estadoFisico.velocidadY = (config.jump.force || 0.16) * scaleFactor;
         estadoFisico.isJumping = true;
         estadoFisico.isGrounded = false;
-        inputMap[' '] = false;
-        inputMap['space'] = false;
+        intentions.jump = false; 
       }
     } else {
       if (mesh.position.y > estadoFisico.highestY) estadoFisico.highestY = mesh.position.y;

@@ -1,4 +1,3 @@
-
 // src/app/core/engine/entities/game.entity.ts
 
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
@@ -123,7 +122,32 @@ export class PlayerStateComponent {
     public camOffset = { x: 0, y: 1.6, z: 0 },
     public animationNames: string[] = [],
     public autoAnim: any = null,
-    public initialHeadLocal?: Vector3
+    public initialHeadLocal?: Vector3,
+    
+    // 🔥 NUEVO: Intenciones abstractas derivadas del Input
+    public intentions = {
+      moveForward: false,
+      moveBackward: false,
+      moveLeft: false,
+      moveRight: false,
+      run: false,
+      jump: false
+    },
+    
+    // 🔥 NUEVO: Estado físico volcado desde el Controlador a la Entidad
+    public physicsState = {
+      isMoving: false, 
+      isRunning: false, 
+      isGrounded: true, 
+      isJumping: false, 
+      isFalling: false,
+      isHardLanding: false, 
+      isRecoveringFromFall: false, 
+      landingFrame: 0, 
+      recoveryFrame: 0,
+      velocidadY: -0.1, 
+      highestY: -9999
+    }
   ) {}
 }
 

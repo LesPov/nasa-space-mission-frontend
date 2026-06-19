@@ -1,17 +1,16 @@
-// src/app/core/engine/controllers/base-character.controller.ts
+// src/app/core/engine/runtime/controllers/base-character.controller.ts
 
 import { Mesh } from '@babylonjs/core';
 import { Injector } from '@angular/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../../models/player-config.model';
-import { EstadoFisico } from '../systems/player-physics.service';
-import { GameEntity } from '../../entities/game.entity';
+import { GameEntity, PlayerStateComponent } from '../../entities/game.entity';
 import { LoopManagerService } from '../../behaviors/services/loop-manager.service';
- 
+import { EstadoFisico } from '../systems/player-physics.service';
+
 export abstract class BaseCharacterController {
   public entity: GameEntity;
   public mesh: Mesh;
   public config: PlayerRuntimeConfig;
-  public estadoFisico: EstadoFisico;
   protected injector: Injector;
   protected loopManager: LoopManagerService;
   protected loopId: string;
@@ -28,22 +27,12 @@ export abstract class BaseCharacterController {
     this.loopManager = this.injector.get(LoopManagerService);
     this.loopId = `ControllerLogic_${this.entity.uid}`;
     
-    // 🔥 La Entidad Lógica es la única fuente de verdad, nada de mesh.metadata
     this.config = entity.playerConfig || cloneDefaultPlayerConfig();
-    
-    this.estadoFisico = {
-      isMoving: false,
-      isRunning: false,
-      isGrounded: true,
-      isJumping: false,
-      isFalling: false,
-      isHardLanding: false,
-      isRecoveringFromFall: false,
-      landingFrame: 0,
-      recoveryFrame: 0,
-      velocidadY: -0.1,
-      highestY: -9999
-    };
+  }
+
+  // 🔥 NUEVO: Obtenemos el estado físico directamente de la Entidad como única fuente de verdad.
+  public get estadoFisico(): EstadoFisico {
+    return this.entity.getComponent<PlayerStateComponent>('playerState')!.physicsState;
   }
 
   public abstract start(): void;
@@ -60,16 +49,17 @@ export abstract class BaseCharacterController {
   }
 
   public resetPhysicsState(): void {
-    this.estadoFisico.isMoving = false;
-    this.estadoFisico.isRunning = false;
-    this.estadoFisico.isGrounded = true;
-    this.estadoFisico.velocidadY = -0.1;
-    this.estadoFisico.highestY = -9999;
-    this.estadoFisico.isJumping = false;
-    this.estadoFisico.isFalling = false;
-    this.estadoFisico.isHardLanding = false;
-    this.estadoFisico.isRecoveringFromFall = false;
-    this.estadoFisico.landingFrame = 0;
-    this.estadoFisico.recoveryFrame = 0;
+    const state = this.estadoFisico;
+    state.isMoving = false;
+    state.isRunning = false;
+    state.isGrounded = true;
+    state.velocidadY = -0.1;
+    state.highestY = -9999;
+    state.isJumping = false;
+    state.isFalling = false;
+    state.isHardLanding = false;
+    state.isRecoveringFromFall = false;
+    state.landingFrame = 0;
+    state.recoveryFrame = 0;
   }
 }

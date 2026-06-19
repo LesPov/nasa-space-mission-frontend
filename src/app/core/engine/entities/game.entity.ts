@@ -1,5 +1,3 @@
-// src/app/core/engine/entities/game.entity.ts
-
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig } from '../models/player-config.model';
 
@@ -121,12 +119,12 @@ export class PlayerConfigComponent {
 }
 
 // ==========================================
-// 2. DEFINICIÓN DE COMPONENTES ECS (ESTADO RUNTIME VOLÁTIL)
+// 2. DEFINICIÓN DE COMPONENTES ECS (ESTADO RUNTIME VOLÁTIL - NO SE GUARDA)
 // ==========================================
 
-export class UIEditorStateComponent {
+export class InteractionRuntimeComponent {
   constructor(
-    public isHovered = false,
+    public isHoveredByPlayer = false,
     public currentHoverScale = 1.0,
     public isProcessingAction = false
   ) {}
@@ -209,7 +207,7 @@ export class GameEntity {
 
     // Estado Runtime (Volátil, No se guarda en BD)
     this.addComponent('playerRuntime', new PlayerRuntimeComponent());
-    this.addComponent('uiState', new UIEditorStateComponent());
+    this.addComponent('interactionRuntime', new InteractionRuntimeComponent());
 
     if (type.startsWith('light_')) {
       this.addComponent('light', new LightComponent());
@@ -292,20 +290,10 @@ export class GameEntity {
   get mediaRuntime(): MediaRuntimeComponent | undefined { return this.getComponent<MediaRuntimeComponent>('mediaRuntime'); }
   get triggerRuntime(): TriggerRuntimeComponent | undefined { return this.getComponent<TriggerRuntimeComponent>('triggerRuntime'); }
   get playerRuntime(): PlayerRuntimeComponent { return this.getComponent<PlayerRuntimeComponent>('playerRuntime')!; }
-  get uiState(): UIEditorStateComponent { return this.getComponent<UIEditorStateComponent>('uiState')!; }
+  get interactionRuntime(): InteractionRuntimeComponent { return this.getComponent<InteractionRuntimeComponent>('interactionRuntime')!; }
 
   get initialHeadLocal() { return this.playerRuntime.initialHeadLocal; }
   set initialHeadLocal(v) { this.playerRuntime.initialHeadLocal = v; }
-
-  // Getter/Setter retrocompatible para la UI efímera
-  get isHovered(): boolean { return this.uiState.isHovered; }
-  set isHovered(v: boolean) { this.uiState.isHovered = v; }
-
-  get currentHoverScale(): number { return this.uiState.currentHoverScale; }
-  set currentHoverScale(v: number) { this.uiState.currentHoverScale = v; }
-
-  get isProcessingAction(): boolean { return this.uiState.isProcessingAction; }
-  set isProcessingAction(v: boolean) { this.uiState.isProcessingAction = v; }
 
   // ==========================================
   // VIEW BINDING

@@ -1,4 +1,3 @@
-// src/app/core/engine/runtime/game-session.ts
 import { Injectable, signal, inject, Injector } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
@@ -7,13 +6,13 @@ import { PlayerController } from './controllers/player.controller';
 import { NpcController } from './controllers/npc.controller';
 import { ObjectAnimationService } from './systems/object-animation.service';
 import { GameEventBusService } from '../events/game-event-bus.service';
-import { Motor3dService } from '../../../services/motor-3d.service';
 import { PlayerTriggerService } from './systems/player-trigger.service';
 import { PlayerFogService } from './systems/player-fog.service';
 import { PlayerCameraManagerService } from './systems/player-camera.service';
 import { PlayerBubbleService } from './systems/player-bubble.service';
 import { PlayerSequenceService } from './systems/player-sequence.service';
-import { Tags } from '@babylonjs/core';
+import { PlayerInputService } from './systems/player-input.service';
+import { PlayerInteractionService } from './systems/player-interaction.service';
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
@@ -29,24 +28,25 @@ export class GameSession {
   private entityManager = inject(EntityManagerService);
   private objectAnimSvc = inject(ObjectAnimationService);
   private eventBus = inject(GameEventBusService);
-  private motor3d = inject(Motor3dService);
   private triggerSvc = inject(PlayerTriggerService);
   private playerFogSvc = inject(PlayerFogService);
   private cameraSvc = inject(PlayerCameraManagerService);
   private bubbleSvc = inject(PlayerBubbleService);
+  private inputSvc = inject(PlayerInputService);
+  private interactionSvc = inject(PlayerInteractionService);
 
   constructor() {
     this.eventBus.events$.subscribe(event => {
       if (event.type === 'GameResumed') {
         this.pointerLocked.set(true);
+        this.inputSvc.enable();
+        this.interactionSvc.enable();
       } else if (event.type === 'GamePaused') {
         this.pointerLocked.set(false);
+        this.inputSvc.disable();
+        this.interactionSvc.disable();
       }
     });
-  }
-
-  public get proxyColliders() {
-    return this.motor3d.scene.meshes.filter(m => Tags.MatchesQuery(m, "proxy_collider"));
   }
 
   public start(playerEntity: GameEntity, view: 'FPS' | 'TPS', isDebugMode: boolean): void {
@@ -55,6 +55,9 @@ export class GameSession {
     this.cameraView.set(view);
     this.activePlayerEntity.set(playerEntity);
     this.pointerLocked.set(true);
+    
+    this.inputSvc.enable();
+    this.interactionSvc.enable();
 
     this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
     this.eventBus.emit({ type: 'MessageRequested', payload: null });
@@ -86,6 +89,9 @@ export class GameSession {
     this.isPlaying.set(false);
     this.activePlayerEntity.set(null);
     this.pointerLocked.set(false);
+    
+    this.inputSvc.disable();
+    this.interactionSvc.disable();
 
     this.objectAnimSvc.stopAmbientAutoAnimations();
     this.playerFogSvc.stop();

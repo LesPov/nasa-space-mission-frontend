@@ -1,6 +1,3 @@
-
-// src/app/services/editor/editor-play-mode.service.ts
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 
@@ -11,6 +8,7 @@ import { EntityManagerService } from '../../core/engine/entities/entity-manager.
 import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.service';
 import { EditorMapaService } from '../editor-mapa.service';
 import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
+import { GameStateService } from '../../core/engine/runtime/state/game-state.service'; // 🔥 ADD
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
@@ -21,6 +19,7 @@ export class EditorPlayModeService {
   private entityManager = inject(EntityManagerService);
   private runtimeEngine = inject(RuntimeEngineService);
   private inputOrchestrator = inject(InputOrchestratorService);
+  private gameState = inject(GameStateService); // 🔥 ADD
 
   private snapshotMemoria: any = null;
   
@@ -32,6 +31,9 @@ export class EditorPlayModeService {
     if (!playerEntity) return;
 
     this.cameraSvc.guardarEstadoCamaraLibre();
+    
+    // 🔥 Protegemos las variables del juego
+    this.gameState.enterSandbox();
 
     this.state.modoVistaPrueba = vista;
     this.state.playState.set('TRANSITIONING');
@@ -43,7 +45,6 @@ export class EditorPlayModeService {
     this.snapshotMemoria = this.editorSvc.obtenerDatosParaGuardar(true);
     this.state.objetoSeleccionado.set(null);
 
-    // 🔥 Ocultar elementos del editor por Tags en lugar de hardcoding
     this.motor3d.scene.meshes.forEach(m => {
         if (Tags.MatchesQuery(m, "editor_only")) {
             m.isVisible = false;
@@ -95,6 +96,10 @@ export class EditorPlayModeService {
     this.state.modoVistaPrueba = null; 
     
     this.runtimeEngine.stopTestSession();
+    
+    // 🔥 Restauramos el estado inmaculado del editor
+    this.gameState.exitSandbox();
+
     const isDebugMode = this.state.checkIsAdmin();
 
     if (this.snapshotMemoria) {
@@ -128,7 +133,6 @@ export class EditorPlayModeService {
             this.snapshotMemoria.deletedTriggers = [...new Set([...this.snapshotMemoria.deletedTriggers, ...cambiosEnPlay.deletedTriggers])];
         }
 
-        // 🔥 Limpieza Total y Estructurada
         this.entityManager.clear();
         this.editorSvc.limpiarEstado();
 
@@ -146,7 +150,6 @@ export class EditorPlayModeService {
         this.snapshotMemoria = null;
     }
 
-    // 🔥 Restaurar visibilidad usando Tags
     this.motor3d.scene.meshes.forEach(m => {
         if (Tags.MatchesQuery(m, "editor_only")) {
             m.setEnabled(true);

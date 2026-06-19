@@ -1,29 +1,31 @@
-
-import { Injectable, inject, Injector } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { Observer, KeyboardInfo, Scene, KeyboardEventTypes } from '@babylonjs/core';
-import { GameSession } from '../game-session';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInputService {
-  private injector = inject(Injector);
   
-  // 🔥 FIX DE DEPENDENCIA CIRCULAR: Getter Lazy
-  private get session(): GameSession { 
-    return this.injector.get(GameSession); 
-  }
-
   public inputMap: Record<string, boolean> = {};
   public eKeyPressed = false;
   public iKeyPressed = false; 
   
   private tecladoObserver: Observer<KeyboardInfo> | null = null;
+  private isEnabled: boolean = false;
+
+  public enable(): void {
+    this.isEnabled = true;
+  }
+
+  public disable(): void {
+    this.isEnabled = false;
+    this.resetearInputs();
+  }
 
   public iniciarEscuchaTeclado(
     scene: Scene, 
     callbacks: { onToggleCamera: () => void, onAction: () => void, onInspect: () => void }
   ): void {
     this.tecladoObserver = scene.onKeyboardObservable.add((kbInfo: KeyboardInfo) => {
-      if (!this.session.isPlaying() || !this.session.pointerLocked()) return;
+      if (!this.isEnabled) return; // 🔥 Controlado externamente, adiós GameSession
 
       const keyStr = kbInfo.event.key ? kbInfo.event.key.toLowerCase() : '';
       const codeStr = kbInfo.event.code ? kbInfo.event.code.toLowerCase() : '';
@@ -58,7 +60,7 @@ export class PlayerInputService {
       scene.onKeyboardObservable.remove(this.tecladoObserver);
       this.tecladoObserver = null;
     }
-    this.resetearInputs();
+    this.disable();
   }
 
   public resetearInputs(): void {

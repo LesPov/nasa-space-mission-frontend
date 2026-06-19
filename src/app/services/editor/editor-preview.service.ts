@@ -5,6 +5,7 @@ import { PlayerAnimationService } from '../../core/engine/runtime/systems/player
 import { LoopManagerService, GamePhase } from '../../core/engine/behaviors/services/loop-manager.service';
 import { Motor3dService } from '../motor-3d.service';
 import { AbstractMesh, Mesh, AnimationGroup } from '@babylonjs/core';
+import { GameStateService } from '../../core/engine/runtime/state/game-state.service'; // 🔥 ADD
 
 @Injectable({ providedIn: 'root' })
 export class EditorPreviewService {
@@ -12,6 +13,7 @@ export class EditorPreviewService {
   private animSvc = inject(PlayerAnimationService);
   private loopManager = inject(LoopManagerService);
   private motor3d = inject(Motor3dService);
+  private gameState = inject(GameStateService); // 🔥 ADD
 
   private originalEntity: GameEntity | null = null;
   private cloneEntity: GameEntity | null = null;
@@ -23,19 +25,18 @@ export class EditorPreviewService {
     this.originalEntity = entity;
     const originalMesh = entity.view as Mesh;
     
-    // 1. Ocultar original (No mutamos sus matrices matemáticas)
+    // 🔥 Protegemos las variables del juego
+    this.gameState.enterSandbox();
+
     originalMesh.isVisible = false;
     originalMesh.getChildMeshes().forEach(m => m.isVisible = false);
 
-    // 2. Crear Clon Limpio (InstantiateHierarchy)
     let cloneMesh: AbstractMesh;
     if (entity.type === 'model') {
         cloneMesh = originalMesh.instantiateHierarchy(null, { doNotInstantiate: true }) as AbstractMesh;
         cloneMesh.name = 'preview_clone_' + originalMesh.name;
         
-        // Re-target de animaciones del GLB al clon
         this.motor3d.scene.animationGroups.forEach(ag => {
-            // Recorremos el parent hacia arriba en lugar de usar isAncestorOf que no existe
             const isTargetingOriginal = ag.targetedAnimations.some(ta => {
                 let current: any = ta.target;
                 while (current) {
@@ -66,7 +67,6 @@ export class EditorPreviewService {
     cloneMesh.isVisible = true;
     cloneMesh.getChildMeshes().forEach(m => m.isVisible = true);
 
-    // 3. Entidad Temporal
     this.cloneEntity = new GameEntity('preview_' + entity.uid, 'preview_' + entity.name, entity.type, entity.rol);
     this.cloneEntity.playerConfig = JSON.parse(JSON.stringify(entity.playerConfig));
     this.cloneEntity.animationNames = [...entity.animationNames];
@@ -108,6 +108,9 @@ export class EditorPreviewService {
       
       this.cloneEntity.destroyView(); 
       this.cloneEntity = null;
+      
+      // 🔥 Desactivamos Sandbox y borramos mutaciones que la secuencia haya simulado
+      this.gameState.exitSandbox();
     }
 
     if (this.originalEntity) {

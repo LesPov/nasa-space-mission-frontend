@@ -1,5 +1,3 @@
-// src/app/core/engine/systems/player-bubble.service.ts
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
@@ -33,7 +31,10 @@ export class PlayerBubbleService {
             if (!burbuja.isDisposed()) {
                 burbuja.isVisible = true;
                 burbuja.checkCollisions = false; 
-                burbujaEntity.isProcessingAction = false;
+                // 🔥 FIX: Actualizado a la nueva arquitectura Runtime pura
+                if (burbujaEntity.interactionRuntime) {
+                    burbujaEntity.interactionRuntime.isProcessingAction = false;
+                }
             }
             this.bubblesOcultas.delete(burbujaEntity.uid);
             this.loopManager.unregister(loopId);
@@ -56,7 +57,10 @@ export class PlayerBubbleService {
       this.loopManager.unregister(data.loopId);
       if (!data.mesh.isDisposed()) {
           data.mesh.isVisible = true;
-          data.entity.isProcessingAction = false;
+          // 🔥 FIX: Actualizado a la nueva arquitectura Runtime pura
+          if (data.entity.interactionRuntime) {
+              data.entity.interactionRuntime.isProcessingAction = false;
+          }
       }
     });
     this.bubblesOcultas.clear();

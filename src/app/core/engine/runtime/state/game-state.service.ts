@@ -4,14 +4,29 @@ import { GameCondition, GameStateMutation } from '../../models/player-config.mod
 @Injectable({ providedIn: 'root' })
 export class GameStateService {
   // Estado global del mundo (Las consecuencias de Telltale)
-  // Ejemplo: { 'salvo_al_alcalde': true, 'puerta_granero_abierta': false }
   public worldState = signal<Record<string, any>>({});
   
   // Inventario del jugador
   public inventory = signal<string[]>([]);
   
-  // Rol actual de la historia (militar, campesino, politico, etc)
+  // Rol actual de la historia
   public playerRole = signal<string>('campesino');
+
+  // 🔥 PATRÓN SANDBOX: Protección para el Editor
+  private backupState: any = null;
+
+  public enterSandbox(): void {
+    this.backupState = this.getSaveData();
+    console.log('[GameState] 🛡️ Sandbox Activado (Estado respaldado)');
+  }
+
+  public exitSandbox(): void {
+    if (this.backupState) {
+      this.loadGame(this.backupState);
+      this.backupState = null;
+      console.log('[GameState] 🛡️ Sandbox Desactivado (Estado restaurado)');
+    }
+  }
 
   public setVar(key: string, value: any): void {
     this.worldState.update(state => ({ ...state, [key]: value }));
@@ -47,8 +62,6 @@ export class GameStateService {
     if (savedData.playerRole) this.playerRole.set(savedData.playerRole);
   }
 
-  // 🔥 FIX 500 ERROR: Se aplica JSON.parse/stringify para romper referencias o Proxies de Signal de Angular
-  // que crasheaban el Backend al hacer el POST de guardado.
   public getSaveData(): any {
     return {
       worldState: JSON.parse(JSON.stringify(this.worldState())),
@@ -63,7 +76,6 @@ export class GameStateService {
   }
 
   // --- MÉTODOS DE EVALUACIÓN NARRATIVA DE MOTOR ---
-  
   public evaluateGameCondition(cond: GameCondition): boolean {
     switch(cond.type) {
       case 'var_eq': return this.getVar(cond.key) === cond.value;

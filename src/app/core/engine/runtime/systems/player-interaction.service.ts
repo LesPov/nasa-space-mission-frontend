@@ -1,8 +1,6 @@
-
-import { Injectable, inject, Injector } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
-import { GameSession } from '../game-session';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
 import { GameEventBusService } from '../../events/game-event-bus.service';
@@ -14,11 +12,6 @@ export class PlayerInteractionService {
   private entityManager = inject(EntityManagerService);
   private eventBus = inject(GameEventBusService);
   private inputOrchestrator = inject(InputOrchestratorService);
-  private injector = inject(Injector);
- 
-  private get session(): GameSession { 
-    return this.injector.get(GameSession); 
-  }
 
   public currentTarget: GameEntity | null = null;
   public canInteract: boolean = false;
@@ -27,13 +20,21 @@ export class PlayerInteractionService {
 
   public lastInteractDistance: number | null = null;
   public lastInteractionProbePoint: Vector3 | null = null;
+  
+  private isEnabled: boolean = false;
+
+  public enable(): void { this.isEnabled = true; }
+  public disable(): void { this.isEnabled = false; }
 
   private clamp(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
   }
 
   private getRootProxyCollider(rootMesh: AbstractMesh): AbstractMesh | null {
-    return this.session.proxyColliders.find(p => p.parent === rootMesh || Tags.MatchesQuery(p, "proxy_collider")) ?? null;
+    // 🔥 Uso directo de queries de Babylon, sin GameSession
+    const scene = this.motor3d.scene;
+    const proxies = scene.getMeshesByTags("proxy_collider");
+    return proxies.find(p => p.parent === rootMesh) ?? null;
   }
 
   private getClosestPointOnMeshBounds(mesh: AbstractMesh, point: Vector3): Vector3 | null {
@@ -68,14 +69,6 @@ export class PlayerInteractionService {
     return closest ? Vector3.Distance(probePoint, closest) : Vector3.Distance(probePoint, targetMesh.getAbsolutePosition());
   }
 
-  private getSelectionMaxDistance(): number {
-    const playerEntity = this.session.activePlayerEntity();
-    if (playerEntity && playerEntity.selectionRange) {
-        return playerEntity.selectionRange.fpsUserMax;
-    }
-    return 3;
-  }
-
   private esObjetoInteractuable(entity: GameEntity): boolean {
     if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') return false; 
     if (entity.type === 'bubble') return true; 
@@ -88,14 +81,14 @@ export class PlayerInteractionService {
     return (mensaje.length > 0 || seqFPS.length > 0 || seqTPS.length > 0 || seqLeg.length > 0);
   }
 
-  public canActivateInteraction(targetEntity: GameEntity, view: 'FPS' | 'TPS' | null): boolean {
+  public canActivateInteraction(targetEntity: GameEntity, view: 'FPS' | 'TPS'): boolean {
     if (!targetEntity || this.lastInteractDistance === null || !Number.isFinite(this.lastInteractDistance)) return false;
     const maxDist = view === 'FPS' ? (targetEntity.interaction.interactDistanceFPS ?? 3.0) : (targetEntity.interaction.interactDistanceTPS ?? 5.0);
     return this.lastInteractDistance <= maxDist;
   }
 
   public comprobarInteracciones(entity: GameEntity, activeCamera: any, viewMode: 'FPS' | 'TPS'): void {
-    if (!this.session.isPlaying() || !this.session.pointerLocked()) {
+    if (!this.isEnabled) {
       this.currentTarget = null;
       this.canInteract = false;
       this.canInspect = false;
@@ -188,9 +181,9 @@ export class PlayerInteractionService {
     let showI = false;
 
     if (hitInteractuable) {
-      const canInteractNow = this.canActivateInteraction(hitInteractuable, this.session.cameraView());
+      const canInteractNow = this.canActivateInteraction(hitInteractuable, viewMode);
 
-      const seqIdForView = this.session.cameraView() === 'FPS'
+      const seqIdForView = viewMode === 'FPS'
         ? (hitInteractuable.interaction.interactSequenceIdFPS || hitInteractuable.interaction.interactSequenceId)
         : (hitInteractuable.interaction.interactSequenceIdTPS || hitInteractuable.interaction.interactSequenceId);
 
@@ -212,6 +205,12 @@ export class PlayerInteractionService {
       this.canInteract = showE;
       this.canInspect = showI;
       this.currentHoveredMesh = hoverSelectable;
+      
+      // 🔥 Actualizamos el InteractionRuntimeComponent
+      if (hitInteractuable && hitInteractuable.interactionRuntime) {
+         hitInteractuable.interactionRuntime.isHoveredByPlayer = true;
+      }
+
       this.eventBus.emit({ 
         type: 'ObjectFocused', 
         payload: { entity: hitInteractuable, mesh: hoverSelectable, canInteract: showE, canInspect: showI } 
@@ -221,7 +220,6 @@ export class PlayerInteractionService {
 
   public abrirMensajeInteractivo(entity: GameEntity, resetMovementCallback: () => void): void {
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: true });
-    this.session.pointerLocked.set(false);
     this.inputOrchestrator.unlockPointer();
     resetMovementCallback();
   }

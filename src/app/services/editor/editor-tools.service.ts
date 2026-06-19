@@ -1,4 +1,3 @@
-
 import { Injectable, inject, effect } from '@angular/core';
 import {
   DirectionalLight,
@@ -11,6 +10,7 @@ import {
   Vector3,
   Ray,
   AbstractMesh,
+  Light,
   Tags
 } from '@babylonjs/core';
 
@@ -41,13 +41,13 @@ export class EditorToolsService {
 
   private lastHoverCheckTime = 0;
   private enforceEditorCameraObserverAdded = false;
+  private isGizmoSyncAttached = false;
 
   constructor() {
     effect(() => {
       const selected = this.state.objetoSeleccionado() as Mesh;
       const hovered = this.state.objetoHovereado() as Mesh;
       const subSelected = this.state.subObjetoSeleccionado();
-      const fogToggled = this.state.fogDesactivadoTemporalmente(); 
 
       if (!this.gizmoSvc.isDraggingGizmo) {
         this.debugSvc.actualizarDebugMeshes(selected);
@@ -184,6 +184,14 @@ export class EditorToolsService {
           this.asegurarEditorCameraEnEdicionEnVivo();
         }
       });
+    }
+
+    // 🔥 SISTEMA DE SINCRONIZACIÓN PASIVA DEL ECS AL MOVER GIZMOS
+    if (!this.isGizmoSyncAttached) {
+      this.state.onGizmoDrag.subscribe(() => {
+         this.syncEntityFromGizmoDrag();
+      });
+      this.isGizmoSyncAttached = true;
     }
 
     this.gizmoSvc.gizmoManager.utilityLayer.utilityLayerScene.onPointerObservable.add((pi) => {
@@ -366,6 +374,84 @@ export class EditorToolsService {
     this.sceneSvc.crearEntornoVisual();
     this.sceneSvc.actualizarListaNodos();
     this.setToolMode('translate');
+  }
+
+  // 🔥 Lógica maestra que transfiere del Debug Mesh visual al ECS sin acoplar
+  private syncEntityFromGizmoDrag(): void {
+    const mesh = this.state.objetoSeleccionado() as Mesh;
+    const subSelected = this.state.subObjetoSeleccionado();
+    if (!mesh) return;
+
+    const entity = this.entityManager.getEntityByMesh(mesh);
+    if (!entity) return;
+
+    if (subSelected === 'collider' && this.debugSvc.debugCollider) {
+      entity.collider.offsetX = this.debugSvc.debugCollider.position.x;
+      entity.collider.offsetY = this.debugSvc.debugCollider.position.y;
+      entity.collider.offsetZ = this.debugSvc.debugCollider.position.z;
+
+      // Aplicamos el escalado real solo si se soltó el mouse
+      if (!this.gizmoSvc.isDraggingGizmo) {
+        if (this.debugSvc.debugCollider.scaling.x !== 1 || this.debugSvc.debugCollider.scaling.y !== 1 || this.debugSvc.debugCollider.scaling.z !== 1) {
+          entity.collider.sizeX *= this.debugSvc.debugCollider.scaling.x;
+          entity.collider.sizeY *= this.debugSvc.debugCollider.scaling.y;
+          entity.collider.sizeZ *= this.debugSvc.debugCollider.scaling.z;
+          this.debugSvc.debugCollider.scaling.set(1, 1, 1);
+          this.debugSvc.actualizarDebugMeshes(mesh);
+          this.gizmoSvc.attachGizmoToCurrentSelection(mesh, subSelected);
+        }
+      }
+      entity.syncToView();
+
+    } else if (subSelected === 'camera' && this.debugSvc.debugCameraBox) {
+      entity.camOffset.x = this.debugSvc.debugCameraBox.position.x;
+      entity.camOffset.y = this.debugSvc.debugCameraBox.position.y;
+      entity.camOffset.z = this.debugSvc.debugCameraBox.position.z;
+      entity.syncToView();
+
+    } else if (subSelected === 'light' && this.debugSvc.debugLightBox && entity.light) {
+      entity.light.lightPosX = this.debugSvc.debugLightBox.position.x;
+      entity.light.lightPosY = this.debugSvc.debugLightBox.position.y;
+      entity.light.lightPosZ = this.debugSvc.debugLightBox.position.z;
+      
+      const lightObj = mesh.getDescendants(false).find(c => c.name.startsWith('l_')) as Light;
+      if (lightObj && (lightObj as any).position) {
+          (lightObj as any).position.copyFromFloats(entity.light.lightPosX, entity.light.lightPosY, entity.light.lightPosZ);
+      }
+      entity.syncToView();
+
+    } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
+      const playerPos = mesh.getAbsolutePosition();
+      const fogConfig = entity.playerConfig?.fog;
+      if (!fogConfig || !entity.playerConfig) return;
+
+      const isBW = this.motor3d.scene?.metadata?.globalVisualMode === 'bw';
+      const isFPS = this.state.modoVistaPrueba === 'FPS';
+      
+      let fogHeightY = 4.0;
+      if (isBW) {
+          fogHeightY = Math.max(0.1, isFPS ? (fogConfig.fogHeightYStartFpsBW ?? 4.0) : (fogConfig.fogHeightYStartTpsBW ?? 4.0));
+      } else {
+          fogHeightY = Math.max(0.1, isFPS ? (fogConfig.fogHeightYStartFPS ?? 4.0) : (fogConfig.fogHeightYStartTPS ?? 4.0));
+      }
+      
+      const shapeOffset = (fogConfig.fogShape === 'cylinder' ? (fogHeightY / 2) : 0);
+      
+      if (isFPS) {
+          entity.playerConfig.fog.offsetXFPS = this.debugSvc.debugFogStartSphere.position.x - playerPos.x;
+          entity.playerConfig.fog.offsetYFPS = this.debugSvc.debugFogStartSphere.position.y - playerPos.y - shapeOffset;
+          entity.playerConfig.fog.offsetZFPS = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
+      } else {
+          entity.playerConfig.fog.offsetXTPS = this.debugSvc.debugFogStartSphere.position.x - playerPos.x;
+          entity.playerConfig.fog.offsetYTPS = this.debugSvc.debugFogStartSphere.position.y - playerPos.y - shapeOffset;
+          entity.playerConfig.fog.offsetZTPS = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
+      }
+      entity.syncToView();
+
+    } else if (!subSelected) {
+      entity.syncTransformFromView();
+      entity.syncToView(); 
+    }
   }
 
   setToolMode(mode: ToolMode): void {

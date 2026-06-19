@@ -59,6 +59,12 @@ export class CoreSceneLoaderService {
     let w: any = dataBD.worldSettings;
     if (typeof w === 'string') { try { w = JSON.parse(w); } catch (e) {} }
 
+    // 🔥 FIX PERSISTENCIA: Extraemos uiSettings y lo parseamos si la base de datos lo devolvió como String
+    let uiSettings = dataBD.uiSettings || {};
+    if (typeof uiSettings === 'string') { 
+        try { uiSettings = JSON.parse(uiSettings); } catch (e) { uiSettings = {}; } 
+    }
+
     if (w) {
       const clearHex = w.clearColor?.length >= 7 ? w.clearColor.substring(0, 7) : '#0d1729';
       const clearHexBW = w.clearColorBW?.length >= 7 ? w.clearColorBW.substring(0, 7) : '#555555';
@@ -68,9 +74,20 @@ export class CoreSceneLoaderService {
       const activeClear = loadedMode === 'bw' ? clearHexBW : clearHex;
       
       scene.clearColor = Color4.FromHexString(activeClear + 'ff');
-      scene.metadata = { ...scene.metadata, globalClearColor: clearHex, globalClearColorBW: clearHexBW, globalVisualMode: loadedMode };
+      
+      // Aseguramos de anclar el uiSettings parseado al entorno local del motor 3D
+      scene.metadata = { 
+        ...scene.metadata, 
+        globalClearColor: clearHex, 
+        globalClearColorBW: clearHexBW, 
+        globalVisualMode: loadedMode,
+        uiSettings: uiSettings 
+      };
+      
       this.motor3d.setVisualMode(loadedMode);
       scene.gravity = new Vector3(0, w.gravityY ?? -0.25, 0);
+    } else {
+      scene.metadata = { ...scene.metadata, uiSettings: uiSettings };
     }
 
     scene.cameras.forEach(cam => cam.maxZ = 10000);

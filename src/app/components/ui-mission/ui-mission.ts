@@ -1,3 +1,4 @@
+
 import { Component, Input, Output, EventEmitter, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -74,15 +75,37 @@ export class UiMission implements OnChanges {
     this.tieneMapaUnLocker = !!worldState['mapa_desbloqueado'];
     this.tieneHistoria = !!worldState['lore_desbloqueado'];
 
-    if (!worldState['mision_en_curso']) {
-        this.objetivosActuales = Array.isArray(sourceSettings.objetivos) && sourceSettings.objetivos.length > 0 
-          ? sourceSettings.objetivos 
-          : ['Explora el área y sobrevive.'];
-    } else {
-        this.objetivosActuales = worldState['objetivos_activos'] || ['Encuentra la salida.'];
+    // 🔥 FIX: Procesar Objetivos soportando Arrays puros o Textos separados por Saltos de Línea (\n)
+    let parsedObjetivos: string[] = [];
+    if (Array.isArray(sourceSettings.objetivos)) {
+      parsedObjetivos = sourceSettings.objetivos;
+    } else if (typeof sourceSettings.objetivos === 'string') {
+      parsedObjetivos = sourceSettings.objetivos.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
     }
 
-    this.recompensasActuales = Array.isArray(sourceSettings.recompensas) ? sourceSettings.recompensas : [];
+    if (!worldState['mision_en_curso']) {
+        this.objetivosActuales = parsedObjetivos.length > 0 
+          ? parsedObjetivos 
+          : ['Explora el área y sobrevive.'];
+    } else {
+        let activeObj = worldState['objetivos_activos'];
+        if (typeof activeObj === 'string') {
+           activeObj = activeObj.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+        }
+        this.objetivosActuales = (Array.isArray(activeObj) && activeObj.length > 0) 
+          ? activeObj 
+          : ['Encuentra la salida.'];
+    }
+
+    // 🔥 FIX: Procesar Recompensas soportando Arrays puros o Textos separados por Saltos de Línea (\n)
+    let parsedRecompensas: string[] = [];
+    if (Array.isArray(sourceSettings.recompensas)) {
+      parsedRecompensas = sourceSettings.recompensas;
+    } else if (typeof sourceSettings.recompensas === 'string') {
+      parsedRecompensas = sourceSettings.recompensas.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+    }
+    
+    this.recompensasActuales = parsedRecompensas;
   }
 
   cambiarTitulo(nuevoTitulo: string) {

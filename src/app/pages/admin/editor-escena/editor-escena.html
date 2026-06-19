@@ -5,7 +5,7 @@
       <h2>Tus Mapas / Episodios</h2>
       <p>Selecciona un episodio o crea uno nuevo para empezar a explorar.</p>
     </div>
-    <button class="btn-crear-mapa" *ngIf="esAdmin" (click)="abrirModalMision(false)">+ Crear Nuevo Mapa</button>
+    <button class="btn-crear-mapa" *ngIf="esAdmin" (click)="showModalMap = true">+ Crear Nuevo Mapa</button>
   </div>
 
   <div class="grid-mapas">
@@ -36,16 +36,25 @@
       </div>
     </div>
   </div>
-</ng-container>
 
-<!-- MODAL UNIFICADO DE MISIÓN (CREACIÓN Y EDICIÓN) -->
-<app-mission-modal 
-  *ngIf="showMissionModal" 
-  [mode]="missionModalMode" 
-  [initialData]="missionModalData"
-  (onSave)="guardarMisionModal($event)" 
-  (onCancel)="showMissionModal = false">
-</app-mission-modal>
+  <div class="modal-overlay" *ngIf="showModalMap">
+    <div class="modal-box">
+      <h3>Crear Nuevo Episodio</h3>
+      <div class="modal-row">
+        <label class="modal-label">Título del Episodio:</label>
+        <input type="text" [(ngModel)]="nuevoTitulo" class="modal-input">
+      </div>
+      <div class="modal-row">
+        <label class="modal-label">Descripción breve:</label>
+        <textarea [(ngModel)]="nuevaDesc" class="modal-input"></textarea>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" (click)="showModalMap = false">Cancelar</button>
+        <button class="btn-confirm" (click)="crearNuevoEpisodio()">Crear Episodio</button>
+      </div>
+    </div>
+  </div>
+</ng-container>
 
 <!-- SPINNER CINEMÁTICO DE CARGA -->
 <div class="cinematic-overlay" *ngIf="cargandoEscena">
@@ -136,7 +145,7 @@
           <div class="vp-left">
             <button class="btn-vp btn-exit" (click)="salirDelEditor()">⬅ Salir</button>
             <span class="vp-title">{{ mapaActualNombre }}</span>
-            <button class="btn-vp" *ngIf="editorSvc.playState() === 'EDITOR'" (click)="abrirModalMision(true)">⚙️ Misión</button>
+            <!-- Bóton mágico del ojo (UI) que pide el usuario -->
             <button class="btn-vp" *ngIf="editorSvc.playState() === 'EDITOR'" (click)="togglePreviewMission()" [style.color]="editorSvc.state.previewMissionModal() ? '#60a5fa' : ''">👁️ UI</button>
           </div>
           
@@ -168,7 +177,7 @@
             <app-toolbar-escena *ngIf="editorSvc.playState() === 'EDITOR' || editorSvc.playState() === 'EDITING_IN_GAME' || (editorSvc.playState() === 'PLAYING' && !gameSession.pointerLocked())"></app-toolbar-escena>
           </ng-container>
 
-          <app-ui-hud 
+          <app-ui-hud  
             [playState]="editorSvc.playState()">
           </app-ui-hud>
           

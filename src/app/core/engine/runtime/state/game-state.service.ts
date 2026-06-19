@@ -47,10 +47,12 @@ export class GameStateService {
     if (savedData.playerRole) this.playerRole.set(savedData.playerRole);
   }
 
+  // 🔥 FIX 500 ERROR: Se aplica JSON.parse/stringify para romper referencias o Proxies de Signal de Angular
+  // que crasheaban el Backend al hacer el POST de guardado.
   public getSaveData(): any {
     return {
-      worldState: this.worldState(),
-      inventory: this.inventory(),
+      worldState: JSON.parse(JSON.stringify(this.worldState())),
+      inventory: JSON.parse(JSON.stringify(this.inventory())),
       playerRole: this.playerRole()
     };
   }

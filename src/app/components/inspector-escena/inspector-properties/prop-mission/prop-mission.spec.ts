@@ -1,17 +1,17 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { MissionModal } from './mission-modal';
+import { PropMission } from './prop-mission';
 
-describe('MissionModal', () => {
-  let component: MissionModal;
-  let fixture: ComponentFixture<MissionModal>;
+describe('PropMission', () => {
+  let component: PropMission;
+  let fixture: ComponentFixture<PropMission>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [MissionModal],
+      imports: [PropMission],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(MissionModal);
+    fixture = TestBed.createComponent(PropMission);
     component = fixture.componentInstance;
     await fixture.whenStable();
   });

@@ -27,17 +27,16 @@ import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
 import { UiMission } from '../../../components/ui-mission/ui-mission';
-import { MissionModalComponent } from '../../../components/mission-modal/mission-modal';
-
+  
 @Component({
   selector: 'app-editor-escena', 
   standalone: true,
   imports: [
     MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule,
-    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading, UiMission, MissionModalComponent
+    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading, UiMission
   ],
   templateUrl: './editor-escena.html',
-  styleUrl: './editor-escena.css',
+  styleUrl: './editor-escena.css', 
 })
 export class EditorEscena implements OnInit, OnDestroy {
   public stateSvc = inject(EditorStateService);
@@ -66,9 +65,11 @@ export class EditorEscena implements OnInit, OnDestroy {
   public episodioPendienteCarga: any = null;
   public cargandoTexto = 'Preparando entorno...';
 
+  // 🔥 VARIABLES RESTAURADAS Y VERIFICADAS
   public episodioIdActivo = 0;
   public mapaActualNombre = '';
   public episodioCompletoData: any = null;
+
   public mostrarModalMisionPreview = false;
   public cerrandoModalMision = false; 
   public misionIniciada = false;
@@ -83,6 +84,11 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   public listaEpisodios: any[] = [];
   public hoveredEpisodio: number | null = null;
+  
+  // Modal Clásico de Creación de Mapa
+  public showModalMap = false;
+  public nuevoTitulo = '';
+  public nuevaDesc = '';
 
   public listaAssets: any[] = [];
   public archivoSubida: File | null = null;
@@ -192,6 +198,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.epiApiSvc.obtenerEpisodio(episodio.id).subscribe({
       next: async (res) => {
         this.episodioCompletoData = res?.episode || res; 
+        this.editorSvc.episodioActualData.set(this.episodioCompletoData);
         
         setTimeout(() => {
             this.cargandoTexto = 'Preparando modelos, texturas y físicas 3D...';
@@ -271,7 +278,20 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  // --- LÓGICA DEL NUEVO MISSION MODAL UNIFICADO ---
+  crearNuevoEpisodio() {
+    if (!this.nuevoTitulo) return;
+    this.epiApiSvc.crearEpisodio(this.nuevoTitulo, this.nuevaDesc).subscribe({
+      next: (res) => {
+        this.listaEpisodios.unshift(res);
+        this.showModalMap = false;
+        this.nuevoTitulo = '';
+        this.nuevaDesc = '';
+        this.entrarAlEditor(res);
+      },
+      error: (err) => alert('Error creando episodio')
+    });
+  }
+
   abrirModalMision(esEdicion: boolean) {
     this.missionModalMode = esEdicion ? 'edit' : 'create';
     if (esEdicion) {
@@ -287,6 +307,24 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.showMissionModal = true;
   }
 
+  actualizarMisionModalEnVivo(data: any) {
+    if (this.missionModalMode === 'edit') {
+      if (this.episodioCompletoData) {
+        this.episodioCompletoData.title = data.title;
+        this.episodioCompletoData.description = data.description;
+      }
+      this.mapaActualNombre = data.title;
+
+      if (this.motor3dSvc.scene) {
+        this.motor3dSvc.scene.metadata = {
+          ...this.motor3dSvc.scene.metadata,
+          uiSettings: JSON.parse(JSON.stringify(data))
+        };
+      }
+      this.cdr.detectChanges(); 
+    }
+  }
+
   guardarMisionModal(data: any) {
     if (this.missionModalMode === 'create') {
       this.cargandoEscena = true;
@@ -297,11 +335,10 @@ export class EditorEscena implements OnInit, OnDestroy {
           this.showMissionModal = false;
           this.entrarAlEditor(res);
 
-          // Aseguramos que la configuración avanzada se inyecte en el nuevo mapa recién cargado
           const interval = setInterval(() => {
             if (!this.cargandoEscena && this.motor3dSvc.scene) {
                this.motor3dSvc.scene.metadata = { ...(this.motor3dSvc.scene.metadata || {}), uiSettings: data };
-               this.episodioCompletoData.uiSettings = data;
+               if (this.episodioCompletoData) this.episodioCompletoData.uiSettings = data;
                this.guardarMapaEnBD(true);
                clearInterval(interval);
             }
@@ -313,20 +350,8 @@ export class EditorEscena implements OnInit, OnDestroy {
         }
       });
     } else {
-      // Modo Edición
-      this.episodioCompletoData.title = data.title;
-      this.episodioCompletoData.description = data.description;
-      this.mapaActualNombre = data.title;
-
-      const scene = this.motor3dSvc.scene;
-      if (scene) {
-        scene.metadata = {
-          ...scene.metadata,
-          uiSettings: { ...data }
-        };
-      }
-      this.editorSvc.triggerUpdate();
       this.showMissionModal = false;
+      this.guardarMapaEnBD(false);
     }
   }
 
@@ -335,11 +360,12 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.estadoGuardado.set('Guardando...');
 
     const mapData = this.editorSvc.obtenerDatosParaGuardar();
+    const dataEpi = this.editorSvc.episodioActualData();
     
     const payload = {
        ...mapData,
-       title: this.episodioCompletoData?.title,
-       description: this.episodioCompletoData?.description
+       title: dataEpi?.title,
+       description: dataEpi?.description
     };
 
     this.epiApiSvc.guardarMapa(this.episodioIdActivo, payload).subscribe({

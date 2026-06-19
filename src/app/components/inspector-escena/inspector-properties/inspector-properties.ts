@@ -2,7 +2,7 @@ import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, effect, Input,
 import { CommonModule } from '@angular/common';
 import { AbstractMesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
-import { auditTime } from 'rxjs/operators'; // Añadido AuditTime para aislar Angular
+import { auditTime } from 'rxjs/operators';
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EditorPreviewService } from '../../../services/editor/editor-preview.service';
@@ -18,13 +18,14 @@ import { PropWorld } from './prop-world/prop-world';
 import { PropLight } from './prop-light/prop-light'; 
 import { PropBubble } from './prop-bubble/prop-bubble';
 import { PropVideo } from './prop-video/prop-video';
-
+import { PropMission } from './prop-mission/prop-mission';
+ 
 @Component({
   selector: 'app-inspector-properties',
   standalone: true,
   imports: [
     CommonModule, PropTransform, PropTrigger, PropPlayer, PropSequences, 
-    PropAnimation, PropPhysics, PropWorld, PropLight, PropBubble, PropVideo
+    PropAnimation, PropPhysics, PropWorld, PropLight, PropBubble, PropVideo, PropMission
   ],
   templateUrl: './inspector-properties.html',
   styleUrl: './inspector-properties.css'
@@ -77,6 +78,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
         else if (this.esVideo) this.familiaResumen = 'Pantalla TV/Video';
         else this.familiaResumen = 'Objeto normal';
         
+        // Cierres de seguridad de pestañas
         if (this.pestanaActiva === 'player' && (!this.esPersonaje || this.esTrigger)) this.cambiarPestana('transform');
         if (this.pestanaActiva === 'animation' && (!this.esPersonaje && !this.esLuzConModelo)) this.cambiarPestana('transform');
         if (this.pestanaActiva === 'sequences' && !this.esPersonaje && !this.esTrigger && !this.esLuz && !this.esBurbuja) this.cambiarPestana('transform');
@@ -93,7 +95,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
         this.esVideo = false;
         this.familiaResumen = 'Sin selección';
         
-        if (this.pestanaActiva !== 'world') {
+        if (this.pestanaActiva !== 'world' && this.pestanaActiva !== 'mission') {
           this.cambiarPestana('world');
         }
       }
@@ -105,7 +107,6 @@ export class InspectorProperties implements OnInit, OnDestroy {
     const refrescar = () => { this.cdr.detectChanges(); };
 
     this.subs.push(
-      // CULLING ANGULAR: Protege los inputs (campos de texto) del Inspector de ser reevaluados a 60 FPS
       this.editorSvc.onGizmoDrag.pipe(auditTime(150)).subscribe(refrescar),
       this.editorSvc.onMapChanged.subscribe(refrescar)
     );

@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, signal } from '@angular/core';
 import { Node, AbstractMesh, Vector3 } from '@babylonjs/core';
 
 import { EditorToolsService } from './editor/editor-tools.service';
@@ -17,6 +17,9 @@ export class EditorMapaService {
   private tools = inject(EditorToolsService);
   private scene = inject(EditorSceneService);
   private loader = inject(CoreSceneLoaderService); 
+
+  // 🔥 NUEVO: Signal global para la Misión. Mantiene sincronizado el UI y el Inspector.
+  public episodioActualData = signal<any>(null);
 
   get playState() { return this.state.playState; }
   get currentTool() { return this.state.currentTool; }
@@ -39,6 +42,7 @@ export class EditorMapaService {
     this.scene.limpiarEstado();
     this.state.limpiarEstado();
     this.tools.limpiarEstado();
+    this.episodioActualData.set(null);
   }
 
   activarEventosEditor(): void { this.tools.activarEventosEditor(); }
@@ -59,8 +63,11 @@ export class EditorMapaService {
     return this.scene.cargarEscenaDesdeDatos(dataBD); 
   }
   
-  obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], worldSettings: any } { 
-    return this.scene.obtenerDatosParaGuardar(forceFull); 
+  obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], worldSettings: any, uiSettings: any } { 
+    // Asegurar que siempre se incluya la propiedad uiSettings (evita errores de tipo)
+    const datos: any = this.scene.obtenerDatosParaGuardar(forceFull);
+    if (datos.uiSettings === undefined) datos.uiSettings = null;
+    return datos;
   }
   
   agregarObjetoCustom(

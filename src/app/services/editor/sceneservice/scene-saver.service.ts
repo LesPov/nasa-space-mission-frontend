@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core'; 
 import { HemisphericLight } from '@babylonjs/core'; 
 import { Motor3dService } from '../../motor-3d.service';
@@ -40,8 +41,14 @@ export class SceneSaverService {
       ambientDirZ: ambient ? this.safeNumber(ambient.direction?.z, 0) : 0
     };
 
-    // 🔥 EXTRAEMOS LA CONFIGURACIÓN DE LA UI DEL MODAL
-    const uiSettings = scene.metadata?.uiSettings || {};
+    // 🔥 FIX: EXTRAEMOS LA CONFIGURACIÓN DE LA UI DEL MODAL ASEGURANDO QUE SEA UN CLON PURO (Evita errores de Angular Proxies al enviar por red)
+    let uiSettingsRaw = scene.metadata?.uiSettings || {};
+    let uiSettings = {};
+    try {
+       uiSettings = JSON.parse(JSON.stringify(uiSettingsRaw));
+    } catch(e) {
+       uiSettings = uiSettingsRaw;
+    }
 
     const allEntities = this.entityManager.getAllEntities();
 
@@ -159,7 +166,7 @@ export class SceneSaverService {
       deletedObjects: [...this.entityManager.deletedObjects], 
       deletedTriggers: [...this.entityManager.deletedTriggers], 
       worldSettings,
-      uiSettings // 🔥 Retornamos el uiSettings para el Backend
+      uiSettings // 🔥 Exportado correctamente para guardarse en la Base de Datos
     };
   } 
 }

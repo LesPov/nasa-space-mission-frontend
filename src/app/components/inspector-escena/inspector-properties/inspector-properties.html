@@ -1,4 +1,3 @@
-
 <div class="properties-shell">
   <div class="prop-tabs">
     <ng-container *ngIf="objetoActual">
@@ -15,10 +14,12 @@
     </ng-container>
     
     <button class="tab-btn" [class.active]="pestanaActiva === 'world'" (click)="cambiarPestana('world')" title="Entorno Global">🌍</button>
+    <!-- 🔥 EL NUEVO BOTÓN PARA EL DISEÑO DEL MODAL DE MISIÓN -->
+    <button class="tab-btn" [class.active]="pestanaActiva === 'mission'" (click)="cambiarPestana('mission')" title="UI & Misión">📝</button>
   </div>
 
   <div class="prop-content-scroll">
-    <div class="panel-header" *ngIf="pestanaActiva !== 'world'">
+    <div class="panel-header" *ngIf="pestanaActiva !== 'world' && pestanaActiva !== 'mission'">
       <span>
         {{ pestanaActiva === 'transform' ? 'Transformación Básica' : '' }}
         {{ pestanaActiva === 'physics' ? 'Colisiones y Cámaras' : '' }}
@@ -32,6 +33,7 @@
       <span class="status-pill">{{ familiaResumen }}</span>
     </div>
 
+    <!-- Pestañas Globales -->
     <ng-container *ngIf="pestanaActiva === 'world'">
       <div class="panel-header"><span>Configuración del Escenario</span><span class="status-pill">Global</span></div>
       <div class="prop-body">
@@ -39,7 +41,15 @@
       </div>
     </ng-container>
 
-    <div class="prop-body" *ngIf="objetoActual && pestanaActiva !== 'world'">
+    <ng-container *ngIf="pestanaActiva === 'mission'">
+      <div class="panel-header"><span>Diseño de la Misión y UI</span><span class="status-pill">Global</span></div>
+      <div class="prop-body">
+         <app-prop-mission></app-prop-mission>
+      </div>
+    </ng-container>
+
+    <!-- Pestañas Específicas de Objeto -->
+    <div class="prop-body" *ngIf="objetoActual && pestanaActiva !== 'world' && pestanaActiva !== 'mission'">
       
       <div class="obj-title-bar">
         <span class="icon">{{ esTrigger ? '📍' : (esLuz ? '💡' : (esBurbuja ? '🫧' : (esVideo ? '📺' : (esPersonaje ? '🧍' : '🧊')))) }}</span>

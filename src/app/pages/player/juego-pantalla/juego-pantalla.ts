@@ -19,7 +19,7 @@ import { UiLoading } from '../../../components/ui-loading/ui-loading';
 
 @Component({
   selector: 'app-juego-pantalla',
-  standalone: true,
+  standalone: true, 
   imports: [CommonModule, MotorBabylon, UiHud, UiInspect, UiMission, UiLoading],
   templateUrl: './juego-pantalla.html',
   styleUrls: ['./juego-pantalla.css']
@@ -73,6 +73,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
             
             await this.runtime.bootProductionGame(res.episodio, this.isAdmin);
             
+            // 🔥 Fix Angular Error: Actualizamos las señales de forma atómica antes del ChangeDetection
             this.isLoading.set(false);
             this.modalMisionUsuario = true;
             this.cdr.detectChanges();
@@ -138,7 +139,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       this.modalMisionUsuario = false;
       this.cerrandoModalUsuario = false;
       
-      // 🔥 LÓGICA DE CINEMÁTICA INICIAL 🔥
       if (esPrimeraVez && this.episodioActual?.uiSettings?.initialSequence) {
          this.eventBus.emit({ 
            type: 'SequenceTriggered', 
@@ -158,6 +158,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
   salirDelJuego() {
     if (this.episodioActual && this.playerStateActual) {
+      // 🔥 Ahora getSaveData() está curado y no tirará error 500
       const stateToSave = this.gameStateSvc.getSaveData();
       this.epiApiSvc.guardarEstadoJugador(this.episodioActual.id, 1, stateToSave).subscribe();
     }
@@ -180,4 +181,4 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     if (this.sub) this.sub.unsubscribe();
     if (this.fpsInterval) clearInterval(this.fpsInterval);
   }
-}
+} 

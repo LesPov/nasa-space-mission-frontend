@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Ray, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Ray, Vector3, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
@@ -19,7 +19,7 @@ export class ToolsSelectionService {
   public esTriggerMesh(mesh: AbstractMesh | null | undefined): boolean {
     if (!mesh) return false;
     const entity = this.entityManager.getEntityByMesh(mesh);
-    return entity?.type === 'trigger' || mesh.name?.toLowerCase().includes('trigger');
+    return entity?.type === 'trigger' || entity?.type === 'trigger_compuesto';
   }
 
   public getSelectionRangeConfig(): { fpsAdminMax: number; fpsUserMax: number } {
@@ -109,23 +109,11 @@ export class ToolsSelectionService {
           }
       }
 
-      const nameStr = m.name.toLowerCase();
-      if (nameStr.includes('highlight') || nameStr.includes('gizmo')) return false;
-      
-      // 🔥 FIX: Ignorar la geometría real de las paredes de niebla
-      if (
-          nameStr.includes('proxycol') || 
-          nameStr.includes('suelo') || 
-          nameStr.includes('skybox') || 
-          nameStr.includes('debug') || 
-          nameStr.includes('fogshell') || 
-          nameStr.includes('fogwall')
-      ) return false;
-
+      if (Tags.MatchesQuery(m, "system_element || fog_element || ignore_raycast || editor_only || invisible_floor")) return false;
       if (m === centerDragMesh) return false;
       
       const entity = this.entityManager.getEntityByMesh(m);
-      if (entity?.type === 'trigger' || nameStr.includes('trigger')) {
+      if (entity?.type === 'trigger' || entity?.type === 'trigger_compuesto') {
           if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') return false;
       }
       return true;

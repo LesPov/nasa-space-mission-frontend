@@ -1,4 +1,3 @@
-// src/app/services/editor/editor-tools.service.ts
 
 import { Injectable, inject, effect } from '@angular/core';
 import {
@@ -12,6 +11,7 @@ import {
   Vector3,
   Ray,
   AbstractMesh,
+  Tags
 } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
@@ -78,19 +78,8 @@ export class EditorToolsService {
     const hit = scene.pickWithRay(ray, (mesh) => {
       if (!mesh.isPickable) return false;
 
-      const n = mesh.name.toLowerCase();
-
-      if (
-        n === 'sueloinvisible' ||
-        n.includes('gizmo') ||
-        n.includes('proxycol') ||
-        n.includes('skybox') ||
-        n.includes('fogshell') ||
-        n.includes('fogwall') ||
-        n.includes('debug') ||
-        n.includes('camerapivot')
-      ) {
-        return false;
+      if (Tags.MatchesQuery(mesh, "system_element || fog_element || editor_only || invisible_floor || proxy_collider || debug_element")) {
+          return false;
       }
 
       if (jugador && (mesh === jugador || mesh.isDescendantOf(jugador))) {
@@ -102,7 +91,7 @@ export class EditorToolsService {
 
       if (
         !isAdmin &&
-        (entityMesh?.type === 'trigger' || entityMesh?.type === 'trigger_compuesto' || n.includes('trigger'))
+        (entityMesh?.type === 'trigger' || entityMesh?.type === 'trigger_compuesto')
       ) {
         return false;
       }
@@ -238,7 +227,7 @@ export class EditorToolsService {
 
           const hitGizmo = scene.pickWithRay(
             ray,
-            (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo') || mesh === this.gizmoSvc.centerDragMesh
+            (mesh) => Tags.MatchesQuery(mesh, "gizmo") || mesh === this.gizmoSvc.centerDragMesh
           );
           if (hitGizmo && hitGizmo.hit) return;
 
@@ -299,7 +288,7 @@ export class EditorToolsService {
 
           const hitGizmo = scene.pickWithRay(
             ray,
-            (mesh) => !!mesh?.name?.toLowerCase().includes('gizmo') || mesh === this.gizmoSvc.centerDragMesh
+            (mesh) => Tags.MatchesQuery(mesh, "gizmo") || mesh === this.gizmoSvc.centerDragMesh
           );
           if (hitGizmo && hitGizmo.hit) {
             this.state.objetoHovereado.set(null);

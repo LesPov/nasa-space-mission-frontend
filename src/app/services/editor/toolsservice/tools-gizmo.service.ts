@@ -1,7 +1,6 @@
-// src/app/services/editor/toolsservice/tools-gizmo.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { Color3, GizmoManager, Matrix, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Light } from '@babylonjs/core';
+import { Color3, GizmoManager, Matrix, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Light, Tags } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService, ToolMode } from '../editor-state.service';
@@ -60,6 +59,7 @@ export class ToolsGizmoService {
     centerDragMat.disableLighting = true;
     this.centerDragMesh.material = centerDragMat;
     this.centerDragMesh.isVisible = false;
+    Tags.AddTagsTo(this.centerDragMesh, "system_element editor_only gizmo ignore_raycast");
 
     this.gizmoPivotNode = new BabylonTransformNode('gizmoPivotNode', utilityLayer.utilityLayerScene);
 

@@ -1,7 +1,6 @@
 
-
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, DirectionalLight, Matrix, Mesh, MeshBuilder, PointLight, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Color3, DirectionalLight, Matrix, Mesh, MeshBuilder, PointLight, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
 import '@babylonjs/loaders';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { CoreSceneMaterialService } from '../utils/core-scene-material.service';
@@ -123,6 +122,11 @@ export class CoreModelLoaderService {
     rootNode.ellipsoidOffset = new Vector3((entity.collider.offsetX ?? 0) * scaleX, (entity.collider.offsetY ?? 0) * scaleY, (entity.collider.offsetZ ?? 0) * scaleZ);
 
     subMeshes.forEach(m => {
+      const nameL = m.name.toLowerCase();
+      // 🔥 FIX: Aplicar Tags a proxies y decals basados en nombres del GLB original en carga, NO en tiempo real.
+      if (nameL.includes('proxycol')) Tags.AddTagsTo(m, "proxy_collider ignore_raycast system_element");
+      if (nameL.startsWith('decal_')) Tags.AddTagsTo(m, "decal system_element ignore_raycast");
+
       if (m !== rootNode) {
         m.isPickable = entity.visual.isSelectable; 
         const vertices = m.getTotalVertices();

@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, CascadedShadowGenerator, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, CascadedShadowGenerator, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { FogLevel } from '../../../core/engine/models/player-config.model';
@@ -170,7 +170,6 @@ export class ToolsFogService {
     
     if (useFog) { scene.fogStart = this.curStart; scene.fogEnd = this.curEnd; }
 
-    // 🔥 FIX: Auto-Reparación de la Niebla
     if (this.fogWalls[0] && (this.fogWalls[0].getScene() !== scene || this.fogWalls[0].isDisposed() || this.fogWalls[0].getChildMeshes().length === 0)) {
         this.fogWalls.forEach(w => { if(!w.isDisposed()) w.dispose(); });
         this.fogWalls = [];
@@ -212,6 +211,7 @@ export class ToolsFogService {
             shell.receiveShadows = false;
             shell.applyFog = false;
             shell.doNotSyncBoundingInfo = true; 
+            Tags.AddTagsTo(shell, "system_element fog_element ignore_raycast");
         }
       }
 

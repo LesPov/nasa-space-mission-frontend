@@ -1,6 +1,6 @@
 
 import { Injectable } from '@angular/core';
-import { Ray, Vector3, Mesh, Scene, Quaternion, Camera } from '@babylonjs/core';
+import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity, PlayerStateComponent } from '../../entities/game.entity';
 import { SeqRuntime } from './player-sequence.service';
 
@@ -39,7 +39,7 @@ export class CharacterKinematicsService {
     const capsuleCenter = Vector3.TransformCoordinates(localCapsuleCenter, mesh.getWorldMatrix());
 
     const collFn = (m: any) =>
-      m.checkCollisions && m !== mesh && !m.isDescendantOf(mesh) && !m.name.includes('gridHelper');
+      m.checkCollisions && m !== mesh && !m.isDescendantOf(mesh) && !Tags.MatchesQuery(m, "system_element || editor_only || fog_element");
 
     if (seqRuntime.running && seqRuntime.step) {
       const soY = seqRuntime.step.offsetY || 0;

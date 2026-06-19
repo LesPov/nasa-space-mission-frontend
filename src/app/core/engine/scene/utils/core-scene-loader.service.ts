@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { Color4, Mesh, Vector3, HemisphericLight, Color3, Scene, MeshBuilder } from '@babylonjs/core';
+import { Color4, Mesh, Vector3, HemisphericLight, Color3, Scene, MeshBuilder, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { CoreSceneShadowsService } from './core-scene-shadows.service';
 import { CoreSceneUtilsService } from './core-scene-utils.service';
@@ -28,6 +28,7 @@ export class CoreSceneLoaderService {
     suelo.isVisible = false;
     suelo.isPickable = true;
     suelo.receiveShadows = true;
+    Tags.AddTagsTo(suelo, "system_element invisible_floor ignore_raycast");
   }
 
   public setupGlobalEnvironment(w: any, scene: Scene): void {
@@ -74,7 +75,6 @@ export class CoreSceneLoaderService {
 
     scene.cameras.forEach(cam => cam.maxZ = 10000);
 
-    // 🔥 FIX: Permite cargar los datos tanto del API (sceneObjects) como del Snapshot de Memoria (sceneObjectsDelta)
     const objetosBD = Array.isArray(dataBD) ? dataBD : (dataBD.sceneObjects || dataBD.sceneObjectsDelta || []);
     const triggersBD = Array.isArray(dataBD) ? [] : (dataBD.triggers || dataBD.triggersDelta || []);
 

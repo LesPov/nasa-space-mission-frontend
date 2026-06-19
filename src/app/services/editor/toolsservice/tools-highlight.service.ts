@@ -1,7 +1,6 @@
-// src/app/services/editor/toolsservice/tools-highlight.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { Color3, HighlightLayer, Mesh } from '@babylonjs/core';
+import { Color3, HighlightLayer, Mesh, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
@@ -46,8 +45,7 @@ export class ToolsHighlightService {
     this.hlSelected.removeAllMeshes();
 
     this.motor3d.scene.meshes.forEach(m => {
-      const n = m.name.toLowerCase();
-      if (n.includes('fogshell') || n.includes('fogwall') || n.includes('debugfog')) {
+      if (Tags.MatchesQuery(m, "fog_element || debug_element || editor_only")) {
         try {
           this.hlHover.addExcludedMesh(m as Mesh);
           this.hlSelected.addExcludedMesh(m as Mesh);
@@ -64,21 +62,19 @@ export class ToolsHighlightService {
     const colorSelected = Color3.FromHexString('#fbbf24');
 
     const addHighlightToAllVisible = (mesh: Mesh, hl: HighlightLayer, color: Color3) => {
-      const n = mesh.name.toLowerCase();
-      if (n.includes('fogshell') || n.includes('fogwall') || n.includes('debugfog')) return;
+      if (Tags.MatchesQuery(mesh, "fog_element || debug_element || editor_only || system_element")) return;
 
       const entity = this.entityManager.getEntityByMesh(mesh);
-      const isTrigger = entity?.type === 'trigger' || entity?.type === 'trigger_compuesto' || n.includes('trigger');
+      const isTrigger = entity?.type === 'trigger' || entity?.type === 'trigger_compuesto';
       
       const canHighlight = mode === 'EDITOR' || isAdmin || !isTrigger;
 
-      if (mesh.isVisible && !n.includes('proxycol') && !n.includes('debug') && !n.includes('camerapivot') && canHighlight) {
+      if (mesh.isVisible && canHighlight) {
         hl.addMesh(mesh, color);
       }
       
       mesh.getChildMeshes().forEach(c => {
-        const cn = c.name.toLowerCase();
-        if (!c.isVisible || cn.includes('proxycol') || cn.includes('debug') || cn.includes('camerapivot') || cn.includes('fogshell') || cn.includes('fogwall') || cn.includes('debugfog')) return;
+        if (!c.isVisible || Tags.MatchesQuery(c, "proxy_collider || debug_element || fog_element || editor_only || system_element")) return;
 
         const cEntity = this.entityManager.getEntityByMesh(c);
         
@@ -86,7 +82,7 @@ export class ToolsHighlightService {
             return; 
         }
 
-        const childIsTrigger = cEntity?.type === 'trigger' || cEntity?.type === 'trigger_compuesto' || cn.includes('trigger');
+        const childIsTrigger = cEntity?.type === 'trigger' || cEntity?.type === 'trigger_compuesto';
         const childCanHighlight = mode === 'EDITOR' || isAdmin || !childIsTrigger;
 
         if (c instanceof Mesh && childCanHighlight) {

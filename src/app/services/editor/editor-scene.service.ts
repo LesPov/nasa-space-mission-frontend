@@ -1,7 +1,6 @@
-// src/app/services/editor/editor-scene.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Vector3, MeshBuilder, Color4 } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Vector3, MeshBuilder, Color4, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { CoreSceneLoaderService } from '../../core/engine/scene/utils/core-scene-loader.service';
 import { CoreSceneShadowsService } from '../../core/engine/scene/utils/core-scene-shadows.service';
@@ -25,9 +24,15 @@ export class EditorSceneService {
   public crearEntornoVisual(): void {
     const scene = this.motor3d.scene;
     const size = 50;
-    MeshBuilder.CreateLines('ejeX', { points: [new Vector3(-size, 0, 0), new Vector3(size, 0, 0)], colors: [new Color4(1, 0.2, 0.2, 1), new Color4(1, 0.2, 0.2, 1)] }, scene).isPickable = false;
-    MeshBuilder.CreateLines('ejeY', { points: [new Vector3(0, -size, 0), new Vector3(0, size, 0)], colors: [new Color4(0.2, 1, 0.2, 1), new Color4(0.2, 1, 0.2, 1)] }, scene).isPickable = false;
-    MeshBuilder.CreateLines('ejeZ', { points: [new Vector3(0, 0, -size), new Vector3(0, 0, size)], colors: [new Color4(0.2, 0.5, 1, 1), new Color4(0.2, 0.5, 1, 1)] }, scene).isPickable = false;
+    
+    const ex = MeshBuilder.CreateLines('ejeX', { points: [new Vector3(-size, 0, 0), new Vector3(size, 0, 0)], colors: [new Color4(1, 0.2, 0.2, 1), new Color4(1, 0.2, 0.2, 1)] }, scene);
+    const ey = MeshBuilder.CreateLines('ejeY', { points: [new Vector3(0, -size, 0), new Vector3(0, size, 0)], colors: [new Color4(0.2, 1, 0.2, 1), new Color4(0.2, 1, 0.2, 1)] }, scene);
+    const ez = MeshBuilder.CreateLines('ejeZ', { points: [new Vector3(0, 0, -size), new Vector3(0, 0, size)], colors: [new Color4(0.2, 0.5, 1, 1), new Color4(0.2, 0.5, 1, 1)] }, scene);
+    
+    ex.isPickable = false; ey.isPickable = false; ez.isPickable = false;
+    Tags.AddTagsTo(ex, "system_element editor_only axis");
+    Tags.AddTagsTo(ey, "system_element editor_only axis");
+    Tags.AddTagsTo(ez, "system_element editor_only axis");
 
     const ptsGrid: Vector3[][] = [];
     const colorsGrid: Color4[][] = [];
@@ -38,7 +43,10 @@ export class EditorSceneService {
       ptsGrid.push([new Vector3(i, 0, -60), new Vector3(i, 0, 60)]); colorsGrid.push([colorGris, colorGris]);
       ptsGrid.push([new Vector3(-60, 0, i), new Vector3(60, 0, i)]); colorsGrid.push([colorGris, colorGris]);
     }
-    MeshBuilder.CreateLineSystem('gridHelper', { lines: ptsGrid, colors: colorsGrid }, scene).isPickable = false;
+    
+    const grid = MeshBuilder.CreateLineSystem('gridHelper', { lines: ptsGrid, colors: colorsGrid }, scene);
+    grid.isPickable = false;
+    Tags.AddTagsTo(grid, "system_element editor_only grid");
   }
 
   public crearSuelo(): void {

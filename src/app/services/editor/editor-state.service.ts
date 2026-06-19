@@ -1,8 +1,7 @@
-// src/app/services/editor/editor-state.service.ts
 
 import { Injectable, inject, signal } from '@angular/core';
 import { Subject } from 'rxjs';
-import { Node, AbstractMesh, Mesh, Vector3, Quaternion } from '@babylonjs/core';
+import { Node, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 
 export type ToolMode = 'select' | 'translate' | 'rotate' | 'scale';
@@ -66,7 +65,7 @@ export class EditorStateService {
         current = current.parent;
         continue;
       }
-      if (this.esNombreIgnorable(current.name)) {
+      if (Tags.MatchesQuery(current, "system_element || editor_only || fog_element || debug_element || proxy_collider || invisible_floor")) {
         current = current.parent;
         continue;
       }
@@ -83,23 +82,13 @@ export class EditorStateService {
     return this.encontrarRaiz(mesh as AbstractMesh) as AbstractMesh | null;
   }
 
-  public esNombreIgnorable(name: string): boolean {
-    if(!name) return true;
-    const n = name.toLowerCase();
-    return (
-      n === 'sueloinvisible' || n === 'suelo' || n === 'ground' || n === 'floor' ||
-      n === 'terrain' || n === 'camerapivot' || n.includes('eje') ||
-      n.includes('gridhelper') || n.includes('gizmo') || n.includes('highlight') ||
-      n.includes('debug') || n.includes('proxycol') || n.includes('skybox') ||
-      n.startsWith('decal_') || n.includes('fogshell') || n.includes('fogwall') || n.includes('debugfog')
-    );
-  }
-
   esMeshIgnorable(mesh: AbstractMesh | null | undefined): boolean {
-    if (!mesh || !mesh.name) return true;
+    if (!mesh) return true;
 
-    const name = mesh.name.toLowerCase();
-    if (this.esNombreIgnorable(name)) return true;
+    // Validación limpia basada en Tags de Babylon en lugar de Hardcoding de nombres
+    if (Tags.MatchesQuery(mesh, "system_element || editor_only || fog_element || debug_element || proxy_collider || invisible_floor")) {
+        return true;
+    }
 
     const entity = this.entityManager.getEntityByMesh(mesh);
     const isAdmin = this.checkIsAdmin();

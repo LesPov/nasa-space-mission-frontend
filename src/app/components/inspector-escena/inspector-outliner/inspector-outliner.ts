@@ -2,7 +2,7 @@
 import { Component, Output, EventEmitter, inject, effect, ElementRef, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Node, AbstractMesh, Camera, Light, Mesh, TransformNode } from '@babylonjs/core';
+import { Node, AbstractMesh, Camera, Light, Mesh, TransformNode, Tags } from '@babylonjs/core';
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
@@ -92,9 +92,8 @@ export class InspectorOutliner {
     
     const hijosValidos = nodo.getChildren().filter(child => {
         if (!(child instanceof Mesh) && !(child instanceof Light) && !(child instanceof TransformNode)) return false;
-        const nName = child.name.toLowerCase();
         
-        if (nName.includes('proxycol') || nName.includes('debug') || nName.includes('gizmo') || nName.includes('camerapivot') || nName.startsWith('l_') || nName.startsWith('decal_')) return false;
+        if (Tags.MatchesQuery(child, "system_element || fog_element || debug_element || proxy_collider || decal || editor_only")) return false;
         
         const parentEntity = this.entityManager.getEntityByMesh(nodo as AbstractMesh);
         const childEntity = this.entityManager.getEntityByMesh(child as AbstractMesh);

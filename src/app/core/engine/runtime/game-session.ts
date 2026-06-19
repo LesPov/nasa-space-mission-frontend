@@ -13,6 +13,7 @@ import { PlayerFogService } from './systems/player-fog.service';
 import { PlayerCameraManagerService } from './systems/player-camera.service';
 import { PlayerBubbleService } from './systems/player-bubble.service';
 import { PlayerSequenceService } from './systems/player-sequence.service';
+import { Tags } from '@babylonjs/core';
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
@@ -45,7 +46,7 @@ export class GameSession {
   }
 
   public get proxyColliders() {
-    return this.motor3d.scene.meshes.filter(m => m.name.includes('proxyCol'));
+    return this.motor3d.scene.meshes.filter(m => Tags.MatchesQuery(m, "proxy_collider"));
   }
 
   public start(playerEntity: GameEntity, view: 'FPS' | 'TPS', isDebugMode: boolean): void {
@@ -60,7 +61,6 @@ export class GameSession {
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
     this.eventBus.emit({ type: 'GameStarted', payload: { view, isDebugMode } });
 
-    // Limpiamos las secuencias previas del preview o sesiones pasadas
     const sequenceSvc = this.injector.get(PlayerSequenceService);
     sequenceSvc.resetearSecuencias();
 

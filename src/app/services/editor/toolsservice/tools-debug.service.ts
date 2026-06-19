@@ -1,5 +1,6 @@
+
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, Light, Mesh, MeshBuilder, StandardMaterial, Vector3, Matrix } from '@babylonjs/core';
+import { AbstractMesh, Color3, Light, Mesh, MeshBuilder, StandardMaterial, Vector3, Matrix, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { ToolsSelectionService } from './tools-selection.service';
@@ -95,6 +96,7 @@ export class ToolsDebugService {
       matCol.disableLighting = true;
       this.debugCollider.material = matCol;
       this.debugCollider.isPickable = false;
+      Tags.AddTagsTo(this.debugCollider, "system_element editor_only debug_element ignore_raycast");
     } else {
       if (this.debugCollider) { this.debugCollider.dispose(); this.debugCollider = null; }
     }
@@ -112,6 +114,7 @@ export class ToolsDebugService {
       matCam.disableLighting = true;
       this.debugCameraBox.material = matCam;
       this.debugCameraBox.isPickable = false;
+      Tags.AddTagsTo(this.debugCameraBox, "system_element editor_only debug_element ignore_raycast");
     } else {
       if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
     }
@@ -140,6 +143,7 @@ export class ToolsDebugService {
         matLight.disableLighting = true;
         this.debugLightBox.material = matLight;
         this.debugLightBox.isPickable = false;
+        Tags.AddTagsTo(this.debugLightBox, "system_element editor_only debug_element ignore_raycast");
     } else {
         if (this.debugLightBox) { this.debugLightBox.dispose(); this.debugLightBox = null; }
     }
@@ -188,6 +192,7 @@ export class ToolsDebugService {
       matFogStart.disableLighting = true;
       this.debugFogStartSphere.material = matFogStart;
       this.debugFogStartSphere.isPickable = false;
+      Tags.AddTagsTo(this.debugFogStartSphere, "system_element editor_only debug_element ignore_raycast");
 
       if (this.debugFogEndSphere) { this.debugFogEndSphere.dispose(); this.debugFogEndSphere = null; }
       if (activeEnd > 0.1) {
@@ -207,6 +212,7 @@ export class ToolsDebugService {
         matFogEnd.disableLighting = true;
         this.debugFogEndSphere.material = matFogEnd;
         this.debugFogEndSphere.isPickable = false;
+        Tags.AddTagsTo(this.debugFogEndSphere, "system_element editor_only debug_element ignore_raycast");
       }
     } else {
       if (this.debugFogStartSphere) { this.debugFogStartSphere.dispose(); this.debugFogStartSphere = null; }

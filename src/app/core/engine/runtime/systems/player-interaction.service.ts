@@ -1,6 +1,6 @@
 
 import { Injectable, inject, Injector } from '@angular/core';
-import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Vector3, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { GameSession } from '../game-session';
 import { EntityManagerService } from '../../entities/entity-manager.service';
@@ -33,7 +33,7 @@ export class PlayerInteractionService {
   }
 
   private getRootProxyCollider(rootMesh: AbstractMesh): AbstractMesh | null {
-    return this.session.proxyColliders.find(p => p.parent === rootMesh || p.name === `proxyCol_${rootMesh.name}`) ?? null;
+    return this.session.proxyColliders.find(p => p.parent === rootMesh || Tags.MatchesQuery(p, "proxy_collider")) ?? null;
   }
 
   private getClosestPointOnMeshBounds(mesh: AbstractMesh, point: Vector3): Vector3 | null {
@@ -123,12 +123,7 @@ export class PlayerInteractionService {
         
         if (m === jugador || m.isDescendantOf(jugador)) return false;
 
-        const nameStr = m.name.toLowerCase();
-        if (
-          nameStr.includes('proxycol') || nameStr.includes('suelo') || nameStr.includes('skybox') ||
-          nameStr.includes('highlight') || nameStr.includes('gizmo') || nameStr.includes('debug') ||
-          nameStr.includes('fogshell') || nameStr.includes('fogwall')
-        ) return false;
+        if (Tags.MatchesQuery(m, "system_element || fog_element || ignore_raycast || editor_only || invisible_floor")) return false;
 
         return true;
       });

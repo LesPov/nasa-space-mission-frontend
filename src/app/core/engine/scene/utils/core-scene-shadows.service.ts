@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { CascadedShadowGenerator, DirectionalLight, ShadowGenerator, SpotLight } from '@babylonjs/core';
+import { CascadedShadowGenerator, DirectionalLight, ShadowGenerator, SpotLight, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 
@@ -41,20 +41,11 @@ export class CoreSceneShadowsService {
         renderList.length = 0;
         scene.meshes.forEach(m => {
 
-          const ignoredNames = ['ejeX', 'ejeY', 'ejeZ', 'gridHelper', 'sueloInvisible'];
           const entity = this.entityManager.getEntityByMesh(m);
           const type = entity?.type;
 
           const isValidShadowCaster = m.isVisible &&
-            !ignoredNames.includes(m.name) &&
-            !m.name.includes('proxyCol') &&
-            !m.name.includes('gizmo') &&
-            !m.name.includes('highlight') &&
-            !m.name.startsWith('decal_') &&
-            m.name !== 'centerDragPos' &&
-            m.name !== 'debugCollider' &&
-            m.name !== 'debugCamBox' &&
-            m.name !== 'debugFogSphere' &&
+            !Tags.MatchesQuery(m, "system_element || fog_element || debug_element || editor_only || proxy_collider || decal") &&
             type !== 'trigger' &&
             type !== 'bubble' &&
             type !== 'video_plane' &&

@@ -1,7 +1,6 @@
-// src/app/core/engine/scene/utils/core-scene-projection.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, Engine, Mesh, MeshBuilder, Ray, Scene, StandardMaterial, Texture, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Color3, Engine, Mesh, MeshBuilder, Ray, Scene, StandardMaterial, Texture, Vector3, Tags } from '@babylonjs/core';
 import { LoopManagerService, GamePhase } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 
@@ -93,13 +92,10 @@ export class CoreSceneProjectionService {
       });
     }
 
-    // 🔥 FIX: NO destruimos el `runtimeDecalMaterial` aquí, ya que el proyector sigue vivo.
-    // Solo vaciamos la lista de las proyecciones (decals) generadas.
     entity.media.runtimeDecals = [];
   }
 
   public actualizarProyeccion(mesh: Mesh): void {
-    // 1. Limpiamos las calcomanías viejas
     this.limpiarDecalsImagen(mesh);
 
     const entity = this.entityManager.getEntityByMesh(mesh);
@@ -134,13 +130,11 @@ export class CoreSceneProjectionService {
         if (!m.isPickable || !m.isVisible) return false;
         if (m === mesh) return false;
 
-        const n = m.name.toLowerCase();
+        if (Tags.MatchesQuery(m, "system_element || fog_element || debug_element || editor_only || invisible_floor")) return false;
+
         const targetEntity = this.entityManager.getEntityByMesh(m);
-        
-        if (targetEntity?.type === 'trigger' || n.includes('trigger')) return false;
-        if (n.includes('proxycol') || n.includes('gizmo') || n.includes('debug')) return false;
+        if (targetEntity?.type === 'trigger' || targetEntity?.type === 'trigger_compuesto') return false;
         if (targetEntity?.type === 'image_plane' || targetEntity?.type === 'bubble') return false;
-        if (['ejex', 'ejey', 'ejez', 'gridhelper', 'sueloinvisible'].includes(n)) return false;
 
         return true;
       });
@@ -188,6 +182,7 @@ export class CoreSceneProjectionService {
           decal.receiveShadows = false;
           decal.applyFog = !entity.visual.ignoraNiebla;
           decal.alwaysSelectAsActiveMesh = true;
+          Tags.AddTagsTo(decal, "decal system_element ignore_raycast");
 
           entity.media.runtimeDecals.push(decal);
         }
@@ -263,7 +258,6 @@ export class CoreSceneProjectionService {
         }
 
         if (Array.isArray(entity.media.runtimeDecals)) {
-          // CORRECCIÓN: tipado como AbstractMesh
           entity.media.runtimeDecals.forEach((decal: AbstractMesh) => {
             if (decal && !this.isDisposedSeguro(decal)) {
               decal.visibility = alphaMultiplier > 0.01 ? 1 : 0;
@@ -283,7 +277,6 @@ export class CoreSceneProjectionService {
           dMat.emissiveColor = Color3.FromHexString(colorReal || '#ffffff').scale(brilloBase);
         }
         if (Array.isArray(entity.media.runtimeDecals)) {
-          // CORRECCIÓN: tipado como AbstractMesh
           entity.media.runtimeDecals.forEach((decal: AbstractMesh) => {
             if (decal && !this.isDisposedSeguro(decal)) {
               decal.visibility = 1.0;

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Color4, Mesh, Vector3, HemisphericLight, Color3, Scene, MeshBuilder, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
@@ -59,10 +58,13 @@ export class CoreSceneLoaderService {
     let w: any = dataBD.worldSettings;
     if (typeof w === 'string') { try { w = JSON.parse(w); } catch (e) {} }
 
-    // 🔥 FIX PERSISTENCIA: Extraemos uiSettings y lo parseamos si la base de datos lo devolvió como String
-    let uiSettings = dataBD.uiSettings || {};
-    if (typeof uiSettings === 'string') { 
-        try { uiSettings = JSON.parse(uiSettings); } catch (e) { uiSettings = {}; } 
+    // 🔥 FIX CRÍTICO: Búsqueda exhaustiva del uiSettings sin importar cómo llegue del backend
+    let uiSettingsRaw = dataBD.uiSettings || dataBD.episode?.uiSettings || {};
+    let uiSettings = {};
+    if (typeof uiSettingsRaw === 'string') { 
+        try { uiSettings = JSON.parse(uiSettingsRaw); } catch (e) { uiSettings = {}; } 
+    } else {
+        uiSettings = uiSettingsRaw;
     }
 
     if (w) {
@@ -75,7 +77,6 @@ export class CoreSceneLoaderService {
       
       scene.clearColor = Color4.FromHexString(activeClear + 'ff');
       
-      // Aseguramos de anclar el uiSettings parseado al entorno local del motor 3D
       scene.metadata = { 
         ...scene.metadata, 
         globalClearColor: clearHex, 

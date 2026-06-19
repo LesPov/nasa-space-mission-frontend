@@ -1,6 +1,6 @@
 <div class="section-card">
   <div class="section-head">
-    <h4>Diseño Visual del Modal</h4>
+    <h4>Diseño Visual de la Tarjeta</h4>
   </div>
 
   <div class="grid-2">
@@ -27,12 +27,33 @@
       <input type="number" step="0.05" min="0" max="1" [(ngModel)]="uiSettings.bgOpacity" (ngModelChange)="aplicarCambios()" />
     </div>
     <div class="field">
-      <label>Color de Texto (Secundario)</label>
+      <label>Bordes Redondeados (px)</label>
+      <input type="number" step="1" min="0" max="50" [(ngModel)]="uiSettings.borderRadius" (ngModelChange)="aplicarCambios()" />
+    </div>
+  </div>
+</div>
+
+<div class="section-card">
+  <div class="section-head">
+    <h4>Fondo de Pantalla (Overlay y Blur)</h4>
+  </div>
+
+  <div class="grid-2">
+    <div class="field">
+      <label>Color Capa Externa</label>
       <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="uiSettings.textColor" (ngModelChange)="aplicarCambios()" class="color-picker">
-        <span class="color-hex-text">{{ uiSettings.textColor.toUpperCase() }}</span>
+        <input type="color" [(ngModel)]="uiSettings.overlayColor" (ngModelChange)="aplicarCambios()" class="color-picker">
       </div>
     </div>
+    <div class="field">
+      <label>Opacidad Externa</label>
+      <input type="number" step="0.05" min="0" max="1" [(ngModel)]="uiSettings.overlayOpacity" (ngModelChange)="aplicarCambios()" />
+    </div>
+  </div>
+
+  <div class="field wide" style="margin-top: 10px;">
+    <label>Intensidad del Desenfoque (Blur px)</label>
+    <input type="number" step="1" min="0" max="30" [(ngModel)]="uiSettings.blurIntensity" (ngModelChange)="aplicarCambios()" />
   </div>
 </div>
 
@@ -46,9 +67,17 @@
     <textarea rows="3" [(ngModel)]="uiSettings.loreQuote" (ngModelChange)="aplicarCambios()" placeholder='"Una frase misteriosa sobre el mundo..."'></textarea>
   </div>
   
-  <div class="field wide">
+  <div class="field wide" style="margin-bottom: 10px;">
     <label>Autor de la Cita</label>
     <input type="text" [(ngModel)]="uiSettings.loreAuthor" (ngModelChange)="aplicarCambios()" placeholder="Ej: Superviviente Anónimo" />
+  </div>
+  
+  <div class="field wide">
+    <label>Color de Texto de Lore/Misión</label>
+    <div class="color-picker-wrapper">
+      <input type="color" [(ngModel)]="uiSettings.textColor" (ngModelChange)="aplicarCambios()" class="color-picker">
+      <span class="color-hex-text">{{ uiSettings.textColor.toUpperCase() }}</span>
+    </div>
   </div>
 </div>
 

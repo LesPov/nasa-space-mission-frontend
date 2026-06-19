@@ -19,11 +19,14 @@ export class PropMission implements OnInit, OnDestroy {
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
-  // Valores por defecto
   public uiSettings = {
     primaryColor: '#ef4444',
     bgColor: '#0f172a',
     bgOpacity: 0.85,
+    overlayColor: '#050508',
+    overlayOpacity: 0.7,
+    blurIntensity: 8,
+    borderRadius: 12,
     textColor: '#cbd5e1',
     loreQuote: '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."',
     loreAuthor: 'Anónimo',
@@ -35,12 +38,8 @@ export class PropMission implements OnInit, OnDestroy {
   ngOnInit() {
     this.leerEstadoActual();
     
-    // Escuchamos por si ocurre un deshacer (Ctrl+Z) o carga externa para refrescar los datos
     this.subs.push(
-      this.editorSvc.onMapChanged.subscribe(() => {
-         // No forzamos lectura aquí para no interrumpir al usuario mientras teclea,
-         // el ngModel ya mantiene el estado visual en sincronía.
-      })
+      this.editorSvc.onMapChanged.subscribe(() => {})
     );
   }
 
@@ -58,11 +57,14 @@ export class PropMission implements OnInit, OnDestroy {
       primaryColor: metadataUI.primaryColor || '#ef4444',
       bgColor: metadataUI.bgColor || '#0f172a',
       bgOpacity: metadataUI.bgOpacity ?? 0.85,
+      overlayColor: metadataUI.overlayColor || '#050508',
+      overlayOpacity: metadataUI.overlayOpacity ?? 0.7,
+      blurIntensity: metadataUI.blurIntensity ?? 8,
+      borderRadius: metadataUI.borderRadius ?? 12,
       textColor: metadataUI.textColor || '#cbd5e1',
       loreQuote: metadataUI.loreQuote || '',
       loreAuthor: metadataUI.loreAuthor || '',
       initialSequence: metadataUI.initialSequence || '',
-      // Extraemos los Arrays y los convertimos en texto con saltos de línea para el textarea
       objetivos: Array.isArray(metadataUI.objetivos) ? metadataUI.objetivos.join('\n') : (metadataUI.objetivos || ''),
       recompensas: Array.isArray(metadataUI.recompensas) ? metadataUI.recompensas.join('\n') : (metadataUI.recompensas || '')
     };
@@ -74,23 +76,28 @@ export class PropMission implements OnInit, OnDestroy {
     const scene = this.motor3dSvc.scene;
     if (!scene) return;
 
-    // Procesamos los textos separando por salto de línea para generar los Arrays limpios
-    const objetivosArray = this.uiSettings.objetivos.split('\n').map(s => s.trim()).filter(s => s.length > 0);
-    const recompensasArray = this.uiSettings.recompensas.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+    const objStr = typeof this.uiSettings.objetivos === 'string' ? this.uiSettings.objetivos : (this.uiSettings.objetivos as any).join('\n');
+    const recStr = typeof this.uiSettings.recompensas === 'string' ? this.uiSettings.recompensas : (this.uiSettings.recompensas as any).join('\n');
 
+    const objetivosArray = objStr.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+    const recompensasArray = recStr.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+
+    // 🔥 FIX: Cast explícito de campos numéricos (inputs type=number) para evitar que se guarden como String 
     const newSettings = {
       ...this.uiSettings,
+      bgOpacity: Number(this.uiSettings.bgOpacity),
+      overlayOpacity: Number(this.uiSettings.overlayOpacity),
+      blurIntensity: Number(this.uiSettings.blurIntensity),
+      borderRadius: Number(this.uiSettings.borderRadius),
       objetivos: objetivosArray,
       recompensas: recompensasArray
     };
 
-    // Sobrescribimos en el motor (Esto alimenta en vivo al componente ui-mission)
     scene.metadata = { 
       ...(scene.metadata || {}), 
       uiSettings: newSettings 
     };
 
-    // Actualizamos el objeto del episodio en memoria para que el autoguardado lo envíe al Backend
     const epiData = this.editorSvc.episodioActualData();
     if (epiData) {
       epiData.uiSettings = newSettings;

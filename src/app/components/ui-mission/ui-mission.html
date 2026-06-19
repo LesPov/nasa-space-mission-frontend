@@ -1,20 +1,20 @@
 <div class="user-mission-overlay" 
      [class.closing]="cerrando"
-     [style.background]="hexToRgba(ui.overlayColor, ui.overlayOpacity)"
-     [style.backdrop-filter]="'blur(' + ui.blurIntensity + 'px)'"
-     [style.-webkit-backdrop-filter]="'blur(' + ui.blurIntensity + 'px)'">
+     [style.background-color]="hexToRgba(ui.overlayColor, ui.overlayOpacity)"
+     [style.backdrop-filter]="ui.blurIntensity > 0 ? 'blur(' + ui.blurIntensity + 'px)' : 'none'"
+     [style.-webkit-backdrop-filter]="ui.blurIntensity > 0 ? 'blur(' + ui.blurIntensity + 'px)' : 'none'">
   
   <div class="mission-topbar">
     <div class="brand">
       <ng-container *ngIf="!isDebugMode">
         <h2 [style.color]="ui.primaryColor" style="font-weight: 800; margin: 0; text-transform: uppercase;">
-          {{ episodio?.title || 'EPISODIO DESCONOCIDO' }}
+          {{ episodeTitle }}
         </h2>
         <p style="color: #94a3b8; font-size: 11px; margin: 0; letter-spacing: 1px;">SISTEMA EN LÍNEA</p>
       </ng-container>
 
       <ng-container *ngIf="isDebugMode">
-        <input type="text" [ngModel]="episodio?.title" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui.primaryColor" style="background: rgba(0,0,0,0.5); border: 1px dashed #64748b; font-weight: 800; text-transform: uppercase; outline: none; padding: 4px; border-radius: 4px;" title="Modificar Título del Episodio" />
+        <input type="text" [ngModel]="episodeTitle" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui.primaryColor" style="background: rgba(0,0,0,0.5); border: 1px dashed #64748b; font-weight: 800; text-transform: uppercase; outline: none; padding: 4px; border-radius: 4px;" title="Modificar Título del Episodio" />
         <p style="color: #60a5fa; margin: 0; letter-spacing: 1px; padding-top: 4px;">MODO EDICIÓN (PREVIEW)</p>
       </ng-container>
     </div>
@@ -44,7 +44,7 @@
 
     <main class="mission-content">
       <div class="mission-card" 
-           [style.background]="hexToRgba(ui.bgColor, ui.bgOpacity)"
+           [style.background-color]="hexToRgba(ui.bgColor, ui.bgOpacity)"
            [style.border-radius.px]="ui.borderRadius"
            [style.max-width.px]="ui.maxWidth"
            [style.box-shadow]="ui.shadows">
@@ -53,23 +53,23 @@
           <div class="card-header">
             <h4 [style.color]="ui.textColor">MISIÓN PRINCIPAL</h4>
             
-            <h2 *ngIf="!isDebugMode" [style.color]="ui.primaryColor">{{ episodio?.title || 'Sin Título' }}</h2>
-            <input *ngIf="isDebugMode" type="text" [ngModel]="episodio?.title" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui.primaryColor" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; font-size: clamp(16px, 2.5vw, 24px); font-weight: 900; text-transform: uppercase; text-align: center; width: 100%; outline: none; margin: 5px 0; border-radius: 4px;" />
+            <h2 *ngIf="!isDebugMode" [style.color]="ui.primaryColor">{{ episodeTitle }}</h2>
+            <input *ngIf="isDebugMode" type="text" [ngModel]="episodeTitle" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui.primaryColor" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; font-size: clamp(16px, 2.5vw, 24px); font-weight: 900; text-transform: uppercase; text-align: center; width: 100%; outline: none; margin: 5px 0; border-radius: 4px;" />
             
             <span *ngIf="!misionIniciada" [style.color]="ui.textColor">INICIANDO SIMULACIÓN NEURAL...</span>
             <span *ngIf="misionIniciada" [style.color]="ui.primaryColor">SIMULACIÓN EN PAUSA</span>
           </div>
           
           <div class="card-image-placeholder" 
-               [style.background-image]="episodio?.thumbnailUrl ? 'url(http://localhost:4000' + episodio.thumbnailUrl + ')' : 'none'"
+               [style.background-image]="episodeThumbnail ? 'url(http://localhost:4000' + episodeThumbnail + ')' : 'none'"
                [style.background-size]="'cover'"
                [style.background-position]="'center'">
-            <div class="scanline" *ngIf="!episodio?.thumbnailUrl"></div>
+            <div class="scanline" *ngIf="!episodeThumbnail"></div>
           </div>
           
           <div class="card-description">
-            <p *ngIf="!isDebugMode" [style.color]="ui.textColor">{{ episodio?.description || 'No hay descripción disponible. Explora bajo tu propio riesgo.' }}</p>
-            <textarea *ngIf="isDebugMode" [ngModel]="episodio?.description" (ngModelChange)="cambiarDesc($event)" [style.color]="ui.textColor" rows="3" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; width: 100%; font-size: clamp(11px, 1.5vw, 13px); font-family: inherit; resize: vertical; outline: none; padding: 10px; border-radius: 6px; box-sizing: border-box;" placeholder="Escribe la descripción de la misión aquí..."></textarea>
+            <p *ngIf="!isDebugMode" [style.color]="ui.textColor">{{ episodeDescription }}</p>
+            <textarea *ngIf="isDebugMode" [ngModel]="episodeDescription" (ngModelChange)="cambiarDesc($event)" [style.color]="ui.textColor" rows="3" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; width: 100%; font-size: clamp(11px, 1.5vw, 13px); font-family: inherit; resize: vertical; outline: none; padding: 10px; border-radius: 6px; box-sizing: border-box;" placeholder="Escribe la descripción de la misión aquí..."></textarea>
           </div>
 
           <div class="card-objectives" [style.border-left-color]="ui.primaryColor" style="background: rgba(0,0,0,0.4);">

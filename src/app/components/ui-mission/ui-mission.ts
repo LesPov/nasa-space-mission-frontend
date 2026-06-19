@@ -1,5 +1,4 @@
-
-import { Component, Input, Output, EventEmitter, OnChanges } from '@angular/core';
+import { Component, Input, Output, EventEmitter, OnChanges, DoCheck, KeyValueDiffers, KeyValueDiffer } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -10,7 +9,7 @@ import { FormsModule } from '@angular/forms';
   templateUrl: './ui-mission.html',
   styleUrls: ['./ui-mission.css']
 })
-export class UiMission implements OnChanges {
+export class UiMission implements OnChanges, DoCheck {
   @Input() episodio: any = null; 
   @Input() playerState: any = null; 
   @Input() misionIniciada = false;
@@ -47,35 +46,74 @@ export class UiMission implements OnChanges {
     shadows: '0 20px 50px rgba(0,0,0,0.8)'
   };
 
+  private differ: KeyValueDiffer<string, any>;
+
+  constructor(private differs: KeyValueDiffers) {
+    this.differ = this.differs.find({}).create();
+  }
+
   ngOnChanges() {
     this.procesarEstadoJugador();
   }
 
+  ngDoCheck() {
+    if (this.liveUiSettings) {
+      const changes = this.differ.diff(this.liveUiSettings);
+      if (changes) {
+        this.procesarEstadoJugador();
+      }
+    }
+  }
+
+  get episodeTitle(): string {
+    return this.episodio?.title || this.episodio?.episode?.title || 'EPISODIO DESCONOCIDO';
+  }
+
+  get episodeDescription(): string {
+    return this.episodio?.description || this.episodio?.episode?.description || 'No hay descripción disponible. Explora bajo tu propio riesgo.';
+  }
+
+  get episodeThumbnail(): string {
+    return this.episodio?.thumbnailUrl || this.episodio?.episode?.thumbnailUrl || '';
+  }
+
   procesarEstadoJugador() {
-    const sourceSettings = this.liveUiSettings || this.episodio?.uiSettings || {};
+    let sourceSettings = this.liveUiSettings;
+
+    if (!sourceSettings || Object.keys(sourceSettings).length === 0) {
+        let epUi = this.episodio?.uiSettings || this.episodio?.episode?.uiSettings;
+        if (epUi) {
+            try {
+                sourceSettings = typeof epUi === 'string' ? JSON.parse(epUi) : epUi;
+            } catch(e) {
+                sourceSettings = {};
+            }
+        }
+    }
+    sourceSettings = sourceSettings || {};
 
     this.ui.primaryColor = sourceSettings.primaryColor || '#ef4444';
     this.ui.bgColor = sourceSettings.bgColor || '#0f172a';
-    this.ui.bgOpacity = sourceSettings.bgOpacity ?? 0.85;
     this.ui.textColor = sourceSettings.textColor || '#cbd5e1';
     this.ui.loreQuote = sourceSettings.loreQuote || '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."';
     this.ui.loreAuthor = sourceSettings.loreAuthor || 'Anónimo';
     this.ui.initialSequence = sourceSettings.initialSequence || '';
-
     this.ui.overlayColor = sourceSettings.overlayColor || '#050508';
-    this.ui.overlayOpacity = sourceSettings.overlayOpacity ?? 0.7;
-    this.ui.blurIntensity = sourceSettings.blurIntensity ?? 8;
-    this.ui.borderRadius = sourceSettings.borderRadius ?? 12;
-    this.ui.padding = sourceSettings.padding ?? 20;
-    this.ui.maxWidth = sourceSettings.maxWidth ?? 650;
     this.ui.shadows = sourceSettings.shadows || '0 20px 50px rgba(0,0,0,0.8)';
+
+    // 🔥 Parseo estricto para valores numéricos, previene que "0" sea ignorado y se ponga el valor fallback
+    this.ui.bgOpacity = sourceSettings.bgOpacity !== undefined && sourceSettings.bgOpacity !== null ? Number(sourceSettings.bgOpacity) : 0.85;
+    this.ui.overlayOpacity = sourceSettings.overlayOpacity !== undefined && sourceSettings.overlayOpacity !== null ? Number(sourceSettings.overlayOpacity) : 0.7;
+    this.ui.blurIntensity = sourceSettings.blurIntensity !== undefined && sourceSettings.blurIntensity !== null ? Number(sourceSettings.blurIntensity) : 8;
+    this.ui.borderRadius = sourceSettings.borderRadius !== undefined && sourceSettings.borderRadius !== null ? Number(sourceSettings.borderRadius) : 12;
+    this.ui.padding = sourceSettings.padding !== undefined && sourceSettings.padding !== null ? Number(sourceSettings.padding) : 20;
+    this.ui.maxWidth = sourceSettings.maxWidth !== undefined && sourceSettings.maxWidth !== null ? Number(sourceSettings.maxWidth) : 650;
 
     const worldState = this.playerState?.worldState || {};
     this.tieneInventario = (this.playerState?.inventory || []).length > 0;
     this.tieneMapaUnLocker = !!worldState['mapa_desbloqueado'];
     this.tieneHistoria = !!worldState['lore_desbloqueado'];
 
-    // 🔥 FIX: Procesar Objetivos soportando Arrays puros o Textos separados por Saltos de Línea (\n)
     let parsedObjetivos: string[] = [];
     if (Array.isArray(sourceSettings.objetivos)) {
       parsedObjetivos = sourceSettings.objetivos;
@@ -97,7 +135,6 @@ export class UiMission implements OnChanges {
           : ['Encuentra la salida.'];
     }
 
-    // 🔥 FIX: Procesar Recompensas soportando Arrays puros o Textos separados por Saltos de Línea (\n)
     let parsedRecompensas: string[] = [];
     if (Array.isArray(sourceSettings.recompensas)) {
       parsedRecompensas = sourceSettings.recompensas;
@@ -110,14 +147,22 @@ export class UiMission implements OnChanges {
 
   cambiarTitulo(nuevoTitulo: string) {
     if (this.episodio) {
-      this.episodio.title = nuevoTitulo;
+      if (this.episodio.episode) {
+        this.episodio.episode.title = nuevoTitulo;
+      } else {
+        this.episodio.title = nuevoTitulo;
+      }
       this.mapaNombreChange.emit(nuevoTitulo);
     }
   }
 
   cambiarDesc(nuevaDesc: string) {
     if (this.episodio) {
-      this.episodio.description = nuevaDesc;
+      if (this.episodio.episode) {
+        this.episodio.episode.description = nuevaDesc;
+      } else {
+        this.episodio.description = nuevaDesc;
+      }
       this.mapaDescChange.emit(nuevaDesc);
     }
   }

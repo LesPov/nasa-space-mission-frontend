@@ -1,6 +1,7 @@
+// src/app/services/editor/editor-play-mode.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Tags } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Tags, Vector3 } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
@@ -10,7 +11,9 @@ import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.s
 import { EditorMapaService } from '../editor-mapa.service';
 import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
 import { GameStateService } from '../../core/engine/runtime/state/game-state.service'; 
-import { CameraViewMode } from '../../core/engine/session/game-context.model';
+import { CameraViewMode, GameMode } from '../../core/engine/session/game-context.model';
+import { GameContextService } from '../../core/engine/session/game-context.service';
+import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
  
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
@@ -22,8 +25,22 @@ export class EditorPlayModeService {
   private runtimeEngine = inject(RuntimeEngineService);
   private inputOrchestrator = inject(InputOrchestratorService);
   private gameState = inject(GameStateService); 
+  private gameContext = inject(GameContextService);
+  
+  // 🔥 FIX: Requerimos el bus de eventos para sincronizar el estado reactivo del Editor con la cámara activa
+  private eventBus = inject(GameEventBusService);
 
   private snapshotMemoria: any = null;
+
+  constructor() {
+    // Sincroniza la vista de cámara (FPS o TPS) cuando cambia en Test Live, para evitar que
+    // el sistema de selección por rayo asuma siempre FPS y confunda las interacciones.
+    this.eventBus.events$.subscribe(e => {
+       if (e.type === 'CameraViewChanged') {
+          this.state.modoVistaPrueba = e.payload;
+       }
+    });
+  }
   
   public testearEscena(vista: CameraViewMode): void {
     const objMesh = this.state.objetoSeleccionado() as Mesh;
@@ -41,6 +58,11 @@ export class EditorPlayModeService {
     this.state.playState.set('TRANSITIONING');
     this.state.jugadorActivo = objMesh;
     this.state.objetoHovereado.set(null);
+
+    // 🔥 FIX IMPORTANTÍSIMO: Cambiamos el contexto a TEST_LIVE *antes* de que inicie la transición.
+    // Esto destraba el CameraFactory y permite instanciar las cámaras reales FPS y TPS en vez de un Mock
+    // garantizando que el personaje pueda moverse desde el primer instante.
+    this.gameContext.setMode(GameMode.TEST_LIVE);
 
     const isDebugMode = this.state.checkIsAdmin();
 
@@ -60,21 +82,30 @@ export class EditorPlayModeService {
         }
     });
 
+    const playerForward = objMesh.forward.clone().normalize();
+    const fpsEyeLevel = playerEntity.playerConfig?.camera?.fpsEyeLevel ?? 1.6;
+    const tpsMaxRadius = playerEntity.playerConfig?.camera?.tpsMaxRadius ?? 15;
+    const tpsPivotY = playerEntity.playerConfig?.camera?.tpsPivotY ?? 1.5;
+
     let targetLookAt = objMesh.getAbsolutePosition().clone();
-    let targetPos = objMesh.getAbsolutePosition().clone();
-    
+    targetLookAt.y += fpsEyeLevel;
+
+    let targetPos: Vector3;
+
     if (vista === 'FPS') {
-        targetPos.y += playerEntity.playerConfig?.camera?.fpsEyeLevel ?? 1.6;
-        targetLookAt = targetPos.add(objMesh.forward);
+        // En 1ra persona, se ubica justo en los ojos, acercándose por la espalda
+        targetPos = objMesh.getAbsolutePosition().clone();
+        targetPos.y += fpsEyeLevel;
+        targetPos.subtractInPlace(playerForward.scale(0.1));
     } else {
-        targetPos.z -= 5;
-        targetPos.y += 2;
+        // En 3ra persona, se ubica a la distancia máxima en la espalda
+        targetPos = objMesh.getAbsolutePosition().subtract(playerForward.scale(tpsMaxRadius));
+        targetPos.y += tpsPivotY + 1; // Un poco elevado para mejor vista
     }
 
     const finishSetup = () => {
         this.state.playState.set('PLAYING');
         
-        // 🔥 FIX TS2554: El modo Debug ahora se gestiona internamente por el Context, se le pasan solo 2 parámetros
         this.runtimeEngine.startTestSession(playerEntity, vista);
         
         this.state.triggerUpdate();
@@ -84,16 +115,23 @@ export class EditorPlayModeService {
             if (canvas) {
                 const activeCam = this.motor3d.scene.activeCamera;
                 if (activeCam) {
-                    activeCam.detachControl();
+                    this.motor3d.editorCamera?.detachControl();
+                    this.motor3d.playerCameraFPS?.detachControl();
+                    this.motor3d.playerCameraTPS?.detachControl();
                     activeCam.attachControl(canvas, true);
                 }
             }
         }, 100);
     };
 
-    this.cameraSvc.volarHaciaCamaraJuego(objMesh.getAbsolutePosition(), targetPos, targetLookAt, vista === 'FPS', () => {
-        finishSetup();
-    });
+    this.cameraSvc.volarHaciaCamaraJuego(
+        objMesh.getAbsolutePosition(), 
+        targetPos, 
+        targetLookAt, 
+        playerForward, 
+        vista === 'FPS', 
+        () => finishSetup()
+    );
   }
 
   public async detenerPrueba(): Promise<void> {

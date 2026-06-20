@@ -1,3 +1,4 @@
+// src/app/core/engine/runtime/game-session.ts
 
 import { Injectable, inject, Injector, computed } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
@@ -16,8 +17,9 @@ import { CharacterKinematicsService } from './systems/character-kinematics.servi
 import { PlayerAnimationService } from './systems/player-animation.service';
 import { RenderSync } from './systems/render-sync';
 import { Motor3dService } from '../../../services/motor-3d.service';
-import { CameraViewMode } from '../session/game-context.model';
+import { CameraViewMode, GameMode } from '../session/game-context.model';
 import { GameContextService } from '../session/game-context.service';
+import { LayoutService } from '../../../services/layout.service';
   
 @Injectable({ providedIn: 'root' })
 export class GameSession {
@@ -33,6 +35,7 @@ export class GameSession {
   private interactionSvc = inject(PlayerInteractionService);
   private loopManager = inject(LoopManagerService);
   private context = inject(GameContextService);
+  private layoutSvc = inject(LayoutService);
 
   // Interfaces Reactivas (Bindings directos al contexto central)
   public isPlaying = computed(() => this.context.isPlaying());
@@ -49,10 +52,31 @@ export class GameSession {
         this.context.setPointerLocked(true);
         this.inputSvc.enable();
         this.interactionSvc.enable();
+
+        const mode = this.context.mode();
+        // 🔥 LÓGICA AISLADA: Solo afecta a producción (Admin Preview y Final User)
+        if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
+             this.layoutSvc.ocultarMenu(); // Oculta el modal de misión
+             // Viaje suave hacia FPS
+             if (this.cameraView() === 'TPS') {
+                 this.toggleCameraUser(false, 75); 
+             }
+        }
+
       } else if (event.type === 'GamePaused') {
         this.context.setPointerLocked(false);
         this.inputSvc.disable();
         this.interactionSvc.disable();
+
+        const mode = this.context.mode();
+        // 🔥 LÓGICA AISLADA: Al presionar ESC, abre el modal y retrocede la cámara (Ignora LIVE_TEST)
+        if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
+             this.layoutSvc.mostrarMenu(); // Muestra el modal de misión sí o sí
+             // Retroceso suave a TPS sin bloqueos ni saltos
+             if (this.cameraView() === 'FPS') {
+                 this.toggleCameraUser(false, 60); 
+             }
+        }
       }
     });
   }
@@ -60,8 +84,17 @@ export class GameSession {
   public start(playerEntity: GameEntity, view: CameraViewMode): void {
     this.context.startGameSession(playerEntity, view);
     
-    this.inputSvc.enable();
-    this.interactionSvc.enable();
+    const mode = this.context.mode();
+    
+    if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
+      this.layoutSvc.mostrarMenu();
+      this.inputSvc.disable();
+      this.interactionSvc.disable();
+      this.context.setPointerLocked(false);
+    } else {
+      this.inputSvc.enable();
+      this.interactionSvc.enable();
+    }
 
     this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
     this.eventBus.emit({ type: 'MessageRequested', payload: null });
@@ -75,7 +108,6 @@ export class GameSession {
     this.objectAnimSvc.startAmbientAutoAnimations();
     this.playerFogSvc.start(playerEntity, view);
 
-    // Inicializar y registrar todos los sistemas del motor
     this.systems = [
       this.injector.get(PlayerInputService),
       this.injector.get(PlayerSequenceService),
@@ -94,7 +126,6 @@ export class GameSession {
         }
     });
 
-    // Resetear estados iniciales
     this.cameraSvc.resetearTransiciones();
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
@@ -127,7 +158,6 @@ export class GameSession {
     const sequenceSvc = this.injector.get(PlayerSequenceService);
     sequenceSvc.resetearSecuencias();
 
-    // Detener y desregistrar todos los sistemas
     this.systems.forEach(system => {
         this.loopManager.unregisterSystem(system.id);
         if (typeof (system as any).stop === 'function') {

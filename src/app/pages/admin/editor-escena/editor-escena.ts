@@ -134,9 +134,9 @@ export class EditorEscena implements OnInit, OnDestroy {
           break;
         case 'GamePaused': 
           if (this.editorSvc.playState() === 'PLAYING') {
-              this.mostrarModalMisionPreview = true;
+              // 🔥 FIX: Ya no invocamos mostrarModalMisionPreview aquí.
+              // Solo dejamos que el cursor quede libre (nativo) al pulsar Escape.
               this.cerrandoModalMision = false;
-              if (this.activeCameraView === 'FPS') this.runtime.toggleCameraUser(false, 45);
           }
           break;
       }
@@ -447,8 +447,10 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (!this.esObjetoJugable()) return;
     this.guardarMapaEnBD(true);
     
-    this.mostrarModalMisionPreview = true;
-    this.misionIniciada = false;
+    // 🔥 FIX: Al probar directamente desde el Editor, ignoramos el Modal Misión
+    // y entregamos directamente el control a la cámara sin estorbar el Canvas.
+    this.mostrarModalMisionPreview = false;
+    this.misionIniciada = true;
     
     this.playModeSvc.testearEscena(this.vistaPrueba);
   }

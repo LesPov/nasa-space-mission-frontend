@@ -1,12 +1,13 @@
+// src/app/services/motor-3d.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import {
   Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4,
-  UniversalCamera, DefaultRenderingPipeline, Color3, ColorCurves, GlowLayer
+  UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera
 } from '@babylonjs/core';
-import { DynamicCameraBehavior } from '../core/engine/behaviors/dynamic-camera.behavior';
 import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
- 
+import { CameraFactoryService } from '../core/engine/runtime/cameras/camera-factory.service';
+
 @Injectable({
   providedIn: 'root'
 })
@@ -14,18 +15,37 @@ export class Motor3dService {
   public engine!: Engine;
   public scene!: Scene;
 
-  public editorCamera!: ArcRotateCamera;
-  public playerCameraFPS!: UniversalCamera;
-  public playerCameraTPS!: ArcRotateCamera;
+  private cameraFactory = inject(CameraFactoryService);
+  private loopManager = inject(LoopManagerService);
 
   public renderingPipeline!: DefaultRenderingPipeline;
   public glowLayer!: GlowLayer; 
   public currentFps: number = 0;
 
-  private loopManager = inject(LoopManagerService);
+  get editorCamera(): ArcRotateCamera {
+    const cam = this.cameraFactory.getCamera('EDITOR', this.scene, this.engine.getRenderingCanvas());
+    this._ensureCameraInPipeline(cam);
+    return cam;
+  }
 
-  private readonly TPS_MIN_RADIUS = 0.5;
-  private readonly TPS_MAX_RADIUS = 150; 
+  get playerCameraFPS(): UniversalCamera {
+    const cam = this.cameraFactory.getCamera('FPS', this.scene, this.engine.getRenderingCanvas());
+    this._ensureCameraInPipeline(cam);
+    return cam;
+  }
+
+  get playerCameraTPS(): ArcRotateCamera {
+    const cam = this.cameraFactory.getCamera('TPS', this.scene, this.engine.getRenderingCanvas());
+    this._ensureCameraInPipeline(cam);
+    return cam;
+  }
+
+  // Comprobación de clase real para evitar que los Mocks rompan el Pipeline
+  private _ensureCameraInPipeline(camera: any): void {
+    if (camera && camera instanceof Camera && this.renderingPipeline && !this.renderingPipeline.cameras.includes(camera)) {
+      this.renderingPipeline.addCamera(camera);
+    }
+  }
 
   iniciarMotor(canvas: HTMLCanvasElement): void {
     this.engine = new Engine(canvas, true, {
@@ -46,46 +66,8 @@ export class Motor3dService {
 
     this.loopManager.initialize(this.scene);
 
-    // --- CÁMARA EDITOR ---
-    this.editorCamera = new ArcRotateCamera('editorCamera', Math.PI / 4, Math.PI / 3, 25, Vector3.Zero(), this.scene);
-    this.editorCamera.minZ = 0.1; 
-    this.editorCamera.maxZ = 500000; 
-    this.editorCamera.inertia = 0.8;
-    this.editorCamera.panningInertia = 0.8;
-    this.editorCamera.attachControl(canvas, true);
-    this.editorCamera._panningMouseButton = 2;
-    this.editorCamera.allowUpsideDown = false;
-    this.editorCamera.addBehavior(new DynamicCameraBehavior(this.loopManager)); 
-
-    // --- CÁMARA FPS ---
-    this.playerCameraFPS = new UniversalCamera('playerCameraFPS', new Vector3(0, 0, 0), this.scene);
-    this.playerCameraFPS.minZ = 0.05;
-    this.playerCameraFPS.maxZ = 500000;
-    this.playerCameraFPS.keysUp = [];
-    this.playerCameraFPS.keysDown = [];
-    this.playerCameraFPS.keysLeft = [];
-    this.playerCameraFPS.keysRight = [];
-    this.playerCameraFPS.angularSensibility = 2500;
-    this.playerCameraFPS.speed = 0.3;
-    this.playerCameraFPS.applyGravity = false;
-    this.playerCameraFPS.checkCollisions = false;
-
-    // --- CÁMARA TPS ---
-    this.playerCameraTPS = new ArcRotateCamera('playerCameraTPS', -Math.PI / 2, Math.PI / 2.5, 10, Vector3.Zero(), this.scene);
-    this.playerCameraTPS.minZ = 0.05;
-    this.playerCameraTPS.maxZ = 500000;
-    this.playerCameraTPS.wheelPrecision = 15;
-    this.playerCameraTPS.angularSensibilityX = 2000;
-    this.playerCameraTPS.angularSensibilityY = 2000;
-    this.playerCameraTPS.lowerRadiusLimit = this.TPS_MIN_RADIUS;
-    this.playerCameraTPS.upperRadiusLimit = this.TPS_MAX_RADIUS;
-    this.playerCameraTPS._panningMouseButton = 2;
-    this.playerCameraTPS.allowUpsideDown = false;
-    this.playerCameraTPS.checkCollisions = true; 
-    this.playerCameraTPS.collisionRadius = new Vector3(0.15, 0.15, 0.15);
-    this.playerCameraTPS.upperBetaLimit = (Math.PI / 2) + 0.4; 
-
-    this.scene.activeCamera = this.editorCamera;
+    // INICIALIZACIÓN DE CÁMARAS POR CONTEXTO (Fase 2)
+    this.cameraFactory.initializeCameras(this.scene, canvas);
 
     // --- PIPELINE Y RENDER ---
     this.renderingPipeline = new DefaultRenderingPipeline('defaultPipeline', false, this.scene, this.scene.cameras);
@@ -97,8 +79,9 @@ export class Motor3dService {
     this.glowLayer = new GlowLayer("glow", this.scene, { mainTextureFixedSize: 1024, blurKernelSize: 32 });
     this.glowLayer.intensity = 0.6; 
 
+    // 🔥 FIX: Actualizada validación usando 'includes' ya que el nombre de la cámara ahora lleva el sufijo del modo
     this.scene.onBeforeCameraRenderObservable.add((camera) => {
-      this.scene.fogEnabled = camera.name !== 'editorCamera';
+      this.scene.fogEnabled = !camera.name.includes('editorCamera');
     });
 
     const ambientLight = new HemisphericLight('globalLight', new Vector3(0, 1, 0), this.scene);
@@ -118,7 +101,6 @@ export class Motor3dService {
     if (!this.renderingPipeline) return;
     const isBw = mode === 'bw';
 
-    // Se deshabilita ColorCurves en el Post Process global para que las luces coloreadas sean visibles en Blanco y Negro.
     this.renderingPipeline.imageProcessing.colorCurvesEnabled = false;
     this.renderingPipeline.imageProcessing.exposure = isBw ? 0.98 : 1.0;
     this.renderingPipeline.imageProcessing.contrast = isBw ? 1.15 : 1.0; 
@@ -146,6 +128,7 @@ export class Motor3dService {
   detenerMotor(): void {
     if (this.engine) {
       this.loopManager.dispose();
+      this.cameraFactory.dispose();
       this.engine.stopRenderLoop();
       this.scene.dispose();
       this.engine.dispose();

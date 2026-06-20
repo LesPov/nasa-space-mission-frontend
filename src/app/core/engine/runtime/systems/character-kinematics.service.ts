@@ -104,8 +104,10 @@ export class CharacterKinematicsService implements IUpdatable {
       );
     }
     
-    // Al final, marcamos la entidad como sucia para que el RenderSyncSystem la actualice
-    entity.isDirty = true;
+    // 🔥 FIX: En lugar de usar `entity.isDirty = true` que causaba que el sistema de RenderSync  
+    // reemplazara la posición actualizada por la posición vieja atrapando al jugador...
+    // Le decimos explícitamente al ECS que adopte las coordenadas reales y físicas.
+    entity.syncTransformFromView();
   }
 
   private calculateCameraDirections(activeCamera: any): { forward: Vector3, right: Vector3 } {

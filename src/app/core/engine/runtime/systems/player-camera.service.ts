@@ -1,8 +1,9 @@
+// src/app/core/engine/runtime/systems/player-camera.service.ts
 
 import { Injectable, inject, Injector } from '@angular/core';
 import {
   Mesh, Vector3, Matrix, TransformNode, UniversalCamera,
-  Animation, CubicEase, EasingFunction, Quaternion, MeshBuilder, Tags
+  Animation, CubicEase, EasingFunction, Quaternion, MeshBuilder, Tags, Animatable
 } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { cloneDefaultPlayerConfig } from '../../models/player-config.model';
@@ -11,6 +12,7 @@ import { SeqRuntime } from './player-sequence.service';
 import { LoopManagerService, GamePhase, IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameEntity } from '../../entities/game.entity';
 import { GameSession } from '../game-session';
+import { GameContextService } from '../../session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerCameraManagerService implements IUpdatable {
@@ -18,13 +20,14 @@ export class PlayerCameraManagerService implements IUpdatable {
   private motor3d = inject(Motor3dService);
   private loopManager = inject(LoopManagerService); 
   private injector = inject(Injector);
+  private context = inject(GameContextService);
 
-  // Lazy Injection para evitar dependencias circulares con GameSession
   private get session(): GameSession {
     return this.injector.get(GameSession);
   }
 
   public cameraPivot: Mesh | null = null;
+  public introAnimatable: Animatable | null = null; 
 
   public currentEyeLevel = 1.6;
   public currentPivotY = 1.5;
@@ -55,6 +58,50 @@ export class PlayerCameraManagerService implements IUpdatable {
     this.overrideTargetPivotY = null;
     this.idleTime = 0;
     this.loopManager.unregister('CameraFadeTransition');
+  }
+
+  public iniciarCinematicaIntro(entity: GameEntity): void {
+      const config = entity.playerConfig || cloneDefaultPlayerConfig();
+      const scaleY = entity.transform.scale.y || 1;
+      const tpsCam = this.motor3d.playerCameraTPS;
+
+      if (!tpsCam) return;
+
+      const startRadius = 0.8 * scaleY;
+      const endRadius = (config.camera.tpsMaxRadius ?? 15) * scaleY;
+
+      tpsCam.radius = startRadius;
+      
+      if (entity.view) {
+          const startRot = entity.view.rotationQuaternion ? entity.view.rotationQuaternion.toEulerAngles() : entity.view.rotation;
+          tpsCam.alpha = -(startRot.y || 0) - Math.PI / 2;
+          tpsCam.beta = Math.PI / 2.2; 
+      }
+
+      const useCollisions = this.context.mode() === 'FINAL_USER' || this.context.mode() === 'PREVIEW_ADMIN';
+      tpsCam.checkCollisions = useCollisions;
+      tpsCam.lowerRadiusLimit = null;
+      tpsCam.upperRadiusLimit = null;
+
+      const ease = new CubicEase();
+      ease.setEasingMode(EasingFunction.EASINGMODE_EASEOUT); 
+
+      const animRad = new Animation('introCinematic', 'radius', 60, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CONSTANT);
+      animRad.setKeys([
+          { frame: 0, value: startRadius },
+          { frame: 1800, value: endRadius } 
+      ]);
+      animRad.setEasingFunction(ease);
+
+      if (this.introAnimatable) this.introAnimatable.stop();
+      this.introAnimatable = this.motor3d.scene.beginDirectAnimation(tpsCam, [animRad], 0, 1800, false);
+  }
+
+  public detenerCinematicaIntro(): void {
+      if (this.introAnimatable) {
+          this.introAnimatable.stop();
+          this.introAnimatable = null;
+      }
   }
 
   public inicializarCamaras(
@@ -122,7 +169,9 @@ export class PlayerCameraManagerService implements IUpdatable {
       this.motor3d.playerCameraTPS.lowerRadiusLimit = minRad;
       this.motor3d.playerCameraTPS.upperRadiusLimit = maxRad;
       
-      this.motor3d.playerCameraTPS.checkCollisions = true;
+      const useCollisions = this.context.mode() === 'FINAL_USER' || this.context.mode() === 'PREVIEW_ADMIN';
+      this.motor3d.playerCameraTPS.checkCollisions = useCollisions;
+      
       this.motor3d.playerCameraTPS.collisionRadius = new Vector3(0.25, 0.25, 0.25); 
       this.motor3d.playerCameraTPS.upperBetaLimit = (Math.PI / 2) + 0.4;
       
@@ -165,9 +214,6 @@ export class PlayerCameraManagerService implements IUpdatable {
     
     const minR = (config.camera.tpsMinRadius ?? 1.5) * scaleNow;
     const maxR = (config.camera.tpsMaxRadius ?? 15) * scaleNow;
-    
-    const targetRadiusRaw = isCinematicInitial ? maxR : ((config.camera.tpsRadius || 5) * scaleNow);
-    const targetRadius = Math.max(minR, Math.min(maxR, targetRadiusRaw));
 
     const ease = new CubicEase();
     ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
@@ -186,7 +232,11 @@ export class PlayerCameraManagerService implements IUpdatable {
     if (currentVista === 'FPS') {
       if (canvas) fpsCam.detachControl();
 
-      tpsCam.checkCollisions = false;
+      // 🔥 FIX: Activamos colisiones DURANTE la animación para que Babylon frene 
+      // la cámara suavemente si hay una pared, sin saltos.
+      const useCollisions = this.context.mode() === 'FINAL_USER' || this.context.mode() === 'PREVIEW_ADMIN';
+      tpsCam.checkCollisions = useCollisions;
+      
       tpsCam.lowerRadiusLimit = null;
       tpsCam.upperRadiusLimit = null;
 
@@ -204,7 +254,8 @@ export class PlayerCameraManagerService implements IUpdatable {
       tpsCam.inertialBetaOffset = 0;
       tpsCam.inertialRadiusOffset = 0;
 
-      this.currentPivotY = this.currentEyeLevel;
+      this.overrideTargetPivotY = null;
+      
       onVistaChanged('TPS');
       scene.activeCamera = tpsCam;
 
@@ -218,11 +269,11 @@ export class PlayerCameraManagerService implements IUpdatable {
           }
       });
 
-      const animRad = Animation.CreateAndStartAnimation('camRadiusOut', tpsCam, 'radius', 60, framesTransicion, 0.05, targetRadius, 2, ease);
+      // 🔥 FIX: Animamos estrictamente hasta la distancia máxima. El motor frenará la cámara si hay pared.
+      const animRad = Animation.CreateAndStartAnimation('camRadiusOut', tpsCam, 'radius', 60, framesTransicion, 0.05, maxR, 2, ease);
 
       animRad?.onAnimationEndObservable.addOnce(() => {
         this.resetearTransiciones();
-        tpsCam.checkCollisions = true; 
         jugador.visibility = 1;
         jugador.getChildMeshes().forEach(m => m.visibility = 1);
         if (canvas && attachControlForce) tpsCam.attachControl(canvas, true);
@@ -267,7 +318,8 @@ export class PlayerCameraManagerService implements IUpdatable {
         scene.activeCamera = fpsCam;
         
         this.resetearTransiciones();
-        tpsCam.checkCollisions = true;
+        const useCollisions = this.context.mode() === 'FINAL_USER' || this.context.mode() === 'PREVIEW_ADMIN';
+        tpsCam.checkCollisions = useCollisions;
 
         jugador.visibility = 0;
         jugador.getChildMeshes().forEach(m => m.visibility = 0);
@@ -352,13 +404,9 @@ export class PlayerCameraManagerService implements IUpdatable {
 
         this.motor3d.playerCameraTPS.lowerRadiusLimit = minRadius;
         this.motor3d.playerCameraTPS.upperRadiusLimit = maxRadius;
-
-        if (this.motor3d.playerCameraTPS.radius < minRadius) {
-          this.motor3d.playerCameraTPS.radius = minRadius;
-        }
-        if (this.motor3d.playerCameraTPS.radius > maxRadius) {
-          this.motor3d.playerCameraTPS.radius = maxRadius;
-        }
+        
+        // 🔥 FIX: Eliminado el forzado manual de this.motor3d.playerCameraTPS.radius
+        // Esto causaba saltos violentos al pelear contra el motor de colisiones.
       }
 
       const localPivotPos = new Vector3(

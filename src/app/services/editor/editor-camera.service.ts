@@ -21,7 +21,6 @@ export class EditorCameraService {
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
 
-  // 🔥 FIX: Guardamos el estado real y exacto de la cámara orbital (Radio, Ángulos, Target)
   private editorCamState: { target: Vector3; radius: number; alpha: number; beta: number } | null = null;
 
   private obtenerCamaraJuegoActiva(): Camera | null {
@@ -116,7 +115,6 @@ export class EditorCameraService {
     });
   }
 
-  // 🔥 FIX: Captura perfecta del estado para que no quede lenta al regresar
   guardarEstadoCamaraLibre(): void {
     const editorCam = this.motor3d.editorCamera;
     if (!editorCam) return;
@@ -129,7 +127,6 @@ export class EditorCameraService {
     };
   }
 
-  // 🔥 FIX: Restaura los ángulos y el radio para conservar la fluidez
   restaurarCamaraLibre(): void {
     const editorCam = this.motor3d.editorCamera;
     if (!editorCam || !this.editorCamState) return;
@@ -299,6 +296,7 @@ export class EditorCameraService {
     centroEpiral: Vector3,
     targetPos: Vector3,
     targetLookAt: Vector3,
+    playerForward: Vector3,
     isFPS: boolean,
     onComplete: () => void
   ): void {
@@ -310,21 +308,8 @@ export class EditorCameraService {
 
     const frames = 150;
 
-    const posAnim = new Animation(
-      'camPosIn',
-      'position',
-      60,
-      Animation.ANIMATIONTYPE_VECTOR3,
-      Animation.ANIMATIONLOOPMODE_CONSTANT
-    );
-
-    const targetAnim = new Animation(
-      'camTargetIn',
-      'target',
-      60,
-      Animation.ANIMATIONTYPE_VECTOR3,
-      Animation.ANIMATIONLOOPMODE_CONSTANT
-    );
+    const posAnim = new Animation('camPosIn', 'position', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    const targetAnim = new Animation('camTargetIn', 'target', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
 
     const keysPos: { frame: number; value: Vector3 }[] = [];
     const keysTarget: { frame: number; value: Vector3 }[] = [];
@@ -336,14 +321,17 @@ export class EditorCameraService {
 
     const endOffset = targetPos.subtract(centroEpiral);
     const endRadius = endOffset.length();
-    const endYaw = Math.atan2(endOffset.x, endOffset.z);
+    
+    // 🔥 FIX: Calculamos el yaw final basándonos en la espalda del jugador
+    // De este modo la espiral de descenso siempre caerá detrás del personaje.
+    const endYaw = Math.atan2(-playerForward.x, -playerForward.z);
     const endPitch = targetPos.y;
 
     let yawDiff = endYaw - startYaw;
     while (yawDiff < -Math.PI) yawDiff += Math.PI * 2;
     while (yawDiff > Math.PI) yawDiff -= Math.PI * 2;
 
-    const targetYaw = startYaw + yawDiff + (Math.PI * 1.5);
+    const targetYaw = startYaw + yawDiff + (Math.PI * 2); // Efecto cinemático (Giro extra)
 
     for (let i = 0; i <= frames; i++) {
       const t = i / frames;
@@ -353,17 +341,24 @@ export class EditorCameraService {
       const currentYaw = startYaw + (targetYaw - startYaw) * easeT;
       const currentY = startPitch + (endPitch - startPitch) * easeT;
 
-      const posX = centroEpiral.x + currentRadius * Math.sin(currentYaw);
-      const posZ = centroEpiral.z + currentRadius * Math.cos(currentYaw);
+      let posX = centroEpiral.x + currentRadius * Math.sin(currentYaw);
+      let posZ = centroEpiral.z + currentRadius * Math.cos(currentYaw);
+      
+      // Interpolación lineal fuerte al final para que entre perfecto en la posición final (ojos o espalda)
+      if (easeT > 0.8) {
+          const lT = (easeT - 0.8) / 0.2;
+          posX = posX + (targetPos.x - posX) * lT;
+          posZ = posZ + (targetPos.z - posZ) * lT;
+      }
 
       keysPos.push({ frame: i, value: new Vector3(posX, currentY, posZ) });
 
       let currentTarget: Vector3;
-      if (easeT < 0.6) {
-        const tT = easeT / 0.6;
+      if (easeT < 0.5) {
+        const tT = easeT / 0.5;
         currentTarget = Vector3.Lerp(startTarget, centroEpiral, tT);
       } else {
-        const tT = (easeT - 0.6) / 0.4;
+        const tT = (easeT - 0.5) / 0.5;
         currentTarget = Vector3.Lerp(centroEpiral, targetLookAt, tT);
       }
 

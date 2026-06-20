@@ -1,3 +1,4 @@
+
 import { Injectable, inject, Injector } from '@angular/core';
 import {
   Mesh, Vector3, Matrix, TransformNode, UniversalCamera,
@@ -12,6 +13,7 @@ import { GameEntity } from '../../entities/game.entity';
 import { GameSession } from '../game-session';
 import { GameContextService } from '../../session/game-context.service';
 import { CameraOwnershipService } from '../../runtime/cameras/camera-ownership.service';
+import { CAMERA_BEHAVIOR_PROFILES } from '../../runtime/cameras/camera-behavior-profile.model';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerCameraManagerService implements IUpdatable {
@@ -62,6 +64,7 @@ export class PlayerCameraManagerService implements IUpdatable {
 
   public iniciarCinematicaIntro(entity: GameEntity): void {
       const config = entity.playerConfig || cloneDefaultPlayerConfig();
+      const profile = CAMERA_BEHAVIOR_PROFILES[this.context.mode()];
       const scaleY = entity.transform.scale.y || 1;
       const tpsCam = this.motor3d.playerCameraTPS;
 
@@ -78,8 +81,7 @@ export class PlayerCameraManagerService implements IUpdatable {
           tpsCam.beta = Math.PI / 2.2; 
       }
 
-      const useCollisions = this.context.mode() === 'FINAL_USER' || this.context.mode() === 'PREVIEW_ADMIN';
-      tpsCam.checkCollisions = useCollisions;
+      tpsCam.checkCollisions = profile.collisionsEnabled;
       tpsCam.lowerRadiusLimit = null;
       tpsCam.upperRadiusLimit = null;
 
@@ -120,6 +122,7 @@ export class PlayerCameraManagerService implements IUpdatable {
     const colMeta = entity.collider;
     const camMeta = entity.camOffset;
     const config = entity.playerConfig || cloneDefaultPlayerConfig();
+    const profile = CAMERA_BEHAVIOR_PROFILES[this.context.mode()];
     const scaleY = entity.transform.scale.y || 1;
 
     const playerEyeLevel = (config.camera.fpsEyeLevel || 1.6) * scaleY;
@@ -146,7 +149,9 @@ export class PlayerCameraManagerService implements IUpdatable {
 
     const fpsCam = this.motor3d.playerCameraFPS;
     fpsCam.keysUp = []; fpsCam.keysDown = []; fpsCam.keysLeft = []; fpsCam.keysRight = [];
-    fpsCam.minZ = 0.01; 
+    fpsCam.minZ = profile.minZ; 
+    fpsCam.angularSensibility = profile.angularSensibilityX;
+    fpsCam.fov = profile.fov;
 
     const startRot = jugador.rotationQuaternion
       ? jugador.rotationQuaternion.toEulerAngles()
@@ -168,16 +173,22 @@ export class PlayerCameraManagerService implements IUpdatable {
       this.motor3d.playerCameraTPS.radius = radBase;
       this.motor3d.playerCameraTPS.lowerRadiusLimit = minRad;
       this.motor3d.playerCameraTPS.upperRadiusLimit = maxRad;
+      this.motor3d.playerCameraTPS.minZ = profile.minZ;
       
-      const useCollisions = this.context.mode() === 'FINAL_USER' || this.context.mode() === 'PREVIEW_ADMIN';
-      this.motor3d.playerCameraTPS.checkCollisions = useCollisions;
+      this.motor3d.playerCameraTPS.checkCollisions = profile.collisionsEnabled;
       
       this.motor3d.playerCameraTPS.collisionRadius = new Vector3(0.25, 0.25, 0.25); 
       this.motor3d.playerCameraTPS.upperBetaLimit = (Math.PI / 2) + 0.4;
       
+      // FIX TS2339: Valores constantes propios de un setup TPS seguro.
       this.motor3d.playerCameraTPS.wheelPrecision = 15;
       this.motor3d.playerCameraTPS.panningSensibility = 0;
       this.motor3d.playerCameraTPS.allowUpsideDown = false;
+
+      this.motor3d.playerCameraTPS.angularSensibilityX = profile.angularSensibilityX;
+      this.motor3d.playerCameraTPS.angularSensibilityY = profile.angularSensibilityY;
+      this.motor3d.playerCameraTPS.fov = profile.fov;
+
       this.motor3d.playerCameraTPS.alpha = -(startRot.y || 0) - Math.PI / 2;
       this.motor3d.playerCameraTPS.beta = (startRot.x || 0) + Math.PI / 2;
       
@@ -211,6 +222,7 @@ export class PlayerCameraManagerService implements IUpdatable {
     this.isTransitioningCameras = true;
     const scaleNow = entity.transform.scale.y || 1;
     const config = entity.playerConfig || cloneDefaultPlayerConfig();
+    const profile = CAMERA_BEHAVIOR_PROFILES[this.context.mode()];
     
     const minR = (config.camera.tpsMinRadius ?? 1.5) * scaleNow;
     const maxR = (config.camera.tpsMaxRadius ?? 15) * scaleNow;
@@ -229,8 +241,7 @@ export class PlayerCameraManagerService implements IUpdatable {
     const fadeLimit = 2.5 * scaleNow;
 
     if (currentVista === 'FPS') {
-      const useCollisions = this.context.mode() === 'FINAL_USER' || this.context.mode() === 'PREVIEW_ADMIN';
-      tpsCam.checkCollisions = useCollisions;
+      tpsCam.checkCollisions = profile.collisionsEnabled;
       tpsCam.lowerRadiusLimit = null;
       tpsCam.upperRadiusLimit = null;
 
@@ -306,8 +317,7 @@ export class PlayerCameraManagerService implements IUpdatable {
         }
         
         this.resetearTransiciones();
-        const useCollisions = this.context.mode() === 'FINAL_USER' || this.context.mode() === 'PREVIEW_ADMIN';
-        tpsCam.checkCollisions = useCollisions;
+        tpsCam.checkCollisions = profile.collisionsEnabled;
 
         jugador.visibility = 0;
         jugador.getChildMeshes().forEach(m => m.visibility = 0);

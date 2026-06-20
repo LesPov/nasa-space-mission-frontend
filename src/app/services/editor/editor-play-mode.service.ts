@@ -14,7 +14,8 @@ import { CameraViewMode, GameMode } from '../../core/engine/session/game-context
 import { GameContextService } from '../../core/engine/session/game-context.service';
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
 import { EditorModeTransitionService } from './editor-mode-transition.service';
- 
+import { CAMERA_BEHAVIOR_PROFILES } from '../../core/engine/runtime/cameras/camera-behavior-profile.model';
+
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
   private motor3d = inject(Motor3dService);
@@ -72,7 +73,6 @@ export class EditorPlayModeService {
         }
     });
 
-    // Aseguramos que playerForward siempre sea válido para prevenir bugs
     const playerForward = objMesh.forward.clone().normalize();
     if (playerForward.lengthSquared() === 0) playerForward.copyFromFloats(0, 0, 1);
 
@@ -83,27 +83,19 @@ export class EditorPlayModeService {
     let targetLookAt: Vector3;
     let targetPos: Vector3;
     const centroEpiral = objMesh.getAbsolutePosition().clone();
-    centroEpiral.y += fpsEyeLevel; // Siempre es la cabeza para orbitarla
+    centroEpiral.y += fpsEyeLevel;
 
     if (vista === 'FPS') {
-        // En FPS, apuntamos a los ojos.
         targetPos = objMesh.getAbsolutePosition().clone();
         targetPos.y += fpsEyeLevel;
-
-        // La cámara del jugador mirará hacia el horizonte, delante del personaje
         targetLookAt = targetPos.add(playerForward.scale(10));
     } else {
-        // En TPS, targetLookAt es el pivote (la espalda/pecho)
         targetLookAt = objMesh.getAbsolutePosition().clone();
         targetLookAt.y += tpsPivotY;
-        
-        // targetPos retrocede respecto al pivote, e imita el Beta clásico levantándose un poco.
         targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
         targetPos.y += tpsMaxRadius * 0.2; 
     }
 
-    // 🔥 FIX: Observador Temporal Anti-Clipping. 
-    // Cuando la cámara Proxy se acerca a menos de 1.8 metros (la nuca), oculta el modelo para que no veas los vértices (Solo si vas a FPS)
     let hideObserver: Observer<Scene> | null = null;
     if (vista === 'FPS') {
       hideObserver = this.motor3d.scene.onBeforeRenderObservable.add(() => {
@@ -136,6 +128,11 @@ export class EditorPlayModeService {
                     this.motor3d.editorCamera?.detachControl();
                     this.motor3d.playerCameraFPS?.detachControl();
                     this.motor3d.playerCameraTPS?.detachControl();
+                    
+                    // Asegurar que el proxy o la cámara nueva siga el perfil TEST_LIVE temporalmente si es necesario
+                    const profile = CAMERA_BEHAVIOR_PROFILES[GameMode.TEST_LIVE];
+                    if (activeCam.minZ !== undefined) activeCam.minZ = profile.minZ;
+                    
                     activeCam.attachControl(canvas, true);
                 }
             }

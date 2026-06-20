@@ -1,20 +1,26 @@
 
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { Router } from '@angular/router';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { Subscription, debounceTime } from 'rxjs';
+import { AbstractMesh, Mesh } from '@babylonjs/core';
+
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
 import { ToolbarEscena } from '../../../components/toolbar-escena/toolbar-escena';
+import { MiniVisorEscena } from '../../../components/mini-visor-escena/mini-visor-escena';
+import { GlobalTimeline } from '../../../components/global-timeline/global-timeline';
+import { UiHud } from '../../../components/ui-hud/ui-hud';
+import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
+import { UiLoading } from '../../../components/ui-loading/ui-loading';
+import { UiMission } from '../../../components/ui-mission/ui-mission';
+
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EditorStateService } from '../../../services/editor/editor-state.service';
 import { Motor3dService } from '../../../services/motor-3d.service';
 import { LayoutService } from '../../../services/layout.service';
 import { EpisodiosService } from '../../../services/api/episodios';
-import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
-import { MiniVisorEscena } from '../../../components/mini-visor-escena/mini-visor-escena';
-import { debounceTime, Subscription } from 'rxjs';
-import { AbstractMesh } from '@babylonjs/core';
-import { GlobalTimeline } from '../../../components/global-timeline/global-timeline';
 import { GameSession } from '../../../core/engine/runtime/game-session';
 import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { EditorPlayModeService } from '../../../services/editor/editor-play-mode.service';
@@ -23,12 +29,9 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 import { EditorLayoutService } from '../../../services/editor/editor-layout.service';
 import { EditorKeyboardService } from '../../../services/editor/editor-keyboard.service';
 import { InputOrchestratorService } from '../../../core/engine/runtime/systems/input-orchestrator.service';
+import { AddObjectModalService } from '../../../services/editor/modals/add-object-modal.service';
+import { MissionModalService } from '../../../services/editor/modals/mission-modal.service';
 
-import { UiHud } from '../../../components/ui-hud/ui-hud';
-import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
-import { UiLoading } from '../../../components/ui-loading/ui-loading';
-import { UiMission } from '../../../components/ui-mission/ui-mission';
-  
 @Component({
   selector: 'app-editor-escena', 
   standalone: true,
@@ -52,13 +55,14 @@ export class EditorEscena implements OnInit, OnDestroy {
   public layoutUI = inject(EditorLayoutService);
   public keyboard = inject(EditorKeyboardService);
   public inputOrchestrator = inject(InputOrchestratorService);
+  public addObjSvc = inject(AddObjectModalService);
+  public missionSvc = inject(MissionModalService);
   public cdr = inject(ChangeDetectorRef);
   private router = inject(Router);
 
   public playModeSvc = inject(EditorPlayModeService);
 
   public isInteracting = signal(false);
-
   public editando = false;
   public esAdmin: boolean = false;
 
@@ -74,10 +78,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   public cerrandoModalMision = false; 
   public misionIniciada = false;
 
-  public showMissionModal = false;
-  public missionModalMode: 'create' | 'edit' = 'create';
-  public missionModalData: any = null;
-
   public fps = signal('0');
   public estadoGuardado = signal('Guardado');
 
@@ -88,29 +88,34 @@ export class EditorEscena implements OnInit, OnDestroy {
   public nuevoTitulo = '';
   public nuevaDesc = '';
 
-  public listaAssets: any[] = [];
-  public archivoSubida: File | null = null;
-  public subiendoAsset = false;
-
-  public objNombre: string = 'Objeto_01';
-  public objTipo: string = 'cube';
-  public objRol: string = 'prop';
-  public objColor: string = '#ffffff';
-  public objSizeX: number = 1;
-  public objSizeY: number = 1;
-  public objSizeZ: number = 1;
-  public objAssetSeleccionado: any = null;
-  public objEsSolido: boolean = true;
-  public objEsSeleccionable: boolean = true;
-  public objMensaje: string = '';
-  public objHacerHijo: boolean = true;
-
   public vistaPrueba: 'FPS' | 'TPS' = 'FPS';
   private activeCameraView = 'FPS';
 
   private fpsInterval: any;
   private autoSaveSub!: Subscription;
   private eventBusSub!: Subscription;
+
+  // PROXIES AL SERVICIO DE AÑADIR OBJETO (Evita romper el HTML actual)
+  get objNombre() { return this.addObjSvc.objNombre; } set objNombre(v) { this.addObjSvc.objNombre = v; }
+  get objTipo() { return this.addObjSvc.objTipo; } set objTipo(v) { this.addObjSvc.objTipo = v; }
+  get objRol() { return this.addObjSvc.objRol; } set objRol(v) { this.addObjSvc.objRol = v; }
+  get objColor() { return this.addObjSvc.objColor; } set objColor(v) { this.addObjSvc.objColor = v; }
+  get objSizeX() { return this.addObjSvc.objSizeX; } set objSizeX(v) { this.addObjSvc.objSizeX = v; }
+  get objSizeY() { return this.addObjSvc.objSizeY; } set objSizeY(v) { this.addObjSvc.objSizeY = v; }
+  get objSizeZ() { return this.addObjSvc.objSizeZ; } set objSizeZ(v) { this.addObjSvc.objSizeZ = v; }
+  get objAssetSeleccionado() { return this.addObjSvc.objAssetSeleccionado; } set objAssetSeleccionado(v) { this.addObjSvc.objAssetSeleccionado = v; }
+  get objEsSolido() { return this.addObjSvc.objEsSolido; } set objEsSolido(v) { this.addObjSvc.objEsSolido = v; }
+  get objEsSeleccionable() { return this.addObjSvc.objEsSeleccionable; } set objEsSeleccionable(v) { this.addObjSvc.objEsSeleccionable = v; }
+  get objMensaje() { return this.addObjSvc.objMensaje; } set objMensaje(v) { this.addObjSvc.objMensaje = v; }
+  get objHacerHijo() { return this.addObjSvc.objHacerHijo; } set objHacerHijo(v) { this.addObjSvc.objHacerHijo = v; }
+  get listaAssets() { return this.addObjSvc.listaAssets; }
+  get archivoSubida() { return this.addObjSvc.archivoSubida; } set archivoSubida(v) { this.addObjSvc.archivoSubida = v; }
+  get subiendoAsset() { return this.addObjSvc.subiendoAsset; }
+
+  // PROXIES AL SERVICIO DE MISION
+  get showMissionModal() { return this.missionSvc.showMissionModal; } set showMissionModal(v) { this.missionSvc.showMissionModal = v; }
+  get missionModalMode() { return this.missionSvc.missionModalMode; }
+  get missionModalData() { return this.missionSvc.missionModalData; }
 
   constructor() {
     effect(() => {
@@ -121,7 +126,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   ngOnInit() {
     this.esAdmin = this.editorSvc.checkIsAdmin();
     this.cargarEpisodios();
-    this.cargarAssets();
+    this.addObjSvc.cargarAssets();
 
     this.eventBusSub = this.eventBus.events$.subscribe(event => {
       switch (event.type) {
@@ -134,8 +139,6 @@ export class EditorEscena implements OnInit, OnDestroy {
           break;
         case 'GamePaused': 
           if (this.editorSvc.playState() === 'PLAYING') {
-              // 🔥 FIX: Ya no invocamos mostrarModalMisionPreview aquí.
-              // Solo dejamos que el cursor quede libre (nativo) al pulsar Escape.
               this.cerrandoModalMision = false;
           }
           break;
@@ -257,40 +260,12 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  cargarAssets() {
-    this.epiApiSvc.obtenerAssets().subscribe({
-      next: (res) => {
-        this.listaAssets = res.filter((a:any) => 
-          a.type === 'model_glb' || a.type === 'video_mp4' || 
-          a.path.endsWith('.mp4') || a.path.endsWith('.webm') || 
-          a.type === 'texture_png' || a.type === 'texture_jpg' || 
-          a.path.endsWith('.png') || a.path.endsWith('.jpg') || a.path.endsWith('.jpeg')
-        );
-      },
-      error: (err) => console.error('Error al cargar assets', err)
-    });
-  }
-
-  seleccionarArchivoSubida(event: any) {
-    if (event.target.files && event.target.files.length > 0) this.archivoSubida = event.target.files[0];
-  }
-
-  subirNuevoAsset() {
-    if (!this.archivoSubida) return;
-    this.subiendoAsset = true;
-    this.epiApiSvc.subirAsset(this.archivoSubida).subscribe({
-      next: (res) => {
-        this.subiendoAsset = false;
-        this.archivoSubida = null;
-        alert('Archivo subido correctamente');
-        this.cargarAssets();
-      },
-      error: (err) => {
-        this.subiendoAsset = false;
-        alert('Error al subir el archivo. Revisa la consola.');
-      }
-    });
-  }
+  seleccionarArchivoSubida(event: any) { this.addObjSvc.seleccionarArchivoSubida(event); }
+  subirNuevoAsset() { this.addObjSvc.subirNuevoAsset(() => this.cdr.detectChanges()); }
+  onRolChange() { this.addObjSvc.onRolChange(); }
+  onTipoChange() { this.addObjSvc.onTipoChange(); }
+  crearObjeto3D() { this.addObjSvc.crearObjeto3D(); }
+  cerrarModalObjeto() { this.addObjSvc.cerrarModalObjeto(); }
 
   crearNuevoEpisodio() {
     if (!this.nuevoTitulo) return;
@@ -307,18 +282,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   abrirModalMision(esEdicion: boolean) {
-    this.missionModalMode = esEdicion ? 'edit' : 'create';
-    if (esEdicion) {
-      const uiSettings = this.motor3dSvc.scene?.metadata?.uiSettings || {};
-      this.missionModalData = {
-        title: this.episodioCompletoData?.title || '',
-        description: this.episodioCompletoData?.description || '',
-        ...uiSettings
-      };
-    } else {
-      this.missionModalData = null;
-    }
-    this.showMissionModal = true;
+    this.missionSvc.abrirModalMision(esEdicion, this.episodioCompletoData, this.motor3dSvc.scene?.metadata?.uiSettings);
   }
 
   actualizarMisionModalEnVivo(data: any) {
@@ -346,7 +310,7 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.epiApiSvc.crearEpisodio(data.title, data.description).subscribe({
         next: (res) => {
           this.listaEpisodios.unshift(res);
-          this.showMissionModal = false;
+          this.missionSvc.cerrarModalMision();
           this.entrarAlEditor(res);
 
           const interval = setInterval(() => {
@@ -364,7 +328,7 @@ export class EditorEscena implements OnInit, OnDestroy {
         }
       });
     } else {
-      this.showMissionModal = false;
+      this.missionSvc.cerrarModalMision();
       this.guardarMapaEnBD(false);
     }
   }
@@ -397,44 +361,6 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  onRolChange() {
-    if (['npc', 'spawn_point', 'politico', 'militar'].includes(this.objRol)) this.objTipo = 'model';
-  }
-
-  onTipoChange() {
-    if (this.objTipo === 'trigger' || this.objTipo === 'trigger_compuesto') {
-      this.objRol = 'prop'; this.objEsSolido = false; this.objEsSeleccionable = true;
-    } else if (this.objTipo.startsWith('light_')) {
-      this.objRol = 'prop'; this.objColor = '#ffffff'; this.objEsSolido = false; this.objEsSeleccionable = true;
-    } else if (this.objTipo === 'bubble' || this.objTipo === 'video_plane' || this.objTipo === 'image_plane') {
-      this.objRol = 'prop'; this.objEsSolido = false; this.objEsSeleccionable = true;
-    } else if (this.objTipo !== 'model') {
-      this.objRol = 'prop';
-    }
-    if (this.objTipo !== 'model' && !this.objTipo.startsWith('light_') && this.objTipo !== 'video_plane' && this.objTipo !== 'image_plane') {
-      this.objAssetSeleccionado = null;
-    }
-  }
-
-  crearObjeto3D() {
-    if(!this.objNombre) return;
-    const parent = this.objHacerHijo ? (this.editorSvc.objetoSeleccionado() as AbstractMesh | null) : null;
-    this.editorSvc.agregarObjetoCustom(
-      this.objTipo, this.objNombre, this.objRol, this.objColor, this.objSizeX, this.objSizeY, this.objSizeZ,
-      this.objAssetSeleccionado, this.objEsSolido, this.objEsSeleccionable, this.objMensaje, parent
-    );
-    this.cerrarModalObjeto();
-  }
-
-  cerrarModalObjeto() {
-    this.editorSvc.showAddObjectModal.set(false);
-    this.objNombre = 'Objeto_' + Math.floor(Math.random() * 100);
-    this.objTipo = 'cube'; this.objRol = 'prop'; this.objColor = '#ffffff';
-    this.objSizeX = 1; this.objSizeY = 1; this.objSizeZ = 1;
-    this.objAssetSeleccionado = null; this.archivoSubida = null;
-    this.objEsSolido = true; this.objEsSeleccionable = true; this.objMensaje = ''; this.objHacerHijo = true;
-  }
-
   esObjetoJugable(): boolean {
     const obj = this.editorSvc.objetoSeleccionado() as AbstractMesh;
     if (!obj) return false;
@@ -447,8 +373,6 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (!this.esObjetoJugable()) return;
     this.guardarMapaEnBD(true);
     
-    // 🔥 FIX: Al probar directamente desde el Editor, ignoramos el Modal Misión
-    // y entregamos directamente el control a la cámara sin estorbar el Canvas.
     this.mostrarModalMisionPreview = false;
     this.misionIniciada = true;
     

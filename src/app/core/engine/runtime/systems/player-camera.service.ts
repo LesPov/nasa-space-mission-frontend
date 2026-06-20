@@ -1,5 +1,5 @@
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, Injector } from '@angular/core';
 import {
   Mesh, Vector3, Matrix, TransformNode, UniversalCamera,
   Animation, CubicEase, EasingFunction, Quaternion, MeshBuilder, Tags
@@ -8,13 +8,21 @@ import { Motor3dService } from '../../../../services/motor-3d.service';
 import { cloneDefaultPlayerConfig } from '../../models/player-config.model';
 import { EstadoFisico } from './player-physics.service';
 import { SeqRuntime } from './player-sequence.service';
-import { LoopManagerService, GamePhase } from '../../behaviors/services/loop-manager.service';
+import { LoopManagerService, GamePhase, IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameEntity } from '../../entities/game.entity';
+import { GameSession } from '../game-session';
 
 @Injectable({ providedIn: 'root' })
-export class PlayerCameraManagerService {
+export class PlayerCameraManagerService implements IUpdatable {
+  public id = 'PlayerCameraSystem';
   private motor3d = inject(Motor3dService);
   private loopManager = inject(LoopManagerService); 
+  private injector = inject(Injector);
+
+  // Lazy Injection para evitar dependencias circulares con GameSession
+  private get session(): GameSession {
+    return this.injector.get(GameSession);
+  }
 
   public cameraPivot: Mesh | null = null;
 
@@ -27,6 +35,21 @@ export class PlayerCameraManagerService {
   public headNode: TransformNode | null = null;
   public initialHeadLocal: Vector3 | null = null;
   
+  public cameraUpdate(dtMs: number): void {
+    const playerEntity = this.session.activePlayerEntity();
+    const activeCamera = this.motor3d.scene.activeCamera;
+    
+    if (playerEntity && activeCamera && playerEntity.playerRuntime.seqRuntime) {
+      this.actualizarPosicionCamara(
+        playerEntity,
+        activeCamera,
+        playerEntity.playerRuntime.physicsState,
+        playerEntity.playerRuntime.seqRuntime,
+        this.session.cameraView()
+      );
+    }
+  }
+
   public resetearTransiciones(): void {
     this.isTransitioningCameras = false;
     this.overrideTargetPivotY = null;

@@ -1,5 +1,3 @@
-// src/app/core/engine/runtime/systems/player-sequence.service.ts
-
 import { Injectable, inject, Injector } from '@angular/core';
 import { Mesh, Quaternion, Vector3, Light, StandardMaterial, VideoTexture, Color3 } from '@babylonjs/core';
 import { GameSession } from '../game-session';
@@ -10,6 +8,7 @@ import { GameEntity } from '../../entities/game.entity';
 import { GameEventBusService } from '../../events/game-event-bus.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { Subscription } from 'rxjs';
+import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 
 export interface SeqRuntime {
   step: PlayerSequenceStep | null;
@@ -22,10 +21,9 @@ export interface SeqRuntime {
   loop: boolean;
   running: boolean;
   freezeOrientation: boolean;
-  rootMotion: Vector3; // NUEVO: Desacopla la inyección de físicas
+  rootMotion: Vector3;
 }
 
-// --- PATRÓN COMMAND: Handlers de Acciones Individuales ---
 interface SequenceActionHandler {
     execute(step: PlayerSequenceStep, entity: GameEntity, motor3d: Motor3dService, dtMs: number, dtFraction: number, runtime: SeqRuntime): void;
 }
@@ -158,7 +156,8 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
 };
 
 @Injectable({ providedIn: 'root' })
-export class PlayerSequenceService {
+export class PlayerSequenceService implements IUpdatable {
+  public id = 'PlayerSequenceSystem';
   private motor3d = inject(Motor3dService);
   private gameState = inject(GameStateService);
   private eventBus = inject(GameEventBusService);
@@ -187,6 +186,17 @@ export class PlayerSequenceService {
         this.buscarEIniciarSecuenciaPorId(event.payload.sequenceId);
       }
     });
+  }
+
+  public physicsUpdate(dtMs: number): void {
+    const entities = this.entityManager.getAllEntities();
+    for (const entity of entities) {
+        if (entity.playerConfig?.sequences && entity.playerConfig.sequences.length > 0) {
+            entity.playerRuntime.seqRuntime = this.actualizarSecuencia(dtMs, entity);
+        } else if (!entity.playerRuntime.seqRuntime) {
+            entity.playerRuntime.seqRuntime = this.getDefaultRuntime(entity);
+        }
+    }
   }
 
   public resetearSecuencias(): void {
@@ -231,7 +241,11 @@ export class PlayerSequenceService {
     if (!state.orientationLocked) return;
 
     if (state.quaternion) {
-      jugador.rotationQuaternion = state.quaternion.clone();
+      if (!jugador.rotationQuaternion) {
+        jugador.rotationQuaternion = state.quaternion.clone();
+      } else {
+        jugador.rotationQuaternion.copyFrom(state.quaternion);
+      }
       jugador.rotation.set(0, 0, 0);
     }
   }
@@ -284,10 +298,20 @@ export class PlayerSequenceService {
       this.captureSequenceOrientationState(jugador, state);
     }
   }
+  
+  private getDefaultRuntime(entity: GameEntity): SeqRuntime {
+    const config = entity.playerConfig || cloneDefaultPlayerConfig();
+    return { 
+        step: null, lockInput: false, allowMovement: true, forceForwardWalk: false, 
+        forceForwardRun: false, forceJump: false, blend: config.blend.defaultBlend, 
+        loop: true, running: false, freezeOrientation: false, rootMotion: Vector3.Zero() 
+    };
+  }
 
   public actualizarSecuencia(dtMs: number, entity: GameEntity): SeqRuntime {
     const jugador = entity.view as Mesh;
     const config = entity.playerConfig || cloneDefaultPlayerConfig();
+    const defaultRuntime = this.getDefaultRuntime(entity);
 
     const seqs = config.sequences?.filter(s => !!s.enabled) || [];
     const state = this.getSeqState(entity.uid);
@@ -297,12 +321,6 @@ export class PlayerSequenceService {
     
     if (metaActiveId) sequence = seqs.find(s => s.id === metaActiveId) || null;
     else if (state.id) sequence = seqs.find(s => s.id === state.id) || null;
-
-    const defaultRuntime: SeqRuntime = { 
-        step: null, lockInput: false, allowMovement: true, forceForwardWalk: false, 
-        forceForwardRun: false, forceJump: false, blend: config.blend.defaultBlend, 
-        loop: true, running: false, freezeOrientation: false, rootMotion: Vector3.Zero() 
-    };
 
     if (!sequence || !sequence.steps || sequence.steps.length === 0) {
       state.id = '';
@@ -364,7 +382,6 @@ export class PlayerSequenceService {
     }
 
     if (jugador) {
-        // Ejecución por Comandos (Limpio y Desacoplado)
         if (step.clipOverride === 'none') {
             ActionHandlers['stopBaked']?.execute(step, entity, this.motor3d, dtMs, 0, runtime);
         }
@@ -374,7 +391,6 @@ export class PlayerSequenceService {
             handler.execute(step, entity, this.motor3d, dtMs, dtMs / durMs, runtime);
         }
         
-        // Exposición de Root Motion para Kinematics
         const soY = step.offsetY || 0;
         const soF = step.offsetForward || 0;
         if (soY !== 0 || soF !== 0) {

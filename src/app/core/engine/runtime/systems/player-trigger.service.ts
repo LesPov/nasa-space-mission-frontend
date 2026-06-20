@@ -1,4 +1,3 @@
-
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
 import { GameSession } from '../game-session';
@@ -6,9 +5,11 @@ import { GameStateService } from '../state/game-state.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
 import { GameEventBusService } from '../../events/game-event-bus.service';
+import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 
 @Injectable({ providedIn: 'root' })
-export class PlayerTriggerService {
+export class PlayerTriggerService implements IUpdatable {
+  public id = 'PlayerTriggerSystem';
   private gameState = inject(GameStateService);
   private entityManager = inject(EntityManagerService);
   private eventBus = inject(GameEventBusService);
@@ -52,6 +53,13 @@ export class PlayerTriggerService {
     });
   }
 
+  public update(dtMs: number): void {
+    const playerEntity = this.session.activePlayerEntity();
+    if (playerEntity) {
+      this.verificarTriggers(playerEntity);
+    }
+  }
+
   public verificarTriggers(entity: GameEntity): void {
     const jugador = entity.view as Mesh;
     if (!jugador) return;
@@ -66,7 +74,6 @@ export class PlayerTriggerService {
     const triggers = this.entityManager.getAllEntities().filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto');
 
     triggers.forEach(triggerEntity => {
-        // 🔥 Se mapea a Runtime puro
         if (!triggerEntity.trigger || triggerEntity.triggerRuntime?.isEnabled === false) return;
 
         if (!this.gameState.evaluateAllConditions(triggerEntity.trigger.gameConditions)) {

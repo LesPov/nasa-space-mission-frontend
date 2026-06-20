@@ -1,17 +1,31 @@
-import { Injectable, inject } from '@angular/core';
+
+import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
 import { GameEventBusService } from '../../events/game-event-bus.service';
 import { InputOrchestratorService } from './input-orchestrator.service';
+import { IUpdatable } from '../../behaviors/services/loop-manager.service';
+import { GameSession } from '../game-session';
+import { PlayerBubbleService } from './player-bubble.service';
+import { PlayerSequenceService } from './player-sequence.service';
+import { PlayerInputService } from './player-input.service';
 
 @Injectable({ providedIn: 'root' })
-export class PlayerInteractionService {
+export class PlayerInteractionService implements IUpdatable {
+  public id = 'PlayerInteractionSystem';
   private motor3d = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
   private eventBus = inject(GameEventBusService);
   private inputOrchestrator = inject(InputOrchestratorService);
+  private injector = inject(Injector);
+
+  // 🔥 Lazy Injection: Se piden en tiempo de ejecución para evitar Dependencias Circulares (NG0200)
+  private get session(): GameSession { return this.injector.get(GameSession); }
+  private get bubbleSvc(): PlayerBubbleService { return this.injector.get(PlayerBubbleService); }
+  private get sequenceSvc(): PlayerSequenceService { return this.injector.get(PlayerSequenceService); }
+  private get inputSvc(): PlayerInputService { return this.injector.get(PlayerInputService); }
 
   public currentTarget: GameEntity | null = null;
   public canInteract: boolean = false;
@@ -26,12 +40,61 @@ export class PlayerInteractionService {
   public enable(): void { this.isEnabled = true; }
   public disable(): void { this.isEnabled = false; }
 
+  public update(dtMs: number): void {
+    const playerEntity = this.session.activePlayerEntity();
+    const activeCamera = this.motor3d.scene.activeCamera;
+    if (!playerEntity || !activeCamera) {
+      return;
+    }
+
+    this.comprobarInteracciones(playerEntity, activeCamera, this.session.cameraView());
+
+    if (this.inputSvc.actionPressedThisFrame) {
+      this.handleAction();
+    }
+    if (this.inputSvc.inspectPressedThisFrame) {
+      this.handleInspect();
+    }
+  }
+  
+  private handleAction(): void {
+    if (this.currentTarget && this.canInteract) {
+      const target = this.currentTarget;
+      if (target.type === 'bubble') {
+        this.bubbleSvc.ejecutarBurbuja(target);
+        const seqId = this.session.cameraView() === 'FPS' ? target.interaction.interactSequenceIdFPS : target.interaction.interactSequenceIdTPS;
+        const seqReal = seqId || target.interaction.interactSequenceId;
+        if (seqReal) {
+          const allEntities = this.entityManager.getAllEntities();
+          allEntities.forEach(e => {
+            if (e.playerConfig && e.playerConfig.sequences) {
+              const hasSeq = e.playerConfig.sequences.some((s: any) => s.id === seqReal);
+              if (hasSeq) this.sequenceSvc.iniciarSecuenciaEnJuego(seqReal, e);
+            }
+          });
+        }
+      }
+    }
+  }
+
+  private handleInspect(): void {
+    if (this.currentTarget && this.canInspect) {
+      this.abrirMensajeInteractivo(this.currentTarget, () => {
+        const playerEntity = this.session.activePlayerEntity();
+        if(playerEntity) {
+          const state = playerEntity.playerRuntime.physicsState;
+          state.isMoving = false;
+          state.isRunning = false;
+        }
+      });
+    }
+  }
+  
   private clamp(value: number, min: number, max: number): number {
     return Math.max(min, Math.min(max, value));
   }
 
   private getRootProxyCollider(rootMesh: AbstractMesh): AbstractMesh | null {
-    // 🔥 Uso directo de queries de Babylon, sin GameSession
     const scene = this.motor3d.scene;
     const proxies = scene.getMeshesByTags("proxy_collider");
     return proxies.find(p => p.parent === rootMesh) ?? null;
@@ -206,7 +269,10 @@ export class PlayerInteractionService {
       this.canInspect = showI;
       this.currentHoveredMesh = hoverSelectable;
       
-      // 🔥 Actualizamos el InteractionRuntimeComponent
+      this.entityManager.getAllEntities().forEach(e => {
+        if(e.interactionRuntime) e.interactionRuntime.isHoveredByPlayer = false;
+      });
+
       if (hitInteractuable && hitInteractuable.interactionRuntime) {
          hitInteractuable.interactionRuntime.isHoveredByPlayer = true;
       }

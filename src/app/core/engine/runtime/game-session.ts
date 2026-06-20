@@ -1,9 +1,6 @@
 import { Injectable, signal, inject, Injector } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
-import { BaseCharacterController } from './controllers/base-character.controller';
-import { PlayerController } from './controllers/player.controller';
-import { NpcController } from './controllers/npc.controller';
 import { ObjectAnimationService } from './systems/object-animation.service';
 import { GameEventBusService } from '../events/game-event-bus.service';
 import { PlayerTriggerService } from './systems/player-trigger.service';
@@ -13,7 +10,12 @@ import { PlayerBubbleService } from './systems/player-bubble.service';
 import { PlayerSequenceService } from './systems/player-sequence.service';
 import { PlayerInputService } from './systems/player-input.service';
 import { PlayerInteractionService } from './systems/player-interaction.service';
-
+import { IUpdatable, LoopManagerService } from '../behaviors/services/loop-manager.service';
+import { CharacterKinematicsService } from './systems/character-kinematics.service';
+import { PlayerAnimationService } from './systems/player-animation.service';
+import { RenderSync } from './systems/render-sync';
+import { Motor3dService } from '../../../services/motor-3d.service';
+ 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
   public isPlaying = signal<boolean>(false);
@@ -22,7 +24,7 @@ export class GameSession {
   public activePlayerEntity = signal<GameEntity | null>(null);
   public pointerLocked = signal<boolean>(false);
 
-  private controllers: Map<string, BaseCharacterController> = new Map();
+  private systems: IUpdatable[] = [];
 
   private injector = inject(Injector);
   private entityManager = inject(EntityManagerService);
@@ -34,7 +36,8 @@ export class GameSession {
   private bubbleSvc = inject(PlayerBubbleService);
   private inputSvc = inject(PlayerInputService);
   private interactionSvc = inject(PlayerInteractionService);
-
+  private loopManager = inject(LoopManagerService);
+  
   constructor() {
     this.eventBus.events$.subscribe(event => {
       if (event.type === 'GameResumed') {
@@ -71,16 +74,40 @@ export class GameSession {
     this.objectAnimSvc.startAmbientAutoAnimations();
     this.playerFogSvc.start(playerEntity, view);
 
+    // Inicializar y registrar todos los sistemas del motor
+    this.systems = [
+      this.injector.get(PlayerInputService),
+      this.injector.get(PlayerSequenceService),
+      this.injector.get(CharacterKinematicsService),
+      this.injector.get(PlayerTriggerService),
+      this.injector.get(PlayerInteractionService),
+      this.injector.get(PlayerAnimationService),
+      this.injector.get(PlayerCameraManagerService),
+      this.injector.get(RenderSync)
+    ];
+
+    this.systems.forEach(system => {
+        this.loopManager.registerSystem(system);
+        if (typeof (system as any).start === 'function') {
+          (system as any).start();
+        }
+    });
+
+    // Resetear estados iniciales
+    this.cameraSvc.resetearTransiciones();
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
-      if (entity.uid === playerEntity.uid) {
-        const playerCtrl = new PlayerController(entity, this.injector);
-        this.controllers.set(entity.uid, playerCtrl);
-        playerCtrl.start();
-      } else if (entity.rol === 'npc' || entity.rol === 'spawn_point') {
-        const npcCtrl = new NpcController(entity, this.injector);
-        this.controllers.set(entity.uid, npcCtrl);
-        npcCtrl.start();
+      if (entity.rol === 'npc' || entity.rol === 'spawn_point') {
+        const animSvc = this.injector.get(PlayerAnimationService);
+        const motor3d = this.injector.get(Motor3dService);
+        animSvc.sincronizarAnimaciones(motor3d.scene, entity);
+
+        const autoSeq = entity.playerConfig?.sequences.find((s: any) => s.autoPlay);
+        if (autoSeq) {
+          sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, entity);
+        } else {
+          animSvc.reproducirIdle(entity);
+        }
       }
     }
   }
@@ -101,8 +128,14 @@ export class GameSession {
     const sequenceSvc = this.injector.get(PlayerSequenceService);
     sequenceSvc.resetearSecuencias();
 
-    this.controllers.forEach(ctrl => ctrl.destroy());
-    this.controllers.clear();
+    // Detener y desregistrar todos los sistemas
+    this.systems.forEach(system => {
+        this.loopManager.unregisterSystem(system.id);
+        if (typeof (system as any).stop === 'function') {
+          (system as any).stop();
+        }
+    });
+    this.systems = [];
 
     this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
     this.eventBus.emit({ type: 'MessageRequested', payload: null });

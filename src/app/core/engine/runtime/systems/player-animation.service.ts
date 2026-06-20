@@ -1,10 +1,11 @@
-
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { AnimationGroup, Scene, Mesh } from '@babylonjs/core';
 import { PlayerRuntimeConfig, PlayerActionKey, PlayerSequenceStep, normalizeAnimBinding, cloneDefaultPlayerConfig } from '../../models/player-config.model';
 import { EstadoFisico } from './player-physics.service';
 import { SeqRuntime } from './player-sequence.service';
 import { GameEntity } from '../../entities/game.entity';
+import { IUpdatable } from '../../behaviors/services/loop-manager.service';
+import { EntityManagerService } from '../../entities/entity-manager.service';
 
 export interface AnimState {
   animacionesJugador: AnimationGroup[];
@@ -26,8 +27,24 @@ export interface AnimState {
 }
 
 @Injectable({ providedIn: 'root' })
-export class PlayerAnimationService {
+export class PlayerAnimationService implements IUpdatable {
+  public id = 'PlayerAnimationSystem';
   private states = new Map<string, AnimState>();
+  private entityManager = inject(EntityManagerService);
+
+  public animationUpdate(dtMs: number): void {
+    const characters = this.entityManager.getAllEntities().filter(
+      e => e.rol === 'npc' || e.rol === 'spawn_point'
+    );
+
+    for (const entity of characters) {
+      const seqRuntime = entity.playerRuntime.seqRuntime;
+      const estadoFisico = entity.playerRuntime.physicsState;
+      if (seqRuntime) {
+        this.gestionarAnimaciones(entity, estadoFisico, seqRuntime);
+      }
+    }
+  }
 
   private getState(entityUid: string): AnimState {
     if (!this.states.has(entityUid)) {

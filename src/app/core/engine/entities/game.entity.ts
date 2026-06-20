@@ -1,5 +1,6 @@
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig } from '../models/player-config.model';
+import { SeqRuntime } from '../runtime/systems/player-sequence.service';
 
 // ==========================================
 // 1. DEFINICIÓN DE COMPONENTES ECS (CONFIGURACIÓN GUARDABLE)
@@ -169,7 +170,8 @@ export class PlayerRuntimeComponent {
       recoveryFrame: 0,
       velocidadY: -0.1, 
       highestY: -9999
-    }
+    },
+    public seqRuntime: SeqRuntime | null = null
   ) {}
 }
 

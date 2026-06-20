@@ -1,12 +1,52 @@
-// src/app/core/engine/runtime/systems/character-kinematics.service.ts
 
-import { Injectable } from '@angular/core';
+import { Injectable, inject, Injector } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
 import { SeqRuntime } from './player-sequence.service';
+import { IUpdatable } from '../../behaviors/services/loop-manager.service';
+import { EntityManagerService } from '../../entities/entity-manager.service';
+import { Motor3dService } from '../../../../services/motor-3d.service';
+import { GameSession } from '../game-session';
 
 @Injectable({ providedIn: 'root' })
-export class CharacterKinematicsService {
+export class CharacterKinematicsService implements IUpdatable {
+  public id = 'CharacterKinematicsSystem';
+  private entityManager = inject(EntityManagerService);
+  private motor3d = inject(Motor3dService);
+  private injector = inject(Injector);
+
+  // Lazy Injection para evitar dependencias circulares con GameSession
+  private get session(): GameSession {
+    return this.injector.get(GameSession);
+  }
+
+  public physicsUpdate(dtMs: number): void {
+    const scene = this.motor3d.scene;
+    const activeCamera = scene.activeCamera;
+    if (!activeCamera) return;
+
+    const activePlayer = this.session.activePlayerEntity();
+    const cameraView = this.session.cameraView();
+
+    const characters = this.entityManager.getAllEntities().filter(
+      e => e.rol === 'npc' || e.rol === 'spawn_point'
+    );
+
+    for (const entity of characters) {
+      // Identificamos si es el jugador activo para determinar la vista real
+      const isPlayer = activePlayer && entity.uid === activePlayer.uid;
+      const vista = isPlayer ? cameraView : 'FPS'; 
+
+      this.updateKinematics(
+        scene, 
+        entity, 
+        entity.playerRuntime.seqRuntime!, 
+        activeCamera, 
+        vista,
+        dtMs
+      );
+    }
+  }
   
   public updateKinematics(
     scene: Scene,
@@ -42,7 +82,6 @@ export class CharacterKinematicsService {
     const collFn = (m: any) =>
       m.checkCollisions && m !== mesh && !m.isDescendantOf(mesh) && !Tags.MatchesQuery(m, "system_element || editor_only || fog_element");
 
-    // 🔥 Ahora consumimos el Vector de Root Motion purificado, no recalculamos matemática de la secuencia
     if (seqRuntime.running && seqRuntime.step) {
       if (seqRuntime.rootMotion && (seqRuntime.rootMotion.y !== 0 || seqRuntime.rootMotion.z !== 0 || seqRuntime.lockInput || seqRuntime.freezeOrientation)) {
         isCinematicSequence = true;
@@ -66,21 +105,9 @@ export class CharacterKinematicsService {
         move, forward, right, vista, scaleFactor, scaleY
       );
     }
-
-    entity.transform.position.x = mesh.position.x;
-    entity.transform.position.y = mesh.position.y;
-    entity.transform.position.z = mesh.position.z;
     
-    if (mesh.rotationQuaternion) {
-       const euler = mesh.rotationQuaternion.toEulerAngles();
-       entity.transform.rotation.x = euler.x;
-       entity.transform.rotation.y = euler.y;
-       entity.transform.rotation.z = euler.z;
-    } else {
-       entity.transform.rotation.x = mesh.rotation.x;
-       entity.transform.rotation.y = mesh.rotation.y;
-       entity.transform.rotation.z = mesh.rotation.z;
-    }
+    // Al final, marcamos la entidad como sucia para que el RenderSyncSystem la actualice
+    entity.isDirty = true;
   }
 
   private calculateCameraDirections(activeCamera: any): { forward: Vector3, right: Vector3 } {

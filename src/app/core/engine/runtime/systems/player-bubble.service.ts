@@ -1,4 +1,5 @@
-import { Injectable, inject } from '@angular/core';
+
+import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
 import { LoopManagerService, GamePhase } from '../../behaviors/services/loop-manager.service';
@@ -9,7 +10,10 @@ import { PlayerInteractionService } from './player-interaction.service';
 export class PlayerBubbleService {
   private loopManager = inject(LoopManagerService);
   private eventBus = inject(GameEventBusService);
-  private interactSvc = inject(PlayerInteractionService);
+  private injector = inject(Injector);
+  
+  // 🔥 Lazy Injection
+  private get interactSvc(): PlayerInteractionService { return this.injector.get(PlayerInteractionService); }
   
   private bubblesOcultas = new Map<string, any>();
 
@@ -31,7 +35,6 @@ export class PlayerBubbleService {
             if (!burbuja.isDisposed()) {
                 burbuja.isVisible = true;
                 burbuja.checkCollisions = false; 
-                // 🔥 FIX: Actualizado a la nueva arquitectura Runtime pura
                 if (burbujaEntity.interactionRuntime) {
                     burbujaEntity.interactionRuntime.isProcessingAction = false;
                 }
@@ -57,7 +60,6 @@ export class PlayerBubbleService {
       this.loopManager.unregister(data.loopId);
       if (!data.mesh.isDisposed()) {
           data.mesh.isVisible = true;
-          // 🔥 FIX: Actualizado a la nueva arquitectura Runtime pura
           if (data.entity.interactionRuntime) {
               data.entity.interactionRuntime.isProcessingAction = false;
           }

@@ -1,7 +1,6 @@
-// src/app/services/editor/editor-play-mode.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Tags, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Tags, Vector3, Observer, Scene } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
@@ -14,6 +13,7 @@ import { GameStateService } from '../../core/engine/runtime/state/game-state.ser
 import { CameraViewMode, GameMode } from '../../core/engine/session/game-context.model';
 import { GameContextService } from '../../core/engine/session/game-context.service';
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
+import { EditorModeTransitionService } from './editor-mode-transition.service';
  
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
@@ -26,15 +26,12 @@ export class EditorPlayModeService {
   private inputOrchestrator = inject(InputOrchestratorService);
   private gameState = inject(GameStateService); 
   private gameContext = inject(GameContextService);
-  
-  // 🔥 FIX: Requerimos el bus de eventos para sincronizar el estado reactivo del Editor con la cámara activa
+  private transitionSvc = inject(EditorModeTransitionService);
   private eventBus = inject(GameEventBusService);
 
   private snapshotMemoria: any = null;
 
   constructor() {
-    // Sincroniza la vista de cámara (FPS o TPS) cuando cambia en Test Live, para evitar que
-    // el sistema de selección por rayo asuma siempre FPS y confunda las interacciones.
     this.eventBus.events$.subscribe(e => {
        if (e.type === 'CameraViewChanged') {
           this.state.modoVistaPrueba = e.payload;
@@ -50,19 +47,12 @@ export class EditorPlayModeService {
     if (!playerEntity) return;
 
     this.cameraSvc.guardarEstadoCamaraLibre();
-    
-    // 🔥 Protegemos las variables del juego
     this.gameState.enterSandbox();
 
     this.state.modoVistaPrueba = vista;
-    this.state.playState.set('TRANSITIONING');
     this.state.jugadorActivo = objMesh;
-    this.state.objetoHovereado.set(null);
-
-    // 🔥 FIX IMPORTANTÍSIMO: Cambiamos el contexto a TEST_LIVE *antes* de que inicie la transición.
-    // Esto destraba el CameraFactory y permite instanciar las cámaras reales FPS y TPS en vez de un Mock
-    // garantizando que el personaje pueda moverse desde el primer instante.
-    this.gameContext.setMode(GameMode.TEST_LIVE);
+    
+    this.transitionSvc.beginTestLive();
 
     const isDebugMode = this.state.checkIsAdmin();
 
@@ -82,32 +72,60 @@ export class EditorPlayModeService {
         }
     });
 
+    // Aseguramos que playerForward siempre sea válido para prevenir bugs
     const playerForward = objMesh.forward.clone().normalize();
+    if (playerForward.lengthSquared() === 0) playerForward.copyFromFloats(0, 0, 1);
+
     const fpsEyeLevel = playerEntity.playerConfig?.camera?.fpsEyeLevel ?? 1.6;
     const tpsMaxRadius = playerEntity.playerConfig?.camera?.tpsMaxRadius ?? 15;
     const tpsPivotY = playerEntity.playerConfig?.camera?.tpsPivotY ?? 1.5;
 
-    let targetLookAt = objMesh.getAbsolutePosition().clone();
-    targetLookAt.y += fpsEyeLevel;
-
+    let targetLookAt: Vector3;
     let targetPos: Vector3;
+    const centroEpiral = objMesh.getAbsolutePosition().clone();
+    centroEpiral.y += fpsEyeLevel; // Siempre es la cabeza para orbitarla
 
     if (vista === 'FPS') {
-        // En 1ra persona, se ubica justo en los ojos, acercándose por la espalda
+        // En FPS, apuntamos a los ojos.
         targetPos = objMesh.getAbsolutePosition().clone();
         targetPos.y += fpsEyeLevel;
-        targetPos.subtractInPlace(playerForward.scale(0.1));
+
+        // La cámara del jugador mirará hacia el horizonte, delante del personaje
+        targetLookAt = targetPos.add(playerForward.scale(10));
     } else {
-        // En 3ra persona, se ubica a la distancia máxima en la espalda
-        targetPos = objMesh.getAbsolutePosition().subtract(playerForward.scale(tpsMaxRadius));
-        targetPos.y += tpsPivotY + 1; // Un poco elevado para mejor vista
+        // En TPS, targetLookAt es el pivote (la espalda/pecho)
+        targetLookAt = objMesh.getAbsolutePosition().clone();
+        targetLookAt.y += tpsPivotY;
+        
+        // targetPos retrocede respecto al pivote, e imita el Beta clásico levantándose un poco.
+        targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
+        targetPos.y += tpsMaxRadius * 0.2; 
+    }
+
+    // 🔥 FIX: Observador Temporal Anti-Clipping. 
+    // Cuando la cámara Proxy se acerca a menos de 1.8 metros (la nuca), oculta el modelo para que no veas los vértices (Solo si vas a FPS)
+    let hideObserver: Observer<Scene> | null = null;
+    if (vista === 'FPS') {
+      hideObserver = this.motor3d.scene.onBeforeRenderObservable.add(() => {
+        const cam = this.motor3d.scene.activeCamera;
+        if (cam && cam.name === "proxyTransitionCam") {
+          const dist = Vector3.Distance(cam.globalPosition, targetPos);
+          if (dist < 1.8) {
+            objMesh.visibility = 0;
+            objMesh.getChildMeshes().forEach(m => m.visibility = 0);
+          }
+        }
+      });
     }
 
     const finishSetup = () => {
-        this.state.playState.set('PLAYING');
+        if (hideObserver) {
+          this.motor3d.scene.onBeforeRenderObservable.remove(hideObserver);
+        }
+
+        this.transitionSvc.finishTestLiveTransition();
         
         this.runtimeEngine.startTestSession(playerEntity, vista);
-        
         this.state.triggerUpdate();
         
         setTimeout(() => {
@@ -125,7 +143,7 @@ export class EditorPlayModeService {
     };
 
     this.cameraSvc.volarHaciaCamaraJuego(
-        objMesh.getAbsolutePosition(), 
+        centroEpiral, 
         targetPos, 
         targetLookAt, 
         playerForward, 
@@ -135,12 +153,9 @@ export class EditorPlayModeService {
   }
 
   public async detenerPrueba(): Promise<void> {
-    this.state.playState.set('EDITOR');
-    this.state.modoVistaPrueba = null; 
+    this.transitionSvc.stopTestLive();
     
     this.runtimeEngine.stopTestSession();
-    
-    // 🔥 Restauramos el estado inmaculado del editor
     this.gameState.exitSandbox();
 
     const isDebugMode = this.state.checkIsAdmin();
@@ -211,7 +226,6 @@ export class EditorPlayModeService {
     this.cameraSvc.restaurarCamaraLibre();
     const editorCam = this.motor3d.editorCamera;
     this.motor3d.scene.activeCamera = editorCam;
-    this.state.jugadorActivo = null; 
     
     this.inputOrchestrator.unlockPointer();
     

@@ -160,6 +160,7 @@ export class EditorToolsService {
       this.state.objetoSeleccionado.set(rootNode);
       this.state.objetoHovereado.set(rootNode);
 
+      // La transición se maneja dentro de este método delegando en el coordinador
       this.cameraSvc.transicionAEdicionEnVivo(rootNode);
       return;
     }
@@ -216,7 +217,7 @@ export class EditorToolsService {
             const rootNode = this.castRayToSelectable(ray, isAdmin);
             if (rootNode) {
               this.state.objetoSeleccionado.set(rootNode);
-              this.cameraSvc.enfocarObjetoEnEditor(rootNode);
+              // 🔥 SOLUCIÓN: Clic doble también quita autoenfoque (solo selecciona)
             }
           } else if (playSt === 'PLAYING') {
             this.cameraSvc.pausarJuegoYActivarCamaraEditor();
@@ -256,9 +257,7 @@ export class EditorToolsService {
               this.state.objetoSeleccionado.set(null);
             } else {
               this.state.objetoSeleccionado.set(rootNode);
-              if (playSt === 'EDITOR') {
-                this.cameraSvc.enfocarObjetoEnEditor(rootNode);
-              }
+              // 🔥 SOLUCIÓN: Clic normal tampoco hace autoenfoque (solo selecciona)
             }
           } else {
             this.state.objetoSeleccionado.set(null);
@@ -336,6 +335,7 @@ export class EditorToolsService {
           if (kbInfo.event.key === '3') this.setToolMode('rotate');
           if (kbInfo.event.key === '4') this.setToolMode('scale');
 
+          // 🔥 SOLUCIÓN: Solo la tecla F mueve la cámara hacia el objeto
           if (kbInfo.event.key.toLowerCase() === 'f') {
             const obj = this.state.objetoSeleccionado();
             if (obj) this.cameraSvc.enfocarObjetoEnEditor(obj);

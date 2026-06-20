@@ -1,3 +1,4 @@
+
 import { Injectable, inject, effect } from '@angular/core';
 import {
   DirectionalLight,
@@ -208,13 +209,21 @@ export class EditorToolsService {
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
 
       if (pi.type === PointerEventTypes.POINTERDOUBLETAP && pi.event.button === 0) {
-        if (isAdmin && playSt === 'EDITOR') {
-          const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
-          ray.length = 10000;
-          const rootNode = this.castRayToSelectable(ray, isAdmin);
-          if (rootNode) {
-            this.state.objetoSeleccionado.set(rootNode);
-            this.cameraSvc.enfocarObjetoEnEditor(rootNode);
+        if (isAdmin) {
+          if (playSt === 'EDITOR') {
+            const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
+            ray.length = 10000;
+            const rootNode = this.castRayToSelectable(ray, isAdmin);
+            if (rootNode) {
+              this.state.objetoSeleccionado.set(rootNode);
+              this.cameraSvc.enfocarObjetoEnEditor(rootNode);
+            }
+          } else if (playSt === 'PLAYING') {
+            this.cameraSvc.pausarJuegoYActivarCamaraEditor();
+          } else if (playSt === 'EDITING_IN_GAME') {
+            const canvas = this.motor3d.engine.getRenderingCanvas();
+            if (canvas) canvas.focus();
+            this.cameraSvc.volverAJuego();
           }
         }
         return;
@@ -253,13 +262,6 @@ export class EditorToolsService {
             }
           } else {
             this.state.objetoSeleccionado.set(null);
-
-            if (playSt === 'EDITING_IN_GAME') {
-              if (canvas) {
-                canvas.focus();
-              }
-              this.cameraSvc.volverAJuego();
-            }
           }
         }
       }
@@ -318,9 +320,6 @@ export class EditorToolsService {
           if (this.state.playState() === 'PLAYING' && isAdmin) {
             if (document.pointerLockElement) {
               document.exitPointerLock();
-            } else {
-              // 🔥 FIX: Fuerza el GamePaused si el puntero NO estaba bloqueado nativamente
-              this.eventBus.emit({ type: 'GamePaused' });
             }
           } else if (this.state.playState() === 'EDITING_IN_GAME') {
             const canvas = this.motor3d.engine.getRenderingCanvas();

@@ -1,3 +1,4 @@
+
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { Router } from '@angular/router';
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
@@ -166,7 +167,21 @@ export class EditorEscena implements OnInit, OnDestroy {
   onMouseUp() { this.layoutUI.onMouseUp(); }
 
   @HostListener('window:keydown', ['$event'])
-  manejarAtajos(event: KeyboardEvent) { this.keyboard.handleKeydown(event, this.editando); }
+  manejarAtajos(event: KeyboardEvent) { 
+    if (event.key === 'Escape') {
+      if (this.mostrarModalMisionPreview) {
+        this.mostrarModalMisionPreview = false;
+        this.cdr.detectChanges();
+        return;
+      }
+      if (this.stateSvc.previewMissionModal()) {
+        this.stateSvc.previewMissionModal.set(false);
+        this.cdr.detectChanges();
+        return;
+      }
+    }
+    this.keyboard.handleKeydown(event, this.editando); 
+  }
 
   toggleNieblaTemporal() {
     this.stateSvc.fogDesactivadoTemporalmente.set(!this.stateSvc.fogDesactivadoTemporalmente());
@@ -175,7 +190,12 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   togglePreviewMission() {
-    this.stateSvc.previewMissionModal.set(!this.stateSvc.previewMissionModal());
+    const state = this.editorSvc.playState();
+    if (state === 'EDITING_IN_GAME' || state === 'PLAYING') {
+      this.mostrarModalMisionPreview = !this.mostrarModalMisionPreview;
+    } else {
+      this.stateSvc.previewMissionModal.set(!this.stateSvc.previewMissionModal());
+    }
   }
 
   jugarModoFinal(episodio: any) {

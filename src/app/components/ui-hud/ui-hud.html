@@ -1,4 +1,5 @@
 
+
 <div class="crosshair-ui" 
      *ngIf="gameSession.isPlaying() && gameSession.pointerLocked() && gameSession.cameraView() === 'FPS'" 
      [class.hovering]="hoveredMesh() !== null">
@@ -47,7 +48,7 @@
 
   <!-- Modo Editor Probando: Nunca se bloquea conceptualmente, solo para girar cámara -->
   <div class="hud-message hud-playing" style="background-color: rgba(59, 130, 246, 0.75); border: 1px solid rgba(59, 130, 246, 0.5);" *ngIf="playState === 'PLAYING' && gameSession.isDebugMode() && gameSession.pointerLocked()">
-    <span class="hud-icon">🛠️</span> MODO PRUEBA LIBRE | "WASD" Mover • "ESC" Soltar ratón <span *ngIf="gameSession.cameraView() === 'FPS'">• Click para editar</span>
+    <span class="hud-icon">🛠️</span> MODO PRUEBA LIBRE | "WASD" Mover • "ESC" Pausar • Doble Clic para Editar Libre
   </div>
 
   <div class="hud-message hud-paused" style="border-color: #3b82f6; color: #60a5fa;" *ngIf="playState === 'PLAYING' && gameSession.isDebugMode() && !gameSession.pointerLocked()">
@@ -55,7 +56,7 @@
   </div>
 
   <div class="hud-message hud-editing" *ngIf="playState === 'EDITING_IN_GAME'">
-    <span class="hud-icon">⚙️</span> MODO EDICIÓN EN VIVO | Click al fondo o "ESC" para volver
+    <span class="hud-icon">⚙️</span> MODO EDICIÓN EN VIVO | Doble Clic en el fondo para reanudar
   </div>
 </div>
  

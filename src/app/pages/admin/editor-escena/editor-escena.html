@@ -1,3 +1,4 @@
+
 <!-- PANTALLA PRINCIPAL: SELECCIÓN DE MAPAS -->
 <ng-container *ngIf="!editando && !cargandoEscena">
   <div class="galeria-header">
@@ -145,8 +146,7 @@
           <div class="vp-left">
             <button class="btn-vp btn-exit" (click)="salirDelEditor()">⬅ Salir</button>
             <span class="vp-title">{{ mapaActualNombre }}</span>
-            <!-- Bóton mágico del ojo (UI) que pide el usuario -->
-            <button class="btn-vp" *ngIf="editorSvc.playState() === 'EDITOR'" (click)="togglePreviewMission()" [style.color]="editorSvc.state.previewMissionModal() ? '#60a5fa' : ''">👁️ UI</button>
+            <button class="btn-vp" *ngIf="editorSvc.playState() !== 'TRANSITIONING' && editorSvc.playState() !== 'INTERACTING'" (click)="togglePreviewMission()" [style.color]="editorSvc.state.previewMissionModal() || mostrarModalMisionPreview ? '#60a5fa' : ''">👁️ UI</button>
           </div>
           
           <div class="vp-right">

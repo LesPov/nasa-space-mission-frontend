@@ -248,6 +248,53 @@ export class EditorCameraService {
     });
   }
 
+  pausarJuegoYActivarCamaraEditor(): void {
+    const escena = this.motor3d.scene;
+    const editorCam = this.motor3d.editorCamera;
+    const camaraOrigen = this.obtenerCamaraJuegoActiva();
+
+    if (!escena || !editorCam || !camaraOrigen) return;
+
+    this.state.playState.set('TRANSITIONING');
+    this.state.objetoHovereado.set(null);
+    this.state.objetoSeleccionado.set(null);
+
+    try { if (document.pointerLockElement) document.exitPointerLock(); } catch {}
+    
+    try { camaraOrigen.detachControl(); } catch {}
+    try { editorCam.detachControl(); } catch {}
+
+    const startPos = camaraOrigen.globalPosition.clone();
+    const forward = camaraOrigen.getDirection(Vector3.Forward());
+
+    this.asegurarCamaraEditorActiva();
+
+    editorCam.position = startPos.clone();
+    editorCam.setTarget(startPos.add(forward.scale(5)));
+    editorCam.radius = 5;
+
+    const frames = 20;
+    const animRadius = new Animation('camRadPause', 'radius', 60, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    const ease = new CubicEase();
+    ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
+    animRadius.setEasingFunction(ease);
+    animRadius.setKeys([
+      { frame: 0, value: 0.1 },
+      { frame: frames, value: 5 }
+    ]);
+
+    escena.beginDirectAnimation(editorCam, [animRadius], 0, frames, false, 1.0, () => {
+      this.state.playState.set('EDITING_IN_GAME');
+      const canvas = this.motor3d.engine.getRenderingCanvas();
+      if (canvas) {
+        canvas.focus();
+        try { editorCam.detachControl(); } catch {}
+        try { editorCam.attachControl(canvas, true); } catch {}
+      }
+      this.reafirmarCamaraEditorEnSiguienteFrame();
+    });
+  }
+
   volarHaciaCamaraJuego(
     centroEpiral: Vector3,
     targetPos: Vector3,

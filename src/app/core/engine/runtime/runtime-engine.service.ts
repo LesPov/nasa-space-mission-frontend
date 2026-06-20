@@ -1,5 +1,3 @@
-// src/app/core/engine/runtime/runtime-engine.service.ts
-
 import { Injectable, inject } from '@angular/core';
 import { StandardMaterial, VideoTexture, Color3, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../../../services/motor-3d.service';
@@ -12,6 +10,8 @@ import { CoreSceneLoaderService } from '../scene/utils/core-scene-loader.service
 import { GameMode, CameraViewMode } from '../session/game-context.model';
 import { GameContextService } from '../session/game-context.service';
 import { InputOrchestratorService } from './systems/input-orchestrator.service';
+import { CameraOwnershipService } from './cameras/camera-ownership.service';
+import { AdminFreeCameraService } from './cameras/admin-free-camera.service';
   
 @Injectable({ providedIn: 'root' })
 export class RuntimeEngineService {
@@ -23,6 +23,8 @@ export class RuntimeEngineService {
   private interactSvc = inject(PlayerInteractionService);
   private loaderSvc = inject(CoreSceneLoaderService);
   private inputOrchestrator = inject(InputOrchestratorService);
+  private ownership = inject(CameraOwnershipService);
+  private adminFreeCam = inject(AdminFreeCameraService);
 
   private _prodClickFn: (() => void) | null = null;
 
@@ -47,34 +49,24 @@ export class RuntimeEngineService {
 
         this.resetVideos();
 
-        // 🔥 FIX: Establecer contexto primero para que la fábrica de cámaras actúe correctamente
         const mode = isAdmin ? GameMode.PREVIEW_ADMIN : GameMode.FINAL_USER;
         this.gameContext.setMode(mode);
 
-        // 🔥 CINEMÁTICA: Iniciamos en 3ra Persona (TPS) para la intro, no en FPS.
         this.playerCamSvc.inicializarCamaras(spawnEntity, 'TPS');
         const targetCam = this.motor3d.playerCameraTPS;
         targetCam.getViewMatrix(true);
-        this.motor3d.scene.activeCamera = targetCam;
+        
+        const canvas = this.motor3d.engine.getRenderingCanvas();
+        this.ownership.setCamera('PLAYER_TPS', targetCam, canvas, true);
 
-        // La sesión arranca en TPS
         this.gameSession.start(spawnEntity, 'TPS');
-
-        // 🔥 Lanzar la animación lenta de alejamiento (Cinemática Intro)
         this.playerCamSvc.iniciarCinematicaIntro(spawnEntity);
 
-        const canvas = this.motor3d.engine.getRenderingCanvas();
         if (canvas) {
-          try { this.motor3d.editorCamera?.detachControl(); } catch {}
-          try { this.motor3d.playerCameraFPS?.detachControl(); } catch {}
-
-          targetCam.attachControl(canvas, true);
-
           this._prodClickFn = () => {
-             // El clic cierra el modal en UI y detiene la cinemática aquí, pasando al juego.
              if (this.gameContext.isPlaying() && !document.pointerLockElement) {
                 this.playerCamSvc.detenerCinematicaIntro();
-                this.inputOrchestrator.lockPointer(); // Lock detona GameResumed -> Viaje a FPS
+                this.inputOrchestrator.lockPointer(); 
              }
           };
           canvas.addEventListener('click', this._prodClickFn);
@@ -88,9 +80,10 @@ export class RuntimeEngineService {
   public shutdownProductionGame(): void {
     this.gameSession.stop();
     this.gameContext.setMode(GameMode.EDITOR);
-    this.playerCamSvc.detenerCinematicaIntro(); // Limpieza segura
+    this.playerCamSvc.detenerCinematicaIntro(); 
     this.playerCamSvc.limpiarPivotTPS();
     this.resetVideos();
+    this.adminFreeCam.dispose();
     this.entityManager.clear();
 
     const canvas = this.motor3d.engine?.getRenderingCanvas();
@@ -109,7 +102,9 @@ export class RuntimeEngineService {
     
     const targetCam = view === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS;
     targetCam.getViewMatrix(true);
-    this.motor3d.scene.activeCamera = targetCam;
+    
+    const canvas = this.motor3d.engine.getRenderingCanvas();
+    this.ownership.setCamera(view === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', targetCam, canvas, true);
 
     this.gameContext.setMode(GameMode.TEST_LIVE);
     this.gameSession.start(playerEntity, view);

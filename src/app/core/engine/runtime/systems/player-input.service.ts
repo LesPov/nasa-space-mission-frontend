@@ -42,6 +42,17 @@ export class PlayerInputService implements IUpdatable {
   public disable(): void {
     this.isEnabled = false;
     this.resetearInputs();
+    
+    // 🔥 FIX GHOSTING: Aplastamos el input a nivel de entidad cuando el sistema se apaga (Ej: Pausa o AdminFree)
+    try {
+      const playerEntity = this.session?.activePlayerEntity();
+      if (playerEntity && playerEntity.playerRuntime) {
+        playerEntity.playerRuntime.intentions = { 
+          moveForward: false, moveBackward: false, moveLeft: false, 
+          moveRight: false, run: false, jump: false 
+        };
+      }
+    } catch(e) {}
   }
 
   public update(dtMs: number): void {
@@ -126,5 +137,4 @@ export class PlayerInputService implements IUpdatable {
     this.inputMap = {};
     this.actionPressedThisFrame = false;
     this.inspectPressedThisFrame = false;
-  }
-}
+  }}

@@ -1,23 +1,13 @@
-
 import { Injectable, inject } from '@angular/core';
 import {
-  AbstractMesh,
-  Animation,
-  ArcRotateCamera,
-  Camera,
-  CubicEase,
-  EasingFunction,
-  Node,
-  Vector3,
-  UniversalCamera,
-  Curve3,
-  Quaternion
+  AbstractMesh, Animation, ArcRotateCamera, Camera, CubicEase, EasingFunction,
+  Node, Vector3, UniversalCamera, Curve3, Quaternion
 } from '@babylonjs/core';
-
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { EditorModeTransitionService } from './editor-mode-transition.service';
+import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
  
 @Injectable({ providedIn: 'root' })
 export class EditorCameraService {
@@ -25,26 +15,22 @@ export class EditorCameraService {
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
   private transitionSvc = inject(EditorModeTransitionService);
+  private ownership = inject(CameraOwnershipService);
 
   private editorCamState: { target: Vector3; radius: number; alpha: number; beta: number } | null = null;
 
   private obtenerCamaraJuegoActiva(): Camera | null {
-    const scene = this.motor3d.scene;
-    const active = scene?.activeCamera ?? null;
+    const owner = this.ownership.getOwner();
+    
+    if (owner === 'PLAYER_FPS') return this.motor3d.playerCameraFPS;
+    if (owner === 'PLAYER_TPS') return this.motor3d.playerCameraTPS;
+    if (owner === 'ADMIN_FREE') return this.ownership.getCamera();
 
-    if (active && active !== this.motor3d.editorCamera) {
-      return active;
-    }
+    // Sin fallbacks ciegos a activeCamera. Confianza en el ownership y en el estado.
+    if (this.state.modoVistaPrueba === 'FPS') return this.motor3d.playerCameraFPS;
+    if (this.state.modoVistaPrueba === 'TPS') return this.motor3d.playerCameraTPS;
 
-    if (this.state.modoVistaPrueba === 'FPS' && this.motor3d.playerCameraFPS) {
-      return this.motor3d.playerCameraFPS;
-    }
-
-    if (this.state.modoVistaPrueba === 'TPS' && this.motor3d.playerCameraTPS) {
-      return this.motor3d.playerCameraTPS;
-    }
-
-    return this.motor3d.playerCameraFPS ?? this.motor3d.playerCameraTPS ?? null;
+    return this.ownership.getCamera();
   }
 
   private obtenerEncuadreObjeto(objeto: AbstractMesh): { target: Vector3; radius: number } {
@@ -93,13 +79,7 @@ export class EditorCameraService {
     const canvas = this.motor3d.engine?.getRenderingCanvas();
 
     if (!scene || !editorCam) return;
-
-    scene.activeCamera = editorCam;
-
-    if (canvas) {
-      try { editorCam.detachControl(); } catch {}
-      try { editorCam.attachControl(canvas, true); } catch {}
-    }
+    this.ownership.setCamera('EDITOR', editorCam, canvas, true);
   }
 
   private reafirmarCamaraEditorEnSiguienteFrame(): void {
@@ -110,12 +90,8 @@ export class EditorCameraService {
     if (!scene || !editorCam) return;
 
     requestAnimationFrame(() => {
-      if (scene.activeCamera !== editorCam) {
-        scene.activeCamera = editorCam;
-      }
-      if (canvas) {
-        try { editorCam.detachControl(); } catch {}
-        try { editorCam.attachControl(canvas, true); } catch {}
+      if (this.ownership.getOwner() !== 'EDITOR') {
+        this.ownership.setCamera('EDITOR', editorCam, canvas, true);
       }
     });
   }
@@ -171,14 +147,6 @@ export class EditorCameraService {
     this.motor3d.scene.beginDirectAnimation(cam, [animTarget, animRadius], 0, frames, false, 1.0);
   }
 
-  // =========================================================================
-  // NÚCLEO DE TRANSICIONES PERFECTAS (PROXY UNIVERSAL)
-  // =========================================================================
-
-  /**
-   * Genera un Cuaternión matemático puro basado en dirección Yaw y Pitch.
-   * Evita saltos y el problema del Gimbal Lock que tiene `.setTarget()`
-   */
   private getLookQuat(pos: Vector3, target: Vector3, fallbackForward: Vector3): Quaternion {
       let dir = target.subtract(pos);
       if (dir.lengthSquared() < 0.001) dir = fallbackForward.clone();
@@ -216,7 +184,7 @@ export class EditorCameraService {
     const endQuat = this.getLookQuat(endPos, endTarget, endForward);
     proxyCam.rotationQuaternion = startQuat.clone();
 
-    scene.activeCamera = proxyCam;
+    this.ownership.setCamera('TRANSITION_PROXY', proxyCam, null, false);
 
     const ease = new CubicEase();
     ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
@@ -273,8 +241,6 @@ export class EditorCameraService {
     this.transitionSvc.beginPauseToLiveEdit();
 
     try { if (document.pointerLockElement) document.exitPointerLock(); } catch {}
-    try { camaraOrigen.detachControl(); } catch {}
-    try { editorCam.detachControl(); } catch {}
 
     const startPos = camaraOrigen.globalPosition.clone();
     const forward = camaraOrigen.getDirection(Vector3.Forward());
@@ -314,8 +280,6 @@ export class EditorCameraService {
         const canvas = this.motor3d.engine.getRenderingCanvas();
         if (canvas) {
           canvas.focus();
-          try { editorCam.detachControl(); } catch {}
-          try { editorCam.attachControl(canvas, true); } catch {}
         }
         this.reafirmarCamaraEditorEnSiguienteFrame();
       },
@@ -333,8 +297,6 @@ export class EditorCameraService {
     this.transitionSvc.beginPauseToLiveEdit();
 
     try { if (document.pointerLockElement) document.exitPointerLock(); } catch {}
-    try { camaraOrigen.detachControl(); } catch {}
-    try { editorCam.detachControl(); } catch {}
 
     const startPos = camaraOrigen.globalPosition.clone();
     const forward = camaraOrigen.getDirection(Vector3.Forward());
@@ -360,19 +322,12 @@ export class EditorCameraService {
         const canvas = this.motor3d.engine.getRenderingCanvas();
         if (canvas) {
           canvas.focus();
-          try { editorCam.detachControl(); } catch {}
-          try { editorCam.attachControl(canvas, true); } catch {}
         }
         this.reafirmarCamaraEditorEnSiguienteFrame();
       }
     );
   }
 
-  /**
-   * 🔥 Vuelo Orbital Cinemático
-   * Viaja de forma directa y orbita al jugador entrando siempre por detrás.
-   * Totalmente protegido contra Gimbal Lock.
-   */
   volarHaciaCamaraJuego(
     centroEpiral: Vector3,
     targetPos: Vector3,
@@ -383,17 +338,14 @@ export class EditorCameraService {
   ): void {
     const scene = this.motor3d.scene;
     const editorCam = this.motor3d.editorCamera;
-    editorCam.detachControl();
 
     const startPos = editorCam.globalPosition.clone();
     const dist = Vector3.Distance(startPos, targetPos);
     
-    // 🔥 FIX: Aceleración mucho más lenta. Mínimo 2s, máximo 4s
     const frames = Math.max(120, Math.min(Math.floor(dist * 3.5), 240));
 
     const startTarget = startPos.add(editorCam.getDirection(Vector3.Forward()).scale(10));
     
-    // Dirección recta para llegar físicamente al objeto sin rodeos extraños
     let dirToTarget = centroEpiral.subtract(startPos).normalize();
     if (dirToTarget.lengthSquared() < 0.001) dirToTarget = editorCam.getDirection(Vector3.Forward());
 
@@ -408,7 +360,6 @@ export class EditorCameraService {
        this.motor3d.renderingPipeline.addCamera(proxyCam);
     }
     
-    // 🔥 FIX: Curva Cúbica Bezier perfecta. Empuja hacia el jugador y lo bordea por la espalda
     const p1 = startPos.add(dirToTarget.scale(dist * 0.4));
     p1.y += Math.min(dist * 0.2, 3.0);
 
@@ -421,9 +372,7 @@ export class EditorCameraService {
     const posKeys = [];
     const rotKeys = [];
 
-    // Capturamos el final perfecto
     const endQuat = this.getLookQuat(targetPos, targetLookAt, playerForward);
-    // Capturamos el inicio perfecto
     const startQuat = this.getLookQuat(startPos, startTarget, playerForward);
     
     proxyCam.rotationQuaternion = startQuat.clone();
@@ -435,28 +384,24 @@ export class EditorCameraService {
 
         let lookTarget: Vector3;
         if (t < 0.6) {
-            // Hasta el 60% del viaje, miramos fijamente a la cabeza del jugador (órbita limpia)
             lookTarget = Vector3.Lerp(startTarget, centroEpiral, t / 0.6);
         } else {
-            // El último 40%, la mirada se sincroniza suavemente con el horizonte del player
             const tBlend = (t - 0.6) / 0.4;
             lookTarget = Vector3.Lerp(centroEpiral, targetLookAt, tBlend);
         }
 
         const lookQuat = this.getLookQuat(currentPos, lookTarget, playerForward);
-
-        // Slerp final para afinar y no tener micropasos en el acople exacto
         const finalQuat = Quaternion.Slerp(lookQuat, endQuat, Math.pow(t, 3));
         rotKeys.push({ frame: i, value: finalQuat });
     }
 
-    scene.activeCamera = proxyCam;
+    this.ownership.setCamera('TRANSITION_PROXY', proxyCam, null, false);
 
     const animPos = new Animation("proxyPos", "position", 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
     const animRot = new Animation("proxyRot", "rotationQuaternion", 60, Animation.ANIMATIONTYPE_QUATERNION, Animation.ANIMATIONLOOPMODE_CONSTANT);
     
     const ease = new CubicEase();
-    ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT); // Lento al inicio y al final
+    ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT); 
     
     animPos.setEasingFunction(ease);
     animRot.setEasingFunction(ease);
@@ -477,17 +422,15 @@ export class EditorCameraService {
     this.transitionSvc.beginResumeToTestLive();
 
     const escena = this.motor3d.scene;
-    const editorCam = this.motor3d.editorCamera;
     const destCam = this.state.modoVistaPrueba === 'FPS'
       ? this.motor3d.playerCameraFPS
       : this.motor3d.playerCameraTPS;
+    const editorCam = this.motor3d.editorCamera;
 
     if (!destCam || !editorCam) {
       this.transitionSvc.stopTestLive();
       return;
     }
-
-    try { editorCam.detachControl(); } catch {}
 
     const startPos = editorCam.globalPosition.clone();
     const startTarget = startPos.add(editorCam.getDirection(Vector3.Forward()).scale(10));
@@ -503,17 +446,11 @@ export class EditorCameraService {
       45, 
       () => {
         this.transitionSvc.finishResumeToTestLive();
-        escena.activeCamera = destCam;
-
         const canvas = this.motor3d.engine.getRenderingCanvas();
-        if (canvas) {
-          canvas.focus();
-          try { destCam.detachControl(); } catch {}
-          try { destCam.attachControl(canvas, true); } catch {}
+        this.ownership.setCamera(this.state.modoVistaPrueba === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', destCam, canvas, true);
 
-          if (this.state.modoVistaPrueba === 'FPS') {
-            try { canvas.requestPointerLock(); } catch {}
-          }
+        if (canvas && this.state.modoVistaPrueba === 'FPS') {
+          try { canvas.requestPointerLock(); } catch {}
         }
       },
       true 

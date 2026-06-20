@@ -1,4 +1,3 @@
-// src/app/core/engine/runtime/game-session.ts
 
 import { Injectable, inject, Injector, computed } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
@@ -20,6 +19,7 @@ import { Motor3dService } from '../../../services/motor-3d.service';
 import { CameraViewMode, GameMode } from '../session/game-context.model';
 import { GameContextService } from '../session/game-context.service';
 import { LayoutService } from '../../../services/layout.service';
+import { CameraOwnershipService } from './cameras/camera-ownership.service';
   
 @Injectable({ providedIn: 'root' })
 export class GameSession {
@@ -36,6 +36,7 @@ export class GameSession {
   private loopManager = inject(LoopManagerService);
   private context = inject(GameContextService);
   private layoutSvc = inject(LayoutService);
+  private ownership = inject(CameraOwnershipService);
 
   // Interfaces Reactivas (Bindings directos al contexto central)
   public isPlaying = computed(() => this.context.isPlaying());
@@ -50,15 +51,20 @@ export class GameSession {
     this.eventBus.events$.subscribe(event => {
       if (event.type === 'GameResumed') {
         this.context.setPointerLocked(true);
-        this.inputSvc.enable();
-        this.interactionSvc.enable();
+        const owner = this.ownership.getOwner();
+        
+        // Solo rehabilitamos el jugador si NO estamos en cámara libre admin
+        if (owner !== 'ADMIN_FREE') {
+            this.inputSvc.enable();
+            this.interactionSvc.enable();
+        }
 
         const mode = this.context.mode();
-        // 🔥 LÓGICA AISLADA: Solo afecta a producción (Admin Preview y Final User)
         if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
-             this.layoutSvc.ocultarMenu(); // Oculta el modal de misión
-             // Viaje suave hacia FPS
-             if (this.cameraView() === 'TPS') {
+             this.layoutSvc.ocultarMenu(); 
+             
+             // Viaje suave hacia FPS (Solo si es la cámara de juego)
+             if (this.cameraView() === 'TPS' && owner !== 'ADMIN_FREE') {
                  this.toggleCameraUser(false, 75); 
              }
         }
@@ -69,11 +75,12 @@ export class GameSession {
         this.interactionSvc.disable();
 
         const mode = this.context.mode();
-        // 🔥 LÓGICA AISLADA: Al presionar ESC, abre el modal y retrocede la cámara (Ignora LIVE_TEST)
         if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
-             this.layoutSvc.mostrarMenu(); // Muestra el modal de misión sí o sí
-             // Retroceso suave a TPS sin bloqueos ni saltos
-             if (this.cameraView() === 'FPS') {
+             this.layoutSvc.mostrarMenu(); 
+             
+             // Retroceso suave a TPS (Solo si es la cámara de juego)
+             const owner = this.ownership.getOwner();
+             if (this.cameraView() === 'FPS' && owner !== 'ADMIN_FREE') {
                  this.toggleCameraUser(false, 60); 
              }
         }

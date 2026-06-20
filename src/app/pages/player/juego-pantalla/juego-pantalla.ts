@@ -1,3 +1,4 @@
+
 import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -12,6 +13,8 @@ import { Motor3dService } from '../../../services/motor-3d.service';
 import { InputOrchestratorService } from '../../../core/engine/runtime/systems/input-orchestrator.service';
 import { AuthService } from '../../../core/services/auth';
 import { GameStateService } from '../../../core/engine/runtime/state/game-state.service'; 
+import { AdminFreeCameraService } from '../../../core/engine/runtime/cameras/admin-free-camera.service';
+import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
@@ -36,6 +39,8 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private inputOrchestrator = inject(InputOrchestratorService);
   private authSvc = inject(AuthService);
   private gameStateSvc = inject(GameStateService); 
+  private adminFreeCam = inject(AdminFreeCameraService);
+  private ownership = inject(CameraOwnershipService);
 
   public isInteracting = signal<boolean>(false);
   public pointerLocked = signal<boolean>(false);
@@ -64,8 +69,16 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       if (document.pointerLockElement) {
         document.exitPointerLock();
       } else {
-        // Fuerza la pausa explícitamente cuando no hay pointerLock nativo
         this.eventBus.emit({ type: 'GamePaused' });
+      }
+    }
+    
+    // Toggle Admin Free Cam con Ctrl + C
+    if (event.code === 'KeyC' && event.ctrlKey && this.isAdmin) {
+      event.preventDefault();
+      const canvas = this.motor3dSvc.engine.getRenderingCanvas();
+      if (canvas) {
+        this.adminFreeCam.toggle(canvas);
       }
     }
   }
@@ -126,7 +139,10 @@ export class JuegoPantalla implements OnInit, OnDestroy {
           if (this.misionIniciada && !this.isInteracting()) {
              this.modalMisionUsuario = true;
              this.cerrandoModalUsuario = false;
-             if (this.activeCameraView === 'FPS') {
+             
+             // 🔥 FIX UI vs ADMIN_FREE: Ignoramos transición de cámara si el admin está volando
+             const owner = this.ownership.getOwner();
+             if (owner !== 'ADMIN_FREE' && this.activeCameraView === 'FPS') {
                 this.runtime.toggleCameraUser(false, 45); 
              }
           }
@@ -142,10 +158,14 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   comenzarMisionUsuario() {
     this.cerrandoModalUsuario = true; 
     
-    if (this.activeCameraView === 'TPS') {
-       this.runtime.toggleCameraUser(false, 60); 
-    } else {
-       this.runtime.toggleCameraUser(true, 60);
+    // 🔥 FIX UI vs ADMIN_FREE: Protegemos la transición para no robar el control
+    const owner = this.ownership.getOwner();
+    if (owner !== 'ADMIN_FREE') {
+        if (this.activeCameraView === 'TPS') {
+           this.runtime.toggleCameraUser(false, 60); 
+        } else {
+           this.runtime.toggleCameraUser(true, 60);
+        }
     }
 
     this.inputOrchestrator.lockPointer();

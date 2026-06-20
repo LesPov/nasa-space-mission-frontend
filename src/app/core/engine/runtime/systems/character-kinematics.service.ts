@@ -7,12 +7,14 @@ import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { GameSession } from '../game-session';
+import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 
 @Injectable({ providedIn: 'root' })
 export class CharacterKinematicsService implements IUpdatable {
   public id = 'CharacterKinematicsSystem';
   private entityManager = inject(EntityManagerService);
   private motor3d = inject(Motor3dService);
+  private ownership = inject(CameraOwnershipService);
   private injector = inject(Injector);
 
   // Lazy Injection para evitar dependencias circulares con GameSession
@@ -27,19 +29,33 @@ export class CharacterKinematicsService implements IUpdatable {
 
     const activePlayer = this.session.activePlayerEntity();
     const cameraView = this.session.cameraView();
+    const isAdminFree = this.ownership.getOwner() === 'ADMIN_FREE';
 
     const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
 
     for (const entity of characters) {
-      // Identificamos si es el jugador activo para determinar la vista real
       const isPlayer = activePlayer && entity.uid === activePlayer.uid;
       const vista = isPlayer ? cameraView : 'FPS'; 
+
+      // 🔥 FIX: Aislamiento Cinemático. Si AdminFree está activo, bloqueamos el input e ignoramos la cámara Admin
+      if (isPlayer && isAdminFree) {
+         entity.playerRuntime.intentions.moveForward = false;
+         entity.playerRuntime.intentions.moveBackward = false;
+         entity.playerRuntime.intentions.moveLeft = false;
+         entity.playerRuntime.intentions.moveRight = false;
+         entity.playerRuntime.intentions.run = false;
+         entity.playerRuntime.intentions.jump = false;
+      }
+
+      const cameraToUseForDirection = (isPlayer && isAdminFree) 
+          ? (vista === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS) 
+          : activeCamera;
 
       this.updateKinematics(
         scene, 
         entity, 
         entity.playerRuntime.seqRuntime!, 
-        activeCamera, 
+        cameraToUseForDirection, 
         vista,
         dtMs
       );
@@ -50,7 +66,7 @@ export class CharacterKinematicsService implements IUpdatable {
     scene: Scene,
     entity: GameEntity,
     seqRuntime: SeqRuntime,
-    activeCamera: Camera,
+    referenceCamera: Camera,
     vista: 'FPS' | 'TPS',
     dtMs: number
   ): void {
@@ -71,7 +87,7 @@ export class CharacterKinematicsService implements IUpdatable {
     let dy = 0;
     let df = 0;
 
-    const { forward, right } = this.calculateCameraDirections(activeCamera);
+    const { forward, right } = this.calculateCameraDirections(referenceCamera);
 
     mesh.computeWorldMatrix(true);
     const localCapsuleCenter = new Vector3(colMeta.offsetX ?? 0, colMeta.offsetY ?? 0, colMeta.offsetZ ?? 0);
@@ -104,22 +120,19 @@ export class CharacterKinematicsService implements IUpdatable {
       );
     }
     
-    // 🔥 FIX: En lugar de usar `entity.isDirty = true` que causaba que el sistema de RenderSync  
-    // reemplazara la posición actualizada por la posición vieja atrapando al jugador...
-    // Le decimos explícitamente al ECS que adopte las coordenadas reales y físicas.
     entity.syncTransformFromView();
   }
 
-  private calculateCameraDirections(activeCamera: any): { forward: Vector3, right: Vector3 } {
-    let forward = activeCamera.getDirection(Vector3.Forward());
+  private calculateCameraDirections(referenceCamera: any): { forward: Vector3, right: Vector3 } {
+    let forward = referenceCamera.getDirection(Vector3.Forward());
     forward.y = 0;
     if (forward.lengthSquared() < 0.001) {
-      forward = activeCamera.getDirection(Vector3.Up());
+      forward = referenceCamera.getDirection(Vector3.Up());
       forward.y = 0;
     }
     forward.normalize();
 
-    const right = activeCamera.getDirection(Vector3.Right());
+    const right = referenceCamera.getDirection(Vector3.Right());
     right.y = 0;
     right.normalize();
 

@@ -1,5 +1,5 @@
 
-import { Injectable, signal, inject, Injector } from '@angular/core';
+import { Injectable, inject, Injector, computed } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
 import { ObjectAnimationService } from './systems/object-animation.service';
@@ -16,17 +16,11 @@ import { CharacterKinematicsService } from './systems/character-kinematics.servi
 import { PlayerAnimationService } from './systems/player-animation.service';
 import { RenderSync } from './systems/render-sync';
 import { Motor3dService } from '../../../services/motor-3d.service';
- 
+import { CameraViewMode } from '../session/game-context.model';
+import { GameContextService } from '../session/game-context.service';
+  
 @Injectable({ providedIn: 'root' })
 export class GameSession {
-  public isPlaying = signal<boolean>(false);
-  public isDebugMode = signal<boolean>(false);
-  public cameraView = signal<'FPS' | 'TPS'>('FPS');
-  public activePlayerEntity = signal<GameEntity | null>(null);
-  public pointerLocked = signal<boolean>(false);
-
-  private systems: IUpdatable[] = [];
-
   private injector = inject(Injector);
   private entityManager = inject(EntityManagerService);
   private objectAnimSvc = inject(ObjectAnimationService);
@@ -38,27 +32,33 @@ export class GameSession {
   private inputSvc = inject(PlayerInputService);
   private interactionSvc = inject(PlayerInteractionService);
   private loopManager = inject(LoopManagerService);
-  
+  private context = inject(GameContextService);
+
+  // Interfaces Reactivas (Bindings directos al contexto central)
+  public isPlaying = computed(() => this.context.isPlaying());
+  public isDebugMode = computed(() => this.context.isDebugMode());
+  public cameraView = computed(() => this.context.cameraView());
+  public activePlayerEntity = computed(() => this.context.activePlayerEntity());
+  public pointerLocked = computed(() => this.context.isPointerLocked());
+
+  private systems: IUpdatable[] = [];
+
   constructor() {
     this.eventBus.events$.subscribe(event => {
       if (event.type === 'GameResumed') {
-        this.pointerLocked.set(true);
+        this.context.setPointerLocked(true);
         this.inputSvc.enable();
         this.interactionSvc.enable();
       } else if (event.type === 'GamePaused') {
-        this.pointerLocked.set(false);
+        this.context.setPointerLocked(false);
         this.inputSvc.disable();
         this.interactionSvc.disable();
       }
     });
   }
 
-  public start(playerEntity: GameEntity, view: 'FPS' | 'TPS', isDebugMode: boolean): void {
-    this.isPlaying.set(true);
-    this.isDebugMode.set(isDebugMode);
-    this.cameraView.set(view);
-    this.activePlayerEntity.set(playerEntity);
-    this.pointerLocked.set(true);
+  public start(playerEntity: GameEntity, view: CameraViewMode): void {
+    this.context.startGameSession(playerEntity, view);
     
     this.inputSvc.enable();
     this.interactionSvc.enable();
@@ -66,7 +66,7 @@ export class GameSession {
     this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
     this.eventBus.emit({ type: 'MessageRequested', payload: null });
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
-    this.eventBus.emit({ type: 'GameStarted', payload: { view, isDebugMode } });
+    this.eventBus.emit({ type: 'GameStarted', payload: { view, isDebugMode: this.context.isDebugMode() } });
 
     const sequenceSvc = this.injector.get(PlayerSequenceService);
     sequenceSvc.resetearSecuencias();
@@ -114,9 +114,7 @@ export class GameSession {
   }
 
   public stop(): void {
-    this.isPlaying.set(false);
-    this.activePlayerEntity.set(null);
-    this.pointerLocked.set(false);
+    this.context.stopGameSession();
     
     this.inputSvc.disable();
     this.interactionSvc.disable();
@@ -154,7 +152,7 @@ export class GameSession {
       isCinematicInitial,
       true,
       (newView) => {
-        this.cameraView.set(newView);
+        this.context.setCameraView(newView);
         this.playerFogSvc.setView(newView);
         this.eventBus.emit({ type: 'CameraViewChanged', payload: newView });
       },

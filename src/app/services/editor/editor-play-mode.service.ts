@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 
@@ -8,8 +9,9 @@ import { EntityManagerService } from '../../core/engine/entities/entity-manager.
 import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.service';
 import { EditorMapaService } from '../editor-mapa.service';
 import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
-import { GameStateService } from '../../core/engine/runtime/state/game-state.service'; // 🔥 ADD
-
+import { GameStateService } from '../../core/engine/runtime/state/game-state.service'; 
+import { CameraViewMode } from '../../core/engine/session/game-context.model';
+ 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
   private motor3d = inject(Motor3dService);
@@ -19,11 +21,11 @@ export class EditorPlayModeService {
   private entityManager = inject(EntityManagerService);
   private runtimeEngine = inject(RuntimeEngineService);
   private inputOrchestrator = inject(InputOrchestratorService);
-  private gameState = inject(GameStateService); // 🔥 ADD
+  private gameState = inject(GameStateService); 
 
   private snapshotMemoria: any = null;
   
-  public testearEscena(vista: 'FPS' | 'TPS'): void {
+  public testearEscena(vista: CameraViewMode): void {
     const objMesh = this.state.objetoSeleccionado() as Mesh;
     if (!objMesh) return;
     
@@ -71,7 +73,10 @@ export class EditorPlayModeService {
 
     const finishSetup = () => {
         this.state.playState.set('PLAYING');
-        this.runtimeEngine.startTestSession(playerEntity, vista, isDebugMode);
+        
+        // 🔥 FIX TS2554: El modo Debug ahora se gestiona internamente por el Context, se le pasan solo 2 parámetros
+        this.runtimeEngine.startTestSession(playerEntity, vista);
+        
         this.state.triggerUpdate();
         
         setTimeout(() => {

@@ -1,15 +1,19 @@
+
 import { Injectable, inject, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { Node, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
-
+import { GameContextService } from '../../core/engine/session/game-context.service';
+ 
 export type ToolMode = 'select' | 'translate' | 'rotate' | 'scale';
 export type PlayState = 'EDITOR' | 'PLAYING' | 'EDITING_IN_GAME' | 'TRANSITIONING' | 'INTERACTING';
 
 @Injectable({ providedIn: 'root' })
 export class EditorStateService {
   private entityManager = inject(EntityManagerService);
+  private gameContext = inject(GameContextService);
 
+  // Estados visuales de la UI del Editor
   public playState = signal<PlayState>('EDITOR');
   public currentTool = signal<ToolMode>('translate');
 
@@ -24,8 +28,6 @@ export class EditorStateService {
   public objetoHovereado = signal<AbstractMesh | null>(null);
 
   public fogDesactivadoTemporalmente = signal<boolean>(false);
-  
-  // 🔥 NUEVO: Signal para mostrar la previsualización puramente visual de la UI
   public previewMissionModal = signal<boolean>(false);
 
   public onMapChanged = new Subject<void>();
@@ -105,7 +107,7 @@ export class EditorStateService {
 
     if (entity) {
         if (!isAdmin && entity.visual.isSelectable === false && !entity.interaction.mensaje && !entity.interaction.interactSequenceId && !entity.interaction.interactSequenceIdFPS && !entity.interaction.interactSequenceIdTPS && entity.type !== 'bubble') {
-            if (this.playState() === 'PLAYING' || this.playState() === 'INTERACTING') {
+            if (this.gameContext.isPlaying() || this.playState() === 'INTERACTING') {
                 return true;
             }
         }
@@ -151,7 +153,7 @@ export class EditorStateService {
     const selectable = entity?.visual?.isSelectable ?? true;
     const isAdmin = this.checkIsAdmin();
 
-    if (this.playState() === 'PLAYING' || this.playState() === 'INTERACTING') {
+    if (this.gameContext.isPlaying() || this.playState() === 'INTERACTING') {
       return this.esObjetoInteractuable(nodoBase);
     }
     
@@ -170,6 +172,6 @@ export class EditorStateService {
     this.objetoSeleccionado.set(null);
     this.subObjetoSeleccionado.set(null);
     this.fogDesactivadoTemporalmente.set(false);
-    this.previewMissionModal.set(false); // Resetea la previsualización al salir
+    this.previewMissionModal.set(false); 
   }
 }

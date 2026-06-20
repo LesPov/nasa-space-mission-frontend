@@ -8,11 +8,14 @@ import { EntityManagerService } from '../entities/entity-manager.service';
 import { GameEntity } from '../entities/game.entity';
 import { PlayerInteractionService } from './systems/player-interaction.service';
 import { CoreSceneLoaderService } from '../scene/utils/core-scene-loader.service';
-
+import { GameMode, CameraViewMode } from '../session/game-context.model';
+import { GameContextService } from '../session/game-context.service';
+  
 @Injectable({ providedIn: 'root' })
 export class RuntimeEngineService {
   private motor3d = inject(Motor3dService);
   private gameSession = inject(GameSession);
+  private gameContext = inject(GameContextService);
   private playerCamSvc = inject(PlayerCameraManagerService);
   private entityManager = inject(EntityManagerService);
   private interactSvc = inject(PlayerInteractionService);
@@ -21,7 +24,7 @@ export class RuntimeEngineService {
   // ==========================================
   // MODO PRODUCCIÓN (JUEGO PURO SIN EDITOR)
   // ==========================================
-  public async bootProductionGame(episodeData: any, isDebugMode: boolean = false): Promise<GameEntity> {
+  public async bootProductionGame(episodeData: any, isAdmin: boolean = false): Promise<GameEntity> {
     this.motor3d.forzarRedimension();
     this.loaderSvc.createInvisibleFloor(this.motor3d.scene);
     
@@ -43,8 +46,11 @@ export class RuntimeEngineService {
         targetCam.getViewMatrix(true);
         this.motor3d.scene.activeCamera = targetCam;
 
-        // 🔥 Se pasa el flag de Debug para heredar poderes de Administrador si corresponde
-        this.gameSession.start(spawnEntity, 'FPS', isDebugMode);
+        // Establecer el modo correcto en el Contexto del Juego
+        const mode = isAdmin ? GameMode.PREVIEW_ADMIN : GameMode.FINAL_USER;
+        this.gameContext.setMode(mode);
+
+        this.gameSession.start(spawnEntity, 'FPS');
         resolve(spawnEntity);
       });
     });
@@ -52,6 +58,7 @@ export class RuntimeEngineService {
 
   public shutdownProductionGame(): void {
     this.gameSession.stop();
+    this.gameContext.setMode(GameMode.EDITOR);
     this.playerCamSvc.limpiarPivotTPS();
     this.resetVideos();
     this.entityManager.clear();
@@ -60,7 +67,7 @@ export class RuntimeEngineService {
   // ==========================================
   // MODO TEST (PUENTE CON EL EDITOR)
   // ==========================================
-  public startTestSession(playerEntity: GameEntity, view: 'FPS' | 'TPS', isDebugMode: boolean): void {
+  public startTestSession(playerEntity: GameEntity, view: CameraViewMode): void {
     this.resetVideos();
     this.playerCamSvc.inicializarCamaras(playerEntity, view);
     
@@ -68,11 +75,13 @@ export class RuntimeEngineService {
     targetCam.getViewMatrix(true);
     this.motor3d.scene.activeCamera = targetCam;
 
-    this.gameSession.start(playerEntity, view, isDebugMode);
+    this.gameContext.setMode(GameMode.TEST_LIVE);
+    this.gameSession.start(playerEntity, view);
   }
 
   public stopTestSession(): void {
     this.gameSession.stop();
+    this.gameContext.setMode(GameMode.EDITOR);
     this.playerCamSvc.limpiarPivotTPS();
     this.resetVideos();
   }

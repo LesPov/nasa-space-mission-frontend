@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -5,6 +6,7 @@ import { EditorStateService } from '../editor-state.service';
 import { FogLevel } from '../../../core/engine/models/player-config.model';
 import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
  
 class FogWallState { 
   dist = 500; 
@@ -23,6 +25,7 @@ export class ToolsFogService {
   private state = inject(EditorStateService);
   private loopManager = inject(LoopManagerService);
   private entityManager = inject(EntityManagerService);
+  private worldSettingsSvc = inject(WorldSettingsService);
 
   private isRegistered = false; 
   private firstFrame = true;
@@ -96,7 +99,10 @@ export class ToolsFogService {
     if (!scene) return;
 
     if (!this.isRegistered) {
-      const globalClearHex = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
+      // 🔥 FIX: Source of Truth
+      const w = this.worldSettingsSvc.settings();
+      const globalClearHex = w.visualMode === 'bw' ? w.clearColorBW : w.clearColor;
+      
       const clearColor3 = Color3.FromHexString(globalClearHex);
       this.curR = clearColor3.r; this.curG = clearColor3.g; this.curB = clearColor3.b;
       
@@ -130,7 +136,10 @@ export class ToolsFogService {
        }) || null;
     }
 
-    const isBW = scene.metadata?.globalVisualMode === 'bw';
+    // 🔥 FIX: Source of Truth
+    const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
+    const globalClearHex = isBW ? this.worldSettingsSvc.settings().clearColorBW : this.worldSettingsSvc.settings().clearColor;
+    
     const isFPS = this.state.modoVistaPrueba === 'FPS';
     const lerpSpeed = 0.035; 
 
@@ -138,7 +147,6 @@ export class ToolsFogService {
     let useFog = false;
     let activeLevels: FogLevel[] = [];
     
-    const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
     const targetEntity = this.entityManager.getEntityByMesh(targetPlayer);
 
     if (modo === 'EDITING_IN_GAME' && targetEntity?.playerConfig?.fog?.enabled && !isFogDisabledTemp) {

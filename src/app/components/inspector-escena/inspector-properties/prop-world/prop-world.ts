@@ -1,14 +1,16 @@
+
 import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Color3, Color4, HemisphericLight, Scene, Vector3, StandardMaterial, Mesh } from '@babylonjs/core';
+import { AbstractMesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
-import { Motor3dService } from '../../../../services/motor-3d.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
-
-type VisualMode = 'normal' | 'bw';
+import { WorldSettingsService } from '../../../../core/engine/world/world-settings.service';
+import { VisualMode } from '../../../../core/engine/world/world-settings.model';
+import { Motor3dService } from '../../../../services/motor-3d.service';
+import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
 
 @Component({
   selector: 'app-prop-world',
@@ -19,8 +21,10 @@ type VisualMode = 'normal' | 'bw';
 })
 export class PropWorld implements OnInit, OnDestroy {
   public editorSvc = inject(EditorMapaService);
-  private motor3dSvc = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
+  private worldSettingsSvc = inject(WorldSettingsService);
+  private motor3dSvc = inject(Motor3dService);
+  private transformMutator = inject(TransformMutatorService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -49,75 +53,31 @@ export class PropWorld implements OnInit, OnDestroy {
   }
 
   leerEstadoActual() {
-    const scene = this.motor3dSvc.scene;
-    if (!scene) return;
+    const w = this.worldSettingsSvc.settings();
 
-    this.clearColorHex = scene.metadata?.globalClearColor || '#0d1729';
-    this.clearColorHexBW = scene.metadata?.globalClearColorBW || '#555555';
-    
-    this.visualMode = scene.metadata?.globalVisualMode === 'bw' ? 'bw' : 'normal';
-    this.motor3dSvc.setVisualMode(this.visualMode);
-
-    const ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight | undefined;
-    if (ambient) {
-      this.ambientIntensity = ambient.intensity;
-      this.ambientColorHex = ambient.diffuse.toHexString().substring(0, 7);
-      this.groundColorHex = ambient.groundColor.toHexString().substring(0, 7);
-      this.ambientDirX = parseFloat(ambient.direction.x.toFixed(2));
-      this.ambientDirY = parseFloat(ambient.direction.y.toFixed(2));
-      this.ambientDirZ = parseFloat(ambient.direction.z.toFixed(2));
-    }
-
-    this.gravedadY = scene.gravity?.y ?? -0.25;
+    this.clearColorHex = w.clearColor;
+    this.clearColorHexBW = w.clearColorBW;
+    this.visualMode = w.visualMode;
+    this.ambientIntensity = w.ambientIntensity;
+    this.ambientColorHex = w.ambientDiffuse;
+    this.groundColorHex = w.ambientGround;
+    this.ambientDirX = w.ambientDirX;
+    this.ambientDirY = w.ambientDirY;
+    this.ambientDirZ = w.ambientDirZ;
+    this.gravedadY = w.gravityY;
 
     this.cdr.detectChanges();
   }
 
   aplicarModoVisualCambiado() {
-    const scene = this.motor3dSvc.scene;
-    scene.metadata = { ...(scene.metadata || {}), globalVisualMode: this.visualMode };
-    this.motor3dSvc.setVisualMode(this.visualMode);
+    this.worldSettingsSvc.updateWorldSettings({ visualMode: this.visualMode });
+    this.worldSettingsSvc.applyToScene(this.motor3dSvc.scene, (mode) => this.motor3dSvc.setVisualMode(mode));
 
-    const isBW = this.visualMode === 'bw';
-    this.aplicarFondo();
-
+    // 🔥 FIX: Centralizamos la actualización usando TransformMutator 
+    // en vez de hackear los materiales de Babylon manualmente aquí.
     this.entityManager.getAllEntities().forEach(entity => {
-      const mesh = entity.view as Mesh;
-      if (!mesh) return;
-
-      const activeColorHex = isBW ? (entity.visual.colorBW || entity.visual.color || '#ffffff') : (entity.visual.color || '#ffffff');
-      const c3 = Color3.FromHexString(activeColorHex);
-
-      if (entity.type === 'image_plane' && entity.mediaRuntime?.runtimeDecalMaterial) {
-        const decalMat = entity.mediaRuntime.runtimeDecalMaterial as StandardMaterial;
-        const brillo = Number(entity.visual.brilloIntensidad ?? 1.0);
-        decalMat.diffuseColor = c3;
-        decalMat.emissiveColor = c3.scale(brillo);
-      } 
-      else if (['cube', 'sphere', 'cylinder', 'plane', 'model'].includes(entity.type)) {
-        if (mesh.material && (mesh.material as any).diffuseColor) {
-          const mat = mesh.material as StandardMaterial;
-          mat.diffuseColor = c3;
-
-          if (entity.visual.esEmisivo) {
-            const brillo = Number(entity.visual.brilloIntensidad ?? 1.0);
-            mat.emissiveColor = c3.scale(brillo);
-          } else {
-            mat.emissiveColor = new Color3(0, 0, 0);
-          }
-        }
-      }
-      else if (entity.type.startsWith('light_')) {
-          const activeLightColorHex = isBW ? (entity.light?.lightColorBW || entity.light?.lightColor || '#ffffff') : (entity.light?.lightColor || '#ffffff');
-          const c3Light = Color3.FromHexString(activeLightColorHex);
-
-          if (mesh.material && (mesh.material as any).emissiveColor) {
-              (mesh.material as StandardMaterial).emissiveColor = c3Light;
-          }
-          const lightObj = mesh.getDescendants(false).find(c => c.name.startsWith('l_')) as any;
-          if (lightObj && lightObj.diffuse) {
-              lightObj.diffuse = c3Light;
-          }
+      if (entity.view) {
+        this.transformMutator.aplicarVisuales(entity.view as AbstractMesh, entity.visual);
       }
     });
 
@@ -125,39 +85,30 @@ export class PropWorld implements OnInit, OnDestroy {
   }
 
   aplicarFondo() {
-    const scene = this.motor3dSvc.scene;
-    scene.metadata = { 
-      ...(scene.metadata || {}), 
-      globalClearColor: this.clearColorHex,
-      globalClearColorBW: this.clearColorHexBW 
-    };
-
-    const activeClearHex = this.visualMode === 'bw' ? this.clearColorHexBW : this.clearColorHex;
-    scene.clearColor = Color4.FromHexString(activeClearHex + 'ff');
-
+    this.worldSettingsSvc.updateWorldSettings({
+      clearColor: this.clearColorHex,
+      clearColorBW: this.clearColorHexBW
+    });
+    this.worldSettingsSvc.applyToScene(this.motor3dSvc.scene, (mode) => this.motor3dSvc.setVisualMode(mode));
     this.editorSvc.triggerUpdate();
   }
 
   aplicarIluminacion() {
-    const scene = this.motor3dSvc.scene;
-
-    let ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;
-    if (!ambient) {
-      ambient = new HemisphericLight('ambientLight', new Vector3(this.ambientDirX, this.ambientDirY, this.ambientDirZ), scene);
-    }
-
-    ambient.direction = new Vector3(this.ambientDirX, this.ambientDirY, this.ambientDirZ);
-    ambient.intensity = this.ambientIntensity;
-    ambient.diffuse = Color3.FromHexString(this.ambientColorHex);
-    ambient.groundColor = Color3.FromHexString(this.groundColorHex);
-    ambient.specular = new Color3(0, 0, 0);
-
+    this.worldSettingsSvc.updateWorldSettings({
+      ambientIntensity: this.ambientIntensity,
+      ambientDiffuse: this.ambientColorHex,
+      ambientGround: this.groundColorHex,
+      ambientDirX: this.ambientDirX,
+      ambientDirY: this.ambientDirY,
+      ambientDirZ: this.ambientDirZ
+    });
+    this.worldSettingsSvc.applyToScene(this.motor3dSvc.scene, (mode) => this.motor3dSvc.setVisualMode(mode));
     this.editorSvc.triggerUpdate();
   }
 
   aplicarGravedad() {
-    const scene = this.motor3dSvc.scene;
-    scene.gravity = new Vector3(0, this.gravedadY, 0);
+    this.worldSettingsSvc.updateWorldSettings({ gravityY: this.gravedadY });
+    this.worldSettingsSvc.applyToScene(this.motor3dSvc.scene, (mode) => this.motor3dSvc.setVisualMode(mode));
     this.editorSvc.triggerUpdate();
   }
 }

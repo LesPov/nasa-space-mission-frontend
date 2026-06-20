@@ -3,11 +3,13 @@ import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Engine, Mesh, MeshBuilder, Ray, Scene, StandardMaterial, Texture, Vector3, Tags } from '@babylonjs/core';
 import { LoopManagerService, GamePhase } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
+import { WorldSettingsService } from '../../world/world-settings.service';
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneProjectionService {
   private loopManager = inject(LoopManagerService);
   private entityManager = inject(EntityManagerService);
+  private worldSettingsSvc = inject(WorldSettingsService);
 
   public clampNum(v: number, min: number, max: number, fallback = min): number {
     if (Number.isNaN(v) || v === null || v === undefined) return fallback;
@@ -82,7 +84,6 @@ export class CoreSceneProjectionService {
 
   public limpiarDecalsImagen(mesh: Mesh): void {
     const entity = this.entityManager.getEntityByMesh(mesh);
-    // 🔥 Se mapea a Runtime puro
     if (!entity || !entity.mediaRuntime) return;
 
     if (Array.isArray(entity.mediaRuntime.runtimeDecals)) {
@@ -105,7 +106,8 @@ export class CoreSceneProjectionService {
     const scene = mesh.getScene();
 
     try {
-      const isNowBW = scene.metadata?.globalVisualMode === 'bw';
+      // 🔥 FIX: Source of Truth
+      const isNowBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       const colorReal = isNowBW ? entity.visual.colorBW : entity.visual.color;
       
       const decalMat = entity.mediaRuntime.runtimeDecalMaterial;
@@ -202,7 +204,8 @@ export class CoreSceneProjectionService {
       const entity = this.entityManager.getEntityByMesh(mesh);
       if (!entity || !entity.media || !entity.mediaRuntime) return;
 
-      const currentModeIsBW = scene.metadata?.globalVisualMode === 'bw';
+      // 🔥 FIX: Source of Truth
+      const currentModeIsBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       if (entity.mediaRuntime.lastVisualModeBW !== currentModeIsBW) {
         entity.mediaRuntime.lastVisualModeBW = currentModeIsBW;
         this.actualizarProyeccion(mesh);

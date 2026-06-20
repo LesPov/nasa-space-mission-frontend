@@ -1,54 +1,21 @@
 
 import { Injectable, inject } from '@angular/core'; 
-import { HemisphericLight } from '@babylonjs/core'; 
-import { Motor3dService } from '../../motor-3d.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
-import { CharacterConfigComponent, LightComponent, MediaConfigComponent, PhysicsComponent, PlayerConfigComponent, TransformComponent, TriggerConfigComponent, VisualComponent } from '../../../core/engine/entities/game.entity';
+import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
+import { EntityPersistenceMapperService } from '../../../core/engine/scene/utils/entity-persistence-mapper.service';
 
 @Injectable({ providedIn: 'root' }) 
 export class SceneSaverService { 
-  private motor3d = inject(Motor3dService); 
   private entityManager = inject(EntityManagerService); 
-
-  private hex7(value: any, fallback: string): string { 
-    if (typeof value !== 'string' || !value.trim()) return fallback; 
-    const v = value.trim(); 
-    return v.length >= 7 ? v.substring(0, 7) : fallback; 
-  }
-
-  private safeNumber(value: any, fallback: number): number { 
-    const n = Number(value); 
-    return Number.isFinite(n) ? n : fallback; 
-  }
+  private worldSettingsSvc = inject(WorldSettingsService);
+  private persistenceMapper = inject(EntityPersistenceMapperService);
 
   public obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[]; triggersDelta: any[]; deletedObjects: string[]; deletedTriggers: string[]; worldSettings: any; uiSettings: any } { 
     const sceneObjectsDelta: any[] = []; 
     const triggersDelta: any[] = [];
 
-    const scene = this.motor3d.scene;
-    const ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;
-
-    const worldSettings = {
-      visualMode: scene.metadata?.globalVisualMode || 'normal',
-      clearColor: this.hex7(scene.metadata?.globalClearColor, '#0d1729'),
-      clearColorBW: this.hex7(scene.metadata?.globalClearColorBW, '#555555'),
-      gravityY: this.safeNumber(scene.gravity?.y, -0.25),
-      ambientIntensity: ambient ? this.safeNumber(ambient.intensity, 0.6) : 0.6,
-      ambientDiffuse: ambient ? this.hex7(ambient.diffuse?.toHexString?.(), '#ffffff') : '#ffffff',
-      ambientGround: ambient ? this.hex7(ambient.groundColor?.toHexString?.(), '#333333') : '#333333',
-      ambientDirX: ambient ? this.safeNumber(ambient.direction?.x, 0) : 0,
-      ambientDirY: ambient ? this.safeNumber(ambient.direction?.y, 1) : 1,
-      ambientDirZ: ambient ? this.safeNumber(ambient.direction?.z, 0) : 0
-    };
-
-    // 🔥 FIX: EXTRAEMOS LA CONFIGURACIÓN DE LA UI DEL MODAL ASEGURANDO QUE SEA UN CLON PURO (Evita errores de Angular Proxies al enviar por red)
-    let uiSettingsRaw = scene.metadata?.uiSettings || {};
-    let uiSettings = {};
-    try {
-       uiSettings = JSON.parse(JSON.stringify(uiSettingsRaw));
-    } catch(e) {
-       uiSettings = uiSettingsRaw;
-    }
+    const worldSettings = this.worldSettingsSvc.settings();
+    const uiSettings = this.worldSettingsSvc.uiSettings();
 
     const allEntities = this.entityManager.getAllEntities();
 
@@ -57,15 +24,9 @@ export class SceneSaverService {
 
       entity.syncTransformFromView();
 
-      const transform = entity.getComponent<TransformComponent>('transform')!;
-      const visual = entity.getComponent<VisualComponent>('visual')!;
-      const interaction = entity.interaction; 
-      const playerConfig = entity.getComponent<PlayerConfigComponent>('playerConfig')!;
-      const physics = entity.getComponent<PhysicsComponent>('physics')!;
-      const light = entity.getComponent<LightComponent>('light');
-      const media = entity.getComponent<MediaConfigComponent>('mediaConfig');
-      const trigger = entity.getComponent<TriggerConfigComponent>('triggerConfig');
-      const characterConfig = entity.getComponent<CharacterConfigComponent>('characterConfig');
+      const propertiesToSave = this.persistenceMapper.extractEntityProperties(entity);
+      const transform = entity.transform;
+      const trigger = entity.trigger;
 
       if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') {
         const isComposite = entity.type === 'trigger_compuesto';
@@ -102,9 +63,9 @@ export class SceneSaverService {
                condition: trigger?.condition || 'on_enter', actionType: 'show_message', targetObjectName: '',
                isRepeatable: trigger?.isRepeatable ?? false,
                triggerShape: trigger?.triggerShape || 'cube', 
-               mensaje: interaction.mensaje,
+               mensaje: entity.interaction.mensaje,
                soundUrl: trigger?.soundUrl || '', 
-               interactSequenceId: interaction.interactSequenceId,
+               interactSequenceId: entity.interaction.interactSequenceId,
                timeNorm: trigger?.timeNorm ?? 4.5, 
                videoNorm: trigger?.videoNorm || '', 
                isComposite: false
@@ -112,53 +73,23 @@ export class SceneSaverService {
            });
         }
       } else {
-        const propertiesToSave = {
-          rol: characterConfig ? characterConfig.characterType : entity.rol,
-          characterConfig: characterConfig ? { ...characterConfig } : undefined,
-          color: visual.color,
-          colorBW: visual.colorBW,
-          isSolid: visual.isSolid,
-          isSelectable: visual.isSelectable,
-          ignoraNiebla: visual.ignoraNiebla,
-          esEmisivo: visual.esEmisivo,
-          brilloIntensidad: visual.brilloIntensidad,
-          mensaje: interaction.mensaje,
-          interactDistanceFPS: interaction.interactDistanceFPS,
-          interactDistanceTPS: interaction.interactDistanceTPS,
-          interactSequenceIdFPS: interaction.interactSequenceIdFPS,
-          interactSequenceIdTPS: interaction.interactSequenceIdTPS,
-          interactSequenceId: interaction.interactSequenceId,
-          respawnTime: interaction.respawnTime,
-          collider: physics,
-          camOffset: playerConfig.camOffset,
-          playerConfig: playerConfig.playerConfig,
-          selectionRange: playerConfig.selectionRange,
-          animationNames: playerConfig.animationNames,
-          autoAnim: playerConfig.autoAnim,
-          path: visual.path 
-        };
-
         const baseData = {
           uid: entity.uid, name: entity.name, parentId: entity.parentId,
           position: transform.position, rotation: transform.rotation, scale: transform.scale
         };
 
-        if (entity.type.startsWith('light_') && light) {
-          sceneObjectsDelta.push({
-            ...baseData, type: entity.type, assetId: visual.assetId,
-            properties: { ...propertiesToSave, ...light }
-          });
-        } else if ((entity.type === 'video_plane' || entity.type === 'image_plane') && media) {
-          sceneObjectsDelta.push({
-            ...baseData, type: entity.type, assetId: visual.assetId,
-            properties: { ...propertiesToSave, ...media }
-          });
-        } else {
-          sceneObjectsDelta.push({
-            ...baseData, type: entity.type, assetId: visual.assetId,
-            properties: propertiesToSave
-          });
+        let finalProperties = { ...propertiesToSave };
+
+        if (entity.type.startsWith('light_') && entity.light) {
+          finalProperties = { ...finalProperties, ...entity.light };
+        } else if ((entity.type === 'video_plane' || entity.type === 'image_plane') && entity.media) {
+          finalProperties = { ...finalProperties, ...entity.media };
         }
+
+        sceneObjectsDelta.push({
+          ...baseData, type: entity.type, assetId: entity.visual.assetId,
+          properties: finalProperties
+        });
       }
     });
 
@@ -168,7 +99,7 @@ export class SceneSaverService {
       deletedObjects: [...this.entityManager.deletedObjects], 
       deletedTriggers: [...this.entityManager.deletedTriggers], 
       worldSettings,
-      uiSettings // 🔥 Exportado correctamente para guardarse en la Base de Datos
+      uiSettings
     };
   } 
 }

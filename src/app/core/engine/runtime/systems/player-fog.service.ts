@@ -1,9 +1,11 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { FogLevel } from '../../models/player-config.model';
 import { LoopManagerService, GamePhase } from '../../behaviors/services/loop-manager.service';
 import { GameEntity } from '../../entities/game.entity';
+import { WorldSettingsService } from '../../world/world-settings.service';
 
 class FogWallState { 
   dist = 500; 
@@ -20,6 +22,7 @@ class FogWallState {
 export class PlayerFogService { 
   private motor3d = inject(Motor3dService); 
   private loopManager = inject(LoopManagerService);
+  private worldSettingsSvc = inject(WorldSettingsService);
 
   private isRegistered = false; 
   private firstFrame = true;
@@ -80,7 +83,10 @@ export class PlayerFogService {
     if (!scene) return;
 
     if (!this.isRegistered) {
-      const globalClearHex = (scene.metadata && scene.metadata.globalClearColor) ? scene.metadata.globalClearColor : '#0d1729';
+      // 🔥 FIX: Source of Truth
+      const w = this.worldSettingsSvc.settings();
+      const globalClearHex = w.visualMode === 'bw' ? w.clearColorBW : w.clearColor;
+
       const clearColor3 = Color3.FromHexString(globalClearHex);
       this.curR = clearColor3.r; this.curG = clearColor3.g; this.curB = clearColor3.b;
       
@@ -120,7 +126,10 @@ export class PlayerFogService {
     const targetPlayer = this.playerEntity?.view as AbstractMesh || null; 
     let shadowLimit = 500000;
 
-    const isBW = scene.metadata?.globalVisualMode === 'bw';
+    // 🔥 FIX: Source of Truth
+    const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
+    const globalClearHex = isBW ? this.worldSettingsSvc.settings().clearColorBW : this.worldSettingsSvc.settings().clearColor;
+
     const isFPS = this.currentView === 'FPS';
     const lerpSpeed = 0.35; 
 
@@ -128,8 +137,6 @@ export class PlayerFogService {
     let useFog = false;
     let activeLevels: FogLevel[] = [];
     
-    const globalClearHex = isBW ? (scene.metadata?.globalClearColorBW || '#555555') : (scene.metadata?.globalClearColor || '#0d1729');
-
     if (this.playerEntity?.playerConfig?.fog?.enabled) {
       useFog = true;
       const fog = this.playerEntity.playerConfig.fog;

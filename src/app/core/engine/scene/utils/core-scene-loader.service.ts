@@ -1,5 +1,6 @@
+
 import { Injectable, inject } from '@angular/core';
-import { Color4, Mesh, Vector3, HemisphericLight, Color3, Scene, MeshBuilder, Tags } from '@babylonjs/core';
+import { Mesh, Vector3, MeshBuilder, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { CoreSceneShadowsService } from './core-scene-shadows.service';
 import { CoreSceneUtilsService } from './core-scene-utils.service';
@@ -8,6 +9,7 @@ import { CoreModelLoaderService } from './core-model-loader.service';
 import { CorePrimitiveLoaderService } from './core-primitive-loader.service';
 import { CoreTriggerLoaderService } from './core-trigger-loader.service';
 import { CoreSceneProjectionService } from './core-scene-projection.service';
+import { WorldSettingsService } from '../../world/world-settings.service';
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneLoaderService {
@@ -19,8 +21,9 @@ export class CoreSceneLoaderService {
   private loaderPrimitiveSvc = inject(CorePrimitiveLoaderService);
   private loaderTriggerSvc = inject(CoreTriggerLoaderService);
   private projectionSvc = inject(CoreSceneProjectionService);
+  private worldSettingsSvc = inject(WorldSettingsService);
 
-  public createInvisibleFloor(scene: Scene): void {
+  public createInvisibleFloor(scene: any): void {
     const suelo = MeshBuilder.CreateBox('sueloInvisible', { width: 200, depth: 200, height: 1 }, scene);
     suelo.position.y = -0.5;
     suelo.checkCollisions = true;
@@ -30,27 +33,6 @@ export class CoreSceneLoaderService {
     Tags.AddTagsTo(suelo, "system_element invisible_floor ignore_raycast");
   }
 
-  public setupGlobalEnvironment(w: any, scene: Scene): void {
-    let ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;
-    if (!ambient) {
-      ambient = new HemisphericLight('ambientLight', new Vector3(0, 1, 0), scene);
-    }
-    ambient.direction = new Vector3(w.ambientDirX ?? 0, w.ambientDirY ?? 1, w.ambientDirZ ?? 0);
-    ambient.intensity = w.ambientIntensity ?? 0.6;
-    ambient.diffuse = Color3.FromHexString(w.ambientDiffuse || '#ffffff');
-    ambient.groundColor = Color3.FromHexString(w.ambientGround || '#333333');
-    ambient.specular = new Color3(0, 0, 0);
-
-    if (!scene.environmentTexture) {
-      scene.createDefaultEnvironment({ createSkybox: false, createGround: false, enableGroundShadow: false, setupImageProcessing: false });
-    }
-
-    const oldGlobal = scene.lights.find(l => l.name === 'globalLight');
-    if (oldGlobal) oldGlobal.dispose();
-    const oldSun = scene.lights.find(l => l.name === 'sunLight');
-    if (oldSun) oldSun.dispose();
-  }
-
   public async loadSceneFromData(dataBD: any): Promise<void> {
     if (!dataBD) return;
 
@@ -58,7 +40,6 @@ export class CoreSceneLoaderService {
     let w: any = dataBD.worldSettings;
     if (typeof w === 'string') { try { w = JSON.parse(w); } catch (e) {} }
 
-    // 🔥 FIX CRÍTICO: Búsqueda exhaustiva del uiSettings sin importar cómo llegue del backend
     let uiSettingsRaw = dataBD.uiSettings || dataBD.episode?.uiSettings || {};
     let uiSettings = {};
     if (typeof uiSettingsRaw === 'string') { 
@@ -67,29 +48,9 @@ export class CoreSceneLoaderService {
         uiSettings = uiSettingsRaw;
     }
 
-    if (w) {
-      const clearHex = w.clearColor?.length >= 7 ? w.clearColor.substring(0, 7) : '#0d1729';
-      const clearHexBW = w.clearColorBW?.length >= 7 ? w.clearColorBW.substring(0, 7) : '#555555';
-
-      this.setupGlobalEnvironment(w, scene);
-      const loadedMode = w.visualMode === 'bw' ? 'bw' : 'normal';
-      const activeClear = loadedMode === 'bw' ? clearHexBW : clearHex;
-      
-      scene.clearColor = Color4.FromHexString(activeClear + 'ff');
-      
-      scene.metadata = { 
-        ...scene.metadata, 
-        globalClearColor: clearHex, 
-        globalClearColorBW: clearHexBW, 
-        globalVisualMode: loadedMode,
-        uiSettings: uiSettings 
-      };
-      
-      this.motor3d.setVisualMode(loadedMode);
-      scene.gravity = new Vector3(0, w.gravityY ?? -0.25, 0);
-    } else {
-      scene.metadata = { ...scene.metadata, uiSettings: uiSettings };
-    }
+    // Configuración global del entorno
+    this.worldSettingsSvc.loadFromDb(w, uiSettings);
+    this.worldSettingsSvc.applyToScene(scene, (mode) => this.motor3d.setVisualMode(mode));
 
     scene.cameras.forEach(cam => cam.maxZ = 10000);
 

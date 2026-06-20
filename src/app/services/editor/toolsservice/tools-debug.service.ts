@@ -5,6 +5,7 @@ import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { ToolsSelectionService } from './tools-selection.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsDebugService {
@@ -12,6 +13,7 @@ export class ToolsDebugService {
   private state = inject(EditorStateService);
   private selectionSvc = inject(ToolsSelectionService);
   private entityManager = inject(EntityManagerService);
+  private worldSettingsSvc = inject(WorldSettingsService);
 
   public debugCollider: Mesh | null = null;
   public debugCameraBox: Mesh | null = null;
@@ -152,7 +154,9 @@ export class ToolsDebugService {
     const playerConfig = entity.playerConfig;
     if (subSelected === 'fog' && playerConfig && playerConfig.fog && playerConfig.fog.enabled && !!entity.characterConfig) {
       
-      const isBW = scene.metadata?.globalVisualMode === 'bw';
+      // 🔥 FIX: Source of Truth
+      const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
+
       const isFPS = this.state.modoVistaPrueba === 'FPS';
       const fog = playerConfig.fog;
       
@@ -260,7 +264,9 @@ export class ToolsDebugService {
 
     const fogConfig = entity.playerConfig?.fog;
     const fogShape = fogConfig?.fogShape || 'cylinder';
-    const isBW = this.motor3d.scene?.metadata?.globalVisualMode === 'bw';
+    
+    // 🔥 FIX: Source of Truth
+    const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
     const isFPS = this.state.modoVistaPrueba === 'FPS';
     
     const hStartFpsBW = fogConfig?.fogHeightYStartFpsBW ?? 4.0;

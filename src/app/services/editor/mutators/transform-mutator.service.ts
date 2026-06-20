@@ -1,21 +1,19 @@
 
-// src/app/services/editor/mutators/transform-mutator.service.ts
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { HistorialService } from '../../historial.service';
-import { Motor3dService } from '../../motor-3d.service';
 import { CoreSceneProjectionService } from '../../../core/engine/scene/utils/core-scene-projection.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
 
 @Injectable({ providedIn: 'root' })
 export class TransformMutatorService {
   private editorSvc = inject(EditorMapaService);
   private historialSvc = inject(HistorialService);
-  private motor3dSvc = inject(Motor3dService);
   private projectionSvc = inject(CoreSceneProjectionService);
   private entityManager = inject(EntityManagerService); 
+  private worldSettingsSvc = inject(WorldSettingsService);
 
   public aplicarPosicion(objeto: AbstractMesh, localPos: { x: number, y: number, z: number }): void {
     const entity = this.entityManager.getEntityByMesh(objeto);
@@ -113,12 +111,12 @@ export class TransformMutatorService {
     entity.isDirty = true;
     entity.syncToView();
 
-    const isBW = this.motor3dSvc.scene.metadata?.globalVisualMode === 'bw';
+    // 🔥 FIX: Sincronización directa contra el Source of Truth de WorldSettings
+    const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
     const activeColorHex = isBW ? config.colorBW : config.color;
 
     if (objeto.material && objeto.material instanceof StandardMaterial) {
       if (entity.type === 'image_plane') {
-        // 🔥 Se mapea a Runtime puro
         const decalMat = entity.mediaRuntime?.runtimeDecalMaterial as StandardMaterial | undefined;
         
         if (decalMat) {
@@ -148,6 +146,20 @@ export class TransformMutatorService {
           objMat.disableLighting = false;
         }
       }
+    }
+
+    // 🔥 FIX: Reflejar colores de luces si se actualizó el modo global
+    if (entity.type.startsWith('light_') && entity.light) {
+        const activeLightColorHex = isBW ? entity.light.lightColorBW : entity.light.lightColor;
+        const c3Light = Color3.FromHexString(activeLightColorHex || '#ffffff');
+        
+        if (objeto.material && (objeto.material as any).emissiveColor) {
+            (objeto.material as StandardMaterial).emissiveColor = c3Light;
+        }
+        const lightObj = objeto.getDescendants(false).find(c => c.name.startsWith('l_')) as any;
+        if (lightObj && lightObj.diffuse) {
+            lightObj.diffuse = c3Light;
+        }
     }
 
     objeto.applyFog = !config.ignoraNiebla;

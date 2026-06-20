@@ -1,11 +1,6 @@
-
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial, Color3 } from '@babylonjs/core';
 import { PlayerRuntimeConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
-
-// ==========================================
-// 1. DEFINICIÓN DE COMPONENTES ECS (CONFIGURACIÓN GUARDABLE)
-// ==========================================
 
 export class TransformComponent {
   constructor(
@@ -128,10 +123,6 @@ export class CharacterConfigComponent {
   ) {}
 }
 
-// ==========================================
-// 2. DEFINICIÓN DE COMPONENTES ECS (ESTADO RUNTIME VOLÁTIL - NO SE GUARDA)
-// ==========================================
-
 export class InteractionRuntimeComponent {
   constructor(
     public isHoveredByPlayer = false,
@@ -192,10 +183,6 @@ export class PlayerRuntimeComponent {
   ) {}
 }
 
-// ==========================================
-// 3. ENTIDAD BASE (ECS CONTENEDOR)
-// ==========================================
-
 export class GameEntity {
   public uid: string;
   public name: string;
@@ -215,7 +202,6 @@ export class GameEntity {
     this.type = type;
     this.rol = rol;
 
-    // Configuración persistente (Guardable en BD)
     this.addComponent('transform', new TransformComponent());
     this.addComponent('visual', new VisualComponent());
     
@@ -224,12 +210,10 @@ export class GameEntity {
     this.addComponent('interaction', new InteractionComponent());
     this.addComponent('playerConfig', new PlayerConfigComponent());
 
-    // 🔥 Compatibilidad retroactiva: Transmutamos "rol" a un componente real
     if (['npc', 'spawn_point', 'politico', 'militar'].includes(rol)) {
       this.addComponent('characterConfig', new CharacterConfigComponent(rol, rol === 'spawn_point'));
     }
 
-    // Estado Runtime (Volátil, No se guarda en BD)
     this.addComponent('playerRuntime', new PlayerRuntimeComponent());
     this.addComponent('interactionRuntime', new InteractionRuntimeComponent());
 
@@ -249,9 +233,6 @@ export class GameEntity {
     }
   }
 
-  // ==========================================
-  // API ECS (Entity-Component-System)
-  // ==========================================
   public addComponent<T>(key: string, component: T): void {
     this.components.set(key, component);
     this.isDirty = true;
@@ -270,9 +251,6 @@ export class GameEntity {
     this.isDirty = true;
   }
 
-  // ==========================================
-  // GETTERS DE COMPATIBILIDAD (Configuración)
-  // ==========================================
   get transform(): TransformComponent { return this.getComponent<TransformComponent>('transform')!; }
   set transform(v) { this.addComponent('transform', v); }
 
@@ -312,9 +290,6 @@ export class GameEntity {
   get autoAnim() { return this.getComponent<PlayerConfigComponent>('playerConfig')!.autoAnim; }
   set autoAnim(v) { const p = this.getComponent<PlayerConfigComponent>('playerConfig'); if(p) p.autoAnim = v; }
 
-  // ==========================================
-  // GETTERS DE ESTADO RUNTIME (Aislados del Core)
-  // ==========================================
   get mediaRuntime(): MediaRuntimeComponent | undefined { return this.getComponent<MediaRuntimeComponent>('mediaRuntime'); }
   get triggerRuntime(): TriggerRuntimeComponent | undefined { return this.getComponent<TriggerRuntimeComponent>('triggerRuntime'); }
   get lightRuntime(): LightRuntimeComponent | undefined { return this.getComponent<LightRuntimeComponent>('lightRuntime'); }
@@ -324,9 +299,6 @@ export class GameEntity {
   get initialHeadLocal() { return this.playerRuntime.initialHeadLocal; }
   set initialHeadLocal(v) { this.playerRuntime.initialHeadLocal = v; }
 
-  // ==========================================
-  // VIEW BINDING
-  // ==========================================
   public bindView(mesh: AbstractMesh): void {
     this.view = mesh;
     if (!mesh.metadata) mesh.metadata = {};
@@ -350,52 +322,6 @@ export class GameEntity {
 
     this.view.name = this.name;
     this.view.metadata = { uid: this.uid, entityUid: this.uid };
-
-    if (this.light && this.view) {
-      const lightObj = this.view.getDescendants(false).find(c => c.getClassName().includes('Light')) as any;
-      if (lightObj) {
-          const intensityToUse = this.lightRuntime?.currentIntensity !== undefined ? this.lightRuntime.currentIntensity : this.light.intensity;
-          lightObj.intensity = intensityToUse;
-      }
-    }
-
-    if (this.mediaRuntime?.videoCommand && this.view) {
-      const mat = this.view.material as StandardMaterial;
-      if (mat && mat.diffuseTexture && (mat.diffuseTexture as any).video) {
-          const video = (mat.diffuseTexture as any).video;
-          if (this.mediaRuntime.videoCommand === 'play') {
-              video.play();
-              mat.emissiveColor = new Color3(0.4, 0.4, 0.4);
-          } else if (this.mediaRuntime.videoCommand === 'pause') {
-              video.pause();
-              mat.emissiveColor = new Color3(0.2, 0.2, 0.2);
-          } else if (this.mediaRuntime.videoCommand === 'stop') {
-              video.pause();
-              video.currentTime = 0;
-              mat.emissiveColor = new Color3(0, 0, 0);
-          }
-          this.mediaRuntime.videoCommand = undefined;
-      }
-    }
-
-    if (this.playerRuntime?.stopBakedRequested && this.view && this.view.getScene) {
-        const scene = this.view.getScene();
-        const myAnimNames = this.animationNames || [];
-        scene.animationGroups.forEach(ag => {
-            if (myAnimNames.includes(ag.name) && ag.isPlaying) {
-                const isTargetingMe = ag.targetedAnimations?.some(ta => {
-                    let current: any = ta.target;
-                    while(current) {
-                        if (current === this.view) return true;
-                        current = current.parent;
-                    }
-                    return false;
-                });
-                if (isTargetingMe) ag.stop();
-            }
-        });
-        this.playerRuntime.stopBakedRequested = false;
-    }
   }
 
   public syncTransformFromView(): void {

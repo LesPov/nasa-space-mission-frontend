@@ -1,4 +1,3 @@
-
 import { Injectable, inject, Injector, computed } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
@@ -15,6 +14,7 @@ import { IUpdatable, LoopManagerService } from '../behaviors/services/loop-manag
 import { CharacterKinematicsService } from './systems/character-kinematics.service';
 import { PlayerAnimationService } from './systems/player-animation.service';
 import { RenderSync } from './systems/render-sync';
+import { MediaCommandSystem } from './systems/media-command.system';
 import { Motor3dService } from '../../../services/motor-3d.service';
 import { CameraViewMode, GameMode } from '../session/game-context.model';
 import { GameContextService } from '../session/game-context.service';
@@ -37,8 +37,8 @@ export class GameSession {
   private context = inject(GameContextService);
   private layoutSvc = inject(LayoutService);
   private ownership = inject(CameraOwnershipService);
+  private mediaCommandSvc = inject(MediaCommandSystem);
 
-  // Interfaces Reactivas (Bindings directos al contexto central)
   public isPlaying = computed(() => this.context.isPlaying());
   public isDebugMode = computed(() => this.context.isDebugMode());
   public cameraView = computed(() => this.context.cameraView());
@@ -53,7 +53,6 @@ export class GameSession {
         this.context.setPointerLocked(true);
         const owner = this.ownership.getOwner();
         
-        // Solo rehabilitamos el jugador si NO estamos en cámara libre admin
         if (owner !== 'ADMIN_FREE') {
             this.inputSvc.enable();
             this.interactionSvc.enable();
@@ -62,8 +61,6 @@ export class GameSession {
         const mode = this.context.mode();
         if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
              this.layoutSvc.ocultarMenu(); 
-             
-             // Viaje suave hacia FPS (Solo si es la cámara de juego)
              if (this.cameraView() === 'TPS' && owner !== 'ADMIN_FREE') {
                  this.toggleCameraUser(false, 75); 
              }
@@ -77,8 +74,6 @@ export class GameSession {
         const mode = this.context.mode();
         if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
              this.layoutSvc.mostrarMenu(); 
-             
-             // Retroceso suave a TPS (Solo si es la cámara de juego)
              const owner = this.ownership.getOwner();
              if (this.cameraView() === 'FPS' && owner !== 'ADMIN_FREE') {
                  this.toggleCameraUser(false, 60); 
@@ -115,6 +110,7 @@ export class GameSession {
     this.objectAnimSvc.startAmbientAutoAnimations();
     this.playerFogSvc.start(playerEntity, view);
 
+    // 🔥 REGISTRAMOS EL NUEVO SISTEMA (MediaCommandSystem)
     this.systems = [
       this.injector.get(PlayerInputService),
       this.injector.get(PlayerSequenceService),
@@ -123,6 +119,7 @@ export class GameSession {
       this.injector.get(PlayerInteractionService),
       this.injector.get(PlayerAnimationService),
       this.injector.get(PlayerCameraManagerService),
+      this.mediaCommandSvc,
       this.injector.get(RenderSync)
     ];
 

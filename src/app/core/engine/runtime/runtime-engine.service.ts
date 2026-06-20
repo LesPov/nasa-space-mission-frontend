@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { StandardMaterial, VideoTexture, Color3, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../../../services/motor-3d.service';
@@ -32,6 +33,9 @@ export class RuntimeEngineService {
   // MODO PRODUCCIÓN (JUEGO PURO SIN EDITOR)
   // ==========================================
   public async bootProductionGame(episodeData: any, isAdmin: boolean = false): Promise<GameEntity> {
+    // 🔥 FIX CRÍTICO: Purgar entidades zombis del editor antes de iniciar
+    this.entityManager.clear(); 
+    
     this.motor3d.forzarRedimension();
     this.loaderSvc.createInvisibleFloor(this.motor3d.scene);
     
@@ -84,6 +88,9 @@ export class RuntimeEngineService {
     this.playerCamSvc.limpiarPivotTPS();
     this.resetVideos();
     this.adminFreeCam.dispose();
+    
+    // 🔥 FIX: Desbloquear el ratón y purgar las entidades generadas
+    this.inputOrchestrator.unlockPointer();
     this.entityManager.clear();
 
     const canvas = this.motor3d.engine?.getRenderingCanvas();

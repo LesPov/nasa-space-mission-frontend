@@ -98,6 +98,8 @@ export class EditorSceneService {
 
   public cargarEscenaDesdeDatos(dataBD: any): Promise<void> {
     const isAdmin = this.state.checkIsAdmin();
+    this.entityManager.clear(); // 🔥 FIX: Purgar ECS en recarga del editor
+
     return this.loaderSvc.loadSceneFromData(dataBD).then(() => {
       if (isAdmin) {
         this.revelarEntidadesOcultasParaAdmin();

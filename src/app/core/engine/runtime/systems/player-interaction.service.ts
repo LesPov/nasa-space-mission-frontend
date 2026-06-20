@@ -7,10 +7,11 @@ import { GameEntity } from '../../entities/game.entity';
 import { GameEventBusService } from '../../events/game-event-bus.service';
 import { InputOrchestratorService } from './input-orchestrator.service';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
-import { GameSession } from '../game-session';
-import { PlayerBubbleService } from './player-bubble.service';
+import { GameContextService } from '../../session/game-context.service';
+import { InteractableRulesService } from '../rules/interactable-rules.service';
 import { PlayerSequenceService } from './player-sequence.service';
 import { PlayerInputService } from './player-input.service';
+import { PlayerBubbleService } from './player-bubble.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInteractionService implements IUpdatable {
@@ -19,13 +20,12 @@ export class PlayerInteractionService implements IUpdatable {
   private entityManager = inject(EntityManagerService);
   private eventBus = inject(GameEventBusService);
   private inputOrchestrator = inject(InputOrchestratorService);
-  private injector = inject(Injector);
+  private interactRules = inject(InteractableRulesService);
+  private context = inject(GameContextService);
 
-  // 🔥 Lazy Injection: Se piden en tiempo de ejecución para evitar Dependencias Circulares (NG0200)
-  private get session(): GameSession { return this.injector.get(GameSession); }
-  private get bubbleSvc(): PlayerBubbleService { return this.injector.get(PlayerBubbleService); }
-  private get sequenceSvc(): PlayerSequenceService { return this.injector.get(PlayerSequenceService); }
-  private get inputSvc(): PlayerInputService { return this.injector.get(PlayerInputService); }
+  private sequenceSvc = inject(PlayerSequenceService);
+  private inputSvc = inject(PlayerInputService);
+  private bubbleSvc = inject(PlayerBubbleService);
 
   public currentTarget: GameEntity | null = null;
   public canInteract: boolean = false;
@@ -38,16 +38,27 @@ export class PlayerInteractionService implements IUpdatable {
   private isEnabled: boolean = false;
 
   public enable(): void { this.isEnabled = true; }
-  public disable(): void { this.isEnabled = false; }
+  
+  public disable(): void { 
+    this.isEnabled = false; 
+    // 🔥 FIX: Ocultar UI de interacción inmediatamente al pausar / bloquear el jugador
+    if (this.currentTarget !== null) {
+      this.currentTarget = null;
+      this.canInteract = false;
+      this.canInspect = false;
+      this.currentHoveredMesh = null;
+      this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
+    }
+  }
 
   public update(dtMs: number): void {
-    const playerEntity = this.session.activePlayerEntity();
+    const playerEntity = this.context.activePlayerEntity();
     const activeCamera = this.motor3d.scene.activeCamera;
     if (!playerEntity || !activeCamera) {
       return;
     }
 
-    this.comprobarInteracciones(playerEntity, activeCamera, this.session.cameraView());
+    this.comprobarInteracciones(playerEntity, activeCamera, this.context.cameraView());
 
     if (this.inputSvc.actionPressedThisFrame) {
       this.handleAction();
@@ -62,7 +73,7 @@ export class PlayerInteractionService implements IUpdatable {
       const target = this.currentTarget;
       if (target.type === 'bubble') {
         this.bubbleSvc.ejecutarBurbuja(target);
-        const seqId = this.session.cameraView() === 'FPS' ? target.interaction.interactSequenceIdFPS : target.interaction.interactSequenceIdTPS;
+        const seqId = this.context.cameraView() === 'FPS' ? target.interaction.interactSequenceIdFPS : target.interaction.interactSequenceIdTPS;
         const seqReal = seqId || target.interaction.interactSequenceId;
         if (seqReal) {
           const allEntities = this.entityManager.getAllEntities();
@@ -80,7 +91,7 @@ export class PlayerInteractionService implements IUpdatable {
   private handleInspect(): void {
     if (this.currentTarget && this.canInspect) {
       this.abrirMensajeInteractivo(this.currentTarget, () => {
-        const playerEntity = this.session.activePlayerEntity();
+        const playerEntity = this.context.activePlayerEntity();
         if(playerEntity) {
           const state = playerEntity.playerRuntime.physicsState;
           state.isMoving = false;
@@ -130,18 +141,6 @@ export class PlayerInteractionService implements IUpdatable {
     const shapeMesh = this.getRootProxyCollider(targetMesh) ?? targetMesh;
     const closest = this.getClosestPointOnMeshBounds(shapeMesh, probePoint);
     return closest ? Vector3.Distance(probePoint, closest) : Vector3.Distance(probePoint, targetMesh.getAbsolutePosition());
-  }
-
-  private esObjetoInteractuable(entity: GameEntity): boolean {
-    if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') return false; 
-    if (entity.type === 'bubble') return true; 
-
-    const mensaje = entity.interaction.mensaje?.trim() || '';
-    const seqFPS = entity.interaction.interactSequenceIdFPS?.trim() || '';
-    const seqTPS = entity.interaction.interactSequenceIdTPS?.trim() || '';
-    const seqLeg = entity.interaction.interactSequenceId?.trim() || '';
-
-    return (mensaje.length > 0 || seqFPS.length > 0 || seqTPS.length > 0 || seqLeg.length > 0);
   }
 
   public canActivateInteraction(targetEntity: GameEntity, view: 'FPS' | 'TPS'): boolean {
@@ -199,7 +198,7 @@ export class PlayerInteractionService implements IUpdatable {
             this.lastInteractDistance = selectionDistance;
 
             const interactMax = rootEntity.interaction.interactDistanceFPS ?? 3.0;
-            const isInteractable = this.esObjetoInteractuable(rootEntity);
+            const isInteractable = this.interactRules.isInteractable(rootEntity);
 
             if (isInteractable && selectionDistance <= interactMax) {
               hoverSelectable = rootEntity.view;
@@ -220,7 +219,7 @@ export class PlayerInteractionService implements IUpdatable {
         if (!mesh || !mesh.isVisible || !mesh.isPickable) return;
 
         const selectionDistance = this.getInteractionDistanceToTarget(mesh, playerProbe);
-        const isInteractable = this.esObjetoInteractuable(e);
+        const isInteractable = this.interactRules.isInteractable(e);
 
         if (isInteractable && e.type !== 'bubble') {
             const interactMax = e.interaction.interactDistanceTPS ?? 5.0;
@@ -234,7 +233,7 @@ export class PlayerInteractionService implements IUpdatable {
       if (closestEntity && (closestEntity as GameEntity).view) {
         hoverSelectable = (closestEntity as GameEntity).view;
         this.lastInteractDistance = closestDist;
-        if (this.esObjetoInteractuable(closestEntity)) {
+        if (this.interactRules.isInteractable(closestEntity)) {
           hitInteractuable = closestEntity;
         }
       }

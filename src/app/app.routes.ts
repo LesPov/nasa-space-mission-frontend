@@ -1,3 +1,4 @@
+
 import { Routes } from '@angular/router';
  
 import { BodyAdmin } from './layouts/admin-layout/body-admin/body-admin';
@@ -13,8 +14,6 @@ import { Registro } from './pages/auth/registro/registro';
 import { authGuard } from './core/guards/auth-guard';
 import { roleGuard } from './core/guards/role-guard';
 
-// ... (Tus importaciones actuales de componentes) ...
-
 export const routes: Routes = [
   { path: '', redirectTo: 'login', pathMatch: 'full' },
   { path: 'login', component: Login },
@@ -26,25 +25,26 @@ export const routes: Routes = [
     component: HomeMenu, 
     canActivate: [authGuard] 
   },
- { 
-  path: 'jugador/episodios', 
-  component: SeleccionEpisodios, 
-  canActivate: [authGuard, roleGuard], 
-  data: { role: 'user' } 
-},
-{ 
-  path: 'jugador/jugar/:id', 
-  component: JuegoPantalla, 
-  canActivate: [authGuard, roleGuard], 
-  data: { role: 'user' } 
-},
+  { 
+    path: 'jugador/episodios', 
+    component: SeleccionEpisodios, 
+    canActivate: [authGuard, roleGuard], 
+    data: { role: 'user' } 
+  },
+  { 
+    // Ruta compartida unificada
+    path: 'jugador/jugar/:id', 
+    component: JuegoPantalla, 
+    canActivate: [authGuard, roleGuard], 
+    data: { role: 'user' } 
+  },
 
   // ZONA DE ADMINISTRADOR (Súper protegida, requiere rol 'admin')
   { 
     path: 'admin', 
     component: BodyAdmin,
     canActivate: [authGuard, roleGuard],
-    data: { role: 'admin' }, // Pide explícitamente ser admin
+    data: { role: 'admin' }, 
     children: [
       { path: '', redirectTo: 'dashboard', pathMatch: 'full' },
       { path: 'dashboard', component: Dashboard },

@@ -1,5 +1,4 @@
 
-
 import { Injectable } from '@angular/core';
 import { Subject } from 'rxjs';
 import { GameEntity } from '../entities/game.entity';
@@ -14,7 +13,8 @@ export type GameEvent =
   | { type: 'GamePaused' }
   | { type: 'GameResumed' }
   | { type: 'CameraViewChanged', payload: 'FPS' | 'TPS' }
-  | { type: 'SequenceTriggered', payload: { sequenceId: string } };
+  | { type: 'SequenceTriggered', payload: { sequenceId: string } }
+  | { type: 'ToggleCameraRequested' };
 
 @Injectable({ providedIn: 'root' })
 export class GameEventBusService {

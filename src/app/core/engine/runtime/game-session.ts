@@ -1,4 +1,5 @@
-import { Injectable, inject, Injector, computed } from '@angular/core';
+
+import { Injectable, inject, computed } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
 import { ObjectAnimationService } from './systems/object-animation.service';
@@ -23,7 +24,6 @@ import { CameraOwnershipService } from './cameras/camera-ownership.service';
   
 @Injectable({ providedIn: 'root' })
 export class GameSession {
-  private injector = inject(Injector);
   private entityManager = inject(EntityManagerService);
   private objectAnimSvc = inject(ObjectAnimationService);
   private eventBus = inject(GameEventBusService);
@@ -38,6 +38,11 @@ export class GameSession {
   private layoutSvc = inject(LayoutService);
   private ownership = inject(CameraOwnershipService);
   private mediaCommandSvc = inject(MediaCommandSystem);
+  private sequenceSvc = inject(PlayerSequenceService);
+  private kinematicsSvc = inject(CharacterKinematicsService);
+  private playerAnimationSvc = inject(PlayerAnimationService);
+  private renderSyncSvc = inject(RenderSync);
+  private motor3dSvc = inject(Motor3dService);
 
   public isPlaying = computed(() => this.context.isPlaying());
   public isDebugMode = computed(() => this.context.isDebugMode());
@@ -79,6 +84,8 @@ export class GameSession {
                  this.toggleCameraUser(false, 60); 
              }
         }
+      } else if (event.type === 'ToggleCameraRequested') {
+        this.toggleCameraUser();
       }
     });
   }
@@ -103,24 +110,22 @@ export class GameSession {
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
     this.eventBus.emit({ type: 'GameStarted', payload: { view, isDebugMode: this.context.isDebugMode() } });
 
-    const sequenceSvc = this.injector.get(PlayerSequenceService);
-    sequenceSvc.resetearSecuencias();
+    this.sequenceSvc.resetearSecuencias();
 
     this.triggerSvc.start();
     this.objectAnimSvc.startAmbientAutoAnimations();
     this.playerFogSvc.start(playerEntity, view);
 
-    // 🔥 REGISTRAMOS EL NUEVO SISTEMA (MediaCommandSystem)
     this.systems = [
-      this.injector.get(PlayerInputService),
-      this.injector.get(PlayerSequenceService),
-      this.injector.get(CharacterKinematicsService),
-      this.injector.get(PlayerTriggerService),
-      this.injector.get(PlayerInteractionService),
-      this.injector.get(PlayerAnimationService),
-      this.injector.get(PlayerCameraManagerService),
+      this.inputSvc,
+      this.sequenceSvc,
+      this.kinematicsSvc,
+      this.triggerSvc,
+      this.interactionSvc,
+      this.playerAnimationSvc,
+      this.cameraSvc,
       this.mediaCommandSvc,
-      this.injector.get(RenderSync)
+      this.renderSyncSvc
     ];
 
     this.systems.forEach(system => {
@@ -134,15 +139,13 @@ export class GameSession {
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
       if (entity.characterConfig) {
-        const animSvc = this.injector.get(PlayerAnimationService);
-        const motor3d = this.injector.get(Motor3dService);
-        animSvc.sincronizarAnimaciones(motor3d.scene, entity);
+        this.playerAnimationSvc.sincronizarAnimaciones(this.motor3dSvc.scene, entity);
 
         const autoSeq = entity.playerConfig?.sequences.find((s: any) => s.autoPlay);
         if (autoSeq) {
-          sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, entity);
+          this.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, entity);
         } else {
-          animSvc.reproducirIdle(entity);
+          this.playerAnimationSvc.reproducirIdle(entity);
         }
       }
     }
@@ -159,8 +162,7 @@ export class GameSession {
     this.triggerSvc.stop();
     this.bubbleSvc.stop();
 
-    const sequenceSvc = this.injector.get(PlayerSequenceService);
-    sequenceSvc.resetearSecuencias();
+    this.sequenceSvc.resetearSecuencias();
 
     this.systems.forEach(system => {
         this.loopManager.unregisterSystem(system.id);

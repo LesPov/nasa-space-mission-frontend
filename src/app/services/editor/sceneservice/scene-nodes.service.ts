@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -62,5 +61,6 @@ export class SceneNodesService {
       }
     });
     this.state.nodosEscena.set([]);
+    this.entityManager.clear(); // 🔥 FIX: Limpiar las entidades cuando se destruyen los nodos desde la UI
   }
 }

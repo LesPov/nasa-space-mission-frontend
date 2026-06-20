@@ -1,10 +1,10 @@
 
-import { Injectable, inject, Injector } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observer, KeyboardInfo, Scene, KeyboardEventTypes } from '@babylonjs/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
-import { GameSession } from '../game-session';
-import { EntityManagerService } from '../../entities/entity-manager.service';
+import { GameContextService } from '../../session/game-context.service';
 import { Motor3dService } from '../../../../services/motor-3d.service';
+import { GameEventBusService } from '../../events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInputService implements IUpdatable {
@@ -17,17 +17,16 @@ export class PlayerInputService implements IUpdatable {
   private tecladoObserver: Observer<KeyboardInfo> | null = null;
   private isEnabled: boolean = false;
 
-  private injector = inject(Injector);
+  private context = inject(GameContextService);
   private motor3d = inject(Motor3dService);
-
-  // Lazy Injection para evitar dependencias circulares
-  private get session(): GameSession {
-    return this.injector.get(GameSession);
-  }
+  private eventBus = inject(GameEventBusService);
 
   public start(): void {
+    this.tecladoObserver = null; // 🔥 FIX CRÍTICO: Forzar anclaje a la nueva escena limpiando observer previo
     this.iniciarEscuchaTeclado(this.motor3d.scene, {
-      onToggleCamera: () => this.session.toggleCameraUser(),
+      onToggleCamera: () => {
+         this.eventBus.emit({ type: 'ToggleCameraRequested' });
+      },
     });
   }
 
@@ -43,9 +42,8 @@ export class PlayerInputService implements IUpdatable {
     this.isEnabled = false;
     this.resetearInputs();
     
-    // 🔥 FIX GHOSTING: Aplastamos el input a nivel de entidad cuando el sistema se apaga (Ej: Pausa o AdminFree)
     try {
-      const playerEntity = this.session?.activePlayerEntity();
+      const playerEntity = this.context.activePlayerEntity();
       if (playerEntity && playerEntity.playerRuntime) {
         playerEntity.playerRuntime.intentions = { 
           moveForward: false, moveBackward: false, moveLeft: false, 
@@ -58,11 +56,11 @@ export class PlayerInputService implements IUpdatable {
   public update(dtMs: number): void {
     if (!this.isEnabled) return;
     
-    const playerEntity = this.session.activePlayerEntity();
+    const playerEntity = this.context.activePlayerEntity();
     if (!playerEntity) return;
 
     const seqRuntime = playerEntity.playerRuntime.seqRuntime;
-    const canReceiveInput = this.session.pointerLocked() && (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation));
+    const canReceiveInput = this.context.isPointerLocked() && (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation));
 
     const stateComp = playerEntity.playerRuntime;
     if (canReceiveInput) {
@@ -88,7 +86,6 @@ export class PlayerInputService implements IUpdatable {
   }
 
   public postUpdate(dtMs: number): void {
-    // Resetear los eventos de un solo frame
     this.actionPressedThisFrame = false;
     this.inspectPressedThisFrame = false;
   }
@@ -97,7 +94,7 @@ export class PlayerInputService implements IUpdatable {
     scene: Scene, 
     callbacks: { onToggleCamera: () => void }
   ): void {
-    if (this.tecladoObserver) return; // Ya está escuchando
+    if (this.tecladoObserver) return; 
 
     this.tecladoObserver = scene.onKeyboardObservable.add((kbInfo: KeyboardInfo) => {
       if (!this.isEnabled) return;
@@ -137,4 +134,5 @@ export class PlayerInputService implements IUpdatable {
     this.inputMap = {};
     this.actionPressedThisFrame = false;
     this.inspectPressedThisFrame = false;
-  }}
+  }
+}

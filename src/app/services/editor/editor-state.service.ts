@@ -4,6 +4,7 @@ import { Subject } from 'rxjs';
 import { Node, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { GameContextService } from '../../core/engine/session/game-context.service';
+import { InteractableRulesService } from '../../core/engine/runtime/rules/interactable-rules.service';
  
 export type ToolMode = 'select' | 'translate' | 'rotate' | 'scale';
 export type PlayState = 'EDITOR' | 'PLAYING' | 'EDITING_IN_GAME' | 'TRANSITIONING' | 'INTERACTING';
@@ -12,8 +13,8 @@ export type PlayState = 'EDITOR' | 'PLAYING' | 'EDITING_IN_GAME' | 'TRANSITIONIN
 export class EditorStateService {
   private entityManager = inject(EntityManagerService);
   private gameContext = inject(GameContextService);
+  private interactRules = inject(InteractableRulesService);
 
-  // Estados visuales de la UI del Editor
   public playState = signal<PlayState>('EDITOR');
   public currentTool = signal<ToolMode>('translate');
 
@@ -87,32 +88,7 @@ export class EditorStateService {
   }
 
   esMeshIgnorable(mesh: AbstractMesh | null | undefined): boolean {
-    if (!mesh) return true;
-
-    if (Tags.MatchesQuery(mesh, "system_element || editor_only || fog_element || debug_element || proxy_collider || invisible_floor")) {
-        return true;
-    }
-
-    const entity = this.entityManager.getEntityByMesh(mesh);
-    const isAdmin = this.checkIsAdmin();
-
-    if (this.jugadorActivo && (mesh === this.jugadorActivo || this.isDescendant(mesh, this.jugadorActivo))) {
-      return true;
-    }
-
-    if (entity && entity.type === 'trigger') {
-        if (isAdmin) return false; 
-        return true; 
-    }
-
-    if (entity) {
-        if (!isAdmin && entity.visual.isSelectable === false && !entity.interaction.mensaje && !entity.interaction.interactSequenceId && !entity.interaction.interactSequenceIdFPS && !entity.interaction.interactSequenceIdTPS && entity.type !== 'bubble') {
-            if (this.gameContext.isPlaying() || this.playState() === 'INTERACTING') {
-                return true;
-            }
-        }
-    }
-    return false;
+    return this.interactRules.isMeshIgnorable(mesh as AbstractMesh, this.jugadorActivo);
   }
 
   esObjetoObstructor = (mesh: AbstractMesh): boolean => {
@@ -123,23 +99,9 @@ export class EditorStateService {
 
   esObjetoInteractuable(mesh: AbstractMesh | null | undefined): boolean {
     if (!mesh) return false;
-    if (this.esMeshIgnorable(mesh)) return false;
-
-    const root = this.resolverObjetoSeleccionable(mesh) as AbstractMesh | null;
-    const nodoBase = root ?? mesh;
-    
-    const entity = this.entityManager.getEntityByMesh(nodoBase);
+    const entity = this.entityManager.getEntityByMesh(mesh);
     if (!entity) return false;
-
-    if (entity.type === 'trigger') return false; 
-    if (entity.type === 'bubble') return true; 
-
-    const mensaje = typeof entity.interaction.mensaje === 'string' ? entity.interaction.mensaje.trim() : '';
-    const seqFPS = typeof entity.interaction.interactSequenceIdFPS === 'string' ? entity.interaction.interactSequenceIdFPS.trim() : '';
-    const seqTPS = typeof entity.interaction.interactSequenceIdTPS === 'string' ? entity.interaction.interactSequenceIdTPS.trim() : '';
-    const seqLeg = typeof entity.interaction.interactSequenceId === 'string' ? entity.interaction.interactSequenceId.trim() : '';
-
-    return (mensaje.length > 0 || seqFPS.length > 0 || seqTPS.length > 0 || seqLeg.length > 0);
+    return this.interactRules.isInteractable(entity);
   }
 
   puedeSeleccionarse(mesh: AbstractMesh): boolean {
@@ -149,17 +111,11 @@ export class EditorStateService {
     const root = this.resolverObjetoSeleccionable(mesh) as AbstractMesh | null;
     const nodoBase = root ?? mesh;
     
-    const entity = this.entityManager.getEntityByMesh(nodoBase);
-    const selectable = entity?.visual?.isSelectable ?? true;
-    const isAdmin = this.checkIsAdmin();
-
     if (this.gameContext.isPlaying() || this.playState() === 'INTERACTING') {
       return this.esObjetoInteractuable(nodoBase);
     }
     
-    if (isAdmin) return !!selectable;
-    
-    return false;
+    return this.interactRules.canSelectInEditor(nodoBase);
   }
 
   limpiarEstado(): void {

@@ -5,7 +5,7 @@ import { Motor3dService } from '../../../../services/motor-3d.service';
 import { CameraOwnershipService, CameraOwner } from './camera-ownership.service';
 import { PlayerInputService } from '../systems/player-input.service';
 import { PlayerInteractionService } from '../systems/player-interaction.service';
-import { GameSession } from '../game-session';
+import { GameContextService } from '../../session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
 export class AdminFreeCameraService {
@@ -13,14 +13,14 @@ export class AdminFreeCameraService {
   private ownership = inject(CameraOwnershipService);
   private inputSvc = inject(PlayerInputService);
   private interactionSvc = inject(PlayerInteractionService);
-  private session = inject(GameSession);
+  private context = inject(GameContextService);
   
   private adminCam: UniversalCamera | null = null;
   private previousOwner: CameraOwner = 'NONE';
   private previousCam: any = null;
 
   public initialize(): void {
-    if (!this.adminCam && this.motor3d.scene) {
+    if ((!this.adminCam || this.adminCam.isDisposed()) && this.motor3d.scene) { // 🔥 FIX: Recrear si fue destruida en recarga
       this.adminCam = new UniversalCamera('adminFreeCam', Vector3.Zero(), this.motor3d.scene);
       this.adminCam.minZ = 0.05;
       this.adminCam.maxZ = 500000;
@@ -48,7 +48,7 @@ export class AdminFreeCameraService {
       }
       
       // Reconectar Input del Jugador de forma segura
-      if (this.session.pointerLocked()) {
+      if (this.context.isPointerLocked()) {
          this.inputSvc.enable();
          this.interactionSvc.enable();
       }
@@ -82,7 +82,9 @@ export class AdminFreeCameraService {
       if (this.motor3d.renderingPipeline) {
          this.motor3d.renderingPipeline.removeCamera(this.adminCam);
       }
-      this.adminCam.dispose();
+      if (!this.adminCam.isDisposed()) {
+        this.adminCam.dispose();
+      }
       this.adminCam = null;
     }
   }

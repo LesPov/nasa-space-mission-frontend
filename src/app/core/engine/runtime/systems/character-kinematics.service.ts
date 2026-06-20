@@ -1,12 +1,11 @@
-
-import { Injectable, inject, Injector } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
 import { SeqRuntime } from './player-sequence.service';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { Motor3dService } from '../../../../services/motor-3d.service';
-import { GameSession } from '../game-session';
+import { GameContextService } from '../../session/game-context.service';
 import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 
 @Injectable({ providedIn: 'root' })
@@ -15,20 +14,15 @@ export class CharacterKinematicsService implements IUpdatable {
   private entityManager = inject(EntityManagerService);
   private motor3d = inject(Motor3dService);
   private ownership = inject(CameraOwnershipService);
-  private injector = inject(Injector);
-
-  // Lazy Injection para evitar dependencias circulares con GameSession
-  private get session(): GameSession {
-    return this.injector.get(GameSession);
-  }
+  private context = inject(GameContextService);
 
   public physicsUpdate(dtMs: number): void {
     const scene = this.motor3d.scene;
     const activeCamera = scene.activeCamera;
     if (!activeCamera) return;
 
-    const activePlayer = this.session.activePlayerEntity();
-    const cameraView = this.session.cameraView();
+    const activePlayer = this.context.activePlayerEntity();
+    const cameraView = this.context.cameraView();
     const isAdminFree = this.ownership.getOwner() === 'ADMIN_FREE';
 
     const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
@@ -37,7 +31,6 @@ export class CharacterKinematicsService implements IUpdatable {
       const isPlayer = activePlayer && entity.uid === activePlayer.uid;
       const vista = isPlayer ? cameraView : 'FPS'; 
 
-      // 🔥 FIX: Aislamiento Cinemático. Si AdminFree está activo, bloqueamos el input e ignoramos la cámara Admin
       if (isPlayer && isAdminFree) {
          entity.playerRuntime.intentions.moveForward = false;
          entity.playerRuntime.intentions.moveBackward = false;

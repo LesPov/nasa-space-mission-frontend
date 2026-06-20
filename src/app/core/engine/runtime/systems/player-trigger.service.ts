@@ -1,11 +1,12 @@
-import { Injectable, inject, Injector } from '@angular/core';
+
+import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
-import { GameSession } from '../game-session';
 import { GameStateService } from '../state/game-state.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
 import { GameEventBusService } from '../../events/game-event-bus.service';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
+import { GameContextService } from '../../session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService implements IUpdatable {
@@ -13,17 +14,13 @@ export class PlayerTriggerService implements IUpdatable {
   private gameState = inject(GameStateService);
   private entityManager = inject(EntityManagerService);
   private eventBus = inject(GameEventBusService);
-  private injector = inject(Injector);
-
-  private get session(): GameSession { 
-    return this.injector.get(GameSession);  
-  }
+  private context = inject(GameContextService);
   
   private activeTriggersInside = new Set<string>();
 
   public start(): void {
     this.activeTriggersInside.clear();
-    const isDebugMode = this.session.isDebugMode();
+    const isDebugMode = this.context.isDebugMode();
 
     this.entityManager.getAllEntities()
       .filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto')
@@ -39,7 +36,7 @@ export class PlayerTriggerService implements IUpdatable {
 
   public stop(): void {
     this.activeTriggersInside.clear();
-    const isDebugMode = this.session.isDebugMode();
+    const isDebugMode = this.context.isDebugMode();
 
     this.entityManager.getAllEntities()
       .filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto')
@@ -54,7 +51,7 @@ export class PlayerTriggerService implements IUpdatable {
   }
 
   public update(dtMs: number): void {
-    const playerEntity = this.session.activePlayerEntity();
+    const playerEntity = this.context.activePlayerEntity();
     if (playerEntity) {
       this.verificarTriggers(playerEntity);
     }

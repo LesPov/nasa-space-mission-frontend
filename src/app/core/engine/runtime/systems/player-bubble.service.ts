@@ -1,19 +1,13 @@
-
-import { Injectable, inject, Injector } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
 import { LoopManagerService, GamePhase } from '../../behaviors/services/loop-manager.service';
 import { GameEventBusService } from '../../events/game-event-bus.service';
-import { PlayerInteractionService } from './player-interaction.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerBubbleService {
   private loopManager = inject(LoopManagerService);
   private eventBus = inject(GameEventBusService);
-  private injector = inject(Injector);
-  
-  // 🔥 Lazy Injection
-  private get interactSvc(): PlayerInteractionService { return this.injector.get(PlayerInteractionService); }
   
   private bubblesOcultas = new Map<string, any>();
 
@@ -46,11 +40,7 @@ export class PlayerBubbleService {
 
     this.bubblesOcultas.set(burbujaEntity.uid, { mesh: burbuja, loopId, entity: burbujaEntity });
 
-    this.interactSvc.currentTarget = null;
-    this.interactSvc.canInteract = false;
-    this.interactSvc.canInspect = false;
-    this.interactSvc.currentHoveredMesh = null;
-
+    // Emit event to clear focus, interaction system will naturally stop focusing it
     this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
     this.eventBus.emit({ type: 'MessageRequested', payload: null });
   }

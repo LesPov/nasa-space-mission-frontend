@@ -111,9 +111,9 @@ export class PlayerCameraManagerService implements IUpdatable {
     vista: 'FPS' | 'TPS'
   ): void {
     const jugador = entity.view as Mesh;
-    if (!jugador) return;
+    if (!jugador || jugador.isDisposed()) return; // 🔥 FIX: No atar a un Mesh destruido
 
-    if (!this.cameraPivot) {
+    if (!this.cameraPivot || this.cameraPivot.isDisposed()) { // 🔥 FIX: Reconstruir pivot si se borró
       this.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
       this.cameraPivot.isVisible = false;
       Tags.AddTagsTo(this.cameraPivot, "system_element ignore_raycast");

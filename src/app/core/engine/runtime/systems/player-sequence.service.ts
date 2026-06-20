@@ -1,7 +1,6 @@
 
-import { Injectable, inject, Injector } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Vector3, Quaternion } from '@babylonjs/core';
-import { GameSession } from '../game-session';
 import { PlayerClipSequence, PlayerSequenceStep, cloneDefaultPlayerConfig } from '../../models/player-config.model';
 import { GameStateService } from '../state/game-state.service';
 import { GameEntity } from '../../entities/game.entity';
@@ -139,13 +138,8 @@ export class PlayerSequenceService implements IUpdatable {
   private gameState = inject(GameStateService);
   private eventBus = inject(GameEventBusService);
   private entityManager = inject(EntityManagerService);
-  private injector = inject(Injector);
 
   private eventSub!: Subscription;
-
-  private get session(): GameSession { 
-    return this.injector.get(GameSession); 
-  }
 
   private activeSequences = new Map<string, {
     id: string;

@@ -71,7 +71,7 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
       const entity = this.entityManager.getEntityByMesh(this.objeto);
       if(!entity) return;
 
-      const isChar = entity.rol === 'npc' || entity.rol === 'spawn_point';
+      const isChar = !!entity.characterConfig;
       if (isChar) {
           this.actionRows = [
             { key: 'idle', label: 'Idle / Reposo', family: 'Base', keywords: ['idle'], help: '' },

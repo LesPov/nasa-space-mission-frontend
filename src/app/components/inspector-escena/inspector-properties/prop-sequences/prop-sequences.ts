@@ -50,7 +50,7 @@ export class PropSequences implements OnInit, OnChanges {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (!entity) return;
     
-    this.esPersonaje = entity.rol === 'npc' || entity.rol === 'spawn_point';
+    this.esPersonaje = !!entity.characterConfig;
     this.esLuz = entity.type?.startsWith('light_') ?? false;
     this.esTrigger = entity.type === 'trigger' || entity.type === 'trigger_compuesto';
 

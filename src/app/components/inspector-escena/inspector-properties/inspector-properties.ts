@@ -1,3 +1,4 @@
+
 import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, effect, Input, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AbstractMesh } from '@babylonjs/core';
@@ -61,14 +62,13 @@ export class InspectorProperties implements OnInit, OnDestroy {
       if (obj) {
         const entity = this.entityManager.getEntityByMesh(obj);
         const type = entity?.type || 'unknown';
-        const rol = entity?.rol || 'prop';
 
         this.esTrigger = type === 'trigger' || type === 'trigger_compuesto';
         this.esLuz = type.startsWith('light_');
         this.esLuzConModelo = this.esLuz && !!entity?.visual?.assetId;
         this.esBurbuja = type === 'bubble';
         this.esVideo = type === 'video_plane';
-        this.esPersonaje = type === 'model' || rol === 'npc' || rol === 'spawn_point';
+        this.esPersonaje = !!entity?.characterConfig;
         
         if (this.esPersonaje) this.familiaResumen = 'Personaje / Player';
         else if (this.esTrigger) this.familiaResumen = 'Trigger de Evento';

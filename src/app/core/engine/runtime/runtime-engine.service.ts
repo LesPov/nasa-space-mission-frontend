@@ -1,4 +1,3 @@
-// src/app/core/engine/runtime/runtime-engine.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { StandardMaterial, VideoTexture, Color3, Mesh } from '@babylonjs/core';
@@ -30,8 +29,8 @@ export class RuntimeEngineService {
 
     return new Promise((resolve, reject) => {
       this.motor3d.scene.executeWhenReady(() => {
-        const spawnEntity = this.entityManager.getEntitiesByRol('spawn_point')[0] || 
-                            this.entityManager.getEntitiesByRol('npc')[0];
+        const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
+        const spawnEntity = characters.find(c => c.characterConfig?.isPlayable) || characters[0];
         
         if (!spawnEntity) {
           reject(new Error('No hay punto de aparición (Spawn Point) en el mapa.'));

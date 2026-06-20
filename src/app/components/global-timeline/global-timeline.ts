@@ -1,3 +1,4 @@
+
 import { Component, inject, OnInit, ChangeDetectorRef, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -94,7 +95,7 @@ export class GlobalTimeline implements OnInit {
       return;
     }
     
-    this.esPersonaje = entity.rol === 'npc' || entity.rol === 'spawn_point';
+    this.esPersonaje = !!entity.characterConfig;
     this.esLuz = entity.type?.startsWith('light_') ?? false;
     this.esTrigger = entity.type === 'trigger' || entity.type === 'trigger_compuesto';
 
@@ -244,9 +245,10 @@ export class GlobalTimeline implements OnInit {
     entity.syncTransformFromView();
 
     const propertiesToSave = {
+      rol: entity.characterConfig ? entity.characterConfig.characterType : entity.rol,
+      characterConfig: entity.characterConfig ? { ...entity.characterConfig } : undefined,
       color: entity.visual.color,
       colorBW: entity.visual.colorBW,
-      rol: entity.rol,
       isSolid: entity.visual.isSolid,
       isSelectable: entity.visual.isSelectable,
       ignoraNiebla: entity.visual.ignoraNiebla,

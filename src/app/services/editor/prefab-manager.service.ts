@@ -21,9 +21,10 @@ export class PrefabManagerService {
       entity.syncTransformFromView();
 
       const propertiesToSave = {
+        rol: entity.characterConfig ? entity.characterConfig.characterType : entity.rol,
+        characterConfig: entity.characterConfig ? { ...entity.characterConfig } : undefined,
         color: entity.visual.color,
         colorBW: entity.visual.colorBW,
-        rol: entity.rol,
         isSolid: entity.visual.isSolid,
         isSelectable: entity.visual.isSelectable,
         ignoraNiebla: entity.visual.ignoraNiebla,

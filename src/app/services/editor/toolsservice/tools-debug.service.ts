@@ -22,7 +22,7 @@ export class ToolsDebugService {
   public getFogBaseLocalPos(selected: AbstractMesh): Vector3 {
     const entity = this.entityManager.getEntityByMesh(selected);
     const camOffset = entity?.camOffset;
-    if (entity && (entity.rol === 'npc' || entity.rol === 'spawn_point') && camOffset) {
+    if (entity?.characterConfig && camOffset) {
       return new Vector3(
         this.selectionSvc.normalizarNumero(camOffset.x, 0),
         this.selectionSvc.normalizarNumero(camOffset.y, 1.6),
@@ -103,7 +103,7 @@ export class ToolsDebugService {
 
     // 2. CÁMARA
     const camOffset = entity.camOffset;
-    if (camOffset && (entity.rol === 'npc' || entity.rol === 'spawn_point') && (subSelected === 'camera' || !subSelected)) {
+    if (entity.characterConfig && camOffset && (subSelected === 'camera' || !subSelected)) {
       if (this.debugCameraBox) this.debugCameraBox.dispose();
       this.debugCameraBox = MeshBuilder.CreateBox('debugCamBox', { size: 0.25 }, scene);
       this.debugCameraBox.position = new Vector3(camOffset.x, camOffset.y, camOffset.z);
@@ -150,7 +150,7 @@ export class ToolsDebugService {
 
     // 4. NIEBLA VOLUMÉTRICA 
     const playerConfig = entity.playerConfig;
-    if (subSelected === 'fog' && playerConfig && playerConfig.fog && playerConfig.fog.enabled && (entity.rol === 'npc' || entity.rol === 'spawn_point')) {
+    if (subSelected === 'fog' && playerConfig && playerConfig.fog && playerConfig.fog.enabled && !!entity.characterConfig) {
       
       const isBW = scene.metadata?.globalVisualMode === 'bw';
       const isFPS = this.state.modoVistaPrueba === 'FPS';

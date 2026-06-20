@@ -1,3 +1,4 @@
+
 import { Injectable, signal, inject, Injector } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
@@ -97,7 +98,7 @@ export class GameSession {
     this.cameraSvc.resetearTransiciones();
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
-      if (entity.rol === 'npc' || entity.rol === 'spawn_point') {
+      if (entity.characterConfig) {
         const animSvc = this.injector.get(PlayerAnimationService);
         const motor3d = this.injector.get(Motor3dService);
         animSvc.sincronizarAnimaciones(motor3d.scene, entity);

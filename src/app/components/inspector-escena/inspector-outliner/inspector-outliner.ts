@@ -170,7 +170,7 @@ export class InspectorOutliner {
     if (!(nodo instanceof AbstractMesh)) return false;
     const entity = this.entityManager.getEntityByMesh(nodo);
     if (!entity) return false;
-    return entity.rol === 'npc' || entity.rol === 'spawn_point';
+    return !!entity.characterConfig;
   }
 
   tieneAnimaciones(nodo: Node): boolean {
@@ -288,8 +288,12 @@ export class InspectorOutliner {
       if (entity.type === 'video_plane') return '📺';
       if (entity.type === 'image_plane') return '🖼️';
       
-      if (entity.rol === 'spawn_point') return '🧍‍♂️';
-      if (entity.rol === 'npc') return '🤖';
+      if (entity.characterConfig) {
+        if (entity.characterConfig.isPlayable) return '🧍‍♂️';
+        if (entity.characterConfig.characterType === 'politico') return '👔';
+        if (entity.characterConfig.characterType === 'militar') return '🪖';
+        return '🤖';
+      }
       
       if (entity.type === 'model') return '✨';
       

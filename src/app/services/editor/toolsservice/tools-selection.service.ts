@@ -34,10 +34,7 @@ export class ToolsSelectionService {
     const entSeleccionado = this.entityManager.getEntityByMesh(seleccionado);
     if (entSeleccionado) candidates.push(entSeleccionado);
 
-    const scenePlayer = this.motor3d.scene?.meshes.find(m => {
-        const ent = this.entityManager.getEntityByMesh(m);
-        return ent?.rol === 'spawn_point' || ent?.rol === 'npc';
-    });
+    const scenePlayer = this.motor3d.scene?.meshes.find(m => !!this.entityManager.getEntityByMesh(m)?.characterConfig);
     const entScenePlayer = this.entityManager.getEntityByMesh(scenePlayer);
     if (entScenePlayer) candidates.push(entScenePlayer);
 

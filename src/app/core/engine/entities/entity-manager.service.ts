@@ -8,7 +8,6 @@ export class EntityManagerService {
   private entitiesByUid = new Map<string, GameEntity>();
   private entitiesByMesh = new Map<AbstractMesh, GameEntity>();
 
-  // 🔥 DIRTY TRACKING: Mantener registro de lo que se eliminó para el Backend Delta Update
   public deletedObjects: string[] = [];
   public deletedTriggers: string[] = [];
 
@@ -54,8 +53,8 @@ export class EntityManagerService {
     return Array.from(this.entitiesByUid.values());
   }
 
-  public getEntitiesByRol(rol: string): GameEntity[] {
-    return this.getAllEntities().filter(e => e.rol === rol);
+  public getEntitiesWithComponent(componentKey: string): GameEntity[] {
+    return this.getAllEntities().filter(e => e.hasComponent(componentKey));
   }
 
   public clearDeletedRecords(): void {

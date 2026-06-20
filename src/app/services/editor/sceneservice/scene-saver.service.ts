@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { HemisphericLight } from '@babylonjs/core'; 
 import { Motor3dService } from '../../motor-3d.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
-import { LightComponent, MediaConfigComponent, PhysicsComponent, PlayerConfigComponent, TransformComponent, TriggerConfigComponent, VisualComponent } from '../../../core/engine/entities/game.entity';
+import { CharacterConfigComponent, LightComponent, MediaConfigComponent, PhysicsComponent, PlayerConfigComponent, TransformComponent, TriggerConfigComponent, VisualComponent } from '../../../core/engine/entities/game.entity';
 
 @Injectable({ providedIn: 'root' }) 
 export class SceneSaverService { 
@@ -65,6 +65,7 @@ export class SceneSaverService {
       const light = entity.getComponent<LightComponent>('light');
       const media = entity.getComponent<MediaConfigComponent>('mediaConfig');
       const trigger = entity.getComponent<TriggerConfigComponent>('triggerConfig');
+      const characterConfig = entity.getComponent<CharacterConfigComponent>('characterConfig');
 
       if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') {
         const isComposite = entity.type === 'trigger_compuesto';
@@ -112,9 +113,10 @@ export class SceneSaverService {
         }
       } else {
         const propertiesToSave = {
+          rol: characterConfig ? characterConfig.characterType : entity.rol,
+          characterConfig: characterConfig ? { ...characterConfig } : undefined,
           color: visual.color,
           colorBW: visual.colorBW,
-          rol: entity.rol,
           isSolid: visual.isSolid,
           isSelectable: visual.isSelectable,
           ignoraNiebla: visual.ignoraNiebla,

@@ -212,10 +212,7 @@ export class CoreSceneProjectionService {
       let isUsingFogFallback = false;
 
       if (fadeDist <= 0 && !entity.visual.ignoraNiebla) {
-          const targetPlayer = scene.meshes.find(m => {
-              const ent = this.entityManager.getEntityByMesh(m);
-              return ent?.rol === 'spawn_point' || ent?.rol === 'npc';
-          });
+          const targetPlayer = scene.meshes.find(m => !!this.entityManager.getEntityByMesh(m)?.characterConfig);
           const targetEntity = this.entityManager.getEntityByMesh(targetPlayer);
 
           if (targetEntity && targetEntity.playerConfig?.fog?.enabled) {

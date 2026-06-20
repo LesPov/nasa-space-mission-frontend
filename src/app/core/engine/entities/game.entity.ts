@@ -1,4 +1,5 @@
-import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
+
+import { AbstractMesh, Vector3, Quaternion, StandardMaterial, Color3 } from '@babylonjs/core';
 import { PlayerRuntimeConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
 
@@ -119,6 +120,14 @@ export class PlayerConfigComponent {
   ) {}
 }
 
+export class CharacterConfigComponent {
+  constructor(
+    public characterType: string = 'generic',
+    public isPlayable: boolean = false,
+    public faction: string = 'neutral'
+  ) {}
+}
+
 // ==========================================
 // 2. DEFINICIÓN DE COMPONENTES ECS (ESTADO RUNTIME VOLÁTIL - NO SE GUARDA)
 // ==========================================
@@ -135,7 +144,14 @@ export class MediaRuntimeComponent {
   constructor(
     public runtimeDecals: AbstractMesh[] = [], 
     public runtimeDecalMaterial?: StandardMaterial, 
-    public lastVisualModeBW?: boolean
+    public lastVisualModeBW?: boolean,
+    public videoCommand?: 'play' | 'pause' | 'stop'
+  ) {}
+}
+
+export class LightRuntimeComponent {
+  constructor(
+    public currentIntensity?: number
   ) {}
 }
 
@@ -171,7 +187,8 @@ export class PlayerRuntimeComponent {
       velocidadY: -0.1, 
       highestY: -9999
     },
-    public seqRuntime: SeqRuntime | null = null
+    public seqRuntime: SeqRuntime | null = null,
+    public stopBakedRequested: boolean = false
   ) {}
 }
 
@@ -183,7 +200,7 @@ export class GameEntity {
   public uid: string;
   public name: string;
   public type: string;
-  public rol: string;
+  public rol: string; 
   public parentId: string | null = null;
   public orderIndex: number = 0;
 
@@ -207,12 +224,18 @@ export class GameEntity {
     this.addComponent('interaction', new InteractionComponent());
     this.addComponent('playerConfig', new PlayerConfigComponent());
 
+    // 🔥 Compatibilidad retroactiva: Transmutamos "rol" a un componente real
+    if (['npc', 'spawn_point', 'politico', 'militar'].includes(rol)) {
+      this.addComponent('characterConfig', new CharacterConfigComponent(rol, rol === 'spawn_point'));
+    }
+
     // Estado Runtime (Volátil, No se guarda en BD)
     this.addComponent('playerRuntime', new PlayerRuntimeComponent());
     this.addComponent('interactionRuntime', new InteractionRuntimeComponent());
 
     if (type.startsWith('light_')) {
       this.addComponent('light', new LightComponent());
+      this.addComponent('lightRuntime', new LightRuntimeComponent()); 
     }
 
     if (type === 'video_plane' || type === 'image_plane') {
@@ -271,6 +294,9 @@ export class GameEntity {
   get trigger(): TriggerConfigComponent | undefined { return this.getComponent<TriggerConfigComponent>('triggerConfig'); }
   set trigger(v) { if(v) this.addComponent('triggerConfig', v); }
 
+  get characterConfig(): CharacterConfigComponent | undefined { return this.getComponent<CharacterConfigComponent>('characterConfig'); }
+  set characterConfig(v) { if(v) this.addComponent('characterConfig', v); }
+
   get playerConfig() { return this.getComponent<PlayerConfigComponent>('playerConfig')?.playerConfig; }
   set playerConfig(v) { const p = this.getComponent<PlayerConfigComponent>('playerConfig'); if(p) p.playerConfig = v; }
   
@@ -291,6 +317,7 @@ export class GameEntity {
   // ==========================================
   get mediaRuntime(): MediaRuntimeComponent | undefined { return this.getComponent<MediaRuntimeComponent>('mediaRuntime'); }
   get triggerRuntime(): TriggerRuntimeComponent | undefined { return this.getComponent<TriggerRuntimeComponent>('triggerRuntime'); }
+  get lightRuntime(): LightRuntimeComponent | undefined { return this.getComponent<LightRuntimeComponent>('lightRuntime'); }
   get playerRuntime(): PlayerRuntimeComponent { return this.getComponent<PlayerRuntimeComponent>('playerRuntime')!; }
   get interactionRuntime(): InteractionRuntimeComponent { return this.getComponent<InteractionRuntimeComponent>('interactionRuntime')!; }
 
@@ -323,6 +350,52 @@ export class GameEntity {
 
     this.view.name = this.name;
     this.view.metadata = { uid: this.uid, entityUid: this.uid };
+
+    if (this.light && this.view) {
+      const lightObj = this.view.getDescendants(false).find(c => c.getClassName().includes('Light')) as any;
+      if (lightObj) {
+          const intensityToUse = this.lightRuntime?.currentIntensity !== undefined ? this.lightRuntime.currentIntensity : this.light.intensity;
+          lightObj.intensity = intensityToUse;
+      }
+    }
+
+    if (this.mediaRuntime?.videoCommand && this.view) {
+      const mat = this.view.material as StandardMaterial;
+      if (mat && mat.diffuseTexture && (mat.diffuseTexture as any).video) {
+          const video = (mat.diffuseTexture as any).video;
+          if (this.mediaRuntime.videoCommand === 'play') {
+              video.play();
+              mat.emissiveColor = new Color3(0.4, 0.4, 0.4);
+          } else if (this.mediaRuntime.videoCommand === 'pause') {
+              video.pause();
+              mat.emissiveColor = new Color3(0.2, 0.2, 0.2);
+          } else if (this.mediaRuntime.videoCommand === 'stop') {
+              video.pause();
+              video.currentTime = 0;
+              mat.emissiveColor = new Color3(0, 0, 0);
+          }
+          this.mediaRuntime.videoCommand = undefined;
+      }
+    }
+
+    if (this.playerRuntime?.stopBakedRequested && this.view && this.view.getScene) {
+        const scene = this.view.getScene();
+        const myAnimNames = this.animationNames || [];
+        scene.animationGroups.forEach(ag => {
+            if (myAnimNames.includes(ag.name) && ag.isPlaying) {
+                const isTargetingMe = ag.targetedAnimations?.some(ta => {
+                    let current: any = ta.target;
+                    while(current) {
+                        if (current === this.view) return true;
+                        current = current.parent;
+                    }
+                    return false;
+                });
+                if (isTargetingMe) ag.stop();
+            }
+        });
+        this.playerRuntime.stopBakedRequested = false;
+    }
   }
 
   public syncTransformFromView(): void {

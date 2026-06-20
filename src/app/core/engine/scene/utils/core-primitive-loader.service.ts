@@ -7,7 +7,7 @@ import { BubblePulseBehavior } from '../../behaviors/bubble-pulse.behavior';
 import { DistanceFadeBehavior } from '../../behaviors/distance-fade.behavior';
 import { LoopManagerService } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
-import { GameEntity } from '../../entities/game.entity';
+import { GameEntity, CharacterConfigComponent } from '../../entities/game.entity';
 import { Motor3dService } from '../../../../services/motor-3d.service';
  
 @Injectable({ providedIn: 'root' })
@@ -21,7 +21,16 @@ export class CorePrimitiveLoaderService {
   public cargarPrimitiva(obj: any, mallasCreadas: Map<string, Mesh>): void {
     const scene = this.motor3d.scene;
     
-    const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, obj.type, obj.properties?.rol || 'prop');
+    const rolSaved = obj.properties?.rol || obj.rol || 'prop';
+    const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, obj.type, rolSaved);
+
+    if (obj.properties?.characterConfig) {
+      entity.characterConfig = new CharacterConfigComponent(
+        obj.properties.characterConfig.characterType,
+        obj.properties.characterConfig.isPlayable,
+        obj.properties.characterConfig.faction
+      );
+    }
 
     entity.transform.position = { x: obj.position?.x ?? 0, y: obj.position?.y ?? 0, z: obj.position?.z ?? 0 };
     entity.transform.rotation = { x: obj.rotation?.x ?? 0, y: obj.rotation?.y ?? 0, z: obj.rotation?.z ?? 0 };
@@ -201,7 +210,7 @@ export class CorePrimitiveLoaderService {
       mat.diffuseColor = c3;
       mat.specularColor = new Color3(0, 0, 0);
 
-      if (entity.rol === 'spawn_point') {
+      if (entity.characterConfig?.isPlayable) {
         mat.alpha = 0.5;
         mat.emissiveColor = new Color3(0, 1, 0);
       } else if (entity.visual.esEmisivo) {

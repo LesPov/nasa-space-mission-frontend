@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AnimationGroup, Scene, Mesh } from '@babylonjs/core';
 import { PlayerRuntimeConfig, PlayerActionKey, PlayerSequenceStep, normalizeAnimBinding, cloneDefaultPlayerConfig } from '../../models/player-config.model';
@@ -33,9 +34,7 @@ export class PlayerAnimationService implements IUpdatable {
   private entityManager = inject(EntityManagerService);
 
   public animationUpdate(dtMs: number): void {
-    const characters = this.entityManager.getAllEntities().filter(
-      e => e.rol === 'npc' || e.rol === 'spawn_point'
-    );
+    const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
 
     for (const entity of characters) {
       const seqRuntime = entity.playerRuntime.seqRuntime;
@@ -216,7 +215,7 @@ export class PlayerAnimationService implements IUpdatable {
     const state = this.getState(entity.uid);
     const config = entity.playerConfig || cloneDefaultPlayerConfig();
     
-    if (seqRuntime.running && seqRuntime.step) {
+    if (seqRuntime && seqRuntime.running && seqRuntime.step) {
       if (seqRuntime.step.clipOverride === 'none' || seqRuntime.step.action === 'stopBaked') {
           this.playAnim(entity, null, false, seqRuntime.blend);
           return;

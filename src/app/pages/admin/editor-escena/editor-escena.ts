@@ -62,11 +62,10 @@ export class EditorEscena implements OnInit, OnDestroy {
   public editando = false;
   public esAdmin: boolean = false;
 
-  public cargandoEscena = false;
+  public cargandoEscena = signal(false);
   public episodioPendienteCarga: any = null;
-  public cargandoTexto = 'Preparando entorno...';
+  public cargandoTexto = signal('Preparando entorno...');
 
-  // 🔥 VARIABLES RESTAURADAS Y VERIFICADAS
   public episodioIdActivo = 0;
   public mapaActualNombre = '';
   public episodioCompletoData: any = null;
@@ -75,7 +74,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   public cerrandoModalMision = false; 
   public misionIniciada = false;
 
-  // Estado del Nuevo Mission Modal Unificado
   public showMissionModal = false;
   public missionModalMode: 'create' | 'edit' = 'create';
   public missionModalData: any = null;
@@ -86,7 +84,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   public listaEpisodios: any[] = [];
   public hoveredEpisodio: number | null = null;
   
-  // Modal Clásico de Creación de Mapa
   public showModalMap = false;
   public nuevoTitulo = '';
   public nuevaDesc = '';
@@ -205,8 +202,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   entrarAlEditor(episodio: any) {
     this.episodioPendienteCarga = episodio;
     this.layoutSvc.ocultarMenu();
-    this.cargandoEscena = true;
-    this.cargandoTexto = 'Cargando herramientas de creador...';
+    this.cargandoEscena.set(true);
+    this.cargandoTexto.set('Cargando herramientas de creador...');
     this.procesarCarga(episodio);
   }
 
@@ -220,10 +217,7 @@ export class EditorEscena implements OnInit, OnDestroy {
         this.episodioCompletoData = res?.episode || res; 
         this.editorSvc.episodioActualData.set(this.episodioCompletoData);
         
-        setTimeout(() => {
-            this.cargandoTexto = 'Preparando modelos, texturas y físicas 3D...';
-            this.cdr.detectChanges();
-        }, 0);
+        this.cargandoTexto.set('Preparando modelos, texturas y físicas 3D...');
         
         this.motor3dSvc.forzarRedimension(); 
         this.editorSvc.activarEventosEditor();
@@ -234,7 +228,7 @@ export class EditorEscena implements OnInit, OnDestroy {
         }
 
         this.motor3dSvc.scene.executeWhenReady(() => {
-          this.cargandoEscena = false;
+          this.cargandoEscena.set(false);
           this.episodioPendienteCarga = null;
           this.cdr.detectChanges(); 
           
@@ -244,7 +238,7 @@ export class EditorEscena implements OnInit, OnDestroy {
         });
       },
       error: (err) => {
-        this.cargandoEscena = false;
+        this.cargandoEscena.set(false);
         alert('Error conectando con el servidor. No se pudo cargar la escena.');
       }
     });
@@ -347,8 +341,8 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   guardarMisionModal(data: any) {
     if (this.missionModalMode === 'create') {
-      this.cargandoEscena = true;
-      this.cargandoTexto = 'Creando episodio...';
+      this.cargandoEscena.set(true);
+      this.cargandoTexto.set('Creando episodio...');
       this.epiApiSvc.crearEpisodio(data.title, data.description).subscribe({
         next: (res) => {
           this.listaEpisodios.unshift(res);
@@ -356,7 +350,7 @@ export class EditorEscena implements OnInit, OnDestroy {
           this.entrarAlEditor(res);
 
           const interval = setInterval(() => {
-            if (!this.cargandoEscena && this.motor3dSvc.scene) {
+            if (!this.cargandoEscena() && this.motor3dSvc.scene) {
                this.motor3dSvc.scene.metadata = { ...(this.motor3dSvc.scene.metadata || {}), uiSettings: data };
                if (this.episodioCompletoData) this.episodioCompletoData.uiSettings = data;
                this.guardarMapaEnBD(true);
@@ -365,7 +359,7 @@ export class EditorEscena implements OnInit, OnDestroy {
           }, 500);
         },
         error: (err) => {
-          this.cargandoEscena = false;
+          this.cargandoEscena.set(false);
           alert('Error creando episodio');
         }
       });
@@ -404,7 +398,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   onRolChange() {
-    if (this.objRol === 'npc' || this.objRol === 'spawn_point') this.objTipo = 'model';
+    if (['npc', 'spawn_point', 'politico', 'militar'].includes(this.objRol)) this.objTipo = 'model';
   }
 
   onTipoChange() {
@@ -446,7 +440,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (!obj) return false;
     const entity = this.entityManager.getEntityByMesh(obj);
     if (!entity) return false;
-    return entity.rol === 'spawn_point' || entity.rol === 'npc';
+    return !!entity.characterConfig;
   }
 
   iniciarModoPrueba() {
@@ -495,13 +489,13 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (this.editorSvc.playState() === 'EDITOR') return;
     
     this.mostrarModalMisionPreview = false;
-    this.cargandoEscena = true;
-    this.cargandoTexto = 'Restaurando Editor...';
+    this.cargandoEscena.set(true);
+    this.cargandoTexto.set('Restaurando Editor...');
     this.cdr.detectChanges();
 
     await this.playModeSvc.detenerPrueba();
 
-    this.cargandoEscena = false;
+    this.cargandoEscena.set(false);
     this.cdr.detectChanges();
 
     setTimeout(() => this.editorSvc.triggerUpdate(), 500);
@@ -513,7 +507,7 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   salirDelEditor() {
     this.editando = false;
-    this.cargandoEscena = false;
+    this.cargandoEscena.set(false);
     this.layoutSvc.mostrarMenu();
     this.editorSvc.limpiarEstado();
     this.cargarEpisodios();

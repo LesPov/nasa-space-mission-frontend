@@ -1,6 +1,6 @@
 
 <!-- PANTALLA PRINCIPAL: SELECCIÓN DE MAPAS -->
-<ng-container *ngIf="!editando && !cargandoEscena">
+<ng-container *ngIf="!editando && !cargandoEscena()">
   <div class="galeria-header">
     <div>
       <h2>Tus Mapas / Episodios</h2>
@@ -58,8 +58,8 @@
 </ng-container>
 
 <!-- SPINNER CINEMÁTICO DE CARGA -->
-<div class="cinematic-overlay" *ngIf="cargandoEscena">
-  <app-ui-loading [texto]="cargandoTexto"></app-ui-loading>
+<div class="cinematic-overlay" *ngIf="cargandoEscena()">
+  <app-ui-loading [texto]="cargandoTexto()"></app-ui-loading>
 </div>
 
 <!-- FLUJO DE EDICIÓN -->
@@ -79,7 +79,13 @@
           </div>
           <div class="modal-row" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble' && objTipo !== 'video_plane' && objTipo !== 'image_plane'">
             <label class="modal-label" style="color: #ffd700; margin-top: 10px;">Rol del Elemento:</label>
-            <select [(ngModel)]="objRol" class="modal-input" (change)="onRolChange()"><option value="prop">🛋️ Decoración / Prop estático</option><option value="spawn_point">🧍‍♂️ Spawn del Jugador</option><option value="npc">🤖 NPC / Personaje</option></select>
+            <select [(ngModel)]="objRol" class="modal-input" (change)="onRolChange()">
+              <option value="prop">🛋️ Decoración / Prop estático</option>
+              <option value="spawn_point">🧍‍♂️ Spawn del Jugador</option>
+              <option value="npc">🤖 NPC Genérico</option>
+              <option value="politico">👔 Político (IA)</option>
+              <option value="militar">🪖 Militar (IA)</option>
+            </select>
           </div>
           <div class="modal-row">
             <label class="modal-label">Tamaño Inicial (Escala X, Y, Z):</label>
@@ -95,7 +101,7 @@
           <h4>2. Aspecto Visual y Físicas</h4>
           <div class="modal-row">
             <label class="modal-label">Tipo de Forma:</label>
-            <select [(ngModel)]="objTipo" class="modal-input" (change)="onTipoChange()" [disabled]="objRol === 'spawn_point' || objRol === 'npc'">
+            <select [(ngModel)]="objTipo" class="modal-input" (change)="onTipoChange()" [disabled]="['npc', 'spawn_point', 'politico', 'militar'].includes(objRol)">
               <optgroup label="Geometría Básica"><option value="cube">🧊 Cubo Básico</option><option value="sphere">⚽ Esfera</option><option value="cylinder">🛢️ Cilindro / Cápsula</option><option value="plane">🗺️ Plano (Suelo)</option></optgroup>
               <optgroup label="Modelos y Scripts"><option value="model">✨ Modelo 3D Importado (.GLB)</option><option value="trigger">📍 Trigger Normal (1 Acción)</option><option value="trigger_compuesto">💠 Trigger Compuesto</option><option value="bubble">🫧 Burbuja Interactiva (Evento FPS)</option><option value="video_plane">📺 Pantalla de Video (.mp4)</option><option value="image_plane">🖼️ Proyector / Holograma (.png/.jpg)</option></optgroup>
               <optgroup label="Iluminación"><option value="light_directional">☀️ Luz Direccional (Sol/Rayo)</option><option value="light_spot">🔦 Luz Foco (Spotlight)</option><option value="light_point">💡 Luz de Punto (Omnidireccional)</option></optgroup>

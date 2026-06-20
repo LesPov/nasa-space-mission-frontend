@@ -6,7 +6,7 @@ import { Motor3dService } from '../../../../services/motor-3d.service';
 import { CoreSceneMaterialService } from '../utils/core-scene-material.service';
 import { CoreSceneUtilsService } from '../utils/core-scene-utils.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
-import { GameEntity } from '../../entities/game.entity';
+import { GameEntity, CharacterConfigComponent } from '../../entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
 export class CoreModelLoaderService {
@@ -53,10 +53,19 @@ export class CoreModelLoaderService {
     const scene = this.motor3d.scene;
     const isModel = obj.type === 'model';
     const isLight = obj.type?.startsWith('light_');
-    const rolSaved = obj.properties?.rol || 'prop';
-    const isProp = rolSaved === 'prop';
+    const rolSaved = obj.properties?.rol || obj.rol || 'prop';
 
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, obj.type, rolSaved);
+
+    if (obj.properties?.characterConfig) {
+      entity.characterConfig = new CharacterConfigComponent(
+        obj.properties.characterConfig.characterType,
+        obj.properties.characterConfig.isPlayable,
+        obj.properties.characterConfig.faction
+      );
+    }
+
+    const isCharacter = !!entity.characterConfig;
 
     entity.transform.position = { x: obj.position?.x ?? 0, y: obj.position?.y ?? 0, z: obj.position?.z ?? 0 };
     entity.transform.rotation = { x: obj.rotation?.x ?? 0, y: obj.rotation?.y ?? 0, z: obj.rotation?.z ?? 0 };
@@ -86,7 +95,7 @@ export class CoreModelLoaderService {
     entity.interaction.interactSequenceId = obj.properties?.interactSequenceId || '';
     entity.interaction.respawnTime = this.utilsSvc.normalizarNumero(obj.properties?.respawnTime, 8);
 
-    const defaultCollider = isModel ? (isProp ? { type: 'mesh', sizeX: 1, sizeY: 1, sizeZ: 1, offsetX: 0, offsetY: 0, offsetZ: 0 } : { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }) : { type: 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+    const defaultCollider = isModel ? (!isCharacter ? { type: 'mesh', sizeX: 1, sizeY: 1, sizeZ: 1, offsetX: 0, offsetY: 0, offsetZ: 0 } : { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }) : { type: 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
     const savedCollider = obj.properties?.collider || obj.properties?.capsule || { ...defaultCollider };
     if (savedCollider.radiusX !== undefined) {
       savedCollider.sizeX = savedCollider.radiusX; savedCollider.sizeY = savedCollider.heightY; savedCollider.sizeZ = savedCollider.radiusZ;
@@ -131,7 +140,7 @@ export class CoreModelLoaderService {
         const vertices = m.getTotalVertices();
         
         if (vertices > 0) {
-            if (rolSaved === 'npc' || rolSaved === 'spawn_point') {
+            if (isCharacter) {
                 m.checkCollisions = false;
             } else {
                 m.checkCollisions = entity.visual.isSolid; 

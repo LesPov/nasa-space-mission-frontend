@@ -28,9 +28,7 @@ export class CharacterKinematicsService implements IUpdatable {
     const activePlayer = this.session.activePlayerEntity();
     const cameraView = this.session.cameraView();
 
-    const characters = this.entityManager.getAllEntities().filter(
-      e => e.rol === 'npc' || e.rol === 'spawn_point'
-    );
+    const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
 
     for (const entity of characters) {
       // Identificamos si es el jugador activo para determinar la vista real
@@ -82,7 +80,7 @@ export class CharacterKinematicsService implements IUpdatable {
     const collFn = (m: any) =>
       m.checkCollisions && m !== mesh && !m.isDescendantOf(mesh) && !Tags.MatchesQuery(m, "system_element || editor_only || fog_element");
 
-    if (seqRuntime.running && seqRuntime.step) {
+    if (seqRuntime && seqRuntime.running && seqRuntime.step) {
       if (seqRuntime.rootMotion && (seqRuntime.rootMotion.y !== 0 || seqRuntime.rootMotion.z !== 0 || seqRuntime.lockInput || seqRuntime.freezeOrientation)) {
         isCinematicSequence = true;
         dy = seqRuntime.rootMotion.y;
@@ -90,7 +88,7 @@ export class CharacterKinematicsService implements IUpdatable {
       }
     }
 
-    if (seqRuntime.running && seqRuntime.forceJump && !estadoFisico.isJumping && !estadoFisico.isFalling) {
+    if (seqRuntime && seqRuntime.running && seqRuntime.forceJump && !estadoFisico.isJumping && !estadoFisico.isFalling) {
       estadoFisico.velocidadY = (config.jump.force || 0.16) * scaleFactor;
       estadoFisico.isJumping = true;
     }
@@ -174,7 +172,7 @@ export class CharacterKinematicsService implements IUpdatable {
     config: any, 
     estadoFisico: any, 
     intentions: any, 
-    seqRuntime: SeqRuntime, 
+    seqRuntime: SeqRuntime | null, 
     move: Vector3, 
     forward: Vector3, 
     right: Vector3, 
@@ -193,22 +191,22 @@ export class CharacterKinematicsService implements IUpdatable {
       if (intentions.moveLeft) move.subtractInPlace(right);
     }
 
-    if (seqRuntime.running && seqRuntime.allowMovement) {
+    if (seqRuntime && seqRuntime.running && seqRuntime.allowMovement) {
       if (seqRuntime.forceForwardRun) move.addInPlace(forward.scale((config.movement.runSpeed || 0.09) * scaleFactor));
       if (seqRuntime.forceForwardWalk) move.addInPlace(forward.scale((config.movement.walkSpeed || 0.045) * scaleFactor));
     }
 
     estadoFisico.isMoving = move.lengthSquared() > 0.001;
-    estadoFisico.isRunning = intentions.run || seqRuntime.forceForwardRun;
+    estadoFisico.isRunning = intentions.run || (seqRuntime ? seqRuntime.forceForwardRun : false);
 
     if (estadoFisico.isMoving && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
       const modSpeed = (estadoFisico.isRunning ? (config.movement.runSpeed || 0.09) : (config.movement.walkSpeed || 0.045)) * scaleFactor;
       
-      if (!seqRuntime.running || !seqRuntime.allowMovement) {
+      if (!seqRuntime || !seqRuntime.running || !seqRuntime.allowMovement) {
         move.normalize().scaleInPlace(modSpeed);
       }
 
-      if (vista === 'TPS' && !seqRuntime.lockInput && !seqRuntime.freezeOrientation) {
+      if (vista === 'TPS' && (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation))) {
         const targetAngle = Math.atan2(move.x, move.z);
         if (!isNaN(targetAngle)) {
           if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
@@ -251,7 +249,7 @@ export class CharacterKinematicsService implements IUpdatable {
     estadoFisico: any, 
     config: any, 
     intentions: any, 
-    seqRuntime: SeqRuntime, 
+    seqRuntime: SeqRuntime | null, 
     move: Vector3, 
     scaleFactor: number, 
     scaleY: number
@@ -272,7 +270,7 @@ export class CharacterKinematicsService implements IUpdatable {
       estadoFisico.highestY = mesh.position.y;
       estadoFisico.velocidadY = -0.05; 
 
-      if ((intentions.jump || seqRuntime.forceJump) && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
+      if ((intentions.jump || (seqRuntime ? seqRuntime.forceJump : false)) && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
         estadoFisico.velocidadY = (config.jump.force || 0.16) * scaleFactor;
         estadoFisico.isJumping = true;
         estadoFisico.isGrounded = false;

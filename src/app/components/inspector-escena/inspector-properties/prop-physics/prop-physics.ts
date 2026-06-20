@@ -48,7 +48,7 @@ export class PropPhysics implements OnInit, OnDestroy {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (!entity) return;
     
-    this.esPersonaje = entity.type === 'model' || entity.rol === 'npc' || entity.rol === 'spawn_point';
+    this.esPersonaje = !!entity.characterConfig;
     
     if (entity.collider) {
       this.colliderType = entity.collider.type || 'box';

@@ -1,76 +1,60 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Scene, Vector3, Color3, AbstractMesh } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
-import { LoopManagerService, GamePhase } from '../../behaviors/services/loop-manager.service';
+import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
 import { FogRendererService } from './fog-renderer.service';
-import { GameEntity } from '../../entities/game.entity';
 import { FogLevel } from '../../models/player-config.model';
 import { CameraOwnershipService } from '../cameras/camera-ownership.service';
+import { GameContextService } from '../../session/game-context.service';
 
 @Injectable({ providedIn: 'root' }) 
-export class PlayerFogService { 
+export class PlayerFogService implements IUpdatable { 
+  public id = 'PlayerFogSystem';
   private motor3d = inject(Motor3dService); 
-  private loopManager = inject(LoopManagerService);
   private worldSettingsSvc = inject(WorldSettingsService);
   private fogRenderer = inject(FogRendererService);
   private ownership = inject(CameraOwnershipService);
+  private context = inject(GameContextService);
 
-  private isRegistered = false; 
   private firstFrame = true;
 
   private curR = 0; private curG = 0; private curB = 0; 
   private curStart = 500000; private curEnd = 500000;
-  
-  private playerEntity: GameEntity | null = null;
-  private currentView: 'FPS'|'TPS' = 'FPS';
 
-  public setView(view: 'FPS'|'TPS'): void {
-      this.currentView = view;
-  }
-
-  public start(playerEntity: GameEntity, view: 'FPS'|'TPS'): void {
-    this.playerEntity = playerEntity;
-    this.currentView = view;
+  public start(): void {
     const scene = this.motor3d.scene; 
     if (!scene) return;
 
-    this.isRegistered = false;
-
-    if (!this.isRegistered) {
-      const w = this.worldSettingsSvc.settings();
-      const globalClearHex = w.visualMode === 'bw' ? w.clearColorBW : w.clearColor;
-      const clearColor3 = Color3.FromHexString(globalClearHex);
-      this.curR = clearColor3.r; this.curG = clearColor3.g; this.curB = clearColor3.b;
-      
-      this.curStart = scene.fogStart || 500000;
-      this.curEnd = scene.fogEnd || 500000;
-      this.firstFrame = true;
-
-      this.loopManager.register('PlayerFogUpdate', GamePhase.POST_UPDATE, () => this.updateFogFrame(scene));
-      this.isRegistered = true;
-    }
+    const w = this.worldSettingsSvc.settings();
+    const globalClearHex = w.visualMode === 'bw' ? w.clearColorBW : w.clearColor;
+    const clearColor3 = Color3.FromHexString(globalClearHex);
+    this.curR = clearColor3.r; this.curG = clearColor3.g; this.curB = clearColor3.b;
+    
+    this.curStart = scene.fogStart || 500000;
+    this.curEnd = scene.fogEnd || 500000;
+    this.firstFrame = true;
   }
 
   public stop(): void {
-    if (this.isRegistered) {
-      this.loopManager.unregister('PlayerFogUpdate');
-      this.isRegistered = false;
-      this.firstFrame = true;
-    }
-    this.playerEntity = null;
+    this.firstFrame = true;
     this.fogRenderer.dispose();
   }
 
-  private updateFogFrame(scene: Scene): void { 
-    const targetPlayer = this.playerEntity?.view as AbstractMesh || null; 
+  public postUpdate(dtMs: number): void { 
+    const scene = this.motor3d.scene;
+    if (!scene) return;
+
+    const playerEntity = this.context.activePlayerEntity();
+    const currentView = this.context.cameraView();
+    const targetPlayer = playerEntity?.view as AbstractMesh || null; 
+    
     let shadowLimit = 500000;
 
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
     const globalClearHex = isBW ? this.worldSettingsSvc.settings().clearColorBW : this.worldSettingsSvc.settings().clearColor;
 
-    const isFPS = this.currentView === 'FPS';
+    const isFPS = currentView === 'FPS';
     const lerpSpeed = 0.35; 
 
     let targetR = 0, targetG = 0, targetB = 0;
@@ -78,9 +62,9 @@ export class PlayerFogService {
     let activeLevels: FogLevel[] = [];
     let targetColorObj = Color3.FromHexString(globalClearHex);
     
-    if (this.playerEntity?.playerConfig?.fog?.enabled) {
+    if (playerEntity?.playerConfig?.fog?.enabled) {
       useFog = true;
-      const fog = this.playerEntity.playerConfig.fog;
+      const fog = playerEntity.playerConfig.fog;
       const activeColor = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
       targetColorObj = Color3.FromHexString(activeColor);
       targetR = targetColorObj.r; targetG = targetColorObj.g; targetB = targetColorObj.b;

@@ -1,16 +1,17 @@
-
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Animation, EasingFunction, SineEase, Vector3, Mesh } from '@babylonjs/core';
+import { Animation, EasingFunction, SineEase, Vector3, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
+import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 
 @Injectable({ providedIn: 'root' })
-export class ObjectAnimationService {
+export class ObjectAnimationService implements IUpdatable {
+  public id = 'ObjectAnimationSystem';
   private motor3d = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
   private animatables: any[] = [];
 
-  public startAmbientAutoAnimations(): void {
+  public start(): void {
     const scene = this.motor3d.scene;
     if (!scene) return;
 
@@ -39,14 +40,13 @@ export class ObjectAnimationService {
           });
       }
 
-      // Si tiene una animación procedimental programada
       if (entity.autoAnim && entity.autoAnim.enabled) {
         this.applyAutoAnim(mesh, entity.autoAnim);
       }
     });
   }
 
-  public stopAmbientAutoAnimations(): void {
+  public stop(): void {
     this.animatables.forEach((anim) => {
       if (anim) anim.stop();
     });

@@ -1,6 +1,5 @@
-
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Vector3, Tags } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
@@ -174,12 +173,8 @@ export class PlayerInteractionService implements IUpdatable {
       const hitCross = scene.pickWithRay(centerRay, (m) => {
         if (!m.isPickable || !m.isVisible) return false;
         
-        const targetEntity = this.entityManager.getEntityByMesh(m);
-        if (targetEntity && (targetEntity.type === 'trigger' || targetEntity.type === 'trigger_compuesto')) return false; 
-        
-        if (m === jugador || m.isDescendantOf(jugador)) return false;
-
-        if (Tags.MatchesQuery(m, "system_element || fog_element || ignore_raycast || editor_only || invisible_floor")) return false;
+        // 🔥 FIX: Delegamos puramente en el InteractableRulesService para las reglas
+        if (this.interactRules.isMeshIgnorable(m, jugador)) return false;
 
         return true;
       });
@@ -214,15 +209,17 @@ export class PlayerInteractionService implements IUpdatable {
 
       this.entityManager.getAllEntities().forEach(e => {
         if (e.uid === entity.uid) return;
-        if (e.type === 'trigger' || e.type === 'trigger_compuesto') return;
+        
+        // 🔥 FIX: Reglas unificadas
+        const isInteractable = this.interactRules.isInteractable(e);
+        if (!isInteractable) return;
         
         const mesh = e.view as AbstractMesh;
-        if (!mesh || !mesh.isVisible || !mesh.isPickable) return;
+        if (this.interactRules.isMeshIgnorable(mesh, jugador)) return;
 
         const selectionDistance = this.getInteractionDistanceToTarget(mesh, playerProbe);
-        const isInteractable = this.interactRules.isInteractable(e);
 
-        if (isInteractable && e.type !== 'bubble') {
+        if (e.type !== 'bubble') {
             const interactMax = e.interaction.interactDistanceTPS ?? 5.0;
             if (selectionDistance <= interactMax && selectionDistance < closestDist) {
               closestDist = selectionDistance;

@@ -22,8 +22,6 @@ import { GameContextService } from '../session/game-context.service';
 import { LayoutService } from '../../../services/layout.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
 
-// Resto del archivo se mantiene exactamente igual (solo cambiaron los imports superiores)
-  
 @Injectable({ providedIn: 'root' })
 export class GameSession {
   private entityManager = inject(EntityManagerService);
@@ -114,10 +112,7 @@ export class GameSession {
 
     this.sequenceSvc.resetearSecuencias();
 
-    this.triggerSvc.start();
-    this.objectAnimSvc.startAmbientAutoAnimations();
-    this.playerFogSvc.start(playerEntity, view);
-
+    // 🔥 FIX: 100% de los Sistemas integrados al Lifecycle unificado. Ningún start/stop externo.
     this.systems = [
       this.inputSvc,
       this.sequenceSvc,
@@ -127,7 +122,10 @@ export class GameSession {
       this.playerAnimationSvc,
       this.cameraSvc,
       this.mediaCommandSvc,
-      this.renderSyncSvc
+      this.renderSyncSvc,
+      this.objectAnimSvc,
+      this.playerFogSvc,
+      this.bubbleSvc
     ];
 
     this.systems.forEach(system => {
@@ -158,12 +156,6 @@ export class GameSession {
     
     this.inputSvc.disable();
     this.interactionSvc.disable();
-
-    this.objectAnimSvc.stopAmbientAutoAnimations();
-    this.playerFogSvc.stop();
-    this.triggerSvc.stop();
-    this.bubbleSvc.stop();
-
     this.sequenceSvc.resetearSecuencias();
 
     this.systems.forEach(system => {
@@ -191,7 +183,6 @@ export class GameSession {
       true,
       (newView) => {
         this.context.setCameraView(newView);
-        this.playerFogSvc.setView(newView);
         this.eventBus.emit({ type: 'CameraViewChanged', payload: newView });
       },
       customFrames

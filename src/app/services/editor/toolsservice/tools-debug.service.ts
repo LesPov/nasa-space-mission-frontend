@@ -1,11 +1,14 @@
-
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, Light, Mesh, MeshBuilder, StandardMaterial, Vector3, Matrix, Tags } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Vector3, Matrix } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { ToolsSelectionService } from './tools-selection.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
+import { ToolsDebugColliderService } from './tools-debug-collider.service';
+import { ToolsDebugCameraService } from './tools-debug-camera.service';
+import { ToolsDebugLightService } from './tools-debug-light.service';
+import { ToolsDebugFogService } from './tools-debug-fog.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsDebugService {
@@ -15,11 +18,16 @@ export class ToolsDebugService {
   private entityManager = inject(EntityManagerService);
   private worldSettingsSvc = inject(WorldSettingsService);
 
-  public debugCollider: Mesh | null = null;
-  public debugCameraBox: Mesh | null = null;
-  public debugLightBox: Mesh | null = null; 
-  public debugFogStartSphere: Mesh | null = null;
-  public debugFogEndSphere: Mesh | null = null;
+  private colliderSvc = inject(ToolsDebugColliderService);
+  private cameraSvc = inject(ToolsDebugCameraService);
+  private lightSvc = inject(ToolsDebugLightService);
+  private fogSvc = inject(ToolsDebugFogService);
+
+  get debugCollider() { return this.colliderSvc.debugCollider; }
+  get debugCameraBox() { return this.cameraSvc.debugCameraBox; }
+  get debugLightBox() { return this.lightSvc.debugLightBox; }
+  get debugFogStartSphere() { return this.fogSvc.debugFogStartSphere; }
+  get debugFogEndSphere() { return this.fogSvc.debugFogEndSphere; }
 
   public getFogBaseLocalPos(selected: AbstractMesh): Vector3 {
     const entity = this.entityManager.getEntityByMesh(selected);
@@ -67,11 +75,10 @@ export class ToolsDebugService {
   public actualizarDebugMeshes(selected: Mesh | null): void {
     const playState = this.state.playState();
     if (!selected || (playState !== 'EDITOR' && playState !== 'EDITING_IN_GAME')) {
-      if (this.debugCollider) { this.debugCollider.dispose(); this.debugCollider = null; }
-      if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
-      if (this.debugLightBox) { this.debugLightBox.dispose(); this.debugLightBox = null; }
-      if (this.debugFogStartSphere) { this.debugFogStartSphere.dispose(); this.debugFogStartSphere = null; }
-      if (this.debugFogEndSphere) { this.debugFogEndSphere.dispose(); this.debugFogEndSphere = null; }
+      this.colliderSvc.dispose();
+      this.cameraSvc.dispose();
+      this.lightSvc.dispose();
+      this.fogSvc.dispose();
       return;
     }
 
@@ -80,148 +87,16 @@ export class ToolsDebugService {
     if (!entity) return;
 
     const subSelected = this.state.subObjetoSeleccionado();
-    const colMeta = entity.collider;
 
-    // 1. COLLIDER
-    if (colMeta && colMeta.type !== 'mesh' && (subSelected === 'collider' || !subSelected)) {
-      if (this.debugCollider) this.debugCollider.dispose();
-      if (colMeta.type === 'capsule') this.debugCollider = MeshBuilder.CreateCapsule('debugCollider', { radius: colMeta.sizeX, height: colMeta.sizeY * 2 }, scene);
-      else if (colMeta.type === 'sphere') this.debugCollider = MeshBuilder.CreateSphere('debugCollider', { diameterX: colMeta.sizeX * 2, diameterY: colMeta.sizeY * 2, diameterZ: colMeta.sizeZ * 2 }, scene);
-      else this.debugCollider = MeshBuilder.CreateBox('debugCollider', { width: colMeta.sizeX * 2, height: colMeta.sizeY * 2, depth: colMeta.sizeZ * 2 }, scene);
+    this.colliderSvc.update(scene, selected, entity, subSelected);
+    this.cameraSvc.update(scene, selected, entity, subSelected);
+    this.lightSvc.update(scene, selected, entity, subSelected);
 
-      this.debugCollider.position = new Vector3(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ);
-      this.debugCollider.parent = selected;
+    const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
+    const isFPS = this.state.modoVistaPrueba === 'FPS';
+    const fogAnchor = this.getFogDebugAnchor(selected);
 
-      const matCol = new StandardMaterial('debugColMat', scene);
-      matCol.wireframe = true;
-      matCol.emissiveColor = colMeta.type === 'capsule' ? new Color3(0.2, 0.8, 0.2) : new Color3(0.8, 0.8, 0.2);
-      matCol.disableLighting = true;
-      this.debugCollider.material = matCol;
-      this.debugCollider.isPickable = false;
-      Tags.AddTagsTo(this.debugCollider, "system_element editor_only debug_element ignore_raycast");
-    } else {
-      if (this.debugCollider) { this.debugCollider.dispose(); this.debugCollider = null; }
-    }
-
-    // 2. CÁMARA
-    const camOffset = entity.camOffset;
-    if (entity.characterConfig && camOffset && (subSelected === 'camera' || !subSelected)) {
-      if (this.debugCameraBox) this.debugCameraBox.dispose();
-      this.debugCameraBox = MeshBuilder.CreateBox('debugCamBox', { size: 0.25 }, scene);
-      this.debugCameraBox.position = new Vector3(camOffset.x, camOffset.y, camOffset.z);
-      this.debugCameraBox.parent = selected;
-      const matCam = new StandardMaterial('debugCamMat', scene);
-      matCam.wireframe = true;
-      matCam.emissiveColor = new Color3(0.9, 0.2, 0.2);
-      matCam.disableLighting = true;
-      this.debugCameraBox.material = matCam;
-      this.debugCameraBox.isPickable = false;
-      Tags.AddTagsTo(this.debugCameraBox, "system_element editor_only debug_element ignore_raycast");
-    } else {
-      if (this.debugCameraBox) { this.debugCameraBox.dispose(); this.debugCameraBox = null; }
-    }
-
-    // 3. LUZ
-    if (entity.type?.startsWith('light_') && (subSelected === 'light' || !subSelected)) {
-        if (this.debugLightBox) this.debugLightBox.dispose();
-        this.debugLightBox = MeshBuilder.CreateSphere('debugLightBox', { diameter: 0.3 }, scene);
-        
-        const lightObj = selected.getDescendants(false).find(c => c.name.startsWith('l_')) as Light;
-        if (lightObj && lightObj.parent) {
-            this.debugLightBox.parent = lightObj.parent;
-        } else {
-            this.debugLightBox.parent = selected;
-        }
-        
-        this.debugLightBox.position = new Vector3(
-          entity.light?.lightPosX ?? 0, 
-          entity.light?.lightPosY ?? 0, 
-          entity.light?.lightPosZ ?? 0
-        );
-        
-        const matLight = new StandardMaterial('debugLightMat', scene);
-        matLight.wireframe = true;
-        matLight.emissiveColor = new Color3(1, 1, 0); 
-        matLight.disableLighting = true;
-        this.debugLightBox.material = matLight;
-        this.debugLightBox.isPickable = false;
-        Tags.AddTagsTo(this.debugLightBox, "system_element editor_only debug_element ignore_raycast");
-    } else {
-        if (this.debugLightBox) { this.debugLightBox.dispose(); this.debugLightBox = null; }
-    }
-
-    // 4. NIEBLA VOLUMÉTRICA 
-    const playerConfig = entity.playerConfig;
-    if (subSelected === 'fog' && playerConfig && playerConfig.fog && playerConfig.fog.enabled && !!entity.characterConfig) {
-      
-      // 🔥 FIX: Source of Truth
-      const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
-
-      const isFPS = this.state.modoVistaPrueba === 'FPS';
-      const fog = playerConfig.fog;
-      
-      let activeStart = isBW ? (isFPS ? (fog.startFpsBW ?? 0) : (fog.startTpsBW ?? 5)) : (isFPS ? (fog.startFPS ?? 0) : (fog.startTPS ?? 5));
-      let rawEnd = isBW ? (isFPS ? (fog.endFpsBW ?? 60) : (fog.endTpsBW ?? 90)) : (isFPS ? (fog.endFPS ?? 80) : (fog.endTPS ?? 120));
-      let activeEnd = Math.max(activeStart + 0.1, rawEnd);
-
-      const fogAnchor = this.getFogDebugAnchor(selected);
-      const fogShape = fog.fogShape || 'cylinder';
-      
-      const hStartFpsBW = fog?.fogHeightYStartFpsBW ?? 4.0;
-      const hStartTpsBW = fog?.fogHeightYStartTpsBW ?? 4.0;
-      const hStartFPS = fog?.fogHeightYStartFPS ?? 4.0;
-      const hStartTPS = fog?.fogHeightYStartTPS ?? 4.0;
-      const fogHeightStart = Math.max(0.1, isBW ? (isFPS ? hStartFpsBW : hStartTpsBW) : (isFPS ? hStartFPS : hStartTPS));
-
-      const hEndFpsBW = fog?.fogHeightYEndFpsBW ?? 10.0;
-      const hEndTpsBW = fog?.fogHeightYEndTpsBW ?? 10.0;
-      const hEndFPS = fog?.fogHeightYEndFPS ?? 10.0;
-      const hEndTPS = fog?.fogHeightYEndTPS ?? 10.0;
-      const fogHeightEnd = Math.max(0.1, isBW ? (isFPS ? hEndFpsBW : hEndTpsBW) : (isFPS ? hEndFPS : hEndTPS));
-
-      if (this.debugFogStartSphere) { this.debugFogStartSphere.dispose(); }
-      if (fogShape === 'cylinder') {
-        this.debugFogStartSphere = MeshBuilder.CreateCylinder('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2) + 0.05, height: fogHeightStart, tessellation: 32, cap: Mesh.NO_CAP }, scene);
-        this.debugFogStartSphere.position.set(fogAnchor.x, fogAnchor.y + (fogHeightStart / 2), fogAnchor.z);
-      } else {
-        this.debugFogStartSphere = MeshBuilder.CreateSphere('debugFogStartSphere', { diameter: Math.max(0.5, activeStart * 2) + 0.05, segments: 32 }, scene);
-        this.debugFogStartSphere.position = fogAnchor.clone();
-      }
-
-      this.debugFogStartSphere.parent = null; 
-      const matFogStart = new StandardMaterial('debugFogStartMat', scene);
-      matFogStart.wireframe = true;
-      matFogStart.emissiveColor = new Color3(0.2, 0.8, 1.0); 
-      matFogStart.alpha = 0.3;
-      matFogStart.disableLighting = true;
-      this.debugFogStartSphere.material = matFogStart;
-      this.debugFogStartSphere.isPickable = false;
-      Tags.AddTagsTo(this.debugFogStartSphere, "system_element editor_only debug_element ignore_raycast");
-
-      if (this.debugFogEndSphere) { this.debugFogEndSphere.dispose(); this.debugFogEndSphere = null; }
-      if (activeEnd > 0.1) {
-        if (fogShape === 'cylinder') {
-          this.debugFogEndSphere = MeshBuilder.CreateCylinder('debugFogEndSphere', { diameter: (activeEnd * 2) + 0.1, height: fogHeightEnd, tessellation: 32, cap: Mesh.NO_CAP }, scene);
-          this.debugFogEndSphere.position.set(fogAnchor.x, fogAnchor.y + (fogHeightEnd / 2), fogAnchor.z);
-        } else {
-          this.debugFogEndSphere = MeshBuilder.CreateSphere('debugFogEndSphere', { diameter: (activeEnd * 2) + 0.1, segments: 32 }, scene);
-          this.debugFogEndSphere.position = fogAnchor.clone();
-        }
-
-        this.debugFogEndSphere.parent = null; 
-        const matFogEnd = new StandardMaterial('debugFogEndMat', scene);
-        matFogEnd.wireframe = true;
-        matFogEnd.emissiveColor = new Color3(1.0, 0.2, 0.2); 
-        matFogEnd.alpha = 0.25;
-        matFogEnd.disableLighting = true;
-        this.debugFogEndSphere.material = matFogEnd;
-        this.debugFogEndSphere.isPickable = false;
-        Tags.AddTagsTo(this.debugFogEndSphere, "system_element editor_only debug_element ignore_raycast");
-      }
-    } else {
-      if (this.debugFogStartSphere) { this.debugFogStartSphere.dispose(); this.debugFogStartSphere = null; }
-      if (this.debugFogEndSphere) { this.debugFogEndSphere.dispose(); this.debugFogEndSphere = null; }
-    }
+    this.fogSvc.update(scene, selected, entity, subSelected, fogAnchor, isBW, isFPS);
   }
 
   public syncBreathAnimations(obj: Mesh): void {
@@ -245,58 +120,39 @@ export class ToolsDebugService {
     }
 
     const colMeta = entity.collider;
-    if (colMeta && this.debugCollider) {
-      this.debugCollider.position.set(colMeta.offsetX + breathX, colMeta.offsetY + breathY, colMeta.offsetZ + breathZ);
+    if (colMeta) {
+      this.colliderSvc.sync(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ, breathX, breathY, breathZ);
     }
 
     const camOffset = entity.camOffset;
-    if (camOffset && this.debugCameraBox) {
-      this.debugCameraBox.position.set(camOffset.x + breathX, camOffset.y + breathY, camOffset.z + breathZ);
+    if (camOffset) {
+      this.cameraSvc.sync(camOffset.x, camOffset.y, camOffset.z, breathX, breathY, breathZ);
     }
     
-    if (this.debugLightBox && entity.type?.startsWith('light_') && entity.light) {
-       this.debugLightBox.position.set(
-          (entity.light.lightPosX ?? 0) + breathX,
-          (entity.light.lightPosY ?? 0) + breathY,
-          (entity.light.lightPosZ ?? 0) + breathZ
-       );
+    if (entity.type?.startsWith('light_') && entity.light) {
+       this.lightSvc.sync(entity.light.lightPosX ?? 0, entity.light.lightPosY ?? 0, entity.light.lightPosZ ?? 0, breathX, breathY, breathZ);
     }
 
     const fogConfig = entity.playerConfig?.fog;
-    const fogShape = fogConfig?.fogShape || 'cylinder';
-    
-    // 🔥 FIX: Source of Truth
-    const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
-    const isFPS = this.state.modoVistaPrueba === 'FPS';
-    
-    const hStartFpsBW = fogConfig?.fogHeightYStartFpsBW ?? 4.0;
-    const hStartTpsBW = fogConfig?.fogHeightYStartTpsBW ?? 4.0;
-    const hStartFPS = fogConfig?.fogHeightYStartFPS ?? 4.0;
-    const hStartTPS = fogConfig?.fogHeightYStartTPS ?? 4.0;
-    const fogHeightStart = Math.max(0.1, isBW ? (isFPS ? hStartFpsBW : hStartTpsBW) : (isFPS ? hStartFPS : hStartTPS));
+    if (fogConfig) {
+      const fogShape = fogConfig.fogShape || 'cylinder';
+      const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
+      const isFPS = this.state.modoVistaPrueba === 'FPS';
+      
+      const hStartFpsBW = fogConfig.fogHeightYStartFpsBW ?? 4.0;
+      const hStartTpsBW = fogConfig.fogHeightYStartTpsBW ?? 4.0;
+      const hStartFPS = fogConfig.fogHeightYStartFPS ?? 4.0;
+      const hStartTPS = fogConfig.fogHeightYStartTPS ?? 4.0;
+      const fogHeightStart = Math.max(0.1, isBW ? (isFPS ? hStartFpsBW : hStartTpsBW) : (isFPS ? hStartFPS : hStartTPS));
 
-    const hEndFpsBW = fogConfig?.fogHeightYEndFpsBW ?? 10.0;
-    const hEndTpsBW = fogConfig?.fogHeightYEndTpsBW ?? 10.0;
-    const hEndFPS = fogConfig?.fogHeightYEndFPS ?? 10.0;
-    const hEndTPS = fogConfig?.fogHeightYEndTPS ?? 10.0;
-    const fogHeightEnd = Math.max(0.1, isBW ? (isFPS ? hEndFpsBW : hEndTpsBW) : (isFPS ? hEndFPS : hEndTPS));
+      const hEndFpsBW = fogConfig.fogHeightYEndFpsBW ?? 10.0;
+      const hEndTpsBW = fogConfig.fogHeightYEndTpsBW ?? 10.0;
+      const hEndFPS = fogConfig.fogHeightYEndFPS ?? 10.0;
+      const hEndTPS = fogConfig.fogHeightYEndTPS ?? 10.0;
+      const fogHeightEnd = Math.max(0.1, isBW ? (isFPS ? hEndFpsBW : hEndTpsBW) : (isFPS ? hEndFPS : hEndTPS));
 
-    const fogAnchor = this.getFogDebugAnchor(obj);
-    
-    if (this.debugFogStartSphere) {
-      this.debugFogStartSphere.position.set(
-        fogAnchor.x, 
-        fogAnchor.y + (fogShape === 'cylinder' ? (fogHeightStart / 2) : 0), 
-        fogAnchor.z
-      );
-    }
-
-    if (this.debugFogEndSphere) {
-      this.debugFogEndSphere.position.set(
-        fogAnchor.x, 
-        fogAnchor.y + (fogShape === 'cylinder' ? (fogHeightEnd / 2) : 0), 
-        fogAnchor.z
-      );
+      const fogAnchor = this.getFogDebugAnchor(obj);
+      this.fogSvc.sync(fogShape, fogHeightStart, fogHeightEnd, fogAnchor);
     }
   }
 }

@@ -1,3 +1,4 @@
+
 import { Injectable, inject, computed } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
@@ -66,9 +67,6 @@ export class GameSession {
         const mode = this.context.mode();
         if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
              this.layoutSvc.ocultarMenu(); 
-             if (this.cameraView() === 'TPS' && owner !== 'ADMIN_FREE') {
-                 this.toggleCameraUser(false, 75); 
-             }
         }
 
       } else if (event.type === 'GamePaused') {
@@ -79,10 +77,6 @@ export class GameSession {
         const mode = this.context.mode();
         if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
              this.layoutSvc.mostrarMenu(); 
-             const owner = this.ownership.getOwner();
-             if (this.cameraView() === 'FPS' && owner !== 'ADMIN_FREE') {
-                 this.toggleCameraUser(false, 60); 
-             }
         }
       } else if (event.type === 'ToggleCameraRequested') {
         this.toggleCameraUser();
@@ -112,7 +106,6 @@ export class GameSession {
 
     this.sequenceSvc.resetearSecuencias();
 
-    // 🔥 FIX: 100% de los Sistemas integrados al Lifecycle unificado. Ningún start/stop externo.
     this.systems = [
       this.inputSvc,
       this.sequenceSvc,

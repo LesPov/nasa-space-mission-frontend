@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
@@ -71,19 +72,22 @@ export class PlayerInteractionService implements IUpdatable {
   private handleAction(): void {
     if (this.currentTarget && this.canInteract) {
       const target = this.currentTarget;
+      const view = this.context.cameraView();
+
       if (target.type === 'bubble') {
         this.bubbleSvc.ejecutarBurbuja(target);
-        const seqId = this.context.cameraView() === 'FPS' ? target.interaction.interactSequenceIdFPS : target.interaction.interactSequenceIdTPS;
-        const seqReal = seqId || target.interaction.interactSequenceId;
-        if (seqReal) {
-          const allEntities = this.entityManager.getAllEntities();
-          allEntities.forEach(e => {
-            if (e.playerConfig && e.playerConfig.sequences) {
-              const hasSeq = e.playerConfig.sequences.some((s: any) => s.id === seqReal);
-              if (hasSeq) this.sequenceSvc.iniciarSecuenciaEnJuego(seqReal, e);
-            }
-          });
-        }
+      }
+
+      const seqId = view === 'FPS' ? target.interaction.interactSequenceIdFPS : target.interaction.interactSequenceIdTPS;
+      const seqReal = seqId || target.interaction.interactSequenceId;
+      
+      if (seqReal) {
+        const rawIds = seqReal.split(',').map(id => id.trim()).filter(Boolean);
+        const idsToTrigger = [...new Set(rawIds)];
+
+        idsToTrigger.forEach(sequenceId => {
+           this.eventBus.emit({ type: 'SequenceTriggered', payload: { sequenceId } });
+        });
       }
     }
   }
@@ -172,10 +176,7 @@ export class PlayerInteractionService implements IUpdatable {
 
       const hitCross = scene.pickWithRay(centerRay, (m) => {
         if (!m.isPickable || !m.isVisible) return false;
-        
-        // 🔥 FIX: Delegamos puramente en el InteractableRulesService para las reglas
         if (this.interactRules.isMeshIgnorable(m, jugador)) return false;
-
         return true;
       });
 
@@ -210,7 +211,6 @@ export class PlayerInteractionService implements IUpdatable {
       this.entityManager.getAllEntities().forEach(e => {
         if (e.uid === entity.uid) return;
         
-        // 🔥 FIX: Reglas unificadas
         const isInteractable = this.interactRules.isInteractable(e);
         if (!isInteractable) return;
         
@@ -250,8 +250,6 @@ export class PlayerInteractionService implements IUpdatable {
       const mensajeParaMostrar = hitInteractuable.interaction.mensaje || '';
 
       if (hitInteractuable.type === 'bubble') {
-        showE = canInteractNow; 
-      } else if (hitInteractuable.type === 'video_plane') {
         showE = canInteractNow; 
       } else {
         showE = !!seqIdForView && seqIdForView.trim() !== '' && canInteractNow;

@@ -48,12 +48,16 @@ export class Motor3dService {
   }
 
   iniciarMotor(canvas: HTMLCanvasElement): void {
+    // 🔥 OPTIMIZACIÓN EXTREMA DE DOBLE VENTANA
     this.engine = new Engine(canvas, true, {
       preserveDrawingBuffer: false,
       stencil: true, 
-      antialias: true,
+      antialias: false, // Apagado en el backend nativo, usamos FXAA después. Salva muchísimos FPS.
+      desynchronized: true, // Libera cuellos de botella del navegador
+      powerPreference: "high-performance" // Fuerza al SO a usar la GPU dedicada
     }, true);
 
+    this.engine.renderEvenInBackground = true; // Fundamental para que la otra ventana no caiga a 1 FPS
     this.engine.setHardwareScalingLevel(1);
 
     this.scene = new Scene(this.engine);
@@ -65,16 +69,16 @@ export class Motor3dService {
     this.scene.skipPointerMovePicking = true;
 
     this.loopManager.initialize(this.scene);
-
     this.cameraFactory.initializeCameras(this.scene, canvas);
 
+    // Pipeline ligero
     this.renderingPipeline = new DefaultRenderingPipeline('defaultPipeline', false, this.scene, this.scene.cameras);
     this.renderingPipeline.fxaaEnabled = true; 
-    this.renderingPipeline.samples = 2;
+    this.renderingPipeline.samples = 1; // Minimizado para multi-pestaña
     this.renderingPipeline.bloomEnabled = false; 
     this.renderingPipeline.imageProcessingEnabled = true; 
 
-    this.glowLayer = new GlowLayer("glow", this.scene, { mainTextureFixedSize: 1024, blurKernelSize: 32 });
+    this.glowLayer = new GlowLayer("glow", this.scene, { mainTextureFixedSize: 512, blurKernelSize: 16 });
     this.glowLayer.intensity = 0.6; 
 
     this.scene.onBeforeCameraRenderObservable.add(() => {
@@ -105,14 +109,6 @@ export class Motor3dService {
     this.scene.imageProcessingConfiguration.colorCurvesEnabled = false;
     this.scene.imageProcessingConfiguration.exposure = isBw ? 0.98 : 1.0;
     this.scene.imageProcessingConfiguration.contrast = isBw ? 1.15 : 1.0;
-
-    this.scene.materials.forEach(mat => {
-      if ((mat as any).imageProcessingConfiguration) {
-        (mat as any).imageProcessingConfiguration.colorCurvesEnabled = false;
-        (mat as any).imageProcessingConfiguration.exposure = isBw ? 0.98 : 1.0;
-        (mat as any).imageProcessingConfiguration.contrast = isBw ? 1.15 : 1.0;
-      }
-    });
   }
 
   forzarRedimension(): void {

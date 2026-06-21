@@ -1,3 +1,4 @@
+
 :host {
   display: block;
   width: 100vw;
@@ -30,3 +31,35 @@
   text-shadow: 1px 1px 2px black;
   z-index: 10;
 }
+
+/* 🔥 FIX: Overlay de Sincronización Local */
+.sync-overlay {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(15, 23, 42, 0.9);
+  border: 1px solid #3b82f6;
+  border-radius: 8px;
+  padding: 10px 15px;
+  color: #60a5fa;
+  font-size: 12px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  z-index: 9999;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+  animation: slideIn 0.3s ease-out;
+}
+
+.sync-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.2);
+  border-top-color: #60a5fa;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin { 100% { transform: rotate(360deg); } }
+@keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }

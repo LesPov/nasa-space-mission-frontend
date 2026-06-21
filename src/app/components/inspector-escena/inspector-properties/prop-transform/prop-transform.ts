@@ -7,6 +7,7 @@ import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
+import { WindowSyncService } from '../../../../core/services/window-sync.service';
 
 @Component({
   selector: 'app-prop-transform',
@@ -22,6 +23,7 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   private transformMutator = inject(TransformMutatorService);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
+  private windowSync = inject(WindowSyncService);
   private subs: Subscription[] = [];
 
   // Data bindings
@@ -125,16 +127,36 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.cdr.detectChanges();
   }
 
+  // 🔥 Añadido para enviar evento Live a la pestaña esclava
+  private broadcastLive() {
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (entity) {
+       this.windowSync.broadcast({
+         type: 'SYNC_TRANSFORM_LIVE',
+         payload: {
+           uid: entity.uid,
+           position: { x: this.objeto.position.x, y: this.objeto.position.y, z: this.objeto.position.z },
+           rotation: { x: this.objeto.rotation.x, y: this.objeto.rotation.y, z: this.objeto.rotation.z },
+           rotationQuaternion: this.objeto.rotationQuaternion ? { x: this.objeto.rotationQuaternion.x, y: this.objeto.rotationQuaternion.y, z: this.objeto.rotationQuaternion.z, w: this.objeto.rotationQuaternion.w } : null,
+           scaling: { x: this.objeto.scaling.x, y: this.objeto.scaling.y, z: this.objeto.scaling.z }
+         }
+       });
+    }
+  }
+
   aplicarPosicion() {
     this.transformMutator.aplicarPosicion(this.objeto, { x: this.localPosX, y: this.localPosY, z: this.localPosZ });
+    this.broadcastLive();
   }
 
   aplicarRotacion() {
     this.transformMutator.aplicarRotacion(this.objeto, { x: this.localRotX, y: this.localRotY, z: this.localRotZ });
+    this.broadcastLive();
   }
 
   aplicarEscala() {
     this.transformMutator.aplicarEscala(this.objeto, { x: this.localEscX, y: this.localEscY, z: this.localEscZ });
+    this.broadcastLive();
   }
 
   aplicarProyeccion() {

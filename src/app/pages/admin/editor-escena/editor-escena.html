@@ -1,4 +1,5 @@
 
+
 <!-- PANTALLA PRINCIPAL: SELECCIÓN DE MAPAS -->
 <ng-container *ngIf="!editando && !cargandoEscena()">
   <div class="galeria-header">
@@ -169,6 +170,10 @@
               <option value="TPS">🧍 3ra Persona</option>
             </select>
             <button class="btn-vp btn-play" *ngIf="editorSvc.playState() === 'EDITOR'" [disabled]="!esObjetoJugable()" (click)="iniciarModoPrueba()">▶️ Jugar Preview</button>
+            
+            <!-- 🔥 BOTÓN DUAL-WINDOW AÑADIDO AQUÍ -->
+            <button class="btn-vp btn-window" *ngIf="editorSvc.playState() === 'EDITOR'" [disabled]="!esObjetoJugable()" (click)="abrirVentanaPreview()">🪟 Ventana Externa</button>
+
             <span class="sync-status" [class.syncing]="estadoGuardado() === 'Guardando...'" *ngIf="editorSvc.playState() === 'EDITOR'">{{ estadoGuardado() }}</span>
             <button class="btn-vp btn-save" (click)="guardarMapaEnBD(false)" *ngIf="editorSvc.playState() === 'EDITOR'">💾 Guardar</button>
             <button class="btn-vp btn-stop" *ngIf="editorSvc.playState() !== 'EDITOR'" (click)="detenerModoPrueba()">⏹️ Volver al Editor</button>

@@ -1,3 +1,4 @@
+
 <div class="juego-container">
   
   <app-ui-loading *ngIf="isLoading()" texto="Cargando Entorno 3D..."></app-ui-loading>
@@ -23,9 +24,14 @@
     [playerState]="playerStateActual"
     [misionIniciada]="misionIniciada" 
     [cerrando]="cerrandoModalUsuario" 
-    [isDebugMode]="isAdmin" 
+    [isDebugMode]="isAdmin && !isDetached" 
     (onStart)="comenzarMisionUsuario()" 
     (onExit)="salirDelJuego()">
   </app-ui-mission>
+
+  <!-- 🔥 FIX: Overlay nativo de sincronización -->
+  <div class="sync-overlay" *ngIf="isSyncing()">
+     <div class="sync-spinner"></div> Actualizando entorno en vivo...
+  </div>
 
 </div>

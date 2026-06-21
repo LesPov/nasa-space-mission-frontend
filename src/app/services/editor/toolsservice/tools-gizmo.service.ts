@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Tags } from '@babylonjs/core';
+import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Tags, AbstractMesh } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
@@ -9,6 +9,7 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 import { CoreSceneProjectionService } from '../../../core/engine/scene/utils/core-scene-projection.service';
 import { AuthService } from '../../../core/services/auth';
 import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
+import { WindowSyncService } from '../../../core/services/window-sync.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsGizmoService {
@@ -20,6 +21,7 @@ export class ToolsGizmoService {
   private projectionSvc = inject(CoreSceneProjectionService);
   private authSvc = inject(AuthService);
   private ownership = inject(CameraOwnershipService);
+  private windowSync = inject(WindowSyncService); // 🔥 Inyectado
 
   public gizmoManager!: GizmoManager;
   public centerDragMesh!: Mesh;
@@ -74,6 +76,23 @@ export class ToolsGizmoService {
     this.setupDragEvents(centerDragBehavior);
   }
 
+  // 🔥 NUEVO: Función para emitir las coordenadas a 60 FPS
+  private broadcastLiveTransform(mesh: AbstractMesh): void {
+    const entity = this.entityManager.getEntityByMesh(mesh);
+    if (entity) {
+      this.windowSync.broadcast({
+        type: 'SYNC_TRANSFORM_LIVE',
+        payload: {
+          uid: entity.uid,
+          position: { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z },
+          rotation: { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z },
+          rotationQuaternion: mesh.rotationQuaternion ? { x: mesh.rotationQuaternion.x, y: mesh.rotationQuaternion.y, z: mesh.rotationQuaternion.z, w: mesh.rotationQuaternion.w } : null,
+          scaling: { x: mesh.scaling.x, y: mesh.scaling.y, z: mesh.scaling.z }
+        }
+      });
+    }
+  }
+
   private setupDragEvents(centerDragBehavior: PointerDragBehavior): void {
     const onDragStart = () => {
       this.isDraggingGizmo = true;
@@ -94,20 +113,11 @@ export class ToolsGizmoService {
         if (subSelected === 'collider' && this.debugSvc.debugCollider) {
           this.debugSvc.debugCollider.setAbsolutePosition(this.debugSvc.debugCollider.getAbsolutePosition().add(event.delta));
           this.centerDragMesh.position.copyFrom(this.debugSvc.debugCollider.getAbsolutePosition());
-        } else if (subSelected === 'camera' && this.debugSvc.debugCameraBox) {
-          this.debugSvc.debugCameraBox.setAbsolutePosition(this.debugSvc.debugCameraBox.getAbsolutePosition().add(event.delta));
-          this.centerDragMesh.position.copyFrom(this.debugSvc.debugCameraBox.getAbsolutePosition());
-        } else if (subSelected === 'light' && this.debugSvc.debugLightBox) {
-          this.debugSvc.debugLightBox.setAbsolutePosition(this.debugSvc.debugLightBox.getAbsolutePosition().add(event.delta));
-          this.centerDragMesh.position.copyFrom(this.debugSvc.debugLightBox.getAbsolutePosition());
-        } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
-          this.debugSvc.debugFogStartSphere.setAbsolutePosition(this.debugSvc.debugFogStartSphere.getAbsolutePosition().add(event.delta));
-          this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
-        } else {
+        } else if (!subSelected) {
           mesh.setAbsolutePosition(mesh.getAbsolutePosition().add(event.delta));
           this.updateCenterDragMeshRenderState(mesh, subSelected);
+          this.broadcastLiveTransform(mesh); // 🔥 Streaming en vivo
         }
-        
         this.state.onGizmoDrag.next();
       }
     };
@@ -117,15 +127,7 @@ export class ToolsGizmoService {
       const subSelected = this.state.subObjetoSeleccionado();
       if (!mesh) return;
 
-      if (subSelected === 'collider' && this.debugSvc.debugCollider) {
-        this.centerDragMesh.position.copyFrom(this.debugSvc.debugCollider.getAbsolutePosition());
-      } else if (subSelected === 'camera' && this.debugSvc.debugCameraBox) {
-        this.centerDragMesh.position.copyFrom(this.debugSvc.debugCameraBox.getAbsolutePosition());
-      } else if (subSelected === 'light' && this.debugSvc.debugLightBox) {
-        this.centerDragMesh.position.copyFrom(this.debugSvc.debugLightBox.getAbsolutePosition());
-      } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
-        this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
-      } else {
+      if (!subSelected) {
         mesh.computeWorldMatrix(true);
         const pivotPos = this.gizmoPivotNode.getAbsolutePosition();
 
@@ -144,8 +146,8 @@ export class ToolsGizmoService {
         mesh.computeWorldMatrix(true);
 
         this.updateCenterDragMeshRenderState(mesh, subSelected);
+        this.broadcastLiveTransform(mesh); // 🔥 Streaming en vivo
       }
-
       this.state.onGizmoDrag.next();
     };
 

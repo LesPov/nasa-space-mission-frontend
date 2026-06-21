@@ -1,4 +1,5 @@
 
+
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -33,6 +34,9 @@ import { MissionModalService } from '../../../services/editor/modals/mission-mod
 import { AuthService } from '../../../core/services/auth';
 import { AbstractMesh } from '@babylonjs/core';
 
+// 🔥 FIX: Inyección del WindowSyncService
+import { WindowSyncService } from '../../../core/services/window-sync.service';
+
 @Component({
   selector: 'app-editor-escena', 
   standalone: true,
@@ -61,6 +65,9 @@ export class EditorEscena implements OnInit, OnDestroy {
   public authSvc = inject(AuthService);
   public cdr = inject(ChangeDetectorRef);
   private router = inject(Router);
+
+  // 🔥 FIX: Instancia de Window Sync
+  private windowSync = inject(WindowSyncService);
 
   public playModeSvc = inject(EditorPlayModeService);
 
@@ -293,6 +300,13 @@ export class EditorEscena implements OnInit, OnDestroy {
         this.entityManager.clearDeletedRecords();
 
         this.estadoGuardado.set('Guardado automático ✓');
+        
+        // 🔥 FIX: Emitimos la actualización a la ventana esclava
+        this.windowSync.broadcast({
+          type: 'SYNC_MAP_DATA',
+          payload: payload
+        });
+
         if (!silencioso) alert('Mapa guardado exitosamente');
         setTimeout(() => { if (this.estadoGuardado() === 'Guardado automático ✓') this.estadoGuardado.set(''); }, 3000);
       },
@@ -308,6 +322,20 @@ export class EditorEscena implements OnInit, OnDestroy {
     const entity = this.entityManager.getEntityByMesh(obj);
     if (!entity) return false;
     return !!entity.characterConfig;
+  }
+
+  // 🔥 FIX: Función Dual-Window 
+  abrirVentanaPreview() {
+    if (!this.episodioIdActivo || !this.esObjetoJugable()) return;
+    
+    this.guardarMapaEnBD(true);
+    
+    const url = this.router.serializeUrl(
+      this.router.createUrlTree(['/jugador/jugar', this.episodioIdActivo], { queryParams: { detached: 'true' } })
+    );
+    
+    // Abre ventana a 1280x720 para testear
+    window.open(url, '_blank', 'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes');
   }
 
   iniciarModoPrueba() {

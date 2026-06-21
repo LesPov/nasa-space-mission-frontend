@@ -15,11 +15,15 @@ import { AuthService } from '../../../core/services/auth';
 import { GameStateService } from '../../../core/engine/runtime/state/game-state.service'; 
 import { AdminFreeCameraService } from '../../../core/engine/runtime/cameras/admin-free-camera.service';
 import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
+import { GameContextService } from '../../../core/engine/session/game-context.service';
+import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiMission } from '../../../components/ui-mission/ui-mission';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
+import { WindowSyncService } from '../../../core/services/window-sync.service';
 
 @Component({
   selector: 'app-juego-pantalla',
@@ -41,11 +45,18 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private gameStateSvc = inject(GameStateService); 
   private adminFreeCam = inject(AdminFreeCameraService);
   private ownership = inject(CameraOwnershipService);
+  private gameContext = inject(GameContextService);
+  private entityManager = inject(EntityManagerService);
+  private worldSettingsSvc = inject(WorldSettingsService);
+  private windowSync = inject(WindowSyncService);
 
   public isInteracting = signal<boolean>(false);
   public pointerLocked = signal<boolean>(false);
   public isLoading = signal<boolean>(true);
   
+  public isDetached = false;
+  public isSyncing = signal<boolean>(false);
+
   public modalMisionUsuario = false;
   public misionIniciada = false;
   public cerrandoModalUsuario = false;
@@ -83,6 +94,10 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    this.route.queryParams.subscribe(params => {
+      this.isDetached = params['detached'] === 'true';
+    });
+
     const id = this.route.snapshot.paramMap.get('id');
     if (id) {
       forkJoin({
@@ -101,7 +116,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
             this.gameStateSvc.loadGame(this.playerStateActual);
             
-            // Eliminamos this.isAdmin del parámetro y que el motor lo evalúe por dentro.
             await this.runtime.bootProductionGame(res.episodio);
             
             this.isLoading.set(false);
@@ -111,6 +125,17 @@ export class JuegoPantalla implements OnInit, OnDestroy {
             this.fpsInterval = setInterval(() => {
               this.fps.set(this.motor3dSvc.currentFps.toFixed(0));
             }, 500);
+
+            if (this.isDetached) {
+               this.windowSync.messages$.subscribe(msg => {
+                 if (msg.type === 'SYNC_MAP_DATA') {
+                   this.handleLiveSync(msg.payload);
+                 } else if (msg.type === 'SYNC_TRANSFORM_LIVE') {
+                   // 🔥 FIX: Actualización instantánea 60fps
+                   this.handleLiveTransform(msg.payload);
+                 }
+               });
+            }
 
           } catch (err: any) {
             alert(err.message);
@@ -154,6 +179,106 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     });
   }
 
+  // 🔥 FIX: Streaming de Posiciones sin Lag
+  handleLiveTransform(data: any) {
+      const entity = this.entityManager.getEntityByUid(data.uid);
+      if (entity && entity.view) {
+          entity.view.position.set(data.position.x, data.position.y, data.position.z);
+          
+          if (data.rotationQuaternion && entity.view.rotationQuaternion) {
+              entity.view.rotationQuaternion.set(data.rotationQuaternion.x, data.rotationQuaternion.y, data.rotationQuaternion.z, data.rotationQuaternion.w);
+          } else if (data.rotation) {
+              entity.view.rotation.set(data.rotation.x, data.rotation.y, data.rotation.z);
+          }
+          
+          entity.view.scaling.set(data.scaling.x, data.scaling.y, data.scaling.z);
+          entity.syncTransformFromView();
+      }
+  }
+
+  async handleLiveSync(newMapData: any) {
+    this.isSyncing.set(true);
+
+    let requiereReboot = false;
+
+    // 1. Eliminar objetos borrados (Cero lag)
+    if (newMapData.deletedObjects?.length) {
+        newMapData.deletedObjects.forEach((uid: string) => this.entityManager.removeEntity(uid));
+    }
+    if (newMapData.deletedTriggers?.length) {
+        newMapData.deletedTriggers.forEach((uid: string) => this.entityManager.removeEntity(uid));
+    }
+
+    // 2. Aplicar Actualizaciones Ligeras (Cero lag)
+    const procesarDeltas = (deltas: any[]) => {
+        if (!deltas) return;
+        for (const delta of deltas) {
+            const entity = this.entityManager.getEntityByUid(delta.uid);
+            if (entity) {
+                if (delta.position) entity.transform.position = { ...delta.position };
+                if (delta.rotation) entity.transform.rotation = { ...delta.rotation };
+                if (delta.scale) entity.transform.scale = { ...delta.scale };
+                
+                if (delta.properties) {
+                   if (delta.properties.color) entity.visual.color = delta.properties.color;
+                   if (delta.properties.colorBW) entity.visual.colorBW = delta.properties.colorBW;
+                }
+                
+                entity.syncToView();
+                entity.isDirty = false;
+            } else {
+                requiereReboot = true;
+            }
+        }
+    };
+
+    procesarDeltas(newMapData.sceneObjectsDelta);
+    procesarDeltas(newMapData.triggersDelta);
+
+    // 3. Actualizar Settings Globales
+    if (newMapData.worldSettings || newMapData.uiSettings) {
+        this.worldSettingsSvc.loadFromDb(newMapData.worldSettings, newMapData.uiSettings);
+        this.worldSettingsSvc.applyToScene(this.motor3dSvc.scene, (mode) => this.motor3dSvc.setVisualMode(mode));
+    }
+
+    // 4. Fallback: Reboot del motor solo si se agregan objetos estructurales nuevos
+    if (requiereReboot) {
+        let lastPos: any = null;
+        let lastRotQuat: any = null;
+        let lastRotEuler: any = null;
+        
+        const playerEnt = this.gameContext.activePlayerEntity();
+        if (playerEnt && playerEnt.view) {
+           lastPos = playerEnt.view.position.clone();
+           if (playerEnt.view.rotationQuaternion) {
+               lastRotQuat = { x: playerEnt.view.rotationQuaternion.x, y: playerEnt.view.rotationQuaternion.y, z: playerEnt.view.rotationQuaternion.z, w: playerEnt.view.rotationQuaternion.w };
+           } else {
+               lastRotEuler = { x: playerEnt.view.rotation.x, y: playerEnt.view.rotation.y, z: playerEnt.view.rotation.z };
+           }
+        }
+
+        this.episodioActual = { ...this.episodioActual, ...newMapData };
+        
+        try {
+          const spawnEntity = await this.runtime.bootProductionGame(this.episodioActual);
+          
+          if (lastPos && spawnEntity.view) {
+             spawnEntity.view.position.copyFrom(lastPos);
+             if (lastRotQuat && spawnEntity.view.rotationQuaternion) {
+                 spawnEntity.view.rotationQuaternion.set(lastRotQuat.x, lastRotQuat.y, lastRotQuat.z, lastRotQuat.w);
+             } else if (lastRotEuler && !spawnEntity.view.rotationQuaternion) {
+                 spawnEntity.view.rotation.set(lastRotEuler.x, lastRotEuler.y, lastRotEuler.z);
+             }
+             spawnEntity.syncTransformFromView();
+          }
+        } catch(e) {
+           console.warn('[Sync] Fallo la recarga en vivo del mapa:', e);
+        }
+    }
+
+    this.isSyncing.set(false);
+  }
+
   comenzarMisionUsuario() {
     this.cerrandoModalUsuario = true; 
     
@@ -192,6 +317,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   }
 
   salirDelJuego() {
+    if (this.isDetached) {
+        window.close();
+        return;
+    }
+
     if (this.episodioActual && this.playerStateActual) {
       const stateToSave = this.gameStateSvc.getSaveData();
       this.epiApiSvc.guardarEstadoJugador(this.episodioActual.id, 1, stateToSave).subscribe();

@@ -46,7 +46,6 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
             const ry = (step.procY || 0) * (Math.PI / 180) * dtFraction;
             const rz = (step.procZ || 0) * (Math.PI / 180) * dtFraction;
             
-            // Usamos Quaternion matemáticamente puro para evitar Gimbal Lock sin tocar la vista
             const currentQuat = Quaternion.FromEulerAngles(entity.transform.rotation.x, entity.transform.rotation.y, entity.transform.rotation.z);
             const deltaQuat = Quaternion.FromEulerAngles(rx, ry, rz);
             currentQuat.multiplyInPlace(deltaQuat);
@@ -60,7 +59,7 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
     },
     stopBaked: {
         execute: (step, entity) => {
-            entity.playerRuntime.stopBakedRequested = true;
+            if (entity.playerRuntime) entity.playerRuntime.stopBakedRequested = true;
             entity.isDirty = true;
         }
     },
@@ -163,8 +162,11 @@ export class PlayerSequenceService implements IUpdatable {
     const entities = this.entityManager.getAllEntities();
     for (const entity of entities) {
         if (entity.playerConfig?.sequences && entity.playerConfig.sequences.length > 0) {
-            entity.playerRuntime.seqRuntime = this.actualizarSecuencia(dtMs, entity);
-        } else if (!entity.playerRuntime.seqRuntime) {
+            const runtime = this.actualizarSecuencia(dtMs, entity);
+            if (entity.playerRuntime) {
+                entity.playerRuntime.seqRuntime = runtime;
+            }
+        } else if (entity.playerRuntime && !entity.playerRuntime.seqRuntime) {
             entity.playerRuntime.seqRuntime = this.getDefaultRuntime(entity);
         }
     }
@@ -324,7 +326,6 @@ export class PlayerSequenceService implements IUpdatable {
       state.orientationLocked = this.shouldLockOrientationForSequence(step) || state.orientationLocked;
     }
 
-    // 🔥 ECS PURO: Manejadores de acciones operan sobre entidades y componentes.
     if (step.clipOverride === 'none') {
         ActionHandlers['stopBaked']?.execute(step, entity, this.entityManager, dtMs, 0, runtime);
     }
@@ -344,7 +345,6 @@ export class PlayerSequenceService implements IUpdatable {
         runtime.rootMotion.z = (soF / durSec) * dtSec;
     }
 
-    // Congelamiento de rotación si la animación lo solicita
     if (state.orientationLocked && state.rotation) {
         entity.transform.rotation = { ...state.rotation };
         entity.isDirty = true;

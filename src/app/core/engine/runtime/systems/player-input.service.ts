@@ -22,7 +22,7 @@ export class PlayerInputService implements IUpdatable {
   private eventBus = inject(GameEventBusService);
 
   public start(): void {
-    this.tecladoObserver = null; // 🔥 FIX CRÍTICO: Forzar anclaje a la nueva escena limpiando observer previo
+    this.tecladoObserver = null; 
     this.iniciarEscuchaTeclado(this.motor3d.scene, {
       onToggleCamera: () => {
          this.eventBus.emit({ type: 'ToggleCameraRequested' });
@@ -57,7 +57,7 @@ export class PlayerInputService implements IUpdatable {
     if (!this.isEnabled) return;
     
     const playerEntity = this.context.activePlayerEntity();
-    if (!playerEntity) return;
+    if (!playerEntity || !playerEntity.playerRuntime) return;
 
     const seqRuntime = playerEntity.playerRuntime.seqRuntime;
     const canReceiveInput = this.context.isPointerLocked() && (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation));

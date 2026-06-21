@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import {
   Mesh, Vector3, Matrix, TransformNode, UniversalCamera,
@@ -39,7 +40,7 @@ export class PlayerCameraManagerService implements IUpdatable {
     const playerEntity = this.context.activePlayerEntity();
     const activeCamera = this.ownership.getCamera();
     
-    if (playerEntity && activeCamera && playerEntity.playerRuntime.seqRuntime) {
+    if (playerEntity && activeCamera && playerEntity.playerRuntime?.seqRuntime) {
       this.actualizarPosicionCamara(
         playerEntity,
         activeCamera,

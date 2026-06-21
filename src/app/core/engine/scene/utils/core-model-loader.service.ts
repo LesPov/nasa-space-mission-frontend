@@ -112,10 +112,11 @@ export class CoreModelLoaderService {
 
     if (isModel) {
       const headNode = rootNode.getChildTransformNodes(false).find(n => n.name.toLowerCase() === 'head' || n.name.toLowerCase() === 'neck' || n.name.toLowerCase().includes('head')) as TransformNode;
-      if (headNode && entity.playerRuntime) {
+      if (headNode) {
         headNode.computeWorldMatrix(true);
         rootNode.computeWorldMatrix(true);
-        entity.playerRuntime.initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
+        // 🔥 FIX: Actualizado al getter/setter directo del ECS
+        entity.initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
         entity.syncToView(); 
       }
     }
@@ -137,7 +138,6 @@ export class CoreModelLoaderService {
       lightObj.parent = targetParent;
       lightObj.intensity = entity.light.intensity;
       
-      // 🔥 FIX: Usa Source of Truth directo en lugar de depender de scene.metadata en Loaders
       const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       const activeColor = isBW ? entity.light.lightColorBW : entity.light.lightColor;
 

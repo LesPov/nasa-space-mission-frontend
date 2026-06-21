@@ -4,7 +4,6 @@ import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription, debounceTime } from 'rxjs';
-import { AbstractMesh, Mesh } from '@babylonjs/core';
 
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -32,6 +31,7 @@ import { InputOrchestratorService } from '../../../core/engine/runtime/systems/i
 import { AddObjectModalService } from '../../../services/editor/modals/add-object-modal.service';
 import { MissionModalService } from '../../../services/editor/modals/mission-modal.service';
 import { AuthService } from '../../../core/services/auth';
+import { AbstractMesh } from '@babylonjs/core';
 
 @Component({
   selector: 'app-editor-escena', 
@@ -89,10 +89,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   public listaEpisodios: any[] = [];
   public hoveredEpisodio: number | null = null;
   
-  public showModalMap = false;
-  public nuevoTitulo = '';
-  public nuevaDesc = '';
-
   public vistaPrueba: 'FPS' | 'TPS' = 'FPS';
   private activeCameraView = 'FPS';
 
@@ -100,6 +96,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   private autoSaveSub!: Subscription;
   private eventBusSub!: Subscription;
 
+  // Acceso directo a variables de servicios para el HTML sin engordar este controlador
   get objNombre() { return this.addObjSvc.objNombre; } set objNombre(v) { this.addObjSvc.objNombre = v; }
   get objTipo() { return this.addObjSvc.objTipo; } set objTipo(v) { this.addObjSvc.objTipo = v; }
   get objRol() { return this.addObjSvc.objRol; } set objRol(v) { this.addObjSvc.objRol = v; }
@@ -115,10 +112,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   get listaAssets() { return this.addObjSvc.listaAssets; }
   get archivoSubida() { return this.addObjSvc.archivoSubida; } set archivoSubida(v) { this.addObjSvc.archivoSubida = v; }
   get subiendoAsset() { return this.addObjSvc.subiendoAsset; }
-
-  get showMissionModal() { return this.missionSvc.showMissionModal; } set showMissionModal(v) { this.missionSvc.showMissionModal = v; }
-  get missionModalMode() { return this.missionSvc.missionModalMode; }
-  get missionModalData() { return this.missionSvc.missionModalData; }
 
   constructor() {
     effect(() => {
@@ -270,69 +263,15 @@ export class EditorEscena implements OnInit, OnDestroy {
   cerrarModalObjeto() { this.addObjSvc.cerrarModalObjeto(); }
 
   crearNuevoEpisodio() {
-    if (!this.nuevoTitulo) return;
-    this.epiApiSvc.crearEpisodio(this.nuevoTitulo, this.nuevaDesc).subscribe({
+    if (!this.missionSvc.newMapTitle) return;
+    this.epiApiSvc.crearEpisodio(this.missionSvc.newMapTitle, this.missionSvc.newMapDesc).subscribe({
       next: (res) => {
         this.listaEpisodios.unshift(res);
-        this.showModalMap = false;
-        this.nuevoTitulo = '';
-        this.nuevaDesc = '';
+        this.missionSvc.cerrarCrearMapa();
         this.entrarAlEditor(res);
       },
       error: (err) => alert('Error creando episodio')
     });
-  }
-
-  abrirModalMision(esEdicion: boolean) {
-    this.missionSvc.abrirModalMision(esEdicion, this.episodioCompletoData, this.motor3dSvc.scene?.metadata?.uiSettings);
-  }
-
-  actualizarMisionModalEnVivo(data: any) {
-    if (this.missionModalMode === 'edit') {
-      if (this.episodioCompletoData) {
-        this.episodioCompletoData.title = data.title;
-        this.episodioCompletoData.description = data.description;
-      }
-      this.mapaActualNombre = data.title;
-
-      if (this.motor3dSvc.scene) {
-        this.motor3dSvc.scene.metadata = {
-          ...this.motor3dSvc.scene.metadata,
-          uiSettings: JSON.parse(JSON.stringify(data))
-        };
-      }
-      this.cdr.detectChanges(); 
-    }
-  }
-
-  guardarMisionModal(data: any) {
-    if (this.missionModalMode === 'create') {
-      this.cargandoEscena.set(true);
-      this.cargandoTexto.set('Creando episodio...');
-      this.epiApiSvc.crearEpisodio(data.title, data.description).subscribe({
-        next: (res) => {
-          this.listaEpisodios.unshift(res);
-          this.missionSvc.cerrarModalMision();
-          this.entrarAlEditor(res);
-
-          const interval = setInterval(() => {
-            if (!this.cargandoEscena() && this.motor3dSvc.scene) {
-               this.motor3dSvc.scene.metadata = { ...(this.motor3dSvc.scene.metadata || {}), uiSettings: data };
-               if (this.episodioCompletoData) this.episodioCompletoData.uiSettings = data;
-               this.guardarMapaEnBD(true);
-               clearInterval(interval);
-            }
-          }, 500);
-        },
-        error: (err) => {
-          this.cargandoEscena.set(false);
-          alert('Error creando episodio');
-        }
-      });
-    } else {
-      this.missionSvc.cerrarModalMision();
-      this.guardarMapaEnBD(false);
-    }
   }
 
   guardarMapaEnBD(silencioso = false) {

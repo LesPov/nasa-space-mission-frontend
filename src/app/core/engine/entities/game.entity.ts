@@ -1,182 +1,97 @@
-import { AbstractMesh, Vector3, Quaternion, StandardMaterial, Color3 } from '@babylonjs/core';
-import { PlayerRuntimeConfig } from '../models/player-config.model';
+import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
+import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
+import { 
+  MovementComponent, JumpComponent, PlayerCameraConfigComponent, FogConfigComponent, 
+  AnimationBindingsComponent, SequencesComponent, PhysicsConfigComponent, BlendConfigComponent, 
+  AnimationEnabledComponent, DebugConfigComponent, SelectionRangeComponent, CamOffsetComponent, 
+  AnimationNamesComponent, AutoAnimComponent, InitialHeadLocalComponent 
+} from './player-sub-components';
 
 export class TransformComponent {
-  constructor(
-    public position = { x: 0, y: 0, z: 0 },
-    public rotation = { x: 0, y: 0, z: 0 },
-    public scale = { x: 1, y: 1, z: 1 }
-  ) {}
+  constructor(public position = { x: 0, y: 0, z: 0 }, public rotation = { x: 0, y: 0, z: 0 }, public scale = { x: 1, y: 1, z: 1 }) {}
 }
 
 export class VisualComponent {
   constructor(
-    public color = '#ffffff', 
-    public colorBW = '#ffffff', 
-    public isSolid = true, 
-    public isSelectable = true, 
-    public ignoraNiebla = false, 
-    public esEmisivo = false, 
-    public brilloIntensidad = 1.0, 
-    public assetId?: number | null, 
-    public path?: string
+    public color = '#ffffff', public colorBW = '#ffffff', public isSolid = true, 
+    public isSelectable = true, public ignoraNiebla = false, public esEmisivo = false, 
+    public brilloIntensidad = 1.0, public assetId?: number | null, public path?: string
   ) {}
 }
 
 export class PhysicsComponent {
-  constructor(
-    public type = 'box', 
-    public sizeX = 0.5, 
-    public sizeY = 0.5, 
-    public sizeZ = 0.5, 
-    public offsetX = 0, 
-    public offsetY = 0, 
-    public offsetZ = 0
-  ) {}
+  constructor(public type = 'box', public sizeX = 0.5, public sizeY = 0.5, public sizeZ = 0.5, public offsetX = 0, public offsetY = 0, public offsetZ = 0) {}
 }
 
 export class InteractionComponent {
   constructor(
-    public mensaje = '', 
-    public interactDistanceFPS = 3.0, 
-    public interactDistanceTPS = 5.0, 
-    public interactSequenceIdFPS = '', 
-    public interactSequenceIdTPS = '', 
-    public interactSequenceId = '', 
-    public respawnTime = 8
+    public mensaje = '', public interactDistanceFPS = 3.0, public interactDistanceTPS = 5.0, 
+    public interactSequenceIdFPS = '', public interactSequenceIdTPS = '', 
+    public interactSequenceId = '', public respawnTime = 8
   ) {}
 }
 
 export class LightComponent {
   constructor(
-    public lightColor = '#ffffff', 
-    public lightColorBW = '#ffffff', 
-    public intensity = 1.0, 
-    public range = 50, 
-    public angle = 60, 
-    public lightPosX = 0, 
-    public lightPosY = 0, 
-    public lightPosZ = 0, 
-    public attachedNodePath = '', 
-    public attachedNodeName = ''
+    public lightColor = '#ffffff', public lightColorBW = '#ffffff', public intensity = 1.0, 
+    public range = 50, public angle = 60, public lightPosX = 0, public lightPosY = 0, 
+    public lightPosZ = 0, public attachedNodePath = '', public attachedNodeName = ''
   ) {}
 }
 
 export class MediaConfigComponent {
   constructor(
-    public videoUrl = '', 
-    public imageUrl = '', 
-    public profundidadProyeccion = 10, 
-    public anguloProyeccion = 0, 
-    public proyeccionAncho = 2, 
-    public proyeccionAlto = 2, 
-    public proyeccionRepeticiones = 1, 
-    public proyeccionEspaciado = 2, 
-    public proyeccionEje = 'Y', 
+    public videoUrl = '', public imageUrl = '', public profundidadProyeccion = 10, 
+    public anguloProyeccion = 0, public proyeccionAncho = 2, public proyeccionAlto = 2, 
+    public proyeccionRepeticiones = 1, public proyeccionEspaciado = 2, public proyeccionEje = 'Y', 
     public fadeDistance = 0
   ) {}
 }
 
 export class TriggerConfigComponent {
   constructor(
-    public isComposite = false, 
-    public triggerShape = 'cube', 
-    public conditions: string[] = [], 
-    public mensajeEntrada = '', 
-    public mensajeSalida = '', 
-    public soundUrlEntrada = '', 
-    public soundUrlSalida = '', 
-    public seqEntrada = '', 
-    public seqSalida = '', 
-    public timeEntrada = 4.5, 
-    public timeSalida = 4.5, 
-    public videoEntrada = '', 
-    public videoSalida = '', 
-    public condition = 'on_enter', 
-    public mensaje = '', 
-    public soundUrl = '', 
-    public interactSequenceId = '', 
-    public timeNorm = 4.5, 
-    public videoNorm = '', 
-    public isRepeatable = false, 
-    public gameConditions: any[] = [], 
+    public isComposite = false, public triggerShape = 'cube', public conditions: string[] = [], 
+    public mensajeEntrada = '', public mensajeSalida = '', public soundUrlEntrada = '', 
+    public soundUrlSalida = '', public seqEntrada = '', public seqSalida = '', 
+    public timeEntrada = 4.5, public timeSalida = 4.5, public videoEntrada = '', 
+    public videoSalida = '', public condition = 'on_enter', public mensaje = '', 
+    public soundUrl = '', public interactSequenceId = '', public timeNorm = 4.5, 
+    public videoNorm = '', public isRepeatable = false, public gameConditions: any[] = [], 
     public stateMutations: any[] = []
   ) {}
 }
 
-export class PlayerConfigComponent {
-  constructor(
-    public playerConfig?: PlayerRuntimeConfig,
-    public selectionRange = { fpsAdminMax: 10000, fpsUserMax: 3 },
-    public camOffset = { x: 0, y: 1.6, z: 0 },
-    public animationNames: string[] = [],
-    public autoAnim: any = null
-  ) {}
-}
-
 export class CharacterConfigComponent {
-  constructor(
-    public characterType: string = 'generic',
-    public isPlayable: boolean = false,
-    public faction: string = 'neutral'
-  ) {}
+  constructor(public characterType: string = 'generic', public isPlayable: boolean = false, public faction: string = 'neutral') {}
 }
 
 export class InteractionRuntimeComponent {
-  constructor(
-    public isHoveredByPlayer = false,
-    public currentHoverScale = 1.0,
-    public isProcessingAction = false
-  ) {}
+  constructor(public isHoveredByPlayer = false, public currentHoverScale = 1.0, public isProcessingAction = false) {}
 }
 
 export class MediaRuntimeComponent {
   constructor(
-    public runtimeDecals: AbstractMesh[] = [], 
-    public runtimeDecalMaterial?: StandardMaterial, 
-    public lastVisualModeBW?: boolean,
-    public videoCommand?: 'play' | 'pause' | 'stop'
+    public runtimeDecals: AbstractMesh[] = [], public runtimeDecalMaterial?: StandardMaterial, 
+    public lastVisualModeBW?: boolean, public videoCommand?: 'play' | 'pause' | 'stop'
   ) {}
 }
 
 export class LightRuntimeComponent {
-  constructor(
-    public currentIntensity?: number
-  ) {}
+  constructor(public currentIntensity?: number) {}
 }
 
 export class TriggerRuntimeComponent {
-  constructor(
-    public isEnabled = true, 
-    public hasTriggeredEnter = false, 
-    public hasTriggeredExit = false
-  ) {}
+  constructor(public isEnabled = true, public hasTriggeredEnter = false, public hasTriggeredExit = false) {}
 }
 
 export class PlayerRuntimeComponent {
   constructor(
-    public initialHeadLocal?: Vector3,
-    public intentions = {
-      moveForward: false,
-      moveBackward: false,
-      moveLeft: false,
-      moveRight: false,
-      run: false,
-      jump: false
-    },
+    public intentions = { moveForward: false, moveBackward: false, moveLeft: false, moveRight: false, run: false, jump: false },
     public physicsState = {
-      isMoving: false, 
-      isRunning: false, 
-      isGrounded: true, 
-      isJumping: false, 
-      isFalling: false,
-      isHardLanding: false, 
-      isRecoveringFromFall: false, 
-      landingFrame: 0, 
-      recoveryFrame: 0,
-      velocidadY: -0.1, 
-      highestY: -9999
+      isMoving: false, isRunning: false, isGrounded: true, isJumping: false, isFalling: false,
+      isHardLanding: false, isRecoveringFromFall: false, landingFrame: 0, recoveryFrame: 0,
+      velocidadY: -0.1, highestY: -9999
     },
     public seqRuntime: SeqRuntime | null = null,
     public stopBakedRequested: boolean = false
@@ -208,14 +123,13 @@ export class GameEntity {
     const isSphere = type === 'sphere' || type === 'bubble';
     this.addComponent('physics', new PhysicsComponent(isSphere ? 'sphere' : 'box'));
     this.addComponent('interaction', new InteractionComponent());
-    this.addComponent('playerConfig', new PlayerConfigComponent());
+    this.addComponent('interactionRuntime', new InteractionRuntimeComponent());
 
     if (['npc', 'spawn_point', 'politico', 'militar'].includes(rol)) {
       this.addComponent('characterConfig', new CharacterConfigComponent(rol, rol === 'spawn_point'));
+      this.addComponent('playerRuntime', new PlayerRuntimeComponent());
+      this.playerConfig = cloneDefaultPlayerConfig(); 
     }
-
-    this.addComponent('playerRuntime', new PlayerRuntimeComponent());
-    this.addComponent('interactionRuntime', new InteractionRuntimeComponent());
 
     if (type.startsWith('light_')) {
       this.addComponent('light', new LightComponent());
@@ -275,29 +189,67 @@ export class GameEntity {
   get characterConfig(): CharacterConfigComponent | undefined { return this.getComponent<CharacterConfigComponent>('characterConfig'); }
   set characterConfig(v) { if(v) this.addComponent('characterConfig', v); }
 
-  get playerConfig() { return this.getComponent<PlayerConfigComponent>('playerConfig')?.playerConfig; }
-  set playerConfig(v) { const p = this.getComponent<PlayerConfigComponent>('playerConfig'); if(p) p.playerConfig = v; }
-  
-  get selectionRange() { return this.getComponent<PlayerConfigComponent>('playerConfig')!.selectionRange; }
-  set selectionRange(v) { const p = this.getComponent<PlayerConfigComponent>('playerConfig'); if(p) p.selectionRange = v; }
-  
-  get camOffset() { return this.getComponent<PlayerConfigComponent>('playerConfig')!.camOffset; }
-  set camOffset(v) { const p = this.getComponent<PlayerConfigComponent>('playerConfig'); if(p) p.camOffset = v; }
-
-  get animationNames() { return this.getComponent<PlayerConfigComponent>('playerConfig')!.animationNames; }
-  set animationNames(v) { const p = this.getComponent<PlayerConfigComponent>('playerConfig'); if(p) p.animationNames = v; }
-
-  get autoAnim() { return this.getComponent<PlayerConfigComponent>('playerConfig')!.autoAnim; }
-  set autoAnim(v) { const p = this.getComponent<PlayerConfigComponent>('playerConfig'); if(p) p.autoAnim = v; }
-
   get mediaRuntime(): MediaRuntimeComponent | undefined { return this.getComponent<MediaRuntimeComponent>('mediaRuntime'); }
   get triggerRuntime(): TriggerRuntimeComponent | undefined { return this.getComponent<TriggerRuntimeComponent>('triggerRuntime'); }
   get lightRuntime(): LightRuntimeComponent | undefined { return this.getComponent<LightRuntimeComponent>('lightRuntime'); }
   get playerRuntime(): PlayerRuntimeComponent { return this.getComponent<PlayerRuntimeComponent>('playerRuntime')!; }
   get interactionRuntime(): InteractionRuntimeComponent { return this.getComponent<InteractionRuntimeComponent>('interactionRuntime')!; }
 
-  get initialHeadLocal() { return this.playerRuntime.initialHeadLocal; }
-  set initialHeadLocal(v) { this.playerRuntime.initialHeadLocal = v; }
+  get initialHeadLocal() { return this.getComponent<InitialHeadLocalComponent>('initialHeadLocal')?.position; }
+  set initialHeadLocal(v) { if(v) this.addComponent('initialHeadLocal', new InitialHeadLocalComponent(v)); else this.removeComponent('initialHeadLocal'); }
+
+  get selectionRange() { return this.getComponent<SelectionRangeComponent>('selectionRange')?.config || { fpsAdminMax: 10000, fpsUserMax: 3 }; }
+  set selectionRange(v) { this.addComponent('selectionRange', new SelectionRangeComponent(v)); }
+
+  get camOffset() { return this.getComponent<CamOffsetComponent>('camOffset')?.config || { x: 0, y: 1.6, z: 0 }; }
+  set camOffset(v) { this.addComponent('camOffset', new CamOffsetComponent(v)); }
+
+  get animationNames() { return this.getComponent<AnimationNamesComponent>('animationNames')?.names || []; }
+  set animationNames(v) { this.addComponent('animationNames', new AnimationNamesComponent(v)); }
+
+  get autoAnim() { return this.getComponent<AutoAnimComponent>('autoAnim')?.config || null; }
+  set autoAnim(v) { if(v) this.addComponent('autoAnim', new AutoAnimComponent(v)); else this.removeComponent('autoAnim'); }
+
+  get playerConfig(): PlayerRuntimeConfig | undefined {
+    const isCharacter = ['npc', 'spawn_point', 'politico', 'militar'].includes(this.rol);
+    if (!isCharacter && !this.hasComponent('sequences') && !this.hasComponent('fogConfig') && !this.hasComponent('animations')) {
+        return undefined;
+    }
+
+    const base = cloneDefaultPlayerConfig();
+    return {
+         movement: this.getComponent<MovementComponent>('movement')?.config ?? base.movement,
+         jump: this.getComponent<JumpComponent>('jump')?.config ?? base.jump,
+         camera: this.getComponent<PlayerCameraConfigComponent>('playerCamera')?.config ?? base.camera,
+         fog: this.getComponent<FogConfigComponent>('fogConfig')?.config ?? base.fog,
+         animations: this.getComponent<AnimationBindingsComponent>('animations')?.config ?? base.animations,
+         sequences: this.getComponent<SequencesComponent>('sequences')?.sequences ?? [],
+         physics: this.getComponent<PhysicsConfigComponent>('physicsConfig')?.config ?? base.physics,
+         blend: this.getComponent<BlendConfigComponent>('blendConfig')?.config ?? base.blend,
+         animationEnabled: this.getComponent<AnimationEnabledComponent>('animationEnabled')?.config ?? base.animationEnabled,
+         debug: this.getComponent<DebugConfigComponent>('debugConfig')?.config ?? base.debug,
+    };
+  }
+
+  set playerConfig(v: PlayerRuntimeConfig | undefined) {
+    if (!v) {
+        this.removeComponent('movement'); this.removeComponent('jump'); this.removeComponent('playerCamera');
+        this.removeComponent('fogConfig'); this.removeComponent('animations'); this.removeComponent('sequences');
+        this.removeComponent('physicsConfig'); this.removeComponent('blendConfig');
+        this.removeComponent('animationEnabled'); this.removeComponent('debugConfig');
+        return;
+    }
+    this.addComponent('movement', new MovementComponent(v.movement));
+    this.addComponent('jump', new JumpComponent(v.jump));
+    this.addComponent('playerCamera', new PlayerCameraConfigComponent(v.camera));
+    this.addComponent('fogConfig', new FogConfigComponent(v.fog));
+    this.addComponent('animations', new AnimationBindingsComponent(v.animations));
+    this.addComponent('sequences', new SequencesComponent(v.sequences));
+    this.addComponent('physicsConfig', new PhysicsConfigComponent(v.physics));
+    this.addComponent('blendConfig', new BlendConfigComponent(v.blend));
+    this.addComponent('animationEnabled', new AnimationEnabledComponent(v.animationEnabled));
+    this.addComponent('debugConfig', new DebugConfigComponent(v.debug));
+  }
 
   public bindView(mesh: AbstractMesh): void {
     this.view = mesh;

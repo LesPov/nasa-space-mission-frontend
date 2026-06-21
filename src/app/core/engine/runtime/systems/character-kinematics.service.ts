@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
@@ -41,22 +42,27 @@ export class CharacterKinematicsService implements IUpdatable {
       const activeProfile = isPlayer ? playerProfile : getMovementProfileForOwner('PLAYER_FPS'); // NPCs usan físicas
 
       if (isPlayer && activeProfile.type === 'EDITOR_FREE') {
-         entity.playerRuntime.intentions.moveForward = false;
-         entity.playerRuntime.intentions.moveBackward = false;
-         entity.playerRuntime.intentions.moveLeft = false;
-         entity.playerRuntime.intentions.moveRight = false;
-         entity.playerRuntime.intentions.run = false;
-         entity.playerRuntime.intentions.jump = false;
+         if (entity.playerRuntime) {
+             entity.playerRuntime.intentions.moveForward = false;
+             entity.playerRuntime.intentions.moveBackward = false;
+             entity.playerRuntime.intentions.moveLeft = false;
+             entity.playerRuntime.intentions.moveRight = false;
+             entity.playerRuntime.intentions.run = false;
+             entity.playerRuntime.intentions.jump = false;
+         }
       }
 
       const cameraToUseForDirection = (isPlayer && activeProfile.type === 'EDITOR_FREE') 
           ? (vista === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS) 
           : activeCamera;
 
+      const seqRuntime = entity.playerRuntime?.seqRuntime;
+      if (!seqRuntime) continue; // Si no hay seqRuntime seguro, omitimos para evitar fallo.
+
       this.updateKinematics(
         scene, 
         entity, 
-        entity.playerRuntime.seqRuntime!, 
+        seqRuntime, 
         cameraToUseForDirection, 
         vista,
         dtMs,
@@ -210,7 +216,6 @@ export class CharacterKinematicsService implements IUpdatable {
     scaleY: number,
     profile: MovementProfile
   ): void {
-    // Si no hay input custom habilitado, sobreescribir intenciones visuales
     if (!profile.customInputEnabled) {
       intentions.moveForward = false;
       intentions.moveBackward = false;

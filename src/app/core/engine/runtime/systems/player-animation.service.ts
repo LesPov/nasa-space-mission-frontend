@@ -37,9 +37,9 @@ export class PlayerAnimationService implements IUpdatable {
     const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
 
     for (const entity of characters) {
-      const seqRuntime = entity.playerRuntime.seqRuntime;
-      const estadoFisico = entity.playerRuntime.physicsState;
-      if (seqRuntime) {
+      const seqRuntime = entity.playerRuntime?.seqRuntime;
+      const estadoFisico = entity.playerRuntime?.physicsState;
+      if (seqRuntime && estadoFisico) {
         this.gestionarAnimaciones(entity, estadoFisico, seqRuntime);
       }
     }

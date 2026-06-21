@@ -6,7 +6,7 @@
       <h2>Tus Mapas / Episodios</h2>
       <p>Selecciona un episodio o crea uno nuevo para empezar a explorar.</p>
     </div>
-    <button class="btn-crear-mapa" *ngIf="esAdmin" (click)="showModalMap = true">+ Crear Nuevo Mapa</button>
+    <button class="btn-crear-mapa" *ngIf="esAdmin" (click)="missionSvc.abrirCrearMapa()">+ Crear Nuevo Mapa</button>
   </div>
 
   <div class="grid-mapas">
@@ -38,19 +38,20 @@
     </div>
   </div>
 
-  <div class="modal-overlay" *ngIf="showModalMap">
+  <!-- MODAL DE CREACIÓN DE MAPA (VINCULADO AL MISSION SERVICE) -->
+  <div class="modal-overlay" *ngIf="missionSvc.showCreateMapModal">
     <div class="modal-box">
       <h3>Crear Nuevo Episodio</h3>
       <div class="modal-row">
         <label class="modal-label">Título del Episodio:</label>
-        <input type="text" [(ngModel)]="nuevoTitulo" class="modal-input">
+        <input type="text" [(ngModel)]="missionSvc.newMapTitle" class="modal-input">
       </div>
       <div class="modal-row">
         <label class="modal-label">Descripción breve:</label>
-        <textarea [(ngModel)]="nuevaDesc" class="modal-input"></textarea>
+        <textarea [(ngModel)]="missionSvc.newMapDesc" class="modal-input"></textarea>
       </div>
       <div class="modal-actions">
-        <button class="btn-cancel" (click)="showModalMap = false">Cancelar</button>
+        <button class="btn-cancel" (click)="missionSvc.cerrarCrearMapa()">Cancelar</button>
         <button class="btn-confirm" (click)="crearNuevoEpisodio()">Crear Episodio</button>
       </div>
     </div>

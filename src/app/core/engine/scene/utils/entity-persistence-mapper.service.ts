@@ -58,13 +58,17 @@ export class EntityPersistenceMapperService {
 
     const savedSelectionRange = this.utilsSvc.extraerSelectionRange(obj.properties || obj);
     entity.selectionRange = { ...savedSelectionRange };
-    entity.playerConfig = this.utilsSvc.prepararPlayerConfigConSelectionRange(obj.properties?.playerConfig || null, savedSelectionRange);
+    
+    // 🔥 FIX: Únicamente hidratar playerConfig si en verdad la base de datos trae algo o si es un NPC/Player.
+    // Esto evita incrustar la config monstruosa en luces o cubos.
+    if (obj.properties?.playerConfig || isCharacter) {
+      entity.playerConfig = this.utilsSvc.prepararPlayerConfigConSelectionRange(obj.properties?.playerConfig || null, savedSelectionRange);
+    }
 
     entity.camOffset = obj.properties?.camOffset || { x: 0, y: 1.6, z: 0 };
     entity.autoAnim = obj.properties?.autoAnim || null;
 
     if (entity.media) {
-      // 🔥 FIX TS2322: Asegurando el tipo exacto resolviendo el string | undefined
       entity.media.videoUrl = entity.type === 'video_plane' ? (entity.visual.path || '') : '';
       entity.media.imageUrl = entity.type === 'image_plane' ? (entity.visual.path || '') : '';
       entity.media.profundidadProyeccion = obj.properties?.profundidadProyeccion ?? 10;

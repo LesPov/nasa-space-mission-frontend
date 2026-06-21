@@ -1,5 +1,4 @@
-
-import { GameMode } from '../../session/game-context.model';
+import { GameMode } from '../../session/game-mode.model';
 
 export type CameraType = 'EDITOR' | 'FPS' | 'TPS';
 
@@ -12,6 +11,11 @@ export interface CameraProfile {
 export const CAMERA_PROFILES: Record<GameMode, CameraProfile> = {
   [GameMode.EDITOR]: {
     mode: GameMode.EDITOR,
+    allowedCameras: ['EDITOR', 'FPS', 'TPS'],
+    initialCamera: 'EDITOR'
+  },
+  [GameMode.EDITING_IN_GAME]: {
+    mode: GameMode.EDITING_IN_GAME,
     allowedCameras: ['EDITOR', 'FPS', 'TPS'],
     initialCamera: 'EDITOR'
   },

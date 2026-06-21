@@ -1,8 +1,7 @@
-
 import { Injectable, inject } from '@angular/core';
 import { GameEntity } from '../../entities/game.entity';
 import { GameContextService } from '../../session/game-context.service';
-import { GameMode } from '../../session/game-context.model';
+import { GameMode } from '../../session/game-mode.model';
 import { AbstractMesh, Tags } from '@babylonjs/core';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 

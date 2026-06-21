@@ -1,4 +1,3 @@
-
 import { Injectable, inject, computed } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
@@ -17,10 +16,13 @@ import { PlayerAnimationService } from './systems/player-animation.service';
 import { RenderSync } from './systems/render-sync';
 import { MediaCommandSystem } from './systems/media-command.system';
 import { Motor3dService } from '../../../services/motor-3d.service';
-import { CameraViewMode, GameMode } from '../session/game-context.model';
+import { CameraViewMode } from '../session/game-context.model';
+import { GameMode } from '../session/game-mode.model';
 import { GameContextService } from '../session/game-context.service';
 import { LayoutService } from '../../../services/layout.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
+
+// Resto del archivo se mantiene exactamente igual (solo cambiaron los imports superiores)
   
 @Injectable({ providedIn: 'root' })
 export class GameSession {

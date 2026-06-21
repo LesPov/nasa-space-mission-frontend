@@ -1,7 +1,7 @@
 import { Injectable, inject } from '@angular/core';
 import { EditorStateService } from './editor-state.service';
 import { GameContextService } from '../../core/engine/session/game-context.service';
-import { GameMode } from '../../core/engine/session/game-context.model';
+import { GameMode } from '../../core/engine/session/game-mode.model';
 
 @Injectable({ providedIn: 'root' })
 export class EditorModeTransitionService {
@@ -42,6 +42,7 @@ export class EditorModeTransitionService {
   }
 
   public finishPauseToLiveEdit(): void {
+    this.gameContext.setMode(GameMode.EDITING_IN_GAME);
     this.state.playState.set('EDITING_IN_GAME');
   }
 
@@ -51,6 +52,24 @@ export class EditorModeTransitionService {
   }
 
   public finishResumeToTestLive(): void {
+    this.gameContext.setMode(GameMode.TEST_LIVE);
     this.state.playState.set('PLAYING');
+  }
+
+  // ==========================================
+  // TRANSICIONES DE UI (INTERACCIÓN & RESET)
+  // ==========================================
+
+  public enterInteraction(): void {
+    this.state.playState.set('INTERACTING');
+  }
+
+  public exitInteraction(): void {
+    this.state.playState.set('PLAYING');
+  }
+
+  public resetToEditor(): void {
+    this.gameContext.setMode(GameMode.EDITOR);
+    this.state.playState.set('EDITOR');
   }
 }

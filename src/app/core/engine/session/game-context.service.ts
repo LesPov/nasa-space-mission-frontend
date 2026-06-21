@@ -1,27 +1,33 @@
-
 import { Injectable, signal, computed } from '@angular/core';
-import { GameMode, CameraViewMode } from './game-context.model';
+import { GameMode } from './game-mode.model';
+import { CameraViewMode } from './game-context.model';
 import { GameEntity } from '../entities/game.entity';
- 
+
 @Injectable({ providedIn: 'root' })
 export class GameContextService {
-  // Estado centralizado y fuertemente tipado
+  // Estado centralizado y fuertemente tipado (Única Fuente de Verdad del Runtime)
   public mode = signal<GameMode>(GameMode.EDITOR);
   public cameraView = signal<CameraViewMode>('FPS');
   public activePlayerEntity = signal<GameEntity | null>(null);
   public isPointerLocked = signal<boolean>(false);
 
   // Derivados reactivos
-  public isPlaying = computed(() => this.mode() !== GameMode.EDITOR);
+  public isPlaying = computed(() => 
+    this.mode() === GameMode.TEST_LIVE || 
+    this.mode() === GameMode.PREVIEW_ADMIN || 
+    this.mode() === GameMode.FINAL_USER
+  );
   
-  // True si es el creador probando (sea en el editor o en la ruta final)
+  // True si es el creador interactuando (sea editando, probando, o en ruta admin)
   public isDebugMode = computed(() => 
     this.mode() === GameMode.TEST_LIVE || 
-    this.mode() === GameMode.PREVIEW_ADMIN
+    this.mode() === GameMode.PREVIEW_ADMIN ||
+    this.mode() === GameMode.EDITING_IN_GAME
   );
 
-  public setMode(mode: GameMode): void {
-    this.mode.set(mode);
+  public setMode(newMode: GameMode): void {
+    if (this.mode() === newMode) return;
+    this.mode.set(newMode);
   }
 
   public setCameraView(view: CameraViewMode): void {

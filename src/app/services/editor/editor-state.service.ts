@@ -4,9 +4,10 @@ import { Node, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { GameContextService } from '../../core/engine/session/game-context.service';
 import { InteractableRulesService } from '../../core/engine/runtime/rules/interactable-rules.service';
- 
+import { PlayState } from '../../core/engine/session/game-mode.model';
+
 export type ToolMode = 'select' | 'translate' | 'rotate' | 'scale';
-export type PlayState = 'EDITOR' | 'PLAYING' | 'EDITING_IN_GAME' | 'TRANSITIONING' | 'INTERACTING';
+export type { PlayState };
 
 @Injectable({ providedIn: 'root' })
 export class EditorStateService {
@@ -15,8 +16,8 @@ export class EditorStateService {
   private interactRules = inject(InteractableRulesService);
 
   public playState = signal<PlayState>('EDITOR');
+  
   public currentTool = signal<ToolMode>('translate');
-
   public objetoSeleccionado = signal<Node | null>(null);
   public subObjetoSeleccionado = signal<'collider' | 'camera' | 'light' | 'fog' | null>(null);
 
@@ -107,7 +108,7 @@ export class EditorStateService {
   }
 
   limpiarEstado(): void {
-    this.playState.set('EDITOR');
+    // 🔥 ELIMINADO: this.playState.set('EDITOR'); -> Queda delegado a TransitionService / Component Lifecycle
     this.modoVistaPrueba = null;
     this.jugadorActivo = null;
     this.objetoHovereado.set(null);

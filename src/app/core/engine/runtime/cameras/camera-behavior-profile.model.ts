@@ -1,5 +1,4 @@
-
-import { GameMode } from '../../session/game-context.model';
+import { GameMode } from '../../session/game-mode.model';
 
 export interface CameraBehaviorProfile {
   collisionsEnabled: boolean;
@@ -13,6 +12,15 @@ export interface CameraBehaviorProfile {
 
 export const CAMERA_BEHAVIOR_PROFILES: Record<GameMode, CameraBehaviorProfile> = {
   [GameMode.EDITOR]: {
+    collisionsEnabled: false,
+    inertia: 0.8,
+    panningInertia: 0.8,
+    angularSensibilityX: 2000,
+    angularSensibilityY: 2000,
+    fov: 0.8,
+    minZ: 0.1
+  },
+  [GameMode.EDITING_IN_GAME]: {
     collisionsEnabled: false,
     inertia: 0.8,
     panningInertia: 0.8,

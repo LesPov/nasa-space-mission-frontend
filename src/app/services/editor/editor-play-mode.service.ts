@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Tags, Vector3, Observer, Scene } from '@babylonjs/core';
 
@@ -10,7 +9,8 @@ import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.s
 import { EditorMapaService } from '../editor-mapa.service';
 import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
 import { GameStateService } from '../../core/engine/runtime/state/game-state.service'; 
-import { CameraViewMode, GameMode } from '../../core/engine/session/game-context.model';
+import { CameraViewMode } from '../../core/engine/session/game-context.model';
+import { GameMode } from '../../core/engine/session/game-mode.model';
 import { GameContextService } from '../../core/engine/session/game-context.service';
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
 import { EditorModeTransitionService } from './editor-mode-transition.service';
@@ -28,9 +28,9 @@ export class EditorPlayModeService {
   private inputOrchestrator = inject(InputOrchestratorService);
   private gameState = inject(GameStateService); 
   private gameContext = inject(GameContextService);
-  private transitionSvc = inject(EditorModeTransitionService);
   private eventBus = inject(GameEventBusService);
   private authSvc = inject(AuthService);
+  private transitionSvc = inject(EditorModeTransitionService);
 
   private snapshotMemoria: any = null;
 
@@ -41,7 +41,7 @@ export class EditorPlayModeService {
        }
     });
   }
-  
+
   public testearEscena(vista: CameraViewMode): void {
     const objMesh = this.state.objetoSeleccionado() as Mesh;
     if (!objMesh) return;
@@ -55,9 +55,8 @@ export class EditorPlayModeService {
     this.state.modoVistaPrueba = vista;
     this.state.jugadorActivo = objMesh;
     
+    // 🛡️ Sincronización estricta del Modo y PlayState
     this.transitionSvc.beginTestLive();
-
-    const isDebugMode = this.authSvc.isAdmin();
 
     this.snapshotMemoria = this.editorSvc.obtenerDatosParaGuardar(true);
     this.state.objetoSeleccionado.set(null);
@@ -118,7 +117,6 @@ export class EditorPlayModeService {
         }
 
         this.transitionSvc.finishTestLiveTransition();
-        
         this.runtimeEngine.startTestSession(playerEntity, vista);
         this.state.triggerUpdate();
         
@@ -141,12 +139,7 @@ export class EditorPlayModeService {
     };
 
     this.cameraSvc.volarHaciaCamaraJuego(
-        centroEpiral, 
-        targetPos, 
-        targetLookAt, 
-        playerForward, 
-        vista === 'FPS', 
-        () => finishSetup()
+        centroEpiral, targetPos, targetLookAt, playerForward, vista === 'FPS', () => finishSetup()
     );
   }
 

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { StandardMaterial, VideoTexture, Color3, Mesh } from '@babylonjs/core';
 import { Motor3dService } from '../../../services/motor-3d.service';
@@ -8,7 +7,8 @@ import { EntityManagerService } from '../entities/entity-manager.service';
 import { GameEntity } from '../entities/game.entity';
 import { PlayerInteractionService } from './systems/player-interaction.service';
 import { CoreSceneLoaderService } from '../scene/utils/core-scene-loader.service';
-import { GameMode, CameraViewMode } from '../session/game-context.model';
+import { CameraViewMode } from '../session/game-context.model';
+import { GameMode } from '../session/game-mode.model';
 import { GameContextService } from '../session/game-context.service';
 import { InputOrchestratorService } from './systems/input-orchestrator.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
@@ -85,7 +85,7 @@ export class RuntimeEngineService {
 
   public shutdownProductionGame(): void {
     this.gameSession.stop();
-    this.gameContext.setMode(GameMode.EDITOR);
+    // 🔥 ELIMINADO: this.gameContext.setMode(GameMode.EDITOR); -> El componente decide y orquesta.
     this.playerCamSvc.detenerCinematicaIntro(); 
     this.playerCamSvc.limpiarPivotTPS();
     this.resetVideos();
@@ -120,7 +120,7 @@ export class RuntimeEngineService {
 
   public stopTestSession(): void {
     this.gameSession.stop();
-    this.gameContext.setMode(GameMode.EDITOR);
+    // 🔥 ELIMINADO: this.gameContext.setMode(GameMode.EDITOR); -> Orquestado por EditorModeTransitionService.
     this.playerCamSvc.limpiarPivotTPS();
     this.resetVideos();
   }

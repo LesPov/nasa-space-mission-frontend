@@ -1,4 +1,3 @@
-
 import { Injectable, inject, effect } from '@angular/core';
 import {
   DirectionalLight, KeyboardEventTypes, Matrix, Mesh, PointerEventTypes, SpotLight,
@@ -163,7 +162,7 @@ export class EditorToolsService {
 
   activarEventosEditor(): void {
     const scene = this.motor3d.scene;
-    this.state.playState.set('EDITOR');
+    // 🔥 ELIMINADO: this.state.playState.set('EDITOR'); -> Queda delegado al TransitionService.
 
     this.highlightSvc.initHighlights();
     this.gizmoSvc.initGizmos();

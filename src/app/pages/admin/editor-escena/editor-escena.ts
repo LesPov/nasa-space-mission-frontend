@@ -31,6 +31,7 @@ import { EditorKeyboardService } from '../../../services/editor/editor-keyboard.
 import { InputOrchestratorService } from '../../../core/engine/runtime/systems/input-orchestrator.service';
 import { AddObjectModalService } from '../../../services/editor/modals/add-object-modal.service';
 import { MissionModalService } from '../../../services/editor/modals/mission-modal.service';
+import { AuthService } from '../../../core/services/auth';
 
 @Component({
   selector: 'app-editor-escena', 
@@ -57,6 +58,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public inputOrchestrator = inject(InputOrchestratorService);
   public addObjSvc = inject(AddObjectModalService);
   public missionSvc = inject(MissionModalService);
+  public authSvc = inject(AuthService);
   public cdr = inject(ChangeDetectorRef);
   private router = inject(Router);
 
@@ -64,7 +66,10 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   public isInteracting = signal(false);
   public editando = false;
-  public esAdmin: boolean = false;
+
+  public get esAdmin(): boolean {
+    return this.authSvc.isAdmin();
+  }
 
   public cargandoEscena = signal(false);
   public episodioPendienteCarga: any = null;
@@ -95,7 +100,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   private autoSaveSub!: Subscription;
   private eventBusSub!: Subscription;
 
-  // PROXIES AL SERVICIO DE AÑADIR OBJETO (Evita romper el HTML actual)
   get objNombre() { return this.addObjSvc.objNombre; } set objNombre(v) { this.addObjSvc.objNombre = v; }
   get objTipo() { return this.addObjSvc.objTipo; } set objTipo(v) { this.addObjSvc.objTipo = v; }
   get objRol() { return this.addObjSvc.objRol; } set objRol(v) { this.addObjSvc.objRol = v; }
@@ -112,7 +116,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   get archivoSubida() { return this.addObjSvc.archivoSubida; } set archivoSubida(v) { this.addObjSvc.archivoSubida = v; }
   get subiendoAsset() { return this.addObjSvc.subiendoAsset; }
 
-  // PROXIES AL SERVICIO DE MISION
   get showMissionModal() { return this.missionSvc.showMissionModal; } set showMissionModal(v) { this.missionSvc.showMissionModal = v; }
   get missionModalMode() { return this.missionSvc.missionModalMode; }
   get missionModalData() { return this.missionSvc.missionModalData; }
@@ -124,7 +127,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
-    this.esAdmin = this.editorSvc.checkIsAdmin();
     this.cargarEpisodios();
     this.addObjSvc.cargarAssets();
 

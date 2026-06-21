@@ -15,7 +15,7 @@ export const roleGuard: CanActivateFn = (route, state) => {
   }
 
   // Admin tiene privilegios absolutos, y si hace match también se permite.
-  if (currentUserRole === 'admin' || currentUserRole === expectedRole) {
+  if (authSvc.isAdmin() || currentUserRole === expectedRole) {
     return true;
   }
 

@@ -4,12 +4,14 @@ import { AbstractMesh, Ray, Vector3, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { AuthService } from '../../../core/services/auth';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsSelectionService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
+  private authSvc = inject(AuthService);
 
   public normalizarNumero(valor: any, fallback: number): number {
     const n = Number(valor);
@@ -48,7 +50,8 @@ export class ToolsSelectionService {
     return fallback;
   }
 
-  public getSelectionMaxDistance(isAdmin: boolean): number {
+  public getSelectionMaxDistance(): number {
+    const isAdmin = this.authSvc.isAdmin();
     const range = this.getSelectionRangeConfig();
     return isAdmin ? range.fpsAdminMax : range.fpsUserMax;
   }
@@ -63,12 +66,12 @@ export class ToolsSelectionService {
     return mesh.getAbsolutePosition().clone();
   }
 
-  private canSelectByDistance(ray: Ray, target: AbstractMesh, hit: any, isAdmin: boolean): boolean {
+  private canSelectByDistance(ray: Ray, target: AbstractMesh, hit: any): boolean {
     const playSt = this.state.playState();
     if (playSt !== 'PLAYING' && playSt !== 'EDITING_IN_GAME') return true;
     if (this.state.modoVistaPrueba !== 'FPS') return true;
 
-    const maxDistance = this.getSelectionMaxDistance(isAdmin);
+    const maxDistance = this.getSelectionMaxDistance();
     if (!Number.isFinite(maxDistance) || maxDistance <= 0) return true;
 
     const distanceFromPick = typeof hit?.distance === 'number' ? hit.distance : NaN;
@@ -90,11 +93,12 @@ export class ToolsSelectionService {
     return selectable !== false;
   }
 
-  public resolverRootDesdeRay(ray: Ray, isAdmin: boolean, centerDragMesh: AbstractMesh): AbstractMesh | null {
+  public resolverRootDesdeRay(ray: Ray, centerDragMesh: AbstractMesh): AbstractMesh | null {
     const scene = this.motor3d.scene;
     const playSt = this.state.playState();
     const jugador = this.state.jugadorActivo;
     const entityPlayer = jugador ? this.entityManager.getEntityByMesh(jugador) : null;
+    const isAdmin = this.authSvc.isAdmin();
 
     const hit = scene.pickWithRay(ray, (m) => {
       if (!m.isVisible || !m.isPickable) return false;
@@ -127,7 +131,7 @@ export class ToolsSelectionService {
 
     if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') {
       if (!isAdmin) return null;
-      if (!this.canSelectByDistance(ray, rootNode, hit, true)) return null;
+      if (!this.canSelectByDistance(ray, rootNode, hit)) return null;
       return rootNode;
     }
 

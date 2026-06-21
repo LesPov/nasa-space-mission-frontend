@@ -1,4 +1,3 @@
-
 import { Injectable, inject, signal } from '@angular/core';
 import { Subject } from 'rxjs';
 import { Node, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
@@ -39,17 +38,6 @@ export class EditorStateService {
 
   triggerUpdate(): void {
     this.onMapChanged.next();
-  }
-
-  checkIsAdmin(): boolean {
-    const userStr = localStorage.getItem('user');
-    if (!userStr) return false;
-    try {
-      const user = JSON.parse(userStr);
-      return user?.rol === 'admin';
-    } catch {
-      return false;
-    }
   }
 
   isDescendant(child: Node, parent: Node): boolean {

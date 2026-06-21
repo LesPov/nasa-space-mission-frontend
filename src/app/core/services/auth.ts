@@ -1,4 +1,5 @@
-import { Injectable, inject, signal } from '@angular/core';
+
+import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import { Router } from '@angular/router';
@@ -16,6 +17,10 @@ export class AuthService {
   private router = inject(Router);
 
   public currentUser = signal<UserState | null>(null);
+
+  // Derivados reactivos unificados (fuente de verdad)
+  public isLoggedIn = computed(() => this.currentUser() !== null);
+  public isAdmin = computed(() => this.currentUser()?.rol === 'admin');
 
   constructor() {
     this.checkLocalSession();
@@ -46,7 +51,4 @@ export class AuthService {
       this.currentUser.set(JSON.parse(userStr));
     }
   }
-
-  isLoggedIn(): boolean { return this.currentUser() !== null; }
-  isAdmin(): boolean { return this.currentUser()?.rol === 'admin'; }
 }

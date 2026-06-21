@@ -1,4 +1,3 @@
-// src/app/services/editor/toolsservice/tools-clipboard.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Quaternion, Vector3 } from '@babylonjs/core';
@@ -8,6 +7,7 @@ import { EditorSceneService } from '../editor-scene.service';
 import { CoreSceneUtilsService } from '../../../core/engine/scene/utils/core-scene-utils.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
+import { AuthService } from '../../../core/services/auth';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsClipboardService {
@@ -16,6 +16,7 @@ export class ToolsClipboardService {
   private sceneSvc = inject(EditorSceneService);
   private utilsSvc = inject(CoreSceneUtilsService);
   private entityManager = inject(EntityManagerService);
+  private authSvc = inject(AuthService);
 
   private objetoEnPortapapeles: AbstractMesh | null = null;
   private listenerCtrlZAgregado = false;
@@ -28,7 +29,7 @@ export class ToolsClipboardService {
   }
 
   private manejarCtrlZGlobal = (event: KeyboardEvent) => {
-    const isAdmin = this.state.checkIsAdmin();
+    const isAdmin = this.authSvc.isAdmin();
     if (!isAdmin) return;
 
     const playState = this.state.playState();

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Tags } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -6,6 +7,7 @@ import { EditorStateService } from '../editor-state.service';
 import { ToolsDebugService } from './tools-debug.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { CoreSceneProjectionService } from '../../../core/engine/scene/utils/core-scene-projection.service';
+import { AuthService } from '../../../core/services/auth';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsGizmoService {
@@ -15,6 +17,7 @@ export class ToolsGizmoService {
   private debugSvc = inject(ToolsDebugService);
   private entityManager = inject(EntityManagerService);
   private projectionSvc = inject(CoreSceneProjectionService);
+  private authSvc = inject(AuthService);
 
   public gizmoManager!: GizmoManager;
   public centerDragMesh!: Mesh;
@@ -103,7 +106,6 @@ export class ToolsGizmoService {
           this.updateCenterDragMeshRenderState(mesh, subSelected);
         }
         
-        // Notificamos pasivamente que el objeto visual se ha movido
         this.state.onGizmoDrag.next();
       }
     };
@@ -197,7 +199,7 @@ export class ToolsGizmoService {
     this.gizmoManager.scaleGizmoEnabled = false;
 
     const modo = this.state.playState();
-    const isAdmin = this.state.checkIsAdmin();
+    const isAdmin = this.authSvc.isAdmin();
 
     if (!isAdmin || modo === 'PLAYING' || modo === 'INTERACTING' || modo === 'TRANSITIONING') return;
 
@@ -217,7 +219,7 @@ export class ToolsGizmoService {
     if (!this.gizmoManager) return;
 
     const modoJuego = this.state.playState();
-    const isAdmin = this.state.checkIsAdmin();
+    const isAdmin = this.authSvc.isAdmin();
 
     if (modoJuego === 'PLAYING' || modoJuego === 'TRANSITIONING' || modoJuego === 'INTERACTING' || !isAdmin) {
       this.gizmoManager.attachToMesh(null);

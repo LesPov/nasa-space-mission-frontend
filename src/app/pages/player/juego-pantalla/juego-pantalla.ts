@@ -73,7 +73,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       }
     }
     
-    // Toggle Admin Free Cam con Ctrl + C
     if (event.code === 'KeyC' && event.ctrlKey && this.isAdmin) {
       event.preventDefault();
       const canvas = this.motor3dSvc.engine.getRenderingCanvas();
@@ -102,7 +101,8 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
             this.gameStateSvc.loadGame(this.playerStateActual);
             
-            await this.runtime.bootProductionGame(res.episodio, this.isAdmin);
+            // Eliminamos this.isAdmin del parámetro y que el motor lo evalúe por dentro.
+            await this.runtime.bootProductionGame(res.episodio);
             
             this.isLoading.set(false);
             this.modalMisionUsuario = true;
@@ -140,7 +140,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
              this.modalMisionUsuario = true;
              this.cerrandoModalUsuario = false;
              
-             // 🔥 FIX UI vs ADMIN_FREE: Ignoramos transición de cámara si el admin está volando
              const owner = this.ownership.getOwner();
              if (owner !== 'ADMIN_FREE' && this.activeCameraView === 'FPS') {
                 this.runtime.toggleCameraUser(false, 45); 
@@ -158,7 +157,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   comenzarMisionUsuario() {
     this.cerrandoModalUsuario = true; 
     
-    // 🔥 FIX UI vs ADMIN_FREE: Protegemos la transición para no robar el control
     const owner = this.ownership.getOwner();
     if (owner !== 'ADMIN_FREE') {
         if (this.activeCameraView === 'TPS') {

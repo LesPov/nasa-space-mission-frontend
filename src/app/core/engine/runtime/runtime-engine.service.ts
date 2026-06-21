@@ -13,6 +13,7 @@ import { GameContextService } from '../session/game-context.service';
 import { InputOrchestratorService } from './systems/input-orchestrator.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
 import { AdminFreeCameraService } from './cameras/admin-free-camera.service';
+import { AuthService } from '../../services/auth';
   
 @Injectable({ providedIn: 'root' })
 export class RuntimeEngineService {
@@ -26,14 +27,14 @@ export class RuntimeEngineService {
   private inputOrchestrator = inject(InputOrchestratorService);
   private ownership = inject(CameraOwnershipService);
   private adminFreeCam = inject(AdminFreeCameraService);
+  private authSvc = inject(AuthService);
 
   private _prodClickFn: (() => void) | null = null;
 
   // ==========================================
   // MODO PRODUCCIÓN (JUEGO PURO SIN EDITOR)
   // ==========================================
-  public async bootProductionGame(episodeData: any, isAdmin: boolean = false): Promise<GameEntity> {
-    // 🔥 FIX CRÍTICO: Purgar entidades zombis del editor antes de iniciar
+  public async bootProductionGame(episodeData: any): Promise<GameEntity> {
     this.entityManager.clear(); 
     
     this.motor3d.forzarRedimension();
@@ -53,6 +54,7 @@ export class RuntimeEngineService {
 
         this.resetVideos();
 
+        const isAdmin = this.authSvc.isAdmin();
         const mode = isAdmin ? GameMode.PREVIEW_ADMIN : GameMode.FINAL_USER;
         this.gameContext.setMode(mode);
 
@@ -89,7 +91,6 @@ export class RuntimeEngineService {
     this.resetVideos();
     this.adminFreeCam.dispose();
     
-    // 🔥 FIX: Desbloquear el ratón y purgar las entidades generadas
     this.inputOrchestrator.unlockPointer();
     this.entityManager.clear();
 

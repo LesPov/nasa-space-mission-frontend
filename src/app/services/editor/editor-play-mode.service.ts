@@ -15,6 +15,7 @@ import { GameContextService } from '../../core/engine/session/game-context.servi
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
 import { EditorModeTransitionService } from './editor-mode-transition.service';
 import { CAMERA_BEHAVIOR_PROFILES } from '../../core/engine/runtime/cameras/camera-behavior-profile.model';
+import { AuthService } from '../../core/services/auth';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
@@ -29,6 +30,7 @@ export class EditorPlayModeService {
   private gameContext = inject(GameContextService);
   private transitionSvc = inject(EditorModeTransitionService);
   private eventBus = inject(GameEventBusService);
+  private authSvc = inject(AuthService);
 
   private snapshotMemoria: any = null;
 
@@ -55,7 +57,7 @@ export class EditorPlayModeService {
     
     this.transitionSvc.beginTestLive();
 
-    const isDebugMode = this.state.checkIsAdmin();
+    const isDebugMode = this.authSvc.isAdmin();
 
     this.snapshotMemoria = this.editorSvc.obtenerDatosParaGuardar(true);
     this.state.objetoSeleccionado.set(null);
@@ -129,7 +131,6 @@ export class EditorPlayModeService {
                     this.motor3d.playerCameraFPS?.detachControl();
                     this.motor3d.playerCameraTPS?.detachControl();
                     
-                    // Asegurar que el proxy o la cámara nueva siga el perfil TEST_LIVE temporalmente si es necesario
                     const profile = CAMERA_BEHAVIOR_PROFILES[GameMode.TEST_LIVE];
                     if (activeCam.minZ !== undefined) activeCam.minZ = profile.minZ;
                     
@@ -155,7 +156,7 @@ export class EditorPlayModeService {
     this.runtimeEngine.stopTestSession();
     this.gameState.exitSandbox();
 
-    const isDebugMode = this.state.checkIsAdmin();
+    const isDebugMode = this.authSvc.isAdmin();
 
     if (this.snapshotMemoria) {
         const cambiosEnPlay = this.editorSvc.obtenerDatosParaGuardar(false);

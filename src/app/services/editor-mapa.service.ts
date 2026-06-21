@@ -18,7 +18,6 @@ export class EditorMapaService {
   private scene = inject(EditorSceneService);
   private loader = inject(CoreSceneLoaderService); 
 
-  // 🔥 NUEVO: Signal global para la Misión. Mantiene sincronizado el UI y el Inspector.
   public episodioActualData = signal<any>(null);
 
   get playState() { return this.state.playState; }
@@ -36,8 +35,6 @@ export class EditorMapaService {
   get onGizmoDrag() { return this.state.onGizmoDrag; }
   triggerUpdate(): void { this.state.triggerUpdate(); }
 
-  checkIsAdmin(): boolean { return this.state.checkIsAdmin(); }
-  
   limpiarEstado(): void {
     this.scene.limpiarEstado();
     this.state.limpiarEstado();
@@ -64,7 +61,6 @@ export class EditorMapaService {
   }
   
   obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], worldSettings: any, uiSettings: any } { 
-    // Asegurar que siempre se incluya la propiedad uiSettings (evita errores de tipo)
     const datos: any = this.scene.obtenerDatosParaGuardar(forceFull);
     if (datos.uiSettings === undefined) datos.uiSettings = null;
     return datos;

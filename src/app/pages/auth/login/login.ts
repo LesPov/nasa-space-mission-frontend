@@ -1,4 +1,3 @@
-
 import { Component, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
@@ -29,13 +28,12 @@ export class Login {
     this.errorMsg.set('');
 
     this.authSvc.login(this.username, this.password).subscribe({
-      next: (res) => {
+      next: () => {
         this.loading.set(false);
-        // 🔥 FIX: Redirigimos a las rutas correctas dependiendo del rol
-        if (res.rol === 'admin') {
+        // Consumimos la señal centralizada
+        if (this.authSvc.isAdmin()) {
           this.router.navigate(['/admin/editor-escena']);
         } else {
-          // El usuario normal va a su lobby de selección
           this.router.navigate(['/jugador/episodios']);
         }
       },

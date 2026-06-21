@@ -9,6 +9,7 @@ import { SceneSaverService } from './sceneservice/scene-saver.service';
 import { SceneNodesService } from './sceneservice/scene-nodes.service';
 import { EditorStateService } from './editor-state.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
+import { AuthService } from '../../core/services/auth';
 
 @Injectable({ providedIn: 'root' })
 export class EditorSceneService {
@@ -20,6 +21,7 @@ export class EditorSceneService {
   private nodesSvc = inject(SceneNodesService);
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
+  private authSvc = inject(AuthService);
 
   public crearEntornoVisual(): void {
     const scene = this.motor3d.scene;
@@ -97,8 +99,8 @@ export class EditorSceneService {
   }
 
   public cargarEscenaDesdeDatos(dataBD: any): Promise<void> {
-    const isAdmin = this.state.checkIsAdmin();
-    this.entityManager.clear(); // 🔥 FIX: Purgar ECS en recarga del editor
+    const isAdmin = this.authSvc.isAdmin();
+    this.entityManager.clear();
 
     return this.loaderSvc.loadSceneFromData(dataBD).then(() => {
       if (isAdmin) {
@@ -109,7 +111,7 @@ export class EditorSceneService {
   }
 
   public instanciarPrefabFull(prefabData: any, targetPos: Vector3): void {
-    const isAdmin = this.state.checkIsAdmin();
+    const isAdmin = this.authSvc.isAdmin();
     this.loaderSvc.instantiatePrefab(prefabData, targetPos).then((mallas) => {
       if (isAdmin) {
         this.revelarEntidadesOcultasParaAdmin();

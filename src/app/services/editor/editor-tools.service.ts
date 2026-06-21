@@ -1,18 +1,8 @@
 
 import { Injectable, inject, effect } from '@angular/core';
 import {
-  DirectionalLight,
-  KeyboardEventTypes,
-  Matrix,
-  Mesh,
-  PointerEventTypes,
-  SpotLight,
-  TransformNode,
-  Vector3,
-  Ray,
-  AbstractMesh,
-  Light,
-  Tags
+  DirectionalLight, KeyboardEventTypes, Matrix, Mesh, PointerEventTypes, SpotLight,
+  TransformNode, Vector3, Ray, AbstractMesh, Light, Tags
 } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
@@ -26,6 +16,7 @@ import { ToolsGizmoService } from './toolsservice/tools-gizmo.service';
 import { ToolsHighlightService } from './toolsservice/tools-highlight.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
+import { AuthService } from '../../core/services/auth';
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
@@ -35,6 +26,7 @@ export class EditorToolsService {
   private cameraSvc = inject(EditorCameraService);
   private entityManager = inject(EntityManagerService);
   private eventBus = inject(GameEventBusService);
+  private authSvc = inject(AuthService);
 
   private highlightSvc = inject(ToolsHighlightService);
   private debugSvc = inject(ToolsDebugService);
@@ -74,9 +66,10 @@ export class EditorToolsService {
     this.fogSvc.limpiarEstado();
   }
 
-  private castRayToSelectable(ray: Ray, isAdmin: boolean): AbstractMesh | null {
+  private castRayToSelectable(ray: Ray): AbstractMesh | null {
     const scene = this.motor3d.scene;
     const jugador = this.state.jugadorActivo;
+    const isAdmin = this.authSvc.isAdmin();
 
     const hit = scene.pickWithRay(ray, (mesh) => {
       if (!mesh.isPickable) return false;
@@ -92,10 +85,7 @@ export class EditorToolsService {
       const baseNode = this.state.resolverObjetoSeleccionable(mesh) as AbstractMesh;
       const entityMesh = this.entityManager.getEntityByMesh(baseNode);
 
-      if (
-        !isAdmin &&
-        (entityMesh?.type === 'trigger' || entityMesh?.type === 'trigger_compuesto')
-      ) {
+      if (!isAdmin && (entityMesh?.type === 'trigger' || entityMesh?.type === 'trigger_compuesto')) {
         return false;
       }
 
@@ -128,7 +118,7 @@ export class EditorToolsService {
 
   private manejarFPSAdminSelection(canvas: HTMLCanvasElement | null, isLocked: boolean): void {
     const scene = this.motor3d.scene;
-    const isAdmin = this.state.checkIsAdmin();
+    const isAdmin = this.authSvc.isAdmin();
 
     if (this.state.modoVistaPrueba !== 'FPS') {
       if (!isLocked && canvas) {
@@ -142,8 +132,7 @@ export class EditorToolsService {
       : scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
 
     ray.length = 10000;
-
-    const rootNode = this.castRayToSelectable(ray, isAdmin);
+    const rootNode = this.castRayToSelectable(ray);
 
     if (rootNode) {
       if (document.pointerLockElement) {
@@ -160,7 +149,6 @@ export class EditorToolsService {
       this.state.objetoSeleccionado.set(rootNode);
       this.state.objetoHovereado.set(rootNode);
 
-      // La transición se maneja dentro de este método delegando en el coordinador
       this.cameraSvc.transicionAEdicionEnVivo(rootNode);
       return;
     }
@@ -204,7 +192,7 @@ export class EditorToolsService {
     scene.onPointerObservable.add((pi) => {
       const canvas = this.motor3d.engine.getRenderingCanvas();
       const playSt = this.state.playState();
-      const isAdmin = this.state.checkIsAdmin();
+      const isAdmin = this.authSvc.isAdmin();
       const isLocked = !!document.pointerLockElement;
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
@@ -214,10 +202,9 @@ export class EditorToolsService {
           if (playSt === 'EDITOR') {
             const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
             ray.length = 10000;
-            const rootNode = this.castRayToSelectable(ray, isAdmin);
+            const rootNode = this.castRayToSelectable(ray);
             if (rootNode) {
               this.state.objetoSeleccionado.set(rootNode);
-              // 🔥 SOLUCIÓN: Clic doble también quita autoenfoque (solo selecciona)
             }
           } else if (playSt === 'PLAYING') {
             this.cameraSvc.pausarJuegoYActivarCamaraEditor();
@@ -250,14 +237,13 @@ export class EditorToolsService {
           );
           if (hitGizmo && hitGizmo.hit) return;
 
-          const rootNode = this.castRayToSelectable(ray, isAdmin);
+          const rootNode = this.castRayToSelectable(ray);
 
           if (rootNode) {
             if (this.state.objetoSeleccionado() === rootNode) {
               this.state.objetoSeleccionado.set(null);
             } else {
               this.state.objetoSeleccionado.set(rootNode);
-              // 🔥 SOLUCIÓN: Clic normal tampoco hace autoenfoque (solo selecciona)
             }
           } else {
             this.state.objetoSeleccionado.set(null);
@@ -285,7 +271,7 @@ export class EditorToolsService {
             ? scene.activeCamera!.getForwardRay(10000)
             : scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), scene.activeCamera);
 
-          const rootNode = this.castRayToSelectable(ray, isAdmin);
+          const rootNode = this.castRayToSelectable(ray);
           this.state.objetoHovereado.set(rootNode);
           return;
         }
@@ -305,14 +291,14 @@ export class EditorToolsService {
             return;
           }
 
-          const rootNode = this.castRayToSelectable(ray, isAdmin);
+          const rootNode = this.castRayToSelectable(ray);
           this.state.objetoHovereado.set(rootNode);
         }
       }
     });
 
     scene.onKeyboardObservable.add((kbInfo) => {
-      const isAdmin = this.state.checkIsAdmin();
+      const isAdmin = this.authSvc.isAdmin();
 
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
         if (kbInfo.event.key === 'Escape') {
@@ -335,7 +321,6 @@ export class EditorToolsService {
           if (kbInfo.event.key === '3') this.setToolMode('rotate');
           if (kbInfo.event.key === '4') this.setToolMode('scale');
 
-          // 🔥 SOLUCIÓN: Solo la tecla F mueve la cámara hacia el objeto
           if (kbInfo.event.key.toLowerCase() === 'f') {
             const obj = this.state.objetoSeleccionado();
             if (obj) this.cameraSvc.enfocarObjetoEnEditor(obj);

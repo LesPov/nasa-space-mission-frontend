@@ -1,4 +1,3 @@
-// src/app/services/editor/sceneservice/builder-trigger.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
@@ -8,6 +7,7 @@ import { EditorStateService } from '../editor-state.service';
 import { SceneNodesService } from './scene-nodes.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { CoreTriggerLoaderService } from '../../../core/engine/scene/utils/core-trigger-loader.service';
+import { AuthService } from '../../../core/services/auth';
   
 @Injectable({ providedIn: 'root' })
 export class BuilderTriggerService {
@@ -17,6 +17,7 @@ export class BuilderTriggerService {
   private nodesSvc = inject(SceneNodesService);
   private entityManager = inject(EntityManagerService);
   private triggerLoader = inject(CoreTriggerLoaderService);
+  private authSvc = inject(AuthService);
 
   public reconstruirMallaTrigger(oldMesh: AbstractMesh, nuevaForma: string): Mesh {
     const scene = this.motor3d.scene;
@@ -61,7 +62,7 @@ export class BuilderTriggerService {
 
     newMesh.isPickable = true;
     newMesh.checkCollisions = false;
-    newMesh.isVisible = this.state.checkIsAdmin();
+    newMesh.isVisible = this.authSvc.isAdmin();
 
     if (this.state.objetoSeleccionado() === oldMesh) {
       this.state.objetoSeleccionado.set(newMesh);

@@ -1,14 +1,17 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, HighlightLayer, Mesh, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { AuthService } from '../../../core/services/auth';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsHighlightService {
   private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
+  private authSvc = inject(AuthService);
 
   public hlHover!: HighlightLayer;
   public hlSelected!: HighlightLayer;
@@ -121,15 +124,9 @@ export class ToolsHighlightService {
       mesh.getBoundingInfo()?.boundingSphere?.radiusWorld || 1
     );
 
-    // Normaliza según el tamaño del objeto:
-    // un objeto pequeño lejos necesita más grosor para seguir viéndose.
     const normalizedDist = dist / Math.max(1, boundsRadius * 6);
-
     const base = isSelected ? 2.4 : 1.5;
-
-    // Más agresivo cuando está lejos, más suave cuando está cerca.
     const factor = 1 + Math.min(5, normalizedDist * 0.45);
-
     const width = base * factor;
 
     return Math.min(isSelected ? 6.0 : 4.5, Math.max(isSelected ? 2.1 : 1.15, width));
@@ -144,7 +141,6 @@ export class ToolsHighlightService {
     );
 
     const normalizedDist = dist / Math.max(1, boundsRadius * 6);
-
     const base = isSelected ? 0.085 : 0.055;
     const factor = 1 + Math.min(4, normalizedDist * 0.4);
     const width = base * factor;
@@ -217,7 +213,6 @@ export class ToolsHighlightService {
         this.edgesHovered.push(mesh);
       }
     } catch {
-      // ignorar
     }
   }
 
@@ -235,7 +230,6 @@ export class ToolsHighlightService {
         this.outlinedHovered.push(mesh);
       }
     } catch {
-      // ignorar
     }
   }
 
@@ -249,7 +243,7 @@ export class ToolsHighlightService {
     const isTrigger = entity?.type === 'trigger' || entity?.type === 'trigger_compuesto';
 
     const mode = this.state.playState();
-    const isAdmin = this.state.checkIsAdmin();
+    const isAdmin = this.authSvc.isAdmin();
 
     const canHighlight = mode === 'EDITOR' || isAdmin || !isTrigger;
     if (!canHighlight) return;
@@ -294,7 +288,7 @@ export class ToolsHighlightService {
     });
 
     const mode = this.state.playState();
-    const isAdmin = this.state.checkIsAdmin();
+    const isAdmin = this.authSvc.isAdmin();
 
     const puedeResaltar =
       mode === 'EDITOR' ||

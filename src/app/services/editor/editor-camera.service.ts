@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import {
   AbstractMesh, Animation, ArcRotateCamera, Camera, CubicEase, EasingFunction,
@@ -9,6 +8,7 @@ import { EditorStateService } from './editor-state.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { EditorModeTransitionService } from './editor-mode-transition.service';
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
+import { GameContextService } from '../../core/engine/session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorCameraService {
@@ -17,6 +17,7 @@ export class EditorCameraService {
   private entityManager = inject(EntityManagerService);
   private transitionSvc = inject(EditorModeTransitionService);
   private ownership = inject(CameraOwnershipService);
+  private gameContext = inject(GameContextService);
 
   private editorCamState: { target: Vector3; radius: number; alpha: number; beta: number } | null = null;
 
@@ -420,6 +421,17 @@ export class EditorCameraService {
     if (!destCam || !editorCam) {
       this.transitionSvc.stopTestLive();
       return;
+    }
+
+    // Limpiar estados físicos pegados
+    const player = this.gameContext.activePlayerEntity();
+    if (player && player.playerRuntime) {
+      const state = player.playerRuntime.physicsState;
+      state.velocidadY = -0.05;
+      state.isJumping = false;
+      state.isFalling = false;
+      state.isHardLanding = false;
+      state.isRecoveringFromFall = false;
     }
 
     const startPos = editorCam.globalPosition.clone();

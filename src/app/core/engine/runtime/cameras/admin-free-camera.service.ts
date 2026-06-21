@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { UniversalCamera, Vector3 } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
@@ -41,6 +40,17 @@ export class AdminFreeCameraService {
         this.ownership.setCamera(this.previousOwner, this.previousCam, canvas, true);
       }
       
+      // Limpiar estados físicos del jugador para evitar inercia pegada
+      const player = this.context.activePlayerEntity();
+      if (player && player.playerRuntime) {
+        const state = player.playerRuntime.physicsState;
+        state.velocidadY = -0.05;
+        state.isJumping = false;
+        state.isFalling = false;
+        state.isHardLanding = false;
+        state.isRecoveringFromFall = false;
+      }
+
       // Reconectar Input del Jugador de forma segura
       if (this.context.isPointerLocked()) {
          this.inputSvc.enable();
@@ -63,7 +73,7 @@ export class AdminFreeCameraService {
 
       this.ownership.setCamera('ADMIN_FREE', this.adminCam!, canvas, true);
       
-      // 🔴 BLOQUEO ACTIVO DEL JUGADOR
+      // 🔴 BLOQUEO ACTIVO DEL JUGADOR Y SUS FÍSICAS
       this.inputSvc.disable();
       this.interactionSvc.disable();
       

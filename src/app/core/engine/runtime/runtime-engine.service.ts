@@ -31,6 +31,23 @@ export class RuntimeEngineService {
 
   private _prodClickFn: (() => void) | null = null;
 
+  private resetPhysicsState(entity: GameEntity): void {
+    if (!entity || !entity.playerRuntime) return;
+    const state = entity.playerRuntime.physicsState;
+    state.velocidadY = -0.05;
+    state.isMoving = false;
+    state.isRunning = false;
+    state.isJumping = false;
+    state.isFalling = false;
+    state.isHardLanding = false;
+    state.isRecoveringFromFall = false;
+    
+    entity.playerRuntime.intentions = {
+      moveForward: false, moveBackward: false, moveLeft: false, 
+      moveRight: false, run: false, jump: false
+    };
+  }
+
   // ==========================================
   // MODO PRODUCCIÓN (JUEGO PURO SIN EDITOR)
   // ==========================================
@@ -53,6 +70,7 @@ export class RuntimeEngineService {
         }
 
         this.resetVideos();
+        this.resetPhysicsState(spawnEntity);
 
         const isAdmin = this.authSvc.isAdmin();
         const mode = isAdmin ? GameMode.PREVIEW_ADMIN : GameMode.FINAL_USER;
@@ -85,7 +103,6 @@ export class RuntimeEngineService {
 
   public shutdownProductionGame(): void {
     this.gameSession.stop();
-    // 🔥 ELIMINADO: this.gameContext.setMode(GameMode.EDITOR); -> El componente decide y orquesta.
     this.playerCamSvc.detenerCinematicaIntro(); 
     this.playerCamSvc.limpiarPivotTPS();
     this.resetVideos();
@@ -106,6 +123,7 @@ export class RuntimeEngineService {
   // ==========================================
   public startTestSession(playerEntity: GameEntity, view: CameraViewMode): void {
     this.resetVideos();
+    this.resetPhysicsState(playerEntity);
     this.playerCamSvc.inicializarCamaras(playerEntity, view);
     
     const targetCam = view === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS;
@@ -120,7 +138,6 @@ export class RuntimeEngineService {
 
   public stopTestSession(): void {
     this.gameSession.stop();
-    // 🔥 ELIMINADO: this.gameContext.setMode(GameMode.EDITOR); -> Orquestado por EditorModeTransitionService.
     this.playerCamSvc.limpiarPivotTPS();
     this.resetVideos();
   }

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
@@ -8,6 +7,8 @@ import { EntityManagerService } from '../../entities/entity-manager.service';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { GameContextService } from '../../session/game-context.service';
 import { CameraOwnershipService } from '../cameras/camera-ownership.service';
+import { GameMode } from '../../session/game-mode.model';
+import { getMovementProfileForOwner, MovementProfile } from '../movement/movement-profile.model';
 
 @Injectable({ providedIn: 'root' })
 export class CharacterKinematicsService implements IUpdatable {
@@ -19,20 +20,27 @@ export class CharacterKinematicsService implements IUpdatable {
 
   public physicsUpdate(dtMs: number): void {
     const scene = this.motor3d.scene;
+    const mode = this.context.mode();
+    
+    // Evitar que actúe en absoluto cuando estamos en modo EDITOR puro
+    if (mode === GameMode.EDITOR) return;
+
     const activeCamera = this.ownership.getCamera();
     if (!activeCamera) return;
 
     const activePlayer = this.context.activePlayerEntity();
     const cameraView = this.context.cameraView();
-    const isAdminFree = this.ownership.getOwner() === 'ADMIN_FREE';
-
+    const owner = this.ownership.getOwner();
+    
+    const playerProfile = getMovementProfileForOwner(owner);
     const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
 
     for (const entity of characters) {
       const isPlayer = activePlayer && entity.uid === activePlayer.uid;
       const vista = isPlayer ? cameraView : 'FPS'; 
+      const activeProfile = isPlayer ? playerProfile : getMovementProfileForOwner('PLAYER_FPS'); // NPCs usan físicas
 
-      if (isPlayer && isAdminFree) {
+      if (isPlayer && activeProfile.type === 'EDITOR_FREE') {
          entity.playerRuntime.intentions.moveForward = false;
          entity.playerRuntime.intentions.moveBackward = false;
          entity.playerRuntime.intentions.moveLeft = false;
@@ -41,7 +49,7 @@ export class CharacterKinematicsService implements IUpdatable {
          entity.playerRuntime.intentions.jump = false;
       }
 
-      const cameraToUseForDirection = (isPlayer && isAdminFree) 
+      const cameraToUseForDirection = (isPlayer && activeProfile.type === 'EDITOR_FREE') 
           ? (vista === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS) 
           : activeCamera;
 
@@ -51,7 +59,8 @@ export class CharacterKinematicsService implements IUpdatable {
         entity.playerRuntime.seqRuntime!, 
         cameraToUseForDirection, 
         vista,
-        dtMs
+        dtMs,
+        activeProfile
       );
     }
   }
@@ -62,10 +71,14 @@ export class CharacterKinematicsService implements IUpdatable {
     seqRuntime: SeqRuntime,
     referenceCamera: Camera,
     vista: 'FPS' | 'TPS',
-    dtMs: number
+    dtMs: number,
+    profile: MovementProfile
   ): void {
     const mesh = entity.view as Mesh;
     if (!mesh) return;
+
+    // Aplicar perfil a la malla para colisiones
+    mesh.checkCollisions = profile.collisionsEnabled;
 
     const playerState = entity.playerRuntime;
     const estadoFisico = playerState.physicsState;
@@ -98,19 +111,26 @@ export class CharacterKinematicsService implements IUpdatable {
       }
     }
 
-    if (seqRuntime && seqRuntime.running && seqRuntime.forceJump && !estadoFisico.isJumping && !estadoFisico.isFalling) {
+    if (seqRuntime && seqRuntime.running && seqRuntime.forceJump && profile.jumpEnabled && !estadoFisico.isJumping && !estadoFisico.isFalling) {
       estadoFisico.velocidadY = (config.jump.force || 0.16) * scaleFactor;
       estadoFisico.isJumping = true;
     }
 
-    this.detectGround(scene, capsuleCenter, playerHalfHeight, scaleY, collFn, estadoFisico);
+    if (profile.gravityEnabled) {
+      this.detectGround(scene, capsuleCenter, playerHalfHeight, scaleY, collFn, estadoFisico);
+    } else {
+      estadoFisico.isGrounded = true;
+      estadoFisico.velocidadY = 0;
+      estadoFisico.isFalling = false;
+      estadoFisico.isJumping = false;
+    }
 
     if (isCinematicSequence) {
       this.applyCinematicMovement(mesh, dy, df, estadoFisico);
     } else {
       this.applyNormalMovement(
         mesh, config, estadoFisico, intentions, seqRuntime, 
-        move, forward, right, vista, scaleFactor, scaleY
+        move, forward, right, vista, scaleFactor, scaleY, profile
       );
     }
     
@@ -187,9 +207,18 @@ export class CharacterKinematicsService implements IUpdatable {
     right: Vector3, 
     vista: 'FPS' | 'TPS', 
     scaleFactor: number, 
-    scaleY: number
+    scaleY: number,
+    profile: MovementProfile
   ): void {
-    mesh.checkCollisions = true;
+    // Si no hay input custom habilitado, sobreescribir intenciones visuales
+    if (!profile.customInputEnabled) {
+      intentions.moveForward = false;
+      intentions.moveBackward = false;
+      intentions.moveLeft = false;
+      intentions.moveRight = false;
+      intentions.run = false;
+      intentions.jump = false;
+    }
 
     this.calculateLandingRecovery(estadoFisico, config);
 
@@ -228,13 +257,17 @@ export class CharacterKinematicsService implements IUpdatable {
       }
     }
 
-    this.calculateGravityAndJump(mesh, estadoFisico, config, intentions, seqRuntime, move, scaleFactor, scaleY);
+    this.calculateGravityAndJump(mesh, estadoFisico, config, intentions, seqRuntime, move, scaleFactor, scaleY, profile);
 
     if (isNaN(move.x)) move.x = 0;
     if (isNaN(move.y)) move.y = 0;
     if (isNaN(move.z)) move.z = 0;
     
-    mesh.moveWithCollisions(move);
+    if (profile.collisionsEnabled) {
+      mesh.moveWithCollisions(move);
+    } else {
+      mesh.position.addInPlace(move);
+    }
   }
 
   private calculateLandingRecovery(estadoFisico: any, config: any): void {
@@ -261,8 +294,18 @@ export class CharacterKinematicsService implements IUpdatable {
     seqRuntime: SeqRuntime | null, 
     move: Vector3, 
     scaleFactor: number, 
-    scaleY: number
+    scaleY: number,
+    profile: MovementProfile
   ): void {
+    if (!profile.gravityEnabled) {
+       estadoFisico.isGrounded = true;
+       estadoFisico.velocidadY = 0;
+       estadoFisico.isFalling = false;
+       estadoFisico.isJumping = false;
+       move.y = 0;
+       return;
+    }
+
     if (estadoFisico.isGrounded) {
       if (estadoFisico.isFalling || estadoFisico.isJumping) {
         const fallDistance = estadoFisico.highestY - mesh.position.y;
@@ -279,7 +322,7 @@ export class CharacterKinematicsService implements IUpdatable {
       estadoFisico.highestY = mesh.position.y;
       estadoFisico.velocidadY = -0.05; 
 
-      if ((intentions.jump || (seqRuntime ? seqRuntime.forceJump : false)) && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
+      if (profile.jumpEnabled && (intentions.jump || (seqRuntime ? seqRuntime.forceJump : false)) && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
         estadoFisico.velocidadY = (config.jump.force || 0.16) * scaleFactor;
         estadoFisico.isJumping = true;
         estadoFisico.isGrounded = false;

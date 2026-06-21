@@ -1,5 +1,4 @@
-
-import { Injectable, inject, signal } from '@angular/core';
+import { Injectable, inject, signal, Injector } from '@angular/core';
 import { Camera } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 
@@ -7,7 +6,16 @@ export type CameraOwner = 'NONE' | 'EDITOR' | 'PLAYER_FPS' | 'PLAYER_TPS' | 'ADM
 
 @Injectable({ providedIn: 'root' })
 export class CameraOwnershipService {
-  private motor3d = inject(Motor3dService);
+  // Usamos inyección diferida para evitar dependencia circular con Motor3dService
+  private injector = inject(Injector);
+  private _motor3d: Motor3dService | null = null;
+
+  private get motor3d(): Motor3dService {
+    if (!this._motor3d) {
+      this._motor3d = this.injector.get(Motor3dService);
+    }
+    return this._motor3d;
+  }
 
   // Fuente Única de Verdad (Reactiva)
   public currentOwner = signal<CameraOwner>('NONE');

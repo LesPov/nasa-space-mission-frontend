@@ -7,6 +7,7 @@ import { WorldSettingsService } from '../../world/world-settings.service';
 import { FogRendererService } from './fog-renderer.service';
 import { GameEntity } from '../../entities/game.entity';
 import { FogLevel } from '../../models/player-config.model';
+import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 
 @Injectable({ providedIn: 'root' }) 
 export class PlayerFogService { 
@@ -14,6 +15,7 @@ export class PlayerFogService {
   private loopManager = inject(LoopManagerService);
   private worldSettingsSvc = inject(WorldSettingsService);
   private fogRenderer = inject(FogRendererService);
+  private ownership = inject(CameraOwnershipService);
 
   private isRegistered = false; 
   private firstFrame = true;
@@ -34,7 +36,7 @@ export class PlayerFogService {
     const scene = this.motor3d.scene; 
     if (!scene) return;
 
-    this.isRegistered = false; // 🔥 FIX: Garantiza re-registro si se cargó una escena nueva
+    this.isRegistered = false;
 
     if (!this.isRegistered) {
       const w = this.worldSettingsSvc.settings();
@@ -86,7 +88,8 @@ export class PlayerFogService {
       const renderDistance = isBW ? (isFPS ? fog.renderDistanceFpsBW : fog.renderDistanceTpsBW) : (isFPS ? fog.renderDistanceFPS : fog.renderDistanceTPS);
       activeLevels = isBW ? (isFPS ? fog.levelsFpsBW : fog.levelsTpsBW) : (isFPS ? fog.levelsFPS : fog.levelsTPS);
 
-      let distCamToPlayer = scene.activeCamera && targetPlayer ? Vector3.Distance(scene.activeCamera.globalPosition, targetPlayer.getAbsolutePosition()) : 0;
+      const activeCam = this.ownership.getCamera();
+      let distCamToPlayer = activeCam && targetPlayer ? Vector3.Distance(activeCam.globalPosition, targetPlayer.getAbsolutePosition()) : 0;
       distCamToPlayer = Math.min(distCamToPlayer, 8); 
       
       const renderMaxZ = (Number(renderDistance) || 100000) + distCamToPlayer;

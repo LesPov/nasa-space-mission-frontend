@@ -4,12 +4,14 @@ import { AbstractMesh, Color3, Engine, Mesh, MeshBuilder, Ray, Scene, StandardMa
 import { LoopManagerService, GamePhase } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
+import { GameContextService } from '../../session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneProjectionService {
   private loopManager = inject(LoopManagerService);
   private entityManager = inject(EntityManagerService);
   private worldSettingsSvc = inject(WorldSettingsService);
+  private context = inject(GameContextService);
 
   public clampNum(v: number, min: number, max: number, fallback = min): number {
     if (Number.isNaN(v) || v === null || v === undefined) return fallback;
@@ -106,7 +108,6 @@ export class CoreSceneProjectionService {
     const scene = mesh.getScene();
 
     try {
-      // 🔥 FIX: Source of Truth
       const isNowBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       const colorReal = isNowBW ? entity.visual.colorBW : entity.visual.color;
       
@@ -204,7 +205,6 @@ export class CoreSceneProjectionService {
       const entity = this.entityManager.getEntityByMesh(mesh);
       if (!entity || !entity.media || !entity.mediaRuntime) return;
 
-      // 🔥 FIX: Source of Truth
       const currentModeIsBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       if (entity.mediaRuntime.lastVisualModeBW !== currentModeIsBW) {
         entity.mediaRuntime.lastVisualModeBW = currentModeIsBW;
@@ -220,7 +220,7 @@ export class CoreSceneProjectionService {
 
           if (targetEntity && targetEntity.playerConfig?.fog?.enabled) {
               const fog = targetEntity.playerConfig.fog;
-              const isFPS = scene.activeCamera?.name === 'playerCameraFPS';
+              const isFPS = this.context.cameraView() === 'FPS';
               const maxZ = currentModeIsBW 
                   ? (isFPS ? fog.renderDistanceFpsBW : fog.renderDistanceTpsBW)
                   : (isFPS ? fog.renderDistanceFPS : fog.renderDistanceTPS);

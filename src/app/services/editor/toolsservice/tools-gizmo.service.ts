@@ -8,6 +8,7 @@ import { ToolsDebugService } from './tools-debug.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { CoreSceneProjectionService } from '../../../core/engine/scene/utils/core-scene-projection.service';
 import { AuthService } from '../../../core/services/auth';
+import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsGizmoService {
@@ -18,6 +19,7 @@ export class ToolsGizmoService {
   private entityManager = inject(EntityManagerService);
   private projectionSvc = inject(CoreSceneProjectionService);
   private authSvc = inject(AuthService);
+  private ownership = inject(CameraOwnershipService);
 
   public gizmoManager!: GizmoManager;
   public centerDragMesh!: Mesh;
@@ -297,7 +299,7 @@ export class ToolsGizmoService {
 
       if (this.gizmoManager.attachedMesh && !this.gizmoManager.attachedMesh.isDisposed()) {
         this.centerDragMesh.isVisible = true;
-        const cam = this.gizmoManager.utilityLayer.utilityLayerScene.activeCamera || this.motor3d.scene.activeCamera;
+        const cam = this.gizmoManager.utilityLayer.utilityLayerScene.activeCamera || this.ownership.getCamera();
         if (cam) {
           const distance = Vector3.Distance(cam.globalPosition, this.centerDragMesh.position);
           const scale = Math.max(0.2, Math.min(distance * 0.035, 1.2));

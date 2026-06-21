@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Tags, Vector3, Observer, Scene } from '@babylonjs/core';
 
@@ -16,6 +17,7 @@ import { GameEventBusService } from '../../core/engine/events/game-event-bus.ser
 import { EditorModeTransitionService } from './editor-mode-transition.service';
 import { CAMERA_BEHAVIOR_PROFILES } from '../../core/engine/runtime/cameras/camera-behavior-profile.model';
 import { AuthService } from '../../core/services/auth';
+import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
@@ -31,6 +33,7 @@ export class EditorPlayModeService {
   private eventBus = inject(GameEventBusService);
   private authSvc = inject(AuthService);
   private transitionSvc = inject(EditorModeTransitionService);
+  private ownership = inject(CameraOwnershipService);
 
   private snapshotMemoria: any = null;
 
@@ -100,8 +103,8 @@ export class EditorPlayModeService {
     let hideObserver: Observer<Scene> | null = null;
     if (vista === 'FPS') {
       hideObserver = this.motor3d.scene.onBeforeRenderObservable.add(() => {
-        const cam = this.motor3d.scene.activeCamera;
-        if (cam && cam.name === "proxyTransitionCam") {
+        const cam = this.ownership.getCamera();
+        if (cam && this.ownership.getOwner() === 'TRANSITION_PROXY') {
           const dist = Vector3.Distance(cam.globalPosition, targetPos);
           if (dist < 1.8) {
             objMesh.visibility = 0;
@@ -123,7 +126,7 @@ export class EditorPlayModeService {
         setTimeout(() => {
             const canvas = this.motor3d.engine.getRenderingCanvas();
             if (canvas) {
-                const activeCam = this.motor3d.scene.activeCamera;
+                const activeCam = this.ownership.getCamera();
                 if (activeCam) {
                     this.motor3d.editorCamera?.detachControl();
                     this.motor3d.playerCameraFPS?.detachControl();
@@ -216,14 +219,11 @@ export class EditorPlayModeService {
 
     this.cameraSvc.restaurarCamaraLibre();
     const editorCam = this.motor3d.editorCamera;
-    this.motor3d.scene.activeCamera = editorCam;
     
     this.inputOrchestrator.unlockPointer();
     
     const canvas = this.motor3d.engine.getRenderingCanvas();
-    if (canvas) {
-      editorCam.attachControl(canvas, true);
-    }
+    this.ownership.setCamera('EDITOR', editorCam, canvas, true);
     
     this.state.triggerUpdate();
   }

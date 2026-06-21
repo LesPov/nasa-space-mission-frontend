@@ -1,5 +1,5 @@
 
-import { Injectable, inject, Injector } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
@@ -12,6 +12,7 @@ import { InteractableRulesService } from '../rules/interactable-rules.service';
 import { PlayerSequenceService } from './player-sequence.service';
 import { PlayerInputService } from './player-input.service';
 import { PlayerBubbleService } from './player-bubble.service';
+import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInteractionService implements IUpdatable {
@@ -22,6 +23,7 @@ export class PlayerInteractionService implements IUpdatable {
   private inputOrchestrator = inject(InputOrchestratorService);
   private interactRules = inject(InteractableRulesService);
   private context = inject(GameContextService);
+  private ownership = inject(CameraOwnershipService);
 
   private sequenceSvc = inject(PlayerSequenceService);
   private inputSvc = inject(PlayerInputService);
@@ -41,7 +43,6 @@ export class PlayerInteractionService implements IUpdatable {
   
   public disable(): void { 
     this.isEnabled = false; 
-    // 🔥 FIX: Ocultar UI de interacción inmediatamente al pausar / bloquear el jugador
     if (this.currentTarget !== null) {
       this.currentTarget = null;
       this.canInteract = false;
@@ -53,7 +54,7 @@ export class PlayerInteractionService implements IUpdatable {
 
   public update(dtMs: number): void {
     const playerEntity = this.context.activePlayerEntity();
-    const activeCamera = this.motor3d.scene.activeCamera;
+    const activeCamera = this.ownership.getCamera();
     if (!playerEntity || !activeCamera) {
       return;
     }

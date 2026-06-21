@@ -1,3 +1,4 @@
+
 import { Injectable, inject, signal } from '@angular/core';
 import { Camera } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
@@ -53,17 +54,11 @@ export class CameraOwnershipService {
       const trackedCamera = this.currentCamera();
 
       if (actualActive && actualActive !== trackedCamera) {
-        console.warn(`[CameraOwnership] ⚠️ BYPASS DETECTADO: Cámara activa mutada externamente a '${actualActive.name}'. Auto-sincronizando Ownership.`);
+        console.warn(`[CameraOwnership] ⚠️ BYPASS DETECTADO: Cámara activa mutada externamente a '${actualActive.name}'. Restaurando cámara dueña '${trackedCamera?.name}'.`);
         
-        let recoveredOwner: CameraOwner = 'NONE';
-        if (actualActive.name.includes('editorCamera')) recoveredOwner = 'EDITOR';
-        else if (actualActive.name.includes('playerCameraFPS')) recoveredOwner = 'PLAYER_FPS';
-        else if (actualActive.name.includes('playerCameraTPS')) recoveredOwner = 'PLAYER_TPS';
-        else if (actualActive.name.includes('adminFreeCam')) recoveredOwner = 'ADMIN_FREE';
-        else if (actualActive.name.includes('proxyTransitionCam')) recoveredOwner = 'TRANSITION_PROXY';
-
-        this.currentOwner.set(recoveredOwner);
-        this.currentCamera.set(actualActive);
+        if (trackedCamera) {
+            this.motor3d.scene.activeCamera = trackedCamera;
+        }
       }
     });
   }

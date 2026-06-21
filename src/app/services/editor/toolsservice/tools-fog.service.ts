@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Scene, Vector3, Color3, AbstractMesh } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -7,6 +8,7 @@ import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/se
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
 import { FogRendererService } from '../../../core/engine/runtime/systems/fog-renderer.service';
+import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
 
 @Injectable({ providedIn: 'root' }) 
 export class ToolsFogService { 
@@ -16,6 +18,7 @@ export class ToolsFogService {
   private entityManager = inject(EntityManagerService);
   private worldSettingsSvc = inject(WorldSettingsService);
   private fogRenderer = inject(FogRendererService);
+  private ownership = inject(CameraOwnershipService);
 
   private isRegistered = false; 
   private firstFrame = true;
@@ -96,7 +99,8 @@ export class ToolsFogService {
       const renderDistance = isBW ? (isFPS ? fog.renderDistanceFpsBW : fog.renderDistanceTpsBW) : (isFPS ? fog.renderDistanceFPS : fog.renderDistanceTPS);
       activeLevels = isBW ? (isFPS ? fog.levelsFpsBW : fog.levelsTpsBW) : (isFPS ? fog.levelsFPS : fog.levelsTPS);
 
-      let distCamToPlayer = scene.activeCamera && targetPlayer ? Vector3.Distance(scene.activeCamera.globalPosition, targetPlayer.getAbsolutePosition()) : 0;
+      const activeCam = this.ownership.getCamera();
+      let distCamToPlayer = activeCam && targetPlayer ? Vector3.Distance(activeCam.globalPosition, targetPlayer.getAbsolutePosition()) : 0;
       const renderMaxZ = (Number(renderDistance) || 100000) + distCamToPlayer;
 
       this.motor3d.editorCamera.maxZ = 500000;

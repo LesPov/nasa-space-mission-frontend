@@ -1,5 +1,4 @@
-
-import { Injectable, inject, Injector } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import {
   Mesh, Vector3, Matrix, TransformNode, UniversalCamera,
   Animation, CubicEase, EasingFunction, Quaternion, MeshBuilder, Tags, Animatable
@@ -10,7 +9,6 @@ import { EstadoFisico } from './player-physics.service';
 import { SeqRuntime } from './player-sequence.service';
 import { LoopManagerService, GamePhase, IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameEntity } from '../../entities/game.entity';
-import { GameSession } from '../game-session';
 import { GameContextService } from '../../session/game-context.service';
 import { CameraOwnershipService } from '../../runtime/cameras/camera-ownership.service';
 import { CAMERA_BEHAVIOR_PROFILES } from '../../runtime/cameras/camera-behavior-profile.model';
@@ -20,13 +18,8 @@ export class PlayerCameraManagerService implements IUpdatable {
   public id = 'PlayerCameraSystem';
   private motor3d = inject(Motor3dService);
   private loopManager = inject(LoopManagerService); 
-  private injector = inject(Injector);
   private context = inject(GameContextService);
   private ownership = inject(CameraOwnershipService);
-
-  private get session(): GameSession {
-    return this.injector.get(GameSession);
-  }
 
   public cameraPivot: Mesh | null = null;
   public introAnimatable: Animatable | null = null; 
@@ -39,10 +32,12 @@ export class PlayerCameraManagerService implements IUpdatable {
 
   public headNode: TransformNode | null = null;
   public initialHeadLocal: Vector3 | null = null;
+
+  private transitionTimeoutId: any = null;
   
   public cameraUpdate(dtMs: number): void {
-    const playerEntity = this.session.activePlayerEntity();
-    const activeCamera = this.motor3d.scene.activeCamera;
+    const playerEntity = this.context.activePlayerEntity();
+    const activeCamera = this.ownership.getCamera();
     
     if (playerEntity && activeCamera && playerEntity.playerRuntime.seqRuntime) {
       this.actualizarPosicionCamara(
@@ -50,7 +45,7 @@ export class PlayerCameraManagerService implements IUpdatable {
         activeCamera,
         playerEntity.playerRuntime.physicsState,
         playerEntity.playerRuntime.seqRuntime,
-        this.session.cameraView()
+        this.context.cameraView()
       );
     }
   }
@@ -60,6 +55,10 @@ export class PlayerCameraManagerService implements IUpdatable {
     this.overrideTargetPivotY = null;
     this.idleTime = 0;
     this.loopManager.unregister('CameraFadeTransition');
+    if (this.transitionTimeoutId) {
+      clearTimeout(this.transitionTimeoutId);
+      this.transitionTimeoutId = null;
+    }
   }
 
   public iniciarCinematicaIntro(entity: GameEntity): void {
@@ -111,9 +110,9 @@ export class PlayerCameraManagerService implements IUpdatable {
     vista: 'FPS' | 'TPS'
   ): void {
     const jugador = entity.view as Mesh;
-    if (!jugador || jugador.isDisposed()) return; // 🔥 FIX: No atar a un Mesh destruido
+    if (!jugador || jugador.isDisposed()) return; 
 
-    if (!this.cameraPivot || this.cameraPivot.isDisposed()) { // 🔥 FIX: Reconstruir pivot si se borró
+    if (!this.cameraPivot || this.cameraPivot.isDisposed()) {
       this.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
       this.cameraPivot.isVisible = false;
       Tags.AddTagsTo(this.cameraPivot, "system_element ignore_raycast");
@@ -180,7 +179,6 @@ export class PlayerCameraManagerService implements IUpdatable {
       this.motor3d.playerCameraTPS.collisionRadius = new Vector3(0.25, 0.25, 0.25); 
       this.motor3d.playerCameraTPS.upperBetaLimit = (Math.PI / 2) + 0.4;
       
-      // FIX TS2339: Valores constantes propios de un setup TPS seguro.
       this.motor3d.playerCameraTPS.wheelPrecision = 15;
       this.motor3d.playerCameraTPS.panningSensibility = 0;
       this.motor3d.playerCameraTPS.allowUpsideDown = false;
@@ -237,6 +235,24 @@ export class PlayerCameraManagerService implements IUpdatable {
     const framesTransicion = customFrames !== undefined ? customFrames : (isCinematicInitial ? 300 : 45);
 
     this.loopManager.unregister('CameraFadeTransition');
+
+    if (this.transitionTimeoutId) {
+      clearTimeout(this.transitionTimeoutId);
+      this.transitionTimeoutId = null;
+    }
+
+    const durationMs = (framesTransicion / 60) * 1000;
+    this.transitionTimeoutId = setTimeout(() => {
+      if (this.isTransitioningCameras) {
+        console.warn('[PlayerCameraSystem] Timeout de seguridad de transición de cámara activado.');
+        this.resetearTransiciones();
+        if (jugador && !jugador.isDisposed()) {
+          const targetVisibility = currentVista === 'FPS' ? 1 : 0;
+          jugador.visibility = targetVisibility;
+          jugador.getChildMeshes().forEach(m => m.visibility = targetVisibility);
+        }
+      }
+    }, durationMs + 500);
 
     const fadeLimit = 2.5 * scaleNow;
 

@@ -1,4 +1,3 @@
-// src/app/services/motor-3d.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import {
@@ -7,6 +6,7 @@ import {
 } from '@babylonjs/core';
 import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
 import { CameraFactoryService } from '../core/engine/runtime/cameras/camera-factory.service';
+import { CameraOwnershipService } from '../core/engine/runtime/cameras/camera-ownership.service';
 
 @Injectable({
   providedIn: 'root'
@@ -17,6 +17,7 @@ export class Motor3dService {
 
   private cameraFactory = inject(CameraFactoryService);
   private loopManager = inject(LoopManagerService);
+  private ownership = inject(CameraOwnershipService);
 
   public renderingPipeline!: DefaultRenderingPipeline;
   public glowLayer!: GlowLayer; 
@@ -40,7 +41,6 @@ export class Motor3dService {
     return cam;
   }
 
-  // Comprobación de clase real para evitar que los Mocks rompan el Pipeline
   private _ensureCameraInPipeline(camera: any): void {
     if (camera && camera instanceof Camera && this.renderingPipeline && !this.renderingPipeline.cameras.includes(camera)) {
       this.renderingPipeline.addCamera(camera);
@@ -66,10 +66,8 @@ export class Motor3dService {
 
     this.loopManager.initialize(this.scene);
 
-    // INICIALIZACIÓN DE CÁMARAS POR CONTEXTO (Fase 2)
     this.cameraFactory.initializeCameras(this.scene, canvas);
 
-    // --- PIPELINE Y RENDER ---
     this.renderingPipeline = new DefaultRenderingPipeline('defaultPipeline', false, this.scene, this.scene.cameras);
     this.renderingPipeline.fxaaEnabled = true; 
     this.renderingPipeline.samples = 2;
@@ -79,9 +77,8 @@ export class Motor3dService {
     this.glowLayer = new GlowLayer("glow", this.scene, { mainTextureFixedSize: 1024, blurKernelSize: 32 });
     this.glowLayer.intensity = 0.6; 
 
-    // 🔥 FIX: Actualizada validación usando 'includes' ya que el nombre de la cámara ahora lleva el sufijo del modo
-    this.scene.onBeforeCameraRenderObservable.add((camera) => {
-      this.scene.fogEnabled = !camera.name.includes('editorCamera');
+    this.scene.onBeforeCameraRenderObservable.add(() => {
+      this.scene.fogEnabled = this.ownership.getOwner() !== 'EDITOR';
     });
 
     const ambientLight = new HemisphericLight('globalLight', new Vector3(0, 1, 0), this.scene);

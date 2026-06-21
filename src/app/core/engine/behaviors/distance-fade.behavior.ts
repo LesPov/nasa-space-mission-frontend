@@ -1,15 +1,16 @@
-// src/app/core/engine/behaviors/distance-fade.behavior.ts
 
 import { Behavior, Mesh, Scene, Vector3 } from '@babylonjs/core';
 import { LoopManagerService, GamePhase } from './services/loop-manager.service';
 import { EntityManagerService } from '../entities/entity-manager.service';
+import { CameraOwnershipService } from '../runtime/cameras/camera-ownership.service';
  
 export class DistanceFadeBehavior implements Behavior<Mesh> {
   public attachedNode: Mesh | null = null;
 
   constructor(
     private loopManager: LoopManagerService,
-    private entityManager: EntityManagerService
+    private entityManager: EntityManagerService,
+    private ownership: CameraOwnershipService
   ) {}
 
   get name(): string {
@@ -34,13 +35,13 @@ export class DistanceFadeBehavior implements Behavior<Mesh> {
         return;
       }
 
-      const cam = scene.activeCamera;
+      const cam = this.ownership.getCamera();
       const useFogFade = scene.fogMode !== Scene.FOGMODE_NONE && cam;
       
       if (useFogFade) {
         const fogStart = scene.fogStart;
         const fogEnd = scene.fogEnd;
-        const dist = Vector3.Distance(cam.globalPosition, this.attachedNode.getAbsolutePosition());
+        const dist = Vector3.Distance(cam!.globalPosition, this.attachedNode.getAbsolutePosition());
         
         let targetVis = 1;
         if (dist >= fogEnd) {

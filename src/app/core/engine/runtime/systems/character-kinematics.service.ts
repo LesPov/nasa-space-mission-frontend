@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
@@ -18,7 +19,7 @@ export class CharacterKinematicsService implements IUpdatable {
 
   public physicsUpdate(dtMs: number): void {
     const scene = this.motor3d.scene;
-    const activeCamera = scene.activeCamera;
+    const activeCamera = this.ownership.getCamera();
     if (!activeCamera) return;
 
     const activePlayer = this.context.activePlayerEntity();

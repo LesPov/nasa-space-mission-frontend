@@ -6,6 +6,7 @@ import { CameraOwnershipService, CameraOwner } from './camera-ownership.service'
 import { PlayerInputService } from '../systems/player-input.service';
 import { PlayerInteractionService } from '../systems/player-interaction.service';
 import { GameContextService } from '../../session/game-context.service';
+import { CameraFactoryService } from './camera-factory.service';
 
 @Injectable({ providedIn: 'root' })
 export class AdminFreeCameraService {
@@ -14,26 +15,19 @@ export class AdminFreeCameraService {
   private inputSvc = inject(PlayerInputService);
   private interactionSvc = inject(PlayerInteractionService);
   private context = inject(GameContextService);
+  private cameraFactory = inject(CameraFactoryService);
   
   private adminCam: UniversalCamera | null = null;
   private previousOwner: CameraOwner = 'NONE';
   private previousCam: any = null;
 
   public initialize(): void {
-    if ((!this.adminCam || this.adminCam.isDisposed()) && this.motor3d.scene) { // 🔥 FIX: Recrear si fue destruida en recarga
-      this.adminCam = new UniversalCamera('adminFreeCam', Vector3.Zero(), this.motor3d.scene);
-      this.adminCam.minZ = 0.05;
-      this.adminCam.maxZ = 500000;
-      this.adminCam.speed = 0.5;
-      this.adminCam.angularSensibility = 2000;
-      this.adminCam.keysUp = [87]; // W
-      this.adminCam.keysDown = [83]; // S
-      this.adminCam.keysLeft = [65]; // A
-      this.adminCam.keysRight = [68]; // D
-      this.adminCam.checkCollisions = false;
-
-      if (this.motor3d.renderingPipeline) {
-        this.motor3d.renderingPipeline.addCamera(this.adminCam);
+    if ((!this.adminCam || this.adminCam.isDisposed()) && this.motor3d.scene) {
+      this.adminCam = this.cameraFactory.getCamera('ADMIN_FREE', this.motor3d.scene);
+      if (this.motor3d.renderingPipeline && this.adminCam) {
+        if (!this.motor3d.renderingPipeline.cameras.includes(this.adminCam)) {
+          this.motor3d.renderingPipeline.addCamera(this.adminCam);
+        }
       }
     }
   }
@@ -69,7 +63,7 @@ export class AdminFreeCameraService {
 
       this.ownership.setCamera('ADMIN_FREE', this.adminCam!, canvas, true);
       
-      // 🔴 BLOQUEO ACTIVO DEL JUGADOR (Elimina el Ghosting)
+      // 🔴 BLOQUEO ACTIVO DEL JUGADOR
       this.inputSvc.disable();
       this.interactionSvc.disable();
       

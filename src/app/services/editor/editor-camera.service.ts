@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import {
   AbstractMesh, Animation, ArcRotateCamera, Camera, CubicEase, EasingFunction,
@@ -8,7 +9,7 @@ import { EditorStateService } from './editor-state.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { EditorModeTransitionService } from './editor-mode-transition.service';
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
- 
+
 @Injectable({ providedIn: 'root' })
 export class EditorCameraService {
   private motor3d = inject(Motor3dService);
@@ -20,16 +21,6 @@ export class EditorCameraService {
   private editorCamState: { target: Vector3; radius: number; alpha: number; beta: number } | null = null;
 
   private obtenerCamaraJuegoActiva(): Camera | null {
-    const owner = this.ownership.getOwner();
-    
-    if (owner === 'PLAYER_FPS') return this.motor3d.playerCameraFPS;
-    if (owner === 'PLAYER_TPS') return this.motor3d.playerCameraTPS;
-    if (owner === 'ADMIN_FREE') return this.ownership.getCamera();
-
-    // Sin fallbacks ciegos a activeCamera. Confianza en el ownership y en el estado.
-    if (this.state.modoVistaPrueba === 'FPS') return this.motor3d.playerCameraFPS;
-    if (this.state.modoVistaPrueba === 'TPS') return this.motor3d.playerCameraTPS;
-
     return this.ownership.getCamera();
   }
 
@@ -83,11 +74,10 @@ export class EditorCameraService {
   }
 
   private reafirmarCamaraEditorEnSiguienteFrame(): void {
-    const scene = this.motor3d.scene;
     const editorCam = this.motor3d.editorCamera;
     const canvas = this.motor3d.engine?.getRenderingCanvas();
 
-    if (!scene || !editorCam) return;
+    if (!editorCam) return;
 
     requestAnimationFrame(() => {
       if (this.ownership.getOwner() !== 'EDITOR') {

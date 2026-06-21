@@ -5,6 +5,7 @@ import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { AuthService } from '../../../core/services/auth';
+import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsSelectionService {
@@ -12,6 +13,7 @@ export class ToolsSelectionService {
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
   private authSvc = inject(AuthService);
+  private ownership = inject(CameraOwnershipService);
 
   public normalizarNumero(valor: any, fallback: number): number {
     const n = Number(valor);
@@ -77,7 +79,7 @@ export class ToolsSelectionService {
     const distanceFromPick = typeof hit?.distance === 'number' ? hit.distance : NaN;
     if (Number.isFinite(distanceFromPick)) return distanceFromPick <= maxDistance;
 
-    const origin = ray?.origin ?? this.motor3d.scene.activeCamera?.globalPosition;
+    const origin = ray?.origin ?? this.ownership.getCamera()?.globalPosition;
     if (!origin) return true;
     return Vector3.Distance(origin, this.getMeshSelectionPoint(target)) <= maxDistance;
   }

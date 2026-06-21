@@ -1,18 +1,17 @@
-// src/app/core/engine/runtime/cameras/camera-factory.service.ts
-
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, Injector } from '@angular/core';
 import { ArcRotateCamera, UniversalCamera, Vector3, Scene, Camera, Matrix } from '@babylonjs/core';
 import { GameContextService } from '../../session/game-context.service';
 import { CAMERA_PROFILES, CameraType } from './camera-profile.model';
 import { DynamicCameraBehavior } from '../../behaviors/dynamic-camera.behavior';
 import { LoopManagerService } from '../../behaviors/services/loop-manager.service';
+import { CameraOwnershipService, CameraOwner } from './camera-ownership.service';
 
 @Injectable({ providedIn: 'root' })
 export class CameraFactoryService {
   private context = inject(GameContextService);
   private loopManager = inject(LoopManagerService);
+  private injector = inject(Injector);
 
-  // 🔥 NUEVO: Ahora almacenamos las cámaras en un mapa usando una clave única por contexto
   private _cameras = new Map<string, Camera>();
   private mockCamera: any;
 
@@ -23,7 +22,20 @@ export class CameraFactoryService {
     const profile = CAMERA_PROFILES[this.context.mode()];
     
     const initialCam = this.getCamera(profile.initialCamera, scene, canvas);
-    scene.activeCamera = initialCam as Camera;
+    
+    // Convertimos el tipo de cámara inicial al Owner estricto
+    let initialOwner: CameraOwner = 'NONE';
+    switch (profile.initialCamera) {
+      case 'EDITOR': initialOwner = 'EDITOR'; break;
+      case 'FPS': initialOwner = 'PLAYER_FPS'; break;
+      case 'TPS': initialOwner = 'PLAYER_TPS'; break;
+      case 'ADMIN_FREE': initialOwner = 'ADMIN_FREE'; break;
+    }
+    
+    // Delegamos la asignación formal a la fuente de verdad (Ownership).
+    // Usamos el Injector on-demand para romper la dependencia circular.
+    const ownership = this.injector.get(CameraOwnershipService);
+    ownership.setCamera(initialOwner, initialCam as Camera, canvas, false);
   }
 
   public getCamera(type: CameraType, scene: Scene, canvas: HTMLCanvasElement | null = null): any {
@@ -95,13 +107,26 @@ export class CameraFactoryService {
         cam.upperRadiusLimit = this.TPS_MAX_RADIUS;
         cam._panningMouseButton = 2;
         cam.allowUpsideDown = false;
-        
-        // 🔥 SOLUCIÓN CRÍTICA: En TEST_LIVE hay meshes ocultos o invisibles que bloquean la cámara.
-        // Solo activamos colisiones de cámara en los modos de producción final limpios.
         cam.checkCollisions = mode === 'FINAL_USER' || mode === 'PREVIEW_ADMIN'; 
-        
         cam.collisionRadius = new Vector3(0.15, 0.15, 0.15);
         cam.upperBetaLimit = (Math.PI / 2) + 0.4;
+        this._cameras.set(cameraKey, cam);
+      }
+      return this._cameras.get(cameraKey);
+    }
+
+    if (type === 'ADMIN_FREE') {
+      if (!this._cameras.has(cameraKey)) {
+        const cam = new UniversalCamera(`adminFreeCam_${mode}`, Vector3.Zero(), scene);
+        cam.minZ = 0.05;
+        cam.maxZ = 500000;
+        cam.speed = 0.5;
+        cam.angularSensibility = 2000;
+        cam.keysUp = [87]; // W
+        cam.keysDown = [83]; // S
+        cam.keysLeft = [65]; // A
+        cam.keysRight = [68]; // D
+        cam.checkCollisions = false;
         this._cameras.set(cameraKey, cam);
       }
       return this._cameras.get(cameraKey);

@@ -1,6 +1,7 @@
+
 import { GameMode } from '../../session/game-mode.model';
 
-export type CameraType = 'EDITOR' | 'FPS' | 'TPS';
+export type CameraType = 'EDITOR' | 'FPS' | 'TPS' | 'ADMIN_FREE';
 
 export interface CameraProfile {
   mode: GameMode;
@@ -16,17 +17,17 @@ export const CAMERA_PROFILES: Record<GameMode, CameraProfile> = {
   },
   [GameMode.EDITING_IN_GAME]: {
     mode: GameMode.EDITING_IN_GAME,
-    allowedCameras: ['EDITOR', 'FPS', 'TPS'],
+    allowedCameras: ['EDITOR', 'FPS', 'TPS', 'ADMIN_FREE'],
     initialCamera: 'EDITOR'
   },
   [GameMode.TEST_LIVE]: {
     mode: GameMode.TEST_LIVE,
-    allowedCameras: ['EDITOR', 'FPS', 'TPS'],
+    allowedCameras: ['EDITOR', 'FPS', 'TPS', 'ADMIN_FREE'],
     initialCamera: 'FPS'
   },
   [GameMode.PREVIEW_ADMIN]: {
     mode: GameMode.PREVIEW_ADMIN,
-    allowedCameras: ['FPS', 'TPS'],
+    allowedCameras: ['FPS', 'TPS', 'ADMIN_FREE'],
     initialCamera: 'FPS'
   },
   [GameMode.FINAL_USER]: {

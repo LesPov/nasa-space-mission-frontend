@@ -5,6 +5,7 @@ import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { AuthService } from '../../../core/services/auth';
+import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsHighlightService {
@@ -12,6 +13,7 @@ export class ToolsHighlightService {
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
   private authSvc = inject(AuthService);
+  private ownership = inject(CameraOwnershipService);
 
   public hlHover!: HighlightLayer;
   public hlSelected!: HighlightLayer;
@@ -103,7 +105,7 @@ export class ToolsHighlightService {
   }
 
   private getCameraDistanceToMesh(mesh: Mesh): number {
-    const cam = this.motor3d.scene.activeCamera;
+    const cam = this.ownership.getCamera();
     if (!cam) return 0;
 
     const camPos = cam.globalPosition ?? cam.position;

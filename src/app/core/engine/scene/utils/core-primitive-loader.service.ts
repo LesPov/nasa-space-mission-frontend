@@ -10,6 +10,7 @@ import { GameEntity } from '../../entities/game.entity';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { EntityPersistenceMapperService } from './entity-persistence-mapper.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
+import { CameraOwnershipService } from '../../runtime/cameras/camera-ownership.service';
  
 @Injectable({ providedIn: 'root' })
 export class CorePrimitiveLoaderService {
@@ -19,6 +20,7 @@ export class CorePrimitiveLoaderService {
   private entityManager = inject(EntityManagerService);
   private persistenceMapper = inject(EntityPersistenceMapperService);
   private worldSettingsSvc = inject(WorldSettingsService);
+  private ownership = inject(CameraOwnershipService);
 
   public cargarPrimitiva(obj: any, mallasCreadas: Map<string, Mesh>): void {
     const scene = this.motor3d.scene;
@@ -57,7 +59,7 @@ export class CorePrimitiveLoaderService {
 
     if (obj.type === 'bubble') {
       mesh.addBehavior(new BubblePulseBehavior(this.loopManager, this.entityManager));
-      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager, this.entityManager));
+      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager, this.entityManager, this.ownership));
 
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = new Color3(0.9, 0.95, 1.0);
@@ -73,7 +75,7 @@ export class CorePrimitiveLoaderService {
       mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
     } 
     else if (obj.type === 'video_plane') {
-      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager, this.entityManager));
+      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager, this.entityManager, this.ownership));
       
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = new Color3(0, 0, 0);
@@ -89,7 +91,6 @@ export class CorePrimitiveLoaderService {
     else if (obj.type === 'image_plane' && entity.media && entity.mediaRuntime) {
       const mat = new StandardMaterial('decalMat_' + obj.name, scene);
       
-      // 🔥 FIX: Usa Source of Truth
       const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       const activeColorAUsar = isBW ? entity.visual.colorBW : entity.visual.color;
       
@@ -106,9 +107,8 @@ export class CorePrimitiveLoaderService {
       this.projectionSvc.aplicarLogicaHolograma(mesh, scene);
     } 
     else if (obj.type?.startsWith('light_') && entity.light) {
-      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager, this.entityManager));
+      mesh.addBehavior(new DistanceFadeBehavior(this.loopManager, this.entityManager, this.ownership));
 
-      // 🔥 FIX: Usa Source of Truth
       const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       const activeColor = isBW ? entity.light.lightColorBW : entity.light.lightColor;
 
@@ -140,7 +140,6 @@ export class CorePrimitiveLoaderService {
     else {
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       
-      // 🔥 FIX: Usa Source of Truth
       const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       const activeHexToApply = isBW ? entity.visual.colorBW : entity.visual.color;
       

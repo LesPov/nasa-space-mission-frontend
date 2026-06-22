@@ -5,7 +5,6 @@ import { EpisodiosService } from '../../services/api/episodios';
 @Component({
   selector: 'app-mini-visor-escena',
   standalone: true,
-  // AQUI DEFINIMOS EL HTML (No necesitas un archivo HTML externo)
   template: `<canvas #previewCanvas class="canvas-mini"></canvas>`,
   styles: [`
     .canvas-mini {
@@ -31,17 +30,15 @@ export class MiniVisorEscena implements OnInit, OnDestroy {
   ngOnInit() {
     this.engine = new Engine(this.canvasRef.nativeElement, true);
     this.scene = new Scene(this.engine);
-    // Fondo oscuro que combina con la tarjeta
     this.scene.clearColor = new Color4(0.05, 0.09, 0.16, 1);
 
     const camera = new ArcRotateCamera('cam', Math.PI / 4, Math.PI / 3, 20, Vector3.Zero(), this.scene);
     camera.attachControl(this.canvasRef.nativeElement, true);
-    camera.wheelPrecision = 30; // Sensibilidad de zoom para el mini-visor
+    camera.wheelPrecision = 30;
 
     const light = new HemisphericLight('light', new Vector3(0, 1, 0), this.scene);
     light.intensity = 0.8;
 
-    // --- AGREGAR GRID HELPER Y EJES AL MINI VISOR ---
     const axesSize = 10; 
     MeshBuilder.CreateLines("ejeX", { points: [new Vector3(-axesSize, 0, 0), new Vector3(axesSize, 0, 0)], colors: [new Color4(1, 0.2, 0.2, 1), new Color4(1, 0.2, 0.2, 1)] }, this.scene);
     MeshBuilder.CreateLines("ejeY", { points: [new Vector3(0, -axesSize, 0), new Vector3(0, axesSize, 0)], colors: [new Color4(0.2, 1, 0.2, 1), new Color4(0.2, 1, 0.2, 1)] }, this.scene);
@@ -60,11 +57,9 @@ export class MiniVisorEscena implements OnInit, OnDestroy {
       colorsGrid.push([colorGris, colorGris]);
     }
     MeshBuilder.CreateLineSystem("gridHelper", { lines: ptsGrid, colors: colorsGrid }, this.scene);
-    // -----------------------------------------------------------
 
-    // Cargar los objetos que tenga creados este episodio
-    this.epiApiSvc.obtenerEpisodio(this.episodioId).subscribe({
-       next: (res) => {
+    this.epiApiSvc.obtenerEscenaCompleta(this.episodioId).subscribe({
+       next: (res: any) => {
          const objects = res.sceneObjects || [];
          objects.forEach((obj: any) => {
             if (obj.type === 'cube') {
@@ -78,7 +73,7 @@ export class MiniVisorEscena implements OnInit, OnDestroy {
             }
          });
        },
-       error: (err) => console.error(err)
+       error: (err: any) => console.error(err)
     });
 
     this.engine.runRenderLoop(() => {
@@ -90,7 +85,6 @@ export class MiniVisorEscena implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
-    // Liberar memoria para que el navegador no se ponga lento
     if(this.engine) {
       this.engine.stopRenderLoop();
       this.scene.dispose();

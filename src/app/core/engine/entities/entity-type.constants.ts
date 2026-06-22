@@ -17,7 +17,8 @@ export const ENTITY_TYPES = {
 
 export const ENTITY_ROLES = {
   PROP: 'prop',
-  SPAWN_POINT: 'spawn_point',
+  PLAYER: 'player', // 🔥 El verdadero jugador persistente
+  SPAWN_POINT: 'spawn_point', // 🔥 Marcador visual (ghost) para cambio de plataformas
   NPC: 'npc',
   POLITICO: 'politico',
   MILITAR: 'militar',

@@ -9,6 +9,7 @@ import { Motor3dService } from '../../services/motor-3d.service';
 import { PlayerClipSequence, createPlayerSequence, createSequenceStep, cloneDefaultPlayerConfig, mergePlayerConfig } from '../../core/engine/models/player-config.model';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { EditorPreviewService } from '../../services/editor/editor-preview.service';
+import { WorldSettingsService } from '../../core/engine/world/world-settings.service';
 
 const ACTION_ROWS_CHAR = [
   { key: 'idle', label: '🧍 Idle / Reposo' }, 
@@ -45,6 +46,7 @@ export class GlobalTimeline implements OnInit {
   private previewSvc = inject(EditorPreviewService);
   private motor3dSvc = inject(Motor3dService);
   private entityManager = inject(EntityManagerService);
+  private worldSettingsSvc = inject(WorldSettingsService);
   private cdr = inject(ChangeDetectorRef);
 
   public activeTab: string = 'clips';
@@ -67,6 +69,13 @@ export class GlobalTimeline implements OnInit {
   public esLuz: boolean = false;
   public esTrigger: boolean = false;
 
+  // 🔥 Lógica de Plataforma
+  public platformLogic = {
+    initialVariables: [] as { key: string, value: string }[],
+    objetivosLocales: '',
+    recompensasLocales: ''
+  };
+
   constructor() {
     effect(() => {
       const obj = this.editorSvc.objetoSeleccionado() as Mesh;
@@ -78,6 +87,11 @@ export class GlobalTimeline implements OnInit {
           this.leerAutoAnimacionDelObjeto();
           this.cargarClipsDelObjeto();
       }
+    });
+
+    effect(() => {
+      this.editorSvc.escenaIdActiva();
+      this.cargarPlataformaLogic();
     });
   }
 
@@ -321,5 +335,38 @@ export class GlobalTimeline implements OnInit {
         error: () => alert('Error eliminando prefab')
       });
     }
+  }
+
+  // 🔥 LÓGICA DE PLATAFORMA
+  cargarPlataformaLogic() {
+    const sceneData = this.editorSvc.escenaActualData();
+    if (!sceneData || !sceneData.scene) return;
+
+    const logic = sceneData.scene.environmentSettings?.logicSettings || {};
+    this.platformLogic = {
+      initialVariables: Array.isArray(logic.initialVariables) ? logic.initialVariables : [],
+      objetivosLocales: Array.isArray(logic.objetivosLocales) ? logic.objetivosLocales.join('\n') : (logic.objetivosLocales || ''),
+      recompensasLocales: Array.isArray(logic.recompensasLocales) ? logic.recompensasLocales.join('\n') : (logic.recompensasLocales || '')
+    };
+    this.cdr.detectChanges();
+  }
+
+  agregarVariableInicial() {
+    this.platformLogic.initialVariables.push({ key: '', value: '' });
+    this.persistPlatformLogic();
+  }
+
+  quitarVariableInicial(i: number) {
+    this.platformLogic.initialVariables.splice(i, 1);
+    this.persistPlatformLogic();
+  }
+
+  persistPlatformLogic() {
+    const w = this.worldSettingsSvc.settings();
+    const env = { ...w, logicSettings: { ...this.platformLogic } };
+    
+    // Lo guardamos en el singleton de worldSettingsSvc sin romper nada
+    (this.worldSettingsSvc as any).settings.set(env);
+    this.editorSvc.triggerUpdate(); // Forzamos dirty map para que lo tome al dar click a Guardar
   }
 }

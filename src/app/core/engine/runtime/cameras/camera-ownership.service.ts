@@ -1,3 +1,4 @@
+
 import { Injectable, inject, signal, Injector } from '@angular/core';
 import { Camera } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
@@ -6,7 +7,6 @@ export type CameraOwner = 'NONE' | 'EDITOR' | 'PLAYER_FPS' | 'PLAYER_TPS' | 'ADM
 
 @Injectable({ providedIn: 'root' })
 export class CameraOwnershipService {
-  // Usamos inyección diferida para evitar dependencia circular con Motor3dService
   private injector = inject(Injector);
   private _motor3d: Motor3dService | null = null;
 
@@ -17,7 +17,6 @@ export class CameraOwnershipService {
     return this._motor3d;
   }
 
-  // Fuente Única de Verdad (Reactiva)
   public currentOwner = signal<CameraOwner>('NONE');
   public currentCamera = signal<Camera | null>(null);
 
@@ -36,7 +35,9 @@ export class CameraOwnershipService {
     this.currentOwner.set(owner);
     this.currentCamera.set(camera);
 
-    // Único punto legítimo de mutación
+    // 🔥 FIX: Evitamos el bug de cámaras múltiples renderizándose al mismo tiempo 
+    // al vaciar completamente la lista de cámaras activas del motor
+    this.motor3d.scene.activeCameras = []; 
     this.motor3d.scene.activeCamera = camera;
 
     if (canvas && attachControl) {
@@ -52,7 +53,6 @@ export class CameraOwnershipService {
     return this.currentCamera();
   }
 
-  // Defensa activa contra código legacy o servicios externos que modifiquen scene.activeCamera directamente
   private initAntiBypassWatcher(): void {
     if (this.isWatcherInitialized) return;
     this.isWatcherInitialized = true;
@@ -65,6 +65,7 @@ export class CameraOwnershipService {
         console.warn(`[CameraOwnership] ⚠️ BYPASS DETECTADO: Cámara activa mutada externamente a '${actualActive.name}'. Restaurando cámara dueña '${trackedCamera?.name}'.`);
         
         if (trackedCamera) {
+            this.motor3d.scene.activeCameras = [];
             this.motor3d.scene.activeCamera = trackedCamera;
         }
       }

@@ -24,6 +24,7 @@ import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiMission } from '../../../components/ui-mission/ui-mission';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
 import { WindowSyncService } from '../../../core/services/window-sync.service';
+import { Tags } from '@babylonjs/core';
 
 @Component({
   selector: 'app-juego-pantalla',
@@ -98,88 +99,104 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       this.isDetached = params['detached'] === 'true';
     });
 
-    const id = this.route.snapshot.paramMap.get('id');
-    if (id) {
-      forkJoin({
-        episodio: this.epiApiSvc.obtenerEpisodio(Number(id)),
-        partida: this.epiApiSvc.cargarEstadoJugador(Number(id), 1).pipe(
-          catchError(err => {
-            console.warn('[JuegoPantalla] No se pudo cargar estado guardado, usando partida limpia', err);
-            return of({ worldState: {}, inventory: [] });
-          })
-        )
-      }).subscribe({
-        next: async (res) => {
-          try {
-            this.episodioActual = res.episodio?.episode || res.episodio; 
-            this.playerStateActual = res.partida;
-
-            this.gameStateSvc.loadGame(this.playerStateActual);
-            
-            await this.runtime.bootProductionGame(res.episodio);
-            
-            this.isLoading.set(false);
-            this.modalMisionUsuario = true;
-            this.cdr.detectChanges();
-
-            this.fpsInterval = setInterval(() => {
-              this.fps.set(this.motor3dSvc.currentFps.toFixed(0));
-            }, 500);
-
-            if (this.isDetached) {
-               this.windowSync.messages$.subscribe(msg => {
-                 if (msg.type === 'SYNC_MAP_DATA') {
-                   this.handleLiveSync(msg.payload);
-                 } else if (msg.type === 'SYNC_TRANSFORM_LIVE') {
-                   // 🔥 FIX: Actualización instantánea 60fps
-                   this.handleLiveTransform(msg.payload);
-                 }
-               });
-            }
-
-          } catch (err: any) {
-            alert(err.message);
-            this.salirDelJuego();
-          }
-        },
-        error: (err) => {
-          console.error('Error loading game:', err);
-          this.isLoading.set(false);
-          alert('Error crítico al cargar el mapa. Verifica tu conexión.');
-          this.salirDelJuego();
-        }
-      });
+    const sceneId = this.route.snapshot.paramMap.get('id');
+    if (sceneId) {
+      this.cargarPlataforma(Number(sceneId));
     }
 
     this.sub = this.eventBus.events$.subscribe(event => {
-      switch (event.type) {
-        case 'InteractionStateChanged': 
-          this.isInteracting.set(event.payload); 
-          break;
-        case 'CameraViewChanged':
-          this.activeCameraView = event.payload;
-          break;
-        case 'GamePaused': 
-          this.pointerLocked.set(false); 
-          if (this.misionIniciada && !this.isInteracting()) {
-             this.modalMisionUsuario = true;
-             this.cerrandoModalUsuario = false;
-             
-             const owner = this.ownership.getOwner();
-             if (owner !== 'ADMIN_FREE' && this.activeCameraView === 'FPS') {
-                this.runtime.toggleCameraUser(false, 45); 
-             }
-          }
-          break;
-        case 'GameResumed': 
-          this.pointerLocked.set(true); 
-          break;
+      if (event.type === 'ChangeSceneRequested') {
+        this.cambiarPlataformaEnJuego(event.payload.sceneId);
       }
-      this.cdr.detectChanges();
     });
   }
 
-  // 🔥 FIX: Streaming de Posiciones sin Lag
+  private cargarPlataforma(sceneId: number, isTeleport: boolean = false) {
+    this.isLoading.set(true);
+    
+    forkJoin({
+      escenaData: this.epiApiSvc.obtenerEscenaCompleta(sceneId),
+      partida: this.epiApiSvc.cargarEstadoJugador(sceneId, 1).pipe(
+        catchError(err => {
+          return of({ worldState: {}, inventory: [] });
+        })
+      )
+    }).subscribe({
+      next: async (res) => {
+        try {
+          this.episodioActual = {
+            id: res.escenaData.scene?.episodeId || res.escenaData.scene?.episodeVersionId || sceneId, 
+            title: res.escenaData.scene?.name || 'Escena',
+            description: 'Explora esta zona.',
+            sceneObjects: res.escenaData.sceneObjects,
+            triggers: res.escenaData.triggers,
+            scene: res.escenaData.scene
+          };
+          
+          this.playerStateActual = res.partida;
+          
+          const localLogic = res.escenaData.scene?.environmentSettings?.logicSettings;
+          if (localLogic?.initialVariables) {
+              localLogic.initialVariables.forEach((vr: any) => {
+                  if (vr.key) this.playerStateActual.worldState[vr.key] = vr.value;
+              });
+          }
+
+          this.gameStateSvc.loadGame(this.playerStateActual);
+          
+          await this.runtime.bootProductionGame(this.episodioActual, isTeleport);
+          
+          this.isLoading.set(false);
+          
+          if (isTeleport) {
+              this.modalMisionUsuario = false;
+              this.misionIniciada = true;
+              this.inputOrchestrator.lockPointer();
+          } else {
+              this.modalMisionUsuario = true;
+          }
+
+          this.cdr.detectChanges();
+
+          this.fpsInterval = setInterval(() => {
+            this.fps.set(this.motor3dSvc.currentFps.toFixed(0));
+          }, 500);
+
+          if (this.isDetached) {
+             this.windowSync.messages$.subscribe(msg => {
+               if (msg.type === 'SYNC_MAP_DATA') {
+                 this.handleLiveSync(msg.payload);
+               } else if (msg.type === 'SYNC_TRANSFORM_LIVE') {
+                 this.handleLiveTransform(msg.payload);
+               }
+             });
+          }
+
+        } catch (err: any) {
+          alert(err.message);
+          this.salirDelJuego();
+        }
+      },
+      error: (err) => {
+        this.isLoading.set(false);
+        alert('Error crítico al cargar el mapa.');
+        this.salirDelJuego();
+      }
+    });
+  }
+
+  // 🔥 NUEVA TRANSICIÓN LÓGICA ENTRE PLATAFORMAS (JUGADOR)
+  public cambiarPlataformaEnJuego(sceneId: number) {
+    if (this.episodioActual && this.playerStateActual) {
+      const stateToSave = this.gameStateSvc.getSaveData();
+      this.epiApiSvc.guardarEstadoJugador(this.episodioActual.id, 1, stateToSave).subscribe();
+    }
+    
+    // Dejamos que el shutdown limpie el nivel a través del ECS. El persistent_player sobrevive.
+    this.runtime.shutdownProductionGame();
+    this.cargarPlataforma(sceneId, true);
+  }
+
   handleLiveTransform(data: any) {
       const entity = this.entityManager.getEntityByUid(data.uid);
       if (entity && entity.view) {
@@ -201,7 +218,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
     let requiereReboot = false;
 
-    // 1. Eliminar objetos borrados (Cero lag)
     if (newMapData.deletedObjects?.length) {
         newMapData.deletedObjects.forEach((uid: string) => this.entityManager.removeEntity(uid));
     }
@@ -209,7 +225,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
         newMapData.deletedTriggers.forEach((uid: string) => this.entityManager.removeEntity(uid));
     }
 
-    // 2. Aplicar Actualizaciones Ligeras (Cero lag)
     const procesarDeltas = (deltas: any[]) => {
         if (!deltas) return;
         for (const delta of deltas) {
@@ -235,13 +250,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     procesarDeltas(newMapData.sceneObjectsDelta);
     procesarDeltas(newMapData.triggersDelta);
 
-    // 3. Actualizar Settings Globales
-    if (newMapData.worldSettings || newMapData.uiSettings) {
-        this.worldSettingsSvc.loadFromDb(newMapData.worldSettings, newMapData.uiSettings);
+    if (newMapData.environmentSettings || newMapData.uiSettings) {
+        this.worldSettingsSvc.loadFromDb(newMapData.environmentSettings, newMapData.uiSettings);
         this.worldSettingsSvc.applyToScene(this.motor3dSvc.scene, (mode) => this.motor3dSvc.setVisualMode(mode));
     }
 
-    // 4. Fallback: Reboot del motor solo si se agregan objetos estructurales nuevos
     if (requiereReboot) {
         let lastPos: any = null;
         let lastRotQuat: any = null;
@@ -271,9 +284,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
              }
              spawnEntity.syncTransformFromView();
           }
-        } catch(e) {
-           console.warn('[Sync] Fallo la recarga en vivo del mapa:', e);
-        }
+        } catch(e) {}
     }
 
     this.isSyncing.set(false);
@@ -327,7 +338,9 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       this.epiApiSvc.guardarEstadoJugador(this.episodioActual.id, 1, stateToSave).subscribe();
     }
 
+    this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
     this.runtime.shutdownProductionGame();
+    
     if (this.isAdmin) {
         this.router.navigate(['/admin/editor-escena']);
     } else {
@@ -340,6 +353,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
     this.runtime.shutdownProductionGame();
     this.inputOrchestrator.disposeListeners();
     if (this.sub) this.sub.unsubscribe();

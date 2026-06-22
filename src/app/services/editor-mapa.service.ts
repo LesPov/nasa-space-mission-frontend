@@ -1,5 +1,6 @@
 import { Injectable, inject, signal } from '@angular/core';
 import { Node, AbstractMesh, Vector3 } from '@babylonjs/core';
+import { Subject } from 'rxjs';
 
 import { EditorToolsService } from './editor/editor-tools.service';
 import { EditorSceneService } from './editor/editor-scene.service';
@@ -19,6 +20,14 @@ export class EditorMapaService {
   private loader = inject(CoreSceneLoaderService); 
 
   public episodioActualData = signal<any>(null);
+  public escenaIdActiva = signal<number | null>(null);
+  public escenaActualData = signal<any>(null);
+  
+  // Gestión de Plataformas de la Escena
+  public plataformasEscena = signal<any[]>([]);
+
+  // Evento global para solicitar cambio de plataforma desde la UI (ej. Outliner)
+  public onRequestPlatformChange = new Subject<number>();
 
   get playState() { return this.state.playState; }
   get currentTool() { return this.state.currentTool; }
@@ -33,6 +42,7 @@ export class EditorMapaService {
 
   get onMapChanged() { return this.state.onMapChanged; }
   get onGizmoDrag() { return this.state.onGizmoDrag; }
+  
   triggerUpdate(): void { this.state.triggerUpdate(); }
 
   limpiarEstado(): void {
@@ -40,6 +50,9 @@ export class EditorMapaService {
     this.state.limpiarEstado();
     this.tools.limpiarEstado();
     this.episodioActualData.set(null);
+    this.escenaIdActiva.set(null);
+    this.escenaActualData.set(null);
+    this.plataformasEscena.set([]);
   }
 
   activarEventosEditor(): void { this.tools.activarEventosEditor(); }
@@ -60,9 +73,8 @@ export class EditorMapaService {
     return this.scene.cargarEscenaDesdeDatos(dataBD); 
   }
   
-  obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], worldSettings: any, uiSettings: any } { 
+  obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], environmentSettings: any, spawnPoint: any } { 
     const datos: any = this.scene.obtenerDatosParaGuardar(forceFull);
-    if (datos.uiSettings === undefined) datos.uiSettings = null;
     return datos;
   }
   

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
@@ -12,14 +11,17 @@ export class CoreTriggerLoaderService {
 
   public cargarTrigger(trigger: any, mallasCreadas: Map<string, Mesh>): void {
     const scene = this.motor3d.scene;
-    const shape = trigger.actionProperties?.triggerShape || 'cube';
-    const isComposite = trigger.actionProperties?.isComposite ?? false;
+    const shape = trigger.actionProperties?.triggerShape || trigger.properties?.triggerShape || 'cube';
+    const isComposite = trigger.actionProperties?.isComposite ?? trigger.properties?.isComposite ?? false;
 
     const uid = trigger.uid || window.crypto.randomUUID();
-    const entity = new GameEntity(uid, trigger.name, 'trigger', 'trigger');
+    const entity = new GameEntity(uid, trigger.name, isComposite ? 'trigger_compuesto' : 'trigger', 'trigger');
 
     entity.transform.position = { x: trigger.position.x, y: trigger.position.y, z: trigger.position.z };
-    entity.transform.scale = { x: trigger.scale?.x ?? 1, y: trigger.scale?.y ?? 1, z: trigger.scale?.z ?? 1 };
+    
+    // 🔥 FIX: Check both scale and size to support backend mapping
+    const scl = trigger.scale || trigger.size || { x: 1, y: 1, z: 1 };
+    entity.transform.scale = { x: scl.x, y: scl.y, z: scl.z };
     entity.parentId = trigger.parentId || null;
 
     entity.trigger = {
@@ -44,20 +46,40 @@ export class CoreTriggerLoaderService {
       timeNorm: !isComposite ? (trigger.actionProperties?.timeNorm ?? 4.5) : 4.5,
       videoNorm: !isComposite ? (trigger.actionProperties?.videoNorm || '') : '',
       
-      isRepeatable: trigger.isRepeatable ?? false,
-      gameConditions: [],
-      stateMutations: []
+      isRepeatable: trigger.properties?.isRepeatable ?? trigger.isRepeatable ?? false,
+      gameConditions: trigger.properties?.gameConditions || trigger.actionProperties?.gameConditions || [],
+      stateMutations: trigger.properties?.stateMutations || trigger.actionProperties?.stateMutations || [],
+      actionType: trigger.properties?.actionType || trigger.actionType || trigger.actionProperties?.actionType || 'show_message',
+      targetSceneId: trigger.properties?.targetSceneId || trigger.actionProperties?.targetSceneId || null
     };
 
     // 🔥 Estado Runtime Aislado
     if (entity.triggerRuntime) {
-       entity.triggerRuntime.isEnabled = trigger.isEnabled ?? true;
+       entity.triggerRuntime.isEnabled = trigger.properties?.isEnabled ?? trigger.isEnabled ?? true;
        entity.triggerRuntime.hasTriggeredEnter = false;
        entity.triggerRuntime.hasTriggeredExit = false;
     }
 
     let mesh = scene.getMeshByName(trigger.name) as Mesh;
     
+    // Determinación de Colores Visuales
+    const actionT = entity.trigger.actionType;
+    let color = new Color3(0, 1, 0); 
+    let emissive = new Color3(0.2, 1.0, 0.2);
+    
+    if (!isComposite) {
+      if (actionT === 'change_scene') {
+        color = new Color3(1, 0, 0); // Rojo para transiciones
+        emissive = new Color3(1, 0.2, 0.2);
+      } else {
+        color = new Color3(1, 0, 1); // Rosa para eventos
+        emissive = new Color3(1, 0.2, 1);
+      }
+    } else {
+        color = new Color3(0, 0.5, 1); // Azul para compuestos
+        emissive = new Color3(0, 0.3, 0.8);
+    }
+
     if (!mesh) {
       switch (shape) {
         case 'sphere': mesh = MeshBuilder.CreateSphere(trigger.name, { diameter: 1 }, scene); break;
@@ -68,21 +90,27 @@ export class CoreTriggerLoaderService {
       entity.bindView(mesh);
 
       const mat = new StandardMaterial('mat_trigger_' + trigger.name, scene);
-      mat.diffuseColor = new Color3(0.0, 1.0, 0.0);
-      mat.emissiveColor = new Color3(0.2, 1.0, 0.2);
-      mat.alpha = 0.4;
-      mat.wireframe = true;
+      mat.diffuseColor = color;
+      mat.emissiveColor = emissive;
+      mat.alpha = 0.4; // Ligeramente transparente para ver a través
+      mat.wireframe = false; // 🔥 Solido visible
       mat.disableLighting = true;
       mat.maxSimultaneousLights = 4;
       mesh.material = mat;
       
       mesh.isPickable = true;
       mesh.checkCollisions = false;
-      mesh.isVisible = false;
+      mesh.isVisible = true; // El Service global lo ocultará si no es admin
 
       this.entityManager.addEntity(entity);
       mallasCreadas.set(entity.uid, mesh);
     } else {
+      if (mesh.material instanceof StandardMaterial) {
+          mesh.material.diffuseColor = color;
+          mesh.material.emissiveColor = emissive;
+          mesh.material.wireframe = false;
+          mesh.material.alpha = 0.4;
+      }
       entity.bindView(mesh);
       this.entityManager.addEntity(entity);
     }

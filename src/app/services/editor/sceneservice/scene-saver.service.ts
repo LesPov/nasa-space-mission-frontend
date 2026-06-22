@@ -10,12 +10,12 @@ export class SceneSaverService {
   private worldSettingsSvc = inject(WorldSettingsService);
   private persistenceMapper = inject(EntityPersistenceMapperService);
 
-  public obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[]; triggersDelta: any[]; deletedObjects: string[]; deletedTriggers: string[]; worldSettings: any; uiSettings: any } { 
+  public obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[]; triggersDelta: any[]; deletedObjects: string[]; deletedTriggers: string[]; environmentSettings: any; spawnPoint: any } { 
     const sceneObjectsDelta: any[] = []; 
     const triggersDelta: any[] = [];
 
-    const worldSettings = this.worldSettingsSvc.settings();
-    const uiSettings = this.worldSettingsSvc.uiSettings();
+    const environmentSettings = this.worldSettingsSvc.settings();
+    let spawnPoint = { x: 0, y: 0, z: 0 };
 
     const allEntities = this.entityManager.getAllEntities();
 
@@ -23,6 +23,10 @@ export class SceneSaverService {
       if (!forceFull && !entity.isDirty) return;
 
       entity.syncTransformFromView();
+
+      if (entity.rol === 'spawn_point') {
+        spawnPoint = { ...entity.transform.position };
+      }
 
       const propertiesToSave = this.persistenceMapper.extractEntityProperties(entity);
       const transform = entity.transform;
@@ -52,7 +56,15 @@ export class SceneSaverService {
              triggersDelta.push({
                uid: entity.uid, name: entity.name, parentId: entity.parentId,
                position: transform.position, scale: transform.scale,
-               properties: { condition: cond, actionType: 'show_message', targetObjectName: '', isRepeatable: trigger?.isRepeatable ?? false, ...actionProps }
+               properties: { 
+                 condition: cond, 
+                 actionType: trigger?.actionType || 'show_message', 
+                 targetSceneId: trigger?.targetSceneId || null,
+                 gameConditions: trigger?.gameConditions || [],
+                 targetObjectName: '', 
+                 isRepeatable: trigger?.isRepeatable ?? false, 
+                 ...actionProps 
+               }
              });
           });
         } else {
@@ -60,7 +72,11 @@ export class SceneSaverService {
              uid: entity.uid, name: entity.name, parentId: entity.parentId,
              position: transform.position, scale: transform.scale,
              properties: {
-               condition: trigger?.condition || 'on_enter', actionType: 'show_message', targetObjectName: '',
+               condition: trigger?.condition || 'on_enter', 
+               actionType: trigger?.actionType || 'show_message', 
+               targetSceneId: trigger?.targetSceneId || null,
+               gameConditions: trigger?.gameConditions || [],
+               targetObjectName: '',
                isRepeatable: trigger?.isRepeatable ?? false,
                triggerShape: trigger?.triggerShape || 'cube', 
                mensaje: entity.interaction.mensaje,
@@ -98,8 +114,8 @@ export class SceneSaverService {
       triggersDelta, 
       deletedObjects: [...this.entityManager.deletedObjects], 
       deletedTriggers: [...this.entityManager.deletedTriggers], 
-      worldSettings,
-      uiSettings
+      environmentSettings,
+      spawnPoint
     };
   } 
 }

@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, DirectionalLight, FresnelParameters, Mesh, MeshBuilder, PointLight, SpotLight, StandardMaterial, Texture, Vector3, VideoTexture } from '@babylonjs/core';
+import { AbstractMesh, Color3, DirectionalLight, Mesh, MeshBuilder, PointLight, SpotLight, StandardMaterial, Texture, Vector3, VideoTexture, Tags } from '@babylonjs/core';
 import { CoreSceneProjectionService } from '../utils/core-scene-projection.service';
 import { BubblePulseBehavior } from '../../behaviors/bubble-pulse.behavior';
 import { DistanceFadeBehavior } from '../../behaviors/distance-fade.behavior';
@@ -66,11 +66,6 @@ export class CorePrimitiveLoaderService {
       mat.diffuseColor = new Color3(0, 0, 0);
       mat.alpha = 0.6;
       mat.disableLighting = true;
-      mat.opacityFresnelParameters = new FresnelParameters();
-      mat.opacityFresnelParameters.leftColor = Color3.White();
-      mat.opacityFresnelParameters.rightColor = Color3.Black();
-      mat.opacityFresnelParameters.bias = 0.2;
-      mat.opacityFresnelParameters.power = 1.5;
       mesh.material = mat;
       mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
     } 
@@ -90,25 +85,17 @@ export class CorePrimitiveLoaderService {
     } 
     else if (obj.type === 'image_plane' && entity.media && entity.mediaRuntime) {
       const mat = new StandardMaterial('decalMat_' + obj.name, scene);
-      
       const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       const activeColorAUsar = isBW ? entity.visual.colorBW : entity.visual.color;
-      
       const tex = entity.visual.path ? new Texture('http://localhost:4000' + entity.visual.path, scene) : null;
-
       this.projectionSvc.configurarMaterialProyector(mat, activeColorAUsar, entity.visual.brilloIntensidad, entity.visual.ignoraNiebla, tex);
-      
       mesh.material = mat;
       entity.mediaRuntime.runtimeDecalMaterial = mat;
-
       mesh.isVisible = false;
-      mesh.alwaysSelectAsActiveMesh = true;
-
       this.projectionSvc.aplicarLogicaHolograma(mesh, scene);
     } 
     else if (obj.type?.startsWith('light_') && entity.light) {
       mesh.addBehavior(new DistanceFadeBehavior(this.loopManager, this.entityManager, this.ownership));
-
       const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       const activeColor = isBW ? entity.light.lightColorBW : entity.light.lightColor;
 
@@ -116,9 +103,7 @@ export class CorePrimitiveLoaderService {
       mat.emissiveColor = Color3.FromHexString(activeColor);
       mat.wireframe = true;
       mat.maxSimultaneousLights = 4;
-      mat.fogEnabled = !entity.visual.ignoraNiebla;
       mesh.material = mat;
-
       mesh.isVisible = false;
 
       let lightObj: any;
@@ -130,19 +115,12 @@ export class CorePrimitiveLoaderService {
       lightObj.intensity = entity.light.intensity;
       lightObj.diffuse = Color3.FromHexString(activeColor);
       lightObj.specular = new Color3(0, 0, 0);
-      
-      if (lightObj.range !== undefined) lightObj.range = entity.light.range;
-
-      if (lightObj.position) {
-          lightObj.position.copyFromFloats(entity.light.lightPosX, entity.light.lightPosY, entity.light.lightPosZ);
-      }
+      if (lightObj.position) lightObj.position.copyFromFloats(entity.light.lightPosX, entity.light.lightPosY, entity.light.lightPosZ);
     } 
     else {
       const mat = new StandardMaterial('mat_' + obj.name, scene);
-      
       const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       const activeHexToApply = isBW ? entity.visual.colorBW : entity.visual.color;
-      
       const c3 = Color3.FromHexString(activeHexToApply);
 
       mat.diffuseColor = c3;
@@ -159,6 +137,16 @@ export class CorePrimitiveLoaderService {
       mat.maxSimultaneousLights = 4;
       mat.fogEnabled = !entity.visual.ignoraNiebla;
       mesh.material = mat;
+    }
+
+    // 🔥 FIX: Permite que el Spawn Point sea seleccionable eliminando la malla de alambres
+    if (entity.rol === 'spawn_point') {
+        mesh.checkCollisions = false;
+        if (mesh.material && mesh.material instanceof StandardMaterial) {
+            mesh.material.alpha = 0.4;
+            mesh.material.wireframe = false;
+            mesh.material.emissiveColor = new Color3(0, 1, 0);
+        }
     }
 
     this.entityManager.addEntity(entity);

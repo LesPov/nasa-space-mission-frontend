@@ -9,7 +9,7 @@ export class AddObjectModalService {
   private editorSvc = inject(EditorMapaService);
   private epiApiSvc = inject(EpisodiosService);
 
-  public objNombre: string = 'Objeto_01';
+  public objNombre: string = 'Objeto_' + Math.floor(Math.random() * 1000);
   public objTipo: string = 'cube';
   public objRol: string = 'prop';
   public objColor: string = '#ffffff';
@@ -27,9 +27,7 @@ export class AddObjectModalService {
   public subiendoAsset = false;
 
   public onRolChange(): void {
-    if (['npc', 'spawn_point', 'politico', 'militar'].includes(this.objRol)) {
-      this.objTipo = 'model';
-    }
+    // Sin bloqueos forzados de modelo para no romper flexibilidad
   }
 
   public onTipoChange(): void {
@@ -39,9 +37,8 @@ export class AddObjectModalService {
       this.objRol = 'prop'; this.objColor = '#ffffff'; this.objEsSolido = false; this.objEsSeleccionable = true;
     } else if (this.objTipo === 'bubble' || this.objTipo === 'video_plane' || this.objTipo === 'image_plane') {
       this.objRol = 'prop'; this.objEsSolido = false; this.objEsSeleccionable = true;
-    } else if (this.objTipo !== 'model') {
-      this.objRol = 'prop';
     }
+    
     if (this.objTipo !== 'model' && !this.objTipo.startsWith('light_') && this.objTipo !== 'video_plane' && this.objTipo !== 'image_plane') {
       this.objAssetSeleccionado = null;
     }
@@ -97,7 +94,7 @@ export class AddObjectModalService {
 
   public cerrarModalObjeto(): void {
     this.editorSvc.showAddObjectModal.set(false);
-    this.objNombre = 'Objeto_' + Math.floor(Math.random() * 100);
+    this.objNombre = 'Objeto_' + Math.floor(Math.random() * 1000);
     this.objTipo = 'cube'; this.objRol = 'prop'; this.objColor = '#ffffff';
     this.objSizeX = 1; this.objSizeY = 1; this.objSizeZ = 1;
     this.objAssetSeleccionado = null; this.archivoSubida = null;

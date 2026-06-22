@@ -74,6 +74,20 @@ export class InspectorOutliner {
     });
   }
 
+  get plataformas() {
+    return this.editorSvc.plataformasEscena();
+  }
+
+  get plataformaActivaId() {
+    return this.editorSvc.escenaIdActiva();
+  }
+
+  cambiarPlataforma(id: number) {
+    if (this.plataformaActivaId !== id) {
+      this.editorSvc.onRequestPlatformChange.next(id);
+    }
+  }
+
   get listaNodos() { 
     const todosLosNodos = this.editorSvc.nodosEscena();
     const nodosRaiz = todosLosNodos.filter(n => !n.parent || n.parent.name === '__root__');
@@ -282,6 +296,9 @@ export class InspectorOutliner {
       const entity = this.entityManager.getEntityByMesh(nodo);
       if (!entity) return '📌';
       
+      if (entity.rol === 'player') return '🏃'; // 🔥 Jugador Principal
+      if (entity.rol === 'spawn_point') return '📍'; // 🔥 Spawn Point visual
+      
       if (entity.type?.startsWith('light_')) return '💡'; 
       if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') return '📍';
       if (entity.type === 'bubble') return '🫧';
@@ -289,7 +306,6 @@ export class InspectorOutliner {
       if (entity.type === 'image_plane') return '🖼️';
       
       if (entity.characterConfig) {
-        if (entity.characterConfig.isPlayable) return '🧍‍♂️';
         if (entity.characterConfig.characterType === 'politico') return '👔';
         if (entity.characterConfig.characterType === 'militar') return '🪖';
         return '🤖';

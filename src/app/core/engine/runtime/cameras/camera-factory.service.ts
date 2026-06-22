@@ -1,3 +1,4 @@
+
 import { Injectable, inject, Injector } from '@angular/core';
 import { ArcRotateCamera, UniversalCamera, Vector3, Scene, Camera, Matrix } from '@babylonjs/core';
 import { GameContextService } from '../../session/game-context.service';
@@ -23,7 +24,6 @@ export class CameraFactoryService {
     
     const initialCam = this.getCamera(profile.initialCamera, scene, canvas);
     
-    // Convertimos el tipo de cámara inicial al Owner estricto
     let initialOwner: CameraOwner = 'NONE';
     switch (profile.initialCamera) {
       case 'EDITOR': initialOwner = 'EDITOR'; break;
@@ -32,8 +32,6 @@ export class CameraFactoryService {
       case 'ADMIN_FREE': initialOwner = 'ADMIN_FREE'; break;
     }
     
-    // Delegamos la asignación formal a la fuente de verdad (Ownership).
-    // Usamos el Injector on-demand para romper la dependencia circular.
     const ownership = this.injector.get(CameraOwnershipService);
     ownership.setCamera(initialOwner, initialCam as Camera, canvas, false);
   }
@@ -56,11 +54,12 @@ export class CameraFactoryService {
       return this.mockCamera;
     }
 
-    const cameraKey = `${type}_${mode}`;
+    // 🔥 FIX: Ahora el key es simplemente el TYPE (reutilizamos la cámara por escena, sin clonarla x estado)
+    const cameraKey = type;
 
     if (type === 'EDITOR') {
       if (!this._cameras.has(cameraKey)) {
-        const cam = new ArcRotateCamera(`editorCamera_${mode}`, Math.PI / 4, Math.PI / 3, 25, Vector3.Zero(), scene);
+        const cam = new ArcRotateCamera(`editorCamera`, Math.PI / 4, Math.PI / 3, 25, Vector3.Zero(), scene);
         cam.minZ = 0.1; 
         cam.maxZ = 500000; 
         cam.inertia = 0.8;
@@ -79,47 +78,48 @@ export class CameraFactoryService {
 
     if (type === 'FPS') {
       if (!this._cameras.has(cameraKey)) {
-        const cam = new UniversalCamera(`playerCameraFPS_${mode}`, new Vector3(0, 0, 0), scene);
-        cam.minZ = 0.05;
-        cam.maxZ = 500000;
+        const cam = new UniversalCamera(`playerCameraFPS`, new Vector3(0, 0, 0), scene);
         cam.keysUp = [];
         cam.keysDown = [];
         cam.keysLeft = [];
         cam.keysRight = [];
-        cam.angularSensibility = 2500;
         cam.speed = 0.3;
         cam.applyGravity = false;
-        cam.checkCollisions = false;
         this._cameras.set(cameraKey, cam);
       }
-      return this._cameras.get(cameraKey);
+      const cam = this._cameras.get(cameraKey) as UniversalCamera;
+      cam.minZ = 0.05;
+      cam.maxZ = 500000;
+      cam.angularSensibility = 2500;
+      cam.checkCollisions = false;
+      return cam;
     }
 
     if (type === 'TPS') {
       if (!this._cameras.has(cameraKey)) {
-        const cam = new ArcRotateCamera(`playerCameraTPS_${mode}`, -Math.PI / 2, Math.PI / 2.5, 10, Vector3.Zero(), scene);
-        cam.minZ = 0.05;
-        cam.maxZ = 500000;
+        const cam = new ArcRotateCamera(`playerCameraTPS`, -Math.PI / 2, Math.PI / 2.5, 10, Vector3.Zero(), scene);
         cam.wheelPrecision = 15;
-        cam.angularSensibilityX = 2000;
-        cam.angularSensibilityY = 2000;
         cam.lowerRadiusLimit = this.TPS_MIN_RADIUS;
         cam.upperRadiusLimit = this.TPS_MAX_RADIUS;
         cam._panningMouseButton = 2;
         cam.allowUpsideDown = false;
-        cam.checkCollisions = mode === 'FINAL_USER' || mode === 'PREVIEW_ADMIN'; 
         cam.collisionRadius = new Vector3(0.15, 0.15, 0.15);
         cam.upperBetaLimit = (Math.PI / 2) + 0.4;
         this._cameras.set(cameraKey, cam);
       }
-      return this._cameras.get(cameraKey);
+      const cam = this._cameras.get(cameraKey) as ArcRotateCamera;
+      cam.minZ = 0.05;
+      cam.maxZ = 500000;
+      cam.angularSensibilityX = 2000;
+      cam.angularSensibilityY = 2000;
+      // Actualizamos las flags basándonos en el modo en Tíempo Real
+      cam.checkCollisions = mode === 'FINAL_USER' || mode === 'PREVIEW_ADMIN'; 
+      return cam;
     }
 
     if (type === 'ADMIN_FREE') {
       if (!this._cameras.has(cameraKey)) {
-        const cam = new UniversalCamera(`adminFreeCam_${mode}`, Vector3.Zero(), scene);
-        cam.minZ = 0.05;
-        cam.maxZ = 500000;
+        const cam = new UniversalCamera(`adminFreeCam`, Vector3.Zero(), scene);
         cam.speed = 0.5;
         cam.angularSensibility = 2000;
         cam.keysUp = [87]; // W
@@ -129,7 +129,10 @@ export class CameraFactoryService {
         cam.checkCollisions = false;
         this._cameras.set(cameraKey, cam);
       }
-      return this._cameras.get(cameraKey);
+      const cam = this._cameras.get(cameraKey) as UniversalCamera;
+      cam.minZ = 0.05;
+      cam.maxZ = 500000;
+      return cam;
     }
   }
 

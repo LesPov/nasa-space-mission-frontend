@@ -38,6 +38,7 @@ export class EditorToolsService {
 
   private lastHoverCheckTime = 0;
   private isGizmoSyncAttached = false;
+  private isInitialized = false;
 
   constructor() {
     effect(() => {
@@ -65,6 +66,7 @@ export class EditorToolsService {
     this.debugSvc.actualizarDebugMeshes(null);
     this.highlightSvc.actualizarHighlights(null, null);
     this.fogSvc.limpiarEstado();
+    this.isInitialized = false; // Permite que se vuelva a inicializar si salimos y entramos
   }
 
   private castRayToSelectable(ray: Ray): AbstractMesh | null {
@@ -149,7 +151,15 @@ export class EditorToolsService {
   }
 
   activarEventosEditor(): void {
+    if (this.isInitialized) return;
+    
     const scene = this.motor3d.scene;
+    if (!scene) {
+        console.warn('⚠️ No se puede activar eventos del editor sin Scene de Babylon');
+        return;
+    }
+
+    this.isInitialized = true;
 
     this.highlightSvc.initHighlights();
     this.gizmoSvc.initGizmos();

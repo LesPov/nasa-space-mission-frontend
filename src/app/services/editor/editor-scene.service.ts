@@ -10,6 +10,7 @@ import { SceneNodesService } from './sceneservice/scene-nodes.service';
 import { EditorStateService } from './editor-state.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { AuthService } from '../../core/services/auth';
+import { GameContextService } from '../../core/engine/session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorSceneService {
@@ -22,9 +23,16 @@ export class EditorSceneService {
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
   private authSvc = inject(AuthService);
+  private gameContext = inject(GameContextService);
 
   public crearEntornoVisual(): void {
     const scene = this.motor3d.scene;
+    
+    ['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].forEach(name => {
+      const old = scene.getMeshByName(name);
+      if (old) old.dispose();
+    });
+
     const size = 50;
     
     const ex = MeshBuilder.CreateLines('ejeX', { points: [new Vector3(-size, 0, 0), new Vector3(size, 0, 0)], colors: [new Color4(1, 0.2, 0.2, 1), new Color4(1, 0.2, 0.2, 1)] }, scene);
@@ -32,9 +40,9 @@ export class EditorSceneService {
     const ez = MeshBuilder.CreateLines('ejeZ', { points: [new Vector3(0, 0, -size), new Vector3(0, 0, size)], colors: [new Color4(0.2, 0.5, 1, 1), new Color4(0.2, 0.5, 1, 1)] }, scene);
     
     ex.isPickable = false; ey.isPickable = false; ez.isPickable = false;
-    Tags.AddTagsTo(ex, "system_element editor_only axis");
-    Tags.AddTagsTo(ey, "system_element editor_only axis");
-    Tags.AddTagsTo(ez, "system_element editor_only axis");
+    Tags.AddTagsTo(ex, "system_element editor_only axis ignore_raycast");
+    Tags.AddTagsTo(ey, "system_element editor_only axis ignore_raycast");
+    Tags.AddTagsTo(ez, "system_element editor_only axis ignore_raycast");
 
     const ptsGrid: Vector3[][] = [];
     const colorsGrid: Color4[][] = [];
@@ -48,11 +56,15 @@ export class EditorSceneService {
     
     const grid = MeshBuilder.CreateLineSystem('gridHelper', { lines: ptsGrid, colors: colorsGrid }, scene);
     grid.isPickable = false;
-    Tags.AddTagsTo(grid, "system_element editor_only grid");
+    Tags.AddTagsTo(grid, "system_element editor_only grid ignore_raycast");
   }
 
   public crearSuelo(): void {
-    this.loaderSvc.createInvisibleFloor(this.motor3d.scene);
+    const scene = this.motor3d.scene;
+    const old = scene.getMeshByName('sueloInvisible');
+    if (old) old.dispose();
+    
+    this.loaderSvc.createInvisibleFloor(scene);
     this.nodesSvc.actualizarListaNodos();
   }
 
@@ -60,8 +72,8 @@ export class EditorSceneService {
     return this.builderSvc.reconstruirMallaTrigger(oldMesh, nuevaForma);
   }
 
-  public agregarTriggerCustom(nombre: string, shape: string, isComposite: boolean, mensaje: string, sizeX: number, sizeY: number, sizeZ: number, parentNode: AbstractMesh | null = null): void {
-    this.builderSvc.agregarTriggerCustom(nombre, shape, isComposite, mensaje, sizeX, sizeY, sizeZ, parentNode);
+  public agregarTriggerCustom(nombre: string, shape: string, isComposite: boolean, mensaje: string, sizeX: number, sizeY: number, sizeZ: number, parentNode: AbstractMesh | null = null, actionType: string = 'show_message'): void {
+    this.builderSvc.agregarTriggerCustom(nombre, shape, isComposite, mensaje, sizeX, sizeY, sizeZ, parentNode, actionType);
   }
 
   public agregarObjetoCustom(
@@ -100,6 +112,13 @@ export class EditorSceneService {
 
   public cargarEscenaDesdeDatos(dataBD: any): Promise<void> {
     const isAdmin = this.authSvc.isAdmin();
+    const mode = this.gameContext.mode();
+    
+    // Al cargar una escena en el editor puro, ninguna entidad debe ser persistente porque estamos editando el layout original.
+    if (mode === 'EDITOR' || mode === 'EDITING_IN_GAME') {
+      this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
+    }
+    
     this.entityManager.clear();
 
     return this.loaderSvc.loadSceneFromData(dataBD).then(() => {
@@ -125,7 +144,7 @@ export class EditorSceneService {
     });
   }
 
-  public obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], worldSettings: any } {
+  public obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], environmentSettings: any, spawnPoint: any } {
     return this.saverSvc.obtenerDatosParaGuardar(forceFull);
   }
 }

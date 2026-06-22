@@ -14,7 +14,8 @@ export type GameEvent =
   | { type: 'GameResumed' }
   | { type: 'CameraViewChanged', payload: 'FPS' | 'TPS' }
   | { type: 'SequenceTriggered', payload: { sequenceId: string } }
-  | { type: 'ToggleCameraRequested' };
+  | { type: 'ToggleCameraRequested' }
+  | { type: 'ChangeSceneRequested', payload: { sceneId: number } }; // 🔥 Transición de Plataforma
 
 @Injectable({ providedIn: 'root' })
 export class GameEventBusService {

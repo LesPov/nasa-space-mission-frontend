@@ -29,8 +29,6 @@ export class SeleccionEpisodios implements OnInit {
   cargarEpisodios() {
     this.cargando = true;
     this.epiApiSvc.obtenerEpisodios().subscribe({
-      // 🔥 FIX: Forzamos el tipo (res: any) para que el compilador de TypeScript 
-      // no crashee al buscar propiedades como .data o .episodes
       next: (res: any) => { 
         this.listaEpisodios = Array.isArray(res) ? res : (res?.data || res?.episodes || []); 
         this.cargando = false;
@@ -45,6 +43,8 @@ export class SeleccionEpisodios implements OnInit {
   }
 
   jugarEpisodio(id: number) {
+    // 🔥 Ahora asume que el ID inicial del episodio funciona como ID de escena 
+    // hasta que implementemos la pantalla completa de selección de escenas.
     this.router.navigate(['/jugador/jugar', id]);
   }
 

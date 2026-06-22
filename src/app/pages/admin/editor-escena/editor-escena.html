@@ -1,5 +1,4 @@
 
-
 <!-- PANTALLA PRINCIPAL: SELECCIÓN DE MAPAS -->
 <ng-container *ngIf="!editando && !cargandoEscena()">
   <div class="galeria-header">
@@ -39,7 +38,7 @@
     </div>
   </div>
 
-  <!-- MODAL DE CREACIÓN DE MAPA (VINCULADO AL MISSION SERVICE) -->
+  <!-- MODAL DE CREACIÓN DE MAPA -->
   <div class="modal-overlay" *ngIf="missionSvc.showCreateMapModal">
     <div class="modal-box">
       <h3>Crear Nuevo Episodio</h3>
@@ -49,7 +48,7 @@
       </div>
       <div class="modal-row">
         <label class="modal-label">Descripción breve:</label>
-        <textarea [(ngModel)]="missionSvc.newMapDesc" class="modal-input"></textarea>
+        <textarea [(ngModel)]="missionSvc.newMapDesc" class="modal-input" rows="3"></textarea>
       </div>
       <div class="modal-actions">
         <button class="btn-cancel" (click)="missionSvc.cerrarCrearMapa()">Cancelar</button>
@@ -59,68 +58,119 @@
   </div>
 </ng-container>
 
-<!-- SPINNER CINEMÁTICO DE CARGA -->
-<div class="cinematic-overlay" *ngIf="cargandoEscena()">
-  <app-ui-loading [texto]="cargandoTexto()"></app-ui-loading>
-</div>
-
 <!-- FLUJO DE EDICIÓN -->
 <ng-container *ngIf="editando">
 
-  <!-- MODALES DEL EDITOR DE OBJETOS -->
+  <!-- MODAL DE CREACIÓN DE PLATAFORMAS (NUEVO) -->
+  <div class="modal-overlay" *ngIf="mostrandoCrearPlataforma" style="z-index: 9999;">
+    <div class="modal-box">
+      <h3>Crear Nueva Plataforma</h3>
+      <div class="modal-row">
+        <label class="modal-label">Nombre de la Zona/Plataforma:</label>
+        <input type="text" [(ngModel)]="nuevaPlataformaNombre" class="modal-input" placeholder="Ej: Zona del Bosque">
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" (click)="mostrandoCrearPlataforma = false">Cancelar</button>
+        <button class="btn-confirm" (click)="confirmarCrearPlataforma()">Crear Plataforma</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALES DEL EDITOR DE OBJETOS MEJORADO -->
   <div class="modal-overlay" *ngIf="editorSvc.showAddObjectModal()" style="z-index: 9999;">
     <div class="modal-box large">
       <h3>Añadir Nuevo Elemento a la Escena</h3>
       <div class="modal-grid">
+        
+        <!-- COLUMNA 1: CONFIGURACIÓN GENERAL -->
         <div class="modal-section">
           <h4>1. Configuración del Objeto</h4>
-          <div class="modal-row"><label class="modal-label">Nombre Único:</label><input type="text" [(ngModel)]="objNombre" class="modal-input" placeholder="Ej: Elemento_1"></div>
-          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 5px; background: rgba(251, 191, 36, 0.1); border: 1px solid #fbbf24; padding: 10px; border-radius: 6px;" *ngIf="editorSvc.objetoSeleccionado()">
-            <input type="checkbox" [(ngModel)]="objHacerHijo" id="chkHacerHijo" style="width: 18px; height: 18px; cursor: pointer;">
-            <label for="chkHacerHijo" class="modal-label" style="margin: 0; cursor: pointer; color: #fbbf24; font-weight: bold;">🔗 Crear DENTRO de: {{ editorSvc.objetoSeleccionado()?.name }}</label>
+          
+          <div class="modal-row">
+            <label class="modal-label">Nombre Único:</label>
+            <input type="text" [(ngModel)]="objNombre" class="modal-input" placeholder="Ej: Elemento_1">
           </div>
+
           <div class="modal-row" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble' && objTipo !== 'video_plane' && objTipo !== 'image_plane'">
-            <label class="modal-label" style="color: #ffd700; margin-top: 10px;">Rol del Elemento:</label>
+            <label class="modal-label" style="color: #ffd700;">Rol del Elemento:</label>
             <select [(ngModel)]="objRol" class="modal-input" (change)="onRolChange()">
               <option value="prop">🛋️ Decoración / Prop estático</option>
-              <option value="spawn_point">🧍‍♂️ Spawn del Jugador</option>
+              <option value="player">🏃 Jugador Principal (Persistente)</option>
+              <option value="spawn_point">📍 Punto de Aparición (Spawn marker)</option>
               <option value="npc">🤖 NPC Genérico</option>
               <option value="politico">👔 Político (IA)</option>
               <option value="militar">🪖 Militar (IA)</option>
             </select>
           </div>
-          <div class="modal-row">
-            <label class="modal-label">Tamaño Inicial (Escala X, Y, Z):</label>
-            <div style="display: flex; gap: 10px;"><input type="number" [(ngModel)]="objSizeX" step="0.5" class="modal-input"><input type="number" [(ngModel)]="objSizeY" step="0.5" class="modal-input"><input type="number" [(ngModel)]="objSizeZ" step="0.5" class="modal-input"></div>
-          </div>
-          <div class="modal-row" style="margin-top: 15px;" *ngIf="!objTipo.startsWith('light_')">
+
+          <div class="modal-row" *ngIf="!objTipo.startsWith('light_')">
             <label class="modal-label" style="color: #4ade80;">Mensaje (Lore o Trigger):</label>
-            <textarea [(ngModel)]="objMensaje" class="modal-input" placeholder="Ej: 'Una puerta antigua...'"></textarea>
+            <textarea [(ngModel)]="objMensaje" class="modal-input" rows="4" placeholder="Ej: 'Una puerta antigua...'"></textarea>
+          </div>
+
+          <div class="modal-row checkbox-row highlight-box" *ngIf="editorSvc.objetoSeleccionado()">
+            <input type="checkbox" [(ngModel)]="objHacerHijo" id="chkHacerHijo">
+            <label for="chkHacerHijo" class="modal-label text-warning">🔗 Crear DENTRO de: {{ editorSvc.objetoSeleccionado()?.name }}</label>
           </div>
         </div>
 
+        <!-- COLUMNA 2: VISUAL Y FÍSICAS -->
         <div class="modal-section">
           <h4>2. Aspecto Visual y Físicas</h4>
+          
           <div class="modal-row">
             <label class="modal-label">Tipo de Forma:</label>
             <select [(ngModel)]="objTipo" class="modal-input" (change)="onTipoChange()" [disabled]="['npc', 'spawn_point', 'politico', 'militar'].includes(objRol)">
-              <optgroup label="Geometría Básica"><option value="cube">🧊 Cubo Básico</option><option value="sphere">⚽ Esfera</option><option value="cylinder">🛢️ Cilindro / Cápsula</option><option value="plane">🗺️ Plano (Suelo)</option></optgroup>
-              <optgroup label="Modelos y Scripts"><option value="model">✨ Modelo 3D Importado (.GLB)</option><option value="trigger">📍 Trigger Normal (1 Acción)</option><option value="trigger_compuesto">💠 Trigger Compuesto</option><option value="bubble">🫧 Burbuja Interactiva (Evento FPS)</option><option value="video_plane">📺 Pantalla de Video (.mp4)</option><option value="image_plane">🖼️ Proyector / Holograma (.png/.jpg)</option></optgroup>
-              <optgroup label="Iluminación"><option value="light_directional">☀️ Luz Direccional (Sol/Rayo)</option><option value="light_spot">🔦 Luz Foco (Spotlight)</option><option value="light_point">💡 Luz de Punto (Omnidireccional)</option></optgroup>
+              <optgroup label="Geometría Básica">
+                <option value="plane">🗺️ Plano (Suelo)</option>
+                <option value="cube">🧊 Cubo Básico</option>
+                <option value="sphere">⚽ Esfera</option>
+                <option value="cylinder">🛢️ Cilindro / Cápsula</option>
+              </optgroup>
+              <optgroup label="Modelos y Scripts">
+                <option value="model">✨ Modelo 3D Importado (.GLB)</option>
+                <option value="trigger">📍 Trigger Normal (1 Acción)</option>
+                <option value="trigger_compuesto">💠 Trigger Compuesto</option>
+                <option value="bubble">🫧 Burbuja Interactiva</option>
+                <option value="video_plane">📺 Pantalla Video (.mp4)</option>
+                <option value="image_plane">🖼️ Proyector / Holograma (.png/.jpg)</option>
+              </optgroup>
+              <optgroup label="Iluminación">
+                <option value="light_directional">☀️ Luz Direccional (Sol)</option>
+                <option value="light_spot">🔦 Luz Foco (Spotlight)</option>
+                <option value="light_point">💡 Luz de Punto (Omnidireccional)</option>
+              </optgroup>
             </select>
           </div>
-          <div class="modal-row" *ngIf="objTipo !== 'model' && objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && objTipo !== 'bubble' && objTipo !== 'video_plane'">
-            <label class="modal-label">Color del Material / Emisión:</label>
-            <div class="color-picker-wrapper"><input type="color" [(ngModel)]="objColor" class="color-picker"><span class="color-hex-text">{{ objColor.toUpperCase() }}</span></div>
-          </div>
-          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px; margin-top: 15px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble' && objTipo !== 'video_plane' && objTipo !== 'image_plane'">
-            <input type="checkbox" [(ngModel)]="objEsSolido" id="chkSolido"><label for="chkSolido" class="modal-label" style="margin: 0; cursor: pointer;">🧱 Objeto Sólido (Bloquea el paso)</label>
-          </div>
-          <div class="modal-row" style="flex-direction: row; align-items: center; gap: 10px;" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble'">
-            <input type="checkbox" [(ngModel)]="objEsSeleccionable" id="chkSeleccion"><label for="chkSeleccion" class="modal-label" style="margin: 0; cursor: pointer;">🎯 Editable (Se puede tocar con el ratón)</label>
+
+          <div class="modal-row">
+            <label class="modal-label">Tamaño Inicial (Escala X, Y, Z):</label>
+            <div class="size-inputs">
+              <input type="number" [(ngModel)]="objSizeX" step="0.5" class="modal-input">
+              <input type="number" [(ngModel)]="objSizeY" step="0.5" class="modal-input">
+              <input type="number" [(ngModel)]="objSizeZ" step="0.5" class="modal-input">
+            </div>
           </div>
 
-          <div *ngIf="objTipo === 'model' || objTipo.startsWith('light_') || objTipo === 'video_plane' || objTipo === 'image_plane'" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 15px;">
+          <div class="modal-row" *ngIf="objTipo !== 'model' && objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && objTipo !== 'bubble' && objTipo !== 'video_plane' && objTipo !== 'image_plane'">
+            <label class="modal-label">Color del Material / Emisión:</label>
+            <div class="color-picker-wrapper">
+              <input type="color" [(ngModel)]="objColor" class="color-picker">
+              <span class="color-hex-text">{{ objColor.toUpperCase() }}</span>
+            </div>
+          </div>
+
+          <div class="modal-row checkbox-row" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble' && objTipo !== 'video_plane' && objTipo !== 'image_plane'">
+            <input type="checkbox" [(ngModel)]="objEsSolido" id="chkSolido">
+            <label for="chkSolido" class="modal-label">🧱 Objeto Sólido (Bloquea el paso)</label>
+          </div>
+
+          <div class="modal-row checkbox-row" *ngIf="objTipo !== 'trigger' && objTipo !== 'trigger_compuesto' && !objTipo.startsWith('light_') && objTipo !== 'bubble'">
+            <input type="checkbox" [(ngModel)]="objEsSeleccionable" id="chkSeleccion">
+            <label for="chkSeleccion" class="modal-label">🎯 Editable (Se puede tocar con el ratón)</label>
+          </div>
+
+          <div class="asset-section" *ngIf="objTipo === 'model' || objTipo.startsWith('light_') || objTipo === 'video_plane' || objTipo === 'image_plane'">
             <div class="modal-row">
               <label class="modal-label">Selecciona el Asset:</label>
               <select [(ngModel)]="objAssetSeleccionado" class="modal-input">
@@ -129,12 +179,16 @@
               </select>
             </div>
             <div class="upload-box">
-              <input type="file" accept=".glb, .obj, .mp4, .webm, .png, .jpg, .jpeg" (change)="seleccionarArchivoSubida($event)" style="font-size: 11px; width: 100%;">
-              <button class="upload-btn" [disabled]="!archivoSubida || subiendoAsset" (click)="subirNuevoAsset()">{{ subiendoAsset ? 'Subiendo...' : 'Subir a BD ☁️' }}</button>
+              <input type="file" accept=".glb, .obj, .mp4, .webm, .png, .jpg, .jpeg" (change)="seleccionarArchivoSubida($event)" class="file-input">
+              <button class="upload-btn" [disabled]="!archivoSubida || subiendoAsset" (click)="subirNuevoAsset()">
+                {{ subiendoAsset ? 'Subiendo...' : 'Subir a BD ☁️' }}
+              </button>
             </div>
           </div>
+
         </div>
       </div>
+      
       <div class="modal-actions">
         <button class="btn-cancel" (click)="cerrarModalObjeto()">Cancelar</button>
         <button class="btn-confirm" (click)="crearObjeto3D()" [disabled]="objTipo === 'model' && !objAssetSeleccionado">Añadir a la Escena</button>
@@ -150,10 +204,25 @@
       
       <div class="canvas-wrapper" [style.height.%]="layoutUI.showTimeline() ? 100 - layoutUI.timelineHeight() : 100">
         
+        <!-- SPINNER LOCALIZADO DENTRO DEL CANVAS -->
+        <div class="cinematic-overlay" *ngIf="cargandoEscena()">
+          <app-ui-loading [texto]="cargandoTexto()"></app-ui-loading>
+        </div>
+
         <div class="viewport-topbar">
           <div class="vp-left">
             <button class="btn-vp btn-exit" (click)="salirDelEditor()">⬅ Salir</button>
-            <span class="vp-title">{{ mapaActualNombre }}</span>
+            
+            <div style="width: 1px; height: 20px; background-color: #333; margin: 0 5px;"></div>
+            
+            <!-- 🔥 SELECTOR NATIVO DE PLATAFORMAS -->
+            <select class="cam-select" [(ngModel)]="plataformaActualId" (change)="cambiarPlataformaActiva()" *ngIf="editorSvc.playState() === 'EDITOR'">
+              <option *ngFor="let plat of editorSvc.plataformasEscena()" [value]="plat.id">🗺️ {{ plat.name }}</option>
+            </select>
+            <button class="btn-vp" (click)="abrirModalCrearPlataforma()" *ngIf="editorSvc.playState() === 'EDITOR'">+ Añadir Zona</button>
+            
+            <div style="width: 1px; height: 20px; background-color: #333; margin: 0 5px;"></div>
+
             <button class="btn-vp" *ngIf="editorSvc.playState() !== 'TRANSITIONING' && editorSvc.playState() !== 'INTERACTING'" (click)="togglePreviewMission()" [style.color]="editorSvc.state.previewMissionModal() || mostrarModalMisionPreview ? '#60a5fa' : ''">👁️ UI</button>
           </div>
           
@@ -171,7 +240,6 @@
             </select>
             <button class="btn-vp btn-play" *ngIf="editorSvc.playState() === 'EDITOR'" [disabled]="!esObjetoJugable()" (click)="iniciarModoPrueba()">▶️ Jugar Preview</button>
             
-            <!-- 🔥 BOTÓN DUAL-WINDOW AÑADIDO AQUÍ -->
             <button class="btn-vp btn-window" *ngIf="editorSvc.playState() === 'EDITOR'" [disabled]="!esObjetoJugable()" (click)="abrirVentanaPreview()">🪟 Ventana Externa</button>
 
             <span class="sync-status" [class.syncing]="estadoGuardado() === 'Guardando...'" *ngIf="editorSvc.playState() === 'EDITOR'">{{ estadoGuardado() }}</span>

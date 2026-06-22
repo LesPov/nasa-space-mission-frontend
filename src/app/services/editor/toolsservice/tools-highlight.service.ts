@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, HighlightLayer, Mesh, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -27,7 +28,9 @@ export class ToolsHighlightService {
   private outlinedSelected: Mesh[] = [];
 
   public initHighlights(): void {
+    if (this.hlHover || this.hlSelected) return;
     const scene = this.motor3d.scene;
+    if (!scene) return;
 
     this.hlHover = new HighlightLayer('hlHover', scene, {
       isStroke: true,

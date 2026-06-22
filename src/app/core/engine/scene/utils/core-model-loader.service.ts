@@ -87,9 +87,6 @@ export class CoreModelLoaderService {
                 m.checkCollisions = false;
             } else {
                 m.checkCollisions = entity.visual.isSolid; 
-                if (entity.visual.isSolid && vertices > 500 && m instanceof Mesh) {
-                    m.useOctreeForCollisions = true; m.useOctreeForPicking = true;
-                }
             }
         } else {
             m.checkCollisions = false;
@@ -115,7 +112,6 @@ export class CoreModelLoaderService {
       if (headNode) {
         headNode.computeWorldMatrix(true);
         rootNode.computeWorldMatrix(true);
-        // 🔥 FIX: Actualizado al getter/setter directo del ECS
         entity.initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
         entity.syncToView(); 
       }
@@ -137,18 +133,22 @@ export class CoreModelLoaderService {
 
       lightObj.parent = targetParent;
       lightObj.intensity = entity.light.intensity;
-      
       const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       const activeColor = isBW ? entity.light.lightColorBW : entity.light.lightColor;
-
       lightObj.diffuse = Color3.FromHexString(activeColor);
-      lightObj.specular = new Color3(0, 0, 0);
-      
-      if (lightObj.range !== undefined) lightObj.range = entity.light.range;
+      if (lightObj.position) lightObj.position.copyFromFloats(entity.light.lightPosX, entity.light.lightPosY, entity.light.lightPosZ);
+    }
 
-      if (lightObj.position) {
-          lightObj.position.copyFromFloats(entity.light.lightPosX, entity.light.lightPosY, entity.light.lightPosZ);
-      }
+    // 🔥 FIX: Spawn point seleccionable incluso si fue importado de GLB
+    if (entity.rol === 'spawn_point') {
+        rootNode.checkCollisions = false;
+        subMeshes.forEach(m => {
+            m.checkCollisions = false;
+            if (m.material && m.material instanceof StandardMaterial) {
+                m.material.alpha = 0.4;
+                m.material.wireframe = false;
+            }
+        });
     }
 
     this.entityManager.addEntity(entity);

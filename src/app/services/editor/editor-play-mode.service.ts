@@ -18,6 +18,8 @@ import { EditorModeTransitionService } from './editor-mode-transition.service';
 import { CAMERA_BEHAVIOR_PROFILES } from '../../core/engine/runtime/cameras/camera-behavior-profile.model';
 import { AuthService } from '../../core/services/auth';
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
+import { CharacterConfigComponent, PlayerRuntimeComponent } from '../../core/engine/entities/game.entity';
+import { cloneDefaultPlayerConfig } from '../../core/engine/models/player-config.model';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
@@ -45,25 +47,51 @@ export class EditorPlayModeService {
     });
   }
 
-  public testearEscena(vista: CameraViewMode): void {
-    const objMesh = this.state.objetoSeleccionado() as Mesh;
-    if (!objMesh) return;
+  public testearEscena(vista: CameraViewMode, skipIntro: boolean = false): void {
+    let objMesh = this.state.objetoSeleccionado() as Mesh;
+    let playerEntity = objMesh ? this.entityManager.getEntityByMesh(objMesh) : null;
     
-    const playerEntity = this.entityManager.getEntityByMesh(objMesh);
-    if (!playerEntity) return;
+    if (!playerEntity || (!playerEntity.hasComponent('characterConfig') && playerEntity.rol !== 'spawn_point')) {
+       const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
+       playerEntity = characters.find(c => c.rol === 'player') || characters.find(c => c.characterConfig?.isPlayable);
+       
+       if (!playerEntity) {
+           // Fallback to spawn point
+           playerEntity = this.entityManager.getAllEntities().find(e => e.rol === 'spawn_point');
+           if (playerEntity) {
+               playerEntity.addComponent('characterConfig', new CharacterConfigComponent('player', true));
+               playerEntity.addComponent('playerRuntime', new PlayerRuntimeComponent());
+               playerEntity.playerConfig = cloneDefaultPlayerConfig();
+           }
+       }
+       if (playerEntity && playerEntity.view) {
+           objMesh = playerEntity.view as Mesh;
+       }
+    } else if (playerEntity.rol === 'spawn_point' && !playerEntity.hasComponent('characterConfig')) {
+       playerEntity.addComponent('characterConfig', new CharacterConfigComponent('player', true));
+       playerEntity.addComponent('playerRuntime', new PlayerRuntimeComponent());
+       playerEntity.playerConfig = cloneDefaultPlayerConfig();
+    }
 
-    this.cameraSvc.guardarEstadoCamaraLibre();
-    this.gameState.enterSandbox();
+    if (!objMesh || !playerEntity) {
+        console.warn("No hay personaje jugable para iniciar el Test Live.");
+        return;
+    }
+
+    if (!skipIntro) {
+      this.cameraSvc.guardarEstadoCamaraLibre();
+      this.gameState.enterSandbox();
+      this.transitionSvc.beginTestLive();
+      this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
+    }
+
+    playerEntity.isPersistent = true;
+    Tags.AddTagsTo(playerEntity.view, "persistent_player");
 
     this.state.modoVistaPrueba = vista;
     this.state.jugadorActivo = objMesh;
-    
-    // 🛡️ Sincronización estricta del Modo y PlayState
-    this.transitionSvc.beginTestLive();
-
-    this.snapshotMemoria = this.editorSvc.obtenerDatosParaGuardar(true);
     this.state.objetoSeleccionado.set(null);
-
+    
     this.motor3d.scene.meshes.forEach(m => {
         if (Tags.MatchesQuery(m, "editor_only")) {
             m.isVisible = false;
@@ -74,6 +102,10 @@ export class EditorPlayModeService {
         if (entity) {
             if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = false;
             if (entity.type === 'image_plane') m.isVisible = false; 
+            if (entity.rol === 'spawn_point' && entity.uid !== playerEntity!.uid) { 
+                m.isVisible = false; 
+                m.setEnabled(false); 
+            }
         }
     });
 
@@ -101,7 +133,7 @@ export class EditorPlayModeService {
     }
 
     let hideObserver: Observer<Scene> | null = null;
-    if (vista === 'FPS') {
+    if (vista === 'FPS' && !skipIntro) {
       hideObserver = this.motor3d.scene.onBeforeRenderObservable.add(() => {
         const cam = this.ownership.getCamera();
         if (cam && this.ownership.getOwner() === 'TRANSITION_PROXY') {
@@ -119,8 +151,8 @@ export class EditorPlayModeService {
           this.motor3d.scene.onBeforeRenderObservable.remove(hideObserver);
         }
 
-        this.transitionSvc.finishTestLiveTransition();
-        this.runtimeEngine.startTestSession(playerEntity, vista);
+        if (!skipIntro) this.transitionSvc.finishTestLiveTransition();
+        this.runtimeEngine.startTestSession(playerEntity!, vista);
         this.state.triggerUpdate();
         
         setTimeout(() => {
@@ -136,64 +168,74 @@ export class EditorPlayModeService {
                     if (activeCam.minZ !== undefined) activeCam.minZ = profile.minZ;
                     
                     activeCam.attachControl(canvas, true);
+                    
+                    if (skipIntro && vista === 'FPS') {
+                      objMesh.visibility = 0;
+                      objMesh.getChildMeshes().forEach(m => m.visibility = 0);
+                    }
                 }
             }
         }, 100);
     };
 
-    this.cameraSvc.volarHaciaCamaraJuego(
-        centroEpiral, targetPos, targetLookAt, playerForward, vista === 'FPS', () => finishSetup()
-    );
+    if (skipIntro) {
+      finishSetup();
+    } else {
+      this.cameraSvc.volarHaciaCamaraJuego(
+          centroEpiral, targetPos, targetLookAt, playerForward, vista === 'FPS', () => finishSetup()
+      );
+    }
   }
 
   public async detenerPrueba(): Promise<void> {
     this.transitionSvc.stopTestLive();
-    
     this.runtimeEngine.stopTestSession();
     this.gameState.exitSandbox();
 
     const isDebugMode = this.authSvc.isAdmin();
 
     if (this.snapshotMemoria) {
-        const cambiosEnPlay = this.editorSvc.obtenerDatosParaGuardar(false);
+        const currentId = this.editorSvc.escenaIdActiva();
+        const snapId = this.snapshotMemoria.scene?.id || this.snapshotMemoria.id;
 
-        cambiosEnPlay.sceneObjectsDelta.forEach(delta => {
-            const index = this.snapshotMemoria.sceneObjectsDelta.findIndex((o: any) => o.uid === delta.uid);
-            if (index !== -1) {
-                this.snapshotMemoria.sceneObjectsDelta[index] = delta;
-            } else {
-                this.snapshotMemoria.sceneObjectsDelta.push(delta);
+        if (snapId && currentId !== snapId) {
+            console.log('[EditorPlayMode] Detectado cambio de plataforma durante Test. Descartando Snapshot sucio y recargando desde DB limpia.');
+            this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
+        } else {
+            const cambiosEnPlay = this.editorSvc.obtenerDatosParaGuardar(false);
+            if (!this.snapshotMemoria.sceneObjectsDelta) this.snapshotMemoria.sceneObjectsDelta = [];
+            if (!this.snapshotMemoria.triggersDelta) this.snapshotMemoria.triggersDelta = [];
+            if (!this.snapshotMemoria.deletedObjects) this.snapshotMemoria.deletedObjects = [];
+            if (!this.snapshotMemoria.deletedTriggers) this.snapshotMemoria.deletedTriggers = [];
+
+            cambiosEnPlay.sceneObjectsDelta.forEach(delta => {
+                const index = this.snapshotMemoria.sceneObjectsDelta.findIndex((o: any) => o.uid === delta.uid);
+                if (index !== -1) this.snapshotMemoria.sceneObjectsDelta[index] = delta;
+                else this.snapshotMemoria.sceneObjectsDelta.push(delta);
+            });
+
+            cambiosEnPlay.triggersDelta.forEach(delta => {
+                const index = this.snapshotMemoria.triggersDelta.findIndex((o: any) => o.uid === delta.uid);
+                if (index !== -1) this.snapshotMemoria.triggersDelta[index] = delta;
+                else this.snapshotMemoria.triggersDelta.push(delta);
+            });
+
+            if (cambiosEnPlay.deletedObjects.length > 0) {
+                this.snapshotMemoria.sceneObjectsDelta = this.snapshotMemoria.sceneObjectsDelta.filter((o: any) => !cambiosEnPlay.deletedObjects.includes(o.uid));
+                this.snapshotMemoria.deletedObjects = [...new Set([...this.snapshotMemoria.deletedObjects, ...cambiosEnPlay.deletedObjects])];
             }
-        });
 
-        cambiosEnPlay.triggersDelta.forEach(delta => {
-            const index = this.snapshotMemoria.triggersDelta.findIndex((o: any) => o.uid === delta.uid);
-            if (index !== -1) {
-                this.snapshotMemoria.triggersDelta[index] = delta;
-            } else {
-                this.snapshotMemoria.triggersDelta.push(delta);
+            if (cambiosEnPlay.deletedTriggers.length > 0) {
+                this.snapshotMemoria.triggersDelta = this.snapshotMemoria.triggersDelta.filter((o: any) => !cambiosEnPlay.deletedTriggers.includes(o.uid));
+                this.snapshotMemoria.deletedTriggers = [...new Set([...this.snapshotMemoria.deletedTriggers, ...cambiosEnPlay.deletedTriggers])];
             }
-        });
-
-        if (cambiosEnPlay.deletedObjects.length > 0) {
-            this.snapshotMemoria.sceneObjectsDelta = this.snapshotMemoria.sceneObjectsDelta.filter((o: any) => !cambiosEnPlay.deletedObjects.includes(o.uid));
-            this.snapshotMemoria.deletedObjects = [...new Set([...this.snapshotMemoria.deletedObjects, ...cambiosEnPlay.deletedObjects])];
         }
 
-        if (cambiosEnPlay.deletedTriggers.length > 0) {
-            this.snapshotMemoria.triggersDelta = this.snapshotMemoria.triggersDelta.filter((o: any) => !cambiosEnPlay.deletedTriggers.includes(o.uid));
-            this.snapshotMemoria.deletedTriggers = [...new Set([...this.snapshotMemoria.deletedTriggers, ...cambiosEnPlay.deletedTriggers])];
-        }
-
+        this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
         this.entityManager.clear();
-        this.editorSvc.limpiarEstado();
 
         const scene = this.motor3d.scene;
-        
-        const meshesToDispose = scene.meshes.filter(m => {
-           return !Tags.MatchesQuery(m, "system_element");
-        });
-        
+        const meshesToDispose = scene.meshes.filter(m => !Tags.MatchesQuery(m, "system_element") && !Tags.MatchesQuery(m, "editor_only"));
         meshesToDispose.forEach(m => {
             if (!m.isDisposed()) m.dispose(false, true);
         });
@@ -214,6 +256,10 @@ export class EditorPlayModeService {
             if (entity.type === 'bubble') m.isVisible = true;
             if (entity.type === 'image_plane') m.isVisible = isDebugMode; 
             if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') m.isVisible = isDebugMode;
+            if (entity.rol === 'spawn_point') { 
+                m.setEnabled(true); 
+                m.isVisible = true; 
+            }
         }
     });
 

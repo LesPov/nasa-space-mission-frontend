@@ -7,6 +7,9 @@ export class ApiService {
   private http = inject(HttpClient);
   private baseUrl = `${environment.apiUrl}/api/episodes`;
 
+  // Este servicio quedó por compatibilidad legacy. 
+  // Usa EpisodiosService en src/app/services/api/episodios.ts en su lugar para la nueva arquitectura.
+
   getEpisodes() {
     return this.http.get<any[]>(this.baseUrl);
   }
@@ -15,11 +18,11 @@ export class ApiService {
     return this.http.post<any>(this.baseUrl, { title, description });
   }
 
-  getEpisodeData(episodeId: number) {
-    return this.http.get<any>(`${this.baseUrl}/${episodeId}`);
+  getSceneData(sceneId: number) {
+    return this.http.get<any>(`${this.baseUrl}/scenes/${sceneId}`);
   }
 
-  saveFullMap(episodeId: number, sceneObjects: any[]) {
-    return this.http.post<any>(`${this.baseUrl}/${episodeId}/save-map`, { sceneObjects });
+  saveFullMap(sceneId: number, sceneObjects: any[]) {
+    return this.http.post<any>(`${this.baseUrl}/scenes/${sceneId}/save-map`, { sceneObjectsDelta: sceneObjects });
   }
 }

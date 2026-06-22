@@ -37,143 +37,91 @@
 .btn-entrar-overlay:hover { background-color: #1d4ed8; transform: scale(1.05);}
 
 /* ========================================================
-   NUEVO OVERLAY CINEMÁTICO (Carga y Selección de Rol)
+   OVERLAY CINEMÁTICO (Carga y Selección de Rol)
    ======================================================== */
 .cinematic-overlay {
-  position: fixed; 
-  top: 0; 
-  left: 0; 
-  width: 100vw; 
-  height: 100vh; 
+  position: absolute; 
+  top: 0; left: 0; width: 100%; height: 100%; 
   background: radial-gradient(circle at center, rgba(15,23,42,0.85) 0%, rgba(2,6,23,1) 100%);
   backdrop-filter: blur(15px);
   -webkit-backdrop-filter: blur(15px);
-  display: flex; 
-  flex-direction: column; 
-  justify-content: center; 
-  align-items: center; 
-  z-index: 9999; 
-  color: white; 
+  display: flex; flex-direction: column; justify-content: center; align-items: center; 
+  z-index: 9999; color: white; 
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   animation: fadeIn 0.4s ease-out;
 }
 
 @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
 
-.mode-selection-modal {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  max-width: 800px;
-  text-align: center;
-}
-
-.mode-selection-modal h2 {
-  font-size: 32px;
-  margin-bottom: 10px;
-  color: #f8fafc;
-  letter-spacing: 1px;
-}
-
-.mode-selection-modal p {
-  color: #94a3b8;
-  font-size: 16px;
-  margin-bottom: 40px;
-}
-
-.mode-cards-container {
-  display: flex;
-  gap: 30px;
-  justify-content: center;
-  flex-wrap: wrap;
-}
-
-.mode-card {
-  background: rgba(30, 41, 59, 0.6);
-  border: 1px solid rgba(59, 130, 246, 0.4);
-  border-radius: 16px;
-  padding: 40px 30px;
-  width: 280px;
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.mode-card:hover {
-  transform: translateY(-10px);
-  background: rgba(30, 41, 59, 0.9);
-  border-color: #60a5fa;
-  box-shadow: 0 20px 40px rgba(59, 130, 246, 0.3);
-}
-
-.mode-card.user-mode {
-  border-color: rgba(16, 185, 129, 0.4);
-}
-.mode-card.user-mode:hover {
-  border-color: #34d399;
-  box-shadow: 0 20px 40px rgba(16, 185, 129, 0.3);
-}
-
-.mode-icon {
-  font-size: 48px;
-  margin-bottom: 20px;
-}
-
-.mode-card h3 {
-  margin: 0 0 15px 0;
-  font-size: 22px;
-  color: #f8fafc;
-}
-
-.mode-card p {
-  margin: 0;
-  font-size: 14px;
-  color: #cbd5e1;
-  line-height: 1.6;
-}
-
-/* Modales del Editor */
+/* ========================================================
+   MODALES MEJORADOS DEL EDITOR
+   ======================================================== */
 .modal-overlay { 
   position: fixed; top: 0; left: 0; width: 100%; height: 100%; 
-  background-color: rgba(0, 0, 0, 0.8); display: flex; justify-content: center; align-items: center; z-index: 2000; 
+  background-color: rgba(0, 0, 0, 0.85); display: flex; justify-content: center; align-items: center; z-index: 2000; 
+  backdrop-filter: blur(4px);
 }
 .modal-box { 
-  background-color: #242424; padding: 25px; border-radius: 8px; width: 400px; 
-  border: 1px solid #3d3d3d; display: flex; flex-direction: column; gap: 15px; 
-  box-shadow: 0 15px 40px rgba(0,0,0,0.6); 
+  background-color: #242424; 
+  padding: 25px; 
+  border-radius: 12px; 
+  width: 400px; 
+  border: 1px solid #3d3d3d; 
+  display: flex; flex-direction: column; gap: 15px; 
+  box-shadow: 0 15px 40px rgba(0,0,0,0.8); 
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
-.modal-box.large { width: 700px; max-width: 90vw; }
-.modal-box h3 { color: #e6e6e6; margin-top: 0; border-bottom: 1px solid #3d3d3d; padding-bottom: 10px;}
-.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-.modal-section { background-color: #1a1a1a; padding: 15px; border-radius: 6px; border: 1px solid #333; }
-.modal-section h4 { color: #60a5fa; margin-top: 0; margin-bottom: 15px; font-size: 14px; }
-.modal-row { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.modal-box.large { width: 750px; max-width: 95vw; }
+.modal-box h3 { color: #e6e6e6; margin-top: 0; border-bottom: 1px solid #3d3d3d; padding-bottom: 15px; font-size: 18px;}
+
+.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+.modal-section { 
+  background-color: #1e1e1e; padding: 20px; border-radius: 8px; border: 1px solid #2a2a2a; 
+  display: flex; flex-direction: column; gap: 15px;
+}
+.modal-section h4 { color: #60a5fa; margin: 0 0 5px 0; font-size: 15px; border-bottom: 1px solid #333; padding-bottom: 8px; }
+
+.modal-row { display: flex; flex-direction: column; gap: 6px; }
 .modal-label { color: #a1a1a1; font-size: 13px; font-weight: 500; }
 .modal-input { 
-  background-color: #242424; border: 1px solid #3d3d3d; padding: 10px; border-radius: 4px; 
+  background-color: #242424; border: 1px solid #3d3d3d; padding: 10px; border-radius: 6px; 
   color: white; outline: none; width: 100%; box-sizing: border-box; font-family: inherit; transition: border 0.2s;
+  font-size: 13px;
 }
 .modal-input:focus { border-color: #4b73b5; }
+.modal-input:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Especiales para el formulario */
+.checkbox-row { flex-direction: row; align-items: center; gap: 10px; cursor: pointer; }
+.checkbox-row input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: #4b73b5; }
+.checkbox-row label { cursor: pointer; margin: 0; }
+.size-inputs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+
+.highlight-box { background: rgba(251, 191, 36, 0.1); border: 1px solid #fbbf24; padding: 12px; border-radius: 6px; margin-top: auto; }
+.text-warning { color: #fbbf24; font-weight: bold; margin: 0; cursor: pointer;}
+
 .color-picker-wrapper { display: flex; align-items: center; gap: 10px; }
 .color-picker { -webkit-appearance: none; border: none; width: 40px; height: 35px; border-radius: 4px; cursor: pointer; padding: 0; background: transparent; }
 .color-picker::-webkit-color-swatch-wrapper { padding: 0; }
 .color-picker::-webkit-color-swatch { border: 1px solid #333; border-radius: 4px; }
 .color-hex-text { color: #888; font-family: monospace; font-size: 13px;}
-.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 15px; padding-top: 15px; border-top: 1px solid #3d3d3d;}
-.btn-cancel { background: transparent; color: #a1a1a1; border: none; cursor: pointer; padding: 10px 15px; border-radius: 4px; }
-.btn-cancel:hover { background-color: #333; color: white; }
-.btn-confirm { background-color: #4b73b5; color: white; border: none; padding: 10px 20px; border-radius: 4px; font-weight: bold; cursor: pointer; }
-.btn-confirm:hover { background-color: #5c85c7; }
-.btn-confirm:disabled { background-color: #333; color: #666; cursor: not-allowed; }
-.upload-box { border: 2px dashed #4b73b5; padding: 15px; text-align: center; border-radius: 6px; margin-top: 10px; background-color: rgba(75, 115, 181, 0.1); }
-.upload-btn { background-color: #4b73b5; color: white; border: none; padding: 6px 12px; border-radius: 4px; margin-top: 10px; cursor: pointer; }
-.mt-4 { margin-top: 20px; }
 
-/* Layout Editor/Juego */
+.asset-section { margin-top: 10px; border-top: 1px dashed #444; padding-top: 15px; display: flex; flex-direction: column; gap: 15px; }
+.upload-box { border: 2px dashed #4b73b5; padding: 20px; text-align: center; border-radius: 8px; background-color: rgba(75, 115, 181, 0.05); display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.file-input { font-size: 12px; color: #aaa; width: 100%; max-width: 250px; }
+.upload-btn { background-color: #4b73b5; color: white; border: none; padding: 8px 16px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+.upload-btn:hover:not(:disabled) { background-color: #35588c; }
+.upload-btn:disabled { background: #333; color: #666; cursor: not-allowed; }
+
+.modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 10px; padding-top: 20px; border-top: 1px solid #3d3d3d;}
+.btn-cancel { background: transparent; color: #a1a1a1; border: none; cursor: pointer; padding: 10px 15px; border-radius: 6px; transition: 0.2s; font-size: 14px;}
+.btn-cancel:hover { background-color: #333; color: white; }
+.btn-confirm { background-color: #4b73b5; color: white; border: none; padding: 10px 24px; border-radius: 6px; font-weight: bold; cursor: pointer; transition: 0.2s; font-size: 14px;}
+.btn-confirm:hover:not(:disabled) { background-color: #5c85c7; }
+.btn-confirm:disabled { background-color: #333; color: #666; cursor: not-allowed; }
+
+
+/* Layout Editor/Juego (INTACTOS) */
 .blender-layout { display: flex; background-color: #1e1e1e; position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 950; overflow: hidden; }
 .viewport-area { display: flex; flex-direction: column; position: relative; height: 100%; min-width: 0; min-height: 0; overflow: hidden; }
 .canvas-wrapper { display: flex; flex-direction: column; position: relative; width: 100%; min-height: 0; }

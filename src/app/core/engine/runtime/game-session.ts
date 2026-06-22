@@ -1,4 +1,3 @@
-
 import { Injectable, inject, computed } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
@@ -144,8 +143,12 @@ export class GameSession {
     }
   }
 
-  public stop(): void {
-    this.context.stopGameSession();
+  public stop(isTeleport: boolean = false): void {
+    if (!isTeleport) {
+       this.context.stopGameSession();
+    } else {
+       this.context.setPointerLocked(false);
+    }
     
     this.inputSvc.disable();
     this.interactionSvc.disable();

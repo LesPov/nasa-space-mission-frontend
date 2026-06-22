@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -40,6 +39,24 @@ export class BuilderTriggerService {
       newMesh.setParent(oldMesh.parent);
     }
 
+    const isComp = entity?.trigger?.isComposite ?? false;
+    const actionT = entity?.trigger?.actionType ?? 'show_message';
+    
+    let color = new Color3(0, 1, 0); // Green
+    let emissive = new Color3(0.2, 1, 0.2);
+    if (!isComp) {
+      if (actionT === 'change_scene') {
+        color = new Color3(1, 0, 0); // Red
+        emissive = new Color3(1, 0.2, 0.2);
+      } else {
+        color = new Color3(1, 0, 1); // Pink
+        emissive = new Color3(1, 0.2, 1);
+      }
+    } else {
+        color = new Color3(0, 0.5, 1); // Azul para compuestos
+        emissive = new Color3(0, 0.3, 0.8);
+    }
+
     if (entity) {
       if (entity.trigger) entity.trigger.triggerShape = nuevaForma;
       entity.isDirty = true;
@@ -52,10 +69,10 @@ export class BuilderTriggerService {
     }
 
     const mat = new StandardMaterial('mat_trigger_' + newMesh.name, scene);
-    mat.diffuseColor = new Color3(0.0, 1.0, 0.0);
-    mat.emissiveColor = new Color3(0.2, 1.0, 0.2);
+    mat.diffuseColor = color;
+    mat.emissiveColor = emissive;
     mat.alpha = 0.4;
-    mat.wireframe = true;
+    mat.wireframe = false; // 🔥 Solido visible
     mat.disableLighting = true;
     mat.maxSimultaneousLights = 4;
     newMesh.material = mat;
@@ -75,20 +92,23 @@ export class BuilderTriggerService {
 
   public agregarTriggerCustom(
     nombre: string, shape: string, isComposite: boolean, mensaje: string, 
-    sizeX: number, sizeY: number, sizeZ: number, parentNode: AbstractMesh | null = null
+    sizeX: number, sizeY: number, sizeZ: number, parentNode: AbstractMesh | null = null,
+    actionType: string = 'show_message'
   ): void {
     const mockDbObject = {
       uid: window.crypto.randomUUID(),
       name: nombre,
-      type: 'trigger',
+      type: isComposite ? 'trigger_compuesto' : 'trigger',
       position: parentNode ? {x:0, y:0, z:0} : { x: 0, y: sizeY / 2, z: 0 },
-      scale: { x: sizeX, y: sizeY, z: sizeZ },
+      scale: { x: sizeX, y: sizeY, z: sizeZ }, // Scale será procesado por loader a "size/scale"
       parentId: parentNode?.metadata?.uid || null,
       condition: isComposite ? 'on_enter' : 'on_enter',
+      actionType: actionType,
       actionProperties: {
          isComposite: isComposite,
          triggerShape: shape || 'cube',
-         mensaje: mensaje
+         mensaje: mensaje,
+         actionType: actionType
       }
     };
 

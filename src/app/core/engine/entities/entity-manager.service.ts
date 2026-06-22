@@ -1,4 +1,3 @@
-
 import { Injectable } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { GameEntity } from './game.entity';
@@ -67,9 +66,26 @@ export class EntityManagerService {
   }
 
   public clear(): void {
-    this.entitiesByUid.forEach(entity => entity.destroyView());
+    const persistentEntities = new Map<string, GameEntity>();
+    
+    this.entitiesByUid.forEach(entity => {
+      if (entity.isPersistent) {
+        persistentEntities.set(entity.uid, entity);
+      } else {
+        if (entity.view) {
+          this.entitiesByMesh.delete(entity.view);
+        }
+        entity.destroyView();
+      }
+    });
+
     this.entitiesByUid.clear();
     this.entitiesByMesh.clear();
+
+    persistentEntities.forEach(entity => {
+      this.addEntity(entity);
+    });
+
     this.clearDeletedRecords();
   }
 }

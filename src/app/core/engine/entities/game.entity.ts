@@ -1,3 +1,4 @@
+
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
@@ -58,7 +59,9 @@ export class TriggerConfigComponent {
     public videoSalida = '', public condition = 'on_enter', public mensaje = '', 
     public soundUrl = '', public interactSequenceId = '', public timeNorm = 4.5, 
     public videoNorm = '', public isRepeatable = false, public gameConditions: any[] = [], 
-    public stateMutations: any[] = []
+    public stateMutations: any[] = [],
+    public actionType: 'show_message' | 'change_scene' = 'show_message',
+    public targetSceneId: number | null = null
   ) {}
 }
 
@@ -105,6 +108,7 @@ export class GameEntity {
   public rol: string; 
   public parentId: string | null = null;
   public orderIndex: number = 0;
+  public isPersistent: boolean = false;
 
   public view: AbstractMesh | null = null;
   public isDirty: boolean = true; 
@@ -125,8 +129,9 @@ export class GameEntity {
     this.addComponent('interaction', new InteractionComponent());
     this.addComponent('interactionRuntime', new InteractionRuntimeComponent());
 
-    if (['npc', 'spawn_point', 'politico', 'militar'].includes(rol)) {
-      this.addComponent('characterConfig', new CharacterConfigComponent(rol, rol === 'spawn_point'));
+    // 🔥 FIX: Se retiró 'spawn_point' para que actúe nativamente como prop en el editor y su escala no se rompa
+    if (['player', 'npc', 'politico', 'militar'].includes(rol)) {
+      this.addComponent('characterConfig', new CharacterConfigComponent(rol, rol === 'player'));
       this.addComponent('playerRuntime', new PlayerRuntimeComponent());
       this.playerConfig = cloneDefaultPlayerConfig(); 
     }
@@ -211,7 +216,7 @@ export class GameEntity {
   set autoAnim(v) { if(v) this.addComponent('autoAnim', new AutoAnimComponent(v)); else this.removeComponent('autoAnim'); }
 
   get playerConfig(): PlayerRuntimeConfig | undefined {
-    const isCharacter = ['npc', 'spawn_point', 'politico', 'militar'].includes(this.rol);
+    const isCharacter = this.hasComponent('characterConfig');
     if (!isCharacter && !this.hasComponent('sequences') && !this.hasComponent('fogConfig') && !this.hasComponent('animations')) {
         return undefined;
     }
@@ -316,6 +321,21 @@ export class GameEntity {
     }
 
     if (this.view && typeof this.view.isDisposed === 'function' && !this.view.isDisposed()) {
+      const scene = this.view.getScene();
+      if (scene) {
+        const descendants = new Set<any>([this.view, ...this.view.getDescendants(false)]);
+        const agsToDispose: any[] = [];
+        scene.animationGroups.forEach(ag => {
+          const isTargetingMe = ag.targetedAnimations?.some((ta: any) => descendants.has(ta.target));
+          if (isTargetingMe) {
+            agsToDispose.push(ag);
+          }
+        });
+        agsToDispose.forEach(ag => {
+          ag.stop();
+          ag.dispose();
+        });
+      }
       this.view.dispose(false, true);
     }
     this.view = null;

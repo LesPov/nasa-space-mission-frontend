@@ -28,7 +28,6 @@
         <div class="grid-2">
           <div class="field wide"><label>Mensaje al ENTRAR</label><textarea rows="1" [ngModel]="triggerMensajeEntrada" (ngModelChange)="triggerMensajeEntrada = $event; aplicarTrigger()"></textarea></div>
           <div class="field"><label>Segundos</label><input type="number" step="0.5" [ngModel]="triggerTimeEntrada" (ngModelChange)="triggerTimeEntrada = $event; aplicarTrigger()" /></div>
-          <!-- 🔥 FIX UI: Ayuda para IDs separados por comas -->
           <div class="field wide">
             <label>ID Seq (Múltiples separados por coma)</label>
             <input type="text" [ngModel]="triggerSeqEntrada" (ngModelChange)="triggerSeqEntrada = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
@@ -42,7 +41,6 @@
          <div class="grid-2">
           <div class="field wide"><label>Mensaje al SALIR</label><textarea rows="1" [ngModel]="triggerMensajeSalida" (ngModelChange)="triggerMensajeSalida = $event; aplicarTrigger()"></textarea></div>
           <div class="field"><label>Segundos</label><input type="number" step="0.5" [ngModel]="triggerTimeSalida" (ngModelChange)="triggerTimeSalida = $event; aplicarTrigger()" /></div>
-          <!-- 🔥 FIX UI: Ayuda para IDs separados por comas -->
           <div class="field wide">
             <label>ID Seq (Múltiples separados por coma)</label>
             <input type="text" [ngModel]="triggerSeqSalida" (ngModelChange)="triggerSeqSalida = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
@@ -56,21 +54,70 @@
 
 <div class="section-card" *ngIf="!triggerIsComposite">
   <div class="section-head"><h4>Trigger Normal</h4></div>
+  
   <div class="grid-2">
     <div class="field"><label>Forma</label><select [ngModel]="triggerShape" (ngModelChange)="triggerShape = $event; aplicarTriggerForma($event)"><option value="cube">Caja</option><option value="sphere">Esfera</option><option value="cylinder">Tubo</option></select></div>
     <div class="field"><label>Condición</label><select [ngModel]="triggerCondition" (ngModelChange)="triggerCondition = $event; aplicarTrigger()"><option value="on_enter">Al Pisarlo</option><option value="on_exit">Al Salir</option></select></div>
     <div class="checkbox-field" style="margin-top: 15px;"><input type="checkbox" id="chkRepNorm" [ngModel]="triggerRepeatable" (ngModelChange)="triggerRepeatable = $event; aplicarTrigger()" /><label for="chkRepNorm">Es repetible</label></div>
   </div>
-  <div class="field wide" style="margin-top: 10px;"><label>Mensaje</label><textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarTrigger()"></textarea></div>
-  <div class="grid-2" style="margin-top: 5px;">
-      <div class="field"><label>Segundos</label><input type="number" step="0.5" [ngModel]="triggerTimeNorm" (ngModelChange)="triggerTimeNorm = $event; aplicarTrigger()" /></div>
-      <!-- 🔥 FIX UI: Ayuda para IDs separados por comas -->
-      <div class="field wide">
-        <label>ID Seq (Múltiples separados por coma)</label>
-        <input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
-      </div>
-      <div class="field wide"><label>Audio URL</label><input type="text" [ngModel]="objSoundUrl" (ngModelChange)="objSoundUrl = $event; aplicarTrigger()" /></div>
-      <div class="field wide"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoNorm" (ngModelChange)="triggerVideoNorm = $event; aplicarTrigger()" /></div>
+
+  <div class="field wide" style="margin-top: 15px; border-top: 1px dashed #333; padding-top: 15px;">
+    <label style="color: #60a5fa; font-weight: bold;">Acción al Activar</label>
+    <select [ngModel]="actionType" (ngModelChange)="actionType = $event; aplicarTrigger()" style="font-weight: bold; background-color: rgba(96, 165, 250, 0.1);">
+       <option value="show_message">💬 Mostrar Mensaje / Iniciar Secuencia</option>
+       <option value="change_scene">🚪 Cambiar a otra Plataforma (Transición)</option>
+    </select>
   </div>
+
+  <div *ngIf="actionType === 'change_scene'" class="field wide" style="margin-top: 10px; background-color: rgba(250, 204, 21, 0.1); padding: 10px; border: 1px solid #facc15; border-radius: 6px;">
+    <label style="color: #facc15;">Selecciona la plataforma destino:</label>
+    <select [ngModel]="targetSceneId" (ngModelChange)="targetSceneId = $event; aplicarTrigger()">
+      <option [ngValue]="null">-- Seleccionar Plataforma --</option>
+      <option *ngFor="let plat of editorSvc.plataformasEscena()" [ngValue]="plat.id">🗺️ {{ plat.name }}</option>
+    </select>
+    <p class="help-text" style="color: #cbd5e1; margin-top: 8px;">Al pisar este trigger, el juego cargará automáticamente la plataforma seleccionada.</p>
+  </div>
+
+  <ng-container *ngIf="actionType === 'show_message'">
+    <div class="field wide" style="margin-top: 10px;"><label>Mensaje</label><textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarTrigger()"></textarea></div>
+    <div class="grid-2" style="margin-top: 5px;">
+        <div class="field"><label>Segundos</label><input type="number" step="0.5" [ngModel]="triggerTimeNorm" (ngModelChange)="triggerTimeNorm = $event; aplicarTrigger()" /></div>
+        <div class="field wide">
+          <label>ID Seq (Múltiples separados por coma)</label>
+          <input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
+        </div>
+        <div class="field wide"><label>Audio URL</label><input type="text" [ngModel]="objSoundUrl" (ngModelChange)="objSoundUrl = $event; aplicarTrigger()" /></div>
+        <div class="field wide"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoNorm" (ngModelChange)="triggerVideoNorm = $event; aplicarTrigger()" /></div>
+    </div>
+  </ng-container>
 </div>
+
+<!-- 🔥 REGLAS Y CONDICIONES (Para Triggers Simples y Compuestos) -->
+<div class="section-card">
+  <div class="section-head">
+    <h4>Reglas y Condiciones Requeridas</h4>
+  </div>
+  <p class="help-text" style="margin-bottom: 10px;">Si agregas condiciones, el trigger NO se activará a menos que el jugador las cumpla (Ej: Tener una llave).</p>
+  
+  <div *ngFor="let cond of gameConditions; let i = index" style="background: #1c1c1c; border: 1px solid #333; padding: 10px; border-radius: 6px; margin-bottom: 10px;">
+     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <span style="font-size: 11px; font-weight: bold; color: #4ade80;">Condición {{ i + 1 }}</span>
+        <button class="btn-danger small" (click)="quitarCondicion(i)" style="padding: 2px 6px;">✕</button>
+     </div>
+     <div class="field wide" style="margin-bottom: 5px;">
+       <select [(ngModel)]="cond.type" (ngModelChange)="aplicarTrigger()">
+         <option value="has_item">Tener Objeto en Inventario</option>
+         <option value="missing_item">No tener Objeto</option>
+         <option value="var_eq">Variable de Historia Igual a</option>
+       </select>
+     </div>
+     <div class="grid-2">
+       <div class="field wide"><label>ID Objeto / Variable</label><input type="text" [(ngModel)]="cond.key" (ngModelChange)="aplicarTrigger()" placeholder="Ej: llave_roja"></div>
+       <div class="field wide" *ngIf="cond.type === 'var_eq'"><label>Valor Esperado</label><input type="text" [(ngModel)]="cond.value" (ngModelChange)="aplicarTrigger()" placeholder="Ej: true"></div>
+     </div>
+  </div>
+
+  <button class="btn-secondary full" (click)="agregarCondicion()">+ Agregar Condición</button>
+</div>
+
 <div class="status-line" *ngIf="animStatus">{{ animStatus }}</div>

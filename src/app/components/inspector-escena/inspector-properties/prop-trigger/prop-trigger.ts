@@ -1,8 +1,7 @@
-
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh } from '@babylonjs/core';
+import { AbstractMesh, StandardMaterial, Color3 } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorSceneService } from '../../../../services/editor/editor-scene.service';
@@ -19,7 +18,7 @@ import { EntityManagerService } from '../../../../core/engine/entities/entity-ma
 export class PropTrigger implements OnInit, OnDestroy {
   @Input() objeto!: AbstractMesh;
   
-  private editorSvc = inject(EditorMapaService);
+  public editorSvc = inject(EditorMapaService);
   private sceneSvc = inject(EditorSceneService);
   private historialSvc = inject(HistorialService);
   private entityManager = inject(EntityManagerService);
@@ -43,6 +42,11 @@ export class PropTrigger implements OnInit, OnDestroy {
   triggerCondition = 'on_enter';
   objMensaje = ''; objSoundUrl = '';
   objInteractSequenceIdFPS = ''; triggerTimeNorm = 4.5; triggerVideoNorm = '';
+  
+  actionType: 'show_message' | 'change_scene' = 'show_message';
+  targetSceneId: number | null = null;
+  gameConditions: any[] = [];
+
   animStatus = '';
 
   ngOnInit() {
@@ -74,6 +78,10 @@ export class PropTrigger implements OnInit, OnDestroy {
     this.triggerIsComposite = entity.trigger.isComposite ?? false;
     this.triggerShape = entity.trigger.triggerShape || 'cube';
     this.triggerRepeatable = entity.trigger.isRepeatable || false;
+
+    this.actionType = entity.trigger.actionType || 'show_message';
+    this.targetSceneId = entity.trigger.targetSceneId || null;
+    this.gameConditions = Array.isArray(entity.trigger.gameConditions) ? [...entity.trigger.gameConditions] : [];
 
     this.triggerCondition = entity.trigger.condition || 'on_enter';
     this.objMensaje = entity.interaction?.mensaje || entity.trigger.mensaje || '';
@@ -135,9 +143,45 @@ export class PropTrigger implements OnInit, OnDestroy {
     this.animStatus = '📍 Forma actualizada';
   }
 
+  agregarCondicion() {
+    this.gameConditions.push({ type: 'has_item', key: '', value: '' });
+    this.aplicarTrigger();
+  }
+
+  quitarCondicion(i: number) {
+    this.gameConditions.splice(i, 1);
+    this.aplicarTrigger();
+  }
+
   aplicarTrigger() {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (!entity || !entity.trigger) return;
+
+    entity.trigger.actionType = this.actionType;
+    entity.trigger.targetSceneId = this.targetSceneId;
+    entity.trigger.gameConditions = [...this.gameConditions];
+
+    // 🔥 Actualización Visual en Tiempo Real del Editor
+    if (this.objeto && this.objeto.material instanceof StandardMaterial) {
+        let color = new Color3(0, 1, 0);
+        let emissive = new Color3(0.2, 1, 0.2);
+        
+        if (!this.triggerIsComposite) {
+          if (this.actionType === 'change_scene') {
+            color = new Color3(1, 0, 0); 
+            emissive = new Color3(1, 0.2, 0.2);
+          } else {
+            color = new Color3(1, 0, 1); 
+            emissive = new Color3(1, 0.2, 1);
+          }
+        } else {
+            color = new Color3(0, 0.5, 1); // Azul para compuestos
+            emissive = new Color3(0, 0.3, 0.8);
+        }
+        
+        (this.objeto.material as StandardMaterial).diffuseColor = color;
+        (this.objeto.material as StandardMaterial).emissiveColor = emissive;
+    }
 
     if (this.triggerIsComposite) {
         entity.trigger.conditions = this.triggerConditions;

@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Tags, AbstractMesh } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -21,7 +22,7 @@ export class ToolsGizmoService {
   private projectionSvc = inject(CoreSceneProjectionService);
   private authSvc = inject(AuthService);
   private ownership = inject(CameraOwnershipService);
-  private windowSync = inject(WindowSyncService); // 🔥 Inyectado
+  private windowSync = inject(WindowSyncService);
 
   public gizmoManager!: GizmoManager;
   public centerDragMesh!: Mesh;
@@ -32,7 +33,10 @@ export class ToolsGizmoService {
   private dragOffset: Vector3 = Vector3.Zero();
 
   public initGizmos(): void {
+    if (this.gizmoManager) return;
     const scene = this.motor3d.scene;
+    if (!scene) return;
+
     this.gizmoManager = new GizmoManager(scene);
     this.gizmoManager.usePointerToAttachGizmos = false;
     this.gizmoManager.clearGizmoOnEmptyPointerEvent = true;
@@ -76,7 +80,6 @@ export class ToolsGizmoService {
     this.setupDragEvents(centerDragBehavior);
   }
 
-  // 🔥 NUEVO: Función para emitir las coordenadas a 60 FPS
   private broadcastLiveTransform(mesh: AbstractMesh): void {
     const entity = this.entityManager.getEntityByMesh(mesh);
     if (entity) {
@@ -116,7 +119,7 @@ export class ToolsGizmoService {
         } else if (!subSelected) {
           mesh.setAbsolutePosition(mesh.getAbsolutePosition().add(event.delta));
           this.updateCenterDragMeshRenderState(mesh, subSelected);
-          this.broadcastLiveTransform(mesh); // 🔥 Streaming en vivo
+          this.broadcastLiveTransform(mesh); 
         }
         this.state.onGizmoDrag.next();
       }
@@ -146,7 +149,7 @@ export class ToolsGizmoService {
         mesh.computeWorldMatrix(true);
 
         this.updateCenterDragMeshRenderState(mesh, subSelected);
-        this.broadcastLiveTransform(mesh); // 🔥 Streaming en vivo
+        this.broadcastLiveTransform(mesh); 
       }
       this.state.onGizmoDrag.next();
     };
@@ -205,11 +208,16 @@ export class ToolsGizmoService {
     const modo = this.state.playState();
     const isAdmin = this.authSvc.isAdmin();
 
-    if (!isAdmin || modo === 'PLAYING' || modo === 'INTERACTING' || modo === 'TRANSITIONING') return;
+    if (!isAdmin || modo === 'PLAYING' || modo === 'INTERACTING' || modo === 'TRANSITIONING') {
+      const obj = this.state.objetoSeleccionado() as Mesh;
+      this.updateCenterDragMeshRenderState(obj, this.state.subObjetoSeleccionado());
+      return;
+    }
 
     if (this.state.objetoSeleccionado() || this.state.subObjetoSeleccionado()) {
       switch (this.state.currentTool()) {
-        case 'select': break;
+        case 'select': 
+          break; // 🔥 Sin gizmos en modo Select
         case 'translate': this.gizmoManager.positionGizmoEnabled = true; break;
         case 'rotate': 
           if (!this.state.subObjetoSeleccionado()) this.gizmoManager.rotationGizmoEnabled = true;
@@ -217,6 +225,9 @@ export class ToolsGizmoService {
         case 'scale': this.gizmoManager.scaleGizmoEnabled = true; break;
       }
     }
+    
+    const obj = this.state.objetoSeleccionado() as Mesh;
+    this.updateCenterDragMeshRenderState(obj, this.state.subObjetoSeleccionado());
   }
 
   public attachGizmoToCurrentSelection(selected: Mesh | null, subSelected: string | null): void {
@@ -299,7 +310,9 @@ export class ToolsGizmoService {
         }
       }
 
-      if (this.gizmoManager.attachedMesh && !this.gizmoManager.attachedMesh.isDisposed()) {
+      const isSelectMode = this.state.currentTool() === 'select';
+
+      if (this.gizmoManager.attachedMesh && !this.gizmoManager.attachedMesh.isDisposed() && !isSelectMode) {
         this.centerDragMesh.isVisible = true;
         const cam = this.gizmoManager.utilityLayer.utilityLayerScene.activeCamera || this.ownership.getCamera();
         if (cam) {

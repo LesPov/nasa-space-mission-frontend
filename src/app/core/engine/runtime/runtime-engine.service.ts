@@ -1,10 +1,11 @@
+
 import { Injectable, inject } from '@angular/core';
-import { StandardMaterial, VideoTexture, Color3, Mesh } from '@babylonjs/core';
+import { StandardMaterial, VideoTexture, Color3, Mesh, Tags, Quaternion } from '@babylonjs/core';
 import { Motor3dService } from '../../../services/motor-3d.service';
 import { GameSession } from './game-session';
 import { PlayerCameraManagerService } from './systems/player-camera.service';
 import { EntityManagerService } from '../entities/entity-manager.service';
-import { GameEntity } from '../entities/game.entity';
+import { GameEntity, CharacterConfigComponent, PlayerRuntimeComponent } from '../entities/game.entity';
 import { PlayerInteractionService } from './systems/player-interaction.service';
 import { CoreSceneLoaderService } from '../scene/utils/core-scene-loader.service';
 import { CameraViewMode } from '../session/game-context.model';
@@ -14,6 +15,7 @@ import { InputOrchestratorService } from './systems/input-orchestrator.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
 import { AdminFreeCameraService } from './cameras/admin-free-camera.service';
 import { AuthService } from '../../services/auth';
+import { cloneDefaultPlayerConfig } from '../models/player-config.model';
   
 @Injectable({ providedIn: 'root' })
 export class RuntimeEngineService {
@@ -51,7 +53,7 @@ export class RuntimeEngineService {
   // ==========================================
   // MODO PRODUCCIÓN (JUEGO PURO SIN EDITOR)
   // ==========================================
-  public async bootProductionGame(episodeData: any): Promise<GameEntity> {
+  public async bootProductionGame(episodeData: any, skipIntro: boolean = false): Promise<GameEntity> {
     this.entityManager.clear(); 
     
     this.motor3d.forzarRedimension();
@@ -62,8 +64,17 @@ export class RuntimeEngineService {
     return new Promise((resolve, reject) => {
       this.motor3d.scene.executeWhenReady(() => {
         const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
-        const spawnEntity = characters.find(c => c.characterConfig?.isPlayable) || characters[0];
+        let spawnEntity = characters.find(c => c.rol === 'player') || characters.find(c => c.characterConfig?.isPlayable);
         
+        if (!spawnEntity) {
+           spawnEntity = this.entityManager.getAllEntities().find(e => e.rol === 'player');
+           if (spawnEntity && !spawnEntity.hasComponent('characterConfig')) {
+               spawnEntity.addComponent('characterConfig', new CharacterConfigComponent('player', true));
+               spawnEntity.addComponent('playerRuntime', new PlayerRuntimeComponent());
+               spawnEntity.playerConfig = cloneDefaultPlayerConfig();
+           }
+        }
+
         if (!spawnEntity) {
           reject(new Error('No hay punto de aparición (Spawn Point) en el mapa.'));
           return;
@@ -72,24 +83,36 @@ export class RuntimeEngineService {
         this.resetVideos();
         this.resetPhysicsState(spawnEntity);
 
+        this.motor3d.scene.meshes.forEach(m => {
+            if (Tags.MatchesQuery(m, "editor_only")) {
+                m.isVisible = false;
+                m.setEnabled(false);
+            }
+        });
+
         const isAdmin = this.authSvc.isAdmin();
         const mode = isAdmin ? GameMode.PREVIEW_ADMIN : GameMode.FINAL_USER;
         this.gameContext.setMode(mode);
 
-        this.playerCamSvc.inicializarCamaras(spawnEntity, 'TPS');
-        const targetCam = this.motor3d.playerCameraTPS;
+        const activeView = skipIntro ? this.gameContext.cameraView() : 'TPS'; 
+
+        this.playerCamSvc.inicializarCamaras(spawnEntity, activeView);
+        const targetCam = activeView === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS;
         targetCam.getViewMatrix(true);
         
         const canvas = this.motor3d.engine.getRenderingCanvas();
-        this.ownership.setCamera('PLAYER_TPS', targetCam, canvas, true);
+        this.ownership.setCamera(activeView === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', targetCam, canvas, true);
 
-        this.gameSession.start(spawnEntity, 'TPS');
-        this.playerCamSvc.iniciarCinematicaIntro(spawnEntity);
+        this.gameSession.start(spawnEntity, activeView);
+        
+        if (!skipIntro) {
+           this.playerCamSvc.iniciarCinematicaIntro(spawnEntity);
+        }
 
         if (canvas) {
           this._prodClickFn = () => {
              if (this.gameContext.isPlaying() && !document.pointerLockElement) {
-                this.playerCamSvc.detenerCinematicaIntro();
+                if (!skipIntro) this.playerCamSvc.detenerCinematicaIntro();
                 this.inputOrchestrator.lockPointer(); 
              }
           };

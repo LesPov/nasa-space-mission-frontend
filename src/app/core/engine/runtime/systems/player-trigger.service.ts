@@ -17,9 +17,13 @@ export class PlayerTriggerService implements IUpdatable {
   private context = inject(GameContextService);
   
   private activeTriggersInside = new Set<string>();
+  private teleportCooldown: number = 0;
+  private isTransitioning = false;
 
   public start(): void {
     this.activeTriggersInside.clear();
+    this.teleportCooldown = 1500; // 🔥 1.5s de inmunidad para asentar las físicas de Babylon post-spawn
+    this.isTransitioning = false;
     const isDebugMode = this.context.isDebugMode();
 
     this.entityManager.getAllEntities()
@@ -53,11 +57,18 @@ export class PlayerTriggerService implements IUpdatable {
   public update(dtMs: number): void {
     const playerEntity = this.context.activePlayerEntity();
     if (playerEntity) {
-      this.verificarTriggers(playerEntity);
+      if (this.teleportCooldown > 0) {
+          this.teleportCooldown -= dtMs;
+          this.verificarTriggers(playerEntity, true); // Evaluación silenciosa
+          return;
+      }
+      this.verificarTriggers(playerEntity, false);
     }
   }
 
-  public verificarTriggers(entity: GameEntity): void {
+  public verificarTriggers(entity: GameEntity, silent: boolean = false): void {
+    if (this.isTransitioning) return;
+
     const jugador = entity.view as Mesh;
     if (!jugador) return;
 
@@ -86,14 +97,12 @@ export class PlayerTriggerService implements IUpdatable {
         const mesh = triggerEntity.view as AbstractMesh;
         if (!mesh) return;
 
-        mesh.computeWorldMatrix(true);
-        const triggerBox = mesh.getBoundingInfo().boundingBox;
-        const isInside = triggerBox.intersectsPoint(probePoint);
+        const isInside = mesh.intersectsPoint(probePoint);
         const wasInside = this.activeTriggersInside.has(triggerEntity.uid);
 
         if (isInside && !wasInside) {
             this.activeTriggersInside.add(triggerEntity.uid);
-            if (conditions.includes('on_enter')) {
+            if (!silent && conditions.includes('on_enter')) {
                 this.ejecutarLogicaTrigger(triggerEntity, 'on_enter');
             }
         }
@@ -101,7 +110,7 @@ export class PlayerTriggerService implements IUpdatable {
         if (!isInside && wasInside) {
             this.activeTriggersInside.delete(triggerEntity.uid);
 
-            if (conditions.includes('on_exit')) {
+            if (!silent && conditions.includes('on_exit')) {
                 this.ejecutarLogicaTrigger(triggerEntity, 'on_exit');
             }
             
@@ -125,6 +134,16 @@ export class PlayerTriggerService implements IUpdatable {
       if (!triggerEntity.trigger.isRepeatable) {
           if (eventType === 'on_enter' && triggerEntity.triggerRuntime?.hasTriggeredEnter) return;
           if (eventType === 'on_exit' && triggerEntity.triggerRuntime?.hasTriggeredExit) return;
+      }
+
+      // Lógica de Transición a otra Plataforma, bloquea reentradas múltiples
+      if (triggerEntity.trigger.actionType === 'change_scene') {
+          const targetId = triggerEntity.trigger.targetSceneId;
+          if (targetId) {
+              this.isTransitioning = true;
+              this.eventBus.emit({ type: 'ChangeSceneRequested', payload: { sceneId: targetId } });
+              return; 
+          }
       }
 
       let mensaje = '';
@@ -165,10 +184,6 @@ export class PlayerTriggerService implements IUpdatable {
              audio.volume = 0.8; 
              audio.play().catch(err => console.warn('Bloqueo de audio:', err));
           } catch(e) { console.error(e); }
-      }
-
-      if (videoUrl && videoUrl.trim() !== '') {
-          console.log("🎬 Reproduciendo Video Cinemático en Trigger:", videoUrl);
       }
 
       if (seqIdString && seqIdString.trim() !== '') {

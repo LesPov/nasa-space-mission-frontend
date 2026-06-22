@@ -1,9 +1,9 @@
-
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { environment } from '../../../environments/environment';
 import { Router } from '@angular/router';
-import { tap } from 'rxjs';
+import { tap, catchError } from 'rxjs/operators';
+import { throwError } from 'rxjs';
 
 export interface UserState {
   userId: number;
@@ -27,15 +27,23 @@ export class AuthService {
   }
 
   login(username: string, passwordorrandomPassword: string) {
-    return this.http.post<any>(`${environment.apiUrl}/auth/user/login`, { username, passwordorrandomPassword })
-      .pipe(
-        tap(res => {
+    return this.http.post<any>(`${environment.apiUrl}/auth/user/login`, { 
+      username: username.trim(), 
+      passwordorrandomPassword: passwordorrandomPassword.trim() 
+    }).pipe(
+      tap(res => {
+        if (res && res.token) {
           localStorage.setItem('token', res.token);
           const userState: UserState = { userId: res.userId, username, rol: res.rol };
           localStorage.setItem('user', JSON.stringify(userState));
           this.currentUser.set(userState);
-        })
-      );
+        }
+      }),
+      catchError((error: HttpErrorResponse) => {
+        console.error('[AuthService] Error de login:', error);
+        return throwError(() => error);
+      })
+    );
   }
 
   logout() {
@@ -46,9 +54,16 @@ export class AuthService {
   }
 
   private checkLocalSession() {
-    const userStr = localStorage.getItem('user');
-    if (userStr) {
-      this.currentUser.set(JSON.parse(userStr));
+    try {
+      const userStr = localStorage.getItem('user');
+      const token = localStorage.getItem('token');
+      if (userStr && token) {
+        this.currentUser.set(JSON.parse(userStr));
+      } else {
+        this.logout(); // Limpia estado inválido si falta el token
+      }
+    } catch (e) {
+      this.logout();
     }
   }
 }

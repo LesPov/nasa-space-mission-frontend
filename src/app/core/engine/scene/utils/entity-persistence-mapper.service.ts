@@ -59,8 +59,6 @@ export class EntityPersistenceMapperService {
     const savedSelectionRange = this.utilsSvc.extraerSelectionRange(obj.properties || obj);
     entity.selectionRange = { ...savedSelectionRange };
     
-    // 🔥 FIX: Únicamente hidratar playerConfig si en verdad la base de datos trae algo o si es un NPC/Player.
-    // Esto evita incrustar la config monstruosa en luces o cubos.
     if (obj.properties?.playerConfig || isCharacter) {
       entity.playerConfig = this.utilsSvc.prepararPlayerConfigConSelectionRange(obj.properties?.playerConfig || null, savedSelectionRange);
     }

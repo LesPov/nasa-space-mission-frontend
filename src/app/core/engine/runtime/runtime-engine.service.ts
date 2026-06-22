@@ -5,17 +5,15 @@ import { Motor3dService } from '../../../services/motor-3d.service';
 import { GameSession } from './game-session';
 import { PlayerCameraManagerService } from './systems/player-camera.service';
 import { EntityManagerService } from '../entities/entity-manager.service';
-import { GameEntity, CharacterConfigComponent, PlayerRuntimeComponent } from '../entities/game.entity';
+import { GameEntity } from '../entities/game.entity';
 import { PlayerInteractionService } from './systems/player-interaction.service';
 import { CoreSceneLoaderService } from '../scene/utils/core-scene-loader.service';
 import { CameraViewMode } from '../session/game-context.model';
-import { GameMode } from '../session/game-mode.model';
 import { GameContextService } from '../session/game-context.service';
 import { InputOrchestratorService } from './systems/input-orchestrator.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
 import { AdminFreeCameraService } from './cameras/admin-free-camera.service';
-import { AuthService } from '../../services/auth';
-import { cloneDefaultPlayerConfig } from '../models/player-config.model';
+import { SpawnManagerService } from './systems/spawn-manager.service'; // 🔥 ADDED
   
 @Injectable({ providedIn: 'root' })
 export class RuntimeEngineService {
@@ -29,26 +27,9 @@ export class RuntimeEngineService {
   private inputOrchestrator = inject(InputOrchestratorService);
   private ownership = inject(CameraOwnershipService);
   private adminFreeCam = inject(AdminFreeCameraService);
-  private authSvc = inject(AuthService);
+  private spawnManager = inject(SpawnManagerService); // 🔥 ADDED
 
   private _prodClickFn: (() => void) | null = null;
-
-  private resetPhysicsState(entity: GameEntity): void {
-    if (!entity || !entity.playerRuntime) return;
-    const state = entity.playerRuntime.physicsState;
-    state.velocidadY = -0.05;
-    state.isMoving = false;
-    state.isRunning = false;
-    state.isJumping = false;
-    state.isFalling = false;
-    state.isHardLanding = false;
-    state.isRecoveringFromFall = false;
-    
-    entity.playerRuntime.intentions = {
-      moveForward: false, moveBackward: false, moveLeft: false, 
-      moveRight: false, run: false, jump: false
-    };
-  }
 
   // ==========================================
   // MODO PRODUCCIÓN (JUEGO PURO SIN EDITOR)
@@ -63,17 +44,9 @@ export class RuntimeEngineService {
 
     return new Promise((resolve, reject) => {
       this.motor3d.scene.executeWhenReady(() => {
-        const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
-        let spawnEntity = characters.find(c => c.rol === 'player') || characters.find(c => c.characterConfig?.isPlayable);
         
-        if (!spawnEntity) {
-           spawnEntity = this.entityManager.getAllEntities().find(e => e.rol === 'player');
-           if (spawnEntity && !spawnEntity.hasComponent('characterConfig')) {
-               spawnEntity.addComponent('characterConfig', new CharacterConfigComponent('player', true));
-               spawnEntity.addComponent('playerRuntime', new PlayerRuntimeComponent());
-               spawnEntity.playerConfig = cloneDefaultPlayerConfig();
-           }
-        }
+        // 🔥 FIX: Lógica de Spawn delegada al SpawnManager centralizado
+        const spawnEntity = this.spawnManager.setupInitialPlayer();
 
         if (!spawnEntity) {
           reject(new Error('No hay punto de aparición (Spawn Point) en el mapa.'));
@@ -81,7 +54,6 @@ export class RuntimeEngineService {
         }
 
         this.resetVideos();
-        this.resetPhysicsState(spawnEntity);
 
         this.motor3d.scene.meshes.forEach(m => {
             if (Tags.MatchesQuery(m, "editor_only")) {
@@ -89,10 +61,6 @@ export class RuntimeEngineService {
                 m.setEnabled(false);
             }
         });
-
-        const isAdmin = this.authSvc.isAdmin();
-        const mode = isAdmin ? GameMode.PREVIEW_ADMIN : GameMode.FINAL_USER;
-        this.gameContext.setMode(mode);
 
         const activeView = skipIntro ? this.gameContext.cameraView() : 'TPS'; 
 
@@ -146,7 +114,7 @@ export class RuntimeEngineService {
   // ==========================================
   public startTestSession(playerEntity: GameEntity, view: CameraViewMode): void {
     this.resetVideos();
-    this.resetPhysicsState(playerEntity);
+    this.spawnManager.resetPhysicsInertia(playerEntity);
     this.playerCamSvc.inicializarCamaras(playerEntity, view);
     
     const targetCam = view === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS;
@@ -155,7 +123,6 @@ export class RuntimeEngineService {
     const canvas = this.motor3d.engine.getRenderingCanvas();
     this.ownership.setCamera(view === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', targetCam, canvas, true);
 
-    this.gameContext.setMode(GameMode.TEST_LIVE);
     this.gameSession.start(playerEntity, view);
   }
 

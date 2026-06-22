@@ -11,8 +11,7 @@ import { CoreTriggerLoaderService } from './core-trigger-loader.service';
 import { CoreSceneProjectionService } from './core-scene-projection.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
 import { GameContextService } from '../../session/game-context.service';
-import { CharacterConfigComponent, PlayerRuntimeComponent } from '../../entities/game.entity';
-import { cloneDefaultPlayerConfig } from '../../models/player-config.model';
+import { SpawnManagerService } from '../../runtime/systems/spawn-manager.service'; // 🔥 ADDED
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneLoaderService {
@@ -26,6 +25,7 @@ export class CoreSceneLoaderService {
   private projectionSvc = inject(CoreSceneProjectionService);
   private worldSettingsSvc = inject(WorldSettingsService);
   private gameContext = inject(GameContextService);
+  private spawnManager = inject(SpawnManagerService); // 🔥 ADDED
 
   public createInvisibleFloor(scene: any): void {
     const old = scene.getMeshByName('sueloInvisible');
@@ -44,10 +44,8 @@ export class CoreSceneLoaderService {
     if (!dataBD) return;
 
     const scene = this.motor3d.scene;
-    const mode = this.gameContext.mode();
-    const isPlaying = mode !== 'EDITOR' && mode !== 'EDITING_IN_GAME';
+    const isPlaying = this.gameContext.isPlaying();
     
-    // Identificar si venimos de otra plataforma conservando el player
     const persistentPlayer = this.entityManager.getAllEntities().find(e => e.isPersistent);
 
     const sceneData = dataBD.scene || dataBD;
@@ -78,8 +76,6 @@ export class CoreSceneLoaderService {
       const isLight = obj.type?.startsWith('light_');
       const objRol = obj.properties?.rol || obj.rol || 'prop';
 
-      // Si estamos jugando y YA tenemos un jugador persistente, 
-      // ignoramos por completo cualquier jugador que venga guardado en la base de datos de esta escena.
       if (isPlaying && persistentPlayer && objRol === 'player') {
           return;
       }
@@ -105,87 +101,12 @@ export class CoreSceneLoaderService {
       }
     });
 
-    // LÓGICA ROBUSTA DE SPAWN / TRANSICIÓN ENTRE PLATAFORMAS
+    // 🔥 FIX: Lógica de Spawn centralizada
     if (isPlaying) {
-        if (persistentPlayer && persistentPlayer.view) {
-            // Buscamos el punto de aparición real de esta nueva escena
-            const newSpawn = this.entityManager.getAllEntities().find(e => !e.isPersistent && e.rol === 'spawn_point');
-
-            if (newSpawn && newSpawn.view) {
-                // Teletransportamos al jugador persistente EXACTAMENTE al spawn point
-                persistentPlayer.transform.position = { ...newSpawn.transform.position };
-                
-                if (newSpawn.view.rotationQuaternion) {
-                    persistentPlayer.view.rotationQuaternion = newSpawn.view.rotationQuaternion.clone();
-                    persistentPlayer.view.rotation.set(0,0,0);
-                    const euler = newSpawn.transform.rotation;
-                    persistentPlayer.transform.rotation = { ...euler };
-                } else {
-                    persistentPlayer.view.rotation.copyFrom(newSpawn.view.rotation);
-                    persistentPlayer.view.rotationQuaternion = null;
-                    persistentPlayer.transform.rotation = { ...newSpawn.transform.rotation };
-                }
-                
-                // Forzamos actualización física inmediata
-                persistentPlayer.view.position.copyFrom(newSpawn.view.position);
-                persistentPlayer.view.computeWorldMatrix(true);
-                persistentPlayer.syncTransformFromView();
-            } else {
-                // Si la escena no tiene spawn point, lo mandamos a un punto seguro alto para evitar caer al vacío
-                persistentPlayer.transform.position = { x: 0, y: 5, z: 0 };
-                persistentPlayer.view.position.set(0, 5, 0);
-                persistentPlayer.view.computeWorldMatrix(true);
-            }
-
-            // Eliminamos la inercia del frame anterior para evitar rebotes en triggers
-            if (persistentPlayer.playerRuntime) {
-                const state = persistentPlayer.playerRuntime.physicsState;
-                state.velocidadY = 0;
-                state.isMoving = false;
-                state.isRunning = false;
-                state.isJumping = false;
-                state.isFalling = false;
-                state.isHardLanding = false;
-                state.isRecoveringFromFall = false;
-                persistentPlayer.playerRuntime.intentions = {
-                    moveForward: false, moveBackward: false, moveLeft: false, 
-                    moveRight: false, run: false, jump: false
-                };
-            }
-
-            // Borramos el objeto spawn point de la memoria para que no estorbe
-            if (newSpawn) {
-                this.entityManager.removeEntity(newSpawn.uid);
-            }
-
+        if (persistentPlayer) {
+            this.spawnManager.handleSceneChangeSpawn(persistentPlayer);
         } else {
-            // Primer load del episodio: Convertimos el spawn o el player de la BD en el Persistent Player
-            let playerEntity = this.entityManager.getAllEntities().find(e => e.rol === 'player');
-            let spawnPoint = this.entityManager.getAllEntities().find(e => e.rol === 'spawn_point');
-            
-            if (!playerEntity && spawnPoint) {
-                spawnPoint.addComponent('characterConfig', new CharacterConfigComponent('player', true));
-                spawnPoint.addComponent('playerRuntime', new PlayerRuntimeComponent());
-                spawnPoint.playerConfig = cloneDefaultPlayerConfig();
-                spawnPoint.rol = 'player';
-                playerEntity = spawnPoint;
-            } else if (playerEntity && spawnPoint && playerEntity.view && spawnPoint.view) {
-                playerEntity.view.position.copyFrom(spawnPoint.view.position);
-                if (spawnPoint.view.rotationQuaternion) {
-                    playerEntity.view.rotationQuaternion = spawnPoint.view.rotationQuaternion.clone();
-                    playerEntity.view.rotation.set(0,0,0);
-                } else {
-                    playerEntity.view.rotation.copyFrom(spawnPoint.view.rotation);
-                    playerEntity.view.rotationQuaternion = null;
-                }
-                playerEntity.syncTransformFromView();
-                this.entityManager.removeEntity(spawnPoint.uid);
-            }
-
-            if (playerEntity) {
-                playerEntity.isPersistent = true;
-                if (playerEntity.view) Tags.AddTagsTo(playerEntity.view, "persistent_player");
-            }
+            this.spawnManager.setupInitialPlayer();
         }
     }
 

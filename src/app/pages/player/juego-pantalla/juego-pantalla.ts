@@ -18,13 +18,13 @@ import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/cam
 import { GameContextService } from '../../../core/engine/session/game-context.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
+import { GameMode } from '../../../core/engine/session/game-mode.model'; // 🔥 ADDED
 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiMission } from '../../../components/ui-mission/ui-mission';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
 import { WindowSyncService } from '../../../core/services/window-sync.service';
-import { Tags } from '@babylonjs/core';
 
 @Component({
   selector: 'app-juego-pantalla',
@@ -69,7 +69,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
   private sub!: Subscription;
   private fpsInterval: any;
-  private activeCameraView = 'FPS';
 
   public get isAdmin(): boolean {
     return this.authSvc.isAdmin();
@@ -87,7 +86,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     
     if (event.code === 'KeyC' && event.ctrlKey && this.isAdmin) {
       event.preventDefault();
-      const canvas = this.motor3dSvc.engine.getRenderingCanvas();
+      const canvas = this.motor3dSvc.engine?.getRenderingCanvas();
       if (canvas) {
         this.adminFreeCam.toggle(canvas);
       }
@@ -97,6 +96,8 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   ngOnInit() {
     this.route.queryParams.subscribe(params => {
       this.isDetached = params['detached'] === 'true';
+      // 🔥 FIX: Establecer explícitamente el contexto antes del Boot
+      this.gameContext.setMode(this.isAdmin && !this.isDetached ? GameMode.PREVIEW_ADMIN : GameMode.FINAL_USER);
     });
 
     const sceneId = this.route.snapshot.paramMap.get('id');
@@ -117,9 +118,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     forkJoin({
       escenaData: this.epiApiSvc.obtenerEscenaCompleta(sceneId),
       partida: this.epiApiSvc.cargarEstadoJugador(sceneId, 1).pipe(
-        catchError(err => {
-          return of({ worldState: {}, inventory: [] });
-        })
+        catchError(err => of({ worldState: {}, inventory: [] }))
       )
     }).subscribe({
       next: async (res) => {
@@ -185,14 +184,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     });
   }
 
-  // 🔥 NUEVA TRANSICIÓN LÓGICA ENTRE PLATAFORMAS (JUGADOR)
   public cambiarPlataformaEnJuego(sceneId: number) {
     if (this.episodioActual && this.playerStateActual) {
       const stateToSave = this.gameStateSvc.getSaveData();
       this.epiApiSvc.guardarEstadoJugador(this.episodioActual.id, 1, stateToSave).subscribe();
     }
-    
-    // Dejamos que el shutdown limpie el nivel a través del ECS. El persistent_player sobrevive.
     this.runtime.shutdownProductionGame();
     this.cargarPlataforma(sceneId, true);
   }
@@ -201,13 +197,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       const entity = this.entityManager.getEntityByUid(data.uid);
       if (entity && entity.view) {
           entity.view.position.set(data.position.x, data.position.y, data.position.z);
-          
           if (data.rotationQuaternion && entity.view.rotationQuaternion) {
               entity.view.rotationQuaternion.set(data.rotationQuaternion.x, data.rotationQuaternion.y, data.rotationQuaternion.z, data.rotationQuaternion.w);
           } else if (data.rotation) {
               entity.view.rotation.set(data.rotation.x, data.rotation.y, data.rotation.z);
           }
-          
           entity.view.scaling.set(data.scaling.x, data.scaling.y, data.scaling.z);
           entity.syncTransformFromView();
       }
@@ -215,15 +209,10 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
   async handleLiveSync(newMapData: any) {
     this.isSyncing.set(true);
-
     let requiereReboot = false;
 
-    if (newMapData.deletedObjects?.length) {
-        newMapData.deletedObjects.forEach((uid: string) => this.entityManager.removeEntity(uid));
-    }
-    if (newMapData.deletedTriggers?.length) {
-        newMapData.deletedTriggers.forEach((uid: string) => this.entityManager.removeEntity(uid));
-    }
+    if (newMapData.deletedObjects?.length) newMapData.deletedObjects.forEach((uid: string) => this.entityManager.removeEntity(uid));
+    if (newMapData.deletedTriggers?.length) newMapData.deletedTriggers.forEach((uid: string) => this.entityManager.removeEntity(uid));
 
     const procesarDeltas = (deltas: any[]) => {
         if (!deltas) return;
@@ -233,12 +222,10 @@ export class JuegoPantalla implements OnInit, OnDestroy {
                 if (delta.position) entity.transform.position = { ...delta.position };
                 if (delta.rotation) entity.transform.rotation = { ...delta.rotation };
                 if (delta.scale) entity.transform.scale = { ...delta.scale };
-                
                 if (delta.properties) {
                    if (delta.properties.color) entity.visual.color = delta.properties.color;
                    if (delta.properties.colorBW) entity.visual.colorBW = delta.properties.colorBW;
                 }
-                
                 entity.syncToView();
                 entity.isDirty = false;
             } else {
@@ -271,10 +258,8 @@ export class JuegoPantalla implements OnInit, OnDestroy {
         }
 
         this.episodioActual = { ...this.episodioActual, ...newMapData };
-        
         try {
           const spawnEntity = await this.runtime.bootProductionGame(this.episodioActual);
-          
           if (lastPos && spawnEntity.view) {
              spawnEntity.view.position.copyFrom(lastPos);
              if (lastRotQuat && spawnEntity.view.rotationQuaternion) {
@@ -292,14 +277,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
   comenzarMisionUsuario() {
     this.cerrandoModalUsuario = true; 
-    
     const owner = this.ownership.getOwner();
+    
     if (owner !== 'ADMIN_FREE') {
-        if (this.activeCameraView === 'TPS') {
-           this.runtime.toggleCameraUser(false, 60); 
-        } else {
-           this.runtime.toggleCameraUser(true, 60);
-        }
+        const view = this.gameContext.cameraView();
+        this.runtime.toggleCameraUser(view === 'TPS', 60);
     }
 
     this.inputOrchestrator.lockPointer();
@@ -311,12 +293,8 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       this.cerrandoModalUsuario = false;
       
       if (esPrimeraVez && this.episodioActual?.uiSettings?.initialSequence) {
-         this.eventBus.emit({ 
-           type: 'SequenceTriggered', 
-           payload: { sequenceId: this.episodioActual.uiSettings.initialSequence } 
-         });
+         this.eventBus.emit({ type: 'SequenceTriggered', payload: { sequenceId: this.episodioActual.uiSettings.initialSequence } });
       }
-
       this.cdr.detectChanges(); 
     }, 2000); 
   }
@@ -341,11 +319,8 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
     this.runtime.shutdownProductionGame();
     
-    if (this.isAdmin) {
-        this.router.navigate(['/admin/editor-escena']);
-    } else {
-        this.router.navigate(['/jugador/episodios']);
-    }
+    if (this.isAdmin) this.router.navigate(['/admin/editor-escena']);
+    else this.router.navigate(['/jugador/episodios']);
   }
 
   cerrarInteraccion() {

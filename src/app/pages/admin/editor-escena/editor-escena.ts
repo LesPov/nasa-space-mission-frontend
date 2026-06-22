@@ -31,6 +31,8 @@ import { InputOrchestratorService } from '../../../core/engine/runtime/systems/i
 import { AddObjectModalService } from '../../../services/editor/modals/add-object-modal.service';
 import { MissionModalService } from '../../../services/editor/modals/mission-modal.service';
 import { AuthService } from '../../../core/services/auth';
+import { GameContextService } from '../../../core/engine/session/game-context.service'; // 🔥 ADDED
+import { GameMode } from '../../../core/engine/session/game-mode.model'; // 🔥 ADDED
 import { AbstractMesh, Tags } from '@babylonjs/core';
 import { WindowSyncService } from '../../../core/services/window-sync.service';
 
@@ -60,6 +62,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public addObjSvc = inject(AddObjectModalService);
   public missionSvc = inject(MissionModalService);
   public authSvc = inject(AuthService);
+  private gameContext = inject(GameContextService); // 🔥
   public cdr = inject(ChangeDetectorRef);
   private router = inject(Router);
   private windowSync = inject(WindowSyncService);
@@ -126,6 +129,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    this.gameContext.setMode(GameMode.EDITOR); // 🔥 ESTABLECE CONTEXTO EXPLÍCITAMENTE
     this.cargarEpisodios();
     this.addObjSvc.cargarAssets();
 
@@ -144,7 +148,7 @@ export class EditorEscena implements OnInit, OnDestroy {
         case 'CameraViewChanged':
           this.activeCameraView = event.payload;
           this.stateSvc.modoVistaPrueba = event.payload;
-          this.vistaPrueba = event.payload as 'FPS' | 'TPS'; // Mantenemos la pestaña sincronizada con el jugador persistente
+          this.vistaPrueba = event.payload as 'FPS' | 'TPS';
           break;
         case 'GamePaused': 
           if (this.editorSvc.playState() === 'PLAYING') {
@@ -322,7 +326,6 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.runtime.stopTestSession();
     this.plataformaActualId = sceneId;
     
-    // Al limpiar desde el ECS, el modelo persistente sobrevive automáticamente.
     this.entityManager.clear();
 
     this.epiApiSvc.obtenerEscenaCompleta(sceneId).subscribe({

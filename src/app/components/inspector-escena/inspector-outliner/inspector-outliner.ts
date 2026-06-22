@@ -25,7 +25,6 @@ export class InspectorOutliner {
   @Output() tabSelect = new EventEmitter<string>();
 
   public nodosExpandidos = new Set<string>();
-  
   public searchTerm: string = '';
 
   private draggedNode: Node | null = null;
@@ -88,9 +87,38 @@ export class InspectorOutliner {
     }
   }
 
+  // 🔥 NUEVO: Filtro estricto para evitar que objetos huérfanos/sistema/babylon-native salgan en el Outliner
+  esNodoValidoParaOutliner(child: Node, parentNodo: Node | null = null): boolean {
+    if (Tags.MatchesQuery(child, "system_element || fog_element || debug_element || proxy_collider || decal || editor_only || invisible_floor")) return false;
+    
+    const name = child.name.toLowerCase();
+    if (name.includes('backgroundhelper') || name.includes('skybox') || name.includes('environment')) return false;
+
+    const childEntity = child instanceof AbstractMesh ? this.entityManager.getEntityByMesh(child) : null;
+
+    // Si es una malla o nodo pero no tiene GameEntity asignado, NO mostrarlo (filtra sub-partes del glb, huesos o guías)
+    if ((child instanceof Mesh || child instanceof TransformNode) && !childEntity) {
+        return false;
+    }
+
+    // Si el padre es una entidad válida (ej: un GLB importado), solo permitimos hijos que también sean entidades configuradas
+    if (parentNodo) {
+        const parentEntity = parentNodo instanceof AbstractMesh ? this.entityManager.getEntityByMesh(parentNodo) : null;
+        if (parentEntity && !childEntity) {
+            return false;
+        }
+    }
+
+    return true;
+  }
+
   get listaNodos() { 
     const todosLosNodos = this.editorSvc.nodosEscena();
-    const nodosRaiz = todosLosNodos.filter(n => !n.parent || n.parent.name === '__root__');
+    
+    const nodosRaiz = todosLosNodos.filter(n => {
+      if (n.parent && n.parent.name !== '__root__') return false;
+      return this.esNodoValidoParaOutliner(n, null);
+    });
     
     return nodosRaiz.sort((a, b) => {
       const eA = this.entityManager.getEntityByMesh(a as AbstractMesh);
@@ -106,16 +134,7 @@ export class InspectorOutliner {
     
     const hijosValidos = nodo.getChildren().filter(child => {
         if (!(child instanceof Mesh) && !(child instanceof Light) && !(child instanceof TransformNode)) return false;
-        
-        if (Tags.MatchesQuery(child, "system_element || fog_element || debug_element || proxy_collider || decal || editor_only")) return false;
-        
-        const parentEntity = this.entityManager.getEntityByMesh(nodo as AbstractMesh);
-        const childEntity = this.entityManager.getEntityByMesh(child as AbstractMesh);
-
-        if (parentEntity && (parentEntity.type === 'model' || parentEntity.type.startsWith('light_'))) {
-           return !!childEntity; 
-        }
-        return true;
+        return this.esNodoValidoParaOutliner(child, nodo);
     });
 
     return hijosValidos.sort((a, b) => {
@@ -409,9 +428,13 @@ export class InspectorOutliner {
       this.setParentSafe(this.draggedNode, targetNode);
       if (draggedEntity) {
           draggedEntity.parentId = targetEntity ? targetEntity.uid : null;
+          
+          // 🔥 FIX: Actualizar transformada local TRAS el setParent nativo de Babylon para no dañar posiciones
+          draggedEntity.syncTransformFromView();
+          
           const siblings = this.obtenerHijos(targetNode);
           draggedEntity.orderIndex = siblings.length;
-          draggedEntity.syncToView();
+          draggedEntity.isDirty = true;
       }
     } else {
       const newParent = targetNode.parent;
@@ -420,6 +443,9 @@ export class InspectorOutliner {
       
       if (draggedEntity) {
           draggedEntity.parentId = newParentEntity ? newParentEntity.uid : null;
+          
+          // 🔥 FIX: Actualizar transformada local TRAS el setParent
+          draggedEntity.syncTransformFromView();
       }
 
       const siblings = newParent ? this.obtenerHijos(newParent) : this.editorSvc.nodosEscena().filter(n => !n.parent || n.parent.name === '__root__');
@@ -436,9 +462,10 @@ export class InspectorOutliner {
         const ent = this.entityManager.getEntityByMesh(node as AbstractMesh);
         if (ent) {
             ent.orderIndex = i;
-            ent.syncToView();
+            ent.isDirty = true;
         }
       });
+      if (draggedEntity) draggedEntity.isDirty = true;
     }
 
     this.editorSvc.triggerUpdate();
@@ -473,6 +500,9 @@ export class InspectorOutliner {
       const draggedEntity = this.entityManager.getEntityByMesh(this.draggedNode as AbstractMesh);
       if (draggedEntity) {
           draggedEntity.parentId = null;
+          
+          // 🔥 FIX: Actualizar transformada local al mandarlo a root
+          draggedEntity.syncTransformFromView();
       }
 
       const roots = this.editorSvc.nodosEscena().filter(n => !n.parent || n.parent.name === '__root__');
@@ -483,7 +513,7 @@ export class InspectorOutliner {
         const ent = this.entityManager.getEntityByMesh(n as AbstractMesh);
         if (ent) {
             ent.orderIndex = i;
-            ent.syncToView();
+            ent.isDirty = true;
         }
       });
 
@@ -496,5 +526,4 @@ export class InspectorOutliner {
   private clearDragVisuals() {
     const items = this.el.nativeElement.querySelectorAll('.node-item');
     items.forEach((i: HTMLElement) => i.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-inside'));
-  }
-}
+  }}

@@ -88,6 +88,9 @@ export class ToolsSelectionService {
     if (!mesh) return false;
     if (this.state.esMeshIgnorable(mesh)) return false;
 
+    // 🔥 FIX: Si es proxy cinemático siempre es seleccionable
+    if (Tags.MatchesQuery(mesh, "cinematic_proxy")) return true;
+
     const root = this.state.encontrarRaiz(mesh) as AbstractMesh | null;
     const base = root ?? mesh;
     const entity = this.entityManager.getEntityByMesh(base);
@@ -103,7 +106,9 @@ export class ToolsSelectionService {
     const isAdmin = this.authSvc.isAdmin();
 
     const hit = scene.pickWithRay(ray, (m) => {
-      if (!m.isVisible || !m.isPickable) return false;
+      // 🔥 FIX: Los proxies cinemáticos pueden ser invisibles si usan alpha, pero deben poder tocarse
+      if (!m.isVisible && !Tags.MatchesQuery(m, "cinematic_proxy")) return false;
+      if (!m.isPickable) return false;
       
       if (this.state.modoVistaPrueba === 'FPS' && entityPlayer) {
           const entityHit = this.entityManager.getEntityByMesh(m);
@@ -112,6 +117,8 @@ export class ToolsSelectionService {
           }
       }
 
+      // 🔥 FIX: No omitir los cinematic_proxy
+      if (Tags.MatchesQuery(m, "cinematic_proxy")) return true;
       if (Tags.MatchesQuery(m, "system_element || fog_element || ignore_raycast || editor_only || invisible_floor")) return false;
       if (m === centerDragMesh) return false;
       
@@ -125,6 +132,12 @@ export class ToolsSelectionService {
     if (!hit || !hit.hit || !hit.pickedMesh) return null;
 
     const picked = hit.pickedMesh as AbstractMesh;
+
+    // 🔥 FIX: Resolver el padre si se seleccionó la lente o la caja del proxy
+    if (Tags.MatchesQuery(picked, "cinematic_proxy")) {
+        return (picked.parent as AbstractMesh) || picked;
+    }
+
     if (this.state.esMeshIgnorable(picked)) return null;
 
     const rootNode = this.state.encontrarRaiz(picked);

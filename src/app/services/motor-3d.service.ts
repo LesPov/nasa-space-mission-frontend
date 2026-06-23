@@ -1,5 +1,5 @@
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, Injector } from '@angular/core';
 import {
   Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4,
   UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera
@@ -7,6 +7,7 @@ import {
 import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
 import { CameraFactoryService } from '../core/engine/runtime/cameras/camera-factory.service';
 import { CameraOwnershipService } from '../core/engine/runtime/cameras/camera-ownership.service';
+import { CinematicDirectorService } from '../core/engine/runtime/systems/cinematic-director.service';
 
 @Injectable({
   providedIn: 'root'
@@ -18,6 +19,7 @@ export class Motor3dService {
   private cameraFactory = inject(CameraFactoryService);
   private loopManager = inject(LoopManagerService);
   private ownership = inject(CameraOwnershipService);
+  private injector = inject(Injector);
 
   public renderingPipeline!: DefaultRenderingPipeline;
   public glowLayer!: GlowLayer; 
@@ -48,16 +50,15 @@ export class Motor3dService {
   }
 
   iniciarMotor(canvas: HTMLCanvasElement): void {
-    // 🔥 OPTIMIZACIÓN EXTREMA DE DOBLE VENTANA
     this.engine = new Engine(canvas, true, {
       preserveDrawingBuffer: false,
       stencil: true, 
-      antialias: false, // Apagado en el backend nativo, usamos FXAA después. Salva muchísimos FPS.
-      desynchronized: true, // Libera cuellos de botella del navegador
-      powerPreference: "high-performance" // Fuerza al SO a usar la GPU dedicada
+      antialias: false, 
+      desynchronized: true, 
+      powerPreference: "high-performance" 
     }, true);
 
-    this.engine.renderEvenInBackground = true; // Fundamental para que la otra ventana no caiga a 1 FPS
+    this.engine.renderEvenInBackground = true; 
     this.engine.setHardwareScalingLevel(1);
 
     this.scene = new Scene(this.engine);
@@ -69,12 +70,16 @@ export class Motor3dService {
     this.scene.skipPointerMovePicking = true;
 
     this.loopManager.initialize(this.scene);
+    
+    // 🔥 FIX: Garantiza que el Director cinemático corre en tiempo real incluso en el Editor
+    const cinematicDirector = this.injector.get(CinematicDirectorService);
+    this.loopManager.registerSystem(cinematicDirector);
+
     this.cameraFactory.initializeCameras(this.scene, canvas);
 
-    // Pipeline ligero
     this.renderingPipeline = new DefaultRenderingPipeline('defaultPipeline', false, this.scene, this.scene.cameras);
     this.renderingPipeline.fxaaEnabled = true; 
-    this.renderingPipeline.samples = 1; // Minimizado para multi-pestaña
+    this.renderingPipeline.samples = 1; 
     this.renderingPipeline.bloomEnabled = false; 
     this.renderingPipeline.imageProcessingEnabled = true; 
 

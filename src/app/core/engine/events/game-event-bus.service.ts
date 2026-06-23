@@ -1,4 +1,3 @@
-
 import { Injectable } from '@angular/core';
 import { Subject } from 'rxjs';
 import { GameEntity } from '../entities/game.entity';
@@ -15,7 +14,10 @@ export type GameEvent =
   | { type: 'CameraViewChanged', payload: 'FPS' | 'TPS' }
   | { type: 'SequenceTriggered', payload: { sequenceId: string } }
   | { type: 'ToggleCameraRequested' }
-  | { type: 'ChangeSceneRequested', payload: { sceneId: number } }; // 🔥 Transición de Plataforma
+  | { type: 'ChangeSceneRequested', payload: { sceneId: number } }
+  | { type: 'CinematicStarted', payload: { cinematicId: string } } // 🔥 ADDED
+  | { type: 'CinematicStopped' } // 🔥 ADDED
+  | { type: 'DialogueRequested', payload: { actor?: string, text?: string, durationMs: number } }; // 🔥 ADDED
 
 @Injectable({ providedIn: 'root' })
 export class GameEventBusService {

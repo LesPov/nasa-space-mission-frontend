@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import {
   AbstractMesh, Animation, ArcRotateCamera, Camera, CubicEase, EasingFunction,
@@ -136,6 +137,94 @@ export class EditorCameraService {
     animRadius.setKeys([ { frame: 0, value: cam.radius }, { frame: frames, value: radius } ]);
 
     this.motor3d.scene.beginDirectAnimation(cam, [animTarget, animRadius], 0, frames, false, 1.0);
+  }
+
+  // 🔥 NUEVO: Enfoque suave de coordenadas (Usado para ver cámaras cinemáticas)
+  enfocarCoordenadas(pos: Vector3, radius: number = 4): void {
+    const cam = this.motor3d.editorCamera;
+    if (!cam) return;
+
+    const ease = new CubicEase();
+    ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
+
+    const currentTarget = cam.getTarget().clone();
+    
+    const frames = 30;
+    const animTarget = new Animation('camTargCoord', 'target', 60, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    const animRadius = new Animation('camRadCoord', 'radius', 60, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    
+    animTarget.setEasingFunction(ease);
+    animRadius.setEasingFunction(ease);
+    
+    animTarget.setKeys([ { frame: 0, value: currentTarget }, { frame: frames, value: pos } ]);
+    animRadius.setKeys([ { frame: 0, value: cam.radius }, { frame: frames, value: radius } ]);
+
+    this.motor3d.scene.beginDirectAnimation(cam, [animTarget, animRadius], 0, frames, false, 1.0);
+  }
+
+  // 🔥 FIX 2: Entrada y Salida Explícita de Cámara Cinemática mediante Animación Proxy con seguridad de Target
+  public transicionACamaraCinematica(targetPos: Vector3, targetRot: Vector3, fov: number | undefined, onComplete: () => void): void {
+      const startCam = this.ownership.getCamera();
+      if (!startCam) { onComplete(); return; }
+      
+      const posE = startCam.globalPosition;
+      const targetE = ('getTarget' in startCam) ? (startCam as any).getTarget() : startCam.globalPosition.add(startCam.getDirection(Vector3.Forward()));
+      
+      const posDest = targetPos.clone();
+      const qDest = Quaternion.FromEulerAngles(targetRot.x, targetRot.y, targetRot.z);
+      const vForward = new Vector3(0,0,1);
+      vForward.rotateByQuaternionToRef(qDest, vForward);
+      const targetDest = posDest.add(vForward.scale(10));
+
+      this.animateCameraProxy(
+          posE, targetE,
+          posDest, targetDest,
+          30, onComplete, false
+      );
+  }
+
+  public transicionDesdeCamaraCinematica(targetCam: Camera, onComplete: () => void): void {
+      const startCam = this.ownership.getCamera();
+      if (!startCam) { onComplete(); return; }
+      
+      const posE = startCam.globalPosition;
+      const targetE = startCam.globalPosition.add(startCam.getDirection(Vector3.Forward()));
+      
+      const posDest = targetCam.globalPosition;
+      const targetDest = ('getTarget' in targetCam) ? (targetCam as any).getTarget() : targetCam.globalPosition.add(targetCam.getDirection(Vector3.Forward()));
+      
+      this.animateCameraProxy(
+          posE, targetE,
+          posDest, targetDest,
+          30, onComplete, false
+      );
+  }
+
+  entrarCamaraFija(pos: Vector3, rot: Vector3, fov?: number): void {
+      let proxyCam = this.motor3d.scene.getCameraByName('staticPreviewCam') as UniversalCamera;
+      if (!proxyCam) {
+          proxyCam = new UniversalCamera('staticPreviewCam', pos, this.motor3d.scene);
+          proxyCam.minZ = 0.05;
+      } else {
+          proxyCam.position.copyFrom(pos);
+      }
+      
+      const q = Quaternion.FromEulerAngles(rot.x, rot.y, rot.z);
+      proxyCam.rotationQuaternion = q;
+      
+      if (fov) proxyCam.fov = fov;
+
+      if (this.motor3d.renderingPipeline && !this.motor3d.renderingPipeline.cameras.includes(proxyCam)) {
+         this.motor3d.renderingPipeline.addCamera(proxyCam);
+      }
+
+      const canvas = this.motor3d.engine.getRenderingCanvas();
+      this.ownership.setCamera('TRANSITION_PROXY', proxyCam, canvas, false);
+  }
+
+  salirCamaraFija(): void {
+      const canvas = this.motor3d.engine.getRenderingCanvas();
+      this.ownership.setCamera('EDITOR', this.motor3d.editorCamera, canvas, true);
   }
 
   private getLookQuat(pos: Vector3, target: Vector3, fallbackForward: Vector3): Quaternion {

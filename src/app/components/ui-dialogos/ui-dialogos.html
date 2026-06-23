@@ -1,1 +1,7 @@
-<p>ui-dialogos works!</p>
+ 
+<div class="dialogue-overlay" *ngIf="isActive()">
+  <div class="dialogue-box">
+    <div class="actor-name" *ngIf="actor()">{{ actor() }}</div>
+    <div class="dialogue-text">{{ text() }}</div>
+  </div>
+</div>

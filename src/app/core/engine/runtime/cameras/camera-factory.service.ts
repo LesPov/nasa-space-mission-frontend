@@ -30,6 +30,7 @@ export class CameraFactoryService {
       case 'FPS': initialOwner = 'PLAYER_FPS'; break;
       case 'TPS': initialOwner = 'PLAYER_TPS'; break;
       case 'ADMIN_FREE': initialOwner = 'ADMIN_FREE'; break;
+      case 'CINEMATIC': initialOwner = 'CINEMATIC_DIRECTOR'; break;
     }
     
     const ownership = this.injector.get(CameraOwnershipService);
@@ -54,7 +55,6 @@ export class CameraFactoryService {
       return this.mockCamera;
     }
 
-    // 🔥 FIX: Ahora el key es simplemente el TYPE (reutilizamos la cámara por escena, sin clonarla x estado)
     const cameraKey = type;
 
     if (type === 'EDITOR') {
@@ -79,40 +79,25 @@ export class CameraFactoryService {
     if (type === 'FPS') {
       if (!this._cameras.has(cameraKey)) {
         const cam = new UniversalCamera(`playerCameraFPS`, new Vector3(0, 0, 0), scene);
-        cam.keysUp = [];
-        cam.keysDown = [];
-        cam.keysLeft = [];
-        cam.keysRight = [];
-        cam.speed = 0.3;
-        cam.applyGravity = false;
+        cam.keysUp = []; cam.keysDown = []; cam.keysLeft = []; cam.keysRight = [];
+        cam.speed = 0.3; cam.applyGravity = false;
         this._cameras.set(cameraKey, cam);
       }
       const cam = this._cameras.get(cameraKey) as UniversalCamera;
-      cam.minZ = 0.05;
-      cam.maxZ = 500000;
-      cam.angularSensibility = 2500;
-      cam.checkCollisions = false;
+      cam.minZ = 0.05; cam.maxZ = 500000; cam.angularSensibility = 2500; cam.checkCollisions = false;
       return cam;
     }
 
     if (type === 'TPS') {
       if (!this._cameras.has(cameraKey)) {
         const cam = new ArcRotateCamera(`playerCameraTPS`, -Math.PI / 2, Math.PI / 2.5, 10, Vector3.Zero(), scene);
-        cam.wheelPrecision = 15;
-        cam.lowerRadiusLimit = this.TPS_MIN_RADIUS;
-        cam.upperRadiusLimit = this.TPS_MAX_RADIUS;
-        cam._panningMouseButton = 2;
-        cam.allowUpsideDown = false;
-        cam.collisionRadius = new Vector3(0.15, 0.15, 0.15);
-        cam.upperBetaLimit = (Math.PI / 2) + 0.4;
+        cam.wheelPrecision = 15; cam.lowerRadiusLimit = this.TPS_MIN_RADIUS; cam.upperRadiusLimit = this.TPS_MAX_RADIUS;
+        cam._panningMouseButton = 2; cam.allowUpsideDown = false;
+        cam.collisionRadius = new Vector3(0.15, 0.15, 0.15); cam.upperBetaLimit = (Math.PI / 2) + 0.4;
         this._cameras.set(cameraKey, cam);
       }
       const cam = this._cameras.get(cameraKey) as ArcRotateCamera;
-      cam.minZ = 0.05;
-      cam.maxZ = 500000;
-      cam.angularSensibilityX = 2000;
-      cam.angularSensibilityY = 2000;
-      // Actualizamos las flags basándonos en el modo en Tíempo Real
+      cam.minZ = 0.05; cam.maxZ = 500000; cam.angularSensibilityX = 2000; cam.angularSensibilityY = 2000;
       cam.checkCollisions = mode === 'FINAL_USER' || mode === 'PREVIEW_ADMIN'; 
       return cam;
     }
@@ -120,18 +105,27 @@ export class CameraFactoryService {
     if (type === 'ADMIN_FREE') {
       if (!this._cameras.has(cameraKey)) {
         const cam = new UniversalCamera(`adminFreeCam`, Vector3.Zero(), scene);
-        cam.speed = 0.5;
-        cam.angularSensibility = 2000;
-        cam.keysUp = [87]; // W
-        cam.keysDown = [83]; // S
-        cam.keysLeft = [65]; // A
-        cam.keysRight = [68]; // D
+        cam.speed = 0.5; cam.angularSensibility = 2000;
+        cam.keysUp = [87]; cam.keysDown = [83]; cam.keysLeft = [65]; cam.keysRight = [68];
         cam.checkCollisions = false;
         this._cameras.set(cameraKey, cam);
       }
       const cam = this._cameras.get(cameraKey) as UniversalCamera;
-      cam.minZ = 0.05;
-      cam.maxZ = 500000;
+      cam.minZ = 0.05; cam.maxZ = 500000;
+      return cam;
+    }
+
+    if (type === 'CINEMATIC') {
+      if (!this._cameras.has(cameraKey)) {
+        const cam = new UniversalCamera(`cinematicCam`, Vector3.Zero(), scene);
+        cam.checkCollisions = false;
+        cam.applyGravity = false;
+        // La cámara de cinemáticas no responde al input del jugador
+        cam.keysUp = []; cam.keysDown = []; cam.keysLeft = []; cam.keysRight = [];
+        this._cameras.set(cameraKey, cam);
+      }
+      const cam = this._cameras.get(cameraKey) as UniversalCamera;
+      cam.minZ = 0.05; cam.maxZ = 500000;
       return cam;
     }
   }

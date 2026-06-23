@@ -97,7 +97,8 @@ export class PlayerRuntimeComponent {
       velocidadY: -0.1, highestY: -9999
     },
     public seqRuntime: SeqRuntime | null = null,
-    public stopBakedRequested: boolean = false
+    public stopBakedRequested: boolean = false,
+    public cinematicAnimation: string | null = null // 🔥 ADDED: Anima el actor matemáticamente por cinemática
   ) {}
 }
 
@@ -109,6 +110,8 @@ export class GameEntity {
   public parentId: string | null = null;
   public orderIndex: number = 0;
   public isPersistent: boolean = false;
+
+  public isCinematicControlled: boolean = false;
 
   public view: AbstractMesh | null = null;
   public isDirty: boolean = true; 
@@ -129,7 +132,6 @@ export class GameEntity {
     this.addComponent('interaction', new InteractionComponent());
     this.addComponent('interactionRuntime', new InteractionRuntimeComponent());
 
-    // 🔥 FIX: Se retiró 'spawn_point' para que actúe nativamente como prop en el editor y su escala no se rompa
     if (['player', 'npc', 'politico', 'militar'].includes(rol)) {
       this.addComponent('characterConfig', new CharacterConfigComponent(rol, rol === 'player'));
       this.addComponent('playerRuntime', new PlayerRuntimeComponent());

@@ -1,3 +1,4 @@
+
 import { Injectable, inject, signal } from '@angular/core';
 import { Node, AbstractMesh, Vector3 } from '@babylonjs/core';
 import { Subject } from 'rxjs';
@@ -73,8 +74,9 @@ export class EditorMapaService {
     return this.scene.cargarEscenaDesdeDatos(dataBD); 
   }
   
+  // 🔥 FIX: Inyecta this.escenaActualData() al llamar a scene.obtenerDatosParaGuardar
   obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], environmentSettings: any, spawnPoint: any } { 
-    const datos: any = this.scene.obtenerDatosParaGuardar(forceFull);
+    const datos: any = this.scene.obtenerDatosParaGuardar(this.escenaActualData(), forceFull);
     return datos;
   }
   

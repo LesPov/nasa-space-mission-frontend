@@ -1,0 +1,47 @@
+
+.dialogue-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  pointer-events: none;
+  z-index: 100;
+  padding-bottom: 5vh;
+}
+
+.dialogue-box {
+  background: linear-gradient(to top, rgba(0,0,0,0.9), rgba(0,0,0,0.4));
+  padding: 20px 40px;
+  border-radius: 8px;
+  max-width: 60%;
+  text-align: center;
+  border: 1px solid rgba(255,255,255,0.1);
+  box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+  animation: slideUp 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.actor-name {
+  color: #fbbf24;
+  font-weight: 800;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  margin-bottom: 8px;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+
+.dialogue-text {
+  color: #f8fafc;
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.4;
+  text-shadow: 0 2px 4px rgba(0,0,0,0.8);
+}
+
+@keyframes slideUp {
+  0% { transform: translateY(20px); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}

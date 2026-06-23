@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, MeshBuilder, Tags, Quaternion } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
@@ -11,7 +10,8 @@ import { CoreTriggerLoaderService } from './core-trigger-loader.service';
 import { CoreSceneProjectionService } from './core-scene-projection.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
 import { GameContextService } from '../../session/game-context.service';
-import { SpawnManagerService } from '../../runtime/systems/spawn-manager.service'; // 🔥 ADDED
+import { SpawnManagerService } from '../../runtime/systems/spawn-manager.service';
+import { EditorCinematicService } from '../../../../services/editor/editor-cinematic.service';
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneLoaderService {
@@ -25,7 +25,8 @@ export class CoreSceneLoaderService {
   private projectionSvc = inject(CoreSceneProjectionService);
   private worldSettingsSvc = inject(WorldSettingsService);
   private gameContext = inject(GameContextService);
-  private spawnManager = inject(SpawnManagerService); // 🔥 ADDED
+  private spawnManager = inject(SpawnManagerService);
+  private cinematicSvc = inject(EditorCinematicService); // 🔥 AÑADIDO
 
   public createInvisibleFloor(scene: any): void {
     const old = scene.getMeshByName('sueloInvisible');
@@ -48,8 +49,7 @@ export class CoreSceneLoaderService {
     
     const persistentPlayer = this.entityManager.getAllEntities().find(e => e.isPersistent);
 
-    const sceneData = dataBD.scene || dataBD;
-    let envSettings: any = sceneData.environmentSettings || {};
+    let envSettings: any = dataBD.scene?.environmentSettings || dataBD.environmentSettings || {};
     if (typeof envSettings === 'string') { try { envSettings = JSON.parse(envSettings); } catch (e) {} }
 
     let uiSettingsRaw = dataBD.uiSettings || {};
@@ -62,6 +62,9 @@ export class CoreSceneLoaderService {
 
     this.worldSettingsSvc.loadFromDb(envSettings, uiSettings);
     this.worldSettingsSvc.applyToScene(scene, (m) => this.motor3d.setVisualMode(m));
+
+    // 🔥 FIX: Cargamos las cinemáticas en su propio servicio de estado
+    this.cinematicSvc.loadFromData(dataBD.cinematics || []);
 
     scene.cameras.forEach(cam => cam.maxZ = 10000);
 
@@ -101,7 +104,6 @@ export class CoreSceneLoaderService {
       }
     });
 
-    // 🔥 FIX: Lógica de Spawn centralizada
     if (isPlaying) {
         if (persistentPlayer) {
             this.spawnManager.handleSceneChangeSpawn(persistentPlayer);

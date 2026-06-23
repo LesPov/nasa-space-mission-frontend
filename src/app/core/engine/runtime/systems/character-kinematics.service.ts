@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
@@ -23,7 +22,6 @@ export class CharacterKinematicsService implements IUpdatable {
     const scene = this.motor3d.scene;
     const mode = this.context.mode();
     
-    // Evitar que actúe en absoluto cuando estamos en modo EDITOR puro
     if (mode === GameMode.EDITOR) return;
 
     const activeCamera = this.ownership.getCamera();
@@ -37,9 +35,21 @@ export class CharacterKinematicsService implements IUpdatable {
     const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
 
     for (const entity of characters) {
+      // 🔥 FIX SUPREMO: Si el Director Cinematográfico tiene secuestrado a este actor, 
+      // anulamos todas sus físicas nativas e inercia para que la cinemática lo mueva matemáticamente.
+      if (entity.isCinematicControlled) {
+         if (entity.playerRuntime) {
+            entity.playerRuntime.intentions = { moveForward: false, moveBackward: false, moveLeft: false, moveRight: false, run: false, jump: false };
+            const estadoFisico = entity.playerRuntime.physicsState;
+            estadoFisico.velocidadY = 0;
+            estadoFisico.isGrounded = true;
+         }
+         continue; 
+      }
+
       const isPlayer = activePlayer && entity.uid === activePlayer.uid;
       const vista = isPlayer ? cameraView : 'FPS'; 
-      const activeProfile = isPlayer ? playerProfile : getMovementProfileForOwner('PLAYER_FPS'); // NPCs usan físicas
+      const activeProfile = isPlayer ? playerProfile : getMovementProfileForOwner('PLAYER_FPS');
 
       if (isPlayer && activeProfile.type === 'EDITOR_FREE') {
          if (entity.playerRuntime) {
@@ -57,7 +67,7 @@ export class CharacterKinematicsService implements IUpdatable {
           : activeCamera;
 
       const seqRuntime = entity.playerRuntime?.seqRuntime;
-      if (!seqRuntime) continue; // Si no hay seqRuntime seguro, omitimos para evitar fallo.
+      if (!seqRuntime) continue; 
 
       this.updateKinematics(
         scene, 
@@ -83,7 +93,6 @@ export class CharacterKinematicsService implements IUpdatable {
     const mesh = entity.view as Mesh;
     if (!mesh) return;
 
-    // Aplicar perfil a la malla para colisiones
     mesh.checkCollisions = profile.collisionsEnabled;
 
     const playerState = entity.playerRuntime;

@@ -15,6 +15,7 @@ import { CharacterKinematicsService } from './systems/character-kinematics.servi
 import { PlayerAnimationService } from './systems/player-animation.service';
 import { RenderSync } from './systems/render-sync';
 import { MediaCommandSystem } from './systems/media-command.system';
+import { CinematicDirectorService } from './systems/cinematic-director.service'; // 🔥 ADDED
 import { Motor3dService } from '../../../services/motor-3d.service';
 import { CameraViewMode } from '../session/game-context.model';
 import { GameMode } from '../session/game-mode.model';
@@ -41,6 +42,7 @@ export class GameSession {
   private sequenceSvc = inject(PlayerSequenceService);
   private kinematicsSvc = inject(CharacterKinematicsService);
   private playerAnimationSvc = inject(PlayerAnimationService);
+  private cinematicDirector = inject(CinematicDirectorService); // 🔥 ADDED
   private renderSyncSvc = inject(RenderSync);
   private motor3dSvc = inject(Motor3dService);
 
@@ -58,7 +60,7 @@ export class GameSession {
         this.context.setPointerLocked(true);
         const owner = this.ownership.getOwner();
         
-        if (owner !== 'ADMIN_FREE') {
+        if (owner !== 'ADMIN_FREE' && owner !== 'CINEMATIC_DIRECTOR') { // 🔥 Protegemos control durante cinemáticas
             this.inputSvc.enable();
             this.interactionSvc.enable();
         }
@@ -108,6 +110,7 @@ export class GameSession {
     this.systems = [
       this.inputSvc,
       this.sequenceSvc,
+      this.cinematicDirector, // 🔥 ADDED
       this.kinematicsSvc,
       this.triggerSvc,
       this.interactionSvc,
@@ -153,6 +156,7 @@ export class GameSession {
     this.inputSvc.disable();
     this.interactionSvc.disable();
     this.sequenceSvc.resetearSecuencias();
+    this.cinematicDirector.stop(); // 🔥 ADDED
 
     this.systems.forEach(system => {
         this.loopManager.unregisterSystem(system.id);
@@ -169,6 +173,8 @@ export class GameSession {
   }
 
   public toggleCameraUser(isCinematicInitial: boolean = false, customFrames?: number): void {
+    if (this.ownership.getOwner() === 'CINEMATIC_DIRECTOR') return; // 🔥 Evita romper la cámara si el jugador presiona V en cinemática
+
     const playerEntity = this.activePlayerEntity();
     if (!playerEntity) return;
 

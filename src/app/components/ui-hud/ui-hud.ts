@@ -6,11 +6,13 @@ import { GameSession } from '../../core/engine/runtime/game-session';
 import { GameEntity } from '../../core/engine/entities/game.entity';
 import { AbstractMesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
+import { UiDialogos } from '../ui-dialogos/ui-dialogos';
+import { CinematicDirectorService } from '../../core/engine/runtime/systems/cinematic-director.service';
 
 @Component({
   selector: 'app-ui-hud',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule,UiDialogos],
   templateUrl: './ui-hud.html',
   styleUrls: ['./ui-hud.css']
 })
@@ -21,6 +23,7 @@ export class UiHud implements OnInit, OnDestroy {
   public eventBus = inject(GameEventBusService);
   public gameSession = inject(GameSession);
   public cdr = inject(ChangeDetectorRef);
+  public cinematicDirector = inject(CinematicDirectorService); // 🔥 Para Fades Cinematográficos
 
   public hudMessage = signal<string | null>(null);
   public actionAvailable = signal<boolean>(false);

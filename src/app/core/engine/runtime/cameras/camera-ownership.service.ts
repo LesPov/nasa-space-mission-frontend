@@ -1,9 +1,9 @@
-
 import { Injectable, inject, signal, Injector } from '@angular/core';
 import { Camera } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 
-export type CameraOwner = 'NONE' | 'EDITOR' | 'PLAYER_FPS' | 'PLAYER_TPS' | 'ADMIN_FREE' | 'TRANSITION_PROXY';
+// 🔥 FIX: Añadido CINEMATIC_DIRECTOR como propietario supremo
+export type CameraOwner = 'NONE' | 'EDITOR' | 'PLAYER_FPS' | 'PLAYER_TPS' | 'ADMIN_FREE' | 'TRANSITION_PROXY' | 'CINEMATIC_DIRECTOR';
 
 @Injectable({ providedIn: 'root' })
 export class CameraOwnershipService {
@@ -35,8 +35,6 @@ export class CameraOwnershipService {
     this.currentOwner.set(owner);
     this.currentCamera.set(camera);
 
-    // 🔥 FIX: Evitamos el bug de cámaras múltiples renderizándose al mismo tiempo 
-    // al vaciar completamente la lista de cámaras activas del motor
     this.motor3d.scene.activeCameras = []; 
     this.motor3d.scene.activeCamera = camera;
 

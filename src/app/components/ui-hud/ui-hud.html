@@ -1,9 +1,18 @@
 
-
 <div class="crosshair-ui" 
      *ngIf="gameSession.isPlaying() && gameSession.pointerLocked() && gameSession.cameraView() === 'FPS'" 
      [class.hovering]="hoveredMesh() !== null">
 </div>
+
+<!-- 🔥 NUEVO: Pantalla Negra o Fade para Cinemáticas -->
+<div class="cinematic-fade-overlay" 
+     *ngIf="cinematicDirector.fadeOpacity() > 0" 
+     [style.opacity]="cinematicDirector.fadeOpacity()"
+     [style.background-color]="cinematicDirector.fadeColor()">
+</div>
+
+<!-- Componente UI dedicado a Cinemáticas y Diálogos -->
+<app-ui-dialogos></app-ui-dialogos>
 
 <!-- Toast: Mensaje Narrativo / UI -->
 <div class="modern-toast-container" *ngIf="hudMessage() !== null" style="bottom: 120px; z-index: 300;">
@@ -59,4 +68,3 @@
     <span class="hud-icon">⚙️</span> MODO EDICIÓN EN VIVO | Doble Clic en el fondo para reanudar
   </div>
 </div>
- 

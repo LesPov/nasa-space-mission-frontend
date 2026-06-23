@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Tags, AbstractMesh } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -11,6 +10,7 @@ import { CoreSceneProjectionService } from '../../../core/engine/scene/utils/cor
 import { AuthService } from '../../../core/services/auth';
 import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
 import { WindowSyncService } from '../../../core/services/window-sync.service';
+import { EditorCinematicService } from '../editor-cinematic.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsGizmoService {
@@ -23,6 +23,7 @@ export class ToolsGizmoService {
   private authSvc = inject(AuthService);
   private ownership = inject(CameraOwnershipService);
   private windowSync = inject(WindowSyncService);
+  private cinematicSvc = inject(EditorCinematicService); // 🔥 Para notificar a la timeline
 
   public gizmoManager!: GizmoManager;
   public centerDragMesh!: Mesh;
@@ -81,6 +82,18 @@ export class ToolsGizmoService {
   }
 
   private broadcastLiveTransform(mesh: AbstractMesh): void {
+    // 🔥 FIX: Actualizar los proxies cinemáticos para que el timeline los vea en vivo
+    if (Tags.MatchesQuery(mesh, "cinematic_proxy")) {
+        const clipId = mesh.name.replace('proxy_cam_', '');
+        const euler = mesh.rotationQuaternion ? mesh.rotationQuaternion.toEulerAngles() : mesh.rotation;
+        this.cinematicSvc.onProxyMoved.next({
+            clipId,
+            position: mesh.position,
+            rotation: new Vector3(euler.x * 180/Math.PI, euler.y * 180/Math.PI, euler.z * 180/Math.PI)
+        });
+        return;
+    }
+
     const entity = this.entityManager.getEntityByMesh(mesh);
     if (entity) {
       this.windowSync.broadcast({
@@ -100,7 +113,7 @@ export class ToolsGizmoService {
     const onDragStart = () => {
       this.isDraggingGizmo = true;
       const mesh = this.state.objetoSeleccionado() as Mesh;
-      if (mesh) {
+      if (mesh && !Tags.MatchesQuery(mesh, "cinematic_proxy")) {
         this.estadoAntesDeArrastrar = this.historialSvc.obtenerEstado(mesh);
         mesh.computeWorldMatrix(true);
         this.gizmoPivotNode.computeWorldMatrix(true);
@@ -161,7 +174,7 @@ export class ToolsGizmoService {
       
       if (!mesh) return;
 
-      if (!subSelected && this.estadoAntesDeArrastrar) {
+      if (!subSelected && this.estadoAntesDeArrastrar && !Tags.MatchesQuery(mesh, "cinematic_proxy")) {
         this.historialSvc.registrarAccionTransform(mesh, this.estadoAntesDeArrastrar);
         this.estadoAntesDeArrastrar = null;
         
@@ -244,6 +257,13 @@ export class ToolsGizmoService {
       return;
     }
 
+    // 🔥 FIX: Proxies de Cinemática soportan Gizmo puro
+    if (selected && Tags.MatchesQuery(selected, "cinematic_proxy")) {
+      this.gizmoManager.attachToMesh(selected);
+      this.actualizarGizmosActivos();
+      return;
+    }
+
     if (subSelected === 'collider' && this.debugSvc.debugCollider) {
       this.gizmoManager.attachToMesh(this.debugSvc.debugCollider);
       this.gizmoPivotNode.parent = null;
@@ -287,7 +307,7 @@ export class ToolsGizmoService {
   }
 
   public updateCenterDragMeshRenderState(obj: Mesh | null, subSelected: string | null): void {
-      if (obj && !this.isDraggingGizmo) {
+      if (obj && !this.isDraggingGizmo && !Tags.MatchesQuery(obj, "cinematic_proxy")) {
         if (subSelected !== 'collider' && subSelected !== 'camera' && subSelected !== 'light' && subSelected !== 'fog') {
           const entity = this.entityManager.getEntityByMesh(obj);
           if (entity && entity.collider && entity.collider.type !== 'mesh') {
@@ -312,7 +332,10 @@ export class ToolsGizmoService {
 
       const isSelectMode = this.state.currentTool() === 'select';
 
-      if (this.gizmoManager.attachedMesh && !this.gizmoManager.attachedMesh.isDisposed() && !isSelectMode) {
+      // 🔥 Ocultamos el center drag box para proxies cinemáticos para que no estorbe
+      const isProxy = obj && Tags.MatchesQuery(obj, "cinematic_proxy");
+
+      if (this.gizmoManager.attachedMesh && !this.gizmoManager.attachedMesh.isDisposed() && !isSelectMode && !isProxy) {
         this.centerDragMesh.isVisible = true;
         const cam = this.gizmoManager.utilityLayer.utilityLayerScene.activeCamera || this.ownership.getCamera();
         if (cam) {

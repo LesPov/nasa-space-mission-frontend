@@ -144,7 +144,8 @@ export class EditorSceneService {
     });
   }
 
-  public obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], environmentSettings: any, spawnPoint: any } {
-    return this.saverSvc.obtenerDatosParaGuardar(forceFull);
+  // 🔥 FIX: Acepta escenaActualData desde EditorMapaService
+  public obtenerDatosParaGuardar(escenaActualData: any, forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], environmentSettings: any, spawnPoint: any } { 
+    return this.saverSvc.obtenerDatosParaGuardar(escenaActualData, forceFull);
   }
 }

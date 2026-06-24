@@ -23,7 +23,8 @@ export class WorldSettingsService {
         ambientGround: worldData.ambientGround || DEFAULT_WORLD_SETTINGS.ambientGround,
         ambientDirX: Number.isFinite(Number(worldData.ambientDirX)) ? Number(worldData.ambientDirX) : DEFAULT_WORLD_SETTINGS.ambientDirX,
         ambientDirY: Number.isFinite(Number(worldData.ambientDirY)) ? Number(worldData.ambientDirY) : DEFAULT_WORLD_SETTINGS.ambientDirY,
-        ambientDirZ: Number.isFinite(Number(worldData.ambientDirZ)) ? Number(worldData.ambientDirZ) : DEFAULT_WORLD_SETTINGS.ambientDirZ
+        ambientDirZ: Number.isFinite(Number(worldData.ambientDirZ)) ? Number(worldData.ambientDirZ) : DEFAULT_WORLD_SETTINGS.ambientDirZ,
+        logicSettings: worldData.logicSettings || {}
       });
     }
 
@@ -41,7 +42,8 @@ export class WorldSettingsService {
         loreAuthor: uiData.loreAuthor || DEFAULT_MISSION_UI_SETTINGS.loreAuthor,
         initialSequence: uiData.initialSequence || DEFAULT_MISSION_UI_SETTINGS.initialSequence,
         objetivos: Array.isArray(uiData.objetivos) ? uiData.objetivos : [],
-        recompensas: Array.isArray(uiData.recompensas) ? uiData.recompensas : []
+        recompensas: Array.isArray(uiData.recompensas) ? uiData.recompensas : [],
+        requisitos: Array.isArray(uiData.requisitos) ? uiData.requisitos : [] // 🔥 ADDED
       });
     }
   }
@@ -59,14 +61,14 @@ export class WorldSettingsService {
     const w = this.settings();
     const ui = this.uiSettings();
 
-    // 🔥 FIX: Mantenemos scene.metadata sincronizado para compatibilidad con Babylon 
-    // y para asegurar que la persistencia lea los valores correctos en vivo.
+    // Sincronizar metadata para lecturas cruzadas en el ecosistema Babylon
     scene.metadata = {
       ...(scene.metadata || {}),
       globalVisualMode: w.visualMode,
       globalClearColor: w.clearColor,
       globalClearColorBW: w.clearColorBW,
-      uiSettings: ui
+      uiSettings: ui,
+      logicSettings: w.logicSettings || {}
     };
 
     let ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;

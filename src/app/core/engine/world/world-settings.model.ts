@@ -12,6 +12,7 @@ export interface WorldSettings {
   ambientDirX: number;
   ambientDirY: number;
   ambientDirZ: number;
+  logicSettings?: any;
 }
 
 export interface MissionUiSettings {
@@ -28,6 +29,7 @@ export interface MissionUiSettings {
   initialSequence: string;
   objetivos: string[];
   recompensas: string[];
+  requisitos: string[]; // 🔥 ADDED: Permisos para entrar
 }
 
 export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
@@ -56,5 +58,6 @@ export const DEFAULT_MISSION_UI_SETTINGS: MissionUiSettings = {
   loreAuthor: 'Anónimo',
   initialSequence: '',
   objetivos: [],
-  recompensas: []
+  recompensas: [],
+  requisitos: [] // 🔥 ADDED
 };

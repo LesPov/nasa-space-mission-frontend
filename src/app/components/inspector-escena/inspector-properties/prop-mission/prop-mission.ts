@@ -39,7 +39,8 @@ export class PropMission implements OnInit, OnDestroy {
     this.uiSettings = {
       ...s,
       objetivos: s.objetivos.join('\n'),
-      recompensas: s.recompensas.join('\n')
+      recompensas: s.recompensas.join('\n'),
+      requisitos: (s.requisitos || []).join('\n') // 🔥 ADDED
     };
 
     this.cdr.detectChanges();
@@ -48,9 +49,11 @@ export class PropMission implements OnInit, OnDestroy {
   aplicarCambios() {
     const objStr = typeof this.uiSettings.objetivos === 'string' ? this.uiSettings.objetivos : (this.uiSettings.objetivos as any).join('\n');
     const recStr = typeof this.uiSettings.recompensas === 'string' ? this.uiSettings.recompensas : (this.uiSettings.recompensas as any).join('\n');
+    const reqStr = typeof this.uiSettings.requisitos === 'string' ? this.uiSettings.requisitos : (this.uiSettings.requisitos || []).join('\n');
 
     const objetivosArray = objStr.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
     const recompensasArray = recStr.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+    const requisitosArray = reqStr.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
 
     const newSettings = {
       ...this.uiSettings,
@@ -59,7 +62,8 @@ export class PropMission implements OnInit, OnDestroy {
       blurIntensity: Number(this.uiSettings.blurIntensity),
       borderRadius: Number(this.uiSettings.borderRadius),
       objetivos: objetivosArray,
-      recompensas: recompensasArray
+      recompensas: recompensasArray,
+      requisitos: requisitosArray
     };
 
     this.worldSettingsSvc.updateUiSettings(newSettings);

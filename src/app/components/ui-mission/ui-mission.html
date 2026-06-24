@@ -1,27 +1,28 @@
+
 <div class="user-mission-overlay" 
      [class.closing]="cerrando"
-     [style.background-color]="hexToRgba(ui.overlayColor, ui.overlayOpacity)"
-     [style.backdrop-filter]="ui.blurIntensity > 0 ? 'blur(' + ui.blurIntensity + 'px)' : 'none'"
-     [style.-webkit-backdrop-filter]="ui.blurIntensity > 0 ? 'blur(' + ui.blurIntensity + 'px)' : 'none'">
+     [style.background-color]="hexToRgba(ui().overlayColor, ui().overlayOpacity)"
+     [style.backdrop-filter]="ui().blurIntensity > 0 ? 'blur(' + ui().blurIntensity + 'px)' : 'none'"
+     [style.-webkit-backdrop-filter]="ui().blurIntensity > 0 ? 'blur(' + ui().blurIntensity + 'px)' : 'none'">
   
   <div class="mission-topbar">
     <div class="brand">
       <ng-container *ngIf="!isDebugMode">
-        <h2 [style.color]="ui.primaryColor" style="font-weight: 800; margin: 0; text-transform: uppercase;">
+        <h2 [style.color]="ui().primaryColor" style="font-weight: 800; margin: 0; text-transform: uppercase;">
           {{ episodeTitle }}
         </h2>
         <p style="color: #94a3b8; font-size: 11px; margin: 0; letter-spacing: 1px;">SISTEMA EN LÍNEA</p>
       </ng-container>
 
       <ng-container *ngIf="isDebugMode">
-        <input type="text" [ngModel]="episodeTitle" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui.primaryColor" style="background: rgba(0,0,0,0.5); border: 1px dashed #64748b; font-weight: 800; text-transform: uppercase; outline: none; padding: 4px; border-radius: 4px;" title="Modificar Título del Episodio" />
+        <input type="text" [ngModel]="episodeTitle" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui().primaryColor" style="background: rgba(0,0,0,0.5); border: 1px dashed #64748b; font-weight: 800; text-transform: uppercase; outline: none; padding: 4px; border-radius: 4px;" title="Modificar Título del Episodio" />
         <p style="color: #60a5fa; margin: 0; letter-spacing: 1px; padding-top: 4px;">MODO EDICIÓN (PREVIEW)</p>
       </ng-container>
     </div>
     
     <div class="top-actions">
-      <span class="user-tag" [style.color]="ui.primaryColor" [style.border-color]="ui.primaryColor">[Sesión: {{ isDebugMode ? 'CREADOR' : 'JUGADOR' }}]</span>
-      <button class="btn-mission-exit" (click)="onExit.emit()" [style.background-color]="ui.primaryColor">
+      <span class="user-tag" [style.color]="ui().primaryColor" [style.border-color]="ui().primaryColor">[Sesión: {{ isDebugMode ? 'CREADOR' : 'JUGADOR' }}]</span>
+      <button class="btn-mission-exit" (click)="onExit.emit()" [style.background-color]="ui().primaryColor">
         <span class="icon">⏹</span> Salir
       </button>
     </div>
@@ -30,34 +31,34 @@
   <div class="mission-body">
     
     <aside class="mission-sidebar">
-      <button class="nav-btn active" [ngStyle]="{'border-left-color': ui.primaryColor, 'color': ui.primaryColor, 'background': 'linear-gradient(90deg, ' + getPrimaryColorWithAlpha(0.15) + ' 0%, transparent 100%)'}"><span class="icon">🎯</span> MISIÓN ACTIVA</button>
+      <button class="nav-btn active" [ngStyle]="{'border-left-color': ui().primaryColor, 'color': ui().primaryColor, 'background': 'linear-gradient(90deg, ' + getPrimaryColorWithAlpha(0.15) + ' 0%, transparent 100%)'}"><span class="icon">🎯</span> MISIÓN ACTIVA</button>
       <button class="nav-btn" [class.disabled]="!tieneInventario"><span class="icon">🎒</span> INVENTARIO</button>
       <button class="nav-btn" [class.disabled]="!tieneMapaUnLocker"><span class="icon">🗺️</span> MAPA</button>
       <button class="nav-btn" [class.disabled]="!tieneHistoria"><span class="icon">📖</span> HISTORIA</button>
       <button class="nav-btn leave" (click)="onExit.emit()"><span class="icon">🚪</span> {{ isPreviewOnly ? 'CERRAR VISTA PREVIA' : (isDebugMode ? 'SALIR AL EDITOR' : 'SALIR AL MENÚ') }}</button>
 
       <div class="lore-quote">
-        <p [style.color]="ui.textColor" style="font-style: italic;">{{ ui.loreQuote }}</p>
-        <span [style.color]="ui.primaryColor" style="font-weight: bold;">- {{ ui.loreAuthor }}</span>
+        <p [style.color]="ui().textColor" style="font-style: italic;">{{ ui().loreQuote }}</p>
+        <span [style.color]="ui().primaryColor" style="font-weight: bold;">- {{ ui().loreAuthor }}</span>
       </div>
     </aside>
 
     <main class="mission-content">
       <div class="mission-card" 
-           [style.background-color]="hexToRgba(ui.bgColor, ui.bgOpacity)"
-           [style.border-radius.px]="ui.borderRadius"
-           [style.max-width.px]="ui.maxWidth"
-           [style.box-shadow]="ui.shadows">
+           [style.background-color]="hexToRgba(ui().bgColor, ui().bgOpacity)"
+           [style.border-radius.px]="ui().borderRadius"
+           [style.max-width.px]="ui().maxWidth"
+           [style.box-shadow]="ui().shadows">
         
-        <div class="card-scroll-area" [style.padding.px]="ui.padding">
+        <div class="card-scroll-area" [style.padding.px]="ui().padding">
           <div class="card-header">
-            <h4 [style.color]="ui.textColor">MISIÓN PRINCIPAL</h4>
+            <h4 [style.color]="ui().textColor">REPORTE DE MISIÓN</h4>
             
-            <h2 *ngIf="!isDebugMode" [style.color]="ui.primaryColor">{{ episodeTitle }}</h2>
-            <input *ngIf="isDebugMode" type="text" [ngModel]="episodeTitle" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui.primaryColor" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; font-size: clamp(16px, 2.5vw, 24px); font-weight: 900; text-transform: uppercase; text-align: center; width: 100%; outline: none; margin: 5px 0; border-radius: 4px;" />
+            <h2 *ngIf="!isDebugMode" [style.color]="ui().primaryColor">{{ episodeTitle }}</h2>
+            <input *ngIf="isDebugMode" type="text" [ngModel]="episodeTitle" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui().primaryColor" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; font-size: clamp(16px, 2.5vw, 24px); font-weight: 900; text-transform: uppercase; text-align: center; width: 100%; outline: none; margin: 5px 0; border-radius: 4px;" />
             
-            <span *ngIf="!misionIniciada" [style.color]="ui.textColor">INICIANDO SIMULACIÓN NEURAL...</span>
-            <span *ngIf="misionIniciada" [style.color]="ui.primaryColor">SIMULACIÓN EN PAUSA</span>
+            <span *ngIf="!misionIniciada" [style.color]="ui().textColor">INICIANDO SIMULACIÓN NEURAL...</span>
+            <span *ngIf="misionIniciada" [style.color]="ui().primaryColor">SIMULACIÓN EN PAUSA</span>
           </div>
           
           <div class="card-image-placeholder" 
@@ -68,33 +69,60 @@
           </div>
           
           <div class="card-description">
-            <p *ngIf="!isDebugMode" [style.color]="ui.textColor">{{ episodeDescription }}</p>
-            <textarea *ngIf="isDebugMode" [ngModel]="episodeDescription" (ngModelChange)="cambiarDesc($event)" [style.color]="ui.textColor" rows="3" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; width: 100%; font-size: clamp(11px, 1.5vw, 13px); font-family: inherit; resize: vertical; outline: none; padding: 10px; border-radius: 6px; box-sizing: border-box;" placeholder="Escribe la descripción de la misión aquí..."></textarea>
+            <p *ngIf="!isDebugMode" [style.color]="ui().textColor">{{ episodeDescription }}</p>
+            <textarea *ngIf="isDebugMode" [ngModel]="episodeDescription" (ngModelChange)="cambiarDesc($event)" [style.color]="ui().textColor" rows="3" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; width: 100%; font-size: clamp(11px, 1.5vw, 13px); font-family: inherit; resize: vertical; outline: none; padding: 10px; border-radius: 6px; box-sizing: border-box;" placeholder="Escribe la descripción de la misión aquí..."></textarea>
           </div>
 
-          <div class="card-objectives" [style.border-left-color]="ui.primaryColor" style="background: rgba(0,0,0,0.4);">
-            <h4 [style.color]="ui.primaryColor">OBJETIVOS ACTUALES</h4>
-            <ul>
-              <li *ngIf="objetivosActuales.length === 0" [style.color]="ui.textColor"><span class="dot" [style.background]="ui.primaryColor"></span> <i>Buscando señal...</i></li>
-              <li *ngFor="let obj of objetivosActuales" [style.color]="ui.textColor">
-                <span class="dot" [style.background]="ui.primaryColor"></span> {{ obj }}
-              </li>
-            </ul>
-
-            <ng-container *ngIf="recompensasActuales.length > 0">
-              <h4 [style.color]="ui.primaryColor" style="margin-top: 15px;">RECOMPENSAS</h4>
+          <div class="card-objectives" [style.border-left-color]="ui().primaryColor" style="background: rgba(0,0,0,0.4);">
+            
+            <!-- REQUISITOS (PERMISOS) -->
+            <ng-container *ngIf="requisitosGlobales().length > 0">
+              <h4 style="color: #f87171;">PERMISOS / REQUISITOS</h4>
               <ul>
-                <li *ngFor="let rec of recompensasActuales" [style.color]="ui.textColor">
-                  <span class="dot" [style.background]="ui.primaryColor"></span> {{ rec }}
+                <li *ngFor="let req of requisitosGlobales()" [style.color]="ui().textColor">
+                  <span class="dot" style="background: #f87171;"></span> {{ req }}
                 </li>
               </ul>
             </ng-container>
+
+            <!-- OBJETIVO GLOBAL -->
+            <h4 [style.color]="ui().primaryColor" [style.margin-top.px]="requisitosGlobales().length > 0 ? 15 : 0">OBJETIVO PRINCIPAL (EPISODIO)</h4>
+            <ul>
+              <li *ngIf="objetivosGlobales().length === 0" [style.color]="ui().textColor"><span class="dot" [style.background]="ui().primaryColor"></span> <i>Buscando señal...</i></li>
+              <li *ngFor="let obj of objetivosGlobales()" [style.color]="ui().textColor">
+                <span class="dot" [style.background]="ui().primaryColor"></span> {{ obj }}
+              </li>
+            </ul>
+
+            <!-- OBJETIVO LOCAL -->
+            <ng-container *ngIf="objetivosLocales().length > 0">
+              <h4 style="color: #60a5fa; margin-top: 15px;">OBJETIVOS DE LA ZONA</h4>
+              <ul>
+                <li *ngFor="let obj of objetivosLocales()" [style.color]="ui().textColor">
+                  <span class="dot" style="background: #60a5fa;"></span> {{ obj }}
+                </li>
+              </ul>
+            </ng-container>
+
+            <!-- RECOMPENSAS -->
+            <ng-container *ngIf="recompensasGlobales().length > 0 || recompensasLocales().length > 0">
+              <h4 [style.color]="ui().primaryColor" style="margin-top: 15px;">RECOMPENSAS</h4>
+              <ul>
+                <li *ngFor="let rec of recompensasGlobales()" [style.color]="ui().textColor">
+                  <span class="dot" [style.background]="ui().primaryColor"></span> {{ rec }} <span style="font-size:9px; color:#888;">(Global)</span>
+                </li>
+                <li *ngFor="let rec of recompensasLocales()" [style.color]="ui().textColor">
+                  <span class="dot" style="background: #60a5fa;"></span> {{ rec }} <span style="font-size:9px; color:#888;">(Zona)</span>
+                </li>
+              </ul>
+            </ng-container>
+
           </div>
         </div>
 
         <button class="btn-start-action" 
-                [style.background]="ui.primaryColor" 
-                [style.border-radius]="'0 0 ' + ui.borderRadius + 'px ' + ui.borderRadius + 'px'"
+                [style.background]="ui().primaryColor" 
+                [style.border-radius]="'0 0 ' + ui().borderRadius + 'px ' + ui().borderRadius + 'px'"
                 (click)="onStart.emit()">
           {{ isPreviewOnly ? 'CERRAR VISTA PREVIA' : (misionIniciada ? 'REANUDAR PARTIDA' : (isDebugMode ? 'PROBAR MISIÓN' : 'INICIAR MISIÓN')) }}
         </button>

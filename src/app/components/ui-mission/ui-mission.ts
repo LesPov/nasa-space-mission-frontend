@@ -1,6 +1,8 @@
-import { Component, Input, Output, EventEmitter, OnChanges, DoCheck, KeyValueDiffers, KeyValueDiffer } from '@angular/core';
+
+import { Component, Input, Output, EventEmitter, OnChanges, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { WorldSettingsService } from '../../core/engine/world/world-settings.service';
 
 @Component({
   selector: 'app-ui-mission',
@@ -9,13 +11,12 @@ import { FormsModule } from '@angular/forms';
   templateUrl: './ui-mission.html',
   styleUrls: ['./ui-mission.css']
 })
-export class UiMission implements OnChanges, DoCheck {
+export class UiMission implements OnChanges {
   @Input() episodio: any = null; 
   @Input() playerState: any = null; 
   @Input() misionIniciada = false;
   @Input() cerrando = false;
   @Input() isDebugMode = false;
-  @Input() liveUiSettings: any = null; 
   @Input() isPreviewOnly = false;
 
   @Output() onStart = new EventEmitter<void>();
@@ -23,46 +24,78 @@ export class UiMission implements OnChanges, DoCheck {
   @Output() mapaNombreChange = new EventEmitter<string>();
   @Output() mapaDescChange = new EventEmitter<string>();
 
-  public objetivosActuales: string[] = [];
-  public recompensasActuales: string[] = [];
+  private worldSettingsSvc = inject(WorldSettingsService);
+
   public tieneInventario = false;
   public tieneMapaUnLocker = false;
   public tieneHistoria = false;
 
-  public ui: any = {
-    primaryColor: '#ef4444',
-    bgColor: '#0f172a',
-    bgOpacity: 0.85,
-    textColor: '#cbd5e1',
-    loreQuote: '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."',
-    loreAuthor: 'Anónimo',
-    initialSequence: '',
-    overlayColor: '#050508',
-    overlayOpacity: 0.7,
-    blurIntensity: 8,
-    borderRadius: 12,
-    padding: 20,
-    maxWidth: 650,
-    shadows: '0 20px 50px rgba(0,0,0,0.8)'
-  };
+  // 🔥 100% SIGNAL REACTIVITY: Eliminados Lifecycle Hooks ineficientes (DoCheck, KeyValueDiffers)
 
-  private differ: KeyValueDiffer<string, any>;
+  public ui = computed(() => {
+    const s = this.worldSettingsSvc.uiSettings();
+    return {
+      primaryColor: s.primaryColor || '#ef4444',
+      bgColor: s.bgColor || '#0f172a',
+      bgOpacity: Number.isFinite(Number(s.bgOpacity)) ? Number(s.bgOpacity) : 0.85,
+      textColor: s.textColor || '#cbd5e1',
+      loreQuote: s.loreQuote || '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."',
+      loreAuthor: s.loreAuthor || 'Anónimo',
+      initialSequence: s.initialSequence || '',
+      overlayColor: s.overlayColor || '#050508',
+      overlayOpacity: Number.isFinite(Number(s.overlayOpacity)) ? Number(s.overlayOpacity) : 0.7,
+      blurIntensity: Number.isFinite(Number(s.blurIntensity)) ? Number(s.blurIntensity) : 8,
+      borderRadius: Number.isFinite(Number(s.borderRadius)) ? Number(s.borderRadius) : 12,
+      padding: 20,
+      maxWidth: 650,
+      shadows: '0 20px 50px rgba(0,0,0,0.8)'
+    };
+  });
 
-  constructor(private differs: KeyValueDiffers) {
-    this.differ = this.differs.find({}).create();
-  }
+  public logicSettings = computed(() => this.worldSettingsSvc.settings().logicSettings || {});
+
+  public objetivosLocales = computed(() => {
+     const val = this.logicSettings().objetivosLocales;
+     if (!val) return [];
+     if (Array.isArray(val)) return val;
+     return val.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+  });
+
+  public recompensasLocales = computed(() => {
+     const val = this.logicSettings().recompensasLocales;
+     if (!val) return [];
+     if (Array.isArray(val)) return val;
+     return val.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+  });
+
+  public objetivosGlobales = computed(() => {
+     const s = this.worldSettingsSvc.uiSettings();
+     const worldState = this.playerState?.worldState || {};
+
+     if (worldState['mision_en_curso']) {
+        let activeObj = worldState['objetivos_activos'];
+        if (typeof activeObj === 'string') {
+           activeObj = activeObj.split('\n').map((str: string) => str.trim()).filter((str: string) => str.length > 0);
+        }
+        if (Array.isArray(activeObj) && activeObj.length > 0) return activeObj;
+     }
+
+     if (Array.isArray(s.objetivos) && s.objetivos.length > 0) return s.objetivos;
+     return ['Explora el área y sobrevive.'];
+  });
+
+  public recompensasGlobales = computed(() => {
+     const s = this.worldSettingsSvc.uiSettings();
+     return Array.isArray(s.recompensas) ? s.recompensas : [];
+  });
+
+  public requisitosGlobales = computed(() => {
+     const s = this.worldSettingsSvc.uiSettings();
+     return Array.isArray(s.requisitos) ? s.requisitos : [];
+  });
 
   ngOnChanges() {
     this.procesarEstadoJugador();
-  }
-
-  ngDoCheck() {
-    if (this.liveUiSettings) {
-      const changes = this.differ.diff(this.liveUiSettings);
-      if (changes) {
-        this.procesarEstadoJugador();
-      }
-    }
   }
 
   get episodeTitle(): string {
@@ -78,71 +111,10 @@ export class UiMission implements OnChanges, DoCheck {
   }
 
   procesarEstadoJugador() {
-    let sourceSettings = this.liveUiSettings;
-
-    if (!sourceSettings || Object.keys(sourceSettings).length === 0) {
-        let epUi = this.episodio?.uiSettings || this.episodio?.episode?.uiSettings;
-        if (epUi) {
-            try {
-                sourceSettings = typeof epUi === 'string' ? JSON.parse(epUi) : epUi;
-            } catch(e) {
-                sourceSettings = {};
-            }
-        }
-    }
-    sourceSettings = sourceSettings || {};
-
-    this.ui.primaryColor = sourceSettings.primaryColor || '#ef4444';
-    this.ui.bgColor = sourceSettings.bgColor || '#0f172a';
-    this.ui.textColor = sourceSettings.textColor || '#cbd5e1';
-    this.ui.loreQuote = sourceSettings.loreQuote || '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."';
-    this.ui.loreAuthor = sourceSettings.loreAuthor || 'Anónimo';
-    this.ui.initialSequence = sourceSettings.initialSequence || '';
-    this.ui.overlayColor = sourceSettings.overlayColor || '#050508';
-    this.ui.shadows = sourceSettings.shadows || '0 20px 50px rgba(0,0,0,0.8)';
-
-    // 🔥 Parseo estricto para valores numéricos, previene que "0" sea ignorado y se ponga el valor fallback
-    this.ui.bgOpacity = sourceSettings.bgOpacity !== undefined && sourceSettings.bgOpacity !== null ? Number(sourceSettings.bgOpacity) : 0.85;
-    this.ui.overlayOpacity = sourceSettings.overlayOpacity !== undefined && sourceSettings.overlayOpacity !== null ? Number(sourceSettings.overlayOpacity) : 0.7;
-    this.ui.blurIntensity = sourceSettings.blurIntensity !== undefined && sourceSettings.blurIntensity !== null ? Number(sourceSettings.blurIntensity) : 8;
-    this.ui.borderRadius = sourceSettings.borderRadius !== undefined && sourceSettings.borderRadius !== null ? Number(sourceSettings.borderRadius) : 12;
-    this.ui.padding = sourceSettings.padding !== undefined && sourceSettings.padding !== null ? Number(sourceSettings.padding) : 20;
-    this.ui.maxWidth = sourceSettings.maxWidth !== undefined && sourceSettings.maxWidth !== null ? Number(sourceSettings.maxWidth) : 650;
-
     const worldState = this.playerState?.worldState || {};
     this.tieneInventario = (this.playerState?.inventory || []).length > 0;
     this.tieneMapaUnLocker = !!worldState['mapa_desbloqueado'];
     this.tieneHistoria = !!worldState['lore_desbloqueado'];
-
-    let parsedObjetivos: string[] = [];
-    if (Array.isArray(sourceSettings.objetivos)) {
-      parsedObjetivos = sourceSettings.objetivos;
-    } else if (typeof sourceSettings.objetivos === 'string') {
-      parsedObjetivos = sourceSettings.objetivos.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-    }
-
-    if (!worldState['mision_en_curso']) {
-        this.objetivosActuales = parsedObjetivos.length > 0 
-          ? parsedObjetivos 
-          : ['Explora el área y sobrevive.'];
-    } else {
-        let activeObj = worldState['objetivos_activos'];
-        if (typeof activeObj === 'string') {
-           activeObj = activeObj.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-        }
-        this.objetivosActuales = (Array.isArray(activeObj) && activeObj.length > 0) 
-          ? activeObj 
-          : ['Encuentra la salida.'];
-    }
-
-    let parsedRecompensas: string[] = [];
-    if (Array.isArray(sourceSettings.recompensas)) {
-      parsedRecompensas = sourceSettings.recompensas;
-    } else if (typeof sourceSettings.recompensas === 'string') {
-      parsedRecompensas = sourceSettings.recompensas.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-    }
-    
-    this.recompensasActuales = parsedRecompensas;
   }
 
   cambiarTitulo(nuevoTitulo: string) {
@@ -186,6 +158,6 @@ export class UiMission implements OnChanges, DoCheck {
   }
 
   getPrimaryColorWithAlpha(alpha: number): string {
-    return this.hexToRgba(this.ui.primaryColor, alpha);
+    return this.hexToRgba(this.ui().primaryColor, alpha);
   }
 }

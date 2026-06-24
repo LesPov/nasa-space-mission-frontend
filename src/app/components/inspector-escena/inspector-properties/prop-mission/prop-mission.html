@@ -1,3 +1,4 @@
+
 <div class="section-card">
   <div class="section-head">
     <h4>Diseño Visual de la Tarjeta</h4>
@@ -83,12 +84,17 @@
 
 <div class="section-card">
   <div class="section-head">
-    <h4>Objetivos y Recompensas</h4>
+    <h4>Objetivos, Requisitos y Recompensas (Globales)</h4>
   </div>
-  <p class="help-text" style="margin-bottom: 10px;">Escribe cada objetivo o recompensa en una línea nueva. El sistema los separará automáticamente como una lista con viñetas.</p>
+  <p class="help-text" style="margin-bottom: 10px;">Escribe cada ítem en una línea nueva. El sistema los separará automáticamente como una lista con viñetas.</p>
 
   <div class="field wide" style="margin-bottom: 15px;">
-    <label style="color: #60a5fa; font-weight: bold;">Objetivos de la Misión</label>
+    <label style="color: #f87171; font-weight: bold;">Permisos / Requisitos</label>
+    <textarea rows="2" [(ngModel)]="uiSettings.requisitos" (ngModelChange)="aplicarCambios()" placeholder="Nivel 5&#10;Tarjeta de Acceso"></textarea>
+  </div>
+
+  <div class="field wide" style="margin-bottom: 15px;">
+    <label style="color: #60a5fa; font-weight: bold;">Objetivo Principal (Episodio)</label>
     <textarea rows="4" [(ngModel)]="uiSettings.objetivos" (ngModelChange)="aplicarCambios()" placeholder="Encuentra la llave roja.&#10;Sobrevive a la horda."></textarea>
   </div>
 

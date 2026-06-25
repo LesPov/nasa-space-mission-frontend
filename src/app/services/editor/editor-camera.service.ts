@@ -20,7 +20,7 @@ export class EditorCameraService {
   private ownership = inject(CameraOwnershipService);
   private gameContext = inject(GameContextService);
 
-  private editorCamState: { target: Vector3; radius: number; alpha: number; beta: number } | null = null;
+  private editorCamState: { target: Vector3; radius: number; alpha: number; beta: number; position: Vector3 } | null = null;
 
   private obtenerCamaraJuegoActiva(): Camera | null {
     return this.ownership.getCamera();
@@ -92,11 +92,14 @@ export class EditorCameraService {
     const editorCam = this.motor3d.editorCamera;
     if (!editorCam) return;
 
+    editorCam.computeWorldMatrix();
+
     this.editorCamState = {
       target: editorCam.getTarget().clone(),
       radius: editorCam.radius,
       alpha: editorCam.alpha,
-      beta: editorCam.beta
+      beta: editorCam.beta,
+      position: editorCam.globalPosition.clone()
     };
   }
 
@@ -139,7 +142,6 @@ export class EditorCameraService {
     this.motor3d.scene.beginDirectAnimation(cam, [animTarget, animRadius], 0, frames, false, 1.0);
   }
 
-  // 🔥 NUEVO: Enfoque suave de coordenadas (Usado para ver cámaras cinemáticas)
   enfocarCoordenadas(pos: Vector3, radius: number = 4): void {
     const cam = this.motor3d.editorCamera;
     if (!cam) return;
@@ -162,7 +164,6 @@ export class EditorCameraService {
     this.motor3d.scene.beginDirectAnimation(cam, [animTarget, animRadius], 0, frames, false, 1.0);
   }
 
-  // 🔥 FIX 2: Entrada y Salida Explícita de Cámara Cinemática mediante Animación Proxy con seguridad de Target
   public transicionACamaraCinematica(targetPos: Vector3, targetRot: Vector3, fov: number | undefined, onComplete: () => void): void {
       const startCam = this.ownership.getCamera();
       if (!startCam) { onComplete(); return; }
@@ -408,6 +409,7 @@ export class EditorCameraService {
     );
   }
 
+  // 🔥 FIX 4: Transición curva en "S" Bézier para no atravesar paredes o cabezas
   volarHaciaCamaraJuego(
     centroEpiral: Vector3,
     targetPos: Vector3,
@@ -419,18 +421,12 @@ export class EditorCameraService {
     const scene = this.motor3d.scene;
     const editorCam = this.motor3d.editorCamera;
 
-    const startPos = editorCam.globalPosition.clone();
-    const dist = Vector3.Distance(startPos, targetPos);
-    
-    const frames = Math.max(120, Math.min(Math.floor(dist * 3.5), 240));
-
+    // 🔥 FIX: Tomar EXACTAMENTE donde está el editorCam, gracias al guardado previo
+    const startPos = this.editorCamState?.position || editorCam.globalPosition.clone();
     const startTarget = startPos.add(editorCam.getDirection(Vector3.Forward()).scale(10));
     
-    let dirToTarget = centroEpiral.subtract(startPos).normalize();
-    if (dirToTarget.lengthSquared() < 0.001) dirToTarget = editorCam.getDirection(Vector3.Forward());
-
-    let endForward = targetLookAt.subtract(targetPos).normalize();
-    if (endForward.lengthSquared() < 0.1) endForward = playerForward.clone();
+    const dist = Vector3.Distance(startPos, targetPos);
+    const frames = Math.max(90, Math.min(Math.floor(dist * 3.0), 180));
 
     const proxyCam = new UniversalCamera("proxyTransitionCam", startPos.clone(), scene);
     proxyCam.minZ = 0.05;
@@ -440,11 +436,13 @@ export class EditorCameraService {
        this.motor3d.renderingPipeline.addCamera(proxyCam);
     }
     
-    const p1 = startPos.add(dirToTarget.scale(dist * 0.4));
-    p1.y += Math.min(dist * 0.2, 3.0);
-
-    const p2 = targetPos.subtract(playerForward.scale(Math.min(dist * 0.5, 10.0)));
-    p2.y += Math.min(dist * 0.1, 2.0);
+    // Curva Bézier cinemática: Empieza hacia donde mira el editor, y entra al player por donde el player mira
+    const startDir = startTarget.subtract(startPos).normalize();
+    const endDir = targetLookAt.subtract(targetPos).normalize();
+    
+    const p1 = startPos.add(startDir.scale(dist * 0.3));
+    const p2 = targetPos.subtract(endDir.scale(dist * 0.3)); // Viene desde atrás/orbitando
+    p2.y += Math.min(dist * 0.1, 2.0); // Leve elevación
 
     const bezier = Curve3.CreateCubicBezier(startPos, p1, p2, targetPos, frames);
     const posPoints = bezier.getPoints();
@@ -462,16 +460,7 @@ export class EditorCameraService {
         const currentPos = posPoints[i];
         posKeys.push({ frame: i, value: currentPos });
 
-        let lookTarget: Vector3;
-        if (t < 0.6) {
-            lookTarget = Vector3.Lerp(startTarget, centroEpiral, t / 0.6);
-        } else {
-            const tBlend = (t - 0.6) / 0.4;
-            lookTarget = Vector3.Lerp(centroEpiral, targetLookAt, tBlend);
-        }
-
-        const lookQuat = this.getLookQuat(currentPos, lookTarget, playerForward);
-        const finalQuat = Quaternion.Slerp(lookQuat, endQuat, Math.pow(t, 3));
+        const finalQuat = Quaternion.Slerp(startQuat, endQuat, t);
         rotKeys.push({ frame: i, value: finalQuat });
     }
 

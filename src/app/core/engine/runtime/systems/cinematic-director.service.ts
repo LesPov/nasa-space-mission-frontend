@@ -36,7 +36,6 @@ export class CinematicDirectorService implements IUpdatable {
   private lastEvaluatedTimeMs = 0;
   private activeDialogueClipId: string | null = null;
 
-  // 🔥 FIX: Variables necesarias para controlar intenciones desde el Editor
   public editorWantsCamera = false; 
   public get cinematicCameraRef() { return this.cinematicCamera; }
 
@@ -73,7 +72,6 @@ export class CinematicDirectorService implements IUpdatable {
       return Quaternion.RotationYawPitchRoll(yaw, pitch, 0);
   }
 
-  // 🔥 NUEVO: Función para delegar el control forzado desde UI
   public takeOverCamera(prevOwner: CameraOwner, prevCam: any) {
       this.previousCameraOwner = prevOwner;
       this.previousCamera = prevCam;
@@ -105,7 +103,6 @@ export class CinematicDirectorService implements IUpdatable {
 
     const hasCameraTrack = sequence.tracks.some(t => t.type === 'camera');
     if (hasCameraTrack && this.ownership.getOwner() !== 'CINEMATIC_DIRECTOR') {
-      // 🔥 FIX: Solo robamos cámara de edición si se solicitó explícitamente, pero en Gameplay sí la secuestramos
       if (this.ownership.getOwner() !== 'EDITOR' || this.editorWantsCamera) {
           this.takeOverCamera(this.ownership.getOwner(), this.ownership.getCamera());
       }
@@ -157,10 +154,7 @@ export class CinematicDirectorService implements IUpdatable {
 
       if (this.ownership.getOwner() === 'CINEMATIC_DIRECTOR') {
          this.releaseCamera();
-         if (this.previousCameraOwner === 'PLAYER_TPS' && this.previousCamera) {
-             const tpsCam = this.previousCamera as ArcRotateCamera;
-             tpsCam.rebuildAnglesAndRadius();
-         }
+         // 🔥 FIX: No sobrescribimos los ángulos de la cámara devuelta
       }
       this.activeSequence = null;
     }

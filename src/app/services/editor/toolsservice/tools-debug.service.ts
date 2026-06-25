@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Matrix } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -72,6 +73,8 @@ export class ToolsDebugService {
     return pPos;
   }
 
+  // 🔥 FIX 1: Bloqueamos actualizaciones inútiles en bucle de los Debug Meshes 
+  // si el usuario los está moviendo. Esto causaba peleas entre el cursor y el sistema.
   public actualizarDebugMeshes(selected: Mesh | null): void {
     const playState = this.state.playState();
     if (!selected || (playState !== 'EDITOR' && playState !== 'EDITING_IN_GAME')) {
@@ -124,10 +127,16 @@ export class ToolsDebugService {
       this.colliderSvc.sync(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ, breathX, breathY, breathZ);
     }
 
-    const camOffset = entity.camOffset;
-    if (camOffset) {
-      this.cameraSvc.sync(camOffset.x, camOffset.y, camOffset.z, breathX, breathY, breathZ);
+    // 🔥 FIX 2: Mantener offset de respiración para la cámara
+    let cX = entity.camOffset.x || 0;
+    let cY = entity.camOffset.y || 1.6;
+    let cZ = entity.camOffset.z || 0;
+
+    if (entity.characterConfig && entity.playerConfig) {
+       cY = entity.playerConfig.camera.fpsEyeLevel;
     }
+
+    this.cameraSvc.sync(cX, cY, cZ, breathX, breathY, breathZ);
     
     if (entity.type?.startsWith('light_') && entity.light) {
        this.lightSvc.sync(entity.light.lightPosX ?? 0, entity.light.lightPosY ?? 0, entity.light.lightPosZ ?? 0, breathX, breathY, breathZ);

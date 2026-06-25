@@ -21,11 +21,22 @@
   </div>
 </div>
 
-<div class="section-card" *ngIf="esPersonaje">
+<div class="section-card">
   <div class="section-head"><h4>Cámara interna FPS (Ojos)</h4></div>
-  <div class="grid-3">
-    <div class="field"><label>Cam X</label><input type="number" step="0.1" [ngModel]="camPosX" (ngModelChange)="camPosX = $event; aplicarCamara()" /></div>
-    <div class="field"><label>Cam Y</label><input type="number" step="0.1" [ngModel]="camPosY" (ngModelChange)="camPosY = $event; aplicarCamara()" /></div>
-    <div class="field"><label>Cam Z</label><input type="number" step="0.1" [ngModel]="camPosZ" (ngModelChange)="camPosZ = $event; aplicarCamara()" /></div>
-  </div>
+  
+  <ng-container *ngIf="!esPersonaje">
+    <div class="grid-3">
+      <div class="field"><label>Cam X</label><input type="number" step="0.1" [ngModel]="camPosX" (ngModelChange)="camPosX = $event; aplicarCamara()" /></div>
+      <div class="field"><label>Cam Y</label><input type="number" step="0.1" [ngModel]="camPosY" (ngModelChange)="camPosY = $event; aplicarCamara()" /></div>
+      <div class="field"><label>Cam Z</label><input type="number" step="0.1" [ngModel]="camPosZ" (ngModelChange)="camPosZ = $event; aplicarCamara()" /></div>
+    </div>
+  </ng-container>
+
+  <ng-container *ngIf="esPersonaje">
+    <div style="background: rgba(59, 130, 246, 0.1); padding: 12px; border-radius: 6px; border: 1px solid #3b82f6;">
+      <p style="font-size: 11px; color: #cbd5e1; margin: 0;">
+        🤖 <b>Este objeto es un Personaje.</b> Para ajustar la posición de sus cámaras FPS y TPS de forma reactiva y que se guarden correctamente, usa la pestaña <b>"🎮 Configuración Jugador"</b> en la parte superior.
+      </p>
+    </div>
+  </ng-container>
 </div>

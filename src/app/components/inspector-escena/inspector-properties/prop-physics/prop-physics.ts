@@ -79,6 +79,7 @@ export class PropPhysics implements OnInit, OnDestroy {
         offsetX: this.colliderOffX, offsetY: this.colliderOffY, offsetZ: this.colliderOffZ 
     };
 
+    entity.isDirty = true;
     entity.syncToView(); 
     
     if (this.colliderType !== 'mesh') {
@@ -105,10 +106,12 @@ export class PropPhysics implements OnInit, OnDestroy {
   }
 
   aplicarCamara() {
+    if (this.esPersonaje) return; // Protegemos
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (!entity) return;
     
     entity.camOffset = { x: this.camPosX, y: this.camPosY, z: this.camPosZ };
+    entity.isDirty = true;
     entity.syncToView(); 
     
     this.editorSvc.triggerUpdate();

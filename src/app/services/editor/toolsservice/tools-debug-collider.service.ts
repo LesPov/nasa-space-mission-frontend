@@ -1,3 +1,4 @@
+
 import { Injectable } from '@angular/core';
 import { Scene, Mesh, MeshBuilder, StandardMaterial, Color3, AbstractMesh, Tags, Vector3 } from '@babylonjs/core';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
@@ -6,7 +7,7 @@ import { GameEntity } from '../../../core/engine/entities/game.entity';
 export class ToolsDebugColliderService {
   public debugCollider: Mesh | null = null;
   private attachedMesh: AbstractMesh | null = null;
-  private currentColliderType: string = '';
+  private currentColliderKey: string = '';
 
   public update(scene: Scene, mesh: AbstractMesh, entity: GameEntity, subSelected: string | null): void {
     if (subSelected !== 'collider') {
@@ -17,45 +18,50 @@ export class ToolsDebugColliderService {
     this.attachedMesh = mesh;
     const type = entity.collider.type || 'box';
 
-    // Eliminamos la caja anterior si decidimos cambiar a cápsula u otra forma
-    if (this.debugCollider && this.currentColliderType !== type) {
+    mesh.computeWorldMatrix(true);
+    const scaleX = Math.abs(mesh.scaling.x || 1);
+    const scaleY = Math.abs(mesh.scaling.y || 1);
+    const scaleZ = Math.abs(mesh.scaling.z || 1);
+
+    const sX = (entity.collider.sizeX ?? 0.5) * scaleX;
+    const sY = (entity.collider.sizeY ?? 0.5) * scaleY;
+    const sZ = (entity.collider.sizeZ ?? 0.5) * scaleZ;
+
+    // Generamos una clave única para saber si las dimensiones reales cambiaron
+    const newKey = `${type}_${sX.toFixed(3)}_${sY.toFixed(3)}_${sZ.toFixed(3)}`;
+
+    // 🔥 FIX 1: Si cambiaron las medidas, destruimos y recreamos. No escalamos. 
+    // Escalar deforma las esferas y los polos de la cápsula.
+    if (this.debugCollider && this.currentColliderKey !== newKey) {
        this.debugCollider.dispose();
        this.debugCollider = null;
     }
 
     if (!this.debugCollider) {
-      this.currentColliderType = type;
+      this.currentColliderKey = newKey;
       
-      // La altura/radio se establece en la creación como enteros, y luego la escalaremos
       if (type === 'capsule') {
-         this.debugCollider = MeshBuilder.CreateCapsule('debugColliderBox', { radius: 1, height: 2 }, scene);
+         // Radio = ancho/profundidad mayor dividido en 2. Altura = sY (total).
+         const r = Math.max(sX, sZ) / 2;
+         this.debugCollider = MeshBuilder.CreateCapsule('debugColliderBox', { radius: r, height: sY }, scene);
       } else if (type === 'sphere') {
-         this.debugCollider = MeshBuilder.CreateSphere('debugColliderBox', { diameter: 2 }, scene);
+         this.debugCollider = MeshBuilder.CreateSphere('debugColliderBox', { diameterX: sX, diameterY: sY, diameterZ: sZ }, scene);
       } else {
-         this.debugCollider = MeshBuilder.CreateBox('debugColliderBox', { size: 2 }, scene);
+         this.debugCollider = MeshBuilder.CreateBox('debugColliderBox', { width: sX, height: sY, depth: sZ }, scene);
       }
       
       const mat = new StandardMaterial('debugColliderMat', scene);
-      mat.diffuseColor = new Color3(0, 1, 0); // Verde para colliders
+      mat.diffuseColor = new Color3(0, 1, 0); 
       mat.emissiveColor = new Color3(0, 0.8, 0);
       mat.wireframe = true;
       mat.disableLighting = true;
       this.debugCollider.material = mat;
       this.debugCollider.isPickable = true;
       Tags.AddTagsTo(this.debugCollider, "system_element editor_only debug_element");
+
+      // Forzamos escala a 1 porque ya está horneada en la creación
+      this.debugCollider.scaling.set(1, 1, 1);
     }
-
-    const scaleX = Math.abs(mesh.scaling.x || 1);
-    const scaleY = Math.abs(mesh.scaling.y || 1);
-    const scaleZ = Math.abs(mesh.scaling.z || 1);
-
-    // Scaling the mesh which has radius 1 / size 2
-    // If collider.sizeX is 0.4, it will correctly scale the capsule radius to 0.4
-    this.debugCollider.scaling.set(
-      (entity.collider.sizeX || 0.5) * scaleX,
-      (entity.collider.sizeY || 0.5) * scaleY,
-      (entity.collider.sizeZ || 0.5) * scaleZ
-    );
 
     this.sync(entity.collider.offsetX || 0, entity.collider.offsetY || 0, entity.collider.offsetZ || 0, 0, 0, 0);
     
@@ -70,7 +76,6 @@ export class ToolsDebugColliderService {
     if (this.debugCollider && this.attachedMesh) {
       const localOffset = new Vector3(offsetX + breathX, offsetY + breathY, offsetZ + breathZ);
       this.attachedMesh.computeWorldMatrix(true);
-      // El LocalOffset se adapta al pivote mundial, heredando la escala de forma perfecta
       this.debugCollider.position = Vector3.TransformCoordinates(localOffset, this.attachedMesh.getWorldMatrix());
     }
   }
@@ -81,6 +86,6 @@ export class ToolsDebugColliderService {
       this.debugCollider = null;
     }
     this.attachedMesh = null;
-    this.currentColliderType = '';
+    this.currentColliderKey = '';
   }
 }

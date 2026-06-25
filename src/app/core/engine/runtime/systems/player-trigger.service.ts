@@ -7,6 +7,8 @@ import { GameEntity } from '../../entities/game.entity';
 import { GameEventBusService } from '../../events/game-event-bus.service';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameContextService } from '../../session/game-context.service';
+import { InputOrchestratorService } from './input-orchestrator.service';
+import { PlayerCameraManagerService } from './player-camera.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService implements IUpdatable {
@@ -15,15 +17,15 @@ export class PlayerTriggerService implements IUpdatable {
   private entityManager = inject(EntityManagerService);
   private eventBus = inject(GameEventBusService);
   private context = inject(GameContextService);
+  private inputOrchestrator = inject(InputOrchestratorService);
+  private cameraSvc = inject(PlayerCameraManagerService);
   
   private activeTriggersInside = new Set<string>();
   private teleportCooldown: number = 0;
   private isTransitioning = false;
 
   public start(): void {
-    this.activeTriggersInside.clear();
-    this.teleportCooldown = 1500; // 🔥 1.5s de inmunidad para asentar las físicas de Babylon post-spawn
-    this.isTransitioning = false;
+    this.resetTransitionState();
     const isDebugMode = this.context.isDebugMode();
 
     this.entityManager.getAllEntities()
@@ -54,12 +56,18 @@ export class PlayerTriggerService implements IUpdatable {
     });
   }
 
+  public resetTransitionState(): void {
+    this.isTransitioning = false;
+    this.teleportCooldown = 1500;
+    this.activeTriggersInside.clear();
+  }
+
   public update(dtMs: number): void {
     const playerEntity = this.context.activePlayerEntity();
     if (playerEntity) {
       if (this.teleportCooldown > 0) {
           this.teleportCooldown -= dtMs;
-          this.verificarTriggers(playerEntity, true); // Evaluación silenciosa
+          this.verificarTriggers(playerEntity, true);
           return;
       }
       this.verificarTriggers(playerEntity, false);
@@ -136,12 +144,27 @@ export class PlayerTriggerService implements IUpdatable {
           if (eventType === 'on_exit' && triggerEntity.triggerRuntime?.hasTriggeredExit) return;
       }
 
-      // Lógica de Transición a otra Plataforma, bloquea reentradas múltiples
+      // 🔥 Lógica Mejorada de Transición de Plataforma (Cinemática Previa al Salto)
       if (triggerEntity.trigger.actionType === 'change_scene') {
           const targetId = triggerEntity.trigger.targetSceneId;
           if (targetId) {
               this.isTransitioning = true;
-              this.eventBus.emit({ type: 'ChangeSceneRequested', payload: { sceneId: targetId } });
+              
+              const playerEntity = this.context.activePlayerEntity();
+              if (playerEntity && playerEntity.playerRuntime) {
+                  playerEntity.playerRuntime.intentions = { moveForward: false, moveBackward: false, moveLeft: false, moveRight: false, run: false, jump: false };
+                  playerEntity.playerRuntime.physicsState.isMoving = false;
+                  playerEntity.playerRuntime.physicsState.isRunning = false;
+              }
+              this.inputOrchestrator.unlockPointer();
+              
+              if (playerEntity) {
+                  this.cameraSvc.transicionSalidaPlataforma(playerEntity, () => {
+                      this.eventBus.emit({ type: 'ChangeSceneRequested', payload: { sceneId: targetId } });
+                  });
+              } else {
+                  this.eventBus.emit({ type: 'ChangeSceneRequested', payload: { sceneId: targetId } });
+              }
               return; 
           }
       }

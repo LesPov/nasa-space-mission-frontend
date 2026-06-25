@@ -28,7 +28,16 @@ export class ToolsDebugCameraService {
       Tags.AddTagsTo(this.debugCameraBox, "system_element editor_only debug_element");
     }
 
-    this.sync(entity.camOffset.x || 0, entity.camOffset.y || 1.6, entity.camOffset.z || 0, 0, 0, 0);
+    // 🔥 FIX 2: Usar PlayerConfig si es personaje.
+    let cX = entity.camOffset.x || 0;
+    let cY = entity.camOffset.y || 1.6;
+    let cZ = entity.camOffset.z || 0;
+
+    if (entity.characterConfig && entity.playerConfig) {
+       cY = entity.playerConfig.camera.fpsEyeLevel;
+    }
+
+    this.sync(cX, cY, cZ, 0, 0, 0);
 
     if (mesh.rotationQuaternion) {
         this.debugCameraBox.rotationQuaternion = mesh.rotationQuaternion.clone();

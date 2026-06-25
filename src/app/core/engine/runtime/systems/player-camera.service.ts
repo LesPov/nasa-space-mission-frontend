@@ -13,6 +13,7 @@ import { GameEntity } from '../../entities/game.entity';
 import { GameContextService } from '../../session/game-context.service';
 import { CameraOwnershipService } from '../../runtime/cameras/camera-ownership.service';
 import { CAMERA_BEHAVIOR_PROFILES } from '../../runtime/cameras/camera-behavior-profile.model';
+import { GameEventBusService } from '../../events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerCameraManagerService implements IUpdatable {
@@ -21,6 +22,7 @@ export class PlayerCameraManagerService implements IUpdatable {
   private loopManager = inject(LoopManagerService); 
   private context = inject(GameContextService);
   private ownership = inject(CameraOwnershipService);
+  private eventBus = inject(GameEventBusService);
 
   public cameraPivot: Mesh | null = null;
   public introAnimatable: Animatable | null = null; 
@@ -35,6 +37,11 @@ export class PlayerCameraManagerService implements IUpdatable {
   public initialHeadLocal: Vector3 | null = null;
 
   private transitionTimeoutId: any = null;
+  private introTimeoutId: any = null;
+
+  // Variables para mantener la orientación relativa entre mapas
+  public savedRelativeTpsAngle: number | null = null;
+  public savedRelativeTpsPitch: number | null = null;
   
   public cameraUpdate(dtMs: number): void {
     const playerEntity = this.context.activePlayerEntity();
@@ -60,6 +67,10 @@ export class PlayerCameraManagerService implements IUpdatable {
       clearTimeout(this.transitionTimeoutId);
       this.transitionTimeoutId = null;
     }
+    if (this.introTimeoutId) {
+      clearTimeout(this.introTimeoutId);
+      this.introTimeoutId = null;
+    }
   }
 
   public iniciarCinematicaIntro(entity: GameEntity): void {
@@ -76,9 +87,10 @@ export class PlayerCameraManagerService implements IUpdatable {
       tpsCam.radius = startRadius;
       
       if (entity.view) {
-          const startRot = entity.view.rotationQuaternion ? entity.view.rotationQuaternion.toEulerAngles() : entity.view.rotation;
-          tpsCam.alpha = -(startRot.y || 0) - Math.PI / 2;
-          tpsCam.beta = Math.PI / 2.2; 
+          const forward = entity.view.forward.clone().normalize();
+          if (forward.lengthSquared() === 0) forward.copyFromFloats(0, 0, 1);
+          tpsCam.alpha = Math.atan2(-forward.z, -forward.x);
+          tpsCam.beta = Math.max(0.01, Math.min(Math.PI - 0.01, Math.acos(Math.max(-1, Math.min(1, -forward.y)))));
       }
 
       tpsCam.checkCollisions = profile.collisionsEnabled;
@@ -153,11 +165,14 @@ export class PlayerCameraManagerService implements IUpdatable {
     fpsCam.angularSensibility = profile.angularSensibilityX;
     fpsCam.fov = profile.fov;
 
-    const startRot = jugador.rotationQuaternion
-      ? jugador.rotationQuaternion.toEulerAngles()
-      : jugador.rotation;
+    jugador.computeWorldMatrix(true);
+    const forward = jugador.forward.clone().normalize();
+    if (forward.lengthSquared() === 0) forward.copyFromFloats(0, 0, 1);
 
-    fpsCam.rotation.set(startRot.x || 0, startRot.y || 0, startRot.z || 0);
+    const yaw = Math.atan2(forward.x, forward.z);
+    const pitch = Math.asin(Math.max(-1, Math.min(1, -forward.y))); 
+
+    fpsCam.rotation.set(pitch, yaw, 0);
 
     if (this.cameraPivot) {
       const localPivotPos = new Vector3(camMeta.x || 0, this.currentPivotY / scaleY, camMeta.z || 0);
@@ -188,10 +203,8 @@ export class PlayerCameraManagerService implements IUpdatable {
       this.motor3d.playerCameraTPS.angularSensibilityY = profile.angularSensibilityY;
       this.motor3d.playerCameraTPS.fov = profile.fov;
 
-      this.motor3d.playerCameraTPS.alpha = -(startRot.y || 0) - Math.PI / 2;
-      this.motor3d.playerCameraTPS.beta = (startRot.x || 0) + Math.PI / 2;
-      
-      this.motor3d.playerCameraTPS.rebuildAnglesAndRadius();
+      this.motor3d.playerCameraTPS.alpha = Math.atan2(-forward.z, -forward.x);
+      this.motor3d.playerCameraTPS.beta = Math.max(0.01, Math.min(Math.PI - 0.01, Math.acos(Math.max(-1, Math.min(1, -forward.y)))));
       this.motor3d.playerCameraTPS.getViewMatrix(true);
     }
 
@@ -205,6 +218,163 @@ export class PlayerCameraManagerService implements IUpdatable {
       jugador.visibility = 1;
       jugador.getChildMeshes().forEach(m => m.visibility = 1);
     }
+  }
+
+  public transicionSalidaPlataforma(entity: GameEntity, onComplete: () => void): void {
+    this.isTransitioningCameras = true;
+    const jugador = entity.view as Mesh;
+    if (!jugador) {
+        onComplete();
+        return;
+    }
+
+    const config = entity.playerConfig || cloneDefaultPlayerConfig();
+    const scaleY = entity.transform.scale.y || 1;
+    const vista = this.context.cameraView();
+
+    const tpsCam = this.motor3d.playerCameraTPS;
+
+    if (vista === 'FPS') {
+        const tpsPivotY = (config.camera.tpsPivotY || 1.5) * scaleY;
+        const camMeta = entity.camOffset || { x: 0, y: 1.6, z: 0 };
+        const localPivotPos = new Vector3(camMeta.x || 0, tpsPivotY / scaleY, camMeta.z || 0);
+        jugador.computeWorldMatrix(true);
+        const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
+
+        const playerForward = jugador.forward.clone().normalize();
+        if (playerForward.lengthSquared() === 0) playerForward.copyFromFloats(0, 0, 1);
+
+        const maxR = (config.camera.tpsMaxRadius ?? 15) * scaleY;
+        
+        this.context.setCameraView('TPS');
+        this.eventBus.emit({ type: 'CameraViewChanged', payload: 'TPS' });
+        
+        tpsCam.alpha = Math.atan2(-playerForward.z, -playerForward.x);
+        tpsCam.beta = Math.max(0.01, Math.min(Math.PI - 0.01, Math.acos(Math.max(-1, Math.min(1, -playerForward.y)))));
+        tpsCam.radius = maxR;
+        
+        if (!this.cameraPivot || this.cameraPivot.isDisposed()) {
+          this.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
+          this.cameraPivot.isVisible = false;
+          Tags.AddTagsTo(this.cameraPivot, "system_element ignore_raycast");
+        }
+        this.cameraPivot.position.copyFrom(globalPivotPos);
+        tpsCam.lockedTarget = this.cameraPivot;
+        tpsCam.getViewMatrix(true);
+        
+        const canvas = this.motor3d.engine.getRenderingCanvas();
+        this.ownership.setCamera('PLAYER_TPS', tpsCam, canvas, true);
+        
+        // Ejecución inmediata para ocultar cualquier interpolación visual previa a la pantalla de carga
+        onComplete();
+    } else {
+        const playerForward = jugador.forward.clone().normalize();
+        if (playerForward.lengthSquared() === 0) playerForward.copyFromFloats(0, 0, 1);
+        const playerAlpha = Math.atan2(-playerForward.z, -playerForward.x);
+        this.savedRelativeTpsAngle = tpsCam.alpha - playerAlpha;
+        this.savedRelativeTpsPitch = tpsCam.beta;
+
+        // Ejecución inmediata para ocultar cualquier interpolación visual previa a la pantalla de carga
+        onComplete();
+    }
+  }
+
+  public transicionEntradaPlataforma(entity: GameEntity): void {
+      const jugador = entity.view as Mesh;
+      if (!jugador) return;
+
+      this.isTransitioningCameras = true;
+
+      // 🔥 FIX SUPREMO: Asegurar que el Pivote existe SÍ o SÍ antes de anclarlo
+      if (!this.cameraPivot || this.cameraPivot.isDisposed()) {
+        this.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
+        this.cameraPivot.isVisible = false;
+        Tags.AddTagsTo(this.cameraPivot, "system_element ignore_raycast");
+      }
+
+      const config = entity.playerConfig || cloneDefaultPlayerConfig();
+      const scaleY = entity.transform.scale.y || 1;
+      const tpsCam = this.motor3d.playerCameraTPS;
+
+      const tpsPivotY = (config.camera.tpsPivotY || 1.5) * scaleY;
+      const maxR = (config.camera.tpsMaxRadius ?? 15) * scaleY;
+
+      jugador.computeWorldMatrix(true);
+      const playerForward = jugador.forward.clone().normalize();
+      if (playerForward.lengthSquared() === 0) playerForward.copyFromFloats(0, 0, 1);
+
+      const camMeta = entity.camOffset || { x: 0, y: 1.6, z: 0 };
+      const localPivotPos = new Vector3(camMeta.x || 0, tpsPivotY / scaleY, camMeta.z || 0);
+      const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
+      
+      this.cameraPivot.position.copyFrom(globalPivotPos);
+
+      const playerAlpha = Math.atan2(-playerForward.z, -playerForward.x);
+
+      if (this.savedRelativeTpsAngle !== null && this.savedRelativeTpsPitch !== null) {
+          tpsCam.alpha = playerAlpha + this.savedRelativeTpsAngle;
+          tpsCam.beta = this.savedRelativeTpsPitch;
+          this.savedRelativeTpsAngle = null;
+          this.savedRelativeTpsPitch = null;
+      } else {
+          tpsCam.alpha = playerAlpha;
+          tpsCam.beta = Math.max(0.01, Math.min(Math.PI - 0.01, Math.acos(Math.max(-1, Math.min(1, -playerForward.y)))));
+      }
+
+      // 🔥 EMPEZAR MUY CERCA DEL PLAYER PARA EFECTO FPS->TPS
+      const startRadius = 0.05;
+      tpsCam.radius = startRadius;
+      tpsCam.checkCollisions = false;
+
+      tpsCam.setTarget(this.cameraPivot);
+      tpsCam.getViewMatrix(true);
+
+      // OCULTAR JUGADOR AL PRINCIPIO PARA QUE NO TAPE LA CÁMARA
+      jugador.visibility = 0;
+      jugador.getChildMeshes().forEach(m => m.visibility = 0);
+      
+      const canvas = this.motor3d.engine.getRenderingCanvas();
+      this.ownership.setCamera('PLAYER_TPS', tpsCam, canvas, true);
+
+      // TIEMPO DE ESPERA PARA QUE LA PANTALLA DE CARGA SE QUITE Y EL JUGADOR VEA EL INICIO
+      if (this.introTimeoutId) clearTimeout(this.introTimeoutId);
+
+      this.introTimeoutId = setTimeout(() => {
+          const ease = new CubicEase();
+          ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
+
+          const frames = 150; // 2.5 segundos de zoom out
+          const animRad = new Animation('enterPlatRadius', 'radius', 60, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CONSTANT);
+          animRad.setKeys([
+              { frame: 0, value: startRadius },
+              { frame: frames, value: maxR }
+          ]);
+          animRad.setEasingFunction(ease);
+
+          const fadeLimit = 2.5 * scaleY;
+
+          this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
+              if (tpsCam.radius < fadeLimit) {
+                 jugador.visibility = Math.max(0, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
+                 jugador.getChildMeshes().forEach(m => m.visibility = jugador.visibility);
+              } else {
+                 jugador.visibility = 1;
+                 jugador.getChildMeshes().forEach(m => m.visibility = 1);
+              }
+          });
+
+          this.motor3d.scene.beginDirectAnimation(tpsCam, [animRad], 0, frames, false, 1.0, () => {
+              this.isTransitioningCameras = false;
+              this.loopManager.unregister('CameraFadeTransition');
+              
+              jugador.visibility = 1;
+              jugador.getChildMeshes().forEach(m => m.visibility = 1);
+              
+              const profile = CAMERA_BEHAVIOR_PROFILES[this.context.mode()];
+              tpsCam.checkCollisions = profile.collisionsEnabled;
+              this.eventBus.emit({ type: 'GameResumed' });
+          });
+      }, 1000);
   }
 
   public toggleCameraView(
@@ -245,7 +415,6 @@ export class PlayerCameraManagerService implements IUpdatable {
     const durationMs = (framesTransicion / 60) * 1000;
     this.transitionTimeoutId = setTimeout(() => {
       if (this.isTransitioningCameras) {
-        console.warn('[PlayerCameraSystem] Timeout de seguridad de transición de cámara activado.');
         this.resetearTransiciones();
         if (jugador && !jugador.isDisposed()) {
           const targetVisibility = currentVista === 'FPS' ? 1 : 0;
@@ -430,8 +599,13 @@ export class PlayerCameraManagerService implements IUpdatable {
       const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
 
       if (!isNaN(globalPivotPos.x) && !isNaN(globalPivotPos.y) && !isNaN(globalPivotPos.z)) {
-        const lerpSpeed = this.isTransitioningCameras ? 1.0 : 0.6;
-        this.cameraPivot.position = Vector3.Lerp(this.cameraPivot.position, globalPivotPos, lerpSpeed);
+        // 🔥 FIX SUPREMO: Evita que el pivote de la cámara barra el mapa entero al teletransportar de escena
+        if (Vector3.Distance(this.cameraPivot.position, globalPivotPos) > 20) {
+            this.cameraPivot.position.copyFrom(globalPivotPos);
+        } else {
+            const lerpSpeed = this.isTransitioningCameras ? 1.0 : 0.6;
+            this.cameraPivot.position = Vector3.Lerp(this.cameraPivot.position, globalPivotPos, lerpSpeed);
+        }
       }
 
       this.motor3d.playerCameraTPS.lockedTarget = this.cameraPivot;
@@ -466,5 +640,104 @@ export class PlayerCameraManagerService implements IUpdatable {
     }
     this.cameraPivot = null;
     this.resetearTransiciones();
+  }
+
+  private getLookQuat(pos: Vector3, target: Vector3, fallbackForward: Vector3): Quaternion {
+      let dir = target.subtract(pos);
+      if (dir.lengthSquared() < 0.001) dir = fallbackForward.clone();
+      dir.normalize();
+      
+      const yaw = Math.atan2(dir.x, dir.z);
+      const pitch = Math.atan2(-dir.y, Math.sqrt(dir.x * dir.x + dir.z * dir.z));
+      
+      return Quaternion.RotationYawPitchRoll(yaw, pitch, 0);
+  }
+
+  private animateCameraProxy(
+    startPos: Vector3,
+    startTarget: Vector3,
+    endPos: Vector3,
+    endTarget: Vector3,
+    frames: number,
+    onComplete: () => void,
+    addArc: boolean = false,
+    onUpdate?: (t: number) => void
+  ): void {
+    const scene = this.motor3d.scene;
+
+    const proxyCam = new UniversalCamera("proxyTransitionCam", startPos.clone(), scene);
+    proxyCam.minZ = 0.05;
+    proxyCam.maxZ = 50000;
+    
+    if (this.motor3d.renderingPipeline) {
+       this.motor3d.renderingPipeline.addCamera(proxyCam);
+    }
+
+    const startForward = startTarget.subtract(startPos).normalize();
+    const endForward = endTarget.subtract(endPos).normalize();
+
+    const startQuat = this.getLookQuat(startPos, startTarget, startForward);
+    const endQuat = this.getLookQuat(endPos, endTarget, endForward);
+    proxyCam.rotationQuaternion = startQuat.clone();
+
+    this.ownership.setCamera('TRANSITION_PROXY', proxyCam, null, false);
+
+    const ease = new CubicEase();
+    ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
+
+    const fps = 60;
+    const animPos = new Animation("proxyPos", "position", fps, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    animPos.setEasingFunction(ease);
+
+    if (addArc) {
+      const midPos = Vector3.Lerp(startPos, endPos, 0.5);
+      const dist = Vector3.Distance(startPos, endPos);
+      midPos.y += Math.min(dist * 0.25, 4.0); 
+      
+      animPos.setKeys([
+        { frame: 0, value: startPos },
+        { frame: frames * 0.5, value: midPos },
+        { frame: frames, value: endPos }
+      ]);
+    } else {
+      animPos.setKeys([
+        { frame: 0, value: startPos },
+        { frame: frames, value: endPos }
+      ]);
+    }
+
+    const animRot = new Animation("proxyRot", "rotationQuaternion", fps, Animation.ANIMATIONTYPE_QUATERNION, Animation.ANIMATIONLOOPMODE_CONSTANT);
+    animRot.setEasingFunction(ease);
+    animRot.setKeys([
+      { frame: 0, value: startQuat },
+      { frame: frames, value: endQuat }
+    ]);
+
+    let frameCount = 0;
+    let observer: any = null;
+    if (onUpdate) {
+        observer = scene.onBeforeRenderObservable.add(() => {
+            frameCount++;
+            onUpdate(Math.min(1, frameCount / frames));
+            if (frameCount >= frames) scene.onBeforeRenderObservable.remove(observer);
+        });
+    }
+
+    scene.beginDirectAnimation(proxyCam, [animPos, animRot], 0, frames, false, 1.0, () => {
+      if (this.motor3d.renderingPipeline) {
+         this.motor3d.renderingPipeline.removeCamera(proxyCam);
+      }
+      if (observer) scene.onBeforeRenderObservable.remove(observer);
+      
+      onComplete();
+      
+      proxyCam.dispose();
+      
+      const trackedCamera = this.ownership.getCamera();
+      if (trackedCamera) {
+          scene.activeCameras = [];
+          scene.activeCamera = trackedCamera;
+      }
+    });
   }
 }

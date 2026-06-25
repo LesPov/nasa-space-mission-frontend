@@ -43,7 +43,7 @@ import { WindowSyncService } from '../../../core/services/window-sync.service';
     MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule,
     MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading, UiMission
   ],
-  templateUrl: './editor-escena.html',
+  templateUrl:'./editor-escena.html',
   styleUrl: './editor-escena.css', 
 })
 export class EditorEscena implements OnInit, OnDestroy {

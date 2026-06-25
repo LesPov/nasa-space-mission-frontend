@@ -23,20 +23,21 @@ export class ToolsGizmoService {
   private authSvc = inject(AuthService);
   private ownership = inject(CameraOwnershipService);
   private windowSync = inject(WindowSyncService);
-  private cinematicSvc = inject(EditorCinematicService); // 🔥 Para notificar a la timeline
+  private cinematicSvc = inject(EditorCinematicService);
 
-  public gizmoManager!: GizmoManager;
-  public centerDragMesh!: Mesh;
-  public gizmoPivotNode!: BabylonTransformNode;
+  public gizmoManager: GizmoManager | null = null;
+  public centerDragMesh: Mesh | null = null;
+  public gizmoPivotNode: BabylonTransformNode | null = null;
   
   public isDraggingGizmo = false;
   private estadoAntesDeArrastrar: any = null;
-  private dragOffset: Vector3 = Vector3.Zero();
 
   public initGizmos(): void {
-    if (this.gizmoManager) return;
     const scene = this.motor3d.scene;
     if (!scene) return;
+
+    // 🔥 FIX 2: Prevención de Memory Leaks y bugs de "No aparecen gizmos al volver a entrar"
+    this.dispose();
 
     this.gizmoManager = new GizmoManager(scene);
     this.gizmoManager.usePointerToAttachGizmos = false;
@@ -81,8 +82,23 @@ export class ToolsGizmoService {
     this.setupDragEvents(centerDragBehavior);
   }
 
+  public dispose(): void {
+    if (this.gizmoManager) {
+        this.gizmoManager.attachToMesh(null);
+        this.gizmoManager.dispose();
+        this.gizmoManager = null;
+    }
+    if (this.centerDragMesh) {
+        this.centerDragMesh.dispose();
+        this.centerDragMesh = null;
+    }
+    if (this.gizmoPivotNode) {
+        this.gizmoPivotNode.dispose();
+        this.gizmoPivotNode = null;
+    }
+  }
+
   private broadcastLiveTransform(mesh: AbstractMesh): void {
-    // 🔥 FIX: Actualizar los proxies cinemáticos para que el timeline los vea en vivo
     if (Tags.MatchesQuery(mesh, "cinematic_proxy")) {
         const clipId = mesh.name.replace('proxy_cam_', '');
         const euler = mesh.rotationQuaternion ? mesh.rotationQuaternion.toEulerAngles() : mesh.rotation;
@@ -115,22 +131,26 @@ export class ToolsGizmoService {
       const mesh = this.state.objetoSeleccionado() as Mesh;
       if (mesh && !Tags.MatchesQuery(mesh, "cinematic_proxy")) {
         this.estadoAntesDeArrastrar = this.historialSvc.obtenerEstado(mesh);
-        mesh.computeWorldMatrix(true);
-        this.gizmoPivotNode.computeWorldMatrix(true);
-        this.dragOffset = mesh.getAbsolutePosition().subtract(this.gizmoPivotNode.getAbsolutePosition());
       }
     };
 
+    // 🔥 FIX 1: Lógica de arrastre de rombo (Center Drag) con deltas reales. Evita saltos a posiciones aleatorias.
     const onDraggingCenter = (event: any) => {
       const mesh = this.state.objetoSeleccionado() as Mesh;
       const subSelected = this.state.subObjetoSeleccionado();
 
-      if (mesh) {
+      if (mesh && this.centerDragMesh) {
         if (subSelected === 'collider' && this.debugSvc.debugCollider) {
-          this.debugSvc.debugCollider.setAbsolutePosition(this.debugSvc.debugCollider.getAbsolutePosition().add(event.delta));
+          this.debugSvc.debugCollider.position.addInPlace(event.delta);
           this.centerDragMesh.position.copyFrom(this.debugSvc.debugCollider.getAbsolutePosition());
+        } else if (subSelected === 'camera' && this.debugSvc.debugCameraBox) {
+          this.debugSvc.debugCameraBox.position.addInPlace(event.delta);
+          this.centerDragMesh.position.copyFrom(this.debugSvc.debugCameraBox.getAbsolutePosition());
+        } else if (subSelected === 'light' && this.debugSvc.debugLightBox) {
+          this.debugSvc.debugLightBox.position.addInPlace(event.delta);
+          this.centerDragMesh.position.copyFrom(this.debugSvc.debugLightBox.getAbsolutePosition());
         } else if (!subSelected) {
-          mesh.setAbsolutePosition(mesh.getAbsolutePosition().add(event.delta));
+          mesh.position.addInPlace(event.delta);
           this.updateCenterDragMeshRenderState(mesh, subSelected);
           this.broadcastLiveTransform(mesh); 
         }
@@ -138,18 +158,14 @@ export class ToolsGizmoService {
       }
     };
 
+    // 🔥 FIX 1: Lógica de arrastre del Gizmo (Flechas de Ejes)
     const onDraggingGizmo = () => {
       const mesh = this.state.objetoSeleccionado() as Mesh;
       const subSelected = this.state.subObjetoSeleccionado();
-      if (!mesh) return;
+      if (!mesh || !this.gizmoPivotNode) return;
 
       if (!subSelected) {
-        mesh.computeWorldMatrix(true);
-        const pivotPos = this.gizmoPivotNode.getAbsolutePosition();
-
-        if (!isNaN(pivotPos.x) && !isNaN(pivotPos.y) && !isNaN(pivotPos.z)) {
-          mesh.setAbsolutePosition(pivotPos.add(this.dragOffset));
-        }
+        mesh.position.copyFrom(this.gizmoPivotNode.position);
 
         if (this.gizmoPivotNode.rotationQuaternion) {
           if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
@@ -159,8 +175,6 @@ export class ToolsGizmoService {
         }
 
         mesh.scaling.copyFrom(this.gizmoPivotNode.scaling);
-        mesh.computeWorldMatrix(true);
-
         this.updateCenterDragMeshRenderState(mesh, subSelected);
         this.broadcastLiveTransform(mesh); 
       }
@@ -194,17 +208,17 @@ export class ToolsGizmoService {
     centerDragBehavior.onDragObservable.add(onDraggingCenter);
     centerDragBehavior.onDragEndObservable.add(onDragEnd);
 
-    if (this.gizmoManager.gizmos.positionGizmo) {
+    if (this.gizmoManager?.gizmos.positionGizmo) {
       this.gizmoManager.gizmos.positionGizmo.onDragStartObservable.add(onDragStart);
       this.gizmoManager.gizmos.positionGizmo.onDragObservable.add(onDraggingGizmo);
       this.gizmoManager.gizmos.positionGizmo.onDragEndObservable.add(onDragEnd);
     }
-    if (this.gizmoManager.gizmos.rotationGizmo) {
+    if (this.gizmoManager?.gizmos.rotationGizmo) {
       this.gizmoManager.gizmos.rotationGizmo.onDragStartObservable.add(onDragStart);
       this.gizmoManager.gizmos.rotationGizmo.onDragObservable.add(onDraggingGizmo);
       this.gizmoManager.gizmos.rotationGizmo.onDragEndObservable.add(onDragEnd);
     }
-    if (this.gizmoManager.gizmos.scaleGizmo) {
+    if (this.gizmoManager?.gizmos.scaleGizmo) {
       this.gizmoManager.gizmos.scaleGizmo.onDragStartObservable.add(onDragStart);
       this.gizmoManager.gizmos.scaleGizmo.onDragObservable.add(onDraggingGizmo);
       this.gizmoManager.gizmos.scaleGizmo.onDragEndObservable.add(onDragEnd);
@@ -222,15 +236,15 @@ export class ToolsGizmoService {
     const isAdmin = this.authSvc.isAdmin();
 
     if (!isAdmin || modo === 'PLAYING' || modo === 'INTERACTING' || modo === 'TRANSITIONING') {
-      const obj = this.state.objetoSeleccionado() as Mesh;
-      this.updateCenterDragMeshRenderState(obj, this.state.subObjetoSeleccionado());
+      this.gizmoManager.attachToMesh(null);
+      this.updateCenterDragMeshRenderState(null, null);
       return;
     }
 
     if (this.state.objetoSeleccionado() || this.state.subObjetoSeleccionado()) {
       switch (this.state.currentTool()) {
         case 'select': 
-          break; // 🔥 Sin gizmos en modo Select
+          break; // Sin gizmos en modo Select
         case 'translate': this.gizmoManager.positionGizmoEnabled = true; break;
         case 'rotate': 
           if (!this.state.subObjetoSeleccionado()) this.gizmoManager.rotationGizmoEnabled = true;
@@ -257,12 +271,13 @@ export class ToolsGizmoService {
       return;
     }
 
-    // 🔥 FIX: Proxies de Cinemática soportan Gizmo puro
     if (selected && Tags.MatchesQuery(selected, "cinematic_proxy")) {
       this.gizmoManager.attachToMesh(selected);
       this.actualizarGizmosActivos();
       return;
     }
+
+    if (!this.gizmoPivotNode || !this.centerDragMesh) return;
 
     if (subSelected === 'collider' && this.debugSvc.debugCollider) {
       this.gizmoManager.attachToMesh(this.debugSvc.debugCollider);
@@ -277,7 +292,7 @@ export class ToolsGizmoService {
       this.gizmoManager.attachToMesh(this.debugSvc.debugFogStartSphere);
       this.gizmoPivotNode.parent = null;
     } else if (selected && !subSelected) {
-      this.gizmoPivotNode.position.copyFrom(this.centerDragMesh.position);
+      this.gizmoPivotNode.position.copyFrom(selected.getAbsolutePosition());
       if (selected.rotationQuaternion) {
         this.gizmoPivotNode.rotationQuaternion = selected.rotationQuaternion.clone();
       } else {
@@ -294,7 +309,8 @@ export class ToolsGizmoService {
   }
 
   public syncCenterDragMeshVisuals(pi: any): void {
-      if (pi.type === PointerEventTypes.POINTERMOVE && this.centerDragMesh.material) {
+      if (!this.centerDragMesh || !this.centerDragMesh.material) return;
+      if (pi.type === PointerEventTypes.POINTERMOVE) {
         const mat = this.centerDragMesh.material as StandardMaterial;
         if (pi.pickInfo?.pickedMesh === this.centerDragMesh) {
           mat.emissiveColor = new Color3(1, 0.9, 0);
@@ -307,32 +323,24 @@ export class ToolsGizmoService {
   }
 
   public updateCenterDragMeshRenderState(obj: Mesh | null, subSelected: string | null): void {
-      if (obj && !this.isDraggingGizmo && !Tags.MatchesQuery(obj, "cinematic_proxy")) {
-        if (subSelected !== 'collider' && subSelected !== 'camera' && subSelected !== 'light' && subSelected !== 'fog') {
-          const entity = this.entityManager.getEntityByMesh(obj);
-          if (entity && entity.collider && entity.collider.type !== 'mesh') {
-            const posMundo = Vector3.TransformCoordinates(
-                new Vector3(entity.collider.offsetX || 0, entity.collider.offsetY || 0, entity.collider.offsetZ || 0), 
-                obj.getWorldMatrix()
-            );
-            this.centerDragMesh.position.copyFrom(posMundo);
-          } else {
-            obj.computeWorldMatrix(true);
-            this.centerDragMesh.position.copyFrom(obj.getBoundingInfo().boundingBox.centerWorld);
-          }
-          this.gizmoPivotNode.position.copyFrom(this.centerDragMesh.position);
+      if (!this.centerDragMesh || !this.gizmoManager || !this.gizmoPivotNode) return;
 
-          if (obj.rotationQuaternion) {
-            this.gizmoPivotNode.rotationQuaternion = obj.rotationQuaternion.clone();
-          } else {
-            this.gizmoPivotNode.rotation = obj.rotation.clone();
-          }
+      // 🔥 FIX 3: Sincronizar el rombo de arrastre directamente con el origen de la malla o el sub-objeto actual
+      if (obj && !this.isDraggingGizmo && !Tags.MatchesQuery(obj, "cinematic_proxy")) {
+        if (subSelected === 'collider' && this.debugSvc.debugCollider) {
+            this.centerDragMesh.position.copyFrom(this.debugSvc.debugCollider.getAbsolutePosition());
+        } else if (subSelected === 'camera' && this.debugSvc.debugCameraBox) {
+            this.centerDragMesh.position.copyFrom(this.debugSvc.debugCameraBox.getAbsolutePosition());
+        } else if (subSelected === 'light' && this.debugSvc.debugLightBox) {
+            this.centerDragMesh.position.copyFrom(this.debugSvc.debugLightBox.getAbsolutePosition());
+        } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
+            this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
+        } else if (!subSelected) {
+            this.centerDragMesh.position.copyFrom(obj.getAbsolutePosition());
         }
       }
 
       const isSelectMode = this.state.currentTool() === 'select';
-
-      // 🔥 Ocultamos el center drag box para proxies cinemáticos para que no estorbe
       const isProxy = obj && Tags.MatchesQuery(obj, "cinematic_proxy");
 
       if (this.gizmoManager.attachedMesh && !this.gizmoManager.attachedMesh.isDisposed() && !isSelectMode && !isProxy) {

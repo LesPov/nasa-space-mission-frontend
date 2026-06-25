@@ -264,7 +264,6 @@
           <app-ui-mission 
             *ngIf="mostrarModalMisionPreview || editorSvc.state.previewMissionModal()" 
             [episodio]="episodioCompletoData"
-            [liveUiSettings]="motor3dSvc.scene.metadata?.uiSettings"
             [misionIniciada]="misionIniciada" 
             [cerrando]="cerrandoModalMision" 
             [isDebugMode]="true" 

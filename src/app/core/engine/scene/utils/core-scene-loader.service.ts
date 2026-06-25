@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, MeshBuilder, Tags, Quaternion } from '@babylonjs/core';
 import { Motor3dService } from '../../../../services/motor-3d.service';
@@ -12,6 +13,8 @@ import { WorldSettingsService } from '../../world/world-settings.service';
 import { GameContextService } from '../../session/game-context.service';
 import { SpawnManagerService } from '../../runtime/systems/spawn-manager.service';
 import { EditorCinematicService } from '../../../../services/editor/editor-cinematic.service';
+import { PlayerCameraManagerService } from '../../runtime/systems/player-camera.service';
+import { PlayerTriggerService } from '../../runtime/systems/player-trigger.service';
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneLoaderService {
@@ -26,7 +29,9 @@ export class CoreSceneLoaderService {
   private worldSettingsSvc = inject(WorldSettingsService);
   private gameContext = inject(GameContextService);
   private spawnManager = inject(SpawnManagerService);
-  private cinematicSvc = inject(EditorCinematicService); // 🔥 AÑADIDO
+  private cinematicSvc = inject(EditorCinematicService);
+  private cameraSvc = inject(PlayerCameraManagerService); 
+  private triggerSvc = inject(PlayerTriggerService);
 
   public createInvisibleFloor(scene: any): void {
     const old = scene.getMeshByName('sueloInvisible');
@@ -63,7 +68,6 @@ export class CoreSceneLoaderService {
     this.worldSettingsSvc.loadFromDb(envSettings, uiSettings);
     this.worldSettingsSvc.applyToScene(scene, (m) => this.motor3d.setVisualMode(m));
 
-    // 🔥 FIX: Cargamos las cinemáticas en su propio servicio de estado
     this.cinematicSvc.loadFromData(dataBD.cinematics || []);
 
     scene.cameras.forEach(cam => cam.maxZ = 10000);
@@ -107,6 +111,9 @@ export class CoreSceneLoaderService {
     if (isPlaying) {
         if (persistentPlayer) {
             this.spawnManager.handleSceneChangeSpawn(persistentPlayer);
+            // 🔥 Invocamos la transición mágica de aproximación post-teletransporte
+            this.cameraSvc.transicionEntradaPlataforma(persistentPlayer);
+            this.triggerSvc.resetTransitionState();
         } else {
             this.spawnManager.setupInitialPlayer();
         }

@@ -48,6 +48,10 @@ export class EditorPlayModeService {
   }
 
   public testearEscena(vista: CameraViewMode, skipIntro: boolean = false): void {
+    if (this.motor3d.editorCamera) {
+        this.motor3d.editorCamera.computeWorldMatrix();
+    }
+
     let objMesh = this.state.objetoSeleccionado() as Mesh;
     let playerEntity = objMesh ? this.entityManager.getEntityByMesh(objMesh) : null;
     
@@ -56,7 +60,6 @@ export class EditorPlayModeService {
        playerEntity = characters.find(c => c.rol === 'player') || characters.find(c => c.characterConfig?.isPlayable);
        
        if (!playerEntity) {
-           // Fallback to spawn point
            playerEntity = this.entityManager.getAllEntities().find(e => e.rol === 'spawn_point');
            if (playerEntity) {
                playerEntity.addComponent('characterConfig', new CharacterConfigComponent('player', true));
@@ -109,38 +112,46 @@ export class EditorPlayModeService {
         }
     });
 
+    objMesh.computeWorldMatrix(true);
     const playerForward = objMesh.forward.clone().normalize();
     if (playerForward.lengthSquared() === 0) playerForward.copyFromFloats(0, 0, 1);
 
-    const fpsEyeLevel = playerEntity.playerConfig?.camera?.fpsEyeLevel ?? 1.6;
-    const tpsMaxRadius = playerEntity.playerConfig?.camera?.tpsMaxRadius ?? 15;
-    const tpsPivotY = playerEntity.playerConfig?.camera?.tpsPivotY ?? 1.5;
+    const scaleY = objMesh.scaling.y || 1;
+    const tpsMaxRadius = (playerEntity.playerConfig?.camera?.tpsRadius ?? 5) * scaleY;
+    
+    // 🔥 FIX: Calcular posiciones exactas usando el offset real de la cámara para que coincida milimétricamente con TPS/FPS
+    const rawTpsPivotY = playerEntity.playerConfig?.camera?.tpsPivotY ?? 1.5;
+    const rawFpsEyeLevel = playerEntity.playerConfig?.camera?.fpsEyeLevel ?? 1.6;
+    const camMeta = playerEntity.camOffset || { x: 0, y: 1.6, z: 0 };
 
     let targetLookAt: Vector3;
     let targetPos: Vector3;
-    const centroEpiral = objMesh.getAbsolutePosition().clone();
-    centroEpiral.y += fpsEyeLevel;
+    
+    const localSpiralCenter = new Vector3(camMeta.x || 0, rawFpsEyeLevel, camMeta.z || 0);
+    const centroEpiral = Vector3.TransformCoordinates(localSpiralCenter, objMesh.getWorldMatrix());
 
     if (vista === 'FPS') {
-        targetPos = objMesh.getAbsolutePosition().clone();
-        targetPos.y += fpsEyeLevel;
+        const localCamPos = new Vector3(camMeta.x || 0, rawFpsEyeLevel, camMeta.z || 0);
+        targetPos = Vector3.TransformCoordinates(localCamPos, objMesh.getWorldMatrix());
         targetLookAt = targetPos.add(playerForward.scale(10));
     } else {
-        targetLookAt = objMesh.getAbsolutePosition().clone();
-        targetLookAt.y += tpsPivotY;
+        const localPivotPos = new Vector3(camMeta.x || 0, rawTpsPivotY, camMeta.z || 0);
+        targetLookAt = Vector3.TransformCoordinates(localPivotPos, objMesh.getWorldMatrix());
         targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
-        targetPos.y += tpsMaxRadius * 0.2; 
     }
 
     let hideObserver: Observer<Scene> | null = null;
+    
     if (vista === 'FPS' && !skipIntro) {
       hideObserver = this.motor3d.scene.onBeforeRenderObservable.add(() => {
         const cam = this.ownership.getCamera();
         if (cam && this.ownership.getOwner() === 'TRANSITION_PROXY') {
           const dist = Vector3.Distance(cam.globalPosition, targetPos);
-          if (dist < 1.8) {
-            objMesh.visibility = 0;
-            objMesh.getChildMeshes().forEach(m => m.visibility = 0);
+          if (dist < 3.5) {
+            let alpha = Math.max(0, (dist - 0.5) / 3.0);
+            alpha = alpha * alpha; 
+            objMesh.visibility = alpha;
+            objMesh.getChildMeshes().forEach(m => m.visibility = alpha);
           }
         }
       });
@@ -169,7 +180,7 @@ export class EditorPlayModeService {
                     
                     activeCam.attachControl(canvas, true);
                     
-                    if (skipIntro && vista === 'FPS') {
+                    if (vista === 'FPS') {
                       objMesh.visibility = 0;
                       objMesh.getChildMeshes().forEach(m => m.visibility = 0);
                     }
@@ -199,7 +210,6 @@ export class EditorPlayModeService {
         const snapId = this.snapshotMemoria.scene?.id || this.snapshotMemoria.id;
 
         if (snapId && currentId !== snapId) {
-            console.log('[EditorPlayMode] Detectado cambio de plataforma durante Test. Descartando Snapshot sucio y recargando desde DB limpia.');
             this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
         } else {
             const cambiosEnPlay = this.editorSvc.obtenerDatosParaGuardar(false);

@@ -62,11 +62,13 @@ export class EditorToolsService {
   }
 
   public limpiarEstado(): void {
-    this.gizmoSvc.attachGizmoToCurrentSelection(null, null);
+    // 🔥 FIX 2: Saneamiento exhaustivo del estado en memoria al desmontar el editor
+    this.gizmoSvc.dispose();
     this.debugSvc.actualizarDebugMeshes(null);
     this.highlightSvc.actualizarHighlights(null, null);
     this.fogSvc.limpiarEstado();
-    this.isInitialized = false; // Permite que se vuelva a inicializar si salimos y entramos
+    this.isInitialized = false; 
+    this.isGizmoSyncAttached = false;
   }
 
   private castRayToSelectable(ray: Ray): AbstractMesh | null {
@@ -172,7 +174,7 @@ export class EditorToolsService {
       this.isGizmoSyncAttached = true;
     }
 
-    this.gizmoSvc.gizmoManager.utilityLayer.utilityLayerScene.onPointerObservable.add((pi) => {
+    this.gizmoSvc.gizmoManager?.utilityLayer.utilityLayerScene.onPointerObservable.add((pi) => {
       this.gizmoSvc.syncCenterDragMeshVisuals(pi);
     });
 
@@ -369,32 +371,44 @@ export class EditorToolsService {
     if (!entity) return;
 
     if (subSelected === 'collider' && this.debugSvc.debugCollider) {
-      entity.collider.offsetX = this.debugSvc.debugCollider.position.x;
-      entity.collider.offsetY = this.debugSvc.debugCollider.position.y;
-      entity.collider.offsetZ = this.debugSvc.debugCollider.position.z;
+      
+      mesh.computeWorldMatrix(true);
+      const invMat = Matrix.Invert(mesh.getWorldMatrix());
+      // Convertimos el Vector en el mundo de la caja Debug en su Offset Local respecto al Personaje
+      const localPos = Vector3.TransformCoordinates(this.debugSvc.debugCollider.getAbsolutePosition(), invMat);
+      
+      entity.collider.offsetX = localPos.x;
+      entity.collider.offsetY = localPos.y;
+      entity.collider.offsetZ = localPos.z;
 
-      if (!this.gizmoSvc.isDraggingGizmo) {
-        if (this.debugSvc.debugCollider.scaling.x !== 1 || this.debugSvc.debugCollider.scaling.y !== 1 || this.debugSvc.debugCollider.scaling.z !== 1) {
-          entity.collider.sizeX *= this.debugSvc.debugCollider.scaling.x;
-          entity.collider.sizeY *= this.debugSvc.debugCollider.scaling.y;
-          entity.collider.sizeZ *= this.debugSvc.debugCollider.scaling.z;
-          this.debugSvc.debugCollider.scaling.set(1, 1, 1);
-          this.debugSvc.actualizarDebugMeshes(mesh);
-          this.gizmoSvc.attachGizmoToCurrentSelection(mesh, subSelected);
-        }
-      }
       entity.syncToView();
 
     } else if (subSelected === 'camera' && this.debugSvc.debugCameraBox) {
-      entity.camOffset.x = this.debugSvc.debugCameraBox.position.x;
-      entity.camOffset.y = this.debugSvc.debugCameraBox.position.y;
-      entity.camOffset.z = this.debugSvc.debugCameraBox.position.z;
+      
+      mesh.computeWorldMatrix(true);
+      const invMat = Matrix.Invert(mesh.getWorldMatrix());
+      const localPos = Vector3.TransformCoordinates(this.debugSvc.debugCameraBox.getAbsolutePosition(), invMat);
+      
+      entity.camOffset.x = localPos.x;
+      entity.camOffset.y = localPos.y * (mesh.scaling.y || 1);
+      entity.camOffset.z = localPos.z;
+
+      // 🔥 FIX 2: Si es un jugador, guardamos la vista en `playerConfig.camera` para que persista correctamente.
+      if (entity.characterConfig && entity.playerConfig) {
+          entity.playerConfig.camera.fpsEyeLevel = entity.camOffset.y;
+      }
+      
       entity.syncToView();
 
     } else if (subSelected === 'light' && this.debugSvc.debugLightBox && entity.light) {
-      entity.light.lightPosX = this.debugSvc.debugLightBox.position.x;
-      entity.light.lightPosY = this.debugSvc.debugLightBox.position.y;
-      entity.light.lightPosZ = this.debugSvc.debugLightBox.position.z;
+      
+      mesh.computeWorldMatrix(true);
+      const invMat = Matrix.Invert(mesh.getWorldMatrix());
+      const localPos = Vector3.TransformCoordinates(this.debugSvc.debugLightBox.getAbsolutePosition(), invMat);
+
+      entity.light.lightPosX = localPos.x;
+      entity.light.lightPosY = localPos.y;
+      entity.light.lightPosZ = localPos.z;
       
       const lightObj = mesh.getDescendants(false).find(c => c.name.startsWith('l_')) as Light;
       if (lightObj && (lightObj as any).position) {
@@ -403,6 +417,7 @@ export class EditorToolsService {
       entity.syncToView();
 
     } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
+      
       const playerPos = mesh.getAbsolutePosition();
       const fogConfig = entity.playerConfig?.fog;
       if (!fogConfig || !entity.playerConfig) return;

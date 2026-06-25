@@ -1,7 +1,5 @@
-
-
 import { Injectable, inject } from '@angular/core';
-import { Color3, HighlightLayer, Mesh, Tags } from '@babylonjs/core';
+import { Color3, Color4, Mesh, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
@@ -16,43 +14,25 @@ export class ToolsHighlightService {
   private authSvc = inject(AuthService);
   private ownership = inject(CameraOwnershipService);
 
-  public hlHover!: HighlightLayer;
-  public hlSelected!: HighlightLayer;
-
   private lastHoveredMeshId: number | null = null;
   private lastSelectedMeshId: number | null = null;
 
   private edgesHovered: Mesh[] = [];
   private edgesSelected: Mesh[] = [];
-  private outlinedHovered: Mesh[] = [];
-  private outlinedSelected: Mesh[] = [];
+
+  // HighlightLayer eliminado completamente — solo edges y outlines
 
   public initHighlights(): void {
-    if (this.hlHover || this.hlSelected) return;
-    const scene = this.motor3d.scene;
-    if (!scene) return;
-
-    this.hlHover = new HighlightLayer('hlHover', scene, {
-      isStroke: true,
-      mainTextureRatio: 1,
-    });
-    this.hlHover.blurHorizontalSize = 0.8;
-    this.hlHover.blurVerticalSize = 0.8;
-    this.hlHover.innerGlow = false;
-
-    this.hlSelected = new HighlightLayer('hlSelected', scene, {
-      isStroke: true,
-      mainTextureRatio: 1,
-    });
-    this.hlSelected.blurHorizontalSize = 1.0;
-    this.hlSelected.blurVerticalSize = 1.0;
-    this.hlSelected.innerGlow = false;
+    // No necesitamos inicializar nada para edges rendering
   }
 
   private esMeshExcluida(mesh: Mesh): boolean {
     const n = mesh.name?.toLowerCase?.() ?? '';
     return (
-      Tags.MatchesQuery(mesh, 'fog_element || debug_element || editor_only || system_element || proxy_collider') ||
+      Tags.MatchesQuery(
+        mesh,
+        'fog_element || debug_element || editor_only || system_element || proxy_collider'
+      ) ||
       n.includes('proxycol') ||
       n.includes('collider') ||
       n.includes('gizmo') ||
@@ -61,120 +41,16 @@ export class ToolsHighlightService {
     );
   }
 
-  private esTransparenteVirtual(entityType?: string): boolean {
-    if (!entityType) return false;
-    return (
-      ['trigger', 'trigger_compuesto', 'bubble', 'image_plane', 'video_plane'].includes(entityType) ||
-      entityType.startsWith('light_')
-    );
-  }
-
-  private limpiarEdges(): void {
-    this.edgesHovered.forEach(m => {
-      if (m && !m.isDisposed()) {
-        try {
-          m.disableEdgesRendering();
-        } catch {}
-      }
-    });
-
-    this.edgesSelected.forEach(m => {
-      if (m && !m.isDisposed()) {
-        try {
-          m.disableEdgesRendering();
-        } catch {}
-      }
-    });
-
-    this.edgesHovered = [];
-    this.edgesSelected = [];
-  }
-
-  private limpiarOutlines(): void {
-    this.outlinedHovered.forEach(m => {
-      if (m && !m.isDisposed()) {
-        m.renderOutline = false;
-      }
-    });
-
-    this.outlinedSelected.forEach(m => {
-      if (m && !m.isDisposed()) {
-        m.renderOutline = false;
-      }
-    });
-
-    this.outlinedHovered = [];
-    this.outlinedSelected = [];
-  }
-
-  private getCameraDistanceToMesh(mesh: Mesh): number {
-    const cam = this.ownership.getCamera();
-    if (!cam) return 0;
-
-    const camPos = cam.globalPosition ?? cam.position;
-    const center =
-      mesh.getBoundingInfo().boundingSphere.centerWorld ??
-      mesh.getAbsolutePosition();
-
-    if (!camPos || !center) return 0;
-
-    return center.subtract(camPos).length();
-  }
-
-  private calcularEdgeWidth(mesh: Mesh, isSelected: boolean): number {
-    const dist = this.getCameraDistanceToMesh(mesh);
-
-    const boundsRadius = Math.max(
-      0.5,
-      mesh.getBoundingInfo()?.boundingSphere?.radiusWorld || 1
-    );
-
-    const normalizedDist = dist / Math.max(1, boundsRadius * 6);
-    const base = isSelected ? 2.4 : 1.5;
-    const factor = 1 + Math.min(5, normalizedDist * 0.45);
-    const width = base * factor;
-
-    return Math.min(isSelected ? 6.0 : 4.5, Math.max(isSelected ? 2.1 : 1.15, width));
-  }
-
-  private calcularOutlineWidth(mesh: Mesh, isSelected: boolean): number {
-    const dist = this.getCameraDistanceToMesh(mesh);
-
-    const boundsRadius = Math.max(
-      0.5,
-      mesh.getBoundingInfo()?.boundingSphere?.radiusWorld || 1
-    );
-
-    const normalizedDist = dist / Math.max(1, boundsRadius * 6);
-    const base = isSelected ? 0.085 : 0.055;
-    const factor = 1 + Math.min(4, normalizedDist * 0.4);
-    const width = base * factor;
-
-    return Math.min(isSelected ? 0.24 : 0.18, Math.max(isSelected ? 0.08 : 0.045, width));
-  }
-
   private getTopMeshAncestor(mesh: Mesh): Mesh {
     let current: Mesh = mesh;
-
     while (current.parent instanceof Mesh) {
       current = current.parent;
     }
-
     return current;
-  }
-
-  private esModelo3D(root: Mesh): boolean {
-    if (!root || root.isDisposed()) return false;
-
-    const hijos = root.getChildMeshes(false);
-    const tieneHijosConGeometria = hijos.some(h => h instanceof Mesh && h.getTotalVertices() > 0);
-
-    return root.getTotalVertices() === 0 && tieneHijosConGeometria;
   }
 
   private recolectarMeshesVisuales(root: Mesh): Mesh[] {
     const meshes = new Set<Mesh>();
-
     if (!root || root.isDisposed()) return [];
 
     const entity = this.entityManager.getEntityByMesh(root);
@@ -182,7 +58,6 @@ export class ToolsHighlightService {
 
     const agregarSiSirve = (m: Mesh) => {
       if (!m || m.isDisposed()) return;
-      if (!m.isVisible) return;
       if (this.esMeshExcluida(m)) return;
 
       const e = this.entityManager.getEntityByMesh(m);
@@ -194,103 +69,114 @@ export class ToolsHighlightService {
     };
 
     agregarSiSirve(root);
-
     root.getChildMeshes(false).forEach(child => {
-      if (child instanceof Mesh) {
-        agregarSiSirve(child);
-      }
+      if (child instanceof Mesh) agregarSiSirve(child);
     });
 
     return Array.from(meshes);
   }
 
-  private aplicarEdges(mesh: Mesh, color: Color3, isSelected: boolean): void {
-    if (!mesh || mesh.isDisposed()) return;
+  private limpiarTodosLosEdges(): void {
+    const limpiar = (lista: Mesh[]) => {
+      lista.forEach(m => {
+        if (m && !m.isDisposed()) {
+          try {
+            m.disableEdgesRendering();
+            m.renderOutline = false; // Limpiamos también el contorno de seguridad
+          } catch {}
+        }
+      });
+    };
+    limpiar(this.edgesHovered);
+    limpiar(this.edgesSelected);
+    this.edgesHovered = [];
+    this.edgesSelected = [];
+  }
 
+  // AÑADIDO: isTrigger como parámetro para saber si debe ser grueso o delgado
+  private aplicarEdges(mesh: Mesh, color: Color4, isSelected: boolean, isTrigger: boolean): void {
+    if (!mesh || mesh.isDisposed()) return;
     try {
-      mesh.enableEdgesRendering();
-      mesh.edgesWidth = this.calcularEdgeWidth(mesh, isSelected);
-      mesh.edgesColor = color.toColor4(1);
+      // Fuerza a que aparezca en modelos suaves (GLTF)
+      mesh.enableEdgesRendering(0.9999, false);
+      
+      // LOGICA DE GROSOR PARA LINEAS INTERNAS
+      // Si es trigger, usamos un valor bajito. Si es 3D/Primitiva, usamos un valor alto.
+      mesh.edgesWidth = isSelected 
+        ? (isTrigger ? 10.0 : 50.0) 
+        : (isTrigger ? 5.0 : 25.0); 
+        
+      mesh.edgesColor = color;
+
+      // LOGICA DE GROSOR PARA CONTORNO EXTERNO (OUTLINE)
+      mesh.renderOutline = true;
+      mesh.outlineColor = new Color3(color.r, color.g, color.b);
+      
+      // Ajuste perfecto: 
+      // Si es trigger (0.005) se ve delgado y limpio. 
+      // Si es 3D/Primitiva (0.03) se ve grueso tipo 5px.
+      mesh.outlineWidth = isSelected 
+        ? (isTrigger ? 0.005 : 0.03) 
+        : (isTrigger ? 0.002 : 0.015);
 
       if (isSelected) {
         this.edgesSelected.push(mesh);
       } else {
         this.edgesHovered.push(mesh);
       }
-    } catch {
-    }
+    } catch {}
   }
 
-  private aplicarOutline(mesh: Mesh, color: Color3, isSelected: boolean): void {
-    if (!mesh || mesh.isDisposed()) return;
-
-    try {
-      mesh.renderOutline = true;
-      mesh.outlineColor = color;
-      mesh.outlineWidth = this.calcularOutlineWidth(mesh, isSelected);
-
-      if (isSelected) {
-        this.outlinedSelected.push(mesh);
-      } else {
-        this.outlinedHovered.push(mesh);
-      }
-    } catch {
-    }
-  }
-
-  private procesarMesh(rootMesh: Mesh, color: Color3, isSelected: boolean): void {
+  private procesarMesh(
+    rootMesh: Mesh,
+    colorHex: string,
+    isSelected: boolean
+  ): void {
     if (!rootMesh || rootMesh.isDisposed()) return;
-    if (!rootMesh.isVisible) return;
     if (this.esMeshExcluida(rootMesh)) return;
 
     const root = this.getTopMeshAncestor(rootMesh);
-    const entity = this.entityManager.getEntityByMesh(root) ?? this.entityManager.getEntityByMesh(rootMesh);
-    const isTrigger = entity?.type === 'trigger' || entity?.type === 'trigger_compuesto';
+    const entity =
+      this.entityManager.getEntityByMesh(root) ??
+      this.entityManager.getEntityByMesh(rootMesh);
 
+    // Identificamos si es un trigger
+    const isTrigger =
+      entity?.type === 'trigger' || entity?.type === 'trigger_compuesto';
+      
     const mode = this.state.playState();
     const isAdmin = this.authSvc.isAdmin();
 
     const canHighlight = mode === 'EDITOR' || isAdmin || !isTrigger;
     if (!canHighlight) return;
 
-    const isVirtualTransparent = this.esTransparenteVirtual(entity?.type);
-    const esModelo = this.esModelo3D(root);
+    const color3 = Color3.FromHexString(colorHex);
+    const color4 = new Color4(color3.r, color3.g, color3.b, 1.0);
 
     const meshesVisuales = this.recolectarMeshesVisuales(root);
-
-    if (esModelo) {
-      meshesVisuales.forEach(m => this.aplicarOutline(m, color, isSelected || isVirtualTransparent));
-    } else {
-      meshesVisuales.forEach(m => this.aplicarEdges(m, color, isSelected || isVirtualTransparent));
-    }
+    // Le pasamos la variable isTrigger a la función que aplica los bordes
+    meshesVisuales.forEach(m => this.aplicarEdges(m, color4, isSelected, isTrigger));
   }
 
-  public actualizarHighlights(selected: Mesh | null, hovered: Mesh | null): void {
-    if (!this.hlHover || !this.hlSelected) return;
-
+  public actualizarHighlights(
+    selected: Mesh | null,
+    hovered: Mesh | null
+  ): void {
     const hoverId = hovered ? hovered.uniqueId : null;
     const selectId = selected ? selected.uniqueId : null;
 
-    if (this.lastHoveredMeshId === hoverId && this.lastSelectedMeshId === selectId) {
+    if (
+      this.lastHoveredMeshId === hoverId &&
+      this.lastSelectedMeshId === selectId
+    ) {
       return;
     }
 
     this.lastHoveredMeshId = hoverId;
     this.lastSelectedMeshId = selectId;
 
-    this.hlHover.removeAllMeshes();
-    this.hlSelected.removeAllMeshes();
-    this.limpiarEdges();
-    this.limpiarOutlines();
-
-    this.motor3d.scene.meshes.forEach(m => {
-      if (m instanceof Mesh && this.esMeshExcluida(m)) {
-        try {
-          this.hlHover.addExcludedMesh(m);
-          this.hlSelected.addExcludedMesh(m);
-        } catch {}
-      }
-    });
+    // Limpiar todos los edges anteriores
+    this.limpiarTodosLosEdges();
 
     const mode = this.state.playState();
     const isAdmin = this.authSvc.isAdmin();
@@ -302,13 +188,15 @@ export class ToolsHighlightService {
 
     if (!puedeResaltar) return;
 
-    const colorHover = Color3.FromHexString('#3b82f6');
-    const colorSelected = Color3.FromHexString('#fbbf24');
+    const colorHover = '#3b82f6';    // azul
+    const colorSelected = '#fbbf24'; // amarillo
 
+    // Hover: solo si no es el mismo objeto seleccionado
     if (hovered && hovered !== selected) {
       this.procesarMesh(hovered, colorHover, false);
     }
 
+    // Selección
     if (selected && !this.state.subObjetoSeleccionado()) {
       this.procesarMesh(selected, colorSelected, true);
     }

@@ -114,7 +114,6 @@ export class EditorSceneService {
     const isAdmin = this.authSvc.isAdmin();
     const mode = this.gameContext.mode();
     
-    // Al cargar una escena en el editor puro, ninguna entidad debe ser persistente porque estamos editando el layout original.
     if (mode === 'EDITOR' || mode === 'EDITING_IN_GAME') {
       this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
     }
@@ -144,8 +143,17 @@ export class EditorSceneService {
     });
   }
 
-  // 🔥 FIX: Acepta escenaActualData desde EditorMapaService
-  public obtenerDatosParaGuardar(escenaActualData: any, forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], environmentSettings: any, spawnPoint: any } { 
+  // 🔥 FIX: Actualizado el tipo de retorno para incluir cinematicsDelta y deletedCinematics
+  public obtenerDatosParaGuardar(escenaActualData: any, forceFull: boolean = false): { 
+    sceneObjectsDelta: any[]; 
+    triggersDelta: any[]; 
+    cinematicsDelta: any[]; 
+    deletedObjects: string[]; 
+    deletedTriggers: string[]; 
+    deletedCinematics: string[]; 
+    environmentSettings: any; 
+    spawnPoint: any 
+  } { 
     return this.saverSvc.obtenerDatosParaGuardar(escenaActualData, forceFull);
   }
 }

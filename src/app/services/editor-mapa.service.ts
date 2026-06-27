@@ -74,10 +74,18 @@ export class EditorMapaService {
     return this.scene.cargarEscenaDesdeDatos(dataBD); 
   }
   
-  // 🔥 FIX: Inyecta this.escenaActualData() al llamar a scene.obtenerDatosParaGuardar
-  obtenerDatosParaGuardar(forceFull: boolean = false): { sceneObjectsDelta: any[], triggersDelta: any[], deletedObjects: string[], deletedTriggers: string[], environmentSettings: any, spawnPoint: any } { 
-    const datos: any = this.scene.obtenerDatosParaGuardar(this.escenaActualData(), forceFull);
-    return datos;
+  // 🔥 FIX: Actualizado el tipo de retorno para incluir cinematicsDelta y deletedCinematics
+  obtenerDatosParaGuardar(forceFull: boolean = false): { 
+    sceneObjectsDelta: any[], 
+    triggersDelta: any[], 
+    cinematicsDelta: any[], 
+    deletedObjects: string[], 
+    deletedTriggers: string[], 
+    deletedCinematics: string[], 
+    environmentSettings: any, 
+    spawnPoint: any 
+  } { 
+    return this.scene.obtenerDatosParaGuardar(this.escenaActualData(), forceFull);
   }
   
   agregarObjetoCustom(

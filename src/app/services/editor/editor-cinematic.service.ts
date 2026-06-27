@@ -12,24 +12,32 @@ export class EditorCinematicService {
   public cinematics = signal<CinematicSequence[]>([]);
   public deletedCinematics: string[] = [];
 
-  // 🔥 Evento para sincronizar Gizmos con el Timeline de forma limpia
+  // Evento para sincronizar Gizmos con el Timeline de forma limpia
   public onProxyMoved = new Subject<{ clipId: string, position: Vector3, rotation: Vector3 }>();
 
-  public loadFromData(data: CinematicSequence[]): void {
-    if (data) {
-        data.forEach(seq => {
-            seq.tracks.forEach(track => {
-                track.clips.forEach(clip => {
-                    if (!clip.startPosition) clip.startPosition = {x:0, y:0, z:0};
-                    if (!clip.endPosition) clip.endPosition = {x:0, y:0, z:0};
-                    if (!clip.startRotation) clip.startRotation = {x:0, y:0, z:0};
-                    if (!clip.endRotation) clip.endRotation = {x:0, y:0, z:0};
-                });
+  public loadFromData(data: any[]): void {
+    // 🔥 FIX SUPREMO: Clonación profunda y mapeo correcto de UID de Base de Datos a ID de Frontend
+    // Esto evita que al recargar la plataforma se dupliquen las cinemáticas.
+    const clone = data ? JSON.parse(JSON.stringify(data)) : [];
+    
+    clone.forEach((seq: any) => {
+        // La BD manda 'id' (int) y 'uid' (string). El frontend necesita que el 'id' sea el string.
+        seq.id = seq.uid || seq.id; 
+        seq.tracks = seq.tracks || [];
+        
+        seq.tracks.forEach((track: any) => {
+            track.clips = track.clips || [];
+            track.clips.forEach((clip: any) => {
+                if (!clip.startPosition) clip.startPosition = {x:0, y:0, z:0};
+                if (!clip.endPosition) clip.endPosition = {x:0, y:0, z:0};
+                if (!clip.startRotation) clip.startRotation = {x:0, y:0, z:0};
+                if (!clip.endRotation) clip.endRotation = {x:0, y:0, z:0};
             });
         });
-    }
-    this.cinematics.set(data || []);
-    this.deletedCinematics = [];
+    });
+    
+    this.cinematics.set(clone);
+    this.deletedCinematics = []; // Limpiamos la caché de borrados al cargar una escena limpia
   }
 
   public validateCinematic(cinematic: CinematicSequence): string[] {

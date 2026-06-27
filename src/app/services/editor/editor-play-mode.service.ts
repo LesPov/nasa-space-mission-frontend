@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Tags, Vector3, Observer, Scene } from '@babylonjs/core';
+import { AbstractMesh, Mesh, MeshBuilder, Tags, Vector3, Observer, Scene } from '@babylonjs/core';
 
 import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
@@ -18,7 +18,7 @@ import { EditorModeTransitionService } from './editor-mode-transition.service';
 import { CAMERA_BEHAVIOR_PROFILES } from '../../core/engine/runtime/cameras/camera-behavior-profile.model';
 import { AuthService } from '../../core/services/auth';
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
-import { CharacterConfigComponent, PlayerRuntimeComponent } from '../../core/engine/entities/game.entity';
+import { CharacterConfigComponent, PlayerRuntimeComponent, GameEntity } from '../../core/engine/entities/game.entity';
 import { cloneDefaultPlayerConfig } from '../../core/engine/models/player-config.model';
 
 @Injectable({ providedIn: 'root' })
@@ -55,29 +55,65 @@ export class EditorPlayModeService {
     let objMesh = this.state.objetoSeleccionado() as Mesh;
     let playerEntity = objMesh ? this.entityManager.getEntityByMesh(objMesh) : null;
     
+    // 🔥 SOLUCIÓN CRÍTICA: Nunca mutar el spawn_point real. Crear un jugador clon/fantasma.
     if (!playerEntity || (!playerEntity.hasComponent('characterConfig') && playerEntity.rol !== 'spawn_point')) {
        const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
        playerEntity = characters.find(c => c.rol === 'player') || characters.find(c => c.characterConfig?.isPlayable);
        
        if (!playerEntity) {
-           playerEntity = this.entityManager.getAllEntities().find(e => e.rol === 'spawn_point');
-           if (playerEntity) {
+           const spawnPoint = this.entityManager.getAllEntities().find(e => e.rol === 'spawn_point');
+           if (spawnPoint) {
+               // Creamos una cápsula invisible para que actúe como jugador sin ensuciar la base de datos
+               const tempMesh = MeshBuilder.CreateCapsule("TempPlayer_TestLive", { height: 1.8, radius: 0.4 }, this.motor3d.scene);
+               tempMesh.position.set(
+                 spawnPoint.transform.position.x,
+                 spawnPoint.transform.position.y,
+                 spawnPoint.transform.position.z
+               );
+               if (spawnPoint.view && spawnPoint.view.rotationQuaternion) {
+                   tempMesh.rotationQuaternion = spawnPoint.view.rotationQuaternion.clone();
+               } else {
+                   tempMesh.rotation.set(
+                     spawnPoint.transform.rotation.x,
+                     spawnPoint.transform.rotation.y,
+                     spawnPoint.transform.rotation.z
+                   );
+               }
+               tempMesh.isVisible = false;
+               
+               playerEntity = new GameEntity(window.crypto.randomUUID(), 'Jugador_Prueba', 'model', 'player');
                playerEntity.addComponent('characterConfig', new CharacterConfigComponent('player', true));
                playerEntity.addComponent('playerRuntime', new PlayerRuntimeComponent());
                playerEntity.playerConfig = cloneDefaultPlayerConfig();
+               playerEntity.bindView(tempMesh);
+               this.entityManager.addEntity(playerEntity);
            }
        }
        if (playerEntity && playerEntity.view) {
            objMesh = playerEntity.view as Mesh;
        }
-    } else if (playerEntity.rol === 'spawn_point' && !playerEntity.hasComponent('characterConfig')) {
+    } else if (playerEntity.rol === 'spawn_point') {
+       // El usuario seleccionó explícitamente el spawn_point antes de dar Play.
+       // Hacemos lo mismo: inyectamos un clon temporal, no lo mutamos.
+       const tempMesh = MeshBuilder.CreateCapsule("TempPlayer_TestLive", { height: 1.8, radius: 0.4 }, this.motor3d.scene);
+       tempMesh.position.set(
+         playerEntity.transform.position.x,
+         playerEntity.transform.position.y,
+         playerEntity.transform.position.z
+       );
+       tempMesh.isVisible = false;
+       
+       playerEntity = new GameEntity(window.crypto.randomUUID(), 'Jugador_Prueba', 'model', 'player');
        playerEntity.addComponent('characterConfig', new CharacterConfigComponent('player', true));
        playerEntity.addComponent('playerRuntime', new PlayerRuntimeComponent());
        playerEntity.playerConfig = cloneDefaultPlayerConfig();
+       playerEntity.bindView(tempMesh);
+       this.entityManager.addEntity(playerEntity);
+       objMesh = tempMesh;
     }
 
     if (!objMesh || !playerEntity) {
-        console.warn("No hay personaje jugable para iniciar el Test Live.");
+        console.warn("No hay personaje jugable ni spawn point para iniciar el Test Live.");
         return;
     }
 
@@ -119,7 +155,6 @@ export class EditorPlayModeService {
     const scaleY = objMesh.scaling.y || 1;
     const tpsMaxRadius = (playerEntity.playerConfig?.camera?.tpsRadius ?? 5) * scaleY;
     
-    // 🔥 FIX: Calcular posiciones exactas usando el offset real de la cámara para que coincida milimétricamente con TPS/FPS
     const rawTpsPivotY = playerEntity.playerConfig?.camera?.tpsPivotY ?? 1.5;
     const rawFpsEyeLevel = playerEntity.playerConfig?.camera?.fpsEyeLevel ?? 1.6;
     const camMeta = playerEntity.camOffset || { x: 0, y: 1.6, z: 0 };
@@ -212,23 +247,32 @@ export class EditorPlayModeService {
         if (snapId && currentId !== snapId) {
             this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
         } else {
-            const cambiosEnPlay = this.editorSvc.obtenerDatosParaGuardar(false);
+            const cambiosEnPlay: any = this.editorSvc.obtenerDatosParaGuardar(false);
+            
             if (!this.snapshotMemoria.sceneObjectsDelta) this.snapshotMemoria.sceneObjectsDelta = [];
             if (!this.snapshotMemoria.triggersDelta) this.snapshotMemoria.triggersDelta = [];
+            if (!this.snapshotMemoria.cinematics) this.snapshotMemoria.cinematics = [];
             if (!this.snapshotMemoria.deletedObjects) this.snapshotMemoria.deletedObjects = [];
             if (!this.snapshotMemoria.deletedTriggers) this.snapshotMemoria.deletedTriggers = [];
 
-            cambiosEnPlay.sceneObjectsDelta.forEach(delta => {
+            cambiosEnPlay.sceneObjectsDelta.forEach((delta: any) => {
+                // Prevenir que el jugador temporal fantasma se cuele en la base de datos
+                if (delta.name === 'Jugador_Prueba') return;
+                
                 const index = this.snapshotMemoria.sceneObjectsDelta.findIndex((o: any) => o.uid === delta.uid);
                 if (index !== -1) this.snapshotMemoria.sceneObjectsDelta[index] = delta;
                 else this.snapshotMemoria.sceneObjectsDelta.push(delta);
             });
 
-            cambiosEnPlay.triggersDelta.forEach(delta => {
+            cambiosEnPlay.triggersDelta.forEach((delta: any) => {
                 const index = this.snapshotMemoria.triggersDelta.findIndex((o: any) => o.uid === delta.uid);
                 if (index !== -1) this.snapshotMemoria.triggersDelta[index] = delta;
                 else this.snapshotMemoria.triggersDelta.push(delta);
             });
+
+            if (cambiosEnPlay.cinematicsDelta) {
+                this.snapshotMemoria.cinematics = JSON.parse(JSON.stringify(cambiosEnPlay.cinematicsDelta));
+            }
 
             if (cambiosEnPlay.deletedObjects.length > 0) {
                 this.snapshotMemoria.sceneObjectsDelta = this.snapshotMemoria.sceneObjectsDelta.filter((o: any) => !cambiosEnPlay.deletedObjects.includes(o.uid));

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core'; 
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
@@ -9,7 +10,7 @@ export class SceneSaverService {
   private entityManager = inject(EntityManagerService); 
   private worldSettingsSvc = inject(WorldSettingsService);
   private persistenceMapper = inject(EntityPersistenceMapperService);
-  private cinematicSvc = inject(EditorCinematicService); // 🔥 Roto el Bucle Circular NG0200
+  private cinematicSvc = inject(EditorCinematicService);
 
   public obtenerDatosParaGuardar(escenaActualData: any, forceFull: boolean = false): { 
     sceneObjectsDelta: any[]; 
@@ -25,7 +26,9 @@ export class SceneSaverService {
     const triggersDelta: any[] = [];
 
     const environmentSettings = this.worldSettingsSvc.settings();
-    const cinematicsDelta = this.cinematicSvc.cinematics();
+    
+    // 🔥 FIX: Clonamos profundamente la lista actual de cinemáticas para enviarlas seguras
+    const cinematicsDelta = JSON.parse(JSON.stringify(this.cinematicSvc.cinematics()));
     const deletedCinematics = [...this.cinematicSvc.deletedCinematics];
     
     let spawnPoint = { x: 0, y: 0, z: 0 };
@@ -124,10 +127,10 @@ export class SceneSaverService {
     return { 
       sceneObjectsDelta, 
       triggersDelta, 
-      cinematicsDelta, // 🔥 AÑADIDO
+      cinematicsDelta, 
       deletedObjects: [...this.entityManager.deletedObjects], 
       deletedTriggers: [...this.entityManager.deletedTriggers], 
-      deletedCinematics, // 🔥 AÑADIDO
+      deletedCinematics, 
       environmentSettings,
       spawnPoint
     };

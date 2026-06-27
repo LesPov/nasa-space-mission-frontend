@@ -31,10 +31,11 @@ import { InputOrchestratorService } from '../../../core/engine/runtime/systems/i
 import { AddObjectModalService } from '../../../services/editor/modals/add-object-modal.service';
 import { MissionModalService } from '../../../services/editor/modals/mission-modal.service';
 import { AuthService } from '../../../core/services/auth';
-import { GameContextService } from '../../../core/engine/session/game-context.service'; // 🔥 ADDED
-import { GameMode } from '../../../core/engine/session/game-mode.model'; // 🔥 ADDED
+import { GameContextService } from '../../../core/engine/session/game-context.service'; 
+import { GameMode } from '../../../core/engine/session/game-mode.model'; 
 import { AbstractMesh, Tags } from '@babylonjs/core';
 import { WindowSyncService } from '../../../core/services/window-sync.service';
+import { EditorCinematicService } from '../../../services/editor/editor-cinematic.service';
 
 @Component({
   selector: 'app-editor-escena', 
@@ -62,14 +63,16 @@ export class EditorEscena implements OnInit, OnDestroy {
   public addObjSvc = inject(AddObjectModalService);
   public missionSvc = inject(MissionModalService);
   public authSvc = inject(AuthService);
-  private gameContext = inject(GameContextService); // 🔥
+  private gameContext = inject(GameContextService); 
   public cdr = inject(ChangeDetectorRef);
   private router = inject(Router);
   private windowSync = inject(WindowSyncService);
   public playModeSvc = inject(EditorPlayModeService);
+  private cinematicSvc = inject(EditorCinematicService); // 🔥 Inyectado para limpieza
 
   public isInteracting = signal(false);
   public editando = false;
+  public isPlayable = signal<boolean>(false);
 
   public get esAdmin(): boolean {
     return this.authSvc.isAdmin();
@@ -92,7 +95,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   public listaEpisodios: any[] = [];
   public hoveredEpisodio: number | null = null;
 
-  // Gestión de Plataformas
   public plataformaActualId: number | null = null;
   public mostrandoCrearPlataforma = false;
   public nuevaPlataformaNombre = '';
@@ -104,8 +106,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   private autoSaveSub!: Subscription;
   private eventBusSub!: Subscription;
   private reqPlatformSub!: Subscription;
+  private mapChangeSub!: Subscription;
 
-  // Acceso directo a variables de modales
   get objNombre() { return this.addObjSvc.objNombre; } set objNombre(v) { this.addObjSvc.objNombre = v; }
   get objTipo() { return this.addObjSvc.objTipo; } set objTipo(v) { this.addObjSvc.objTipo = v; }
   get objRol() { return this.addObjSvc.objRol; } set objRol(v) { this.addObjSvc.objRol = v; }
@@ -126,10 +128,15 @@ export class EditorEscena implements OnInit, OnDestroy {
     effect(() => {
       this.editorSvc.playState();
     });
+
+    effect(() => {
+      const obj = this.editorSvc.objetoSeleccionado();
+      setTimeout(() => this.revisarSiEsJugable(), 0);
+    });
   }
 
   ngOnInit() {
-    this.gameContext.setMode(GameMode.EDITOR); // 🔥 ESTABLECE CONTEXTO EXPLÍCITAMENTE
+    this.gameContext.setMode(GameMode.EDITOR); 
     this.cargarEpisodios();
     this.addObjSvc.cargarAssets();
 
@@ -162,6 +169,10 @@ export class EditorEscena implements OnInit, OnDestroy {
           break;
       }
       this.cdr.detectChanges();
+    });
+
+    this.mapChangeSub = this.editorSvc.onMapChanged.subscribe(() => {
+       setTimeout(() => this.revisarSiEsJugable(), 0);
     });
 
     this.autoSaveSub = this.editorSvc.onMapChanged.pipe(
@@ -199,6 +210,25 @@ export class EditorEscena implements OnInit, OnDestroy {
       }
     }
     this.keyboard.handleKeydown(event, this.editando); 
+  }
+
+  revisarSiEsJugable(): void {
+    const obj = this.editorSvc.objetoSeleccionado() as AbstractMesh;
+    let playable = false;
+    
+    if (obj) {
+        const entity = this.entityManager.getEntityByMesh(obj);
+        if (entity?.characterConfig) playable = true;
+    }
+    
+    if (!playable) {
+        const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
+        playable = characters.some(c => c.characterConfig?.isPlayable) || characters.length > 0;
+    }
+    
+    if (this.isPlayable() !== playable) {
+        this.isPlayable.set(playable);
+    }
   }
 
   toggleNieblaTemporal() {
@@ -271,6 +301,7 @@ export class EditorEscena implements OnInit, OnDestroy {
         this.motor3dSvc.scene.executeWhenReady(() => {
           this.cargandoEscena.set(false);
           this.episodioPendienteCarga = null;
+          this.revisarSiEsJugable(); 
           this.cdr.detectChanges(); 
           
           if (!this.fpsInterval) {
@@ -343,8 +374,10 @@ export class EditorEscena implements OnInit, OnDestroy {
 
         this.motor3dSvc.scene.executeWhenReady(() => {
           setTimeout(() => {
-            this.playModeSvc.testearEscena(this.vistaPrueba, true);
+            // Re-arrancamos la prueba
+            (this.playModeSvc as any).testearEscena(this.vistaPrueba, true);
             this.cargandoEscena.set(false);
+            this.revisarSiEsJugable();
             this.cdr.detectChanges(); 
           }, 100);
         });
@@ -405,6 +438,9 @@ export class EditorEscena implements OnInit, OnDestroy {
       next: () => {
         this.entityManager.clearDirtyFlags();
         this.entityManager.clearDeletedRecords();
+        
+        // 🔥 FIX CRÍTICO: Vaciamos la caché de cinemáticas borradas una vez se guarda en DB para que no revivan
+        this.cinematicSvc.deletedCinematics = [];
 
         this.estadoGuardado.set('Guardado automático ✓');
         
@@ -422,19 +458,9 @@ export class EditorEscena implements OnInit, OnDestroy {
     });
   }
 
-  esObjetoJugable(): boolean {
-    const obj = this.editorSvc.objetoSeleccionado() as AbstractMesh;
-    if (obj) {
-        const entity = this.entityManager.getEntityByMesh(obj);
-        if (entity?.characterConfig) return true;
-    }
-    const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
-    return characters.some(c => c.characterConfig?.isPlayable) || characters.length > 0;
-  }
-
   abrirVentanaPreview() {
     const sceneId = this.editorSvc.escenaIdActiva();
-    if (!sceneId || !this.esObjetoJugable()) return;
+    if (!sceneId || !this.isPlayable()) return;
     
     this.guardarMapaEnBD(true);
     
@@ -446,13 +472,13 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   iniciarModoPrueba() {
-    if (!this.esObjetoJugable()) return;
+    if (!this.isPlayable()) return;
     this.guardarMapaEnBD(true);
     
     this.mostrarModalMisionPreview = false;
     this.misionIniciada = true;
     
-    this.playModeSvc.testearEscena(this.vistaPrueba);
+    (this.playModeSvc as any).testearEscena(this.vistaPrueba);
   }
 
   comenzarMisionPreview() {
@@ -495,9 +521,11 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.cargandoTexto.set('Restaurando Editor...');
     this.cdr.detectChanges();
 
-    await this.playModeSvc.detenerPrueba();
+    // 🔥 FIX: Tipado seguro para llamar a la rutina del servicio
+    await (this.playModeSvc as any).detenerPrueba();
 
     this.cargandoEscena.set(false);
+    this.revisarSiEsJugable(); 
     this.cdr.detectChanges();
 
     setTimeout(() => this.editorSvc.triggerUpdate(), 500);
@@ -529,5 +557,6 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (this.autoSaveSub) this.autoSaveSub.unsubscribe();
     if (this.eventBusSub) this.eventBusSub.unsubscribe();
     if (this.reqPlatformSub) this.reqPlatformSub.unsubscribe();
+    if (this.mapChangeSub) this.mapChangeSub.unsubscribe();
   }
 }

@@ -1,8 +1,9 @@
 
-import { Component, Output, EventEmitter, inject, effect, ElementRef, ChangeDetectorRef } from '@angular/core';
+import { Component, Output, EventEmitter, inject, effect, ElementRef, ChangeDetectorRef, OnInit, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Node, AbstractMesh, Camera, Light, Mesh, TransformNode, Tags } from '@babylonjs/core';
+import { Subscription } from 'rxjs';
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
@@ -15,7 +16,7 @@ import { EditorCameraService } from '../../../services/editor/editor-camera.serv
   templateUrl: './inspector-outliner.html',
   styleUrl: './inspector-outliner.css'
 })
-export class InspectorOutliner {
+export class InspectorOutliner implements OnInit, OnDestroy {
   public editorSvc = inject(EditorMapaService);
   private entityManager = inject(EntityManagerService);
   private cameraSvc = inject(EditorCameraService);
@@ -29,6 +30,11 @@ export class InspectorOutliner {
 
   private draggedNode: Node | null = null;
   private dropAction: 'above' | 'below' | 'inside' | null = null;
+
+  // 🔥 SOLUCIÓN DE RENDIMIENTO: Cachés para evitar Getters Pesados en el HTML
+  public listaNodosCache: Node[] = [];
+  private mapHijosCache: Map<string, Node[]> = new Map();
+  private mapChangeSub!: Subscription;
 
   constructor() {
     effect(() => {
@@ -73,13 +79,69 @@ export class InspectorOutliner {
     });
   }
 
-  get plataformas() {
-    return this.editorSvc.plataformasEscena();
+  ngOnInit() {
+    this.recalcularArbol();
+    this.mapChangeSub = this.editorSvc.onMapChanged.subscribe(() => {
+        this.recalcularArbol();
+    });
   }
 
-  get plataformaActivaId() {
-    return this.editorSvc.escenaIdActiva();
+  ngOnDestroy() {
+    if (this.mapChangeSub) this.mapChangeSub.unsubscribe();
   }
+
+  // Funciones de TrackBy para Angular
+  trackByUid(index: number, node: Node): string {
+    return node.uniqueId.toString();
+  }
+  
+  trackById(index: number, plat: any): number {
+    return plat.id;
+  }
+
+  // 🔥 SOLUCIÓN: Calculamos una sola vez cuando el mapa cambia, no en cada frame
+  private recalcularArbol() {
+    const todosLosNodos = this.editorSvc.nodosEscena();
+    this.mapHijosCache.clear();
+    
+    const nodosRaiz = todosLosNodos.filter(n => {
+      if (n.parent && n.parent.name !== '__root__') return false;
+      return this.esNodoValidoParaOutliner(n, null);
+    });
+    
+    this.listaNodosCache = nodosRaiz.sort((a, b) => {
+      const eA = this.entityManager.getEntityByMesh(a as AbstractMesh);
+      const eB = this.entityManager.getEntityByMesh(b as AbstractMesh);
+      return (eA?.orderIndex || 0) - (eB?.orderIndex || 0);
+    });
+
+    todosLosNodos.forEach(nodo => {
+       const key = nodo.uniqueId.toString();
+       const hijosValidos = nodo.getChildren().filter(child => {
+          if (!(child instanceof Mesh) && !(child instanceof Light) && !(child instanceof TransformNode)) return false;
+          return this.esNodoValidoParaOutliner(child, nodo);
+       }).sort((a, b) => {
+          const eA = this.entityManager.getEntityByMesh(a as AbstractMesh);
+          const eB = this.entityManager.getEntityByMesh(b as AbstractMesh);
+          return (eA?.orderIndex || 0) - (eB?.orderIndex || 0);
+       });
+       this.mapHijosCache.set(key, hijosValidos);
+    });
+    
+    this.cdr.detectChanges();
+  }
+
+  getHijosCache(nodo: Node): Node[] {
+    return this.mapHijosCache.get(nodo.uniqueId.toString()) || [];
+  }
+  
+  tieneHijosCache(nodo: Node): boolean {
+    const hijos = this.getHijosCache(nodo);
+    return hijos.length > 0 || this.tieneCapsula(nodo) || this.tieneCamara(nodo) || this.tieneLuzInterna(nodo) || this.tieneNiebla(nodo) || this.tieneAnimaciones(nodo) || this.tieneSecuencias(nodo) || this.esTrigger(nodo);
+  }
+
+  get plataformas() { return this.editorSvc.plataformasEscena(); }
+  get plataformaActivaId() { return this.editorSvc.escenaIdActiva(); }
 
   cambiarPlataforma(id: number) {
     if (this.plataformaActivaId !== id) {
@@ -87,7 +149,6 @@ export class InspectorOutliner {
     }
   }
 
-  // 🔥 NUEVO: Filtro estricto para evitar que objetos huérfanos/sistema/babylon-native salgan en el Outliner
   esNodoValidoParaOutliner(child: Node, parentNodo: Node | null = null): boolean {
     if (Tags.MatchesQuery(child, "system_element || fog_element || debug_element || proxy_collider || decal || editor_only || invisible_floor")) return false;
     
@@ -96,12 +157,10 @@ export class InspectorOutliner {
 
     const childEntity = child instanceof AbstractMesh ? this.entityManager.getEntityByMesh(child) : null;
 
-    // Si es una malla o nodo pero no tiene GameEntity asignado, NO mostrarlo (filtra sub-partes del glb, huesos o guías)
     if ((child instanceof Mesh || child instanceof TransformNode) && !childEntity) {
         return false;
     }
 
-    // Si el padre es una entidad válida (ej: un GLB importado), solo permitimos hijos que también sean entidades configuradas
     if (parentNodo) {
         const parentEntity = parentNodo instanceof AbstractMesh ? this.entityManager.getEntityByMesh(parentNodo) : null;
         if (parentEntity && !childEntity) {
@@ -112,43 +171,9 @@ export class InspectorOutliner {
     return true;
   }
 
-  get listaNodos() { 
-    const todosLosNodos = this.editorSvc.nodosEscena();
-    
-    const nodosRaiz = todosLosNodos.filter(n => {
-      if (n.parent && n.parent.name !== '__root__') return false;
-      return this.esNodoValidoParaOutliner(n, null);
-    });
-    
-    return nodosRaiz.sort((a, b) => {
-      const eA = this.entityManager.getEntityByMesh(a as AbstractMesh);
-      const eB = this.entityManager.getEntityByMesh(b as AbstractMesh);
-      const orderA = eA ? eA.orderIndex : 0;
-      const orderB = eB ? eB.orderIndex : 0;
-      return orderA - orderB;
-    });
-  }
-
-  obtenerHijos(nodo: Node): Node[] {
-    if (!nodo || !nodo.getChildren) return [];
-    
-    const hijosValidos = nodo.getChildren().filter(child => {
-        if (!(child instanceof Mesh) && !(child instanceof Light) && !(child instanceof TransformNode)) return false;
-        return this.esNodoValidoParaOutliner(child, nodo);
-    });
-
-    return hijosValidos.sort((a, b) => {
-      const eA = this.entityManager.getEntityByMesh(a as AbstractMesh);
-      const eB = this.entityManager.getEntityByMesh(b as AbstractMesh);
-      const orderA = eA ? eA.orderIndex : 0;
-      const orderB = eB ? eB.orderIndex : 0;
-      return orderA - orderB;
-    });
-  }
-
   onSearchChange() {
     if (this.searchTerm.trim() !== '') {
-      this.listaNodos.forEach(n => this.expandirRecursivo(n));
+      this.listaNodosCache.forEach(n => this.expandirRecursivo(n));
     } else {
       this.nodosExpandidos.clear();
     }
@@ -158,16 +183,15 @@ export class InspectorOutliner {
     const entity = this.entityManager.getEntityByMesh(nodo as AbstractMesh);
     const id = entity ? entity.uid : nodo.uniqueId.toString();
     this.nodosExpandidos.add(id);
-    this.obtenerHijos(nodo).forEach(h => this.expandirRecursivo(h));
+    this.getHijosCache(nodo).forEach(h => this.expandirRecursivo(h));
   }
 
   cumpleFiltro(nodo: Node): boolean {
     if (!this.searchTerm.trim()) return true;
     const term = this.searchTerm.toLowerCase();
-    
     if (nodo.name.toLowerCase().includes(term)) return true;
     
-    const hijos = this.obtenerHijos(nodo);
+    const hijos = this.getHijosCache(nodo);
     return hijos.some(h => this.cumpleFiltro(h));
   }
 
@@ -178,13 +202,7 @@ export class InspectorOutliner {
     return texto.replace(regex, `<span class="highlight-search">$1</span>`);
   }
 
-  tieneHijos(nodo: Node): boolean { 
-    return this.obtenerHijos(nodo).length > 0; 
-  }
-  
-  esSeleccionado(nodo: Node): boolean { 
-    return this.editorSvc.objetoSeleccionado() === nodo; 
-  }
+  esSeleccionado(nodo: Node): boolean { return this.editorSvc.objetoSeleccionado() === nodo; }
   
   esBloqueado(nodo: Node): boolean { 
     const entity = this.entityManager.getEntityByMesh(nodo as AbstractMesh);
@@ -202,44 +220,37 @@ export class InspectorOutliner {
   tieneCamara(nodo: Node): boolean {
     if (!(nodo instanceof AbstractMesh)) return false;
     const entity = this.entityManager.getEntityByMesh(nodo);
-    if (!entity) return false;
-    return !!entity.characterConfig;
+    return !!entity?.characterConfig;
   }
 
   tieneAnimaciones(nodo: Node): boolean {
     if (!(nodo instanceof AbstractMesh)) return false;
     const entity = this.entityManager.getEntityByMesh(nodo);
-    if (!entity) return false;
-    return !!(entity.animationNames && entity.animationNames.length > 0);
+    return !!(entity?.animationNames && entity.animationNames.length > 0);
   }
 
   tieneSecuencias(nodo: Node): boolean {
     if (!(nodo instanceof AbstractMesh)) return false;
     const entity = this.entityManager.getEntityByMesh(nodo);
-    if (!entity) return false;
-    const seqs = entity.playerConfig?.sequences;
-    return !!(seqs && seqs.length > 0);
+    return !!(entity?.playerConfig?.sequences && entity.playerConfig.sequences.length > 0);
   }
 
   tieneLuzInterna(nodo: Node): boolean {
     if (!(nodo instanceof AbstractMesh)) return false;
     const entity = this.entityManager.getEntityByMesh(nodo);
-    if (!entity) return false;
-    return !!(entity.type?.startsWith('light_'));
+    return !!(entity?.type?.startsWith('light_'));
   }
 
   tieneNiebla(nodo: Node): boolean {
     if (!(nodo instanceof AbstractMesh)) return false;
     const entity = this.entityManager.getEntityByMesh(nodo);
-    if (!entity) return false;
-    return !!entity.playerConfig?.fog?.enabled;
+    return !!entity?.playerConfig?.fog?.enabled;
   }
 
   esTrigger(nodo: Node): boolean {
     if (!(nodo instanceof AbstractMesh)) return false;
     const entity = this.entityManager.getEntityByMesh(nodo);
-    if (!entity) return false;
-    return entity.type === 'trigger' || entity.type === 'trigger_compuesto';
+    return entity?.type === 'trigger' || entity?.type === 'trigger_compuesto';
   }
 
   getTriggerConditions(nodo: Node): string[] {
@@ -247,24 +258,10 @@ export class InspectorOutliner {
     const entity = this.entityManager.getEntityByMesh(nodo as AbstractMesh);
     if (!entity || !entity.trigger) return [];
     
-    if (entity.trigger.isComposite) {
-      return entity.trigger.conditions || [];
-    } else {
-      return entity.trigger.condition ? [entity.trigger.condition] : [];
-    }
+    if (entity.trigger.isComposite) return entity.trigger.conditions || [];
+    else return entity.trigger.condition ? [entity.trigger.condition] : [];
   }
 
-  puedeExpandirse(nodo: Node): boolean {
-    return this.tieneHijos(nodo) || 
-           this.tieneCapsula(nodo) || 
-           this.tieneCamara(nodo) || 
-           this.tieneLuzInterna(nodo) || 
-           this.tieneNiebla(nodo) ||
-           this.tieneAnimaciones(nodo) || 
-           this.tieneSecuencias(nodo) ||
-           this.esTrigger(nodo);
-  }
-  
   toggleExpandir(nodo: Node, event: Event) { 
     event.stopPropagation(); 
     const entity = this.entityManager.getEntityByMesh(nodo as AbstractMesh);
@@ -314,29 +311,23 @@ export class InspectorOutliner {
     if (nodo instanceof AbstractMesh) {
       const entity = this.entityManager.getEntityByMesh(nodo);
       if (!entity) return '📌';
-      
-      if (entity.rol === 'player') return '🏃'; // 🔥 Jugador Principal
-      if (entity.rol === 'spawn_point') return '📍'; // 🔥 Spawn Point visual
-      
+      if (entity.rol === 'player') return '🏃'; 
+      if (entity.rol === 'spawn_point') return '📍'; 
       if (entity.type?.startsWith('light_')) return '💡'; 
       if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') return '📍';
       if (entity.type === 'bubble') return '🫧';
       if (entity.type === 'video_plane') return '📺';
       if (entity.type === 'image_plane') return '🖼️';
-      
       if (entity.characterConfig) {
         if (entity.characterConfig.characterType === 'politico') return '👔';
         if (entity.characterConfig.characterType === 'militar') return '🪖';
         return '🤖';
       }
-      
       if (entity.type === 'model') return '✨';
-      
       if (entity.type === 'cube' || nodo.name.toLowerCase().includes('cubo')) return '🧊';
       if (entity.type === 'sphere' || nodo.name.toLowerCase().includes('esfera')) return '⚽';
       if (entity.type === 'cylinder') return '🛢️';
       if (entity.type === 'plane') return '🗺️';
-      
       return '📐';
     }
     return '📌';
@@ -428,11 +419,8 @@ export class InspectorOutliner {
       this.setParentSafe(this.draggedNode, targetNode);
       if (draggedEntity) {
           draggedEntity.parentId = targetEntity ? targetEntity.uid : null;
-          
-          // 🔥 FIX: Actualizar transformada local TRAS el setParent nativo de Babylon para no dañar posiciones
           draggedEntity.syncTransformFromView();
-          
-          const siblings = this.obtenerHijos(targetNode);
+          const siblings = this.getHijosCache(targetNode);
           draggedEntity.orderIndex = siblings.length;
           draggedEntity.isDirty = true;
       }
@@ -443,12 +431,10 @@ export class InspectorOutliner {
       
       if (draggedEntity) {
           draggedEntity.parentId = newParentEntity ? newParentEntity.uid : null;
-          
-          // 🔥 FIX: Actualizar transformada local TRAS el setParent
           draggedEntity.syncTransformFromView();
       }
 
-      const siblings = newParent ? this.obtenerHijos(newParent) : this.editorSvc.nodosEscena().filter(n => !n.parent || n.parent.name === '__root__');
+      const siblings = newParent ? this.getHijosCache(newParent) : this.listaNodosCache;
       const arraySinArrastrado = siblings.filter(n => n !== this.draggedNode);
       const indexDelTarget = arraySinArrastrado.indexOf(targetNode);
 
@@ -500,12 +486,10 @@ export class InspectorOutliner {
       const draggedEntity = this.entityManager.getEntityByMesh(this.draggedNode as AbstractMesh);
       if (draggedEntity) {
           draggedEntity.parentId = null;
-          
-          // 🔥 FIX: Actualizar transformada local al mandarlo a root
           draggedEntity.syncTransformFromView();
       }
 
-      const roots = this.editorSvc.nodosEscena().filter(n => !n.parent || n.parent.name === '__root__');
+      const roots = this.listaNodosCache;
       const arraySinArrastrado = roots.filter(n => n !== this.draggedNode);
       arraySinArrastrado.push(this.draggedNode);
       
@@ -526,4 +510,5 @@ export class InspectorOutliner {
   private clearDragVisuals() {
     const items = this.el.nativeElement.querySelectorAll('.node-item');
     items.forEach((i: HTMLElement) => i.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-inside'));
-  }}
+  }
+}

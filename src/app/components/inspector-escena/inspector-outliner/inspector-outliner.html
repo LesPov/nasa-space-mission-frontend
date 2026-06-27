@@ -13,7 +13,6 @@
 </div>
 
 <div class="outliner-tree">
-  <!-- 🔥 Episodio Global -->
   <div class="tree-collection root-episode">
     <span class="icon">🎬</span>
     <span>Episodio: {{ editorSvc.episodioActualData()?.title || 'Episodio Actual' }}</span>
@@ -39,7 +38,7 @@
         >
           <div class="node-left">
             <span class="tree-expander" 
-                  [style.visibility]="puedeExpandirse(nodo) ? 'visible' : 'hidden'" 
+                  [style.visibility]="tieneHijosCache(nodo) ? 'visible' : 'hidden'" 
                   (click)="toggleExpandir(nodo, $event)">
               {{ estaExpandido(nodo) ? '▼' : '▶' }}
             </span>
@@ -62,28 +61,13 @@
           <div class="node-item sub-item" *ngIf="tieneCapsula(nodo)" [class.selected]="esSubSeleccionado(nodo, 'collider')" [style.padding-left.px]="35 + (depth * 15)" (click)="seleccionarSubItem('physics', 'collider', nodo, $event)">
             <span class="node-icon">📦</span><span class="node-name" style="color:#aaa;">Cuerpo Físico</span>
           </div>
-
           <div class="node-item sub-item" *ngIf="tieneCamara(nodo)" [class.selected]="esSubSeleccionado(nodo, 'camera')" [style.padding-left.px]="35 + (depth * 15)" (click)="seleccionarSubItem('physics', 'camera', nodo, $event)">
             <span class="node-icon">🎥</span><span class="node-name" style="color:#aaa;">Cámara FPS</span>
           </div>
-
           <div class="node-item sub-item" *ngIf="tieneLuzInterna(nodo)" [class.selected]="esSubSeleccionado(nodo, 'light')" [style.padding-left.px]="35 + (depth * 15)" (click)="seleccionarSubItem('light', 'light', nodo, $event)">
             <span class="node-icon">💡</span><span class="node-name" style="color:#facc15;">Ubicación Luz</span>
           </div>
 
-          <div class="node-item sub-item" *ngIf="tieneNiebla(nodo)" [class.selected]="esSubSeleccionado(nodo, 'fog')" [style.padding-left.px]="35 + (depth * 15)" (click)="seleccionarSubItem('player', 'fog', nodo, $event)">
-            <span class="node-icon">☁️</span><span class="node-name" style="color:#38bdf8;">Centro de Niebla</span>
-          </div>
-
-          <div class="node-item sub-item" *ngIf="tieneAnimaciones(nodo)" [style.padding-left.px]="35 + (depth * 15)" (click)="seleccionarSubItem('animation', null, nodo, $event)">
-            <span class="node-icon">🏃</span><span class="node-name" style="color:#aaa;">Animaciones GLB</span>
-          </div>
-
-          <div class="node-item sub-item" *ngIf="tieneSecuencias(nodo)" [style.padding-left.px]="35 + (depth * 15)" (click)="seleccionarSubItem('sequences', null, nodo, $event)">
-            <span class="node-icon">🎞️</span><span class="node-name" style="color:#aaa;">Secuencias Prog.</span>
-          </div>
-
-          <!-- EVENTOS TRIGGER -->
           <ng-container *ngIf="esTrigger(nodo)">
             <div class="node-item sub-item" *ngIf="getTriggerConditions(nodo).includes('on_enter')" [style.padding-left.px]="35 + (depth * 15)" (click)="seleccionarSubItem('transform', null, nodo, $event)">
               <span class="node-icon">🟩</span><span class="node-name" style="color:#4ade80;">Evento: Al Entrar</span>
@@ -93,8 +77,8 @@
             </div>
           </ng-container>
 
-          <!-- HIJOS REALES -->
-          <ng-container *ngFor="let childNode of obtenerHijos(nodo)">
+          <!-- 🔥 FIX: Aplicamos trackByUid para evitar recálculos destructivos del DOM -->
+          <ng-container *ngFor="let childNode of getHijosCache(nodo); trackBy: trackByUid">
              <ng-container *ngTemplateOutlet="nodeTemplate; context:{ nodo: childNode, depth: depth + 1 }"></ng-container>
           </ng-container>
 
@@ -102,8 +86,7 @@
       </ng-container>
     </ng-template>
 
-    <!-- 🔥 Iteración por Plataformas para Organizar el Outliner -->
-    <ng-container *ngFor="let plat of plataformas">
+    <ng-container *ngFor="let plat of plataformas; trackBy: trackById">
       <div class="tree-collection platform-node" 
            [class.active]="plat.id === plataformaActivaId" 
            (click)="cambiarPlataforma(plat.id)"
@@ -118,13 +101,13 @@
         <span class="status-badge" *ngIf="plat.id === plataformaActivaId">ACTIVA</span>
       </div>
 
-      <!-- Elementos Raíz solo si es la plataforma activa -->
       <div class="platform-children" *ngIf="plat.id === plataformaActivaId">
-        <ng-container *ngFor="let nodoRaiz of listaNodos">
+        <!-- 🔥 FIX: Usamos la variable cacheada en lugar del Getter -->
+        <ng-container *ngFor="let nodoRaiz of listaNodosCache; trackBy: trackByUid">
           <ng-container *ngTemplateOutlet="nodeTemplate; context:{ nodo: nodoRaiz, depth: 1 }"></ng-container>
         </ng-container>
         
-        <div *ngIf="listaNodos.length === 0" style="padding: 10px 20px; color: #666; font-size: 11px; font-style: italic;">
+        <div *ngIf="listaNodosCache.length === 0" style="padding: 10px 20px; color: #666; font-size: 11px; font-style: italic;">
           No hay objetos en esta plataforma.
         </div>
       </div>

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
@@ -35,8 +36,6 @@ export class CharacterKinematicsService implements IUpdatable {
     const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
 
     for (const entity of characters) {
-      // 🔥 FIX SUPREMO: Si el Director Cinematográfico tiene secuestrado a este actor, 
-      // anulamos todas sus físicas nativas e inercia para que la cinemática lo mueva matemáticamente.
       if (entity.isCinematicControlled) {
          if (entity.playerRuntime) {
             entity.playerRuntime.intentions = { moveForward: false, moveBackward: false, moveLeft: false, moveRight: false, run: false, jump: false };
@@ -115,8 +114,9 @@ export class CharacterKinematicsService implements IUpdatable {
     const localCapsuleCenter = new Vector3(colMeta.offsetX ?? 0, colMeta.offsetY ?? 0, colMeta.offsetZ ?? 0);
     const capsuleCenter = Vector3.TransformCoordinates(localCapsuleCenter, mesh.getWorldMatrix());
 
+    // 🔥 FIX ARQUITECTÓNICO: Eliminar "system_element" de la lista de ignorados para que la gravedad golpee al proxy collider
     const collFn = (m: any) =>
-      m.checkCollisions && m !== mesh && !m.isDescendantOf(mesh) && !Tags.MatchesQuery(m, "system_element || editor_only || fog_element");
+      m.checkCollisions && m !== mesh && !m.isDescendantOf(mesh) && !Tags.MatchesQuery(m, "editor_only || fog_element");
 
     if (seqRuntime && seqRuntime.running && seqRuntime.step) {
       if (seqRuntime.rootMotion && (seqRuntime.rootMotion.y !== 0 || seqRuntime.rootMotion.z !== 0 || seqRuntime.lockInput || seqRuntime.freezeOrientation)) {

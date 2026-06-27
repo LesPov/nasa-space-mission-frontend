@@ -18,7 +18,8 @@ import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/cam
 import { GameContextService } from '../../../core/engine/session/game-context.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
-import { GameMode } from '../../../core/engine/session/game-mode.model'; // 🔥 ADDED
+import { GameMode } from '../../../core/engine/session/game-mode.model'; 
+import { EditorCinematicService } from '../../../services/editor/editor-cinematic.service';
 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
@@ -50,6 +51,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private entityManager = inject(EntityManagerService);
   private worldSettingsSvc = inject(WorldSettingsService);
   private windowSync = inject(WindowSyncService);
+  private cinematicSvc = inject(EditorCinematicService); // 🔥 ADDED: Inyectar servicio de cinemáticas para carga limpia
 
   public isInteracting = signal<boolean>(false);
   public pointerLocked = signal<boolean>(false);
@@ -96,7 +98,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   ngOnInit() {
     this.route.queryParams.subscribe(params => {
       this.isDetached = params['detached'] === 'true';
-      // 🔥 FIX: Establecer explícitamente el contexto antes del Boot
       this.gameContext.setMode(this.isAdmin && !this.isDetached ? GameMode.PREVIEW_ADMIN : GameMode.FINAL_USER);
     });
 
@@ -129,7 +130,8 @@ export class JuegoPantalla implements OnInit, OnDestroy {
             description: 'Explora esta zona.',
             sceneObjects: res.escenaData.sceneObjects,
             triggers: res.escenaData.triggers,
-            scene: res.escenaData.scene
+            scene: res.escenaData.scene,
+            cinematics: res.escenaData.cinematics || [] // 🔥 ADDED: Proveer cinemáticas para carga base
           };
           
           this.playerStateActual = res.partida;
@@ -210,6 +212,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   async handleLiveSync(newMapData: any) {
     this.isSyncing.set(true);
     let requiereReboot = false;
+
+    // 🔥 ADDED: Capturar y sincronizar cinemáticas en vivo
+    if (newMapData.cinematicsDelta) {
+       this.cinematicSvc.loadFromData(newMapData.cinematicsDelta);
+    }
 
     if (newMapData.deletedObjects?.length) newMapData.deletedObjects.forEach((uid: string) => this.entityManager.removeEntity(uid));
     if (newMapData.deletedTriggers?.length) newMapData.deletedTriggers.forEach((uid: string) => this.entityManager.removeEntity(uid));

@@ -68,7 +68,8 @@ export class CoreSceneLoaderService {
     this.worldSettingsSvc.loadFromDb(envSettings, uiSettings);
     this.worldSettingsSvc.applyToScene(scene, (m) => this.motor3d.setVisualMode(m));
 
-    this.cinematicSvc.loadFromData(dataBD.cinematics || []);
+    // 🔥 FIX: Permite cargar tanto cinematics estables como deltas rehidratados sin duplicar
+    this.cinematicSvc.loadFromData(dataBD.cinematics || dataBD.cinematicsDelta || []);
 
     scene.cameras.forEach(cam => cam.maxZ = 10000);
 
@@ -111,7 +112,6 @@ export class CoreSceneLoaderService {
     if (isPlaying) {
         if (persistentPlayer) {
             this.spawnManager.handleSceneChangeSpawn(persistentPlayer);
-            // 🔥 Invocamos la transición mágica de aproximación post-teletransporte
             this.cameraSvc.transicionEntradaPlataforma(persistentPlayer);
             this.triggerSvc.resetTransitionState();
         } else {

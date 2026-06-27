@@ -172,6 +172,7 @@
                  </div>
                  
                  <div class="track-content">
+                     <div class="playhead" [style.left.%]="(cinematicPlayhead / currentCinematic.durationMs) * 100"></div>
                      <div class="track-row-content" *ngFor="let track of currentCinematic.tracks; let tIdx = index">
                          <div class="clip-block" 
                               *ngFor="let clip of track.clips; let cIdx = index"

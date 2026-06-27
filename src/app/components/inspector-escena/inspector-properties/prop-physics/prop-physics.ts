@@ -2,7 +2,7 @@
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Vector3, MeshBuilder, Mesh, Tags } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
@@ -96,6 +96,35 @@ export class PropPhysics implements OnInit, OnDestroy {
           this.colliderOffY * Math.abs(ws.y), 
           this.colliderOffZ * Math.abs(ws.z)
       );
+
+      // 🔥 FIX: Destruir y reconstruir el proxy collider físico del mundo dinámicamente en el editor
+      const proxies = this.objeto.getChildMeshes(true).filter(m => Tags.MatchesQuery(m, "proxy_collider"));
+      proxies.forEach(p => p.dispose());
+
+      if (entity.visual.isSolid && !this.esPersonaje) {
+          const scene = this.objeto.getScene();
+          let colMesh: Mesh;
+          if (this.colliderType === 'sphere') {
+              colMesh = MeshBuilder.CreateSphere(`col_${entity.uid}`, { diameterX: this.colliderSizeX, diameterY: this.colliderSizeY, diameterZ: this.colliderSizeZ }, scene);
+          } else if (this.colliderType === 'capsule') {
+              const r = Math.max(this.colliderSizeX, this.colliderSizeZ) / 2;
+              colMesh = MeshBuilder.CreateCapsule(`col_${entity.uid}`, { radius: r, height: this.colliderSizeY }, scene);
+          } else {
+              colMesh = MeshBuilder.CreateBox(`col_${entity.uid}`, { width: this.colliderSizeX, height: this.colliderSizeY, depth: this.colliderSizeZ }, scene);
+          }
+          colMesh.parent = this.objeto;
+          colMesh.position.set(this.colliderOffX, this.colliderOffY, this.colliderOffZ);
+          colMesh.isVisible = false;
+          colMesh.checkCollisions = true;
+          Tags.AddTagsTo(colMesh, "proxy_collider system_element");
+      }
+    } else {
+       // Si cambiamos a mesh puro, borramos el proxy y reactivamos colisiones visuales pesadas
+       const proxies = this.objeto.getChildMeshes(true).filter(m => Tags.MatchesQuery(m, "proxy_collider"));
+       proxies.forEach(p => p.dispose());
+       this.objeto.getChildMeshes(false).forEach(m => {
+           if (!Tags.MatchesQuery(m, "system_element")) m.checkCollisions = true;
+       });
     }
     
     if (this.colliderType === 'mesh' && this.editorSvc.subObjetoSeleccionado() === 'collider') {
@@ -106,7 +135,7 @@ export class PropPhysics implements OnInit, OnDestroy {
   }
 
   aplicarCamara() {
-    if (this.esPersonaje) return; // Protegemos
+    if (this.esPersonaje) return; 
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (!entity) return;
     

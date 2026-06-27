@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -55,8 +54,11 @@ export class SceneNodesService {
           }
       });
 
-      this.actualizarListaNodos();
-      this.state.triggerUpdate();
+      // 🔥 FIX NG0100: Ejecutamos las actualizaciones reactivas en el siguiente tick
+      setTimeout(() => {
+        this.actualizarListaNodos();
+        this.state.triggerUpdate();
+      }, 0);
     }
   }
 

@@ -3,7 +3,6 @@
   
   <app-ui-loading *ngIf="isLoading()" texto="Cargando Entorno 3D..."></app-ui-loading>
 
-  <!-- Eliminamos el [class.blur] hardcodeado que se activaba al pausar -->
   <div class="canvas-wrapper" 
        [style.pointer-events]="(modalMisionUsuario && !cerrandoModalUsuario) ? 'none' : 'all'"
        (click)="onCanvasClick()">
@@ -15,6 +14,9 @@
     playState="PLAYING" 
     [hideStatus]="modalMisionUsuario">
   </app-ui-hud>
+
+  <!-- 🔥 EL MENÚ RADIAL EN INYECCIÓN DIRECTA -->
+  <app-ui-radial-menu></app-ui-radial-menu>
 
   <app-ui-inspect (onClose)="cerrarInteraccion()"></app-ui-inspect>
 
@@ -29,7 +31,6 @@
     (onExit)="salirDelJuego()">
   </app-ui-mission>
 
-  <!-- 🔥 FIX: Overlay nativo de sincronización -->
   <div class="sync-overlay" *ngIf="isSyncing()">
      <div class="sync-spinner"></div> Actualizando entorno en vivo...
   </div>

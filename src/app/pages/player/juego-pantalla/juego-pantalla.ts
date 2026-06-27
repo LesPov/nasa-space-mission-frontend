@@ -20,17 +20,19 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
 import { GameMode } from '../../../core/engine/session/game-mode.model'; 
 import { EditorCinematicService } from '../../../services/editor/editor-cinematic.service';
-
+ 
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiMission } from '../../../components/ui-mission/ui-mission';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
+import { UiRadialMenu } from '../../../components/ui-radial-menu/ui-radial-menu'; // 🔥 ADDED
 import { WindowSyncService } from '../../../core/services/window-sync.service';
+import { LiveBuilderService } from '../../../services/editor/live-builder.service';
 
 @Component({
   selector: 'app-juego-pantalla',
   standalone: true, 
-  imports: [CommonModule, MotorBabylon, UiHud, UiInspect, UiMission, UiLoading],
+  imports: [CommonModule, MotorBabylon, UiHud, UiInspect, UiMission, UiLoading, UiRadialMenu], // 🔥 Añadido UiRadialMenu
   templateUrl: './juego-pantalla.html',
   styleUrls: ['./juego-pantalla.css']
 })
@@ -51,7 +53,8 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private entityManager = inject(EntityManagerService);
   private worldSettingsSvc = inject(WorldSettingsService);
   private windowSync = inject(WindowSyncService);
-  private cinematicSvc = inject(EditorCinematicService); // 🔥 ADDED: Inyectar servicio de cinemáticas para carga limpia
+  private cinematicSvc = inject(EditorCinematicService); 
+  private liveBuilderSvc = inject(LiveBuilderService); // 🔥 ADDED
 
   public isInteracting = signal<boolean>(false);
   public pointerLocked = signal<boolean>(false);
@@ -101,6 +104,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       this.gameContext.setMode(this.isAdmin && !this.isDetached ? GameMode.PREVIEW_ADMIN : GameMode.FINAL_USER);
     });
 
+    // 🔥 Iniciar servicio de construcción en vivo
+    if (this.isAdmin) {
+      this.liveBuilderSvc.initialize();
+    }
+
     const sceneId = this.route.snapshot.paramMap.get('id');
     if (sceneId) {
       this.cargarPlataforma(Number(sceneId));
@@ -131,7 +139,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
             sceneObjects: res.escenaData.sceneObjects,
             triggers: res.escenaData.triggers,
             scene: res.escenaData.scene,
-            cinematics: res.escenaData.cinematics || [] // 🔥 ADDED: Proveer cinemáticas para carga base
+            cinematics: res.escenaData.cinematics || []
           };
           
           this.playerStateActual = res.partida;
@@ -213,7 +221,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     this.isSyncing.set(true);
     let requiereReboot = false;
 
-    // 🔥 ADDED: Capturar y sincronizar cinemáticas en vivo
     if (newMapData.cinematicsDelta) {
        this.cinematicSvc.loadFromData(newMapData.cinematicsDelta);
     }
@@ -326,8 +333,12 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
     this.runtime.shutdownProductionGame();
     
-    if (this.isAdmin) this.router.navigate(['/admin/editor-escena']);
-    else this.router.navigate(['/jugador/episodios']);
+    if (this.isAdmin) {
+       this.liveBuilderSvc.destroy(); // Apagar builder
+       this.router.navigate(['/admin/editor-escena']);
+    } else {
+       this.router.navigate(['/jugador/episodios']);
+    }
   }
 
   cerrarInteraccion() {
@@ -338,6 +349,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
     this.runtime.shutdownProductionGame();
     this.inputOrchestrator.disposeListeners();
+    this.liveBuilderSvc.destroy();
     if (this.sub) this.sub.unsubscribe();
     if (this.fpsInterval) clearInterval(this.fpsInterval);
   }

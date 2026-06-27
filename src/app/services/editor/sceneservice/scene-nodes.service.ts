@@ -1,3 +1,5 @@
+// src/app/services/editor/sceneservice/scene-nodes.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
@@ -16,7 +18,6 @@ export class SceneNodesService {
 
     const lucesValidas = scene.lights.filter(l => !l.parent && l.name !== 'ambientLight');
     
-    // 🔥 FIX: Filtramos las cámaras que el motor inyecta dinámicamente para que no salgan en el outliner.
     const camarasValidas = scene.cameras.filter(c => 
       !c.name.includes('proxy') && !c.name.includes('mock') && !c.name.includes('admin')
     );
@@ -54,7 +55,6 @@ export class SceneNodesService {
           }
       });
 
-      // 🔥 FIX NG0100: Ejecutamos las actualizaciones reactivas en el siguiente tick
       setTimeout(() => {
         this.actualizarListaNodos();
         this.state.triggerUpdate();
@@ -65,7 +65,8 @@ export class SceneNodesService {
   public limpiarEstado(): void {
     this.state.nodosEscena().forEach((nodo) => {
       if (nodo instanceof AbstractMesh && !Tags.MatchesQuery(nodo, "invisible_floor")) {
-          nodo.dispose(false, true);
+          // 🔥 FIX: No disponer materiales para no corromper la caché global de assets 3D
+          nodo.dispose(false, false);
       }
     });
     this.state.nodosEscena.set([]);

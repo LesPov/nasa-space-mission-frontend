@@ -1,3 +1,4 @@
+
 import { Injectable } from '@angular/core';
 import { Subject } from 'rxjs';
 import { GameEntity } from '../entities/game.entity';
@@ -15,9 +16,12 @@ export type GameEvent =
   | { type: 'SequenceTriggered', payload: { sequenceId: string } }
   | { type: 'ToggleCameraRequested' }
   | { type: 'ChangeSceneRequested', payload: { sceneId: number } }
-  | { type: 'CinematicStarted', payload: { cinematicId: string } } // 🔥 ADDED
-  | { type: 'CinematicStopped' } // 🔥 ADDED
-  | { type: 'DialogueRequested', payload: { actor?: string, text?: string, durationMs: number } }; // 🔥 ADDED
+  | { type: 'CinematicStarted', payload: { cinematicId: string } }
+  | { type: 'CinematicStopped' }
+  | { type: 'DialogueRequested', payload: { actor?: string, text?: string, durationMs: number } }
+  // 🔥 NUEVOS EVENTOS PARA LA RUEDA DE CONSTRUCCIÓN (Q)
+  | { type: 'RadialMenuToggled', payload: boolean }
+  | { type: 'AssetSelectedForBuild', payload: any | null };
 
 @Injectable({ providedIn: 'root' })
 export class GameEventBusService {

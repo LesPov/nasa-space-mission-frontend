@@ -27,6 +27,7 @@ export class EditorSceneService {
 
   public crearEntornoVisual(): void {
     const scene = this.motor3d.scene;
+    if (!scene) return;
     
     ['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].forEach(name => {
       const old = scene.getMeshByName(name);
@@ -61,6 +62,8 @@ export class EditorSceneService {
 
   public crearSuelo(): void {
     const scene = this.motor3d.scene;
+    if (!scene) return; 
+    
     const old = scene.getMeshByName('sueloInvisible');
     if (old) old.dispose();
     
@@ -76,13 +79,14 @@ export class EditorSceneService {
     this.builderSvc.agregarTriggerCustom(nombre, shape, isComposite, mensaje, sizeX, sizeY, sizeZ, parentNode, actionType);
   }
 
+  // 🔥 FIX TS2554: Mantenemos el argumento position nativo en toda la cadena
   public agregarObjetoCustom(
     tipo: string, nombre: string, rol: string, colorHex: string,
     sizeX: number, sizeY: number, sizeZ: number, asset?: any,
     isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = '',
-    parentNode: AbstractMesh | null = null
+    parentNode: AbstractMesh | null = null, position?: Vector3
   ): void {
-    this.builderSvc.agregarObjetoCustom(tipo, nombre, rol, colorHex, sizeX, sizeY, sizeZ, asset, isSolid, isSelectable, mensaje, parentNode);
+    this.builderSvc.agregarObjetoCustom(tipo, nombre, rol, colorHex, sizeX, sizeY, sizeZ, asset, isSolid, isSelectable, mensaje, parentNode, position);
   }
 
   public asignarObjetosASombrasDeLuces(): void {
@@ -143,7 +147,6 @@ export class EditorSceneService {
     });
   }
 
-  // 🔥 FIX: Actualizado el tipo de retorno para incluir cinematicsDelta y deletedCinematics
   public obtenerDatosParaGuardar(escenaActualData: any, forceFull: boolean = false): { 
     sceneObjectsDelta: any[]; 
     triggersDelta: any[]; 

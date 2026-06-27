@@ -1,3 +1,4 @@
+// src/app/core/engine/runtime/systems/player-input.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { Observer, KeyboardInfo, Scene, KeyboardEventTypes } from '@babylonjs/core';
@@ -5,6 +6,7 @@ import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameContextService } from '../../session/game-context.service';
 import { Motor3dService } from '../../../../services/motor-3d.service';
 import { GameEventBusService } from '../../events/game-event-bus.service';
+import { AuthService } from '../../../services/auth';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInputService implements IUpdatable {
@@ -20,6 +22,21 @@ export class PlayerInputService implements IUpdatable {
   private context = inject(GameContextService);
   private motor3d = inject(Motor3dService);
   private eventBus = inject(GameEventBusService);
+  private authSvc = inject(AuthService);
+
+  public isRadialMenuOpen = false;
+  private qPressed = false;
+
+  constructor() {
+    this.eventBus.events$.subscribe(e => {
+      if (e.type === 'RadialMenuToggled') {
+        this.isRadialMenuOpen = e.payload;
+        if (!e.payload) {
+             this.lockPointerAfterMenu();
+        }
+      }
+    });
+  }
 
   public start(): void {
     this.tecladoObserver = null; 
@@ -60,7 +77,10 @@ export class PlayerInputService implements IUpdatable {
     if (!playerEntity || !playerEntity.playerRuntime) return;
 
     const seqRuntime = playerEntity.playerRuntime.seqRuntime;
-    const canReceiveInput = this.context.isPointerLocked() && (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation));
+    
+    const canReceiveInput = this.context.isPointerLocked() && 
+      (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation)) && 
+      !this.isRadialMenuOpen;
 
     const stateComp = playerEntity.playerRuntime;
     if (canReceiveInput) {
@@ -97,10 +117,29 @@ export class PlayerInputService implements IUpdatable {
     if (this.tecladoObserver) return; 
 
     this.tecladoObserver = scene.onKeyboardObservable.add((kbInfo: KeyboardInfo) => {
-      if (!this.isEnabled) return;
-
       const keyStr = kbInfo.event.key ? kbInfo.event.key.toLowerCase() : '';
       const codeStr = kbInfo.event.code ? kbInfo.event.code.toLowerCase() : '';
+
+      // 🔥 FIX DE ESTABILIDAD: Permitimos la rueda radial incluso si isEnabled es false momentáneamente
+      if (keyStr === 'q' && this.authSvc.isAdmin() && this.context.isDebugMode() && this.context.cameraView() === 'FPS') {
+        if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
+          if (!this.qPressed) {
+             this.qPressed = true;
+             this.isRadialMenuOpen = !this.isRadialMenuOpen;
+             this.eventBus.emit({ type: 'RadialMenuToggled', payload: this.isRadialMenuOpen });
+             
+             if (this.isRadialMenuOpen) {
+                 this.unlockPointerForMenu();
+             } else {
+                 this.lockPointerAfterMenu();
+             }
+          }
+        } else if (kbInfo.type === KeyboardEventTypes.KEYUP) {
+          this.qPressed = false;
+        }
+      }
+
+      if (!this.isEnabled) return; // Detenemos propagación del resto del teclado si no está habilitado
 
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
         this.inputMap[keyStr] = true;
@@ -122,6 +161,22 @@ export class PlayerInputService implements IUpdatable {
     });
   }
 
+  private unlockPointerForMenu(): void {
+    if (document.pointerLockElement) {
+      try { document.exitPointerLock(); } catch(e) {}
+    }
+  }
+
+  private lockPointerAfterMenu(): void {
+    const canvas = this.motor3d.engine?.getRenderingCanvas();
+    if (canvas && !document.pointerLockElement) {
+      try { 
+        canvas.focus();
+        canvas.requestPointerLock(); 
+      } catch(e) {}
+    }
+  }
+
   public detenerEscuchaTeclado(scene: Scene): void {
     if (this.tecladoObserver) {
       scene.onKeyboardObservable.remove(this.tecladoObserver);
@@ -134,5 +189,7 @@ export class PlayerInputService implements IUpdatable {
     this.inputMap = {};
     this.actionPressedThisFrame = false;
     this.inspectPressedThisFrame = false;
+    this.isRadialMenuOpen = false;
+    this.qPressed = false;
   }
 }

@@ -1,3 +1,4 @@
+// src/app/services/editor/editor-play-mode.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, MeshBuilder, Tags, Vector3, Observer, Scene } from '@babylonjs/core';
@@ -55,7 +56,6 @@ export class EditorPlayModeService {
     let objMesh = this.state.objetoSeleccionado() as Mesh;
     let playerEntity = objMesh ? this.entityManager.getEntityByMesh(objMesh) : null;
     
-    // 🔥 SOLUCIÓN CRÍTICA: Nunca mutar el spawn_point real. Crear un jugador clon/fantasma.
     if (!playerEntity || (!playerEntity.hasComponent('characterConfig') && playerEntity.rol !== 'spawn_point')) {
        const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
        playerEntity = characters.find(c => c.rol === 'player') || characters.find(c => c.characterConfig?.isPlayable);
@@ -63,7 +63,6 @@ export class EditorPlayModeService {
        if (!playerEntity) {
            const spawnPoint = this.entityManager.getAllEntities().find(e => e.rol === 'spawn_point');
            if (spawnPoint) {
-               // Creamos una cápsula invisible para que actúe como jugador sin ensuciar la base de datos
                const tempMesh = MeshBuilder.CreateCapsule("TempPlayer_TestLive", { height: 1.8, radius: 0.4 }, this.motor3d.scene);
                tempMesh.position.set(
                  spawnPoint.transform.position.x,
@@ -93,8 +92,6 @@ export class EditorPlayModeService {
            objMesh = playerEntity.view as Mesh;
        }
     } else if (playerEntity.rol === 'spawn_point') {
-       // El usuario seleccionó explícitamente el spawn_point antes de dar Play.
-       // Hacemos lo mismo: inyectamos un clon temporal, no lo mutamos.
        const tempMesh = MeshBuilder.CreateCapsule("TempPlayer_TestLive", { height: 1.8, radius: 0.4 }, this.motor3d.scene);
        tempMesh.position.set(
          playerEntity.transform.position.x,
@@ -256,7 +253,6 @@ export class EditorPlayModeService {
             if (!this.snapshotMemoria.deletedTriggers) this.snapshotMemoria.deletedTriggers = [];
 
             cambiosEnPlay.sceneObjectsDelta.forEach((delta: any) => {
-                // Prevenir que el jugador temporal fantasma se cuele en la base de datos
                 if (delta.name === 'Jugador_Prueba') return;
                 
                 const index = this.snapshotMemoria.sceneObjectsDelta.findIndex((o: any) => o.uid === delta.uid);
@@ -291,7 +287,8 @@ export class EditorPlayModeService {
         const scene = this.motor3d.scene;
         const meshesToDispose = scene.meshes.filter(m => !Tags.MatchesQuery(m, "system_element") && !Tags.MatchesQuery(m, "editor_only"));
         meshesToDispose.forEach(m => {
-            if (!m.isDisposed()) m.dispose(false, true);
+            // 🔥 FIX: false para no romper los materiales del AssetContainer compartido
+            if (!m.isDisposed()) m.dispose(false, false); 
         });
 
         await this.editorSvc.cargarEscenaDesdeDatos(this.snapshotMemoria);

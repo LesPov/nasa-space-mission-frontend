@@ -1,3 +1,4 @@
+// src/app/core/engine/entities/game.entity.ts
 
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
@@ -98,7 +99,7 @@ export class PlayerRuntimeComponent {
     },
     public seqRuntime: SeqRuntime | null = null,
     public stopBakedRequested: boolean = false,
-    public cinematicAnimation: string | null = null // 🔥 ADDED: Anima el actor matemáticamente por cinemática
+    public cinematicAnimation: string | null = null
   ) {}
 }
 
@@ -338,7 +339,9 @@ export class GameEntity {
           ag.dispose();
         });
       }
-      this.view.dispose(false, true);
+      // 🔥 FIX: Prevenir que los materiales compartidos se eliminen si es un asset cargado.
+      const disposeMaterials = this.type !== 'model';
+      this.view.dispose(false, disposeMaterials);
     }
     this.view = null;
   }

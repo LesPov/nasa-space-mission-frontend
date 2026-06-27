@@ -1,6 +1,5 @@
-
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
 import { HistorialService } from '../../historial.service';
 import { SceneNodesService } from './scene-nodes.service';
@@ -29,11 +28,13 @@ export class SceneObjectBuilderService {
     this.triggerBuilderSvc.agregarTriggerCustom(nombre, shape, isComposite, mensaje, sizeX, sizeY, sizeZ, parentNode, actionType);
   }
 
+  // 🔥 FIX TS2554: Añadido el 13º parámetro opcional 'position'
   public async agregarObjetoCustom(
     tipo: string, nombre: string, rol: string, colorHex: string,
     sizeX: number, sizeY: number, sizeZ: number, asset?: any,
     isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = '',
-    parentNode: AbstractMesh | null = null
+    parentNode: AbstractMesh | null = null,
+    position?: Vector3 // <--- FIX AQUÍ
   ): Promise<void> {
     
     if (tipo === 'trigger' || tipo === 'trigger_compuesto') {
@@ -55,7 +56,8 @@ export class SceneObjectBuilderService {
         path: asset?.path
       },
       assetId: asset?.id,
-      position: parentNode ? {x:0, y: (tipo==='image_plane' ? -2 : 0), z:0} : { x: 0, y: tipo.startsWith('light_') ? 2 : (0.5 * sizeY), z: 0 },
+      // 🔥 FIX: Posición Inyectada Correctamente desde el Argumento
+      position: position ? { x: position.x, y: position.y, z: position.z } : (parentNode ? {x:0, y: (tipo==='image_plane' ? -2 : 0), z:0} : { x: 0, y: tipo.startsWith('light_') ? 2 : (0.5 * sizeY), z: 0 }),
       scale: { x: sizeX, y: sizeY, z: sizeZ },
       parentId: parentNode?.metadata?.uid || null
     };

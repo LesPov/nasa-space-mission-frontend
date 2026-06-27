@@ -14,6 +14,7 @@ import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
 import { UiMission } from '../../../components/ui-mission/ui-mission';
+import { UiRadialMenu } from '../../../components/ui-radial-menu/ui-radial-menu'; // 🔥 ADDED
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EditorStateService } from '../../../services/editor/editor-state.service';
@@ -36,20 +37,21 @@ import { GameMode } from '../../../core/engine/session/game-mode.model';
 import { AbstractMesh, Tags } from '@babylonjs/core';
 import { WindowSyncService } from '../../../core/services/window-sync.service';
 import { EditorCinematicService } from '../../../services/editor/editor-cinematic.service';
+import { LiveBuilderService } from '../../../services/editor/live-builder.service'; // 🔥 ADDED
 
 @Component({
   selector: 'app-editor-escena', 
   standalone: true,
   imports: [
     MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule,
-    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading, UiMission
+    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading, UiMission, UiRadialMenu // 🔥 ADDED
   ],
   templateUrl:'./editor-escena.html',
   styleUrl: './editor-escena.css', 
 })
 export class EditorEscena implements OnInit, OnDestroy {
   public stateSvc = inject(EditorStateService);
-  public editorSvc = inject(EditorMapaService);
+  public editorSvc = inject(EditorMapaService); 
   public motor3dSvc = inject(Motor3dService);
   public layoutSvc = inject(LayoutService);
   public epiApiSvc = inject(EpisodiosService);
@@ -68,7 +70,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   private router = inject(Router);
   private windowSync = inject(WindowSyncService);
   public playModeSvc = inject(EditorPlayModeService);
-  private cinematicSvc = inject(EditorCinematicService); // 🔥 Inyectado para limpieza
+  private cinematicSvc = inject(EditorCinematicService);
+  private liveBuilderSvc = inject(LiveBuilderService); // 🔥 ADDED
 
   public isInteracting = signal(false);
   public editando = false;
@@ -139,6 +142,11 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.gameContext.setMode(GameMode.EDITOR); 
     this.cargarEpisodios();
     this.addObjSvc.cargarAssets();
+
+    // 🔥 Inicializamos el servicio de construcción en vivo
+    if (this.esAdmin) {
+       this.liveBuilderSvc.initialize();
+    }
 
     this.reqPlatformSub = this.editorSvc.onRequestPlatformChange.subscribe(id => {
       if (this.plataformaActualId !== id && this.editorSvc.playState() === 'EDITOR') {
@@ -553,6 +561,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.layoutSvc.mostrarMenu();
     this.editorSvc.limpiarEstado();
     this.inputOrchestrator.disposeListeners();
+    this.liveBuilderSvc.destroy(); // 🔥 ADDED
     if (this.fpsInterval) clearInterval(this.fpsInterval);
     if (this.autoSaveSub) this.autoSaveSub.unsubscribe();
     if (this.eventBusSub) this.eventBusSub.unsubscribe();

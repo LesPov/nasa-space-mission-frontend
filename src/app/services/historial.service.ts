@@ -1,3 +1,4 @@
+// src/app/services/historial.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { Vector3, AbstractMesh, Quaternion, Node } from '@babylonjs/core';
@@ -22,7 +23,7 @@ export interface AccionHistorial {
   providedIn: 'root'
 })
 export class HistorialService {
-  private entityManager = inject(EntityManagerService); // 🔥 Inyectamos el ECS
+  private entityManager = inject(EntityManagerService);
   private historial: AccionHistorial[] = [];
   private readonly MAX_HISTORIAL = 50;
 
@@ -133,7 +134,6 @@ export class HistorialService {
       
       const descendientes = mesh.getDescendants(false);
       
-      // 🔥 NUEVO: Deshacer (Eliminar) limpiando el ECS
       const entity = this.entityManager.getEntityByMesh(mesh);
       if (entity) {
           this.entityManager.removeEntity(entity.uid);
@@ -160,12 +160,12 @@ export class HistorialService {
     const descendientes = mesh.getDescendants(false);
 
     for (let i = descendientes.length - 1; i >= 0; i--) {
-      const nodo = descendientes[i] as Node & { dispose?: () => void; isDisposed?: () => boolean };
+      const nodo = descendientes[i] as Node & { dispose?: (d?:boolean, dt?:boolean) => void; isDisposed?: () => boolean };
 
       if (nodo && typeof nodo.dispose === 'function') {
         try {
           if (!nodo.isDisposed || !nodo.isDisposed()) {
-            nodo.dispose();
+            nodo.dispose(false, false); // 🔥 FIX: previene borrar materiales compartidos
           }
         } catch {
         }
@@ -174,7 +174,7 @@ export class HistorialService {
 
     try {
       if (!mesh.isDisposed()) {
-        mesh.dispose(false, true);
+        mesh.dispose(false, false); // 🔥 FIX: previene borrar materiales compartidos
       }
     } catch {
     }

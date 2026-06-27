@@ -18,6 +18,7 @@ import { EntityManagerService } from '../../core/engine/entities/entity-manager.
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
 import { AuthService } from '../../core/services/auth';
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
+import { LiveBuilderService } from './live-builder.service'; // 🔥 ADDED
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
@@ -35,6 +36,7 @@ export class EditorToolsService {
   private clipboardSvc = inject(ToolsClipboardService);
   private fogSvc = inject(ToolsFogService);
   private gizmoSvc = inject(ToolsGizmoService);
+  private liveBuilder = inject(LiveBuilderService); // 🔥 ADDED
 
   private lastHoverCheckTime = 0;
   private isGizmoSyncAttached = false;
@@ -62,7 +64,6 @@ export class EditorToolsService {
   }
 
   public limpiarEstado(): void {
-    // 🔥 FIX 2: Saneamiento exhaustivo del estado en memoria al desmontar el editor
     this.gizmoSvc.dispose();
     this.debugSvc.actualizarDebugMeshes(null);
     this.highlightSvc.actualizarHighlights(null, null);
@@ -212,6 +213,8 @@ export class EditorToolsService {
       if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
         if (playSt === 'PLAYING') {
           if (isAdmin) {
+             // 🔥 FIX SUPREMO: Bloquear la selección de objetos con Raycast si el constructor Live está equipado
+             if (this.liveBuilder.isBuilding()) return; 
              this.manejarFPSAdminSelection(canvas, isLocked);
           }
           return;
@@ -264,6 +267,9 @@ export class EditorToolsService {
             this.state.objetoHovereado.set(null);
             return;
           }
+
+          // 🔥 FIX: No hacer hover verde de editor si estás construyendo
+          if (this.liveBuilder.isBuilding()) return;
 
           const ray = isLocked
             ? activeCam.getForwardRay(10000)

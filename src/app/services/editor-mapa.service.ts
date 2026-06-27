@@ -74,7 +74,6 @@ export class EditorMapaService {
     return this.scene.cargarEscenaDesdeDatos(dataBD); 
   }
   
-  // 🔥 FIX: Actualizado el tipo de retorno para incluir cinematicsDelta y deletedCinematics
   obtenerDatosParaGuardar(forceFull: boolean = false): { 
     sceneObjectsDelta: any[], 
     triggersDelta: any[], 
@@ -92,9 +91,9 @@ export class EditorMapaService {
     tipo: string, nombre: string, rol: string, colorHex: string,
     sizeX: number, sizeY: number, sizeZ: number, asset?: any,
     isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = '',
-    parentNode: AbstractMesh | null = null
+    parentNode: AbstractMesh | null = null, position?: Vector3
   ): void {
-    this.scene.agregarObjetoCustom(tipo, nombre, rol, colorHex, sizeX, sizeY, sizeZ, asset, isSolid, isSelectable, mensaje, parentNode);
+    this.scene.agregarObjetoCustom(tipo, nombre, rol, colorHex, sizeX, sizeY, sizeZ, asset, isSolid, isSelectable, mensaje, parentNode, position);
   }
 
   instanciarPrefabFull(prefabData: any, targetPos: Vector3): void {

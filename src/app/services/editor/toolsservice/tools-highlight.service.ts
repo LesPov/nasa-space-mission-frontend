@@ -1,5 +1,7 @@
+// src/app/services/editor/toolsservice/tools-highlight.service.ts
+
 import { Injectable, inject } from '@angular/core';
-import { Color3, Color4, Mesh, Tags } from '@babylonjs/core';
+import { Color3, HighlightLayer, Mesh, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
@@ -17,13 +19,31 @@ export class ToolsHighlightService {
   private lastHoveredMeshId: number | null = null;
   private lastSelectedMeshId: number | null = null;
 
-  private edgesHovered: Mesh[] = [];
-  private edgesSelected: Mesh[] = [];
+  // Colección para limpiar rastros de bordes
+  private meshesResaltadas: Mesh[] = [];
+  
+  // 🔥 NUEVO SISTEMA: HighlightLayer evita pintar las caras del modelo
+  // y crea un borde perfecto (Stroke) exterior alrededor de la silueta.
+  private highlightLayer: HighlightLayer | null = null;
 
-  // HighlightLayer eliminado completamente — solo edges y outlines
+  private getHighlightLayer(): HighlightLayer {
+    if (!this.highlightLayer && this.motor3d.scene) {
+      this.highlightLayer = new HighlightLayer("editorHighlightLayer", this.motor3d.scene, {
+        isStroke: true, // Crea un borde sólido en lugar de difuminado
+        mainTextureRatio: 2 // Mayor resolución para que el borde se vea nítido
+      });
+      this.highlightLayer.innerGlow = false; // 🔥 APAGA el brillo interno (No pinta caras)
+      this.highlightLayer.outerGlow = true;  // Solo brillo externo
+      this.highlightLayer.blurHorizontalSize = 3.0; // Grosor del borde (Auméntalo si quieres más grosor)
+      this.highlightLayer.blurVerticalSize = 3.0;
+    }
+    return this.highlightLayer!;
+  }
 
   public initHighlights(): void {
-    // No necesitamos inicializar nada para edges rendering
+    if (this.motor3d.scene) {
+      this.getHighlightLayer();
+    }
   }
 
   private esMeshExcluida(mesh: Mesh): boolean {
@@ -69,93 +89,76 @@ export class ToolsHighlightService {
     };
 
     agregarSiSirve(root);
+
     root.getChildMeshes(false).forEach(child => {
-      if (child instanceof Mesh) agregarSiSirve(child);
+      if (child instanceof Mesh) {
+        agregarSiSirve(child);
+      }
     });
 
     return Array.from(meshes);
   }
 
   private limpiarTodosLosEdges(): void {
-    const limpiar = (lista: Mesh[]) => {
-      lista.forEach(m => {
-        if (m && !m.isDisposed()) {
-          try {
-            m.disableEdgesRendering();
-            m.renderOutline = false; // Limpiamos también el contorno de seguridad
-          } catch {}
-        }
-      });
-    };
-    limpiar(this.edgesHovered);
-    limpiar(this.edgesSelected);
-    this.edgesHovered = [];
-    this.edgesSelected = [];
+    const hl = this.getHighlightLayer();
+    if (hl) {
+      hl.removeAllMeshes();
+    }
+    
+    // Limpiamos los rastros del sistema anterior por seguridad
+    this.meshesResaltadas.forEach(m => {
+      if (m && !m.isDisposed()) {
+        try {
+          m.renderOutline = false;
+          m.disableEdgesRendering();
+        } catch {}
+      }
+    });
+    this.meshesResaltadas = [];
   }
 
-  // AÑADIDO: isTrigger como parámetro para saber si debe ser grueso o delgado
-  private aplicarEdges(mesh: Mesh, color: Color4, isSelected: boolean, isTrigger: boolean): void {
+  private aplicarOutline(
+    mesh: Mesh,
+    color: Color3
+  ): void {
     if (!mesh || mesh.isDisposed()) return;
+
     try {
-      // Fuerza a que aparezca en modelos suaves (GLTF)
-      mesh.enableEdgesRendering(0.9999, false);
-      
-      // LOGICA DE GROSOR PARA LINEAS INTERNAS
-      // Si es trigger, usamos un valor bajito. Si es 3D/Primitiva, usamos un valor alto.
-      mesh.edgesWidth = isSelected 
-        ? (isTrigger ? 10.0 : 50.0) 
-        : (isTrigger ? 5.0 : 25.0); 
-        
-      mesh.edgesColor = color;
+      // Forzamos a apagar el sistema viejo para que NO pinte las paredes
+      mesh.renderOutline = false; 
+      mesh.disableEdgesRendering();
 
-      // LOGICA DE GROSOR PARA CONTORNO EXTERNO (OUTLINE)
-      mesh.renderOutline = true;
-      mesh.outlineColor = new Color3(color.r, color.g, color.b);
-      
-      // Ajuste perfecto: 
-      // Si es trigger (0.005) se ve delgado y limpio. 
-      // Si es 3D/Primitiva (0.03) se ve grueso tipo 5px.
-      mesh.outlineWidth = isSelected 
-        ? (isTrigger ? 0.005 : 0.03) 
-        : (isTrigger ? 0.002 : 0.015);
-
-      if (isSelected) {
-        this.edgesSelected.push(mesh);
-      } else {
-        this.edgesHovered.push(mesh);
+      // Aplicamos el borde externo limpio
+      const hl = this.getHighlightLayer();
+      if (hl && !hl.hasMesh(mesh)) {
+        hl.addMesh(mesh, color);
+        this.meshesResaltadas.push(mesh);
       }
     } catch {}
   }
 
   private procesarMesh(
     rootMesh: Mesh,
-    colorHex: string,
-    isSelected: boolean
+    colorHex: string
   ): void {
     if (!rootMesh || rootMesh.isDisposed()) return;
     if (this.esMeshExcluida(rootMesh)) return;
 
     const root = this.getTopMeshAncestor(rootMesh);
-    const entity =
-      this.entityManager.getEntityByMesh(root) ??
-      this.entityManager.getEntityByMesh(rootMesh);
-
-    // Identificamos si es un trigger
-    const isTrigger =
-      entity?.type === 'trigger' || entity?.type === 'trigger_compuesto';
-      
     const mode = this.state.playState();
     const isAdmin = this.authSvc.isAdmin();
 
-    const canHighlight = mode === 'EDITOR' || isAdmin || !isTrigger;
+    const canHighlight =
+      mode === 'EDITOR' ||
+      mode === 'EDITING_IN_GAME' ||
+      (mode === 'PLAYING' && isAdmin);
+
     if (!canHighlight) return;
 
     const color3 = Color3.FromHexString(colorHex);
-    const color4 = new Color4(color3.r, color3.g, color3.b, 1.0);
 
     const meshesVisuales = this.recolectarMeshesVisuales(root);
-    // Le pasamos la variable isTrigger a la función que aplica los bordes
-    meshesVisuales.forEach(m => this.aplicarEdges(m, color4, isSelected, isTrigger));
+    meshesVisuales.forEach(m => this.aplicarOutline(m, color3));
   }
 
   public actualizarHighlights(
@@ -175,7 +178,6 @@ export class ToolsHighlightService {
     this.lastHoveredMeshId = hoverId;
     this.lastSelectedMeshId = selectId;
 
-    // Limpiar todos los edges anteriores
     this.limpiarTodosLosEdges();
 
     const mode = this.state.playState();
@@ -188,17 +190,15 @@ export class ToolsHighlightService {
 
     if (!puedeResaltar) return;
 
-    const colorHover = '#3b82f6';    // azul
-    const colorSelected = '#fbbf24'; // amarillo
+    const colorHover = '#3b82f6';   // Azul para Hover
+    const colorSelected = '#fbbf24'; // Amarillo/Naranja para Selección
 
-    // Hover: solo si no es el mismo objeto seleccionado
     if (hovered && hovered !== selected) {
-      this.procesarMesh(hovered, colorHover, false);
+      this.procesarMesh(hovered, colorHover);
     }
 
-    // Selección
     if (selected && !this.state.subObjetoSeleccionado()) {
-      this.procesarMesh(selected, colorSelected, true);
+      this.procesarMesh(selected, colorSelected);
     }
   }
 }

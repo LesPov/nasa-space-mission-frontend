@@ -1,0 +1,31 @@
+
+<div class="radial-overlay" *ngIf="isOpen">
+  
+  <div class="radial-container">
+    <div class="center-info">
+      <h3>{{ hoveredAsset ? hoveredAsset.name : 'Equipar' }}</h3>
+      <p>{{ hoveredAsset ? (hoveredAsset.path ? 'Modelo 3D' : 'Primitiva') : 'Suelta Q para cerrar' }}</p>
+    </div>
+
+    <!-- Items posicionados radialmente via JS Styles -->
+    <div class="radial-item" *ngFor="let asset of displayAssets; let i = index" 
+         [style.transform]="getItemTransform(i)"
+         (mouseenter)="hoveredAsset = asset"
+         (mouseleave)="hoveredAsset = null"
+         (click)="selectAsset(asset)">
+      
+      <div class="item-bg" [style.transform]="getInverseRotation(i)">
+         <!-- Icono según tipo -->
+         <span *ngIf="!asset.path && asset.type === 'cube'">🧊</span>
+         <span *ngIf="!asset.path && asset.type === 'sphere'">⚽</span>
+         <span *ngIf="!asset.path && asset.type === 'cylinder'">🛢️</span>
+         <span *ngIf="asset.path">📦</span>
+      </div>
+      <div class="item-label" [style.transform]="getInverseRotation(i)">{{ asset.name }}</div>
+
+    </div>
+  </div>
+
+  <div class="close-hint">Clic Derecho: Desequipar</div>
+
+</div>

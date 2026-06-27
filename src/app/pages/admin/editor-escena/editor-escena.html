@@ -262,6 +262,9 @@
           <app-ui-hud  
             [playState]="editorSvc.playState()">
           </app-ui-hud>
+
+          <!-- 🔥 EL MENÚ RADIAL EN INYECCIÓN DIRECTA PARA ADMINS EN TEST LIVE -->
+          <app-ui-radial-menu></app-ui-radial-menu>
           
           <app-ui-mission 
             *ngIf="mostrarModalMisionPreview || editorSvc.state.previewMissionModal()" 

@@ -1,8 +1,7 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
-import { FogLevel, PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../../../core/engine/models/player-config.model';
+import { FogLevel, PlayerRuntimeConfig } from '../../../core/engine/models/player-config.model';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
@@ -15,10 +14,12 @@ export class PlayerConfigMutatorService {
 
     const entity = this.entityManager.getEntityByMesh(objeto);
     if (entity) {
+       // 🔥 FASE 2: Asignación directa y limpia que activa el componente interno
        entity.playerConfig = JSON.parse(JSON.stringify(playerConfig));
        entity.selectionRange = JSON.parse(JSON.stringify(selectionRange));
+       
+       // El RenderSyncSystem será quien se encargue de syncToView al final del ciclo
        entity.isDirty = true;
-       entity.syncToView();
     }
 
     this.editorSvc.triggerUpdate();

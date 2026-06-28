@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { GameEntity, CharacterConfigComponent } from '../../entities/game.entity';
 import { CoreSceneUtilsService } from './core-scene-utils.service';
@@ -45,7 +44,6 @@ export class EntityPersistenceMapperService {
     entity.interaction.interactSequenceId = obj.properties?.interactSequenceId || '';
     entity.interaction.respawnTime = this.utilsSvc.normalizarNumero(obj.properties?.respawnTime, 8);
 
-    // 🔥 FIX: Tamaños por defecto a 1 en las primitivas para que coincidan con la caja del creador/fantasma.
     const isCharacter = !!entity.characterConfig;
     const defaultCollider = entity.type === 'model' 
       ? (!isCharacter ? { type: 'mesh', sizeX: 1, sizeY: 1, sizeZ: 1, offsetX: 0, offsetY: 0, offsetZ: 0 } : { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }) 
@@ -62,6 +60,7 @@ export class EntityPersistenceMapperService {
     entity.selectionRange = { ...savedSelectionRange };
     
     if (obj.properties?.playerConfig || isCharacter) {
+      // 🔥 FASE 2: Preparar y setear el objeto UNA vez como componente atómico
       entity.playerConfig = this.utilsSvc.prepararPlayerConfigConSelectionRange(obj.properties?.playerConfig || null, savedSelectionRange);
     }
 

@@ -1,13 +1,8 @@
-
-// src/app/core/engine/entities/game.entity.ts
-
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
 import { 
-  MovementComponent, JumpComponent, PlayerCameraConfigComponent, FogConfigComponent, 
-  AnimationBindingsComponent, SequencesComponent, PhysicsConfigComponent, BlendConfigComponent, 
-  AnimationEnabledComponent, DebugConfigComponent, SelectionRangeComponent, CamOffsetComponent, 
+  SelectionRangeComponent, CamOffsetComponent, 
   AnimationNamesComponent, AutoAnimComponent, InitialHeadLocalComponent 
 } from './player-sub-components';
 
@@ -20,7 +15,7 @@ export class VisualComponent {
     public color = '#ffffff', public colorBW = '#ffffff', public isSolid = true, 
     public isSelectable = true, public ignoraNiebla = false, public esEmisivo = false, 
     public brilloIntensidad = 1.0, public assetId?: number | null, public path?: string,
-    public mostrarBorde: boolean = true // 🔥 NUEVO: Control manual del borde (Highlight)
+    public mostrarBorde: boolean = true
   ) {}
 }
 
@@ -220,45 +215,17 @@ export class GameEntity {
   get autoAnim() { return this.getComponent<AutoAnimComponent>('autoAnim')?.config || null; }
   set autoAnim(v) { if(v) this.addComponent('autoAnim', new AutoAnimComponent(v)); else this.removeComponent('autoAnim'); }
 
+  // 🔥 FASE 2: UNIFICACIÓN ECS DE LA CONFIGURACIÓN DEL JUGADOR
   get playerConfig(): PlayerRuntimeConfig | undefined {
-    const isCharacter = this.hasComponent('characterConfig');
-    if (!isCharacter && !this.hasComponent('sequences') && !this.hasComponent('fogConfig') && !this.hasComponent('animations')) {
-        return undefined;
-    }
-
-    const base = cloneDefaultPlayerConfig();
-    return {
-         movement: this.getComponent<MovementComponent>('movement')?.config ?? base.movement,
-         jump: this.getComponent<JumpComponent>('jump')?.config ?? base.jump,
-         camera: this.getComponent<PlayerCameraConfigComponent>('playerCamera')?.config ?? base.camera,
-         fog: this.getComponent<FogConfigComponent>('fogConfig')?.config ?? base.fog,
-         animations: this.getComponent<AnimationBindingsComponent>('animations')?.config ?? base.animations,
-         sequences: this.getComponent<SequencesComponent>('sequences')?.sequences ?? [],
-         physics: this.getComponent<PhysicsConfigComponent>('physicsConfig')?.config ?? base.physics,
-         blend: this.getComponent<BlendConfigComponent>('blendConfig')?.config ?? base.blend,
-         animationEnabled: this.getComponent<AnimationEnabledComponent>('animationEnabled')?.config ?? base.animationEnabled,
-         debug: this.getComponent<DebugConfigComponent>('debugConfig')?.config ?? base.debug,
-    };
+    return this.getComponent<PlayerRuntimeConfig>('playerConfig');
   }
 
   set playerConfig(v: PlayerRuntimeConfig | undefined) {
     if (!v) {
-        this.removeComponent('movement'); this.removeComponent('jump'); this.removeComponent('playerCamera');
-        this.removeComponent('fogConfig'); this.removeComponent('animations'); this.removeComponent('sequences');
-        this.removeComponent('physicsConfig'); this.removeComponent('blendConfig');
-        this.removeComponent('animationEnabled'); this.removeComponent('debugConfig');
+        this.removeComponent('playerConfig');
         return;
     }
-    this.addComponent('movement', new MovementComponent(v.movement));
-    this.addComponent('jump', new JumpComponent(v.jump));
-    this.addComponent('playerCamera', new PlayerCameraConfigComponent(v.camera));
-    this.addComponent('fogConfig', new FogConfigComponent(v.fog));
-    this.addComponent('animations', new AnimationBindingsComponent(v.animations));
-    this.addComponent('sequences', new SequencesComponent(v.sequences));
-    this.addComponent('physicsConfig', new PhysicsConfigComponent(v.physics));
-    this.addComponent('blendConfig', new BlendConfigComponent(v.blend));
-    this.addComponent('animationEnabled', new AnimationEnabledComponent(v.animationEnabled));
-    this.addComponent('debugConfig', new DebugConfigComponent(v.debug));
+    this.addComponent('playerConfig', v);
   }
 
   public bindView(mesh: AbstractMesh): void {

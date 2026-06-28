@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AnimationGroup, Scene, Mesh } from '@babylonjs/core';
 import { PlayerRuntimeConfig, PlayerActionKey, PlayerSequenceStep, normalizeAnimBinding, cloneDefaultPlayerConfig } from '../../models/player-config.model';
@@ -215,7 +214,6 @@ export class PlayerAnimationService implements IUpdatable {
     const state = this.getState(entity.uid);
     const config = entity.playerConfig || cloneDefaultPlayerConfig();
     
-    // 🔥 FIX: Animaciones forzadas por el Cinemátic Director (Actor Track)
     if (entity.isCinematicControlled) {
         const animKey = entity.playerRuntime?.cinematicAnimation || 'idle';
         const targetAnim = this.getAnimationForAction(state, animKey as PlayerActionKey);

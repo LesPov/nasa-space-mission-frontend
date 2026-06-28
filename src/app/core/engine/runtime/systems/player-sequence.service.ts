@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Vector3, Quaternion } from '@babylonjs/core';
 import { PlayerClipSequence, PlayerSequenceStep, cloneDefaultPlayerConfig } from '../../models/player-config.model';
@@ -27,7 +26,6 @@ interface SequenceActionHandler {
     execute(step: PlayerSequenceStep, entity: GameEntity, entityManager: EntityManagerService, dtMs: number, dtFraction: number, runtime: SeqRuntime): void;
 }
 
-// 🔥 ECS PURO: Desacoplado 100% de Babylon.js
 const ActionHandlers: Record<string, SequenceActionHandler> = {
     procMove: {
         execute: (step, entity, em, dtMs, dtFraction) => {
@@ -212,10 +210,6 @@ export class PlayerSequenceService implements IUpdatable {
           this.iniciarSecuenciaEnJuego(sequenceId, e);
         }
       }
-    }
-
-    if (!found) {
-      console.warn(`⚠️ Se intentó iniciar la secuencia [${sequenceId}] pero ninguna entidad en la escena la posee.`);
     }
   }
 

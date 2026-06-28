@@ -1,3 +1,4 @@
+
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -114,7 +115,7 @@ export class PropTrigger implements OnInit, OnDestroy {
           entity.syncToView();
       }
     }); 
-    this.editorSvc.triggerUpdate(); 
+    this.editorSvc.onMapChanged.next(); 
   }
 
   aplicarEscala() { 
@@ -126,7 +127,7 @@ export class PropTrigger implements OnInit, OnDestroy {
           entity.syncToView();
       }
     }); 
-    this.editorSvc.triggerUpdate(); 
+    this.editorSvc.onMapChanged.next(); 
   }
 
   toggleTriggerCondition(cond: string, event: any) {
@@ -161,7 +162,6 @@ export class PropTrigger implements OnInit, OnDestroy {
     entity.trigger.targetSceneId = this.targetSceneId;
     entity.trigger.gameConditions = [...this.gameConditions];
 
-    // 🔥 Actualización Visual en Tiempo Real del Editor
     if (this.objeto && this.objeto.material instanceof StandardMaterial) {
         let color = new Color3(0, 1, 0);
         let emissive = new Color3(0.2, 1, 0.2);
@@ -175,7 +175,7 @@ export class PropTrigger implements OnInit, OnDestroy {
             emissive = new Color3(1, 0.2, 1);
           }
         } else {
-            color = new Color3(0, 0.5, 1); // Azul para compuestos
+            color = new Color3(0, 0.5, 1); 
             emissive = new Color3(0, 0.3, 0.8);
         }
         
@@ -211,7 +211,7 @@ export class PropTrigger implements OnInit, OnDestroy {
     entity.isDirty = true;
     entity.syncToView();
 
-    this.editorSvc.triggerUpdate();
+    this.editorSvc.onMapChanged.next();
     this.animStatus = '📍 Trigger actualizado y guardado';
   }
 }

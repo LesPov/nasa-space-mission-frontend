@@ -8,11 +8,13 @@ import { SceneNodesService } from './scene-nodes.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { CoreTriggerLoaderService } from '../../../core/engine/scene/utils/core-trigger-loader.service';
 import { AuthService } from '../../../core/services/auth';
+import { EditorMapaService } from '../../editor-mapa.service';
   
 @Injectable({ providedIn: 'root' })
 export class BuilderTriggerService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
+  private mapaSvc = inject(EditorMapaService);
   private historialSvc = inject(HistorialService);
   private nodesSvc = inject(SceneNodesService);
   private entityManager = inject(EntityManagerService);
@@ -43,18 +45,18 @@ export class BuilderTriggerService {
     const isComp = entity?.trigger?.isComposite ?? false;
     const actionT = entity?.trigger?.actionType ?? 'show_message';
     
-    let color = new Color3(0, 1, 0); // Green
+    let color = new Color3(0, 1, 0); 
     let emissive = new Color3(0.2, 1, 0.2);
     if (!isComp) {
       if (actionT === 'change_scene') {
-        color = new Color3(1, 0, 0); // Red
+        color = new Color3(1, 0, 0); 
         emissive = new Color3(1, 0.2, 0.2);
       } else {
-        color = new Color3(1, 0, 1); // Pink
+        color = new Color3(1, 0, 1); 
         emissive = new Color3(1, 0.2, 1);
       }
     } else {
-        color = new Color3(0, 0.5, 1); // Azul para compuestos
+        color = new Color3(0, 0.5, 1); 
         emissive = new Color3(0, 0.3, 0.8);
     }
 
@@ -73,7 +75,7 @@ export class BuilderTriggerService {
     mat.diffuseColor = color;
     mat.emissiveColor = emissive;
     mat.alpha = 0.4;
-    mat.wireframe = false; // 🔥 Solido visible
+    mat.wireframe = false; 
     mat.disableLighting = true;
     mat.maxSimultaneousLights = 4;
     newMesh.material = mat;
@@ -101,7 +103,7 @@ export class BuilderTriggerService {
       name: nombre,
       type: isComposite ? 'trigger_compuesto' : 'trigger',
       position: parentNode ? {x:0, y:0, z:0} : { x: 0, y: sizeY / 2, z: 0 },
-      scale: { x: sizeX, y: sizeY, z: sizeZ }, // Scale será procesado por loader a "size/scale"
+      scale: { x: sizeX, y: sizeY, z: sizeZ }, 
       parentId: parentNode?.metadata?.uid || null,
       condition: isComposite ? 'on_enter' : 'on_enter',
       actionType: actionType,
@@ -124,7 +126,7 @@ export class BuilderTriggerService {
       this.state.objetoSeleccionado.set(newMesh);
       this.nodesSvc.actualizarListaNodos();
       this.historialSvc.registrarAccionCrear(newMesh);
-      this.state.triggerUpdate();
+      this.mapaSvc.onMapChanged.next();
     }
   }
 }

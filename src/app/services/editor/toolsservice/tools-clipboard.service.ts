@@ -1,9 +1,10 @@
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Quaternion, Vector3 } from '@babylonjs/core';
+import { AbstractMesh } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
 import { EditorStateService } from '../editor-state.service';
 import { EditorSceneService } from '../editor-scene.service';
+import { EditorMapaService } from '../../editor-mapa.service';
 import { CoreSceneUtilsService } from '../../../core/engine/scene/utils/core-scene-utils.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
@@ -12,6 +13,7 @@ import { AuthService } from '../../../core/services/auth';
 @Injectable({ providedIn: 'root' })
 export class ToolsClipboardService {
   private state = inject(EditorStateService);
+  private mapaSvc = inject(EditorMapaService);
   private historialSvc = inject(HistorialService);
   private sceneSvc = inject(EditorSceneService);
   private utilsSvc = inject(CoreSceneUtilsService);
@@ -129,14 +131,14 @@ export class ToolsClipboardService {
     this.sceneSvc.actualizarListaNodos();
     this.state.objetoSeleccionado.set(clon);
     this.historialSvc.registrarAccionCrear(clon);
-    this.state.triggerUpdate();
+    this.mapaSvc.onMapChanged.next();
   }
 
   public deshacerAccion(): void {
     if (this.historialSvc.deshacer()) {
       this.sceneSvc.actualizarListaNodos();
-      this.state.onGizmoDrag.next();
-      this.state.triggerUpdate();
+      this.mapaSvc.onGizmoDrag.next();
+      this.mapaSvc.onMapChanged.next();
     }
   }
 }

@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { AbstractMesh, AnimationGroup } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
+import { EditorStateService } from '../../../../services/editor/editor-state.service';
 import { EditorPreviewService } from '../../../../services/editor/editor-preview.service';
 import { PlayerActionKey, PlayerRuntimeConfig, cloneDefaultPlayerConfig, mergePlayerConfig, normalizeAnimBinding } from '../../../../core/engine/models/player-config.model';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
@@ -24,6 +25,7 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
   @Input() objeto!: AbstractMesh;
   
   private editorSvc = inject(EditorMapaService);
+  private stateSvc = inject(EditorStateService);
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private previewSvc = inject(EditorPreviewService);
   private entityManager = inject(EntityManagerService);
@@ -162,11 +164,11 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
     
     entity.syncToView();
 
-    if (this.editorSvc.playState() === 'EDITING_IN_GAME') {
+    if (this.stateSvc.playState() === 'EDITING_IN_GAME') {
        this.previewSvc.resincronizarAnimaciones(entity);
     }
     
-    this.editorSvc.triggerUpdate();
+    this.editorSvc.onMapChanged.next();
   }
 
   private normalizeList(raw: string): string[] { return raw.split(',').map(v => v.trim()).filter(Boolean); }

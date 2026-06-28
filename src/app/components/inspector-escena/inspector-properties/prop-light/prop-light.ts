@@ -278,7 +278,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.syncToView(); 
     }
 
-    this.editorSvc.triggerUpdate();
+    this.editorSvc.onMapChanged.next();
     this.animStatus = '💡 Luz actualizada y re-anclada';
   }
 }

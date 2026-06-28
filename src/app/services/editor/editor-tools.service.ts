@@ -20,11 +20,13 @@ import { AuthService } from '../../core/services/auth';
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
 import { LiveBuilderService } from './live-builder.service';
 import { PlayerInputService } from '../../core/engine/runtime/systems/player-input.service';
+import { EditorMapaService } from '../editor-mapa.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
+  private mapaSvc = inject(EditorMapaService);
   private sceneSvc = inject(EditorSceneService);
   private cameraSvc = inject(EditorCameraService);
   private entityManager = inject(EntityManagerService);
@@ -66,7 +68,6 @@ export class EditorToolsService {
 
     effect(() => {
       const isModalOpen = this.state.showAddObjectModal();
-      
       if (!this.motor3d.getEngine() || !this.motor3d.getScene()) return;
 
       const canvas = this.motor3d.getEngine().getRenderingCanvas();
@@ -211,7 +212,7 @@ export class EditorToolsService {
     this.clipboardSvc.initKeyboardListeners();
 
     if (!this.isGizmoSyncAttached) {
-      this.state.onGizmoDrag.subscribe(() => {
+      this.mapaSvc.onGizmoDrag.subscribe(() => {
          this.syncEntityFromGizmoDrag();
       });
       this.isGizmoSyncAttached = true;
@@ -231,6 +232,7 @@ export class EditorToolsService {
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
 
+      // 🔥 FIX SUPREMO: Evita que el doble clic y clic interactúen si el menú radial está bloqueando
       if (this.playerInput.isRadialMenuOpen) return;
 
       if (pi.type === PointerEventTypes.POINTERDOUBLETAP && pi.event.button === 0) {
@@ -383,7 +385,7 @@ export class EditorToolsService {
       }
     });
 
-    this.state.onMapChanged.subscribe(() => {
+    this.mapaSvc.onMapChanged.subscribe(() => {
       if (!this.gizmoSvc.isDraggingGizmo) {
         this.debugSvc.actualizarDebugMeshes(this.state.objetoSeleccionado() as Mesh);
       }
@@ -505,20 +507,8 @@ export class EditorToolsService {
     }
   }
 
-  setToolMode(mode: ToolMode): void {
+  public setToolMode(mode: ToolMode): void {
     this.state.currentTool.set(mode);
     this.gizmoSvc.actualizarGizmosActivos();
-  }
-
-  copiarObjeto() {
-    this.clipboardSvc.copiarObjeto();
-  }
-
-  pegarObjeto() {
-    this.clipboardSvc.pegarObjeto();
-  }
-
-  deshacerAccion() {
-    this.clipboardSvc.deshacerAccion();
   }
 }

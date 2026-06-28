@@ -8,6 +8,7 @@ import { EditorCameraService } from './editor-camera.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.service';
 import { EditorMapaService } from '../editor-mapa.service';
+import { EditorSceneService } from './editor-scene.service';
 import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
 import { GameStateService } from '../../core/engine/runtime/state/game-state.service'; 
 import { CameraViewMode } from '../../core/engine/session/game-context.model';
@@ -25,7 +26,8 @@ import { cloneDefaultPlayerConfig } from '../../core/engine/models/player-config
 export class EditorPlayModeService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
-  private editorSvc = inject(EditorMapaService);
+  private mapaSvc = inject(EditorMapaService);
+  private sceneSvc = inject(EditorSceneService);
   private cameraSvc = inject(EditorCameraService);
   private entityManager = inject(EntityManagerService);
   private runtimeEngine = inject(RuntimeEngineService);
@@ -117,7 +119,7 @@ export class EditorPlayModeService {
       this.cameraSvc.guardarEstadoCamaraLibre();
       this.gameState.enterSandbox();
       this.transitionSvc.beginTestLive();
-      this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
+      this.snapshotMemoria = JSON.parse(JSON.stringify(this.mapaSvc.escenaActualData()));
     }
 
     playerEntity.isPersistent = true;
@@ -195,7 +197,7 @@ export class EditorPlayModeService {
 
         if (!skipIntro) this.transitionSvc.finishTestLiveTransition();
         this.runtimeEngine.startTestSession(playerEntity!, vista);
-        this.state.triggerUpdate();
+        this.mapaSvc.onMapChanged.next();
         
         setTimeout(() => {
             const canvas = this.motor3d.getEngine().getRenderingCanvas();
@@ -237,14 +239,14 @@ export class EditorPlayModeService {
     const isDebugMode = this.authSvc.isAdmin();
 
     if (this.snapshotMemoria) {
-        const currentId = this.editorSvc.escenaIdActiva();
+        const currentId = this.mapaSvc.escenaIdActiva();
         const snapId = this.snapshotMemoria.scene?.id || this.snapshotMemoria.id;
 
         if (snapId && currentId !== snapId) {
-            this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
+            this.snapshotMemoria = JSON.parse(JSON.stringify(this.mapaSvc.escenaActualData()));
         } else {
             // 🔥 FIX: Forzamos la captura COMPLETA del estado actual de todos los objetos
-            const cambiosEnPlay: any = this.editorSvc.obtenerDatosParaGuardar(true); 
+            const cambiosEnPlay: any = this.sceneSvc.obtenerDatosParaGuardar(this.mapaSvc.escenaActualData(), true); 
             
             // Normalizar las colecciones del snapshot para que el loader nunca las ignore
             if (!this.snapshotMemoria.sceneObjects) this.snapshotMemoria.sceneObjects = this.snapshotMemoria.sceneObjectsDelta || [];
@@ -293,7 +295,7 @@ export class EditorPlayModeService {
             if (!m.isDisposed()) m.dispose(false, false); 
         });
 
-        await this.editorSvc.cargarEscenaDesdeDatos(this.snapshotMemoria);
+        await this.sceneSvc.cargarEscenaDesdeDatos(this.snapshotMemoria);
         this.snapshotMemoria = null;
     }
 
@@ -324,6 +326,6 @@ export class EditorPlayModeService {
     const canvas = this.motor3d.getEngine().getRenderingCanvas();
     this.ownership.setCamera('EDITOR', editorCam, canvas, true);
     
-    this.state.triggerUpdate();
+    this.mapaSvc.onMapChanged.next();
   }
 }

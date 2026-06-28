@@ -6,8 +6,10 @@ import { Subscription } from 'rxjs';
 import { auditTime } from 'rxjs/operators';
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
+import { EditorStateService } from '../../../services/editor/editor-state.service';
 import { EditorPreviewService } from '../../../services/editor/editor-preview.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { SceneNodesService } from '../../../services/editor/sceneservice/scene-nodes.service';
 
 import { PropTransform } from './prop-transform/prop-transform';
 import { PropTrigger } from './prop-trigger/prop-trigger';
@@ -33,6 +35,8 @@ import { PropMission } from './prop-mission/prop-mission';
 })
 export class InspectorProperties implements OnInit, OnDestroy {
   public editorSvc = inject(EditorMapaService);
+  public stateSvc = inject(EditorStateService);
+  private sceneNodesSvc = inject(SceneNodesService);
   private previewSvc = inject(EditorPreviewService);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
@@ -57,7 +61,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
 
   constructor() {
     effect(() => {
-      const obj = this.editorSvc.objetoSeleccionado() as AbstractMesh;
+      const obj = this.stateSvc.objetoSeleccionado() as AbstractMesh;
       this.objetoActual = obj || null;
       if (obj) {
         const entity = this.entityManager.getEntityByMesh(obj);
@@ -78,7 +82,6 @@ export class InspectorProperties implements OnInit, OnDestroy {
         else if (this.esVideo) this.familiaResumen = 'Pantalla TV/Video';
         else this.familiaResumen = 'Objeto normal';
         
-        // Cierres de seguridad de pestañas
         if (this.pestanaActiva === 'player' && (!this.esPersonaje || this.esTrigger)) this.cambiarPestana('transform');
         if (this.pestanaActiva === 'animation' && (!this.esPersonaje && !this.esLuzConModelo)) this.cambiarPestana('transform');
         if (this.pestanaActiva === 'sequences' && !this.esPersonaje && !this.esTrigger && !this.esLuz && !this.esBurbuja) this.cambiarPestana('transform');
@@ -122,6 +125,6 @@ export class InspectorProperties implements OnInit, OnDestroy {
   }
 
   eliminarObjeto() {
-    this.editorSvc.eliminarSeleccionado();
+    this.sceneNodesSvc.eliminarSeleccionado();
   }
 }

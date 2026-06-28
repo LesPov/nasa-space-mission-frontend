@@ -1,6 +1,5 @@
 
 import { Injectable, inject, signal, computed } from '@angular/core';
-import { Subject } from 'rxjs';
 import { Node, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { GameContextService } from '../../core/engine/session/game-context.service';
@@ -16,7 +15,6 @@ export class EditorStateService {
   private gameContext = inject(GameContextService);
   private interactRules = inject(InteractableRulesService);
 
-  // 🔥 playState AHORA ES UN COMPUTED DERIVADO DE GameContextService
   public playState = computed<PlayState>(() => {
     if (this.gameContext.isTransitioning()) return 'TRANSITIONING';
     if (this.gameContext.isInteracting()) return 'INTERACTING';
@@ -25,7 +23,6 @@ export class EditorStateService {
     if (mode === GameMode.EDITOR) return 'EDITOR';
     if (mode === GameMode.EDITING_IN_GAME) return 'EDITING_IN_GAME';
     
-    // TEST_LIVE, PREVIEW_ADMIN, FINAL_USER
     return 'PLAYING';
   });
   
@@ -43,17 +40,15 @@ export class EditorStateService {
   public fogDesactivadoTemporalmente = signal<boolean>(false);
   public previewMissionModal = signal<boolean>(false);
 
-  public onMapChanged = new Subject<void>();
-  public onGizmoDrag = new Subject<void>();
-
   public modoVistaPrueba: 'FPS' | 'TPS' | null = null;
   public jugadorActivo: Mesh | null = null;
 
-  triggerUpdate(): void {
-    this.onMapChanged.next();
+  public seleccionarObjeto(nodo: Node | null): void { 
+    this.objetoSeleccionado.set(nodo); 
+    this.subObjetoSeleccionado.set(null);
   }
 
-  isDescendant(child: Node, parent: Node): boolean {
+  public isDescendant(child: Node, parent: Node): boolean {
     let current = child.parent;
     while (current) {
       if (current === parent) return true;
@@ -62,7 +57,7 @@ export class EditorStateService {
     return false;
   }
 
-  encontrarRaiz(mesh: AbstractMesh): Node | null {
+  public encontrarRaiz(mesh: AbstractMesh): Node | null {
     if (!mesh) return null;
     let current: Node | null = mesh;
 
@@ -84,28 +79,28 @@ export class EditorStateService {
     return null;
   }
 
-  resolverObjetoSeleccionable(mesh: AbstractMesh | null): AbstractMesh | null {
+  public resolverObjetoSeleccionable(mesh: AbstractMesh | null): AbstractMesh | null {
     return this.encontrarRaiz(mesh as AbstractMesh) as AbstractMesh | null;
   }
 
-  esMeshIgnorable(mesh: AbstractMesh | null | undefined): boolean {
+  public esMeshIgnorable(mesh: AbstractMesh | null | undefined): boolean {
     return this.interactRules.isMeshIgnorable(mesh as AbstractMesh, this.jugadorActivo);
   }
 
-  esObjetoObstructor = (mesh: AbstractMesh): boolean => {
+  public esObjetoObstructor = (mesh: AbstractMesh): boolean => {
     if (this.esMeshIgnorable(mesh)) return false;
     if (!mesh.isVisible) return false;
     return true;
   };
 
-  esObjetoInteractuable(mesh: AbstractMesh | null | undefined): boolean {
+  public esObjetoInteractuable(mesh: AbstractMesh | null | undefined): boolean {
     if (!mesh) return false;
     const entity = this.entityManager.getEntityByMesh(mesh);
     if (!entity) return false;
     return this.interactRules.isInteractable(entity);
   }
 
-  puedeSeleccionarse(mesh: AbstractMesh): boolean {
+  public puedeSeleccionarse(mesh: AbstractMesh): boolean {
     if (!mesh) return false;
     if (this.esMeshIgnorable(mesh)) return false;
 
@@ -119,7 +114,7 @@ export class EditorStateService {
     return this.interactRules.canSelectInEditor(nodoBase);
   }
 
-  limpiarEstado(): void {
+  public limpiarEstado(): void {
     this.modoVistaPrueba = null;
     this.jugadorActivo = null;
     this.objetoHovereado.set(null);

@@ -7,7 +7,7 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 
 @Injectable({ providedIn: 'root' })
 export class SequenceMutatorService {
-  private editorSvc = inject(EditorMapaService);
+  private mapaSvc = inject(EditorMapaService);
   private entityManager = inject(EntityManagerService); 
 
   public persistirSecuencias(objeto: AbstractMesh, sequences: PlayerClipSequence[]): void {
@@ -18,7 +18,7 @@ export class SequenceMutatorService {
        entity.isDirty = true;
        entity.syncToView();
     }
-    this.editorSvc.triggerUpdate();
+    this.mapaSvc.onMapChanged.next();
   }
 
   public crearNuevaSecuencia(objeto: AbstractMesh, sequences: PlayerClipSequence[], isPersonaje: boolean, availableClips: string[]): string {

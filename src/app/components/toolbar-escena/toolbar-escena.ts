@@ -1,8 +1,10 @@
 
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { EditorMapaService, ToolMode } from '../../services/editor-mapa.service';
+import { EditorMapaService } from '../../services/editor-mapa.service';
+import { EditorStateService, ToolMode } from '../../services/editor/editor-state.service';
 import { EditorSceneService } from '../../services/editor/editor-scene.service';
+import { EditorToolsService } from '../../services/editor/editor-tools.service';
 
 @Component({
   selector: 'app-toolbar-escena',
@@ -12,19 +14,20 @@ import { EditorSceneService } from '../../services/editor/editor-scene.service';
   styleUrls: ['./toolbar-escena.css'] 
 })
 export class ToolbarEscena {
-  public editorSvc = inject(EditorMapaService);
+  public stateSvc = inject(EditorStateService);
   private sceneSvc = inject(EditorSceneService); 
+  private toolsSvc = inject(EditorToolsService);
 
   get currentTool() {
-    return this.editorSvc.currentTool();
+    return this.stateSvc.currentTool();
   }
 
   setTool(tool: ToolMode) {
-    this.editorSvc.setToolMode(tool);
+    this.toolsSvc.setToolMode(tool);
   }
 
   abrirModalAnadir() {
-    this.editorSvc.showAddObjectModal.set(true);
+    this.stateSvc.showAddObjectModal.set(true);
   }
 
   crearTriggerDirecto(isComposite: boolean) {

@@ -12,10 +12,10 @@
     
     <!-- PESTAÑA: CLIPS -->
     <ng-container *ngIf="activeTab === 'clips'">
-      <div *ngIf="!editorSvc.objetoSeleccionado()" class="empty-state">
+      <div *ngIf="!stateSvc.objetoSeleccionado()" class="empty-state">
         <p>Selecciona un objeto para editar sus Clips/Secuencias.</p>
       </div>
-      <div *ngIf="editorSvc.objetoSeleccionado()" style="display: flex; flex-direction: column; height: 100%;">
+      <div *ngIf="stateSvc.objetoSeleccionado()" style="display: flex; flex-direction: column; height: 100%;">
         <div class="clip-topbar">
           <button class="btn-primary" (click)="nuevaSecuencia()">+ Nuevo Clip</button>
           <div style="width: 1px; height: 15px; background: #444; margin: 0 4px;"></div>
@@ -57,12 +57,12 @@
 
     <!-- PESTAÑA: ANIM. AUTO -->
     <ng-container *ngIf="activeTab === 'animaciones'">
-      <div *ngIf="!editorSvc.objetoSeleccionado()" class="empty-state"><p>Selecciona un objeto para aplicarle una animación de bucle simple.</p></div>
+      <div *ngIf="!stateSvc.objetoSeleccionado()" class="empty-state"><p>Selecciona un objeto para aplicarle una animación de bucle simple.</p></div>
 
-      <div *ngIf="editorSvc.objetoSeleccionado()" style="padding: 15px;">
+      <div *ngIf="stateSvc.objetoSeleccionado()" style="padding: 15px;">
         <div style="background: #242424; padding: 12px; border-radius: 4px; border: 1px solid #333;">
           <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 10px; margin-bottom: 10px;">
-            <h4 style="margin: 0; color: #60a5fa; font-size: 12px;">Auto-Animación: {{ (editorSvc.objetoSeleccionado()?.name) }}</h4>
+            <h4 style="margin: 0; color: #60a5fa; font-size: 12px;">Auto-Animación: {{ (stateSvc.objetoSeleccionado()?.name) }}</h4>
             <div class="checkbox-field highlight">
               <input type="checkbox" id="chkAutoAnim" [(ngModel)]="autoAnimConfig.enabled" (change)="guardarAutoAnimacion()">
               <label for="chkAutoAnim">Activar Movimiento</label>
@@ -322,7 +322,7 @@
           <span style="font-size: 20px;">💾</span>
           <div style="flex: 1;"><b style="color: #fff; font-size: 11px;">Guardar Objeto en BD</b></div>
           <input type="text" [(ngModel)]="nuevoPrefabNombre" placeholder="Nombre..." style="background: #111; border: 1px solid #444; color: white; padding: 6px; border-radius: 3px; width: 150px; font-size: 11px;">
-          <button class="btn-primary" (click)="guardarObjetoActualComoPrefab()" [disabled]="!editorSvc.objetoSeleccionado() || !nuevoPrefabNombre || guardandoPrefab">
+          <button class="btn-primary" (click)="guardarObjetoActualComoPrefab()" [disabled]="!stateSvc.objetoSeleccionado() || !nuevoPrefabNombre || guardandoPrefab">
             {{ guardandoPrefab ? 'Guardando...' : 'Crear Prefab' }}
           </button>
         </div>

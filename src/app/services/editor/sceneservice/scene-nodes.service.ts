@@ -3,12 +3,14 @@ import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
+import { EditorMapaService } from '../../editor-mapa.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class SceneNodesService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
+  private mapaSvc = inject(EditorMapaService);
   private entityManager = inject(EntityManagerService); 
 
   public actualizarListaNodos(): void {
@@ -56,7 +58,7 @@ export class SceneNodesService {
 
       setTimeout(() => {
         this.actualizarListaNodos();
-        this.state.triggerUpdate();
+        this.mapaSvc.onMapChanged.next();
       }, 0);
     }
   }
@@ -64,7 +66,6 @@ export class SceneNodesService {
   public limpiarEstado(): void {
     this.state.nodosEscena().forEach((nodo) => {
       if (nodo instanceof AbstractMesh && !Tags.MatchesQuery(nodo, "invisible_floor")) {
-          // 🔥 FIX: No disponer materiales para no corromper la caché global de assets 3D
           nodo.dispose(false, false);
       }
     });

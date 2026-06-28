@@ -14,10 +14,12 @@ import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
 import { UiMission } from '../../../components/ui-mission/ui-mission';
-import { UiRadialMenu } from '../../../components/ui-radial-menu/ui-radial-menu'; // 🔥 ADDED
+import { UiRadialMenu } from '../../../components/ui-radial-menu/ui-radial-menu';
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EditorStateService } from '../../../services/editor/editor-state.service';
+import { EditorSceneService } from '../../../services/editor/editor-scene.service';
+import { EditorToolsService } from '../../../services/editor/editor-tools.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { LayoutService } from '../../../services/layout.service';
 import { EpisodiosService } from '../../../services/api/episodios';
@@ -37,14 +39,14 @@ import { GameMode } from '../../../core/engine/session/game-mode.model';
 import { AbstractMesh, Tags } from '@babylonjs/core';
 import { WindowSyncService } from '../../../core/services/window-sync.service';
 import { EditorCinematicService } from '../../../services/editor/editor-cinematic.service';
-import { LiveBuilderService } from '../../../services/editor/live-builder.service'; // 🔥 ADDED
+import { LiveBuilderService } from '../../../services/editor/live-builder.service';
 
 @Component({
   selector: 'app-editor-escena', 
   standalone: true,
   imports: [
     MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule,
-    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading, UiMission, UiRadialMenu // 🔥 ADDED
+    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading, UiMission, UiRadialMenu 
   ],
   templateUrl:'./editor-escena.html',
   styleUrl: './editor-escena.css', 
@@ -71,7 +73,9 @@ export class EditorEscena implements OnInit, OnDestroy {
   private windowSync = inject(WindowSyncService);
   public playModeSvc = inject(EditorPlayModeService);
   private cinematicSvc = inject(EditorCinematicService);
-  private liveBuilderSvc = inject(LiveBuilderService); // 🔥 ADDED
+  private liveBuilderSvc = inject(LiveBuilderService); 
+  public toolsSvc = inject(EditorToolsService);
+  public sceneSvc = inject(EditorSceneService);
 
   public isInteracting = signal(false);
   public editando = false;
@@ -129,11 +133,11 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   constructor() {
     effect(() => {
-      this.editorSvc.playState();
+      this.stateSvc.playState();
     });
 
     effect(() => {
-      const obj = this.editorSvc.objetoSeleccionado();
+      const obj = this.stateSvc.objetoSeleccionado();
       setTimeout(() => this.revisarSiEsJugable(), 0);
     });
   }
@@ -143,13 +147,12 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.cargarEpisodios();
     this.addObjSvc.cargarAssets();
 
-    // 🔥 Inicializamos el servicio de construcción en vivo
     if (this.esAdmin) {
        this.liveBuilderSvc.initialize();
     }
 
     this.reqPlatformSub = this.editorSvc.onRequestPlatformChange.subscribe(id => {
-      if (this.plataformaActualId !== id && this.editorSvc.playState() === 'EDITOR') {
+      if (this.plataformaActualId !== id && this.stateSvc.playState() === 'EDITOR') {
         this.plataformaActualId = id;
         this.cambiarPlataformaActiva();
       }
@@ -166,12 +169,12 @@ export class EditorEscena implements OnInit, OnDestroy {
           this.vistaPrueba = event.payload as 'FPS' | 'TPS';
           break;
         case 'GamePaused': 
-          if (this.editorSvc.playState() === 'PLAYING') {
+          if (this.stateSvc.playState() === 'PLAYING') {
               this.cerrandoModalMision = false;
           }
           break;
         case 'ChangeSceneRequested':
-          if (this.editorSvc.playState() === 'PLAYING' || this.editorSvc.playState() === 'EDITING_IN_GAME') {
+          if (this.stateSvc.playState() === 'PLAYING' || this.stateSvc.playState() === 'EDITING_IN_GAME') {
               this.cambiarPlataformaTestLive(event.payload.sceneId);
           }
           break;
@@ -187,7 +190,7 @@ export class EditorEscena implements OnInit, OnDestroy {
       debounceTime(1500) 
     ).subscribe(() => {
       try {
-        const state = this.editorSvc.playState();
+        const state = this.stateSvc.playState();
         if (this.esAdmin && this.editando && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
           this.guardarMapaEnBD(true); 
         }
@@ -221,7 +224,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   revisarSiEsJugable(): void {
-    const obj = this.editorSvc.objetoSeleccionado() as AbstractMesh;
+    const obj = this.stateSvc.objetoSeleccionado() as AbstractMesh;
     let playable = false;
     
     if (obj) {
@@ -242,11 +245,11 @@ export class EditorEscena implements OnInit, OnDestroy {
   toggleNieblaTemporal() {
     this.stateSvc.fogDesactivadoTemporalmente.set(!this.stateSvc.fogDesactivadoTemporalmente());
     setTimeout(() => this.motor3dSvc.forceResize(), 10);
-    this.editorSvc.triggerUpdate();
+    this.editorSvc.onMapChanged.next();
   }
 
   togglePreviewMission() {
-    const state = this.editorSvc.playState();
+    const state = this.stateSvc.playState();
     if (state === 'EDITING_IN_GAME' || state === 'PLAYING') {
       this.mostrarModalMisionPreview = !this.mostrarModalMisionPreview;
     } else {
@@ -299,11 +302,11 @@ export class EditorEscena implements OnInit, OnDestroy {
         this.cargandoTexto.set('Preparando modelos, texturas y físicas 3D...');
         
         this.motor3dSvc.forceResize(); 
-        this.editorSvc.activarEventosEditor();
-        this.editorSvc.crearSuelo();
+        this.toolsSvc.activarEventosEditor();
+        this.sceneSvc.crearSuelo();
 
         if(res) {
-          await this.editorSvc.cargarEscenaDesdeDatos(res);
+          await this.sceneSvc.cargarEscenaDesdeDatos(res);
         }
 
         this.motor3dSvc.getScene().executeWhenReady(() => {
@@ -374,15 +377,14 @@ export class EditorEscena implements OnInit, OnDestroy {
         this.editorSvc.escenaActualData.set(res);
         
         this.motor3dSvc.forceResize(); 
-        this.editorSvc.crearSuelo();
+        this.sceneSvc.crearSuelo();
 
         if(res) {
-          await this.editorSvc.cargarEscenaDesdeDatos(res);
+          await this.sceneSvc.cargarEscenaDesdeDatos(res);
         }
 
         this.motor3dSvc.getScene().executeWhenReady(() => {
           setTimeout(() => {
-            // Re-arrancamos la prueba
             (this.playModeSvc as any).testearEscena(this.vistaPrueba, true);
             this.cargandoEscena.set(false);
             this.revisarSiEsJugable();
@@ -399,7 +401,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   onCanvasClick() {
-    if (this.editorSvc.playState() === 'PLAYING' && !this.gameSession.pointerLocked() && !this.isInteracting() && !this.mostrarModalMisionPreview) {
+    if (this.stateSvc.playState() === 'PLAYING' && !this.gameSession.pointerLocked() && !this.isInteracting() && !this.mostrarModalMisionPreview) {
       this.inputOrchestrator.lockPointer();
     }
   }
@@ -440,14 +442,13 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (!sceneId || !this.editando || !this.esAdmin) return;
     this.estadoGuardado.set('Guardando...');
 
-    const mapData = this.editorSvc.obtenerDatosParaGuardar();
+    const mapData = this.sceneSvc.obtenerDatosParaGuardar(this.editorSvc.escenaActualData());
     
     this.epiApiSvc.guardarMapaEscena(sceneId, mapData).subscribe({
       next: () => {
         this.entityManager.clearDirtyFlags();
         this.entityManager.clearDeletedRecords();
         
-        // 🔥 FIX CRÍTICO: Vaciamos la caché de cinemáticas borradas una vez se guarda en DB para que no revivan
         this.cinematicSvc.deletedCinematics = [];
 
         this.estadoGuardado.set('Guardado automático ✓');
@@ -506,37 +507,36 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   handleMissionStart() {
-    if (this.editorSvc.state.previewMissionModal() && !this.mostrarModalMisionPreview) {
-       this.editorSvc.state.previewMissionModal.set(false);
+    if (this.stateSvc.previewMissionModal() && !this.mostrarModalMisionPreview) {
+       this.stateSvc.previewMissionModal.set(false);
     } else {
        this.comenzarMisionPreview();
     }
   }
 
   handleMissionExit() {
-    if (this.editorSvc.state.previewMissionModal() && !this.mostrarModalMisionPreview) {
-       this.editorSvc.state.previewMissionModal.set(false);
+    if (this.stateSvc.previewMissionModal() && !this.mostrarModalMisionPreview) {
+       this.stateSvc.previewMissionModal.set(false);
     } else {
        this.detenerModoPrueba();
     }
   }
 
   async detenerModoPrueba() {
-    if (this.editorSvc.playState() === 'EDITOR') return;
+    if (this.stateSvc.playState() === 'EDITOR') return;
     
     this.mostrarModalMisionPreview = false;
     this.cargandoEscena.set(true);
     this.cargandoTexto.set('Restaurando Editor...');
     this.cdr.detectChanges();
 
-    // 🔥 FIX: Tipado seguro para llamar a la rutina del servicio
     await (this.playModeSvc as any).detenerPrueba();
 
     this.cargandoEscena.set(false);
     this.revisarSiEsJugable(); 
     this.cdr.detectChanges();
 
-    setTimeout(() => this.editorSvc.triggerUpdate(), 500);
+    setTimeout(() => this.editorSvc.onMapChanged.next(), 500);
   }
 
   cerrarInteraccion() {
@@ -548,6 +548,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.cargandoEscena.set(false);
     this.layoutSvc.mostrarMenu();
     this.editorSvc.limpiarEstado();
+    this.toolsSvc.limpiarEstado();
     this.cargarEpisodios();
 
     this.isInteracting.set(false);
@@ -560,8 +561,9 @@ export class EditorEscena implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.layoutSvc.mostrarMenu();
     this.editorSvc.limpiarEstado();
+    this.toolsSvc.limpiarEstado();
     this.inputOrchestrator.disposeListeners();
-    this.liveBuilderSvc.destroy(); // 🔥 ADDED
+    this.liveBuilderSvc.destroy(); 
     if (this.fpsInterval) clearInterval(this.fpsInterval);
     if (this.autoSaveSub) this.autoSaveSub.unsubscribe();
     if (this.eventBusSub) this.eventBusSub.unsubscribe();

@@ -1,5 +1,4 @@
 
-<!-- PANTALLA PRINCIPAL: SELECCIÓN DE MAPAS -->
 <ng-container *ngIf="!editando && !cargandoEscena()">
   <div class="galeria-header">
     <div>
@@ -38,7 +37,6 @@
     </div>
   </div>
 
-  <!-- MODAL DE CREACIÓN DE MAPA -->
   <div class="modal-overlay" *ngIf="missionSvc.showCreateMapModal">
     <div class="modal-box">
       <h3>Crear Nuevo Episodio</h3>
@@ -58,10 +56,8 @@
   </div>
 </ng-container>
 
-<!-- FLUJO DE EDICIÓN -->
 <ng-container *ngIf="editando">
 
-  <!-- MODAL DE CREACIÓN DE PLATAFORMAS (NUEVO) -->
   <div class="modal-overlay" *ngIf="mostrandoCrearPlataforma" style="z-index: 9999;">
     <div class="modal-box">
       <h3>Crear Nueva Plataforma</h3>
@@ -76,13 +72,11 @@
     </div>
   </div>
 
-  <!-- MODALES DEL EDITOR DE OBJETOS MEJORADO -->
-  <div class="modal-overlay" *ngIf="editorSvc.showAddObjectModal()" style="z-index: 9999;">
+  <div class="modal-overlay" *ngIf="stateSvc.showAddObjectModal()" style="z-index: 9999;">
     <div class="modal-box large">
       <h3>Añadir Nuevo Elemento a la Escena</h3>
       <div class="modal-grid">
         
-        <!-- COLUMNA 1: CONFIGURACIÓN GENERAL -->
         <div class="modal-section">
           <h4>1. Configuración del Objeto</h4>
           
@@ -108,13 +102,12 @@
             <textarea [(ngModel)]="objMensaje" class="modal-input" rows="4" placeholder="Ej: 'Una puerta antigua...'"></textarea>
           </div>
 
-          <div class="modal-row checkbox-row highlight-box" *ngIf="editorSvc.objetoSeleccionado()">
+          <div class="modal-row checkbox-row highlight-box" *ngIf="stateSvc.objetoSeleccionado()">
             <input type="checkbox" [(ngModel)]="objHacerHijo" id="chkHacerHijo">
-            <label for="chkHacerHijo" class="modal-label text-warning">🔗 Crear DENTRO de: {{ editorSvc.objetoSeleccionado()?.name }}</label>
+            <label for="chkHacerHijo" class="modal-label text-warning">🔗 Crear DENTRO de: {{ stateSvc.objetoSeleccionado()?.name }}</label>
           </div>
         </div>
 
-        <!-- COLUMNA 2: VISUAL Y FÍSICAS -->
         <div class="modal-section">
           <h4>2. Aspecto Visual y Físicas</h4>
           
@@ -198,13 +191,11 @@
 
   <app-ui-inspect (onClose)="cerrarInteraccion()"></app-ui-inspect>
 
-  <!-- RENDER PRINCIPAL Y CAPA BABYLON -->
   <div class="blender-layout">
     <div class="viewport-area" [style.width]="layoutUI.showInspector() ? 'calc(100% - ' + layoutUI.inspectorWidth() + 'px)' : '100%'">
       
       <div class="canvas-wrapper" [style.height.%]="layoutUI.showTimeline() ? 100 - layoutUI.timelineHeight() : 100">
         
-        <!-- SPINNER LOCALIZADO DENTRO DEL CANVAS -->
         <div class="cinematic-overlay" *ngIf="cargandoEscena()">
           <app-ui-loading [texto]="cargandoTexto()"></app-ui-loading>
         </div>
@@ -215,38 +206,36 @@
             
             <div style="width: 1px; height: 20px; background-color: #333; margin: 0 5px;"></div>
             
-            <!-- 🔥 SELECTOR NATIVO DE PLATAFORMAS -->
-            <select class="cam-select" [(ngModel)]="plataformaActualId" (change)="cambiarPlataformaActiva()" *ngIf="editorSvc.playState() === 'EDITOR'">
+            <select class="cam-select" [(ngModel)]="plataformaActualId" (change)="cambiarPlataformaActiva()" *ngIf="stateSvc.playState() === 'EDITOR'">
               <option *ngFor="let plat of editorSvc.plataformasEscena()" [value]="plat.id">🗺️ {{ plat.name }}</option>
             </select>
-            <button class="btn-vp" (click)="abrirModalCrearPlataforma()" *ngIf="editorSvc.playState() === 'EDITOR'">+ Añadir Zona</button>
+            <button class="btn-vp" (click)="abrirModalCrearPlataforma()" *ngIf="stateSvc.playState() === 'EDITOR'">+ Añadir Zona</button>
             
             <div style="width: 1px; height: 20px; background-color: #333; margin: 0 5px;"></div>
 
-            <button class="btn-vp" *ngIf="editorSvc.playState() !== 'TRANSITIONING' && editorSvc.playState() !== 'INTERACTING'" (click)="togglePreviewMission()" [style.color]="editorSvc.state.previewMissionModal() || mostrarModalMisionPreview ? '#60a5fa' : ''">👁️ UI</button>
+            <button class="btn-vp" *ngIf="stateSvc.playState() !== 'TRANSITIONING' && stateSvc.playState() !== 'INTERACTING'" (click)="togglePreviewMission()" [style.color]="stateSvc.previewMissionModal() || mostrarModalMisionPreview ? '#60a5fa' : ''">👁️ UI</button>
           </div>
           
           <div class="vp-right">
             <button class="btn-vp" 
-                    *ngIf="editorSvc.playState() === 'EDITING_IN_GAME'" 
+                    *ngIf="stateSvc.playState() === 'EDITING_IN_GAME'" 
                     (click)="toggleNieblaTemporal()" 
                     [style.background-color]="stateSvc.fogDesactivadoTemporalmente() ? '#5c2525' : '#3e3e3e'">
               ☁️ Niebla: {{ stateSvc.fogDesactivadoTemporalmente() ? 'OFF' : 'ON' }}
             </button>
 
-            <select [(ngModel)]="vistaPrueba" class="cam-select" *ngIf="editorSvc.playState() === 'EDITOR'">
+            <select [(ngModel)]="vistaPrueba" class="cam-select" *ngIf="stateSvc.playState() === 'EDITOR'">
               <option value="FPS">👁️ 1ra Persona</option>
               <option value="TPS">🧍 3ra Persona</option>
             </select>
             
-            <!-- 🔥 FIX NG0100: Reemplazado método () por Signal Reactivo -->
-            <button class="btn-vp btn-play" *ngIf="editorSvc.playState() === 'EDITOR'" [disabled]="!isPlayable()" (click)="iniciarModoPrueba()">▶️ Jugar Preview</button>
+            <button class="btn-vp btn-play" *ngIf="stateSvc.playState() === 'EDITOR'" [disabled]="!isPlayable()" (click)="iniciarModoPrueba()">▶️ Jugar Preview</button>
             
-            <button class="btn-vp btn-window" *ngIf="editorSvc.playState() === 'EDITOR'" [disabled]="!isPlayable()" (click)="abrirVentanaPreview()">🪟 Ventana Externa</button>
+            <button class="btn-vp btn-window" *ngIf="stateSvc.playState() === 'EDITOR'" [disabled]="!isPlayable()" (click)="abrirVentanaPreview()">🪟 Ventana Externa</button>
 
-            <span class="sync-status" [class.syncing]="estadoGuardado() === 'Guardando...'" *ngIf="editorSvc.playState() === 'EDITOR'">{{ estadoGuardado() }}</span>
-            <button class="btn-vp btn-save" (click)="guardarMapaEnBD(false)" *ngIf="editorSvc.playState() === 'EDITOR'">💾 Guardar</button>
-            <button class="btn-vp btn-stop" *ngIf="editorSvc.playState() !== 'EDITOR'" (click)="detenerModoPrueba()">⏹️ Volver al Editor</button>
+            <span class="sync-status" [class.syncing]="estadoGuardado() === 'Guardando...'" *ngIf="stateSvc.playState() === 'EDITOR'">{{ estadoGuardado() }}</span>
+            <button class="btn-vp btn-save" (click)="guardarMapaEnBD(false)" *ngIf="stateSvc.playState() === 'EDITOR'">💾 Guardar</button>
+            <button class="btn-vp btn-stop" *ngIf="stateSvc.playState() !== 'EDITOR'" (click)="detenerModoPrueba()">⏹️ Volver al Editor</button>
           </div>
         </div>
 
@@ -256,23 +245,22 @@
           <ng-container>
             <button class="toggle-panel-btn toggle-right" (click)="layoutUI.toggleInspector()" [title]="layoutUI.showInspector() ? 'Ocultar Inspector' : 'Mostrar Inspector'">{{ layoutUI.showInspector() ? '▶' : '◀' }}</button>
             <button class="toggle-panel-btn toggle-bottom" (click)="layoutUI.toggleTimeline()" [title]="layoutUI.showTimeline() ? 'Ocultar Timeline' : 'Mostrar Timeline'">{{ layoutUI.showTimeline() ? '▼' : '▲' }}</button>
-            <app-toolbar-escena *ngIf="editorSvc.playState() === 'EDITOR' || editorSvc.playState() === 'EDITING_IN_GAME' || (editorSvc.playState() === 'PLAYING' && !gameSession.pointerLocked())"></app-toolbar-escena>
+            <app-toolbar-escena *ngIf="stateSvc.playState() === 'EDITOR' || stateSvc.playState() === 'EDITING_IN_GAME' || (stateSvc.playState() === 'PLAYING' && !gameSession.pointerLocked())"></app-toolbar-escena>
           </ng-container>
 
           <app-ui-hud  
-            [playState]="editorSvc.playState()">
+            [playState]="stateSvc.playState()">
           </app-ui-hud>
 
-          <!-- 🔥 EL MENÚ RADIAL EN INYECCIÓN DIRECTA PARA ADMINS EN TEST LIVE -->
           <app-ui-radial-menu></app-ui-radial-menu>
           
           <app-ui-mission 
-            *ngIf="mostrarModalMisionPreview || editorSvc.state.previewMissionModal()" 
+            *ngIf="mostrarModalMisionPreview || stateSvc.previewMissionModal()" 
             [episodio]="episodioCompletoData"
             [misionIniciada]="misionIniciada" 
             [cerrando]="cerrandoModalMision" 
             [isDebugMode]="true" 
-            [isPreviewOnly]="editorSvc.state.previewMissionModal() && !mostrarModalMisionPreview"
+            [isPreviewOnly]="stateSvc.previewMissionModal() && !mostrarModalMisionPreview"
             (mapaNombreChange)="mapaActualNombre = $event; episodioCompletoData.title = $event;"
             (mapaDescChange)="episodioCompletoData.description = $event;"
             (onStart)="handleMissionStart()" 
@@ -283,14 +271,12 @@
         </div>
       </div>
       
-      <!-- PANEL INFERIOR TIMELINE -->
       <div class="horizontal-resizer" *ngIf="layoutUI.showTimeline()" (mousedown)="layoutUI.startResizeTimeline($event)" [class.resizing]="layoutUI.isResizingTimeline()"><div class="resizer-grip-h"></div></div>
       <div class="timeline-wrapper" *ngIf="layoutUI.showTimeline() && layoutUI.timelineHeight() > 5" [style.height.%]="layoutUI.timelineHeight()">
         <app-global-timeline></app-global-timeline>
       </div>
     </div>
     
-    <!-- INSPECTOR DERECHO -->
     <div class="layout-resizer" *ngIf="layoutUI.showInspector()" (mousedown)="layoutUI.startResize($event)" [class.resizing]="layoutUI.isResizing()"><div class="resizer-grip"></div></div>
     <div class="inspector-wrapper" *ngIf="layoutUI.showInspector()" [style.width.px]="layoutUI.inspectorWidth()">
       <app-inspector-escena></app-inspector-escena>

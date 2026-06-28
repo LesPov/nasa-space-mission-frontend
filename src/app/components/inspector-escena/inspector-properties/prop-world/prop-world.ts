@@ -79,7 +79,7 @@ export class PropWorld implements OnInit, OnDestroy {
       }
     });
 
-    this.editorSvc.triggerUpdate();
+    this.editorSvc.onMapChanged.next();
   }
 
   aplicarFondo() {
@@ -88,7 +88,7 @@ export class PropWorld implements OnInit, OnDestroy {
       clearColorBW: this.clearColorHexBW
     });
     this.worldSettingsSvc.applyToScene(this.motor3dSvc.getScene(), (mode) => this.motor3dSvc.setVisualMode(mode));
-    this.editorSvc.triggerUpdate();
+    this.editorSvc.onMapChanged.next();
   }
 
   aplicarIluminacion() {
@@ -101,12 +101,12 @@ export class PropWorld implements OnInit, OnDestroy {
       ambientDirZ: this.ambientDirZ
     });
     this.worldSettingsSvc.applyToScene(this.motor3dSvc.getScene(), (mode) => this.motor3dSvc.setVisualMode(mode));
-    this.editorSvc.triggerUpdate();
+    this.editorSvc.onMapChanged.next();
   }
 
   aplicarGravedad() {
     this.worldSettingsSvc.updateWorldSettings({ gravityY: this.gravedadY });
     this.worldSettingsSvc.applyToScene(this.motor3dSvc.getScene(), (mode) => this.motor3dSvc.setVisualMode(mode));
-    this.editorSvc.triggerUpdate();
+    this.editorSvc.onMapChanged.next();
   }
 }

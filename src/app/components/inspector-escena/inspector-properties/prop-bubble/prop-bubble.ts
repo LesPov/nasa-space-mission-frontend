@@ -37,6 +37,6 @@ export class PropBubble implements OnInit {
       entity.syncToView();
     } 
     
-    this.editorSvc.triggerUpdate();
+    this.editorSvc.onMapChanged.next();
   }
 }

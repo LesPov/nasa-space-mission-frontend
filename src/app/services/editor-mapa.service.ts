@@ -1,109 +1,26 @@
 
-import { Injectable, inject, signal } from '@angular/core';
-import { Node, AbstractMesh, Vector3 } from '@babylonjs/core';
+import { Injectable, signal } from '@angular/core';
 import { Subject } from 'rxjs';
-
-import { EditorToolsService } from './editor/editor-tools.service';
-import { EditorSceneService } from './editor/editor-scene.service';
-import { EditorStateService, ToolMode, PlayState } from './editor/editor-state.service';
-import { CoreSceneLoaderService } from '../core/engine/scene/utils/core-scene-loader.service';
- 
-export type { ToolMode, PlayState };
 
 @Injectable({
   providedIn: 'root'
 })
 export class EditorMapaService {
-  
-  public state = inject(EditorStateService); 
-  private tools = inject(EditorToolsService);
-  private scene = inject(EditorSceneService);
-  private loader = inject(CoreSceneLoaderService); 
-
+  // Estado Puro de la Plataforma/Escena
   public episodioActualData = signal<any>(null);
   public escenaIdActiva = signal<number | null>(null);
   public escenaActualData = signal<any>(null);
-  
-  // Gestión de Plataformas de la Escena
   public plataformasEscena = signal<any[]>([]);
 
-  // Evento global para solicitar cambio de plataforma desde la UI (ej. Outliner)
+  // Eventos Globales del Mapa
+  public onMapChanged = new Subject<void>();
+  public onGizmoDrag = new Subject<void>();
   public onRequestPlatformChange = new Subject<number>();
 
-  get playState() { return this.state.playState; }
-  get currentTool() { return this.state.currentTool; }
-  
-  get objetoSeleccionado() { return this.state.objetoSeleccionado; }
-  get subObjetoSeleccionado() { return this.state.subObjetoSeleccionado; } 
-  
-  get objetoInteractuado() { return this.state.objetoInteractuado; }
-  get nodosEscena() { return this.state.nodosEscena; }
-  get ratonBloqueado() { return this.state.ratonBloqueado; }
-  get showAddObjectModal() { return this.state.showAddObjectModal; }
-
-  get onMapChanged() { return this.state.onMapChanged; }
-  get onGizmoDrag() { return this.state.onGizmoDrag; }
-  
-  triggerUpdate(): void { this.state.triggerUpdate(); }
-
-  limpiarEstado(): void {
-    this.scene.limpiarEstado();
-    this.state.limpiarEstado();
-    this.tools.limpiarEstado();
+  public limpiarEstado(): void {
     this.episodioActualData.set(null);
     this.escenaIdActiva.set(null);
     this.escenaActualData.set(null);
     this.plataformasEscena.set([]);
-  }
-
-  activarEventosEditor(): void { this.tools.activarEventosEditor(); }
-  setToolMode(mode: ToolMode): void { this.tools.setToolMode(mode); }
-  copiarObjeto(): void { this.tools.copiarObjeto(); }
-  pegarObjeto(): void { this.tools.pegarObjeto(); }
-  deshacerAccion(): void { this.tools.deshacerAccion(); }
-  
-  seleccionarObjeto(nodo: Node | null): void { 
-    this.state.objetoSeleccionado.set(nodo); 
-    this.state.subObjetoSeleccionado.set(null);
-  }
-
-  crearSuelo(): void { this.scene.crearSuelo(); }
-  eliminarSeleccionado(): void { this.scene.eliminarSeleccionado(); }
-  
-  cargarEscenaDesdeDatos(dataBD: any): Promise<void> { 
-    return this.scene.cargarEscenaDesdeDatos(dataBD); 
-  }
-  
-  obtenerDatosParaGuardar(forceFull: boolean = false): { 
-    sceneObjectsDelta: any[], 
-    triggersDelta: any[], 
-    cinematicsDelta: any[], 
-    deletedObjects: string[], 
-    deletedTriggers: string[], 
-    deletedCinematics: string[], 
-    environmentSettings: any, 
-    spawnPoint: any 
-  } { 
-    return this.scene.obtenerDatosParaGuardar(this.escenaActualData(), forceFull);
-  }
-  
-  agregarObjetoCustom(
-    tipo: string, nombre: string, rol: string, colorHex: string,
-    sizeX: number, sizeY: number, sizeZ: number, asset?: any,
-    isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = '',
-    parentNode: AbstractMesh | null = null, position?: Vector3
-  ): void {
-    this.scene.agregarObjetoCustom(tipo, nombre, rol, colorHex, sizeX, sizeY, sizeZ, asset, isSolid, isSelectable, mensaje, parentNode, position);
-  }
-
-  instanciarPrefabFull(prefabData: any, targetPos: Vector3): void {
-    this.loader.instantiatePrefab(prefabData, targetPos).then((mallas) => {
-      this.scene.actualizarListaNodos();
-      const iter = mallas.values().next();
-      if (!iter.done) {
-        this.state.objetoSeleccionado.set(iter.value);
-        this.state.triggerUpdate();
-      }
-    });
   }
 }

@@ -4,6 +4,8 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { EpisodiosService } from '../../services/api/episodios';
 import { EditorMapaService } from '../../services/editor-mapa.service';
+import { EditorStateService } from '../../services/editor/editor-state.service';
+import { EditorSceneService } from '../../services/editor/editor-scene.service';
 import { AbstractMesh, Vector3, Mesh, StandardMaterial, Color3, MeshBuilder, TransformNode, Tags, Matrix } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { PlayerClipSequence, createPlayerSequence, createSequenceStep, cloneDefaultPlayerConfig, mergePlayerConfig } from '../../core/engine/models/player-config.model';
@@ -47,7 +49,9 @@ const ACTION_ROWS_LIGHT = [
 })
 export class GlobalTimeline implements OnInit, OnDestroy {
   public api = inject(EpisodiosService);
-  public editorSvc = inject(EditorMapaService);
+  public stateSvc = inject(EditorStateService);
+  public mapaSvc = inject(EditorMapaService);
+  public editorSceneSvc = inject(EditorSceneService);
   private previewSvc = inject(EditorPreviewService);
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private entityManager = inject(EntityManagerService);
@@ -100,7 +104,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
 
   constructor() {
     effect(() => {
-      const obj = this.editorSvc.objetoSeleccionado() as Mesh;
+      const obj = this.stateSvc.objetoSeleccionado() as Mesh;
       const entity = this.entityManager.getEntityByMesh(obj);
       const objId = entity ? entity.uid : null;
       
@@ -112,7 +116,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
     });
 
     effect(() => {
-      this.editorSvc.escenaIdActiva();
+      this.mapaSvc.escenaIdActiva();
       this.cargarPlataformaLogic();
     });
   }
@@ -120,7 +124,6 @@ export class GlobalTimeline implements OnInit, OnDestroy {
   ngOnInit() {
     this.cargarPrefabs();
     
-    // 🔥 Suscribirse al movimiento de Gizmos para actualizar clips
     this.subs.push(
       this.cinematicSvc.onProxyMoved.subscribe(data => {
         if (this.currentCinematic) {
@@ -158,7 +161,6 @@ export class GlobalTimeline implements OnInit, OnDestroy {
     }
   }
 
-  // 🔥 Dibujar Mallas Representativas (Físicas) de Cámaras Cinemáticas
   private dibujarCamarasProxy(): void {
       this.limpiarCamarasProxy();
       const seq = this.currentCinematic;
@@ -167,7 +169,6 @@ export class GlobalTimeline implements OnInit, OnDestroy {
       seq.tracks.forEach(track => {
           if (track.type === 'camera') {
               track.clips.forEach((clip, i) => {
-                  // Creamos un Mesh unificado (Box) en lugar de TransformNode para permitir picking en Editor
                   const node = MeshBuilder.CreateBox(`proxy_cam_${clip.id}`, { width: 0.4, height: 0.3, depth: 0.5 }, this.motor3dSvc.getScene());
                   
                   const lens = MeshBuilder.CreateCylinder('lens', { height: 0.3, diameterTop: 0.3, diameterBottom: 0.15 }, this.motor3dSvc.getScene());
@@ -184,7 +185,6 @@ export class GlobalTimeline implements OnInit, OnDestroy {
                   node.isPickable = true;
                   lens.isPickable = true;
                   
-                  // TAG CRÍTICO: Indica a ToolsSelection y ToolsGizmo que es seleccionable a pesar de no ser un GameEntity
                   Tags.AddTagsTo(node, "editor_only cinematic_proxy");
                   Tags.AddTagsTo(lens, "editor_only cinematic_proxy");
                   
@@ -206,7 +206,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
   }
 
   cargarClipsDelObjeto() {
-    const obj = this.editorSvc.objetoSeleccionado() as Mesh;
+    const obj = this.stateSvc.objetoSeleccionado() as Mesh;
     const entity = this.entityManager.getEntityByMesh(obj);
 
     if (!entity) {
@@ -255,14 +255,14 @@ export class GlobalTimeline implements OnInit, OnDestroy {
   }
 
   persist() {
-    const obj = this.editorSvc.objetoSeleccionado() as AbstractMesh;
+    const obj = this.stateSvc.objetoSeleccionado() as AbstractMesh;
     if (!obj) return;
     const entity = this.entityManager.getEntityByMesh(obj);
     if (entity) {
         if (!entity.playerConfig) entity.playerConfig = cloneDefaultPlayerConfig();
         entity.playerConfig.sequences = JSON.parse(JSON.stringify(this.sequences));
         entity.syncToView();
-        this.editorSvc.triggerUpdate();
+        this.mapaSvc.onMapChanged.next();
     }
   }
 
@@ -304,7 +304,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
 
   probarSecuencia(seq: PlayerClipSequence) {
     this.persist();
-    const obj = this.editorSvc.objetoSeleccionado() as Mesh;
+    const obj = this.stateSvc.objetoSeleccionado() as Mesh;
     const entity = this.entityManager.getEntityByMesh(obj);
     if (entity && entity.type !== 'trigger' && entity.type !== 'trigger_compuesto') {
         this.previewSvc.iniciarPreviewSecuencia(entity, seq.id);
@@ -317,7 +317,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
   }
 
   leerAutoAnimacionDelObjeto() {
-    const seleccionado = this.editorSvc.objetoSeleccionado() as AbstractMesh;
+    const seleccionado = this.stateSvc.objetoSeleccionado() as AbstractMesh;
     const entity = this.entityManager.getEntityByMesh(seleccionado);
     if (entity && entity.autoAnim) {
       this.autoAnimConfig = { ...entity.autoAnim };
@@ -328,12 +328,12 @@ export class GlobalTimeline implements OnInit, OnDestroy {
   }
 
   guardarAutoAnimacion() {
-    const seleccionado = this.editorSvc.objetoSeleccionado() as AbstractMesh;
+    const seleccionado = this.stateSvc.objetoSeleccionado() as AbstractMesh;
     const entity = this.entityManager.getEntityByMesh(seleccionado);
     if (entity) {
         entity.autoAnim = { ...this.autoAnimConfig };
         entity.syncToView();
-        this.editorSvc.triggerUpdate(); 
+        this.mapaSvc.onMapChanged.next(); 
     }
   }
 
@@ -353,7 +353,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
     if (this.motor3dSvc.getEditorCamera() && typeof this.motor3dSvc.getEditorCamera().getTarget === 'function') {
       camTarget = this.motor3dSvc.getEditorCamera().getTarget().clone();
     }
-    this.editorSvc.instanciarPrefabFull(prefab, camTarget);
+    this.editorSceneSvc.instanciarPrefabFull(prefab, camTarget);
   }
 
   eliminarPrefab(id: number) {
@@ -365,7 +365,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
   }
 
   cargarPlataformaLogic() {
-    const sceneData = this.editorSvc.escenaActualData();
+    const sceneData = this.mapaSvc.escenaActualData();
     if (!sceneData || !sceneData.scene) return;
 
     const logic = sceneData.scene.environmentSettings?.logicSettings || {};
@@ -392,7 +392,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
     const w = this.worldSettingsSvc.settings();
     const env = { ...w, logicSettings: { ...this.platformLogic } };
     (this.worldSettingsSvc as any).settings.set(env);
-    this.editorSvc.triggerUpdate(); 
+    this.mapaSvc.onMapChanged.next(); 
   }
 
   get currentCinematic() { return this.cinematics.find(c => c.id === this.selectedCinematicId) || null; }
@@ -410,7 +410,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
   }
 
   persistCinematics() {
-    this.editorSvc.triggerUpdate(); 
+    this.mapaSvc.onMapChanged.next(); 
   }
 
   seleccionarCinematica(id: string) {
@@ -494,13 +494,10 @@ export class GlobalTimeline implements OnInit, OnDestroy {
              if (!clip.startRotation) clip.startRotation = {x:0, y:0, z:0};
              if (!clip.endRotation) clip.endRotation = {x:0, y:0, z:0};
              
-             // 🔥 Enfocar suavemente cuando seleccionamos un clip de cámara en el editor
              if (track.type === 'camera' && !this.isInsideCamera) {
                  this.enfocarCamara();
-                 
-                 // Seleccionamos visualmente el Proxy para mostrar sus Gizmos
                  const proxyMesh = this.motor3dSvc.getScene().getMeshByName(`proxy_cam_${clip.id}`);
-                 if (proxyMesh) this.editorSvc.seleccionarObjeto(proxyMesh);
+                 if (proxyMesh) this.stateSvc.seleccionarObjeto(proxyMesh);
              }
          }
      }
@@ -530,9 +527,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
          return;
       }
       
-      // 🔥 Aseguramos la preferencia de visualización: si estoy dentro de la cámara, quiero secuestrar la visión. Si no, quiero observar.
       this.cinematicDirector.editorWantsCamera = this.isInsideCamera;
-
       this.cinematicDirector.play(cin);
       this.cinematicDirector.seek(this.cinematicPlayhead);
       this.cinematicIsPlaying = true;
@@ -593,7 +588,6 @@ export class GlobalTimeline implements OnInit, OnDestroy {
     this.motor3dSvc.getScene().render();
   }
 
-  // 🔥 Controles Directos de Editor a Cámara
   enfocarCamara() {
      const clip = this.currentCinematicClip;
      if (clip && clip.startPosition) {
@@ -612,7 +606,6 @@ export class GlobalTimeline implements OnInit, OnDestroy {
          const rot = new Vector3(clip.startRotation.x * Math.PI/180, clip.startRotation.y * Math.PI/180, clip.startRotation.z * Math.PI/180);
          
          this.cameraSvc.transicionACamaraCinematica(pos, rot, clip.startFov, () => {
-             // Secuestra control temporal
              this.cameraSvc.entrarCamaraFija(pos, rot, clip.startFov);
          });
      }
@@ -671,6 +664,6 @@ export class GlobalTimeline implements OnInit, OnDestroy {
         targetClip.endRotation = rot;
     }
     this.persistCinematics();
-    this.dibujarCamarasProxy(); // Actualiza proxies al guardar
+    this.dibujarCamarasProxy();
   }
 }

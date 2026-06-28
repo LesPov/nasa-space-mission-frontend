@@ -8,6 +8,7 @@ import { SceneObjectBuilderService } from './sceneservice/scene-object-builder.s
 import { SceneSaverService } from './sceneservice/scene-saver.service';
 import { SceneNodesService } from './sceneservice/scene-nodes.service';
 import { EditorStateService } from './editor-state.service';
+import { EditorMapaService } from '../editor-mapa.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { AuthService } from '../../core/services/auth';
 import { GameContextService } from '../../core/engine/session/game-context.service';
@@ -21,6 +22,7 @@ export class EditorSceneService {
   private saverSvc = inject(SceneSaverService);
   private nodesSvc = inject(SceneNodesService);
   private state = inject(EditorStateService);
+  private mapaSvc = inject(EditorMapaService);
   private entityManager = inject(EntityManagerService);
   private authSvc = inject(AuthService);
   private gameContext = inject(GameContextService);
@@ -79,7 +81,6 @@ export class EditorSceneService {
     this.builderSvc.agregarTriggerCustom(nombre, shape, isComposite, mensaje, sizeX, sizeY, sizeZ, parentNode, actionType);
   }
 
-  // 🔥 FIX ARQUITECTURA: Se agrega localRotation para preservar las rotaciones durante la creación
   public agregarObjetoCustom(
     tipo: string, nombre: string, rol: string, colorHex: string, sizeX: number, sizeY: number, sizeZ: number, 
     asset?: any, isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = '', 
@@ -94,14 +95,6 @@ export class EditorSceneService {
 
   public actualizarListaNodos(): void {
     this.nodesSvc.actualizarListaNodos();
-  }
-
-  public eliminarSeleccionado(): void {
-    this.nodesSvc.eliminarSeleccionado();
-  }
-
-  public limpiarEstado(): void {
-    this.nodesSvc.limpiarEstado();
   }
 
   public revelarEntidadesOcultasParaAdmin(): void {
@@ -141,7 +134,7 @@ export class EditorSceneService {
       const iter = mallas.values().next();
       if (!iter.done) {
         this.state.objetoSeleccionado.set(iter.value);
-        this.state.triggerUpdate();
+        this.mapaSvc.onMapChanged.next(); 
       }
     });
   }

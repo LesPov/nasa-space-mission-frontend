@@ -1,4 +1,3 @@
-// src/app/components/inspector-escena/inspector-outliner/inspector-outliner.ts
 
 import { Component, Output, EventEmitter, inject, effect, ElementRef, ChangeDetectorRef, OnInit, OnDestroy, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -6,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { Node, AbstractMesh, Camera, Light, Mesh, TransformNode, Tags } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 
+import { EditorStateService } from '../../../services/editor/editor-state.service';
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { EditorCameraService } from '../../../services/editor/editor-camera.service';
@@ -18,7 +18,8 @@ import { EditorCameraService } from '../../../services/editor/editor-camera.serv
   styleUrl: './inspector-outliner.css'
 })
 export class InspectorOutliner implements OnInit, OnDestroy {
-  public editorSvc = inject(EditorMapaService);
+  public stateSvc = inject(EditorStateService);
+  public mapaSvc = inject(EditorMapaService);
   private entityManager = inject(EntityManagerService);
   private cameraSvc = inject(EditorCameraService);
   private el = inject(ElementRef);
@@ -37,17 +38,16 @@ export class InspectorOutliner implements OnInit, OnDestroy {
   private mapChangeSub!: Subscription;
 
   constructor() {
-    // 🔥 FIX: Reaccionar reactivamente a los cambios en la escena (nuevos objetos, borrados, cargas iniciales)
     effect(() => {
-      const nodos = this.editorSvc.nodosEscena();
+      const nodos = this.stateSvc.nodosEscena();
       untracked(() => {
         this.recalcularArbol(nodos);
       });
     });
 
     effect(() => {
-      const seleccionado = this.editorSvc.objetoSeleccionado();
-      const subSeleccionado = this.editorSvc.subObjetoSeleccionado(); 
+      const seleccionado = this.stateSvc.objetoSeleccionado();
+      const subSeleccionado = this.stateSvc.subObjetoSeleccionado(); 
 
       if (seleccionado) {
         let current = seleccionado.parent;
@@ -89,7 +89,7 @@ export class InspectorOutliner implements OnInit, OnDestroy {
 
   ngOnInit() {
     this.recalcularArbol();
-    this.mapChangeSub = this.editorSvc.onMapChanged.subscribe(() => {
+    this.mapChangeSub = this.mapaSvc.onMapChanged.subscribe(() => {
         this.recalcularArbol();
     });
   }
@@ -107,7 +107,7 @@ export class InspectorOutliner implements OnInit, OnDestroy {
   }
 
   private recalcularArbol(nodosParam?: Node[]) {
-    const todosLosNodos = nodosParam || this.editorSvc.nodosEscena();
+    const todosLosNodos = nodosParam || this.stateSvc.nodosEscena();
     this.mapHijosCache.clear();
     
     const nodosRaiz = todosLosNodos.filter(n => {
@@ -146,12 +146,12 @@ export class InspectorOutliner implements OnInit, OnDestroy {
     return hijos.length > 0 || this.tieneCapsula(nodo) || this.tieneCamara(nodo) || this.tieneLuzInterna(nodo) || this.tieneNiebla(nodo) || this.tieneAnimaciones(nodo) || this.tieneSecuencias(nodo) || this.esTrigger(nodo);
   }
 
-  get plataformas() { return this.editorSvc.plataformasEscena(); }
-  get plataformaActivaId() { return this.editorSvc.escenaIdActiva(); }
+  get plataformas() { return this.mapaSvc.plataformasEscena(); }
+  get plataformaActivaId() { return this.mapaSvc.escenaIdActiva(); }
 
   cambiarPlataforma(id: number) {
     if (this.plataformaActivaId !== id) {
-      this.editorSvc.onRequestPlatformChange.next(id);
+      this.mapaSvc.onRequestPlatformChange.next(id);
     }
   }
 
@@ -208,7 +208,7 @@ export class InspectorOutliner implements OnInit, OnDestroy {
     return texto.replace(regex, `<span class="highlight-search">$1</span>`);
   }
 
-  esSeleccionado(nodo: Node): boolean { return this.editorSvc.objetoSeleccionado() === nodo; }
+  esSeleccionado(nodo: Node): boolean { return this.stateSvc.objetoSeleccionado() === nodo; }
   
   esBloqueado(nodo: Node): boolean { 
     const entity = this.entityManager.getEntityByMesh(nodo as AbstractMesh);
@@ -287,10 +287,10 @@ export class InspectorOutliner implements OnInit, OnDestroy {
     if (this.esBloqueado(nodo)) return; 
     
     if (this.esSubSeleccionado(nodo, subObj as any)) {
-      this.editorSvc.subObjetoSeleccionado.set(null); 
+      this.stateSvc.subObjetoSeleccionado.set(null); 
     } else {
-      this.editorSvc.seleccionarObjeto(nodo); 
-      this.editorSvc.subObjetoSeleccionado.set(subObj); 
+      this.stateSvc.seleccionarObjeto(nodo); 
+      this.stateSvc.subObjetoSeleccionado.set(subObj); 
       this.tabSelect.emit(pestana); 
     }
   }
@@ -299,16 +299,16 @@ export class InspectorOutliner implements OnInit, OnDestroy {
     if (this.esBloqueado(nodo)) return; 
     
     if (this.esSeleccionado(nodo)) {
-      this.editorSvc.seleccionarObjeto(null);
-      this.editorSvc.subObjetoSeleccionado.set(null);
+      this.stateSvc.seleccionarObjeto(null);
+      this.stateSvc.subObjetoSeleccionado.set(null);
     } else {
-      this.editorSvc.seleccionarObjeto(nodo); 
+      this.stateSvc.seleccionarObjeto(nodo); 
       this.cameraSvc.enfocarObjetoEnEditor(nodo); 
     }
   }
   
   esSubSeleccionado(nodo: Node, subObj: 'collider' | 'camera' | 'light' | 'fog'): boolean { 
-    return this.esSeleccionado(nodo) && this.editorSvc.subObjetoSeleccionado() === subObj; 
+    return this.esSeleccionado(nodo) && this.stateSvc.subObjetoSeleccionado() === subObj; 
   }
   
   getIcono(nodo: Node): string {
@@ -460,7 +460,7 @@ export class InspectorOutliner implements OnInit, OnDestroy {
       if (draggedEntity) draggedEntity.isDirty = true;
     }
 
-    this.editorSvc.triggerUpdate();
+    this.mapaSvc.onMapChanged.next();
     this.cdr.detectChanges();
     this.draggedNode = null;
   }
@@ -507,7 +507,7 @@ export class InspectorOutliner implements OnInit, OnDestroy {
         }
       });
 
-      this.editorSvc.triggerUpdate();
+      this.mapaSvc.onMapChanged.next();
       this.cdr.detectChanges();
     }
     this.draggedNode = null;

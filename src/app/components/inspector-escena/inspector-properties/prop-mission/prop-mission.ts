@@ -40,7 +40,7 @@ export class PropMission implements OnInit, OnDestroy {
       ...s,
       objetivos: s.objetivos.join('\n'),
       recompensas: s.recompensas.join('\n'),
-      requisitos: (s.requisitos || []).join('\n') // 🔥 ADDED
+      requisitos: (s.requisitos || []).join('\n')
     };
 
     this.cdr.detectChanges();
@@ -73,6 +73,6 @@ export class PropMission implements OnInit, OnDestroy {
       epiData.uiSettings = newSettings;
     }
 
-    this.editorSvc.triggerUpdate(); 
+    this.editorSvc.onMapChanged.next(); 
   }
 }

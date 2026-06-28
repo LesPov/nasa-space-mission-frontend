@@ -1,12 +1,14 @@
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
-import { EditorMapaService } from '../../editor-mapa.service';
-import { EpisodiosService } from '../../api/episodios';
+import { EditorStateService } from '../editor-state.service';
+import { SceneObjectBuilderService } from '../sceneservice/scene-object-builder.service';
+import { EpisodiosService } from '../../../services/api/episodios';
 
 @Injectable({ providedIn: 'root' })
 export class AddObjectModalService {
-  private editorSvc = inject(EditorMapaService);
+  private stateSvc = inject(EditorStateService);
+  private builderSvc = inject(SceneObjectBuilderService);
   private epiApiSvc = inject(EpisodiosService);
 
   public objNombre: string = 'Objeto_' + Math.floor(Math.random() * 1000);
@@ -27,7 +29,6 @@ export class AddObjectModalService {
   public subiendoAsset = false;
 
   public onRolChange(): void {
-    // Sin bloqueos forzados de modelo para no romper flexibilidad
   }
 
   public onTipoChange(): void {
@@ -84,8 +85,8 @@ export class AddObjectModalService {
 
   public crearObjeto3D(): void {
     if(!this.objNombre) return;
-    const parent = this.objHacerHijo ? (this.editorSvc.objetoSeleccionado() as AbstractMesh | null) : null;
-    this.editorSvc.agregarObjetoCustom(
+    const parent = this.objHacerHijo ? (this.stateSvc.objetoSeleccionado() as AbstractMesh | null) : null;
+    this.builderSvc.agregarObjetoCustom(
       this.objTipo, this.objNombre, this.objRol, this.objColor, this.objSizeX, this.objSizeY, this.objSizeZ,
       this.objAssetSeleccionado, this.objEsSolido, this.objEsSeleccionable, this.objMensaje, parent
     );
@@ -93,7 +94,7 @@ export class AddObjectModalService {
   }
 
   public cerrarModalObjeto(): void {
-    this.editorSvc.showAddObjectModal.set(false);
+    this.stateSvc.showAddObjectModal.set(false);
     this.objNombre = 'Objeto_' + Math.floor(Math.random() * 1000);
     this.objTipo = 'cube'; this.objRol = 'prop'; this.objColor = '#ffffff';
     this.objSizeX = 1; this.objSizeY = 1; this.objSizeZ = 1;

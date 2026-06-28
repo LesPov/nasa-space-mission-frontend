@@ -9,7 +9,7 @@ import { WorldSettingsService } from '../../../core/engine/world/world-settings.
 
 @Injectable({ providedIn: 'root' })
 export class TransformMutatorService {
-  private editorSvc = inject(EditorMapaService);
+  private mapaSvc = inject(EditorMapaService);
   private historialSvc = inject(HistorialService);
   private projectionSvc = inject(CoreSceneProjectionService);
   private entityManager = inject(EntityManagerService); 
@@ -31,7 +31,7 @@ export class TransformMutatorService {
     if (entity && entity.type === 'image_plane') {
        this.projectionSvc.actualizarProyeccion(objeto as Mesh);
     }
-    this.editorSvc.triggerUpdate();
+    this.mapaSvc.onMapChanged.next();
   }
 
   public aplicarRotacion(objeto: AbstractMesh, localRotEulerDeg: { x: number, y: number, z: number }): void {
@@ -54,7 +54,7 @@ export class TransformMutatorService {
     if (entity && entity.type === 'image_plane') {
        this.projectionSvc.actualizarProyeccion(objeto as Mesh);
     }
-    this.editorSvc.triggerUpdate();
+    this.mapaSvc.onMapChanged.next();
   }
 
   public aplicarEscala(objeto: AbstractMesh, localEscReal: { x: number, y: number, z: number }): void {
@@ -73,7 +73,7 @@ export class TransformMutatorService {
     if (entity && entity.type === 'image_plane') {
        this.projectionSvc.actualizarProyeccion(objeto as Mesh);
     }
-    this.editorSvc.triggerUpdate();
+    this.mapaSvc.onMapChanged.next();
   }
 
   public aplicarProyeccion(objeto: AbstractMesh, config: any): void {
@@ -95,7 +95,7 @@ export class TransformMutatorService {
     if (entity.type === 'image_plane') {
        this.projectionSvc.actualizarProyeccion(objeto as Mesh);
     }
-    this.editorSvc.triggerUpdate();
+    this.mapaSvc.onMapChanged.next();
   }
 
   public aplicarVisuales(objeto: AbstractMesh, config: any): void {
@@ -108,7 +108,6 @@ export class TransformMutatorService {
     entity.visual.esEmisivo = config.esEmisivo;
     entity.visual.brilloIntensidad = this.clampBrightness(config.brilloIntensidad);
     
-    // 🔥 GUARDADO: Registramos explícitamente en el componente Visual los cambios
     if (config.mostrarBorde !== undefined) {
        entity.visual.mostrarBorde = config.mostrarBorde;
     }
@@ -116,7 +115,6 @@ export class TransformMutatorService {
     if (config.isSelectable !== undefined) {
        entity.visual.isSelectable = config.isSelectable;
        objeto.isPickable = config.isSelectable;
-       // Permite que la selección por raycast rebote correctamente en sus hijos
        objeto.getChildMeshes().forEach((m: AbstractMesh) => m.isPickable = config.isSelectable);
     }
 
@@ -175,7 +173,7 @@ export class TransformMutatorService {
     objeto.applyFog = !config.ignoraNiebla;
     objeto.getChildMeshes().forEach((m: AbstractMesh) => m.applyFog = !config.ignoraNiebla);
     
-    this.editorSvc.triggerUpdate();
+    this.mapaSvc.onMapChanged.next();
   }
 
   public aplicarInteraccion(objeto: AbstractMesh, config: any): void {
@@ -190,7 +188,7 @@ export class TransformMutatorService {
     
     entity.isDirty = true;
     entity.syncToView();
-    this.editorSvc.triggerUpdate();
+    this.mapaSvc.onMapChanged.next();
   }
 
   public forzarRecalculoProyeccion(objeto: AbstractMesh): void {
@@ -198,7 +196,7 @@ export class TransformMutatorService {
       const entity = this.entityManager.getEntityByMesh(objeto);
       if (entity && entity.type === 'image_plane') {
          this.projectionSvc.actualizarProyeccion(objeto as Mesh);
-         this.editorSvc.triggerUpdate();
+         this.mapaSvc.onMapChanged.next();
       }
     }
   }

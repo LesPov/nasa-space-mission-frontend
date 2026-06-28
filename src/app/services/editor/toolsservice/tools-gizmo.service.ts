@@ -11,11 +11,13 @@ import { AuthService } from '../../../core/services/auth';
 import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
 import { WindowSyncService } from '../../../core/services/window-sync.service';
 import { EditorCinematicService } from '../editor-cinematic.service';
+import { EditorMapaService } from '../../editor-mapa.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsGizmoService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
+  private mapaSvc = inject(EditorMapaService);
   private historialSvc = inject(HistorialService);
   private debugSvc = inject(ToolsDebugService);
   private entityManager = inject(EntityManagerService);
@@ -153,7 +155,7 @@ export class ToolsGizmoService {
           this.updateCenterDragMeshRenderState(mesh, subSelected);
           this.broadcastLiveTransform(mesh); 
         }
-        this.state.onGizmoDrag.next();
+        this.mapaSvc.onGizmoDrag.next();
       }
     };
 
@@ -176,7 +178,7 @@ export class ToolsGizmoService {
         this.updateCenterDragMeshRenderState(mesh, subSelected);
         this.broadcastLiveTransform(mesh); 
       }
-      this.state.onGizmoDrag.next();
+      this.mapaSvc.onGizmoDrag.next();
     };
 
     const onDragEnd = () => {
@@ -197,8 +199,8 @@ export class ToolsGizmoService {
       }
 
       queueMicrotask(() => { 
-        this.state.onGizmoDrag.next(); 
-        this.state.triggerUpdate(); 
+        this.mapaSvc.onGizmoDrag.next(); 
+        this.mapaSvc.onMapChanged.next(); 
       });
     };
 

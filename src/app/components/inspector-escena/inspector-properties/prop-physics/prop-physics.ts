@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { AbstractMesh, Vector3, MeshBuilder, Mesh, Tags } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
+import { EditorStateService } from '../../../../services/editor/editor-state.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
  
 @Component({
@@ -18,12 +19,12 @@ export class PropPhysics implements OnInit, OnDestroy {
   @Input() objeto!: AbstractMesh;
   
   private editorSvc = inject(EditorMapaService);
+  private stateSvc = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
   colliderType = 'box';
-  // 🔥 FIX: Los UI Defaults se sincronizan ahora a tamaño unitario (1) igual que las primitivas.
   colliderSizeX = 1; colliderSizeY = 1; colliderSizeZ = 1;
   colliderOffX = 0; colliderOffY = 0; colliderOffZ = 0;
   camPosX = 0; camPosY = 1.6; camPosZ = 0;
@@ -126,11 +127,11 @@ export class PropPhysics implements OnInit, OnDestroy {
        });
     }
     
-    if (this.colliderType === 'mesh' && this.editorSvc.subObjetoSeleccionado() === 'collider') {
-        this.editorSvc.subObjetoSeleccionado.set(null);
+    if (this.colliderType === 'mesh' && this.stateSvc.subObjetoSeleccionado() === 'collider') {
+        this.stateSvc.subObjetoSeleccionado.set(null);
     }
     
-    this.editorSvc.triggerUpdate();
+    this.editorSvc.onMapChanged.next();
   }
 
   aplicarCamara() {
@@ -142,6 +143,6 @@ export class PropPhysics implements OnInit, OnDestroy {
     entity.isDirty = true;
     entity.syncToView(); 
     
-    this.editorSvc.triggerUpdate();
+    this.editorSvc.onMapChanged.next();
   }
 }

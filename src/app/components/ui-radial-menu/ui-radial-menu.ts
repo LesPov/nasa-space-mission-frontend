@@ -5,6 +5,14 @@ import { GameEventBusService } from '../../core/engine/events/game-event-bus.ser
 import { EpisodiosService } from '../../services/api/episodios';
 import { Subscription } from 'rxjs';
 
+export interface RadialItem {
+  id: string;
+  name: string;
+  type: 'group' | 'asset' | 'action';
+  icon: string;
+  data?: any;
+}
+
 @Component({
   selector: 'app-ui-radial-menu',
   standalone: true,
@@ -18,8 +26,11 @@ export class UiRadialMenu implements OnInit, OnDestroy {
   private cdr = inject(ChangeDetectorRef);
 
   public isOpen = false;
-  public hoveredAsset: any = null;
-  public displayAssets: any[] = [];
+  public hoveredItem: RadialItem | null = null;
+  
+  public currentItems: RadialItem[] = [];
+  private navigationHistory: RadialItem[][] = [];
+  private allAssetsLoaded = false;
   
   private sub!: Subscription;
 
@@ -27,69 +38,124 @@ export class UiRadialMenu implements OnInit, OnDestroy {
     this.sub = this.eventBus.events$.subscribe(e => {
       if (e.type === 'RadialMenuToggled') {
         this.isOpen = e.payload;
-        if (this.isOpen && this.displayAssets.length === 0) {
-            this.fetchAssets();
+        if (this.isOpen) {
+            this.hoveredItem = null;
+            if (!this.allAssetsLoaded) {
+                this.fetchAssetsAndBuildMenu();
+            } else {
+                this.navigationHistory = [];
+                this.buildRootMenu(this.lastFetchedAssets);
+            }
         }
         this.cdr.detectChanges();
       }
     });
-
-    // Mezclar primitivas base
-    this.displayAssets = [
-      { id: 'prim_1', name: 'Cubo', type: 'cube', path: null },
-      { id: 'prim_2', name: 'Esfera', type: 'sphere', path: null },
-      { id: 'prim_3', name: 'Cilindro', type: 'cylinder', path: null }
-    ];
   }
 
   ngOnDestroy() {
     if (this.sub) this.sub.unsubscribe();
   }
 
-  private fetchAssets() {
-    this.apiSvc.obtenerAssets().subscribe(assets => {
-       const models = assets.filter(a => a.type === 'model_glb').map(a => ({
-           id: a.id,
-           name: a.name,
-           type: 'model',
-           path: a.path
-       }));
-       // Tomar máximo 8 objetos para que el círculo no se rompa (estilo consola)
-       // Primitivas + Modelos
-       this.displayAssets = [...this.displayAssets.filter(a => !a.path), ...models].slice(0, 8);
-       this.cdr.detectChanges();
+  private lastFetchedAssets: any[] = [];
+
+  private fetchAssetsAndBuildMenu() {
+    this.apiSvc.obtenerAssets().subscribe({
+      next: (assets) => {
+         this.lastFetchedAssets = assets.filter(a => a.type === 'model_glb');
+         this.allAssetsLoaded = true;
+         this.buildRootMenu(this.lastFetchedAssets);
+      },
+      error: (err) => {
+         console.error('[RadialMenu] Error cargando assets:', err);
+         this.buildRootMenu([]);
+      }
     });
   }
 
-  // Matemáticas para distribuir los ítems en un círculo
-  public getItemTransform(index: number): string {
-    const total = this.displayAssets.length;
-    const angle = (360 / total) * index;
-    // Empezar desde arriba (-90deg)
-    const offsetAngle = angle - 90; 
-    // Radio del círculo: 180px
-    return `rotate(${offsetAngle}deg) translate(180px)`;
+  private buildRootMenu(modelAssets: any[]) {
+    const rootItems: RadialItem[] = [];
+
+    rootItems.push({
+      id: 'grp_prim', name: 'Formas Básicas', type: 'group', icon: '🔺',
+      data: [
+        { id: 'prim_1', name: 'Cubo', type: 'asset', icon: '🧊', data: { type: 'cube', path: null } },
+        { id: 'prim_2', name: 'Esfera', type: 'asset', icon: '⚽', data: { type: 'sphere', path: null } },
+        { id: 'prim_3', name: 'Cilindro', type: 'asset', icon: '🛢️', data: { type: 'cylinder', path: null } },
+        { id: 'prim_4', name: 'Plano (Suelo)', type: 'asset', icon: '🗺️', data: { type: 'plane', path: null } }
+      ]
+    });
+
+    const chunkSize = 7;
+    for (let i = 0; i < modelAssets.length; i += chunkSize) {
+      const chunk = modelAssets.slice(i, i + chunkSize);
+      
+      const chunkItems: RadialItem[] = chunk.map(m => ({
+        id: m.id.toString(), 
+        name: this.cleanName(m.name), 
+        type: 'asset', 
+        icon: '📦', 
+        data: { id: m.id, name: m.name, type: 'model', path: m.path }
+      }));
+
+      rootItems.push({
+        id: `grp_mod_${i}`, 
+        name: `Modelos 3D (${i + 1}-${i + chunk.length})`, 
+        type: 'group', 
+        icon: '🏙️', 
+        data: chunkItems
+      });
+    }
+
+    this.currentItems = rootItems;
+    this.cdr.detectChanges();
   }
 
-  // Para que los iconos no giren de cabeza
+  private cleanName(name: string): string {
+    return name.replace(/\.(glb|gltf|obj)$/i, '').substring(0, 15);
+  }
+
+  public getItemTransform(index: number): string {
+    const total = this.currentItems.length;
+    const angle = (360 / total) * index;
+    const offsetAngle = angle - 90;
+    return `rotate(${offsetAngle}deg) translate(200px)`;
+  }
+
   public getInverseRotation(index: number): string {
-    const total = this.displayAssets.length;
+    const total = this.currentItems.length;
     const angle = (360 / total) * index;
     const offsetAngle = angle - 90;
     return `rotate(${-offsetAngle}deg)`;
   }
 
-  public selectAsset(asset: any) {
+  // 🔥 FIX: Aceptamos Event para frenar el propagado
+  public handleItemClick(item: RadialItem, event?: Event) {
+    if (event) {
+        event.stopPropagation();
+        event.preventDefault();
+    }
+
+    if (item.type === 'group') {
+       this.navigationHistory.push(this.currentItems);
+       const nextView = [...item.data];
+       nextView.push({ id: 'action_back', name: 'Volver', type: 'action', icon: '🔙' });
+       this.currentItems = nextView;
+       this.hoveredItem = null;
+
+    } else if (item.type === 'action' && item.id === 'action_back') {
+       this.currentItems = this.navigationHistory.pop() || [];
+       this.hoveredItem = null;
+
+    } else if (item.type === 'asset') {
+       this.selectAsset(item.data);
+    }
+  }
+
+  private selectAsset(asset: any) {
     this.eventBus.emit({ type: 'AssetSelectedForBuild', payload: asset });
     
-    // Forzar el cierre simulando que el usuario soltó la tecla
-    // Ojo: PlayerInputService aún cree que la tecla Q está abajo, pero se corregirá al soltarla.
     this.isOpen = false;
     this.eventBus.emit({ type: 'RadialMenuToggled', payload: false });
-    
-    // Devolvemos el ratón al juego
-    const canvas = document.querySelector('canvas');
-    if (canvas) canvas.requestPointerLock();
     
     this.cdr.detectChanges();
   }

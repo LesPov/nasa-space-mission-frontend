@@ -37,8 +37,12 @@ export class CorePrimitiveLoaderService {
     let mesh!: Mesh;
     switch (obj.type) {
       case 'cube': mesh = MeshBuilder.CreateBox(entity.name, { size: 1 }, scene); break;
-      case 'sphere': case 'bubble': case 'light_point': case 'light_spot': case 'light_directional':
-        mesh = MeshBuilder.CreateSphere(entity.name, { diameter: obj.type === 'bubble' ? 1 : 0.4 }, scene); break;
+      // 🔥 FIX: Esferas creadas igual de grandes que su caja de previsualización fantasma
+      case 'sphere': mesh = MeshBuilder.CreateSphere(entity.name, { diameter: 1 }, scene); break;
+      case 'bubble': mesh = MeshBuilder.CreateSphere(entity.name, { diameter: 1 }, scene); break;
+      // 🔥 FIX: Puntos de luz visuales sí se mantienen a 0.4 para que no estorben
+      case 'light_point': case 'light_spot': case 'light_directional':
+        mesh = MeshBuilder.CreateSphere(entity.name, { diameter: 0.4 }, scene); break;
       case 'cylinder': mesh = MeshBuilder.CreateCylinder(entity.name, { height: 1, diameter: 1 }, scene); break;
       case 'plane': mesh = MeshBuilder.CreateGround(entity.name, { width: 1, height: 1 }, scene); break;
       case 'video_plane': mesh = MeshBuilder.CreatePlane(entity.name, { size: 1, sideOrientation: Mesh.DOUBLESIDE }, scene); break;
@@ -54,7 +58,8 @@ export class CorePrimitiveLoaderService {
     mesh.applyFog = !entity.visual.ignoraNiebla;
     if (obj.type !== 'bubble' && obj.type !== 'video_plane' && obj.type !== 'image_plane') mesh.receiveShadows = true;
 
-    mesh.ellipsoid = new Vector3((entity.collider.sizeX ?? 0.5) * scaleX, (entity.collider.sizeY ?? 0.5) * scaleY, (entity.collider.sizeZ ?? 0.5) * scaleZ);
+    // 🔥 FIX: Adaptar colisiones basándonos en escala unitaria = 1
+    mesh.ellipsoid = new Vector3((entity.collider.sizeX ?? 1) * scaleX, (entity.collider.sizeY ?? 1) * scaleY, (entity.collider.sizeZ ?? 1) * scaleZ);
     mesh.ellipsoidOffset = new Vector3((entity.collider.offsetX ?? 0) * scaleX, (entity.collider.offsetY ?? 0) * scaleY, (entity.collider.offsetZ ?? 0) * scaleZ);
 
     if (obj.type === 'bubble') {

@@ -18,7 +18,8 @@ import { EntityManagerService } from '../../core/engine/entities/entity-manager.
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
 import { AuthService } from '../../core/services/auth';
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
-import { LiveBuilderService } from './live-builder.service'; // 🔥 ADDED
+import { LiveBuilderService } from './live-builder.service';
+import { PlayerInputService } from '../../core/engine/runtime/systems/player-input.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
@@ -36,7 +37,8 @@ export class EditorToolsService {
   private clipboardSvc = inject(ToolsClipboardService);
   private fogSvc = inject(ToolsFogService);
   private gizmoSvc = inject(ToolsGizmoService);
-  private liveBuilder = inject(LiveBuilderService); // 🔥 ADDED
+  private liveBuilder = inject(LiveBuilderService);
+  private playerInput = inject(PlayerInputService); // 🔥 Para consultar si el menú radial está abierto
 
   private lastHoverCheckTime = 0;
   private isGizmoSyncAttached = false;
@@ -60,6 +62,37 @@ export class EditorToolsService {
     effect(() => {
       this.state.currentTool();
       this.gizmoSvc.actualizarGizmosActivos();
+    });
+
+    effect(() => {
+      const isModalOpen = this.state.showAddObjectModal();
+      
+      // 🔥 FIX: Proteger el Effect para que NO se ejecute si el motor 3D y su engine aún no existen
+      if (!this.motor3d.engine || !this.motor3d.scene) return;
+
+      const canvas = this.motor3d.engine.getRenderingCanvas();
+      const editorCam = this.motor3d.editorCamera;
+
+      if (isModalOpen) {
+        if (document.pointerLockElement) {
+          try { document.exitPointerLock(); } catch {}
+        }
+        if (editorCam && canvas) {
+          editorCam.detachControl();
+        }
+        if (this.motor3d.scene) {
+            this.motor3d.scene.skipPointerMovePicking = true;
+        }
+      } else {
+        if (editorCam && canvas && this.ownership.getOwner() === 'EDITOR') {
+          setTimeout(() => {
+              try { editorCam.attachControl(canvas, true); } catch {}
+          }, 10);
+        }
+        if (this.motor3d.scene) {
+            this.motor3d.scene.skipPointerMovePicking = false;
+        }
+      }
     });
   }
 
@@ -180,12 +213,17 @@ export class EditorToolsService {
     });
 
     scene.onPointerObservable.add((pi) => {
+      if (this.state.showAddObjectModal()) return; 
+
       const canvas = this.motor3d.engine.getRenderingCanvas();
       const playSt = this.state.playState();
       const isAdmin = this.authSvc.isAdmin();
       const isLocked = !!document.pointerLockElement;
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
+
+      // 🔥 FIX SUPREMO: Evita que el doble clic y clic interactúen si el menú radial está bloqueando
+      if (this.playerInput.isRadialMenuOpen) return;
 
       if (pi.type === PointerEventTypes.POINTERDOUBLETAP && pi.event.button === 0) {
         if (isAdmin) {
@@ -213,7 +251,6 @@ export class EditorToolsService {
       if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
         if (playSt === 'PLAYING') {
           if (isAdmin) {
-             // 🔥 FIX SUPREMO: Bloquear la selección de objetos con Raycast si el constructor Live está equipado
              if (this.liveBuilder.isBuilding()) return; 
              this.manejarFPSAdminSelection(canvas, isLocked);
           }
@@ -268,7 +305,6 @@ export class EditorToolsService {
             return;
           }
 
-          // 🔥 FIX: No hacer hover verde de editor si estás construyendo
           if (this.liveBuilder.isBuilding()) return;
 
           const ray = isLocked
@@ -302,6 +338,8 @@ export class EditorToolsService {
     });
 
     scene.onKeyboardObservable.add((kbInfo) => {
+      if (this.state.showAddObjectModal()) return; 
+
       const isAdmin = this.authSvc.isAdmin();
 
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
@@ -319,7 +357,7 @@ export class EditorToolsService {
           }
         }
 
-        if (isAdmin && !this.state.showAddObjectModal() && (this.state.playState() === 'EDITOR' || this.state.playState() === 'EDITING_IN_GAME')) {
+        if (isAdmin && (this.state.playState() === 'EDITOR' || this.state.playState() === 'EDITING_IN_GAME')) {
           if (kbInfo.event.key === '1') this.setToolMode('select');
           if (kbInfo.event.key === '2') this.setToolMode('translate');
           if (kbInfo.event.key === '3') this.setToolMode('rotate');
@@ -380,7 +418,6 @@ export class EditorToolsService {
       
       mesh.computeWorldMatrix(true);
       const invMat = Matrix.Invert(mesh.getWorldMatrix());
-      // Convertimos el Vector en el mundo de la caja Debug en su Offset Local respecto al Personaje
       const localPos = Vector3.TransformCoordinates(this.debugSvc.debugCollider.getAbsolutePosition(), invMat);
       
       entity.collider.offsetX = localPos.x;
@@ -399,7 +436,6 @@ export class EditorToolsService {
       entity.camOffset.y = localPos.y * (mesh.scaling.y || 1);
       entity.camOffset.z = localPos.z;
 
-      // 🔥 FIX 2: Si es un jugador, guardamos la vista en `playerConfig.camera` para que persista correctamente.
       if (entity.characterConfig && entity.playerConfig) {
           entity.playerConfig.camera.fpsEyeLevel = entity.camOffset.y;
       }

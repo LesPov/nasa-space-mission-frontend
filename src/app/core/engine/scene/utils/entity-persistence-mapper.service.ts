@@ -33,6 +33,7 @@ export class EntityPersistenceMapperService {
     entity.visual.ignoraNiebla = obj.properties?.ignoraNiebla ?? false;
     entity.visual.esEmisivo = obj.properties?.esEmisivo ?? false;
     entity.visual.brilloIntensidad = this.utilsSvc.normalizarNumero(obj.properties?.brilloIntensidad, 1.0);
+    entity.visual.mostrarBorde = obj.properties?.mostrarBorde ?? (entity.type !== 'plane'); 
     entity.visual.path = obj.properties?.path || obj.asset?.path || obj.properties?.videoUrl || obj.properties?.imageUrl || '';
     entity.visual.assetId = obj.assetId;
 
@@ -44,10 +45,11 @@ export class EntityPersistenceMapperService {
     entity.interaction.interactSequenceId = obj.properties?.interactSequenceId || '';
     entity.interaction.respawnTime = this.utilsSvc.normalizarNumero(obj.properties?.respawnTime, 8);
 
+    // 🔥 FIX: Tamaños por defecto a 1 en las primitivas para que coincidan con la caja del creador/fantasma.
     const isCharacter = !!entity.characterConfig;
     const defaultCollider = entity.type === 'model' 
       ? (!isCharacter ? { type: 'mesh', sizeX: 1, sizeY: 1, sizeZ: 1, offsetX: 0, offsetY: 0, offsetZ: 0 } : { type: 'capsule', sizeX: 0.4, sizeY: 0.9, sizeZ: 0.4, offsetX: 0, offsetY: 0.9, offsetZ: 0 }) 
-      : { type: (entity.type === 'sphere' || entity.type === 'bubble') ? 'sphere' : 'box', sizeX: 0.5, sizeY: 0.5, sizeZ: 0.5, offsetX: 0, offsetY: 0, offsetZ: 0 };
+      : { type: (entity.type === 'sphere' || entity.type === 'bubble') ? 'sphere' : (entity.type === 'cylinder' ? 'capsule' : 'box'), sizeX: 1, sizeY: 1, sizeZ: 1, offsetX: 0, offsetY: 0, offsetZ: 0 };
     
     const savedCollider = obj.properties?.collider || obj.properties?.capsule || { ...defaultCollider };
     if (savedCollider.radiusX !== undefined) {
@@ -103,6 +105,7 @@ export class EntityPersistenceMapperService {
       isSelectable: entity.visual.isSelectable,
       ignoraNiebla: entity.visual.ignoraNiebla,
       esEmisivo: entity.visual.esEmisivo,
+      mostrarBorde: entity.visual.mostrarBorde,
       brilloIntensidad: entity.visual.brilloIntensidad,
       mensaje: entity.interaction.mensaje,
       interactDistanceFPS: entity.interaction.interactDistanceFPS,

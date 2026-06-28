@@ -1,12 +1,10 @@
-// src/app/services/editor/toolsservice/tools-highlight.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { Color3, HighlightLayer, Mesh, Tags } from '@babylonjs/core';
+import { Color3, HighlightLayer, Mesh, AbstractMesh, Tags } from '@babylonjs/core';
 import { Motor3dService } from '../../motor-3d.service';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { AuthService } from '../../../core/services/auth';
-import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsHighlightService {
@@ -14,27 +12,25 @@ export class ToolsHighlightService {
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
   private authSvc = inject(AuthService);
-  private ownership = inject(CameraOwnershipService);
 
   private lastHoveredMeshId: number | null = null;
   private lastSelectedMeshId: number | null = null;
 
-  // Colección para limpiar rastros de bordes
   private meshesResaltadas: Mesh[] = [];
   
-  // 🔥 NUEVO SISTEMA: HighlightLayer evita pintar las caras del modelo
+  // HighlightLayer evita pintar las caras del modelo
   // y crea un borde perfecto (Stroke) exterior alrededor de la silueta.
   private highlightLayer: HighlightLayer | null = null;
 
   private getHighlightLayer(): HighlightLayer {
     if (!this.highlightLayer && this.motor3d.scene) {
       this.highlightLayer = new HighlightLayer("editorHighlightLayer", this.motor3d.scene, {
-        isStroke: true, // Crea un borde sólido en lugar de difuminado
-        mainTextureRatio: 2 // Mayor resolución para que el borde se vea nítido
+        isStroke: true, 
+        mainTextureRatio: 2 
       });
-      this.highlightLayer.innerGlow = false; // 🔥 APAGA el brillo interno (No pinta caras)
-      this.highlightLayer.outerGlow = true;  // Solo brillo externo
-      this.highlightLayer.blurHorizontalSize = 3.0; // Grosor del borde (Auméntalo si quieres más grosor)
+      this.highlightLayer.innerGlow = false; 
+      this.highlightLayer.outerGlow = true;  
+      this.highlightLayer.blurHorizontalSize = 3.0; 
       this.highlightLayer.blurVerticalSize = 3.0;
     }
     return this.highlightLayer!;
@@ -61,40 +57,45 @@ export class ToolsHighlightService {
     );
   }
 
-  private getTopMeshAncestor(mesh: Mesh): Mesh {
-    let current: Mesh = mesh;
-    while (current.parent instanceof Mesh) {
-      current = current.parent;
-    }
-    return current;
-  }
-
-  private recolectarMeshesVisuales(root: Mesh): Mesh[] {
+  private recolectarMeshesVisuales(baseMesh: Mesh): Mesh[] {
     const meshes = new Set<Mesh>();
-    if (!root || root.isDisposed()) return [];
+    if (!baseMesh || baseMesh.isDisposed()) return [];
 
-    const entity = this.entityManager.getEntityByMesh(root);
+    const entity = this.entityManager.getEntityByMesh(baseMesh);
     const entityUid = entity?.uid ?? null;
 
-    const agregarSiSirve = (m: Mesh) => {
-      if (!m || m.isDisposed()) return;
-      if (this.esMeshExcluida(m)) return;
+    if (!entity) {
+       if (!this.esMeshExcluida(baseMesh) && baseMesh.getTotalVertices() > 0) {
+          meshes.add(baseMesh);
+       }
+       return Array.from(meshes);
+    }
 
-      const e = this.entityManager.getEntityByMesh(m);
-      if (e && entityUid && e.uid !== entityUid) return;
+    const rootView = entity.view as Mesh;
+    if (!rootView || rootView.isDisposed()) return [];
 
-      if (m.getTotalVertices() > 0) {
-        meshes.add(m);
+    const traverse = (node: AbstractMesh) => {
+      if (!node || node.isDisposed()) return;
+
+      const e = this.entityManager.getEntityByMesh(node);
+      if (e && entityUid && e.uid !== entityUid) {
+        return; 
       }
+
+      if (node instanceof Mesh) {
+        if (!this.esMeshExcluida(node) && node.getTotalVertices() > 0) {
+          meshes.add(node);
+        }
+      }
+
+      node.getChildren().forEach(child => {
+        if (child instanceof AbstractMesh) {
+          traverse(child);
+        }
+      });
     };
 
-    agregarSiSirve(root);
-
-    root.getChildMeshes(false).forEach(child => {
-      if (child instanceof Mesh) {
-        agregarSiSirve(child);
-      }
-    });
+    traverse(rootView);
 
     return Array.from(meshes);
   }
@@ -105,7 +106,6 @@ export class ToolsHighlightService {
       hl.removeAllMeshes();
     }
     
-    // Limpiamos los rastros del sistema anterior por seguridad
     this.meshesResaltadas.forEach(m => {
       if (m && !m.isDisposed()) {
         try {
@@ -117,18 +117,13 @@ export class ToolsHighlightService {
     this.meshesResaltadas = [];
   }
 
-  private aplicarOutline(
-    mesh: Mesh,
-    color: Color3
-  ): void {
+  private aplicarOutline(mesh: Mesh, color: Color3): void {
     if (!mesh || mesh.isDisposed()) return;
 
     try {
-      // Forzamos a apagar el sistema viejo para que NO pinte las paredes
       mesh.renderOutline = false; 
       mesh.disableEdgesRendering();
 
-      // Aplicamos el borde externo limpio
       const hl = this.getHighlightLayer();
       if (hl && !hl.hasMesh(mesh)) {
         hl.addMesh(mesh, color);
@@ -137,14 +132,30 @@ export class ToolsHighlightService {
     } catch {}
   }
 
-  private procesarMesh(
-    rootMesh: Mesh,
-    colorHex: string
-  ): void {
-    if (!rootMesh || rootMesh.isDisposed()) return;
-    if (this.esMeshExcluida(rootMesh)) return;
+  private procesarMesh(pickedMesh: Mesh, colorHex: string): void {
+    if (!pickedMesh || pickedMesh.isDisposed()) return;
+    if (this.esMeshExcluida(pickedMesh)) return;
 
-    const root = this.getTopMeshAncestor(rootMesh);
+    const entity = this.entityManager.getEntityByMesh(pickedMesh);
+    
+    if (entity) {
+      // 🔥 LÓGICA SOLICITADA:
+      const esPiso = entity.type === 'plane';
+      const mostrarBorde = entity.visual?.mostrarBorde;
+
+      // 1. Si es el PISO, por defecto NO mostramos borde para que no moleste a la vista.
+      // Solo lo mostramos si el usuario explícitamente marcó la casilla.
+      if (esPiso && mostrarBorde !== true) {
+        return;
+      }
+
+      // 2. Para cualquier otro objeto (Player, Spawn, Modelos), si el usuario DESMARCÓ la casilla, lo ocultamos.
+      // Si la casilla no existe en la BD (undefined), asumimos TRUE y mostramos el borde.
+      if (mostrarBorde === false) {
+        return; 
+      }
+    }
+
     const mode = this.state.playState();
     const isAdmin = this.authSvc.isAdmin();
 
@@ -156,22 +167,21 @@ export class ToolsHighlightService {
     if (!canHighlight) return;
 
     const color3 = Color3.FromHexString(colorHex);
-
-    const meshesVisuales = this.recolectarMeshesVisuales(root);
-    meshesVisuales.forEach(m => this.aplicarOutline(m, color3));
+    const meshesVisuales = this.recolectarMeshesVisuales(pickedMesh);
+    
+    // Si la recolección falla pero la malla raíz tiene vértices (Ej: Spawn Point simple), la iluminamos directamente
+    if (meshesVisuales.length === 0 && pickedMesh.getTotalVertices() > 0) {
+       this.aplicarOutline(pickedMesh, color3);
+    } else {
+       meshesVisuales.forEach(m => this.aplicarOutline(m, color3));
+    }
   }
 
-  public actualizarHighlights(
-    selected: Mesh | null,
-    hovered: Mesh | null
-  ): void {
+  public actualizarHighlights(selected: Mesh | null, hovered: Mesh | null): void {
     const hoverId = hovered ? hovered.uniqueId : null;
     const selectId = selected ? selected.uniqueId : null;
 
-    if (
-      this.lastHoveredMeshId === hoverId &&
-      this.lastSelectedMeshId === selectId
-    ) {
+    if (this.lastHoveredMeshId === hoverId && this.lastSelectedMeshId === selectId) {
       return;
     }
 

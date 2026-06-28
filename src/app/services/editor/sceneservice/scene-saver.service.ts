@@ -27,7 +27,6 @@ export class SceneSaverService {
 
     const environmentSettings = this.worldSettingsSvc.settings();
     
-    // 🔥 FIX: Clonamos profundamente la lista actual de cinemáticas para enviarlas seguras
     const cinematicsDelta = JSON.parse(JSON.stringify(this.cinematicSvc.cinematics()));
     const deletedCinematics = [...this.cinematicSvc.deletedCinematics];
     
@@ -35,7 +34,9 @@ export class SceneSaverService {
     const allEntities = this.entityManager.getAllEntities();
 
     allEntities.forEach(entity => {
-      if (!forceFull && !entity.isDirty) return;
+      // 🔥 FIX: Ignoramos la bandera temporal isDirty y forzamos la extracción completa 
+      // de todos los objetos para evitar pérdida de datos si se guardan justo después de un renderSync.
+      // (Optimizado para procesar JSON sin coste perceptivo de rendimiento).
 
       entity.syncTransformFromView();
 

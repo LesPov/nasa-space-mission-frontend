@@ -107,11 +107,22 @@ export class TransformMutatorService {
     entity.visual.ignoraNiebla = config.ignoraNiebla;
     entity.visual.esEmisivo = config.esEmisivo;
     entity.visual.brilloIntensidad = this.clampBrightness(config.brilloIntensidad);
+    
+    // 🔥 GUARDADO: Registramos explícitamente en el componente Visual los cambios
+    if (config.mostrarBorde !== undefined) {
+       entity.visual.mostrarBorde = config.mostrarBorde;
+    }
+    
+    if (config.isSelectable !== undefined) {
+       entity.visual.isSelectable = config.isSelectable;
+       objeto.isPickable = config.isSelectable;
+       // Permite que la selección por raycast rebote correctamente en sus hijos
+       objeto.getChildMeshes().forEach((m: AbstractMesh) => m.isPickable = config.isSelectable);
+    }
 
     entity.isDirty = true;
     entity.syncToView();
 
-    // 🔥 FIX: Sincronización directa contra el Source of Truth de WorldSettings
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
     const activeColorHex = isBW ? config.colorBW : config.color;
 
@@ -148,7 +159,6 @@ export class TransformMutatorService {
       }
     }
 
-    // 🔥 FIX: Reflejar colores de luces si se actualizó el modo global
     if (entity.type.startsWith('light_') && entity.light) {
         const activeLightColorHex = isBW ? entity.light.lightColorBW : entity.light.lightColor;
         const c3Light = Color3.FromHexString(activeLightColorHex || '#ffffff');

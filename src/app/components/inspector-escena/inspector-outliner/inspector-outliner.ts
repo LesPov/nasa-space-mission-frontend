@@ -1,5 +1,6 @@
+// src/app/components/inspector-escena/inspector-outliner/inspector-outliner.ts
 
-import { Component, Output, EventEmitter, inject, effect, ElementRef, ChangeDetectorRef, OnInit, OnDestroy } from '@angular/core';
+import { Component, Output, EventEmitter, inject, effect, ElementRef, ChangeDetectorRef, OnInit, OnDestroy, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Node, AbstractMesh, Camera, Light, Mesh, TransformNode, Tags } from '@babylonjs/core';
@@ -31,12 +32,19 @@ export class InspectorOutliner implements OnInit, OnDestroy {
   private draggedNode: Node | null = null;
   private dropAction: 'above' | 'below' | 'inside' | null = null;
 
-  // 🔥 SOLUCIÓN DE RENDIMIENTO: Cachés para evitar Getters Pesados en el HTML
   public listaNodosCache: Node[] = [];
   private mapHijosCache: Map<string, Node[]> = new Map();
   private mapChangeSub!: Subscription;
 
   constructor() {
+    // 🔥 FIX: Reaccionar reactivamente a los cambios en la escena (nuevos objetos, borrados, cargas iniciales)
+    effect(() => {
+      const nodos = this.editorSvc.nodosEscena();
+      untracked(() => {
+        this.recalcularArbol(nodos);
+      });
+    });
+
     effect(() => {
       const seleccionado = this.editorSvc.objetoSeleccionado();
       const subSeleccionado = this.editorSvc.subObjetoSeleccionado(); 
@@ -90,7 +98,6 @@ export class InspectorOutliner implements OnInit, OnDestroy {
     if (this.mapChangeSub) this.mapChangeSub.unsubscribe();
   }
 
-  // Funciones de TrackBy para Angular
   trackByUid(index: number, node: Node): string {
     return node.uniqueId.toString();
   }
@@ -99,9 +106,8 @@ export class InspectorOutliner implements OnInit, OnDestroy {
     return plat.id;
   }
 
-  // 🔥 SOLUCIÓN: Calculamos una sola vez cuando el mapa cambia, no en cada frame
-  private recalcularArbol() {
-    const todosLosNodos = this.editorSvc.nodosEscena();
+  private recalcularArbol(nodosParam?: Node[]) {
+    const todosLosNodos = nodosParam || this.editorSvc.nodosEscena();
     this.mapHijosCache.clear();
     
     const nodosRaiz = todosLosNodos.filter(n => {

@@ -1,4 +1,3 @@
-// src/app/core/engine/runtime/systems/player-input.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { Observer, KeyboardInfo, Scene, KeyboardEventTypes } from '@babylonjs/core';
@@ -120,7 +119,6 @@ export class PlayerInputService implements IUpdatable {
       const keyStr = kbInfo.event.key ? kbInfo.event.key.toLowerCase() : '';
       const codeStr = kbInfo.event.code ? kbInfo.event.code.toLowerCase() : '';
 
-      // 🔥 FIX DE ESTABILIDAD: Permitimos la rueda radial incluso si isEnabled es false momentáneamente
       if (keyStr === 'q' && this.authSvc.isAdmin() && this.context.isDebugMode() && this.context.cameraView() === 'FPS') {
         if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
           if (!this.qPressed) {
@@ -139,7 +137,7 @@ export class PlayerInputService implements IUpdatable {
         }
       }
 
-      if (!this.isEnabled) return; // Detenemos propagación del resto del teclado si no está habilitado
+      if (!this.isEnabled) return; 
 
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
         this.inputMap[keyStr] = true;
@@ -167,7 +165,12 @@ export class PlayerInputService implements IUpdatable {
     }
   }
 
+  // 🔥 FIX CAUSA RAÍZ MOUSE BLOQUEADO: 
+  // Nunca forzamos el pointer-lock si el usuario está limpiamente en el Editor
   private lockPointerAfterMenu(): void {
+    const playState = this.context.mode();
+    if (playState === 'EDITOR' || playState === 'EDITING_IN_GAME') return;
+    
     const canvas = this.motor3d.engine?.getRenderingCanvas();
     if (canvas && !document.pointerLockElement) {
       try { 

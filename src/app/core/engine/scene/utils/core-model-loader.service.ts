@@ -17,7 +17,6 @@ export class CoreModelLoaderService {
   private persistenceMapper = inject(EntityPersistenceMapperService);
   private worldSettingsSvc = inject(WorldSettingsService);
 
-  // 🔥 SOLUCIÓN ARQUITECTÓNICA: Caché de Assets para evitar re-descargas y saturación de RAM
   private assetRegistry = new Map<string, AssetContainer>();
 
   public async cargarModeloAsync(obj: any, mallasCreadas: Map<string, Mesh>): Promise<void> {
@@ -25,7 +24,6 @@ export class CoreModelLoaderService {
     const path = obj.properties?.path || obj.asset?.path;
 
     if (!path) {
-      console.warn(`[CoreModelLoader] Objeto ${obj.name} sin ruta válida. Creando Malla de Recuperación (Error).`);
       this.crearMallaError(obj, scene, mallasCreadas);
       return Promise.resolve();
     }
@@ -36,14 +34,13 @@ export class CoreModelLoaderService {
     const fileName = fullPath.substring(lastSlash + 1);
 
     try {
-      // 1. Cargar y Cachear el Contenedor Maestro si no existe
       if (!this.assetRegistry.has(fullPath)) {
         const container = await SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene);
         this.assetRegistry.set(fullPath, container);
       }
 
-      // 2. Instanciar desde el caché (Ultra rápido, comparte buffers de geometría)
       const container = this.assetRegistry.get(fullPath)!;
+      // Clonado de alta eficiencia compartiendo Buffers de geometría
       const instances = container.instantiateModelsToScene(name => name ? `${obj.uid}_${name}` : obj.uid, false, { doNotInstantiate: true });
       
       const rootNode = instances.rootNodes[0] as Mesh;
@@ -51,7 +48,7 @@ export class CoreModelLoaderService {
       
       this.aplicarTransformacionesYEntidad(rootNode, obj, mallasCreadas, instances.rootNodes as AbstractMesh[], instances.animationGroups);
     } catch (e) {
-      console.error(`[CoreModelLoader] Error catastrófico cargando el GLB ${path}. Creando malla de error.`, e);
+      console.error(`[CoreModelLoader] Error cargando GLB ${path}`, e);
       this.crearMallaError(obj, scene, mallasCreadas);
     }
   }
@@ -72,7 +69,6 @@ export class CoreModelLoaderService {
     const rolSaved = obj.properties?.rol || obj.rol || 'prop';
 
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, obj.type, rolSaved);
-
     this.persistenceMapper.applyDbToEntity(obj, entity);
 
     const isCharacter = !!entity.characterConfig;
@@ -84,14 +80,27 @@ export class CoreModelLoaderService {
 
     rootNode.checkCollisions = false; 
     rootNode.isPickable = true;
+
+    // 🔥 OBTENER DIMENSIONES REALES DEL MODELO 3D
+    rootNode.computeWorldMatrix(true);
+    const bounds = rootNode.getHierarchyBoundingVectors();
+    const realSize = bounds.max.subtract(bounds.min);
     
-    // Mantenemos el elipsoide base para cuando el objeto actúa como jugador/entidad móvil
-    rootNode.ellipsoid = new Vector3((entity.collider.sizeX ?? 0.5) * scaleX, (entity.collider.sizeY ?? 0.5) * scaleY, (entity.collider.sizeZ ?? 0.5) * scaleZ);
+    // Si la BD no mandó sizes específicos (que llegan como 1), usamos el real del modelo.
+    const finalSizeX = (entity.collider.sizeX === 1) ? Math.max(0.1, realSize.x / scaleX) : entity.collider.sizeX!;
+    const finalSizeY = (entity.collider.sizeY === 1) ? Math.max(0.1, realSize.y / scaleY) : entity.collider.sizeY!;
+    const finalSizeZ = (entity.collider.sizeZ === 1) ? Math.max(0.1, realSize.z / scaleZ) : entity.collider.sizeZ!;
+
+    // Asignamos para el editor visual
+    entity.collider.sizeX = finalSizeX;
+    entity.collider.sizeY = finalSizeY;
+    entity.collider.sizeZ = finalSizeZ;
+
+    rootNode.ellipsoid = new Vector3(finalSizeX * scaleX, finalSizeY * scaleY, finalSizeZ * scaleZ);
     rootNode.ellipsoidOffset = new Vector3((entity.collider.offsetX ?? 0) * scaleX, (entity.collider.offsetY ?? 0) * scaleY, (entity.collider.offsetZ ?? 0) * scaleZ);
 
     const subMeshes = rootNode.getChildMeshes(false);
 
-    // 🔥 SOLUCIÓN ARQUITECTÓNICA: Desactivar colisiones complejas en mallas visuales para evitar caídas de FPS
     subMeshes.forEach(m => {
       const nameL = m.name.toLowerCase();
       if (nameL.includes('proxycol')) Tags.AddTagsTo(m, "proxy_collider ignore_raycast system_element");
@@ -99,7 +108,6 @@ export class CoreModelLoaderService {
 
       m.isPickable = entity.visual.isSelectable; 
       
-      // La malla visual NUNCA tiene colisiones complejas a menos que sea explícitamente forzado a tipo "mesh"
       if (entity.collider.type === 'mesh' && entity.visual.isSolid && !isCharacter) {
           m.checkCollisions = m.getTotalVertices() > 0;
       } else {
@@ -109,30 +117,37 @@ export class CoreModelLoaderService {
       m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
       m.receiveShadows = true;
       
+      // 🔥 OPTIMIZACIÓN EXTREMA DE CPU: Si es un prop, jamás recalcular su matriz. 
+      // Permite colocar miles de calles a 60 FPS sin saturar Node/Browser.
+      if (!isCharacter && entity.rol === 'prop') {
+          m.doNotSyncBoundingInfo = true;
+          m.freezeWorldMatrix();
+      }
+      
       if (m.material) this.materialSvc.ajustarMaterialGLB(m.material);
     });
 
-    // 🔥 GENERACIÓN DE COLISIONADORES PRIMITIVOS INVISIBLES (Máximo Rendimiento Físico)
+    // Congelar matriz del root si es un prop estático
+    if (!isCharacter && entity.rol === 'prop') {
+        rootNode.freezeWorldMatrix();
+    }
+
+    // 🔥 GENERACIÓN DE COLISIONADORES PERFECTOS
     if (entity.visual.isSolid && !isCharacter && entity.collider.type !== 'mesh') {
-        const cX = entity.collider.sizeX ?? 1;
-        const cY = entity.collider.sizeY ?? 1;
-        const cZ = entity.collider.sizeZ ?? 1;
-        
         let colMesh: Mesh;
         if (entity.collider.type === 'sphere') {
-            colMesh = MeshBuilder.CreateSphere(`col_${obj.uid}`, { diameterX: cX, diameterY: cY, diameterZ: cZ }, scene);
+            colMesh = MeshBuilder.CreateSphere(`col_${obj.uid}`, { diameterX: finalSizeX, diameterY: finalSizeY, diameterZ: finalSizeZ }, scene);
         } else if (entity.collider.type === 'capsule') {
-            const r = Math.max(cX, cZ) / 2;
-            colMesh = MeshBuilder.CreateCapsule(`col_${obj.uid}`, { radius: r, height: cY }, scene);
+            const r = Math.max(finalSizeX, finalSizeZ) / 2;
+            colMesh = MeshBuilder.CreateCapsule(`col_${obj.uid}`, { radius: r, height: finalSizeY }, scene);
         } else {
-            colMesh = MeshBuilder.CreateBox(`col_${obj.uid}`, { width: cX, height: cY, depth: cZ }, scene);
+            colMesh = MeshBuilder.CreateBox(`col_${obj.uid}`, { width: finalSizeX, height: finalSizeY, depth: finalSizeZ }, scene);
         }
 
         colMesh.parent = rootNode;
         colMesh.position.set(entity.collider.offsetX ?? 0, entity.collider.offsetY ?? 0, entity.collider.offsetZ ?? 0);
         colMesh.isVisible = false;
-        colMesh.checkCollisions = true; // Este es el que bloquea realmente al jugador
-        // Le quitamos el tag 'ignore_raycast' para asegurar que la gravedad golpee este bloque
+        colMesh.checkCollisions = true; 
         Tags.AddTagsTo(colMesh, "proxy_collider system_element");
     }
 
@@ -145,19 +160,8 @@ export class CoreModelLoaderService {
     anims.forEach(ag => ag.stop());
     entity.animationNames = anims.map(a => a.name);
 
-    if (isModel) {
-      const headNode = rootNode.getChildTransformNodes(false).find(n => n.name.toLowerCase() === 'head' || n.name.toLowerCase() === 'neck' || n.name.toLowerCase().includes('head')) as TransformNode;
-      if (headNode) {
-        headNode.computeWorldMatrix(true);
-        rootNode.computeWorldMatrix(true);
-        entity.initialHeadLocal = Vector3.TransformCoordinates(headNode.getAbsolutePosition(), Matrix.Invert(rootNode.getWorldMatrix()));
-        entity.syncToView(); 
-      }
-    }
-
     if (isLight && entity.light) {
       rootNode.isVisible = false;
-
       let lightObj: any;
       if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 0, 0), scene);
       else if (obj.type === 'light_spot') lightObj = new SpotLight('l_' + obj.name, new Vector3(0, 0, 0), new Vector3(0, -1, 0), entity.light.angle * (Math.PI / 180), 2, scene);
@@ -172,8 +176,7 @@ export class CoreModelLoaderService {
       lightObj.parent = targetParent;
       lightObj.intensity = entity.light.intensity;
       const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
-      const activeColor = isBW ? entity.light.lightColorBW : entity.light.lightColor;
-      lightObj.diffuse = Color3.FromHexString(activeColor);
+      lightObj.diffuse = Color3.FromHexString(isBW ? entity.light.lightColorBW : entity.light.lightColor);
       if (lightObj.position) lightObj.position.copyFromFloats(entity.light.lightPosX, entity.light.lightPosY, entity.light.lightPosZ);
     }
 

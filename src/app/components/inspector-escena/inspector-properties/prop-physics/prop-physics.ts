@@ -23,7 +23,8 @@ export class PropPhysics implements OnInit, OnDestroy {
   private subs: Subscription[] = [];
 
   colliderType = 'box';
-  colliderSizeX = 0.5; colliderSizeY = 0.5; colliderSizeZ = 0.5;
+  // 🔥 FIX: Los UI Defaults se sincronizan ahora a tamaño unitario (1) igual que las primitivas.
+  colliderSizeX = 1; colliderSizeY = 1; colliderSizeZ = 1;
   colliderOffX = 0; colliderOffY = 0; colliderOffZ = 0;
   camPosX = 0; camPosY = 1.6; camPosZ = 0;
   
@@ -52,9 +53,9 @@ export class PropPhysics implements OnInit, OnDestroy {
     
     if (entity.collider) {
       this.colliderType = entity.collider.type || 'box';
-      this.colliderSizeX = this.formatNum(entity.collider.sizeX ?? 0.5);
-      this.colliderSizeY = this.formatNum(entity.collider.sizeY ?? 0.5);
-      this.colliderSizeZ = this.formatNum(entity.collider.sizeZ ?? 0.5);
+      this.colliderSizeX = this.formatNum(entity.collider.sizeX ?? 1);
+      this.colliderSizeY = this.formatNum(entity.collider.sizeY ?? 1);
+      this.colliderSizeZ = this.formatNum(entity.collider.sizeZ ?? 1);
       this.colliderOffX = this.formatNum(entity.collider.offsetX ?? 0);
       this.colliderOffY = this.formatNum(entity.collider.offsetY ?? 0);
       this.colliderOffZ = this.formatNum(entity.collider.offsetZ ?? 0);
@@ -97,7 +98,6 @@ export class PropPhysics implements OnInit, OnDestroy {
           this.colliderOffZ * Math.abs(ws.z)
       );
 
-      // 🔥 FIX: Destruir y reconstruir el proxy collider físico del mundo dinámicamente en el editor
       const proxies = this.objeto.getChildMeshes(true).filter(m => Tags.MatchesQuery(m, "proxy_collider"));
       proxies.forEach(p => p.dispose());
 
@@ -119,7 +119,6 @@ export class PropPhysics implements OnInit, OnDestroy {
           Tags.AddTagsTo(colMesh, "proxy_collider system_element");
       }
     } else {
-       // Si cambiamos a mesh puro, borramos el proxy y reactivamos colisiones visuales pesadas
        const proxies = this.objeto.getChildMeshes(true).filter(m => Tags.MatchesQuery(m, "proxy_collider"));
        proxies.forEach(p => p.dispose());
        this.objeto.getChildMeshes(false).forEach(m => {

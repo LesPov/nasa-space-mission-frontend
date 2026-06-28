@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
@@ -28,13 +29,13 @@ export class SceneObjectBuilderService {
     this.triggerBuilderSvc.agregarTriggerCustom(nombre, shape, isComposite, mensaje, sizeX, sizeY, sizeZ, parentNode, actionType);
   }
 
-  // 🔥 FIX TS2554: Añadido el 13º parámetro opcional 'position'
   public async agregarObjetoCustom(
     tipo: string, nombre: string, rol: string, colorHex: string,
     sizeX: number, sizeY: number, sizeZ: number, asset?: any,
     isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = '',
     parentNode: AbstractMesh | null = null,
-    position?: Vector3 // <--- FIX AQUÍ
+    position?: Vector3,
+    localRotation?: Vector3 // 🔥 FIX: Aceptamos rotaciones locales explícitas desde el Live Builder
   ): Promise<void> {
     
     if (tipo === 'trigger' || tipo === 'trigger_compuesto') {
@@ -42,6 +43,7 @@ export class SceneObjectBuilderService {
       return;
     }
 
+    // El objeto virtual que viaja a los Loaders puros
     const mockDbObject = {
       uid: window.crypto.randomUUID(),
       name: nombre,
@@ -56,8 +58,9 @@ export class SceneObjectBuilderService {
         path: asset?.path
       },
       assetId: asset?.id,
-      // 🔥 FIX: Posición Inyectada Correctamente desde el Argumento
+      // 🔥 FIX DE POSICIÓN/ROTACIÓN: Estos datos se tomarán como LOCALES
       position: position ? { x: position.x, y: position.y, z: position.z } : (parentNode ? {x:0, y: (tipo==='image_plane' ? -2 : 0), z:0} : { x: 0, y: tipo.startsWith('light_') ? 2 : (0.5 * sizeY), z: 0 }),
+      rotation: localRotation ? { x: localRotation.x, y: localRotation.y, z: localRotation.z } : { x: 0, y: 0, z: 0 },
       scale: { x: sizeX, y: sizeY, z: sizeZ },
       parentId: parentNode?.metadata?.uid || null
     };
@@ -74,11 +77,23 @@ export class SceneObjectBuilderService {
 
     const newMesh = mallasCreadas.get(mockDbObject.uid);
     if (newMesh) {
+      
+      // 🔥 FIX ARQUITECTURA PARENTING:
+      // Cuando la primitiva fue creada por el loader, se posicionó en la raíz usando coordenadas locales.
+      // En lugar de usar `setParent()` (que destrozaría esas coordenadas locales recalculándolas para mantener la posición mundial errónea),
+      // le asignamos el padre con la propiedad `.parent`. Babylon preservará los números locales que definimos y actualizará el mundo.
+      if (parentNode) {
+         newMesh.parent = parentNode;
+      }
+      
       const ent = this.entityManager.getEntityByMesh(newMesh);
-      if (ent) ent.isDirty = true;
-      if (parentNode) newMesh.setParent(parentNode);
+      if (ent) {
+          ent.syncToView(); // Forzamos actualización final para sellar ECS <-> Vista
+          ent.isDirty = true;
+      }
+      
       this.shadowsSvc.asignarObjetosASombrasDeLuces();
-      this.state.objetoSeleccionado.set(newMesh);
+      
       this.nodesSvc.actualizarListaNodos();
       this.historialSvc.registrarAccionCrear(newMesh);
       this.state.triggerUpdate();

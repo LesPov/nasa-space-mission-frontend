@@ -1,3 +1,4 @@
+
 // src/app/core/engine/entities/game.entity.ts
 
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
@@ -18,7 +19,8 @@ export class VisualComponent {
   constructor(
     public color = '#ffffff', public colorBW = '#ffffff', public isSolid = true, 
     public isSelectable = true, public ignoraNiebla = false, public esEmisivo = false, 
-    public brilloIntensidad = 1.0, public assetId?: number | null, public path?: string
+    public brilloIntensidad = 1.0, public assetId?: number | null, public path?: string,
+    public mostrarBorde: boolean = true // 🔥 NUEVO: Control manual del borde (Highlight)
   ) {}
 }
 
@@ -339,7 +341,6 @@ export class GameEntity {
           ag.dispose();
         });
       }
-      // 🔥 FIX: Prevenir que los materiales compartidos se eliminen si es un asset cargado.
       const disposeMaterials = this.type !== 'model';
       this.view.dispose(false, disposeMaterials);
     }

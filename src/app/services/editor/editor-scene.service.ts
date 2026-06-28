@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Vector3, MeshBuilder, Color4, Tags } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Vector3, MeshBuilder, Color4, Tags, Quaternion } from '@babylonjs/core';
 import { Motor3dService } from '../motor-3d.service';
 import { CoreSceneLoaderService } from '../../core/engine/scene/utils/core-scene-loader.service';
 import { CoreSceneShadowsService } from '../../core/engine/scene/utils/core-scene-shadows.service';
@@ -79,14 +79,13 @@ export class EditorSceneService {
     this.builderSvc.agregarTriggerCustom(nombre, shape, isComposite, mensaje, sizeX, sizeY, sizeZ, parentNode, actionType);
   }
 
-  // 🔥 FIX TS2554: Mantenemos el argumento position nativo en toda la cadena
+  // 🔥 FIX ARQUITECTURA: Se agrega localRotation para preservar las rotaciones durante la creación
   public agregarObjetoCustom(
-    tipo: string, nombre: string, rol: string, colorHex: string,
-    sizeX: number, sizeY: number, sizeZ: number, asset?: any,
-    isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = '',
-    parentNode: AbstractMesh | null = null, position?: Vector3
+    tipo: string, nombre: string, rol: string, colorHex: string, sizeX: number, sizeY: number, sizeZ: number, 
+    asset?: any, isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = '', 
+    parentNode: AbstractMesh | null = null, position?: Vector3, localRotation?: Vector3
   ): void {
-    this.builderSvc.agregarObjetoCustom(tipo, nombre, rol, colorHex, sizeX, sizeY, sizeZ, asset, isSolid, isSelectable, mensaje, parentNode, position);
+    this.builderSvc.agregarObjetoCustom(tipo, nombre, rol, colorHex, sizeX, sizeY, sizeZ, asset, isSolid, isSelectable, mensaje, parentNode, position, localRotation);
   }
 
   public asignarObjetosASombrasDeLuces(): void {

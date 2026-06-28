@@ -177,7 +177,19 @@
 
 <div class="section-card" *ngIf="!esTrigger && !esBubble">
   <div class="section-head">
-    <h4>Renderizado y Efectos</h4>
+    <h4>Opciones Visuales y Selección</h4>
+  </div>
+
+  <!-- 🔥 CASILLAS VINCULADAS: Muestran opciones de Editabilidad y Bordes de Hover -->
+  <div class="grid-2" style="margin-bottom: 10px;">
+      <div class="checkbox-field">
+        <input type="checkbox" id="chkEsSeleccionable" [(ngModel)]="objEsSeleccionable" (ngModelChange)="aplicarVisuales()">
+        <label for="chkEsSeleccionable" style="cursor: pointer; color: #60a5fa; font-weight: bold;">🖱️ Editable (Click)</label>
+      </div>
+      <div class="checkbox-field">
+        <input type="checkbox" id="chkMostrarBorde" [(ngModel)]="objMostrarBorde" (ngModelChange)="aplicarVisuales()">
+        <label for="chkMostrarBorde" style="cursor: pointer; color: #facc15; font-weight: bold;">🔲 Mostrar Borde</label>
+      </div>
   </div>
 
   <div class="checkbox-field" style="background: rgba(59, 130, 246, 0.1); padding: 10px; border: 1px solid #3b82f6; border-radius: 6px;">

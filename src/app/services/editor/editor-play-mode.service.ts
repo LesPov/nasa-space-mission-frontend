@@ -1,3 +1,4 @@
+
 // src/app/services/editor/editor-play-mode.service.ts
 
 import { Injectable, inject } from '@angular/core';
@@ -244,26 +245,30 @@ export class EditorPlayModeService {
         if (snapId && currentId !== snapId) {
             this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
         } else {
-            const cambiosEnPlay: any = this.editorSvc.obtenerDatosParaGuardar(false);
+            // 🔥 FIX: Forzamos la captura COMPLETA del estado actual de todos los objetos
+            const cambiosEnPlay: any = this.editorSvc.obtenerDatosParaGuardar(true); 
             
-            if (!this.snapshotMemoria.sceneObjectsDelta) this.snapshotMemoria.sceneObjectsDelta = [];
-            if (!this.snapshotMemoria.triggersDelta) this.snapshotMemoria.triggersDelta = [];
-            if (!this.snapshotMemoria.cinematics) this.snapshotMemoria.cinematics = [];
+            // Normalizar las colecciones del snapshot para que el loader nunca las ignore
+            if (!this.snapshotMemoria.sceneObjects) this.snapshotMemoria.sceneObjects = this.snapshotMemoria.sceneObjectsDelta || [];
+            if (!this.snapshotMemoria.triggers) this.snapshotMemoria.triggers = this.snapshotMemoria.triggersDelta || [];
             if (!this.snapshotMemoria.deletedObjects) this.snapshotMemoria.deletedObjects = [];
             if (!this.snapshotMemoria.deletedTriggers) this.snapshotMemoria.deletedTriggers = [];
+
+            delete this.snapshotMemoria.sceneObjectsDelta;
+            delete this.snapshotMemoria.triggersDelta;
 
             cambiosEnPlay.sceneObjectsDelta.forEach((delta: any) => {
                 if (delta.name === 'Jugador_Prueba') return;
                 
-                const index = this.snapshotMemoria.sceneObjectsDelta.findIndex((o: any) => o.uid === delta.uid);
-                if (index !== -1) this.snapshotMemoria.sceneObjectsDelta[index] = delta;
-                else this.snapshotMemoria.sceneObjectsDelta.push(delta);
+                const index = this.snapshotMemoria.sceneObjects.findIndex((o: any) => o.uid === delta.uid);
+                if (index !== -1) this.snapshotMemoria.sceneObjects[index] = delta;
+                else this.snapshotMemoria.sceneObjects.push(delta);
             });
 
             cambiosEnPlay.triggersDelta.forEach((delta: any) => {
-                const index = this.snapshotMemoria.triggersDelta.findIndex((o: any) => o.uid === delta.uid);
-                if (index !== -1) this.snapshotMemoria.triggersDelta[index] = delta;
-                else this.snapshotMemoria.triggersDelta.push(delta);
+                const index = this.snapshotMemoria.triggers.findIndex((o: any) => o.uid === delta.uid);
+                if (index !== -1) this.snapshotMemoria.triggers[index] = delta;
+                else this.snapshotMemoria.triggers.push(delta);
             });
 
             if (cambiosEnPlay.cinematicsDelta) {
@@ -271,12 +276,12 @@ export class EditorPlayModeService {
             }
 
             if (cambiosEnPlay.deletedObjects.length > 0) {
-                this.snapshotMemoria.sceneObjectsDelta = this.snapshotMemoria.sceneObjectsDelta.filter((o: any) => !cambiosEnPlay.deletedObjects.includes(o.uid));
+                this.snapshotMemoria.sceneObjects = this.snapshotMemoria.sceneObjects.filter((o: any) => !cambiosEnPlay.deletedObjects.includes(o.uid));
                 this.snapshotMemoria.deletedObjects = [...new Set([...this.snapshotMemoria.deletedObjects, ...cambiosEnPlay.deletedObjects])];
             }
 
             if (cambiosEnPlay.deletedTriggers.length > 0) {
-                this.snapshotMemoria.triggersDelta = this.snapshotMemoria.triggersDelta.filter((o: any) => !cambiosEnPlay.deletedTriggers.includes(o.uid));
+                this.snapshotMemoria.triggers = this.snapshotMemoria.triggers.filter((o: any) => !cambiosEnPlay.deletedTriggers.includes(o.uid));
                 this.snapshotMemoria.deletedTriggers = [...new Set([...this.snapshotMemoria.deletedTriggers, ...cambiosEnPlay.deletedTriggers])];
             }
         }
@@ -287,7 +292,6 @@ export class EditorPlayModeService {
         const scene = this.motor3d.scene;
         const meshesToDispose = scene.meshes.filter(m => !Tags.MatchesQuery(m, "system_element") && !Tags.MatchesQuery(m, "editor_only"));
         meshesToDispose.forEach(m => {
-            // 🔥 FIX: false para no romper los materiales del AssetContainer compartido
             if (!m.isDisposed()) m.dispose(false, false); 
         });
 

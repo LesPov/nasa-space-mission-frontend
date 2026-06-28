@@ -25,19 +25,23 @@ export class Motor3dService {
   public glowLayer!: GlowLayer; 
   public currentFps: number = 0;
 
+  // 🔥 FIX: Agregada protección contra accesos prematuros desde los Signals antes de inicializar el Engine
   get editorCamera(): ArcRotateCamera {
+    if (!this.engine || !this.scene) return null as any;
     const cam = this.cameraFactory.getCamera('EDITOR', this.scene, this.engine.getRenderingCanvas());
     this._ensureCameraInPipeline(cam);
     return cam;
   }
 
   get playerCameraFPS(): UniversalCamera {
+    if (!this.engine || !this.scene) return null as any;
     const cam = this.cameraFactory.getCamera('FPS', this.scene, this.engine.getRenderingCanvas());
     this._ensureCameraInPipeline(cam);
     return cam;
   }
 
   get playerCameraTPS(): ArcRotateCamera {
+    if (!this.engine || !this.scene) return null as any;
     const cam = this.cameraFactory.getCamera('TPS', this.scene, this.engine.getRenderingCanvas());
     this._ensureCameraInPipeline(cam);
     return cam;

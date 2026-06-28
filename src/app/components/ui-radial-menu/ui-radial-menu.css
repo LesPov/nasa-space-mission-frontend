@@ -4,113 +4,191 @@
   top: 0; left: 0;
   width: 100%; height: 100%;
   display: flex; justify-content: center; align-items: center;
-  background-color: rgba(0, 0, 0, 0.6);
-  backdrop-filter: blur(5px);
-  -webkit-backdrop-filter: blur(5px);
+  background-color: rgba(2, 6, 23, 0.75);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   z-index: 8000;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   opacity: 0;
-  animation: fadeIn 0.2s forwards;
+  animation: fadeInRadial 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
   pointer-events: auto; /* IMPORTANTE: Para capturar clics de la rueda */
 }
 
-@keyframes fadeIn { to { opacity: 1; } }
-
-.radial-container {
-  position: relative;
-  width: 500px;
-  height: 500px;
-  border-radius: 50%;
-  background: radial-gradient(circle, rgba(15,23,42,0.6) 30%, rgba(30,41,59,0.95) 100%);
-  border: 4px solid rgba(255,255,255,0.1);
-  box-shadow: 0 0 50px rgba(0,0,0,0.8), inset 0 0 30px rgba(0,0,0,0.5);
+@keyframes fadeInRadial { 
+  0% { opacity: 0; transform: scale(0.9); }
+  100% { opacity: 1; transform: scale(1); } 
 }
 
+/* El aro base oscuro */
+.radial-container {
+  position: relative;
+  width: 550px;
+  height: 550px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(15,23,42,0.85) 40%, rgba(30,41,59,0.4) 100%);
+  border: 2px solid rgba(255,255,255,0.05);
+  box-shadow: 0 0 60px rgba(0,0,0,0.9), inset 0 0 50px rgba(0,0,0,0.6);
+}
+
+/* UI CENTRAL DEL MENÚ */
 .center-info {
   position: absolute;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
   text-align: center;
   color: white;
-  width: 180px;
+  width: 200px;
   pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.center-icon {
+  font-size: 48px;
+  margin-bottom: 10px;
+  filter: drop-shadow(0 0 15px rgba(255,255,255,0.4));
+  animation: popIcon 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes popIcon {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
 }
 
 .center-info h3 {
-  margin: 0 0 5px 0;
-  font-size: 20px;
-  font-weight: 800;
+  margin: 0 0 8px 0;
+  font-size: 22px;
+  font-weight: 900;
   text-transform: uppercase;
-  color: #38bdf8;
-  text-shadow: 0 2px 5px rgba(0,0,0,0.8);
+  color: #f8fafc;
+  text-shadow: 0 2px 10px rgba(0,0,0,0.9);
+  letter-spacing: 1px;
 }
 
-.center-info p {
+.desc-badge {
   margin: 0;
-  font-size: 12px;
-  color: #94a3b8;
+  font-size: 11px;
+  font-weight: bold;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 20px;
+  letter-spacing: 1px;
 }
 
+.desc-badge.blue { background: rgba(56, 189, 248, 0.2); color: #38bdf8; border: 1px solid rgba(56, 189, 248, 0.5); }
+.desc-badge.green { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.5); }
+.desc-badge.gray { background: rgba(148, 163, 184, 0.2); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.5); }
+
+/* LOS BOTONES DEL MENÚ RADIAL */
 .radial-item {
   position: absolute;
-  width: 100px;
-  height: 100px;
+  width: 120px;
+  height: 120px;
   top: 50%; left: 50%;
-  margin-top: -50px; margin-left: -50px;
+  margin-top: -60px; margin-left: -60px; /* Centrar absoluto */
   display: flex; flex-direction: column; justify-content: center; align-items: center;
-  color: #cbd5e1;
+  color: #94a3b8;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
   transform-origin: center center;
 }
 
 .item-bg {
-  width: 70px; height: 70px;
-  background-color: rgba(0,0,0,0.5);
+  width: 75px; height: 75px;
+  background-color: rgba(15, 23, 42, 0.9);
   border: 2px solid #334155;
-  border-radius: 12px;
+  border-radius: 16px;
   display: flex; justify-content: center; align-items: center;
-  font-size: 32px;
-  transition: all 0.2s;
-  box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+  transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  box-shadow: 0 5px 20px rgba(0,0,0,0.6);
+  position: relative;
+  overflow: hidden;
 }
 
+/* Colores específicos según el tipo de item */
+.item-bg.is-group { border-color: #0369a1; }
+.item-bg.is-back { border-color: #475569; background-color: rgba(30, 41, 59, 0.9); border-radius: 50%; }
+
+.item-icon {
+  font-size: 34px;
+  transition: transform 0.2s;
+  z-index: 2;
+}
+
+/* HOVER STATES: Aquí ocurre la magia visual */
 .radial-item:hover .item-bg {
-  background-color: #3b82f6;
-  border-color: #60a5fa;
-  transform: scale(1.15);
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.8);
+  transform: scale(1.2);
+  background-color: #3b82f6; /* Azul brillante por defecto */
+  border-color: #bae6fd;
+  box-shadow: 0 0 25px rgba(59, 130, 246, 0.8);
   color: white;
 }
 
+.radial-item:hover .item-bg.is-group {
+  background-color: #0ea5e9;
+  box-shadow: 0 0 25px rgba(14, 165, 233, 0.8);
+}
+
+.radial-item:hover .item-bg.is-back {
+  background-color: #64748b;
+  box-shadow: 0 0 25px rgba(100, 116, 139, 0.8);
+}
+
+.radial-item:hover .item-icon {
+  transform: scale(1.1);
+}
+
 .item-label {
-  margin-top: 8px;
-  font-size: 11px;
-  font-weight: bold;
-  background: rgba(0,0,0,0.7);
-  padding: 2px 6px;
-  border-radius: 4px;
+  margin-top: 15px;
+  font-size: 12px;
+  font-weight: 800;
+  color: #cbd5e1;
+  background: rgba(15, 23, 42, 0.8);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.1);
   white-space: nowrap;
-  max-width: 90px;
+  max-width: 110px;
   overflow: hidden;
   text-overflow: ellipsis;
   text-align: center;
+  transition: 0.2s;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.5);
 }
 
 .radial-item:hover .item-label {
   color: white;
+  background: #1e293b;
+  border-color: rgba(255,255,255,0.3);
+  transform: translateY(5px); /* Pequeño salto hacia abajo para dar espacio al icono agrandado */
 }
 
-.close-hint {
+/* HINTS INFERIORES DE CONTROLES */
+.controls-hint {
   position: absolute;
   bottom: 40px;
-  color: #94a3b8;
-  font-weight: bold;
-  font-size: 14px;
+  display: flex;
+  gap: 30px;
+}
+
+.hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 1px;
-  background: rgba(0,0,0,0.5);
-  padding: 8px 16px;
-  border-radius: 20px;
-  border: 1px solid #334155;
+}
+
+.hint kbd {
+  background: #facc15;
+  color: #0f172a;
+  padding: 4px 10px;
+  border-radius: 4px;
+  font-weight: 900;
+  font-size: 12px;
+  box-shadow: 0 3px 0 #ca8a04;
 }

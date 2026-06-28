@@ -41,6 +41,10 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   objIgnoraNiebla = false;
   objEsEmisivo = false;
   objBrilloIntensidad = 1.0;
+  
+  // 🔥 Variables para manejar la Interfaz y guardar estado
+  objMostrarBorde = true; 
+  objEsSeleccionable = true; 
 
   objInteractDistanceFPS = 3.0;
   objInteractDistanceTPS = 5.0;
@@ -106,6 +110,10 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.objIgnoraNiebla = entity.visual.ignoraNiebla ?? false;
     this.objEsEmisivo = entity.visual.esEmisivo ?? false;
     this.objBrilloIntensidad = entity.visual.brilloIntensidad ?? 1.0;
+    
+    // Sincronización de las casillas en la UI
+    this.objMostrarBorde = entity.visual.mostrarBorde ?? (entity.type !== 'plane'); 
+    this.objEsSeleccionable = entity.visual.isSelectable ?? true; 
 
     if (entity.media) {
       this.objProfundidadProyeccion = entity.media.profundidadProyeccion ?? 0.08;
@@ -127,7 +135,6 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.cdr.detectChanges();
   }
 
-  // 🔥 Añadido para enviar evento Live a la pestaña esclava
   private broadcastLive() {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (entity) {
@@ -171,7 +178,9 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   aplicarVisuales() {
     this.transformMutator.aplicarVisuales(this.objeto, {
       color: this.objColor, colorBW: this.objColorBW, ignoraNiebla: this.objIgnoraNiebla, 
-      esEmisivo: this.objEsEmisivo, brilloIntensidad: this.objBrilloIntensidad
+      esEmisivo: this.objEsEmisivo, brilloIntensidad: this.objBrilloIntensidad,
+      mostrarBorde: this.objMostrarBorde, // 🔥 Propagamos el booleano
+      isSelectable: this.objEsSeleccionable // 🔥 Propagamos el booleano
     });
   }
 

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { EditorStateService } from './editor-state.service';
 import { GameContextService } from '../../core/engine/session/game-context.service';
@@ -14,17 +15,18 @@ export class EditorModeTransitionService {
 
   public beginTestLive(): void {
     this.gameContext.setMode(GameMode.TEST_LIVE);
-    this.state.playState.set('TRANSITIONING');
+    this.gameContext.setTransitioning(true);
     this.state.objetoHovereado.set(null);
   }
 
   public finishTestLiveTransition(): void {
-    this.state.playState.set('PLAYING');
+    this.gameContext.setTransitioning(false);
   }
 
   public stopTestLive(): void {
     this.gameContext.setMode(GameMode.EDITOR);
-    this.state.playState.set('EDITOR');
+    this.gameContext.setTransitioning(false);
+    this.gameContext.setInteracting(false);
     this.state.modoVistaPrueba = null;
     this.state.jugadorActivo = null;
     this.state.objetoHovereado.set(null);
@@ -36,24 +38,24 @@ export class EditorModeTransitionService {
   // ==========================================
 
   public beginPauseToLiveEdit(): void {
-    this.state.playState.set('TRANSITIONING');
+    this.gameContext.setTransitioning(true);
     this.state.objetoHovereado.set(null);
     this.state.objetoSeleccionado.set(null);
   }
 
   public finishPauseToLiveEdit(): void {
+    this.gameContext.setTransitioning(false);
     this.gameContext.setMode(GameMode.EDITING_IN_GAME);
-    this.state.playState.set('EDITING_IN_GAME');
   }
 
   public beginResumeToTestLive(): void {
-    this.state.playState.set('TRANSITIONING');
+    this.gameContext.setTransitioning(true);
     this.state.objetoSeleccionado.set(null);
   }
 
   public finishResumeToTestLive(): void {
+    this.gameContext.setTransitioning(false);
     this.gameContext.setMode(GameMode.TEST_LIVE);
-    this.state.playState.set('PLAYING');
   }
 
   // ==========================================
@@ -61,15 +63,16 @@ export class EditorModeTransitionService {
   // ==========================================
 
   public enterInteraction(): void {
-    this.state.playState.set('INTERACTING');
+    this.gameContext.setInteracting(true);
   }
 
   public exitInteraction(): void {
-    this.state.playState.set('PLAYING');
+    this.gameContext.setInteracting(false);
   }
 
   public resetToEditor(): void {
     this.gameContext.setMode(GameMode.EDITOR);
-    this.state.playState.set('EDITOR');
+    this.gameContext.setTransitioning(false);
+    this.gameContext.setInteracting(false);
   }
 }

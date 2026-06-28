@@ -1,10 +1,11 @@
-import { Injectable, inject, signal } from '@angular/core';
+
+import { Injectable, inject, signal, computed } from '@angular/core';
 import { Subject } from 'rxjs';
 import { Node, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { GameContextService } from '../../core/engine/session/game-context.service';
 import { InteractableRulesService } from '../../core/engine/runtime/rules/interactable-rules.service';
-import { PlayState } from '../../core/engine/session/game-mode.model';
+import { PlayState, GameMode } from '../../core/engine/session/game-mode.model';
 
 export type ToolMode = 'select' | 'translate' | 'rotate' | 'scale';
 export type { PlayState };
@@ -15,7 +16,18 @@ export class EditorStateService {
   private gameContext = inject(GameContextService);
   private interactRules = inject(InteractableRulesService);
 
-  public playState = signal<PlayState>('EDITOR');
+  // 🔥 playState AHORA ES UN COMPUTED DERIVADO DE GameContextService
+  public playState = computed<PlayState>(() => {
+    if (this.gameContext.isTransitioning()) return 'TRANSITIONING';
+    if (this.gameContext.isInteracting()) return 'INTERACTING';
+
+    const mode = this.gameContext.mode();
+    if (mode === GameMode.EDITOR) return 'EDITOR';
+    if (mode === GameMode.EDITING_IN_GAME) return 'EDITING_IN_GAME';
+    
+    // TEST_LIVE, PREVIEW_ADMIN, FINAL_USER
+    return 'PLAYING';
+  });
   
   public currentTool = signal<ToolMode>('translate');
   public objetoSeleccionado = signal<Node | null>(null);
@@ -108,7 +120,6 @@ export class EditorStateService {
   }
 
   limpiarEstado(): void {
-    // 🔥 ELIMINADO: this.playState.set('EDITOR'); -> Queda delegado a TransitionService / Component Lifecycle
     this.modoVistaPrueba = null;
     this.jugadorActivo = null;
     this.objetoHovereado.set(null);

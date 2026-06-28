@@ -1,3 +1,4 @@
+
 import { Injectable, signal, computed } from '@angular/core';
 import { GameMode } from './game-mode.model';
 import { CameraViewMode } from './game-context.model';
@@ -10,6 +11,10 @@ export class GameContextService {
   public cameraView = signal<CameraViewMode>('FPS');
   public activePlayerEntity = signal<GameEntity | null>(null);
   public isPointerLocked = signal<boolean>(false);
+
+  // 🔥 Transiciones e Interacciones centralizadas para alimentar el computed de EditorState
+  public isTransitioning = signal<boolean>(false);
+  public isInteracting = signal<boolean>(false);
 
   // Derivados reactivos
   public isPlaying = computed(() => 
@@ -28,6 +33,14 @@ export class GameContextService {
   public setMode(newMode: GameMode): void {
     if (this.mode() === newMode) return;
     this.mode.set(newMode);
+  }
+
+  public setTransitioning(val: boolean): void {
+    this.isTransitioning.set(val);
+  }
+
+  public setInteracting(val: boolean): void {
+    this.isInteracting.set(val);
   }
 
   public setCameraView(view: CameraViewMode): void {

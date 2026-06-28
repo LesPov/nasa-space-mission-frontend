@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';

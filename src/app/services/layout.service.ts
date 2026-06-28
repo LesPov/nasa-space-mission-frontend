@@ -1,4 +1,5 @@
 
+
 import { Injectable, signal } from '@angular/core';
 
 @Injectable({
@@ -16,3 +17,4 @@ export class LayoutService {
     this.menuVisible.set(true);
   }
 }
+

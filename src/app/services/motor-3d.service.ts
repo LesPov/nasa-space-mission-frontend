@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject, Injector } from '@angular/core';
 import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4, UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera } from '@babylonjs/core';
 import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
@@ -141,3 +142,4 @@ export class Motor3dService implements ISceneAccess {
     }
   }
 }
+

@@ -1,6 +1,7 @@
 
 
 
+
 :host {
   display: block;
   height: 100%;
@@ -59,3 +60,4 @@
 .vertical-resizer:hover .resizer-grip-h, .vertical-resizer.resizing .resizer-grip-h {
   background-color: #fff;
 }
+

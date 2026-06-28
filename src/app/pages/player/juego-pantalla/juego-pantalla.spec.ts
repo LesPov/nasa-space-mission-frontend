@@ -1,4 +1,5 @@
 
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { JuegoPantalla } from './juego-pantalla';
@@ -21,4 +22,5 @@ describe('JuegoPantalla', () => {
     expect(component).toBeTruthy();
   });
 });
+
 

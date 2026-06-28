@@ -1,3 +1,4 @@
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { UiLoading } from './ui-loading';
@@ -20,3 +21,4 @@ describe('UiLoading', () => {
     expect(component).toBeTruthy();
   });
 });
+

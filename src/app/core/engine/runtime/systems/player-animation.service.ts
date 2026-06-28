@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AnimationGroup, Scene, Mesh } from '@babylonjs/core';
 import { PlayerRuntimeConfig, PlayerActionKey, PlayerSequenceStep, normalizeAnimBinding, cloneDefaultPlayerConfig } from '../../models/player-config.model';

@@ -1,3 +1,4 @@
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { GlobalTimeline } from './global-timeline';
@@ -20,3 +21,4 @@ describe('GlobalTimeline', () => {
     expect(component).toBeTruthy();
   });
 });
+

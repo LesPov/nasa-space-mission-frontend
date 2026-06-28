@@ -1,3 +1,4 @@
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { UiInventario } from './ui-inventario';
@@ -20,3 +21,4 @@ describe('UiInventario', () => {
     expect(component).toBeTruthy();
   });
 });
+

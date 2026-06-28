@@ -1,3 +1,4 @@
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { UiRadialMenu } from './ui-radial-menu';
@@ -20,3 +21,4 @@ describe('UiRadialMenu', () => {
     expect(component).toBeTruthy();
   });
 });
+

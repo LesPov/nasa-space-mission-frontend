@@ -1,3 +1,4 @@
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { UiPausa } from './ui-pausa';
@@ -20,3 +21,4 @@ describe('UiPausa', () => {
     expect(component).toBeTruthy();
   });
 });
+

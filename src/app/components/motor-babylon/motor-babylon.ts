@@ -1,4 +1,5 @@
 
+
 import { Component, ElementRef, OnInit, ViewChild, OnDestroy, inject } from '@angular/core';
 import { Motor3dService } from '../../services/motor-3d.service';
 

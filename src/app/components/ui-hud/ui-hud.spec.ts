@@ -1,3 +1,4 @@
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { UiHud } from './ui-hud';
@@ -20,3 +21,4 @@ describe('UiHud', () => {
     expect(component).toBeTruthy();
   });
 });
+

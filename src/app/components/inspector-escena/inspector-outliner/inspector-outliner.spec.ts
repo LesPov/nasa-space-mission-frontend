@@ -1,4 +1,5 @@
 
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { InspectorOutliner } from './inspector-outliner';
@@ -21,4 +22,5 @@ describe('InspectorOutliner', () => {
     expect(component).toBeTruthy();
   });
 });
+
 

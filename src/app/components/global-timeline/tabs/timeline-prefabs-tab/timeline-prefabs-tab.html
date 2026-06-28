@@ -1,0 +1,27 @@
+
+<div style="padding: 15px; display: flex; flex-direction: column; gap: 15px; height: 100%;">
+  <div style="display: flex; gap: 10px; align-items: center; background: #232323; padding: 10px; border-radius: 4px; border: 1px solid #333;">
+    <span style="font-size: 20px;">💾</span>
+    <div style="flex: 1;"><b style="color: #fff; font-size: 11px;">Guardar Objeto en BD</b></div>
+    <input type="text" [(ngModel)]="nuevoPrefabNombre" placeholder="Nombre..." style="background: #111; border: 1px solid #444; color: white; padding: 6px; border-radius: 3px; width: 150px; font-size: 11px;">
+    <button class="btn-primary" (click)="guardarObjetoActualComoPrefab()" [disabled]="!stateSvc.objetoSeleccionado() || !nuevoPrefabNombre || guardandoPrefab">
+      {{ guardandoPrefab ? 'Guardando...' : 'Crear Prefab' }}
+    </button>
+  </div>
+
+  <div class="panel-grid">
+    <div *ngIf="prefabsDisponibles.length === 0" style="grid-column: 1 / -1;" class="empty-state"><p>No hay prefabs guardados.</p></div>
+
+    <div *ngFor="let prefab of prefabsDisponibles" class="mini-card">
+      <div class="mini-card-head">
+        <b [title]="prefab.name">{{ prefab.name }}</b>
+        <span>{{ prefab.type === 'model' ? '🧍' : (prefab.type.startsWith('light') ? '💡' : '📦') }}</span>
+      </div>
+      <span style="color: #777; font-size: 9px;">Tipo: {{ prefab.type }}</span>
+      <div style="display: flex; gap: 6px; margin-top: 4px;">
+        <button class="btn-secondary" (click)="instanciarPrefab(prefab)" style="flex: 1;">➕ Instanciar</button>
+        <button class="btn-danger" (click)="eliminarPrefab(prefab.id)">🗑️</button>
+      </div>
+    </div>
+  </div>
+</div>

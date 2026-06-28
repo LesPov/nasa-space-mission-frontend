@@ -1,3 +1,4 @@
+
 /**
  * Modelo unificado de los Modos de Juego y Estados de Reproducción.
  * Centraliza la definición de transiciones para todo el motor.

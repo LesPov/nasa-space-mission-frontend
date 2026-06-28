@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { CascadedShadowGenerator, DirectionalLight, ShadowGenerator, SpotLight, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
@@ -71,3 +72,4 @@ export class CoreSceneShadowsService {
     });
   }
 }
+

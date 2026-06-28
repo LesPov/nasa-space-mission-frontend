@@ -1,3 +1,4 @@
+
 // src/app/core/engine/behaviors/services/loop-manager.service.ts
 import { Injectable } from '@angular/core';
 import { Scene, Observer } from '@babylonjs/core';

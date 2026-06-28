@@ -1,4 +1,5 @@
 
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { PanelTickets } from './panel-tickets';
@@ -21,4 +22,5 @@ describe('PanelTickets', () => {
     expect(component).toBeTruthy();
   });
 });
+
 

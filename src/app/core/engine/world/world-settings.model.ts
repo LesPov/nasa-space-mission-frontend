@@ -1,4 +1,5 @@
 
+
 export type VisualMode = 'normal' | 'bw';
 
 export interface WorldSettings {

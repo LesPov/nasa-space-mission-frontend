@@ -1,3 +1,4 @@
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { ToolbarEscena } from './toolbar-escena';
@@ -20,3 +21,4 @@ describe('ToolbarEscena', () => {
     expect(component).toBeTruthy();
   });
 });
+

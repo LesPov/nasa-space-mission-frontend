@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Observer, KeyboardInfo, Scene, KeyboardEventTypes } from '@babylonjs/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';

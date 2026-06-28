@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, AssetContainer, Color3, DirectionalLight, Matrix, Mesh, MeshBuilder, PointLight, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
 import '@babylonjs/loaders';
@@ -8,6 +9,8 @@ import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
 import { EntityPersistenceMapperService } from './entity-persistence-mapper.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
+import { GameContextService } from '../../session/game-context.service';
+import { GameMode } from '../../session/game-mode.model';
 
 @Injectable({ providedIn: 'root' })
 export class CoreModelLoaderService {
@@ -16,6 +19,7 @@ export class CoreModelLoaderService {
   private entityManager = inject(EntityManagerService); 
   private persistenceMapper = inject(EntityPersistenceMapperService);
   private worldSettingsSvc = inject(WorldSettingsService);
+  private gameContext = inject(GameContextService);
 
   private assetRegistry = new Map<string, AssetContainer>();
 
@@ -100,6 +104,9 @@ export class CoreModelLoaderService {
     rootNode.ellipsoidOffset = new Vector3((entity.collider.offsetX ?? 0) * scaleX, (entity.collider.offsetY ?? 0) * scaleY, (entity.collider.offsetZ ?? 0) * scaleZ);
 
     const subMeshes = rootNode.getChildMeshes(false);
+    
+    // 🔥 Verificamos si estamos en el Editor (En cualquiera de sus variantes)
+    const isEditor = this.gameContext.mode() === GameMode.EDITOR || this.gameContext.mode() === GameMode.EDITING_IN_GAME || this.gameContext.mode() === GameMode.TEST_LIVE;
 
     subMeshes.forEach(m => {
       const nameL = m.name.toLowerCase();
@@ -117,9 +124,10 @@ export class CoreModelLoaderService {
       m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
       m.receiveShadows = true;
       
-      // 🔥 OPTIMIZACIÓN EXTREMA DE CPU: Si es un prop, jamás recalcular su matriz. 
-      // Permite colocar miles de calles a 60 FPS sin saturar Node/Browser.
-      if (!isCharacter && entity.rol === 'prop') {
+      // 🔥 FIX DE GIZMO Y TRANSFORMACIONES EN VIVO:
+      // Solo aplicamos optimizaciones destructivas (congelar matrices) si el juego está
+      // en modo producción (FINAL_USER) y es un prop inanimado.
+      if (!isCharacter && entity.rol === 'prop' && !isEditor) {
           m.doNotSyncBoundingInfo = true;
           m.freezeWorldMatrix();
       }
@@ -127,8 +135,8 @@ export class CoreModelLoaderService {
       if (m.material) this.materialSvc.ajustarMaterialGLB(m.material);
     });
 
-    // Congelar matriz del root si es un prop estático
-    if (!isCharacter && entity.rol === 'prop') {
+    // Congelar matriz del root si es un prop estático (Solo en producción)
+    if (!isCharacter && entity.rol === 'prop' && !isEditor) {
         rootNode.freezeWorldMatrix();
     }
 

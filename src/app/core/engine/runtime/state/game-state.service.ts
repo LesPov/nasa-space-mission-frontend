@@ -1,3 +1,4 @@
+
 import { Injectable, signal } from '@angular/core';
 import { GameCondition, GameStateMutation } from '../../models/player-config.model';
 

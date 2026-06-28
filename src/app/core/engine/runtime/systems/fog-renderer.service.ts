@@ -1,3 +1,4 @@
+
 import { Injectable } from '@angular/core';
 import { AbstractMesh, CascadedShadowGenerator, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Tags } from '@babylonjs/core';
 import { FogLevel } from '../../models/player-config.model';

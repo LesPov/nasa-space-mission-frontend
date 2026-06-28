@@ -1,3 +1,4 @@
+
 import { Component } from '@angular/core';
 
 @Component({
@@ -7,3 +8,4 @@ import { Component } from '@angular/core';
   styleUrl: './ui-inventario.css',
 })
 export class UiInventario {}
+

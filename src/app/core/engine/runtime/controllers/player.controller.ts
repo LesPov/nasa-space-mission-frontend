@@ -1,4 +1,5 @@
 
+
 // src/app/core/engine/runtime/controllers/player.controller.ts
 import { Injector } from '@angular/core';
 import { BaseCharacterController } from './base-character.controller';
@@ -21,3 +22,4 @@ export class PlayerController extends BaseCharacterController {
   public update(dtMs: number): void {}
   public postUpdate(dtMs: number): void {}
 }
+

@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { Animation, EasingFunction, SineEase, Vector3, Mesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';

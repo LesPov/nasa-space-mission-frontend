@@ -1,3 +1,4 @@
+
 // src/app/services/historial.service.ts
 
 import { Injectable, inject } from '@angular/core';

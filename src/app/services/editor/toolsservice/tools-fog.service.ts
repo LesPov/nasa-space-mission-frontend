@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { Scene, Vector3, Color3, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';

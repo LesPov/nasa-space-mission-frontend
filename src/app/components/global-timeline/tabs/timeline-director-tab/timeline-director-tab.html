@@ -1,0 +1,210 @@
+
+<div style="display: flex; flex-direction: column; height: 100%;">
+  
+  <div class="clip-topbar">
+    <button class="btn-primary" (click)="nuevaCinematica()">+ Nueva Cinemática</button>
+    <div style="width: 1px; height: 15px; background: #444; margin: 0 4px;"></div>
+    <button *ngFor="let cin of cinematics" class="sequence-chip" [class.active]="cin.id === selectedCinematicId" (click)="seleccionarCinematica(cin.id)">
+      🎥 {{ cin.name }}
+    </button>
+  </div>
+
+  <div *ngIf="currentCinematic" style="flex: 1; display: flex; flex-direction: column; min-height: 0;">
+    <div class="sequence-settings">
+      <div class="field" style="width: 180px;">
+        <input type="text" [(ngModel)]="currentCinematic.name" (ngModelChange)="persistCinematics()" placeholder="Nombre">
+      </div>
+      <div class="field" style="width: 100px;">
+        <label>Duración Total (ms)</label>
+        <input type="number" [(ngModel)]="currentCinematic.durationMs" (ngModelChange)="persistCinematics()">
+      </div>
+      <div style="flex: 1;"></div>
+      
+      <button class="btn-ghost small" (click)="copiarId(currentCinematic.id)">📋 Copiar ID</button>
+      <button class="btn-secondary" (click)="togglePlayCinematic()">{{ cinematicIsPlaying ? '⏸ Pausar' : '▶ Reproducir' }}</button>
+      <button class="btn-ghost" (click)="stopCinematic()">⏹ Detener</button>
+      <button class="btn-danger" (click)="eliminarCinematica(currentCinematic.id)">🗑️ Borrar</button>
+    </div>
+
+    <!-- THE TIMELINE -->
+    <div class="cinematic-timeline-container">
+       <div class="timeline-headers">
+           <div class="track-list-header">
+               <button class="btn-primary small" (click)="agregarTrack(currentCinematic)">+ Añadir Pista</button>
+           </div>
+           <div class="timeline-ruler" (mousedown)="onTimelineMouseDown($event, currentCinematic.durationMs)">
+               <div class="ruler-marks">
+                  <span *ngFor="let mark of getTimelineMarks(currentCinematic.durationMs)" 
+                        class="ruler-mark" [style.left.%]="(mark / currentCinematic.durationMs) * 100">
+                     {{ mark / 1000 }}s
+                  </span>
+               </div>
+               <div class="playhead" [style.left.%]="(cinematicPlayhead / currentCinematic.durationMs) * 100"></div>
+           </div>
+       </div>
+       
+       <div class="timeline-body">
+           <div class="track-list">
+               <div class="track-row" *ngFor="let track of currentCinematic.tracks; let tIdx = index" [class.selected]="selectedTrackIndex === tIdx" (click)="selectedTrackIndex = tIdx">
+                   <div style="display:flex; flex-direction:column; gap:4px; width:100%;">
+                       <div style="display:flex; justify-content:space-between; align-items:center;">
+                           <select [(ngModel)]="track.type" (ngModelChange)="persistCinematics()" class="target-select" style="width: 100px;">
+                              <option value="camera">🎥 Cámara</option>
+                              <option value="actor">🧍 Actor</option>
+                              <option value="dialogue">💬 Diálogo</option>
+                              <option value="event">⚡ Evento</option>
+                           </select>
+                           <button class="step-del" (click)="quitarTrack(currentCinematic, tIdx); $event.stopPropagation()">×</button>
+                       </div>
+                       
+                       <div style="display:flex; gap: 4px;">
+                           <select *ngIf="track.type === 'actor'" [(ngModel)]="track.targetUid" (ngModelChange)="persistCinematics()" class="target-select" style="flex:1;">
+                              <option value="">-- Seleccionar Actor --</option>
+                              <option *ngFor="let ent of sceneEntities" [value]="ent.uid">{{ ent.name }}</option>
+                           </select>
+                           <button class="btn-secondary small" style="padding:0 6px;" (click)="agregarClip(track)">+ Clip</button>
+                       </div>
+                   </div>
+               </div>
+           </div>
+           
+           <div class="track-content">
+               <div class="playhead" [style.left.%]="(cinematicPlayhead / currentCinematic.durationMs) * 100"></div>
+               <div class="track-row-content" *ngFor="let track of currentCinematic.tracks; let tIdx = index">
+                   <div class="clip-block" 
+                        *ngFor="let clip of track.clips; let cIdx = index"
+                        [class.selected]="selectedTrackIndex === tIdx && selectedClipIndex === cIdx"
+                        (click)="seleccionarClip(tIdx, cIdx)"
+                        [style.left.%]="(clip.startTimeMs / currentCinematic.durationMs) * 100"
+                        [style.width.%]="(clip.durationMs / currentCinematic.durationMs) * 100">
+                       <div class="clip-label">{{ track.type === 'dialogue' ? (clip.text || 'Diálogo') : (track.type === 'actor' ? 'Animación/Mov' : 'Clip') }}</div>
+                   </div>
+               </div>
+           </div>
+       </div>
+    </div>
+
+    <!-- CLIP EDITOR -->
+    <div class="step-editor-panel" *ngIf="currentCinematicClip">
+      <div style="display:flex; justify-content: space-between;">
+        <div style="display: flex; gap: 10px; align-items: center;">
+           <h4>Propiedades del Clip Seleccionado</h4>
+           <ng-container *ngIf="currentTrack?.type === 'camera'">
+               <button class="btn-ghost small" (click)="enfocarCamara()">🔍 Ver en Editor</button>
+               <button class="btn-primary small" (click)="entrarCamara()" *ngIf="!cinematicTools.isInsideCamera">🎥 Entrar a Cámara</button>
+               <button class="btn-danger small" (click)="salirCamara()" *ngIf="cinematicTools.isInsideCamera">🚪 Salir de Cámara</button>
+           </ng-container>
+        </div>
+        <button class="btn-danger small" (click)="quitarClip()">🗑️ Quitar Clip</button>
+      </div>
+      
+      <div class="step-editor-grid">
+         <div class="field"><label>Tiempo Inicio (ms)</label><input type="number" [(ngModel)]="currentCinematicClip.startTimeMs" (ngModelChange)="persistCinematics()"></div>
+         <div class="field"><label>Duración (ms)</label><input type="number" [(ngModel)]="currentCinematicClip.durationMs" (ngModelChange)="persistCinematics()"></div>
+         
+         <ng-container *ngIf="currentTrack?.type === 'camera' || currentTrack?.type === 'actor'">
+             <div class="field"><label>Interpolación (Ease)</label>
+                <select [(ngModel)]="currentCinematicClip.easing" (ngModelChange)="persistCinematics()">
+                   <option value="linear">Lineal (Constante)</option>
+                   <option value="easeIn">Ease In (Acelera)</option>
+                   <option value="easeOut">Ease Out (Frena)</option>
+                   <option value="easeInOut">Ease In Out (Suave)</option>
+                </select>
+             </div>
+
+             <ng-container *ngIf="currentTrack?.type === 'camera'">
+               <div class="field wide">
+                  <label>Transición (Fade Screen)</label>
+                  <select [(ngModel)]="currentCinematicClip.fadeMode" (ngModelChange)="persistCinematics()">
+                     <option value="none">Ninguna</option>
+                     <option value="fadeIn">Fade In (Aparece desde Negro)</option>
+                     <option value="fadeOut">Fade Out (Desaparece a negro)</option>
+                     <option value="holdBlack">Mantener Negro Total</option>
+                  </select>
+               </div>
+               <div class="field wide">
+                  <label>Posición Relativa A (Orbit/Follow)</label>
+                  <select [(ngModel)]="currentCinematicClip.useLocalSpaceUid" (ngModelChange)="persistCinematics()">
+                     <option [ngValue]="undefined">Mundo (Absoluta)</option>
+                     <option *ngFor="let ent of sceneEntities" [ngValue]="ent.uid">Actor: {{ ent.name }}</option>
+                  </select>
+               </div>
+               <div class="field wide">
+                  <label>Mirar Fijo Hacia (Look At)</label>
+                  <select [(ngModel)]="currentCinematicClip.cameraTargetUid" (ngModelChange)="persistCinematics()">
+                     <option [ngValue]="undefined">Usar Rotación Manual</option>
+                     <option *ngFor="let ent of sceneEntities" [ngValue]="ent.uid">Actor: {{ ent.name }}</option>
+                  </select>
+               </div>
+             </ng-container>
+
+             <ng-container *ngIf="currentTrack?.type === 'actor'">
+               <div class="field wide">
+                  <label>Animación a Ejecutar</label>
+                  <select [(ngModel)]="currentCinematicClip.animationName" (ngModelChange)="persistCinematics()">
+                     <option [ngValue]="undefined">Reposo (Idle)</option>
+                     <option value="walk">Caminar</option>
+                     <option value="run">Correr</option>
+                     <option value="jumpStart">Saltar</option>
+                  </select>
+               </div>
+             </ng-container>
+             
+             <ng-container *ngIf="currentCinematicClip.startPosition && currentCinematicClip.endPosition && currentCinematicClip.startRotation && currentCinematicClip.endRotation">
+                 <div class="field wide" style="display:flex; gap:10px; align-items:center;">
+                     <button class="btn-ghost small" (click)="capturarPosRot(currentCinematicClip, true)">📌 Capturar Cámara/Actor INICIO</button>
+                     <button class="btn-ghost small" (click)="capturarPosRot(currentCinematicClip, false)">🏁 Capturar Cámara/Actor FIN</button>
+                 </div>
+
+                 <div class="field wide" style="display: flex; gap: 20px;">
+                   <div style="flex: 1;">
+                     <label style="color: #60a5fa;">Vector Inicio (X, Y, Z)</label>
+                     <div style="display:flex; gap:2px;">
+                       <input type="number" step="0.1" [(ngModel)]="currentCinematicClip.startPosition.x" (ngModelChange)="persistCinematics()">
+                       <input type="number" step="0.1" [(ngModel)]="currentCinematicClip.startPosition.y" (ngModelChange)="persistCinematics()">
+                       <input type="number" step="0.1" [(ngModel)]="currentCinematicClip.startPosition.z" (ngModelChange)="persistCinematics()">
+                     </div>
+                   </div>
+                   <div style="flex: 1;">
+                     <label style="color: #facc15;">Vector Fin (X, Y, Z)</label>
+                     <div style="display:flex; gap:2px;">
+                       <input type="number" step="0.1" [(ngModel)]="currentCinematicClip.endPosition.x" (ngModelChange)="persistCinematics()">
+                       <input type="number" step="0.1" [(ngModel)]="currentCinematicClip.endPosition.y" (ngModelChange)="persistCinematics()">
+                       <input type="number" step="0.1" [(ngModel)]="currentCinematicClip.endPosition.z" (ngModelChange)="persistCinematics()">
+                     </div>
+                   </div>
+                 </div>
+                 
+                 <div class="field wide" style="display: flex; gap: 20px;" *ngIf="!currentCinematicClip.cameraTargetUid || currentTrack?.type === 'actor'">
+                   <div style="flex: 1;">
+                     <label style="color: #60a5fa;">Rotación Inicio (Grados)</label>
+                     <div style="display:flex; gap:2px;">
+                       <input type="number" step="0.1" [(ngModel)]="currentCinematicClip.startRotation.x" (ngModelChange)="persistCinematics()">
+                       <input type="number" step="0.1" [(ngModel)]="currentCinematicClip.startRotation.y" (ngModelChange)="persistCinematics()">
+                       <input type="number" step="0.1" [(ngModel)]="currentCinematicClip.startRotation.z" (ngModelChange)="persistCinematics()">
+                     </div>
+                   </div>
+                   <div style="flex: 1;">
+                     <label style="color: #facc15;">Rotación Fin (Grados)</label>
+                     <div style="display:flex; gap:2px;">
+                       <input type="number" step="0.1" [(ngModel)]="currentCinematicClip.endRotation.x" (ngModelChange)="persistCinematics()">
+                       <input type="number" step="0.1" [(ngModel)]="currentCinematicClip.endRotation.y" (ngModelChange)="persistCinematics()">
+                       <input type="number" step="0.1" [(ngModel)]="currentCinematicClip.endRotation.z" (ngModelChange)="persistCinematics()">
+                     </div>
+                   </div>
+                 </div>
+             </ng-container>
+         </ng-container>
+
+         <!-- Diálogo -->
+         <ng-container *ngIf="currentTrack?.type === 'dialogue'">
+           <div class="field wide"><label>Actor (Nombre a mostrar)</label><input type="text" [(ngModel)]="currentCinematicClip.actorName" (ngModelChange)="persistCinematics()"></div>
+           <div class="field wide"><label>Texto del Diálogo</label><textarea rows="3" [(ngModel)]="currentCinematicClip.text" (ngModelChange)="persistCinematics()"></textarea></div>
+           <div class="field wide"><label>Audio URL</label><input type="text" [(ngModel)]="currentCinematicClip.audioUrl" (ngModelChange)="persistCinematics()"></div>
+         </ng-container>
+
+      </div>
+    </div>
+    
+  </div>
+</div>

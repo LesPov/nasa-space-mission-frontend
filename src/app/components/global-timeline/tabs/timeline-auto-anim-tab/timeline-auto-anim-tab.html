@@ -1,0 +1,44 @@
+
+<div *ngIf="!stateSvc.objetoSeleccionado()" class="empty-state">
+  <p>Selecciona un objeto para aplicarle una animación de bucle simple.</p>
+</div>
+
+<div *ngIf="stateSvc.objetoSeleccionado()" style="padding: 15px;">
+  <div style="background: #242424; padding: 12px; border-radius: 4px; border: 1px solid #333;">
+    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; padding-bottom: 10px; margin-bottom: 10px;">
+      <h4 style="margin: 0; color: #60a5fa; font-size: 12px;">Auto-Animación del Objeto</h4>
+      <div class="checkbox-field highlight">
+        <input type="checkbox" id="chkAutoAnim" [(ngModel)]="autoAnimConfig.enabled" (change)="guardarAutoAnimacion()">
+        <label for="chkAutoAnim">Activar Movimiento</label>
+      </div>
+    </div>
+
+    <div class="step-editor-grid" [style.opacity]="autoAnimConfig.enabled ? '1' : '0.4'" [style.pointer-events]="autoAnimConfig.enabled ? 'all' : 'none'">
+      <div class="field">
+        <label>Tipo</label>
+        <select [(ngModel)]="autoAnimConfig.type" (change)="guardarAutoAnimacion()">
+          <option value="move">Desplazar</option>
+          <option value="rotate">Rotar (Giro)</option>
+          <option value="scale">Escalar (Pulso)</option>
+          <option value="float">Flotar (Y)</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Eje</label>
+        <select [(ngModel)]="autoAnimConfig.axis" (change)="guardarAutoAnimacion()" [disabled]="autoAnimConfig.type === 'float'">
+          <option value="X">X</option>
+          <option value="Y">Y</option>
+          <option value="Z">Z</option>
+          <option value="ALL" *ngIf="autoAnimConfig.type === 'scale'">Todos</option>
+        </select>
+      </div>
+      <div class="field"><label>Cantidad (Dist/Giro)</label><input type="number" [(ngModel)]="autoAnimConfig.amount" (change)="guardarAutoAnimacion()"></div>
+      <div class="field"><label>Ciclo (Segundos)</label><input type="number" step="0.5" [(ngModel)]="autoAnimConfig.duration" (change)="guardarAutoAnimacion()"></div>
+    </div>
+
+    <div class="checkbox-field" style="margin-top: 10px; border-top: 1px dashed #444; padding-top: 10px;">
+      <input type="checkbox" id="chkStopBaked" [(ngModel)]="autoAnimConfig.stopBaked" (change)="guardarAutoAnimacion()">
+      <label for="chkStopBaked" style="color: #f87171; font-weight: bold;">⏹️ FRENAR animación nativa del GLB.</label>
+    </div>
+  </div>
+</div>

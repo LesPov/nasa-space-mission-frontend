@@ -1,0 +1,13 @@
+
+.step-editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: start; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field.wide { grid-column: span 2; }
+.field label { font-size: 10px; color: #888; }
+.field input[type="text"], .field input[type="number"], .field select, textarea { width: 100%; box-sizing: border-box; background: #111; border: 1px solid #333; border-radius: 3px; color: #ddd; padding: 5px 8px; outline: none; font-size: 11px; transition: 0.1s; }
+.field input:focus, .field select:focus, textarea:focus { border-color: #4b73b5; }
+.btn-secondary, .btn-danger { border: none; padding: 5px 10px; border-radius: 3px; font-weight: bold; font-size: 10px; cursor: pointer; transition: 0.1s; }
+.btn-secondary { background: #2d915f; color: white; }
+.btn-secondary:hover { background: #1d6b44; }
+.btn-secondary.small { padding: 3px 6px; font-size: 9px; }
+.btn-danger { background: #a83d3d; color: white; }
+.btn-danger:hover { background: #7d2a2a; }

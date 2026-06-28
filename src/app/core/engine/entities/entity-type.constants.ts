@@ -1,4 +1,5 @@
 
+
 export const ENTITY_TYPES = {
   MODEL: 'model',
   TRIGGER: 'trigger',

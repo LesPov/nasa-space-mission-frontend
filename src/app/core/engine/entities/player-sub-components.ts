@@ -1,4 +1,5 @@
 
+
 import { Vector3 } from '@babylonjs/core';
 import { 
   PlayerMovementConfig, PlayerJumpConfig, PlayerCameraConfig, PlayerFogConfig, 
@@ -21,3 +22,4 @@ export class CamOffsetComponent { constructor(public config: { x: number, y: num
 export class AnimationNamesComponent { constructor(public names: string[]) {} }
 export class AutoAnimComponent { constructor(public config: any) {} }
 export class InitialHeadLocalComponent { constructor(public position: Vector3) {} }
+

@@ -1,3 +1,4 @@
+
 export type CameraViewMode = 'FPS' | 'TPS';
 
 export interface GameContextState {

@@ -1,4 +1,5 @@
 
+
 import { Component } from '@angular/core';
 
 @Component({
@@ -8,4 +9,5 @@ import { Component } from '@angular/core';
   styleUrl: './editor-dialogos.css',
 })
 export class EditorDialogos {}
+
 

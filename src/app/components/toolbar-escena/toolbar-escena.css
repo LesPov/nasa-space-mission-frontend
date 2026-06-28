@@ -1,3 +1,4 @@
+
 :host { position: absolute; top: 15px; left: 15px; z-index: 10; }
 .blender-toolbar { width: 44px; background-color: #2b2b2b; border-radius: 6px; display: flex; flex-direction: column; padding: 6px; gap: 6px; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4); border: 1px solid #1a1a1a; user-select: none; }
 .tool-group { display: flex; flex-direction: column; gap: 6px; }

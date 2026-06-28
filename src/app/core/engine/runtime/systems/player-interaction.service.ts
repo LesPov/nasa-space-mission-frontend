@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -303,3 +304,4 @@ export class PlayerInteractionService implements IUpdatable {
     this.inputOrchestrator.lockPointer();
   }
 }
+

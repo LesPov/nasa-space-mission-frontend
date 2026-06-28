@@ -1,3 +1,4 @@
+
 export type AnimBinding = string | string[] | null;
 
 export interface GameCondition {

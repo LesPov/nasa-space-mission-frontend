@@ -1,0 +1,12 @@
+
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #666; text-align: center; padding: 20px; }
+.empty-state p { font-size: 12px; font-weight: bold; margin: 0; }
+.step-editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: start; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label { font-size: 10px; color: #888; }
+.field input[type="number"], .field select { width: 100%; box-sizing: border-box; background: #111; border: 1px solid #333; border-radius: 3px; color: #ddd; padding: 5px 8px; outline: none; font-size: 11px; transition: 0.1s; }
+.field input:focus, .field select:focus { border-color: #4b73b5; }
+.checkbox-field { display: flex; align-items: center; gap: 6px; font-size: 10px; color: #bbb; cursor: pointer; }
+.checkbox-field input[type="checkbox"] { width: 13px; height: 13px; cursor: pointer; margin: 0; }
+.checkbox-field.highlight { background: rgba(74, 222, 128, 0.08); padding: 4px 8px; border-radius: 3px; border: 1px solid rgba(74, 222, 128, 0.3); }
+.checkbox-field.highlight label { color: #4ade80; font-weight: bold; }

@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject, signal } from '@angular/core';
 import { Vector3, Quaternion, UniversalCamera, Matrix, ArcRotateCamera } from '@babylonjs/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';

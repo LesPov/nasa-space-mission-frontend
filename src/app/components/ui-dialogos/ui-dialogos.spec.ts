@@ -1,3 +1,4 @@
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { UiDialogos } from './ui-dialogos';
@@ -20,3 +21,4 @@ describe('UiDialogos', () => {
     expect(component).toBeTruthy();
   });
 });
+

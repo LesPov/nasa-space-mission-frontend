@@ -1,4 +1,5 @@
 
+
 // src/app/core/engine/runtime/controllers/npc.controller.ts
 import { Injector } from '@angular/core';
 import { BaseCharacterController } from './base-character.controller';

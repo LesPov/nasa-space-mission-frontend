@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Vector3, Quaternion } from '@babylonjs/core';
 import { PlayerClipSequence, PlayerSequenceStep, cloneDefaultPlayerConfig } from '../../models/player-config.model';

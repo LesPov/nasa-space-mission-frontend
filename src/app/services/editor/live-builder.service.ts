@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Matrix, Mesh, MeshBuilder, Observer, PointerEventTypes, KeyboardEventTypes, Ray, Scene, StandardMaterial, Tags, Vector3, Quaternion } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';

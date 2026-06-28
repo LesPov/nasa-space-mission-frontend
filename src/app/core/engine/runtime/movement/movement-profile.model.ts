@@ -1,3 +1,4 @@
+
 import { CameraOwner } from '../cameras/camera-ownership.service';
 
 export type MovementProfileType = 'EDITOR_FREE' | 'PLAYER_PHYSICAL';

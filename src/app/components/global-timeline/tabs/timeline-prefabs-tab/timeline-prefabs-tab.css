@@ -1,0 +1,14 @@
+
+.empty-state { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100%; color: #666; text-align: center; padding: 20px; }
+.empty-state p { font-size: 12px; font-weight: bold; margin: 0; }
+.panel-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 15px; }
+.mini-card { background: #242424; border: 1px solid #333; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+.mini-card-head { display: flex; justify-content: space-between; align-items: center; font-size: 12px; font-weight: bold; color: #60a5fa; }
+.btn-primary, .btn-secondary, .btn-danger { border: none; padding: 5px 10px; border-radius: 3px; font-weight: bold; font-size: 10px; cursor: pointer; transition: 0.1s; }
+.btn-primary { background: #4b73b5; color: white; }
+.btn-primary:hover { background: #35588c; }
+.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+.btn-secondary { background: #2d915f; color: white; }
+.btn-secondary:hover { background: #1d6b44; }
+.btn-danger { background: #a83d3d; color: white; }
+.btn-danger:hover { background: #7d2a2a; }

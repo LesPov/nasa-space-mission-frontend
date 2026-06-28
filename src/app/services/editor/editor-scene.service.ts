@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, MeshBuilder, Color4, Tags, Quaternion } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
@@ -137,6 +138,18 @@ export class EditorSceneService {
         this.mapaSvc.onMapChanged.next(); 
       }
     });
+  }
+
+  public instanciarPrefabEnCentro(prefabData: any): void {
+    const isAdmin = this.authSvc.isAdmin();
+    
+    let camTarget = new Vector3(0, 1, 0);
+    const editorCam = this.motor3d.getEditorCamera();
+    if (editorCam && typeof editorCam.getTarget === 'function') {
+      camTarget = editorCam.getTarget().clone();
+    }
+    
+    this.instanciarPrefabFull(prefabData, camTarget);
   }
 
   public obtenerDatosParaGuardar(escenaActualData: any, forceFull: boolean = false): { 

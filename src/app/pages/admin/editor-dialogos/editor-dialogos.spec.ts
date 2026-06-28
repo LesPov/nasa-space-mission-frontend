@@ -1,4 +1,5 @@
 
+
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
 import { EditorDialogos } from './editor-dialogos';
@@ -21,4 +22,5 @@ describe('EditorDialogos', () => {
     expect(component).toBeTruthy();
   });
 });
+
 

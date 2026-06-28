@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { UniversalCamera, Vector3, Quaternion, Scene } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';

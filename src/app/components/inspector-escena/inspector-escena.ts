@@ -1,5 +1,6 @@
 
 
+
 import { Component, HostListener } from '@angular/core';
 import { InspectorOutliner } from './inspector-outliner/inspector-outliner';
 import { InspectorProperties } from './inspector-properties/inspector-properties';
@@ -48,4 +49,5 @@ export class InspectorEscena {
     }
   }
 }
+
 

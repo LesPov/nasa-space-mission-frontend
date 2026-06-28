@@ -1,4 +1,5 @@
 
+
 /* Heredamos el grid de la hoja de estilos principal */
 .section-card { 
   background: transparent; 
@@ -27,3 +28,4 @@
 .color-picker::-webkit-color-swatch { border: 1px solid #333; border-radius: 4px; }
 .color-hex-text { color: #888; font-family: monospace; font-size: 13px; }
 .status-line { margin-top: 10px; color: #b6e3c9; font-size: 11px; padding: 6px 8px; background: rgba(45, 163, 99, 0.1); border: 1px solid rgba(45, 163, 99, 0.2); border-radius: 4px; }
+

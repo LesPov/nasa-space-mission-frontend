@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Matrix, Mesh, MeshBuilder, Observer, PointerEventTypes, KeyboardEventTypes, Ray, Scene, StandardMaterial, Tags, Vector3, Quaternion } from '@babylonjs/core';
-import { Motor3dService } from '../motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
 import { GameContextService } from '../../core/engine/session/game-context.service';
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
@@ -15,7 +15,7 @@ export type PlacementMode = 'SURFACE' | 'CHILD' | 'SIBLING';
 
 @Injectable({ providedIn: 'root' })
 export class LiveBuilderService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private eventBus = inject(GameEventBusService);
   private context = inject(GameContextService);
   private ownership = inject(CameraOwnershipService);
@@ -86,7 +86,7 @@ export class LiveBuilderService {
     
     this.createGhostMesh();
 
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
 
     // Actualiza la posición del Ghost constantemente (Necesario para cámaras FPS donde el ratón no se mueve en pantalla)
     this.renderObserver = scene.onBeforeRenderObservable.add(() => {
@@ -152,7 +152,7 @@ export class LiveBuilderService {
       this.ghostMesh = null;
     }
 
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     if (scene) {
       if (this.renderObserver) scene.onBeforeRenderObservable.remove(this.renderObserver);
       if (this.pointerObserver) scene.onPointerObservable.remove(this.pointerObserver);
@@ -170,7 +170,7 @@ export class LiveBuilderService {
   }
 
   private createGhostMesh(): void {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     
     if (this.currentAsset.type === 'model' || this.currentAsset.type?.startsWith('light_')) {
        this.ghostMesh = MeshBuilder.CreateBox('ghost_preview', { size: 1 }, scene);
@@ -233,7 +233,7 @@ export class LiveBuilderService {
   private updateGhostPosition(): void {
     if (!this.ghostMesh || !this._isBuilding) return;
 
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     const camera = this.ownership.getCamera();
     if (!camera) return;
 

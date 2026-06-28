@@ -1,7 +1,8 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
-import { Motor3dService } from '../../motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
 import { SceneNodesService } from './scene-nodes.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
@@ -10,7 +11,7 @@ import { AuthService } from '../../../core/services/auth';
   
 @Injectable({ providedIn: 'root' })
 export class BuilderTriggerService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
   private historialSvc = inject(HistorialService);
   private nodesSvc = inject(SceneNodesService);
@@ -19,7 +20,7 @@ export class BuilderTriggerService {
   private authSvc = inject(AuthService);
 
   public reconstruirMallaTrigger(oldMesh: AbstractMesh, nuevaForma: string): Mesh {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     const entity = this.entityManager.getEntityByMesh(oldMesh);
     let newMesh!: Mesh;
 

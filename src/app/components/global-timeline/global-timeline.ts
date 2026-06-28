@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { EpisodiosService } from '../../services/api/episodios';
 import { EditorMapaService } from '../../services/editor-mapa.service';
 import { AbstractMesh, Vector3, Mesh, StandardMaterial, Color3, MeshBuilder, TransformNode, Tags, Matrix } from '@babylonjs/core';
-import { Motor3dService } from '../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { PlayerClipSequence, createPlayerSequence, createSequenceStep, cloneDefaultPlayerConfig, mergePlayerConfig } from '../../core/engine/models/player-config.model';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { EditorPreviewService } from '../../services/editor/editor-preview.service';
@@ -49,7 +49,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
   public api = inject(EpisodiosService);
   public editorSvc = inject(EditorMapaService);
   private previewSvc = inject(EditorPreviewService);
-  private motor3dSvc = inject(Motor3dService);
+  private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private entityManager = inject(EntityManagerService);
   private worldSettingsSvc = inject(WorldSettingsService);
   public cinematicSvc = inject(EditorCinematicService); 
@@ -162,20 +162,20 @@ export class GlobalTimeline implements OnInit, OnDestroy {
   private dibujarCamarasProxy(): void {
       this.limpiarCamarasProxy();
       const seq = this.currentCinematic;
-      if (!seq || !this.motor3dSvc.scene) return;
+      if (!seq || !this.motor3dSvc.getScene()) return;
 
       seq.tracks.forEach(track => {
           if (track.type === 'camera') {
               track.clips.forEach((clip, i) => {
                   // Creamos un Mesh unificado (Box) en lugar de TransformNode para permitir picking en Editor
-                  const node = MeshBuilder.CreateBox(`proxy_cam_${clip.id}`, { width: 0.4, height: 0.3, depth: 0.5 }, this.motor3dSvc.scene);
+                  const node = MeshBuilder.CreateBox(`proxy_cam_${clip.id}`, { width: 0.4, height: 0.3, depth: 0.5 }, this.motor3dSvc.getScene());
                   
-                  const lens = MeshBuilder.CreateCylinder('lens', { height: 0.3, diameterTop: 0.3, diameterBottom: 0.15 }, this.motor3dSvc.scene);
+                  const lens = MeshBuilder.CreateCylinder('lens', { height: 0.3, diameterTop: 0.3, diameterBottom: 0.15 }, this.motor3dSvc.getScene());
                   lens.rotation.x = Math.PI / 2;
                   lens.position.z = 0.4;
                   lens.parent = node;
                   
-                  const mat = new StandardMaterial('mat', this.motor3dSvc.scene);
+                  const mat = new StandardMaterial('mat', this.motor3dSvc.getScene());
                   mat.diffuseColor = new Color3(0, 0.5, 1);
                   mat.emissiveColor = new Color3(0, 0.2, 0.5);
                   node.material = mat; 
@@ -237,7 +237,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
     const rawClips: string[] = [];
     if (entity.animationNames && Array.isArray(entity.animationNames)) rawClips.push(...entity.animationNames);
 
-    this.motor3dSvc.scene.meshes.forEach(m => {
+    this.motor3dSvc.getScene().meshes.forEach(m => {
         const testEnt = this.entityManager.getEntityByMesh(m);
         if (testEnt && testEnt.type === 'video_plane') rawClips.push(m.name);
     });
@@ -350,8 +350,8 @@ export class GlobalTimeline implements OnInit, OnDestroy {
 
   instanciarPrefab(prefab: any) {
     let camTarget = new Vector3(0, 1, 0);
-    if (this.motor3dSvc.editorCamera && typeof this.motor3dSvc.editorCamera.getTarget === 'function') {
-      camTarget = this.motor3dSvc.editorCamera.getTarget().clone();
+    if (this.motor3dSvc.getEditorCamera() && typeof this.motor3dSvc.getEditorCamera().getTarget === 'function') {
+      camTarget = this.motor3dSvc.getEditorCamera().getTarget().clone();
     }
     this.editorSvc.instanciarPrefabFull(prefab, camTarget);
   }
@@ -499,7 +499,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
                  this.enfocarCamara();
                  
                  // Seleccionamos visualmente el Proxy para mostrar sus Gizmos
-                 const proxyMesh = this.motor3dSvc.scene.getMeshByName(`proxy_cam_${clip.id}`);
+                 const proxyMesh = this.motor3dSvc.getScene().getMeshByName(`proxy_cam_${clip.id}`);
                  if (proxyMesh) this.editorSvc.seleccionarObjeto(proxyMesh);
              }
          }
@@ -590,7 +590,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
     const percent = x / rect.width;
     this.cinematicPlayhead = percent * durationMs;
     this.cinematicDirector.seek(this.cinematicPlayhead);
-    this.motor3dSvc.scene.render();
+    this.motor3dSvc.getScene().render();
   }
 
   // 🔥 Controles Directos de Editor a Cámara
@@ -622,7 +622,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
      this.isInsideCamera = false;
      this.cinematicDirector.editorWantsCamera = false;
      
-     const editorCam = this.motor3dSvc.editorCamera;
+     const editorCam = this.motor3dSvc.getEditorCamera();
      this.cameraSvc.transicionDesdeCamaraCinematica(editorCam, () => {
          this.cameraSvc.salirCamaraFija();
      });
@@ -635,7 +635,7 @@ export class GlobalTimeline implements OnInit, OnDestroy {
     let rot = {x:0, y:0, z:0};
 
     if (this.currentTrack?.type === 'camera') {
-        const cam = this.motor3dSvc.editorCamera;
+        const cam = this.motor3dSvc.getEditorCamera();
         if (cam) {
            let globalPos = cam.globalPosition;
            

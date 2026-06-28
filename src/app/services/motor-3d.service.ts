@@ -1,18 +1,16 @@
 
 import { Injectable, inject, Injector } from '@angular/core';
-import {
-  Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4,
-  UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera
-} from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4, UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera } from '@babylonjs/core';
 import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
 import { CameraFactoryService } from '../core/engine/runtime/cameras/camera-factory.service';
 import { CameraOwnershipService } from '../core/engine/runtime/cameras/camera-ownership.service';
 import { CinematicDirectorService } from '../core/engine/runtime/systems/cinematic-director.service';
+import { ISceneAccess } from '../core/engine/scene/scene-access.token';
 
 @Injectable({
   providedIn: 'root'
 })
-export class Motor3dService {
+export class Motor3dService implements ISceneAccess {
   public engine!: Engine;
   public scene!: Scene;
 
@@ -25,7 +23,14 @@ export class Motor3dService {
   public glowLayer!: GlowLayer; 
   public currentFps: number = 0;
 
-  // 🔥 FIX: Agregada protección contra accesos prematuros desde los Signals antes de inicializar el Engine
+  getScene(): Scene { return this.scene; }
+  getEngine(): Engine { return this.engine; }
+  getEditorCamera(): ArcRotateCamera { return this.editorCamera; }
+  getPlayerCameraFPS(): UniversalCamera { return this.playerCameraFPS; }
+  getPlayerCameraTPS(): ArcRotateCamera { return this.playerCameraTPS; }
+  getRenderingPipeline(): DefaultRenderingPipeline { return this.renderingPipeline; }
+  getCurrentFps(): number { return this.currentFps; }
+
   get editorCamera(): ArcRotateCamera {
     if (!this.engine || !this.scene) return null as any;
     const cam = this.cameraFactory.getCamera('EDITOR', this.scene, this.engine.getRenderingCanvas());
@@ -75,7 +80,6 @@ export class Motor3dService {
 
     this.loopManager.initialize(this.scene);
     
-    // 🔥 FIX: Garantiza que el Director cinemático corre en tiempo real incluso en el Editor
     const cinematicDirector = this.injector.get(CinematicDirectorService);
     this.loopManager.registerSystem(cinematicDirector);
 
@@ -104,7 +108,7 @@ export class Motor3dService {
       this.currentFps = this.engine.getFps();
     });
 
-    window.addEventListener('resize', () => this.forzarRedimension());
+    window.addEventListener('resize', () => this.forceResize());
   }
 
   setVisualMode(mode: 'normal' | 'bw'): void {
@@ -120,7 +124,7 @@ export class Motor3dService {
     this.scene.imageProcessingConfiguration.contrast = isBw ? 1.15 : 1.0;
   }
 
-  forzarRedimension(): void {
+  forceResize(): void {
     if (this.engine) {
       setTimeout(() => this.engine.resize(), 50);
       setTimeout(() => this.engine.resize(), 150);

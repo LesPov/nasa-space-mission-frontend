@@ -1,5 +1,4 @@
 
-
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -7,7 +6,7 @@ import { AbstractMesh, Color3, PointLight, SpotLight, DirectionalLight, Transfor
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
 
 interface AttachedNodeOption {
   label: string;
@@ -25,7 +24,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   @Input() objeto!: AbstractMesh;
 
   private editorSvc = inject(EditorMapaService);
-  private motor3dSvc = inject(Motor3dService);
+  private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
@@ -108,7 +107,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       current = parent;
     }
 
-    return parts.join('/');
+    return parts.join('/ ');
   }
 
   private resolveNodeByPath(path: string): TransformNode | AbstractMesh | null {
@@ -223,7 +222,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     }
 
     const light = this.getAttachedLight();
-    const isBW = this.motor3dSvc.scene?.metadata?.globalVisualMode === 'bw';
+    const isBW = this.motor3dSvc.getScene()?.metadata?.globalVisualMode === 'bw';
     const activeColor = isBW ? this.lightColorBW : this.lightColor;
 
     if (light) {

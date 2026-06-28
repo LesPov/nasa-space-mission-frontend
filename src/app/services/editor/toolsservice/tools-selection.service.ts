@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Ray, Vector3, Tags } from '@babylonjs/core';
-import { Motor3dService } from '../../motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { AuthService } from '../../../core/services/auth';
@@ -9,7 +9,7 @@ import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/cam
 
 @Injectable({ providedIn: 'root' })
 export class ToolsSelectionService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
   private authSvc = inject(AuthService);
@@ -38,7 +38,7 @@ export class ToolsSelectionService {
     const entSeleccionado = this.entityManager.getEntityByMesh(seleccionado);
     if (entSeleccionado) candidates.push(entSeleccionado);
 
-    const scenePlayer = this.motor3d.scene?.meshes.find(m => !!this.entityManager.getEntityByMesh(m)?.characterConfig);
+    const scenePlayer = this.motor3d.getScene()?.meshes.find(m => !!this.entityManager.getEntityByMesh(m)?.characterConfig);
     const entScenePlayer = this.entityManager.getEntityByMesh(scenePlayer);
     if (entScenePlayer) candidates.push(entScenePlayer);
 
@@ -88,7 +88,6 @@ export class ToolsSelectionService {
     if (!mesh) return false;
     if (this.state.esMeshIgnorable(mesh)) return false;
 
-    // 🔥 FIX: Si es proxy cinemático siempre es seleccionable
     if (Tags.MatchesQuery(mesh, "cinematic_proxy")) return true;
 
     const root = this.state.encontrarRaiz(mesh) as AbstractMesh | null;
@@ -99,14 +98,13 @@ export class ToolsSelectionService {
   }
 
   public resolverRootDesdeRay(ray: Ray, centerDragMesh: AbstractMesh): AbstractMesh | null {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     const playSt = this.state.playState();
     const jugador = this.state.jugadorActivo;
     const entityPlayer = jugador ? this.entityManager.getEntityByMesh(jugador) : null;
     const isAdmin = this.authSvc.isAdmin();
 
     const hit = scene.pickWithRay(ray, (m) => {
-      // 🔥 FIX: Los proxies cinemáticos pueden ser invisibles si usan alpha, pero deben poder tocarse
       if (!m.isVisible && !Tags.MatchesQuery(m, "cinematic_proxy")) return false;
       if (!m.isPickable) return false;
       
@@ -117,7 +115,6 @@ export class ToolsSelectionService {
           }
       }
 
-      // 🔥 FIX: No omitir los cinematic_proxy
       if (Tags.MatchesQuery(m, "cinematic_proxy")) return true;
       if (Tags.MatchesQuery(m, "system_element || fog_element || ignore_raycast || editor_only || invisible_floor")) return false;
       if (m === centerDragMesh) return false;
@@ -133,7 +130,6 @@ export class ToolsSelectionService {
 
     const picked = hit.pickedMesh as AbstractMesh;
 
-    // 🔥 FIX: Resolver el padre si se seleccionó la lente o la caja del proxy
     if (Tags.MatchesQuery(picked, "cinematic_proxy")) {
         return (picked.parent as AbstractMesh) || picked;
     }

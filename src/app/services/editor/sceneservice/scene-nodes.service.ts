@@ -1,20 +1,19 @@
-// src/app/services/editor/sceneservice/scene-nodes.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Tags } from '@babylonjs/core';
-import { Motor3dService } from '../../motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class SceneNodesService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService); 
 
   public actualizarListaNodos(): void {
-    if (!this.motor3d.scene) return;
-    const scene = this.motor3d.scene;
+    if (!this.motor3d.getScene()) return;
+    const scene = this.motor3d.getScene();
 
     const lucesValidas = scene.lights.filter(l => !l.parent && l.name !== 'ambientLight');
     

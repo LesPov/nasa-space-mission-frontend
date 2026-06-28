@@ -1,18 +1,19 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Animation, EasingFunction, SineEase, Vector3, Mesh } from '@babylonjs/core';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class ObjectAnimationService implements IUpdatable {
   public id = 'ObjectAnimationSystem';
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private entityManager = inject(EntityManagerService);
   private animatables: any[] = [];
 
   public start(): void {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     if (!scene) return;
 
     this.entityManager.getAllEntities().forEach(entity => {
@@ -132,7 +133,7 @@ export class ObjectAnimationService implements IUpdatable {
     mesh.animations = mesh.animations || [];
     mesh.animations.push(anim);
 
-    const animatable = this.motor3d.scene.beginAnimation(mesh, 0, frames, true);
+    const animatable = this.motor3d.getScene().beginAnimation(mesh, 0, frames, true);
     this.animatables.push(animatable);
   }
 }

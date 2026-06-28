@@ -1,12 +1,11 @@
-// src/app/core/engine/runtime/systems/input-orchestrator.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { GameEventBusService } from '../../events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })
 export class InputOrchestratorService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private eventBus = inject(GameEventBusService);
   private isListening = false;
 
@@ -27,7 +26,7 @@ export class InputOrchestratorService {
   }
 
   public lockPointer(): void {
-    const canvas = this.motor3d.engine?.getRenderingCanvas();
+    const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
     if (canvas && document.pointerLockElement !== canvas) {
       try { 
         canvas.focus();

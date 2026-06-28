@@ -15,8 +15,8 @@ import { CharacterKinematicsService } from './systems/character-kinematics.servi
 import { PlayerAnimationService } from './systems/player-animation.service';
 import { RenderSync } from './systems/render-sync';
 import { MediaCommandSystem } from './systems/media-command.system';
-import { CinematicDirectorService } from './systems/cinematic-director.service'; // 🔥 ADDED
-import { Motor3dService } from '../../../services/motor-3d.service';
+import { CinematicDirectorService } from './systems/cinematic-director.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene/scene-access.token';
 import { CameraViewMode } from '../session/game-context.model';
 import { GameMode } from '../session/game-mode.model';
 import { GameContextService } from '../session/game-context.service';
@@ -42,9 +42,9 @@ export class GameSession {
   private sequenceSvc = inject(PlayerSequenceService);
   private kinematicsSvc = inject(CharacterKinematicsService);
   private playerAnimationSvc = inject(PlayerAnimationService);
-  private cinematicDirector = inject(CinematicDirectorService); // 🔥 ADDED
+  private cinematicDirector = inject(CinematicDirectorService);
   private renderSyncSvc = inject(RenderSync);
-  private motor3dSvc = inject(Motor3dService);
+  private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
 
   public isPlaying = computed(() => this.context.isPlaying());
   public isDebugMode = computed(() => this.context.isDebugMode());
@@ -60,7 +60,7 @@ export class GameSession {
         this.context.setPointerLocked(true);
         const owner = this.ownership.getOwner();
         
-        if (owner !== 'ADMIN_FREE' && owner !== 'CINEMATIC_DIRECTOR') { // 🔥 Protegemos control durante cinemáticas
+        if (owner !== 'ADMIN_FREE' && owner !== 'CINEMATIC_DIRECTOR') {
             this.inputSvc.enable();
             this.interactionSvc.enable();
         }
@@ -110,7 +110,7 @@ export class GameSession {
     this.systems = [
       this.inputSvc,
       this.sequenceSvc,
-      this.cinematicDirector, // 🔥 ADDED
+      this.cinematicDirector,
       this.kinematicsSvc,
       this.triggerSvc,
       this.interactionSvc,
@@ -134,7 +134,8 @@ export class GameSession {
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
       if (entity.characterConfig) {
-        this.playerAnimationSvc.sincronizarAnimaciones(this.motor3dSvc.scene, entity);
+        // 🔥 FIX FASE 3: Obliga el uso de .getScene() a través de la Interfaz del Motor
+        this.playerAnimationSvc.sincronizarAnimaciones(this.motor3dSvc.getScene(), entity);
 
         const autoSeq = entity.playerConfig?.sequences.find((s: any) => s.autoPlay);
         if (autoSeq) {
@@ -156,7 +157,7 @@ export class GameSession {
     this.inputSvc.disable();
     this.interactionSvc.disable();
     this.sequenceSvc.resetearSecuencias();
-    this.cinematicDirector.stop(); // 🔥 ADDED
+    this.cinematicDirector.stop();
 
     this.systems.forEach(system => {
         this.loopManager.unregisterSystem(system.id);
@@ -173,7 +174,7 @@ export class GameSession {
   }
 
   public toggleCameraUser(isCinematicInitial: boolean = false, customFrames?: number): void {
-    if (this.ownership.getOwner() === 'CINEMATIC_DIRECTOR') return; // 🔥 Evita romper la cámara si el jugador presiona V en cinemática
+    if (this.ownership.getOwner() === 'CINEMATIC_DIRECTOR') return;
 
     const playerEntity = this.activePlayerEntity();
     if (!playerEntity) return;

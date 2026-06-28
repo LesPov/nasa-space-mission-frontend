@@ -6,7 +6,7 @@ import { CinematicSequence, CinematicClip, CinematicEasing } from '../../models/
 import { CameraOwnershipService, CameraOwner } from '../cameras/camera-ownership.service';
 import { CameraFactoryService } from '../cameras/camera-factory.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { GameEventBusService } from '../../events/game-event-bus.service';
 import { EditorCinematicService } from '../../../../services/editor/editor-cinematic.service';
 import { getMovementProfileForOwner } from '../movement/movement-profile.model';
@@ -18,7 +18,7 @@ export class CinematicDirectorService implements IUpdatable {
   private ownership = inject(CameraOwnershipService);
   private cameraFactory = inject(CameraFactoryService);
   private entityManager = inject(EntityManagerService);
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private eventBus = inject(GameEventBusService);
   private cinematicSvc = inject(EditorCinematicService);
 
@@ -76,15 +76,15 @@ export class CinematicDirectorService implements IUpdatable {
       this.previousCameraOwner = prevOwner;
       this.previousCamera = prevCam;
       if (!this.cinematicCamera) {
-         this.cinematicCamera = this.cameraFactory.getCamera('CINEMATIC', this.motor3d.scene);
+         this.cinematicCamera = this.cameraFactory.getCamera('CINEMATIC', this.motor3d.getScene());
       }
-      const canvas = this.motor3d.engine.getRenderingCanvas();
+      const canvas = this.motor3d.getEngine().getRenderingCanvas();
       this.ownership.setCamera('CINEMATIC_DIRECTOR', this.cinematicCamera!, canvas, false);
   }
 
   public releaseCamera() {
       if (this.ownership.getOwner() === 'CINEMATIC_DIRECTOR') {
-         const canvas = this.motor3d.engine.getRenderingCanvas();
+         const canvas = this.motor3d.getEngine().getRenderingCanvas();
          this.ownership.setCamera(this.previousCameraOwner, this.previousCamera, canvas, true);
       }
   }
@@ -154,7 +154,6 @@ export class CinematicDirectorService implements IUpdatable {
 
       if (this.ownership.getOwner() === 'CINEMATIC_DIRECTOR') {
          this.releaseCamera();
-         // 🔥 FIX: No sobrescribimos los ángulos de la cámara devuelta
       }
       this.activeSequence = null;
     }

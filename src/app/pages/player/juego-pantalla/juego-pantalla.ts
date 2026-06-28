@@ -9,7 +9,7 @@ import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
 import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { EpisodiosService } from '../../../services/api/episodios';
-import { Motor3dService } from '../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { InputOrchestratorService } from '../../../core/engine/runtime/systems/input-orchestrator.service';
 import { AuthService } from '../../../core/services/auth';
 import { GameStateService } from '../../../core/engine/runtime/state/game-state.service'; 
@@ -43,7 +43,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private eventBus = inject(GameEventBusService);
   private cdr = inject(ChangeDetectorRef);
   private epiApiSvc = inject(EpisodiosService);
-  private motor3dSvc = inject(Motor3dService);
+  private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private inputOrchestrator = inject(InputOrchestratorService);
   private authSvc = inject(AuthService);
   private gameStateSvc = inject(GameStateService); 
@@ -91,7 +91,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     
     if (event.code === 'KeyC' && event.ctrlKey && this.isAdmin) {
       event.preventDefault();
-      const canvas = this.motor3dSvc.engine?.getRenderingCanvas();
+      const canvas = this.motor3dSvc.getEngine()?.getRenderingCanvas();
       if (canvas) {
         this.adminFreeCam.toggle(canvas);
       }
@@ -168,7 +168,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
           this.cdr.detectChanges();
 
           this.fpsInterval = setInterval(() => {
-            this.fps.set(this.motor3dSvc.currentFps.toFixed(0));
+            this.fps.set(this.motor3dSvc.getCurrentFps().toFixed(0));
           }, 500);
 
           if (this.isDetached) {
@@ -253,7 +253,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
     if (newMapData.environmentSettings || newMapData.uiSettings) {
         this.worldSettingsSvc.loadFromDb(newMapData.environmentSettings, newMapData.uiSettings);
-        this.worldSettingsSvc.applyToScene(this.motor3dSvc.scene, (mode) => this.motor3dSvc.setVisualMode(mode));
+        this.worldSettingsSvc.applyToScene(this.motor3dSvc.getScene(), (mode) => this.motor3dSvc.setVisualMode(mode));
     }
 
     if (requiereReboot) {

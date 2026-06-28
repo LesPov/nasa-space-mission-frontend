@@ -1,16 +1,17 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
 export class CoreTriggerLoaderService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private entityManager = inject(EntityManagerService);
 
   public cargarTrigger(trigger: any, mallasCreadas: Map<string, Mesh>): void {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     const shape = trigger.actionProperties?.triggerShape || trigger.properties?.triggerShape || 'cube';
     const isComposite = trigger.actionProperties?.isComposite ?? trigger.properties?.isComposite ?? false;
 

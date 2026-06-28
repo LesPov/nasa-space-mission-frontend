@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { Scene, Vector3, Color3, AbstractMesh } from '@babylonjs/core';
-import { Motor3dService } from '../../motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
 import { FogLevel } from '../../../core/engine/models/player-config.model';
 import { LoopManagerService, GamePhase } from '../../../core/engine/behaviors/services/loop-manager.service';
@@ -12,7 +12,7 @@ import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/cam
 
 @Injectable({ providedIn: 'root' }) 
 export class ToolsFogService { 
-  private motor3d = inject(Motor3dService); 
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN); 
   private state = inject(EditorStateService);
   private loopManager = inject(LoopManagerService);
   private entityManager = inject(EntityManagerService);
@@ -36,7 +36,7 @@ export class ToolsFogService {
   }
 
   public aplicarNieblaEnTiempoReal(): void { 
-    const scene = this.motor3d.scene; 
+    const scene = this.motor3d.getScene(); 
     if (!scene) return;
 
     if (!this.isRegistered) {
@@ -103,13 +103,13 @@ export class ToolsFogService {
       let distCamToPlayer = activeCam && targetPlayer ? Vector3.Distance(activeCam.globalPosition, targetPlayer.getAbsolutePosition()) : 0;
       const renderMaxZ = (Number(renderDistance) || 100000) + distCamToPlayer;
 
-      this.motor3d.editorCamera.maxZ = 500000;
+      this.motor3d.getEditorCamera().maxZ = 500000;
       shadowLimit = renderMaxZ;
       this.curStart = renderMaxZ * 0.8;
       this.curEnd = renderMaxZ;
     } else {
       targetR = targetColorObj.r; targetG = targetColorObj.g; targetB = targetColorObj.b;
-      this.motor3d.editorCamera.maxZ = 500000;
+      this.motor3d.getEditorCamera().maxZ = 500000;
     }
 
     if (this.firstFrame) {

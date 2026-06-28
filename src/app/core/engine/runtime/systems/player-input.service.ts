@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observer, KeyboardInfo, Scene, KeyboardEventTypes } from '@babylonjs/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameContextService } from '../../session/game-context.service';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { GameEventBusService } from '../../events/game-event-bus.service';
 import { AuthService } from '../../../services/auth';
 
@@ -19,7 +19,7 @@ export class PlayerInputService implements IUpdatable {
   private isEnabled: boolean = false;
 
   private context = inject(GameContextService);
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private eventBus = inject(GameEventBusService);
   private authSvc = inject(AuthService);
 
@@ -39,7 +39,7 @@ export class PlayerInputService implements IUpdatable {
 
   public start(): void {
     this.tecladoObserver = null; 
-    this.iniciarEscuchaTeclado(this.motor3d.scene, {
+    this.iniciarEscuchaTeclado(this.motor3d.getScene(), {
       onToggleCamera: () => {
          this.eventBus.emit({ type: 'ToggleCameraRequested' });
       },
@@ -47,7 +47,7 @@ export class PlayerInputService implements IUpdatable {
   }
 
   public stop(): void {
-    this.detenerEscuchaTeclado(this.motor3d.scene);
+    this.detenerEscuchaTeclado(this.motor3d.getScene());
   }
 
   public enable(): void {
@@ -165,13 +165,11 @@ export class PlayerInputService implements IUpdatable {
     }
   }
 
-  // 🔥 FIX CAUSA RAÍZ MOUSE BLOQUEADO: 
-  // Nunca forzamos el pointer-lock si el usuario está limpiamente en el Editor
   private lockPointerAfterMenu(): void {
     const playState = this.context.mode();
     if (playState === 'EDITOR' || playState === 'EDITING_IN_GAME') return;
     
-    const canvas = this.motor3d.engine?.getRenderingCanvas();
+    const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
     if (canvas && !document.pointerLockElement) {
       try { 
         canvas.focus();
@@ -194,5 +192,4 @@ export class PlayerInputService implements IUpdatable {
     this.inspectPressedThisFrame = false;
     this.isRadialMenuOpen = false;
     this.qPressed = false;
-  }
-}
+  }}

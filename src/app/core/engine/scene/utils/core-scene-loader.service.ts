@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, MeshBuilder, Tags, Quaternion } from '@babylonjs/core';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { CoreSceneShadowsService } from './core-scene-shadows.service';
 import { CoreSceneUtilsService } from './core-scene-utils.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
@@ -18,7 +18,7 @@ import { PlayerTriggerService } from '../../runtime/systems/player-trigger.servi
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneLoaderService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private shadowsSvc = inject(CoreSceneShadowsService);
   private utilsSvc = inject(CoreSceneUtilsService);
   private entityManager = inject(EntityManagerService);
@@ -49,7 +49,7 @@ export class CoreSceneLoaderService {
   public async loadSceneFromData(dataBD: any): Promise<void> {
     if (!dataBD) return;
 
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     const isPlaying = this.gameContext.isPlaying();
     
     const persistentPlayer = this.entityManager.getAllEntities().find(e => e.isPersistent);

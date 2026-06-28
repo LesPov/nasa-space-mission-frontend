@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { StandardMaterial, VideoTexture, Color3, Mesh, Tags, Quaternion } from '@babylonjs/core';
-import { Motor3dService } from '../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../engine/scene/scene-access.token';
 import { GameSession } from './game-session';
 import { PlayerCameraManagerService } from './systems/player-camera.service';
 import { EntityManagerService } from '../entities/entity-manager.service';
@@ -17,7 +17,7 @@ import { SpawnManagerService } from './systems/spawn-manager.service'; // 🔥 A
   
 @Injectable({ providedIn: 'root' })
 export class RuntimeEngineService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private gameSession = inject(GameSession);
   private gameContext = inject(GameContextService);
   private playerCamSvc = inject(PlayerCameraManagerService);
@@ -37,13 +37,13 @@ export class RuntimeEngineService {
   public async bootProductionGame(episodeData: any, skipIntro: boolean = false): Promise<GameEntity> {
     this.entityManager.clear(); 
     
-    this.motor3d.forzarRedimension();
-    this.loaderSvc.createInvisibleFloor(this.motor3d.scene);
+    this.motor3d.forceResize();
+    this.loaderSvc.createInvisibleFloor(this.motor3d.getScene());
     
     await this.loaderSvc.loadSceneFromData(episodeData);
 
     return new Promise((resolve, reject) => {
-      this.motor3d.scene.executeWhenReady(() => {
+      this.motor3d.getScene().executeWhenReady(() => {
         
         // 🔥 FIX: Lógica de Spawn delegada al SpawnManager centralizado
         const spawnEntity = this.spawnManager.setupInitialPlayer();
@@ -55,7 +55,7 @@ export class RuntimeEngineService {
 
         this.resetVideos();
 
-        this.motor3d.scene.meshes.forEach(m => {
+        this.motor3d.getScene().meshes.forEach(m => {
             if (Tags.MatchesQuery(m, "editor_only")) {
                 m.isVisible = false;
                 m.setEnabled(false);
@@ -65,10 +65,10 @@ export class RuntimeEngineService {
         const activeView = skipIntro ? this.gameContext.cameraView() : 'TPS'; 
 
         this.playerCamSvc.inicializarCamaras(spawnEntity, activeView);
-        const targetCam = activeView === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS;
+        const targetCam = activeView === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS();
         targetCam.getViewMatrix(true);
         
-        const canvas = this.motor3d.engine.getRenderingCanvas();
+        const canvas = this.motor3d.getEngine().getRenderingCanvas();
         this.ownership.setCamera(activeView === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', targetCam, canvas, true);
 
         this.gameSession.start(spawnEntity, activeView);
@@ -102,7 +102,7 @@ export class RuntimeEngineService {
     this.inputOrchestrator.unlockPointer();
     this.entityManager.clear();
 
-    const canvas = this.motor3d.engine?.getRenderingCanvas();
+    const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
     if (canvas && this._prodClickFn) {
        canvas.removeEventListener('click', this._prodClickFn);
        this._prodClickFn = null;
@@ -117,10 +117,10 @@ export class RuntimeEngineService {
     this.spawnManager.resetPhysicsInertia(playerEntity);
     this.playerCamSvc.inicializarCamaras(playerEntity, view);
     
-    const targetCam = view === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS;
+    const targetCam = view === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS();
     targetCam.getViewMatrix(true);
     
-    const canvas = this.motor3d.engine.getRenderingCanvas();
+    const canvas = this.motor3d.getEngine().getRenderingCanvas();
     this.ownership.setCamera(view === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', targetCam, canvas, true);
 
     this.gameSession.start(playerEntity, view);

@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
 import { GameEventBusService } from '../../events/game-event-bus.service';
@@ -17,7 +17,7 @@ import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 @Injectable({ providedIn: 'root' })
 export class PlayerInteractionService implements IUpdatable {
   public id = 'PlayerInteractionSystem';
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private entityManager = inject(EntityManagerService);
   private eventBus = inject(GameEventBusService);
   private inputOrchestrator = inject(InputOrchestratorService);
@@ -110,7 +110,7 @@ export class PlayerInteractionService implements IUpdatable {
   }
 
   private getRootProxyCollider(rootMesh: AbstractMesh): AbstractMesh | null {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     const proxies = scene.getMeshesByTags("proxy_collider");
     return proxies.find(p => p.parent === rootMesh) ?? null;
   }
@@ -163,7 +163,7 @@ export class PlayerInteractionService implements IUpdatable {
     }
 
     const jugador = entity.view as Mesh;
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
 
     let hitInteractuable: GameEntity | null = null;
     let hoverSelectable: AbstractMesh | null = null;

@@ -1,6 +1,7 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Scene, Vector3, Color3, AbstractMesh } from '@babylonjs/core';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
 import { FogRendererService } from './fog-renderer.service';
@@ -11,7 +12,7 @@ import { GameContextService } from '../../session/game-context.service';
 @Injectable({ providedIn: 'root' }) 
 export class PlayerFogService implements IUpdatable { 
   public id = 'PlayerFogSystem';
-  private motor3d = inject(Motor3dService); 
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN); 
   private worldSettingsSvc = inject(WorldSettingsService);
   private fogRenderer = inject(FogRendererService);
   private ownership = inject(CameraOwnershipService);
@@ -23,7 +24,7 @@ export class PlayerFogService implements IUpdatable {
   private curStart = 500000; private curEnd = 500000;
 
   public start(): void {
-    const scene = this.motor3d.scene; 
+    const scene = this.motor3d.getScene(); 
     if (!scene) return;
 
     const w = this.worldSettingsSvc.settings();
@@ -42,7 +43,7 @@ export class PlayerFogService implements IUpdatable {
   }
 
   public postUpdate(dtMs: number): void { 
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     if (!scene) return;
 
     const playerEntity = this.context.activePlayerEntity();
@@ -79,13 +80,13 @@ export class PlayerFogService implements IUpdatable {
       const renderMaxZ = (Number(renderDistance) || 100000) + distCamToPlayer;
 
       if (this.firstFrame) {
-          this.motor3d.playerCameraFPS.maxZ = renderMaxZ;
-          this.motor3d.playerCameraTPS.maxZ = renderMaxZ;
-          this.motor3d.editorCamera.maxZ = renderMaxZ;
+          this.motor3d.getPlayerCameraFPS().maxZ = renderMaxZ;
+          this.motor3d.getPlayerCameraTPS().maxZ = renderMaxZ;
+          this.motor3d.getEditorCamera().maxZ = renderMaxZ;
       } else {
-          this.motor3d.editorCamera.maxZ += (renderMaxZ - this.motor3d.editorCamera.maxZ) * 0.05;
-          this.motor3d.playerCameraFPS.maxZ += (renderMaxZ - this.motor3d.playerCameraFPS.maxZ) * 0.05;
-          this.motor3d.playerCameraTPS.maxZ += (renderMaxZ - this.motor3d.playerCameraTPS.maxZ) * 0.05;
+          this.motor3d.getEditorCamera().maxZ += (renderMaxZ - this.motor3d.getEditorCamera().maxZ) * 0.05;
+          this.motor3d.getPlayerCameraFPS().maxZ += (renderMaxZ - this.motor3d.getPlayerCameraFPS().maxZ) * 0.05;
+          this.motor3d.getPlayerCameraTPS().maxZ += (renderMaxZ - this.motor3d.getPlayerCameraTPS().maxZ) * 0.05;
       }
       
       shadowLimit = renderMaxZ;
@@ -94,13 +95,13 @@ export class PlayerFogService implements IUpdatable {
     } else {
       targetR = targetColorObj.r; targetG = targetColorObj.g; targetB = targetColorObj.b;
       if (this.firstFrame) {
-          this.motor3d.playerCameraFPS.maxZ = 500000;
-          this.motor3d.playerCameraTPS.maxZ = 500000;
-          this.motor3d.editorCamera.maxZ = 500000;
+          this.motor3d.getPlayerCameraFPS().maxZ = 500000;
+          this.motor3d.getPlayerCameraTPS().maxZ = 500000;
+          this.motor3d.getEditorCamera().maxZ = 500000;
       } else {
-          this.motor3d.editorCamera.maxZ += (500000 - this.motor3d.editorCamera.maxZ) * 0.05;
-          this.motor3d.playerCameraFPS.maxZ += (500000 - this.motor3d.playerCameraFPS.maxZ) * 0.05;
-          this.motor3d.playerCameraTPS.maxZ += (500000 - this.motor3d.playerCameraTPS.maxZ) * 0.05;
+          this.motor3d.getEditorCamera().maxZ += (500000 - this.motor3d.getEditorCamera().maxZ) * 0.05;
+          this.motor3d.getPlayerCameraFPS().maxZ += (500000 - this.motor3d.getPlayerCameraFPS().maxZ) * 0.05;
+          this.motor3d.getPlayerCameraTPS().maxZ += (500000 - this.motor3d.getPlayerCameraTPS().maxZ) * 0.05;
       }
     }
 

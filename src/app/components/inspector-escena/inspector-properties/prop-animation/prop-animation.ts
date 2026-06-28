@@ -7,7 +7,7 @@ import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorPreviewService } from '../../../../services/editor/editor-preview.service';
 import { PlayerActionKey, PlayerRuntimeConfig, cloneDefaultPlayerConfig, mergePlayerConfig, normalizeAnimBinding } from '../../../../core/engine/models/player-config.model';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 
 interface ActionRow { key: PlayerActionKey; label: string; family: string; keywords: string[]; help: string; }
@@ -24,7 +24,7 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
   @Input() objeto!: AbstractMesh;
   
   private editorSvc = inject(EditorMapaService);
-  private motor3dSvc = inject(Motor3dService);
+  private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private previewSvc = inject(EditorPreviewService);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
@@ -107,7 +107,7 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
   }
 
   private getAvailableAnimationGroups(entity: any): AnimationGroup[] {
-    const scene = this.motor3dSvc.scene;
+    const scene = this.motor3dSvc.getScene();
     
     const validTargets = new Set();
     validTargets.add(this.objeto);

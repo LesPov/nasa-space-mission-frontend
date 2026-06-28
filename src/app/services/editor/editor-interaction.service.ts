@@ -1,6 +1,6 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Node } from '@babylonjs/core';
-import { Motor3dService } from '../motor-3d.service';
 import { EditorStateService } from './editor-state.service';
 import { PlayerInputService } from '../../core/engine/runtime/systems/player-input.service';
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
@@ -9,7 +9,6 @@ import { EditorModeTransitionService } from './editor-mode-transition.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorInteractionService {
-  private motor3d = inject(Motor3dService);
   private state = inject(EditorStateService);
   private transitionSvc = inject(EditorModeTransitionService);
   private inputSvc = inject(PlayerInputService);

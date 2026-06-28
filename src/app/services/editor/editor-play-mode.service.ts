@@ -1,10 +1,8 @@
 
-// src/app/services/editor/editor-play-mode.service.ts
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, MeshBuilder, Tags, Vector3, Observer, Scene } from '@babylonjs/core';
 
-import { Motor3dService } from '../motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { EditorStateService } from './editor-state.service';
 import { EditorCameraService } from './editor-camera.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
@@ -25,7 +23,7 @@ import { cloneDefaultPlayerConfig } from '../../core/engine/models/player-config
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
   private editorSvc = inject(EditorMapaService);
   private cameraSvc = inject(EditorCameraService);
@@ -50,8 +48,8 @@ export class EditorPlayModeService {
   }
 
   public testearEscena(vista: CameraViewMode, skipIntro: boolean = false): void {
-    if (this.motor3d.editorCamera) {
-        this.motor3d.editorCamera.computeWorldMatrix();
+    if (this.motor3d.getEditorCamera()) {
+        this.motor3d.getEditorCamera().computeWorldMatrix();
     }
 
     let objMesh = this.state.objetoSeleccionado() as Mesh;
@@ -64,7 +62,7 @@ export class EditorPlayModeService {
        if (!playerEntity) {
            const spawnPoint = this.entityManager.getAllEntities().find(e => e.rol === 'spawn_point');
            if (spawnPoint) {
-               const tempMesh = MeshBuilder.CreateCapsule("TempPlayer_TestLive", { height: 1.8, radius: 0.4 }, this.motor3d.scene);
+               const tempMesh = MeshBuilder.CreateCapsule("TempPlayer_TestLive", { height: 1.8, radius: 0.4 }, this.motor3d.getScene());
                tempMesh.position.set(
                  spawnPoint.transform.position.x,
                  spawnPoint.transform.position.y,
@@ -93,7 +91,7 @@ export class EditorPlayModeService {
            objMesh = playerEntity.view as Mesh;
        }
     } else if (playerEntity.rol === 'spawn_point') {
-       const tempMesh = MeshBuilder.CreateCapsule("TempPlayer_TestLive", { height: 1.8, radius: 0.4 }, this.motor3d.scene);
+       const tempMesh = MeshBuilder.CreateCapsule("TempPlayer_TestLive", { height: 1.8, radius: 0.4 }, this.motor3d.getScene());
        tempMesh.position.set(
          playerEntity.transform.position.x,
          playerEntity.transform.position.y,
@@ -129,7 +127,7 @@ export class EditorPlayModeService {
     this.state.jugadorActivo = objMesh;
     this.state.objetoSeleccionado.set(null);
     
-    this.motor3d.scene.meshes.forEach(m => {
+    this.motor3d.getScene().meshes.forEach(m => {
         if (Tags.MatchesQuery(m, "editor_only")) {
             m.isVisible = false;
             m.setEnabled(false);
@@ -176,7 +174,7 @@ export class EditorPlayModeService {
     let hideObserver: Observer<Scene> | null = null;
     
     if (vista === 'FPS' && !skipIntro) {
-      hideObserver = this.motor3d.scene.onBeforeRenderObservable.add(() => {
+      hideObserver = this.motor3d.getScene().onBeforeRenderObservable.add(() => {
         const cam = this.ownership.getCamera();
         if (cam && this.ownership.getOwner() === 'TRANSITION_PROXY') {
           const dist = Vector3.Distance(cam.globalPosition, targetPos);
@@ -192,7 +190,7 @@ export class EditorPlayModeService {
 
     const finishSetup = () => {
         if (hideObserver) {
-          this.motor3d.scene.onBeforeRenderObservable.remove(hideObserver);
+          this.motor3d.getScene().onBeforeRenderObservable.remove(hideObserver);
         }
 
         if (!skipIntro) this.transitionSvc.finishTestLiveTransition();
@@ -200,13 +198,13 @@ export class EditorPlayModeService {
         this.state.triggerUpdate();
         
         setTimeout(() => {
-            const canvas = this.motor3d.engine.getRenderingCanvas();
+            const canvas = this.motor3d.getEngine().getRenderingCanvas();
             if (canvas) {
                 const activeCam = this.ownership.getCamera();
                 if (activeCam) {
-                    this.motor3d.editorCamera?.detachControl();
-                    this.motor3d.playerCameraFPS?.detachControl();
-                    this.motor3d.playerCameraTPS?.detachControl();
+                    this.motor3d.getEditorCamera()?.detachControl();
+                    this.motor3d.getPlayerCameraFPS()?.detachControl();
+                    this.motor3d.getPlayerCameraTPS()?.detachControl();
                     
                     const profile = CAMERA_BEHAVIOR_PROFILES[GameMode.TEST_LIVE];
                     if (activeCam.minZ !== undefined) activeCam.minZ = profile.minZ;
@@ -289,7 +287,7 @@ export class EditorPlayModeService {
         this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
         this.entityManager.clear();
 
-        const scene = this.motor3d.scene;
+        const scene = this.motor3d.getScene();
         const meshesToDispose = scene.meshes.filter(m => !Tags.MatchesQuery(m, "system_element") && !Tags.MatchesQuery(m, "editor_only"));
         meshesToDispose.forEach(m => {
             if (!m.isDisposed()) m.dispose(false, false); 
@@ -299,7 +297,7 @@ export class EditorPlayModeService {
         this.snapshotMemoria = null;
     }
 
-    this.motor3d.scene.meshes.forEach(m => {
+    this.motor3d.getScene().meshes.forEach(m => {
         if (Tags.MatchesQuery(m, "editor_only")) {
             m.setEnabled(true);
             m.isVisible = true;
@@ -319,11 +317,11 @@ export class EditorPlayModeService {
     });
 
     this.cameraSvc.restaurarCamaraLibre();
-    const editorCam = this.motor3d.editorCamera;
+    const editorCam = this.motor3d.getEditorCamera();
     
     this.inputOrchestrator.unlockPointer();
     
-    const canvas = this.motor3d.engine.getRenderingCanvas();
+    const canvas = this.motor3d.getEngine().getRenderingCanvas();
     this.ownership.setCamera('EDITOR', editorCam, canvas, true);
     
     this.state.triggerUpdate();

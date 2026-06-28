@@ -1,16 +1,16 @@
 
 import { Injectable, inject } from '@angular/core';
 import { CascadedShadowGenerator, DirectionalLight, ShadowGenerator, SpotLight, Tags } from '@babylonjs/core';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneShadowsService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private entityManager = inject(EntityManagerService);
 
   public asignarObjetosASombrasDeLuces(): void {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     if (!scene) return;
 
     const lights = scene.lights.filter(l => l instanceof DirectionalLight || l instanceof SpotLight);

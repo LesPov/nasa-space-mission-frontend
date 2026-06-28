@@ -5,7 +5,7 @@ import { GameEntity } from '../../entities/game.entity';
 import { SeqRuntime } from './player-sequence.service';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { GameContextService } from '../../session/game-context.service';
 import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 import { GameMode } from '../../session/game-mode.model';
@@ -15,12 +15,12 @@ import { getMovementProfileForOwner, MovementProfile } from '../movement/movemen
 export class CharacterKinematicsService implements IUpdatable {
   public id = 'CharacterKinematicsSystem';
   private entityManager = inject(EntityManagerService);
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private ownership = inject(CameraOwnershipService);
   private context = inject(GameContextService);
 
   public physicsUpdate(dtMs: number): void {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     const mode = this.context.mode();
     
     if (mode === GameMode.EDITOR) return;
@@ -62,7 +62,7 @@ export class CharacterKinematicsService implements IUpdatable {
       }
 
       const cameraToUseForDirection = (isPlayer && activeProfile.type === 'EDITOR_FREE') 
-          ? (vista === 'FPS' ? this.motor3d.playerCameraFPS : this.motor3d.playerCameraTPS) 
+          ? (vista === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS()) 
           : activeCamera;
 
       const seqRuntime = entity.playerRuntime?.seqRuntime;
@@ -114,7 +114,6 @@ export class CharacterKinematicsService implements IUpdatable {
     const localCapsuleCenter = new Vector3(colMeta.offsetX ?? 0, colMeta.offsetY ?? 0, colMeta.offsetZ ?? 0);
     const capsuleCenter = Vector3.TransformCoordinates(localCapsuleCenter, mesh.getWorldMatrix());
 
-    // 🔥 FIX ARQUITECTÓNICO: Eliminar "system_element" de la lista de ignorados para que la gravedad golpee al proxy collider
     const collFn = (m: any) =>
       m.checkCollisions && m !== mesh && !m.isDescendantOf(mesh) && !Tags.MatchesQuery(m, "editor_only || fog_element");
 

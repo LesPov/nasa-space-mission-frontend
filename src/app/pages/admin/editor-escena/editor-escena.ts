@@ -18,7 +18,7 @@ import { UiRadialMenu } from '../../../components/ui-radial-menu/ui-radial-menu'
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EditorStateService } from '../../../services/editor/editor-state.service';
-import { Motor3dService } from '../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { LayoutService } from '../../../services/layout.service';
 import { EpisodiosService } from '../../../services/api/episodios';
 import { GameSession } from '../../../core/engine/runtime/game-session';
@@ -52,7 +52,7 @@ import { LiveBuilderService } from '../../../services/editor/live-builder.servic
 export class EditorEscena implements OnInit, OnDestroy {
   public stateSvc = inject(EditorStateService);
   public editorSvc = inject(EditorMapaService); 
-  public motor3dSvc = inject(Motor3dService);
+  public motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   public layoutSvc = inject(LayoutService);
   public epiApiSvc = inject(EpisodiosService);
   public gameSession = inject(GameSession);
@@ -241,7 +241,7 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   toggleNieblaTemporal() {
     this.stateSvc.fogDesactivadoTemporalmente.set(!this.stateSvc.fogDesactivadoTemporalmente());
-    setTimeout(() => this.motor3dSvc.forzarRedimension(), 10);
+    setTimeout(() => this.motor3dSvc.forceResize(), 10);
     this.editorSvc.triggerUpdate();
   }
 
@@ -298,7 +298,7 @@ export class EditorEscena implements OnInit, OnDestroy {
         
         this.cargandoTexto.set('Preparando modelos, texturas y físicas 3D...');
         
-        this.motor3dSvc.forzarRedimension(); 
+        this.motor3dSvc.forceResize(); 
         this.editorSvc.activarEventosEditor();
         this.editorSvc.crearSuelo();
 
@@ -306,7 +306,7 @@ export class EditorEscena implements OnInit, OnDestroy {
           await this.editorSvc.cargarEscenaDesdeDatos(res);
         }
 
-        this.motor3dSvc.scene.executeWhenReady(() => {
+        this.motor3dSvc.getScene().executeWhenReady(() => {
           this.cargandoEscena.set(false);
           this.episodioPendienteCarga = null;
           this.revisarSiEsJugable(); 
@@ -314,7 +314,7 @@ export class EditorEscena implements OnInit, OnDestroy {
           
           if (!this.fpsInterval) {
             this.fpsInterval = setInterval(() => {
-              this.fps.set(this.motor3dSvc.currentFps.toFixed(0));
+              this.fps.set(this.motor3dSvc.getCurrentFps().toFixed(0));
             }, 500);
           }
         });
@@ -373,14 +373,14 @@ export class EditorEscena implements OnInit, OnDestroy {
         this.editorSvc.escenaIdActiva.set(sceneId);
         this.editorSvc.escenaActualData.set(res);
         
-        this.motor3dSvc.forzarRedimension(); 
+        this.motor3dSvc.forceResize(); 
         this.editorSvc.crearSuelo();
 
         if(res) {
           await this.editorSvc.cargarEscenaDesdeDatos(res);
         }
 
-        this.motor3dSvc.scene.executeWhenReady(() => {
+        this.motor3dSvc.getScene().executeWhenReady(() => {
           setTimeout(() => {
             // Re-arrancamos la prueba
             (this.playModeSvc as any).testearEscena(this.vistaPrueba, true);

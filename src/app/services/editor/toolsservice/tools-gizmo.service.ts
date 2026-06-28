@@ -2,7 +2,7 @@
 import { Injectable, inject } from '@angular/core';
 import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Tags, AbstractMesh } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
-import { Motor3dService } from '../../motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
 import { ToolsDebugService } from './tools-debug.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
@@ -14,7 +14,7 @@ import { EditorCinematicService } from '../editor-cinematic.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsGizmoService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
   private historialSvc = inject(HistorialService);
   private debugSvc = inject(ToolsDebugService);
@@ -33,7 +33,7 @@ export class ToolsGizmoService {
   private estadoAntesDeArrastrar: any = null;
 
   public initGizmos(): void {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     if (!scene) return;
 
     // 🔥 FIX 2: Prevención de Memory Leaks y bugs de "No aparecen gizmos al volver a entrar"
@@ -134,7 +134,6 @@ export class ToolsGizmoService {
       }
     };
 
-    // 🔥 FIX 1: Lógica de arrastre de rombo (Center Drag) con deltas reales. Evita saltos a posiciones aleatorias.
     const onDraggingCenter = (event: any) => {
       const mesh = this.state.objetoSeleccionado() as Mesh;
       const subSelected = this.state.subObjetoSeleccionado();
@@ -158,7 +157,6 @@ export class ToolsGizmoService {
       }
     };
 
-    // 🔥 FIX 1: Lógica de arrastre del Gizmo (Flechas de Ejes)
     const onDraggingGizmo = () => {
       const mesh = this.state.objetoSeleccionado() as Mesh;
       const subSelected = this.state.subObjetoSeleccionado();
@@ -325,7 +323,6 @@ export class ToolsGizmoService {
   public updateCenterDragMeshRenderState(obj: Mesh | null, subSelected: string | null): void {
       if (!this.centerDragMesh || !this.gizmoManager || !this.gizmoPivotNode) return;
 
-      // 🔥 FIX 3: Sincronizar el rombo de arrastre directamente con el origen de la malla o el sub-objeto actual
       if (obj && !this.isDraggingGizmo && !Tags.MatchesQuery(obj, "cinematic_proxy")) {
         if (subSelected === 'collider' && this.debugSvc.debugCollider) {
             this.centerDragMesh.position.copyFrom(this.debugSvc.debugCollider.getAbsolutePosition());

@@ -4,7 +4,7 @@ import {
   Mesh, Vector3, Matrix, TransformNode, UniversalCamera,
   Animation, CubicEase, EasingFunction, Quaternion, MeshBuilder, Tags, Animatable
 } from '@babylonjs/core';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { cloneDefaultPlayerConfig } from '../../models/player-config.model';
 import { EstadoFisico } from './player-physics.service';
 import { SeqRuntime } from './player-sequence.service';
@@ -18,7 +18,7 @@ import { GameEventBusService } from '../../events/game-event-bus.service';
 @Injectable({ providedIn: 'root' })
 export class PlayerCameraManagerService implements IUpdatable {
   public id = 'PlayerCameraSystem';
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private loopManager = inject(LoopManagerService); 
   private context = inject(GameContextService);
   private ownership = inject(CameraOwnershipService);
@@ -39,7 +39,6 @@ export class PlayerCameraManagerService implements IUpdatable {
   private transitionTimeoutId: any = null;
   private introTimeoutId: any = null;
 
-  // Variables para mantener la orientación relativa entre mapas
   public savedRelativeTpsAngle: number | null = null;
   public savedRelativeTpsPitch: number | null = null;
   
@@ -77,7 +76,7 @@ export class PlayerCameraManagerService implements IUpdatable {
       const config = entity.playerConfig || cloneDefaultPlayerConfig();
       const profile = CAMERA_BEHAVIOR_PROFILES[this.context.mode()];
       const scaleY = entity.transform.scale.y || 1;
-      const tpsCam = this.motor3d.playerCameraTPS;
+      const tpsCam = this.motor3d.getPlayerCameraTPS();
 
       if (!tpsCam) return;
 
@@ -108,7 +107,7 @@ export class PlayerCameraManagerService implements IUpdatable {
       animRad.setEasingFunction(ease);
 
       if (this.introAnimatable) this.introAnimatable.stop();
-      this.introAnimatable = this.motor3d.scene.beginDirectAnimation(tpsCam, [animRad], 0, 1800, false);
+      this.introAnimatable = this.motor3d.getScene().beginDirectAnimation(tpsCam, [animRad], 0, 1800, false);
   }
 
   public detenerCinematicaIntro(): void {
@@ -126,7 +125,7 @@ export class PlayerCameraManagerService implements IUpdatable {
     if (!jugador || jugador.isDisposed()) return; 
 
     if (!this.cameraPivot || this.cameraPivot.isDisposed()) {
-      this.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
+      this.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.getScene());
       this.cameraPivot.isVisible = false;
       Tags.AddTagsTo(this.cameraPivot, "system_element ignore_raycast");
     }
@@ -159,7 +158,7 @@ export class PlayerCameraManagerService implements IUpdatable {
       this.initialHeadLocal = null;
     }
 
-    const fpsCam = this.motor3d.playerCameraFPS;
+    const fpsCam = this.motor3d.getPlayerCameraFPS();
     fpsCam.keysUp = []; fpsCam.keysDown = []; fpsCam.keysLeft = []; fpsCam.keysRight = [];
     fpsCam.minZ = profile.minZ; 
     fpsCam.angularSensibility = profile.angularSensibilityX;
@@ -179,33 +178,33 @@ export class PlayerCameraManagerService implements IUpdatable {
       jugador.computeWorldMatrix(true);
       this.cameraPivot.position = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
 
-      this.motor3d.playerCameraTPS.lockedTarget = this.cameraPivot;
+      this.motor3d.getPlayerCameraTPS().lockedTarget = this.cameraPivot;
       
       const radBase = (config.camera.tpsRadius || 5) * scaleY;
       const minRad = (config.camera.tpsMinRadius ?? 1.5) * scaleY;
       const maxRad = (config.camera.tpsMaxRadius ?? 15) * scaleY;
       
-      this.motor3d.playerCameraTPS.radius = radBase;
-      this.motor3d.playerCameraTPS.lowerRadiusLimit = minRad;
-      this.motor3d.playerCameraTPS.upperRadiusLimit = maxRad;
-      this.motor3d.playerCameraTPS.minZ = profile.minZ;
+      this.motor3d.getPlayerCameraTPS().radius = radBase;
+      this.motor3d.getPlayerCameraTPS().lowerRadiusLimit = minRad;
+      this.motor3d.getPlayerCameraTPS().upperRadiusLimit = maxRad;
+      this.motor3d.getPlayerCameraTPS().minZ = profile.minZ;
       
-      this.motor3d.playerCameraTPS.checkCollisions = profile.collisionsEnabled;
+      this.motor3d.getPlayerCameraTPS().checkCollisions = profile.collisionsEnabled;
       
-      this.motor3d.playerCameraTPS.collisionRadius = new Vector3(0.25, 0.25, 0.25); 
-      this.motor3d.playerCameraTPS.upperBetaLimit = (Math.PI / 2) + 0.4;
+      this.motor3d.getPlayerCameraTPS().collisionRadius = new Vector3(0.25, 0.25, 0.25); 
+      this.motor3d.getPlayerCameraTPS().upperBetaLimit = (Math.PI / 2) + 0.4;
       
-      this.motor3d.playerCameraTPS.wheelPrecision = 15;
-      this.motor3d.playerCameraTPS.panningSensibility = 0;
-      this.motor3d.playerCameraTPS.allowUpsideDown = false;
+      this.motor3d.getPlayerCameraTPS().wheelPrecision = 15;
+      this.motor3d.getPlayerCameraTPS().panningSensibility = 0;
+      this.motor3d.getPlayerCameraTPS().allowUpsideDown = false;
 
-      this.motor3d.playerCameraTPS.angularSensibilityX = profile.angularSensibilityX;
-      this.motor3d.playerCameraTPS.angularSensibilityY = profile.angularSensibilityY;
-      this.motor3d.playerCameraTPS.fov = profile.fov;
+      this.motor3d.getPlayerCameraTPS().angularSensibilityX = profile.angularSensibilityX;
+      this.motor3d.getPlayerCameraTPS().angularSensibilityY = profile.angularSensibilityY;
+      this.motor3d.getPlayerCameraTPS().fov = profile.fov;
 
-      this.motor3d.playerCameraTPS.alpha = Math.atan2(-forward.z, -forward.x);
-      this.motor3d.playerCameraTPS.beta = Math.max(0.01, Math.min(Math.PI - 0.01, Math.acos(Math.max(-1, Math.min(1, -forward.y)))));
-      this.motor3d.playerCameraTPS.getViewMatrix(true);
+      this.motor3d.getPlayerCameraTPS().alpha = Math.atan2(-forward.z, -forward.x);
+      this.motor3d.getPlayerCameraTPS().beta = Math.max(0.01, Math.min(Math.PI - 0.01, Math.acos(Math.max(-1, Math.min(1, -forward.y)))));
+      this.motor3d.getPlayerCameraTPS().getViewMatrix(true);
     }
 
     if (vista === 'FPS') {
@@ -232,7 +231,7 @@ export class PlayerCameraManagerService implements IUpdatable {
     const scaleY = entity.transform.scale.y || 1;
     const vista = this.context.cameraView();
 
-    const tpsCam = this.motor3d.playerCameraTPS;
+    const tpsCam = this.motor3d.getPlayerCameraTPS();
 
     if (vista === 'FPS') {
         const tpsPivotY = (config.camera.tpsPivotY || 1.5) * scaleY;
@@ -254,7 +253,7 @@ export class PlayerCameraManagerService implements IUpdatable {
         tpsCam.radius = maxR;
         
         if (!this.cameraPivot || this.cameraPivot.isDisposed()) {
-          this.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
+          this.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.getScene());
           this.cameraPivot.isVisible = false;
           Tags.AddTagsTo(this.cameraPivot, "system_element ignore_raycast");
         }
@@ -262,10 +261,9 @@ export class PlayerCameraManagerService implements IUpdatable {
         tpsCam.lockedTarget = this.cameraPivot;
         tpsCam.getViewMatrix(true);
         
-        const canvas = this.motor3d.engine.getRenderingCanvas();
+        const canvas = this.motor3d.getEngine().getRenderingCanvas();
         this.ownership.setCamera('PLAYER_TPS', tpsCam, canvas, true);
         
-        // Ejecución inmediata para ocultar cualquier interpolación visual previa a la pantalla de carga
         onComplete();
     } else {
         const playerForward = jugador.forward.clone().normalize();
@@ -274,7 +272,6 @@ export class PlayerCameraManagerService implements IUpdatable {
         this.savedRelativeTpsAngle = tpsCam.alpha - playerAlpha;
         this.savedRelativeTpsPitch = tpsCam.beta;
 
-        // Ejecución inmediata para ocultar cualquier interpolación visual previa a la pantalla de carga
         onComplete();
     }
   }
@@ -285,16 +282,15 @@ export class PlayerCameraManagerService implements IUpdatable {
 
       this.isTransitioningCameras = true;
 
-      // 🔥 FIX SUPREMO: Asegurar que el Pivote existe SÍ o SÍ antes de anclarlo
       if (!this.cameraPivot || this.cameraPivot.isDisposed()) {
-        this.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.scene);
+        this.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.getScene());
         this.cameraPivot.isVisible = false;
         Tags.AddTagsTo(this.cameraPivot, "system_element ignore_raycast");
       }
 
       const config = entity.playerConfig || cloneDefaultPlayerConfig();
       const scaleY = entity.transform.scale.y || 1;
-      const tpsCam = this.motor3d.playerCameraTPS;
+      const tpsCam = this.motor3d.getPlayerCameraTPS();
 
       const tpsPivotY = (config.camera.tpsPivotY || 1.5) * scaleY;
       const maxR = (config.camera.tpsMaxRadius ?? 15) * scaleY;
@@ -321,7 +317,6 @@ export class PlayerCameraManagerService implements IUpdatable {
           tpsCam.beta = Math.max(0.01, Math.min(Math.PI - 0.01, Math.acos(Math.max(-1, Math.min(1, -playerForward.y)))));
       }
 
-      // 🔥 EMPEZAR MUY CERCA DEL PLAYER PARA EFECTO FPS->TPS
       const startRadius = 0.05;
       tpsCam.radius = startRadius;
       tpsCam.checkCollisions = false;
@@ -329,21 +324,19 @@ export class PlayerCameraManagerService implements IUpdatable {
       tpsCam.setTarget(this.cameraPivot);
       tpsCam.getViewMatrix(true);
 
-      // OCULTAR JUGADOR AL PRINCIPIO PARA QUE NO TAPE LA CÁMARA
       jugador.visibility = 0;
       jugador.getChildMeshes().forEach(m => m.visibility = 0);
       
-      const canvas = this.motor3d.engine.getRenderingCanvas();
+      const canvas = this.motor3d.getEngine().getRenderingCanvas();
       this.ownership.setCamera('PLAYER_TPS', tpsCam, canvas, true);
 
-      // TIEMPO DE ESPERA PARA QUE LA PANTALLA DE CARGA SE QUITE Y EL JUGADOR VEA EL INICIO
       if (this.introTimeoutId) clearTimeout(this.introTimeoutId);
 
       this.introTimeoutId = setTimeout(() => {
           const ease = new CubicEase();
           ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
 
-          const frames = 150; // 2.5 segundos de zoom out
+          const frames = 150; 
           const animRad = new Animation('enterPlatRadius', 'radius', 60, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CONSTANT);
           animRad.setKeys([
               { frame: 0, value: startRadius },
@@ -363,7 +356,7 @@ export class PlayerCameraManagerService implements IUpdatable {
               }
           });
 
-          this.motor3d.scene.beginDirectAnimation(tpsCam, [animRad], 0, frames, false, 1.0, () => {
+          this.motor3d.getScene().beginDirectAnimation(tpsCam, [animRad], 0, frames, false, 1.0, () => {
               this.isTransitioningCameras = false;
               this.loopManager.unregister('CameraFadeTransition');
               
@@ -399,9 +392,9 @@ export class PlayerCameraManagerService implements IUpdatable {
     const ease = new CubicEase();
     ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
 
-    const fpsCam = this.motor3d.playerCameraFPS;
-    const tpsCam = this.motor3d.playerCameraTPS;
-    const canvas = this.motor3d.engine.getRenderingCanvas();
+    const fpsCam = this.motor3d.getPlayerCameraFPS();
+    const tpsCam = this.motor3d.getPlayerCameraTPS();
+    const canvas = this.motor3d.getEngine().getRenderingCanvas();
 
     const framesTransicion = customFrames !== undefined ? customFrames : (isCinematicInitial ? 300 : 45);
 
@@ -520,12 +513,12 @@ export class PlayerCameraManagerService implements IUpdatable {
     seqRuntime: SeqRuntime,
     vista: 'FPS' | 'TPS'
   ): void {
-    if (activeCamera !== this.motor3d.playerCameraFPS && activeCamera !== this.motor3d.playerCameraTPS) return;
+    if (activeCamera !== this.motor3d.getPlayerCameraFPS() && activeCamera !== this.motor3d.getPlayerCameraTPS()) return;
 
     const jugador = entity.view as Mesh;
     if (!jugador) return;
 
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     const colMeta = entity.collider;
     const camMeta = entity.camOffset;
     const scaleNow = entity.transform.scale;
@@ -586,8 +579,8 @@ export class PlayerCameraManagerService implements IUpdatable {
         const minRadius = (config.camera.tpsMinRadius ?? 1.5) * scaleY;
         const maxRadius = (config.camera.tpsMaxRadius ?? 15) * scaleY;
 
-        this.motor3d.playerCameraTPS.lowerRadiusLimit = minRadius;
-        this.motor3d.playerCameraTPS.upperRadiusLimit = maxRadius;
+        this.motor3d.getPlayerCameraTPS().lowerRadiusLimit = minRadius;
+        this.motor3d.getPlayerCameraTPS().upperRadiusLimit = maxRadius;
       }
 
       const localPivotPos = new Vector3(
@@ -599,7 +592,6 @@ export class PlayerCameraManagerService implements IUpdatable {
       const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
 
       if (!isNaN(globalPivotPos.x) && !isNaN(globalPivotPos.y) && !isNaN(globalPivotPos.z)) {
-        // 🔥 FIX SUPREMO: Evita que el pivote de la cámara barra el mapa entero al teletransportar de escena
         if (Vector3.Distance(this.cameraPivot.position, globalPivotPos) > 20) {
             this.cameraPivot.position.copyFrom(globalPivotPos);
         } else {
@@ -608,7 +600,7 @@ export class PlayerCameraManagerService implements IUpdatable {
         }
       }
 
-      this.motor3d.playerCameraTPS.lockedTarget = this.cameraPivot;
+      this.motor3d.getPlayerCameraTPS().lockedTarget = this.cameraPivot;
     }
 
     if (vista === 'FPS') {
@@ -634,7 +626,7 @@ export class PlayerCameraManagerService implements IUpdatable {
   }
 
   public limpiarPivotTPS(): void {
-    this.motor3d.playerCameraTPS.lockedTarget = null;
+    this.motor3d.getPlayerCameraTPS().lockedTarget = null;
     if (this.cameraPivot && !this.cameraPivot.isDisposed()) {
       try { this.cameraPivot.dispose(false, true); } catch {}
     }
@@ -663,14 +655,14 @@ export class PlayerCameraManagerService implements IUpdatable {
     addArc: boolean = false,
     onUpdate?: (t: number) => void
   ): void {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
 
     const proxyCam = new UniversalCamera("proxyTransitionCam", startPos.clone(), scene);
     proxyCam.minZ = 0.05;
     proxyCam.maxZ = 50000;
     
-    if (this.motor3d.renderingPipeline) {
-       this.motor3d.renderingPipeline.addCamera(proxyCam);
+    if (this.motor3d.getRenderingPipeline()) {
+       this.motor3d.getRenderingPipeline().addCamera(proxyCam);
     }
 
     const startForward = startTarget.subtract(startPos).normalize();
@@ -724,8 +716,8 @@ export class PlayerCameraManagerService implements IUpdatable {
     }
 
     scene.beginDirectAnimation(proxyCam, [animPos, animRot], 0, frames, false, 1.0, () => {
-      if (this.motor3d.renderingPipeline) {
-         this.motor3d.renderingPipeline.removeCamera(proxyCam);
+      if (this.motor3d.getRenderingPipeline()) {
+         this.motor3d.getRenderingPipeline().removeCamera(proxyCam);
       }
       if (observer) scene.onBeforeRenderObservable.remove(observer);
       
@@ -739,5 +731,4 @@ export class PlayerCameraManagerService implements IUpdatable {
           scene.activeCamera = trackedCamera;
       }
     });
-  }
-}
+  }}

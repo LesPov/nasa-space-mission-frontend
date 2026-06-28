@@ -1,10 +1,11 @@
+
 import { Injectable, inject } from '@angular/core';
 import { UniversalCamera, Vector3, Quaternion, Scene } from '@babylonjs/core';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 
 @Injectable({ providedIn: 'root' })
 export class CinematicCameraService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   public camera: UniversalCamera | null = null;
 
   public initialize(scene: Scene): void {
@@ -12,11 +13,10 @@ export class CinematicCameraService {
       this.camera = new UniversalCamera("CinematicDirectorCam", Vector3.Zero(), scene);
       this.camera.minZ = 0.05;
       this.camera.maxZ = 50000;
-      // La cámara cinemática NO responde a controles físicos, es movida matemáticamente
       this.camera.inputs.clear();
       
-      if (this.motor3d.renderingPipeline && !this.motor3d.renderingPipeline.cameras.includes(this.camera)) {
-         this.motor3d.renderingPipeline.addCamera(this.camera);
+      if (this.motor3d.getRenderingPipeline() && !this.motor3d.getRenderingPipeline().cameras.includes(this.camera)) {
+         this.motor3d.getRenderingPipeline().addCamera(this.camera);
       }
     }
   }
@@ -30,8 +30,8 @@ export class CinematicCameraService {
 
   public dispose(): void {
     if (this.camera) {
-      if (this.motor3d.renderingPipeline) {
-         this.motor3d.renderingPipeline.removeCamera(this.camera);
+      if (this.motor3d.getRenderingPipeline()) {
+         this.motor3d.getRenderingPipeline().removeCamera(this.camera);
       }
       this.camera.dispose();
       this.camera = null;

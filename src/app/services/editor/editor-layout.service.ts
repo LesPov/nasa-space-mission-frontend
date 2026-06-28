@@ -1,11 +1,12 @@
 
+
 import { Injectable, inject, signal } from '@angular/core';
-import { Motor3dService } from '../motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { EditorStateService } from './editor-state.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorLayoutService {
-  private motor3dSvc = inject(Motor3dService);
+  private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private stateSvc = inject(EditorStateService);
 
   // Estado reactivo de los paneles de la UI
@@ -53,7 +54,7 @@ export class EditorLayoutService {
       // Límites de la barra lateral (Inspector)
       if (newWidth > 250 && newWidth < window.innerWidth * 0.6) {
         this.inspectorWidth.set(newWidth);
-        this.motor3dSvc.forzarRedimension();
+        this.motor3dSvc.forceResize();
       }
     }
     
@@ -67,7 +68,7 @@ export class EditorLayoutService {
       if (newHeight > 70) newHeight = 70;
       
       this.timelineHeight.set(newHeight);
-      this.motor3dSvc.forzarRedimension();
+      this.motor3dSvc.forceResize();
     }
   }
 
@@ -83,7 +84,7 @@ export class EditorLayoutService {
   }
 
   private recalcularMotor(): void {
-    setTimeout(() => this.motor3dSvc.forzarRedimension(), 10);
-    setTimeout(() => this.motor3dSvc.forzarRedimension(), 150);
+    setTimeout(() => this.motor3dSvc.forceResize(), 10);
+    setTimeout(() => this.motor3dSvc.forceResize(), 150);
   }
 }

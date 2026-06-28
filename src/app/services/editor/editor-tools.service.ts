@@ -5,7 +5,7 @@ import {
   TransformNode, Vector3, Ray, AbstractMesh, Light, Tags
 } from '@babylonjs/core';
 
-import { Motor3dService } from '../motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { EditorCameraService } from './editor-camera.service';
 import { EditorSceneService } from './editor-scene.service';
 import { EditorStateService, ToolMode } from './editor-state.service';
@@ -23,7 +23,7 @@ import { PlayerInputService } from '../../core/engine/runtime/systems/player-inp
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
   private sceneSvc = inject(EditorSceneService);
   private cameraSvc = inject(EditorCameraService);
@@ -68,10 +68,10 @@ export class EditorToolsService {
       const isModalOpen = this.state.showAddObjectModal();
       
       // 🔥 FIX: Proteger el Effect para que NO se ejecute si el motor 3D y su engine aún no existen
-      if (!this.motor3d.engine || !this.motor3d.scene) return;
+      if (!this.motor3d.getEngine() || !this.motor3d.getScene()) return;
 
-      const canvas = this.motor3d.engine.getRenderingCanvas();
-      const editorCam = this.motor3d.editorCamera;
+      const canvas = this.motor3d.getEngine().getRenderingCanvas();
+      const editorCam = this.motor3d.getEditorCamera();
 
       if (isModalOpen) {
         if (document.pointerLockElement) {
@@ -80,8 +80,8 @@ export class EditorToolsService {
         if (editorCam && canvas) {
           editorCam.detachControl();
         }
-        if (this.motor3d.scene) {
-            this.motor3d.scene.skipPointerMovePicking = true;
+        if (this.motor3d.getScene()) {
+            this.motor3d.getScene().skipPointerMovePicking = true;
         }
       } else {
         if (editorCam && canvas && this.ownership.getOwner() === 'EDITOR') {
@@ -89,8 +89,8 @@ export class EditorToolsService {
               try { editorCam.attachControl(canvas, true); } catch {}
           }, 10);
         }
-        if (this.motor3d.scene) {
-            this.motor3d.scene.skipPointerMovePicking = false;
+        if (this.motor3d.getScene()) {
+            this.motor3d.getScene().skipPointerMovePicking = false;
         }
       }
     });
@@ -106,7 +106,7 @@ export class EditorToolsService {
   }
 
   private castRayToSelectable(ray: Ray): AbstractMesh | null {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     const jugador = this.state.jugadorActivo;
     const isAdmin = this.authSvc.isAdmin();
 
@@ -139,7 +139,7 @@ export class EditorToolsService {
   }
 
   private manejarFPSAdminSelection(canvas: HTMLCanvasElement | null, isLocked: boolean): void {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     const isAdmin = this.authSvc.isAdmin();
     const activeCam = this.ownership.getCamera();
 
@@ -189,7 +189,7 @@ export class EditorToolsService {
   activarEventosEditor(): void {
     if (this.isInitialized) return;
     
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     if (!scene) {
         console.warn('⚠️ No se puede activar eventos del editor sin Scene de Babylon');
         return;
@@ -215,7 +215,7 @@ export class EditorToolsService {
     scene.onPointerObservable.add((pi) => {
       if (this.state.showAddObjectModal()) return; 
 
-      const canvas = this.motor3d.engine.getRenderingCanvas();
+      const canvas = this.motor3d.getEngine().getRenderingCanvas();
       const playSt = this.state.playState();
       const isAdmin = this.authSvc.isAdmin();
       const isLocked = !!document.pointerLockElement;
@@ -240,7 +240,7 @@ export class EditorToolsService {
           } else if (playSt === 'PLAYING') {
             this.cameraSvc.pausarJuegoYActivarCamaraEditor();
           } else if (playSt === 'EDITING_IN_GAME') {
-            const canvas = this.motor3d.engine.getRenderingCanvas();
+            const canvas = this.motor3d.getEngine().getRenderingCanvas();
             if (canvas) canvas.focus();
             this.cameraSvc.volverAJuego();
           }
@@ -349,7 +349,7 @@ export class EditorToolsService {
               document.exitPointerLock();
             }
           } else if (this.state.playState() === 'EDITING_IN_GAME') {
-            const canvas = this.motor3d.engine.getRenderingCanvas();
+            const canvas = this.motor3d.getEngine().getRenderingCanvas();
             if (canvas) {
               canvas.focus();
             }
@@ -400,7 +400,7 @@ export class EditorToolsService {
       }
     });
 
-    this.motor3d.editorCamera.attachControl(this.motor3d.engine.getRenderingCanvas(), true);
+    this.motor3d.getEditorCamera().attachControl(this.motor3d.getEngine().getRenderingCanvas(), true);
     this.sceneSvc.crearEntornoVisual();
     this.sceneSvc.actualizarListaNodos();
     this.setToolMode('translate');
@@ -464,7 +464,7 @@ export class EditorToolsService {
       const fogConfig = entity.playerConfig?.fog;
       if (!fogConfig || !entity.playerConfig) return;
 
-      const isBW = this.motor3d.scene?.metadata?.globalVisualMode === 'bw';
+      const isBW = this.motor3d.getScene()?.metadata?.globalVisualMode === 'bw';
       const isFPS = this.state.modoVistaPrueba === 'FPS';
       
       let fogHeightY = 4.0;

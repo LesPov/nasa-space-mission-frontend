@@ -2,7 +2,7 @@
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, AssetContainer, Color3, DirectionalLight, Matrix, Mesh, MeshBuilder, PointLight, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
 import '@babylonjs/loaders';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { CoreSceneMaterialService } from '../utils/core-scene-material.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
@@ -11,7 +11,7 @@ import { WorldSettingsService } from '../../world/world-settings.service';
 
 @Injectable({ providedIn: 'root' })
 export class CoreModelLoaderService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private materialSvc = inject(CoreSceneMaterialService);
   private entityManager = inject(EntityManagerService); 
   private persistenceMapper = inject(EntityPersistenceMapperService);
@@ -20,7 +20,7 @@ export class CoreModelLoaderService {
   private assetRegistry = new Map<string, AssetContainer>();
 
   public async cargarModeloAsync(obj: any, mallasCreadas: Map<string, Mesh>): Promise<void> {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     const path = obj.properties?.path || obj.asset?.path;
 
     if (!path) {
@@ -63,7 +63,7 @@ export class CoreModelLoaderService {
   }
 
   private aplicarTransformacionesYEntidad(rootNode: Mesh, obj: any, mallasCreadas: Map<string, Mesh>, allMeshes: AbstractMesh[] = [], anims: any[] = []): void {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     const isModel = obj.type === 'model';
     const isLight = obj.type?.startsWith('light_');
     const rolSaved = obj.properties?.rol || obj.rol || 'prop';

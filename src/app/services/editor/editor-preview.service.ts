@@ -1,9 +1,10 @@
+
 import { Injectable, inject } from '@angular/core';
 import { GameEntity } from '../../core/engine/entities/game.entity';
 import { PlayerSequenceService } from '../../core/engine/runtime/systems/player-sequence.service';
 import { PlayerAnimationService } from '../../core/engine/runtime/systems/player-animation.service';
 import { LoopManagerService, GamePhase } from '../../core/engine/behaviors/services/loop-manager.service';
-import { Motor3dService } from '../motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { AbstractMesh, Mesh, AnimationGroup } from '@babylonjs/core';
 import { GameStateService } from '../../core/engine/runtime/state/game-state.service'; // 🔥 ADD
 
@@ -12,7 +13,7 @@ export class EditorPreviewService {
   private sequenceSvc = inject(PlayerSequenceService);
   private animSvc = inject(PlayerAnimationService);
   private loopManager = inject(LoopManagerService);
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private gameState = inject(GameStateService); // 🔥 ADD
 
   private originalEntity: GameEntity | null = null;
@@ -36,7 +37,7 @@ export class EditorPreviewService {
         cloneMesh = originalMesh.instantiateHierarchy(null, { doNotInstantiate: true }) as AbstractMesh;
         cloneMesh.name = 'preview_clone_' + originalMesh.name;
         
-        this.motor3d.scene.animationGroups.forEach(ag => {
+        this.motor3d.getScene().animationGroups.forEach(ag => {
             const isTargetingOriginal = ag.targetedAnimations.some(ta => {
                 let current: any = ta.target;
                 while (current) {
@@ -72,7 +73,7 @@ export class EditorPreviewService {
     this.cloneEntity.animationNames = [...entity.animationNames];
     this.cloneEntity.bindView(cloneMesh);
     
-    this.animSvc.sincronizarAnimaciones(this.motor3d.scene, this.cloneEntity);
+    this.animSvc.sincronizarAnimaciones(this.motor3d.getScene(), this.cloneEntity);
     this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceId, this.cloneEntity);
     
     this.loopManager.register(this.previewLoopId, GamePhase.LOGIC, (dtMs: number) => {
@@ -124,6 +125,6 @@ export class EditorPreviewService {
   }
 
   public resincronizarAnimaciones(entity: GameEntity): void {
-    this.animSvc.sincronizarAnimaciones(this.motor3d.scene, entity);
+    this.animSvc.sincronizarAnimaciones(this.motor3d.getScene(), entity);
   }
 }

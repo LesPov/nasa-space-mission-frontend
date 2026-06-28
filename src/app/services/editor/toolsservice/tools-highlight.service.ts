@@ -1,14 +1,14 @@
 
 import { Injectable, inject } from '@angular/core';
 import { Color3, HighlightLayer, Mesh, AbstractMesh, Tags } from '@babylonjs/core';
-import { Motor3dService } from '../../motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { AuthService } from '../../../core/services/auth';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsHighlightService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
   private authSvc = inject(AuthService);
@@ -18,13 +18,11 @@ export class ToolsHighlightService {
 
   private meshesResaltadas: Mesh[] = [];
   
-  // HighlightLayer evita pintar las caras del modelo
-  // y crea un borde perfecto (Stroke) exterior alrededor de la silueta.
   private highlightLayer: HighlightLayer | null = null;
 
   private getHighlightLayer(): HighlightLayer {
-    if (!this.highlightLayer && this.motor3d.scene) {
-      this.highlightLayer = new HighlightLayer("editorHighlightLayer", this.motor3d.scene, {
+    if (!this.highlightLayer && this.motor3d.getScene()) {
+      this.highlightLayer = new HighlightLayer("editorHighlightLayer", this.motor3d.getScene(), {
         isStroke: true, 
         mainTextureRatio: 2 
       });
@@ -37,7 +35,7 @@ export class ToolsHighlightService {
   }
 
   public initHighlights(): void {
-    if (this.motor3d.scene) {
+    if (this.motor3d.getScene()) {
       this.getHighlightLayer();
     }
   }
@@ -139,18 +137,13 @@ export class ToolsHighlightService {
     const entity = this.entityManager.getEntityByMesh(pickedMesh);
     
     if (entity) {
-      // 🔥 LÓGICA SOLICITADA:
       const esPiso = entity.type === 'plane';
       const mostrarBorde = entity.visual?.mostrarBorde;
 
-      // 1. Si es el PISO, por defecto NO mostramos borde para que no moleste a la vista.
-      // Solo lo mostramos si el usuario explícitamente marcó la casilla.
       if (esPiso && mostrarBorde !== true) {
         return;
       }
 
-      // 2. Para cualquier otro objeto (Player, Spawn, Modelos), si el usuario DESMARCÓ la casilla, lo ocultamos.
-      // Si la casilla no existe en la BD (undefined), asumimos TRUE y mostramos el borde.
       if (mostrarBorde === false) {
         return; 
       }
@@ -169,7 +162,6 @@ export class ToolsHighlightService {
     const color3 = Color3.FromHexString(colorHex);
     const meshesVisuales = this.recolectarMeshesVisuales(pickedMesh);
     
-    // Si la recolección falla pero la malla raíz tiene vértices (Ej: Spawn Point simple), la iluminamos directamente
     if (meshesVisuales.length === 0 && pickedMesh.getTotalVertices() > 0) {
        this.aplicarOutline(pickedMesh, color3);
     } else {
@@ -200,8 +192,8 @@ export class ToolsHighlightService {
 
     if (!puedeResaltar) return;
 
-    const colorHover = '#3b82f6';   // Azul para Hover
-    const colorSelected = '#fbbf24'; // Amarillo/Naranja para Selección
+    const colorHover = '#3b82f6';   
+    const colorSelected = '#fbbf24'; 
 
     if (hovered && hovered !== selected) {
       this.procesarMesh(hovered, colorHover);

@@ -9,7 +9,7 @@ import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 import { WorldSettingsService } from '../../../../core/engine/world/world-settings.service';
 import { VisualMode } from '../../../../core/engine/world/world-settings.model';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
 import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
 
 @Component({
@@ -23,7 +23,7 @@ export class PropWorld implements OnInit, OnDestroy {
   public editorSvc = inject(EditorMapaService);
   private entityManager = inject(EntityManagerService);
   private worldSettingsSvc = inject(WorldSettingsService);
-  private motor3dSvc = inject(Motor3dService);
+  private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private transformMutator = inject(TransformMutatorService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
@@ -71,10 +71,8 @@ export class PropWorld implements OnInit, OnDestroy {
 
   aplicarModoVisualCambiado() {
     this.worldSettingsSvc.updateWorldSettings({ visualMode: this.visualMode });
-    this.worldSettingsSvc.applyToScene(this.motor3dSvc.scene, (mode) => this.motor3dSvc.setVisualMode(mode));
+    this.worldSettingsSvc.applyToScene(this.motor3dSvc.getScene(), (mode) => this.motor3dSvc.setVisualMode(mode));
 
-    // 🔥 FIX: Centralizamos la actualización usando TransformMutator 
-    // en vez de hackear los materiales de Babylon manualmente aquí.
     this.entityManager.getAllEntities().forEach(entity => {
       if (entity.view) {
         this.transformMutator.aplicarVisuales(entity.view as AbstractMesh, entity.visual);
@@ -89,7 +87,7 @@ export class PropWorld implements OnInit, OnDestroy {
       clearColor: this.clearColorHex,
       clearColorBW: this.clearColorHexBW
     });
-    this.worldSettingsSvc.applyToScene(this.motor3dSvc.scene, (mode) => this.motor3dSvc.setVisualMode(mode));
+    this.worldSettingsSvc.applyToScene(this.motor3dSvc.getScene(), (mode) => this.motor3dSvc.setVisualMode(mode));
     this.editorSvc.triggerUpdate();
   }
 
@@ -102,13 +100,13 @@ export class PropWorld implements OnInit, OnDestroy {
       ambientDirY: this.ambientDirY,
       ambientDirZ: this.ambientDirZ
     });
-    this.worldSettingsSvc.applyToScene(this.motor3dSvc.scene, (mode) => this.motor3dSvc.setVisualMode(mode));
+    this.worldSettingsSvc.applyToScene(this.motor3dSvc.getScene(), (mode) => this.motor3dSvc.setVisualMode(mode));
     this.editorSvc.triggerUpdate();
   }
 
   aplicarGravedad() {
     this.worldSettingsSvc.updateWorldSettings({ gravityY: this.gravedadY });
-    this.worldSettingsSvc.applyToScene(this.motor3dSvc.scene, (mode) => this.motor3dSvc.setVisualMode(mode));
+    this.worldSettingsSvc.applyToScene(this.motor3dSvc.getScene(), (mode) => this.motor3dSvc.setVisualMode(mode));
     this.editorSvc.triggerUpdate();
   }
 }

@@ -4,7 +4,7 @@ import {
   AbstractMesh, Animation, ArcRotateCamera, Camera, CubicEase, EasingFunction,
   Node, Vector3, UniversalCamera, Curve3, Quaternion
 } from '@babylonjs/core';
-import { Motor3dService } from '../motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { EditorStateService } from './editor-state.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { EditorModeTransitionService } from './editor-mode-transition.service';
@@ -13,7 +13,7 @@ import { GameContextService } from '../../core/engine/session/game-context.servi
 
 @Injectable({ providedIn: 'root' })
 export class EditorCameraService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
   private transitionSvc = inject(EditorModeTransitionService);
@@ -67,17 +67,17 @@ export class EditorCameraService {
   }
 
   private asegurarCamaraEditorActiva(): void {
-    const scene = this.motor3d.scene;
-    const editorCam = this.motor3d.editorCamera;
-    const canvas = this.motor3d.engine?.getRenderingCanvas();
+    const scene = this.motor3d.getScene();
+    const editorCam = this.motor3d.getEditorCamera();
+    const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
 
     if (!scene || !editorCam) return;
     this.ownership.setCamera('EDITOR', editorCam, canvas, true);
   }
 
   private reafirmarCamaraEditorEnSiguienteFrame(): void {
-    const editorCam = this.motor3d.editorCamera;
-    const canvas = this.motor3d.engine?.getRenderingCanvas();
+    const editorCam = this.motor3d.getEditorCamera();
+    const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
 
     if (!editorCam) return;
 
@@ -89,7 +89,7 @@ export class EditorCameraService {
   }
 
   guardarEstadoCamaraLibre(): void {
-    const editorCam = this.motor3d.editorCamera;
+    const editorCam = this.motor3d.getEditorCamera();
     if (!editorCam) return;
 
     editorCam.computeWorldMatrix();
@@ -104,7 +104,7 @@ export class EditorCameraService {
   }
 
   restaurarCamaraLibre(): void {
-    const editorCam = this.motor3d.editorCamera;
+    const editorCam = this.motor3d.getEditorCamera();
     if (!editorCam || !this.editorCamState) return;
 
     editorCam.setTarget(this.editorCamState.target.clone());
@@ -119,7 +119,7 @@ export class EditorCameraService {
     const state = this.state.playState();
     if (state !== 'EDITOR' && state !== 'EDITING_IN_GAME') return;
 
-    const cam = this.motor3d.editorCamera;
+    const cam = this.motor3d.getEditorCamera();
     if (!cam) return;
 
     const { target, radius } = this.obtenerEncuadreObjeto(objeto);
@@ -139,11 +139,11 @@ export class EditorCameraService {
     animTarget.setKeys([ { frame: 0, value: currentTarget }, { frame: frames, value: target } ]);
     animRadius.setKeys([ { frame: 0, value: cam.radius }, { frame: frames, value: radius } ]);
 
-    this.motor3d.scene.beginDirectAnimation(cam, [animTarget, animRadius], 0, frames, false, 1.0);
+    this.motor3d.getScene().beginDirectAnimation(cam, [animTarget, animRadius], 0, frames, false, 1.0);
   }
 
   enfocarCoordenadas(pos: Vector3, radius: number = 4): void {
-    const cam = this.motor3d.editorCamera;
+    const cam = this.motor3d.getEditorCamera();
     if (!cam) return;
 
     const ease = new CubicEase();
@@ -161,7 +161,7 @@ export class EditorCameraService {
     animTarget.setKeys([ { frame: 0, value: currentTarget }, { frame: frames, value: pos } ]);
     animRadius.setKeys([ { frame: 0, value: cam.radius }, { frame: frames, value: radius } ]);
 
-    this.motor3d.scene.beginDirectAnimation(cam, [animTarget, animRadius], 0, frames, false, 1.0);
+    this.motor3d.getScene().beginDirectAnimation(cam, [animTarget, animRadius], 0, frames, false, 1.0);
   }
 
   public transicionACamaraCinematica(targetPos: Vector3, targetRot: Vector3, fov: number | undefined, onComplete: () => void): void {
@@ -202,9 +202,9 @@ export class EditorCameraService {
   }
 
   entrarCamaraFija(pos: Vector3, rot: Vector3, fov?: number): void {
-      let proxyCam = this.motor3d.scene.getCameraByName('staticPreviewCam') as UniversalCamera;
+      let proxyCam = this.motor3d.getScene().getCameraByName('staticPreviewCam') as UniversalCamera;
       if (!proxyCam) {
-          proxyCam = new UniversalCamera('staticPreviewCam', pos, this.motor3d.scene);
+          proxyCam = new UniversalCamera('staticPreviewCam', pos, this.motor3d.getScene());
           proxyCam.minZ = 0.05;
       } else {
           proxyCam.position.copyFrom(pos);
@@ -215,17 +215,17 @@ export class EditorCameraService {
       
       if (fov) proxyCam.fov = fov;
 
-      if (this.motor3d.renderingPipeline && !this.motor3d.renderingPipeline.cameras.includes(proxyCam)) {
-         this.motor3d.renderingPipeline.addCamera(proxyCam);
+      if (this.motor3d.getRenderingPipeline() && !this.motor3d.getRenderingPipeline().cameras.includes(proxyCam)) {
+         this.motor3d.getRenderingPipeline().addCamera(proxyCam);
       }
 
-      const canvas = this.motor3d.engine.getRenderingCanvas();
+      const canvas = this.motor3d.getEngine().getRenderingCanvas();
       this.ownership.setCamera('TRANSITION_PROXY', proxyCam, canvas, false);
   }
 
   salirCamaraFija(): void {
-      const canvas = this.motor3d.engine.getRenderingCanvas();
-      this.ownership.setCamera('EDITOR', this.motor3d.editorCamera, canvas, true);
+      const canvas = this.motor3d.getEngine().getRenderingCanvas();
+      this.ownership.setCamera('EDITOR', this.motor3d.getEditorCamera(), canvas, true);
   }
 
   private getLookQuat(pos: Vector3, target: Vector3, fallbackForward: Vector3): Quaternion {
@@ -248,14 +248,14 @@ export class EditorCameraService {
     onComplete: () => void,
     addArc: boolean = false
   ): void {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
 
     const proxyCam = new UniversalCamera("proxyTransitionCam", startPos.clone(), scene);
     proxyCam.minZ = 0.05;
     proxyCam.maxZ = 50000;
     
-    if (this.motor3d.renderingPipeline) {
-       this.motor3d.renderingPipeline.addCamera(proxyCam);
+    if (this.motor3d.getRenderingPipeline()) {
+       this.motor3d.getRenderingPipeline().addCamera(proxyCam);
     }
 
     const startForward = startTarget.subtract(startPos).normalize();
@@ -299,8 +299,8 @@ export class EditorCameraService {
     ]);
 
     scene.beginDirectAnimation(proxyCam, [animPos, animRot], 0, frames, false, 1.0, () => {
-      if (this.motor3d.renderingPipeline) {
-         this.motor3d.renderingPipeline.removeCamera(proxyCam);
+      if (this.motor3d.getRenderingPipeline()) {
+         this.motor3d.getRenderingPipeline().removeCamera(proxyCam);
       }
       onComplete();
       proxyCam.dispose();
@@ -310,8 +310,8 @@ export class EditorCameraService {
   transicionAEdicionEnVivo(objetoReceptor: Node): void {
     if (!objetoReceptor) return;
 
-    const escena = this.motor3d.scene;
-    const editorCam = this.motor3d.editorCamera;
+    const escena = this.motor3d.getScene();
+    const editorCam = this.motor3d.getEditorCamera();
     const camaraOrigen = this.obtenerCamaraJuegoActiva();
 
     if (!escena || !editorCam || !camaraOrigen) {
@@ -358,7 +358,7 @@ export class EditorCameraService {
         this.transitionSvc.finishPauseToLiveEdit();
         this.state.objetoSeleccionado.set(objetoReceptor);
 
-        const canvas = this.motor3d.engine.getRenderingCanvas();
+        const canvas = this.motor3d.getEngine().getRenderingCanvas();
         if (canvas) {
           canvas.focus();
         }
@@ -369,8 +369,8 @@ export class EditorCameraService {
   }
 
   pausarJuegoYActivarCamaraEditor(): void {
-    const escena = this.motor3d.scene;
-    const editorCam = this.motor3d.editorCamera;
+    const escena = this.motor3d.getScene();
+    const editorCam = this.motor3d.getEditorCamera();
     const camaraOrigen = this.obtenerCamaraJuegoActiva();
 
     if (!escena || !editorCam || !camaraOrigen) return;
@@ -400,7 +400,7 @@ export class EditorCameraService {
 
         this.transitionSvc.finishPauseToLiveEdit();
         
-        const canvas = this.motor3d.engine.getRenderingCanvas();
+        const canvas = this.motor3d.getEngine().getRenderingCanvas();
         if (canvas) {
           canvas.focus();
         }
@@ -418,8 +418,8 @@ export class EditorCameraService {
     isFPS: boolean,
     onComplete: () => void
   ): void {
-    const scene = this.motor3d.scene;
-    const editorCam = this.motor3d.editorCamera;
+    const scene = this.motor3d.getScene();
+    const editorCam = this.motor3d.getEditorCamera();
 
     // 🔥 FIX: Tomar EXACTAMENTE donde está el editorCam, gracias al guardado previo
     const startPos = this.editorCamState?.position || editorCam.globalPosition.clone();
@@ -432,8 +432,8 @@ export class EditorCameraService {
     proxyCam.minZ = 0.05;
     proxyCam.maxZ = 50000;
     
-    if (this.motor3d.renderingPipeline) {
-       this.motor3d.renderingPipeline.addCamera(proxyCam);
+    if (this.motor3d.getRenderingPipeline()) {
+       this.motor3d.getRenderingPipeline().addCamera(proxyCam);
     }
     
     // Curva Bézier cinemática: Empieza hacia donde mira el editor, y entra al player por donde el player mira
@@ -479,8 +479,8 @@ export class EditorCameraService {
     animRot.setKeys(rotKeys);
 
     scene.beginDirectAnimation(proxyCam, [animPos, animRot], 0, frames, false, 1.0, () => {
-      if (this.motor3d.renderingPipeline) {
-         this.motor3d.renderingPipeline.removeCamera(proxyCam);
+      if (this.motor3d.getRenderingPipeline()) {
+         this.motor3d.getRenderingPipeline().removeCamera(proxyCam);
       }
       onComplete();
       proxyCam.dispose();
@@ -490,11 +490,11 @@ export class EditorCameraService {
   volverAJuego(): void {
     this.transitionSvc.beginResumeToTestLive();
 
-    const escena = this.motor3d.scene;
+    const escena = this.motor3d.getScene();
     const destCam = this.state.modoVistaPrueba === 'FPS'
-      ? this.motor3d.playerCameraFPS
-      : this.motor3d.playerCameraTPS;
-    const editorCam = this.motor3d.editorCamera;
+      ? this.motor3d.getPlayerCameraFPS()
+      : this.motor3d.getPlayerCameraTPS();
+    const editorCam = this.motor3d.getEditorCamera();
 
     if (!destCam || !editorCam) {
       this.transitionSvc.stopTestLive();
@@ -526,7 +526,7 @@ export class EditorCameraService {
       45, 
       () => {
         this.transitionSvc.finishResumeToTestLive();
-        const canvas = this.motor3d.engine.getRenderingCanvas();
+        const canvas = this.motor3d.getEngine().getRenderingCanvas();
         this.ownership.setCamera(this.state.modoVistaPrueba === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', destCam, canvas, true);
 
         if (canvas && this.state.modoVistaPrueba === 'FPS') {

@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, MeshBuilder, Color4, Tags, Quaternion } from '@babylonjs/core';
-import { Motor3dService } from '../motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { CoreSceneLoaderService } from '../../core/engine/scene/utils/core-scene-loader.service';
 import { CoreSceneShadowsService } from '../../core/engine/scene/utils/core-scene-shadows.service';
 import { SceneObjectBuilderService } from './sceneservice/scene-object-builder.service';
@@ -14,7 +14,7 @@ import { GameContextService } from '../../core/engine/session/game-context.servi
 
 @Injectable({ providedIn: 'root' })
 export class EditorSceneService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private loaderSvc = inject(CoreSceneLoaderService);
   private shadowsSvc = inject(CoreSceneShadowsService);
   private builderSvc = inject(SceneObjectBuilderService);
@@ -26,7 +26,7 @@ export class EditorSceneService {
   private gameContext = inject(GameContextService);
 
   public crearEntornoVisual(): void {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     if (!scene) return;
     
     ['ejeX', 'ejeY', 'ejeZ', 'gridHelper'].forEach(name => {
@@ -61,7 +61,7 @@ export class EditorSceneService {
   }
 
   public crearSuelo(): void {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     if (!scene) return; 
     
     const old = scene.getMeshByName('sueloInvisible');

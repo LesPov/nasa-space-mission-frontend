@@ -5,7 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { AbstractMesh, AnimationGroup } from '@babylonjs/core';
 import { EditorPreviewService } from '../../../../services/editor/editor-preview.service';
 import { PlayerClipSequence, mergePlayerConfig } from '../../../../core/engine/models/player-config.model';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
 import { SequenceMutatorService } from '../../../../services/editor/mutators/sequence-mutator.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
   
@@ -28,7 +28,7 @@ export class PropSequences implements OnInit, OnChanges {
   @Input() objeto!: AbstractMesh;
   
   private previewSvc = inject(EditorPreviewService);
-  private motor3dSvc = inject(Motor3dService); 
+  private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN); 
   private sequenceMutator = inject(SequenceMutatorService);
   private entityManager = inject(EntityManagerService);
 
@@ -67,13 +67,13 @@ export class PropSequences implements OnInit, OnChanges {
     this.objeto.getDescendants(false).forEach(child => validTargets.add(child));
 
     const rawClips: string[] = [];
-    this.motor3dSvc.scene.animationGroups.forEach((ag: AnimationGroup) => {
+    this.motor3dSvc.getScene().animationGroups.forEach((ag: AnimationGroup) => {
         if (ag.targetedAnimations?.some((ta: any) => validTargets.has(ta.target))) {
             rawClips.push(ag.name);
         }
     });
 
-    this.motor3dSvc.scene.meshes.forEach(m => {
+    this.motor3dSvc.getScene().meshes.forEach(m => {
         const checkEnt = this.entityManager.getEntityByMesh(m);
         if (checkEnt && checkEnt.type === 'video_plane') rawClips.push(m.name);
     });

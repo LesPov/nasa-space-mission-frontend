@@ -1,18 +1,18 @@
+
 import { Injectable, inject, signal, Injector } from '@angular/core';
 import { Camera } from '@babylonjs/core';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 
-// 🔥 FIX: Añadido CINEMATIC_DIRECTOR como propietario supremo
 export type CameraOwner = 'NONE' | 'EDITOR' | 'PLAYER_FPS' | 'PLAYER_TPS' | 'ADMIN_FREE' | 'TRANSITION_PROXY' | 'CINEMATIC_DIRECTOR';
 
 @Injectable({ providedIn: 'root' })
 export class CameraOwnershipService {
   private injector = inject(Injector);
-  private _motor3d: Motor3dService | null = null;
+  private _motor3d: ISceneAccess | null = null;
 
-  private get motor3d(): Motor3dService {
+  private get motor3d(): ISceneAccess {
     if (!this._motor3d) {
-      this._motor3d = this.injector.get(Motor3dService);
+      this._motor3d = this.injector.get(SCENE_ACCESS_TOKEN);
     }
     return this._motor3d;
   }
@@ -23,7 +23,7 @@ export class CameraOwnershipService {
   private isWatcherInitialized = false;
 
   public setCamera(owner: CameraOwner, camera: Camera, canvas?: HTMLCanvasElement | null, attachControl: boolean = true): void {
-    if (!camera || !this.motor3d.scene) return;
+    if (!camera || !this.motor3d.getScene()) return;
 
     this.initAntiBypassWatcher();
 
@@ -35,8 +35,8 @@ export class CameraOwnershipService {
     this.currentOwner.set(owner);
     this.currentCamera.set(camera);
 
-    this.motor3d.scene.activeCameras = []; 
-    this.motor3d.scene.activeCamera = camera;
+    this.motor3d.getScene().activeCameras = []; 
+    this.motor3d.getScene().activeCamera = camera;
 
     if (canvas && attachControl) {
       try { camera.attachControl(canvas, true); } catch {}
@@ -55,16 +55,16 @@ export class CameraOwnershipService {
     if (this.isWatcherInitialized) return;
     this.isWatcherInitialized = true;
 
-    this.motor3d.scene.onBeforeRenderObservable.add(() => {
-      const actualActive = this.motor3d.scene.activeCamera;
+    this.motor3d.getScene().onBeforeRenderObservable.add(() => {
+      const actualActive = this.motor3d.getScene().activeCamera;
       const trackedCamera = this.currentCamera();
 
       if (actualActive && actualActive !== trackedCamera) {
         console.warn(`[CameraOwnership] ⚠️ BYPASS DETECTADO: Cámara activa mutada externamente a '${actualActive.name}'. Restaurando cámara dueña '${trackedCamera?.name}'.`);
         
         if (trackedCamera) {
-            this.motor3d.scene.activeCameras = [];
-            this.motor3d.scene.activeCamera = trackedCamera;
+            this.motor3d.getScene().activeCameras = [];
+            this.motor3d.getScene().activeCamera = trackedCamera;
         }
       }
     });

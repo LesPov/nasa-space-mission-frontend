@@ -7,14 +7,14 @@ import { DistanceFadeBehavior } from '../../behaviors/distance-fade.behavior';
 import { LoopManagerService } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
-import { Motor3dService } from '../../../../services/motor-3d.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { EntityPersistenceMapperService } from './entity-persistence-mapper.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
 import { CameraOwnershipService } from '../../runtime/cameras/camera-ownership.service';
  
 @Injectable({ providedIn: 'root' })
 export class CorePrimitiveLoaderService {
-  private motor3d = inject(Motor3dService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private projectionSvc = inject(CoreSceneProjectionService);
   private loopManager = inject(LoopManagerService);
   private entityManager = inject(EntityManagerService);
@@ -23,7 +23,7 @@ export class CorePrimitiveLoaderService {
   private ownership = inject(CameraOwnershipService);
 
   public cargarPrimitiva(obj: any, mallasCreadas: Map<string, Mesh>): void {
-    const scene = this.motor3d.scene;
+    const scene = this.motor3d.getScene();
     
     const rolSaved = obj.properties?.rol || obj.rol || 'prop';
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, obj.type, rolSaved);

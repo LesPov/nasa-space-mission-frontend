@@ -196,10 +196,23 @@ export class PlayerInteractionService implements IUpdatable {
 
             const interactMax = rootEntity.interaction.interactDistanceFPS ?? 3.0;
             const isInteractable = this.interactRules.isInteractable(rootEntity);
+            
+            // 🔥 APLICANDO REGLAS DE ADMINISTRADOR SUPERIORES EN JUEGO
+            const isAdmin = this.context.isDebugMode();
+            let canAdminSelect = false;
+            
+            if (isAdmin && rootEntity.visual?.isSelectable !== false) {
+                const rangeCfg = entity.selectionRange?.fpsAdminMax ?? 10000;
+                if (selectionDistance <= rangeCfg) {
+                    canAdminSelect = true;
+                }
+            }
 
-            if (isInteractable && selectionDistance <= interactMax) {
+            if ((isInteractable && selectionDistance <= interactMax) || canAdminSelect) {
               hoverSelectable = rootEntity.view;
-              hitInteractuable = rootEntity;
+              if (isInteractable && selectionDistance <= interactMax) {
+                  hitInteractuable = rootEntity;
+              }
             }
         }
       }

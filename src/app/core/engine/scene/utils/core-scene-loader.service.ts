@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, MeshBuilder, Tags, Quaternion } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
@@ -15,6 +14,7 @@ import { SpawnManagerService } from '../../runtime/systems/spawn-manager.service
 import { EditorCinematicService } from '../../../../services/editor/editor-cinematic.service';
 import { PlayerCameraManagerService } from '../../runtime/systems/player-camera.service';
 import { PlayerTriggerService } from '../../runtime/systems/player-trigger.service';
+import { SceneLoadPayload, SceneObjectDto, TriggerDto } from '../../models/api-dto.model';
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneLoaderService {
@@ -46,7 +46,7 @@ export class CoreSceneLoaderService {
     Tags.AddTagsTo(suelo, "system_element invisible_floor ignore_raycast");
   }
 
-  public async loadSceneFromData(dataBD: any): Promise<void> {
+  public async loadSceneFromData(dataBD: SceneLoadPayload): Promise<void> {
     if (!dataBD) return;
 
     const scene = this.motor3d.getScene();
@@ -68,18 +68,17 @@ export class CoreSceneLoaderService {
     this.worldSettingsSvc.loadFromDb(envSettings, uiSettings);
     this.worldSettingsSvc.applyToScene(scene, (m) => this.motor3d.setVisualMode(m));
 
-    // 🔥 FIX: Permite cargar tanto cinematics estables como deltas rehidratados sin duplicar
     this.cinematicSvc.loadFromData(dataBD.cinematics || dataBD.cinematicsDelta || []);
 
     scene.cameras.forEach(cam => cam.maxZ = 10000);
 
-    const objetosBD = dataBD.sceneObjects || dataBD.sceneObjectsDelta || [];
-    const triggersBD = dataBD.triggers || dataBD.triggersDelta || [];
+    const objetosBD: SceneObjectDto[] = dataBD.sceneObjects || dataBD.sceneObjectsDelta || [];
+    const triggersBD: TriggerDto[] = dataBD.triggers || dataBD.triggersDelta || [];
 
     const promesasCarga: any[] = [];
     const mallasCreadas = new Map<string, Mesh>();
 
-    objetosBD.forEach((obj: any) => {
+    objetosBD.forEach((obj: SceneObjectDto) => {
       const isModel = obj.type === 'model';
       const isLight = obj.type?.startsWith('light_');
       const objRol = obj.properties?.rol || obj.rol || 'prop';
@@ -95,7 +94,7 @@ export class CoreSceneLoaderService {
       }
     });
 
-    triggersBD.forEach((trigger: any) => {
+    triggersBD.forEach((trigger: TriggerDto) => {
       this.loaderTriggerSvc.cargarTrigger(trigger, mallasCreadas);
     });
 
@@ -136,7 +135,7 @@ export class CoreSceneLoaderService {
     const propertiesClone = JSON.parse(JSON.stringify(prefabData.properties || {}));
     this.utilsSvc.renovarIdsDeSecuencias(propertiesClone);
 
-    const mockDbObject = {
+    const mockDbObject: SceneObjectDto = {
       uid: window.crypto.randomUUID(), 
       type: prefabData.type,
       name: prefabData.name + '_' + Math.floor(Math.random() * 1000),

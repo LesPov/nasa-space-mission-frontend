@@ -38,7 +38,7 @@ export class EditorToolsService {
   private fogSvc = inject(ToolsFogService);
   private gizmoSvc = inject(ToolsGizmoService);
   private liveBuilder = inject(LiveBuilderService);
-  private playerInput = inject(PlayerInputService); // 🔥 Para consultar si el menú radial está abierto
+  private playerInput = inject(PlayerInputService); 
 
   private lastHoverCheckTime = 0;
   private isGizmoSyncAttached = false;
@@ -67,7 +67,6 @@ export class EditorToolsService {
     effect(() => {
       const isModalOpen = this.state.showAddObjectModal();
       
-      // 🔥 FIX: Proteger el Effect para que NO se ejecute si el motor 3D y su engine aún no existen
       if (!this.motor3d.getEngine() || !this.motor3d.getScene()) return;
 
       const canvas = this.motor3d.getEngine().getRenderingCanvas();
@@ -93,6 +92,16 @@ export class EditorToolsService {
             this.motor3d.getScene().skipPointerMovePicking = false;
         }
       }
+    });
+
+    // 🔥 VINCULAR HIGHLIGHT AZUL AL RAYCAST CONTINUO DEL JUGADOR
+    this.eventBus.events$.subscribe(e => {
+       if (e.type === 'ObjectFocused') {
+           const playSt = this.state.playState();
+           if (playSt === 'PLAYING' && this.state.modoVistaPrueba === 'FPS') {
+               this.state.objetoHovereado.set(e.payload.mesh as AbstractMesh | null);
+           }
+       }
     });
   }
 
@@ -222,7 +231,6 @@ export class EditorToolsService {
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
 
-      // 🔥 FIX SUPREMO: Evita que el doble clic y clic interactúen si el menú radial está bloqueando
       if (this.playerInput.isRadialMenuOpen) return;
 
       if (pi.type === PointerEventTypes.POINTERDOUBLETAP && pi.event.button === 0) {
@@ -288,13 +296,20 @@ export class EditorToolsService {
 
       if (pi.type === PointerEventTypes.POINTERMOVE) {
         const now = performance.now();
-        if (now - this.lastHoverCheckTime < 100) return;
+        // 🔥 FIX MASIVO: Bajamos a 32ms (Aprox 30fps) la limitación de escaneo con el ratón suelto
+        if (now - this.lastHoverCheckTime < 32) return;
         this.lastHoverCheckTime = now;
 
         const activeCam = this.ownership.getCamera();
         if (!activeCam) return;
 
+        // 🔥 FIX MASIVO: Si estás jugando y la cámara está conectada (Raton bloqueado)
+        // Dejamos 100% de la lógica al FPS Controller (Que dispara raycast desde el centro nativamente)
         if (playSt === 'PLAYING') {
+          if (isLocked) {
+             return; 
+          }
+
           if (!isAdmin) {
             this.state.objetoHovereado.set(null);
             return;
@@ -307,10 +322,7 @@ export class EditorToolsService {
 
           if (this.liveBuilder.isBuilding()) return;
 
-          const ray = isLocked
-            ? activeCam.getForwardRay(10000)
-            : scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), activeCam);
-
+          const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), activeCam);
           const rootNode = this.castRayToSelectable(ray);
           this.state.objetoHovereado.set(rootNode);
           return;

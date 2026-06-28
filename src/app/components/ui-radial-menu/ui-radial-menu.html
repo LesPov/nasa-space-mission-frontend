@@ -1,8 +1,6 @@
-
-<!-- 🔥 FIX: Interceptamos mousedown y contextmenu para evitar que el canvas de Babylon se entere -->
 <div class="radial-overlay" *ngIf="isOpen" 
-     (mousedown)="$event.stopPropagation(); $event.preventDefault();"
-     (contextmenu)="$event.stopPropagation(); $event.preventDefault();">
+     (mousedown)="handleOverlayClick($event)"
+     (contextmenu)="handleOverlayClick($event)">
   
   <div class="radial-container">
     
@@ -20,7 +18,6 @@
     </div>
 
     <!-- Items posicionados radialmente via JS Styles -->
-    <!-- 🔥 FIX: Cambiado a mousedown para responder instantáneamente y bloquear el bubbling -->
     <div class="radial-item" *ngFor="let item of currentItems; let i = index" 
          [style.transform]="getItemTransform(i)"
          (mouseenter)="hoveredItem = item"

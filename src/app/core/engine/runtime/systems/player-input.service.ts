@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Observer, KeyboardInfo, Scene, KeyboardEventTypes } from '@babylonjs/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -25,6 +24,7 @@ export class PlayerInputService implements IUpdatable {
 
   public isRadialMenuOpen = false;
   private qPressed = false;
+  private wasPointerLockedBeforeMenu = false; // 🔥 Guarda el estado del ratón para devolverte limpio al juego
 
   constructor() {
     this.eventBus.events$.subscribe(e => {
@@ -123,13 +123,17 @@ export class PlayerInputService implements IUpdatable {
         if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
           if (!this.qPressed) {
              this.qPressed = true;
+             
+             // Guardamos si el cursor estaba bloqueado antes de abrir el menú para saber si debemos restaurarlo
+             if (!this.isRadialMenuOpen) {
+                 this.wasPointerLockedBeforeMenu = !!document.pointerLockElement;
+             }
+             
              this.isRadialMenuOpen = !this.isRadialMenuOpen;
              this.eventBus.emit({ type: 'RadialMenuToggled', payload: this.isRadialMenuOpen });
              
              if (this.isRadialMenuOpen) {
                  this.unlockPointerForMenu();
-             } else {
-                 this.lockPointerAfterMenu();
              }
           }
         } else if (kbInfo.type === KeyboardEventTypes.KEYUP) {
@@ -166,15 +170,15 @@ export class PlayerInputService implements IUpdatable {
   }
 
   private lockPointerAfterMenu(): void {
-    const playState = this.context.mode();
-    if (playState === 'EDITOR' || playState === 'EDITING_IN_GAME') return;
-    
-    const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
-    if (canvas && !document.pointerLockElement) {
-      try { 
-        canvas.focus();
-        canvas.requestPointerLock(); 
-      } catch(e) {}
+    // 🔥 FIX: Solo re-bloqueamos el cursor al cerrar el menú si ESTABA bloqueado (jugando) antes de abrirlo
+    if (this.wasPointerLockedBeforeMenu) {
+      const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
+      if (canvas && !document.pointerLockElement) {
+        try { 
+          canvas.focus();
+          canvas.requestPointerLock(); 
+        } catch(e) {}
+      }
     }
   }
 
@@ -192,4 +196,5 @@ export class PlayerInputService implements IUpdatable {
     this.inspectPressedThisFrame = false;
     this.isRadialMenuOpen = false;
     this.qPressed = false;
-  }}
+  }
+}

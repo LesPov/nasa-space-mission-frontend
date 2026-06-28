@@ -1,4 +1,3 @@
-
 import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
@@ -128,11 +127,32 @@ export class UiRadialMenu implements OnInit, OnDestroy {
     return `rotate(${-offsetAngle}deg)`;
   }
 
-  // 🔥 FIX: Aceptamos Event para frenar el propagado
-  public handleItemClick(item: RadialItem, event?: Event) {
+  public handleOverlayClick(event: MouseEvent) {
+    event.stopPropagation();
+    event.preventDefault();
+
+    // Solo cerrar si el clic fue directamente en el overlay oscuro o con click derecho
+    if (event.type === 'contextmenu' || (event.target as HTMLElement).classList.contains('radial-overlay')) {
+       this.closeMenu();
+    }
+  }
+
+  public closeMenu() {
+    this.isOpen = false;
+    this.eventBus.emit({ type: 'RadialMenuToggled', payload: false });
+    this.cdr.detectChanges();
+  }
+
+  public handleItemClick(item: RadialItem, event?: MouseEvent) {
     if (event) {
         event.stopPropagation();
         event.preventDefault();
+        
+        // Si es clic derecho sobre un item, cerramos el menú
+        if (event.button === 2) {
+           this.closeMenu();
+           return;
+        }
     }
 
     if (item.type === 'group') {
@@ -153,10 +173,6 @@ export class UiRadialMenu implements OnInit, OnDestroy {
 
   private selectAsset(asset: any) {
     this.eventBus.emit({ type: 'AssetSelectedForBuild', payload: asset });
-    
-    this.isOpen = false;
-    this.eventBus.emit({ type: 'RadialMenuToggled', payload: false });
-    
-    this.cdr.detectChanges();
+    this.closeMenu();
   }
 }

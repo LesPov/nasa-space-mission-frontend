@@ -1,67 +1,69 @@
-
 import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { environment } from '../../../environments/environment';
+import { EpisodeApiService } from './episode-api.service';
+import { SceneApiService } from './scene-api.service';
+import { AssetApiService } from './asset-api.service';
+import { PlayerStateApiService } from './player-state-api.service';
+import { SceneSavePayload, SceneLoadPayload } from '../../core/engine/models/api-dto.model';
 
 @Injectable({
   providedIn: 'root'
 })
 export class EpisodiosService {
-  private http = inject(HttpClient);
-  private baseUrl = `${environment.apiUrl}/api`; 
+  private episodeApi = inject(EpisodeApiService);
+  private sceneApi = inject(SceneApiService);
+  private assetApi = inject(AssetApiService);
+  private playerStateApi = inject(PlayerStateApiService);
 
   obtenerEpisodios(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/episodes`);
+    return this.episodeApi.obtenerEpisodios();
   }
 
   crearEpisodio(title: string, description: string): Observable<any> {
-    return this.http.post<any>(`${this.baseUrl}/episodes`, { title, description });
+    return this.episodeApi.crearEpisodio(title, description);
   }
 
   obtenerPlataformasEscena(episodeId: number): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/episodes/${episodeId}/scenes`);
+    return this.sceneApi.obtenerPlataformasEscena(episodeId);
   }
 
   crearPlataformaEscena(episodeId: number, name: string): Observable<any> {
-    return this.http.post<any>(`${this.baseUrl}/episodes/${episodeId}/scenes`, { name });
+    return this.sceneApi.crearPlataformaEscena(episodeId, name);
   }
 
-  obtenerEscenaCompleta(sceneId: number): Observable<any> {
-    return this.http.get<any>(`${this.baseUrl}/episodes/scenes/${sceneId}`);
+  obtenerEscenaCompleta(sceneId: number): Observable<SceneLoadPayload> {
+    return this.sceneApi.obtenerEscenaCompleta(sceneId);
   }
 
-  guardarMapaEscena(sceneId: number, mapData: any): Observable<any> {
-    return this.http.post<any>(`${this.baseUrl}/episodes/scenes/${sceneId}/save-map`, mapData);
+  guardarMapaEscena(sceneId: number, mapData: SceneSavePayload): Observable<any> {
+    return this.sceneApi.guardarMapaEscena(sceneId, mapData);
   }
 
   obtenerAssets(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/assets`);
+    return this.assetApi.obtenerAssets();
   }
 
   subirAsset(file: File): Observable<any> {
-    const formData = new FormData();
-    formData.append('assetFile', file);
-    return this.http.post<any>(`${this.baseUrl}/assets/upload`, formData);
+    return this.assetApi.subirAsset(file);
   }
 
   obtenerPrefabs(): Observable<any[]> {
-    return this.http.get<any[]>(`${this.baseUrl}/prefabs`);
+    return this.assetApi.obtenerPrefabs();
   }
 
   crearPrefab(data: { name: string, type: string, assetId: number | null, properties: any }): Observable<any> {
-    return this.http.post<any>(`${this.baseUrl}/prefabs`, data);
+    return this.assetApi.crearPrefab(data);
   }
 
   eliminarPrefab(id: number): Observable<any> {
-    return this.http.delete<any>(`${this.baseUrl}/prefabs/${id}`);
+    return this.assetApi.eliminarPrefab(id);
   }
 
   cargarEstadoJugador(episodeId: number, slot: number = 1): Observable<any> {
-    return this.http.get<any>(`${this.baseUrl}/episodes/${episodeId}/save-slots/${slot}`);
+    return this.playerStateApi.cargarEstadoJugador(episodeId, slot);
   }
 
   guardarEstadoJugador(episodeId: number, slot: number = 1, stateData: any): Observable<any> {
-    return this.http.post<any>(`${this.baseUrl}/episodes/${episodeId}/save-slots/${slot}`, stateData);
+    return this.playerStateApi.guardarEstadoJugador(episodeId, slot, stateData);
   }
 }

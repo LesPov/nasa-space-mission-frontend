@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, AssetContainer, Color3, DirectionalLight, Matrix, Mesh, MeshBuilder, PointLight, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
 import '@babylonjs/loaders';
@@ -47,10 +46,16 @@ export class CoreModelLoaderService {
       // Clonado de alta eficiencia compartiendo Buffers de geometría
       const instances = container.instantiateModelsToScene(name => name ? `${obj.uid}_${name}` : obj.uid, false, { doNotInstantiate: true });
       
-      const rootNode = instances.rootNodes[0] as Mesh;
-      rootNode.name = obj.name;
+      // 🔥 FIX DE COLISIONES: Crear un Wrapper Mesh para proteger la conversión de coordenadas (Right-Handed a Left-Handed) del GLTF.
+      // Si aplicamos transformaciones directamente al rootNode del GLTF, destruimos su orientación y escala nativa, 
+      // lo que invierte las normales y rompe las colisiones (el jugador atraviesa las paredes).
+      const wrapperMesh = new Mesh(obj.name, scene);
       
-      this.aplicarTransformacionesYEntidad(rootNode, obj, mallasCreadas, instances.rootNodes as AbstractMesh[], instances.animationGroups);
+      instances.rootNodes.forEach(node => {
+          node.parent = wrapperMesh;
+      });
+      
+      this.aplicarTransformacionesYEntidad(wrapperMesh, obj, mallasCreadas, instances.rootNodes as AbstractMesh[], instances.animationGroups);
     } catch (e) {
       console.error(`[CoreModelLoader] Error cargando GLB ${path}`, e);
       this.crearMallaError(obj, scene, mallasCreadas);
@@ -115,6 +120,7 @@ export class CoreModelLoaderService {
 
       m.isPickable = entity.visual.isSelectable; 
       
+      // 🔥 FIX COLISIONES: Si es malla exacta, usar toda la geometría disponible.
       if (entity.collider.type === 'mesh' && entity.visual.isSolid && !isCharacter) {
           m.checkCollisions = m.getTotalVertices() > 0;
       } else {
@@ -140,7 +146,7 @@ export class CoreModelLoaderService {
         rootNode.freezeWorldMatrix();
     }
 
-    // 🔥 GENERACIÓN DE COLISIONADORES PERFECTOS
+    // 🔥 GENERACIÓN DE COLISIONADORES PERFECTOS PARA PRIMITIVAS DE COLISIÓN (Cajas, Cápsulas, Esferas sobre modelos 3D)
     if (entity.visual.isSolid && !isCharacter && entity.collider.type !== 'mesh') {
         let colMesh: Mesh;
         if (entity.collider.type === 'sphere') {

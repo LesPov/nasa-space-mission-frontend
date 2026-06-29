@@ -1,5 +1,4 @@
 
-
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -100,7 +99,8 @@ export class PropPhysics implements OnInit, OnDestroy {
           this.colliderOffZ * Math.abs(ws.z)
       );
 
-      const proxies = this.objeto.getChildMeshes(true).filter(m => Tags.MatchesQuery(m, "proxy_collider"));
+      // Limpiamos los proxies generados automáticamente, no los personalizados del GLTF
+      const proxies = this.objeto.getChildMeshes(true).filter(m => Tags.MatchesQuery(m, "proxy_collider") && m.name.startsWith("col_"));
       proxies.forEach(p => p.dispose());
 
       if (entity.visual.isSolid && !this.esPersonaje) {
@@ -121,10 +121,16 @@ export class PropPhysics implements OnInit, OnDestroy {
           Tags.AddTagsTo(colMesh, "proxy_collider system_element");
       }
     } else {
-       const proxies = this.objeto.getChildMeshes(true).filter(m => Tags.MatchesQuery(m, "proxy_collider"));
+       // Si es malla exacta, eliminamos los primitivos
+       const proxies = this.objeto.getChildMeshes(true).filter(m => Tags.MatchesQuery(m, "proxy_collider") && m.name.startsWith("col_"));
        proxies.forEach(p => p.dispose());
+       
+       // Activamos la colisión real en la geometría del modelo
        this.objeto.getChildMeshes(false).forEach(m => {
-           if (!Tags.MatchesQuery(m, "system_element")) m.checkCollisions = true;
+           // Ignoramos decals, permitimos colliders personalizados (proxycol) y geometría con vértices
+           if (!Tags.MatchesQuery(m, "decal") && m.getTotalVertices() > 0) {
+               m.checkCollisions = true;
+           }
        });
     }
     

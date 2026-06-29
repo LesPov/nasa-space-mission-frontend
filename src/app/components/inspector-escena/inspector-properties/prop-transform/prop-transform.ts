@@ -1,5 +1,3 @@
-
-
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -81,7 +79,7 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   }
 
   private formatNum(val: number): number {
-    return parseFloat(Number(val || 0).toFixed(3));
+    return parseFloat(Number(val || 0).toFixed(4)); // Permite escalas ultra pequeñas como 0.003
   }
 
   syncData() {

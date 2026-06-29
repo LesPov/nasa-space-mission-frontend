@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject, Injector } from '@angular/core';
 import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4, UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera } from '@babylonjs/core';
 import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
@@ -113,7 +112,7 @@ export class Motor3dService implements ISceneAccess {
   }
 
   setVisualMode(mode: 'normal' | 'bw'): void {
-    if (!this.renderingPipeline) return;
+    if (!this.renderingPipeline || !this.scene) return;
     const isBw = mode === 'bw';
 
     this.renderingPipeline.imageProcessing.colorCurvesEnabled = false;
@@ -123,6 +122,9 @@ export class Motor3dService implements ISceneAccess {
     this.scene.imageProcessingConfiguration.colorCurvesEnabled = false;
     this.scene.imageProcessingConfiguration.exposure = isBw ? 0.98 : 1.0;
     this.scene.imageProcessingConfiguration.contrast = isBw ? 1.15 : 1.0;
+
+    // 🔥 Eliminado por completo el filtro global. 
+    // Ahora las luces de color SI afectarán a los modelos en B/N.
   }
 
   forceResize(): void {
@@ -142,4 +144,3 @@ export class Motor3dService implements ISceneAccess {
     }
   }
 }
-

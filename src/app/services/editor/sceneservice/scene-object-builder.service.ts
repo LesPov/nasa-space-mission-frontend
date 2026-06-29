@@ -1,6 +1,5 @@
-// src/app/services/editor/sceneservice/scene-object-builder.service.ts
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Mesh, MeshBuilder, Tags, Vector3 } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { HistorialService } from '../../historial.service';
 import { SceneNodesService } from './scene-nodes.service';
@@ -43,10 +42,18 @@ export class SceneObjectBuilderService {
       return;
     }
 
-    const mockDbObject = {
+    // 🔥 FIX SUPREMO ESCALA: Forzar que si tiene asset nazca SIEMPRE en 1x1x1 en su registro base
+    if ((tipo === 'model' || tipo.startsWith('light_')) && asset) {
+        sizeX = 1;
+        sizeY = 1;
+        sizeZ = 1;
+    }
+
+    const mockDbObject: any = {
       uid: window.crypto.randomUUID(),
       name: nombre,
       type: tipo,
+      isNewCreation: true, 
       properties: {
         rol: tipo.startsWith('light_') ? 'light' : rol,
         color: colorHex,
@@ -63,6 +70,16 @@ export class SceneObjectBuilderService {
       parentId: parentNode?.metadata?.uid || null
     };
 
+    if (tipo.startsWith('light_')) {
+        mockDbObject.properties.intensity = 5;
+        mockDbObject.properties.lightColor = colorHex;
+        mockDbObject.properties.lightColorBW = colorHex;
+        mockDbObject.properties.lightPosX = 0;
+        mockDbObject.properties.lightPosY = 0.5;
+        mockDbObject.properties.lightPosZ = 0;
+        mockDbObject.properties.angle = 45;
+    }
+
     const isModel = tipo === 'model';
     const isLight = tipo.startsWith('light_');
     const mallasCreadas = new Map<string, Mesh>();
@@ -76,7 +93,6 @@ export class SceneObjectBuilderService {
     const newMesh = mallasCreadas.get(mockDbObject.uid);
     if (newMesh) {
       if (parentNode) {
-         // 🔥 FIX SUPREMO 3: Asignar padre usando setParent para calcular matriz absoluta correctamente
          newMesh.setParent(parentNode);
       }
       

@@ -27,6 +27,16 @@ export class LiveBuilderService {
         if (e.payload) {
             const scene = this.motor3d.getScene();
             const camera = this.ownership.getCamera();
+            
+            // 🔥 FIX 2: SOLUCIÓN AL FANTASMA DEL PREFAB GIGANTE
+            // Le forzamos la escala real extraída del Prefab al objeto Payload 
+            // antes de mandarlo al PlacementController para que lo respete.
+            if (e.payload.properties?.prefabHierarchy?.[0]?.scale) {
+                const s = e.payload.properties.prefabHierarchy[0].scale;
+                e.payload.scale = { ...s };
+                e.payload.scaling = { ...s };
+            }
+
             if (scene && camera) {
                 this.placementCtrl.start(
                     e.payload, 

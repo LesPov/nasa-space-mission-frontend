@@ -1,19 +1,17 @@
-
-
 <div class="section-card">
   <div class="section-head"><h4>Posición & Escala (Local)</h4></div>
   <div class="grid-3">
     <div class="field">
       <label>Pos Local X</label>
-      <input type="number" step="0.1" [ngModel]="localPosX" (ngModelChange)="localPosX = $event; aplicarPosicion()" />
+      <input type="number" step="0.01" [ngModel]="localPosX" (ngModelChange)="localPosX = $event; aplicarPosicion()" />
     </div>
     <div class="field">
       <label>Pos Local Y</label>
-      <input type="number" step="0.1" [ngModel]="localPosY" (ngModelChange)="localPosY = $event; aplicarPosicion()" />
+      <input type="number" step="0.01" [ngModel]="localPosY" (ngModelChange)="localPosY = $event; aplicarPosicion()" />
     </div>
     <div class="field">
       <label>Pos Local Z</label>
-      <input type="number" step="0.1" [ngModel]="localPosZ" (ngModelChange)="localPosZ = $event; aplicarPosicion()" />
+      <input type="number" step="0.01" [ngModel]="localPosZ" (ngModelChange)="localPosZ = $event; aplicarPosicion()" />
     </div>
 
     <div class="field">
@@ -31,15 +29,15 @@
 
     <div class="field">
       <label title="Tamaño en su propio espacio (Local)">Escala Loc. X</label>
-      <input type="number" step="0.1" [ngModel]="localEscX" (ngModelChange)="localEscX = $event; aplicarEscala()" />
+      <input type="number" step="0.001" [ngModel]="localEscX" (ngModelChange)="localEscX = $event; aplicarEscala()" />
     </div>
     <div class="field">
       <label title="Tamaño en su propio espacio (Local)">Escala Loc. Y</label>
-      <input type="number" step="0.1" [ngModel]="localEscY" (ngModelChange)="localEscY = $event; aplicarEscala()" />
+      <input type="number" step="0.001" [ngModel]="localEscY" (ngModelChange)="localEscY = $event; aplicarEscala()" />
     </div>
     <div class="field">
       <label title="Tamaño en su propio espacio (Local)">Escala Loc. Z</label>
-      <input type="number" step="0.1" [ngModel]="localEscZ" (ngModelChange)="localEscZ = $event; aplicarEscala()" />
+      <input type="number" step="0.001" [ngModel]="localEscZ" (ngModelChange)="localEscZ = $event; aplicarEscala()" />
     </div>
   </div>
 </div>
@@ -181,7 +179,6 @@
     <h4>Opciones Visuales y Selección</h4>
   </div>
 
-  <!-- 🔥 CASILLAS VINCULADAS: Muestran opciones de Editabilidad y Bordes de Hover -->
   <div class="grid-2" style="margin-bottom: 10px;">
       <div class="checkbox-field">
         <input type="checkbox" id="chkEsSeleccionable" [(ngModel)]="objEsSeleccionable" (ngModelChange)="aplicarVisuales()">

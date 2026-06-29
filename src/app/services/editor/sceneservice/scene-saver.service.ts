@@ -13,11 +13,13 @@ export class SceneSaverService {
   private persistenceMapper = inject(EntityPersistenceMapperService);
   private cinematicSvc = inject(EditorCinematicService);
 
-  public obtenerDatosParaGuardar(escenaActualData: any, forceFull: boolean = false): SceneSavePayload { 
+  public obtenerDatosParaGuardar(escenaActualData: any, forceFull: boolean = false): SceneSavePayload & { uiSettings: any } { 
     const sceneObjectsDelta: SceneObjectDto[] = []; 
     const triggersDelta: TriggerDto[] = [];
 
+    // 🔥 Extraemos configuraciones globales del mundo (Color, B/N, Cielo) y la Interfaz
     const environmentSettings = this.worldSettingsSvc.settings();
+    const uiSettings = this.worldSettingsSvc.uiSettings();
     
     const cinematicsDelta: CinematicDto[] = JSON.parse(JSON.stringify(this.cinematicSvc.cinematics()));
     const deletedCinematics = [...this.cinematicSvc.deletedCinematics];
@@ -121,7 +123,8 @@ export class SceneSaverService {
       deletedTriggers: [...this.entityManager.deletedTriggers], 
       deletedCinematics, 
       environmentSettings,
+      uiSettings, // 🔥 Guardamos esto explícitamente para TestLive
       spawnPoint
-    };
+    } as any;
   } 
 }

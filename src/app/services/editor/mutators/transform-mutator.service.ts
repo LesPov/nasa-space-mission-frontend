@@ -1,5 +1,3 @@
-
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -7,6 +5,7 @@ import { HistorialService } from '../../historial.service';
 import { CoreSceneProjectionService } from '../../../core/engine/scene/utils/core-scene-projection.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
+import { CoreSceneMaterialService } from '../../../core/engine/scene/utils/core-scene-material.service';
 
 @Injectable({ providedIn: 'root' })
 export class TransformMutatorService {
@@ -15,6 +14,7 @@ export class TransformMutatorService {
   private projectionSvc = inject(CoreSceneProjectionService);
   private entityManager = inject(EntityManagerService); 
   private worldSettingsSvc = inject(WorldSettingsService);
+  private materialSvc = inject(CoreSceneMaterialService);
 
   public aplicarPosicion(objeto: AbstractMesh, localPos: { x: number, y: number, z: number }): void {
     const entity = this.entityManager.getEntityByMesh(objeto);
@@ -125,6 +125,15 @@ export class TransformMutatorService {
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
     const activeColorHex = isBW ? config.colorBW : config.color;
 
+    if (entity.type === 'model') {
+        const scene = objeto.getScene();
+        objeto.getChildMeshes().forEach((m: AbstractMesh) => {
+            if (m.material) {
+                this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene);
+            }
+        });
+    }
+
     if (objeto.material && objeto.material instanceof StandardMaterial) {
       if (entity.type === 'image_plane') {
         const decalMat = entity.mediaRuntime?.runtimeDecalMaterial as StandardMaterial | undefined;
@@ -158,16 +167,32 @@ export class TransformMutatorService {
       }
     }
 
+    // 🚀 FIX: SINCRONIZACIÓN DE LUZ FÍSICA + EMISIÓN EN MODELO (BOMBILLOS)
     if (entity.type.startsWith('light_') && entity.light) {
         const activeLightColorHex = isBW ? entity.light.lightColorBW : entity.light.lightColor;
         const c3Light = Color3.FromHexString(activeLightColorHex || '#ffffff');
         
+        // Si el objeto principal tiene material emisivo
         if (objeto.material && (objeto.material as any).emissiveColor) {
             (objeto.material as StandardMaterial).emissiveColor = c3Light;
         }
+
+        // Si tiene modelo GLB (Asset), buscamos las partes que sean "luces" o "focos" para hacerlas brillar
+        objeto.getChildMeshes().forEach((m: AbstractMesh) => {
+           if (m.material && m.material instanceof StandardMaterial) {
+               const nL = m.name.toLowerCase();
+               const mL = m.material.name.toLowerCase();
+               if (nL.includes('bulb') || nL.includes('light') || nL.includes('emit') || mL.includes('bulb') || mL.includes('light') || mL.includes('emit')) {
+                   m.material.emissiveColor = c3Light;
+               }
+           }
+        });
+
+        // Aplicamos al objeto luz interno la intensidad y el color
         const lightObj = objeto.getDescendants(false).find(c => c.name.startsWith('l_')) as any;
         if (lightObj && lightObj.diffuse) {
             lightObj.diffuse = c3Light;
+            lightObj.intensity = (config.brilloIntensidad !== undefined) ? (this.clampBrightness(config.brilloIntensidad) * 5) : (entity.light.intensity || 5);
         }
     }
 

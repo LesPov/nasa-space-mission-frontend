@@ -1,4 +1,3 @@
-
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
@@ -16,7 +15,8 @@ export class VisualComponent {
     public color = '#ffffff', public colorBW = '#ffffff', public isSolid = true, 
     public isSelectable = true, public ignoraNiebla = false, public esEmisivo = false, 
     public brilloIntensidad = 1.0, public assetId?: number | null, public path?: string,
-    public mostrarBorde: boolean = true
+    public mostrarBorde: boolean = true,
+    public internalScale?: number // 🔥 AÑADIDO: Guarda la compensación interna del modelo
   ) {}
 }
 
@@ -216,7 +216,6 @@ export class GameEntity {
   get autoAnim() { return this.getComponent<AutoAnimComponent>('autoAnim')?.config || null; }
   set autoAnim(v) { if(v) this.addComponent('autoAnim', new AutoAnimComponent(v)); else this.removeComponent('autoAnim'); }
 
-  // 🔥 FASE 2: UNIFICACIÓN ECS DE LA CONFIGURACIÓN DEL JUGADOR
   get playerConfig(): PlayerRuntimeConfig | undefined {
     return this.getComponent<PlayerRuntimeConfig>('playerConfig');
   }

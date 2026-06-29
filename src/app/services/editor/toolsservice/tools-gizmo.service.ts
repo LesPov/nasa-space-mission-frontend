@@ -1,7 +1,5 @@
-
-
 import { Injectable, inject } from '@angular/core';
-import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Tags, AbstractMesh } from '@babylonjs/core';
+import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Tags, AbstractMesh, Light, Matrix } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
@@ -39,7 +37,6 @@ export class ToolsGizmoService {
     const scene = this.motor3d.getScene();
     if (!scene) return;
 
-    // 🔥 FIX 2: Prevención de Memory Leaks y bugs de "No aparecen gizmos al volver a entrar"
     this.dispose();
 
     this.gizmoManager = new GizmoManager(scene);

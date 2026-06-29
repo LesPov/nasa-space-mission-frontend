@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -167,17 +168,14 @@ export class TransformMutatorService {
       }
     }
 
-    // 🚀 FIX: SINCRONIZACIÓN DE LUZ FÍSICA + EMISIÓN EN MODELO (BOMBILLOS)
     if (entity.type.startsWith('light_') && entity.light) {
         const activeLightColorHex = isBW ? entity.light.lightColorBW : entity.light.lightColor;
         const c3Light = Color3.FromHexString(activeLightColorHex || '#ffffff');
         
-        // Si el objeto principal tiene material emisivo
         if (objeto.material && (objeto.material as any).emissiveColor) {
             (objeto.material as StandardMaterial).emissiveColor = c3Light;
         }
 
-        // Si tiene modelo GLB (Asset), buscamos las partes que sean "luces" o "focos" para hacerlas brillar
         objeto.getChildMeshes().forEach((m: AbstractMesh) => {
            if (m.material && m.material instanceof StandardMaterial) {
                const nL = m.name.toLowerCase();
@@ -188,12 +186,8 @@ export class TransformMutatorService {
            }
         });
 
-        // Aplicamos al objeto luz interno la intensidad y el color
-        const lightObj = objeto.getDescendants(false).find(c => c.name.startsWith('l_')) as any;
-        if (lightObj && lightObj.diffuse) {
-            lightObj.diffuse = c3Light;
-            lightObj.intensity = (config.brilloIntensidad !== undefined) ? (this.clampBrightness(config.brilloIntensidad) * 5) : (entity.light.intensity || 5);
-        }
+        entity.light.renderIntensity = (config.brilloIntensidad !== undefined) ? (this.clampBrightness(config.brilloIntensidad) * 5) : (entity.light.intensity || 5);
+        entity.light.intensity = entity.light.renderIntensity;
     }
 
     objeto.applyFog = !config.ignoraNiebla;

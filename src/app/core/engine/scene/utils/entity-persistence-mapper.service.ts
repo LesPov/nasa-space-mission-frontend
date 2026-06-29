@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { GameEntity, CharacterConfigComponent } from '../../entities/game.entity';
 import { CoreSceneUtilsService } from './core-scene-utils.service';
@@ -39,7 +40,6 @@ export class EntityPersistenceMapperService {
     entity.visual.path = props.path || obj.asset?.path || props.videoUrl || props.imageUrl || '';
     entity.visual.assetId = obj.assetId || null;
     
-    // 🔥 FIX: Forzamos any para evitar errores de compilación por falta de declaración en la interfaz
     entity.visual.internalScale = (props as any).internalScale;
 
     entity.interaction.mensaje = props.mensaje || '';
@@ -96,6 +96,9 @@ export class EntityPersistenceMapperService {
       entity.light.lightPosZ = props.lightPosZ ?? 0;
       entity.light.attachedNodePath = props.attachedNodePath || '';
       entity.light.attachedNodeName = props.attachedNodeName || '';
+      entity.light.renderIntensity = entity.light.intensity;
+      entity.light.enabled = props.isEnabled ?? (props as any).enabled ?? true;
+      entity.light.castShadows = (props as any).castShadows ?? true;
     }
   }
 
@@ -111,7 +114,7 @@ export class EntityPersistenceMapperService {
       esEmisivo: entity.visual.esEmisivo,
       mostrarBorde: entity.visual.mostrarBorde,
       brilloIntensidad: entity.visual.brilloIntensidad,
-      internalScale: entity.visual.internalScale, // 🔥 AÑADIDO
+      internalScale: entity.visual.internalScale,
       mensaje: entity.interaction.mensaje,
       interactDistanceFPS: entity.interaction.interactDistanceFPS,
       interactDistanceTPS: entity.interaction.interactDistanceTPS,

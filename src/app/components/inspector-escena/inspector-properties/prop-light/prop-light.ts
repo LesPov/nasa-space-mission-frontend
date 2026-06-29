@@ -1,9 +1,8 @@
 
-
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh, Color3, PointLight, SpotLight, DirectionalLight, TransformNode, Light, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, TransformNode } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
@@ -125,35 +124,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     return null;
   }
 
-  private getAttachedLight(): Light | null {
-    if (!this.objeto) return null;
-
-    const found = this.objeto.getDescendants(false).find(
-      (child): child is Light =>
-        child instanceof PointLight ||
-        child instanceof SpotLight ||
-        child instanceof DirectionalLight
-    );
-
-    return found || null;
-  }
-
-  private applyAttachment(light: Light | null) {
-    if (!light || !this.objeto) return;
-
-    const targetNode = this.attachedNodePath !== "" ? (
-      this.resolveNodeByPath(this.attachedNodePath) ||
-      this.getAllAttachableNodes().find(n => n.name === this.attachedNodeName) ||
-      null
-    ) : null;
-
-    if (targetNode) {
-      light.parent = targetNode;
-    } else {
-      light.parent = this.objeto;
-    }
-  }
-
   private getAnimatedNodeNames(): Set<string> {
     const scene = this.objeto?.getScene?.();
     const names = new Set<string>();
@@ -222,34 +192,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
         this.attachedNodeName = "";
     }
 
-    const light = this.getAttachedLight();
-    const isBW = this.motor3dSvc.getScene()?.metadata?.globalVisualMode === 'bw';
-    const activeColor = isBW ? this.lightColorBW : this.lightColor;
-
-    if (light) {
-      light.intensity = this.intensity;
-      light.diffuse = Color3.FromHexString(activeColor);
-
-      if (light instanceof PointLight || light instanceof SpotLight) {
-        light.range = this.range;
-      }
-
-      if (light instanceof SpotLight) {
-        light.angle = this.angle * (Math.PI / 180);
-        light.direction = new Vector3(0, -1, 0);
-      }
-
-      if (light instanceof DirectionalLight) {
-        light.direction = new Vector3(0, -1, 0);
-      }
-
-      this.applyAttachment(light);
-      
-      if ((light as any).position) {
-         (light as any).position.copyFromFloats(this.lightPosX, this.lightPosY, this.lightPosZ);
-      }
-    }
-
     const targetNode = this.attachedNodePath !== "" ? (
       this.resolveNodeByPath(this.attachedNodePath) ||
       this.getAllAttachableNodes().find(n => n.name === this.attachedNodeName) ||
@@ -259,10 +201,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.attachedNodeName = targetNode?.name || '';
     this.attachedNodePath = targetNode ? this.buildNodePath(targetNode) : '';
 
-    if (this.objeto.material) {
-      (this.objeto.material as any).emissiveColor = Color3.FromHexString(activeColor);
-    }
-
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (entity && entity.light) {
       entity.light.lightPosX = this.lightPosX;
@@ -271,6 +209,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.light.lightColor = this.lightColor;
       entity.light.lightColorBW = this.lightColorBW;
       entity.light.intensity = this.intensity;
+      entity.light.renderIntensity = this.intensity;
       entity.light.range = this.range;
       entity.light.angle = this.angle;
       entity.light.attachedNodeName = this.attachedNodeName;

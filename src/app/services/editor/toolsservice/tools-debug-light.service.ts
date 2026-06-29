@@ -1,3 +1,4 @@
+
 import { Injectable } from '@angular/core';
 import { Scene, Mesh, MeshBuilder, StandardMaterial, Color3, AbstractMesh, Tags, Vector3 } from '@babylonjs/core';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
@@ -34,7 +35,6 @@ export class ToolsDebugLightService {
     if (this.debugLightBox && this.attachedMesh) {
       const localOffset = new Vector3(offsetX + breathX, offsetY + breathY, offsetZ + breathZ);
       
-      // 🔥 FIX: Buscar el padre real de la luz en la jerarquía (por si está amarrada a un hueso/pieza)
       let targetParent: any = this.attachedMesh;
       const lightObj = this.attachedMesh.getDescendants(false).find(c => c.name.startsWith('l_'));
       if (lightObj && lightObj.parent) {

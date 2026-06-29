@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, DirectionalLight, Mesh, MeshBuilder, PointLight, SpotLight, StandardMaterial, Texture, Vector3, VideoTexture, Tags } from '@babylonjs/core';
+import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial, Texture, Vector3, VideoTexture, Tags } from '@babylonjs/core';
 import { CoreSceneProjectionService } from '../utils/core-scene-projection.service';
 import { BubblePulseBehavior } from '../../behaviors/bubble-pulse.behavior';
 import { DistanceFadeBehavior } from '../../behaviors/distance-fade.behavior';
@@ -104,20 +104,9 @@ export class CorePrimitiveLoaderService {
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = Color3.FromHexString(activeColor);
       mat.wireframe = true;
-      mat.maxSimultaneousLights = 16; // 🔥 FIX LÍMITE LUCES
+      mat.maxSimultaneousLights = 16;
       mesh.material = mat;
       mesh.isVisible = false;
-
-      let lightObj: any;
-      if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 0, 0), scene);
-      else if (obj.type === 'light_spot') lightObj = new SpotLight('l_' + obj.name, new Vector3(0, 0, 0), new Vector3(0, -1, 0), entity.light.angle * (Math.PI / 180), 2, scene);
-      else if (obj.type === 'light_directional') lightObj = new DirectionalLight('l_' + obj.name, new Vector3(0, -1, 0), scene);
-
-      lightObj.parent = mesh;
-      lightObj.intensity = entity.light.intensity;
-      lightObj.diffuse = Color3.FromHexString(activeColor);
-      lightObj.specular = new Color3(0, 0, 0);
-      if (lightObj.position) lightObj.position.copyFromFloats(entity.light.lightPosX, entity.light.lightPosY, entity.light.lightPosZ);
     } 
     else {
       const mat = new StandardMaterial('mat_' + obj.name, scene);
@@ -136,7 +125,7 @@ export class CorePrimitiveLoaderService {
         mat.disableLighting = false;
       }
 
-      mat.maxSimultaneousLights = 16; // 🔥 FIX LÍMITE LUCES
+      mat.maxSimultaneousLights = 16; 
       mat.fogEnabled = !entity.visual.ignoraNiebla;
       mesh.material = mat;
     }

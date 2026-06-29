@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -78,20 +77,6 @@ export class ToolsClipboardService {
       });
     } else {
       clon = objOriginal.clone(nuevoNombre, null) as AbstractMesh;
-    }
-
-    if (entityOriginal.type?.startsWith('light_')) {
-      const originalLight = objOriginal.getDescendants(false).find(c => c.getClassName().includes('Light')) as any;
-      if (originalLight) {
-         const newLight = originalLight.clone('l_' + nuevoNombre);
-         
-         let targetParent: any = clon;
-         if (entityOriginal.light?.attachedNodeName) {
-            const foundNode = clon.getDescendants(false).find((n: any) => n.name === entityOriginal.light!.attachedNodeName);
-            if (foundNode) targetParent = foundNode;
-         }
-         newLight.parent = targetParent;
-      }
     }
 
     clon.position = objOriginal.position.clone();

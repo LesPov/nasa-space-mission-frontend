@@ -16,13 +16,14 @@ import { CharacterKinematicsService } from './systems/character-kinematics.servi
 import { PlayerAnimationService } from './systems/player-animation.service';
 import { RenderSync } from './systems/render-sync';
 import { MediaCommandSystem } from './systems/media-command.system';
-import { CinematicDirectorService } from './systems/cinematic-director.service';
+ import { CinematicDirectorService } from './systems/cinematic-director.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene/scene-access.token';
 import { CameraViewMode } from '../session/game-context.model';
 import { GameMode } from '../session/game-mode.model';
 import { GameContextService } from '../session/game-context.service';
 import { LayoutService } from '../../../services/layout.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
+import { LightSyncSystem } from './systems/light-sync.system';
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
@@ -45,6 +46,7 @@ export class GameSession {
   private playerAnimationSvc = inject(PlayerAnimationService);
   private cinematicDirector = inject(CinematicDirectorService);
   private renderSyncSvc = inject(RenderSync);
+  private lightSyncSvc = inject(LightSyncSystem);
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
 
   public isPlaying = computed(() => this.context.isPlaying());
@@ -119,6 +121,7 @@ export class GameSession {
       this.cameraSvc,
       this.mediaCommandSvc,
       this.renderSyncSvc,
+      this.lightSyncSvc,
       this.objectAnimSvc,
       this.playerFogSvc,
       this.bubbleSvc
@@ -135,7 +138,6 @@ export class GameSession {
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
       if (entity.characterConfig) {
-        // 🔥 FIX FASE 3: Obliga el uso de .getScene() a través de la Interfaz del Motor
         this.playerAnimationSvc.sincronizarAnimaciones(this.motor3dSvc.getScene(), entity);
 
         const autoSeq = entity.playerConfig?.sequences.find((s: any) => s.autoPlay);

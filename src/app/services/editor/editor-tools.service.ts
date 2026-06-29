@@ -1,9 +1,8 @@
 
-
 import { Injectable, inject, effect } from '@angular/core';
 import {
-  DirectionalLight, KeyboardEventTypes, Matrix, Mesh, PointerEventTypes, SpotLight,
-  TransformNode, Vector3, Ray, AbstractMesh, Light, Tags
+  DirectionalLight, KeyboardEventTypes, Light, Matrix, Mesh, PointerEventTypes,
+  SpotLight, TransformNode, Vector3, Quaternion, AbstractMesh, Ray, Tags
 } from '@babylonjs/core';
 
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
@@ -22,6 +21,7 @@ import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera
 import { LiveBuilderService } from './live-builder.service';
 import { PlayerInputService } from '../../core/engine/runtime/systems/player-input.service';
 import { EditorMapaService } from '../editor-mapa.service';
+import { LightSyncSystem } from '../../core/engine/runtime/systems/light-sync.system';
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
@@ -42,6 +42,7 @@ export class EditorToolsService {
   private gizmoSvc = inject(ToolsGizmoService);
   private liveBuilder = inject(LiveBuilderService);
   private playerInput = inject(PlayerInputService); 
+  private lightSync = inject(LightSyncSystem);
 
   private lastHoverCheckTime = 0;
   private isGizmoSyncAttached = false;
@@ -96,7 +97,6 @@ export class EditorToolsService {
       }
     });
 
-    // 🔥 VINCULAR HIGHLIGHT AZUL AL RAYCAST CONTINUO DEL JUGADOR
     this.eventBus.events$.subscribe(e => {
        if (e.type === 'ObjectFocused') {
            const playSt = this.state.playState();
@@ -151,7 +151,6 @@ export class EditorToolsService {
 
   private manejarFPSAdminSelection(canvas: HTMLCanvasElement | null, isLocked: boolean): void {
     const scene = this.motor3d.getScene();
-    const isAdmin = this.authSvc.isAdmin();
     const activeCam = this.ownership.getCamera();
 
     if (this.state.modoVistaPrueba !== 'FPS') {
@@ -233,7 +232,6 @@ export class EditorToolsService {
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
 
-      // 🔥 FIX SUPREMO: Evita que el doble clic y clic interactúen si el menú radial está bloqueando
       if (this.playerInput.isRadialMenuOpen) return;
 
       if (pi.type === PointerEventTypes.POINTERDOUBLETAP && pi.event.button === 0) {
@@ -299,15 +297,12 @@ export class EditorToolsService {
 
       if (pi.type === PointerEventTypes.POINTERMOVE) {
         const now = performance.now();
-        // 🔥 FIX MASIVO: Bajamos a 32ms (Aprox 30fps) la limitación de escaneo con el ratón suelto
         if (now - this.lastHoverCheckTime < 32) return;
         this.lastHoverCheckTime = now;
 
         const activeCam = this.ownership.getCamera();
         if (!activeCam) return;
 
-        // 🔥 FIX MASIVO: Si estás jugando y la cámara está conectada (Raton bloqueado)
-        // Dejamos 100% de la lógica al FPS Controller (Que dispara raycast desde el centro nativamente)
         if (playSt === 'PLAYING') {
           if (isLocked) {
              return; 
@@ -394,18 +389,7 @@ export class EditorToolsService {
     });
 
     scene.onBeforeRenderObservable.add(() => {
-      scene.lights.forEach(light => {
-        if ((light instanceof SpotLight || light instanceof DirectionalLight) && light.name.startsWith('l_')) {
-          if (light.parent) {
-            const parentNode = light.parent as TransformNode;
-            const worldMatrix = parentNode.getWorldMatrix();
-            const localDown = Vector3.TransformNormal(new Vector3(0, -1, 0), worldMatrix);
-            light.direction.copyFrom(localDown.normalize());
-          } else {
-            light.direction.copyFromFloats(0, -1, 0);
-          }
-        }
-      });
+      this.lightSync.syncAllLights();
 
       const obj = this.state.objetoSeleccionado() as Mesh;
       this.gizmoSvc.updateCenterDragMeshRenderState(obj, this.state.subObjetoSeleccionado());
@@ -467,10 +451,6 @@ export class EditorToolsService {
       entity.light.lightPosY = localPos.y;
       entity.light.lightPosZ = localPos.z;
       
-      const lightObj = mesh.getDescendants(false).find(c => c.name.startsWith('l_')) as Light;
-      if (lightObj && (lightObj as any).position) {
-          (lightObj as any).position.copyFromFloats(entity.light.lightPosX, entity.light.lightPosY, entity.light.lightPosZ);
-      }
       entity.syncToView();
 
     } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {

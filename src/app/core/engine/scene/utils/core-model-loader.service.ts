@@ -1,10 +1,11 @@
+
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, AssetContainer, Color3, DirectionalLight, Matrix, Mesh, MeshBuilder, PointLight, SceneLoader, SpotLight, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
+import { AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
 import '@babylonjs/loaders';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { CoreSceneMaterialService } from '../utils/core-scene-material.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
-import { GameEntity } from '../../entities/game.entity';
+import { GameEntity, LightComponent } from '../../entities/game.entity';
 import { EntityPersistenceMapperService } from './entity-persistence-mapper.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
 import { GameContextService } from '../../session/game-context.service';
@@ -60,18 +61,16 @@ export class CoreModelLoaderService {
           node.parent = wrapperMesh;
       });
 
-      // 🔥 FIX FINAL: Lógica de Escalado 1x1x1 Persistente
       wrapperMesh.computeWorldMatrix(true);
       const bounds = wrapperMesh.getHierarchyBoundingVectors();
       const realSize = bounds.max.subtract(bounds.min);
       const maxSize = Math.max(realSize.x, realSize.y, realSize.z);
 
       if (obj.isNewCreation && maxSize > 0.01) {
-          // Primera vez que se arrastra: Encogemos por dentro y le ponemos escala 1x1x1
           const compensacion = 1.0 / maxSize; 
           
           if (!obj.properties) obj.properties = {};
-          obj.properties.internalScale = compensacion; // 🔥 Guardamos el truco para cuando recargue
+          obj.properties.internalScale = compensacion; 
           
           instances.rootNodes.forEach(node => {
               const tNode = node as TransformNode;
@@ -85,8 +84,6 @@ export class CoreModelLoaderService {
           delete obj.isNewCreation;
 
       } else if (obj.properties?.internalScale) {
-          // Ya fue encogido alguna vez. Le volvemos a aplicar el encogimiento interno 
-          // para que respete la escala (ej. 5x5x5) que viene de la base de datos sin exagerarse.
           const compensacion = obj.properties.internalScale;
           instances.rootNodes.forEach(node => {
               const tNode = node as TransformNode;
@@ -212,50 +209,11 @@ export class CoreModelLoaderService {
 
     if (isLight) {
       if (!entity.light) {
-          entity.light = { 
-            intensity: 5, 
-            lightColor: '#ffffff', 
-            lightColorBW: '#ffffff', 
-            lightPosX: 0, 
-            lightPosY: 0.5, 
-            lightPosZ: 0, 
-            angle: 45,
-            range: 50, 
-            attachedNodePath: '', 
-            attachedNodeName: '' 
-          };
+          entity.light = new LightComponent();
+          entity.light.lightPosY = 0.5;
       }
-
-      const lConf = entity.light!;
-
       if (!obj.asset && !obj.properties?.path) {
           rootNode.isVisible = false;
-      }
-      
-      let lightObj: any;
-      if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 0, 0), scene);
-      else if (obj.type === 'light_spot') lightObj = new SpotLight('l_' + obj.name, new Vector3(0, -1, 0), new Vector3(0, -1, 0), lConf.angle * (Math.PI / 180), 2, scene);
-      else if (obj.type === 'light_directional') lightObj = new DirectionalLight('l_' + obj.name, new Vector3(0, -1, 0), scene);
-
-      let targetParent: TransformNode | AbstractMesh = rootNode;
-      if (lConf.attachedNodeName) {
-        const foundNode = rootNode.getDescendants(false).find((n: any) => n.name === lConf.attachedNodeName) as TransformNode | AbstractMesh;
-        if (foundNode) targetParent = foundNode;
-      }
-
-      if (lightObj) {
-          lightObj.parent = targetParent;
-          lightObj.intensity = lConf.intensity || 5;
-          const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
-          lightObj.diffuse = Color3.FromHexString((isBW ? lConf.lightColorBW : lConf.lightColor) || '#ffffff');
-          
-          // 🔥 FIX: Respetar la posición real sin sumar +0.5 por defecto
-          if (lightObj.position) {
-              const px = lConf.lightPosX ?? 0;
-              const py = lConf.lightPosY ?? 0;
-              const pz = lConf.lightPosZ ?? 0;
-              lightObj.position.copyFromFloats(px, py, pz);
-          }
       }
     }
 

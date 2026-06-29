@@ -16,15 +16,7 @@ export class MediaCommandSystem implements IUpdatable {
       const view = entity.view as Mesh;
       if (!view) continue;
 
-      // 1. Ejecución de Comandos de Iluminación en Vivo
-      if (entity.light && entity.lightRuntime && entity.lightRuntime.currentIntensity !== undefined) {
-        const lightObj = view.getDescendants(false).find(c => c.getClassName().includes('Light')) as any;
-        if (lightObj) {
-          lightObj.intensity = entity.lightRuntime.currentIntensity;
-        }
-      }
-
-      // 2. Ejecución de Comandos de Video (Pantallas/TVs)
+      // 1. Ejecución de Comandos de Video (Pantallas/TVs)
       if (entity.mediaRuntime?.videoCommand) {
         const mat = view.material as StandardMaterial;
         if (mat && mat.diffuseTexture && (mat.diffuseTexture as any).video) {
@@ -47,7 +39,7 @@ export class MediaCommandSystem implements IUpdatable {
         }
       }
 
-      // 3. Ejecución de Detención de Animaciones Nativas (GLB)
+      // 2. Ejecución de Detención de Animaciones Nativas (GLB)
       if (entity.playerRuntime?.stopBakedRequested && view.getScene) {
         const scene = view.getScene();
         const myAnimNames = entity.animationNames || [];

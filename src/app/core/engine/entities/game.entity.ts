@@ -1,3 +1,4 @@
+
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
@@ -16,7 +17,7 @@ export class VisualComponent {
     public isSelectable = true, public ignoraNiebla = false, public esEmisivo = false, 
     public brilloIntensidad = 1.0, public assetId?: number | null, public path?: string,
     public mostrarBorde: boolean = true,
-    public internalScale?: number // 🔥 AÑADIDO: Guarda la compensación interna del modelo
+    public internalScale?: number
   ) {}
 }
 
@@ -36,7 +37,10 @@ export class LightComponent {
   constructor(
     public lightColor = '#ffffff', public lightColorBW = '#ffffff', public intensity = 1.0, 
     public range = 50, public angle = 60, public lightPosX = 0, public lightPosY = 0, 
-    public lightPosZ = 0, public attachedNodePath = '', public attachedNodeName = ''
+    public lightPosZ = 0, public attachedNodePath = '', public attachedNodeName = '',
+    public renderIntensity?: number,
+    public enabled: boolean = true,
+    public castShadows: boolean = true
   ) {}
 }
 
@@ -77,10 +81,6 @@ export class MediaRuntimeComponent {
     public runtimeDecals: AbstractMesh[] = [], public runtimeDecalMaterial?: StandardMaterial, 
     public lastVisualModeBW?: boolean, public videoCommand?: 'play' | 'pause' | 'stop'
   ) {}
-}
-
-export class LightRuntimeComponent {
-  constructor(public currentIntensity?: number) {}
 }
 
 export class TriggerRuntimeComponent {
@@ -139,7 +139,6 @@ export class GameEntity {
 
     if (type.startsWith('light_')) {
       this.addComponent('light', new LightComponent());
-      this.addComponent('lightRuntime', new LightRuntimeComponent()); 
     }
 
     if (type === 'video_plane' || type === 'image_plane') {
@@ -197,7 +196,6 @@ export class GameEntity {
 
   get mediaRuntime(): MediaRuntimeComponent | undefined { return this.getComponent<MediaRuntimeComponent>('mediaRuntime'); }
   get triggerRuntime(): TriggerRuntimeComponent | undefined { return this.getComponent<TriggerRuntimeComponent>('triggerRuntime'); }
-  get lightRuntime(): LightRuntimeComponent | undefined { return this.getComponent<LightRuntimeComponent>('lightRuntime'); }
   get playerRuntime(): PlayerRuntimeComponent { return this.getComponent<PlayerRuntimeComponent>('playerRuntime')!; }
   get interactionRuntime(): InteractionRuntimeComponent { return this.getComponent<InteractionRuntimeComponent>('interactionRuntime')!; }
 

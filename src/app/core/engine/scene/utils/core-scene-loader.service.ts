@@ -1,6 +1,6 @@
-// src/app/core/engine/scene/utils/core-scene-loader.service.ts
+
 import { Injectable, inject } from '@angular/core';
-import { Mesh, Vector3, MeshBuilder, Tags, Quaternion, AbstractMesh } from '@babylonjs/core';
+import { Mesh, Vector3, MeshBuilder, Tags, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { CoreSceneShadowsService } from './core-scene-shadows.service';
 import { CoreSceneUtilsService } from './core-scene-utils.service';
@@ -16,7 +16,8 @@ import { EditorCinematicService } from '../../../../services/editor/editor-cinem
 import { PlayerCameraManagerService } from '../../runtime/systems/player-camera.service';
 import { PlayerTriggerService } from '../../runtime/systems/player-trigger.service';
 import { SceneLoadPayload, SceneObjectDto, TriggerDto } from '../../models/api-dto.model';
-
+import { LightSyncSystem } from '../../runtime/systems/light-sync.system';
+ 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneLoaderService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
@@ -33,6 +34,7 @@ export class CoreSceneLoaderService {
   private cinematicSvc = inject(EditorCinematicService);
   private cameraSvc = inject(PlayerCameraManagerService); 
   private triggerSvc = inject(PlayerTriggerService);
+  private lightSync = inject(LightSyncSystem);
 
   public createInvisibleFloor(scene: any): void {
     const old = scene.getMeshByName('sueloInvisible');
@@ -104,7 +106,6 @@ export class CoreSceneLoaderService {
       const entity = this.entityManager.getEntityByUid(uid);
       if (entity && entity.parentId) {
         const parentNode = mallasCreadas.get(entity.parentId) || scene.getMeshByName(entity.parentId);
-        // 🔥 FIX SUPREMO 1: Usar setParent() en vez de = para evitar saltos en el espacio
         if (parentNode) mesh.setParent(parentNode);
       }
     });
@@ -128,6 +129,7 @@ export class CoreSceneLoaderService {
       });
     }, 150);
 
+    this.lightSync.syncAllLights();
     this.shadowsSvc.asignarObjetosASombrasDeLuces();
   }
 
@@ -191,13 +193,13 @@ export class CoreSceneLoaderService {
         if (entity && entity.parentId) {
             const parentMesh = mallasCreadas.get(entity.parentId) || this.motor3d.getScene().getMeshByName(entity.parentId);
             if (parentMesh) {
-                // 🔥 FIX: setParent y SINCRONIZACIÓN INMEDIATA DEL INSPECTOR
                 mesh.setParent(parentMesh);
                 entity.syncTransformFromView();
             }
         }
     });
 
+    this.lightSync.syncAllLights();
     this.shadowsSvc.asignarObjetosASombrasDeLuces();
     return mallasCreadas;
   }

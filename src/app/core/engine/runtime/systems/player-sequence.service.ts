@@ -97,33 +97,33 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
     },
     lightOn: {
         execute: (step, entity) => {
-            if (!entity.light || !entity.lightRuntime) return;
-            entity.lightRuntime.currentIntensity = entity.light.intensity > 0 ? entity.light.intensity : 1.0;
+            if (!entity.light) return;
+            entity.light.renderIntensity = entity.light.intensity > 0 ? entity.light.intensity : 1.0;
             entity.isDirty = true;
         }
     },
     lightOff: {
         execute: (step, entity) => {
-            if (!entity.light || !entity.lightRuntime) return;
-            entity.lightRuntime.currentIntensity = 0;
+            if (!entity.light) return;
+            entity.light.renderIntensity = 0;
             entity.isDirty = true;
         }
     },
     lightPulse: {
         execute: (step, entity) => {
-            if (!entity.light || !entity.lightRuntime) return;
+            if (!entity.light) return;
             const freq = step.speedRatio || 1;
             const timeSec = performance.now() / 1000;
-            entity.lightRuntime.currentIntensity = entity.light.intensity * (0.5 + 0.5 * Math.sin(timeSec * Math.PI * 2 * freq));
+            entity.light.renderIntensity = entity.light.intensity * (0.5 + 0.5 * Math.sin(timeSec * Math.PI * 2 * freq));
             entity.isDirty = true;
         }
     },
     lightFlicker: {
         execute: (step, entity) => {
-            if (!entity.light || !entity.lightRuntime) return;
+            if (!entity.light) return;
             const freq = step.speedRatio || 1;
             if (Math.random() < (0.1 * freq)) {
-                entity.lightRuntime.currentIntensity = Math.random() > 0.5 ? entity.light.intensity : 0;
+                entity.light.renderIntensity = Math.random() > 0.5 ? entity.light.intensity : 0;
                 entity.isDirty = true;
             }
         }

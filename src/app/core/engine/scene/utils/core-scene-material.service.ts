@@ -17,7 +17,9 @@ export class CoreSceneMaterialService {
       return;
     }
     
-    material.maxSimultaneousLights = 4;
+    // 🔥 FIX: Aumentamos el límite de luces simultáneas de 4 a 16 
+    // para permitir calles enteras alumbradas con múltiples faroles.
+    material.maxSimultaneousLights = 16;
     
     if (material.getClassName().includes('PBR')) {
       material.usePhysicalLightFalloff = false;
@@ -97,8 +99,6 @@ export class CoreSceneMaterialService {
           const invertY = originalTexture.invertY ?? false;
           const rawTex = RawTexture.CreateRGBATexture(newPixels, size.width, size.height, scene, false, invertY, originalTexture.samplingMode ?? Texture.BILINEAR_SAMPLINGMODE);
           
-          // 🔥 FIX 1: SOLUCIÓN A TEXTURAS ESTIRADAS EN BLANCO Y NEGRO
-          // Clonamos absolutamente todas las propiedades UV del mapa base para que las calles/pisos conserven su escala.
           rawTex.uScale = originalTexture.uScale;
           rawTex.vScale = originalTexture.vScale;
           rawTex.uOffset = originalTexture.uOffset;

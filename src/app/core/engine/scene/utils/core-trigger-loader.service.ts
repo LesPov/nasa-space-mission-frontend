@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
@@ -21,7 +20,6 @@ export class CoreTriggerLoaderService {
 
     entity.transform.position = { x: trigger.position.x, y: trigger.position.y, z: trigger.position.z };
     
-    // 🔥 FIX: Check both scale and size to support backend mapping
     const scl = trigger.scale || trigger.size || { x: 1, y: 1, z: 1 };
     entity.transform.scale = { x: scl.x, y: scl.y, z: scl.z };
     entity.parentId = trigger.parentId || null;
@@ -55,7 +53,6 @@ export class CoreTriggerLoaderService {
       targetSceneId: trigger.properties?.targetSceneId || trigger.actionProperties?.targetSceneId || null
     };
 
-    // 🔥 Estado Runtime Aislado
     if (entity.triggerRuntime) {
        entity.triggerRuntime.isEnabled = trigger.properties?.isEnabled ?? trigger.isEnabled ?? true;
        entity.triggerRuntime.hasTriggeredEnter = false;
@@ -64,21 +61,20 @@ export class CoreTriggerLoaderService {
 
     let mesh = scene.getMeshByName(trigger.name) as Mesh;
     
-    // Determinación de Colores Visuales
     const actionT = entity.trigger.actionType;
     let color = new Color3(0, 1, 0); 
     let emissive = new Color3(0.2, 1.0, 0.2);
     
     if (!isComposite) {
       if (actionT === 'change_scene') {
-        color = new Color3(1, 0, 0); // Rojo para transiciones
+        color = new Color3(1, 0, 0); 
         emissive = new Color3(1, 0.2, 0.2);
       } else {
-        color = new Color3(1, 0, 1); // Rosa para eventos
+        color = new Color3(1, 0, 1); 
         emissive = new Color3(1, 0.2, 1);
       }
     } else {
-        color = new Color3(0, 0.5, 1); // Azul para compuestos
+        color = new Color3(0, 0.5, 1); 
         emissive = new Color3(0, 0.3, 0.8);
     }
 
@@ -94,15 +90,15 @@ export class CoreTriggerLoaderService {
       const mat = new StandardMaterial('mat_trigger_' + trigger.name, scene);
       mat.diffuseColor = color;
       mat.emissiveColor = emissive;
-      mat.alpha = 0.4; // Ligeramente transparente para ver a través
-      mat.wireframe = false; // 🔥 Solido visible
+      mat.alpha = 0.4; 
+      mat.wireframe = false; 
       mat.disableLighting = true;
-      mat.maxSimultaneousLights = 4;
+      mat.maxSimultaneousLights = 16; // 🔥 FIX LÍMITE LUCES
       mesh.material = mat;
       
       mesh.isPickable = true;
       mesh.checkCollisions = false;
-      mesh.isVisible = true; // El Service global lo ocultará si no es admin
+      mesh.isVisible = true; 
 
       this.entityManager.addEntity(entity);
       mallasCreadas.set(entity.uid, mesh);

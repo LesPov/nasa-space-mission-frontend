@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -78,7 +77,7 @@ export class BuilderTriggerService {
     mat.alpha = 0.4;
     mat.wireframe = false; 
     mat.disableLighting = true;
-    mat.maxSimultaneousLights = 4;
+    mat.maxSimultaneousLights = 16; // 🔥 FIX LÍMITE LUCES
     newMesh.material = mat;
 
     newMesh.isPickable = true;

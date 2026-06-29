@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -29,27 +28,32 @@ export class PlayerConfigMutatorService {
     fog.enabled = true;
     fog.color = '#64748b';
     fog.colorBW = '#888888';
-    fog.renderDistanceFPS = 250;
-    fog.renderDistanceTPS = 250;
-    fog.renderDistanceFpsBW = 250;
-    fog.renderDistanceTpsBW = 250;
+    fog.renderDistanceFPS = 150; // 🔥 Default optimizado
+    fog.renderDistanceTPS = 150;
+    fog.renderDistanceFpsBW = 150;
+    fog.renderDistanceTpsBW = 150;
 
     const defaultLayers12 = [2, 5, 10, 20, 35, 55, 75, 90, 100, 100, 100, 100];
     const defaultHeights12 = [30, 40, 50, 60, 70, 80, 90, 100, 100, 100, 100, 100]; 
-    const defaultD = [8, 25, 60, 120, 200]; 
-    const defaultH = [5, 12, 25, 45, 80];   
-    const defaultT = [10, 20, 40, 60, 100]; 
+    
+    // 🔥 OPTIMIZACIÓN: Solo 3 anillos requeridos para el efecto lineal
+    const defaultD = [15, 45, 90]; 
+    const defaultH = [10, 25, 60];   
+    const defaultT = [15, 30, 60]; 
 
     const resetArray = (arr: FogLevel[]) => {
+      // Ajustamos el tamaño del array a 3 para limpiar arreglos viejos de 5
+      arr.length = 3; 
       arr.forEach((l, i) => {
-        l.distance = defaultD[i];
-        l.height = defaultH[i];
-        l.thickness = defaultT[i];
-        l.offsetY = 0;
-        l.opacity = i === 0 ? 30 : (i === 4 ? 100 : 50 + (i*10));
-        l.layerOpacities = [...defaultLayers12];
-        l.layerHeights = [...defaultHeights12];
-        l.color = undefined;
+        if (!l) arr[i] = {} as any;
+        arr[i].distance = defaultD[i];
+        arr[i].height = defaultH[i];
+        arr[i].thickness = defaultT[i];
+        arr[i].offsetY = 0;
+        arr[i].opacity = i === 0 ? 15 : (i === 1 ? 50 : 100);
+        arr[i].layerOpacities = [...defaultLayers12];
+        arr[i].layerHeights = [...defaultHeights12];
+        arr[i].color = undefined;
       });
     };
 
@@ -77,25 +81,30 @@ export class PlayerConfigMutatorService {
     fog.color = typeof fog.color === 'string' ? fog.color : '#64748b';
     fog.colorBW = typeof fog.colorBW === 'string' ? fog.colorBW : '#888888';
 
-    fog.renderDistanceFPS = this.normalizarNumero(fog.renderDistanceFPS, 250); 
-    fog.renderDistanceTPS = this.normalizarNumero(fog.renderDistanceTPS, 250);
-    fog.renderDistanceFpsBW = this.normalizarNumero(fog.renderDistanceFpsBW, 250);
-    fog.renderDistanceTpsBW = this.normalizarNumero(fog.renderDistanceTpsBW, 250);
+    fog.renderDistanceFPS = this.normalizarNumero(fog.renderDistanceFPS, 150); 
+    fog.renderDistanceTPS = this.normalizarNumero(fog.renderDistanceTPS, 150);
+    fog.renderDistanceFpsBW = this.normalizarNumero(fog.renderDistanceFpsBW, 150);
+    fog.renderDistanceTpsBW = this.normalizarNumero(fog.renderDistanceTpsBW, 150);
 
     const defaultLayers12 = [2, 5, 10, 20, 35, 55, 75, 90, 100, 100, 100, 100];
     const defaultHeights12 = [30, 40, 50, 60, 70, 80, 90, 100, 100, 100, 100, 100]; 
-    const defaultD = [8, 25, 60, 120, 200]; 
-    const defaultH = [5, 12, 25, 45, 80];   
-    const defaultT = [10, 20, 40, 60, 100]; 
+    const defaultD = [15, 45, 90]; 
+    const defaultH = [10, 25, 60];   
+    const defaultT = [15, 30, 60]; 
 
     const ensurePerfectFog = (levels: any[]) => {
       if (!levels) return;
-      levels.forEach((l, i) => {
+      // 🔥 FIX: Forzamos recorte a 3 elementos
+      levels.length = Math.min(levels.length, 3);
+      
+      for(let i = 0; i < 3; i++) {
+        if (!levels[i]) levels[i] = {};
+        const l = levels[i];
         l.distance = this.normalizarNumero(l.distance, defaultD[i]);
         l.height = this.normalizarNumero(l.height, defaultH[i]);
         l.thickness = this.normalizarNumero(l.thickness, defaultT[i]);
         l.offsetY = this.normalizarOffset(l.offsetY, 0);
-        l.opacity = this.normalizarNumero(l.opacity, i === 0 ? 30 : (i === 4 ? 100 : 50 + (i*10)));
+        l.opacity = this.normalizarNumero(l.opacity, i === 0 ? 15 : (i === 1 ? 50 : 100));
         
         if (!l.layerOpacities || l.layerOpacities.length !== 12) {
           l.layerOpacities = [...defaultLayers12];
@@ -103,7 +112,7 @@ export class PlayerConfigMutatorService {
         if (!l.layerHeights || l.layerHeights.length !== 12) {
           l.layerHeights = [...defaultHeights12];
         }
-      });
+      }
     };
     
     ensurePerfectFog(fog.levelsFPS);

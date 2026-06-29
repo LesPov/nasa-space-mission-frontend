@@ -112,12 +112,11 @@ export interface FogLevel {
   layerHeights?: number[]; 
 }
 
+// 🔥 OPTIMIZACIÓN: Reducido de 5 a 3 anillos para mejorar drásticamente los FPS
 const defaultFogLevels: FogLevel[] = [
-  { distance: 20, height: 10, opacity: 80, thickness: 5, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] },
-  { distance: 50, height: 15, opacity: 60, thickness: 10, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] },
-  { distance: 100, height: 25, opacity: 40, thickness: 20, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] },
-  { distance: 200, height: 40, opacity: 20, thickness: 40, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] },
-  { distance: 400, height: 60, opacity: 10, thickness: 80, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] }
+  { distance: 15, height: 10, opacity: 15, thickness: 15, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] }, // Anillo Cercano (Suave)
+  { distance: 45, height: 25, opacity: 50, thickness: 30, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] }, // Anillo Medio (Denso)
+  { distance: 90, height: 60, opacity: 100, thickness: 60, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] }  // Anillo Lejano (Muro Total)
 ];
 
 export interface PlayerFogConfig {
@@ -186,8 +185,8 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
   debug: { showRays: false, showCollider: false, showState: false },
   fog: {
     enabled: false, fogMode: 'linear', color: '#0d1729', colorBW: '#555555',
-    renderDistanceFPS: 100000, renderDistanceTPS: 100000,
-    renderDistanceFpsBW: 100000, renderDistanceTpsBW: 100000,
+    renderDistanceFPS: 150, renderDistanceTPS: 150, // 🔥 Default más bajo para ocultar objetos lejanos y salvar FPS
+    renderDistanceFpsBW: 150, renderDistanceTpsBW: 150,
     levelsFPS: structuredClone(defaultFogLevels),
     levelsTPS: structuredClone(defaultFogLevels),
     levelsFpsBW: structuredClone(defaultFogLevels),

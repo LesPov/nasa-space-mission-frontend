@@ -16,7 +16,8 @@ export class FogRendererService {
   private currentScene: Scene | null = null;
 
   constructor() { 
-    for(let i = 0; i < 5; i++) {
+    // 🔥 FIX: Inicializamos solo 3 estados de anillo
+    for(let i = 0; i < 3; i++) {
       this.wallStates.push(new FogWallState()); 
     }
   }
@@ -83,7 +84,8 @@ export class FogRendererService {
     const anchorY = targetPlayer ? targetPlayer.position.y : 0;
     const anchorZ = targetPlayer ? targetPlayer.position.z : 0;
 
-    for (let i = 0; i < 5; i++) {
+    // 🔥 FIX: Procesamos solo 3 cilindros maestros (3 anillos)
+    for (let i = 0; i < 3; i++) {
       if (!this.fogWalls[i]) {
         this.fogWalls[i] = new TransformNode("sharedFogWallGroup_" + i, scene);
         this.fogMats[i] = []; 
@@ -98,8 +100,9 @@ export class FogRendererService {
             mat.fogEnabled = false; 
             this.fogMats[i][j] = mat; 
 
+            // 🔥 FIX OPTIMIZACIÓN: Tessellation de 32 a 24 para ahorrar polígonos
             const shell = MeshBuilder.CreateCylinder(`sharedFogShell_${i}_${j}`, { 
-                diameter: 1, height: 1, sideOrientation: Mesh.DOUBLESIDE, cap: Mesh.NO_CAP, tessellation: 32 
+                diameter: 1, height: 1, sideOrientation: Mesh.DOUBLESIDE, cap: Mesh.NO_CAP, tessellation: 24 
             }, scene);
             
             shell.parent = this.fogWalls[i];

@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { Scene, Vector3, Color3, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -78,7 +77,7 @@ export class PlayerFogService implements IUpdatable {
       let distCamToPlayer = activeCam && targetPlayer ? Vector3.Distance(activeCam.globalPosition, targetPlayer.getAbsolutePosition()) : 0;
       distCamToPlayer = Math.min(distCamToPlayer, 8); 
       
-      const renderMaxZ = (Number(renderDistance) || 100000) + distCamToPlayer;
+      const renderMaxZ = (Number(renderDistance) || 150) + distCamToPlayer;
 
       if (this.firstFrame) {
           this.motor3d.getPlayerCameraFPS().maxZ = renderMaxZ;
@@ -91,7 +90,9 @@ export class PlayerFogService implements IUpdatable {
       }
       
       shadowLimit = renderMaxZ;
-      this.curStart = renderMaxZ * 0.8;
+      // 🔥 FIX: Hacer que el fogGlobal arranque al 30% de la distancia máxima
+      // Esto asegura que la zona cercana al jugador quede despejada de niebla nativa del escenario
+      this.curStart = renderMaxZ * 0.3; 
       this.curEnd = renderMaxZ;
     } else {
       targetR = targetColorObj.r; targetG = targetColorObj.g; targetB = targetColorObj.b;

@@ -62,10 +62,10 @@
           <div class="param-card">
             <div class="param-title"><span class="icon">👁️</span> Corte Render (Max Z)</div>
             <div class="param-input-box">
-              <input type="number" step="100" min="10" [ngModel]="getGlobalRenderDist()" (ngModelChange)="setGlobalRenderDist($event)">
+              <input type="number" step="10" min="10" [ngModel]="getGlobalRenderDist()" (ngModelChange)="setGlobalRenderDist($event)">
               <span class="unit">m</span>
             </div>
-            <input type="range" min="50" max="2000" [ngModel]="getGlobalRenderDist()" (ngModelChange)="setGlobalRenderDist($event)" class="slider blue">
+            <input type="range" min="30" max="1000" [ngModel]="getGlobalRenderDist()" (ngModelChange)="setGlobalRenderDist($event)" class="slider blue">
           </div>
           <div class="param-card">
             <div class="param-title"><span class="icon">🎨</span> Color Base Global</div>
@@ -77,14 +77,14 @@
         </div>
       </div>
 
-      <!-- Pestañas de Anillos -->
+      <!-- Pestañas de Anillos (🔥 REDUCIDO A 3) -->
       <div class="ring-selector-container">
-        <button *ngFor="let i of [0,1,2,3,4]" class="ring-tab" [class.active]="activeFogLevel === i" (click)="activeFogLevel = i">
+        <button *ngFor="let i of [0,1,2]" class="ring-tab" [class.active]="activeFogLevel === i" (click)="activeFogLevel = i">
           <div class="radio-circle"></div> Anillo {{i + 1}}
         </button>
       </div>
 
-      <!-- Editor del Anillo Seleccionado (DISEÑO IDÉNTICO A LA IMAGEN) -->
+      <!-- Editor del Anillo Seleccionado -->
       <div class="ring-editor" *ngIf="currentFogLevel as lvl">
         <div class="ring-header">
           <div class="ring-title-box">

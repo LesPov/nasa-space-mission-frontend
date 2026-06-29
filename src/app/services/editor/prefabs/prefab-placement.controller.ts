@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { 
   Scene, Vector3, Matrix, AbstractMesh, Ray, 
@@ -9,11 +8,6 @@ import { EditorSceneService } from '../editor-scene.service';
 import { PlacementCalculatorService } from './placement-calculator.service';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
 
-/**
- * ORQUESTADOR LÓGICO DE COLOCACIÓN
- * Escucha inputs, solicita el cálculo matemático al PlacementCalculatorService,
- * actualiza el Ghost y finalmente inyecta el Prefab real en el mapa.
- */
 @Injectable({ providedIn: 'root' })
 export class PrefabPlacementController {
   private ghostRenderer = inject(GhostRendererService);
@@ -33,12 +27,10 @@ export class PrefabPlacementController {
   private observerKeyboard: Observer<any> | null = null;
   private observerRender: Observer<any> | null = null;
 
-  // Estados de controles
   private isAltPressed = false;
   private isGPressed = false;
   private buildDistance = 15;
 
-  // Estado del destino
   private targetPosition = Vector3.Zero();
   private targetRotation = Vector3.Zero();
   private targetParent: AbstractMesh | null = null;
@@ -64,16 +56,14 @@ export class PrefabPlacementController {
     await this.ghostRenderer.createGhost(asset, scene);
     if (!this.isBuilding) return; 
 
-    // 1. TECLADO
     this.observerKeyboard = scene.onKeyboardObservable.add((kbInfo) => {
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
         if (kbInfo.event.key === 'Alt') this.isAltPressed = true;
         if (kbInfo.event.key.toLowerCase() === 'g') this.isGPressed = true;
         if (kbInfo.event.key === 'Escape') this.cancelBuild();
         
-        // ROTACIÓN CON LA TECLA R
         if (kbInfo.event.key.toLowerCase() === 'r') {
-          this.targetRotation.y += Math.PI / 2; // Gira 90 Grados
+          this.targetRotation.y += Math.PI / 2; 
         }
       } else if (kbInfo.type === KeyboardEventTypes.KEYUP) {
         if (kbInfo.event.key === 'Alt') this.isAltPressed = false;
@@ -81,7 +71,6 @@ export class PrefabPlacementController {
       }
     });
 
-    // 2. RATÓN
     this.observerPointer = scene.onPointerObservable.add((pi) => {
       if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
         if (!this.isModalOpenFn()) this.buildPrefab();
@@ -96,7 +85,6 @@ export class PrefabPlacementController {
       }
     });
 
-    // 3. RENDER LOOP
     this.observerRender = scene.onBeforeRenderObservable.add(() => {
       this.updatePlacementLogic();
     });
@@ -123,7 +111,6 @@ export class PrefabPlacementController {
     const playerEntity = this.activePlayerFn();
     const bounds = this.ghostRenderer.getBoundingInfo(this.targetRotation);
 
-    // DELEGACIÓN DEL CÁLCULO MATEMÁTICO AL MICRO-SERVICIO
     const result = this.placementCalculator.calculatePlacement(
         this.scene, 
         ray, 
@@ -138,7 +125,6 @@ export class PrefabPlacementController {
     this.currentColor = result.color;
     this.targetParent = result.parent;
 
-    // Sincronizar UI del fantasma
     this.ghostRenderer.setColor(this.currentColor);
     this.ghostRenderer.setTransform(this.targetPosition, this.targetRotation, Vector3.One());
   }

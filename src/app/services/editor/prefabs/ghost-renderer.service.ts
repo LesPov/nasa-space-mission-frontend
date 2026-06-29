@@ -5,11 +5,6 @@ import {
 } from '@babylonjs/core';
 import { CoreModelLoaderService } from '../../../core/engine/scene/utils/core-model-loader.service';
 
-/**
- * SERVICIO DE RENDERIZADO DEL FANTASMA (GHOST)
- * Representa visualmente el Prefab sin físicas y calcula sus dimensiones
- * exactas para evitar que atraviese pisos y paredes.
- */
 @Injectable({ providedIn: 'root' })
 export class GhostRendererService {
   private modelLoader = inject(CoreModelLoaderService);
@@ -38,7 +33,6 @@ export class GhostRendererService {
     let meshes: AbstractMesh[] = [];
 
     if (assetData.isPrefab && assetData.type) {
-      // 1. Primitivas
       let mesh: Mesh;
       switch (assetData.type) {
         case 'cube': mesh = MeshBuilder.CreateBox('ghost_cube', { size: 1 }, scene); break;
@@ -50,7 +44,6 @@ export class GhostRendererService {
       meshes.push(mesh);
     } 
     else if (assetData.path || assetData.properties?.path) {
-      // 2. Modelos 3D GLB/GLTF
       const path = assetData.path || assetData.properties?.path;
       const fullPath = 'http://localhost:4000' + path;
       
@@ -106,21 +99,16 @@ export class GhostRendererService {
     }
   }
 
-  /**
-   * MATEMÁTICA AVANZADA: Calcula el tamaño real del objeto teniendo en cuenta su rotación actual.
-   * Esto es vital para que al rotar una calle o pared, reconozca sus nuevos bordes.
-   */
   public getBoundingInfo(currentRotation: Vector3) {
     if (!this.ghostRoot) return null;
     
     const childMeshes = this.ghostRoot.getChildMeshes(false);
     if (childMeshes.length === 0) return null;
 
-    // Guardamos estado
     const pos = this.ghostRoot.position.clone();
     const scl = this.ghostRoot.scaling.clone();
+    const rot = this.ghostRoot.rotation.clone();
 
-    // Centramos el objeto para medirlo limpio, pero APLICAMOS LA ROTACIÓN
     this.ghostRoot.position = Vector3.Zero();
     this.ghostRoot.rotation.copyFrom(currentRotation);
     this.ghostRoot.scaling = Vector3.One();
@@ -128,22 +116,38 @@ export class GhostRendererService {
 
     let min = new Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE);
     let max = new Vector3(Number.MIN_VALUE, Number.MIN_VALUE, Number.MIN_VALUE);
+    let hasValidMesh = false;
 
     childMeshes.forEach(m => {
+      if (!m.isVisible) return; 
+      if (m.getTotalVertices() === 0) return;
+      if (Tags.MatchesQuery(m, "proxy_collider")) return;
+
       m.computeWorldMatrix(true);
       const vectors = m.getBoundingInfo().boundingBox.vectorsWorld;
       vectors.forEach(v => {
         min = Vector3.Minimize(min, v);
         max = Vector3.Maximize(max, v);
       });
+      hasValidMesh = true;
     });
 
-    // Restauramos estado
+    if (!hasValidMesh) {
+        min = Vector3.Zero();
+        max = Vector3.Zero();
+    }
+
     this.ghostRoot.position = pos;
+    this.ghostRoot.rotation.copyFrom(rot);
     this.ghostRoot.scaling = scl;
     this.ghostRoot.computeWorldMatrix(true);
 
-    return { min, max, extends: max.subtract(min).scale(0.5) };
+    return { 
+      min, 
+      max, 
+      extends: max.subtract(min).scale(0.5),
+      center: max.add(min).scale(0.5) 
+    };
   }
 
   public destroyGhost() {

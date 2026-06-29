@@ -59,14 +59,20 @@ export class UiRadialMenu implements OnInit, OnDestroy {
   private lastFetchedAssets: any[] = [];
 
   private fetchAssetsAndBuildMenu() {
-    this.apiSvc.obtenerAssets().subscribe({
-      next: (assets) => {
-         this.lastFetchedAssets = assets.filter(a => a.type === 'model_glb');
+    this.apiSvc.obtenerPrefabs().subscribe({
+      next: (prefabs) => {
+         const syntheticPrefabs = [
+           { isPrefab: true, name: 'Cubo', type: 'cube', properties: { color: '#ffffff' } },
+           { isPrefab: true, name: 'Esfera', type: 'sphere', properties: { color: '#ffffff' } },
+           { isPrefab: true, name: 'Cilindro', type: 'cylinder', properties: { color: '#ffffff' } },
+           { isPrefab: true, name: 'Plano', type: 'plane', properties: { color: '#ffffff' } }
+         ];
+         this.lastFetchedAssets = [...syntheticPrefabs, ...prefabs];
          this.allAssetsLoaded = true;
          this.buildRootMenu(this.lastFetchedAssets);
       },
       error: (err) => {
-         console.error('[RadialMenu] Error cargando assets:', err);
+         console.error('[RadialMenu] Error cargando prefabs:', err);
          this.buildRootMenu([]);
       }
     });
@@ -75,31 +81,21 @@ export class UiRadialMenu implements OnInit, OnDestroy {
   private buildRootMenu(modelAssets: any[]) {
     const rootItems: RadialItem[] = [];
 
-    rootItems.push({
-      id: 'grp_prim', name: 'Formas Básicas', type: 'group', icon: '🔺',
-      data: [
-        { id: 'prim_1', name: 'Cubo', type: 'asset', icon: '🧊', data: { type: 'cube', path: null } },
-        { id: 'prim_2', name: 'Esfera', type: 'asset', icon: '⚽', data: { type: 'sphere', path: null } },
-        { id: 'prim_3', name: 'Cilindro', type: 'asset', icon: '🛢️', data: { type: 'cylinder', path: null } },
-        { id: 'prim_4', name: 'Plano (Suelo)', type: 'asset', icon: '🗺️', data: { type: 'plane', path: null } }
-      ]
-    });
-
     const chunkSize = 7;
     for (let i = 0; i < modelAssets.length; i += chunkSize) {
       const chunk = modelAssets.slice(i, i + chunkSize);
       
       const chunkItems: RadialItem[] = chunk.map(m => ({
-        id: m.id.toString(), 
+        id: m.id ? m.id.toString() : Math.random().toString(), 
         name: this.cleanName(m.name), 
         type: 'asset', 
         icon: '📦', 
-        data: { id: m.id, name: m.name, type: 'model', path: m.path }
+        data: m 
       }));
 
       rootItems.push({
         id: `grp_mod_${i}`, 
-        name: `Modelos 3D (${i + 1}-${i + chunk.length})`, 
+        name: `Librería (${i + 1}-${i + chunk.length})`, 
         type: 'group', 
         icon: '🏙️', 
         data: chunkItems
@@ -111,6 +107,7 @@ export class UiRadialMenu implements OnInit, OnDestroy {
   }
 
   private cleanName(name: string): string {
+    if (!name) return 'Prefab';
     return name.replace(/\.(glb|gltf|obj)$/i, '').substring(0, 15);
   }
 
@@ -132,7 +129,6 @@ export class UiRadialMenu implements OnInit, OnDestroy {
     event.stopPropagation();
     event.preventDefault();
 
-    // Solo cerrar si el clic fue directamente en el overlay oscuro o con click derecho
     if (event.type === 'contextmenu' || (event.target as HTMLElement).classList.contains('radial-overlay')) {
        this.closeMenu();
     }
@@ -149,7 +145,6 @@ export class UiRadialMenu implements OnInit, OnDestroy {
         event.stopPropagation();
         event.preventDefault();
         
-        // Si es clic derecho sobre un item, cerramos el menú
         if (event.button === 2) {
            this.closeMenu();
            return;

@@ -1,5 +1,4 @@
-
-
+// src/app/services/editor/sceneservice/scene-object-builder.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -58,7 +57,7 @@ export class SceneObjectBuilderService {
         path: asset?.path
       },
       assetId: asset?.id,
-      position: position ? { x: position.x, y: position.y, z: position.z } : (parentNode ? {x:0, y: (tipo==='image_plane' ? -2 : 0), z:0} : { x: 0, y: tipo.startsWith('light_') ? 2 : (0.5 * sizeY), z: 0 }),
+      position: position ? { x: position.x, y: position.y, z: position.z } : (parentNode ? {x:0, y: 0, z:0} : { x: 0, y: 0, z: 0 }),
       rotation: localRotation ? { x: localRotation.x, y: localRotation.y, z: localRotation.z } : { x: 0, y: 0, z: 0 },
       scale: { x: sizeX, y: sizeY, z: sizeZ },
       parentId: parentNode?.metadata?.uid || null
@@ -77,7 +76,8 @@ export class SceneObjectBuilderService {
     const newMesh = mallasCreadas.get(mockDbObject.uid);
     if (newMesh) {
       if (parentNode) {
-         newMesh.parent = parentNode;
+         // 🔥 FIX SUPREMO 3: Asignar padre usando setParent para calcular matriz absoluta correctamente
+         newMesh.setParent(parentNode);
       }
       
       const ent = this.entityManager.getEntityByMesh(newMesh);

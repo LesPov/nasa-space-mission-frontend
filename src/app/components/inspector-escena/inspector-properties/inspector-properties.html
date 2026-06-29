@@ -1,4 +1,4 @@
-
+<!-- src/app/components/inspector-escena/inspector-properties/inspector-properties.html -->
 <div class="properties-shell">
   <div class="prop-tabs">
     <ng-container *ngIf="objetoActual">
@@ -9,13 +9,11 @@
         <button class="tab-btn" *ngIf="esPersonaje || esTrigger || esLuz || esBurbuja" [class.active]="pestanaActiva === 'sequences'" (click)="cambiarPestana('sequences')" title="Creador de Secuencias">🎞️</button>
         <button class="tab-btn" *ngIf="esLuz" [class.active]="pestanaActiva === 'light'" (click)="cambiarPestana('light')" title="Propiedades de Luz">💡</button>
         
-        <!-- 🔥 BOTONES NUEVOS DE BURBUJA Y VIDEO -->
         <button class="tab-btn" *ngIf="esBurbuja" [class.active]="pestanaActiva === 'bubble'" (click)="cambiarPestana('bubble')" title="Burbuja Interactiva">🫧</button>
         <button class="tab-btn" *ngIf="esVideo" [class.active]="pestanaActiva === 'video'" (click)="cambiarPestana('video')" title="Pantalla de Video">📺</button>
     </ng-container>
     
     <button class="tab-btn" [class.active]="pestanaActiva === 'world'" (click)="cambiarPestana('world')" title="Entorno Global">🌍</button>
-    <!-- 🔥 EL NUEVO BOTÓN PARA EL DISEÑO DEL MODAL DE MISIÓN -->
     <button class="tab-btn" [class.active]="pestanaActiva === 'mission'" (click)="cambiarPestana('mission')" title="UI & Misión">📝</button>
   </div>
 
@@ -57,6 +55,9 @@
         <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" />
       </div>
 
+      <!-- 🔥 NUEVO: Botón para guardar como Prefab -->
+      <button class="btn-secondary full" style="margin-bottom: 15px;" (click)="guardarComoPrefab()">📦 Guardar como Prefab</button>
+
       <app-prop-transform *ngIf="pestanaActiva === 'transform' && !esTrigger" [objeto]="objetoActual"></app-prop-transform>
       <app-prop-trigger *ngIf="pestanaActiva === 'transform' && esTrigger" [objeto]="objetoActual"></app-prop-trigger>
       <app-prop-physics *ngIf="pestanaActiva === 'physics' && !esTrigger && (!esLuz || esLuzConModelo) && !esBurbuja" [objeto]="objetoActual"></app-prop-physics>
@@ -65,7 +66,6 @@
       <app-prop-sequences *ngIf="pestanaActiva === 'sequences' && (esPersonaje || esTrigger || esLuz || esBurbuja)" [objeto]="objetoActual"></app-prop-sequences>
       <app-prop-light *ngIf="pestanaActiva === 'light' && esLuz" [objeto]="objetoActual"></app-prop-light>
       
-      <!-- Carga de los nuevos componentes -->
       <app-prop-bubble *ngIf="pestanaActiva === 'bubble' && esBurbuja" [objeto]="objetoActual"></app-prop-bubble>
       <app-prop-video *ngIf="pestanaActiva === 'video' && esVideo" [objeto]="objetoActual"></app-prop-video>
 

@@ -1,5 +1,4 @@
-
-
+// src/app/services/editor/editor-scene.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, MeshBuilder, Color4, Tags, Quaternion } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
@@ -125,9 +124,10 @@ export class EditorSceneService {
     });
   }
 
-  public instanciarPrefabFull(prefabData: any, targetPos: Vector3): void {
+  // 🔥 FIX PREFABS: Se expone la firma completa para Live Builder
+  public instanciarPrefabFull(prefabData: any, targetPos: Vector3, rotationEuler?: Vector3, scale?: Vector3, parentNode?: AbstractMesh): void {
     const isAdmin = this.authSvc.isAdmin();
-    this.loaderSvc.instantiatePrefab(prefabData, targetPos).then((mallas) => {
+    this.loaderSvc.instantiatePrefab(prefabData, targetPos, rotationEuler, scale, parentNode).then((mallas) => {
       if (isAdmin) {
         this.revelarEntidadesOcultasParaAdmin();
       }

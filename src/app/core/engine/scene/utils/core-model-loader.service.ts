@@ -22,6 +22,19 @@ export class CoreModelLoaderService {
 
   private assetRegistry = new Map<string, AssetContainer>();
 
+  // 🔥 FASE 1: Método expuesto para permitir clonación ultra-rápida de mallas 
+  // para el GhostRendererService, sin pasar por la creación de GameEntity.
+  public async getCachedAssetContainer(fullPath: string, scene: any): Promise<AssetContainer> {
+    if (!this.assetRegistry.has(fullPath)) {
+      const lastSlash = fullPath.lastIndexOf('/');
+      const rootUrl = fullPath.substring(0, lastSlash + 1);
+      const fileName = fullPath.substring(lastSlash + 1);
+      const container = await SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene);
+      this.assetRegistry.set(fullPath, container);
+    }
+    return this.assetRegistry.get(fullPath)!;
+  }
+
   public async cargarModeloAsync(obj: any, mallasCreadas: Map<string, Mesh>): Promise<void> {
     const scene = this.motor3d.getScene();
     const path = obj.properties?.path || obj.asset?.path;
@@ -32,17 +45,11 @@ export class CoreModelLoaderService {
     }
 
     const fullPath = 'http://localhost:4000' + path;
-    const lastSlash = fullPath.lastIndexOf('/');
-    const rootUrl = fullPath.substring(0, lastSlash + 1);
-    const fileName = fullPath.substring(lastSlash + 1);
 
     try {
-      if (!this.assetRegistry.has(fullPath)) {
-        const container = await SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene);
-        this.assetRegistry.set(fullPath, container);
-      }
-
-      const container = this.assetRegistry.get(fullPath)!;
+      // Uso de la caché centralizada
+      const container = await this.getCachedAssetContainer(fullPath, scene);
+      
       // Clonado de alta eficiencia compartiendo Buffers de geometría
       const instances = container.instantiateModelsToScene(name => name ? `${obj.uid}_${name}` : obj.uid, false, { doNotInstantiate: true });
       
@@ -178,7 +185,7 @@ export class CoreModelLoaderService {
       rootNode.isVisible = false;
       let lightObj: any;
       if (obj.type === 'light_point') lightObj = new PointLight('l_' + obj.name, new Vector3(0, 0, 0), scene);
-      else if (obj.type === 'light_spot') lightObj = new SpotLight('l_' + obj.name, new Vector3(0, 0, 0), new Vector3(0, -1, 0), entity.light.angle * (Math.PI / 180), 2, scene);
+      else if (obj.type === 'light_spot') lightObj = new SpotLight('l_' + obj.name, new Vector3(0, -1, 0), new Vector3(0, -1, 0), entity.light.angle * (Math.PI / 180), 2, scene);
       else if (obj.type === 'light_directional') lightObj = new DirectionalLight('l_' + obj.name, new Vector3(0, -1, 0), scene);
 
       let targetParent: TransformNode | AbstractMesh = rootNode;

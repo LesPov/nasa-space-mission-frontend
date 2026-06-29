@@ -1,6 +1,6 @@
-
+// src/app/core/engine/scene/utils/core-scene-loader.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Mesh, Vector3, MeshBuilder, Tags, Quaternion } from '@babylonjs/core';
+import { Mesh, Vector3, MeshBuilder, Tags, Quaternion, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { CoreSceneShadowsService } from './core-scene-shadows.service';
 import { CoreSceneUtilsService } from './core-scene-utils.service';
@@ -52,7 +52,6 @@ export class CoreSceneLoaderService {
 
     const scene = this.motor3d.getScene();
     const isPlaying = this.gameContext.isPlaying();
-    
     const persistentPlayer = this.entityManager.getAllEntities().find(e => e.isPersistent);
 
     let envSettings: any = dataBD.scene?.environmentSettings || dataBD.environmentSettings || {};
@@ -105,7 +104,8 @@ export class CoreSceneLoaderService {
       const entity = this.entityManager.getEntityByUid(uid);
       if (entity && entity.parentId) {
         const parentNode = mallasCreadas.get(entity.parentId) || scene.getMeshByName(entity.parentId);
-        if (parentNode) mesh.parent = parentNode;
+        // 🔥 FIX SUPREMO 1: Usar setParent() en vez de = para evitar saltos en el espacio
+        if (parentNode) mesh.setParent(parentNode);
       }
     });
 
@@ -131,32 +131,73 @@ export class CoreSceneLoaderService {
     this.shadowsSvc.asignarObjetosASombrasDeLuces();
   }
 
-  public async instantiatePrefab(prefabData: any, positionTarget: Vector3): Promise<Map<string, Mesh>> {
+  public async instantiatePrefab(prefabData: any, positionTarget: Vector3, rotationEuler?: Vector3, scale?: Vector3, parentNode?: AbstractMesh): Promise<Map<string, Mesh>> {
     const mallasCreadas = new Map<string, Mesh>();
-    const propertiesClone = JSON.parse(JSON.stringify(prefabData.properties || {}));
-    this.utilsSvc.renovarIdsDeSecuencias(propertiesClone);
+    const uidMap = new Map<string, string>(); 
 
-    const mockDbObject: SceneObjectDto = {
-      uid: window.crypto.randomUUID(), 
-      type: prefabData.type,
-      name: prefabData.name + '_' + Math.floor(Math.random() * 1000),
-      position: { x: positionTarget.x, y: positionTarget.y, z: positionTarget.z },
-      rotation: propertiesClone.rotation || { x: 0, y: 0, z: 0 },
-      scale: propertiesClone.scale || { x: 1, y: 1, z: 1 },
-      properties: propertiesClone,
-      assetId: prefabData.assetId,
-      asset: { path: propertiesClone.path }
-    };
+    const hierarchy = prefabData.properties?.prefabHierarchy || [prefabData];
+    const promesasCarga: any[] = [];
 
-    const isModel = mockDbObject.type === 'model';
-    const isLight = mockDbObject.type?.startsWith('light_');
+    for (const item of hierarchy) {
+        const newUid = window.crypto.randomUUID();
+        uidMap.set(item.originalUid || item.uid || window.crypto.randomUUID(), newUid);
 
-    if (isModel || (isLight && mockDbObject.assetId)) {
-      await this.loaderModelSvc.cargarModeloAsync(mockDbObject, mallasCreadas);
-    } else {
-      this.loaderPrimitiveSvc.cargarPrimitiva(mockDbObject, mallasCreadas);
+        const isRoot = item === hierarchy[0];
+        
+        const propsClone = JSON.parse(JSON.stringify(item.properties || {}));
+        this.utilsSvc.renovarIdsDeSecuencias(propsClone);
+
+        const itemPos = item.position || { x: 0, y: 0, z: 0 };
+        const itemRot = item.rotation || { x: 0, y: 0, z: 0 };
+        const itemScale = item.scale || { x: 1, y: 1, z: 1 };
+
+        let finalPos = { ...itemPos };
+        let finalRot = { ...itemRot };
+        let finalScale = { ...itemScale };
+
+        if (isRoot) {
+            finalPos = { x: positionTarget.x, y: positionTarget.y, z: positionTarget.z };
+            if (rotationEuler) finalRot = { x: rotationEuler.x, y: rotationEuler.y, z: rotationEuler.z };
+            if (scale) finalScale = { x: scale.x * itemScale.x, y: scale.y * itemScale.y, z: scale.z * itemScale.z };
+        }
+
+        const mockDbObject: SceneObjectDto = {
+            uid: newUid,
+            type: item.type,
+            name: item.name + '_' + Math.floor(Math.random() * 1000),
+            position: finalPos,
+            rotation: finalRot,
+            scale: finalScale,
+            properties: propsClone,
+            assetId: item.assetId,
+            asset: { path: propsClone.path },
+            parentId: isRoot ? (parentNode?.metadata?.uid || parentNode?.name || null) : uidMap.get(item.parentOriginalUid) 
+        };
+
+        const isModel = mockDbObject.type === 'model';
+        const isLight = mockDbObject.type?.startsWith('light_');
+
+        if (isModel || (isLight && mockDbObject.assetId)) {
+            promesasCarga.push(this.loaderModelSvc.cargarModeloAsync(mockDbObject, mallasCreadas));
+        } else {
+            this.loaderPrimitiveSvc.cargarPrimitiva(mockDbObject, mallasCreadas);
+        }
     }
-    
+
+    await Promise.all(promesasCarga);
+
+    mallasCreadas.forEach((mesh, uid) => {
+        const entity = this.entityManager.getEntityByUid(uid);
+        if (entity && entity.parentId) {
+            const parentMesh = mallasCreadas.get(entity.parentId) || this.motor3d.getScene().getMeshByName(entity.parentId);
+            if (parentMesh) {
+                // 🔥 FIX: setParent y SINCRONIZACIÓN INMEDIATA DEL INSPECTOR
+                mesh.setParent(parentMesh);
+                entity.syncTransformFromView();
+            }
+        }
+    });
+
     this.shadowsSvc.asignarObjetosASombrasDeLuces();
     return mallasCreadas;
   }

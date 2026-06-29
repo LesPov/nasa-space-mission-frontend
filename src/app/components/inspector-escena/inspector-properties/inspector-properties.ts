@@ -1,5 +1,4 @@
-
-
+// src/app/components/inspector-escena/inspector-properties/inspector-properties.ts
 import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, effect, Input, Output, EventEmitter } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { AbstractMesh } from '@babylonjs/core';
@@ -11,6 +10,7 @@ import { EditorStateService } from '../../../services/editor/editor-state.servic
 import { EditorPreviewService } from '../../../services/editor/editor-preview.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { SceneNodesService } from '../../../services/editor/sceneservice/scene-nodes.service';
+import { PrefabManagerService } from '../../../services/editor/prefab-manager.service'; // 🔥 AÑADIDO
 
 import { PropTransform } from './prop-transform/prop-transform';
 import { PropTrigger } from './prop-trigger/prop-trigger';
@@ -40,6 +40,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
   private sceneNodesSvc = inject(SceneNodesService);
   private previewSvc = inject(EditorPreviewService);
   private entityManager = inject(EntityManagerService);
+  private prefabManager = inject(PrefabManagerService); // 🔥 AÑADIDO
   private cdr = inject(ChangeDetectorRef);
 
   private _pestanaActiva: string = 'transform';
@@ -127,5 +128,21 @@ export class InspectorProperties implements OnInit, OnDestroy {
 
   eliminarObjeto() {
     this.sceneNodesSvc.eliminarSeleccionado();
+  }
+
+  // 🔥 NUEVO: Función para guardar el objeto seleccionado como Prefab
+  guardarComoPrefab() {
+    if (!this.objetoActual) return;
+    
+    const nombreDefecto = this.objetoActual.name + '_Prefab';
+    const nombre = prompt('Ingresa un nombre para el nuevo Prefab:', nombreDefecto);
+    
+    if (!nombre || nombre.trim() === '') return;
+    
+    this.prefabManager.createPrefabFromMesh(this.objetoActual, nombre).then(() => {
+        alert('📦 Prefab guardado exitosamente.\nBúscalo en la pestaña "Prefabs" de la Línea de Tiempo.');
+    }).catch(err => {
+        alert('Error al crear Prefab: ' + err);
+    });
   }
 }

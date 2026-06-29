@@ -1,11 +1,9 @@
-
-import { Component, OnInit, inject, ChangeDetectorRef } from '@angular/core';
+// src/app/components/global-timeline/tabs/timeline-prefabs-tab/timeline-prefabs-tab.ts
+import { Component, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { EditorStateService } from '../../../../services/editor/editor-state.service';
-import { EditorSceneService } from '../../../../services/editor/editor-scene.service';
 import { EpisodiosService } from '../../../../services/api/episodios';
-import { PrefabManagerService } from '../../../../services/editor/prefab-manager.service';
+import { GameEventBusService } from '../../../../core/engine/events/game-event-bus.service';
 
 @Component({
   selector: 'app-timeline-prefabs-tab',
@@ -15,54 +13,44 @@ import { PrefabManagerService } from '../../../../services/editor/prefab-manager
   styleUrls: ['./timeline-prefabs-tab.css']
 })
 export class TimelinePrefabsTab implements OnInit {
-  public api = inject(EpisodiosService);
-  public stateSvc = inject(EditorStateService);
-  public editorSceneSvc = inject(EditorSceneService);
-  private prefabManager = inject(PrefabManagerService);
-  private cdr = inject(ChangeDetectorRef);
+  private apiSvc = inject(EpisodiosService);
+  private eventBus = inject(GameEventBusService);
 
-  public prefabsDisponibles: any[] = [];
-  public nuevoPrefabNombre: string = '';
-  public guardandoPrefab = false;
+  public prefabs: any[] = [];
+  public filteredPrefabs: any[] = [];
+  public searchTerm = '';
+  public cargando = false;
 
   ngOnInit() {
-    this.cargarPrefabs();
+    this.loadPrefabs();
   }
 
-  cargarPrefabs() {
-    this.api.obtenerPrefabs().subscribe({
+  loadPrefabs() {
+    this.cargando = true;
+    this.apiSvc.obtenerPrefabs().subscribe({
       next: (res) => {
-        this.prefabsDisponibles = res;
-        this.cdr.detectChanges();
+        // Mapeamos indicando explícitamente que es un prefab para el LiveBuilder
+        this.prefabs = res.map(p => ({ ...p, isPrefab: true }));
+        this.filterPrefabs();
+        this.cargando = false;
+      },
+      error: (err) => {
+        console.error('Error cargando prefabs:', err);
+        this.cargando = false;
       }
     });
   }
 
-  guardarObjetoActualComoPrefab() {
-      const obj = this.stateSvc.objetoSeleccionado();
-      if (!obj || !this.nuevoPrefabNombre) return;
-
-      this.guardandoPrefab = true;
-      this.prefabManager.createPrefabFromMesh(obj as any, this.nuevoPrefabNombre).then(() => {
-          this.guardandoPrefab = false;
-          this.nuevoPrefabNombre = '';
-          this.cargarPrefabs();
-          alert('Prefab guardado exitosamente.');
-      }).catch(err => {
-          this.guardandoPrefab = false;
-          alert('Error al guardar el prefab: ' + err);
-      });
-  }
-
-  instanciarPrefab(prefab: any) {
-    this.editorSceneSvc.instanciarPrefabEnCentro(prefab);
-  }
-
-  eliminarPrefab(id: number) {
-    if (confirm('¿Seguro que deseas eliminar este Prefab global de la base de datos?')) {
-      this.api.eliminarPrefab(id).subscribe({
-        next: () => this.cargarPrefabs()
-      });
+  filterPrefabs() {
+    if (!this.searchTerm.trim()) {
+      this.filteredPrefabs = [...this.prefabs];
+      return;
     }
+    const term = this.searchTerm.toLowerCase();
+    this.filteredPrefabs = this.prefabs.filter(p => p.name.toLowerCase().includes(term));
+  }
+
+  selectPrefab(prefab: any) {
+    this.eventBus.emit({ type: 'AssetSelectedForBuild', payload: prefab });
   }
 }

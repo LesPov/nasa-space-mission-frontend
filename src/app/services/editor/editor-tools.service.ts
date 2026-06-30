@@ -1,8 +1,9 @@
 
+
 import { Injectable, inject, effect } from '@angular/core';
 import {
-  DirectionalLight, KeyboardEventTypes, Light, Matrix, Mesh, PointerEventTypes,
-  SpotLight, TransformNode, Vector3, Quaternion, AbstractMesh, Ray, Tags
+  KeyboardEventTypes, Matrix, Mesh, PointerEventTypes,
+  Vector3, AbstractMesh, Ray, Tags
 } from '@babylonjs/core';
 
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
@@ -11,7 +12,6 @@ import { EditorSceneService } from './editor-scene.service';
 import { EditorStateService, ToolMode } from './editor-state.service';
 import { ToolsClipboardService } from './toolsservice/tools-clipboard.service';
 import { ToolsDebugService } from './toolsservice/tools-debug.service';
-import { ToolsFogService } from './toolsservice/tools-fog.service';
 import { ToolsGizmoService } from './toolsservice/tools-gizmo.service';
 import { ToolsHighlightService } from './toolsservice/tools-highlight.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
@@ -38,7 +38,6 @@ export class EditorToolsService {
   private highlightSvc = inject(ToolsHighlightService);
   private debugSvc = inject(ToolsDebugService);
   private clipboardSvc = inject(ToolsClipboardService);
-  private fogSvc = inject(ToolsFogService);
   private gizmoSvc = inject(ToolsGizmoService);
   private liveBuilder = inject(LiveBuilderService);
   private playerInput = inject(PlayerInputService); 
@@ -59,7 +58,6 @@ export class EditorToolsService {
       }
 
       this.highlightSvc.actualizarHighlights(selected, hovered);
-      this.fogSvc.aplicarNieblaEnTiempoReal();
       this.gizmoSvc.attachGizmoToCurrentSelection(selected, subSelected);
     });
 
@@ -111,7 +109,6 @@ export class EditorToolsService {
     this.gizmoSvc.dispose();
     this.debugSvc.actualizarDebugMeshes(null);
     this.highlightSvc.actualizarHighlights(null, null);
-    this.fogSvc.limpiarEstado();
     this.isInitialized = false; 
     this.isGizmoSyncAttached = false;
   }
@@ -385,7 +382,6 @@ export class EditorToolsService {
       if (!this.gizmoSvc.isDraggingGizmo) {
         this.debugSvc.actualizarDebugMeshes(this.state.objetoSeleccionado() as Mesh);
       }
-      this.fogSvc.aplicarNieblaEnTiempoReal();
     });
 
     scene.onBeforeRenderObservable.add(() => {

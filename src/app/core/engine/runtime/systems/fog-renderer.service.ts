@@ -15,10 +15,22 @@ export class FogRendererService {
   private gradTex: DynamicTexture | null = null;
   private currentScene: Scene | null = null;
 
+  // 🔥 OPTIMIZACIÓN: Prevención de GC instanciando colores en memoria estática.
+  private tColorCache = new Color3(0, 0, 0);
+
   constructor() { 
-    // 🔥 FIX: Inicializamos solo 3 estados de anillo
     for(let i = 0; i < 3; i++) {
       this.wallStates.push(new FogWallState()); 
+    }
+  }
+
+  private hexToColor3(hex: string, result: Color3): void {
+    const cleanHex = hex.replace('#', '');
+    if (cleanHex.length !== 6 && cleanHex.length !== 3) return;
+    if (cleanHex.length === 6) {
+      result.r = parseInt(cleanHex.substring(0, 2), 16) / 255.0;
+      result.g = parseInt(cleanHex.substring(2, 4), 16) / 255.0;
+      result.b = parseInt(cleanHex.substring(4, 6), 16) / 255.0;
     }
   }
 
@@ -84,7 +96,6 @@ export class FogRendererService {
     const anchorY = targetPlayer ? targetPlayer.position.y : 0;
     const anchorZ = targetPlayer ? targetPlayer.position.z : 0;
 
-    // 🔥 FIX: Procesamos solo 3 cilindros maestros (3 anillos)
     for (let i = 0; i < 3; i++) {
       if (!this.fogWalls[i]) {
         this.fogWalls[i] = new TransformNode("sharedFogWallGroup_" + i, scene);
@@ -100,7 +111,6 @@ export class FogRendererService {
             mat.fogEnabled = false; 
             this.fogMats[i][j] = mat; 
 
-            // 🔥 FIX OPTIMIZACIÓN: Tessellation de 32 a 24 para ahorrar polígonos
             const shell = MeshBuilder.CreateCylinder(`sharedFogShell_${i}_${j}`, { 
                 diameter: 1, height: 1, sideOrientation: Mesh.DOUBLESIDE, cap: Mesh.NO_CAP, tessellation: 24 
             }, scene);
@@ -125,7 +135,8 @@ export class FogRendererService {
       let tAlpha = 0;
       let tThick = 10;
       let tOffsetY = 0; 
-      let tHex = globalClearHex; 
+      
+      this.tColorCache.copyFrom(targetColor);
 
       if (useFog && activeLevels && activeLevels[i]) {
           tDist = Math.max(0.1, activeLevels[i].distance);
@@ -133,23 +144,23 @@ export class FogRendererService {
           tAlpha = Math.max(0, Math.min(100, activeLevels[i].opacity)) / 100;
           tThick = Math.max(0.1, activeLevels[i].thickness ?? 10);
           tOffsetY = activeLevels[i].offsetY ?? 0;
-          tHex = activeLevels[i].color || targetColor.toHexString();
+          if (activeLevels[i].color) {
+             this.hexToColor3(activeLevels[i].color!, this.tColorCache);
+          }
       }
-      
-      const tColor = Color3.FromHexString(tHex);
 
       if (firstFrame) {
          state.dist = tDist; state.height = tHeight; state.alpha = tAlpha; state.thickness = tThick; state.offsetY = tOffsetY;
-         state.r = tColor.r; state.g = tColor.g; state.b = tColor.b;
+         state.r = this.tColorCache.r; state.g = this.tColorCache.g; state.b = this.tColorCache.b;
       } else {
          state.dist += (tDist - state.dist) * lerpSpeed;
          state.height += (tHeight - state.height) * lerpSpeed;
          state.alpha += (tAlpha - state.alpha) * lerpSpeed;
          state.thickness += (tThick - state.thickness) * lerpSpeed;
          state.offsetY += (tOffsetY - state.offsetY) * lerpSpeed;
-         state.r += (tColor.r - state.r) * lerpSpeed;
-         state.g += (tColor.g - state.g) * lerpSpeed;
-         state.b += (tColor.b - state.b) * lerpSpeed;
+         state.r += (this.tColorCache.r - state.r) * lerpSpeed;
+         state.g += (this.tColorCache.g - state.g) * lerpSpeed;
+         state.b += (this.tColorCache.b - state.b) * lerpSpeed;
       }
 
       wallGroup.scaling.set(state.dist * 2, state.height, state.dist * 2);

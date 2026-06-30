@@ -1,3 +1,4 @@
+
 import { Injectable, inject, Injector } from '@angular/core';
 import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4, UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera } from '@babylonjs/core';
 import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
@@ -7,6 +8,7 @@ import { CinematicDirectorService } from '../core/engine/runtime/systems/cinemat
 import { ISceneAccess } from '../core/engine/scene/scene-access.token';
 import { ShadowOrchestratorService } from '../core/engine/runtime/shadows/shadow-orchestrator.service';
 import { DynamicLightingSystem } from '../core/engine/runtime/systems/lighting/dynamic-lighting.system';
+import { FogOrchestratorService } from '../core/engine/runtime/systems/fog-orchestrator.service';
  
 @Injectable({
   providedIn: 'root'
@@ -74,7 +76,6 @@ export class Motor3dService implements ISceneAccess {
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.05, 0.05, 0.05, 1);
     
-    // 🔥 FIX MAGICO: Declaración en frío para evitar el negro absoluto 
     this.scene.ambientColor = new Color3(1, 1, 1);
 
     this.scene.autoClear = false;
@@ -93,6 +94,11 @@ export class Motor3dService implements ISceneAccess {
 
     const dynamicLighting = this.injector.get(DynamicLightingSystem);
     this.loopManager.registerSystem(dynamicLighting);
+
+    // 🔥 REGISTRO GLOBAL DEL NUEVO FOG ORCHESTRATOR
+    const fogOrch = this.injector.get(FogOrchestratorService);
+    this.loopManager.registerSystem(fogOrch);
+    fogOrch.start(); // Iniciarlo para que esté disponible en Editor inmediatamente
 
     this.cameraFactory.initializeCameras(this.scene, canvas);
 
@@ -144,6 +150,8 @@ export class Motor3dService implements ISceneAccess {
 
   detenerMotor(): void {
     if (this.engine) {
+      const fogOrch = this.injector.get(FogOrchestratorService);
+      fogOrch.stop(); // Detenemos el orquestador global de niebla
       this.loopManager.dispose();
       this.cameraFactory.dispose();
       this.engine.stopRenderLoop();

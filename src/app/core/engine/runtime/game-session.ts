@@ -1,10 +1,10 @@
+
 import { Injectable, inject, computed } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
 import { ObjectAnimationService } from './systems/object-animation.service';
 import { GameEventBusService } from '../events/game-event-bus.service';
 import { PlayerTriggerService } from './systems/player-trigger.service';
-import { PlayerFogService } from './systems/player-fog.service';
 import { PlayerCameraManagerService } from './systems/player-camera.service';
 import { PlayerBubbleService } from './systems/player-bubble.service';
 import { PlayerSequenceService } from './systems/player-sequence.service';
@@ -30,7 +30,6 @@ export class GameSession {
   private objectAnimSvc = inject(ObjectAnimationService);
   private eventBus = inject(GameEventBusService);
   private triggerSvc = inject(PlayerTriggerService);
-  private playerFogSvc = inject(PlayerFogService);
   private cameraSvc = inject(PlayerCameraManagerService);
   private bubbleSvc = inject(PlayerBubbleService);
   private inputSvc = inject(PlayerInputService);
@@ -109,6 +108,7 @@ export class GameSession {
 
     this.sequenceSvc.resetearSecuencias();
 
+    // 🔥 FIX: Eliminado PlayerFogService, ahora FogOrchestrator manda de manera global.
     this.systems = [
       this.inputSvc,
       this.sequenceSvc,
@@ -122,7 +122,6 @@ export class GameSession {
       this.renderSyncSvc,
       this.dynamicLighting, 
       this.objectAnimSvc,
-      this.playerFogSvc,
       this.bubbleSvc
     ];
 
@@ -136,8 +135,6 @@ export class GameSession {
     this.cameraSvc.resetearTransiciones();
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
-      
-      // 🔥 FIX AUTO-PLAY: Identifica el AutoPlay para TODOS, sean personajes o luces.
       if (entity.characterConfig) {
         this.playerAnimationSvc.sincronizarAnimaciones(this.motor3dSvc.getScene(), entity);
         const autoSeq = entity.playerConfig?.sequences.find((s: any) => s.autoPlay);
@@ -147,7 +144,6 @@ export class GameSession {
           this.playerAnimationSvc.reproducirIdle(entity);
         }
       } else if (entity.playerConfig?.sequences) {
-        // 🔥 ESTE BLOQUE ENCIENDE LAS LUCES (y objetos genéricos) SOLAS EN TESTLIVE
         const autoSeq = entity.playerConfig.sequences.find((s: any) => s.autoPlay);
         if (autoSeq) {
           this.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, entity);

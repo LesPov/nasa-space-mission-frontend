@@ -1,0 +1,434 @@
+
+// src/app/services/editor/editor-orchestrator.service.ts
+
+import { Injectable, inject, signal } from '@angular/core';
+import { Router } from '@angular/router';
+import { AbstractMesh, Tags } from '@babylonjs/core';
+import { Subscription } from 'rxjs';
+import { debounceTime } from 'rxjs/operators';
+
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
+import { EditorMapaService } from '../editor-mapa.service';
+import { EditorStateService } from './editor-state.service';
+import { EditorSceneService } from './editor-scene.service';
+import { EditorToolsService } from './editor-tools.service';
+import { LayoutService } from '../../services/layout.service';
+import { EpisodiosService } from '../api/episodios';
+import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
+import { EditorPlayModeService } from './editor-play-mode.service';
+import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.service';
+import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
+import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
+import { AuthService } from '../../core/services/auth';
+import { GameContextService } from '../../core/engine/session/game-context.service'; 
+import { GameMode } from '../../core/engine/session/game-mode.model'; 
+import { EditorCinematicService } from './editor-cinematic.service';
+import { LiveBuilderService } from './live-builder.service';
+import { GameStateService } from '../../core/engine/runtime/state/game-state.service';
+import { EditorModeTransitionService } from './editor-mode-transition.service';
+import { EditorLiveSyncService } from './editor-live-sync.service';
+import { MissionModalService } from './modals/mission-modal.service';
+import { CameraViewMode } from '../../core/engine/session/game-context.model';
+
+@Injectable({ providedIn: 'root' })
+export class EditorOrchestratorService {
+  private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
+  private editorSvc = inject(EditorMapaService);
+  private stateSvc = inject(EditorStateService);
+  private sceneSvc = inject(EditorSceneService);
+  private toolsSvc = inject(EditorToolsService);
+  private layoutSvc = inject(LayoutService);
+  private epiApiSvc = inject(EpisodiosService);
+  private eventBus = inject(GameEventBusService);
+  private playModeSvc = inject(EditorPlayModeService);
+  private runtime = inject(RuntimeEngineService);
+  private entityManager = inject(EntityManagerService);
+  private inputOrchestrator = inject(InputOrchestratorService);
+  private authSvc = inject(AuthService);
+  private gameContext = inject(GameContextService);
+  private cinematicSvc = inject(EditorCinematicService);
+  private liveBuilderSvc = inject(LiveBuilderService);
+  private gameState = inject(GameStateService);
+  private transitionSvc = inject(EditorModeTransitionService);
+  private liveSync = inject(EditorLiveSyncService);
+  private router = inject(Router);
+  private missionSvc = inject(MissionModalService);
+
+  public readonly editando = signal(false);
+  public readonly isPlayable = signal(false);
+  public readonly cargandoEscena = signal(false);
+  public readonly cargandoTexto = signal('Preparando entorno...');
+  public readonly fps = signal('0');
+  public readonly estadoGuardado = signal('Guardado');
+  
+  public readonly listaEpisodios = signal<any[]>([]);
+  public episodioCompletoData: any = null;
+  public mapaActualNombre = '';
+
+  private fpsInterval: any;
+  private autoSaveSub!: Subscription;
+  private eventBusSub!: Subscription;
+  private reqPlatformSub!: Subscription;
+  private mapChangeSub!: Subscription;
+  private snapshotMemoria: any = null;
+
+  public initialize(): void {
+    this.cargarEpisodios();
+
+    this.reqPlatformSub = this.editorSvc.onRequestPlatformChange.subscribe(id => {
+      if (this.editorSvc.escenaIdActiva() !== id && this.stateSvc.playState() === 'EDITOR') {
+        this.cambiarPlataformaActiva(id);
+      }
+    });
+
+    this.eventBusSub = this.eventBus.events$.subscribe(event => {
+      if (event.type === 'ChangeSceneRequested') {
+        if (this.stateSvc.playState() === 'PLAYING' || this.stateSvc.playState() === 'EDITING_IN_GAME') {
+            this.cambiarPlataformaTestLive(event.payload.sceneId);
+        }
+      }
+    });
+
+    this.mapChangeSub = this.editorSvc.onMapChanged.subscribe(() => {
+       setTimeout(() => this.revisarSiEsJugable(), 0);
+    });
+
+    this.autoSaveSub = this.editorSvc.onMapChanged.pipe(
+      debounceTime(1500) 
+    ).subscribe(() => {
+      try {
+        const state = this.stateSvc.playState();
+        if (this.authSvc.isAdmin() && this.editando() && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
+          this.guardarMapaEnBD(true); 
+        }
+      } catch (e) {
+        console.error('Error durante autoguardado:', e);
+      }
+    });
+  }
+
+  public destroy(): void {
+    if (this.fpsInterval) clearInterval(this.fpsInterval);
+    if (this.autoSaveSub) this.autoSaveSub.unsubscribe();
+    if (this.eventBusSub) this.eventBusSub.unsubscribe();
+    if (this.reqPlatformSub) this.reqPlatformSub.unsubscribe();
+    if (this.mapChangeSub) this.mapChangeSub.unsubscribe();
+  }
+
+  public cargarEpisodios(): void {
+    this.epiApiSvc.obtenerEpisodios().subscribe({
+      next: (res) => { this.listaEpisodios.set(res); },
+      error: (err) => console.error('Error al cargar episodios', err)
+    });
+  }
+
+  public crearNuevoEpisodio(title: string, desc: string): void {
+    if (!title) return;
+    this.epiApiSvc.crearEpisodio(title, desc).subscribe({
+      next: (res) => {
+        const episodeData = res.episode || res;
+        this.listaEpisodios.update(v => [episodeData, ...v]);
+        this.missionSvc.cerrarCrearMapa();
+        
+        if (res.initialScene) {
+          episodeData.initialScene = res.initialScene;
+        }
+        this.entrarAlEditor(episodeData);
+      },
+      error: (err) => alert('Error creando episodio')
+    });
+  }
+
+  public entrarAlEditor(episodio: any): void {
+    this.layoutSvc.ocultarMenu();
+    this.cargandoEscena.set(true);
+    this.cargandoTexto.set('Cargando herramientas de creador...');
+    
+    this.epiApiSvc.obtenerPlataformasEscena(episodio.id).subscribe({
+       next: (plataformas) => {
+         this.editorSvc.setPlataformasEscena(plataformas);
+         const sceneId = episodio.initialScene?.id || plataformas[0]?.id || episodio.id;
+         this.procesarCarga(episodio, sceneId);
+       },
+       error: (err) => {
+         console.error('Error cargando plataformas', err);
+         const sceneId = episodio.initialScene?.id || episodio.id;
+         this.procesarCarga(episodio, sceneId);
+       }
+    });
+  }
+
+  public async procesarCarga(episodio: any, sceneId: number): Promise<void> {
+    this.mapaActualNombre = episodio.title;
+    if (!this.editando()) {
+      this.editando.set(true);
+      await new Promise(resolve => setTimeout(resolve, 50));
+    }
+    
+    this.epiApiSvc.obtenerEscenaCompleta(sceneId).subscribe({
+      next: async (res) => {
+        this.episodioCompletoData = res; 
+        this.editorSvc.setEscenaIdActiva(sceneId);
+        this.editorSvc.setEscenaActualData(res);
+        this.editorSvc.setEpisodioActualData(episodio);
+        
+        this.cargandoTexto.set('Preparando modelos, texturas y físicas 3D...');
+        
+        this.motor3dSvc.forceResize(); 
+        this.toolsSvc.activarEventosEditor();
+        this.sceneSvc.crearSuelo();
+
+        if(res) {
+          await this.sceneSvc.cargarEscenaDesdeDatos(res);
+        }
+
+        this.motor3dSvc.getScene().executeWhenReady(() => {
+          this.cargandoEscena.set(false);
+          this.revisarSiEsJugable(); 
+          
+          if (!this.fpsInterval) {
+            this.fpsInterval = setInterval(() => {
+              this.fps.set(this.motor3dSvc.getCurrentFps().toFixed(0));
+            }, 500);
+          }
+        });
+      },
+      error: (err) => {
+        this.cargandoEscena.set(false);
+        alert('Error conectando con el servidor. No se pudo cargar la escena.');
+      }
+    });
+  }
+
+  public confirmarCrearPlataforma(nombre: string): void {
+    if (!nombre.trim()) return;
+    const epId = this.editorSvc.episodioActualData()?.id;
+    if (!epId) return;
+
+    this.epiApiSvc.crearPlataformaEscena(epId, nombre).subscribe({
+      next: (nuevaEscena) => {
+         const actuales = this.editorSvc.plataformasEscena();
+         this.editorSvc.setPlataformasEscena([...actuales, nuevaEscena]);
+         this.cambiarPlataformaActiva(nuevaEscena.id);
+      },
+      error: (err) => alert('Error creando la plataforma')
+    });
+  }
+
+  public cambiarPlataformaActiva(sceneId: number): void {
+    this.guardarMapaEnBD(true); 
+    this.cargandoEscena.set(true);
+    this.cargandoTexto.set('Cambiando de zona...');
+    this.procesarCarga(this.editorSvc.episodioActualData(), sceneId);
+  }
+
+  public async cambiarPlataformaTestLive(sceneId: number): Promise<void> {
+    this.cargandoEscena.set(true);
+    this.cargandoTexto.set('Teletransportando a nueva zona...');
+    
+    this.runtime.stopTestSession();
+    this.editorSvc.setEscenaIdActiva(sceneId);
+    
+    this.entityManager.clear();
+
+    this.epiApiSvc.obtenerEscenaCompleta(sceneId).subscribe({
+      next: async (res) => {
+        this.episodioCompletoData = res; 
+        this.editorSvc.setEscenaIdActiva(sceneId);
+        this.editorSvc.setEscenaActualData(res);
+        
+        this.motor3dSvc.forceResize(); 
+        this.sceneSvc.crearSuelo();
+
+        if(res) {
+          await this.sceneSvc.cargarEscenaDesdeDatos(res);
+        }
+
+        this.motor3dSvc.getScene().executeWhenReady(() => {
+          setTimeout(() => {
+            this.playModeSvc.prepararEscenaParaTest(this.gameContext.cameraView(), true);
+            this.cargandoEscena.set(false);
+            this.revisarSiEsJugable();
+          }, 100);
+        });
+      },
+      error: (err) => {
+        this.cargandoEscena.set(false);
+        alert('Error al teletransportar a la plataforma.');
+        this.detenerModoPrueba();
+      }
+    });
+  }
+
+  public guardarMapaEnBD(silencioso = false): void {
+    const sceneId = this.editorSvc.escenaIdActiva();
+    if (!sceneId || !this.editando() || !this.authSvc.isAdmin()) return;
+    this.estadoGuardado.set('Guardando...');
+
+    const mapData = this.sceneSvc.obtenerDatosParaGuardar(this.editorSvc.escenaActualData());
+    
+    this.epiApiSvc.guardarMapaEscena(sceneId, mapData).subscribe({
+      next: () => {
+        this.entityManager.clearDirtyFlags();
+        this.entityManager.clearDeletedRecords();
+        this.cinematicSvc.deletedCinematics = [];
+
+        this.estadoGuardado.set('Guardado automático ✓');
+        
+        this.liveSync.broadcastMapData(mapData);
+
+        if (!silencioso) alert('Plataforma guardada exitosamente');
+        setTimeout(() => { if (this.estadoGuardado() === 'Guardado automático ✓') this.estadoGuardado.set(''); }, 3000);
+      },
+      error: (err) => {
+        this.estadoGuardado.set('Error al guardar ⚠️');
+      }
+    });
+  }
+
+  public abrirVentanaPreview(): void {
+    const sceneId = this.editorSvc.escenaIdActiva();
+    if (!sceneId || !this.isPlayable()) return;
+    
+    this.guardarMapaEnBD(true);
+    
+    const url = this.router.serializeUrl(
+      this.router.createUrlTree(['/jugador/jugar', sceneId], { queryParams: { detached: 'true' } })
+    );
+    
+    window.open(url, '_blank', 'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes');
+  }
+
+  public revisarSiEsJugable(): void {
+    const obj = this.stateSvc.objetoSeleccionado() as AbstractMesh;
+    let playable = false;
+    
+    if (obj) {
+        const entity = this.entityManager.getEntityByMesh(obj);
+        if (entity?.characterConfig) playable = true;
+    }
+    
+    if (!playable) {
+        const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
+        playable = characters.some(c => c.characterConfig?.isPlayable) || characters.length > 0;
+    }
+    
+    if (this.isPlayable() !== playable) {
+        this.isPlayable.set(playable);
+    }
+  }
+
+  public iniciarModoPrueba(vista: CameraViewMode, skipIntro: boolean = false): void {
+    if (!this.isPlayable()) return;
+    this.guardarMapaEnBD(true);
+    
+    if (!skipIntro) {
+      this.gameState.enterSandbox();
+      this.transitionSvc.beginTestLive();
+      this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
+    }
+
+    this.playModeSvc.prepararEscenaParaTest(vista, skipIntro);
+  }
+
+  public async detenerModoPrueba(): Promise<void> {
+    if (this.stateSvc.playState() === 'EDITOR') return;
+    
+    this.cargandoEscena.set(true);
+    this.cargandoTexto.set('Restaurando Editor...');
+
+    this.transitionSvc.stopTestLive();
+    this.runtime.stopTestSession();
+    this.gameState.exitSandbox();
+
+    const isDebugMode = this.authSvc.isAdmin();
+
+    if (this.snapshotMemoria) {
+        const currentId = this.editorSvc.escenaIdActiva();
+        const snapId = this.snapshotMemoria.scene?.id || this.snapshotMemoria.id;
+
+        if (snapId && currentId !== snapId) {
+            this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
+        } else {
+            const cambiosEnPlay: any = this.sceneSvc.obtenerDatosParaGuardar(this.editorSvc.escenaActualData(), true); 
+            
+            if (!this.snapshotMemoria.sceneObjects) this.snapshotMemoria.sceneObjects = this.snapshotMemoria.sceneObjectsDelta || [];
+            if (!this.snapshotMemoria.triggers) this.snapshotMemoria.triggers = this.snapshotMemoria.triggersDelta || [];
+            if (!this.snapshotMemoria.deletedObjects) this.snapshotMemoria.deletedObjects = [];
+            if (!this.snapshotMemoria.deletedTriggers) this.snapshotMemoria.deletedTriggers = [];
+
+            delete this.snapshotMemoria.sceneObjectsDelta;
+            delete this.snapshotMemoria.triggersDelta;
+
+            cambiosEnPlay.sceneObjectsDelta.forEach((delta: any) => {
+                if (delta.name === 'Jugador_Prueba') return;
+                const index = this.snapshotMemoria.sceneObjects.findIndex((o: any) => o.uid === delta.uid);
+                if (index !== -1) this.snapshotMemoria.sceneObjects[index] = delta;
+                else this.snapshotMemoria.sceneObjects.push(delta);
+            });
+
+            cambiosEnPlay.triggersDelta.forEach((delta: any) => {
+                const index = this.snapshotMemoria.triggers.findIndex((o: any) => o.uid === delta.uid);
+                if (index !== -1) this.snapshotMemoria.triggers[index] = delta;
+                else this.snapshotMemoria.triggers.push(delta);
+            });
+
+            if (cambiosEnPlay.environmentSettings) {
+                this.snapshotMemoria.environmentSettings = JSON.parse(JSON.stringify(cambiosEnPlay.environmentSettings));
+            }
+            if (cambiosEnPlay.uiSettings) {
+                this.snapshotMemoria.uiSettings = JSON.parse(JSON.stringify(cambiosEnPlay.uiSettings));
+            }
+
+            if (cambiosEnPlay.cinematicsDelta) {
+                this.snapshotMemoria.cinematics = JSON.parse(JSON.stringify(cambiosEnPlay.cinematicsDelta));
+            }
+
+            if (cambiosEnPlay.deletedObjects.length > 0) {
+                this.snapshotMemoria.sceneObjects = this.snapshotMemoria.sceneObjects.filter((o: any) => !cambiosEnPlay.deletedObjects.includes(o.uid));
+                this.snapshotMemoria.deletedObjects = [...new Set([...this.snapshotMemoria.deletedObjects, ...cambiosEnPlay.deletedObjects])];
+            }
+            if (cambiosEnPlay.deletedTriggers.length > 0) {
+                this.snapshotMemoria.triggers = this.snapshotMemoria.triggers.filter((o: any) => !cambiosEnPlay.deletedTriggers.includes(o.uid));
+                this.snapshotMemoria.deletedTriggers = [...new Set([...this.snapshotMemoria.deletedTriggers, ...cambiosEnPlay.deletedTriggers])];
+            }
+        }
+
+        this.editorSvc.setEscenaActualData(JSON.parse(JSON.stringify(this.snapshotMemoria)));
+
+        this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
+        this.entityManager.clear();
+
+        const scene = this.motor3dSvc.getScene();
+        const meshesToDispose = scene.meshes.filter(m => !Tags.MatchesQuery(m, "system_element") && !Tags.MatchesQuery(m, "editor_only"));
+        meshesToDispose.forEach(m => {
+            if (!m.isDisposed()) m.dispose(false, false); 
+        });
+
+        await this.sceneSvc.cargarEscenaDesdeDatos(this.snapshotMemoria);
+        this.snapshotMemoria = null;
+    }
+
+    this.playModeSvc.restaurarEscenaPostTest(isDebugMode);
+    
+    this.cargandoEscena.set(false);
+    this.revisarSiEsJugable(); 
+
+    setTimeout(() => this.editorSvc.onMapChanged.next(), 500);
+  }
+
+  public salirDelEditor(): void {
+    this.editando.set(false);
+    this.cargandoEscena.set(false);
+    this.layoutSvc.mostrarMenu();
+    this.editorSvc.limpiarEstado();
+    this.toolsSvc.limpiarEstado();
+    this.cargarEpisodios();
+
+    this.gameContext.setInteracting(false);
+    if (this.fpsInterval) {
+        clearInterval(this.fpsInterval);
+        this.fpsInterval = null;
+    }
+  }
+}

@@ -1,9 +1,10 @@
 
+// src/app/pages/admin/editor-escena/editor-escena.ts
+
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subscription, debounceTime } from 'rxjs';
 
 import { MotorBabylon } from '../../../components/motor-babylon/motor-babylon';
 import { InspectorEscena } from '../../../components/inspector-escena/inspector-escena';
@@ -18,16 +19,9 @@ import { UiRadialMenu } from '../../../components/ui-radial-menu/ui-radial-menu'
 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EditorStateService } from '../../../services/editor/editor-state.service';
-import { EditorSceneService } from '../../../services/editor/editor-scene.service';
 import { EditorToolsService } from '../../../services/editor/editor-tools.service';
-import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { LayoutService } from '../../../services/layout.service';
-import { EpisodiosService } from '../../../services/api/episodios';
 import { GameSession } from '../../../core/engine/runtime/game-session';
-import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
-import { EditorPlayModeService } from '../../../services/editor/editor-play-mode.service';
-import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
-import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { EditorLayoutService } from '../../../services/editor/editor-layout.service';
 import { EditorKeyboardService } from '../../../services/editor/editor-keyboard.service';
 import { InputOrchestratorService } from '../../../core/engine/runtime/systems/input-orchestrator.service';
@@ -36,10 +30,8 @@ import { MissionModalService } from '../../../services/editor/modals/mission-mod
 import { AuthService } from '../../../core/services/auth';
 import { GameContextService } from '../../../core/engine/session/game-context.service'; 
 import { GameMode } from '../../../core/engine/session/game-mode.model'; 
-import { AbstractMesh, Tags } from '@babylonjs/core';
-import { WindowSyncService } from '../../../core/services/window-sync.service';
-import { EditorCinematicService } from '../../../services/editor/editor-cinematic.service';
-import { LiveBuilderService } from '../../../services/editor/live-builder.service';
+import { EditorOrchestratorService } from '../../../services/editor/editor-orchestrator.service';
+import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
 
 @Component({
   selector: 'app-editor-escena', 
@@ -52,15 +44,11 @@ import { LiveBuilderService } from '../../../services/editor/live-builder.servic
   styleUrl: './editor-escena.css', 
 })
 export class EditorEscena implements OnInit, OnDestroy {
+  public orchestrator = inject(EditorOrchestratorService);
   public stateSvc = inject(EditorStateService);
   public editorSvc = inject(EditorMapaService); 
-  public motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   public layoutSvc = inject(LayoutService);
-  public epiApiSvc = inject(EpisodiosService);
   public gameSession = inject(GameSession);
-  private eventBus = inject(GameEventBusService);
-  private entityManager = inject(EntityManagerService);
-  public runtime = inject(RuntimeEngineService);
   public layoutUI = inject(EditorLayoutService);
   public keyboard = inject(EditorKeyboardService);
   public inputOrchestrator = inject(InputOrchestratorService);
@@ -70,50 +58,37 @@ export class EditorEscena implements OnInit, OnDestroy {
   private gameContext = inject(GameContextService); 
   public cdr = inject(ChangeDetectorRef);
   private router = inject(Router);
-  private windowSync = inject(WindowSyncService);
-  public playModeSvc = inject(EditorPlayModeService);
-  private cinematicSvc = inject(EditorCinematicService);
-  private liveBuilderSvc = inject(LiveBuilderService); 
   public toolsSvc = inject(EditorToolsService);
-  public sceneSvc = inject(EditorSceneService);
+  public runtime = inject(RuntimeEngineService);
 
   public isInteracting = signal(false);
-  public editando = false;
-  public isPlayable = signal<boolean>(false);
 
   public get esAdmin(): boolean {
     return this.authSvc.isAdmin();
   }
 
-  public cargandoEscena = signal(false);
-  public episodioPendienteCarga: any = null;
-  public cargandoTexto = signal('Preparando entorno...');
-
-  public mapaActualNombre = '';
-  public episodioCompletoData: any = null;
+  get editando() { return this.orchestrator.editando(); }
+  get isPlayable() { return this.orchestrator.isPlayable(); }
+  get cargandoEscena() { return this.orchestrator.cargandoEscena(); }
+  get cargandoTexto() { return this.orchestrator.cargandoTexto(); }
+  get fps() { return this.orchestrator.fps(); }
+  get estadoGuardado() { return this.orchestrator.estadoGuardado(); }
+  get listaEpisodios() { return this.orchestrator.listaEpisodios(); }
+  get episodioCompletoData() { return this.orchestrator.episodioCompletoData; }
+  set episodioCompletoData(v) { this.orchestrator.episodioCompletoData = v; }
+  get mapaActualNombre() { return this.orchestrator.mapaActualNombre; }
+  set mapaActualNombre(v) { this.orchestrator.mapaActualNombre = v; }
 
   public mostrarModalMisionPreview = false;
   public cerrandoModalMision = false; 
   public misionIniciada = false;
 
-  public fps = signal('0');
-  public estadoGuardado = signal('Guardado');
-
-  public listaEpisodios: any[] = [];
   public hoveredEpisodio: number | null = null;
-
   public plataformaActualId: number | null = null;
   public mostrandoCrearPlataforma = false;
   public nuevaPlataformaNombre = '';
-  
   public vistaPrueba: 'FPS' | 'TPS' = 'FPS';
   private activeCameraView = 'FPS';
-
-  private fpsInterval: any;
-  private autoSaveSub!: Subscription;
-  private eventBusSub!: Subscription;
-  private reqPlatformSub!: Subscription;
-  private mapChangeSub!: Subscription;
 
   get objNombre() { return this.addObjSvc.objNombre; } set objNombre(v) { this.addObjSvc.objNombre = v; }
   get objTipo() { return this.addObjSvc.objTipo; } set objTipo(v) { this.addObjSvc.objTipo = v; }
@@ -135,69 +110,14 @@ export class EditorEscena implements OnInit, OnDestroy {
     effect(() => {
       this.stateSvc.playState();
     });
-
-    effect(() => {
-      const obj = this.stateSvc.objetoSeleccionado();
-      setTimeout(() => this.revisarSiEsJugable(), 0);
-    });
   }
 
   ngOnInit() {
     this.gameContext.setMode(GameMode.EDITOR); 
-    this.cargarEpisodios();
     this.addObjSvc.cargarAssets();
-
     if (this.esAdmin) {
-       this.liveBuilderSvc.initialize();
+       this.orchestrator.initialize();
     }
-
-    this.reqPlatformSub = this.editorSvc.onRequestPlatformChange.subscribe(id => {
-      if (this.plataformaActualId !== id && this.stateSvc.playState() === 'EDITOR') {
-        this.plataformaActualId = id;
-        this.cambiarPlataformaActiva();
-      }
-    });
-
-    this.eventBusSub = this.eventBus.events$.subscribe(event => {
-      switch (event.type) {
-        case 'InteractionStateChanged': 
-          this.isInteracting.set(event.payload); 
-          break;
-        case 'CameraViewChanged':
-          this.activeCameraView = event.payload;
-          this.gameContext.setCameraView(event.payload as any);
-          this.vistaPrueba = event.payload as 'FPS' | 'TPS';
-          break;
-        case 'GamePaused': 
-          if (this.stateSvc.playState() === 'PLAYING') {
-              this.cerrandoModalMision = false;
-          }
-          break;
-        case 'ChangeSceneRequested':
-          if (this.stateSvc.playState() === 'PLAYING' || this.stateSvc.playState() === 'EDITING_IN_GAME') {
-              this.cambiarPlataformaTestLive(event.payload.sceneId);
-          }
-          break;
-      }
-      this.cdr.detectChanges();
-    });
-
-    this.mapChangeSub = this.editorSvc.onMapChanged.subscribe(() => {
-       setTimeout(() => this.revisarSiEsJugable(), 0);
-    });
-
-    this.autoSaveSub = this.editorSvc.onMapChanged.pipe(
-      debounceTime(1500) 
-    ).subscribe(() => {
-      try {
-        const state = this.stateSvc.playState();
-        if (this.esAdmin && this.editando && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
-          this.guardarMapaEnBD(true); 
-        }
-      } catch (e) {
-        console.error('Error durante autoguardado:', e);
-      }
-    });
   }
 
   @HostListener('window:mousemove', ['$event'])
@@ -223,28 +143,9 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.keyboard.handleKeydown(event, this.editando); 
   }
 
-  revisarSiEsJugable(): void {
-    const obj = this.stateSvc.objetoSeleccionado() as AbstractMesh;
-    let playable = false;
-    
-    if (obj) {
-        const entity = this.entityManager.getEntityByMesh(obj);
-        if (entity?.characterConfig) playable = true;
-    }
-    
-    if (!playable) {
-        const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
-        playable = characters.some(c => c.characterConfig?.isPlayable) || characters.length > 0;
-    }
-    
-    if (this.isPlayable() !== playable) {
-        this.isPlayable.set(playable);
-    }
-  }
-
   toggleNieblaTemporal() {
     this.stateSvc.setFogDesactivadoTemporalmente(!this.stateSvc.fogDesactivadoTemporalmente());
-    setTimeout(() => this.motor3dSvc.forceResize(), 10);
+    setTimeout(() => window.dispatchEvent(new Event('resize')), 10);
     this.editorSvc.onMapChanged.next();
   }
 
@@ -262,71 +163,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   entrarAlEditor(episodio: any) {
-    this.episodioPendienteCarga = episodio;
-    this.layoutSvc.ocultarMenu();
-    this.cargandoEscena.set(true);
-    this.cargandoTexto.set('Cargando herramientas de creador...');
-    
-    this.epiApiSvc.obtenerPlataformasEscena(episodio.id).subscribe({
-       next: (plataformas) => {
-         this.editorSvc.setPlataformasEscena(plataformas);
-         const sceneId = episodio.initialScene?.id || plataformas[0]?.id || episodio.id;
-         this.plataformaActualId = sceneId;
-         this.procesarCarga(episodio, sceneId);
-       },
-       error: (err) => {
-         console.error('Error cargando plataformas', err);
-         const sceneId = episodio.initialScene?.id || episodio.id;
-         this.plataformaActualId = sceneId;
-         this.procesarCarga(episodio, sceneId);
-       }
-    });
-  }
-
-  private async procesarCarga(episodio: any, sceneId: number) {
-    this.mapaActualNombre = episodio.title;
-    
-    if (!this.editando) {
-      this.editando = true;
-      this.cdr.detectChanges(); 
-      await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    
-    this.epiApiSvc.obtenerEscenaCompleta(sceneId).subscribe({
-      next: async (res) => {
-        this.episodioCompletoData = res; 
-        this.editorSvc.setEscenaIdActiva(sceneId);
-        this.editorSvc.setEscenaActualData(res);
-        this.editorSvc.setEpisodioActualData(episodio);
-        
-        this.cargandoTexto.set('Preparando modelos, texturas y físicas 3D...');
-        
-        this.motor3dSvc.forceResize(); 
-        this.toolsSvc.activarEventosEditor();
-        this.sceneSvc.crearSuelo();
-
-        if(res) {
-          await this.sceneSvc.cargarEscenaDesdeDatos(res);
-        }
-
-        this.motor3dSvc.getScene().executeWhenReady(() => {
-          this.cargandoEscena.set(false);
-          this.episodioPendienteCarga = null;
-          this.revisarSiEsJugable(); 
-          this.cdr.detectChanges(); 
-          
-          if (!this.fpsInterval) {
-            this.fpsInterval = setInterval(() => {
-              this.fps.set(this.motor3dSvc.getCurrentFps().toFixed(0));
-            }, 500);
-          }
-        });
-      },
-      error: (err) => {
-        this.cargandoEscena.set(false);
-        alert('Error conectando con el servidor. No se pudo cargar la escena.');
-      }
-    });
+    this.plataformaActualId = episodio.initialScene?.id || episodio.id;
+    this.orchestrator.entrarAlEditor(episodio);
   }
 
   abrirModalCrearPlataforma() {
@@ -335,82 +173,19 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   confirmarCrearPlataforma() {
-    if (!this.nuevaPlataformaNombre.trim()) return;
-    const epId = this.editorSvc.episodioActualData()?.id;
-    if (!epId) return;
-
-    this.epiApiSvc.crearPlataformaEscena(epId, this.nuevaPlataformaNombre).subscribe({
-      next: (nuevaEscena) => {
-         const actuales = this.editorSvc.plataformasEscena();
-         this.editorSvc.setPlataformasEscena([...actuales, nuevaEscena]);
-         this.mostrandoCrearPlataforma = false;
-         
-         this.plataformaActualId = nuevaEscena.id;
-         this.cambiarPlataformaActiva();
-      },
-      error: (err) => alert('Error creando la plataforma')
-    });
+    this.orchestrator.confirmarCrearPlataforma(this.nuevaPlataformaNombre);
+    this.mostrandoCrearPlataforma = false;
   }
 
   cambiarPlataformaActiva() {
     if (!this.plataformaActualId) return;
-    this.guardarMapaEnBD(true); 
-    
-    this.cargandoEscena.set(true);
-    this.cargandoTexto.set('Cambiando de zona...');
-    this.procesarCarga(this.editorSvc.episodioActualData(), this.plataformaActualId);
-  }
-
-  async cambiarPlataformaTestLive(sceneId: number) {
-    this.cargandoEscena.set(true);
-    this.cargandoTexto.set('Teletransportando a nueva zona...');
-    
-    this.runtime.stopTestSession();
-    this.plataformaActualId = sceneId;
-    
-    this.entityManager.clear();
-
-    this.epiApiSvc.obtenerEscenaCompleta(sceneId).subscribe({
-      next: async (res) => {
-        this.episodioCompletoData = res; 
-        this.editorSvc.setEscenaIdActiva(sceneId);
-        this.editorSvc.setEscenaActualData(res);
-        
-        this.motor3dSvc.forceResize(); 
-        this.sceneSvc.crearSuelo();
-
-        if(res) {
-          await this.sceneSvc.cargarEscenaDesdeDatos(res);
-        }
-
-        this.motor3dSvc.getScene().executeWhenReady(() => {
-          setTimeout(() => {
-            (this.playModeSvc as any).testearEscena(this.vistaPrueba, true);
-            this.cargandoEscena.set(false);
-            this.revisarSiEsJugable();
-            this.cdr.detectChanges(); 
-          }, 100);
-        });
-      },
-      error: (err) => {
-        this.cargandoEscena.set(false);
-        alert('Error al teletransportar a la plataforma.');
-        this.detenerModoPrueba();
-      }
-    });
+    this.orchestrator.cambiarPlataformaActiva(this.plataformaActualId);
   }
 
   onCanvasClick() {
     if (this.stateSvc.playState() === 'PLAYING' && !this.gameSession.pointerLocked() && !this.isInteracting() && !this.mostrarModalMisionPreview) {
       this.inputOrchestrator.lockPointer();
     }
-  }
-
-  cargarEpisodios() {
-    this.epiApiSvc.obtenerEpisodios().subscribe({
-      next: (res) => { this.listaEpisodios = res; this.cdr.detectChanges(); },
-      error: (err) => console.error('Error al cargar episodios', err)
-    });
   }
 
   seleccionarArchivoSubida(event: any) { this.addObjSvc.seleccionarArchivoSubida(event); }
@@ -421,73 +196,21 @@ export class EditorEscena implements OnInit, OnDestroy {
   cerrarModalObjeto() { this.addObjSvc.cerrarModalObjeto(); }
 
   crearNuevoEpisodio() {
-    if (!this.missionSvc.newMapTitle) return;
-    this.epiApiSvc.crearEpisodio(this.missionSvc.newMapTitle, this.missionSvc.newMapDesc).subscribe({
-      next: (res) => {
-        const episodeData = res.episode || res;
-        this.listaEpisodios.unshift(episodeData);
-        this.missionSvc.cerrarCrearMapa();
-        
-        if (res.initialScene) {
-          episodeData.initialScene = res.initialScene;
-        }
-        this.entrarAlEditor(episodeData);
-      },
-      error: (err) => alert('Error creando episodio')
-    });
+    this.orchestrator.crearNuevoEpisodio(this.missionSvc.newMapTitle, this.missionSvc.newMapDesc);
   }
 
   guardarMapaEnBD(silencioso = false) {
-    const sceneId = this.editorSvc.escenaIdActiva();
-    if (!sceneId || !this.editando || !this.esAdmin) return;
-    this.estadoGuardado.set('Guardando...');
-
-    const mapData = this.sceneSvc.obtenerDatosParaGuardar(this.editorSvc.escenaActualData());
-    
-    this.epiApiSvc.guardarMapaEscena(sceneId, mapData).subscribe({
-      next: () => {
-        this.entityManager.clearDirtyFlags();
-        this.entityManager.clearDeletedRecords();
-        
-        this.cinematicSvc.deletedCinematics = [];
-
-        this.estadoGuardado.set('Guardado automático ✓');
-        
-        this.windowSync.broadcast({
-          type: 'SYNC_MAP_DATA',
-          payload: mapData
-        });
-
-        if (!silencioso) alert('Plataforma guardada exitosamente');
-        setTimeout(() => { if (this.estadoGuardado() === 'Guardado automático ✓') this.estadoGuardado.set(''); }, 3000);
-      },
-      error: (err) => {
-        this.estadoGuardado.set('Error al guardar ⚠️');
-      }
-    });
+    this.orchestrator.guardarMapaEnBD(silencioso);
   }
 
   abrirVentanaPreview() {
-    const sceneId = this.editorSvc.escenaIdActiva();
-    if (!sceneId || !this.isPlayable()) return;
-    
-    this.guardarMapaEnBD(true);
-    
-    const url = this.router.serializeUrl(
-      this.router.createUrlTree(['/jugador/jugar', sceneId], { queryParams: { detached: 'true' } })
-    );
-    
-    window.open(url, '_blank', 'width=1280,height=720,menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes');
+    this.orchestrator.abrirVentanaPreview();
   }
 
   iniciarModoPrueba() {
-    if (!this.isPlayable()) return;
-    this.guardarMapaEnBD(true);
-    
     this.mostrarModalMisionPreview = false;
     this.misionIniciada = true;
-    
-    (this.playModeSvc as any).testearEscena(this.vistaPrueba);
+    this.orchestrator.iniciarModoPrueba(this.vistaPrueba);
   }
 
   comenzarMisionPreview() {
@@ -523,20 +246,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   async detenerModoPrueba() {
-    if (this.stateSvc.playState() === 'EDITOR') return;
-    
     this.mostrarModalMisionPreview = false;
-    this.cargandoEscena.set(true);
-    this.cargandoTexto.set('Restaurando Editor...');
-    this.cdr.detectChanges();
-
-    await (this.playModeSvc as any).detenerPrueba();
-
-    this.cargandoEscena.set(false);
-    this.revisarSiEsJugable(); 
-    this.cdr.detectChanges();
-
-    setTimeout(() => this.editorSvc.onMapChanged.next(), 500);
+    await this.orchestrator.detenerModoPrueba();
   }
 
   cerrarInteraccion() {
@@ -544,30 +255,11 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   salirDelEditor() {
-    this.editando = false;
-    this.cargandoEscena.set(false);
-    this.layoutSvc.mostrarMenu();
-    this.editorSvc.limpiarEstado();
-    this.toolsSvc.limpiarEstado();
-    this.cargarEpisodios();
-
+    this.orchestrator.salirDelEditor();
     this.isInteracting.set(false);
-    if (this.fpsInterval) {
-        clearInterval(this.fpsInterval);
-        this.fpsInterval = null;
-    }
   }
 
   ngOnDestroy(): void {
-    this.layoutSvc.mostrarMenu();
-    this.editorSvc.limpiarEstado();
-    this.toolsSvc.limpiarEstado();
-    this.inputOrchestrator.disposeListeners();
-    this.liveBuilderSvc.destroy(); 
-    if (this.fpsInterval) clearInterval(this.fpsInterval);
-    if (this.autoSaveSub) this.autoSaveSub.unsubscribe();
-    if (this.eventBusSub) this.eventBusSub.unsubscribe();
-    if (this.reqPlatformSub) this.reqPlatformSub.unsubscribe();
-    if (this.mapChangeSub) this.mapChangeSub.unsubscribe();
+    this.orchestrator.destroy();
   }
 }

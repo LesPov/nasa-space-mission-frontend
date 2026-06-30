@@ -1,4 +1,6 @@
 
+// src/app/services/editor/editor-play-mode.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, MeshBuilder, Tags, Vector3, Observer, Scene } from '@babylonjs/core';
 
@@ -7,49 +9,29 @@ import { EditorStateService } from './editor-state.service';
 import { EditorCameraService } from './editor-camera.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.service';
-import { EditorMapaService } from '../editor-mapa.service';
-import { EditorSceneService } from './editor-scene.service';
 import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
-import { GameStateService } from '../../core/engine/runtime/state/game-state.service'; 
 import { CameraViewMode } from '../../core/engine/session/game-context.model';
 import { GameMode } from '../../core/engine/session/game-mode.model';
 import { GameContextService } from '../../core/engine/session/game-context.service';
-import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
-import { EditorModeTransitionService } from './editor-mode-transition.service';
 import { CAMERA_BEHAVIOR_PROFILES } from '../../core/engine/runtime/cameras/camera-behavior-profile.model';
-import { AuthService } from '../../core/services/auth';
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
 import { CharacterConfigComponent, PlayerRuntimeComponent, GameEntity } from '../../core/engine/entities/game.entity';
 import { cloneDefaultPlayerConfig } from '../../core/engine/models/player-config.model';
+import { EditorModeTransitionService } from './editor-mode-transition.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
-  private mapaSvc = inject(EditorMapaService);
-  private sceneSvc = inject(EditorSceneService);
   private cameraSvc = inject(EditorCameraService);
   private entityManager = inject(EntityManagerService);
   private runtimeEngine = inject(RuntimeEngineService);
   private inputOrchestrator = inject(InputOrchestratorService);
-  private gameState = inject(GameStateService); 
   private gameContext = inject(GameContextService);
-  private eventBus = inject(GameEventBusService);
-  private authSvc = inject(AuthService);
-  private transitionSvc = inject(EditorModeTransitionService);
   private ownership = inject(CameraOwnershipService);
+  private transitionSvc = inject(EditorModeTransitionService);
 
-  private snapshotMemoria: any = null;
-
-  constructor() {
-    this.eventBus.events$.subscribe(e => {
-       if (e.type === 'CameraViewChanged') {
-          this.gameContext.setCameraView(e.payload as CameraViewMode);
-       }
-    });
-  }
-
-  public testearEscena(vista: CameraViewMode, skipIntro: boolean = false): void {
+  public prepararEscenaParaTest(vista: CameraViewMode, skipIntro: boolean = false): void {
     if (this.motor3d.getEditorCamera()) {
         this.motor3d.getEditorCamera().computeWorldMatrix();
     }
@@ -113,13 +95,6 @@ export class EditorPlayModeService {
     if (!objMesh || !playerEntity) {
         console.warn("No hay personaje jugable ni spawn point para iniciar el Test Live.");
         return;
-    }
-
-    if (!skipIntro) {
-      this.cameraSvc.guardarEstadoCamaraLibre();
-      this.gameState.enterSandbox();
-      this.transitionSvc.beginTestLive();
-      this.snapshotMemoria = JSON.parse(JSON.stringify(this.mapaSvc.escenaActualData()));
     }
 
     playerEntity.isPersistent = true;
@@ -196,7 +171,6 @@ export class EditorPlayModeService {
 
         if (!skipIntro) this.transitionSvc.finishTestLiveTransition();
         this.runtimeEngine.startTestSession(playerEntity!, vista);
-        this.mapaSvc.onMapChanged.next();
         
         setTimeout(() => {
             const canvas = this.motor3d.getEngine().getRenderingCanvas();
@@ -230,79 +204,7 @@ export class EditorPlayModeService {
     }
   }
 
-  public async detenerPrueba(): Promise<void> {
-    this.transitionSvc.stopTestLive();
-    this.runtimeEngine.stopTestSession();
-    this.gameState.exitSandbox();
-
-    const isDebugMode = this.authSvc.isAdmin();
-
-    if (this.snapshotMemoria) {
-        const currentId = this.mapaSvc.escenaIdActiva();
-        const snapId = this.snapshotMemoria.scene?.id || this.snapshotMemoria.id;
-
-        if (snapId && currentId !== snapId) {
-            this.snapshotMemoria = JSON.parse(JSON.stringify(this.mapaSvc.escenaActualData()));
-        } else {
-            const cambiosEnPlay: any = this.sceneSvc.obtenerDatosParaGuardar(this.mapaSvc.escenaActualData(), true); 
-            
-            if (!this.snapshotMemoria.sceneObjects) this.snapshotMemoria.sceneObjects = this.snapshotMemoria.sceneObjectsDelta || [];
-            if (!this.snapshotMemoria.triggers) this.snapshotMemoria.triggers = this.snapshotMemoria.triggersDelta || [];
-            if (!this.snapshotMemoria.deletedObjects) this.snapshotMemoria.deletedObjects = [];
-            if (!this.snapshotMemoria.deletedTriggers) this.snapshotMemoria.deletedTriggers = [];
-
-            delete this.snapshotMemoria.sceneObjectsDelta;
-            delete this.snapshotMemoria.triggersDelta;
-
-            cambiosEnPlay.sceneObjectsDelta.forEach((delta: any) => {
-                if (delta.name === 'Jugador_Prueba') return;
-                const index = this.snapshotMemoria.sceneObjects.findIndex((o: any) => o.uid === delta.uid);
-                if (index !== -1) this.snapshotMemoria.sceneObjects[index] = delta;
-                else this.snapshotMemoria.sceneObjects.push(delta);
-            });
-
-            cambiosEnPlay.triggersDelta.forEach((delta: any) => {
-                const index = this.snapshotMemoria.triggers.findIndex((o: any) => o.uid === delta.uid);
-                if (index !== -1) this.snapshotMemoria.triggers[index] = delta;
-                else this.snapshotMemoria.triggers.push(delta);
-            });
-
-            if (cambiosEnPlay.environmentSettings) {
-                this.snapshotMemoria.environmentSettings = JSON.parse(JSON.stringify(cambiosEnPlay.environmentSettings));
-            }
-            if (cambiosEnPlay.uiSettings) {
-                this.snapshotMemoria.uiSettings = JSON.parse(JSON.stringify(cambiosEnPlay.uiSettings));
-            }
-
-            if (cambiosEnPlay.cinematicsDelta) {
-                this.snapshotMemoria.cinematics = JSON.parse(JSON.stringify(cambiosEnPlay.cinematicsDelta));
-            }
-
-            if (cambiosEnPlay.deletedObjects.length > 0) {
-                this.snapshotMemoria.sceneObjects = this.snapshotMemoria.sceneObjects.filter((o: any) => !cambiosEnPlay.deletedObjects.includes(o.uid));
-                this.snapshotMemoria.deletedObjects = [...new Set([...this.snapshotMemoria.deletedObjects, ...cambiosEnPlay.deletedObjects])];
-            }
-            if (cambiosEnPlay.deletedTriggers.length > 0) {
-                this.snapshotMemoria.triggers = this.snapshotMemoria.triggers.filter((o: any) => !cambiosEnPlay.deletedTriggers.includes(o.uid));
-                this.snapshotMemoria.deletedTriggers = [...new Set([...this.snapshotMemoria.deletedTriggers, ...cambiosEnPlay.deletedTriggers])];
-            }
-        }
-
-        this.mapaSvc.setEscenaActualData(JSON.parse(JSON.stringify(this.snapshotMemoria)));
-
-        this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
-        this.entityManager.clear();
-
-        const scene = this.motor3d.getScene();
-        const meshesToDispose = scene.meshes.filter(m => !Tags.MatchesQuery(m, "system_element") && !Tags.MatchesQuery(m, "editor_only"));
-        meshesToDispose.forEach(m => {
-            if (!m.isDisposed()) m.dispose(false, false); 
-        });
-
-        await this.sceneSvc.cargarEscenaDesdeDatos(this.snapshotMemoria);
-        this.snapshotMemoria = null;
-    }
-
+  public restaurarEscenaPostTest(isDebugMode: boolean): void {
     this.motor3d.getScene().meshes.forEach(m => {
         if (Tags.MatchesQuery(m, "editor_only")) {
             m.setEnabled(true);
@@ -329,7 +231,5 @@ export class EditorPlayModeService {
     
     const canvas = this.motor3d.getEngine().getRenderingCanvas();
     this.ownership.setCamera('EDITOR', editorCam, canvas, true);
-    
-    this.mapaSvc.onMapChanged.next();
   }
 }

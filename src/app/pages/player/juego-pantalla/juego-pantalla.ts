@@ -1,4 +1,5 @@
 
+// src/app/pages/player/juego-pantalla/juego-pantalla.ts
 
 import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -21,19 +22,20 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
 import { GameMode } from '../../../core/engine/session/game-mode.model'; 
 import { EditorCinematicService } from '../../../services/editor/editor-cinematic.service';
- 
+import { EditorLiveSyncService } from '../../../services/editor/editor-live-sync.service';
+
 import { UiHud } from '../../../components/ui-hud/ui-hud';
 import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiMission } from '../../../components/ui-mission/ui-mission';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
-import { UiRadialMenu } from '../../../components/ui-radial-menu/ui-radial-menu'; // 🔥 ADDED
+import { UiRadialMenu } from '../../../components/ui-radial-menu/ui-radial-menu';
 import { WindowSyncService } from '../../../core/services/window-sync.service';
 import { LiveBuilderService } from '../../../services/editor/live-builder.service';
 
 @Component({
   selector: 'app-juego-pantalla',
   standalone: true, 
-  imports: [CommonModule, MotorBabylon, UiHud, UiInspect, UiMission, UiLoading, UiRadialMenu], // 🔥 Añadido UiRadialMenu
+  imports: [CommonModule, MotorBabylon, UiHud, UiInspect, UiMission, UiLoading, UiRadialMenu],
   templateUrl: './juego-pantalla.html',
   styleUrls: ['./juego-pantalla.css']
 })
@@ -55,7 +57,8 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private worldSettingsSvc = inject(WorldSettingsService);
   private windowSync = inject(WindowSyncService);
   private cinematicSvc = inject(EditorCinematicService); 
-  private liveBuilderSvc = inject(LiveBuilderService); // 🔥 ADDED
+  private liveBuilderSvc = inject(LiveBuilderService);
+  private liveSync = inject(EditorLiveSyncService);
 
   public isInteracting = signal<boolean>(false);
   public pointerLocked = signal<boolean>(false);
@@ -105,7 +108,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       this.gameContext.setMode(this.isAdmin && !this.isDetached ? GameMode.PREVIEW_ADMIN : GameMode.FINAL_USER);
     });
 
-    // 🔥 Iniciar servicio de construcción en vivo
     if (this.isAdmin) {
       this.liveBuilderSvc.initialize();
     }
@@ -173,11 +175,13 @@ export class JuegoPantalla implements OnInit, OnDestroy {
           }, 500);
 
           if (this.isDetached) {
-             this.windowSync.messages$.subscribe(msg => {
+             this.windowSync.messages$.subscribe(async msg => {
                if (msg.type === 'SYNC_MAP_DATA') {
-                 this.handleLiveSync(msg.payload);
+                 this.isSyncing.set(true);
+                 this.episodioActual = await this.liveSync.handleLiveSync(msg.payload, this.episodioActual);
+                 this.isSyncing.set(false);
                } else if (msg.type === 'SYNC_TRANSFORM_LIVE') {
-                 this.handleLiveTransform(msg.payload);
+                 this.liveSync.handleLiveTransform(msg.payload);
                }
              });
           }
@@ -202,92 +206,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     }
     this.runtime.shutdownProductionGame();
     this.cargarPlataforma(sceneId, true);
-  }
-
-  handleLiveTransform(data: any) {
-      const entity = this.entityManager.getEntityByUid(data.uid);
-      if (entity && entity.view) {
-          entity.view.position.set(data.position.x, data.position.y, data.position.z);
-          if (data.rotationQuaternion && entity.view.rotationQuaternion) {
-              entity.view.rotationQuaternion.set(data.rotationQuaternion.x, data.rotationQuaternion.y, data.rotationQuaternion.z, data.rotationQuaternion.w);
-          } else if (data.rotation) {
-              entity.view.rotation.set(data.rotation.x, data.rotation.y, data.rotation.z);
-          }
-          entity.view.scaling.set(data.scaling.x, data.scaling.y, data.scaling.z);
-          entity.syncTransformFromView();
-      }
-  }
-
-  async handleLiveSync(newMapData: any) {
-    this.isSyncing.set(true);
-    let requiereReboot = false;
-
-    if (newMapData.cinematicsDelta) {
-       this.cinematicSvc.loadFromData(newMapData.cinematicsDelta);
-    }
-
-    if (newMapData.deletedObjects?.length) newMapData.deletedObjects.forEach((uid: string) => this.entityManager.removeEntity(uid));
-    if (newMapData.deletedTriggers?.length) newMapData.deletedTriggers.forEach((uid: string) => this.entityManager.removeEntity(uid));
-
-    const procesarDeltas = (deltas: any[]) => {
-        if (!deltas) return;
-        for (const delta of deltas) {
-            const entity = this.entityManager.getEntityByUid(delta.uid);
-            if (entity) {
-                if (delta.position) entity.transform.position = { ...delta.position };
-                if (delta.rotation) entity.transform.rotation = { ...delta.rotation };
-                if (delta.scale) entity.transform.scale = { ...delta.scale };
-                if (delta.properties) {
-                   if (delta.properties.color) entity.visual.color = delta.properties.color;
-                   if (delta.properties.colorBW) entity.visual.colorBW = delta.properties.colorBW;
-                }
-                entity.syncToView();
-                entity.isDirty = false;
-            } else {
-                requiereReboot = true;
-            }
-        }
-    };
-
-    procesarDeltas(newMapData.sceneObjectsDelta);
-    procesarDeltas(newMapData.triggersDelta);
-
-    if (newMapData.environmentSettings || newMapData.uiSettings) {
-        this.worldSettingsSvc.loadFromDb(newMapData.environmentSettings, newMapData.uiSettings);
-        this.worldSettingsSvc.applyToScene(this.motor3dSvc.getScene(), (mode) => this.motor3dSvc.setVisualMode(mode));
-    }
-
-    if (requiereReboot) {
-        let lastPos: any = null;
-        let lastRotQuat: any = null;
-        let lastRotEuler: any = null;
-        
-        const playerEnt = this.gameContext.activePlayerEntity();
-        if (playerEnt && playerEnt.view) {
-           lastPos = playerEnt.view.position.clone();
-           if (playerEnt.view.rotationQuaternion) {
-               lastRotQuat = { x: playerEnt.view.rotationQuaternion.x, y: playerEnt.view.rotationQuaternion.y, z: playerEnt.view.rotationQuaternion.z, w: playerEnt.view.rotationQuaternion.w };
-           } else {
-               lastRotEuler = { x: playerEnt.view.rotation.x, y: playerEnt.view.rotation.y, z: playerEnt.view.rotation.z };
-           }
-        }
-
-        this.episodioActual = { ...this.episodioActual, ...newMapData };
-        try {
-          const spawnEntity = await this.runtime.bootProductionGame(this.episodioActual);
-          if (lastPos && spawnEntity.view) {
-             spawnEntity.view.position.copyFrom(lastPos);
-             if (lastRotQuat && spawnEntity.view.rotationQuaternion) {
-                 spawnEntity.view.rotationQuaternion.set(lastRotQuat.x, lastRotQuat.y, lastRotQuat.z, lastRotQuat.w);
-             } else if (lastRotEuler && !spawnEntity.view.rotationQuaternion) {
-                 spawnEntity.view.rotation.set(lastRotEuler.x, lastRotEuler.y, lastRotEuler.z);
-             }
-             spawnEntity.syncTransformFromView();
-          }
-        } catch(e) {}
-    }
-
-    this.isSyncing.set(false);
   }
 
   comenzarMisionUsuario() {
@@ -335,7 +253,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     this.runtime.shutdownProductionGame();
     
     if (this.isAdmin) {
-       this.liveBuilderSvc.destroy(); // Apagar builder
+       this.liveBuilderSvc.destroy(); 
        this.router.navigate(['/admin/editor-escena']);
     } else {
        this.router.navigate(['/jugador/episodios']);

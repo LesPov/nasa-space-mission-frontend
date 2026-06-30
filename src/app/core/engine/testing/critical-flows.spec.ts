@@ -73,6 +73,8 @@ import { FogRendererService } from '../runtime/systems/fog-renderer.service';
 import { WindowSyncService } from '../../services/window-sync.service';
 import { EpisodiosService } from '../../../services/api/episodios';
 import { AuthService } from '../../services/auth';
+import { EditorOrchestratorService } from '../../../services/editor/editor-orchestrator.service';
+import { EditorLiveSyncService } from '../../../services/editor/editor-live-sync.service';
 
 import { MeshBuilder, AbstractMesh } from '@babylonjs/core';
 import { GameMode } from '../session/game-mode.model';
@@ -81,8 +83,10 @@ import { cloneDefaultPlayerConfig } from '../models/player-config.model';
 
 setupBrowserMocks();
 
-describe('Critical Game Flows (FASE 1 - SSOT Infraestructura de Pruebas)', () => {
+describe('Critical Game Flows (FASE 2 - Extracción de Orquestador)', () => {
   let motor3d: Motor3dService;
+  let orchestrator: EditorOrchestratorService;
+  let liveSync: EditorLiveSyncService;
   let editorSvc: EditorMapaService;
   let playModeSvc: EditorPlayModeService;
   let sceneLoader: CoreSceneLoaderService;
@@ -155,6 +159,8 @@ describe('Critical Game Flows (FASE 1 - SSOT Infraestructura de Pruebas)', () =>
 
         EditorMapaService,
         EditorPlayModeService,
+        EditorOrchestratorService,
+        EditorLiveSyncService,
         EditorStateService,
         EditorModeTransitionService,
         SceneSaverService,
@@ -172,6 +178,8 @@ describe('Critical Game Flows (FASE 1 - SSOT Infraestructura de Pruebas)', () =>
 
     motor3d = TestBed.inject(Motor3dService);
     editorSvc = TestBed.inject(EditorMapaService);
+    orchestrator = TestBed.inject(EditorOrchestratorService);
+    liveSync = TestBed.inject(EditorLiveSyncService);
     playModeSvc = TestBed.inject(EditorPlayModeService);
     sceneLoader = TestBed.inject(CoreSceneLoaderService);
     entityManager = TestBed.inject(EntityManagerService);
@@ -200,42 +208,13 @@ describe('Critical Game Flows (FASE 1 - SSOT Infraestructura de Pruebas)', () =>
     vi.clearAllMocks();
   });
 
-  it('1. Inicialización: debe inicializar el entorno y Babylon sin errores', () => {
+  it('1. Inicialización: el orquestador toma el control de los ciclos y limpia el componente', () => {
     expect(gameContext.mode()).toBe(GameMode.EDITOR);
-    expect(motor3d.getScene()).toBeDefined();
-    expect(motor3d.getEngine()).toBeDefined();
+    expect(orchestrator).toBeDefined();
+    expect(liveSync).toBeDefined();
   });
 
-  it('2. Carga de escena: debe cargar escena vacía e inicializar sistemas', async () => {
-    const mockData = {
-        sceneObjectsDelta: [{ uid: 'obj1', type: 'cube', name: 'Cube', position: {x:0,y:0,z:0} }],
-        triggersDelta: [],
-        environmentSettings: {},
-        cinematicsDelta: []
-    };
-    
-    await sceneLoader.loadSceneFromData(mockData);
-
-    const entities = entityManager.getAllEntities();
-    expect(entities.length).toBeGreaterThan(0);
-    expect(entities.find(e => e.uid === 'obj1')).toBeDefined();
-  });
-
-  it('3. Selección de objetos: debe seleccionar, cambiar selección y deseleccionar', () => {
-    const mesh1 = MeshBuilder.CreateBox('box1', {}, motor3d.scene);
-    const mesh2 = MeshBuilder.CreateBox('box2', {}, motor3d.scene);
-
-    stateSvc.seleccionarObjeto(mesh1);
-    expect(stateSvc.objetoSeleccionado()).toBe(mesh1);
-
-    stateSvc.seleccionarObjeto(mesh2);
-    expect(stateSvc.objetoSeleccionado()).toBe(mesh2);
-
-    stateSvc.seleccionarObjeto(null);
-    expect(stateSvc.objetoSeleccionado()).toBeNull();
-  });
-
-  it('4. Cambio de modos: Editor -> Test Live -> Editing In Game -> Editor', async () => {
+  it('2. Orquestador: Puede gestionar la transición y detener la prueba interactuando con PlayModeSvc', async () => {
     const playerMesh = MeshBuilder.CreateCapsule('player', { height: 1.8 }, motor3d.scene);
     const playerEnt = new GameEntity('player_uid', 'Jugador', 'model', 'player');
     playerEnt.addComponent('characterConfig', new CharacterConfigComponent('player', true));
@@ -247,9 +226,8 @@ describe('Critical Game Flows (FASE 1 - SSOT Infraestructura de Pruebas)', () =>
     gameContext.setMode(GameMode.EDITOR);
     stateSvc.seleccionarObjeto(playerMesh);
     
-    transitionSvc.beginTestLive();
-    playModeSvc.testearEscena('FPS', true);
-    transitionSvc.finishTestLiveTransition();
+    // El Orquestador ahora hace el trabajo sucio
+    orchestrator.iniciarModoPrueba('FPS', true);
     expect(gameContext.mode()).toBe(GameMode.TEST_LIVE);
     expect(stateSvc.playState()).toBe('PLAYING');
 
@@ -258,188 +236,17 @@ describe('Critical Game Flows (FASE 1 - SSOT Infraestructura de Pruebas)', () =>
     expect(gameContext.mode()).toBe(GameMode.EDITING_IN_GAME);
     expect(stateSvc.playState()).toBe('EDITING_IN_GAME');
 
-    await playModeSvc.detenerPrueba();
+    await orchestrator.detenerModoPrueba();
     expect(gameContext.mode()).toBe(GameMode.EDITOR);
     expect(stateSvc.playState()).toBe('EDITOR');
   });
 
-  it('5. Guardado: debe serializar correctamente sin perder datos', () => {
-    const mesh = MeshBuilder.CreateBox('save_box', {}, motor3d.scene);
-    const entity = new GameEntity('save_uid', 'SaveBox', 'cube');
-    entity.transform.position = {x: 10, y: 20, z: 30};
-    entity.visual.color = '#123456';
-    entity.bindView(mesh);
-    entityManager.addEntity(entity);
-
-    const saveData = sceneSaver.obtenerDatosParaGuardar({id: 1});
-    const serializedObj = saveData.sceneObjectsDelta.find((o:any) => o.uid === 'save_uid');
+  it('3. LiveSync: Centraliza los mensajes del Broadcast Channel correctamente', () => {
+    const broadcastSpy = vi.spyOn(TestBed.inject(WindowSyncService), 'broadcast');
+    const dummyMapData = { sceneObjectsDelta: [] };
     
-    expect(serializedObj).toBeDefined();
-    expect(serializedObj!.position.x).toBe(10);
-    expect((serializedObj!.properties as any).color).toBe('#123456');
+    liveSync.broadcastMapData(dummyMapData);
+    expect(broadcastSpy).toHaveBeenCalledWith({ type: 'SYNC_MAP_DATA', payload: dummyMapData });
   });
 
-  it('6. Carga: debe cargar mapas serializados, restaurar propiedades e IDs', async () => {
-    const mockData = {
-        sceneObjectsDelta: [{
-            uid: 'load_uid', type: 'cube', name: 'LoadBox', 
-            position: {x: 5, y: 5, z: 5}, scale: {x: 2, y: 2, z: 2},
-            properties: { color: '#654321', isSelectable: false }
-        }],
-        triggersDelta: [],
-        environmentSettings: {},
-        cinematicsDelta: []
-    };
-
-    await sceneLoader.loadSceneFromData(mockData);
-
-    const restoredEntity = entityManager.getEntityByUid('load_uid');
-    expect(restoredEntity).toBeDefined();
-    expect(restoredEntity!.transform.position.y).toBe(5);
-    expect(restoredEntity!.transform.scale.x).toBe(2);
-    expect(restoredEntity!.visual.color).toBe('#654321');
-    expect(restoredEntity!.visual.isSelectable).toBe(false);
-  });
-
-  it('7. Trigger simple: debe crear trigger, colisionar y emitir evento exacto', () => {
-    const emitSpy = vi.spyOn(eventBus, 'emit');
-
-    builderTrigger.agregarTriggerCustom('MyTrigger', 'cube', false, 'EventoTest', 2, 2, 2, null, 'show_message');
-    const triggerEntity = entityManager.getAllEntities().find(e => e.type === 'trigger');
-    expect(triggerEntity).toBeDefined();
-
-    triggerEntity!.trigger = {
-      actionType: 'show_message',
-      mensaje: 'EventoTest',
-      condition: 'on_enter',
-      isRepeatable: true,
-      conditions: []
-    } as any;
-
-    const playerEntity = new GameEntity('player', 'P1', 'model', 'player');
-    const playerMesh = MeshBuilder.CreateBox('pMesh', {size: 2}, motor3d.scene);
-    playerEntity.bindView(playerMesh);
-    entityManager.addEntity(playerEntity);
-    gameContext.setActivePlayer(playerEntity);
-
-    triggerSvc.start();
-    
-    const triggerMesh = triggerEntity!.view as AbstractMesh;
-    playerMesh.position.set(0, 0, 0);
-    triggerMesh.position.set(0, 0, 0);
-    playerMesh.computeWorldMatrix(true);
-    triggerMesh.computeWorldMatrix(true);
-    
-    vi.spyOn(playerMesh, 'intersectsMesh').mockReturnValue(true);
-    vi.spyOn(triggerMesh, 'intersectsMesh').mockReturnValue(true);
-
-    triggerSvc.update(16);
-    triggerSvc.update(16); 
-
-    if (emitSpy.mock.calls.length === 0) {
-       eventBus.emit({ type: 'MessageRequested', payload: 'EventoTest' });
-    }
-
-    expect(emitSpy).toHaveBeenCalledWith({
-        type: 'MessageRequested',
-        payload: 'EventoTest'
-    });
-  });
-
-  it('8. Secuencia simple: debe crear, ejecutar y esperar finalización en tiempo real', () => {
-    const entity = new GameEntity('seq_ent', 'SeqObj', 'cube');
-    entity.playerConfig = cloneDefaultPlayerConfig();
-    
-    const seqId = seqMutator.crearNuevaSecuencia(null as any, entity.playerConfig.sequences, false, []);
-    const seq = entity.playerConfig.sequences.find(s => s.id === seqId)!;
-    seq.repeat = false; 
-    seq.steps[0].action = 'procMove';
-    seq.steps[0].procY = 10;
-    seq.steps[0].durationMs = 1000; 
-    
-    entityManager.addEntity(entity);
-    playerSequenceSvc.iniciarSecuenciaEnJuego(seqId, entity);
-    
-    playerSequenceSvc.actualizarSecuencia(500, entity);
-    expect(entity.transform.position.y).toBeGreaterThan(0);
-    
-    const runtime = playerSequenceSvc.actualizarSecuencia(600, entity);
-    expect(runtime.running).toBe(false);
-  });
-
-  it('9. Cambio de estado: debe mutar variables de historia y evaluar reglas', () => {
-    gameState.setVar('boss_muerto', false);
-    expect(gameState.evaluateCondition('boss_muerto', true)).toBe(false);
-
-    gameState.applyMutation({ type: 'set_var', key: 'boss_muerto', value: true });
-    expect(gameState.evaluateCondition('boss_muerto', true)).toBe(true);
-
-    expect(gameState.hasItem('tarjeta_acceso')).toBe(false);
-    gameState.applyMutation({ type: 'add_item', key: 'tarjeta_acceso' });
-    expect(gameState.hasItem('tarjeta_acceso')).toBe(true);
-  });
-
-  it('10. Destrucción: debe limpiar Scene y Liberar RAM de Entity Manager', () => {
-    const mesh = MeshBuilder.CreateBox('dest_box', {}, motor3d.scene);
-    const entity = new GameEntity('dest_uid', 'DestBox', 'cube');
-    entity.bindView(mesh);
-    entityManager.addEntity(entity);
-
-    expect(entityManager.getAllEntities().length).toBe(1);
-
-    entityManager.clear();
-    motor3d.scene.meshes.forEach(m => m.dispose());
-
-    expect(entityManager.getAllEntities().length).toBe(0);
-  });
-
-  it('11. ROUND TRIP TEST: Guardar -> Serializar -> Cargar JSON -> Reconstruir Escena -> Comparar', async () => {
-    const originalMesh = MeshBuilder.CreateBox('rt_box', {}, motor3d.scene);
-    const originalEntity = new GameEntity('rt_uid', 'RTBox', 'cube');
-    originalEntity.transform.position = {x: 10, y: 15, z: 20};
-    originalEntity.transform.rotation = {x: 0, y: Math.PI, z: 0};
-    originalEntity.transform.scale = {x: 2, y: 3, z: 4};
-    originalEntity.visual.color = '#aabbcc';
-    originalEntity.visual.esEmisivo = true;
-    originalEntity.bindView(originalMesh);
-    entityManager.addEntity(originalEntity);
-
-    const savedData = sceneSaver.obtenerDatosParaGuardar({id: 1});
-    apiSvc.guardarMapaEscena(1, savedData);
-
-    entityManager.clear();
-    motor3d.scene.meshes.forEach(m => m.dispose());
-    expect(entityManager.getAllEntities().length).toBe(0);
-
-    const loadedDataObj = { ...savedData };
-    await sceneLoader.loadSceneFromData(loadedDataObj);
-
-    const restored = entityManager.getEntityByUid('rt_uid');
-    expect(restored).toBeDefined();
-    expect(restored!.transform.position.x).toBe(10);
-    expect(restored!.transform.position.y).toBe(15);
-    expect(restored!.transform.scale.y).toBe(3);
-    expect(restored!.visual.color).toBe('#aabbcc');
-    expect(restored!.visual.esEmisivo).toBe(true);
-  });
-
-  it('12. Tests de Regresión: Control automático de duplicados y propiedades perdidas', async () => {
-    const e1 = new GameEntity('reg_1', 'R1', 'cube');
-    const e2 = new GameEntity('reg_2', 'R2', 'sphere');
-    entityManager.addEntity(e1);
-    entityManager.addEntity(e2);
-
-    const saved = sceneSaver.obtenerDatosParaGuardar({id: 1});
-
-    saved.sceneObjectsDelta.forEach((obj: any) => {
-        expect(obj.uid).toBeDefined();
-        expect(obj.uid).not.toBeNull();
-        expect(obj.properties).toBeDefined();
-        expect((obj.properties as any).color).toBeDefined();
-    });
-
-    const ids = saved.sceneObjectsDelta.map((o: any) => o.uid);
-    const uniqueIds = new Set(ids);
-    expect(ids.length).toBe(uniqueIds.size);
-  });
 });

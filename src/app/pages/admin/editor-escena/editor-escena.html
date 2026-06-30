@@ -1,6 +1,6 @@
 
-
-<ng-container *ngIf="!editando && !cargandoEscena()">
+<!-- src/app/pages/admin/editor-escena/editor-escena.html -->
+<ng-container *ngIf="!editando && !cargandoEscena">
   <div class="galeria-header">
     <div>
       <h2>Tus Mapas / Episodios</h2>
@@ -197,8 +197,8 @@
       
       <div class="canvas-wrapper" [style.height.%]="layoutUI.showTimeline() ? 100 - layoutUI.timelineHeight() : 100">
         
-        <div class="cinematic-overlay" *ngIf="cargandoEscena()">
-          <app-ui-loading [texto]="cargandoTexto()"></app-ui-loading>
+        <div class="cinematic-overlay" *ngIf="cargandoEscena">
+          <app-ui-loading [texto]="cargandoTexto"></app-ui-loading>
         </div>
 
         <div class="viewport-topbar">
@@ -230,18 +230,18 @@
               <option value="TPS">🧍 3ra Persona</option>
             </select>
             
-            <button class="btn-vp btn-play" *ngIf="stateSvc.playState() === 'EDITOR'" [disabled]="!isPlayable()" (click)="iniciarModoPrueba()">▶️ Jugar Preview</button>
+            <button class="btn-vp btn-play" *ngIf="stateSvc.playState() === 'EDITOR'" [disabled]="!isPlayable" (click)="iniciarModoPrueba()">▶️ Jugar Preview</button>
             
-            <button class="btn-vp btn-window" *ngIf="stateSvc.playState() === 'EDITOR'" [disabled]="!isPlayable()" (click)="abrirVentanaPreview()">🪟 Ventana Externa</button>
+            <button class="btn-vp btn-window" *ngIf="stateSvc.playState() === 'EDITOR'" [disabled]="!isPlayable" (click)="abrirVentanaPreview()">🪟 Ventana Externa</button>
 
-            <span class="sync-status" [class.syncing]="estadoGuardado() === 'Guardando...'" *ngIf="stateSvc.playState() === 'EDITOR'">{{ estadoGuardado() }}</span>
+            <span class="sync-status" [class.syncing]="estadoGuardado === 'Guardando...'" *ngIf="stateSvc.playState() === 'EDITOR'">{{ estadoGuardado }}</span>
             <button class="btn-vp btn-save" (click)="guardarMapaEnBD(false)" *ngIf="stateSvc.playState() === 'EDITOR'">💾 Guardar</button>
             <button class="btn-vp btn-stop" *ngIf="stateSvc.playState() !== 'EDITOR'" (click)="detenerModoPrueba()">⏹️ Volver al Editor</button>
           </div>
         </div>
 
         <div class="canvas-container" (click)="onCanvasClick()">
-          <div class="fps-badge">FPS: {{ fps() }}</div>
+          <div class="fps-badge">FPS: {{ fps }}</div>
 
           <ng-container>
             <button class="toggle-panel-btn toggle-right" (click)="layoutUI.toggleInspector()" [title]="layoutUI.showInspector() ? 'Ocultar Inspector' : 'Mostrar Inspector'">{{ layoutUI.showInspector() ? '▶' : '◀' }}</button>

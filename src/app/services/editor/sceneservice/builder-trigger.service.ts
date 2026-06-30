@@ -77,7 +77,7 @@ export class BuilderTriggerService {
     mat.alpha = 0.4;
     mat.wireframe = false; 
     mat.disableLighting = true;
-    mat.maxSimultaneousLights = 16; // 🔥 FIX LÍMITE LUCES
+    mat.maxSimultaneousLights = 4; // 🔥 OPTIMIZACIÓN LÍMITE LUCES
     newMesh.material = mat;
 
     newMesh.isPickable = true;

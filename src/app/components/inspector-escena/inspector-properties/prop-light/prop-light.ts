@@ -38,6 +38,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   intensity = 1.0;
   range = 50;
   angle = 60;
+  enabled = true;
+  castShadows = true;
 
   lightPosX = 0;
   lightPosY = 0;
@@ -158,6 +160,9 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.lightPosY = this.formatNum(entity.light.lightPosY ?? 0);
     this.lightPosZ = this.formatNum(entity.light.lightPosZ ?? 0);
 
+    this.enabled = entity.light.enabled ?? true;
+    this.castShadows = entity.light.castShadows ?? true;
+
     this.attachedNodePath = entity.light.attachedNodePath || '';
     this.attachedNodeName = entity.light.attachedNodeName || '';
 
@@ -212,9 +217,12 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.light.renderIntensity = this.intensity;
       entity.light.range = this.range;
       entity.light.angle = this.angle;
+      entity.light.enabled = this.enabled;
+      entity.light.castShadows = this.castShadows;
       entity.light.attachedNodeName = this.attachedNodeName;
       entity.light.attachedNodePath = this.attachedNodePath;
       
+      entity.isDirty = true;
       entity.syncToView(); 
     }
 

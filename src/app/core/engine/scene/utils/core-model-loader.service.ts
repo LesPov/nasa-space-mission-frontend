@@ -166,8 +166,11 @@ export class CoreModelLoaderService {
       m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
       m.receiveShadows = true;
       
-      if (!isCharacter && entity.rol === 'prop' && !isEditor) {
-          m.doNotSyncBoundingInfo = true;
+      // 🔥 FIX FRUSTUM CULLING (OBJETOS DESAPARECIENDO): 
+      // Se removió `doNotSyncBoundingInfo`. Estaba colapsando las cajas delimitadoras de Babylon, 
+      // lo cual causaba que al girar la cámara el motor creyera que el objeto ya no estaba en pantalla.
+      if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled) {
+          m.computeWorldMatrix(true);
           m.freezeWorldMatrix();
       }
       
@@ -176,7 +179,8 @@ export class CoreModelLoaderService {
       }
     }
 
-    if (!isCharacter && entity.rol === 'prop' && !isEditor) {
+    if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled) {
+        rootNode.computeWorldMatrix(true);
         rootNode.freezeWorldMatrix();
     }
 

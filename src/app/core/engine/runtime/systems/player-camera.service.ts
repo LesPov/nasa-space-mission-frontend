@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import {
   Mesh, Vector3, Matrix, TransformNode, UniversalCamera,
@@ -42,6 +41,12 @@ export class PlayerCameraManagerService implements IUpdatable {
 
   public savedRelativeTpsAngle: number | null = null;
   public savedRelativeTpsPitch: number | null = null;
+
+  // 🔥 OPTIMIZACIÓN GC: Variables pre-reservadas para evitar miles de alocaciones/s
+  private _localPivotPos = Vector3.Zero();
+  private _localCamPos = Vector3.Zero();
+  private _globalPivotPos = Vector3.Zero();
+  private _globalCamPos = Vector3.Zero();
   
   public cameraUpdate(dtMs: number): void {
     const playerEntity = this.context.activePlayerEntity();
@@ -584,20 +589,21 @@ export class PlayerCameraManagerService implements IUpdatable {
         this.motor3d.getPlayerCameraTPS().upperRadiusLimit = maxRadius;
       }
 
-      const localPivotPos = new Vector3(
+      // 🔥 OPTIMIZACIÓN GC
+      this._localPivotPos.set(
         (camMeta.x || 0) + breathX,
         (this.currentPivotY / scaleY) + breathY,
         (camMeta.z || 0) + breathZ
       );
 
-      const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
+      Vector3.TransformCoordinatesToRef(this._localPivotPos, jugador.getWorldMatrix(), this._globalPivotPos);
 
-      if (!isNaN(globalPivotPos.x) && !isNaN(globalPivotPos.y) && !isNaN(globalPivotPos.z)) {
-        if (Vector3.Distance(this.cameraPivot.position, globalPivotPos) > 20) {
-            this.cameraPivot.position.copyFrom(globalPivotPos);
+      if (!isNaN(this._globalPivotPos.x) && !isNaN(this._globalPivotPos.y) && !isNaN(this._globalPivotPos.z)) {
+        if (Vector3.DistanceSquared(this.cameraPivot.position, this._globalPivotPos) > 400) {
+            this.cameraPivot.position.copyFrom(this._globalPivotPos);
         } else {
             const lerpSpeed = this.isTransitioningCameras ? 1.0 : 0.6;
-            this.cameraPivot.position = Vector3.Lerp(this.cameraPivot.position, globalPivotPos, lerpSpeed);
+            Vector3.LerpToRef(this.cameraPivot.position, this._globalPivotPos, lerpSpeed, this.cameraPivot.position);
         }
       }
 
@@ -612,16 +618,17 @@ export class PlayerCameraManagerService implements IUpdatable {
         jugador.rotationQuaternion = Quaternion.FromEulerAngles(0, fpsCam.rotation.y || 0, 0);
       }
 
-      const localCamPos = new Vector3(
+      // 🔥 OPTIMIZACIÓN GC
+      this._localCamPos.set(
         (camMeta.x || 0) + breathX,
         (this.currentEyeLevel / scaleY) + breathY,
         (camMeta.z || 0) + breathZ
       );
 
-      const globalCamPos = Vector3.TransformCoordinates(localCamPos, jugador.getWorldMatrix());
+      Vector3.TransformCoordinatesToRef(this._localCamPos, jugador.getWorldMatrix(), this._globalCamPos);
 
-      if (!isNaN(globalCamPos.x) && !isNaN(globalCamPos.y) && !isNaN(globalCamPos.z)) {
-        fpsCam.position = globalCamPos;
+      if (!isNaN(this._globalCamPos.x) && !isNaN(this._globalCamPos.y) && !isNaN(this._globalCamPos.z)) {
+        fpsCam.position.copyFrom(this._globalCamPos);
       }
     }
   }
@@ -634,102 +641,4 @@ export class PlayerCameraManagerService implements IUpdatable {
     this.cameraPivot = null;
     this.resetearTransiciones();
   }
-
-  private getLookQuat(pos: Vector3, target: Vector3, fallbackForward: Vector3): Quaternion {
-      let dir = target.subtract(pos);
-      if (dir.lengthSquared() < 0.001) dir = fallbackForward.clone();
-      dir.normalize();
-      
-      const yaw = Math.atan2(dir.x, dir.z);
-      const pitch = Math.atan2(-dir.y, Math.sqrt(dir.x * dir.x + dir.z * dir.z));
-      
-      return Quaternion.RotationYawPitchRoll(yaw, pitch, 0);
-  }
-
-  private animateCameraProxy(
-    startPos: Vector3,
-    startTarget: Vector3,
-    endPos: Vector3,
-    endTarget: Vector3,
-    frames: number,
-    onComplete: () => void,
-    addArc: boolean = false,
-    onUpdate?: (t: number) => void
-  ): void {
-    const scene = this.motor3d.getScene();
-
-    const proxyCam = new UniversalCamera("proxyTransitionCam", startPos.clone(), scene);
-    proxyCam.minZ = 0.05;
-    proxyCam.maxZ = 50000;
-    
-    if (this.motor3d.getRenderingPipeline()) {
-       this.motor3d.getRenderingPipeline().addCamera(proxyCam);
-    }
-
-    const startForward = startTarget.subtract(startPos).normalize();
-    const endForward = endTarget.subtract(endPos).normalize();
-
-    const startQuat = this.getLookQuat(startPos, startTarget, startForward);
-    const endQuat = this.getLookQuat(endPos, endTarget, endForward);
-    proxyCam.rotationQuaternion = startQuat.clone();
-
-    this.ownership.setCamera('TRANSITION_PROXY', proxyCam, null, false);
-
-    const ease = new CubicEase();
-    ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
-
-    const fps = 60;
-    const animPos = new Animation("proxyPos", "position", fps, Animation.ANIMATIONTYPE_VECTOR3, Animation.ANIMATIONLOOPMODE_CONSTANT);
-    animPos.setEasingFunction(ease);
-
-    if (addArc) {
-      const midPos = Vector3.Lerp(startPos, endPos, 0.5);
-      const dist = Vector3.Distance(startPos, endPos);
-      midPos.y += Math.min(dist * 0.25, 4.0); 
-      
-      animPos.setKeys([
-        { frame: 0, value: startPos },
-        { frame: frames * 0.5, value: midPos },
-        { frame: frames, value: endPos }
-      ]);
-    } else {
-      animPos.setKeys([
-        { frame: 0, value: startPos },
-        { frame: frames, value: endPos }
-      ]);
-    }
-
-    const animRot = new Animation("proxyRot", "rotationQuaternion", fps, Animation.ANIMATIONTYPE_QUATERNION, Animation.ANIMATIONLOOPMODE_CONSTANT);
-    animRot.setEasingFunction(ease);
-    animRot.setKeys([
-      { frame: 0, value: startQuat },
-      { frame: frames, value: endQuat }
-    ]);
-
-    let frameCount = 0;
-    let observer: any = null;
-    if (onUpdate) {
-        observer = scene.onBeforeRenderObservable.add(() => {
-            frameCount++;
-            onUpdate(Math.min(1, frameCount / frames));
-            if (frameCount >= frames) scene.onBeforeRenderObservable.remove(observer);
-        });
-    }
-
-    scene.beginDirectAnimation(proxyCam, [animPos, animRot], 0, frames, false, 1.0, () => {
-      if (this.motor3d.getRenderingPipeline()) {
-         this.motor3d.getRenderingPipeline().removeCamera(proxyCam);
-      }
-      if (observer) scene.onBeforeRenderObservable.remove(observer);
-      
-      onComplete();
-      
-      proxyCam.dispose();
-      
-      const trackedCamera = this.ownership.getCamera();
-      if (trackedCamera) {
-          scene.activeCameras = [];
-          scene.activeCamera = trackedCamera;
-      }
-    });
-  }}
+}

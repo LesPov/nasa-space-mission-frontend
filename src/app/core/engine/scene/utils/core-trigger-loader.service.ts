@@ -93,7 +93,7 @@ export class CoreTriggerLoaderService {
       mat.alpha = 0.4; 
       mat.wireframe = false; 
       mat.disableLighting = true;
-      mat.maxSimultaneousLights = 16; // 🔥 FIX LÍMITE LUCES
+      mat.maxSimultaneousLights = 12; // 🔥 OPTIMIZACIÓN LÍMITE LUCES
       mesh.material = mat;
       
       mesh.isPickable = true;

@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
@@ -20,6 +19,22 @@ export class CharacterKinematicsService implements IUpdatable {
   private ownership = inject(CameraOwnershipService);
   private context = inject(GameContextService);
 
+  // 🔥 PRE-ASIGNACIÓN: Evitar que el GC mate el framerate al declarar objetos por cada frame.
+  private _localCapsuleCenter = Vector3.Zero();
+  private _capsuleCenter = Vector3.Zero();
+  private _rayOrigin = Vector3.Zero();
+  private _rayCol = new Ray(Vector3.Zero(), Vector3.Down(), 1);
+  private _move = Vector3.Zero();
+  private _forward = Vector3.Zero();
+  private _right = Vector3.Zero();
+  private _pForward = Vector3.Zero();
+  private _targetQuat = Quaternion.Identity();
+
+  // 🔥 FIX TS2339: Referencias estáticas locales para evitar ForwardReadOnly y no generar Garbage Collection
+  private _forwardDir = new Vector3(0, 0, 1);
+  private _upDir = new Vector3(0, 1, 0);
+  private _rightDir = new Vector3(1, 0, 0);
+
   public physicsUpdate(dtMs: number): void {
     const scene = this.motor3d.getScene();
     const mode = this.context.mode();
@@ -34,12 +49,20 @@ export class CharacterKinematicsService implements IUpdatable {
     const owner = this.ownership.getOwner();
     
     const playerProfile = getMovementProfileForOwner(owner);
-    const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
+    const entities = this.entityManager.getAllEntities();
 
-    for (const entity of characters) {
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
+      if (!entity.hasComponent('characterConfig')) continue;
+
       if (entity.isCinematicControlled) {
          if (entity.playerRuntime) {
-            entity.playerRuntime.intentions = { moveForward: false, moveBackward: false, moveLeft: false, moveRight: false, run: false, jump: false };
+            entity.playerRuntime.intentions.moveForward = false;
+            entity.playerRuntime.intentions.moveBackward = false;
+            entity.playerRuntime.intentions.moveLeft = false;
+            entity.playerRuntime.intentions.moveRight = false;
+            entity.playerRuntime.intentions.run = false;
+            entity.playerRuntime.intentions.jump = false;
             const estadoFisico = entity.playerRuntime.physicsState;
             estadoFisico.velocidadY = 0;
             estadoFisico.isGrounded = true;
@@ -104,16 +127,16 @@ export class CharacterKinematicsService implements IUpdatable {
     const scaleFactor = isNaN(playerHalfHeight) ? 1 : playerHalfHeight / 0.9;
     const config = entity.playerConfig!;
     
-    let move = Vector3.Zero();
+    this._move.set(0, 0, 0);
     let isCinematicSequence = false;
     let dy = 0;
     let df = 0;
 
-    const { forward, right } = this.calculateCameraDirections(referenceCamera);
+    this.updateCameraDirections(referenceCamera);
 
     mesh.computeWorldMatrix(true);
-    const localCapsuleCenter = new Vector3(colMeta.offsetX ?? 0, colMeta.offsetY ?? 0, colMeta.offsetZ ?? 0);
-    const capsuleCenter = Vector3.TransformCoordinates(localCapsuleCenter, mesh.getWorldMatrix());
+    this._localCapsuleCenter.set(colMeta.offsetX ?? 0, colMeta.offsetY ?? 0, colMeta.offsetZ ?? 0);
+    Vector3.TransformCoordinatesToRef(this._localCapsuleCenter, mesh.getWorldMatrix(), this._capsuleCenter);
 
     const collFn = (m: any) =>
       m.checkCollisions && m !== mesh && !m.isDescendantOf(mesh) && !Tags.MatchesQuery(m, "editor_only || fog_element");
@@ -132,7 +155,7 @@ export class CharacterKinematicsService implements IUpdatable {
     }
 
     if (profile.gravityEnabled) {
-      this.detectGround(scene, capsuleCenter, playerHalfHeight, scaleY, collFn, estadoFisico);
+      this.detectGround(scene, playerHalfHeight, scaleY, collFn, estadoFisico);
     } else {
       estadoFisico.isGrounded = true;
       estadoFisico.velocidadY = 0;
@@ -145,61 +168,76 @@ export class CharacterKinematicsService implements IUpdatable {
     } else {
       this.applyNormalMovement(
         mesh, config, estadoFisico, intentions, seqRuntime, 
-        move, forward, right, vista, scaleFactor, scaleY, profile
+        vista, scaleFactor, scaleY, profile
       );
     }
     
     entity.syncTransformFromView();
+    mesh.computeWorldMatrix(true);
   }
 
-  private calculateCameraDirections(referenceCamera: any): { forward: Vector3, right: Vector3 } {
-    let forward = referenceCamera.getDirection(Vector3.Forward());
-    forward.y = 0;
-    if (forward.lengthSquared() < 0.001) {
-      forward = referenceCamera.getDirection(Vector3.Up());
-      forward.y = 0;
+  private updateCameraDirections(referenceCamera: any): void {
+    if (referenceCamera.getDirectionToRef) {
+      referenceCamera.getDirectionToRef(this._forwardDir, this._forward);
+      this._forward.y = 0;
+      if (this._forward.lengthSquared() < 0.001) {
+        referenceCamera.getDirectionToRef(this._upDir, this._forward);
+        this._forward.y = 0;
+      }
+      this._forward.normalize();
+  
+      referenceCamera.getDirectionToRef(this._rightDir, this._right);
+      this._right.y = 0;
+      this._right.normalize();
+    } else {
+      const fd = referenceCamera.getDirection(this._forwardDir);
+      this._forward.copyFrom(fd);
+      this._forward.y = 0;
+      this._forward.normalize();
+      
+      const rd = referenceCamera.getDirection(this._rightDir);
+      this._right.copyFrom(rd);
+      this._right.y = 0;
+      this._right.normalize();
     }
-    forward.normalize();
-
-    const right = referenceCamera.getDirection(Vector3.Right());
-    right.y = 0;
-    right.normalize();
-
-    return { forward, right };
   }
 
   private detectGround(
     scene: Scene, 
-    capsuleCenter: Vector3, 
     playerHalfHeight: number, 
     scaleY: number, 
     collFn: (m: any) => boolean, 
     estadoFisico: any
   ): void {
-    const rayOrigin = capsuleCenter.clone();
-    rayOrigin.y += playerHalfHeight * 0.5; 
+    this._rayOrigin.copyFrom(this._capsuleCenter);
+    this._rayOrigin.y += playerHalfHeight * 0.5; 
     const rayLength = playerHalfHeight * 1.5 + (0.15 * scaleY);
     
-    const rayCol = new Ray(rayOrigin, Vector3.Down(), rayLength);
-    const hitInfo = scene.pickWithRay(rayCol, collFn);
+    this._rayCol.origin.copyFrom(this._rayOrigin);
+    this._rayCol.direction.copyFromFloats(0, -1, 0);
+    this._rayCol.length = rayLength;
+
+    const hitInfo = scene.pickWithRay(this._rayCol, collFn);
     estadoFisico.isGrounded = hitInfo ? hitInfo.hit : false;
 
     if (estadoFisico.velocidadY > 0) estadoFisico.isGrounded = false;
   }
 
-  private sanitizeForwardDir(dir: Vector3): Vector3 {
-    const d = dir.clone();
-    d.y = 0;
-    if (d.lengthSquared() < 0.0001) return new Vector3(0, 0, 1);
-    return d.normalize();
-  }
-
   private applyCinematicMovement(mesh: Mesh, dy: number, df: number, estadoFisico: any): void {
     mesh.checkCollisions = false;
-    const pForward = this.sanitizeForwardDir(mesh.getDirection(Vector3.Forward()));
+    
+    if (mesh.getDirectionToRef) {
+        mesh.getDirectionToRef(this._forwardDir, this._pForward);
+    } else {
+        this._pForward.copyFrom(mesh.getDirection(this._forwardDir));
+    }
+    
+    this._pForward.y = 0;
+    if (this._pForward.lengthSquared() < 0.0001) this._pForward.set(0, 0, 1);
+    else this._pForward.normalize();
 
     if (dy !== 0 && !isNaN(dy)) mesh.position.y += dy;
-    if (df !== 0 && !isNaN(df)) mesh.position.addInPlace(pForward.scale(df));
+    if (df !== 0 && !isNaN(df)) mesh.position.addInPlace(this._pForward.scaleInPlace(df));
 
     mesh.computeWorldMatrix(true);
 
@@ -217,9 +255,6 @@ export class CharacterKinematicsService implements IUpdatable {
     estadoFisico: any, 
     intentions: any, 
     seqRuntime: SeqRuntime | null, 
-    move: Vector3, 
-    forward: Vector3, 
-    right: Vector3, 
     vista: 'FPS' | 'TPS', 
     scaleFactor: number, 
     scaleY: number,
@@ -237,50 +272,53 @@ export class CharacterKinematicsService implements IUpdatable {
     this.calculateLandingRecovery(estadoFisico, config);
 
     if (!estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
-      if (intentions.moveForward) move.addInPlace(forward);
-      if (intentions.moveBackward) move.subtractInPlace(forward);
-      if (intentions.moveRight) move.addInPlace(right);
-      if (intentions.moveLeft) move.subtractInPlace(right);
+      if (intentions.moveForward) this._move.addInPlace(this._forward);
+      if (intentions.moveBackward) this._move.subtractInPlace(this._forward);
+      if (intentions.moveRight) this._move.addInPlace(this._right);
+      if (intentions.moveLeft) this._move.subtractInPlace(this._right);
     }
 
     if (seqRuntime && seqRuntime.running && seqRuntime.allowMovement) {
-      if (seqRuntime.forceForwardRun) move.addInPlace(forward.scale((config.movement.runSpeed || 0.09) * scaleFactor));
-      if (seqRuntime.forceForwardWalk) move.addInPlace(forward.scale((config.movement.walkSpeed || 0.045) * scaleFactor));
+      if (seqRuntime.forceForwardRun) {
+         this._forward.scaleToRef((config.movement.runSpeed || 0.09) * scaleFactor, this._pForward);
+         this._move.addInPlace(this._pForward);
+      }
+      if (seqRuntime.forceForwardWalk) {
+         this._forward.scaleToRef((config.movement.walkSpeed || 0.045) * scaleFactor, this._pForward);
+         this._move.addInPlace(this._pForward);
+      }
     }
 
-    estadoFisico.isMoving = move.lengthSquared() > 0.001;
+    estadoFisico.isMoving = this._move.lengthSquared() > 0.001;
     estadoFisico.isRunning = intentions.run || (seqRuntime ? seqRuntime.forceForwardRun : false);
 
     if (estadoFisico.isMoving && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
       const modSpeed = (estadoFisico.isRunning ? (config.movement.runSpeed || 0.09) : (config.movement.walkSpeed || 0.045)) * scaleFactor;
       
       if (!seqRuntime || !seqRuntime.running || !seqRuntime.allowMovement) {
-        move.normalize().scaleInPlace(modSpeed);
+        this._move.normalize().scaleInPlace(modSpeed);
       }
 
       if (vista === 'TPS' && (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation))) {
-        const targetAngle = Math.atan2(move.x, move.z);
+        const targetAngle = Math.atan2(this._move.x, this._move.z);
         if (!isNaN(targetAngle)) {
           if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
-          mesh.rotationQuaternion = Quaternion.Slerp(
-            mesh.rotationQuaternion, 
-            Quaternion.FromEulerAngles(0, targetAngle, 0), 
-            0.2
-          );
+          Quaternion.FromEulerAnglesToRef(0, targetAngle, 0, this._targetQuat);
+          Quaternion.SlerpToRef(mesh.rotationQuaternion, this._targetQuat, 0.2, mesh.rotationQuaternion);
         }
       }
     }
 
-    this.calculateGravityAndJump(mesh, estadoFisico, config, intentions, seqRuntime, move, scaleFactor, scaleY, profile);
+    this.calculateGravityAndJump(mesh, estadoFisico, config, intentions, seqRuntime, scaleFactor, scaleY, profile);
 
-    if (isNaN(move.x)) move.x = 0;
-    if (isNaN(move.y)) move.y = 0;
-    if (isNaN(move.z)) move.z = 0;
+    if (isNaN(this._move.x)) this._move.x = 0;
+    if (isNaN(this._move.y)) this._move.y = 0;
+    if (isNaN(this._move.z)) this._move.z = 0;
     
     if (profile.collisionsEnabled) {
-      mesh.moveWithCollisions(move);
+      mesh.moveWithCollisions(this._move);
     } else {
-      mesh.position.addInPlace(move);
+      mesh.position.addInPlace(this._move);
     }
   }
 
@@ -306,7 +344,6 @@ export class CharacterKinematicsService implements IUpdatable {
     config: any, 
     intentions: any, 
     seqRuntime: SeqRuntime | null, 
-    move: Vector3, 
     scaleFactor: number, 
     scaleY: number,
     profile: MovementProfile
@@ -316,7 +353,7 @@ export class CharacterKinematicsService implements IUpdatable {
        estadoFisico.velocidadY = 0;
        estadoFisico.isFalling = false;
        estadoFisico.isJumping = false;
-       move.y = 0;
+       this._move.y = 0;
        return;
     }
 
@@ -326,7 +363,7 @@ export class CharacterKinematicsService implements IUpdatable {
         if (fallDistance > (config.physics.hardLandingThreshold || 2.5) * scaleY) {
           estadoFisico.isHardLanding = true;
           estadoFisico.landingFrame = 0;
-          move.set(0, 0, 0);
+          this._move.set(0, 0, 0);
           estadoFisico.isMoving = false; 
         }
         estadoFisico.isFalling = false;
@@ -362,6 +399,6 @@ export class CharacterKinematicsService implements IUpdatable {
       }
     }
 
-    move.y = estadoFisico.velocidadY;
+    this._move.y = estadoFisico.velocidadY;
   }
 }

@@ -1,5 +1,4 @@
 
-// src/app/core/engine/behaviors/services/loop-manager.service.ts
 import { Injectable } from '@angular/core';
 import { Scene, Observer } from '@babylonjs/core';
 
@@ -14,12 +13,11 @@ export enum GamePhase {
 
 type LoopCallback = (deltaTimeMs: number) => void;
 
-// Interfaz ECS para que el motor ejecute sistemas y controladores completos
 export interface IUpdatable {
   id: string;
   preUpdate?(dtMs: number): void;
   physicsUpdate?(dtMs: number): void;
-  update?(dtMs: number): void; // Fase Lógica principal
+  update?(dtMs: number): void;
   animationUpdate?(dtMs: number): void;
   cameraUpdate?(dtMs: number): void;
   postUpdate?(dtMs: number): void;
@@ -30,11 +28,11 @@ export class LoopManagerService {
   private scene: Scene | null = null;
   private observer: Observer<Scene> | null = null;
 
-  // Colecciones para compatibilidad con comportamientos individuales (Behaviors)
   private phases: Map<GamePhase, Map<string, LoopCallback>> = new Map();
 
-  // Registro central de Controladores y Sistemas
-  private updatables = new Map<string, IUpdatable>();
+  // 🔥 OPTIMIZACIÓN: Se separan el Map (búsqueda) y el Array (iteración rápida y sin GC)
+  private updatablesMap = new Map<string, IUpdatable>();
+  private updatablesList: IUpdatable[] = [];
 
   constructor() {
     Object.values(GamePhase).forEach(phase => {
@@ -62,21 +60,26 @@ export class LoopManagerService {
       this.scene.onBeforeRenderObservable.remove(this.observer);
     }
     this.phases.forEach(map => map.clear());
-    this.updatables.clear();
+    this.updatablesMap.clear();
+    this.updatablesList = [];
     this.observer = null;
     this.scene = null;
   }
 
-  // Registra un Controlador/Sistema en el motor
   public registerSystem(system: IUpdatable): void {
-    this.updatables.set(system.id, system);
+    if (!this.updatablesMap.has(system.id)) {
+      this.updatablesMap.set(system.id, system);
+      this.updatablesList.push(system);
+    }
   }
 
   public unregisterSystem(id: string): void {
-    this.updatables.delete(id);
+    if (this.updatablesMap.has(id)) {
+      this.updatablesMap.delete(id);
+      this.updatablesList = this.updatablesList.filter(s => s.id !== id);
+    }
   }
 
-  // Mantiene compatibilidad con módulos legacy
   public register(id: string, phase: GamePhase, callback: LoopCallback): void {
     const phaseMap = this.phases.get(phase);
     if (phaseMap) {
@@ -104,17 +107,19 @@ export class LoopManagerService {
   private executePhase(phase: GamePhase, dtMs: number): void {
     const phaseMap = this.phases.get(phase);
     if (phaseMap) {
-      phaseMap.forEach((callback, id) => {
+      // Evita generar arrays intermedios
+      for (const [id, callback] of phaseMap.entries()) {
         try {
           callback(dtMs);
         } catch (error) {
           console.error(`[LoopManager] Error ejecutando callback '${id}' en fase ${GamePhase[phase]}:`, error);
         }
-      });
+      }
     }
 
-    // Ejecutar los Controladores registrados según la fase actual
-    this.updatables.forEach((sys) => {
+    // 🔥 Iteración directa sin generar Map.values() ni destructuración
+    for (let i = 0; i < this.updatablesList.length; i++) {
+      const sys = this.updatablesList[i];
       try {
         if (phase === GamePhase.PRE_UPDATE && sys.preUpdate) sys.preUpdate(dtMs);
         if (phase === GamePhase.PHYSICS && sys.physicsUpdate) sys.physicsUpdate(dtMs);
@@ -125,6 +130,6 @@ export class LoopManagerService {
       } catch (error) {
         console.error(`[LoopManager] Error ejecutando sistema '${sys.id}' en fase ${GamePhase[phase]}:`, error);
       }
-    });
+    }
   }
 }

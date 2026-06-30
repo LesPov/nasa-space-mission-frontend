@@ -66,10 +66,13 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
         execute: (step, entity, em) => {
             const videoName = step.clipOverride; 
             if (!videoName) return;
-            const target = em.getAllEntities().find(e => e.name === videoName);
-            if (target && target.mediaRuntime) {
-                target.mediaRuntime.videoCommand = 'play';
-                target.isDirty = true;
+            const allEntities = em.getAllEntities();
+            for(let i=0; i<allEntities.length; i++) {
+                if (allEntities[i].name === videoName && allEntities[i].mediaRuntime) {
+                    allEntities[i].mediaRuntime!.videoCommand = 'play';
+                    allEntities[i].isDirty = true;
+                    break;
+                }
             }
         }
     },
@@ -77,10 +80,13 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
         execute: (step, entity, em) => {
             const videoName = step.clipOverride; 
             if (!videoName) return;
-            const target = em.getAllEntities().find(e => e.name === videoName);
-            if (target && target.mediaRuntime) {
-                target.mediaRuntime.videoCommand = 'pause';
-                target.isDirty = true;
+            const allEntities = em.getAllEntities();
+            for(let i=0; i<allEntities.length; i++) {
+                if (allEntities[i].name === videoName && allEntities[i].mediaRuntime) {
+                    allEntities[i].mediaRuntime!.videoCommand = 'pause';
+                    allEntities[i].isDirty = true;
+                    break;
+                }
             }
         }
     },
@@ -88,10 +94,13 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
         execute: (step, entity, em) => {
             const videoName = step.clipOverride; 
             if (!videoName) return;
-            const target = em.getAllEntities().find(e => e.name === videoName);
-            if (target && target.mediaRuntime) {
-                target.mediaRuntime.videoCommand = 'stop';
-                target.isDirty = true;
+            const allEntities = em.getAllEntities();
+            for(let i=0; i<allEntities.length; i++) {
+                if (allEntities[i].name === videoName && allEntities[i].mediaRuntime) {
+                    allEntities[i].mediaRuntime!.videoCommand = 'stop';
+                    allEntities[i].isDirty = true;
+                    break;
+                }
             }
         }
     },
@@ -159,7 +168,8 @@ export class PlayerSequenceService implements IUpdatable {
 
   public physicsUpdate(dtMs: number): void {
     const entities = this.entityManager.getAllEntities();
-    for (const entity of entities) {
+    for (let i = 0; i < entities.length; i++) {
+        const entity = entities[i];
         if (entity.playerConfig?.sequences && entity.playerConfig.sequences.length > 0) {
             const runtime = this.actualizarSecuencia(dtMs, entity);
             if (entity.playerRuntime) {
@@ -200,14 +210,13 @@ export class PlayerSequenceService implements IUpdatable {
   }
 
   private buscarEIniciarSecuenciaPorId(sequenceId: string): void {
-    let found = false;
     const allEntities = this.entityManager.getAllEntities();
 
-    for (const e of allEntities) {
+    for (let i = 0; i < allEntities.length; i++) {
+      const e = allEntities[i];
       if (e.playerConfig && e.playerConfig.sequences) {
         const hasSeq = e.playerConfig.sequences.some((s: any) => s.id === sequenceId);
         if (hasSeq) {
-          found = true;
           this.iniciarSecuenciaEnJuego(sequenceId, e);
         }
       }

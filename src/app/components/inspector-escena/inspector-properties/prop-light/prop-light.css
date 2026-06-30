@@ -1,5 +1,4 @@
 
-
 /* Heredamos el grid de la hoja de estilos principal */
 .section-card { 
   background: transparent; 
@@ -29,3 +28,16 @@
 .color-hex-text { color: #888; font-family: monospace; font-size: 13px; }
 .status-line { margin-top: 10px; color: #b6e3c9; font-size: 11px; padding: 6px 8px; background: rgba(45, 163, 99, 0.1); border: 1px solid rgba(45, 163, 99, 0.2); border-radius: 4px; }
 
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: #aaa;
+}
+.checkbox-field input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+}

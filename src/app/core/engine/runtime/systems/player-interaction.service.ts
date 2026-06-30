@@ -1,7 +1,6 @@
 
-
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Vector3, Ray } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
@@ -36,9 +35,14 @@ export class PlayerInteractionService implements IUpdatable {
   public currentHoveredMesh: AbstractMesh | null = null;
 
   public lastInteractDistance: number | null = null;
-  public lastInteractionProbePoint: Vector3 | null = null;
   
   private isEnabled: boolean = false;
+
+  // 🔥 OPTIMIZACIÓN GC Y LAG: Fix TS2339 y Limitador a 10 FPS
+  private _centerRay = new Ray(Vector3.Zero(), new Vector3(0, 0, 1), 10000);
+  private _probePoint = Vector3.Zero();
+  private _forwardDir = new Vector3(0, 0, 1);
+  private _interactTimer = 0;
 
   public enable(): void { this.isEnabled = true; }
   
@@ -60,7 +64,13 @@ export class PlayerInteractionService implements IUpdatable {
       return;
     }
 
-    this.comprobarInteracciones(playerEntity, activeCamera, this.context.cameraView());
+    // 🔥 FIX LAG: Acelerador (Throttle) para no hacer PickWithRay 60 veces por segundo.
+    // Lo limitamos a una vez cada 100ms (10 FPS) que es perfecto para detectar interacciones sin lag.
+    this._interactTimer += dtMs;
+    if (this._interactTimer >= 100) {
+      this.comprobarInteracciones(playerEntity, activeCamera, this.context.cameraView());
+      this._interactTimer = 0;
+    }
 
     if (this.inputSvc.actionPressedThisFrame) {
       this.handleAction();
@@ -130,19 +140,25 @@ export class PlayerInteractionService implements IUpdatable {
     }
   }
 
-  private getInteractionProbePoint(view: 'FPS' | 'TPS', jugador: Mesh, activeCamera: any, entity: GameEntity): Vector3 {
+  private updateInteractionProbePoint(view: 'FPS' | 'TPS', jugador: Mesh, activeCamera: any, entity: GameEntity): void {
     if (view === 'FPS') {
-      return activeCamera?.position ? activeCamera.position.clone() : jugador.getAbsolutePosition().clone();
+      if (activeCamera?.position) {
+          this._probePoint.copyFrom(activeCamera.position);
+      } else {
+          this._probePoint.copyFrom(jugador.getAbsolutePosition());
+      }
+    } else {
+      jugador.computeWorldMatrix(true);
+      Vector3.TransformCoordinatesFromFloatsToRef(
+        entity.collider?.offsetX ?? 0, entity.collider?.offsetY ?? 0, entity.collider?.offsetZ ?? 0,
+        jugador.getWorldMatrix(),
+        this._probePoint
+      );
     }
-    jugador.computeWorldMatrix(true);
-    return Vector3.TransformCoordinates(
-      new Vector3(entity.collider?.offsetX ?? 0, entity.collider?.offsetY ?? 0, entity.collider?.offsetZ ?? 0),
-      jugador.getWorldMatrix()
-    );
   }
 
-  private getInteractionDistanceToTarget(targetMesh: AbstractMesh, probePoint: Vector3 | null): number {
-    if (!probePoint || !targetMesh) return Number.POSITIVE_INFINITY;
+  private getInteractionDistanceToTarget(targetMesh: AbstractMesh, probePoint: Vector3): number {
+    if (!targetMesh) return Number.POSITIVE_INFINITY;
     const shapeMesh = this.getRootProxyCollider(targetMesh) ?? targetMesh;
     const closest = this.getClosestPointOnMeshBounds(shapeMesh, probePoint);
     return closest ? Vector3.Distance(probePoint, closest) : Vector3.Distance(probePoint, targetMesh.getAbsolutePosition());
@@ -170,12 +186,21 @@ export class PlayerInteractionService implements IUpdatable {
     let hoverSelectable: AbstractMesh | null = null;
 
     this.lastInteractDistance = null;
-    this.lastInteractionProbePoint = this.getInteractionProbePoint(viewMode, jugador, activeCamera, entity);
+    this.updateInteractionProbePoint(viewMode, jugador, activeCamera, entity);
 
     if (viewMode === 'FPS') {
-      const centerRay = activeCamera.getForwardRay(10000);
+      const origin = activeCamera.globalPosition;
+      
+      if (activeCamera.getDirectionToRef) {
+          activeCamera.getDirectionToRef(this._forwardDir, this._centerRay.direction);
+      } else {
+          this._centerRay.direction.copyFrom(activeCamera.getDirection(this._forwardDir));
+      }
+      
+      this._centerRay.origin.copyFrom(origin);
+      this._centerRay.length = 10000;
 
-      const hitCross = scene.pickWithRay(centerRay, (m) => {
+      const hitCross = scene.pickWithRay(this._centerRay, (m) => {
         if (!m.isPickable || !m.isVisible) return false;
         if (this.interactRules.isMeshIgnorable(m, jugador)) return false;
         return true;
@@ -192,13 +217,12 @@ export class PlayerInteractionService implements IUpdatable {
         }
         
         if (rootEntity && rootEntity.view) {
-            const selectionDistance = this.getInteractionDistanceToTarget(rootEntity.view, this.lastInteractionProbePoint);
+            const selectionDistance = this.getInteractionDistanceToTarget(rootEntity.view, this._probePoint);
             this.lastInteractDistance = selectionDistance;
 
             const interactMax = rootEntity.interaction.interactDistanceFPS ?? 3.0;
             const isInteractable = this.interactRules.isInteractable(rootEntity);
             
-            // 🔥 APLICANDO REGLAS DE ADMINISTRADOR SUPERIORES EN JUEGO
             const isAdmin = this.context.isDebugMode();
             let canAdminSelect = false;
             
@@ -220,18 +244,19 @@ export class PlayerInteractionService implements IUpdatable {
     } else {
       let closestEntity: GameEntity | null = null;
       let closestDist = Number.POSITIVE_INFINITY;
-      const playerProbe = this.lastInteractionProbePoint;
-
-      this.entityManager.getAllEntities().forEach(e => {
-        if (e.uid === entity.uid) return;
+      
+      const entities = this.entityManager.getAllEntities();
+      for (let i = 0; i < entities.length; i++) {
+        const e = entities[i];
+        if (e.uid === entity.uid) continue;
         
         const isInteractable = this.interactRules.isInteractable(e);
-        if (!isInteractable) return;
+        if (!isInteractable) continue;
         
         const mesh = e.view as AbstractMesh;
-        if (this.interactRules.isMeshIgnorable(mesh, jugador)) return;
+        if (this.interactRules.isMeshIgnorable(mesh, jugador)) continue;
 
-        const selectionDistance = this.getInteractionDistanceToTarget(mesh, playerProbe);
+        const selectionDistance = this.getInteractionDistanceToTarget(mesh, this._probePoint);
 
         if (e.type !== 'bubble') {
             const interactMax = e.interaction.interactDistanceTPS ?? 5.0;
@@ -240,7 +265,7 @@ export class PlayerInteractionService implements IUpdatable {
               closestEntity = e;
             }
         }
-      });
+      }
 
       if (closestEntity && (closestEntity as GameEntity).view) {
         hoverSelectable = (closestEntity as GameEntity).view;
@@ -278,9 +303,10 @@ export class PlayerInteractionService implements IUpdatable {
       this.canInspect = showI;
       this.currentHoveredMesh = hoverSelectable;
       
-      this.entityManager.getAllEntities().forEach(e => {
-        if(e.interactionRuntime) e.interactionRuntime.isHoveredByPlayer = false;
-      });
+      const entities = this.entityManager.getAllEntities();
+      for (let i = 0; i < entities.length; i++) {
+        if(entities[i].interactionRuntime) entities[i].interactionRuntime.isHoveredByPlayer = false;
+      }
 
       if (hitInteractuable && hitInteractuable.interactionRuntime) {
          hitInteractuable.interactionRuntime.isHoveredByPlayer = true;
@@ -304,4 +330,3 @@ export class PlayerInteractionService implements IUpdatable {
     this.inputOrchestrator.lockPointer();
   }
 }
-

@@ -11,11 +11,15 @@ export class EntityManagerService {
   public deletedObjects: string[] = [];
   public deletedTriggers: string[] = [];
 
+  // 🔥 OPTIMIZACIÓN: Caché estricto de arreglos de entidades para evitar GC frame-drops.
+  private _entitiesArrayCache: GameEntity[] | null = null;
+
   public addEntity(entity: GameEntity): void {
     this.entitiesByUid.set(entity.uid, entity);
     if (entity.view) {
       this.entitiesByMesh.set(entity.view, entity);
     }
+    this._entitiesArrayCache = null;
   }
 
   public removeEntity(uid: string): void {
@@ -32,6 +36,7 @@ export class EntityManagerService {
         entity.destroyView();
       }
       this.entitiesByUid.delete(uid);
+      this._entitiesArrayCache = null;
     }
   }
 
@@ -50,11 +55,21 @@ export class EntityManagerService {
   }
 
   public getAllEntities(): GameEntity[] {
-    return Array.from(this.entitiesByUid.values());
+    if (!this._entitiesArrayCache) {
+      this._entitiesArrayCache = Array.from(this.entitiesByUid.values());
+    }
+    return this._entitiesArrayCache;
   }
 
   public getEntitiesWithComponent(componentKey: string): GameEntity[] {
-    return this.getAllEntities().filter(e => e.hasComponent(componentKey));
+    const all = this.getAllEntities();
+    const result: GameEntity[] = [];
+    for (let i = 0; i < all.length; i++) {
+      if (all[i].hasComponent(componentKey)) {
+        result.push(all[i]);
+      }
+    }
+    return result;
   }
 
   public clearDeletedRecords(): void {
@@ -88,5 +103,6 @@ export class EntityManagerService {
     });
 
     this.clearDeletedRecords();
+    this._entitiesArrayCache = null;
   }
 }

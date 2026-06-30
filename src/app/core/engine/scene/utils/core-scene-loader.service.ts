@@ -2,7 +2,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, MeshBuilder, Tags, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
-import { CoreSceneShadowsService } from './core-scene-shadows.service';
 import { CoreSceneUtilsService } from './core-scene-utils.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { CoreModelLoaderService } from './core-model-loader.service';
@@ -16,12 +15,13 @@ import { EditorCinematicService } from '../../../../services/editor/editor-cinem
 import { PlayerCameraManagerService } from '../../runtime/systems/player-camera.service';
 import { PlayerTriggerService } from '../../runtime/systems/player-trigger.service';
 import { SceneLoadPayload, SceneObjectDto, TriggerDto } from '../../models/api-dto.model';
-import { LightSyncSystem } from '../../runtime/systems/light-sync.system';
- 
+import { DynamicLightingSystem } from '../../runtime/systems/lighting/dynamic-lighting.system'; 
+import { ShadowOrchestratorService } from '../../runtime/shadows/shadow-orchestrator.service';
+  
 @Injectable({ providedIn: 'root' })
 export class CoreSceneLoaderService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
-  private shadowsSvc = inject(CoreSceneShadowsService);
+  private shadowOrchestrator = inject(ShadowOrchestratorService);
   private utilsSvc = inject(CoreSceneUtilsService);
   private entityManager = inject(EntityManagerService);
   private loaderModelSvc = inject(CoreModelLoaderService);
@@ -34,7 +34,7 @@ export class CoreSceneLoaderService {
   private cinematicSvc = inject(EditorCinematicService);
   private cameraSvc = inject(PlayerCameraManagerService); 
   private triggerSvc = inject(PlayerTriggerService);
-  private lightSync = inject(LightSyncSystem);
+  private dynamicLighting = inject(DynamicLightingSystem); 
 
   public createInvisibleFloor(scene: any): void {
     const old = scene.getMeshByName('sueloInvisible');
@@ -77,30 +77,40 @@ export class CoreSceneLoaderService {
     const objetosBD: SceneObjectDto[] = dataBD.sceneObjects || dataBD.sceneObjectsDelta || [];
     const triggersBD: TriggerDto[] = dataBD.triggers || dataBD.triggersDelta || [];
 
-    const promesasCarga: any[] = [];
     const mallasCreadas = new Map<string, Mesh>();
 
-    objetosBD.forEach((obj: SceneObjectDto) => {
-      const isModel = obj.type === 'model';
-      const isLight = obj.type?.startsWith('light_');
-      const objRol = obj.properties?.rol || obj.rol || 'prop';
+    // 🔥 OPTIMIZACIÓN PROBLEMA 1: Carga progresiva de objetos (chunking)
+    for (let i = 0; i < objetosBD.length; i += 5) {
+      const chunk = objetosBD.slice(i, i + 5);
+      const chunkPromises = chunk.map((obj: SceneObjectDto) => {
+        const isModel = obj.type === 'model';
+        const isLight = obj.type?.startsWith('light_');
+        const objRol = obj.properties?.rol || obj.rol || 'prop';
 
-      if (isPlaying && persistentPlayer && objRol === 'player') {
-          return;
-      }
+        if (isPlaying && persistentPlayer && objRol === 'player') {
+            return Promise.resolve();
+        }
 
-      if (isModel || (isLight && obj.assetId)) {
-        promesasCarga.push(this.loaderModelSvc.cargarModeloAsync(obj, mallasCreadas));
-      } else {
-        this.loaderPrimitiveSvc.cargarPrimitiva(obj, mallasCreadas);
-      }
-    });
+        if (isModel || (isLight && obj.assetId)) {
+          return this.loaderModelSvc.cargarModeloAsync(obj, mallasCreadas);
+        } else {
+          this.loaderPrimitiveSvc.cargarPrimitiva(obj, mallasCreadas);
+          return Promise.resolve();
+        }
+      });
+      await Promise.all(chunkPromises);
+      // Libera el hilo principal 15ms para evitar el bloqueo del render UI
+      await new Promise(resolve => setTimeout(resolve, 15)); 
+    }
 
-    triggersBD.forEach((trigger: TriggerDto) => {
-      this.loaderTriggerSvc.cargarTrigger(trigger, mallasCreadas);
-    });
-
-    await Promise.all(promesasCarga);
+    // 🔥 OPTIMIZACIÓN PROBLEMA 1: Carga progresiva de triggers
+    for (let i = 0; i < triggersBD.length; i += 10) {
+      const chunk = triggersBD.slice(i, i + 10);
+      chunk.forEach((trigger: TriggerDto) => {
+        this.loaderTriggerSvc.cargarTrigger(trigger, mallasCreadas);
+      });
+      await new Promise(resolve => setTimeout(resolve, 15));
+    }
 
     mallasCreadas.forEach((mesh, uid) => {
       const entity = this.entityManager.getEntityByUid(uid);
@@ -129,8 +139,13 @@ export class CoreSceneLoaderService {
       });
     }, 150);
 
-    this.lightSync.syncAllLights();
-    this.shadowsSvc.asignarObjetosASombrasDeLuces();
+    this.dynamicLighting.update(16); 
+    this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
+
+    // 🔥 OPTIMIZACIÓN PROBLEMA 1: Forzar compilación paralela (si se admite) de shaders antes de quitar la pantalla de carga.
+    await new Promise<void>((resolve) => {
+      scene.executeWhenReady(() => resolve());
+    });
   }
 
   public async instantiatePrefab(prefabData: any, positionTarget: Vector3, rotationEuler?: Vector3, scale?: Vector3, parentNode?: AbstractMesh): Promise<Map<string, Mesh>> {
@@ -199,8 +214,8 @@ export class CoreSceneLoaderService {
         }
     });
 
-    this.lightSync.syncAllLights();
-    this.shadowsSvc.asignarObjetosASombrasDeLuces();
+    this.dynamicLighting.update(16);
+    this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
     return mallasCreadas;
   }
 }

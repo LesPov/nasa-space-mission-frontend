@@ -1,9 +1,18 @@
 
-
-
 <div class="section-card">
   <div class="section-head">
     <h4>Propiedades de la Luz</h4>
+  </div>
+
+  <div class="grid-2" style="margin-bottom: 15px;">
+    <div class="checkbox-field" style="background: rgba(250, 204, 21, 0.1); padding: 8px; border: 1px solid #facc15; border-radius: 6px;">
+      <input type="checkbox" id="chkLightEnabled" [(ngModel)]="enabled" (ngModelChange)="aplicarLuz()">
+      <label for="chkLightEnabled" style="cursor: pointer; color: #facc15; font-weight: bold; margin: 0;">💡 Encendida</label>
+    </div>
+    <div class="checkbox-field" style="background: rgba(96, 165, 250, 0.1); padding: 8px; border: 1px solid #60a5fa; border-radius: 6px;">
+      <input type="checkbox" id="chkCastShadows" [(ngModel)]="castShadows" (ngModelChange)="aplicarLuz()">
+      <label for="chkCastShadows" style="cursor: pointer; color: #60a5fa; font-weight: bold; margin: 0;">🌑 Sombras</label>
+    </div>
   </div>
 
   <div class="grid-2" style="margin-bottom: 15px;">
@@ -71,4 +80,3 @@
 </div>
 
 <div class="status-line" *ngIf="animStatus">{{ animStatus }}</div>
-

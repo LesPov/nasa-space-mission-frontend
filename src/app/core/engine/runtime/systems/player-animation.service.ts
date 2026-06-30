@@ -34,9 +34,12 @@ export class PlayerAnimationService implements IUpdatable {
   private entityManager = inject(EntityManagerService);
 
   public animationUpdate(dtMs: number): void {
-    const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
+    const entities = this.entityManager.getAllEntities();
 
-    for (const entity of characters) {
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
+      if (!entity.hasComponent('characterConfig')) continue;
+
       const seqRuntime = entity.playerRuntime?.seqRuntime;
       const estadoFisico = entity.playerRuntime?.physicsState;
       if (seqRuntime && estadoFisico) {

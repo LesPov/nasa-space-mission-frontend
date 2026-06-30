@@ -1,5 +1,4 @@
 
-
 import { Behavior, Mesh, Scene, Vector3 } from '@babylonjs/core';
 import { LoopManagerService, GamePhase } from './services/loop-manager.service';
 import { EntityManagerService } from '../entities/entity-manager.service';
@@ -29,6 +28,14 @@ export class DistanceFadeBehavior implements Behavior<Mesh> {
       
       const entity = this.entityManager.getEntityByMesh(this.attachedNode);
       if (!entity) return;
+
+      // 🔥 FIX: Si la cámara activa pertenece al Editor, jamás desaparecemos el objeto.
+      const owner = this.ownership.getOwner();
+      if (owner === 'EDITOR') {
+        this.attachedNode.visibility = 1;
+        this.attachedNode.getChildMeshes().forEach(child => child.visibility = 1);
+        return;
+      }
 
       if (entity.visual.ignoraNiebla) {
         this.attachedNode.visibility = 1;

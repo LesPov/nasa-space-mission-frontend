@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh } from '@babylonjs/core';
 import { GameStateService } from '../state/game-state.service';
@@ -29,32 +28,36 @@ export class PlayerTriggerService implements IUpdatable {
     this.resetTransitionState();
     const isDebugMode = this.context.isDebugMode();
 
-    this.entityManager.getAllEntities()
-      .filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto')
-      .forEach(e => {
-        if (e.view && e.triggerRuntime) {
-            e.view.isVisible = isDebugMode; 
-            e.triggerRuntime.hasTriggeredEnter = false; 
-            e.triggerRuntime.hasTriggeredExit = false; 
-            e.triggerRuntime.isEnabled = true;
+    const entities = this.entityManager.getAllEntities();
+    for (let i = 0; i < entities.length; i++) {
+        const e = entities[i];
+        if (e.type === 'trigger' || e.type === 'trigger_compuesto') {
+            if (e.view && e.triggerRuntime) {
+                e.view.isVisible = isDebugMode; 
+                e.triggerRuntime.hasTriggeredEnter = false; 
+                e.triggerRuntime.hasTriggeredExit = false; 
+                e.triggerRuntime.isEnabled = true;
+            }
         }
-    });
+    }
   }
 
   public stop(): void {
     this.activeTriggersInside.clear();
     const isDebugMode = this.context.isDebugMode();
 
-    this.entityManager.getAllEntities()
-      .filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto')
-      .forEach(e => {
-        if (e.view && e.triggerRuntime) {
-            e.view.isVisible = isDebugMode; 
-            e.triggerRuntime.hasTriggeredEnter = false; 
-            e.triggerRuntime.hasTriggeredExit = false; 
-            e.triggerRuntime.isEnabled = true;
+    const entities = this.entityManager.getAllEntities();
+    for (let i = 0; i < entities.length; i++) {
+        const e = entities[i];
+        if (e.type === 'trigger' || e.type === 'trigger_compuesto') {
+            if (e.view && e.triggerRuntime) {
+                e.view.isVisible = isDebugMode; 
+                e.triggerRuntime.hasTriggeredEnter = false; 
+                e.triggerRuntime.hasTriggeredExit = false; 
+                e.triggerRuntime.isEnabled = true;
+            }
         }
-    });
+    }
   }
 
   public resetTransitionState(): void {
@@ -88,23 +91,26 @@ export class PlayerTriggerService implements IUpdatable {
     const probePoint = playerPos.clone();
     probePoint.y += playerCenterY;
 
-    const triggers = this.entityManager.getAllEntities().filter(e => e.type === 'trigger' || e.type === 'trigger_compuesto');
+    const entities = this.entityManager.getAllEntities();
 
-    triggers.forEach(triggerEntity => {
-        if (!triggerEntity.trigger || triggerEntity.triggerRuntime?.isEnabled === false) return;
+    for (let i = 0; i < entities.length; i++) {
+        const triggerEntity = entities[i];
+        if (triggerEntity.type !== 'trigger' && triggerEntity.type !== 'trigger_compuesto') continue;
+        
+        if (!triggerEntity.trigger || triggerEntity.triggerRuntime?.isEnabled === false) continue;
 
         if (!this.gameState.evaluateAllConditions(triggerEntity.trigger.gameConditions)) {
-            return;
+            continue;
         }
         
         const conditions = triggerEntity.trigger.isComposite 
             ? (triggerEntity.trigger.conditions || []) 
             : [triggerEntity.trigger.condition || 'on_enter'];
         
-        if (!conditions.includes('on_enter') && !conditions.includes('on_exit')) return;
+        if (!conditions.includes('on_enter') && !conditions.includes('on_exit')) continue;
 
         const mesh = triggerEntity.view as AbstractMesh;
-        if (!mesh) return;
+        if (!mesh) continue;
 
         const isInside = mesh.intersectsPoint(probePoint);
         const wasInside = this.activeTriggersInside.has(triggerEntity.uid);
@@ -134,7 +140,7 @@ export class PlayerTriggerService implements IUpdatable {
                  }
             }
         }
-    });
+    }
   }
 
   private ejecutarLogicaTrigger(triggerEntity: GameEntity, eventType: string): void {

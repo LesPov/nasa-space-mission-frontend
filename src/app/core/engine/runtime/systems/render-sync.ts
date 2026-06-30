@@ -10,10 +10,10 @@ export class RenderSync implements IUpdatable {
 
   postUpdate(dtMs: number): void {
     const entities = this.entityManager.getAllEntities();
-    for (const entity of entities) {
-      if (entity.isDirty) {
-        entity.syncToView();
-        entity.isDirty = false;
+    for (let i = 0; i < entities.length; i++) {
+      if (entities[i].isDirty) {
+        entities[i].syncToView();
+        entities[i].isDirty = false;
       }
     }
   }

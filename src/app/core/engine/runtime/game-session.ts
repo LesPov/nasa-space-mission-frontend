@@ -16,14 +16,14 @@ import { CharacterKinematicsService } from './systems/character-kinematics.servi
 import { PlayerAnimationService } from './systems/player-animation.service';
 import { RenderSync } from './systems/render-sync';
 import { MediaCommandSystem } from './systems/media-command.system';
- import { CinematicDirectorService } from './systems/cinematic-director.service';
+import { CinematicDirectorService } from './systems/cinematic-director.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene/scene-access.token';
 import { CameraViewMode } from '../session/game-context.model';
 import { GameMode } from '../session/game-mode.model';
 import { GameContextService } from '../session/game-context.service';
 import { LayoutService } from '../../../services/layout.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
-import { LightSyncSystem } from './systems/light-sync.system';
+import { DynamicLightingSystem } from './systems/lighting/dynamic-lighting.system'; // AÑADIDO
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
@@ -46,7 +46,7 @@ export class GameSession {
   private playerAnimationSvc = inject(PlayerAnimationService);
   private cinematicDirector = inject(CinematicDirectorService);
   private renderSyncSvc = inject(RenderSync);
-  private lightSyncSvc = inject(LightSyncSystem);
+  private dynamicLighting = inject(DynamicLightingSystem); // AÑADIDO
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
 
   public isPlaying = computed(() => this.context.isPlaying());
@@ -121,7 +121,7 @@ export class GameSession {
       this.cameraSvc,
       this.mediaCommandSvc,
       this.renderSyncSvc,
-      this.lightSyncSvc,
+      this.dynamicLighting, // AÑADIDO
       this.objectAnimSvc,
       this.playerFogSvc,
       this.bubbleSvc

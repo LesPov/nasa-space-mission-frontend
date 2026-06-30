@@ -6,7 +6,9 @@ import { CameraFactoryService } from '../core/engine/runtime/cameras/camera-fact
 import { CameraOwnershipService } from '../core/engine/runtime/cameras/camera-ownership.service';
 import { CinematicDirectorService } from '../core/engine/runtime/systems/cinematic-director.service';
 import { ISceneAccess } from '../core/engine/scene/scene-access.token';
-
+import { ShadowOrchestratorService } from '../core/engine/runtime/shadows/shadow-orchestrator.service';
+import { DynamicLightingSystem } from '../core/engine/runtime/systems/lighting/dynamic-lighting.system';
+ 
 @Injectable({
   providedIn: 'root'
 })
@@ -83,6 +85,13 @@ export class Motor3dService implements ISceneAccess {
     const cinematicDirector = this.injector.get(CinematicDirectorService);
     this.loopManager.registerSystem(cinematicDirector);
 
+    const shadowOrch = this.injector.get(ShadowOrchestratorService);
+    this.loopManager.registerSystem(shadowOrch);
+
+    // 🔥 FIX: Registramos el gestor de luces para que actúe SIEMPRE (En Editor y Jugando)
+    const dynamicLighting = this.injector.get(DynamicLightingSystem);
+    this.loopManager.registerSystem(dynamicLighting);
+
     this.cameraFactory.initializeCameras(this.scene, canvas);
 
     this.renderingPipeline = new DefaultRenderingPipeline('defaultPipeline', false, this.scene, this.scene.cameras);
@@ -122,9 +131,6 @@ export class Motor3dService implements ISceneAccess {
     this.scene.imageProcessingConfiguration.colorCurvesEnabled = false;
     this.scene.imageProcessingConfiguration.exposure = isBw ? 0.98 : 1.0;
     this.scene.imageProcessingConfiguration.contrast = isBw ? 1.15 : 1.0;
-
-    // 🔥 Eliminado por completo el filtro global. 
-    // Ahora las luces de color SI afectarán a los modelos en B/N.
   }
 
   forceResize(): void {

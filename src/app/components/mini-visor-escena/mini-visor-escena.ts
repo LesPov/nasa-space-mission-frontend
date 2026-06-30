@@ -1,12 +1,18 @@
 
 import { Component, ElementRef, Input, OnDestroy, OnInit, ViewChild, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
 import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, MeshBuilder, Color4 } from '@babylonjs/core';
 import { EpisodiosService } from '../../services/api/episodios';
 
 @Component({
   selector: 'app-mini-visor-escena',
   standalone: true,
-  template: `<canvas #previewCanvas class="canvas-mini"></canvas>`,
+  imports: [CommonModule],
+  // 🔥 FIX: Alternamos entre el canvas (oculto temporalmente) y una imagen estática
+  template: `
+    <img *ngIf="snapshotUrl" [src]="snapshotUrl" class="canvas-mini" alt="Preview Escena" />
+    <canvas *ngIf="!snapshotUrl" #previewCanvas class="canvas-mini" style="visibility: hidden;"></canvas>
+  `,
   styles: [`
     .canvas-mini {
       width: 100%;
@@ -14,29 +20,39 @@ import { EpisodiosService } from '../../services/api/episodios';
       touch-action: none;
       outline: none;
       border: none;
-      cursor: grab;
+      object-fit: cover;
       border-radius: 8px 8px 0 0;
     }
-    .canvas-mini:active { cursor: grabbing; }
   `]
 })
 export class MiniVisorEscena implements OnInit, OnDestroy {
   @Input() episodioId!: number;
-  @ViewChild('previewCanvas', { static: true }) canvasRef!: ElementRef<HTMLCanvasElement>;
+  @ViewChild('previewCanvas', { static: false }) canvasRef?: ElementRef<HTMLCanvasElement>;
   
   private epiApiSvc = inject(EpisodiosService);
-  private engine!: Engine;
-  private scene!: Scene;
+  private engine: Engine | null = null;
+  private scene: Scene | null = null;
+
+  public snapshotUrl: string | null = null;
 
   ngOnInit() {
-    this.engine = new Engine(this.canvasRef.nativeElement, true);
+    // Le damos un respiro al hilo principal antes de renderizar miniaturas para evitar tirones
+    setTimeout(() => {
+      this.generarSnapshot();
+    }, 100);
+  }
+
+  private generarSnapshot() {
+    if (!this.canvasRef) return;
+    
+    // 🔥 FIX: Creamos el motor, renderizamos 1 SOLO FRAME, tomamos una foto y destruimos el motor.
+    // Esto salva la memoria de la tarjeta de video y evita el GL_CONTEXT_LOST (crasheo de WebGL).
+    this.engine = new Engine(this.canvasRef.nativeElement, true, { preserveDrawingBuffer: true });
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.05, 0.09, 0.16, 1);
 
     const camera = new ArcRotateCamera('cam', Math.PI / 4, Math.PI / 3, 20, Vector3.Zero(), this.scene);
-    camera.attachControl(this.canvasRef.nativeElement, true);
-    camera.wheelPrecision = 30;
-
+    
     const light = new HemisphericLight('light', new Vector3(0, 1, 0), this.scene);
     light.intensity = 0.8;
 
@@ -64,32 +80,38 @@ export class MiniVisorEscena implements OnInit, OnDestroy {
          const objects = res.sceneObjects || [];
          objects.forEach((obj: any) => {
             if (obj.type === 'cube') {
-               const box = MeshBuilder.CreateBox(obj.name, {size: 1}, this.scene);
+               const box = MeshBuilder.CreateBox(obj.name, {size: 1}, this.scene!);
                box.position = new Vector3(obj.position.x, obj.position.y, obj.position.z);
                box.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
             } else if (obj.type === 'sphere') {
-               const sphere = MeshBuilder.CreateSphere(obj.name, {diameter: 1}, this.scene);
+               const sphere = MeshBuilder.CreateSphere(obj.name, {diameter: 1}, this.scene!);
                sphere.position = new Vector3(obj.position.x, obj.position.y, obj.position.z);
                sphere.scaling = new Vector3(obj.scale.x, obj.scale.y, obj.scale.z);
             }
          });
-       },
-       error: (err: any) => console.error(err)
-    });
 
-    this.engine.runRenderLoop(() => {
-      this.scene.render();
+         // Renderizamos y tomamos la captura
+         this.scene!.executeWhenReady(() => {
+            this.scene!.render();
+            if (this.canvasRef) {
+                this.snapshotUrl = this.canvasRef.nativeElement.toDataURL('image/jpeg', 0.8);
+            }
+            this.liberarMemoria();
+         });
+       },
+       error: (err: any) => {
+           console.error(err);
+           this.liberarMemoria();
+       }
     });
-    
-    const resizeObserver = new ResizeObserver(() => this.engine.resize());
-    resizeObserver.observe(this.canvasRef.nativeElement);
+  }
+
+  private liberarMemoria() {
+    if (this.scene) { this.scene.dispose(); this.scene = null; }
+    if (this.engine) { this.engine.dispose(); this.engine = null; }
   }
 
   ngOnDestroy() {
-    if(this.engine) {
-      this.engine.stopRenderLoop();
-      this.scene.dispose();
-      this.engine.dispose();
-    }
+    this.liberarMemoria();
   }
 }

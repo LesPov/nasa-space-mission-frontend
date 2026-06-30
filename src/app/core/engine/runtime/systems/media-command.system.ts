@@ -12,11 +12,11 @@ export class MediaCommandSystem implements IUpdatable {
   update(dtMs: number): void {
     const entities = this.entityManager.getAllEntities();
 
-    for (const entity of entities) {
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
       const view = entity.view as Mesh;
       if (!view) continue;
 
-      // 1. Ejecución de Comandos de Video (Pantallas/TVs)
       if (entity.mediaRuntime?.videoCommand) {
         const mat = view.material as StandardMaterial;
         if (mat && mat.diffuseTexture && (mat.diffuseTexture as any).video) {
@@ -34,12 +34,10 @@ export class MediaCommandSystem implements IUpdatable {
             mat.emissiveColor = new Color3(0, 0, 0);
           }
           
-          // Consumir el comando una vez ejecutado
           entity.mediaRuntime.videoCommand = undefined;
         }
       }
 
-      // 2. Ejecución de Detención de Animaciones Nativas (GLB)
       if (entity.playerRuntime?.stopBakedRequested && view.getScene) {
         const scene = view.getScene();
         const myAnimNames = entity.animationNames || [];
@@ -61,9 +59,9 @@ export class MediaCommandSystem implements IUpdatable {
           }
         });
         
-        // Consumir el comando una vez ejecutado
         entity.playerRuntime.stopBakedRequested = false;
       }
     }
   }
 }
+  

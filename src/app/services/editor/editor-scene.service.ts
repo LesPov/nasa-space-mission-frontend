@@ -1,9 +1,8 @@
-// src/app/services/editor/editor-scene.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, MeshBuilder, Color4, Tags, Quaternion } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { CoreSceneLoaderService } from '../../core/engine/scene/utils/core-scene-loader.service';
-import { CoreSceneShadowsService } from '../../core/engine/scene/utils/core-scene-shadows.service';
 import { SceneObjectBuilderService } from './sceneservice/scene-object-builder.service';
 import { SceneSaverService } from './sceneservice/scene-saver.service';
 import { SceneNodesService } from './sceneservice/scene-nodes.service';
@@ -12,12 +11,13 @@ import { EditorMapaService } from '../editor-mapa.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { AuthService } from '../../core/services/auth';
 import { GameContextService } from '../../core/engine/session/game-context.service';
-
+import { ShadowOrchestratorService } from '../../core/engine/runtime/shadows/shadow-orchestrator.service';
+ 
 @Injectable({ providedIn: 'root' })
 export class EditorSceneService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private loaderSvc = inject(CoreSceneLoaderService);
-  private shadowsSvc = inject(CoreSceneShadowsService);
+  private shadowOrchestrator = inject(ShadowOrchestratorService);
   private builderSvc = inject(SceneObjectBuilderService);
   private saverSvc = inject(SceneSaverService);
   private nodesSvc = inject(SceneNodesService);
@@ -90,7 +90,7 @@ export class EditorSceneService {
   }
 
   public asignarObjetosASombrasDeLuces(): void {
-    this.shadowsSvc.asignarObjetosASombrasDeLuces();
+    this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
   }
 
   public actualizarListaNodos(): void {
@@ -124,7 +124,6 @@ export class EditorSceneService {
     });
   }
 
-  // 🔥 FIX PREFABS: Se expone la firma completa para Live Builder
   public instanciarPrefabFull(prefabData: any, targetPos: Vector3, rotationEuler?: Vector3, scale?: Vector3, parentNode?: AbstractMesh): void {
     const isAdmin = this.authSvc.isAdmin();
     this.loaderSvc.instantiatePrefab(prefabData, targetPos, rotationEuler, scale, parentNode).then((mallas) => {

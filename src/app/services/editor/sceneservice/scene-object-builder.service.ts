@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, MeshBuilder, Tags, Vector3 } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -5,9 +6,9 @@ import { HistorialService } from '../../historial.service';
 import { SceneNodesService } from './scene-nodes.service';
 import { CorePrimitiveLoaderService } from '../../../core/engine/scene/utils/core-primitive-loader.service';
 import { CoreModelLoaderService } from '../../../core/engine/scene/utils/core-model-loader.service';
-import { CoreSceneShadowsService } from '../../../core/engine/scene/utils/core-scene-shadows.service';
 import { BuilderTriggerService } from './builder-trigger.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { ShadowOrchestratorService } from '../../../core/engine/runtime/shadows/shadow-orchestrator.service';
 
 @Injectable({ providedIn: 'root' })
 export class SceneObjectBuilderService {
@@ -16,7 +17,7 @@ export class SceneObjectBuilderService {
   private nodesSvc = inject(SceneNodesService);
   private modelLoader = inject(CoreModelLoaderService);
   private primitiveLoader = inject(CorePrimitiveLoaderService);
-  private shadowsSvc = inject(CoreSceneShadowsService);
+  private shadowOrchestrator = inject(ShadowOrchestratorService);
   private triggerBuilderSvc = inject(BuilderTriggerService);
   private entityManager = inject(EntityManagerService);
 
@@ -42,7 +43,6 @@ export class SceneObjectBuilderService {
       return;
     }
 
-    // 🔥 FIX SUPREMO ESCALA: Forzar que si tiene asset nazca SIEMPRE en 1x1x1 en su registro base
     if ((tipo === 'model' || tipo.startsWith('light_')) && asset) {
         sizeX = 1;
         sizeY = 1;
@@ -78,6 +78,8 @@ export class SceneObjectBuilderService {
         mockDbObject.properties.lightPosY = 0.5;
         mockDbObject.properties.lightPosZ = 0;
         mockDbObject.properties.angle = 45;
+        mockDbObject.properties.enabled = true;
+        mockDbObject.properties.castShadows = true;
     }
 
     const isModel = tipo === 'model';
@@ -102,7 +104,7 @@ export class SceneObjectBuilderService {
           ent.isDirty = true;
       }
       
-      this.shadowsSvc.asignarObjetosASombrasDeLuces();
+      this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
       
       this.nodesSvc.actualizarListaNodos();
       this.historialSvc.registrarAccionCrear(newMesh);

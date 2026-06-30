@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
@@ -18,7 +17,7 @@ export class SceneNodesService {
     if (!this.motor3d.getScene()) return;
     const scene = this.motor3d.getScene();
 
-    const lucesValidas = scene.lights.filter(l => !l.parent && l.name !== 'ambientLight');
+    // 🔥 Eliminado lucesValidas para que no se listen luces BabylonJS físicas del DynamicLightingSystem
     
     const camarasValidas = scene.cameras.filter(c => 
       !c.name.includes('proxy') && !c.name.includes('mock') && !c.name.includes('admin')
@@ -26,7 +25,6 @@ export class SceneNodesService {
 
     this.state.nodosEscena.set([
       ...camarasValidas,
-      ...lucesValidas,
       ...scene.meshes.filter(m =>
         !Tags.MatchesQuery(m, "system_element || editor_only || fog_element || debug_element || proxy_collider") &&
         m.parent === null 

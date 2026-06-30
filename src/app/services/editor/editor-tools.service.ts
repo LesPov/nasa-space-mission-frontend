@@ -21,7 +21,7 @@ import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera
 import { LiveBuilderService } from './live-builder.service';
 import { PlayerInputService } from '../../core/engine/runtime/systems/player-input.service';
 import { EditorMapaService } from '../editor-mapa.service';
-import { LightSyncSystem } from '../../core/engine/runtime/systems/light-sync.system';
+import { DynamicLightingSystem } from '../../core/engine/runtime/systems/lighting/dynamic-lighting.system'; // AÑADIDO
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
@@ -42,7 +42,7 @@ export class EditorToolsService {
   private gizmoSvc = inject(ToolsGizmoService);
   private liveBuilder = inject(LiveBuilderService);
   private playerInput = inject(PlayerInputService); 
-  private lightSync = inject(LightSyncSystem);
+  private dynamicLighting = inject(DynamicLightingSystem); // AÑADIDO
 
   private lastHoverCheckTime = 0;
   private isGizmoSyncAttached = false;
@@ -389,7 +389,7 @@ export class EditorToolsService {
     });
 
     scene.onBeforeRenderObservable.add(() => {
-      this.lightSync.syncAllLights();
+      this.dynamicLighting.update(this.motor3d.getEngine().getDeltaTime()); // FIX
 
       const obj = this.state.objetoSeleccionado() as Mesh;
       this.gizmoSvc.updateCenterDragMeshRenderState(obj, this.state.subObjetoSeleccionado());

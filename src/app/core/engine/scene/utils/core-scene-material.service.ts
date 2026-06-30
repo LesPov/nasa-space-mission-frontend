@@ -10,6 +10,9 @@ export class CoreSceneMaterialService {
   public async ajustarMaterialGLB(material: any, isBW: boolean = false, scene?: Scene): Promise<void> {
     if (!material) return;
     
+    // Si ya lo procesamos, saltarlo para evitar recompilar y GC
+    if (material.metadata && material.metadata.isProcessedForLighting) return;
+    
     if (material.getClassName() === 'MultiMaterial' && material.subMaterials) {
       for (const subMat of material.subMaterials) {
         await this.ajustarMaterialGLB(subMat, isBW, scene);
@@ -17,15 +20,17 @@ export class CoreSceneMaterialService {
       return;
     }
     
-    // 🔥 FIX: Aumentamos el límite de luces simultáneas de 4 a 16 
-    // para permitir calles enteras alumbradas con múltiples faroles.
-    material.maxSimultaneousLights = 16;
+    // 🔥 OPTIMIZACIÓN LÍMITE LUCES: Lo limitamos a 4 luces por objeto (estándar óptimo de videojuegos)
+    // Esto evita recompilaciones de shaders y destruye el lag de luces dinámicas en tiempo real.
+    if (material.maxSimultaneousLights !== 4) {
+        material.maxSimultaneousLights = 4;
+    }
     
     if (material.getClassName().includes('PBR')) {
-      material.usePhysicalLightFalloff = false;
-      material.metallic = 0.1;
-      material.roughness = 0.8;
-      material.environmentIntensity = 0.5;
+      if (material.usePhysicalLightFalloff !== false) material.usePhysicalLightFalloff = false;
+      if (material.metallic !== 0.1) material.metallic = 0.1;
+      if (material.roughness !== 0.8) material.roughness = 0.8;
+      if (material.environmentIntensity !== 0.5) material.environmentIntensity = 0.5;
 
       if (!material.metadata) material.metadata = {};
       if (material.metadata.originalAlbedoTexture === undefined) {
@@ -35,12 +40,17 @@ export class CoreSceneMaterialService {
 
       if (isBW && scene) {
          if (material.metadata.originalAlbedoTexture) {
-             material.albedoTexture = await this.getOrCreateBwTexture(material.metadata.originalAlbedoTexture, scene);
+             const bwTex = await this.getOrCreateBwTexture(material.metadata.originalAlbedoTexture, scene);
+             if (material.albedoTexture !== bwTex) material.albedoTexture = bwTex;
          }
-         material.albedoColor = new Color3(0.8, 0.8, 0.8); 
+         if (material.albedoColor.r !== 0.8) material.albedoColor.copyFromFloats(0.8, 0.8, 0.8);
       } else {
-         material.albedoTexture = material.metadata.originalAlbedoTexture;
-         material.albedoColor = material.metadata.originalAlbedoColor;
+         if (material.albedoTexture !== material.metadata.originalAlbedoTexture) {
+             material.albedoTexture = material.metadata.originalAlbedoTexture;
+         }
+         if (!material.albedoColor.equals(material.metadata.originalAlbedoColor)) {
+             material.albedoColor.copyFrom(material.metadata.originalAlbedoColor);
+         }
       }
     } else if (material.getClassName().includes('Standard')) {
       if (!material.metadata) material.metadata = {};
@@ -52,12 +62,17 @@ export class CoreSceneMaterialService {
 
       if (isBW && scene) {
          if (material.metadata.originalDiffuseTexture) {
-             material.diffuseTexture = await this.getOrCreateBwTexture(material.metadata.originalDiffuseTexture, scene);
+             const bwTex = await this.getOrCreateBwTexture(material.metadata.originalDiffuseTexture, scene);
+             if (material.diffuseTexture !== bwTex) material.diffuseTexture = bwTex;
          }
-         material.diffuseColor = new Color3(0.8, 0.8, 0.8);
+         if (material.diffuseColor.r !== 0.8) material.diffuseColor.copyFromFloats(0.8, 0.8, 0.8);
       } else {
-         material.diffuseTexture = material.metadata.originalDiffuseTexture;
-         material.diffuseColor = material.metadata.originalDiffuseColor;
+         if (material.diffuseTexture !== material.metadata.originalDiffuseTexture) {
+             material.diffuseTexture = material.metadata.originalDiffuseTexture;
+         }
+         if (!material.diffuseColor.equals(material.metadata.originalDiffuseColor)) {
+             material.diffuseColor.copyFrom(material.metadata.originalDiffuseColor);
+         }
       }
     }
   }

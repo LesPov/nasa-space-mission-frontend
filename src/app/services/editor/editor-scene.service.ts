@@ -133,7 +133,7 @@ export class EditorSceneService {
       this.nodesSvc.actualizarListaNodos();
       const iter = mallas.values().next();
       if (!iter.done) {
-        this.state.objetoSeleccionado.set(iter.value);
+        this.state.seleccionarObjeto(iter.value);
         this.mapaSvc.onMapChanged.next(); 
       }
     });

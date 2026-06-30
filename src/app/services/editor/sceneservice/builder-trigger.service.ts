@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -78,7 +77,7 @@ export class BuilderTriggerService {
     mat.alpha = 0.4;
     mat.wireframe = false; 
     mat.disableLighting = true;
-    mat.maxSimultaneousLights = 6; // 🔥 FIX LÍMITE LUCES
+    mat.maxSimultaneousLights = 6;
     newMesh.material = mat;
 
     newMesh.isPickable = true;
@@ -86,7 +85,7 @@ export class BuilderTriggerService {
     newMesh.isVisible = this.authSvc.isAdmin();
 
     if (this.state.objetoSeleccionado() === oldMesh) {
-      this.state.objetoSeleccionado.set(newMesh);
+      this.state.seleccionarObjeto(newMesh);
     }
 
     oldMesh.dispose();
@@ -124,7 +123,7 @@ export class BuilderTriggerService {
       const ent = this.entityManager.getEntityByMesh(newMesh);
       if (ent) ent.isDirty = true;
       if (parentNode) newMesh.setParent(parentNode);
-      this.state.objetoSeleccionado.set(newMesh);
+      this.state.seleccionarObjeto(newMesh);
       this.nodesSvc.actualizarListaNodos();
       this.historialSvc.registrarAccionCrear(newMesh);
       this.mapaSvc.onMapChanged.next();

@@ -1,13 +1,13 @@
 
-
-import { Injectable, inject, signal, computed } from '@angular/core';
+import { Injectable, inject, computed } from '@angular/core';
 import { Node, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { GameContextService } from '../../core/engine/session/game-context.service';
 import { InteractableRulesService } from '../../core/engine/runtime/rules/interactable-rules.service';
 import { PlayState, GameMode } from '../../core/engine/session/game-mode.model';
+import { ToolModeContext } from '../../core/engine/session/game-context.model';
 
-export type ToolMode = 'select' | 'translate' | 'rotate' | 'scale';
+export type ToolMode = ToolModeContext;
 export type { PlayState };
 
 @Injectable({ providedIn: 'root' })
@@ -15,6 +15,10 @@ export class EditorStateService {
   private entityManager = inject(EntityManagerService);
   private gameContext = inject(GameContextService);
   private interactRules = inject(InteractableRulesService);
+
+  // ==========================================
+  // FACHADA DE ESTADO (COMPUTED READONLY)
+  // ==========================================
 
   public playState = computed<PlayState>(() => {
     if (this.gameContext.isTransitioning()) return 'TRANSITIONING';
@@ -27,27 +31,47 @@ export class EditorStateService {
     return 'PLAYING';
   });
   
-  public currentTool = signal<ToolMode>('translate');
-  public objetoSeleccionado = signal<Node | null>(null);
-  public subObjetoSeleccionado = signal<'collider' | 'camera' | 'light' | 'fog' | null>(null);
+  public currentTool = computed(() => this.gameContext.currentTool());
+  public objetoSeleccionado = computed(() => this.gameContext.selectedNode());
+  public subObjetoSeleccionado = computed(() => this.gameContext.subSelectedObject());
+  public objetoInteractuado = computed(() => this.gameContext.interactedObject());
+  public nodosEscena = computed(() => this.gameContext.sceneNodes());
+  public ratonBloqueado = computed(() => this.gameContext.isPointerLocked());
+  public showAddObjectModal = computed(() => this.gameContext.isAddObjectModalOpen());
+  public objetoHovereado = computed(() => this.gameContext.hoveredObject());
+  public fogDesactivadoTemporalmente = computed(() => this.gameContext.isFogDisabled());
+  public previewMissionModal = computed(() => this.gameContext.isPreviewMissionModalOpen());
 
-  public objetoInteractuado = signal<any>(null);
-  public nodosEscena = signal<Node[]>([]);
+  // Compatibilidad con componentes legacy mediante Getters/Setters que mapean al SSOT
+  public get modoVistaPrueba() { return this.gameContext.cameraView(); }
+  public set modoVistaPrueba(val: any) { if (val) this.gameContext.setCameraView(val); }
 
-  public ratonBloqueado = signal<boolean>(false);
-  public showAddObjectModal = signal<boolean>(false);
-  public objetoHovereado = signal<AbstractMesh | null>(null);
+  public get jugadorActivo() {
+    const ent = this.gameContext.activePlayerEntity();
+    return ent ? ent.view as Mesh : null;
+  }
 
-  public fogDesactivadoTemporalmente = signal<boolean>(false);
-  public previewMissionModal = signal<boolean>(false);
-
-  public modoVistaPrueba: 'FPS' | 'TPS' | null = null;
-  public jugadorActivo: Mesh | null = null;
+  // ==========================================
+  // SETTERS DELEGADOS AL CONTEXTO (SSOT)
+  // ==========================================
 
   public seleccionarObjeto(nodo: Node | null): void { 
-    this.objetoSeleccionado.set(nodo); 
-    this.subObjetoSeleccionado.set(null);
+    this.gameContext.setSelectedNode(nodo);
+    this.gameContext.setSubSelectedObject(null);
   }
+
+  public setSubObjetoSeleccionado(sub: 'collider' | 'camera' | 'light' | 'fog' | null): void { this.gameContext.setSubSelectedObject(sub); }
+  public setObjetoInteractuado(nodo: Node | null): void { this.gameContext.setInteractedObject(nodo); }
+  public setNodosEscena(nodos: Node[]): void { this.gameContext.setSceneNodes(nodos); }
+  public setShowAddObjectModal(val: boolean): void { this.gameContext.setAddObjectModalOpen(val); }
+  public setObjetoHovereado(mesh: AbstractMesh | null): void { this.gameContext.setHoveredObject(mesh); }
+  public setFogDesactivadoTemporalmente(val: boolean): void { this.gameContext.setFogDisabled(val); }
+  public setPreviewMissionModal(val: boolean): void { this.gameContext.setPreviewMissionModalOpen(val); }
+  public setCurrentTool(tool: ToolMode): void { this.gameContext.setCurrentTool(tool); }
+
+  // ==========================================
+  // FUNCIONES PURAS DE LÓGICA DE INTERFAZ
+  // ==========================================
 
   public isDescendant(child: Node, parent: Node): boolean {
     let current = child.parent;
@@ -116,14 +140,11 @@ export class EditorStateService {
   }
 
   public limpiarEstado(): void {
-    this.modoVistaPrueba = null;
-    this.jugadorActivo = null;
-    this.objetoHovereado.set(null);
-    this.objetoInteractuado.set(null);
-    this.ratonBloqueado.set(false);
-    this.objetoSeleccionado.set(null);
-    this.subObjetoSeleccionado.set(null);
-    this.fogDesactivadoTemporalmente.set(false);
-    this.previewMissionModal.set(false); 
+    this.gameContext.setHoveredObject(null);
+    this.gameContext.setInteractedObject(null);
+    this.gameContext.setSelectedNode(null);
+    this.gameContext.setSubSelectedObject(null);
+    this.gameContext.setFogDisabled(false);
+    this.gameContext.setPreviewMissionModalOpen(false);
   }
 }

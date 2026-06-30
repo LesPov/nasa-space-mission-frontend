@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import {
   AbstractMesh, Animation, ArcRotateCamera, Camera, CubicEase, EasingFunction,
@@ -357,7 +356,7 @@ export class EditorCameraService {
         editorCam.radius = finalRadius;
 
         this.transitionSvc.finishPauseToLiveEdit();
-        this.state.objetoSeleccionado.set(objetoReceptor);
+        this.state.seleccionarObjeto(objetoReceptor);
 
         const canvas = this.motor3d.getEngine().getRenderingCanvas();
         if (canvas) {

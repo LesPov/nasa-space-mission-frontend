@@ -1,5 +1,4 @@
 
-
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { EditorMapaService } from '../../services/editor-mapa.service';
@@ -28,7 +27,7 @@ export class ToolbarEscena {
   }
 
   abrirModalAnadir() {
-    this.stateSvc.showAddObjectModal.set(true);
+    this.stateSvc.setShowAddObjectModal(true);
   }
 
   crearTriggerDirecto(isComposite: boolean) {

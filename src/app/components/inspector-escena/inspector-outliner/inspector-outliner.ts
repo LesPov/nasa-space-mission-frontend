@@ -1,5 +1,4 @@
 
-
 import { Component, Output, EventEmitter, inject, effect, ElementRef, ChangeDetectorRef, OnInit, OnDestroy, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -288,10 +287,10 @@ export class InspectorOutliner implements OnInit, OnDestroy {
     if (this.esBloqueado(nodo)) return; 
     
     if (this.esSubSeleccionado(nodo, subObj as any)) {
-      this.stateSvc.subObjetoSeleccionado.set(null); 
+      this.stateSvc.setSubObjetoSeleccionado(null); 
     } else {
       this.stateSvc.seleccionarObjeto(nodo); 
-      this.stateSvc.subObjetoSeleccionado.set(subObj); 
+      this.stateSvc.setSubObjetoSeleccionado(subObj); 
       this.tabSelect.emit(pestana); 
     }
   }
@@ -301,7 +300,7 @@ export class InspectorOutliner implements OnInit, OnDestroy {
     
     if (this.esSeleccionado(nodo)) {
       this.stateSvc.seleccionarObjeto(null);
-      this.stateSvc.subObjetoSeleccionado.set(null);
+      this.stateSvc.setSubObjetoSeleccionado(null);
     } else {
       this.stateSvc.seleccionarObjeto(nodo); 
       this.cameraSvc.enfocarObjetoEnEditor(nodo); 

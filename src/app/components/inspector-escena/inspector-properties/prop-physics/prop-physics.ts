@@ -135,7 +135,7 @@ export class PropPhysics implements OnInit, OnDestroy {
     }
     
     if (this.colliderType === 'mesh' && this.stateSvc.subObjetoSeleccionado() === 'collider') {
-        this.stateSvc.subObjetoSeleccionado.set(null);
+        this.stateSvc.setSubObjetoSeleccionado(null);
     }
     
     this.editorSvc.onMapChanged.next();

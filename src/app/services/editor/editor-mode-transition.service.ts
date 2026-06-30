@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { EditorStateService } from './editor-state.service';
 import { GameContextService } from '../../core/engine/session/game-context.service';
@@ -10,14 +9,10 @@ export class EditorModeTransitionService {
   private state = inject(EditorStateService);
   private gameContext = inject(GameContextService);
 
-  // ==========================================
-  // TRANSICIONES DE TEST LIVE (EDITOR ⇄ JUEGO)
-  // ==========================================
-
   public beginTestLive(): void {
     this.gameContext.setMode(GameMode.TEST_LIVE);
     this.gameContext.setTransitioning(true);
-    this.state.objetoHovereado.set(null);
+    this.state.setObjetoHovereado(null);
   }
 
   public finishTestLiveTransition(): void {
@@ -28,20 +23,14 @@ export class EditorModeTransitionService {
     this.gameContext.setMode(GameMode.EDITOR);
     this.gameContext.setTransitioning(false);
     this.gameContext.setInteracting(false);
-    this.state.modoVistaPrueba = null;
-    this.state.jugadorActivo = null;
-    this.state.objetoHovereado.set(null);
-    this.state.objetoSeleccionado.set(null);
+    this.state.setObjetoHovereado(null);
+    this.state.seleccionarObjeto(null);
   }
-
-  // ==========================================
-  // TRANSICIONES EN VIVO (JUEGO ⇄ EDICIÓN LIVE)
-  // ==========================================
 
   public beginPauseToLiveEdit(): void {
     this.gameContext.setTransitioning(true);
-    this.state.objetoHovereado.set(null);
-    this.state.objetoSeleccionado.set(null);
+    this.state.setObjetoHovereado(null);
+    this.state.seleccionarObjeto(null);
   }
 
   public finishPauseToLiveEdit(): void {
@@ -51,17 +40,13 @@ export class EditorModeTransitionService {
 
   public beginResumeToTestLive(): void {
     this.gameContext.setTransitioning(true);
-    this.state.objetoSeleccionado.set(null);
+    this.state.seleccionarObjeto(null);
   }
 
   public finishResumeToTestLive(): void {
     this.gameContext.setTransitioning(false);
     this.gameContext.setMode(GameMode.TEST_LIVE);
   }
-
-  // ==========================================
-  // TRANSICIONES DE UI (INTERACCIÓN & RESET)
-  // ==========================================
 
   public enterInteraction(): void {
     this.gameContext.setInteracting(true);

@@ -1,5 +1,4 @@
 
-
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -166,7 +165,7 @@ export class EditorEscena implements OnInit, OnDestroy {
           break;
         case 'CameraViewChanged':
           this.activeCameraView = event.payload;
-          this.stateSvc.modoVistaPrueba = event.payload;
+          this.gameContext.setCameraView(event.payload as any);
           this.vistaPrueba = event.payload as 'FPS' | 'TPS';
           break;
         case 'GamePaused': 
@@ -216,7 +215,7 @@ export class EditorEscena implements OnInit, OnDestroy {
         return;
       }
       if (this.stateSvc.previewMissionModal()) {
-        this.stateSvc.previewMissionModal.set(false);
+        this.stateSvc.setPreviewMissionModal(false);
         this.cdr.detectChanges();
         return;
       }
@@ -244,7 +243,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   toggleNieblaTemporal() {
-    this.stateSvc.fogDesactivadoTemporalmente.set(!this.stateSvc.fogDesactivadoTemporalmente());
+    this.stateSvc.setFogDesactivadoTemporalmente(!this.stateSvc.fogDesactivadoTemporalmente());
     setTimeout(() => this.motor3dSvc.forceResize(), 10);
     this.editorSvc.onMapChanged.next();
   }
@@ -254,7 +253,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (state === 'EDITING_IN_GAME' || state === 'PLAYING') {
       this.mostrarModalMisionPreview = !this.mostrarModalMisionPreview;
     } else {
-      this.stateSvc.previewMissionModal.set(!this.stateSvc.previewMissionModal());
+      this.stateSvc.setPreviewMissionModal(!this.stateSvc.previewMissionModal());
     }
   }
 
@@ -270,7 +269,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     
     this.epiApiSvc.obtenerPlataformasEscena(episodio.id).subscribe({
        next: (plataformas) => {
-         this.editorSvc.plataformasEscena.set(plataformas);
+         this.editorSvc.setPlataformasEscena(plataformas);
          const sceneId = episodio.initialScene?.id || plataformas[0]?.id || episodio.id;
          this.plataformaActualId = sceneId;
          this.procesarCarga(episodio, sceneId);
@@ -296,9 +295,9 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.epiApiSvc.obtenerEscenaCompleta(sceneId).subscribe({
       next: async (res) => {
         this.episodioCompletoData = res; 
-        this.editorSvc.escenaIdActiva.set(sceneId);
-        this.editorSvc.escenaActualData.set(res);
-        this.editorSvc.episodioActualData.set(episodio);
+        this.editorSvc.setEscenaIdActiva(sceneId);
+        this.editorSvc.setEscenaActualData(res);
+        this.editorSvc.setEpisodioActualData(episodio);
         
         this.cargandoTexto.set('Preparando modelos, texturas y físicas 3D...');
         
@@ -343,7 +342,7 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.epiApiSvc.crearPlataformaEscena(epId, this.nuevaPlataformaNombre).subscribe({
       next: (nuevaEscena) => {
          const actuales = this.editorSvc.plataformasEscena();
-         this.editorSvc.plataformasEscena.set([...actuales, nuevaEscena]);
+         this.editorSvc.setPlataformasEscena([...actuales, nuevaEscena]);
          this.mostrandoCrearPlataforma = false;
          
          this.plataformaActualId = nuevaEscena.id;
@@ -374,8 +373,8 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.epiApiSvc.obtenerEscenaCompleta(sceneId).subscribe({
       next: async (res) => {
         this.episodioCompletoData = res; 
-        this.editorSvc.escenaIdActiva.set(sceneId);
-        this.editorSvc.escenaActualData.set(res);
+        this.editorSvc.setEscenaIdActiva(sceneId);
+        this.editorSvc.setEscenaActualData(res);
         
         this.motor3dSvc.forceResize(); 
         this.sceneSvc.crearSuelo();
@@ -509,7 +508,7 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   handleMissionStart() {
     if (this.stateSvc.previewMissionModal() && !this.mostrarModalMisionPreview) {
-       this.stateSvc.previewMissionModal.set(false);
+       this.stateSvc.setPreviewMissionModal(false);
     } else {
        this.comenzarMisionPreview();
     }
@@ -517,7 +516,7 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   handleMissionExit() {
     if (this.stateSvc.previewMissionModal() && !this.mostrarModalMisionPreview) {
-       this.stateSvc.previewMissionModal.set(false);
+       this.stateSvc.setPreviewMissionModal(false);
     } else {
        this.detenerModoPrueba();
     }

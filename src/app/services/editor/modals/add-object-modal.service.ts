@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
@@ -95,7 +94,7 @@ export class AddObjectModalService {
   }
 
   public cerrarModalObjeto(): void {
-    this.stateSvc.showAddObjectModal.set(false);
+    this.stateSvc.setShowAddObjectModal(false);
     this.objNombre = 'Objeto_' + Math.floor(Math.random() * 1000);
     this.objTipo = 'cube'; this.objRol = 'prop'; this.objColor = '#ffffff';
     this.objSizeX = 1; this.objSizeY = 1; this.objSizeZ = 1;

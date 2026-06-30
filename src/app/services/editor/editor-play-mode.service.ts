@@ -44,7 +44,7 @@ export class EditorPlayModeService {
   constructor() {
     this.eventBus.events$.subscribe(e => {
        if (e.type === 'CameraViewChanged') {
-          this.state.modoVistaPrueba = e.payload;
+          this.gameContext.setCameraView(e.payload as CameraViewMode);
        }
     });
   }
@@ -125,9 +125,8 @@ export class EditorPlayModeService {
     playerEntity.isPersistent = true;
     Tags.AddTagsTo(playerEntity.view, "persistent_player");
 
-    this.state.modoVistaPrueba = vista;
-    this.state.jugadorActivo = objMesh;
-    this.state.objetoSeleccionado.set(null);
+    this.gameContext.setCameraView(vista);
+    this.state.seleccionarObjeto(null);
     
     this.motor3d.getScene().meshes.forEach(m => {
         if (Tags.MatchesQuery(m, "editor_only")) {
@@ -245,7 +244,6 @@ export class EditorPlayModeService {
         if (snapId && currentId !== snapId) {
             this.snapshotMemoria = JSON.parse(JSON.stringify(this.mapaSvc.escenaActualData()));
         } else {
-            // 🔥 FUSIÓN TOTAL: Obtenemos TODO lo que el usuario editó o creó mientras jugaba
             const cambiosEnPlay: any = this.sceneSvc.obtenerDatosParaGuardar(this.mapaSvc.escenaActualData(), true); 
             
             if (!this.snapshotMemoria.sceneObjects) this.snapshotMemoria.sceneObjects = this.snapshotMemoria.sceneObjectsDelta || [];
@@ -256,7 +254,6 @@ export class EditorPlayModeService {
             delete this.snapshotMemoria.sceneObjectsDelta;
             delete this.snapshotMemoria.triggersDelta;
 
-            // 1. Fusionar Objetos Nuevos/Editados
             cambiosEnPlay.sceneObjectsDelta.forEach((delta: any) => {
                 if (delta.name === 'Jugador_Prueba') return;
                 const index = this.snapshotMemoria.sceneObjects.findIndex((o: any) => o.uid === delta.uid);
@@ -264,14 +261,12 @@ export class EditorPlayModeService {
                 else this.snapshotMemoria.sceneObjects.push(delta);
             });
 
-            // 2. Fusionar Triggers
             cambiosEnPlay.triggersDelta.forEach((delta: any) => {
                 const index = this.snapshotMemoria.triggers.findIndex((o: any) => o.uid === delta.uid);
                 if (index !== -1) this.snapshotMemoria.triggers[index] = delta;
                 else this.snapshotMemoria.triggers.push(delta);
             });
 
-            // 3. Fusionar Propiedades Globales (BLANCO Y NEGRO, COLORES, NIEBLA MUNDIAL)
             if (cambiosEnPlay.environmentSettings) {
                 this.snapshotMemoria.environmentSettings = JSON.parse(JSON.stringify(cambiosEnPlay.environmentSettings));
             }
@@ -279,12 +274,10 @@ export class EditorPlayModeService {
                 this.snapshotMemoria.uiSettings = JSON.parse(JSON.stringify(cambiosEnPlay.uiSettings));
             }
 
-            // 4. Fusionar Cinemáticas
             if (cambiosEnPlay.cinematicsDelta) {
                 this.snapshotMemoria.cinematics = JSON.parse(JSON.stringify(cambiosEnPlay.cinematicsDelta));
             }
 
-            // 5. Manejar Borrados
             if (cambiosEnPlay.deletedObjects.length > 0) {
                 this.snapshotMemoria.sceneObjects = this.snapshotMemoria.sceneObjects.filter((o: any) => !cambiosEnPlay.deletedObjects.includes(o.uid));
                 this.snapshotMemoria.deletedObjects = [...new Set([...this.snapshotMemoria.deletedObjects, ...cambiosEnPlay.deletedObjects])];
@@ -295,9 +288,7 @@ export class EditorPlayModeService {
             }
         }
 
-        // 🔥 ACTULIZACIÓN CRÍTICA: Actualizamos la señal del mapa para que el botón de Guardar
-        // absorba permanentemente todos los cambios.
-        this.mapaSvc.escenaActualData.set(JSON.parse(JSON.stringify(this.snapshotMemoria)));
+        this.mapaSvc.setEscenaActualData(JSON.parse(JSON.stringify(this.snapshotMemoria)));
 
         this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
         this.entityManager.clear();
@@ -308,7 +299,6 @@ export class EditorPlayModeService {
             if (!m.isDisposed()) m.dispose(false, false); 
         });
 
-        // 🔥 Recarga el mundo con la fusión
         await this.sceneSvc.cargarEscenaDesdeDatos(this.snapshotMemoria);
         this.snapshotMemoria = null;
     }

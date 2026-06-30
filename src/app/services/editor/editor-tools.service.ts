@@ -21,7 +21,7 @@ import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera
 import { LiveBuilderService } from './live-builder.service';
 import { PlayerInputService } from '../../core/engine/runtime/systems/player-input.service';
 import { EditorMapaService } from '../editor-mapa.service';
-import { DynamicLightingSystem } from '../../core/engine/runtime/systems/lighting/dynamic-lighting.system'; // AÑADIDO
+import { DynamicLightingSystem } from '../../core/engine/runtime/systems/lighting/dynamic-lighting.system'; 
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
@@ -42,7 +42,7 @@ export class EditorToolsService {
   private gizmoSvc = inject(ToolsGizmoService);
   private liveBuilder = inject(LiveBuilderService);
   private playerInput = inject(PlayerInputService); 
-  private dynamicLighting = inject(DynamicLightingSystem); // AÑADIDO
+  private dynamicLighting = inject(DynamicLightingSystem); 
 
   private lastHoverCheckTime = 0;
   private isGizmoSyncAttached = false;
@@ -101,7 +101,7 @@ export class EditorToolsService {
        if (e.type === 'ObjectFocused') {
            const playSt = this.state.playState();
            if (playSt === 'PLAYING' && this.state.modoVistaPrueba === 'FPS') {
-               this.state.objetoHovereado.set(e.payload.mesh as AbstractMesh | null);
+               this.state.setObjetoHovereado(e.payload.mesh as AbstractMesh | null);
            }
        }
     });
@@ -175,21 +175,21 @@ export class EditorToolsService {
       }
 
       if (this.state.objetoSeleccionado() === rootNode) {
-        this.state.objetoSeleccionado.set(null);
-        this.state.objetoHovereado.set(null);
+        this.state.seleccionarObjeto(null);
+        this.state.setObjetoHovereado(null);
         if (canvas) { try { canvas.requestPointerLock(); } catch {} }
         return;
       }
 
-      this.state.objetoSeleccionado.set(rootNode);
-      this.state.objetoHovereado.set(rootNode);
+      this.state.seleccionarObjeto(rootNode);
+      this.state.setObjetoHovereado(rootNode);
 
       this.cameraSvc.transicionAEdicionEnVivo(rootNode);
       return;
     }
 
-    this.state.objetoSeleccionado.set(null);
-    this.state.objetoHovereado.set(null);
+    this.state.seleccionarObjeto(null);
+    this.state.setObjetoHovereado(null);
 
     if (!isLocked && canvas) {
       try { canvas.requestPointerLock(); } catch {}
@@ -243,7 +243,7 @@ export class EditorToolsService {
                 ray.length = 10000;
                 const rootNode = this.castRayToSelectable(ray);
                 if (rootNode) {
-                  this.state.objetoSeleccionado.set(rootNode);
+                  this.state.seleccionarObjeto(rootNode);
                 }
             }
           } else if (playSt === 'PLAYING') {
@@ -284,12 +284,12 @@ export class EditorToolsService {
 
               if (rootNode) {
                 if (this.state.objetoSeleccionado() === rootNode) {
-                  this.state.objetoSeleccionado.set(null);
+                  this.state.seleccionarObjeto(null);
                 } else {
-                  this.state.objetoSeleccionado.set(rootNode);
+                  this.state.seleccionarObjeto(rootNode);
                 }
               } else {
-                this.state.objetoSeleccionado.set(null);
+                this.state.seleccionarObjeto(null);
               }
           }
         }
@@ -309,12 +309,12 @@ export class EditorToolsService {
           }
 
           if (!isAdmin) {
-            this.state.objetoHovereado.set(null);
+            this.state.setObjetoHovereado(null);
             return;
           }
 
           if (this.state.modoVistaPrueba !== 'FPS') {
-            this.state.objetoHovereado.set(null);
+            this.state.setObjetoHovereado(null);
             return;
           }
 
@@ -322,7 +322,7 @@ export class EditorToolsService {
 
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), activeCam);
           const rootNode = this.castRayToSelectable(ray);
-          this.state.objetoHovereado.set(rootNode);
+          this.state.setObjetoHovereado(rootNode);
           return;
         }
 
@@ -337,12 +337,12 @@ export class EditorToolsService {
             (mesh) => Tags.MatchesQuery(mesh, "gizmo") || mesh === this.gizmoSvc.centerDragMesh
           );
           if (hitGizmo && hitGizmo.hit) {
-            this.state.objetoHovereado.set(null);
+            this.state.setObjetoHovereado(null);
             return;
           }
 
           const rootNode = this.castRayToSelectable(ray);
-          this.state.objetoHovereado.set(rootNode);
+          this.state.setObjetoHovereado(rootNode);
         }
       }
     });
@@ -389,7 +389,7 @@ export class EditorToolsService {
     });
 
     scene.onBeforeRenderObservable.add(() => {
-      this.dynamicLighting.update(this.motor3d.getEngine().getDeltaTime()); // FIX
+      this.dynamicLighting.update(this.motor3d.getEngine().getDeltaTime()); 
 
       const obj = this.state.objetoSeleccionado() as Mesh;
       this.gizmoSvc.updateCenterDragMeshRenderState(obj, this.state.subObjetoSeleccionado());
@@ -414,47 +414,33 @@ export class EditorToolsService {
     if (!entity) return;
 
     if (subSelected === 'collider' && this.debugSvc.debugCollider) {
-      
       mesh.computeWorldMatrix(true);
       const invMat = Matrix.Invert(mesh.getWorldMatrix());
       const localPos = Vector3.TransformCoordinates(this.debugSvc.debugCollider.getAbsolutePosition(), invMat);
-      
       entity.collider.offsetX = localPos.x;
       entity.collider.offsetY = localPos.y;
       entity.collider.offsetZ = localPos.z;
-
       entity.syncToView();
-
     } else if (subSelected === 'camera' && this.debugSvc.debugCameraBox) {
-      
       mesh.computeWorldMatrix(true);
       const invMat = Matrix.Invert(mesh.getWorldMatrix());
       const localPos = Vector3.TransformCoordinates(this.debugSvc.debugCameraBox.getAbsolutePosition(), invMat);
-      
       entity.camOffset.x = localPos.x;
       entity.camOffset.y = localPos.y * (mesh.scaling.y || 1);
       entity.camOffset.z = localPos.z;
-
       if (entity.characterConfig && entity.playerConfig) {
           entity.playerConfig.camera.fpsEyeLevel = entity.camOffset.y;
       }
-      
       entity.syncToView();
-
     } else if (subSelected === 'light' && this.debugSvc.debugLightBox && entity.light) {
-      
       mesh.computeWorldMatrix(true);
       const invMat = Matrix.Invert(mesh.getWorldMatrix());
       const localPos = Vector3.TransformCoordinates(this.debugSvc.debugLightBox.getAbsolutePosition(), invMat);
-
       entity.light.lightPosX = localPos.x;
       entity.light.lightPosY = localPos.y;
       entity.light.lightPosZ = localPos.z;
-      
       entity.syncToView();
-
     } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
-      
       const playerPos = mesh.getAbsolutePosition();
       const fogConfig = entity.playerConfig?.fog;
       if (!fogConfig || !entity.playerConfig) return;
@@ -481,7 +467,6 @@ export class EditorToolsService {
           entity.playerConfig.fog.offsetZTPS = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
       }
       entity.syncToView();
-
     } else if (!subSelected) {
       entity.syncTransformFromView();
       entity.syncToView(); 
@@ -489,7 +474,7 @@ export class EditorToolsService {
   }
 
   public setToolMode(mode: ToolMode): void {
-    this.state.currentTool.set(mode);
+    this.state.setCurrentTool(mode);
     this.gizmoSvc.actualizarGizmosActivos();
   }
 }

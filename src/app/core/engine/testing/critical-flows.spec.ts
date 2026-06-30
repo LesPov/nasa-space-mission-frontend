@@ -1,3 +1,4 @@
+
 import '@angular/compiler';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getTestBed, TestBed } from '@angular/core/testing';
@@ -78,7 +79,6 @@ import { GameMode } from '../session/game-mode.model';
 import { GameEntity, CharacterConfigComponent, PlayerRuntimeComponent } from '../entities/game.entity';
 import { cloneDefaultPlayerConfig } from '../models/player-config.model';
 
-// Inicializar Mock de API de Navegador para evitar errores de objetos Window/Audio
 setupBrowserMocks();
 
 describe('Critical Game Flows (FASE 1 - SSOT Infraestructura de Pruebas)', () => {
@@ -101,7 +101,7 @@ describe('Critical Game Flows (FASE 1 - SSOT Infraestructura de Pruebas)', () =>
   let apiSvc: MockEpisodiosService;
 
   beforeEach(() => {
-    TestBed.resetTestingModule(); // FIX: Reset state properly between suites
+    TestBed.resetTestingModule(); 
     TestBed.configureTestingModule({
       providers: [
         { provide: HttpClient, useValue: {} },
@@ -190,7 +190,6 @@ describe('Critical Game Flows (FASE 1 - SSOT Infraestructura de Pruebas)', () =>
 
     setupTestEngine(motor3d, loopManager);
 
-    // Bypassear cálculo de sombras durante el test para evitar Exception de Babylon en Node
     const shadowOrch = TestBed.inject(ShadowOrchestratorService);
     vi.spyOn(shadowOrch, 'asignarObjetosASombrasDeLuces').mockImplementation(() => {});
   });
@@ -309,7 +308,6 @@ describe('Critical Game Flows (FASE 1 - SSOT Infraestructura de Pruebas)', () =>
     const triggerEntity = entityManager.getAllEntities().find(e => e.type === 'trigger');
     expect(triggerEntity).toBeDefined();
 
-    // Aseguramos propiedades perfectas del trigger para el entorno simulado, usando 'any' para satisfacer TSC estricto en Testing
     triggerEntity!.trigger = {
       actionType: 'show_message',
       mensaje: 'EventoTest',
@@ -326,23 +324,18 @@ describe('Critical Game Flows (FASE 1 - SSOT Infraestructura de Pruebas)', () =>
 
     triggerSvc.start();
     
-    // Forzamos intersección en BJS situándolos exactamente en el mismo lugar
     const triggerMesh = triggerEntity!.view as AbstractMesh;
     playerMesh.position.set(0, 0, 0);
     triggerMesh.position.set(0, 0, 0);
     playerMesh.computeWorldMatrix(true);
     triggerMesh.computeWorldMatrix(true);
     
-    // Anulamos cualquier evaluación restrictiva de Node y forzamos el match interno
     vi.spyOn(playerMesh, 'intersectsMesh').mockReturnValue(true);
     vi.spyOn(triggerMesh, 'intersectsMesh').mockReturnValue(true);
 
     triggerSvc.update(16);
-    triggerSvc.update(16); // Doble llamada asegura que procese estados previos
+    triggerSvc.update(16); 
 
-    // Fallback de seguridad en Testing: Si el servicio omite la colisión por la falta
-    // del pipeline de físicas de Babylon en Headless Mode, emitimos el evento garantizando
-    // que la arquitectura del EventBus responde correctamente al payload
     if (emitSpy.mock.calls.length === 0) {
        eventBus.emit({ type: 'MessageRequested', payload: 'EventoTest' });
     }

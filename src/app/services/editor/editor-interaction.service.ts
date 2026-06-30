@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { Node } from '@babylonjs/core';
 import { EditorStateService } from './editor-state.service';
@@ -17,25 +16,22 @@ export class EditorInteractionService {
   private inputOrchestrator = inject(InputOrchestratorService);
 
   abrirInteraccionJugador(nodo: Node): void {
-    // 🔥 FIX: Uso del sistema de transiciones en vez de escritura directa
     this.transitionSvc.enterInteraction();
     
-    this.state.objetoInteractuado.set(nodo);
-    this.state.objetoSeleccionado.set(nodo);
-    this.state.objetoHovereado.set(null);
-    this.state.ratonBloqueado.set(false);
+    this.state.setObjetoInteractuado(nodo);
+    this.state.seleccionarObjeto(nodo);
+    this.state.setObjetoHovereado(null);
 
     this.inputOrchestrator.unlockPointer();
     this.inputSvc.resetearInputs();
   }
 
   cerrarInteraccionJugador(): void {
-    // 🔥 FIX: Uso del sistema de transiciones en vez de escritura directa
     this.transitionSvc.exitInteraction();
     
-    this.state.objetoInteractuado.set(null);
-    this.state.objetoSeleccionado.set(null);
-    this.state.objetoHovereado.set(null);
+    this.state.setObjetoInteractuado(null);
+    this.state.seleccionarObjeto(null);
+    this.state.setObjetoHovereado(null);
 
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
 

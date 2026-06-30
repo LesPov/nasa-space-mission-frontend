@@ -115,7 +115,7 @@ export class ToolsClipboardService {
     clon.isPickable = true;
 
     this.sceneSvc.actualizarListaNodos();
-    this.state.objetoSeleccionado.set(clon);
+    this.state.seleccionarObjeto(clon);
     this.historialSvc.registrarAccionCrear(clon);
     this.mapaSvc.onMapChanged.next();
   }

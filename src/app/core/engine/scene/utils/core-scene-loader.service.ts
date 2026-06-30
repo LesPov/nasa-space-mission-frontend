@@ -79,7 +79,6 @@ export class CoreSceneLoaderService {
 
     const mallasCreadas = new Map<string, Mesh>();
 
-    // 🔥 OPTIMIZACIÓN PROBLEMA 1: Carga progresiva de objetos (chunking)
     for (let i = 0; i < objetosBD.length; i += 5) {
       const chunk = objetosBD.slice(i, i + 5);
       const chunkPromises = chunk.map((obj: SceneObjectDto) => {
@@ -99,11 +98,9 @@ export class CoreSceneLoaderService {
         }
       });
       await Promise.all(chunkPromises);
-      // Libera el hilo principal 15ms para evitar el bloqueo del render UI
       await new Promise(resolve => setTimeout(resolve, 15)); 
     }
 
-    // 🔥 OPTIMIZACIÓN PROBLEMA 1: Carga progresiva de triggers
     for (let i = 0; i < triggersBD.length; i += 10) {
       const chunk = triggersBD.slice(i, i + 10);
       chunk.forEach((trigger: TriggerDto) => {
@@ -121,12 +118,12 @@ export class CoreSceneLoaderService {
     });
 
     if (isPlaying) {
-        if (persistentPlayer) {
-            this.spawnManager.handleSceneChangeSpawn(persistentPlayer);
+        // 🔥 CONSUMIDOR DELEGADO: SpawnManager asume el timón en un solo paso
+        const resolvedPlayer = this.spawnManager.resolvePlayerForSession(null, false);
+        
+        if (persistentPlayer && resolvedPlayer && resolvedPlayer.uid === persistentPlayer.uid) {
             this.cameraSvc.transicionEntradaPlataforma(persistentPlayer);
             this.triggerSvc.resetTransitionState();
-        } else {
-            this.spawnManager.setupInitialPlayer();
         }
     }
 
@@ -142,7 +139,6 @@ export class CoreSceneLoaderService {
     this.dynamicLighting.update(16); 
     this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
 
-    // 🔥 OPTIMIZACIÓN PROBLEMA 1: Forzar compilación paralela (si se admite) de shaders antes de quitar la pantalla de carga.
     await new Promise<void>((resolve) => {
       scene.executeWhenReady(() => resolve());
     });

@@ -1,6 +1,4 @@
 
-// src/app/services/editor/editor-play-mode.service.ts
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, MeshBuilder, Tags, Vector3, Observer, Scene } from '@babylonjs/core';
 
@@ -15,9 +13,8 @@ import { GameMode } from '../../core/engine/session/game-mode.model';
 import { GameContextService } from '../../core/engine/session/game-context.service';
 import { CAMERA_BEHAVIOR_PROFILES } from '../../core/engine/runtime/cameras/camera-behavior-profile.model';
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
-import { CharacterConfigComponent, PlayerRuntimeComponent, GameEntity } from '../../core/engine/entities/game.entity';
-import { cloneDefaultPlayerConfig } from '../../core/engine/models/player-config.model';
 import { EditorModeTransitionService } from './editor-mode-transition.service';
+import { SpawnManagerService } from '../../core/engine/runtime/systems/spawn-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
@@ -30,6 +27,7 @@ export class EditorPlayModeService {
   private gameContext = inject(GameContextService);
   private ownership = inject(CameraOwnershipService);
   private transitionSvc = inject(EditorModeTransitionService);
+  private spawnManager = inject(SpawnManagerService);
 
   public prepararEscenaParaTest(vista: CameraViewMode, skipIntro: boolean = false): void {
     if (this.motor3d.getEditorCamera()) {
@@ -37,68 +35,17 @@ export class EditorPlayModeService {
     }
 
     let objMesh = this.state.objetoSeleccionado() as Mesh;
-    let playerEntity = objMesh ? this.entityManager.getEntityByMesh(objMesh) : null;
+    let preferredEntity = objMesh ? this.entityManager.getEntityByMesh(objMesh) : null;
     
-    if (!playerEntity || (!playerEntity.hasComponent('characterConfig') && playerEntity.rol !== 'spawn_point')) {
-       const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
-       playerEntity = characters.find(c => c.rol === 'player') || characters.find(c => c.characterConfig?.isPlayable);
-       
-       if (!playerEntity) {
-           const spawnPoint = this.entityManager.getAllEntities().find(e => e.rol === 'spawn_point');
-           if (spawnPoint) {
-               const tempMesh = MeshBuilder.CreateCapsule("TempPlayer_TestLive", { height: 1.8, radius: 0.4 }, this.motor3d.getScene());
-               tempMesh.position.set(
-                 spawnPoint.transform.position.x,
-                 spawnPoint.transform.position.y,
-                 spawnPoint.transform.position.z
-               );
-               if (spawnPoint.view && spawnPoint.view.rotationQuaternion) {
-                   tempMesh.rotationQuaternion = spawnPoint.view.rotationQuaternion.clone();
-               } else {
-                   tempMesh.rotation.set(
-                     spawnPoint.transform.rotation.x,
-                     spawnPoint.transform.rotation.y,
-                     spawnPoint.transform.rotation.z
-                   );
-               }
-               tempMesh.isVisible = false;
-               
-               playerEntity = new GameEntity(window.crypto.randomUUID(), 'Jugador_Prueba', 'model', 'player');
-               playerEntity.addComponent('characterConfig', new CharacterConfigComponent('player', true));
-               playerEntity.addComponent('playerRuntime', new PlayerRuntimeComponent());
-               playerEntity.playerConfig = cloneDefaultPlayerConfig();
-               playerEntity.bindView(tempMesh);
-               this.entityManager.addEntity(playerEntity);
-           }
-       }
-       if (playerEntity && playerEntity.view) {
-           objMesh = playerEntity.view as Mesh;
-       }
-    } else if (playerEntity.rol === 'spawn_point') {
-       const tempMesh = MeshBuilder.CreateCapsule("TempPlayer_TestLive", { height: 1.8, radius: 0.4 }, this.motor3d.getScene());
-       tempMesh.position.set(
-         playerEntity.transform.position.x,
-         playerEntity.transform.position.y,
-         playerEntity.transform.position.z
-       );
-       tempMesh.isVisible = false;
-       
-       playerEntity = new GameEntity(window.crypto.randomUUID(), 'Jugador_Prueba', 'model', 'player');
-       playerEntity.addComponent('characterConfig', new CharacterConfigComponent('player', true));
-       playerEntity.addComponent('playerRuntime', new PlayerRuntimeComponent());
-       playerEntity.playerConfig = cloneDefaultPlayerConfig();
-       playerEntity.bindView(tempMesh);
-       this.entityManager.addEntity(playerEntity);
-       objMesh = tempMesh;
-    }
+    // 🔥 CONSUMIDOR DELEGADO: El SpawnManager resuelve todo centralizadamente.
+    const playerEntity = this.spawnManager.resolvePlayerForSession(preferredEntity, true);
 
-    if (!objMesh || !playerEntity) {
+    if (!playerEntity || !playerEntity.view) {
         console.warn("No hay personaje jugable ni spawn point para iniciar el Test Live.");
         return;
     }
 
-    playerEntity.isPersistent = true;
-    Tags.AddTagsTo(playerEntity.view, "persistent_player");
+    objMesh = playerEntity.view as Mesh;
 
     this.gameContext.setCameraView(vista);
     this.state.seleccionarObjeto(null);

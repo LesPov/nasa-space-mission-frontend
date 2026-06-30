@@ -1,4 +1,4 @@
-// src/app/core/engine/testing/critical-flows.spec.ts
+
 import '@angular/compiler';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getTestBed, TestBed } from '@angular/core/testing';
@@ -66,10 +66,10 @@ import { SceneNodesService } from '../../../services/editor/sceneservice/scene-n
 import { ToolsSelectionService } from '../../../services/editor/toolsservice/tools-selection.service';
 import { HistorialService } from '../../../services/historial.service';
 import { ObjectAnimationService } from '../runtime/systems/object-animation.service';
-import { PlayerFogService } from '../runtime/systems/player-fog.service';
 import { RuntimeEngineService } from '../runtime/runtime-engine.service';
 import { AdminFreeCameraService } from '../runtime/cameras/admin-free-camera.service';
 import { FogRendererService } from '../runtime/systems/fog-renderer.service';
+import { FogOrchestratorService } from '../runtime/systems/fog-orchestrator.service';
 import { WindowSyncService } from '../../services/window-sync.service';
 import { EpisodiosService } from '../../../services/api/episodios';
 import { AuthService } from '../../services/auth';
@@ -82,6 +82,12 @@ import { GameEntity, CharacterConfigComponent, PlayerRuntimeComponent } from '..
 import { cloneDefaultPlayerConfig } from '../models/player-config.model';
 
 setupBrowserMocks();
+
+// 🔥 Fix 1: Instanciamos un mock de WindowSyncService que no requiera zona de Angular (NgZone)
+class MockWindowSyncService {
+  messages$ = of({});
+  broadcast = vi.fn();
+}
 
 describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
   let motor3d: Motor3dService;
@@ -113,6 +119,7 @@ describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
         { provide: ActivatedRoute, useValue: { queryParams: of({}), snapshot: { paramMap: { get: vi.fn() } } } },
         { provide: EpisodiosService, useClass: MockEpisodiosService },
         { provide: AuthService, useClass: MockAuthService },
+        { provide: WindowSyncService, useClass: MockWindowSyncService }, // 🔥 Fix
         
         Motor3dService,
         { provide: SCENE_ACCESS_TOKEN, useExisting: Motor3dService },
@@ -122,7 +129,6 @@ describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
         GameEventBusService,
         LoopManagerService,
         WorldSettingsService,
-        WindowSyncService,
         
         CoreSceneLoaderService,
         CoreModelLoaderService,
@@ -151,7 +157,7 @@ describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
         PlayerAnimationService,
         RenderSync,
         ObjectAnimationService,
-        PlayerFogService,
+        FogOrchestratorService, // 🔥 Fix: Faltaba incluir el nuevo FogOrchestratorService en la suite
         AdminFreeCameraService,
         FogRendererService,
         PlayerTriggerService,
@@ -226,7 +232,6 @@ describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
     gameContext.setMode(GameMode.EDITOR);
     stateSvc.seleccionarObjeto(playerMesh);
     
-    // El Orquestador ahora hace el trabajo sucio
     orchestrator.iniciarModoPrueba('FPS', true);
     expect(gameContext.mode()).toBe(GameMode.TEST_LIVE);
     expect(stateSvc.playState()).toBe('PLAYING');
@@ -243,7 +248,7 @@ describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
 
   it('3. LiveSync: Centraliza los mensajes del Broadcast Channel correctamente', () => {
     const broadcastSpy = vi.spyOn(TestBed.inject(WindowSyncService), 'broadcast');
-    const dummyMapData = { sceneObjectsDelta: [] };
+    const dummyMapData = { sceneObjectsDelta: [] } as any;
     
     liveSync.broadcastMapData(dummyMapData);
     expect(broadcastSpy).toHaveBeenCalledWith({ type: 'SYNC_MAP_DATA', payload: dummyMapData });

@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { StandardMaterial, VideoTexture, Color3, Mesh, Tags, Quaternion } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../engine/scene/scene-access.token';
@@ -14,7 +13,7 @@ import { GameContextService } from '../session/game-context.service';
 import { InputOrchestratorService } from './systems/input-orchestrator.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
 import { AdminFreeCameraService } from './cameras/admin-free-camera.service';
-import { SpawnManagerService } from './systems/spawn-manager.service'; // 🔥 ADDED
+import { SpawnManagerService } from './systems/spawn-manager.service';
   
 @Injectable({ providedIn: 'root' })
 export class RuntimeEngineService {
@@ -28,13 +27,10 @@ export class RuntimeEngineService {
   private inputOrchestrator = inject(InputOrchestratorService);
   private ownership = inject(CameraOwnershipService);
   private adminFreeCam = inject(AdminFreeCameraService);
-  private spawnManager = inject(SpawnManagerService); // 🔥 ADDED
+  private spawnManager = inject(SpawnManagerService); 
 
   private _prodClickFn: (() => void) | null = null;
 
-  // ==========================================
-  // MODO PRODUCCIÓN (JUEGO PURO SIN EDITOR)
-  // ==========================================
   public async bootProductionGame(episodeData: any, skipIntro: boolean = false): Promise<GameEntity> {
     this.entityManager.clear(); 
     
@@ -46,8 +42,8 @@ export class RuntimeEngineService {
     return new Promise((resolve, reject) => {
       this.motor3d.getScene().executeWhenReady(() => {
         
-        // 🔥 FIX: Lógica de Spawn delegada al SpawnManager centralizado
-        const spawnEntity = this.spawnManager.setupInitialPlayer();
+        // 🔥 CONSUMIDOR DELEGADO: El SpawnManager resuelve y prepara el jugador.
+        const spawnEntity = this.spawnManager.resolvePlayerForSession(null, false);
 
         if (!spawnEntity) {
           reject(new Error('No hay punto de aparición (Spawn Point) en el mapa.'));
@@ -110,9 +106,6 @@ export class RuntimeEngineService {
     }
   }
 
-  // ==========================================
-  // MODO TEST (PUENTE CON EL EDITOR)
-  // ==========================================
   public startTestSession(playerEntity: GameEntity, view: CameraViewMode): void {
     this.resetVideos();
     this.spawnManager.resetPhysicsInertia(playerEntity);
@@ -133,9 +126,6 @@ export class RuntimeEngineService {
     this.resetVideos();
   }
 
-  // ==========================================
-  // UTILIDADES GLOBALES DE JUGADOR
-  // ==========================================
   public toggleCameraUser(isCinematicInitial: boolean = false, customFrames?: number): void {
     this.gameSession.toggleCameraUser(isCinematicInitial, customFrames);
   }

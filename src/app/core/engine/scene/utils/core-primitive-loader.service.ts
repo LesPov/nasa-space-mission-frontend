@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial, Texture, Vector3, VideoTexture, Tags } from '@babylonjs/core';
 import { CoreSceneProjectionService } from '../utils/core-scene-projection.service';
@@ -103,7 +104,7 @@ export class CorePrimitiveLoaderService {
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = Color3.FromHexString(activeColor);
       mat.wireframe = true;
-      mat.maxSimultaneousLights = 4; 
+      mat.maxSimultaneousLights = 6; // 🔥 FIX LÍMITE LUCES
       mesh.material = mat;
       mesh.isVisible = false;
     } 
@@ -129,7 +130,7 @@ export class CorePrimitiveLoaderService {
         mat.disableLighting = false;
       }
 
-      mat.maxSimultaneousLights = 4; 
+      mat.maxSimultaneousLights = 6; // 🔥 FIX LÍMITE LUCES
       mat.fogEnabled = !entity.visual.ignoraNiebla;
       mesh.material = mat;
     }

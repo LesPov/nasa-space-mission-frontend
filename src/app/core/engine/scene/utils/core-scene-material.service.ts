@@ -1,3 +1,4 @@
+
 import { Injectable } from '@angular/core';
 import { Color3, Texture, RawTexture, Scene, AbstractMesh } from '@babylonjs/core';
 
@@ -6,12 +7,9 @@ export class CoreSceneMaterialService {
   
   private bwTextureCache = new Map<string, Texture>();
 
-  // 🔥 NUEVO: Función para asegurar que un objeto tenga su propio material único.
-  // Evita que al cambiar el color o ambiente de un clon, se cambien todos los demás.
   public asegurarMaterialUnico(mesh: AbstractMesh, uid: string): void {
       if (!mesh.material) return;
       
-      // Si el material no tiene el UID del objeto, significa que es compartido
       if (!mesh.material.name.includes(uid)) {
           try {
               if (mesh.material.getClassName() === 'MultiMaterial') {
@@ -45,14 +43,15 @@ export class CoreSceneMaterialService {
       return;
     }
     
-    if (material.maxSimultaneousLights !== 4) {
-        material.maxSimultaneousLights = 4;
+    // 🔥 FIX: Aumentamos la recepción de luces simultáneas para permitir sombras y focos 
+    // sin que objetos se apaguen cuando se les acercan varias luces.
+    if (material.maxSimultaneousLights !== 6) {
+        material.maxSimultaneousLights = 6;
     }
 
     const c3Amb = ambientColorHex ? Color3.FromHexString(ambientColorHex) : new Color3(1, 1, 1);
     
     if (material.getClassName().includes('PBR')) {
-      // 🔥 APLICAR AL PBR DIRECTO EN VIVO
       material.ambientColor = c3Amb;
       
       if (material.usePhysicalLightFalloff !== false) material.usePhysicalLightFalloff = false;
@@ -81,7 +80,6 @@ export class CoreSceneMaterialService {
          }
       }
     } else if (material.getClassName().includes('Standard')) {
-      // 🔥 APLICAR AL STANDARD DIRECTO EN VIVO
       material.ambientColor = c3Amb;
       
       if (!material.metadata) material.metadata = {};

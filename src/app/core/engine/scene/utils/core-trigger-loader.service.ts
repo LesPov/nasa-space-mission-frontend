@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
@@ -93,7 +94,7 @@ export class CoreTriggerLoaderService {
       mat.alpha = 0.4; 
       mat.wireframe = false; 
       mat.disableLighting = true;
-      mat.maxSimultaneousLights = 12; // 🔥 OPTIMIZACIÓN LÍMITE LUCES
+      mat.maxSimultaneousLights = 6; // 🔥 FIX LÍMITE LUCES
       mesh.material = mat;
       
       mesh.isPickable = true;

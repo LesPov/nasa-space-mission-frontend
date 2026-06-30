@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Vector3, Quaternion } from '@babylonjs/core';
 import { EditorSceneService } from '../editor-scene.service';
@@ -12,13 +13,14 @@ export class PrefabPlacementService {
     public async place(asset: any, pos: Vector3, rot: Quaternion, scale: Vector3, parent: AbstractMesh | null): Promise<void> {
         const euler = rot.toEulerAngles();
         
-        if (asset.isPrefab || asset.properties?.prefabHierarchy) {
+        // 🔥 FIX: Misma lógica de evaluación que en el Controller. 
+        // Solo instanciar de la forma compleja si tiene jerarquía o si es explícitamente un prefab completo.
+        if (asset.properties?.prefabHierarchy) {
             this.sceneSvc.instanciarPrefabFull(asset, pos, euler, scale, parent || undefined);
         } else {
             const tipo = asset.type || 'cube';
             const nombre = `${tipo}_${Math.floor(Math.random() * 100000)}`;
             
-            // 🔥 FIX: En primitivas simples, sí tenemos que multiplicar la base x el mult.
             const sX = (asset.scale?.x ?? 1) * scale.x;
             const sY = (asset.scale?.y ?? 1) * scale.y;
             const sZ = (asset.scale?.z ?? 1) * scale.z;

@@ -1,5 +1,4 @@
 // src/app/services/editor/editor-live-sync.service.ts
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Quaternion } from '@babylonjs/core';
 import { WindowSyncService } from '../../core/services/window-sync.service';
@@ -38,7 +37,7 @@ export class EditorLiveSyncService {
   }
 
   // ==========================================
-  // RECEPTOR (RUNTIME / TEST LIVE)
+  // RECEPTOR (RUNTIME / JUEGO)
   // ==========================================
 
   public requiresFullReboot(payload: any): boolean {
@@ -105,5 +104,14 @@ export class EditorLiveSyncService {
 
     entity.isDirty = true;
     entity.syncToView();
+  }
+
+  // Métodos de compatibilidad legacy para que ningún componente estalle en transición
+  public async handleLiveSync(payload: any, currentEpisode: any): Promise<any> {
+    return this.applyDelta(payload, currentEpisode);
+  }
+
+  public handleLiveTransform(payload: any): void {
+    this.applyTransformLive(payload);
   }
 }

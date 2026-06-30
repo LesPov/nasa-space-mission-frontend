@@ -1,4 +1,3 @@
-
 // src/app/pages/player/juego-pantalla/juego-pantalla.ts
 
 import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef, HostListener } from '@angular/core';
@@ -178,10 +177,14 @@ export class JuegoPantalla implements OnInit, OnDestroy {
              this.windowSync.messages$.subscribe(async msg => {
                if (msg.type === 'SYNC_MAP_DATA') {
                  this.isSyncing.set(true);
-                 this.episodioActual = await this.liveSync.handleLiveSync(msg.payload, this.episodioActual);
+                 if (this.liveSync.requiresFullReboot(msg.payload)) {
+                    this.cambiarPlataformaEnJuego(this.episodioActual.id);
+                 } else {
+                    this.episodioActual = await this.liveSync.applyDelta(msg.payload, this.episodioActual);
+                 }
                  this.isSyncing.set(false);
                } else if (msg.type === 'SYNC_TRANSFORM_LIVE') {
-                 this.liveSync.handleLiveTransform(msg.payload);
+                 this.liveSync.applyTransformLive(msg.payload);
                }
              });
           }

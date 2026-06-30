@@ -1,4 +1,4 @@
-
+// src/app/core/engine/testing/critical-flows.spec.ts
 import '@angular/compiler';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { getTestBed, TestBed } from '@angular/core/testing';
@@ -83,7 +83,7 @@ import { cloneDefaultPlayerConfig } from '../models/player-config.model';
 
 setupBrowserMocks();
 
-describe('Critical Game Flows (FASE 2 - Extracción de Orquestador)', () => {
+describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
   let motor3d: Motor3dService;
   let orchestrator: EditorOrchestratorService;
   let liveSync: EditorLiveSyncService;
@@ -249,4 +249,27 @@ describe('Critical Game Flows (FASE 2 - Extracción de Orquestador)', () => {
     expect(broadcastSpy).toHaveBeenCalledWith({ type: 'SYNC_MAP_DATA', payload: dummyMapData });
   });
 
+  it('4. LiveSync: applyTransformLive actualiza entidades a través del EntityManager', () => {
+    const dummyEntity = new GameEntity('test_uid_sync', 'TestSync', 'model');
+    const dummyMesh = MeshBuilder.CreateBox('dummySync', { size: 1 }, motor3d.scene);
+    dummyEntity.bindView(dummyMesh);
+    entityManager.addEntity(dummyEntity);
+
+    liveSync.applyTransformLive({
+      uid: 'test_uid_sync',
+      position: { x: 10, y: 5, z: 2 },
+      scaling: { x: 2, y: 2, z: 2 },
+      rotation: { x: 0, y: 0, z: 0 },
+      rotationQuaternion: { x: 0, y: 0, z: 0, w: 1 }
+    });
+
+    expect(dummyEntity.transform.position.x).toBe(10);
+    expect(dummyEntity.view?.position.x).toBe(10);
+    expect(dummyEntity.view?.scaling.y).toBe(2);
+  });
+
+  it('5. LiveSync: requiresFullReboot detecta correctamente el flag', () => {
+    expect(liveSync.requiresFullReboot({ forceFullReboot: true })).toBe(true);
+    expect(liveSync.requiresFullReboot({ sceneObjectsDelta: [] })).toBe(false);
+  });
 });

@@ -1,3 +1,5 @@
+// src/app/components/inspector-escena/inspector-properties/prop-transform/prop-transform.ts
+
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -6,7 +8,7 @@ import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
-import { WindowSyncService } from '../../../../core/services/window-sync.service';
+import { EditorLiveSyncService } from '../../../../services/editor/editor-live-sync.service';
 
 @Component({
   selector: 'app-prop-transform',
@@ -22,7 +24,7 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   private transformMutator = inject(TransformMutatorService);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
-  private windowSync = inject(WindowSyncService);
+  private liveSync = inject(EditorLiveSyncService);
   private subs: Subscription[] = [];
 
   localPosX = 0; localPosY = 0; localPosZ = 0;
@@ -141,16 +143,7 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   private broadcastLive() {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (entity) {
-       this.windowSync.broadcast({
-         type: 'SYNC_TRANSFORM_LIVE',
-         payload: {
-           uid: entity.uid,
-           position: { x: this.objeto.position.x, y: this.objeto.position.y, z: this.objeto.position.z },
-           rotation: { x: this.objeto.rotation.x, y: this.objeto.rotation.y, z: this.objeto.rotation.z },
-           rotationQuaternion: this.objeto.rotationQuaternion ? { x: this.objeto.rotationQuaternion.x, y: this.objeto.rotationQuaternion.y, z: this.objeto.rotationQuaternion.z, w: this.objeto.rotationQuaternion.w } : null,
-           scaling: { x: this.objeto.scaling.x, y: this.objeto.scaling.y, z: this.objeto.scaling.z }
-         }
-       });
+       this.liveSync.broadcastLiveTransform(entity, this.objeto);
     }
   }
 

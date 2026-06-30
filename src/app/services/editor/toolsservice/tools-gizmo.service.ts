@@ -1,5 +1,7 @@
+// src/app/services/editor/toolsservice/tools-gizmo.service.ts
+
 import { Injectable, inject } from '@angular/core';
-import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Tags, AbstractMesh, Light, Matrix } from '@babylonjs/core';
+import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Tags, AbstractMesh } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
@@ -8,7 +10,7 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 import { CoreSceneProjectionService } from '../../../core/engine/scene/utils/core-scene-projection.service';
 import { AuthService } from '../../../core/services/auth';
 import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
-import { WindowSyncService } from '../../../core/services/window-sync.service';
+import { EditorLiveSyncService } from '../editor-live-sync.service';
 import { EditorCinematicService } from '../editor-cinematic.service';
 import { EditorMapaService } from '../../editor-mapa.service';
 
@@ -23,7 +25,7 @@ export class ToolsGizmoService {
   private projectionSvc = inject(CoreSceneProjectionService);
   private authSvc = inject(AuthService);
   private ownership = inject(CameraOwnershipService);
-  private windowSync = inject(WindowSyncService);
+  private liveSync = inject(EditorLiveSyncService);
   private cinematicSvc = inject(EditorCinematicService);
 
   public gizmoManager: GizmoManager | null = null;
@@ -112,16 +114,7 @@ export class ToolsGizmoService {
 
     const entity = this.entityManager.getEntityByMesh(mesh);
     if (entity) {
-      this.windowSync.broadcast({
-        type: 'SYNC_TRANSFORM_LIVE',
-        payload: {
-          uid: entity.uid,
-          position: { x: mesh.position.x, y: mesh.position.y, z: mesh.position.z },
-          rotation: { x: mesh.rotation.x, y: mesh.rotation.y, z: mesh.rotation.z },
-          rotationQuaternion: mesh.rotationQuaternion ? { x: mesh.rotationQuaternion.x, y: mesh.rotationQuaternion.y, z: mesh.rotationQuaternion.z, w: mesh.rotationQuaternion.w } : null,
-          scaling: { x: mesh.scaling.x, y: mesh.scaling.y, z: mesh.scaling.z }
-        }
-      });
+      this.liveSync.broadcastLiveTransform(entity, mesh);
     }
   }
 
@@ -242,7 +235,7 @@ export class ToolsGizmoService {
     if (this.state.objetoSeleccionado() || this.state.subObjetoSeleccionado()) {
       switch (this.state.currentTool()) {
         case 'select': 
-          break; // Sin gizmos en modo Select
+          break;
         case 'translate': this.gizmoManager.positionGizmoEnabled = true; break;
         case 'rotate': 
           if (!this.state.subObjetoSeleccionado()) this.gizmoManager.rotationGizmoEnabled = true;

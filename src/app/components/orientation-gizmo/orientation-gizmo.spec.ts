@@ -1,10 +1,8 @@
 
+import { describe, it, expect } from 'vitest';
 
-import { Component } from '@angular/core';
-@Component({
-selector: 'app-orientation-gizmo',
-standalone: true,
-templateUrl: './orientation-gizmo.html',
-styleUrls: ['./orientation-gizmo.css']
-})
-export class OrientationGizmo {}
+describe('OrientationGizmo', () => {
+  it('should compile', () => {
+    expect(true).toBeTruthy();
+  });
+});

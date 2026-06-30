@@ -1,5 +1,3 @@
-
-
 <div class="section-card">
   <div class="actions-row wrap">
     <button class="btn-primary" (click)="nuevaSecuencia()">+ Crear Secuencia Nueva</button>
@@ -17,11 +15,21 @@
       <input type="text" [ngModel]="currentSequence.name" (ngModelChange)="currentSequence.name = $event; persist()" />
     </div>
 
-    <div class="field wide" style="margin-top: 10px; margin-bottom: 10px; border: 1px solid #4ade80; padding: 10px; border-radius: 4px; background: rgba(74, 222, 128, 0.1);">
+    <!-- 🔥 CAJA DE OPCIONES GLOBALES DE LA SECUENCIA -->
+    <div class="field wide" style="margin-top: 10px; margin-bottom: 10px; border: 1px solid #4b73b5; padding: 10px; border-radius: 4px; background: rgba(75, 115, 181, 0.1);">
+      
+      <!-- NUEVO CHEBOX AUTO PLAY -->
+      <div class="checkbox-field" style="margin-bottom: 8px;">
+        <input type="checkbox" id="seqAutoPlay" [ngModel]="currentSequence.autoPlay" (ngModelChange)="currentSequence.autoPlay = $event; persist()" />
+        <label for="seqAutoPlay" style="color: #60a5fa; font-weight: bold; cursor: pointer;">▶️ Auto-Play (Iniciar al arrancar TestLive/Juego)</label>
+      </div>
+
+      <!-- BUCLE INFINITO -->
       <div class="checkbox-field">
         <input type="checkbox" id="seqRepeatGlobal" [ngModel]="currentSequence.repeat" (ngModelChange)="currentSequence.repeat = $event; persist()" />
         <label for="seqRepeatGlobal" style="color: #4ade80; font-weight: bold; cursor: pointer;">🔁 Ejecutar esta secuencia en BUCLE INFINITO</label>
       </div>
+      
     </div>
 
     <div class="field wide" style="margin-bottom: 10px; display: flex; align-items: center; gap: 10px;">

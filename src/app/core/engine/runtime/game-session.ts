@@ -1,4 +1,3 @@
-
 import { Injectable, inject, computed } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
@@ -23,7 +22,7 @@ import { GameMode } from '../session/game-mode.model';
 import { GameContextService } from '../session/game-context.service';
 import { LayoutService } from '../../../services/layout.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
-import { DynamicLightingSystem } from './systems/lighting/dynamic-lighting.system'; // AÑADIDO
+import { DynamicLightingSystem } from './systems/lighting/dynamic-lighting.system'; 
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
@@ -46,7 +45,7 @@ export class GameSession {
   private playerAnimationSvc = inject(PlayerAnimationService);
   private cinematicDirector = inject(CinematicDirectorService);
   private renderSyncSvc = inject(RenderSync);
-  private dynamicLighting = inject(DynamicLightingSystem); // AÑADIDO
+  private dynamicLighting = inject(DynamicLightingSystem); 
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
 
   public isPlaying = computed(() => this.context.isPlaying());
@@ -121,7 +120,7 @@ export class GameSession {
       this.cameraSvc,
       this.mediaCommandSvc,
       this.renderSyncSvc,
-      this.dynamicLighting, // AÑADIDO
+      this.dynamicLighting, 
       this.objectAnimSvc,
       this.playerFogSvc,
       this.bubbleSvc
@@ -137,14 +136,21 @@ export class GameSession {
     this.cameraSvc.resetearTransiciones();
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
+      
+      // 🔥 FIX AUTO-PLAY: Identifica el AutoPlay para TODOS, sean personajes o luces.
       if (entity.characterConfig) {
         this.playerAnimationSvc.sincronizarAnimaciones(this.motor3dSvc.getScene(), entity);
-
         const autoSeq = entity.playerConfig?.sequences.find((s: any) => s.autoPlay);
         if (autoSeq) {
           this.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, entity);
         } else {
           this.playerAnimationSvc.reproducirIdle(entity);
+        }
+      } else if (entity.playerConfig?.sequences) {
+        // 🔥 ESTE BLOQUE ENCIENDE LAS LUCES (y objetos genéricos) SOLAS EN TESTLIVE
+        const autoSeq = entity.playerConfig.sequences.find((s: any) => s.autoPlay);
+        if (autoSeq) {
+          this.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, entity);
         }
       }
     }

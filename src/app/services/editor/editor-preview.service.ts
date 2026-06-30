@@ -1,13 +1,11 @@
-
-
 import { Injectable, inject } from '@angular/core';
 import { GameEntity } from '../../core/engine/entities/game.entity';
 import { PlayerSequenceService } from '../../core/engine/runtime/systems/player-sequence.service';
 import { PlayerAnimationService } from '../../core/engine/runtime/systems/player-animation.service';
 import { LoopManagerService, GamePhase } from '../../core/engine/behaviors/services/loop-manager.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
-import { AbstractMesh, Mesh, AnimationGroup } from '@babylonjs/core';
-import { GameStateService } from '../../core/engine/runtime/state/game-state.service'; // 🔥 ADD
+import { AbstractMesh, Mesh, AnimationGroup, StandardMaterial, Color3 } from '@babylonjs/core';
+import { GameStateService } from '../../core/engine/runtime/state/game-state.service'; 
 
 @Injectable({ providedIn: 'root' })
 export class EditorPreviewService {
@@ -15,80 +13,44 @@ export class EditorPreviewService {
   private animSvc = inject(PlayerAnimationService);
   private loopManager = inject(LoopManagerService);
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
-  private gameState = inject(GameStateService); // 🔥 ADD
+  private gameState = inject(GameStateService); 
 
   private originalEntity: GameEntity | null = null;
-  private cloneEntity: GameEntity | null = null;
-  private clonedAnimationGroups: AnimationGroup[] = [];
+  private savedState: any = null; // 🔥 ESTADO SALVADO (En lugar de clonar mallas)
   private previewLoopId = 'EditorSequencePreview';
 
   public iniciarPreviewSecuencia(entity: GameEntity, sequenceId: string): void {
     this.detenerPreviewSecuencia();
     this.originalEntity = entity;
-    const originalMesh = entity.view as Mesh;
     
+    // 🔥 PRESERVAR EL ESTADO ANTES DE MODIFICAR
+    this.savedState = {
+        position: { ...entity.transform.position },
+        rotation: { ...entity.transform.rotation },
+        scale: { ...entity.transform.scale },
+        intensity: entity.light ? entity.light.intensity : null,
+        renderIntensity: entity.light ? entity.light.renderIntensity : null
+    };
+
     // 🔥 Protegemos las variables del juego
     this.gameState.enterSandbox();
 
-    originalMesh.isVisible = false;
-    originalMesh.getChildMeshes().forEach(m => m.isVisible = false);
-
-    let cloneMesh: AbstractMesh;
-    if (entity.type === 'model') {
-        cloneMesh = originalMesh.instantiateHierarchy(null, { doNotInstantiate: true }) as AbstractMesh;
-        cloneMesh.name = 'preview_clone_' + originalMesh.name;
-        
-        this.motor3d.getScene().animationGroups.forEach(ag => {
-            const isTargetingOriginal = ag.targetedAnimations.some(ta => {
-                let current: any = ta.target;
-                while (current) {
-                    if (current === originalMesh) return true;
-                    current = current.parent;
-                }
-                return false;
-            });
-
-            if (isTargetingOriginal) {
-                const clonedAg = ag.clone('preview_ag_' + ag.name, (oldTarget) => {
-                    if (oldTarget === originalMesh) return cloneMesh;
-                    const descendants = cloneMesh.getDescendants(false);
-                    return descendants.find(d => d.name === (oldTarget as any).name) || oldTarget;
-                });
-                this.clonedAnimationGroups.push(clonedAg);
-            }
-        });
-    } else {
-        cloneMesh = originalMesh.clone('preview_clone_' + originalMesh.name, null) as AbstractMesh;
-    }
-
-    cloneMesh.position.copyFrom(originalMesh.position);
-    if (originalMesh.rotationQuaternion) cloneMesh.rotationQuaternion = originalMesh.rotationQuaternion.clone();
-    else cloneMesh.rotation.copyFrom(originalMesh.rotation);
-    cloneMesh.scaling.copyFrom(originalMesh.scaling);
-
-    cloneMesh.isVisible = true;
-    cloneMesh.getChildMeshes().forEach(m => m.isVisible = true);
-
-    this.cloneEntity = new GameEntity('preview_' + entity.uid, 'preview_' + entity.name, entity.type, entity.rol);
-    this.cloneEntity.playerConfig = JSON.parse(JSON.stringify(entity.playerConfig));
-    this.cloneEntity.animationNames = [...entity.animationNames];
-    this.cloneEntity.bindView(cloneMesh);
-    
-    this.animSvc.sincronizarAnimaciones(this.motor3d.getScene(), this.cloneEntity);
-    this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceId, this.cloneEntity);
+    this.animSvc.sincronizarAnimaciones(this.motor3d.getScene(), entity);
+    this.sequenceSvc.iniciarSecuenciaEnJuego(sequenceId, entity);
     
     this.loopManager.register(this.previewLoopId, GamePhase.LOGIC, (dtMs: number) => {
-      if (!this.cloneEntity) return;
-      const seqRuntime = this.sequenceSvc.actualizarSecuencia(dtMs, this.cloneEntity);
+      if (!this.originalEntity) return;
+      const seqRuntime = this.sequenceSvc.actualizarSecuencia(dtMs, this.originalEntity);
       
-      const estadoFisicoFalso = { 
-        isMoving: false, isRunning: false, isGrounded: true, 
-        isJumping: false, isFalling: false, isHardLanding: false, 
-        isRecoveringFromFall: false, landingFrame: 0, recoveryFrame: 0, 
-        velocidadY: 0, highestY: 0 
-      };
-      
-      this.animSvc.gestionarAnimaciones(this.cloneEntity, estadoFisicoFalso, seqRuntime);
+      if (this.originalEntity.hasComponent('characterConfig')) {
+          const estadoFisicoFalso = { 
+            isMoving: false, isRunning: false, isGrounded: true, 
+            isJumping: false, isFalling: false, isHardLanding: false, 
+            isRecoveringFromFall: false, landingFrame: 0, recoveryFrame: 0, 
+            velocidadY: 0, highestY: 0 
+          };
+          this.animSvc.gestionarAnimaciones(this.originalEntity, estadoFisicoFalso, seqRuntime);
+      }
       
       if (!seqRuntime.running) {
         this.detenerPreviewSecuencia();
@@ -97,31 +59,46 @@ export class EditorPreviewService {
   }
 
   public detenerPreviewSecuencia(): void {
-    if (this.cloneEntity) {
-      this.loopManager.unregister(this.previewLoopId);
-      this.animSvc.detenerTodas(this.cloneEntity);
-      this.sequenceSvc.detenerSecuencia(this.cloneEntity.uid);
-      
-      this.clonedAnimationGroups.forEach(ag => {
-          ag.stop();
-          ag.dispose();
-      });
-      this.clonedAnimationGroups = [];
-      
-      this.cloneEntity.destroyView(); 
-      this.cloneEntity = null;
-      
-      // 🔥 Desactivamos Sandbox y borramos mutaciones que la secuencia haya simulado
-      this.gameState.exitSandbox();
-    }
-
     if (this.originalEntity) {
-      const originalMesh = this.originalEntity.view as Mesh;
-      if (originalMesh) {
-         originalMesh.isVisible = true;
-         originalMesh.getChildMeshes().forEach(m => m.isVisible = true);
+      this.loopManager.unregister(this.previewLoopId);
+      this.sequenceSvc.detenerSecuencia(this.originalEntity.uid);
+      
+      if (this.originalEntity.hasComponent('characterConfig')) {
+          this.animSvc.detenerTodas(this.originalEntity);
       }
+      
+      // 🔥 RESTAURAR EL ESTADO FÍSICO EXACTO
+      if (this.savedState) {
+          this.originalEntity.transform.position = { ...this.savedState.position };
+          this.originalEntity.transform.rotation = { ...this.savedState.rotation };
+          this.originalEntity.transform.scale = { ...this.savedState.scale };
+          
+          if (this.originalEntity.light && this.savedState.intensity !== null) {
+              this.originalEntity.light.intensity = this.savedState.intensity;
+              this.originalEntity.light.renderIntensity = this.savedState.renderIntensity;
+              
+              // RESTAURAR MATERIALES DE LUZ
+              const hex = this.originalEntity.light.lightColor || '#ffffff';
+              const brillo = (this.originalEntity.light.renderIntensity ?? 5) / 5;
+              const c3 = Color3.FromHexString(hex).scale(brillo);
+              
+              if (this.originalEntity.view && this.originalEntity.view.material) {
+                  (this.originalEntity.view.material as StandardMaterial).emissiveColor = c3;
+              }
+              this.originalEntity.view?.getChildMeshes().forEach((m: AbstractMesh) => {
+                  if (m.material && m.material instanceof StandardMaterial) {
+                     m.material.emissiveColor = c3;
+                  }
+              });
+          }
+          
+          this.originalEntity.isDirty = true;
+          this.originalEntity.syncToView();
+      }
+
+      this.gameState.exitSandbox();
       this.originalEntity = null;
+      this.savedState = null;
     }
   }
 

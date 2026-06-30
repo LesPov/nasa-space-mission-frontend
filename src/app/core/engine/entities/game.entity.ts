@@ -306,7 +306,12 @@ export class GameEntity {
           ag.dispose();
         });
       }
-      const disposeMaterials = this.type !== 'model';
+      
+      // 🔥 FIX: Los materiales no se deben eliminar si es un objeto con un modelo 3D asignado.
+      // Esto evita que las luces con modelo (Ej: lámparas) pierdan sus texturas y colores al volver al Editor.
+      const isModelBased = this.type === 'model' || (this.type.startsWith('light_') && (!!this.visual?.assetId || !!this.visual?.path));
+      const disposeMaterials = !isModelBased;
+      
       this.view.dispose(false, disposeMaterials);
     }
     this.view = null;

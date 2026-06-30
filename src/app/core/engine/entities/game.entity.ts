@@ -1,4 +1,3 @@
-
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
@@ -17,7 +16,9 @@ export class VisualComponent {
     public isSelectable = true, public ignoraNiebla = false, public esEmisivo = false, 
     public brilloIntensidad = 1.0, public assetId?: number | null, public path?: string,
     public mostrarBorde: boolean = true,
-    public internalScale?: number
+    public internalScale?: number,
+    public ambientColor = '#ffffff',
+    public ambientColorBW = '#ffffff'
   ) {}
 }
 
@@ -307,8 +308,6 @@ export class GameEntity {
         });
       }
       
-      // 🔥 FIX: Los materiales no se deben eliminar si es un objeto con un modelo 3D asignado.
-      // Esto evita que las luces con modelo (Ej: lámparas) pierdan sus texturas y colores al volver al Editor.
       const isModelBased = this.type === 'model' || (this.type.startsWith('light_') && (!!this.visual?.assetId || !!this.visual?.path));
       const disposeMaterials = !isModelBased;
       

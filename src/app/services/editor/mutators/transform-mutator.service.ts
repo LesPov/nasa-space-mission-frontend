@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -106,6 +105,8 @@ export class TransformMutatorService {
 
     entity.visual.color = config.color;
     entity.visual.colorBW = config.colorBW;
+    entity.visual.ambientColor = config.ambientColor || '#ffffff';
+    entity.visual.ambientColorBW = config.ambientColorBW || '#ffffff';
     entity.visual.ignoraNiebla = config.ignoraNiebla;
     entity.visual.esEmisivo = config.esEmisivo;
     entity.visual.brilloIntensidad = this.clampBrightness(config.brilloIntensidad);
@@ -125,12 +126,15 @@ export class TransformMutatorService {
 
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
     const activeColorHex = isBW ? config.colorBW : config.color;
+    const activeAmbientHex = isBW ? config.ambientColorBW : config.ambientColor;
 
     if (entity.type === 'model') {
         const scene = objeto.getScene();
         objeto.getChildMeshes().forEach((m: AbstractMesh) => {
             if (m.material) {
-                this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene);
+                // 🔥 HACER MATERIAL ÚNICO AL MUTAR (Rompe el hilo compartido instantáneamente)
+                this.materialSvc.asegurarMaterialUnico(m, entity.uid);
+                this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbientHex);
             }
         });
     }
@@ -150,8 +154,12 @@ export class TransformMutatorService {
           });
         }
       } else {
+        // 🔥 HACER MATERIAL ÚNICO AL MUTAR (Primitivas clonadas)
+        this.materialSvc.asegurarMaterialUnico(objeto, entity.uid);
         const objMat = objeto.material as StandardMaterial;
+        
         const c3 = Color3.FromHexString(activeColorHex);
+        const c3Amb = Color3.FromHexString(activeAmbientHex);
         const brillo = this.clampBrightness(config.brilloIntensidad);
 
         objMat.diffuseColor = c3;
@@ -162,7 +170,7 @@ export class TransformMutatorService {
           objMat.disableLighting = false;
         } else {
           objMat.emissiveColor = new Color3(0, 0, 0);
-          objMat.ambientColor = c3.scale(Math.max(0.05, brillo * 0.2));
+          objMat.ambientColor = c3Amb;
           objMat.disableLighting = false;
         }
       }

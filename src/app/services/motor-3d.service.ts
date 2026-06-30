@@ -1,4 +1,3 @@
-
 import { Injectable, inject, Injector } from '@angular/core';
 import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4, UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera } from '@babylonjs/core';
 import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
@@ -74,6 +73,10 @@ export class Motor3dService implements ISceneAccess {
 
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.05, 0.05, 0.05, 1);
+    
+    // 🔥 FIX MAGICO: Declaración en frío para evitar el negro absoluto 
+    this.scene.ambientColor = new Color3(1, 1, 1);
+
     this.scene.autoClear = false;
     this.scene.autoClearDepthAndStencil = false;
     this.scene.collisionsEnabled = true;
@@ -88,7 +91,6 @@ export class Motor3dService implements ISceneAccess {
     const shadowOrch = this.injector.get(ShadowOrchestratorService);
     this.loopManager.registerSystem(shadowOrch);
 
-    // 🔥 FIX: Registramos el gestor de luces para que actúe SIEMPRE (En Editor y Jugando)
     const dynamicLighting = this.injector.get(DynamicLightingSystem);
     this.loopManager.registerSystem(dynamicLighting);
 

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial, Texture, Vector3, VideoTexture, Tags } from '@babylonjs/core';
 import { CoreSceneProjectionService } from '../utils/core-scene-projection.service';
@@ -104,17 +103,22 @@ export class CorePrimitiveLoaderService {
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = Color3.FromHexString(activeColor);
       mat.wireframe = true;
-      mat.maxSimultaneousLights = 4; // 🔥 OPTIMIZACIÓN LÍMITE LUCES
+      mat.maxSimultaneousLights = 4; 
       mesh.material = mat;
       mesh.isVisible = false;
     } 
     else {
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
+      
       const activeHexToApply = isBW ? entity.visual.colorBW : entity.visual.color;
+      const activeAmbientToApply = isBW ? entity.visual.ambientColorBW : entity.visual.ambientColor;
+      
       const c3 = Color3.FromHexString(activeHexToApply);
+      const c3Amb = Color3.FromHexString(activeAmbientToApply);
 
       mat.diffuseColor = c3;
+      mat.ambientColor = c3Amb;
       mat.specularColor = new Color3(0, 0, 0);
 
       if (entity.characterConfig?.isPlayable) {
@@ -125,7 +129,7 @@ export class CorePrimitiveLoaderService {
         mat.disableLighting = false;
       }
 
-      mat.maxSimultaneousLights = 4; // 🔥 OPTIMIZACIÓN LÍMITE LUCES
+      mat.maxSimultaneousLights = 4; 
       mat.fogEnabled = !entity.visual.ignoraNiebla;
       mesh.material = mat;
     }

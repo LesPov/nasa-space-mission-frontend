@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
 import '@babylonjs/loaders';
@@ -166,16 +165,17 @@ export class CoreModelLoaderService {
       m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
       m.receiveShadows = true;
       
-      // 🔥 FIX FRUSTUM CULLING (OBJETOS DESAPARECIENDO): 
-      // Se removió `doNotSyncBoundingInfo`. Estaba colapsando las cajas delimitadoras de Babylon, 
-      // lo cual causaba que al girar la cámara el motor creyera que el objeto ya no estaba en pantalla.
       if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled) {
           m.computeWorldMatrix(true);
           m.freezeWorldMatrix();
       }
       
       if (m.material) {
-          await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene);
+          // 🔥 HACER MATERIAL ÚNICO AL CARGAR SI EL PREFAB TIENE CONFIGURACIÓN PROPIA
+          this.materialSvc.asegurarMaterialUnico(m, entity.uid);
+          
+          const activeAmbient = isBW ? entity.visual.ambientColorBW : entity.visual.ambientColor;
+          await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbient);
       }
     }
 

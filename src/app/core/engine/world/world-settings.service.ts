@@ -1,5 +1,3 @@
-
-
 import { Injectable, signal } from '@angular/core';
 import { Color3, Color4, HemisphericLight, Scene, Vector3 } from '@babylonjs/core';
 import { WorldSettings, MissionUiSettings, DEFAULT_WORLD_SETTINGS, DEFAULT_MISSION_UI_SETTINGS, VisualMode } from './world-settings.model';
@@ -44,7 +42,7 @@ export class WorldSettingsService {
         initialSequence: uiData.initialSequence || DEFAULT_MISSION_UI_SETTINGS.initialSequence,
         objetivos: Array.isArray(uiData.objetivos) ? uiData.objetivos : [],
         recompensas: Array.isArray(uiData.recompensas) ? uiData.recompensas : [],
-        requisitos: Array.isArray(uiData.requisitos) ? uiData.requisitos : [] // 🔥 ADDED
+        requisitos: Array.isArray(uiData.requisitos) ? uiData.requisitos : []
       });
     }
   }
@@ -62,7 +60,7 @@ export class WorldSettingsService {
     const w = this.settings();
     const ui = this.uiSettings();
 
-    // Sincronizar metadata para lecturas cruzadas en el ecosistema Babylon
+    // Sincronizar metadata
     scene.metadata = {
       ...(scene.metadata || {}),
       globalVisualMode: w.visualMode,
@@ -71,6 +69,9 @@ export class WorldSettingsService {
       uiSettings: ui,
       logicSettings: w.logicSettings || {}
     };
+
+    // 🔥 FIX MAGICO: Permite que los colores ambientes de los materiales individuales funcionen.
+    scene.ambientColor = new Color3(1, 1, 1); 
 
     let ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;
     if (!ambient) {

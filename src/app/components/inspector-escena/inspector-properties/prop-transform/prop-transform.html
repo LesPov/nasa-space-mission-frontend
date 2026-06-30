@@ -129,6 +129,24 @@
 
   <div class="grid-2" style="margin-top: 10px;">
     <div class="field">
+      <label>Color Ambiente</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="objAmbientColor" (ngModelChange)="aplicarVisuales()" class="color-picker">
+        <span class="color-hex-text">{{ objAmbientColor.toUpperCase() }}</span>
+      </div>
+    </div>
+
+    <div class="field">
+      <label style="color: #cbd5e1; font-weight: bold;">Ambiente en B&N</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="objAmbientColorBW" (ngModelChange)="aplicarVisuales()" class="color-picker">
+        <span class="color-hex-text">{{ objAmbientColorBW.toUpperCase() }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="grid-2" style="margin-top: 10px;">
+    <div class="field">
       <label>Intensidad del brillo</label>
       <input
         type="number"

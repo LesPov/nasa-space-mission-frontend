@@ -25,7 +25,6 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   private windowSync = inject(WindowSyncService);
   private subs: Subscription[] = [];
 
-  // Data bindings
   localPosX = 0; localPosY = 0; localPosZ = 0;
   localRotX = 0; localRotY = 0; localRotZ = 0;
   localEscX = 1; localEscY = 1; localEscZ = 1;
@@ -37,11 +36,13 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
 
   objColor = '#ffffff';
   objColorBW = '#ffffff';
+  objAmbientColor = '#ffffff';
+  objAmbientColorBW = '#ffffff';
+  
   objIgnoraNiebla = false;
   objEsEmisivo = false;
   objBrilloIntensidad = 1.0;
   
-  // 🔥 Variables para manejar la Interfaz y guardar estado
   objMostrarBorde = true; 
   objEsSeleccionable = true; 
 
@@ -79,7 +80,7 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   }
 
   private formatNum(val: number): number {
-    return parseFloat(Number(val || 0).toFixed(4)); // Permite escalas ultra pequeñas como 0.003
+    return parseFloat(Number(val || 0).toFixed(4));
   }
 
   syncData() {
@@ -99,18 +100,21 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.localEscY = this.formatNum(entity.transform.scale.y);
     this.localEscZ = this.formatNum(entity.transform.scale.z);
 
-    this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane', 'image_plane'].includes(entity.type);
+    this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane', 'image_plane', 'model'].includes(entity.type);
     this.esImagePlane = entity.type === 'image_plane';
     this.esTrigger = entity.type === 'trigger' || entity.type === 'trigger_compuesto';
     this.esBubble = entity.type === 'bubble';
     
     this.objColor = entity.visual.color || '#ffffff';
     this.objColorBW = entity.visual.colorBW || this.objColor;
+    
+    this.objAmbientColor = entity.visual.ambientColor || '#ffffff';
+    this.objAmbientColorBW = entity.visual.ambientColorBW || this.objAmbientColor;
+    
     this.objIgnoraNiebla = entity.visual.ignoraNiebla ?? false;
     this.objEsEmisivo = entity.visual.esEmisivo ?? false;
     this.objBrilloIntensidad = entity.visual.brilloIntensidad ?? 1.0;
     
-    // Sincronización de las casillas en la UI
     this.objMostrarBorde = entity.visual.mostrarBorde ?? (entity.type !== 'plane'); 
     this.objEsSeleccionable = entity.visual.isSelectable ?? true; 
 
@@ -176,10 +180,10 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
 
   aplicarVisuales() {
     this.transformMutator.aplicarVisuales(this.objeto, {
-      color: this.objColor, colorBW: this.objColorBW, ignoraNiebla: this.objIgnoraNiebla, 
-      esEmisivo: this.objEsEmisivo, brilloIntensidad: this.objBrilloIntensidad,
-      mostrarBorde: this.objMostrarBorde, // 🔥 Propagamos el booleano
-      isSelectable: this.objEsSeleccionable // 🔥 Propagamos el booleano
+      color: this.objColor, colorBW: this.objColorBW, 
+      ambientColor: this.objAmbientColor, ambientColorBW: this.objAmbientColorBW,
+      ignoraNiebla: this.objIgnoraNiebla, esEmisivo: this.objEsEmisivo, brilloIntensidad: this.objBrilloIntensidad,
+      mostrarBorde: this.objMostrarBorde, isSelectable: this.objEsSeleccionable 
     });
   }
 

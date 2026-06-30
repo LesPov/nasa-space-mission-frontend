@@ -1,32 +1,60 @@
-
 import { Injectable } from '@angular/core';
-import { Color3, Texture, RawTexture, Scene } from '@babylonjs/core';
+import { Color3, Texture, RawTexture, Scene, AbstractMesh } from '@babylonjs/core';
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneMaterialService {
   
   private bwTextureCache = new Map<string, Texture>();
 
-  public async ajustarMaterialGLB(material: any, isBW: boolean = false, scene?: Scene): Promise<void> {
+  // 🔥 NUEVO: Función para asegurar que un objeto tenga su propio material único.
+  // Evita que al cambiar el color o ambiente de un clon, se cambien todos los demás.
+  public asegurarMaterialUnico(mesh: AbstractMesh, uid: string): void {
+      if (!mesh.material) return;
+      
+      // Si el material no tiene el UID del objeto, significa que es compartido
+      if (!mesh.material.name.includes(uid)) {
+          try {
+              if (mesh.material.getClassName() === 'MultiMaterial') {
+                  const multiMat = mesh.material as any;
+                  const newMultiMat = multiMat.clone(multiMat.name + "_" + uid);
+                  if (newMultiMat.subMaterials) {
+                      newMultiMat.subMaterials = multiMat.subMaterials.map((subMat: any) => {
+                          if (subMat && !subMat.name.includes(uid) && typeof subMat.clone === 'function') {
+                              return subMat.clone(subMat.name + "_" + uid);
+                          }
+                          return subMat;
+                      });
+                  }
+                  mesh.material = newMultiMat;
+              } else if (typeof (mesh.material as any).clone === 'function') {
+                  mesh.material = (mesh.material as any).clone(mesh.material.name + "_" + uid);
+              }
+          } catch (e) {
+              console.warn("No se pudo clonar el material para hacerlo único:", e);
+          }
+      }
+  }
+
+  public async ajustarMaterialGLB(material: any, isBW: boolean = false, scene?: Scene, ambientColorHex?: string): Promise<void> {
     if (!material) return;
-    
-    // Si ya lo procesamos, saltarlo para evitar recompilar y GC
-    if (material.metadata && material.metadata.isProcessedForLighting) return;
     
     if (material.getClassName() === 'MultiMaterial' && material.subMaterials) {
       for (const subMat of material.subMaterials) {
-        await this.ajustarMaterialGLB(subMat, isBW, scene);
+        await this.ajustarMaterialGLB(subMat, isBW, scene, ambientColorHex);
       }
       return;
     }
     
-    // 🔥 OPTIMIZACIÓN LÍMITE LUCES: Lo limitamos a 4 luces por objeto (estándar óptimo de videojuegos)
-    // Esto evita recompilaciones de shaders y destruye el lag de luces dinámicas en tiempo real.
     if (material.maxSimultaneousLights !== 4) {
         material.maxSimultaneousLights = 4;
     }
+
+    const c3Amb = ambientColorHex ? Color3.FromHexString(ambientColorHex) : new Color3(1, 1, 1);
     
     if (material.getClassName().includes('PBR')) {
+      // 🔥 APLICAR AL PBR DIRECTO EN VIVO
+      material.ambientColor = c3Amb;
+      
       if (material.usePhysicalLightFalloff !== false) material.usePhysicalLightFalloff = false;
       if (material.metallic !== 0.1) material.metallic = 0.1;
       if (material.roughness !== 0.8) material.roughness = 0.8;
@@ -53,6 +81,9 @@ export class CoreSceneMaterialService {
          }
       }
     } else if (material.getClassName().includes('Standard')) {
+      // 🔥 APLICAR AL STANDARD DIRECTO EN VIVO
+      material.ambientColor = c3Amb;
+      
       if (!material.metadata) material.metadata = {};
       
       if (material.metadata.originalDiffuseTexture === undefined) {

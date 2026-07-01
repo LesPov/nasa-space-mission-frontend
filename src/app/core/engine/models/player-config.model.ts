@@ -1,16 +1,15 @@
-
 export type AnimBinding = string | string[] | null;
 
 export interface GameCondition {
   type: 'var_eq' | 'var_neq' | 'has_item' | 'missing_item' | 'role_eq';
   key: string;
-  value?: any;
+  value?: string | number | boolean;
 }
 
 export interface GameStateMutation {
   type: 'set_var' | 'add_item' | 'remove_item';
   key: string;
-  value?: any;
+  value?: string | number | boolean;
 }
 
 export type PlayerActionKey =
@@ -37,7 +36,7 @@ export interface PlayerSequenceStep {
   conditions?: GameCondition[];
   stateMutations?: GameStateMutation[];
   stateKey?: string;
-  stateValue?: any;
+  stateValue?: string | number | boolean;
 }
 
 export interface PlayerClipSequence {
@@ -112,11 +111,10 @@ export interface FogLevel {
   layerHeights?: number[]; 
 }
 
-// 🔥 OPTIMIZACIÓN: Reducido de 5 a 3 anillos para mejorar drásticamente los FPS
 const defaultFogLevels: FogLevel[] = [
-  { distance: 15, height: 10, opacity: 15, thickness: 15, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] }, // Anillo Cercano (Suave)
-  { distance: 45, height: 25, opacity: 50, thickness: 30, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] }, // Anillo Medio (Denso)
-  { distance: 90, height: 60, opacity: 100, thickness: 60, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] }  // Anillo Lejano (Muro Total)
+  { distance: 15, height: 10, opacity: 15, thickness: 15, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] },
+  { distance: 45, height: 25, opacity: 50, thickness: 30, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] },
+  { distance: 90, height: 60, opacity: 100, thickness: 60, offsetY: 0, layerOpacities: [5, 35, 100, 100, 35, 5], layerHeights: [100, 100, 100, 100, 100, 100] }
 ];
 
 export interface PlayerFogConfig {
@@ -185,7 +183,7 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
   debug: { showRays: false, showCollider: false, showState: false },
   fog: {
     enabled: false, fogMode: 'linear', color: '#0d1729', colorBW: '#555555',
-    renderDistanceFPS: 150, renderDistanceTPS: 150, // 🔥 Default más bajo para ocultar objetos lejanos y salvar FPS
+    renderDistanceFPS: 150, renderDistanceTPS: 150,
     renderDistanceFpsBW: 150, renderDistanceTpsBW: 150,
     levelsFPS: structuredClone(defaultFogLevels),
     levelsTPS: structuredClone(defaultFogLevels),

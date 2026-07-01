@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, MeshBuilder, Tags, Vector3 } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -9,6 +8,7 @@ import { CoreModelLoaderService } from '../../../core/engine/scene/utils/core-mo
 import { BuilderTriggerService } from './builder-trigger.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { ShadowOrchestratorService } from '../../../core/engine/runtime/shadows/shadow-orchestrator.service';
+import { AssetDto, SceneObjectDto } from '../../../core/engine/models/api-dto.model';
 
 @Injectable({ providedIn: 'root' })
 export class SceneObjectBuilderService {
@@ -31,7 +31,7 @@ export class SceneObjectBuilderService {
 
   public async agregarObjetoCustom(
     tipo: string, nombre: string, rol: string, colorHex: string,
-    sizeX: number, sizeY: number, sizeZ: number, asset?: any,
+    sizeX: number, sizeY: number, sizeZ: number, asset?: AssetDto | null,
     isSolid: boolean = true, isSelectable: boolean = true, mensaje: string = '',
     parentNode: AbstractMesh | null = null,
     position?: Vector3,
@@ -49,7 +49,7 @@ export class SceneObjectBuilderService {
         sizeZ = 1;
     }
 
-    const mockDbObject: any = {
+    const mockDbObject: SceneObjectDto & { isNewCreation?: boolean } = {
       uid: window.crypto.randomUUID(),
       name: nombre,
       type: tipo,
@@ -63,7 +63,7 @@ export class SceneObjectBuilderService {
         mensaje: mensaje,
         path: asset?.path
       },
-      assetId: asset?.id,
+      assetId: asset?.id || null,
       position: position ? { x: position.x, y: position.y, z: position.z } : (parentNode ? {x:0, y: 0, z:0} : { x: 0, y: 0, z: 0 }),
       rotation: localRotation ? { x: localRotation.x, y: localRotation.y, z: localRotation.z } : { x: 0, y: 0, z: 0 },
       scale: { x: sizeX, y: sizeY, z: sizeZ },
@@ -71,15 +71,15 @@ export class SceneObjectBuilderService {
     };
 
     if (tipo.startsWith('light_')) {
-        mockDbObject.properties.intensity = 5;
-        mockDbObject.properties.lightColor = colorHex;
-        mockDbObject.properties.lightColorBW = colorHex;
-        mockDbObject.properties.lightPosX = 0;
-        mockDbObject.properties.lightPosY = 0.5;
-        mockDbObject.properties.lightPosZ = 0;
-        mockDbObject.properties.angle = 45;
-        mockDbObject.properties.enabled = true;
-        mockDbObject.properties.castShadows = true;
+        mockDbObject.properties!.intensity = 5;
+        mockDbObject.properties!.lightColor = colorHex;
+        mockDbObject.properties!.lightColorBW = colorHex;
+        mockDbObject.properties!.lightPosX = 0;
+        mockDbObject.properties!.lightPosY = 0.5;
+        mockDbObject.properties!.lightPosZ = 0;
+        mockDbObject.properties!.angle = 45;
+        mockDbObject.properties!.isEnabled = true;
+        (mockDbObject.properties as any).castShadows = true;
     }
 
     const isModel = tipo === 'model';

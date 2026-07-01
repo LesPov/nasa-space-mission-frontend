@@ -31,9 +31,8 @@ export class EntityPersistenceMapperService {
     entity.visual.color = props.color?.substring(0, 7) || (entity.type === 'model' ? '#ffffff' : '#888888');
     entity.visual.colorBW = props.colorBW?.substring(0, 7) || entity.visual.color;
     
-    // 🔥 CORRECCIÓN AQUÍ: Le decimos a TypeScript que lea estas propiedades sin importar la interfaz
-    entity.visual.ambientColor = (props as any).ambientColor?.substring(0, 7) || '#ffffff';
-    entity.visual.ambientColorBW = (props as any).ambientColorBW?.substring(0, 7) || entity.visual.ambientColor;
+    entity.visual.ambientColor = props.ambientColor?.substring(0, 7) || '#ffffff';
+    entity.visual.ambientColorBW = props.ambientColorBW?.substring(0, 7) || entity.visual.ambientColor;
     
     entity.visual.isSolid = props.isSolid ?? true;
     entity.visual.isSelectable = props.isSelectable ?? true;
@@ -44,7 +43,7 @@ export class EntityPersistenceMapperService {
     entity.visual.path = props.path || obj.asset?.path || props.videoUrl || props.imageUrl || '';
     entity.visual.assetId = obj.assetId || null;
     
-    entity.visual.internalScale = (props as any).internalScale;
+    entity.visual.internalScale = props.internalScale;
 
     entity.interaction.mensaje = props.mensaje || '';
     entity.interaction.interactDistanceFPS = this.utilsSvc.normalizarNumero(props.interactDistanceFPS, 3.0);
@@ -101,7 +100,7 @@ export class EntityPersistenceMapperService {
       entity.light.attachedNodePath = props.attachedNodePath || '';
       entity.light.attachedNodeName = props.attachedNodeName || '';
       entity.light.renderIntensity = entity.light.intensity;
-      entity.light.enabled = props.isEnabled ?? (props as any).enabled ?? true;
+      entity.light.enabled = props.isEnabled ?? true;
       entity.light.castShadows = (props as any).castShadows ?? true;
     }
   }
@@ -112,8 +111,8 @@ export class EntityPersistenceMapperService {
       characterConfig: entity.characterConfig ? { ...entity.characterConfig } : undefined,
       color: entity.visual.color,
       colorBW: entity.visual.colorBW,
-      ambientColor: entity.visual.ambientColor,       // 🔥 Se incluye en el DTO
-      ambientColorBW: entity.visual.ambientColorBW,   // 🔥 Se incluye en el DTO
+      ambientColor: entity.visual.ambientColor,
+      ambientColorBW: entity.visual.ambientColorBW,
       isSolid: entity.visual.isSolid,
       isSelectable: entity.visual.isSelectable,
       ignoraNiebla: entity.visual.ignoraNiebla,

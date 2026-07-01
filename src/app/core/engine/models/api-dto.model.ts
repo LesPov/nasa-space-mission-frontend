@@ -1,5 +1,5 @@
-
 import { VisualMode } from '../world/world-settings.model';
+import { PlayerRuntimeConfig } from './player-config.model';
 
 export interface Vector3Dto {
   x: number;
@@ -27,17 +27,52 @@ export interface ColliderDto {
   radiusZ?: number;
 }
 
+export interface CharacterConfigDto {
+  characterType: string;
+  isPlayable: boolean;
+  faction: string;
+}
+
+export interface SelectionRangeDto {
+  fpsAdminMax: number;
+  fpsUserMax: number;
+}
+
+export interface AutoAnimDto {
+  enabled: boolean;
+  type: string;
+  axis: string;
+  amount: number;
+  duration: number;
+  stopBaked: boolean;
+}
+
+export interface GameConditionDto {
+  type: string;
+  key: string;
+  value?: string | number | boolean;
+}
+
+export interface GameStateMutationDto {
+  type: string;
+  key: string;
+  value?: string | number | boolean;
+}
+
 export interface SceneObjectPropertiesDto {
   rol?: string;
-  characterConfig?: any;
+  characterConfig?: CharacterConfigDto;
   color?: string;
   colorBW?: string;
+  ambientColor?: string;
+  ambientColorBW?: string;
   isSolid?: boolean;
   isSelectable?: boolean;
   ignoraNiebla?: boolean;
   esEmisivo?: boolean;
   mostrarBorde?: boolean;
   brilloIntensidad?: number;
+  internalScale?: number;
   mensaje?: string;
   interactDistanceFPS?: number;
   interactDistanceTPS?: number;
@@ -48,10 +83,10 @@ export interface SceneObjectPropertiesDto {
   collider?: ColliderDto;
   capsule?: ColliderDto;
   camOffset?: Vector3Dto;
-  playerConfig?: any; 
-  selectionRange?: any;
+  playerConfig?: PlayerRuntimeConfig; 
+  selectionRange?: SelectionRangeDto;
   animationNames?: string[];
-  autoAnim?: any;
+  autoAnim?: AutoAnimDto;
   path?: string;
   videoUrl?: string;
   imageUrl?: string;
@@ -66,6 +101,7 @@ export interface SceneObjectPropertiesDto {
   lightColor?: string;
   lightColorBW?: string;
   intensity?: number;
+  renderIntensity?: number;
   range?: number;
   angle?: number;
   lightPosX?: number;
@@ -86,7 +122,7 @@ export interface SceneObjectPropertiesDto {
   condition?: string;
   actionType?: string;
   targetSceneId?: number | null;
-  gameConditions?: any[];
+  gameConditions?: GameConditionDto[];
   targetObjectName?: string;
   isRepeatable?: boolean;
   mensajeEntrada?: string;
@@ -95,9 +131,8 @@ export interface SceneObjectPropertiesDto {
   videoNorm?: string;
   timeNorm?: number;
   isEnabled?: boolean;
-  stateMutations?: any[];
+  stateMutations?: GameStateMutationDto[];
   
-  // 🔥 NUEVOS CAMPOS DE AUDIO MEJORADO
   audioLoopEntrada?: boolean;
   audioVolumeEntrada?: number;
   audioMaxDistEntrada?: number;
@@ -112,6 +147,8 @@ export interface SceneObjectPropertiesDto {
   audioVolumeNorm?: number;
   audioMaxDistNorm?: number;
   audioFadeInNorm?: number;
+
+  prefabHierarchy?: SceneObjectDto[]; 
 }
 
 export interface SceneObjectDto {
@@ -145,6 +182,12 @@ export interface CinematicDto {
   tracks: any[];
 }
 
+export interface LogicSettingsDto {
+  initialVariables?: { key: string, value: string | number | boolean }[];
+  objetivosLocales?: string | string[];
+  recompensasLocales?: string | string[];
+}
+
 export interface WorldSettingsDto {
   visualMode: VisualMode;
   clearColor: string;
@@ -156,7 +199,7 @@ export interface WorldSettingsDto {
   ambientDirX: number;
   ambientDirY: number;
   ambientDirZ: number;
-  logicSettings?: any;
+  logicSettings?: LogicSettingsDto;
 }
 
 export interface SceneSavePayload {

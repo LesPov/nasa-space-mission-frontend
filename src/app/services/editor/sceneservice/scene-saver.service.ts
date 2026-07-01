@@ -1,10 +1,9 @@
-
 import { Injectable, inject } from '@angular/core'; 
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
 import { EntityPersistenceMapperService } from '../../../core/engine/scene/utils/entity-persistence-mapper.service';
 import { EditorCinematicService } from '../editor-cinematic.service';
-import { SceneSavePayload, SceneObjectDto, TriggerDto, CinematicDto } from '../../../core/engine/models/api-dto.model';
+import { SceneSavePayload, SceneObjectDto, TriggerDto, CinematicDto, SceneObjectPropertiesDto } from '../../../core/engine/models/api-dto.model';
 
 @Injectable({ providedIn: 'root' }) 
 export class SceneSaverService { 
@@ -43,7 +42,7 @@ export class SceneSaverService {
 
         if (isComposite) {
           rawConditions.forEach((cond: string) => {
-             const actionProps: any = { triggerShape: trigger?.triggerShape || 'cube', isComposite: true };
+             const actionProps: Partial<SceneObjectPropertiesDto> = { triggerShape: trigger?.triggerShape || 'cube', isComposite: true };
              if (cond === 'on_enter') {
                 actionProps.mensaje = trigger?.mensajeEntrada || '';
                 actionProps.soundUrl = trigger?.soundUrlEntrada || '';

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, MeshBuilder, Tags, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
@@ -118,7 +117,6 @@ export class CoreSceneLoaderService {
     });
 
     if (isPlaying) {
-        // 🔥 CONSUMIDOR DELEGADO: SpawnManager asume el timón en un solo paso
         const resolvedPlayer = this.spawnManager.resolvePlayerForSession(null, false);
         
         if (persistentPlayer && resolvedPlayer && resolvedPlayer.uid === persistentPlayer.uid) {
@@ -144,7 +142,7 @@ export class CoreSceneLoaderService {
     });
   }
 
-  public async instantiatePrefab(prefabData: any, positionTarget: Vector3, rotationEuler?: Vector3, scale?: Vector3, parentNode?: AbstractMesh): Promise<Map<string, Mesh>> {
+  public async instantiatePrefab(prefabData: SceneObjectDto, positionTarget: Vector3, rotationEuler?: Vector3, scale?: Vector3, parentNode?: AbstractMesh): Promise<Map<string, Mesh>> {
     const mallasCreadas = new Map<string, Mesh>();
     const uidMap = new Map<string, string>(); 
 
@@ -153,7 +151,8 @@ export class CoreSceneLoaderService {
 
     for (const item of hierarchy) {
         const newUid = window.crypto.randomUUID();
-        uidMap.set(item.originalUid || item.uid || window.crypto.randomUUID(), newUid);
+        const originalUidForMap = (item as any).originalUid || item.uid || window.crypto.randomUUID();
+        uidMap.set(originalUidForMap, newUid);
 
         const isRoot = item === hierarchy[0];
         
@@ -184,7 +183,7 @@ export class CoreSceneLoaderService {
             properties: propsClone,
             assetId: item.assetId,
             asset: { path: propsClone.path },
-            parentId: isRoot ? (parentNode?.metadata?.uid || parentNode?.name || null) : uidMap.get(item.parentOriginalUid) 
+            parentId: isRoot ? (parentNode?.metadata?.uid || parentNode?.name || null) : uidMap.get((item as any).parentOriginalUid) 
         };
 
         const isModel = mockDbObject.type === 'model';

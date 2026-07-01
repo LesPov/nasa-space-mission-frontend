@@ -7,6 +7,37 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
 import { CoreSceneMaterialService } from '../../../core/engine/scene/utils/core-scene-material.service';
 
+export interface ProyeccionConfig {
+  profundidadProyeccion: number;
+  anguloProyeccion: number;
+  proyeccionAncho: number;
+  proyeccionAlto: number;
+  proyeccionRepeticiones: number;
+  proyeccionEspaciado: number;
+  proyeccionEje: string;
+  fadeDistance: number;
+}
+
+export interface VisualConfig {
+  color: string;
+  colorBW: string;
+  ambientColor: string;
+  ambientColorBW: string;
+  ignoraNiebla: boolean;
+  esEmisivo: boolean;
+  brilloIntensidad: number;
+  mostrarBorde?: boolean;
+  isSelectable?: boolean;
+}
+
+export interface InteraccionConfig {
+  interactDistanceFPS: number;
+  interactDistanceTPS: number;
+  interactSequenceIdFPS: string;
+  interactSequenceIdTPS: string;
+  mensaje: string;
+}
+
 @Injectable({ providedIn: 'root' })
 export class TransformMutatorService {
   private mapaSvc = inject(EditorMapaService);
@@ -77,7 +108,7 @@ export class TransformMutatorService {
     this.mapaSvc.onMapChanged.next();
   }
 
-  public aplicarProyeccion(objeto: AbstractMesh, config: any): void {
+  public aplicarProyeccion(objeto: AbstractMesh, config: ProyeccionConfig): void {
     const entity = this.entityManager.getEntityByMesh(objeto);
     if (!entity || !entity.media) return;
 
@@ -99,7 +130,7 @@ export class TransformMutatorService {
     this.mapaSvc.onMapChanged.next();
   }
 
-  public aplicarVisuales(objeto: AbstractMesh, config: any): void {
+  public aplicarVisuales(objeto: AbstractMesh, config: VisualConfig): void {
     const entity = this.entityManager.getEntityByMesh(objeto);
     if (!entity) return;
 
@@ -118,7 +149,7 @@ export class TransformMutatorService {
     if (config.isSelectable !== undefined) {
        entity.visual.isSelectable = config.isSelectable;
        objeto.isPickable = config.isSelectable;
-       objeto.getChildMeshes().forEach((m: AbstractMesh) => m.isPickable = config.isSelectable);
+       objeto.getChildMeshes().forEach((m: AbstractMesh) => m.isPickable = config.isSelectable!);
     }
 
     entity.isDirty = true;
@@ -132,7 +163,6 @@ export class TransformMutatorService {
         const scene = objeto.getScene();
         objeto.getChildMeshes().forEach((m: AbstractMesh) => {
             if (m.material) {
-                // 🔥 HACER MATERIAL ÚNICO AL MUTAR (Rompe el hilo compartido instantáneamente)
                 this.materialSvc.asegurarMaterialUnico(m, entity.uid);
                 this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbientHex);
             }
@@ -154,7 +184,6 @@ export class TransformMutatorService {
           });
         }
       } else {
-        // 🔥 HACER MATERIAL ÚNICO AL MUTAR (Primitivas clonadas)
         this.materialSvc.asegurarMaterialUnico(objeto, entity.uid);
         const objMat = objeto.material as StandardMaterial;
         
@@ -204,7 +233,7 @@ export class TransformMutatorService {
     this.mapaSvc.onMapChanged.next();
   }
 
-  public aplicarInteraccion(objeto: AbstractMesh, config: any): void {
+  public aplicarInteraccion(objeto: AbstractMesh, config: InteraccionConfig): void {
     const entity = this.entityManager.getEntityByMesh(objeto);
     if (!entity) return;
 

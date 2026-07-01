@@ -1,4 +1,3 @@
-// src/app/services/editor/sceneservice/builder-trigger.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, MeshBuilder } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -10,6 +9,7 @@ import { CoreTriggerLoaderService } from '../../../core/engine/scene/utils/core-
 import { AuthService } from '../../../core/services/auth';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { TriggerVisualizerService } from '../../../core/engine/scene/utils/trigger-visualizer.service';
+import { TriggerDto } from '../../../core/engine/models/api-dto.model';
   
 @Injectable({ providedIn: 'root' })
 export class BuilderTriggerService {
@@ -55,7 +55,6 @@ export class BuilderTriggerService {
       newMesh.scaling = oldMesh.scaling.clone();
     }
 
-    // 🔥 OPTIMIZACIÓN
     newMesh.visibility = 0;
     newMesh.material = null;
     newMesh.isPickable = true;
@@ -80,7 +79,7 @@ export class BuilderTriggerService {
     sizeX: number, sizeY: number, sizeZ: number, parentNode: AbstractMesh | null = null,
     actionType: string = 'show_message'
   ): void {
-    const mockDbObject = {
+    const mockDbObject: TriggerDto = {
       uid: window.crypto.randomUUID(),
       name: nombre,
       type: isComposite ? 'trigger_compuesto' : 'trigger',

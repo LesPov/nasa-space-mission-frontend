@@ -1,16 +1,16 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { FogLevel, PlayerRuntimeConfig } from '../../../core/engine/models/player-config.model';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { SelectionRangeDto } from '../../../core/engine/models/api-dto.model';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerConfigMutatorService {
   private mapaSvc = inject(EditorMapaService);
   private entityManager = inject(EntityManagerService); 
 
-  public aplicarPlayerConfig(objeto: AbstractMesh, playerConfig: PlayerRuntimeConfig, selectionRange: any): void {
+  public aplicarPlayerConfig(objeto: AbstractMesh, playerConfig: PlayerRuntimeConfig, selectionRange: SelectionRangeDto): void {
     this.sincronizarFogCompat(playerConfig);
 
     const entity = this.entityManager.getEntityByMesh(objeto);
@@ -28,7 +28,7 @@ export class PlayerConfigMutatorService {
     fog.enabled = true;
     fog.color = '#64748b';
     fog.colorBW = '#888888';
-    fog.renderDistanceFPS = 150; // 🔥 Default optimizado
+    fog.renderDistanceFPS = 150; 
     fog.renderDistanceTPS = 150;
     fog.renderDistanceFpsBW = 150;
     fog.renderDistanceTpsBW = 150;
@@ -36,13 +36,11 @@ export class PlayerConfigMutatorService {
     const defaultLayers12 = [2, 5, 10, 20, 35, 55, 75, 90, 100, 100, 100, 100];
     const defaultHeights12 = [30, 40, 50, 60, 70, 80, 90, 100, 100, 100, 100, 100]; 
     
-    // 🔥 OPTIMIZACIÓN: Solo 3 anillos requeridos para el efecto lineal
     const defaultD = [15, 45, 90]; 
     const defaultH = [10, 25, 60];   
     const defaultT = [15, 30, 60]; 
 
     const resetArray = (arr: FogLevel[]) => {
-      // Ajustamos el tamaño del array a 3 para limpiar arreglos viejos de 5
       arr.length = 3; 
       arr.forEach((l, i) => {
         if (!l) arr[i] = {} as any;
@@ -94,7 +92,6 @@ export class PlayerConfigMutatorService {
 
     const ensurePerfectFog = (levels: any[]) => {
       if (!levels) return;
-      // 🔥 FIX: Forzamos recorte a 3 elementos
       levels.length = Math.min(levels.length, 3);
       
       for(let i = 0; i < 3; i++) {

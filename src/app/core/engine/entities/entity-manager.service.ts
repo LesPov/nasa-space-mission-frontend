@@ -11,7 +11,6 @@ export class EntityManagerService {
   public deletedObjects: string[] = [];
   public deletedTriggers: string[] = [];
 
-  // 🔥 OPTIMIZACIÓN: Caché estricto de arreglos de entidades para evitar GC frame-drops.
   private _entitiesArrayCache: GameEntity[] | null = null;
 
   public addEntity(entity: GameEntity): void {
@@ -26,6 +25,8 @@ export class EntityManagerService {
     const entity = this.entitiesByUid.get(uid);
     if (entity) {
       if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') {
+          this.deletedTriggers.push(`${entity.uid}_on_enter`);
+          this.deletedTriggers.push(`${entity.uid}_on_exit`);
           this.deletedTriggers.push(entity.uid);
       } else {
           this.deletedObjects.push(entity.uid);

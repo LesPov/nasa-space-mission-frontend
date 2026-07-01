@@ -1,12 +1,11 @@
 
-
 import { Injectable } from '@angular/core';
 import { Subject } from 'rxjs';
 import { GameEntity } from '../entities/game.entity';
 import { AbstractMesh } from '@babylonjs/core';
 
 export type GameEvent = 
-  | { type: 'MessageRequested', payload: string | null }
+  | { type: 'MessageRequested', payload: { text: string, durationMs?: number } | null }
   | { type: 'ObjectFocused', payload: { entity: GameEntity | null, mesh: AbstractMesh | null, canInteract: boolean, canInspect: boolean } }
   | { type: 'InteractionStateChanged', payload: boolean }
   | { type: 'GameStarted', payload: { view: 'FPS' | 'TPS', isDebugMode: boolean } }
@@ -20,7 +19,6 @@ export type GameEvent =
   | { type: 'CinematicStarted', payload: { cinematicId: string } }
   | { type: 'CinematicStopped' }
   | { type: 'DialogueRequested', payload: { actor?: string, text?: string, durationMs: number } }
-  // 🔥 NUEVOS EVENTOS PARA LA RUEDA DE CONSTRUCCIÓN (Q)
   | { type: 'RadialMenuToggled', payload: boolean }
   | { type: 'AssetSelectedForBuild', payload: any | null };
 

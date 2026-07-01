@@ -1,3 +1,4 @@
+
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
@@ -65,7 +66,11 @@ export class TriggerConfigComponent {
     public videoNorm = '', public isRepeatable = false, public gameConditions: any[] = [], 
     public stateMutations: any[] = [],
     public actionType: 'show_message' | 'change_scene' = 'show_message',
-    public targetSceneId: number | null = null
+    public targetSceneId: number | null = null,
+    // 🔥 NUEVOS CAMPOS PARA AUDIO MEJORADO
+    public audioLoopEntrada = false, public audioVolumeEntrada = 0.8, public audioMaxDistEntrada = 50,
+    public audioLoopSalida = false, public audioVolumeSalida = 0.8, public audioMaxDistSalida = 50,
+    public audioLoopNorm = false, public audioVolumeNorm = 0.8, public audioMaxDistNorm = 50
   ) {}
 }
 

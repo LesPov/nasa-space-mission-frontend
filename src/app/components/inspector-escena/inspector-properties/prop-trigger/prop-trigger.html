@@ -1,5 +1,4 @@
 
-
 <div class="section-card">
   <div class="section-head"><h4>Posición & Radio (Trigger)</h4></div>
   <div class="grid-3">
@@ -33,8 +32,23 @@
             <label>ID Seq (Múltiples separados por coma)</label>
             <input type="text" [ngModel]="triggerSeqEntrada" (ngModelChange)="triggerSeqEntrada = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
           </div>
-          <div class="field wide"><label>Audio URL</label><input type="text" [ngModel]="triggerSoundEntrada" (ngModelChange)="triggerSoundEntrada = $event; aplicarTrigger()" /></div>
-          <div class="field wide"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoEntrada" (ngModelChange)="triggerVideoEntrada = $event; aplicarTrigger()" /></div>
+          <div class="field wide">
+            <label>Audio al ENTRAR (.mp3)</label>
+            <div style="display: flex; gap: 5px;">
+              <select [ngModel]="triggerSoundEntrada" (ngModelChange)="triggerSoundEntrada = $event; aplicarTrigger()" style="flex: 1;">
+                <option value="">-- Sin audio --</option>
+                <option *ngFor="let audio of audioAssets" [value]="'http://localhost:4000' + audio.path">🎵 {{ audio.name }}</option>
+              </select>
+              <button class="btn-secondary small" (click)="fileInputEntrada.click()" [disabled]="isUploadingAudio">Subir</button>
+              <input type="file" #fileInputEntrada accept=".mp3" style="display: none;" (change)="subirAudio($event, 'entrada')">
+            </div>
+          </div>
+          <div class="grid-3" *ngIf="triggerSoundEntrada" style="margin-top: 5px;">
+             <div class="checkbox-field"><input type="checkbox" id="chkLpEnt" [ngModel]="audioLoopEntrada" (ngModelChange)="audioLoopEntrada = $event; aplicarTrigger()"><label for="chkLpEnt">Bucle infinito</label></div>
+             <div class="field"><label>Volumen (0-1)</label><input type="number" step="0.1" min="0" max="1" [ngModel]="audioVolumeEntrada" (ngModelChange)="audioVolumeEntrada = $event; aplicarTrigger()"></div>
+             <div class="field"><label>Alcance (m)</label><input type="number" step="1" [ngModel]="audioMaxDistEntrada" (ngModelChange)="audioMaxDistEntrada = $event; aplicarTrigger()" title="Distancia máxima para escuchar el audio al alejarse"></div>
+          </div>
+          <div class="field wide" style="margin-top: 5px;"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoEntrada" (ngModelChange)="triggerVideoEntrada = $event; aplicarTrigger()" /></div>
         </div>
      </div>
 
@@ -46,8 +60,23 @@
             <label>ID Seq (Múltiples separados por coma)</label>
             <input type="text" [ngModel]="triggerSeqSalida" (ngModelChange)="triggerSeqSalida = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
           </div>
-          <div class="field wide"><label>Audio URL</label><input type="text" [ngModel]="triggerSoundSalida" (ngModelChange)="triggerSoundSalida = $event; aplicarTrigger()" /></div>
-          <div class="field wide"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoSalida" (ngModelChange)="triggerVideoSalida = $event; aplicarTrigger()" /></div>
+          <div class="field wide">
+            <label>Audio al SALIR (.mp3)</label>
+            <div style="display: flex; gap: 5px;">
+              <select [ngModel]="triggerSoundSalida" (ngModelChange)="triggerSoundSalida = $event; aplicarTrigger()" style="flex: 1;">
+                <option value="">-- Sin audio --</option>
+                <option *ngFor="let audio of audioAssets" [value]="'http://localhost:4000' + audio.path">🎵 {{ audio.name }}</option>
+              </select>
+              <button class="btn-secondary small" (click)="fileInputSalida.click()" [disabled]="isUploadingAudio">Subir</button>
+              <input type="file" #fileInputSalida accept=".mp3" style="display: none;" (change)="subirAudio($event, 'salida')">
+            </div>
+          </div>
+          <div class="grid-3" *ngIf="triggerSoundSalida" style="margin-top: 5px;">
+             <div class="checkbox-field"><input type="checkbox" id="chkLpSal" [ngModel]="audioLoopSalida" (ngModelChange)="audioLoopSalida = $event; aplicarTrigger()"><label for="chkLpSal">Bucle infinito</label></div>
+             <div class="field"><label>Volumen (0-1)</label><input type="number" step="0.1" min="0" max="1" [ngModel]="audioVolumeSalida" (ngModelChange)="audioVolumeSalida = $event; aplicarTrigger()"></div>
+             <div class="field"><label>Alcance (m)</label><input type="number" step="1" [ngModel]="audioMaxDistSalida" (ngModelChange)="audioMaxDistSalida = $event; aplicarTrigger()" title="Distancia máxima para escuchar el audio al alejarse"></div>
+          </div>
+          <div class="field wide" style="margin-top: 5px;"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoSalida" (ngModelChange)="triggerVideoSalida = $event; aplicarTrigger()" /></div>
         </div>
      </div>
   </div>
@@ -87,8 +116,23 @@
           <label>ID Seq (Múltiples separados por coma)</label>
           <input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
         </div>
-        <div class="field wide"><label>Audio URL</label><input type="text" [ngModel]="objSoundUrl" (ngModelChange)="objSoundUrl = $event; aplicarTrigger()" /></div>
-        <div class="field wide"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoNorm" (ngModelChange)="triggerVideoNorm = $event; aplicarTrigger()" /></div>
+        <div class="field wide">
+          <label>Audio (.mp3)</label>
+          <div style="display: flex; gap: 5px;">
+            <select [ngModel]="objSoundUrl" (ngModelChange)="objSoundUrl = $event; aplicarTrigger()" style="flex: 1;">
+              <option value="">-- Sin audio --</option>
+              <option *ngFor="let audio of audioAssets" [value]="'http://localhost:4000' + audio.path">🎵 {{ audio.name }}</option>
+            </select>
+            <button class="btn-secondary small" (click)="fileInputNorm.click()" [disabled]="isUploadingAudio">Subir</button>
+            <input type="file" #fileInputNorm accept=".mp3" style="display: none;" (change)="subirAudio($event, 'norm')">
+          </div>
+        </div>
+        <div class="grid-3" *ngIf="objSoundUrl" style="margin-top: 5px; grid-column: 1 / -1;">
+           <div class="checkbox-field"><input type="checkbox" id="chkLpNorm" [ngModel]="audioLoopNorm" (ngModelChange)="audioLoopNorm = $event; aplicarTrigger()"><label for="chkLpNorm">Bucle infinito</label></div>
+           <div class="field"><label>Volumen (0-1)</label><input type="number" step="0.1" min="0" max="1" [ngModel]="audioVolumeNorm" (ngModelChange)="audioVolumeNorm = $event; aplicarTrigger()"></div>
+           <div class="field"><label>Alcance (m)</label><input type="number" step="1" [ngModel]="audioMaxDistNorm" (ngModelChange)="audioMaxDistNorm = $event; aplicarTrigger()" title="Distancia máxima para escuchar el audio al alejarse"></div>
+        </div>
+        <div class="field wide" style="margin-top: 5px;"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoNorm" (ngModelChange)="triggerVideoNorm = $event; aplicarTrigger()" /></div>
     </div>
   </ng-container>
 </div>

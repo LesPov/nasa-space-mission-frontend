@@ -1,5 +1,4 @@
 
-
 import { Component, Input, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
@@ -24,7 +23,7 @@ export class UiHud implements OnInit, OnDestroy {
   public eventBus = inject(GameEventBusService);
   public gameSession = inject(GameSession);
   public cdr = inject(ChangeDetectorRef);
-  public cinematicDirector = inject(CinematicDirectorService); // 🔥 Para Fades Cinematográficos
+  public cinematicDirector = inject(CinematicDirectorService);
 
   public hudMessage = signal<string | null>(null);
   public actionAvailable = signal<boolean>(false);
@@ -33,12 +32,25 @@ export class UiHud implements OnInit, OnDestroy {
   public hoveredMesh = signal<AbstractMesh | null>(null);
 
   private sub!: Subscription;
+  private messageTimer: any = null;
 
   ngOnInit() {
     this.sub = this.eventBus.events$.subscribe(event => {
       switch (event.type) {
         case 'MessageRequested': 
-          this.hudMessage.set(event.payload); 
+          if (event.payload === null) {
+              this.hudMessage.set(null);
+              if (this.messageTimer) clearTimeout(this.messageTimer);
+          } else {
+              const text = event.payload.text;
+              const duration = event.payload.durationMs || 4500;
+              this.hudMessage.set(text);
+              if (this.messageTimer) clearTimeout(this.messageTimer);
+              this.messageTimer = setTimeout(() => {
+                  this.hudMessage.set(null);
+                  this.cdr.detectChanges();
+              }, duration);
+          }
           break;
         case 'ObjectFocused':
           this.targetInteractuable.set(event.payload.entity);
@@ -53,5 +65,6 @@ export class UiHud implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     if (this.sub) this.sub.unsubscribe();
+    if (this.messageTimer) clearTimeout(this.messageTimer);
   }
 }

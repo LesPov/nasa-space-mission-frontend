@@ -17,7 +17,6 @@ export class SceneSaverService {
     const sceneObjectsDelta: SceneObjectDto[] = []; 
     const triggersDelta: TriggerDto[] = [];
 
-    // 🔥 Extraemos configuraciones globales del mundo (Color, B/N, Cielo) y la Interfaz
     const environmentSettings = this.worldSettingsSvc.settings();
     const uiSettings = this.worldSettingsSvc.uiSettings();
     
@@ -60,7 +59,8 @@ export class SceneSaverService {
                 actionProps.videoSalida = trigger?.videoSalida || '';
              }
              triggersDelta.push({
-               uid: entity.uid, name: entity.name, parentId: entity.parentId, type: entity.type,
+               uid: `${entity.uid}_${cond}`, 
+               name: entity.name, parentId: entity.parentId, type: entity.type,
                position: transform.position, scale: transform.scale,
                properties: { 
                  condition: cond, 
@@ -123,7 +123,7 @@ export class SceneSaverService {
       deletedTriggers: [...this.entityManager.deletedTriggers], 
       deletedCinematics, 
       environmentSettings,
-      uiSettings, // 🔥 Guardamos esto explícitamente para TestLive
+      uiSettings, 
       spawnPoint
     } as any;
   } 

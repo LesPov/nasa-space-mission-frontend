@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Ray } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -52,6 +53,7 @@ export class PlayerInteractionService implements IUpdatable {
       this.canInspect = false;
       this.currentHoveredMesh = null;
       this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
+      this.eventBus.emit({ type: 'MessageRequested', payload: null });
     }
   }
 

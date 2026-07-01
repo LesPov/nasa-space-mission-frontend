@@ -1,4 +1,4 @@
-// src/app/core/engine/scene/utils/core-trigger-loader.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { Mesh, MeshBuilder } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
@@ -17,79 +17,117 @@ export class CoreTriggerLoaderService {
     const shape = trigger.actionProperties?.triggerShape || trigger.properties?.triggerShape || 'cube';
     const isComposite = trigger.actionProperties?.isComposite ?? trigger.properties?.isComposite ?? false;
 
-    const uid = trigger.uid || window.crypto.randomUUID();
-    const entity = new GameEntity(uid, trigger.name, isComposite ? 'trigger_compuesto' : 'trigger', 'trigger');
-
-    entity.transform.position = { x: trigger.position.x, y: trigger.position.y, z: trigger.position.z };
+    let rawUid = trigger.uid || window.crypto.randomUUID();
+    const baseUid = rawUid.replace('_on_enter', '').replace('_on_exit', '');
     
-    const scl = trigger.scale || trigger.size || { x: 1, y: 1, z: 1 };
-    entity.transform.scale = { x: scl.x, y: scl.y, z: scl.z };
-    entity.parentId = trigger.parentId || null;
-
-    entity.trigger = {
-      isComposite: isComposite,
-      triggerShape: shape,
-      conditions: isComposite && trigger.condition ? [trigger.condition] : [],
-      mensajeEntrada: isComposite && trigger.condition === 'on_enter' ? (trigger.actionProperties?.mensaje || '') : '',
-      mensajeSalida: isComposite && trigger.condition === 'on_exit' ? (trigger.actionProperties?.mensaje || '') : '',
-      soundUrlEntrada: isComposite && trigger.condition === 'on_enter' ? (trigger.actionProperties?.soundUrl || '') : '',
-      soundUrlSalida: isComposite && trigger.condition === 'on_exit' ? (trigger.actionProperties?.soundUrl || '') : '',
-      seqEntrada: isComposite && trigger.condition === 'on_enter' ? (trigger.actionProperties?.seqEntrada || '') : '',
-      seqSalida: isComposite && trigger.condition === 'on_exit' ? (trigger.actionProperties?.seqSalida || '') : '',
-      timeEntrada: isComposite && trigger.condition === 'on_enter' ? (trigger.actionProperties?.timeEntrada ?? 4.5) : 4.5,
-      timeSalida: isComposite && trigger.condition === 'on_exit' ? (trigger.actionProperties?.timeSalida ?? 4.5) : 4.5,
-      videoEntrada: isComposite && trigger.condition === 'on_enter' ? (trigger.actionProperties?.videoEntrada || '') : '',
-      videoSalida: isComposite && trigger.condition === 'on_exit' ? (trigger.actionProperties?.videoSalida || '') : '',
-      
-      condition: !isComposite ? (trigger.condition || 'on_enter') : 'on_enter',
-      mensaje: !isComposite ? (trigger.actionProperties?.mensaje || '') : '',
-      soundUrl: !isComposite ? (trigger.actionProperties?.soundUrl || '') : '',
-      interactSequenceId: !isComposite ? (trigger.actionProperties?.interactSequenceId || '') : '',
-      timeNorm: !isComposite ? (trigger.actionProperties?.timeNorm ?? 4.5) : 4.5,
-      videoNorm: !isComposite ? (trigger.actionProperties?.videoNorm || '') : '',
-      
-      isRepeatable: trigger.properties?.isRepeatable ?? trigger.isRepeatable ?? false,
-      gameConditions: trigger.properties?.gameConditions || trigger.actionProperties?.gameConditions || [],
-      stateMutations: trigger.properties?.stateMutations || trigger.actionProperties?.stateMutations || [],
-      actionType: trigger.properties?.actionType || trigger.actionType || trigger.actionProperties?.actionType || 'show_message',
-      targetSceneId: trigger.properties?.targetSceneId || trigger.actionProperties?.targetSceneId || null
-    };
-
-    if (entity.triggerRuntime) {
-       entity.triggerRuntime.isEnabled = trigger.properties?.isEnabled ?? trigger.isEnabled ?? true;
-       entity.triggerRuntime.hasTriggeredEnter = false;
-       entity.triggerRuntime.hasTriggeredExit = false;
-    }
-
+    let entity = this.entityManager.getEntityByUid(baseUid);
     let mesh = scene.getMeshByName(trigger.name) as Mesh;
 
-    if (!mesh) {
-      switch (shape) {
-        case 'sphere': mesh = MeshBuilder.CreateSphere(trigger.name, { diameter: 1 }, scene); break;
-        case 'cylinder': mesh = MeshBuilder.CreateCylinder(trigger.name, { height: 1, diameter: 1 }, scene); break;
-        default: mesh = MeshBuilder.CreateBox(trigger.name, { size: 1 }, scene); break;
+    if (!entity) {
+      entity = new GameEntity(baseUid, trigger.name, isComposite ? 'trigger_compuesto' : 'trigger', 'trigger');
+
+      entity.transform.position = { x: trigger.position.x, y: trigger.position.y, z: trigger.position.z };
+      
+      const scl = trigger.scale || trigger.size || { x: 1, y: 1, z: 1 };
+      entity.transform.scale = { x: scl.x, y: scl.y, z: scl.z };
+      entity.parentId = trigger.parentId || null;
+
+      entity.trigger = {
+        isComposite: isComposite,
+        triggerShape: shape,
+        conditions: [],
+        mensajeEntrada: '', mensajeSalida: '',
+        soundUrlEntrada: '', soundUrlSalida: '',
+        seqEntrada: '', seqSalida: '',
+        timeEntrada: 4.5, timeSalida: 4.5,
+        videoEntrada: '', videoSalida: '',
+        
+        condition: 'on_enter',
+        mensaje: '', soundUrl: '', interactSequenceId: '', timeNorm: 4.5, videoNorm: '',
+        
+        isRepeatable: trigger.properties?.isRepeatable ?? trigger.isRepeatable ?? false,
+        gameConditions: trigger.properties?.gameConditions || trigger.actionProperties?.gameConditions || [],
+        stateMutations: trigger.properties?.stateMutations || trigger.actionProperties?.stateMutations || [],
+        actionType: trigger.properties?.actionType || trigger.actionType || trigger.actionProperties?.actionType || 'show_message',
+        targetSceneId: trigger.properties?.targetSceneId || trigger.actionProperties?.targetSceneId || null,
+        
+        audioLoopEntrada: trigger.actionProperties?.audioLoopEntrada ?? trigger.properties?.audioLoopEntrada ?? false,
+        audioVolumeEntrada: trigger.actionProperties?.audioVolumeEntrada ?? trigger.properties?.audioVolumeEntrada ?? 0.8,
+        audioMaxDistEntrada: trigger.actionProperties?.audioMaxDistEntrada ?? trigger.properties?.audioMaxDistEntrada ?? 50,
+        audioLoopSalida: trigger.actionProperties?.audioLoopSalida ?? trigger.properties?.audioLoopSalida ?? false,
+        audioVolumeSalida: trigger.actionProperties?.audioVolumeSalida ?? trigger.properties?.audioVolumeSalida ?? 0.8,
+        audioMaxDistSalida: trigger.actionProperties?.audioMaxDistSalida ?? trigger.properties?.audioMaxDistSalida ?? 50,
+        audioLoopNorm: trigger.actionProperties?.audioLoopNorm ?? trigger.properties?.audioLoopNorm ?? false,
+        audioVolumeNorm: trigger.actionProperties?.audioVolumeNorm ?? trigger.properties?.audioVolumeNorm ?? 0.8,
+        audioMaxDistNorm: trigger.actionProperties?.audioMaxDistNorm ?? trigger.properties?.audioMaxDistNorm ?? 50
+      };
+
+      if (entity.triggerRuntime) {
+         entity.triggerRuntime.isEnabled = trigger.properties?.isEnabled ?? trigger.isEnabled ?? true;
+         entity.triggerRuntime.hasTriggeredEnter = false;
+         entity.triggerRuntime.hasTriggeredExit = false;
       }
 
-      entity.bindView(mesh);
+      if (!mesh) {
+        switch (shape) {
+          case 'sphere': mesh = MeshBuilder.CreateSphere(trigger.name, { diameter: 1 }, scene); break;
+          case 'cylinder': mesh = MeshBuilder.CreateCylinder(trigger.name, { height: 1, diameter: 1 }, scene); break;
+          default: mesh = MeshBuilder.CreateBox(trigger.name, { size: 1 }, scene); break;
+        }
 
-      // 🔥 OPTIMIZACIÓN: visibility 0 omite totalmente los Draw Calls de la GPU
-      // pero mantiene a Babylon consciente para el Raycast. Muerte al Overdraw.
-      mesh.visibility = 0; 
-      mesh.material = null; 
-      mesh.isPickable = true;
-      mesh.checkCollisions = false;
-      mesh.isVisible = true; 
+        entity.bindView(mesh);
+        mesh.visibility = 0; 
+        mesh.material = null; 
+        mesh.isPickable = true;
+        mesh.checkCollisions = false;
+        mesh.isVisible = true; 
 
-      this.triggerVisualizer.createOrUpdateWireframe(mesh, shape, isComposite, entity.trigger.actionType);
-
+        this.triggerVisualizer.createOrUpdateWireframe(mesh, shape, isComposite, entity.trigger.actionType);
+        mallasCreadas.set(entity.uid, mesh);
+      } else {
+        mesh.visibility = 0; 
+        mesh.material = null;
+        entity.bindView(mesh);
+        this.triggerVisualizer.createOrUpdateWireframe(mesh, shape, isComposite, entity.trigger.actionType);
+      }
       this.entityManager.addEntity(entity);
-      mallasCreadas.set(entity.uid, mesh);
+    }
+
+    const cond = trigger.properties?.condition || trigger.condition || 'on_enter';
+    if (isComposite) {
+        if (!entity.trigger!.conditions.includes(cond)) {
+            entity.trigger!.conditions.push(cond);
+        }
+        if (cond === 'on_enter') {
+           entity.trigger!.mensajeEntrada = trigger.actionProperties?.mensaje || trigger.properties?.mensaje || '';
+           entity.trigger!.soundUrlEntrada = trigger.actionProperties?.soundUrl || trigger.properties?.soundUrl || '';
+           entity.trigger!.seqEntrada = trigger.actionProperties?.seqEntrada || trigger.properties?.seqEntrada || '';
+           entity.trigger!.timeEntrada = trigger.actionProperties?.timeEntrada ?? trigger.properties?.timeEntrada ?? 4.5;
+           entity.trigger!.videoEntrada = trigger.actionProperties?.videoEntrada || trigger.properties?.videoEntrada || '';
+           entity.trigger!.audioLoopEntrada = trigger.actionProperties?.audioLoopEntrada ?? trigger.properties?.audioLoopEntrada ?? false;
+           entity.trigger!.audioVolumeEntrada = trigger.actionProperties?.audioVolumeEntrada ?? trigger.properties?.audioVolumeEntrada ?? 0.8;
+           entity.trigger!.audioMaxDistEntrada = trigger.actionProperties?.audioMaxDistEntrada ?? trigger.properties?.audioMaxDistEntrada ?? 50;
+        }
+        if (cond === 'on_exit') {
+           entity.trigger!.mensajeSalida = trigger.actionProperties?.mensaje || trigger.properties?.mensaje || '';
+           entity.trigger!.soundUrlSalida = trigger.actionProperties?.soundUrl || trigger.properties?.soundUrl || '';
+           entity.trigger!.seqSalida = trigger.actionProperties?.seqSalida || trigger.properties?.seqSalida || '';
+           entity.trigger!.timeSalida = trigger.actionProperties?.timeSalida ?? trigger.properties?.timeSalida ?? 4.5;
+           entity.trigger!.videoSalida = trigger.actionProperties?.videoSalida || trigger.properties?.videoSalida || '';
+           entity.trigger!.audioLoopSalida = trigger.actionProperties?.audioLoopSalida ?? trigger.properties?.audioLoopSalida ?? false;
+           entity.trigger!.audioVolumeSalida = trigger.actionProperties?.audioVolumeSalida ?? trigger.properties?.audioVolumeSalida ?? 0.8;
+           entity.trigger!.audioMaxDistSalida = trigger.actionProperties?.audioMaxDistSalida ?? trigger.properties?.audioMaxDistSalida ?? 50;
+        }
     } else {
-      mesh.visibility = 0; 
-      mesh.material = null;
-      entity.bindView(mesh);
-      this.triggerVisualizer.createOrUpdateWireframe(mesh, shape, isComposite, entity.trigger.actionType);
-      this.entityManager.addEntity(entity);
+        entity.trigger!.condition = cond;
+        entity.trigger!.mensaje = trigger.actionProperties?.mensaje || trigger.properties?.mensaje || '';
+        entity.trigger!.soundUrl = trigger.actionProperties?.soundUrl || trigger.properties?.soundUrl || '';
+        entity.trigger!.interactSequenceId = trigger.actionProperties?.interactSequenceId || trigger.properties?.interactSequenceId || '';
+        entity.trigger!.timeNorm = trigger.actionProperties?.timeNorm ?? trigger.properties?.timeNorm ?? 4.5;
+        entity.trigger!.videoNorm = trigger.actionProperties?.videoNorm || trigger.properties?.videoNorm || '';
+        entity.trigger!.audioLoopNorm = trigger.actionProperties?.audioLoopNorm ?? trigger.properties?.audioLoopNorm ?? false;
+        entity.trigger!.audioVolumeNorm = trigger.actionProperties?.audioVolumeNorm ?? trigger.properties?.audioVolumeNorm ?? 0.8;
+        entity.trigger!.audioMaxDistNorm = trigger.actionProperties?.audioMaxDistNorm ?? trigger.properties?.audioMaxDistNorm ?? 50;
     }
   }
 }

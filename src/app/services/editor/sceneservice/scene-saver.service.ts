@@ -50,6 +50,10 @@ export class SceneSaverService {
                 actionProps.seqEntrada = trigger?.seqEntrada || '';
                 actionProps.timeEntrada = trigger?.timeEntrada ?? 4.5;
                 actionProps.videoEntrada = trigger?.videoEntrada || '';
+                actionProps.audioLoopEntrada = trigger?.audioLoopEntrada ?? false;
+                actionProps.audioVolumeEntrada = trigger?.audioVolumeEntrada ?? 0.8;
+                actionProps.audioMaxDistEntrada = trigger?.audioMaxDistEntrada ?? 50;
+                actionProps.audioFadeInEntrada = trigger?.audioFadeInEntrada ?? 1.0;
              }
              if (cond === 'on_exit') {
                 actionProps.mensaje = trigger?.mensajeSalida || '';
@@ -57,6 +61,10 @@ export class SceneSaverService {
                 actionProps.seqSalida = trigger?.seqSalida || '';
                 actionProps.timeSalida = trigger?.timeSalida ?? 4.5;
                 actionProps.videoSalida = trigger?.videoSalida || '';
+                actionProps.audioLoopSalida = trigger?.audioLoopSalida ?? false;
+                actionProps.audioVolumeSalida = trigger?.audioVolumeSalida ?? 0.8;
+                actionProps.audioMaxDistSalida = trigger?.audioMaxDistSalida ?? 50;
+                actionProps.audioFadeInSalida = trigger?.audioFadeInSalida ?? 1.0;
              }
              triggersDelta.push({
                uid: `${entity.uid}_${cond}`, 
@@ -90,7 +98,11 @@ export class SceneSaverService {
                interactSequenceId: entity.interaction.interactSequenceId,
                timeNorm: trigger?.timeNorm ?? 4.5, 
                videoNorm: trigger?.videoNorm || '', 
-               isComposite: false
+               isComposite: false,
+               audioLoopNorm: trigger?.audioLoopNorm ?? false,
+               audioVolumeNorm: trigger?.audioVolumeNorm ?? 0.8,
+               audioMaxDistNorm: trigger?.audioMaxDistNorm ?? 50,
+               audioFadeInNorm: trigger?.audioFadeInNorm ?? 1.0
              }
            });
         }

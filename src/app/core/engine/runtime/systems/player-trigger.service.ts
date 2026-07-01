@@ -24,8 +24,15 @@ export class PlayerTriggerService implements IUpdatable {
   private teleportCooldown: number = 0;
   private isTransitioning = false;
   
-  // 🔥 GESTOR DE AUDIO ESPACIAL Y FADE-OUT
-  private activeAudios = new Map<string, { audio: HTMLAudioElement, entity: GameEntity, targetVol: number, maxDist: number }>();
+  // 🔥 GESTOR DE AUDIO ESPACIAL Y FADE (IN / OUT)
+  private activeAudios = new Map<string, { 
+      audio: HTMLAudioElement, 
+      entity: GameEntity, 
+      targetVol: number, 
+      maxDist: number, 
+      fadeInSecs: number, 
+      elapsedSecs: number 
+  }>();
 
   public start(): void {
     this.resetTransitionState();
@@ -85,16 +92,33 @@ export class PlayerTriggerService implements IUpdatable {
           this.verificarTriggers(playerEntity, false);
       }
 
-      // 🔥 LÓGICA DE AUDIO 3D (FADE POR DISTANCIA)
+      // 🔥 LÓGICA DE AUDIO 3D (FADE-IN y FADE POR DISTANCIA)
       if (this.activeAudios.size > 0) {
           const playerPos = playerEntity.view!.getAbsolutePosition();
+          
           this.activeAudios.forEach((audioData, key) => {
               const mesh = audioData.entity.view as AbstractMesh;
+              
+              if (audioData.audio.ended && !audioData.audio.loop) {
+                  this.activeAudios.delete(key);
+                  return;
+              }
+
               if (!mesh || audioData.audio.paused) return;
 
+              audioData.elapsedSecs += (dtMs / 1000);
+
+              // 1. Calcular Factor Fade In Cuadrático (Más suave)
+              let fadeFactor = 1.0;
+              if (audioData.fadeInSecs > 0) {
+                  let p = Math.min(1.0, audioData.elapsedSecs / audioData.fadeInSecs);
+                  fadeFactor = p * p;
+              }
+
               const isInside = this.activeTriggersInside.has(audioData.entity.uid);
+              
               if (isInside) {
-                  audioData.audio.volume = audioData.targetVol;
+                  audioData.audio.volume = Math.max(0, Math.min(1, audioData.targetVol * fadeFactor));
               } else {
                   mesh.computeWorldMatrix(true);
                   const bounds = mesh.getBoundingInfo().boundingBox;
@@ -107,11 +131,17 @@ export class PlayerTriggerService implements IUpdatable {
                   const dist = Vector3.Distance(playerPos, closestPoint);
                   
                   if (dist >= audioData.maxDist) {
+                      // 🔥 Corta el audio y lo elimina obligando a re-entrar al trigger
                       audioData.audio.volume = 0;
                       audioData.audio.pause();
+                      audioData.audio.currentTime = 0;
+                      this.activeAudios.delete(key);
                   } else {
-                      const factor = 1.0 - (dist / audioData.maxDist);
-                      audioData.audio.volume = audioData.targetVol * factor;
+                      // Factor Distancia Exponencial (Más realista)
+                      let distFactor = 1.0 - (dist / audioData.maxDist);
+                      distFactor = distFactor * distFactor; 
+
+                      audioData.audio.volume = Math.max(0, Math.min(1, audioData.targetVol * distFactor * fadeFactor));
                   }
               }
           });
@@ -192,7 +222,6 @@ export class PlayerTriggerService implements IUpdatable {
           if (eventType === 'on_exit' && triggerEntity.triggerRuntime?.hasTriggeredExit) return;
       }
 
-      // 🔥 Lógica Mejorada de Transición de Plataforma (Cinemática Previa al Salto)
       if (triggerEntity.trigger.actionType === 'change_scene') {
           const targetId = triggerEntity.trigger.targetSceneId;
           if (targetId) {
@@ -255,8 +284,6 @@ export class PlayerTriggerService implements IUpdatable {
 
       if (soundUrl && soundUrl.trim() !== '') {
           try {
-             console.log(`[PlayerTriggerService] 🔊 Intentando reproducir audio (${eventType}):`, soundUrl);
-             
              let audioKey = triggerEntity.uid + "_" + eventType;
              let audioData = this.activeAudios.get(audioKey);
              
@@ -271,30 +298,38 @@ export class PlayerTriggerService implements IUpdatable {
              const maxDist = triggerEntity.trigger.isComposite ? 
                 (eventType === 'on_enter' ? triggerEntity.trigger.audioMaxDistEntrada : triggerEntity.trigger.audioMaxDistSalida) : 
                 triggerEntity.trigger.audioMaxDistNorm;
+
+             const fadeIn = triggerEntity.trigger.isComposite ? 
+                (eventType === 'on_enter' ? triggerEntity.trigger.audioFadeInEntrada : triggerEntity.trigger.audioFadeInSalida) : 
+                triggerEntity.trigger.audioFadeInNorm;
              
              if (!audioData) {
                  const audio = new Audio(soundUrl);
                  audio.loop = loop ?? false;
-                 audioData = { audio, entity: triggerEntity, targetVol: targetVol ?? 0.8, maxDist: maxDist ?? 50 };
+                 audioData = { 
+                     audio, 
+                     entity: triggerEntity, 
+                     targetVol: targetVol ?? 0.8, 
+                     maxDist: maxDist ?? 50, 
+                     fadeInSecs: fadeIn ?? 1.0, 
+                     elapsedSecs: 0 
+                 };
                  this.activeAudios.set(audioKey, audioData);
              } else {
                  audioData.audio.loop = loop ?? false;
                  audioData.targetVol = targetVol ?? 0.8;
                  audioData.maxDist = maxDist ?? 50;
+                 audioData.fadeInSecs = fadeIn ?? 1.0;
+                 audioData.elapsedSecs = 0; 
              }
              
-             if (!audioData.audio.paused && loop) {
-                 audioData.audio.volume = audioData.targetVol;
-             } else {
-                 if (!loop) audioData.audio.currentTime = 0;
-                 audioData.audio.volume = audioData.targetVol;
-                 audioData.audio.play().then(() => {
-                     console.log(`[PlayerTriggerService] ✅ Audio reproduciéndose correctamente:`, soundUrl);
-                 }).catch(err => {
-                     console.warn(`[PlayerTriggerService] ⚠️ Bloqueo de audio por políticas del navegador o error (se requiere interacción previa del usuario):`, err);
-                 });
-             }
-          } catch(e) { console.error(`[PlayerTriggerService] ❌ Error creando objeto Audio:`, e); }
+             audioData.audio.volume = 0;
+             if (!loop) audioData.audio.currentTime = 0;
+             
+             audioData.audio.play().catch(err => {
+                 console.warn(`[PlayerTriggerService] ⚠️ Bloqueo de audio por políticas del navegador o error:`, err);
+             });
+          } catch(e) {}
       }
 
       if (seqIdString && seqIdString.trim() !== '') {

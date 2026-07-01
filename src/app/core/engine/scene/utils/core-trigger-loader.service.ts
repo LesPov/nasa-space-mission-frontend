@@ -51,15 +51,21 @@ export class CoreTriggerLoaderService {
         actionType: trigger.properties?.actionType || trigger.actionType || trigger.actionProperties?.actionType || 'show_message',
         targetSceneId: trigger.properties?.targetSceneId || trigger.actionProperties?.targetSceneId || null,
         
+        // 🔥 AUDIO DATA
         audioLoopEntrada: trigger.actionProperties?.audioLoopEntrada ?? trigger.properties?.audioLoopEntrada ?? false,
         audioVolumeEntrada: trigger.actionProperties?.audioVolumeEntrada ?? trigger.properties?.audioVolumeEntrada ?? 0.8,
         audioMaxDistEntrada: trigger.actionProperties?.audioMaxDistEntrada ?? trigger.properties?.audioMaxDistEntrada ?? 50,
+        audioFadeInEntrada: trigger.actionProperties?.audioFadeInEntrada ?? trigger.properties?.audioFadeInEntrada ?? 1.0,
+
         audioLoopSalida: trigger.actionProperties?.audioLoopSalida ?? trigger.properties?.audioLoopSalida ?? false,
         audioVolumeSalida: trigger.actionProperties?.audioVolumeSalida ?? trigger.properties?.audioVolumeSalida ?? 0.8,
         audioMaxDistSalida: trigger.actionProperties?.audioMaxDistSalida ?? trigger.properties?.audioMaxDistSalida ?? 50,
+        audioFadeInSalida: trigger.actionProperties?.audioFadeInSalida ?? trigger.properties?.audioFadeInSalida ?? 1.0,
+
         audioLoopNorm: trigger.actionProperties?.audioLoopNorm ?? trigger.properties?.audioLoopNorm ?? false,
         audioVolumeNorm: trigger.actionProperties?.audioVolumeNorm ?? trigger.properties?.audioVolumeNorm ?? 0.8,
-        audioMaxDistNorm: trigger.actionProperties?.audioMaxDistNorm ?? trigger.properties?.audioMaxDistNorm ?? 50
+        audioMaxDistNorm: trigger.actionProperties?.audioMaxDistNorm ?? trigger.properties?.audioMaxDistNorm ?? 50,
+        audioFadeInNorm: trigger.actionProperties?.audioFadeInNorm ?? trigger.properties?.audioFadeInNorm ?? 1.0
       };
 
       if (entity.triggerRuntime) {
@@ -107,6 +113,7 @@ export class CoreTriggerLoaderService {
            entity.trigger!.audioLoopEntrada = trigger.actionProperties?.audioLoopEntrada ?? trigger.properties?.audioLoopEntrada ?? false;
            entity.trigger!.audioVolumeEntrada = trigger.actionProperties?.audioVolumeEntrada ?? trigger.properties?.audioVolumeEntrada ?? 0.8;
            entity.trigger!.audioMaxDistEntrada = trigger.actionProperties?.audioMaxDistEntrada ?? trigger.properties?.audioMaxDistEntrada ?? 50;
+           entity.trigger!.audioFadeInEntrada = trigger.actionProperties?.audioFadeInEntrada ?? trigger.properties?.audioFadeInEntrada ?? 1.0;
         }
         if (cond === 'on_exit') {
            entity.trigger!.mensajeSalida = trigger.actionProperties?.mensaje || trigger.properties?.mensaje || '';
@@ -117,6 +124,7 @@ export class CoreTriggerLoaderService {
            entity.trigger!.audioLoopSalida = trigger.actionProperties?.audioLoopSalida ?? trigger.properties?.audioLoopSalida ?? false;
            entity.trigger!.audioVolumeSalida = trigger.actionProperties?.audioVolumeSalida ?? trigger.properties?.audioVolumeSalida ?? 0.8;
            entity.trigger!.audioMaxDistSalida = trigger.actionProperties?.audioMaxDistSalida ?? trigger.properties?.audioMaxDistSalida ?? 50;
+           entity.trigger!.audioFadeInSalida = trigger.actionProperties?.audioFadeInSalida ?? trigger.properties?.audioFadeInSalida ?? 1.0;
         }
     } else {
         entity.trigger!.condition = cond;
@@ -128,6 +136,7 @@ export class CoreTriggerLoaderService {
         entity.trigger!.audioLoopNorm = trigger.actionProperties?.audioLoopNorm ?? trigger.properties?.audioLoopNorm ?? false;
         entity.trigger!.audioVolumeNorm = trigger.actionProperties?.audioVolumeNorm ?? trigger.properties?.audioVolumeNorm ?? 0.8;
         entity.trigger!.audioMaxDistNorm = trigger.actionProperties?.audioMaxDistNorm ?? trigger.properties?.audioMaxDistNorm ?? 50;
+        entity.trigger!.audioFadeInNorm = trigger.actionProperties?.audioFadeInNorm ?? trigger.properties?.audioFadeInNorm ?? 1.0;
     }
   }
 }

@@ -1,3 +1,4 @@
+
 import { VisualMode } from '../world/world-settings.model';
 
 export interface Vector3Dto {
@@ -95,6 +96,22 @@ export interface SceneObjectPropertiesDto {
   timeNorm?: number;
   isEnabled?: boolean;
   stateMutations?: any[];
+  
+  // 🔥 NUEVOS CAMPOS DE AUDIO MEJORADO
+  audioLoopEntrada?: boolean;
+  audioVolumeEntrada?: number;
+  audioMaxDistEntrada?: number;
+  audioFadeInEntrada?: number;
+  
+  audioLoopSalida?: boolean;
+  audioVolumeSalida?: number;
+  audioMaxDistSalida?: number;
+  audioFadeInSalida?: number;
+  
+  audioLoopNorm?: boolean;
+  audioVolumeNorm?: number;
+  audioMaxDistNorm?: number;
+  audioFadeInNorm?: number;
 }
 
 export interface SceneObjectDto {

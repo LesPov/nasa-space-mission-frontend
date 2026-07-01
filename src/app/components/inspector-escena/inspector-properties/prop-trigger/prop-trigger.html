@@ -1,39 +1,164 @@
-
-<div class="section-card">
-  <div class="section-head"><h4>Posición & Radio (Trigger)</h4></div>
-  <div class="grid-3">
-    <div class="field"><label>Pos X</label><input type="number" step="0.1" [ngModel]="localPosX" (ngModelChange)="localPosX = $event; aplicarPosicion()" /></div>
-    <div class="field"><label>Pos Y</label><input type="number" step="0.1" [ngModel]="localPosY" (ngModelChange)="localPosY = $event; aplicarPosicion()" /></div>
-    <div class="field"><label>Pos Z</label><input type="number" step="0.1" [ngModel]="localPosZ" (ngModelChange)="localPosZ = $event; aplicarPosicion()" /></div>
-    <div class="field"><label>Radio X</label><input type="number" step="0.1" [ngModel]="localEscX" (ngModelChange)="localEscX = $event; aplicarEscala()" /></div>
-    <div class="field"><label>Radio Y</label><input type="number" step="0.1" [ngModel]="localEscY" (ngModelChange)="localEscY = $event; aplicarEscala()" /></div>
-    <div class="field"><label>Radio Z</label><input type="number" step="0.1" [ngModel]="localEscZ" (ngModelChange)="localEscZ = $event; aplicarEscala()" /></div>
+<!-- 1. TRANSFORMACIÓN ESPACIAL -->
+<div class="accordion-section" [class.expanded]="accordions['transform']">
+  <div class="accordion-header" (click)="toggleAcordeon('transform')">
+    <h4><span>📍</span> Posición & Tamaño (Área)</h4>
+    <span style="color: #64748b; font-size: 10px;">{{ accordions['transform'] ? '▼' : '▶' }}</span>
+  </div>
+  <div class="accordion-content" *ngIf="accordions['transform']">
+    <div class="grid-3">
+      <div class="field"><label>Pos X</label><input type="number" step="0.1" [ngModel]="localPosX" (ngModelChange)="localPosX = $event; aplicarPosicion()" /></div>
+      <div class="field"><label>Pos Y</label><input type="number" step="0.1" [ngModel]="localPosY" (ngModelChange)="localPosY = $event; aplicarPosicion()" /></div>
+      <div class="field"><label>Pos Z</label><input type="number" step="0.1" [ngModel]="localPosZ" (ngModelChange)="localPosZ = $event; aplicarPosicion()" /></div>
+      
+      <div class="field"><label>Radio X</label><input type="number" step="0.1" [ngModel]="localEscX" (ngModelChange)="localEscX = $event; aplicarEscala()" /></div>
+      <div class="field"><label>Radio Y</label><input type="number" step="0.1" [ngModel]="localEscY" (ngModelChange)="localEscY = $event; aplicarEscala()" /></div>
+      <div class="field"><label>Radio Z</label><input type="number" step="0.1" [ngModel]="localEscZ" (ngModelChange)="localEscZ = $event; aplicarEscala()" /></div>
+    </div>
   </div>
 </div>
 
-<div class="section-card" *ngIf="triggerIsComposite">
-  <div class="section-head"><h4>Configuración Trigger Múltiple</h4></div>
-  <div class="grid-2">
-    <div class="field"><label>Forma</label><select [ngModel]="triggerShape" (ngModelChange)="triggerShape = $event; aplicarTriggerForma($event)"><option value="cube">Caja</option><option value="sphere">Esfera</option><option value="cylinder">Tubo</option></select></div>
-    <div class="checkbox-field" style="margin-top: 15px;"><input type="checkbox" id="chkRepComp" [ngModel]="triggerRepeatable" (ngModelChange)="triggerRepeatable = $event; aplicarTrigger()" /><label for="chkRepComp">Es repetible</label></div>
+<!-- 2. CONFIGURACIÓN DEL TRIGGER -->
+<div class="accordion-section" [class.expanded]="accordions['config']">
+  <div class="accordion-header" (click)="toggleAcordeon('config')">
+    <h4 [style.color]="triggerIsComposite ? '#c084fc' : '#60a5fa'">
+      <span>{{ triggerIsComposite ? '💠' : '⚙️' }}</span> 
+      {{ triggerIsComposite ? 'Trigger Compuesto' : 'Trigger Normal' }}
+    </h4>
+    <span style="color: #64748b; font-size: 10px;">{{ accordions['config'] ? '▼' : '▶' }}</span>
   </div>
-  <div style="margin-top: 15px;">
-     <label style="font-size: 11px; color: #999;">¿Cuándo se activa?</label>
-     <div class="grid-2" style="margin-top: 5px; margin-bottom: 10px;">
-         <div class="checkbox-field"><input type="checkbox" id="condEnt" [checked]="triggerConditions.includes('on_enter')" (change)="toggleTriggerCondition('on_enter', $event)" /><label for="condEnt">Al Pisarlo</label></div>
-         <div class="checkbox-field"><input type="checkbox" id="condExi" [checked]="triggerConditions.includes('on_exit')" (change)="toggleTriggerCondition('on_exit', $event)" /><label for="condExi">Al Salir</label></div>
-     </div>
+  <div class="accordion-content" *ngIf="accordions['config']">
+    
+    <div class="grid-2" style="margin-bottom: 12px;">
+      <div class="field">
+        <label>Forma del Área</label>
+        <select [ngModel]="triggerShape" (ngModelChange)="triggerShape = $event; aplicarTriggerForma($event)">
+          <option value="cube">Caja (Cubo)</option>
+          <option value="sphere">Esfera</option>
+          <option value="cylinder">Tubo (Cilindro)</option>
+        </select>
+      </div>
+      <div class="checkbox-modern" style="margin-top: 14px;">
+        <input type="checkbox" id="chkRep" [ngModel]="triggerRepeatable" (ngModelChange)="triggerRepeatable = $event; aplicarTrigger()" />
+        <label for="chkRep" style="color: #fbbf24;">Permitir Múltiples Veces</label>
+      </div>
+    </div>
 
-     <div *ngIf="triggerConditions.includes('on_enter')" style="margin-bottom: 15px; border-left: 2px solid #4ade80; padding-left: 8px;">
-        <div class="grid-2">
-          <div class="field wide"><label>Mensaje al ENTRAR</label><textarea rows="1" [ngModel]="triggerMensajeEntrada" (ngModelChange)="triggerMensajeEntrada = $event; aplicarTrigger()"></textarea></div>
-          <div class="field"><label>Segundos</label><input type="number" step="0.5" [ngModel]="triggerTimeEntrada" (ngModelChange)="triggerTimeEntrada = $event; aplicarTrigger()" /></div>
-          <div class="field wide">
-            <label>ID Seq (Múltiples separados por coma)</label>
-            <input type="text" [ngModel]="triggerSeqEntrada" (ngModelChange)="triggerSeqEntrada = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
+    <!-- ========================================== -->
+    <!-- MODO TRIGGER NORMAL (Un solo evento)       -->
+    <!-- ========================================== -->
+    <ng-container *ngIf="!triggerIsComposite">
+      <div class="grid-2">
+        <div class="field">
+          <label>¿Cuándo se activa?</label>
+          <select [ngModel]="triggerCondition" (ngModelChange)="triggerCondition = $event; aplicarTrigger()">
+            <option value="on_enter">Al Pisarlo (Entrar)</option>
+            <option value="on_exit">Al Salir</option>
+          </select>
+        </div>
+        <div class="field">
+          <label style="color: #60a5fa;">Acción a realizar</label>
+          <select [ngModel]="actionType" (ngModelChange)="actionType = $event; aplicarTrigger()">
+            <option value="show_message">Ejecutar Lógica (Mensajes, Secuencias, Audio)</option>
+            <option value="change_scene">Cambiar de Plataforma (Transición de Nivel)</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Acción: Cambiar Escena -->
+      <div *ngIf="actionType === 'change_scene'" class="sub-panel normal-panel" style="border-left-color: #facc15;">
+        <h5 class="sub-panel-title" style="color: #facc15;">🚪 Teletransporte de Nivel</h5>
+        <div class="field wide">
+          <label>Plataforma Destino:</label>
+          <select [ngModel]="targetSceneId" (ngModelChange)="targetSceneId = $event; aplicarTrigger()">
+            <option [ngValue]="null">-- Seleccionar Plataforma --</option>
+            <option *ngFor="let plat of editorSvc.plataformasEscena()" [ngValue]="plat.id">🗺️ {{ plat.name }}</option>
+          </select>
+        </div>
+        <p class="help-text">Al tocar este trigger, la cámara hará una transición cinemática y cargará la zona elegida.</p>
+      </div>
+
+      <!-- Acción: Lógica Normal -->
+      <div *ngIf="actionType === 'show_message'" class="sub-panel normal-panel">
+        <h5 class="sub-panel-title">Ejecución de Lógica</h5>
+        <div class="field wide" style="margin-bottom: 8px;">
+          <label>Mensaje en Pantalla (Opcional)</label>
+          <textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarTrigger()"></textarea>
+        </div>
+        
+        <div class="grid-2" style="margin-bottom: 8px;">
+          <div class="field"><label>Duración Mensaje (seg)</label><input type="number" step="0.5" [ngModel]="triggerTimeNorm" (ngModelChange)="triggerTimeNorm = $event; aplicarTrigger()" /></div>
+          <div class="field"><label>Ejecutar Video (.mp4)</label><input type="text" [ngModel]="triggerVideoNorm" (ngModelChange)="triggerVideoNorm = $event; aplicarTrigger()" placeholder="Nombre del objeto Video Plane" /></div>
+        </div>
+
+        <div class="field wide" style="margin-bottom: 8px;">
+          <label>Lanzar Secuencias Cinemáticas (ID)</label>
+          <input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarTrigger()" placeholder="Ej: seq_puerta_01, seq_luces" />
+        </div>
+
+        <!-- Bloque de Audio -->
+        <div class="audio-box">
+          <div class="field wide" style="margin-bottom: 8px;">
+            <label style="color: #cbd5e1;">Sonido / Música 3D (.mp3)</label>
+            <div style="display: flex; gap: 5px;">
+              <select [ngModel]="objSoundUrl" (ngModelChange)="objSoundUrl = $event; aplicarTrigger()" style="flex: 1;">
+                <option value="">-- Sin audio --</option>
+                <option *ngFor="let audio of audioAssets" [value]="'http://localhost:4000' + audio.path">🎵 {{ audio.name }}</option>
+              </select>
+              <button class="btn-secondary small" (click)="fileInputNorm.click()" [disabled]="isUploadingAudio">Subir MP3</button>
+              <input type="file" #fileInputNorm accept=".mp3" style="display: none;" (change)="subirAudio($event, 'norm')">
+            </div>
           </div>
-          <div class="field wide">
-            <label>Audio al ENTRAR (.mp3)</label>
+          
+          <div class="grid-3" *ngIf="objSoundUrl">
+            <div class="field"><label>Volumen (0-1)</label><input type="number" step="0.1" min="0" max="1" [ngModel]="audioVolumeNorm" (ngModelChange)="audioVolumeNorm = $event; aplicarTrigger()"></div>
+            <div class="field"><label>Fade In (Segundos)</label><input type="number" step="0.5" min="0" [ngModel]="audioFadeInNorm" (ngModelChange)="audioFadeInNorm = $event; aplicarTrigger()" title="Segundos para alcanzar el volumen máximo"></div>
+            <div class="field"><label>Alcance Máx (m)</label><input type="number" step="1" [ngModel]="audioMaxDistNorm" (ngModelChange)="audioMaxDistNorm = $event; aplicarTrigger()" title="Se silencia al cruzar esta distancia"></div>
+          </div>
+          <div class="checkbox-modern" *ngIf="objSoundUrl" style="margin-top: 8px; border-color: #3b82f6;">
+            <input type="checkbox" id="chkLpNorm" [ngModel]="audioLoopNorm" (ngModelChange)="audioLoopNorm = $event; aplicarTrigger()">
+            <label for="chkLpNorm" style="color: #60a5fa;">Reproducir en Bucle Continuo</label>
+          </div>
+        </div>
+      </div>
+    </ng-container>
+
+    <!-- ========================================== -->
+    <!-- MODO TRIGGER COMPUESTO (Entrada y Salida)  -->
+    <!-- ========================================== -->
+    <ng-container *ngIf="triggerIsComposite">
+      <div class="grid-2" style="margin-top: 10px; margin-bottom: 10px;">
+         <div class="checkbox-modern" [class.active-green]="triggerConditions.includes('on_enter')">
+           <input type="checkbox" id="condEnt" [checked]="triggerConditions.includes('on_enter')" (change)="toggleTriggerCondition('on_enter', $event)" />
+           <label for="condEnt">Habilitar Evento de ENTRADA</label>
+         </div>
+         <div class="checkbox-modern" [class.active-red]="triggerConditions.includes('on_exit')">
+           <input type="checkbox" id="condExi" [checked]="triggerConditions.includes('on_exit')" (change)="toggleTriggerCondition('on_exit', $event)" />
+           <label for="condExi">Habilitar Evento de SALIDA</label>
+         </div>
+      </div>
+
+      <!-- PANEL ENTRADA -->
+      <div class="sub-panel enter-panel" *ngIf="triggerConditions.includes('on_enter')">
+        <h5 class="sub-panel-title">🟩 Lógica al Pisar</h5>
+        
+        <div class="field wide" style="margin-bottom: 8px;">
+          <label>Mensaje en Pantalla</label>
+          <textarea rows="2" [ngModel]="triggerMensajeEntrada" (ngModelChange)="triggerMensajeEntrada = $event; aplicarTrigger()"></textarea>
+        </div>
+        
+        <div class="grid-2" style="margin-bottom: 8px;">
+          <div class="field"><label>Duración (seg)</label><input type="number" step="0.5" [ngModel]="triggerTimeEntrada" (ngModelChange)="triggerTimeEntrada = $event; aplicarTrigger()" /></div>
+          <div class="field"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoEntrada" (ngModelChange)="triggerVideoEntrada = $event; aplicarTrigger()" /></div>
+        </div>
+
+        <div class="field wide" style="margin-bottom: 8px;">
+          <label>Secuencias (ID)</label>
+          <input type="text" [ngModel]="triggerSeqEntrada" (ngModelChange)="triggerSeqEntrada = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
+        </div>
+
+        <div class="audio-box">
+          <div class="field wide" style="margin-bottom: 8px;">
+            <label style="color: #cbd5e1;">Sonido / Música 3D (.mp3)</label>
             <div style="display: flex; gap: 5px;">
               <select [ngModel]="triggerSoundEntrada" (ngModelChange)="triggerSoundEntrada = $event; aplicarTrigger()" style="flex: 1;">
                 <option value="">-- Sin audio --</option>
@@ -43,25 +168,41 @@
               <input type="file" #fileInputEntrada accept=".mp3" style="display: none;" (change)="subirAudio($event, 'entrada')">
             </div>
           </div>
-          <div class="grid-3" *ngIf="triggerSoundEntrada" style="margin-top: 5px;">
-             <div class="checkbox-field"><input type="checkbox" id="chkLpEnt" [ngModel]="audioLoopEntrada" (ngModelChange)="audioLoopEntrada = $event; aplicarTrigger()"><label for="chkLpEnt">Bucle infinito</label></div>
+          
+          <div class="grid-3" *ngIf="triggerSoundEntrada">
              <div class="field"><label>Volumen (0-1)</label><input type="number" step="0.1" min="0" max="1" [ngModel]="audioVolumeEntrada" (ngModelChange)="audioVolumeEntrada = $event; aplicarTrigger()"></div>
-             <div class="field"><label>Alcance (m)</label><input type="number" step="1" [ngModel]="audioMaxDistEntrada" (ngModelChange)="audioMaxDistEntrada = $event; aplicarTrigger()" title="Distancia máxima para escuchar el audio al alejarse"></div>
+             <div class="field"><label>Fade In (Seg)</label><input type="number" step="0.5" min="0" [ngModel]="audioFadeInEntrada" (ngModelChange)="audioFadeInEntrada = $event; aplicarTrigger()"></div>
+             <div class="field"><label>Alcance (m)</label><input type="number" step="1" [ngModel]="audioMaxDistEntrada" (ngModelChange)="audioMaxDistEntrada = $event; aplicarTrigger()"></div>
           </div>
-          <div class="field wide" style="margin-top: 5px;"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoEntrada" (ngModelChange)="triggerVideoEntrada = $event; aplicarTrigger()" /></div>
+          <div class="checkbox-modern" *ngIf="triggerSoundEntrada" style="margin-top: 8px;">
+             <input type="checkbox" id="chkLpEnt" [ngModel]="audioLoopEntrada" (ngModelChange)="audioLoopEntrada = $event; aplicarTrigger()">
+             <label for="chkLpEnt">Bucle continuo</label>
+          </div>
         </div>
-     </div>
+      </div>
 
-     <div *ngIf="triggerConditions.includes('on_exit')" style="margin-bottom: 15px; border-left: 2px solid #f87171; padding-left: 8px;">
-         <div class="grid-2">
-          <div class="field wide"><label>Mensaje al SALIR</label><textarea rows="1" [ngModel]="triggerMensajeSalida" (ngModelChange)="triggerMensajeSalida = $event; aplicarTrigger()"></textarea></div>
-          <div class="field"><label>Segundos</label><input type="number" step="0.5" [ngModel]="triggerTimeSalida" (ngModelChange)="triggerTimeSalida = $event; aplicarTrigger()" /></div>
-          <div class="field wide">
-            <label>ID Seq (Múltiples separados por coma)</label>
-            <input type="text" [ngModel]="triggerSeqSalida" (ngModelChange)="triggerSeqSalida = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
-          </div>
-          <div class="field wide">
-            <label>Audio al SALIR (.mp3)</label>
+      <!-- PANEL SALIDA -->
+      <div class="sub-panel exit-panel" *ngIf="triggerConditions.includes('on_exit')">
+        <h5 class="sub-panel-title">🟥 Lógica al Salir</h5>
+        
+        <div class="field wide" style="margin-bottom: 8px;">
+          <label>Mensaje en Pantalla</label>
+          <textarea rows="2" [ngModel]="triggerMensajeSalida" (ngModelChange)="triggerMensajeSalida = $event; aplicarTrigger()"></textarea>
+        </div>
+        
+        <div class="grid-2" style="margin-bottom: 8px;">
+          <div class="field"><label>Duración (seg)</label><input type="number" step="0.5" [ngModel]="triggerTimeSalida" (ngModelChange)="triggerTimeSalida = $event; aplicarTrigger()" /></div>
+          <div class="field"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoSalida" (ngModelChange)="triggerVideoSalida = $event; aplicarTrigger()" /></div>
+        </div>
+
+        <div class="field wide" style="margin-bottom: 8px;">
+          <label>Secuencias (ID)</label>
+          <input type="text" [ngModel]="triggerSeqSalida" (ngModelChange)="triggerSeqSalida = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
+        </div>
+
+        <div class="audio-box">
+          <div class="field wide" style="margin-bottom: 8px;">
+            <label style="color: #cbd5e1;">Sonido / Música 3D (.mp3)</label>
             <div style="display: flex; gap: 5px;">
               <select [ngModel]="triggerSoundSalida" (ngModelChange)="triggerSoundSalida = $event; aplicarTrigger()" style="flex: 1;">
                 <option value="">-- Sin audio --</option>
@@ -71,98 +212,52 @@
               <input type="file" #fileInputSalida accept=".mp3" style="display: none;" (change)="subirAudio($event, 'salida')">
             </div>
           </div>
-          <div class="grid-3" *ngIf="triggerSoundSalida" style="margin-top: 5px;">
-             <div class="checkbox-field"><input type="checkbox" id="chkLpSal" [ngModel]="audioLoopSalida" (ngModelChange)="audioLoopSalida = $event; aplicarTrigger()"><label for="chkLpSal">Bucle infinito</label></div>
+          
+          <div class="grid-3" *ngIf="triggerSoundSalida">
              <div class="field"><label>Volumen (0-1)</label><input type="number" step="0.1" min="0" max="1" [ngModel]="audioVolumeSalida" (ngModelChange)="audioVolumeSalida = $event; aplicarTrigger()"></div>
-             <div class="field"><label>Alcance (m)</label><input type="number" step="1" [ngModel]="audioMaxDistSalida" (ngModelChange)="audioMaxDistSalida = $event; aplicarTrigger()" title="Distancia máxima para escuchar el audio al alejarse"></div>
+             <div class="field"><label>Fade In (Seg)</label><input type="number" step="0.5" min="0" [ngModel]="audioFadeInSalida" (ngModelChange)="audioFadeInSalida = $event; aplicarTrigger()"></div>
+             <div class="field"><label>Alcance (m)</label><input type="number" step="1" [ngModel]="audioMaxDistSalida" (ngModelChange)="audioMaxDistSalida = $event; aplicarTrigger()"></div>
           </div>
-          <div class="field wide" style="margin-top: 5px;"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoSalida" (ngModelChange)="triggerVideoSalida = $event; aplicarTrigger()" /></div>
+          <div class="checkbox-modern" *ngIf="triggerSoundSalida" style="margin-top: 8px;">
+             <input type="checkbox" id="chkLpSal" [ngModel]="audioLoopSalida" (ngModelChange)="audioLoopSalida = $event; aplicarTrigger()">
+             <label for="chkLpSal">Bucle continuo</label>
+          </div>
         </div>
-     </div>
+      </div>
+    </ng-container>
+
   </div>
 </div>
 
-<div class="section-card" *ngIf="!triggerIsComposite">
-  <div class="section-head"><h4>Trigger Normal</h4></div>
-  
-  <div class="grid-2">
-    <div class="field"><label>Forma</label><select [ngModel]="triggerShape" (ngModelChange)="triggerShape = $event; aplicarTriggerForma($event)"><option value="cube">Caja</option><option value="sphere">Esfera</option><option value="cylinder">Tubo</option></select></div>
-    <div class="field"><label>Condición</label><select [ngModel]="triggerCondition" (ngModelChange)="triggerCondition = $event; aplicarTrigger()"><option value="on_enter">Al Pisarlo</option><option value="on_exit">Al Salir</option></select></div>
-    <div class="checkbox-field" style="margin-top: 15px;"><input type="checkbox" id="chkRepNorm" [ngModel]="triggerRepeatable" (ngModelChange)="triggerRepeatable = $event; aplicarTrigger()" /><label for="chkRepNorm">Es repetible</label></div>
+<!-- 3. REGLAS Y CONDICIONES (Siempre visible) -->
+<div class="accordion-section" [class.expanded]="accordions['rules']">
+  <div class="accordion-header" (click)="toggleAcordeon('rules')">
+    <h4><span>🔐</span> Reglas y Permisos</h4>
+    <span style="color: #64748b; font-size: 10px;">{{ accordions['rules'] ? '▼' : '▶' }}</span>
   </div>
-
-  <div class="field wide" style="margin-top: 15px; border-top: 1px dashed #333; padding-top: 15px;">
-    <label style="color: #60a5fa; font-weight: bold;">Acción al Activar</label>
-    <select [ngModel]="actionType" (ngModelChange)="actionType = $event; aplicarTrigger()" style="font-weight: bold; background-color: rgba(96, 165, 250, 0.1);">
-       <option value="show_message">💬 Mostrar Mensaje / Iniciar Secuencia</option>
-       <option value="change_scene">🚪 Cambiar a otra Plataforma (Transición)</option>
-    </select>
-  </div>
-
-  <div *ngIf="actionType === 'change_scene'" class="field wide" style="margin-top: 10px; background-color: rgba(250, 204, 21, 0.1); padding: 10px; border: 1px solid #facc15; border-radius: 6px;">
-    <label style="color: #facc15;">Selecciona la plataforma destino:</label>
-    <select [ngModel]="targetSceneId" (ngModelChange)="targetSceneId = $event; aplicarTrigger()">
-      <option [ngValue]="null">-- Seleccionar Plataforma --</option>
-      <option *ngFor="let plat of editorSvc.plataformasEscena()" [ngValue]="plat.id">🗺️ {{ plat.name }}</option>
-    </select>
-    <p class="help-text" style="color: #cbd5e1; margin-top: 8px;">Al pisar este trigger, el juego cargará automáticamente la plataforma seleccionada.</p>
-  </div>
-
-  <ng-container *ngIf="actionType === 'show_message'">
-    <div class="field wide" style="margin-top: 10px;"><label>Mensaje</label><textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarTrigger()"></textarea></div>
-    <div class="grid-2" style="margin-top: 5px;">
-        <div class="field"><label>Segundos</label><input type="number" step="0.5" [ngModel]="triggerTimeNorm" (ngModelChange)="triggerTimeNorm = $event; aplicarTrigger()" /></div>
-        <div class="field wide">
-          <label>ID Seq (Múltiples separados por coma)</label>
-          <input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarTrigger()" placeholder="Ej: seq_abc, seq_xyz" />
-        </div>
-        <div class="field wide">
-          <label>Audio (.mp3)</label>
-          <div style="display: flex; gap: 5px;">
-            <select [ngModel]="objSoundUrl" (ngModelChange)="objSoundUrl = $event; aplicarTrigger()" style="flex: 1;">
-              <option value="">-- Sin audio --</option>
-              <option *ngFor="let audio of audioAssets" [value]="'http://localhost:4000' + audio.path">🎵 {{ audio.name }}</option>
-            </select>
-            <button class="btn-secondary small" (click)="fileInputNorm.click()" [disabled]="isUploadingAudio">Subir</button>
-            <input type="file" #fileInputNorm accept=".mp3" style="display: none;" (change)="subirAudio($event, 'norm')">
-          </div>
-        </div>
-        <div class="grid-3" *ngIf="objSoundUrl" style="margin-top: 5px; grid-column: 1 / -1;">
-           <div class="checkbox-field"><input type="checkbox" id="chkLpNorm" [ngModel]="audioLoopNorm" (ngModelChange)="audioLoopNorm = $event; aplicarTrigger()"><label for="chkLpNorm">Bucle infinito</label></div>
-           <div class="field"><label>Volumen (0-1)</label><input type="number" step="0.1" min="0" max="1" [ngModel]="audioVolumeNorm" (ngModelChange)="audioVolumeNorm = $event; aplicarTrigger()"></div>
-           <div class="field"><label>Alcance (m)</label><input type="number" step="1" [ngModel]="audioMaxDistNorm" (ngModelChange)="audioMaxDistNorm = $event; aplicarTrigger()" title="Distancia máxima para escuchar el audio al alejarse"></div>
-        </div>
-        <div class="field wide" style="margin-top: 5px;"><label>Video (.mp4)</label><input type="text" [ngModel]="triggerVideoNorm" (ngModelChange)="triggerVideoNorm = $event; aplicarTrigger()" /></div>
+  <div class="accordion-content" *ngIf="accordions['rules']">
+    <p class="help-text" style="margin-top:0; margin-bottom: 15px;">Si agregas condiciones, este trigger será "invisible" para el sistema hasta que el jugador las cumpla (Ej: Tener una llave).</p>
+    
+    <div *ngFor="let cond of gameConditions; let i = index" style="background: #0f172a; border: 1px solid #334155; padding: 10px; border-radius: 6px; margin-bottom: 10px;">
+       <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 11px; font-weight: bold; color: #4ade80;">Condición {{ i + 1 }}</span>
+          <button class="btn-danger small" (click)="quitarCondicion(i)">✕ Quitar</button>
+       </div>
+       <div class="field wide" style="margin-bottom: 8px;">
+         <select [(ngModel)]="cond.type" (ngModelChange)="aplicarTrigger()">
+           <option value="has_item">Tener Objeto en Inventario</option>
+           <option value="missing_item">No tener Objeto</option>
+           <option value="var_eq">Variable de Historia Igual a</option>
+         </select>
+       </div>
+       <div class="grid-2">
+         <div class="field wide"><label>ID Objeto / Variable</label><input type="text" [(ngModel)]="cond.key" (ngModelChange)="aplicarTrigger()" placeholder="Ej: llave_roja"></div>
+         <div class="field wide" *ngIf="cond.type === 'var_eq'"><label>Valor Esperado</label><input type="text" [(ngModel)]="cond.value" (ngModelChange)="aplicarTrigger()" placeholder="Ej: true"></div>
+       </div>
     </div>
-  </ng-container>
-</div>
 
-<!-- 🔥 REGLAS Y CONDICIONES (Para Triggers Simples y Compuestos) -->
-<div class="section-card">
-  <div class="section-head">
-    <h4>Reglas y Condiciones Requeridas</h4>
+    <button class="btn-primary" (click)="agregarCondicion()">+ Agregar Condición</button>
   </div>
-  <p class="help-text" style="margin-bottom: 10px;">Si agregas condiciones, el trigger NO se activará a menos que el jugador las cumpla (Ej: Tener una llave).</p>
-  
-  <div *ngFor="let cond of gameConditions; let i = index" style="background: #1c1c1c; border: 1px solid #333; padding: 10px; border-radius: 6px; margin-bottom: 10px;">
-     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-        <span style="font-size: 11px; font-weight: bold; color: #4ade80;">Condición {{ i + 1 }}</span>
-        <button class="btn-danger small" (click)="quitarCondicion(i)" style="padding: 2px 6px;">✕</button>
-     </div>
-     <div class="field wide" style="margin-bottom: 5px;">
-       <select [(ngModel)]="cond.type" (ngModelChange)="aplicarTrigger()">
-         <option value="has_item">Tener Objeto en Inventario</option>
-         <option value="missing_item">No tener Objeto</option>
-         <option value="var_eq">Variable de Historia Igual a</option>
-       </select>
-     </div>
-     <div class="grid-2">
-       <div class="field wide"><label>ID Objeto / Variable</label><input type="text" [(ngModel)]="cond.key" (ngModelChange)="aplicarTrigger()" placeholder="Ej: llave_roja"></div>
-       <div class="field wide" *ngIf="cond.type === 'var_eq'"><label>Valor Esperado</label><input type="text" [(ngModel)]="cond.value" (ngModelChange)="aplicarTrigger()" placeholder="Ej: true"></div>
-     </div>
-  </div>
-
-  <button class="btn-secondary full" (click)="agregarCondicion()">+ Agregar Condición</button>
 </div>
 
 <div class="status-line" *ngIf="animStatus">{{ animStatus }}</div>

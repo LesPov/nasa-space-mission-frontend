@@ -67,10 +67,10 @@ export class TriggerConfigComponent {
     public stateMutations: any[] = [],
     public actionType: 'show_message' | 'change_scene' = 'show_message',
     public targetSceneId: number | null = null,
-    // 🔥 NUEVOS CAMPOS PARA AUDIO MEJORADO
-    public audioLoopEntrada = false, public audioVolumeEntrada = 0.8, public audioMaxDistEntrada = 50,
-    public audioLoopSalida = false, public audioVolumeSalida = 0.8, public audioMaxDistSalida = 50,
-    public audioLoopNorm = false, public audioVolumeNorm = 0.8, public audioMaxDistNorm = 50
+    // 🔥 CAMPOS PARA AUDIO MEJORADO
+    public audioLoopEntrada = false, public audioVolumeEntrada = 0.8, public audioMaxDistEntrada = 50, public audioFadeInEntrada = 1.0,
+    public audioLoopSalida = false, public audioVolumeSalida = 0.8, public audioMaxDistSalida = 50, public audioFadeInSalida = 1.0,
+    public audioLoopNorm = false, public audioVolumeNorm = 0.8, public audioMaxDistNorm = 50, public audioFadeInNorm = 1.0
   ) {}
 }
 

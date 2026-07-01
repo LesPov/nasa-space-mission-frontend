@@ -15,7 +15,7 @@ import { EditorLiveSyncService } from '../../../../services/editor/editor-live-s
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-transform.html',
-  styleUrls: ['../inspector-properties.css']
+  styleUrls: ['./prop-transform.css'] // <-- Cambiado de ../inspector-properties.css a local
 })
 export class PropTransform implements OnInit, OnDestroy, OnChanges {
   @Input() objeto!: AbstractMesh;
@@ -26,6 +26,14 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   private cdr = inject(ChangeDetectorRef);
   private liveSync = inject(EditorLiveSyncService);
   private subs: Subscription[] = [];
+
+  // Control de Acordeones
+  public accordions: Record<string, boolean> = {
+    transform: true,
+    projection: true,
+    visuals: true,
+    interaction: false
+  };
 
   localPosX = 0; localPosY = 0; localPosZ = 0;
   localRotX = 0; localRotY = 0; localRotZ = 0;
@@ -81,6 +89,10 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.subs.forEach(s => s.unsubscribe());
   }
 
+  toggleAcordeon(key: string) {
+    this.accordions[key] = !this.accordions[key];
+  }
+
   private formatNum(val: number): number {
     return parseFloat(Number(val || 0).toFixed(4));
   }
@@ -107,6 +119,9 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.esTrigger = entity.type === 'trigger' || entity.type === 'trigger_compuesto';
     this.esBubble = entity.type === 'bubble';
     
+    // Auto-expandir projection si es imagen
+    if (this.esImagePlane) this.accordions['projection'] = true;
+
     this.objColor = entity.visual.color || '#ffffff';
     this.objColorBW = entity.visual.colorBW || this.objColor;
     
@@ -187,10 +202,12 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
       mensaje: this.objMensaje
     });
     this.animStatus = '✅ Interacción guardada';
+    setTimeout(() => this.animStatus = '', 2000);
   }
 
   forzarRecalculo() {
     this.transformMutator.forzarRecalculoProyeccion(this.objeto);
     this.animStatus = '🎯 Proyección actualizada';
+    setTimeout(() => this.animStatus = '', 2000);
   }
 }

@@ -1,4 +1,3 @@
-
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -16,7 +15,7 @@ import { EpisodiosService } from '../../../../services/api/episodios';
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-trigger.html',
-  styleUrls: ['../inspector-properties.css']
+  styleUrls: ['./prop-trigger.css'] // <-- Cambiado de ../inspector-properties.css a local
 })
 export class PropTrigger implements OnInit, OnDestroy {
   @Input() objeto!: AbstractMesh;
@@ -29,6 +28,13 @@ export class PropTrigger implements OnInit, OnDestroy {
   private epiApiSvc = inject(EpisodiosService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
+
+  // Control de Acordeones
+  public accordions: Record<string, boolean> = {
+    transform: true,
+    config: true,
+    rules: false
+  };
 
   public audioAssets: any[] = [];
   public isUploadingAudio = false;
@@ -55,9 +61,9 @@ export class PropTrigger implements OnInit, OnDestroy {
   targetSceneId: number | null = null;
   gameConditions: any[] = [];
 
-  audioLoopEntrada = false; audioVolumeEntrada = 0.8; audioMaxDistEntrada = 50;
-  audioLoopSalida = false; audioVolumeSalida = 0.8; audioMaxDistSalida = 50;
-  audioLoopNorm = false; audioVolumeNorm = 0.8; audioMaxDistNorm = 50;
+  audioLoopEntrada = false; audioVolumeEntrada = 0.8; audioMaxDistEntrada = 50; audioFadeInEntrada = 1.0;
+  audioLoopSalida = false; audioVolumeSalida = 0.8; audioMaxDistSalida = 50; audioFadeInSalida = 1.0;
+  audioLoopNorm = false; audioVolumeNorm = 0.8; audioMaxDistNorm = 50; audioFadeInNorm = 1.0;
 
   animStatus = '';
 
@@ -72,6 +78,10 @@ export class PropTrigger implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.subs.forEach(s => s.unsubscribe());
+  }
+
+  toggleAcordeon(key: string) {
+    this.accordions[key] = !this.accordions[key];
   }
 
   cargarAudios() {
@@ -132,9 +142,11 @@ export class PropTrigger implements OnInit, OnDestroy {
     this.objSoundUrl = entity.trigger.soundUrl || '';
     this.triggerTimeNorm = entity.trigger.timeNorm ?? 4.5;
     this.triggerVideoNorm = entity.trigger.videoNorm || '';
+    
     this.audioLoopNorm = entity.trigger.audioLoopNorm ?? false;
     this.audioVolumeNorm = entity.trigger.audioVolumeNorm ?? 0.8;
     this.audioMaxDistNorm = entity.trigger.audioMaxDistNorm ?? 50;
+    this.audioFadeInNorm = entity.trigger.audioFadeInNorm ?? 1.0;
 
     this.triggerConditions = entity.trigger.conditions || ['on_enter'];
     this.triggerMensajeEntrada = entity.trigger.mensajeEntrada || '';
@@ -152,9 +164,12 @@ export class PropTrigger implements OnInit, OnDestroy {
     this.audioLoopEntrada = entity.trigger.audioLoopEntrada ?? false;
     this.audioVolumeEntrada = entity.trigger.audioVolumeEntrada ?? 0.8;
     this.audioMaxDistEntrada = entity.trigger.audioMaxDistEntrada ?? 50;
+    this.audioFadeInEntrada = entity.trigger.audioFadeInEntrada ?? 1.0;
+    
     this.audioLoopSalida = entity.trigger.audioLoopSalida ?? false;
     this.audioVolumeSalida = entity.trigger.audioVolumeSalida ?? 0.8;
     this.audioMaxDistSalida = entity.trigger.audioMaxDistSalida ?? 50;
+    this.audioFadeInSalida = entity.trigger.audioFadeInSalida ?? 1.0;
 
     this.cdr.detectChanges();
   }
@@ -234,9 +249,12 @@ export class PropTrigger implements OnInit, OnDestroy {
         entity.trigger.audioLoopEntrada = this.audioLoopEntrada;
         entity.trigger.audioVolumeEntrada = this.audioVolumeEntrada;
         entity.trigger.audioMaxDistEntrada = this.audioMaxDistEntrada;
+        entity.trigger.audioFadeInEntrada = this.audioFadeInEntrada;
+        
         entity.trigger.audioLoopSalida = this.audioLoopSalida;
         entity.trigger.audioVolumeSalida = this.audioVolumeSalida;
         entity.trigger.audioMaxDistSalida = this.audioMaxDistSalida;
+        entity.trigger.audioFadeInSalida = this.audioFadeInSalida;
     } else {
         entity.trigger.condition = this.triggerCondition;
         entity.trigger.isRepeatable = this.triggerRepeatable;
@@ -251,6 +269,7 @@ export class PropTrigger implements OnInit, OnDestroy {
         entity.trigger.audioLoopNorm = this.audioLoopNorm;
         entity.trigger.audioVolumeNorm = this.audioVolumeNorm;
         entity.trigger.audioMaxDistNorm = this.audioMaxDistNorm;
+        entity.trigger.audioFadeInNorm = this.audioFadeInNorm;
     }
 
     entity.isDirty = true;
@@ -258,5 +277,6 @@ export class PropTrigger implements OnInit, OnDestroy {
 
     this.editorSvc.onMapChanged.next();
     this.animStatus = '📍 Trigger actualizado y guardado';
+    setTimeout(() => this.animStatus = '', 2000);
   }
 }

@@ -1,257 +1,156 @@
-<div class="section-card">
-  <div class="section-head"><h4>Posición & Escala (Local)</h4></div>
-  <div class="grid-3">
-    <div class="field">
-      <label>Pos Local X</label>
-      <input type="number" step="0.01" [ngModel]="localPosX" (ngModelChange)="localPosX = $event; aplicarPosicion()" />
-    </div>
-    <div class="field">
-      <label>Pos Local Y</label>
-      <input type="number" step="0.01" [ngModel]="localPosY" (ngModelChange)="localPosY = $event; aplicarPosicion()" />
-    </div>
-    <div class="field">
-      <label>Pos Local Z</label>
-      <input type="number" step="0.01" [ngModel]="localPosZ" (ngModelChange)="localPosZ = $event; aplicarPosicion()" />
-    </div>
+<!-- 1. TRANSFORMACIÓN ESPACIAL (Siempre visible) -->
+<div class="accordion-section" [class.expanded]="accordions['transform']">
+  <div class="accordion-header" (click)="toggleAcordeon('transform')">
+    <h4><span>🟧</span> Transformación (Local)</h4>
+    <span style="color: #64748b; font-size: 10px;">{{ accordions['transform'] ? '▼' : '▶' }}</span>
+  </div>
+  <div class="accordion-content" *ngIf="accordions['transform']">
+    <div class="grid-3">
+      <div class="field"><label>Posición X</label><input type="number" step="0.01" [ngModel]="localPosX" (ngModelChange)="localPosX = $event; aplicarPosicion()" /></div>
+      <div class="field"><label>Posición Y</label><input type="number" step="0.01" [ngModel]="localPosY" (ngModelChange)="localPosY = $event; aplicarPosicion()" /></div>
+      <div class="field"><label>Posición Z</label><input type="number" step="0.01" [ngModel]="localPosZ" (ngModelChange)="localPosZ = $event; aplicarPosicion()" /></div>
 
-    <div class="field">
-      <label>Rot X</label>
-      <input type="number" step="1" [ngModel]="localRotX" (ngModelChange)="localRotX = $event; aplicarRotacion()" />
-    </div>
-    <div class="field">
-      <label>Rot Y</label>
-      <input type="number" step="1" [ngModel]="localRotY" (ngModelChange)="localRotY = $event; aplicarRotacion()" />
-    </div>
-    <div class="field">
-      <label>Rot Z</label>
-      <input type="number" step="1" [ngModel]="localRotZ" (ngModelChange)="localRotZ = $event; aplicarRotacion()" />
-    </div>
+      <div class="field"><label>Rotación X°</label><input type="number" step="1" [ngModel]="localRotX" (ngModelChange)="localRotX = $event; aplicarRotacion()" /></div>
+      <div class="field"><label>Rotación Y°</label><input type="number" step="1" [ngModel]="localRotY" (ngModelChange)="localRotY = $event; aplicarRotacion()" /></div>
+      <div class="field"><label>Rotación Z°</label><input type="number" step="1" [ngModel]="localRotZ" (ngModelChange)="localRotZ = $event; aplicarRotacion()" /></div>
 
-    <div class="field">
-      <label title="Tamaño en su propio espacio (Local)">Escala Loc. X</label>
-      <input type="number" step="0.001" [ngModel]="localEscX" (ngModelChange)="localEscX = $event; aplicarEscala()" />
-    </div>
-    <div class="field">
-      <label title="Tamaño en su propio espacio (Local)">Escala Loc. Y</label>
-      <input type="number" step="0.001" [ngModel]="localEscY" (ngModelChange)="localEscY = $event; aplicarEscala()" />
-    </div>
-    <div class="field">
-      <label title="Tamaño en su propio espacio (Local)">Escala Loc. Z</label>
-      <input type="number" step="0.001" [ngModel]="localEscZ" (ngModelChange)="localEscZ = $event; aplicarEscala()" />
+      <div class="field"><label>Escala X</label><input type="number" step="0.001" [ngModel]="localEscX" (ngModelChange)="localEscX = $event; aplicarEscala()" /></div>
+      <div class="field"><label>Escala Y</label><input type="number" step="0.001" [ngModel]="localEscY" (ngModelChange)="localEscY = $event; aplicarEscala()" /></div>
+      <div class="field"><label>Escala Z</label><input type="number" step="0.001" [ngModel]="localEscZ" (ngModelChange)="localEscZ = $event; aplicarEscala()" /></div>
     </div>
   </div>
 </div>
 
-<div class="section-card" *ngIf="esImagePlane">
-  <div class="section-head">
-    <h4>Ajustes de Proyección (Luz Holográfica)</h4>
+<!-- 2. HOLOGRAFÍA / PROYECCIÓN (Solo si es Image Plane) -->
+<div class="accordion-section" *ngIf="esImagePlane" [class.expanded]="accordions['projection']">
+  <div class="accordion-header" (click)="toggleAcordeon('projection')">
+    <h4 style="color: #38bdf8;"><span>🖼️</span> Luz Holográfica (Proyección)</h4>
+    <span style="color: #64748b; font-size: 10px;">{{ accordions['projection'] ? '▼' : '▶' }}</span>
   </div>
-
-  <div class="grid-2">
-    <div class="field">
-      <label>Ancho (Interno)</label>
-      <input type="number" step="0.5" [(ngModel)]="objProyeccionAncho" (ngModelChange)="aplicarProyeccion()" />
+  <div class="accordion-content" *ngIf="accordions['projection']">
+    <div class="grid-2">
+      <div class="field"><label>Ancho Proyección</label><input type="number" step="0.5" [(ngModel)]="objProyeccionAncho" (ngModelChange)="aplicarProyeccion()" /></div>
+      <div class="field"><label>Alto Proyección</label><input type="number" step="0.5" [(ngModel)]="objProyeccionAlto" (ngModelChange)="aplicarProyeccion()" /></div>
+      <div class="field"><label>Profundidad (Pared)</label><input type="number" step="0.01" [(ngModel)]="objProfundidadProyeccion" (ngModelChange)="aplicarProyeccion()" /></div>
+      <div class="field"><label>Giro (Grados)</label><input type="number" step="1" [(ngModel)]="objAnguloProyeccion" (ngModelChange)="aplicarProyeccion()" /></div>
     </div>
 
-    <div class="field">
-      <label>Alto (Interno)</label>
-      <input type="number" step="0.5" [(ngModel)]="objProyeccionAlto" (ngModelChange)="aplicarProyeccion()" />
+    <div style="border-top: 1px dashed #334155; margin-top: 12px; padding-top: 12px;">
+      <label style="font-size: 10px; color: #fbbf24; font-weight: bold; margin-bottom: 5px; display: block;">Multiplicador (Edificios/Persianas)</label>
+      <div class="grid-3">
+        <div class="field"><label>Copias</label><input type="number" step="1" min="1" max="50" [(ngModel)]="objProyeccionRepeticiones" (ngModelChange)="aplicarProyeccion()" /></div>
+        <div class="field"><label>Espaciado</label><input type="number" step="0.1" [(ngModel)]="objProyeccionEspaciado" (ngModelChange)="aplicarProyeccion()" /></div>
+        <div class="field"><label>Eje</label><select [(ngModel)]="objProyeccionEje" (ngModelChange)="aplicarProyeccion()"><option value="Y">Arriba (Y)</option><option value="X">Lado (X)</option></select></div>
+      </div>
     </div>
 
-    <div class="field">
-      <label>Profundidad (Interna)</label>
-      <input type="number" step="0.01" [(ngModel)]="objProfundidadProyeccion" (ngModelChange)="aplicarProyeccion()" />
+    <div class="field wide" style="margin-top: 12px;">
+      <label style="color: #f87171;">Apagado por Distancia (Fade out)</label>
+      <input type="number" step="1" min="0" [(ngModel)]="objFadeDistance" (ngModelChange)="aplicarProyeccion()" placeholder="0 = Nunca se apaga" />
     </div>
 
-    <div class="field">
-      <label>Girar Imagen (Grados)</label>
-      <input type="number" step="1" [(ngModel)]="objAnguloProyeccion" (ngModelChange)="aplicarProyeccion()" />
-    </div>
+    <button class="btn-primary full" style="margin-top: 15px;" (click)="forzarRecalculo()">🎯 Recalcular Choque en Pared</button>
   </div>
-
-  <div class="section-mini-head" style="margin-top: 15px; margin-bottom: 5px;">
-    <h5 style="color: #4ade80;">Multiplicar Proyección (Patrones)</h5>
-  </div>
-  <div class="grid-3">
-    <div class="field">
-      <label>Cant. Copias</label>
-      <input type="number" step="1" min="1" max="50" [(ngModel)]="objProyeccionRepeticiones" (ngModelChange)="aplicarProyeccion()" />
-    </div>
-    <div class="field">
-      <label>Espacio entre ellas</label>
-      <input type="number" step="0.1" [(ngModel)]="objProyeccionEspaciado" (ngModelChange)="aplicarProyeccion()" />
-    </div>
-    <div class="field">
-      <label>Dirección</label>
-      <select [(ngModel)]="objProyeccionEje" (ngModelChange)="aplicarProyeccion()">
-        <option value="Y">Arriba/Abajo (Y)</option>
-        <option value="X">Lado a Lado (X)</option>
-      </select>
-    </div>
-  </div>
-
-  <div style="background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; padding: 10px; border-radius: 6px; margin-top: 15px;">
-    <label style="color: #60a5fa; font-weight: bold; font-size: 13px;">¿Cómo ajusto la proyección?</label>
-    <p class="help-text" style="color: #cbd5e1; margin-top: 5px;">
-      * Usa <b>Ancho / Alto</b> para cambiar el tamaño real de la luz sin tocar la caja.<br>
-      * Usa <b>Profundidad</b> para atravesar la esquina y no cortarse.<br>
-      * Usa <b>Cant. Copias</b> para crear efectos de franjas tipo persianas o varios pisos de ventanas automáticamente.
-    </p>
-  </div>
-
-  <button class="btn-secondary full" style="margin-top: 10px;" (click)="forzarRecalculo()">
-    🎯 Forzar Re-proyección en Pared
-  </button>
 </div>
 
-<div class="section-card" *ngIf="mostrarSeccionColor || esImagePlane">
-  <div class="section-head">
-    <h4>Apariencia Visual (Color / Brillo)</h4>
+<!-- 3. APARIENCIA Y MATERIALES (Si tiene color o es holograma) -->
+<div class="accordion-section" *ngIf="mostrarSeccionColor || esImagePlane" [class.expanded]="accordions['visuals']">
+  <div class="accordion-header" (click)="toggleAcordeon('visuals')">
+    <h4><span>🎨</span> Renderizado y Material</h4>
+    <span style="color: #64748b; font-size: 10px;">{{ accordions['visuals'] ? '▼' : '▶' }}</span>
   </div>
-
-  <div class="grid-2">
-    <div class="field">
-      <label>Color Normal</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="objColor" (ngModelChange)="aplicarVisuales()" class="color-picker">
-        <span class="color-hex-text">{{ objColor.toUpperCase() }}</span>
+  <div class="accordion-content" *ngIf="accordions['visuals']">
+    <div class="grid-2">
+      <div class="field">
+        <label>Color Normal</label>
+        <div class="color-box-modern">
+          <input type="color" [(ngModel)]="objColor" (ngModelChange)="aplicarVisuales()" class="color-swatch-input">
+          <span class="hex-text">{{ objColor.toUpperCase() }}</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Color B&N (Flashback)</label>
+        <div class="color-box-modern">
+          <input type="color" [(ngModel)]="objColorBW" (ngModelChange)="aplicarVisuales()" class="color-swatch-input">
+          <span class="hex-text">{{ objColorBW.toUpperCase() }}</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Ambiente (Sombra)</label>
+        <div class="color-box-modern">
+          <input type="color" [(ngModel)]="objAmbientColor" (ngModelChange)="aplicarVisuales()" class="color-swatch-input">
+          <span class="hex-text">{{ objAmbientColor.toUpperCase() }}</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Ambiente B&N</label>
+        <div class="color-box-modern">
+          <input type="color" [(ngModel)]="objAmbientColorBW" (ngModelChange)="aplicarVisuales()" class="color-swatch-input">
+          <span class="hex-text">{{ objAmbientColorBW.toUpperCase() }}</span>
+        </div>
       </div>
     </div>
 
-    <div class="field">
-      <label style="color: #cbd5e1; font-weight: bold;">Color en B&N</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="objColorBW" (ngModelChange)="aplicarVisuales()" class="color-picker">
-        <span class="color-hex-text">{{ objColorBW.toUpperCase() }}</span>
-      </div>
-    </div>
-  </div>
-
-  <div class="grid-2" style="margin-top: 10px;">
-    <div class="field">
-      <label>Color Ambiente</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="objAmbientColor" (ngModelChange)="aplicarVisuales()" class="color-picker">
-        <span class="color-hex-text">{{ objAmbientColor.toUpperCase() }}</span>
+    <div class="grid-2" style="margin-top: 15px;">
+      <div class="field wide">
+        <label>Fuerza de Brillo / Emisión (x{{ (objBrilloIntensidad | number:'1.1-1') }})</label>
+        <input type="number" step="0.1" min="0" max="10" [(ngModel)]="objBrilloIntensidad" (ngModelChange)="aplicarVisuales()" />
       </div>
     </div>
 
-    <div class="field">
-      <label style="color: #cbd5e1; font-weight: bold;">Ambiente en B&N</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="objAmbientColorBW" (ngModelChange)="aplicarVisuales()" class="color-picker">
-        <span class="color-hex-text">{{ objAmbientColorBW.toUpperCase() }}</span>
+    <div class="grid-2" style="margin-top: 15px;">
+      <div class="checkbox-modern">
+        <input type="checkbox" id="chkEsEmisivo" [(ngModel)]="objEsEmisivo" (ngModelChange)="aplicarVisuales()">
+        <label for="chkEsEmisivo" style="color: #facc15;">🌟 Brilla (Neón)</label>
+      </div>
+      <div class="checkbox-modern">
+        <input type="checkbox" id="chkIgnoraNiebla" [(ngModel)]="objIgnoraNiebla" (ngModelChange)="aplicarVisuales()">
+        <label for="chkIgnoraNiebla" style="color: #a78bfa;">👁️ Ignora Niebla</label>
       </div>
     </div>
   </div>
-
-  <div class="grid-2" style="margin-top: 10px;">
-    <div class="field">
-      <label>Intensidad del brillo</label>
-      <input
-        type="number"
-        step="0.01"
-        min="0"
-        max="10"
-        [(ngModel)]="objBrilloIntensidad"
-        (ngModelChange)="aplicarVisuales()"
-      />
-    </div>
-
-    <div class="field">
-      <label>Valor actual</label>
-      <input
-        type="text"
-        [ngModel]="'x' + (objBrilloIntensidad | number:'1.2-2')"
-        readonly
-      />
-    </div>
-  </div>
-
-  <p class="help-text" *ngIf="esImagePlane" style="color: #60a5fa; margin-top: 8px;">
-    * Sube la intensidad para que la imagen se vea más viva en juego sin volverse blanca.
-    * Valores bajos = más suave. Valores altos = más brillo.
-  </p>
 </div>
 
-<div class="section-card" *ngIf="esImagePlane">
-  <div class="section-head">
-    <h4>Desvanecimiento como Niebla (Fade Lineal)</h4>
+<!-- 4. INTERACCIÓN Y PROPIEDADES (Siempre que no sea un Trigger/Burbuja) -->
+<div class="accordion-section" *ngIf="!esTrigger && !esBubble" [class.expanded]="accordions['interaction']">
+  <div class="accordion-header" (click)="toggleAcordeon('interaction')">
+    <h4><span>✋</span> Interacción en Juego</h4>
+    <span style="color: #64748b; font-size: 10px;">{{ accordions['interaction'] ? '▼' : '▶' }}</span>
   </div>
-
-  <div class="grid-2">
-    <div class="field wide">
-      <label style="color: #facc15; font-weight: bold;">Distancia Límite de Apagado (Unidades)</label>
-      <input type="number" step="1" min="0" [(ngModel)]="objFadeDistance" (ngModelChange)="aplicarProyeccion()" />
-    </div>
-  </div>
-
-  <p class="help-text" style="color: #cbd5e1; margin-top: 8px;">
-    * Pon <b style="color: #facc15;">0</b> para que siempre esté encendido.<br>
-    * Si pones <b style="color: #facc15;">50</b>, el holograma se verá al 100% de calidad hasta los 25 metros (la mitad), y desde ahí empezará a apagarse suavemente y de forma lineal hasta desaparecer por completo al cruzar los 50.
-  </p>
-</div>
-
-<div class="section-card" *ngIf="!esTrigger && !esBubble">
-  <div class="section-head">
-    <h4>Opciones Visuales y Selección</h4>
-  </div>
-
-  <div class="grid-2" style="margin-bottom: 10px;">
-      <div class="checkbox-field">
+  <div class="accordion-content" *ngIf="accordions['interaction']">
+    
+    <div class="grid-2" style="margin-bottom: 15px;">
+      <div class="checkbox-modern">
         <input type="checkbox" id="chkEsSeleccionable" [(ngModel)]="objEsSeleccionable" (ngModelChange)="aplicarVisuales()">
-        <label for="chkEsSeleccionable" style="cursor: pointer; color: #60a5fa; font-weight: bold;">🖱️ Editable (Click)</label>
+        <label for="chkEsSeleccionable" style="color: #4ade80;">🖱️ Clickeable</label>
       </div>
-      <div class="checkbox-field">
+      <div class="checkbox-modern">
         <input type="checkbox" id="chkMostrarBorde" [(ngModel)]="objMostrarBorde" (ngModelChange)="aplicarVisuales()">
-        <label for="chkMostrarBorde" style="cursor: pointer; color: #facc15; font-weight: bold;">🔲 Mostrar Borde</label>
+        <label for="chkMostrarBorde">🔲 Mostrar Borde</label>
       </div>
-  </div>
-
-  <div class="checkbox-field" style="background: rgba(59, 130, 246, 0.1); padding: 10px; border: 1px solid #3b82f6; border-radius: 6px;">
-    <input type="checkbox" id="chkIgnoraNiebla" [(ngModel)]="objIgnoraNiebla" (ngModelChange)="aplicarVisuales()">
-    <label for="chkIgnoraNiebla" style="color: #60a5fa; font-weight: bold; cursor: pointer;">
-      👁️ Ignorar Niebla (Brilla nítido a lo lejos)
-    </label>
-  </div>
-
-  <div class="checkbox-field" style="background: rgba(234, 179, 8, 0.1); padding: 10px; border: 1px solid #eab308; border-radius: 6px; margin-top: 10px;">
-    <input type="checkbox" id="chkEsEmisivo" [(ngModel)]="objEsEmisivo" (ngModelChange)="aplicarVisuales()">
-    <label for="chkEsEmisivo" style="color: #facc15; font-weight: bold; cursor: pointer;">
-      🌟 Brilla en la oscuridad (Neón/Luz Falsa)
-    </label>
-  </div>
-</div>
-
-<div class="section-card">
-  <div class="section-head">
-    <h4>Interacción y Eventos</h4>
-  </div>
-
-  <div class="grid-2" style="margin-bottom: 10px;">
-    <div class="field">
-      <label>Dist. FPS</label>
-      <input type="number" step="0.5" [ngModel]="objInteractDistanceFPS" (ngModelChange)="objInteractDistanceFPS = $event; aplicarInteraccion()" />
     </div>
-    <div class="field">
-      <label>Dist. TPS</label>
-      <input type="number" step="0.5" [ngModel]="objInteractDistanceTPS" (ngModelChange)="objInteractDistanceTPS = $event; aplicarInteraccion()" />
-    </div>
-  </div>
 
-  <div class="grid-2">
-    <div class="field wide">
-      <label>Mensaje (tecla I)</label>
+    <div class="grid-2">
+      <div class="field"><label>Alcance FPS (m)</label><input type="number" step="0.5" [ngModel]="objInteractDistanceFPS" (ngModelChange)="objInteractDistanceFPS = $event; aplicarInteraccion()" /></div>
+      <div class="field"><label>Alcance TPS (m)</label><input type="number" step="0.5" [ngModel]="objInteractDistanceTPS" (ngModelChange)="objInteractDistanceTPS = $event; aplicarInteraccion()" /></div>
+    </div>
+
+    <div class="field wide" style="margin-top: 10px;">
+      <label>Mensaje al Observar (Tecla I)</label>
       <textarea rows="2" [ngModel]="objMensaje" (ngModelChange)="objMensaje = $event; aplicarInteraccion()"></textarea>
     </div>
-    <div class="field wide">
-      <label>Ejecutar Seq. FPS</label>
-      <input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarInteraccion()"/>
+
+    <div class="grid-2" style="margin-top: 10px;">
+      <div class="field wide">
+        <label>ID Secuencia FPS (Tecla E)</label>
+        <input type="text" [ngModel]="objInteractSequenceIdFPS" (ngModelChange)="objInteractSequenceIdFPS = $event; aplicarInteraccion()" placeholder="Ej: seq_abrir_puerta"/>
+      </div>
+      <div class="field wide">
+        <label>ID Secuencia TPS (Tecla E)</label>
+        <input type="text" [ngModel]="objInteractSequenceIdTPS" (ngModelChange)="objInteractSequenceIdTPS = $event; aplicarInteraccion()" placeholder="Ej: seq_abrir_tps"/>
+      </div>
     </div>
-    <div class="field wide">
-      <label>Ejecutar Seq. TPS</label>
-      <input type="text" [ngModel]="objInteractSequenceIdTPS" (ngModelChange)="objInteractSequenceIdTPS = $event; aplicarInteraccion()"/>
-    </div>
+
   </div>
 </div>
 

@@ -2,3 +2,108 @@
 
 
 
+/* Acordeones Estilo Blender / Unity */
+.accordion-section {
+  margin-bottom: 8px;
+  background: #1e293b; /* Fondo base del panel */
+  border: 1px solid #334155;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.accordion-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: #0f172a; /* Cabecera más oscura */
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.2s;
+}
+
+.accordion-header:hover {
+  background: #1e293b;
+}
+
+.accordion-header h4 {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 700;
+  color: #e2e8f0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.accordion-content {
+  padding: 15px 12px;
+  background: #1e293b;
+  border-top: 1px solid #334155;
+}
+
+/* Grillas compactas */
+.grid-3 { display: grid; gap: 8px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.grid-2 { display: grid; gap: 8px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+/* Inputs estilo Blender (Etiqueta pequeña, input llenando el espacio) */
+.field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.field.wide { grid-column: 1 / -1; }
+.field label { font-size: 10px; color: #94a3b8; font-weight: 600; }
+
+.field input[type="number"], .field input[type="text"], .field select, textarea {
+  width: 100%; box-sizing: border-box; 
+  background: #0f172a; border: 1px solid #334155;
+  border-radius: 4px; color: #f8fafc; padding: 6px 8px; 
+  outline: none; font-size: 11px; font-weight: bold; font-family: monospace;
+  transition: 0.2s ease;
+}
+
+.field input:focus, .field select:focus, textarea:focus { 
+  border-color: #3b82f6; 
+  background: #1e293b;
+}
+
+/* Ocultar flechas de los números para look más limpio */
+.field input[type="number"]::-webkit-outer-spin-button,
+.field input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+.field input[type="number"] { -moz-appearance: textfield; }
+
+/* Color Pickers Modernos */
+.color-box-modern {
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  gap: 10px;
+}
+
+.color-swatch-input {
+  width: 24px; height: 24px; border-radius: 4px; border: none; cursor: pointer; padding: 0; background: transparent;
+}
+.color-swatch-input::-webkit-color-swatch-wrapper { padding: 0; }
+.color-swatch-input::-webkit-color-swatch { border-radius: 4px; border: 1px solid #475569; }
+
+.hex-text {
+  font-family: monospace; font-size: 11px; color: #cbd5e1; font-weight: bold;
+}
+
+/* Checkboxes */
+.checkbox-modern {
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid #334155; padding: 8px 10px; border-radius: 6px;
+  cursor: pointer; transition: 0.2s;
+}
+.checkbox-modern:hover { background: rgba(255,255,255,0.05); }
+.checkbox-modern input { cursor: pointer; accent-color: #3b82f6; width: 14px; height: 14px; margin: 0;}
+.checkbox-modern label { font-size: 11px; color: #e2e8f0; font-weight: bold; cursor: pointer; margin: 0;}
+
+.help-text { margin: 6px 0 0; color: #64748b; font-size: 10px; line-height: 1.4; }
+.status-line { margin-top: 10px; color: #4ade80; font-size: 11px; text-align: center; font-weight: bold;}

@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject, effect } from '@angular/core';
 import {
   KeyboardEventTypes, Matrix, Mesh, PointerEventTypes,
@@ -22,6 +21,7 @@ import { LiveBuilderService } from './live-builder.service';
 import { PlayerInputService } from '../../core/engine/runtime/systems/player-input.service';
 import { EditorMapaService } from '../editor-mapa.service';
 import { DynamicLightingSystem } from '../../core/engine/runtime/systems/lighting/dynamic-lighting.system'; 
+import { GizmoAdapterRegistryService } from './toolsservice/adapters/gizmo-adapter-registry.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
@@ -42,6 +42,7 @@ export class EditorToolsService {
   private liveBuilder = inject(LiveBuilderService);
   private playerInput = inject(PlayerInputService); 
   private dynamicLighting = inject(DynamicLightingSystem); 
+  private registry = inject(GizmoAdapterRegistryService);
 
   private lastHoverCheckTime = 0;
   private isGizmoSyncAttached = false;
@@ -383,6 +384,7 @@ export class EditorToolsService {
     this.mapaSvc.onMapChanged.subscribe(() => {
       if (!this.gizmoSvc.isDraggingGizmo) {
         this.debugSvc.actualizarDebugMeshes(this.state.objetoSeleccionado() as Mesh);
+        this.gizmoSvc.attachGizmoToCurrentSelection(this.state.objetoSeleccionado() as Mesh, this.state.subObjetoSeleccionado());
       }
     });
 
@@ -411,63 +413,9 @@ export class EditorToolsService {
     const entity = this.entityManager.getEntityByMesh(mesh);
     if (!entity) return;
 
-    if (subSelected === 'collider' && this.debugSvc.debugCollider) {
-      mesh.computeWorldMatrix(true);
-      const invMat = Matrix.Invert(mesh.getWorldMatrix());
-      const localPos = Vector3.TransformCoordinates(this.debugSvc.debugCollider.getAbsolutePosition(), invMat);
-      entity.collider.offsetX = localPos.x;
-      entity.collider.offsetY = localPos.y;
-      entity.collider.offsetZ = localPos.z;
-      entity.syncToView();
-    } else if (subSelected === 'camera' && this.debugSvc.debugCameraBox) {
-      mesh.computeWorldMatrix(true);
-      const invMat = Matrix.Invert(mesh.getWorldMatrix());
-      const localPos = Vector3.TransformCoordinates(this.debugSvc.debugCameraBox.getAbsolutePosition(), invMat);
-      entity.camOffset.x = localPos.x;
-      entity.camOffset.y = localPos.y * (mesh.scaling.y || 1);
-      entity.camOffset.z = localPos.z;
-      if (entity.characterConfig && entity.playerConfig) {
-          entity.playerConfig.camera.fpsEyeLevel = entity.camOffset.y;
-      }
-      entity.syncToView();
-    } else if (subSelected === 'light' && this.debugSvc.debugLightBox && entity.light) {
-      mesh.computeWorldMatrix(true);
-      const invMat = Matrix.Invert(mesh.getWorldMatrix());
-      const localPos = Vector3.TransformCoordinates(this.debugSvc.debugLightBox.getAbsolutePosition(), invMat);
-      entity.light.lightPosX = localPos.x;
-      entity.light.lightPosY = localPos.y;
-      entity.light.lightPosZ = localPos.z;
-      entity.syncToView();
-    } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
-      const playerPos = mesh.getAbsolutePosition();
-      const fogConfig = entity.playerConfig?.fog;
-      if (!fogConfig || !entity.playerConfig) return;
-
-      const isBW = this.motor3d.getScene()?.metadata?.globalVisualMode === 'bw';
-      const isFPS = this.state.modoVistaPrueba === 'FPS';
-      
-      let fogHeightY = 4.0;
-      if (isBW) {
-          fogHeightY = Math.max(0.1, isFPS ? (fogConfig.fogHeightYStartFpsBW ?? 4.0) : (fogConfig.fogHeightYStartTpsBW ?? 4.0));
-      } else {
-          fogHeightY = Math.max(0.1, isFPS ? (fogConfig.fogHeightYStartFPS ?? 4.0) : (fogConfig.fogHeightYStartTPS ?? 4.0));
-      }
-      
-      const shapeOffset = (fogConfig.fogShape === 'cylinder' ? (fogHeightY / 2) : 0);
-      
-      if (isFPS) {
-          entity.playerConfig.fog.offsetXFPS = this.debugSvc.debugFogStartSphere.position.x - playerPos.x;
-          entity.playerConfig.fog.offsetYFPS = this.debugSvc.debugFogStartSphere.position.y - playerPos.y - shapeOffset;
-          entity.playerConfig.fog.offsetZFPS = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
-      } else {
-          entity.playerConfig.fog.offsetXTPS = this.debugSvc.debugFogStartSphere.position.x - playerPos.x;
-          entity.playerConfig.fog.offsetYTPS = this.debugSvc.debugFogStartSphere.position.y - playerPos.y - shapeOffset;
-          entity.playerConfig.fog.offsetZTPS = this.debugSvc.debugFogStartSphere.position.z - playerPos.z;
-      }
-      entity.syncToView();
-    } else if (!subSelected) {
-      entity.syncTransformFromView();
-      entity.syncToView(); 
+    const adapter = this.registry.getAdapter(subSelected, entity);
+    if (adapter) {
+        adapter.syncEntity(mesh, entity, this.debugSvc, this.state, this.motor3d);
     }
   }
 

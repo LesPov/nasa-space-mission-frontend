@@ -1,8 +1,6 @@
 
-// src/app/services/editor/toolsservice/tools-gizmo.service.ts
-
 import { Injectable, inject } from '@angular/core';
-import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, TransformNode as BabylonTransformNode, Vector3, PointerEventTypes, Tags, AbstractMesh } from '@babylonjs/core';
+import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, Vector3, PointerEventTypes, Tags, AbstractMesh } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
@@ -14,6 +12,7 @@ import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/cam
 import { EditorLiveSyncService } from '../editor-live-sync.service';
 import { EditorCinematicService } from '../editor-cinematic.service';
 import { EditorMapaService } from '../../editor-mapa.service';
+import { GizmoAdapterRegistryService } from './adapters/gizmo-adapter-registry.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsGizmoService {
@@ -28,10 +27,11 @@ export class ToolsGizmoService {
   private ownership = inject(CameraOwnershipService);
   private liveSync = inject(EditorLiveSyncService);
   private cinematicSvc = inject(EditorCinematicService);
+  private registry = inject(GizmoAdapterRegistryService);
 
   public gizmoManager: GizmoManager | null = null;
   public centerDragMesh: Mesh | null = null;
-  public gizmoPivotNode: BabylonTransformNode | null = null;
+  public gizmoPivotNode: AbstractMesh | null = null;
   
   public isDraggingGizmo = false;
   private estadoAntesDeArrastrar: any = null;
@@ -76,7 +76,7 @@ export class ToolsGizmoService {
     this.centerDragMesh.isVisible = false;
     Tags.AddTagsTo(this.centerDragMesh, "system_element editor_only gizmo ignore_raycast");
 
-    this.gizmoPivotNode = new BabylonTransformNode('gizmoPivotNode', utilityLayer.utilityLayerScene);
+    this.gizmoPivotNode = new Mesh('gizmoPivotNode', utilityLayer.utilityLayerScene);
 
     const centerDragBehavior = new PointerDragBehavior();
     centerDragBehavior.moveAttached = false;
@@ -131,21 +131,29 @@ export class ToolsGizmoService {
     const onDraggingCenter = (event: any) => {
       const mesh = this.state.objetoSeleccionado() as Mesh;
       const subSelected = this.state.subObjetoSeleccionado();
+      const entity = mesh ? this.entityManager.getEntityByMesh(mesh) : null;
 
-      if (mesh && this.centerDragMesh) {
-        if (subSelected === 'collider' && this.debugSvc.debugCollider) {
-          this.debugSvc.debugCollider.position.addInPlace(event.delta);
-          this.centerDragMesh.position.copyFrom(this.debugSvc.debugCollider.getAbsolutePosition());
-        } else if (subSelected === 'camera' && this.debugSvc.debugCameraBox) {
-          this.debugSvc.debugCameraBox.position.addInPlace(event.delta);
-          this.centerDragMesh.position.copyFrom(this.debugSvc.debugCameraBox.getAbsolutePosition());
-        } else if (subSelected === 'light' && this.debugSvc.debugLightBox) {
-          this.debugSvc.debugLightBox.position.addInPlace(event.delta);
-          this.centerDragMesh.position.copyFrom(this.debugSvc.debugLightBox.getAbsolutePosition());
-        } else if (!subSelected) {
-          mesh.position.addInPlace(event.delta);
-          this.updateCenterDragMeshRenderState(mesh, subSelected);
-          this.broadcastLiveTransform(mesh); 
+      if (mesh && this.centerDragMesh && entity) {
+        const adapter = this.registry.getAdapter(subSelected, entity);
+        if (adapter) {
+            adapter.applyDragDelta(event.delta, this.debugSvc, mesh);
+            
+            const dragTarget = adapter.getCenterDragTarget(this.debugSvc, mesh);
+            if (dragTarget) {
+               this.centerDragMesh.position.copyFrom(dragTarget.getAbsolutePosition());
+            }
+
+            // 🔥 FIX DEL RETRASO VISUAL (LAG) EN LOS EJES DEL GIZMO
+            // Forzamos la actualización posicional del Attach Target (Pivot) en tiempo real
+            // durante el evento de drag del centro.
+            if (!subSelected && this.gizmoPivotNode) {
+               this.gizmoPivotNode.position.copyFrom(mesh.getAbsolutePosition());
+            }
+
+            if (!subSelected) {
+               this.updateCenterDragMeshRenderState(mesh, subSelected);
+               this.broadcastLiveTransform(mesh); 
+            }
         }
         this.mapaSvc.onGizmoDrag.next();
       }
@@ -154,21 +162,17 @@ export class ToolsGizmoService {
     const onDraggingGizmo = () => {
       const mesh = this.state.objetoSeleccionado() as Mesh;
       const subSelected = this.state.subObjetoSeleccionado();
-      if (!mesh || !this.gizmoPivotNode) return;
+      const entity = mesh ? this.entityManager.getEntityByMesh(mesh) : null;
+      if (!mesh || !this.gizmoPivotNode || !entity) return;
 
-      if (!subSelected) {
-        mesh.position.copyFrom(this.gizmoPivotNode.position);
-
-        if (this.gizmoPivotNode.rotationQuaternion) {
-          if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
-          mesh.rotationQuaternion.copyFrom(this.gizmoPivotNode.rotationQuaternion);
-        } else {
-          mesh.rotation.copyFrom(this.gizmoPivotNode.rotation);
-        }
-
-        mesh.scaling.copyFrom(this.gizmoPivotNode.scaling);
-        this.updateCenterDragMeshRenderState(mesh, subSelected);
-        this.broadcastLiveTransform(mesh); 
+      const adapter = this.registry.getAdapter(subSelected, entity);
+      if (adapter) {
+          adapter.onGizmoDragged(mesh, this.gizmoPivotNode);
+          
+          if (!subSelected) {
+              this.updateCenterDragMeshRenderState(mesh, subSelected);
+              this.broadcastLiveTransform(mesh); 
+          }
       }
       this.mapaSvc.onGizmoDrag.next();
     };
@@ -235,8 +239,7 @@ export class ToolsGizmoService {
 
     if (this.state.objetoSeleccionado() || this.state.subObjetoSeleccionado()) {
       switch (this.state.currentTool()) {
-        case 'select': 
-          break;
+        case 'select': break;
         case 'translate': this.gizmoManager.positionGizmoEnabled = true; break;
         case 'rotate': 
           if (!this.state.subObjetoSeleccionado()) this.gizmoManager.rotationGizmoEnabled = true;
@@ -284,27 +287,21 @@ export class ToolsGizmoService {
 
     if (!this.gizmoPivotNode || !this.centerDragMesh) return;
 
-    if (subSelected === 'collider' && this.debugSvc.debugCollider) {
-      this.gizmoManager.attachToMesh(this.debugSvc.debugCollider);
-      this.gizmoPivotNode.parent = null;
-    } else if (subSelected === 'camera' && this.debugSvc.debugCameraBox) {
-      this.gizmoManager.attachToMesh(this.debugSvc.debugCameraBox);
-      this.gizmoPivotNode.parent = null;
-    } else if (subSelected === 'light' && this.debugSvc.debugLightBox) {
-      this.gizmoManager.attachToMesh(this.debugSvc.debugLightBox);
-      this.gizmoPivotNode.parent = null;
-    } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
-      this.gizmoManager.attachToMesh(this.debugSvc.debugFogStartSphere);
-      this.gizmoPivotNode.parent = null;
-    } else if (selected && !subSelected) {
-      this.gizmoPivotNode.position.copyFrom(selected.getAbsolutePosition());
-      if (selected.rotationQuaternion) {
-        this.gizmoPivotNode.rotationQuaternion = selected.rotationQuaternion.clone();
-      } else {
-        this.gizmoPivotNode.rotation = selected.rotation.clone();
+    let targetMesh: AbstractMesh | null = null;
+    const entity = selected ? this.entityManager.getEntityByMesh(selected) : null;
+    
+    if (selected && entity) {
+      const adapter = this.registry.getAdapter(subSelected, entity);
+      if (adapter) {
+        targetMesh = adapter.getAttachTarget(this.debugSvc, this.gizmoPivotNode, selected);
       }
-      this.gizmoPivotNode.scaling.copyFrom(selected.scaling);
-      this.gizmoManager.attachToMesh(this.gizmoPivotNode as any);
+    }
+
+    if (targetMesh) {
+      if (targetMesh !== this.gizmoPivotNode) {
+         this.gizmoPivotNode.parent = null;
+      }
+      this.gizmoManager.attachToMesh(targetMesh);
     } else {
       this.gizmoManager.attachToMesh(null);
       this.gizmoPivotNode.parent = null;
@@ -331,16 +328,13 @@ export class ToolsGizmoService {
       if (!this.centerDragMesh || !this.gizmoManager || !this.gizmoPivotNode) return;
 
       if (obj && !this.isDraggingGizmo && !Tags.MatchesQuery(obj, "cinematic_proxy")) {
-        if (subSelected === 'collider' && this.debugSvc.debugCollider) {
-            this.centerDragMesh.position.copyFrom(this.debugSvc.debugCollider.getAbsolutePosition());
-        } else if (subSelected === 'camera' && this.debugSvc.debugCameraBox) {
-            this.centerDragMesh.position.copyFrom(this.debugSvc.debugCameraBox.getAbsolutePosition());
-        } else if (subSelected === 'light' && this.debugSvc.debugLightBox) {
-            this.centerDragMesh.position.copyFrom(this.debugSvc.debugLightBox.getAbsolutePosition());
-        } else if (subSelected === 'fog' && this.debugSvc.debugFogStartSphere) {
-            this.centerDragMesh.position.copyFrom(this.debugSvc.debugFogStartSphere.getAbsolutePosition());
-        } else if (!subSelected) {
-            this.centerDragMesh.position.copyFrom(obj.getAbsolutePosition());
+        const entity = this.entityManager.getEntityByMesh(obj);
+        const adapter = entity ? this.registry.getAdapter(subSelected, entity) : null;
+        if (adapter) {
+            const dragTarget = adapter.getCenterDragTarget(this.debugSvc, obj);
+            if (dragTarget) {
+                this.centerDragMesh.position.copyFrom(dragTarget.getAbsolutePosition());
+            }
         }
       }
 

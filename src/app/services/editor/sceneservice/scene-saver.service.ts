@@ -1,9 +1,10 @@
+
 import { Injectable, inject } from '@angular/core'; 
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
 import { EntityPersistenceMapperService } from '../../../core/engine/scene/utils/entity-persistence-mapper.service';
 import { EditorCinematicService } from '../editor-cinematic.service';
-import { SceneSavePayload, SceneObjectDto, TriggerDto, CinematicDto, SceneObjectPropertiesDto } from '../../../core/engine/models/api-dto.model';
+import { SceneSavePayload, SceneObjectDto, TriggerDto, CinematicDto } from '../../../core/engine/models/api-dto.model';
 
 @Injectable({ providedIn: 'root' }) 
 export class SceneSaverService { 
@@ -32,98 +33,25 @@ export class SceneSaverService {
         spawnPoint = { ...entity.transform.position };
       }
 
-      const propertiesToSave = this.persistenceMapper.extractEntityProperties(entity);
-      const transform = entity.transform;
-      const trigger = entity.trigger;
+      const dtos = this.persistenceMapper.extractToDtos(entity);
+      
+      dtos.forEach(dto => {
+          // 🔥 BLINDAJE DE GUARDADO PARA TRIGGERS COMPUESTOS: 
+          // Aseguramos obligatoriamente que TODO DTO generado contenga exactamente 
+          // las dimensiones físicas de la malla, ignorando fallos del Mapper.
+          dto.position = { x: entity.transform.position.x, y: entity.transform.position.y, z: entity.transform.position.z };
+          dto.rotation = { x: entity.transform.rotation.x, y: entity.transform.rotation.y, z: entity.transform.rotation.z };
+          dto.scale = { x: entity.transform.scale.x, y: entity.transform.scale.y, z: entity.transform.scale.z };
+          
+          // Por seguridad con backends Legacy que esperan 'size' en lugar de 'scale'
+          dto.size = { x: entity.transform.scale.x, y: entity.transform.scale.y, z: entity.transform.scale.z };
 
-      if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') {
-        const isComposite = entity.type === 'trigger_compuesto';
-        const rawConditions = trigger?.conditions || ['on_enter'];
-
-        if (isComposite) {
-          rawConditions.forEach((cond: string) => {
-             const actionProps: Partial<SceneObjectPropertiesDto> = { triggerShape: trigger?.triggerShape || 'cube', isComposite: true };
-             if (cond === 'on_enter') {
-                actionProps.mensaje = trigger?.mensajeEntrada || '';
-                actionProps.soundUrl = trigger?.soundUrlEntrada || '';
-                actionProps.seqEntrada = trigger?.seqEntrada || '';
-                actionProps.timeEntrada = trigger?.timeEntrada ?? 4.5;
-                actionProps.videoEntrada = trigger?.videoEntrada || '';
-                actionProps.audioLoopEntrada = trigger?.audioLoopEntrada ?? false;
-                actionProps.audioVolumeEntrada = trigger?.audioVolumeEntrada ?? 0.8;
-                actionProps.audioMaxDistEntrada = trigger?.audioMaxDistEntrada ?? 50;
-                actionProps.audioFadeInEntrada = trigger?.audioFadeInEntrada ?? 1.0;
-             }
-             if (cond === 'on_exit') {
-                actionProps.mensaje = trigger?.mensajeSalida || '';
-                actionProps.soundUrl = trigger?.soundUrlSalida || '';
-                actionProps.seqSalida = trigger?.seqSalida || '';
-                actionProps.timeSalida = trigger?.timeSalida ?? 4.5;
-                actionProps.videoSalida = trigger?.videoSalida || '';
-                actionProps.audioLoopSalida = trigger?.audioLoopSalida ?? false;
-                actionProps.audioVolumeSalida = trigger?.audioVolumeSalida ?? 0.8;
-                actionProps.audioMaxDistSalida = trigger?.audioMaxDistSalida ?? 50;
-                actionProps.audioFadeInSalida = trigger?.audioFadeInSalida ?? 1.0;
-             }
-             triggersDelta.push({
-               uid: `${entity.uid}_${cond}`, 
-               name: entity.name, parentId: entity.parentId, type: entity.type,
-               position: transform.position, scale: transform.scale,
-               properties: { 
-                 condition: cond, 
-                 actionType: trigger?.actionType || 'show_message', 
-                 targetSceneId: trigger?.targetSceneId || null,
-                 gameConditions: trigger?.gameConditions || [],
-                 targetObjectName: '', 
-                 isRepeatable: trigger?.isRepeatable ?? false, 
-                 ...actionProps 
-               }
-             });
-          });
-        } else {
-           triggersDelta.push({
-             uid: entity.uid, name: entity.name, parentId: entity.parentId, type: entity.type,
-             position: transform.position, scale: transform.scale,
-             properties: {
-               condition: trigger?.condition || 'on_enter', 
-               actionType: trigger?.actionType || 'show_message', 
-               targetSceneId: trigger?.targetSceneId || null,
-               gameConditions: trigger?.gameConditions || [],
-               targetObjectName: '',
-               isRepeatable: trigger?.isRepeatable ?? false,
-               triggerShape: trigger?.triggerShape || 'cube', 
-               mensaje: entity.interaction.mensaje,
-               soundUrl: trigger?.soundUrl || '', 
-               interactSequenceId: entity.interaction.interactSequenceId,
-               timeNorm: trigger?.timeNorm ?? 4.5, 
-               videoNorm: trigger?.videoNorm || '', 
-               isComposite: false,
-               audioLoopNorm: trigger?.audioLoopNorm ?? false,
-               audioVolumeNorm: trigger?.audioVolumeNorm ?? 0.8,
-               audioMaxDistNorm: trigger?.audioMaxDistNorm ?? 50,
-               audioFadeInNorm: trigger?.audioFadeInNorm ?? 1.0
-             }
-           });
-        }
-      } else {
-        const baseData = {
-          uid: entity.uid, name: entity.name, parentId: entity.parentId,
-          position: transform.position, rotation: transform.rotation, scale: transform.scale
-        };
-
-        let finalProperties = { ...propertiesToSave };
-
-        if (entity.type.startsWith('light_') && entity.light) {
-          finalProperties = { ...finalProperties, ...entity.light };
-        } else if ((entity.type === 'video_plane' || entity.type === 'image_plane') && entity.media) {
-          finalProperties = { ...finalProperties, ...entity.media };
-        }
-
-        sceneObjectsDelta.push({
-          ...baseData, type: entity.type, assetId: entity.visual.assetId ?? null,
-          properties: finalProperties
-        });
-      }
+          if (dto.type === 'trigger' || dto.type === 'trigger_compuesto') {
+              triggersDelta.push(dto as TriggerDto);
+          } else {
+              sceneObjectsDelta.push(dto);
+          }
+      });
     });
 
     return { 

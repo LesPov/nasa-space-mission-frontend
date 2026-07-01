@@ -20,35 +20,27 @@ export class PrefabManagerService {
         return;
       }
 
-      // Serialización recursiva de la jerarquía completa
       const hierarchyData: any[] = [];
 
       const traverseAndSerialize = (mesh: AbstractMesh, parentUid: string | null) => {
         const entity = this.entityManager.getEntityByMesh(mesh);
         
-        // Solo guardamos entidades válidas, ignoramos colliders generados o elementos del sistema
         if (entity && !Tags.MatchesQuery(mesh, "system_element")) {
           entity.syncTransformFromView();
           
-          const props = this.persistenceMapper.extractEntityProperties(entity);
-          let finalProps = { ...props };
-          
-          if (entity.type.startsWith('light_') && entity.light) {
-            finalProps = { ...finalProps, ...entity.light };
-          } else if ((entity.type === 'video_plane' || entity.type === 'image_plane') && entity.media) {
-            finalProps = { ...finalProps, ...entity.media };
-          }
-
-          hierarchyData.push({
-            originalUid: entity.uid,
-            parentOriginalUid: parentUid,
-            type: entity.type || 'model',
-            name: entity.name,
-            assetId: entity.visual.assetId || null,
-            position: { ...entity.transform.position },
-            rotation: { ...entity.transform.rotation },
-            scale: { ...entity.transform.scale },
-            properties: finalProps
+          const dtos = this.persistenceMapper.extractToDtos(entity);
+          dtos.forEach(dto => {
+             hierarchyData.push({
+                originalUid: dto.uid, 
+                parentOriginalUid: parentUid,
+                type: dto.type || 'model',
+                name: dto.name,
+                assetId: dto.assetId || null,
+                position: dto.position,
+                rotation: dto.rotation,
+                scale: dto.scale,
+                properties: dto.properties
+             });
           });
 
           mesh.getChildMeshes(true).forEach(child => traverseAndSerialize(child, entity.uid));
@@ -64,9 +56,6 @@ export class PrefabManagerService {
 
       const rootData = hierarchyData[0];
       
-      // 🔥 FIX: Rompemos la referencia circular. En lugar de mutar rootData.properties,
-      // creamos un nuevo objeto properties para la petición al servidor que contiene
-      // las propiedades del objeto padre y añade el array hierarchyData.
       const data = {
         name: prefabName,
         type: rootData.type,

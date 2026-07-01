@@ -1,3 +1,4 @@
+
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -15,7 +16,7 @@ import { EpisodiosService } from '../../../../services/api/episodios';
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-trigger.html',
-  styleUrls: ['./prop-trigger.css'] // <-- Cambiado de ../inspector-properties.css a local
+  styleUrls: ['./prop-trigger.css']
 })
 export class PropTrigger implements OnInit, OnDestroy {
   @Input() objeto!: AbstractMesh;
@@ -190,6 +191,7 @@ export class PropTrigger implements OnInit, OnDestroy {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     this.historialSvc.registrarCambioTransform(this.objeto, () => { 
       if(entity) {
+          // 🔥 Aseguramos asignar explícitamente los valores para que el engine los tome
           entity.transform.scale = { x: this.localEscX, y: this.localEscY, z: this.localEscZ };
           entity.isDirty = true;
           entity.syncToView();

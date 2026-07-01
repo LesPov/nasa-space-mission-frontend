@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { GameEntity } from '../../entities/game.entity';
 import { GameContextService } from '../../session/game-context.service';
@@ -39,7 +38,10 @@ export class InteractableRulesService {
     const isPlaying = mode !== GameMode.EDITOR;
     const isAdmin = mode === GameMode.EDITOR || mode === GameMode.PREVIEW_ADMIN || mode === GameMode.TEST_LIVE;
 
-    if (entity && entity.type === 'trigger') {
+    if (entity && (entity.type === 'trigger' || entity.type === 'trigger_compuesto')) {
+        // 🔥 FIX: Si estamos en cualquier modo que implique jugar (Test Live, Editing In Game, Usuario Final),
+        // los Triggers SIEMPRE deben ser ignorados por el raycast para evitar que el punto amarillo reaccione.
+        if (mode !== GameMode.EDITOR) return true; 
         return !isAdmin; 
     }
 

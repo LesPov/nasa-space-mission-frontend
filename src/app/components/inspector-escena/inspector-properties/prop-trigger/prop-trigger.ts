@@ -1,14 +1,14 @@
-
-
+// src/app/components/inspector-escena/inspector-properties/prop-trigger/prop-trigger.ts
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh, StandardMaterial, Color3 } from '@babylonjs/core';
+import { AbstractMesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorSceneService } from '../../../../services/editor/editor-scene.service';
 import { HistorialService } from '../../../../services/historial.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
+import { TriggerVisualizerService } from '../../../../core/engine/scene/utils/trigger-visualizer.service';
  
 @Component({
   selector: 'app-prop-trigger',
@@ -24,6 +24,7 @@ export class PropTrigger implements OnInit, OnDestroy {
   private sceneSvc = inject(EditorSceneService);
   private historialSvc = inject(HistorialService);
   private entityManager = inject(EntityManagerService);
+  private triggerVisualizer = inject(TriggerVisualizerService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -163,26 +164,8 @@ export class PropTrigger implements OnInit, OnDestroy {
     entity.trigger.targetSceneId = this.targetSceneId;
     entity.trigger.gameConditions = [...this.gameConditions];
 
-    if (this.objeto && this.objeto.material instanceof StandardMaterial) {
-        let color = new Color3(0, 1, 0);
-        let emissive = new Color3(0.2, 1, 0.2);
-        
-        if (!this.triggerIsComposite) {
-          if (this.actionType === 'change_scene') {
-            color = new Color3(1, 0, 0); 
-            emissive = new Color3(1, 0.2, 0.2);
-          } else {
-            color = new Color3(1, 0, 1); 
-            emissive = new Color3(1, 0.2, 1);
-          }
-        } else {
-            color = new Color3(0, 0.5, 1); 
-            emissive = new Color3(0, 0.3, 0.8);
-        }
-        
-        (this.objeto.material as StandardMaterial).diffuseColor = color;
-        (this.objeto.material as StandardMaterial).emissiveColor = emissive;
-    }
+    // 🔥 Re-actualiza el sistema Wireframe en caso de que cambie de tipo
+    this.triggerVisualizer.createOrUpdateWireframe(this.objeto, this.triggerShape, this.triggerIsComposite, this.actionType);
 
     if (this.triggerIsComposite) {
         entity.trigger.conditions = this.triggerConditions;

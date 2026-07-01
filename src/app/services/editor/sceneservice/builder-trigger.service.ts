@@ -1,6 +1,6 @@
-
+// src/app/services/editor/sceneservice/builder-trigger.service.ts
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
+import { AbstractMesh, Mesh, MeshBuilder } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
@@ -9,6 +9,7 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 import { CoreTriggerLoaderService } from '../../../core/engine/scene/utils/core-trigger-loader.service';
 import { AuthService } from '../../../core/services/auth';
 import { EditorMapaService } from '../../editor-mapa.service';
+import { TriggerVisualizerService } from '../../../core/engine/scene/utils/trigger-visualizer.service';
   
 @Injectable({ providedIn: 'root' })
 export class BuilderTriggerService {
@@ -19,6 +20,7 @@ export class BuilderTriggerService {
   private nodesSvc = inject(SceneNodesService);
   private entityManager = inject(EntityManagerService);
   private triggerLoader = inject(CoreTriggerLoaderService);
+  private triggerVisualizer = inject(TriggerVisualizerService);
   private authSvc = inject(AuthService);
 
   public reconstruirMallaTrigger(oldMesh: AbstractMesh, nuevaForma: string): Mesh {
@@ -42,24 +44,6 @@ export class BuilderTriggerService {
       newMesh.setParent(oldMesh.parent);
     }
 
-    const isComp = entity?.trigger?.isComposite ?? false;
-    const actionT = entity?.trigger?.actionType ?? 'show_message';
-    
-    let color = new Color3(0, 1, 0); 
-    let emissive = new Color3(0.2, 1, 0.2);
-    if (!isComp) {
-      if (actionT === 'change_scene') {
-        color = new Color3(1, 0, 0); 
-        emissive = new Color3(1, 0.2, 0.2);
-      } else {
-        color = new Color3(1, 0, 1); 
-        emissive = new Color3(1, 0.2, 1);
-      }
-    } else {
-        color = new Color3(0, 0.5, 1); 
-        emissive = new Color3(0, 0.3, 0.8);
-    }
-
     if (entity) {
       if (entity.trigger) entity.trigger.triggerShape = nuevaForma;
       entity.isDirty = true;
@@ -71,18 +55,16 @@ export class BuilderTriggerService {
       newMesh.scaling = oldMesh.scaling.clone();
     }
 
-    const mat = new StandardMaterial('mat_trigger_' + newMesh.name, scene);
-    mat.diffuseColor = color;
-    mat.emissiveColor = emissive;
-    mat.alpha = 0.4;
-    mat.wireframe = false; 
-    mat.disableLighting = true;
-    mat.maxSimultaneousLights = 6;
-    newMesh.material = mat;
-
+    // 🔥 OPTIMIZACIÓN
+    newMesh.visibility = 0;
+    newMesh.material = null;
     newMesh.isPickable = true;
     newMesh.checkCollisions = false;
-    newMesh.isVisible = this.authSvc.isAdmin();
+    newMesh.isVisible = true;
+
+    if (entity && entity.trigger) {
+      this.triggerVisualizer.createOrUpdateWireframe(newMesh, nuevaForma, entity.trigger.isComposite, entity.trigger.actionType);
+    }
 
     if (this.state.objetoSeleccionado() === oldMesh) {
       this.state.seleccionarObjeto(newMesh);

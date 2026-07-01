@@ -1,3 +1,4 @@
+
 // src/app/services/editor/toolsservice/tools-gizmo.service.ts
 
 import { Injectable, inject } from '@angular/core';
@@ -260,6 +261,19 @@ export class ToolsGizmoService {
       this.gizmoManager.rotationGizmoEnabled = false;
       this.gizmoManager.scaleGizmoEnabled = false;
       return;
+    }
+
+    if (selected) {
+        const entity = this.entityManager.getEntityByMesh(selected);
+        if (entity && (entity.type === 'trigger' || entity.type === 'trigger_compuesto')) {
+            if (modoJuego === 'EDITING_IN_GAME') {
+                this.gizmoManager.attachToMesh(null);
+                this.gizmoManager.positionGizmoEnabled = false;
+                this.gizmoManager.rotationGizmoEnabled = false;
+                this.gizmoManager.scaleGizmoEnabled = false;
+                return;
+            }
+        }
     }
 
     if (selected && Tags.MatchesQuery(selected, "cinematic_proxy")) {

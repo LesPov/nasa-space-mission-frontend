@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Ray } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -38,7 +37,6 @@ export class PlayerInteractionService implements IUpdatable {
   
   private isEnabled: boolean = false;
 
-  // 🔥 OPTIMIZACIÓN GC Y LAG: Fix TS2339 y Limitador a 10 FPS
   private _centerRay = new Ray(Vector3.Zero(), new Vector3(0, 0, 1), 10000);
   private _probePoint = Vector3.Zero();
   private _forwardDir = new Vector3(0, 0, 1);
@@ -64,8 +62,6 @@ export class PlayerInteractionService implements IUpdatable {
       return;
     }
 
-    // 🔥 FIX LAG: Acelerador (Throttle) para no hacer PickWithRay 60 veces por segundo.
-    // Lo limitamos a una vez cada 100ms (10 FPS) que es perfecto para detectar interacciones sin lag.
     this._interactTimer += dtMs;
     if (this._interactTimer >= 100) {
       this.comprobarInteracciones(playerEntity, activeCamera, this.context.cameraView());
@@ -201,7 +197,7 @@ export class PlayerInteractionService implements IUpdatable {
       this._centerRay.length = 10000;
 
       const hitCross = scene.pickWithRay(this._centerRay, (m) => {
-        if (!m.isPickable || !m.isVisible) return false;
+        if (!m.isPickable || (!m.isVisible && m.visibility === 0)) return false;
         if (this.interactRules.isMeshIgnorable(m, jugador)) return false;
         return true;
       });
@@ -217,6 +213,11 @@ export class PlayerInteractionService implements IUpdatable {
         }
         
         if (rootEntity && rootEntity.view) {
+            // 🔥 DOBLE BLOQUEO DE TRIGGERS: Jamás permitimos que un Trigger sea preseleccionado por la cámara del jugador
+            if (rootEntity.type === 'trigger' || rootEntity.type === 'trigger_compuesto') {
+                return;
+            }
+
             const selectionDistance = this.getInteractionDistanceToTarget(rootEntity.view, this._probePoint);
             this.lastInteractDistance = selectionDistance;
 

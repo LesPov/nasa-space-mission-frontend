@@ -117,6 +117,7 @@ export class EditorToolsService {
     const scene = this.motor3d.getScene();
     const jugador = this.state.jugadorActivo;
     const isAdmin = this.authSvc.isAdmin();
+    const playSt = this.state.playState();
 
     const hit = scene.pickWithRay(ray, (mesh) => {
       if (!mesh.isPickable) return false;
@@ -132,8 +133,9 @@ export class EditorToolsService {
       const baseNode = this.state.resolverObjetoSeleccionable(mesh) as AbstractMesh;
       const entityMesh = this.entityManager.getEntityByMesh(baseNode);
 
-      if (!isAdmin && (entityMesh?.type === 'trigger' || entityMesh?.type === 'trigger_compuesto')) {
-        return false;
+      if (entityMesh?.type === 'trigger' || entityMesh?.type === 'trigger_compuesto') {
+          if (!isAdmin) return false;
+          if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') return false;
       }
 
       return true;

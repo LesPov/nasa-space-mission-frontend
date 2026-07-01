@@ -1,15 +1,16 @@
-
-
+// src/app/core/engine/scene/utils/core-trigger-loader.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Color3, Mesh, MeshBuilder, StandardMaterial } from '@babylonjs/core';
+import { Mesh, MeshBuilder } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
+import { TriggerVisualizerService } from './trigger-visualizer.service';
 
 @Injectable({ providedIn: 'root' })
 export class CoreTriggerLoaderService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private entityManager = inject(EntityManagerService);
+  private triggerVisualizer = inject(TriggerVisualizerService);
 
   public cargarTrigger(trigger: any, mallasCreadas: Map<string, Mesh>): void {
     const scene = this.motor3d.getScene();
@@ -61,23 +62,6 @@ export class CoreTriggerLoaderService {
     }
 
     let mesh = scene.getMeshByName(trigger.name) as Mesh;
-    
-    const actionT = entity.trigger.actionType;
-    let color = new Color3(0, 1, 0); 
-    let emissive = new Color3(0.2, 1.0, 0.2);
-    
-    if (!isComposite) {
-      if (actionT === 'change_scene') {
-        color = new Color3(1, 0, 0); 
-        emissive = new Color3(1, 0.2, 0.2);
-      } else {
-        color = new Color3(1, 0, 1); 
-        emissive = new Color3(1, 0.2, 1);
-      }
-    } else {
-        color = new Color3(0, 0.5, 1); 
-        emissive = new Color3(0, 0.3, 0.8);
-    }
 
     if (!mesh) {
       switch (shape) {
@@ -88,29 +72,23 @@ export class CoreTriggerLoaderService {
 
       entity.bindView(mesh);
 
-      const mat = new StandardMaterial('mat_trigger_' + trigger.name, scene);
-      mat.diffuseColor = color;
-      mat.emissiveColor = emissive;
-      mat.alpha = 0.4; 
-      mat.wireframe = false; 
-      mat.disableLighting = true;
-      mat.maxSimultaneousLights = 6; // 🔥 FIX LÍMITE LUCES
-      mesh.material = mat;
-      
+      // 🔥 OPTIMIZACIÓN: visibility 0 omite totalmente los Draw Calls de la GPU
+      // pero mantiene a Babylon consciente para el Raycast. Muerte al Overdraw.
+      mesh.visibility = 0; 
+      mesh.material = null; 
       mesh.isPickable = true;
       mesh.checkCollisions = false;
       mesh.isVisible = true; 
 
+      this.triggerVisualizer.createOrUpdateWireframe(mesh, shape, isComposite, entity.trigger.actionType);
+
       this.entityManager.addEntity(entity);
       mallasCreadas.set(entity.uid, mesh);
     } else {
-      if (mesh.material instanceof StandardMaterial) {
-          mesh.material.diffuseColor = color;
-          mesh.material.emissiveColor = emissive;
-          mesh.material.wireframe = false;
-          mesh.material.alpha = 0.4;
-      }
+      mesh.visibility = 0; 
+      mesh.material = null;
       entity.bindView(mesh);
+      this.triggerVisualizer.createOrUpdateWireframe(mesh, shape, isComposite, entity.trigger.actionType);
       this.entityManager.addEntity(entity);
     }
   }

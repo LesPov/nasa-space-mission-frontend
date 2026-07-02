@@ -2,7 +2,7 @@
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh } from '@babylonjs/core';
+import { AbstractMesh, Quaternion } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorSceneService } from '../../../../services/editor/editor-scene.service';
@@ -41,6 +41,7 @@ export class PropTrigger implements OnInit, OnDestroy {
   public isUploadingAudio = false;
 
   localPosX = 0; localPosY = 0; localPosZ = 0;
+  localRotX = 0; localRotY = 0; localRotZ = 0;
   localEscX = 1; localEscY = 1; localEscZ = 1;
 
   triggerIsComposite = false;
@@ -126,6 +127,11 @@ export class PropTrigger implements OnInit, OnDestroy {
     this.localPosX = this.formatNum(entity.transform.position.x); 
     this.localPosY = this.formatNum(entity.transform.position.y); 
     this.localPosZ = this.formatNum(entity.transform.position.z);
+    
+    this.localRotX = this.formatNum(entity.transform.rotation.x * (180 / Math.PI));
+    this.localRotY = this.formatNum(entity.transform.rotation.y * (180 / Math.PI));
+    this.localRotZ = this.formatNum(entity.transform.rotation.z * (180 / Math.PI));
+
     this.localEscX = this.formatNum(entity.transform.scale.x); 
     this.localEscY = this.formatNum(entity.transform.scale.y); 
     this.localEscZ = this.formatNum(entity.transform.scale.z);
@@ -186,12 +192,34 @@ export class PropTrigger implements OnInit, OnDestroy {
     }); 
     this.editorSvc.onMapChanged.next(); 
   }
+  
+  aplicarRotacion() {
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    this.historialSvc.registrarCambioTransform(this.objeto, () => {
+      if(entity) {
+          const rx = this.localRotX * (Math.PI / 180);
+          const ry = this.localRotY * (Math.PI / 180);
+          const rz = this.localRotZ * (Math.PI / 180);
+          
+          entity.transform.rotation = { x: rx, y: ry, z: rz };
+          entity.isDirty = true;
+          entity.syncToView();
+      } else {
+          this.objeto.rotationQuaternion = Quaternion.FromEulerAngles(
+              this.localRotX * (Math.PI / 180),
+              this.localRotY * (Math.PI / 180),
+              this.localRotZ * (Math.PI / 180)
+          );
+          this.objeto.rotation.set(0, 0, 0);
+      }
+    });
+    this.editorSvc.onMapChanged.next();
+  }
 
   aplicarEscala() { 
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     this.historialSvc.registrarCambioTransform(this.objeto, () => { 
       if(entity) {
-          // 🔥 Aseguramos asignar explícitamente los valores para que el engine los tome
           entity.transform.scale = { x: this.localEscX, y: this.localEscY, z: this.localEscZ };
           entity.isDirty = true;
           entity.syncToView();

@@ -18,7 +18,6 @@ export class CoreTriggerLoaderService {
     const scene = this.motor3d.getScene();
     const shape = trigger.actionProperties?.triggerShape || trigger.properties?.triggerShape || 'cube';
     
-    // Identificar correctamente si es compuesto antes de mapear
     const isComposite = trigger.type === 'trigger_compuesto' || trigger.actionProperties?.isComposite || trigger.properties?.isComposite || false;
 
     let rawUid = trigger.uid || window.crypto.randomUUID();
@@ -28,11 +27,12 @@ export class CoreTriggerLoaderService {
     let entity = this.entityManager.getEntityByUid(baseUid);
     let mesh = scene.getMeshByName(trigger.name) as Mesh;
 
-    // 🔥 BUSCAR ESCALA Y TAMAÑO EN CUALQUIER PARTE DEL DTO PARA PREVENIR PÉRDIDA POR BACKEND
+    // 🔥 BUSCAR ESCALA, TAMAÑO Y ROTACIÓN EN CUALQUIER PARTE DEL DTO PARA PREVENIR PÉRDIDA POR BACKEND
     const sourceScale = trigger.scale || trigger.size || trigger.properties?.scale || trigger.properties?.size || { x: 1, y: 1, z: 1 };
+    const sourceRotation = trigger.rotation || trigger.properties?.rotation || trigger.actionProperties?.rotation || { x: 0, y: 0, z: 0 };
     
     const safePosition = trigger.position ? { ...trigger.position } : { x: 0, y: 0, z: 0 };
-    const safeRotation = trigger.rotation ? { ...trigger.rotation } : { x: 0, y: 0, z: 0 };
+    const safeRotation = { x: sourceRotation.x ?? 0, y: sourceRotation.y ?? 0, z: sourceRotation.z ?? 0 };
     const safeScale = { x: sourceScale.x ?? 1, y: sourceScale.y ?? 1, z: sourceScale.z ?? 1 };
 
     // Validar que no haya escalas en 0 que desaparezcan el trigger en el espacio 3D
@@ -84,7 +84,7 @@ export class CoreTriggerLoaderService {
       
       this.persistenceMapper.applyDbToEntity(trigger, entity);
       
-      // Si el trigger entrante es _on_exit, JAMÁS debe sobreescribir la escala/posición.
+      // Si el trigger entrante es _on_exit, JAMÁS debe sobreescribir la escala/posición/rotación.
       if (isIncomingExit) {
           entity.transform = oldTransform;
       } else {

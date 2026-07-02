@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, MeshBuilder } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -84,6 +85,7 @@ export class BuilderTriggerService {
       name: nombre,
       type: isComposite ? 'trigger_compuesto' : 'trigger',
       position: parentNode ? {x:0, y:0, z:0} : { x: 0, y: sizeY / 2, z: 0 },
+      rotation: { x: 0, y: 0, z: 0 }, 
       scale: { x: sizeX, y: sizeY, z: sizeZ }, 
       parentId: parentNode?.metadata?.uid || null,
       condition: isComposite ? 'on_enter' : 'on_enter',

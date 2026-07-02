@@ -47,6 +47,7 @@ export class EditorToolsService {
   private lastHoverCheckTime = 0;
   private isGizmoSyncAttached = false;
   private isInitialized = false;
+  private qPressed = false;
 
   constructor() {
     effect(() => {
@@ -85,7 +86,7 @@ export class EditorToolsService {
             this.motor3d.getScene().skipPointerMovePicking = true;
         }
       } else {
-        if (editorCam && canvas && this.ownership.getOwner() === 'EDITOR') {
+        if (editorCam && canvas && this.ownership.getOwner() === 'EDITOR' && !this.liveBuilder.isBuilding()) {
           setTimeout(() => {
               try { editorCam.attachControl(canvas, true); } catch {}
           }, 10);
@@ -223,7 +224,8 @@ export class EditorToolsService {
     });
 
     scene.onPointerObservable.add((pi) => {
-      if (this.state.showAddObjectModal()) return; 
+      // 🔥 BLOQUEO SUPREMO: Si estamos construyendo, se ignora todo lo demás.
+      if (this.liveBuilder.isBuilding() || this.state.showAddObjectModal()) return; 
 
       const canvas = this.motor3d.getEngine().getRenderingCanvas();
       const playSt = this.state.playState();
@@ -260,7 +262,6 @@ export class EditorToolsService {
       if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
         if (playSt === 'PLAYING') {
           if (isAdmin) {
-             if (this.liveBuilder.isBuilding()) return; 
              this.manejarFPSAdminSelection(canvas, isLocked);
           }
           return;
@@ -318,8 +319,6 @@ export class EditorToolsService {
             return;
           }
 
-          if (this.liveBuilder.isBuilding()) return;
-
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), activeCam);
           const rootNode = this.castRayToSelectable(ray);
           this.state.setObjetoHovereado(rootNode);
@@ -348,17 +347,29 @@ export class EditorToolsService {
     });
 
     scene.onKeyboardObservable.add((kbInfo) => {
-      if (this.state.showAddObjectModal()) return; 
+      // 🔥 BLOQUEO DE TECLAS: Si está el modal, si escribe texto, o si está construyendo fantasma
+      if (this.state.showAddObjectModal() || this.liveBuilder.isBuilding()) return; 
 
       const isAdmin = this.authSvc.isAdmin();
+      const playSt = this.state.playState();
 
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
+        
+        // 🔥 LÓGICA DE LA TECLA 'Q' PARA MODO EDITOR
+        if (kbInfo.event.key.toLowerCase() === 'q' && isAdmin && playSt === 'EDITOR') {
+             if (!this.qPressed) {
+                 this.qPressed = true;
+                 this.playerInput.isRadialMenuOpen = !this.playerInput.isRadialMenuOpen;
+                 this.eventBus.emit({ type: 'RadialMenuToggled', payload: this.playerInput.isRadialMenuOpen });
+             }
+        }
+
         if (kbInfo.event.key === 'Escape') {
-          if (this.state.playState() === 'PLAYING' && isAdmin) {
+          if (playSt === 'PLAYING' && isAdmin) {
             if (document.pointerLockElement) {
               document.exitPointerLock();
             }
-          } else if (this.state.playState() === 'EDITING_IN_GAME') {
+          } else if (playSt === 'EDITING_IN_GAME') {
             const canvas = this.motor3d.getEngine().getRenderingCanvas();
             if (canvas) {
               canvas.focus();
@@ -367,7 +378,7 @@ export class EditorToolsService {
           }
         }
 
-        if (isAdmin && (this.state.playState() === 'EDITOR' || this.state.playState() === 'EDITING_IN_GAME')) {
+        if (isAdmin && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
           if (kbInfo.event.key === '1') this.setToolMode('select');
           if (kbInfo.event.key === '2') this.setToolMode('translate');
           if (kbInfo.event.key === '3') this.setToolMode('rotate');
@@ -378,6 +389,10 @@ export class EditorToolsService {
             if (obj) this.cameraSvc.enfocarObjetoEnEditor(obj);
           }
         }
+      } else if (kbInfo.type === KeyboardEventTypes.KEYUP) {
+         if (kbInfo.event.key.toLowerCase() === 'q') {
+             this.qPressed = false;
+         }
       }
     });
 

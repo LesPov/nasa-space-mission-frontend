@@ -1,21 +1,64 @@
-<!-- src/app/components/global-timeline/tabs/timeline-prefabs-tab/timeline-prefabs-tab.html -->
-<div class="prefabs-container">
-  <div class="toolbar">
-    <input type="text" placeholder="🔍 Buscar Prefab por nombre..." [(ngModel)]="searchTerm" (input)="filterPrefabs()" class="search-input">
-    <button class="btn-refresh" (click)="loadPrefabs()" title="Actualizar lista">🔄</button>
-  </div>
-  
-  <div class="grid">
-    <div class="prefab-card" *ngFor="let p of filteredPrefabs" (click)="selectPrefab(p)" title="Click para instanciar en la escena">
-       <div class="icon">📦</div>
-       <div class="name">{{ p.name }}</div>
+
+<div class="prefabs-layout">
+  <!-- COLUMNA IZQUIERDA: LISTA DE PREFABS -->
+  <div class="prefabs-main">
+    <div class="toolbar">
+      <input type="text" placeholder="🔍 Buscar Prefab por nombre..." [(ngModel)]="searchTerm" (input)="filterPrefabs()" class="search-input">
+      <button class="btn-refresh" (click)="loadPrefabs()" title="Actualizar lista">🔄</button>
     </div>
     
-    <div *ngIf="filteredPrefabs.length === 0 && !cargando" class="empty-state">
-      No se encontraron prefabs. Selecciona un objeto en la escena y usa el Inspector para guardarlo como Prefab.
+    <div class="grid">
+      <div class="prefab-card" 
+           *ngFor="let p of filteredPrefabs" 
+           [class.selected]="selectedPrefab?.id === p.id"
+           (click)="selectPrefab(p)">
+         <div class="icon">📦</div>
+         <div class="name" [title]="p.name">{{ p.name }}</div>
+      </div>
+      
+      <div *ngIf="filteredPrefabs.length === 0 && !cargando" class="empty-state">
+        No se encontraron prefabs. Selecciona un objeto en la escena y usa el Inspector para guardarlo como Prefab.
+      </div>
+      <div *ngIf="cargando" class="empty-state" style="color: #60a5fa;">
+        Cargando biblioteca de prefabs...
+      </div>
     </div>
-    <div *ngIf="cargando" class="empty-state" style="color: #60a5fa;">
-      Cargando biblioteca de prefabs...
+  </div>
+
+  <!-- COLUMNA DERECHA: MINI INSPECTOR DE PREFAB -->
+  <div class="prefab-inspector" *ngIf="selectedPrefab">
+    <div class="inspector-header">
+      <button class="btn-close" (click)="selectedPrefab = null">×</button>
+      <h3>{{ selectedPrefab.name }}</h3>
+      <span>ID: {{ selectedPrefab.id }}</span>
+    </div>
+    
+    <div class="inspector-body">
+      
+      <div class="info-box">
+        <h4>Resumen de Componentes</h4>
+        <div class="badge-list">
+           <span class="badge" *ngFor="let badge of getResumen(selectedPrefab)">{{ badge }}</span>
+        </div>
+      </div>
+
+      <div class="info-box" *ngIf="selectedPrefab.type">
+        <h4>Base Geometry</h4>
+        <div style="font-size: 11px; color: #aaa;">
+          Tipo: <strong style="color: #fff;">{{ selectedPrefab.type }}</strong>
+        </div>
+      </div>
+
+      <div style="flex: 1;"></div> <!-- Empuja los botones hacia abajo -->
+
+      <button class="btn-action btn-spawn" (click)="instanciarEnEscena(selectedPrefab)">
+        ➕ Instanciar en Escena
+      </button>
+
+      <button class="btn-action btn-delete" (click)="eliminarPrefab(selectedPrefab.id)">
+        🗑️ Eliminar Prefab
+      </button>
+
     </div>
   </div>
 </div>

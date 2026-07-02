@@ -28,9 +28,7 @@ export class LiveBuilderService {
             const scene = this.motor3d.getScene();
             const camera = this.ownership.getCamera();
             
-            // 🔥 FIX 2: SOLUCIÓN AL FANTASMA DEL PREFAB GIGANTE
-            // Le forzamos la escala real extraída del Prefab al objeto Payload 
-            // antes de mandarlo al PlacementController para que lo respete.
+            // Forzar escala real extraída del Prefab
             if (e.payload.properties?.prefabHierarchy?.[0]?.scale) {
                 const s = e.payload.properties.prefabHierarchy[0].scale;
                 e.payload.scale = { ...s };
@@ -38,23 +36,30 @@ export class LiveBuilderService {
             }
 
             if (scene && camera) {
+                // 🔥 MODO EDITOR: Congelar la cámara del editor para que no gire mientras movemos el ratón
+                this.detachEditorCamera();
+
                 this.placementCtrl.start(
                     e.payload, 
                     scene, 
                     camera, 
-                    () => this.eventBus.emit({ type: 'RadialMenuToggled', payload: false }),
+                    () => {
+                        // OnCancel / OnStop
+                        this.eventBus.emit({ type: 'RadialMenuToggled', payload: false });
+                        this.restoreEditorCamera(); // Devolver el control a la cámara
+                    },
                     () => this.state.showAddObjectModal(),
                     () => this.context.activePlayerEntity()
                 );
             }
         } else {
-            this.placementCtrl.stop(this.motor3d.getScene());
+            this.stopBuilding();
         }
       }
     });
 
     window.addEventListener('blur', () => {
-        this.placementCtrl.stop(this.motor3d.getScene());
+        this.stopBuilding();
         this.eventBus.emit({ type: 'RadialMenuToggled', payload: false });
     });
   }
@@ -63,11 +68,43 @@ export class LiveBuilderService {
     return this.placementCtrl.isBuilding;
   }
 
+  public stopBuilding(): void {
+    if (this.placementCtrl.isBuilding) {
+        this.placementCtrl.stop(this.motor3d.getScene());
+        this.restoreEditorCamera();
+    }
+  }
+
   public destroy(): void {
-    this.placementCtrl.stop(this.motor3d.getScene());
+    this.stopBuilding();
     if (this.sub) {
         this.sub.unsubscribe();
         this.sub = null;
+    }
+  }
+
+  // ==============================================================
+  // UTILIDADES PARA CONGELAR/DESCONGELAR LA CÁMARA DEL EDITOR
+  // ==============================================================
+  private detachEditorCamera(): void {
+    if (this.state.playState() === 'EDITOR' || this.state.playState() === 'EDITING_IN_GAME') {
+        const editorCam = this.motor3d.getEditorCamera();
+        if (editorCam) {
+            editorCam.detachControl();
+        }
+    }
+  }
+
+  private restoreEditorCamera(): void {
+    if (this.state.playState() === 'EDITOR' || this.state.playState() === 'EDITING_IN_GAME') {
+        const editorCam = this.motor3d.getEditorCamera();
+        const canvas = this.motor3d.getEngine().getRenderingCanvas();
+        if (editorCam && canvas) {
+            // Leve delay para que el Clic Derecho de cancelar no mueva la cámara de golpe
+            setTimeout(() => {
+               try { editorCam.attachControl(canvas, true); } catch(e) {}
+            }, 50);
+        }
     }
   }
 }

@@ -115,41 +115,19 @@ export class FogOrchestratorService implements IUpdatable {
         const renderDistance = isBW ? (isFPS ? fog.renderDistanceFpsBW : fog.renderDistanceTpsBW) : (isFPS ? fog.renderDistanceFPS : fog.renderDistanceTPS);
         activeLevels = isBW ? (isFPS ? fog.levelsFpsBW : fog.levelsTpsBW) : (isFPS ? fog.levelsFPS : fog.levelsTPS);
 
-        const activeCam = this.ownership.getCamera();
-        let distCamToPlayer = 0;
-        
-        if (activeCam && targetPlayer) {
-            const dx = activeCam.globalPosition.x - targetPlayer.getAbsolutePosition().x;
-            const dy = activeCam.globalPosition.y - targetPlayer.getAbsolutePosition().y;
-            const dz = activeCam.globalPosition.z - targetPlayer.getAbsolutePosition().z;
-            distCamToPlayer = Math.sqrt(dx*dx + dy*dy + dz*dz);
-        }
-
-        if (isPlaying) {
-            distCamToPlayer = Math.min(distCamToPlayer, 8);
-        }
-
-        const renderMaxZ = (Number(renderDistance) || 150) + distCamToPlayer;
-
+        // 🔥 FIX RENDIMIENTO: Ya NO tocamos la maxZ de la cámara. 
+        // BabylonJS sufre caídas de FPS al recalcular el Frustum dinámicamente si maxZ cambia en cada frame.
+        // La cámara renderiza siempre a la lejanía máxima, pero la niebla lo oculta visualmente.
         if (this.firstFrame) {
-            if (isPlaying) {
-                this.motor3d.getPlayerCameraFPS().maxZ = renderMaxZ;
-                this.motor3d.getPlayerCameraTPS().maxZ = renderMaxZ;
-                this.motor3d.getEditorCamera().maxZ = renderMaxZ;
-            } else {
-                this.motor3d.getEditorCamera().maxZ = 500000;
-            }
-        } else {
-            if (isPlaying) {
-                this.motor3d.getEditorCamera().maxZ += (renderMaxZ - this.motor3d.getEditorCamera().maxZ) * 0.05;
-                this.motor3d.getPlayerCameraFPS().maxZ += (renderMaxZ - this.motor3d.getPlayerCameraFPS().maxZ) * 0.05;
-                this.motor3d.getPlayerCameraTPS().maxZ += (renderMaxZ - this.motor3d.getPlayerCameraTPS().maxZ) * 0.05;
-            } else {
-                this.motor3d.getEditorCamera().maxZ = 500000; // En editor, no queremos que la cámara principal se recorte
-            }
+            this.motor3d.getPlayerCameraFPS().maxZ = 500000;
+            this.motor3d.getPlayerCameraTPS().maxZ = 500000;
+            this.motor3d.getEditorCamera().maxZ = 500000;
         }
 
+        const renderMaxZ = (Number(renderDistance) || 150);
         shadowLimit = renderMaxZ;
+        
+        // Mantenemos la niebla nativa de BabylonJS pero sin afectar la cámara
         this.curStart = isPlaying ? (renderMaxZ * 0.3) : (renderMaxZ * 0.8);
         this.curEnd = renderMaxZ;
     } else {
@@ -161,11 +139,8 @@ export class FogOrchestratorService implements IUpdatable {
             this.motor3d.getPlayerCameraFPS().maxZ = 500000;
             this.motor3d.getPlayerCameraTPS().maxZ = 500000;
             this.motor3d.getEditorCamera().maxZ = 500000;
-        } else {
-            this.motor3d.getEditorCamera().maxZ += (500000 - this.motor3d.getEditorCamera().maxZ) * 0.05;
-            this.motor3d.getPlayerCameraFPS().maxZ += (500000 - this.motor3d.getPlayerCameraFPS().maxZ) * 0.05;
-            this.motor3d.getPlayerCameraTPS().maxZ += (500000 - this.motor3d.getPlayerCameraTPS().maxZ) * 0.05;
         }
+        
         this.curStart = 500000;
         this.curEnd = 500000;
     }

@@ -1,4 +1,4 @@
-
+// src/app/core/engine/runtime/shadows/shadow-orchestrator.service.ts
 import { Injectable, inject } from '@angular/core';
 import { DirectionalLight, Vector3, CascadedShadowGenerator, ShadowGenerator, Scene, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -6,6 +6,7 @@ import { EntityManagerService } from '../../entities/entity-manager.service';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
+import { GameContextService } from '../../session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
 export class ShadowOrchestratorService implements IUpdatable {
@@ -14,19 +15,29 @@ export class ShadowOrchestratorService implements IUpdatable {
   private entityManager = inject(EntityManagerService);
   private ownership = inject(CameraOwnershipService);
   private worldSettings = inject(WorldSettingsService);
+  private context = inject(GameContextService); 
 
   private mainSun: DirectionalLight | null = null;
   private shadowGenerator: CascadedShadowGenerator | null = null;
 
+  // 🔥 OBTIENE LA POSICIÓN DEL JUGADOR (NO DE LA CÁMARA)
+  private getReferencePosition(): Vector3 {
+      const playerEntity = this.context.activePlayerEntity();
+      if (playerEntity && playerEntity.view) {
+          return playerEntity.view.getAbsolutePosition();
+      }
+      const camera = this.ownership.getCamera() || this.motor3d.getEditorCamera();
+      return camera ? camera.globalPosition : Vector3.Zero();
+  }
+
   public update(dtMs: number): void {
      const scene = this.motor3d.getScene();
-     const camera = this.ownership.getCamera();
-     if (!scene || !camera || !this.mainSun) return;
+     if (!scene || !this.mainSun) return;
 
-     // 🔥 FIX SHADOW LAG: Se adhiere la luz del Sol estrictamente a la cámara en cada frame.
-     // No se usan Lerps. Esto elimina los "saltos" en las sombras cuando el jugador camina.
-     this.mainSun.position.copyFrom(camera.globalPosition);
-     this.mainSun.position.subtractInPlace(this.mainSun.direction.scale(200));
+     // 🔥 El sol sigue al jugador. Evita que las sombras parpadeen si la cámara se aleja
+     const refPos = this.getReferencePosition();
+     this.mainSun.position.copyFrom(refPos);
+     this.mainSun.position.subtractInPlace(this.mainSun.direction.scale(100));
   }
 
   public asignarObjetosASombrasDeLuces(): void {
@@ -44,15 +55,24 @@ export class ShadowOrchestratorService implements IUpdatable {
     }
 
     if (!this.shadowGenerator) {
-       // 🔥 OPTIMIZACIÓN: Las Cascaded Shadows son excelentes, pero el cálculo automático causa tirones.
-       this.shadowGenerator = new CascadedShadowGenerator(1024, this.mainSun);
+       // 🔥 SOMBRAS FULL HD (4096) EN JUEGO
+       const isEditor = this.context.mode() === 'EDITOR';
+       const shadowRes = isEditor ? 1024 : 4096; 
+
+       this.shadowGenerator = new CascadedShadowGenerator(shadowRes, this.mainSun);
        this.shadowGenerator.usePercentageCloserFiltering = true;
-       this.shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_LOW;
-       this.shadowGenerator.shadowMaxZ = 150; 
-       this.shadowGenerator.setDarkness(0.5);
+       this.shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH;
        
-       // 🔥 FIX TIRONES CÁMARA: Apagado el recálculo asíncrono para mantener 60fps estables.
+       // 🔥 FIX: Bias súper bajo para que las sombras conecten perfectamente con los objetos en el suelo.
+       this.shadowGenerator.bias = 0.002;
+       this.shadowGenerator.normalBias = 0.01;
+
+       // 🔥 RANGO SÚPER AMPLIO: 80 Metros de radio alrededor del jugador
+       this.shadowGenerator.shadowMaxZ = 80; 
+       
+       this.shadowGenerator.setDarkness(0.65);
        this.shadowGenerator.autoCalcDepthBounds = false; 
+       this.shadowGenerator.stabilizeCascades = true; 
     }
 
     const renderList = this.shadowGenerator.getShadowMap()?.renderList;
@@ -63,15 +83,20 @@ export class ShadowOrchestratorService implements IUpdatable {
         for (let i = 0; i < entities.length; i++) {
            const e = entities[i];
            if (e.view && e.view instanceof AbstractMesh) {
-               const mesh = e.view;
-               // Solo los props sólidos o personajes proyectan sombras. Pisos excluidos para evitar bugs.
-               if (e.characterConfig || (e.visual?.isSolid && e.type !== 'plane' && e.type !== 'image_plane' && !e.type.startsWith('light_'))) {
-                   renderList.push(mesh);
-                   mesh.getChildMeshes().forEach(m => renderList.push(m));
+               // 🔥 INCLUYE PRIMITIVAS (Cubos, Esferas, Pisos "Plane")
+               if (e.characterConfig || (e.visual?.isSolid && e.type !== 'image_plane' && !e.type.startsWith('light_'))) {
+                   
+                   // 🔥 FIX: Función recursiva que garantiza que todo (Padre e hijos) castée y reciba sombra
+                   const processMeshForShadows = (m: AbstractMesh) => {
+                       if (m.isVisible && m.isEnabled()) {
+                           renderList.push(m);
+                           m.receiveShadows = true;
+                       }
+                   };
+
+                   processMeshForShadows(e.view);
+                   e.view.getChildMeshes(false).forEach(processMeshForShadows);
                }
-               // Todos reciben las sombras.
-               mesh.receiveShadows = true;
-               mesh.getChildMeshes().forEach(m => m.receiveShadows = true);
            }
         }
     }

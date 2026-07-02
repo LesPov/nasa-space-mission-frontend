@@ -72,8 +72,13 @@ export class EditorOrchestratorService {
   private mapChangeSub!: Subscription;
   private snapshotMemoria: any = null;
 
-  public initialize(): void {
+ public initialize(): void {
     this.cargarEpisodios();
+
+    // 🔥 FIX: Activar el sistema de Ghost Preview / colocación en tiempo real.
+    // Sin esto, el evento 'AssetSelectedForBuild' nunca es escuchado y el 
+    // Ghost jamás se instancia al elegir un prefab desde el menú radial o el Timeline.
+    this.liveBuilderSvc.initialize();
 
     this.reqPlatformSub = this.editorSvc.onRequestPlatformChange.subscribe(id => {
       if (this.editorSvc.escenaIdActiva() !== id && this.stateSvc.playState() === 'EDITOR') {
@@ -105,15 +110,16 @@ export class EditorOrchestratorService {
         console.error('Error durante autoguardado:', e);
       }
     });
-  }
+}
 
-  public destroy(): void {
+public destroy(): void {
     if (this.fpsInterval) clearInterval(this.fpsInterval);
     if (this.autoSaveSub) this.autoSaveSub.unsubscribe();
     if (this.eventBusSub) this.eventBusSub.unsubscribe();
     if (this.reqPlatformSub) this.reqPlatformSub.unsubscribe();
     if (this.mapChangeSub) this.mapChangeSub.unsubscribe();
-  }
+    this.liveBuilderSvc.destroy(); // 🔥 FIX: limpieza simétrica al salir del editor
+}
 
   public cargarEpisodios(): void {
     this.epiApiSvc.obtenerEpisodios().subscribe({

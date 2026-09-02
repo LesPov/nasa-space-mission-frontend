@@ -1,3 +1,4 @@
+// src/app/core/engine/runtime/rules/interactable-rules.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { GameEntity } from '../../entities/game.entity';

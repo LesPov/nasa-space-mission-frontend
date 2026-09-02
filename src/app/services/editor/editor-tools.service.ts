@@ -1,3 +1,4 @@
+// src/app/services/editor/editor-tools.service.ts
 
 import { Injectable, inject, effect } from '@angular/core';
 import {
@@ -118,7 +119,7 @@ export class EditorToolsService {
   private castRayToSelectable(ray: Ray): AbstractMesh | null {
     const scene = this.motor3d.getScene();
     const jugador = this.state.jugadorActivo;
-    const isAdmin = this.gameContext.authorityProfile().canSelectHidden;
+    const profile = this.gameContext.authorityProfile();
     const playSt = this.state.playState();
 
     const hit = scene.pickWithRay(ray, (mesh) => {
@@ -136,7 +137,7 @@ export class EditorToolsService {
       const entityMesh = this.entityManager.getEntityByMesh(baseNode);
 
       if (entityMesh?.type === 'trigger' || entityMesh?.type === 'trigger_compuesto') {
-          if (!isAdmin) return false;
+          if (!profile.canSelectHidden) return false;
           if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') return false;
       }
 
@@ -224,12 +225,12 @@ export class EditorToolsService {
     });
 
     scene.onPointerObservable.add((pi) => {
-      // 🔥 BLOQUEO SUPREMO: Si estamos construyendo, se ignora todo lo demás.
+      // 🔥 BLOQUEO: Si estamos construyendo, se ignora todo lo demás.
       if (this.liveBuilder.isBuilding() || this.state.showAddObjectModal()) return; 
 
       const canvas = this.motor3d.getEngine().getRenderingCanvas();
       const playSt = this.state.playState();
-      const isAdmin = this.gameContext.authorityProfile().canSelectHidden;
+      const profile = this.gameContext.authorityProfile();
       const isLocked = !!document.pointerLockElement;
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
@@ -237,7 +238,7 @@ export class EditorToolsService {
       if (this.playerInput.isRadialMenuOpen) return;
 
       if (pi.type === PointerEventTypes.POINTERDOUBLETAP && pi.event.button === 0) {
-        if (isAdmin) {
+        if (profile.canUseAdminFeatures || profile.canEdit) {
           if (playSt === 'EDITOR') {
             const activeCam = this.ownership.getCamera();
             if (activeCam) {
@@ -261,7 +262,7 @@ export class EditorToolsService {
 
       if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
         if (playSt === 'PLAYING') {
-          if (isAdmin) {
+          if (profile.canSelect) {
              this.manejarFPSAdminSelection(canvas, isLocked);
           }
           return;
@@ -269,7 +270,7 @@ export class EditorToolsService {
       }
 
       if (pi.type === PointerEventTypes.POINTERTAP && pi.event.button === 0) {
-        if (isAdmin && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
+        if (profile.canSelect && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
           const activeCam = this.ownership.getCamera();
           if (activeCam) {
               const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), activeCam);
@@ -309,7 +310,7 @@ export class EditorToolsService {
              return; 
           }
 
-          if (!isAdmin) {
+          if (!profile.canSelect) {
             this.state.setObjetoHovereado(null);
             return;
           }
@@ -325,7 +326,7 @@ export class EditorToolsService {
           return;
         }
 
-        if (isAdmin && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
+        if (profile.canSelect && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
           if (this.state.ratonBloqueado()) return;
 
           const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), activeCam);
@@ -347,16 +348,16 @@ export class EditorToolsService {
     });
 
     scene.onKeyboardObservable.add((kbInfo) => {
-      // 🔥 BLOQUEO DE TECLAS: Si está el modal, si escribe texto, o si está construyendo fantasma
+      // 🔥 BLOQUEO DE TECLAS
       if (this.state.showAddObjectModal() || this.liveBuilder.isBuilding()) return; 
 
-      const isAdmin = this.gameContext.authorityProfile().canSelectHidden;
+      const profile = this.gameContext.authorityProfile();
       const playSt = this.state.playState();
 
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
         
-        // 🔥 LÓGICA DE LA TECLA 'Q' PARA MODO EDITOR
-        if (kbInfo.event.key.toLowerCase() === 'q' && isAdmin && playSt === 'EDITOR') {
+        // 🔥 LÓGICA DE LA TECLA 'Q'
+        if (kbInfo.event.key.toLowerCase() === 'q' && profile.canViewDebug && playSt === 'EDITOR') {
              if (!this.qPressed) {
                  this.qPressed = true;
                  this.playerInput.isRadialMenuOpen = !this.playerInput.isRadialMenuOpen;
@@ -365,7 +366,7 @@ export class EditorToolsService {
         }
 
         if (kbInfo.event.key === 'Escape') {
-          if (playSt === 'PLAYING' && isAdmin) {
+          if (playSt === 'PLAYING' && profile.canUseAdminFeatures) {
             if (document.pointerLockElement) {
               document.exitPointerLock();
             }
@@ -378,7 +379,7 @@ export class EditorToolsService {
           }
         }
 
-        if (isAdmin && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
+        if (profile.canEdit && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
           if (kbInfo.event.key === '1') this.setToolMode('select');
           if (kbInfo.event.key === '2') this.setToolMode('translate');
           if (kbInfo.event.key === '3') this.setToolMode('rotate');

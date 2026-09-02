@@ -19,7 +19,6 @@ import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/cam
 import { GameContextService } from '../../../core/engine/session/game-context.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
-import { GameMode } from '../../../core/engine/session/game-mode.model'; 
 import { EditorCinematicService } from '../../../services/editor/editor-cinematic.service';
 import { EditorLiveSyncService } from '../../../services/editor/editor-live-sync.service';
 
@@ -51,7 +50,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private gameStateSvc = inject(GameStateService); 
   private adminFreeCam = inject(AdminFreeCameraService);
   private ownership = inject(CameraOwnershipService);
-  private gameContext = inject(GameContextService);
+  public gameContext = inject(GameContextService);
   private entityManager = inject(EntityManagerService);
   private worldSettingsSvc = inject(WorldSettingsService);
   private windowSync = inject(WindowSyncService);
@@ -78,8 +77,9 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private sub!: Subscription;
   private fpsInterval: any;
 
-  public get isAdmin(): boolean {
-    return this.authSvc.isAdmin();
+  // Propiedad de autoridad para el template UI
+  public get canViewDebug(): boolean {
+    return this.gameContext.authorityProfile().canViewDebug && !this.isDetached;
   }
 
   @HostListener('window:keydown', ['$event'])
@@ -92,7 +92,8 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       }
     }
     
-    if (event.code === 'KeyC' && event.ctrlKey && this.isAdmin) {
+    // Función administrativa de cámara libre basada en la autoridad del engine
+    if (event.code === 'KeyC' && event.ctrlKey && this.gameContext.authorityProfile().canUseAdminFeatures) {
       event.preventDefault();
       const canvas = this.motor3dSvc.getEngine()?.getRenderingCanvas();
       if (canvas) {
@@ -104,10 +105,14 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   ngOnInit() {
     this.route.queryParams.subscribe(params => {
       this.isDetached = params['detached'] === 'true';
-      this.gameContext.setMode(this.isAdmin && !this.isDetached ? GameMode.PREVIEW_ADMIN : GameMode.FINAL_USER);
+      
+      // La capa de aplicación traduce la sesión a un contexto de ejecución explícito en el Engine
+      const userIsAdmin = this.authSvc.isAdmin();
+      const execContext = (userIsAdmin && !this.isDetached) ? 'ADMIN_PREVIEW' : 'PLAYER_PREVIEW';
+      this.gameContext.setupContext(execContext, { cameraView: 'FPS' });
     });
 
-    if (this.isAdmin) {
+    if (this.gameContext.authorityProfile().canUseAdminFeatures) {
       this.liveBuilderSvc.initialize();
     }
 
@@ -255,7 +260,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
     this.runtime.shutdownProductionGame();
     
-    if (this.isAdmin) {
+    if (this.gameContext.authorityProfile().canUseAdminFeatures) {
        this.liveBuilderSvc.destroy(); 
        this.router.navigate(['/admin/editor-escena']);
     } else {

@@ -1,3 +1,4 @@
+// src/app/services/editor/editor-orchestrator.service.ts
 
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
@@ -17,7 +18,6 @@ import { EditorPlayModeService } from './editor-play-mode.service';
 import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
-import { AuthService } from '../../core/services/auth';
 import { GameContextService } from '../../core/engine/session/game-context.service'; 
 import { GameMode } from '../../core/engine/session/game-mode.model'; 
 import { EditorCinematicService } from './editor-cinematic.service';
@@ -42,7 +42,6 @@ export class EditorOrchestratorService {
   private runtime = inject(RuntimeEngineService);
   private entityManager = inject(EntityManagerService);
   private inputOrchestrator = inject(InputOrchestratorService);
-  private authSvc = inject(AuthService);
   private gameContext = inject(GameContextService);
   private cinematicSvc = inject(EditorCinematicService);
   private liveBuilderSvc = inject(LiveBuilderService);
@@ -70,12 +69,10 @@ export class EditorOrchestratorService {
   private mapChangeSub!: Subscription;
   private snapshotMemoria: any = null;
 
- public initialize(): void {
+  public initialize(): void {
     this.cargarEpisodios();
 
-    // 🔥 FIX: Activar el sistema de Ghost Preview / colocación en tiempo real.
-    // Sin esto, el evento 'AssetSelectedForBuild' nunca es escuchado y el 
-    // Ghost jamás se instancia al elegir un prefab desde el menú radial o el Timeline.
+    // 🔥 Activar el sistema de Ghost Preview / colocación en tiempo real.
     this.liveBuilderSvc.initialize();
 
     this.reqPlatformSub = this.editorSvc.onRequestPlatformChange.subscribe(id => {
@@ -108,16 +105,16 @@ export class EditorOrchestratorService {
         console.error('Error durante autoguardado:', e);
       }
     });
-}
+  }
 
-public destroy(): void {
+  public destroy(): void {
     if (this.fpsInterval) clearInterval(this.fpsInterval);
     if (this.autoSaveSub) this.autoSaveSub.unsubscribe();
     if (this.eventBusSub) this.eventBusSub.unsubscribe();
     if (this.reqPlatformSub) this.reqPlatformSub.unsubscribe();
     if (this.mapChangeSub) this.mapChangeSub.unsubscribe();
-    this.liveBuilderSvc.destroy(); // 🔥 FIX: limpieza simétrica al salir del editor
-}
+    this.liveBuilderSvc.destroy(); 
+  }
 
   public cargarEpisodios(): void {
     this.epiApiSvc.obtenerEpisodios().subscribe({
@@ -345,7 +342,7 @@ public destroy(): void {
     this.runtime.stopTestSession();
     this.gameState.exitSandbox();
 
-    const isDebugMode = this.gameContext.authorityProfile().canSelectHidden;
+    const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
 
     if (this.snapshotMemoria) {
         const currentId = this.editorSvc.escenaIdActiva();
@@ -413,7 +410,7 @@ public destroy(): void {
         this.snapshotMemoria = null;
     }
 
-    this.playModeSvc.restaurarEscenaPostTest(isDebugMode);
+    this.playModeSvc.restaurarEscenaPostTest(canSelectHidden);
     
     this.cargandoEscena.set(false);
     this.revisarSiEsJugable(); 

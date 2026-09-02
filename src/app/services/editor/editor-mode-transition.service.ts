@@ -1,16 +1,17 @@
+// src/app/services/editor/editor-mode-transition.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { EditorStateService } from './editor-state.service';
 import { GameContextService } from '../../core/engine/session/game-context.service';
-import { GameMode } from '../../core/engine/session/game-mode.model';
+import { CameraViewMode } from '../../core/engine/session/game-context.model';
 
 @Injectable({ providedIn: 'root' })
 export class EditorModeTransitionService {
   private state = inject(EditorStateService);
   private gameContext = inject(GameContextService);
 
-  public beginTestLive(): void {
-    this.gameContext.setMode(GameMode.TEST_LIVE);
+  public beginTestLive(vista: CameraViewMode = 'FPS'): void {
+    this.gameContext.setEditorSubmode(vista === 'TPS' ? 'PLAYTEST_TPS' : 'PLAYTEST_FPS');
     this.gameContext.setTransitioning(true);
     this.state.setObjetoHovereado(null);
   }
@@ -20,7 +21,7 @@ export class EditorModeTransitionService {
   }
 
   public stopTestLive(): void {
-    this.gameContext.setMode(GameMode.EDITOR);
+    this.gameContext.setEditorSubmode('EDITING');
     this.gameContext.setTransitioning(false);
     this.gameContext.setInteracting(false);
     this.state.setObjetoHovereado(null);
@@ -35,17 +36,17 @@ export class EditorModeTransitionService {
 
   public finishPauseToLiveEdit(): void {
     this.gameContext.setTransitioning(false);
-    this.gameContext.setMode(GameMode.EDITING_IN_GAME);
+    this.gameContext.setEditorSubmode('EDITING_IN_GAME');
   }
 
-  public beginResumeToTestLive(): void {
+  public beginResumeToTestLive(vista: CameraViewMode = 'FPS'): void {
     this.gameContext.setTransitioning(true);
     this.state.seleccionarObjeto(null);
   }
 
-  public finishResumeToTestLive(): void {
+  public finishResumeToTestLive(vista: CameraViewMode = 'FPS'): void {
     this.gameContext.setTransitioning(false);
-    this.gameContext.setMode(GameMode.TEST_LIVE);
+    this.gameContext.setEditorSubmode(vista === 'TPS' ? 'PLAYTEST_TPS' : 'PLAYTEST_FPS');
   }
 
   public enterInteraction(): void {
@@ -57,7 +58,7 @@ export class EditorModeTransitionService {
   }
 
   public resetToEditor(): void {
-    this.gameContext.setMode(GameMode.EDITOR);
+    this.gameContext.setEditorSubmode('EDITING');
     this.gameContext.setTransitioning(false);
     this.gameContext.setInteracting(false);
   }

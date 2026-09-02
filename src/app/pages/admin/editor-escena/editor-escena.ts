@@ -1,4 +1,3 @@
-
 // src/app/pages/admin/editor-escena/editor-escena.ts
 
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
@@ -29,7 +28,6 @@ import { AddObjectModalService } from '../../../services/editor/modals/add-objec
 import { MissionModalService } from '../../../services/editor/modals/mission-modal.service';
 import { AuthService } from '../../../core/services/auth';
 import { GameContextService } from '../../../core/engine/session/game-context.service'; 
-import { GameMode } from '../../../core/engine/session/game-mode.model'; 
 import { EditorOrchestratorService } from '../../../services/editor/editor-orchestrator.service';
 import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
 
@@ -40,7 +38,7 @@ import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engin
     MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule,
     MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading, UiMission, UiRadialMenu 
   ],
-  templateUrl:'./editor-escena.html',
+  templateUrl: './editor-escena.html',
   styleUrl: './editor-escena.css', 
 })
 export class EditorEscena implements OnInit, OnDestroy {
@@ -113,7 +111,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
-    this.gameContext.setMode(GameMode.EDITOR); 
+    // Configuración explícita del contexto del Engine al entrar al Editor
+    this.gameContext.setupContext('EDITOR', { submode: 'EDITING', cameraView: 'FPS' }); 
     this.addObjSvc.cargarAssets();
     if (this.esAdmin) {
        this.orchestrator.initialize();

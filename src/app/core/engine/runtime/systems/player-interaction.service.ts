@@ -1,3 +1,4 @@
+// src/app/core/engine/runtime/systems/player-interaction.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Ray } from '@babylonjs/core';
@@ -215,7 +216,6 @@ export class PlayerInteractionService implements IUpdatable {
         }
         
         if (rootEntity && rootEntity.view) {
-            // 🔥 DOBLE BLOQUEO DE TRIGGERS: Jamás permitimos que un Trigger sea preseleccionado por la cámara del jugador
             if (rootEntity.type === 'trigger' || rootEntity.type === 'trigger_compuesto') {
                 return;
             }
@@ -226,10 +226,10 @@ export class PlayerInteractionService implements IUpdatable {
             const interactMax = rootEntity.interaction.interactDistanceFPS ?? 3.0;
             const isInteractable = this.interactRules.isInteractable(rootEntity);
             
-            const isAdmin = this.context.isDebugMode();
+            const profile = this.context.authorityProfile();
             let canAdminSelect = false;
             
-            if (isAdmin && rootEntity.visual?.isSelectable !== false) {
+            if (profile.canSelect && rootEntity.visual?.isSelectable !== false) {
                 const rangeCfg = entity.selectionRange?.fpsAdminMax ?? 10000;
                 if (selectionDistance <= rangeCfg) {
                     canAdminSelect = true;

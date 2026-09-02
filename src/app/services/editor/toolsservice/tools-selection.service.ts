@@ -1,3 +1,4 @@
+// src/app/services/editor/toolsservice/tools-selection.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Ray, Vector3, Tags } from '@babylonjs/core';
@@ -53,9 +54,9 @@ export class ToolsSelectionService {
   }
 
   public getSelectionMaxDistance(): number {
-    const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
+    const profile = this.gameContext.authorityProfile();
     const range = this.getSelectionRangeConfig();
-    return canSelectHidden ? range.fpsAdminMax : range.fpsUserMax;
+    return profile.canSelectHidden ? range.fpsAdminMax : range.fpsUserMax;
   }
 
   private getMeshSelectionPoint(mesh: AbstractMesh): Vector3 {
@@ -102,7 +103,7 @@ export class ToolsSelectionService {
     const playSt = this.state.playState();
     const jugador = this.state.jugadorActivo;
     const entityPlayer = jugador ? this.entityManager.getEntityByMesh(jugador) : null;
-    const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
+    const profile = this.gameContext.authorityProfile();
 
     const hit = scene.pickWithRay(ray, (m) => {
       if (!m.isVisible && !Tags.MatchesQuery(m, "cinematic_proxy")) return false;
@@ -121,6 +122,7 @@ export class ToolsSelectionService {
       
       const entity = this.entityManager.getEntityByMesh(m);
       if (entity?.type === 'trigger' || entity?.type === 'trigger_compuesto') {
+          if (!profile.canSelectHidden) return false;
           if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') return false;
       }
       return true;
@@ -138,16 +140,16 @@ export class ToolsSelectionService {
 
     const rootNode = this.state.encontrarRaiz(picked);
     if (!(rootNode instanceof AbstractMesh)) return null;
-    if (this.esTriggerMesh(rootNode) && !canSelectHidden) return null;
+    if (this.esTriggerMesh(rootNode) && !profile.canSeeTriggers) return null;
 
     if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') {
-      if (!canSelectHidden) return null;
+      if (!profile.canSelect) return null;
       if (!this.canSelectByDistance(ray, rootNode, hit)) return null;
       return rootNode;
     }
 
     if (playSt === 'EDITOR') {
-      if (!canSelectHidden) return null;
+      if (!profile.canSelect) return null;
       if (!this.puedeTomarseParaSeleccion(rootNode)) return null;
       return rootNode;
     }

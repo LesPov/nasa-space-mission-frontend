@@ -1,36 +1,80 @@
+// src/app/core/engine/session/authority-profile.model.ts
 
 export interface AuthorityProfile {
+  canSelect: boolean;
   canEdit: boolean;
+  canMove: boolean;
+  canDelete: boolean;
+  canConfigure: boolean;
   canSelectHidden: boolean;
+  canSeeTriggers: boolean;
+  canInteract: boolean;
+  canPlay: boolean;
+  canUseAdminFeatures: boolean;
   canUseGizmos: boolean;
   canViewDebug: boolean;
-  canFly: boolean;
-  canSeeTriggers: boolean;
 }
 
-export const PROFILES = {
+export const PROFILES: {
+  ADMIN_EDITING: AuthorityProfile;
+  ADMIN_PLAYING: AuthorityProfile;
+  ADMIN_PREVIEW: AuthorityProfile;
+  PLAYER: AuthorityProfile;
+} = {
   ADMIN_EDITING: {
+    canSelect: true,
     canEdit: true,
+    canMove: true,
+    canDelete: true,
+    canConfigure: true,
     canSelectHidden: true,
+    canSeeTriggers: true,
+    canInteract: false,
+    canPlay: false,
+    canUseAdminFeatures: true,
     canUseGizmos: true,
-    canViewDebug: true,
-    canFly: true,
-    canSeeTriggers: true
-  } as AuthorityProfile,
+    canViewDebug: true
+  },
   ADMIN_PLAYING: {
-    canEdit: false,
+    canSelect: true, // Permite transición a Edición In-Game durante Playtest
+    canEdit: true,
+    canMove: true,
+    canDelete: false,
+    canConfigure: true,
     canSelectHidden: true,
-    canUseGizmos: false,
-    canViewDebug: true,
-    canFly: true,
-    canSeeTriggers: true
-  } as AuthorityProfile,
-  PLAYER: {
-    canEdit: false,
+    canSeeTriggers: true,
+    canInteract: true,
+    canPlay: true,
+    canUseAdminFeatures: true,
+    canUseGizmos: true,
+    canViewDebug: true
+  },
+  ADMIN_PREVIEW: {
+    canSelect: false,
+    canEdit: false,        // Admin Preview NO es Editor: no edita geometría en vivo
+    canMove: false,
+    canDelete: false,
+    canConfigure: false,
     canSelectHidden: false,
+    canSeeTriggers: false,
+    canInteract: true,
+    canPlay: true,
+    canUseAdminFeatures: true, // Permite AdminFreeCamera (Ctrl+C), etc.
     canUseGizmos: false,
-    canViewDebug: false,
-    canFly: false,
-    canSeeTriggers: false
-  } as AuthorityProfile
+    canViewDebug: true
+  },
+  PLAYER: {
+    canSelect: false,
+    canEdit: false,
+    canMove: false,
+    canDelete: false,
+    canConfigure: false,
+    canSelectHidden: false,
+    canSeeTriggers: false,
+    canInteract: true,
+    canPlay: true,
+    canUseAdminFeatures: false,
+    canUseGizmos: false,
+    canViewDebug: false
+  }
 };

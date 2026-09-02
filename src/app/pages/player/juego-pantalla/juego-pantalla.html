@@ -1,4 +1,4 @@
-
+<!-- src/app/pages/player/juego-pantalla/juego-pantalla.html -->
 
 <div class="juego-container">
   
@@ -16,7 +16,7 @@
     [hideStatus]="modalMisionUsuario">
   </app-ui-hud>
 
-  <!-- 🔥 EL MENÚ RADIAL EN INYECCIÓN DIRECTA -->
+  <!-- EL MENÚ RADIAL EN INYECCIÓN DIRECTA -->
   <app-ui-radial-menu></app-ui-radial-menu>
 
   <app-ui-inspect (onClose)="cerrarInteraccion()"></app-ui-inspect>
@@ -27,7 +27,7 @@
     [playerState]="playerStateActual"
     [misionIniciada]="misionIniciada" 
     [cerrando]="cerrandoModalUsuario" 
-    [isDebugMode]="isAdmin && !isDetached" 
+    [isDebugMode]="canViewDebug" 
     (onStart)="comenzarMisionUsuario()" 
     (onExit)="salirDelJuego()">
   </app-ui-mission>

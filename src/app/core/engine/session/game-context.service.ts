@@ -1,7 +1,11 @@
+// src/app/core/engine/session/game-context.service.ts
 
 import { Injectable, signal, computed } from '@angular/core';
 import { GameMode } from './game-mode.model';
-import { CameraViewMode, ToolModeContext, AppMode, EngineState, InputContext } from './game-context.model';
+import { 
+  CameraViewMode, ToolModeContext, AppMode, EngineState, InputContext, 
+  ExecutionContext, EditorSubmode 
+} from './game-context.model';
 import { AuthorityProfile, PROFILES } from './authority-profile.model';
 import { GameEntity } from '../entities/game.entity';
 import { Node, AbstractMesh } from '@babylonjs/core';
@@ -12,16 +16,20 @@ export class GameContextService {
   // ESTADO PRIVADO (SINGLE SOURCE OF TRUTH)
   // ==========================================
   
-  // --- LEGACY (Retrocompatibilidad) ---
-  readonly #mode = signal<GameMode>(GameMode.EDITOR);
-  readonly #isTransitioning = signal<boolean>(false);
-  readonly #isInteracting = signal<boolean>(false);
+  // Dimensiones de Ejecución y Submodo
+  readonly #executionContext = signal<ExecutionContext>('EDITOR');
+  readonly #editorSubmode = signal<EditorSubmode | null>('EDITING');
 
-  // --- NUEVA ARQUITECTURA (Fase 1 & 2) ---
+  // Estado del Motor y Permisos
+  readonly #mode = signal<GameMode>(GameMode.EDITOR);
   readonly #appMode = signal<AppMode>('EDITOR');
   readonly #engineState = signal<EngineState>('STOPPED');
   readonly #inputContext = signal<InputContext>('UI');
   readonly #authorityProfile = signal<AuthorityProfile>(PROFILES.ADMIN_EDITING);
+
+  // Transiciones y Diálogos
+  readonly #isTransitioning = signal<boolean>(false);
+  readonly #isInteracting = signal<boolean>(false);
 
   // Runtime Session
   readonly #cameraView = signal<CameraViewMode>('FPS');
@@ -51,16 +59,17 @@ export class GameContextService {
   // ESTADO PÚBLICO INMUTABLE (COMPUTED)
   // ==========================================
 
-  // --- LEGACY ---
-  public readonly mode = computed(() => this.#mode());
-  public readonly isTransitioning = computed(() => this.#isTransitioning());
-  public readonly isInteracting = computed(() => this.#isInteracting());
+  public readonly executionContext = computed(() => this.#executionContext());
+  public readonly editorSubmode = computed(() => this.#editorSubmode());
 
-  // --- NUEVA ARQUITECTURA ---
+  public readonly mode = computed(() => this.#mode());
   public readonly appMode = computed(() => this.#appMode());
   public readonly engineState = computed(() => this.#engineState());
   public readonly inputContext = computed(() => this.#inputContext());
   public readonly authorityProfile = computed(() => this.#authorityProfile());
+
+  public readonly isTransitioning = computed(() => this.#isTransitioning());
+  public readonly isInteracting = computed(() => this.#isInteracting());
 
   public readonly cameraView = computed(() => this.#cameraView());
   public readonly activePlayerEntity = computed(() => this.#activePlayerEntity());
@@ -82,55 +91,123 @@ export class GameContextService {
   public readonly activePlatformData = computed(() => this.#activePlatformData());
   public readonly platforms = computed(() => this.#platforms());
 
-  // Lógica Derivada Reactiva (Manteniendo compatibilidad)
+  // Lógica Derivada Reactiva
   public readonly isPlaying = computed(() => 
+    this.#engineState() === 'PLAYING' ||
     this.#mode() === GameMode.TEST_LIVE || 
     this.#mode() === GameMode.PREVIEW_ADMIN || 
     this.#mode() === GameMode.FINAL_USER
   );
   
   public readonly isDebugMode = computed(() => 
-    this.#mode() === GameMode.TEST_LIVE || 
-    this.#mode() === GameMode.PREVIEW_ADMIN ||
-    this.#mode() === GameMode.EDITING_IN_GAME ||
-    this.#mode() === GameMode.EDITOR
+    this.#authorityProfile().canViewDebug
   );
 
+  public readonly isEditor = computed(() => this.#executionContext() === 'EDITOR');
+  public readonly isPlayerPreview = computed(() => this.#executionContext() === 'PLAYER_PREVIEW');
+  public readonly isAdminPreview = computed(() => this.#executionContext() === 'ADMIN_PREVIEW');
+
   // ==========================================
-  // MÉTODOS DE MUTACIÓN CONTROLADOS (SETTERS)
+  // CONFIGURACIÓN DE CONTEXTO Y AUTORIDAD (FASE 1)
   // ==========================================
 
-  // --- LEGACY ---
-  public setMode(newMode: GameMode): void { 
-    if (this.#mode() !== newMode) {
-      this.#mode.set(newMode); 
-      // Adaptar nuevos estados al setear el modo legacy (transición progresiva)
-      if (newMode === GameMode.EDITOR) {
-        this.#appMode.set('EDITOR');
-        this.#engineState.set('STOPPED');
-        this.#inputContext.set('UI');
-        this.#authorityProfile.set(PROFILES.ADMIN_EDITING);
-      } else if (newMode === GameMode.TEST_LIVE) {
-        this.#appMode.set('EDITOR');
-        this.#engineState.set('PLAYING');
-        this.#inputContext.set('PLAYER');
-        this.#authorityProfile.set(PROFILES.ADMIN_PLAYING);
-      } else if (newMode === GameMode.EDITING_IN_GAME) {
-        this.#appMode.set('EDITOR');
-        this.#engineState.set('PAUSED');
-        this.#inputContext.set('UI');
-        this.#authorityProfile.set(PROFILES.ADMIN_EDITING);
-      } else if (newMode === GameMode.PREVIEW_ADMIN) {
-        this.#appMode.set('PLAYER');
-        this.#engineState.set('PLAYING');
-        this.#inputContext.set('PLAYER');
-        this.#authorityProfile.set(PROFILES.ADMIN_PLAYING);
-      } else if (newMode === GameMode.FINAL_USER) {
+  public setupContext(
+    context: ExecutionContext,
+    options?: { submode?: EditorSubmode; cameraView?: CameraViewMode }
+  ): void {
+    this.#executionContext.set(context);
+
+    if (options?.cameraView) {
+      this.#cameraView.set(options.cameraView);
+    }
+
+    switch (context) {
+      case 'PLAYER_PREVIEW':
+        this.#editorSubmode.set(null);
+        this.#mode.set(GameMode.FINAL_USER);
         this.#appMode.set('PLAYER');
         this.#engineState.set('PLAYING');
         this.#inputContext.set('PLAYER');
         this.#authorityProfile.set(PROFILES.PLAYER);
-      }
+        break;
+
+      case 'ADMIN_PREVIEW':
+        this.#editorSubmode.set(null);
+        this.#mode.set(GameMode.PREVIEW_ADMIN);
+        this.#appMode.set('PLAYER');
+        this.#engineState.set('PLAYING');
+        this.#inputContext.set('PLAYER');
+        this.#authorityProfile.set(PROFILES.ADMIN_PREVIEW);
+        break;
+
+      case 'EDITOR':
+        const sub = options?.submode ?? 'EDITING';
+        this.setEditorSubmode(sub);
+        break;
+    }
+  }
+
+  public setEditorSubmode(submode: EditorSubmode): void {
+    this.#executionContext.set('EDITOR');
+    this.#editorSubmode.set(submode);
+
+    switch (submode) {
+      case 'EDITING':
+        this.#mode.set(GameMode.EDITOR);
+        this.#appMode.set('EDITOR');
+        this.#engineState.set('STOPPED');
+        this.#inputContext.set('UI');
+        this.#authorityProfile.set(PROFILES.ADMIN_EDITING);
+        break;
+
+      case 'PLAYTEST_FPS':
+        this.#mode.set(GameMode.TEST_LIVE);
+        this.#appMode.set('EDITOR');
+        this.#engineState.set('PLAYING');
+        this.#inputContext.set('PLAYER');
+        this.#authorityProfile.set(PROFILES.ADMIN_PLAYING);
+        this.#cameraView.set('FPS');
+        break;
+
+      case 'PLAYTEST_TPS':
+        this.#mode.set(GameMode.TEST_LIVE);
+        this.#appMode.set('EDITOR');
+        this.#engineState.set('PLAYING');
+        this.#inputContext.set('PLAYER');
+        this.#authorityProfile.set(PROFILES.ADMIN_PLAYING);
+        this.#cameraView.set('TPS');
+        break;
+
+      case 'EDITING_IN_GAME':
+        this.#mode.set(GameMode.EDITING_IN_GAME);
+        this.#appMode.set('EDITOR');
+        this.#engineState.set('PAUSED');
+        this.#inputContext.set('UI');
+        this.#authorityProfile.set(PROFILES.ADMIN_EDITING);
+        break;
+    }
+  }
+
+  // Retrocompatibilidad con llamadas legacy
+  public setMode(newMode: GameMode): void {
+    switch (newMode) {
+      case GameMode.EDITOR:
+        this.setupContext('EDITOR', { submode: 'EDITING' });
+        break;
+      case GameMode.TEST_LIVE:
+        this.setupContext('EDITOR', { 
+          submode: this.#cameraView() === 'TPS' ? 'PLAYTEST_TPS' : 'PLAYTEST_FPS' 
+        });
+        break;
+      case GameMode.EDITING_IN_GAME:
+        this.setupContext('EDITOR', { submode: 'EDITING_IN_GAME' });
+        break;
+      case GameMode.PREVIEW_ADMIN:
+        this.setupContext('ADMIN_PREVIEW');
+        break;
+      case GameMode.FINAL_USER:
+        this.setupContext('PLAYER_PREVIEW');
+        break;
     }
   }
 
@@ -138,15 +215,9 @@ export class GameContextService {
     this.#isTransitioning.set(val); 
     if (val) this.#engineState.set('TRANSITIONING');
   }
-  public setInteracting(val: boolean): void { this.#isInteracting.set(val); }
 
-  // --- NUEVA ARQUITECTURA ---
-  public startTestLive(): void {
-    this.#appMode.set('EDITOR');
-    this.#engineState.set('PLAYING');
-    this.#inputContext.set('PLAYER');
-    this.#authorityProfile.set(PROFILES.ADMIN_PLAYING);
-    this.setMode(GameMode.TEST_LIVE); // Sincronizar legacy
+  public setInteracting(val: boolean): void { 
+    this.#isInteracting.set(val); 
   }
 
   public setCameraView(view: CameraViewMode): void { this.#cameraView.set(view); }
@@ -169,7 +240,6 @@ export class GameContextService {
   public setActivePlatformData(data: any): void { this.#activePlatformData.set(data); }
   public setPlatforms(platforms: any[]): void { this.#platforms.set(platforms); }
 
-  // Flujos de Alto Nivel
   public startGameSession(player: GameEntity, view: CameraViewMode): void {
     this.setActivePlayer(player);
     this.setCameraView(view);

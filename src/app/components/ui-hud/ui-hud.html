@@ -1,11 +1,11 @@
-
+<!-- src/app/components/ui-hud/ui-hud.html -->
 
 <div class="crosshair-ui" 
      *ngIf="gameSession.isPlaying() && gameSession.pointerLocked() && gameSession.cameraView() === 'FPS'" 
      [class.hovering]="hoveredMesh() !== null">
 </div>
 
-<!-- 🔥 NUEVO: Pantalla Negra o Fade para Cinemáticas -->
+<!-- Pantalla Negra o Fade para Cinemáticas -->
 <div class="cinematic-fade-overlay" 
      *ngIf="cinematicDirector.fadeOpacity() > 0" 
      [style.opacity]="cinematicDirector.fadeOpacity()"
@@ -23,12 +23,12 @@
 </div>
 
 <!-- Toast: Interacciones Cercanas -->
-<div class="modern-toast-container" *ngIf="gameSession.isPlaying() && targetInteractuable() && (gameSession.pointerLocked() || gameSession.isDebugMode()) && (actionAvailable() || inspectAvailable() || (gameSession.isDebugMode() && gameSession.cameraView() === 'FPS'))">
+<div class="modern-toast-container" *ngIf="gameSession.isPlaying() && targetInteractuable() && (gameSession.pointerLocked() || canViewDebug()) && (actionAvailable() || inspectAvailable() || (canSelect() && gameSession.cameraView() === 'FPS'))">
   <div class="modern-toast-box">
     <div class="toast-title">{{ targetInteractuable()?.name }}</div>
     <div class="toast-actions-grid">
-      <!-- Opción de Editar (Solo Debug) -->
-      <div class="action-item" *ngIf="gameSession.isDebugMode() && gameSession.cameraView() === 'FPS'">
+      <!-- Opción de Editar (Solo cuando tiene permiso editorial real de Playtest) -->
+      <div class="action-item" *ngIf="canEdit() && gameSession.cameraView() === 'FPS'">
         <kbd class="key-cap">Click</kbd><span class="action-label">Editar</span>
       </div>
       <!-- Opción de Evento/Trigger -->
@@ -47,21 +47,21 @@
 <div class="hud-container" *ngIf="!hideStatus">
   
   <!-- Jugador Libre o Admin Preview: Bloqueado -->
-  <div class="hud-message hud-playing" *ngIf="gameSession.isPlaying() && gameSession.pointerLocked() && !gameSession.isDebugMode()">
+  <div class="hud-message hud-playing" *ngIf="gameSession.isPlaying() && gameSession.pointerLocked() && !canEdit()">
     <span class="hud-icon">🎮</span> "WASD" Mover • "Espacio" Saltar • "V" Cambiar Cámara
   </div>
   
   <!-- Jugador Libre o Admin Preview: Pausado -->
-  <div class="hud-message hud-paused" *ngIf="gameSession.isPlaying() && !gameSession.pointerLocked() && !gameSession.isDebugMode()">
+  <div class="hud-message hud-paused" *ngIf="gameSession.isPlaying() && !gameSession.pointerLocked() && !canEdit()">
     <span class="hud-icon">⏸️</span> Juego Pausado | Click en pantalla para reanudar
   </div>
 
-  <!-- Modo Editor Probando: Nunca se bloquea conceptualmente, solo para girar cámara -->
-  <div class="hud-message hud-playing" style="background-color: rgba(59, 130, 246, 0.75); border: 1px solid rgba(59, 130, 246, 0.5);" *ngIf="playState === 'PLAYING' && gameSession.isDebugMode() && gameSession.pointerLocked()">
+  <!-- Modo Editor Probando (Playtest dentro del Editor con autoridad canEdit) -->
+  <div class="hud-message hud-playing" style="background-color: rgba(59, 130, 246, 0.75); border: 1px solid rgba(59, 130, 246, 0.5);" *ngIf="playState === 'PLAYING' && canEdit() && gameSession.pointerLocked()">
     <span class="hud-icon">🛠️</span> MODO PRUEBA LIBRE | "WASD" Mover • "ESC" Pausar • Doble Clic para Editar Libre
   </div>
 
-  <div class="hud-message hud-paused" style="border-color: #3b82f6; color: #60a5fa;" *ngIf="playState === 'PLAYING' && gameSession.isDebugMode() && !gameSession.pointerLocked()">
+  <div class="hud-message hud-paused" style="border-color: #3b82f6; color: #60a5fa;" *ngIf="playState === 'PLAYING' && canEdit() && !gameSession.pointerLocked()">
     <span class="hud-icon">🖱️</span> Haz click en el fondo para recuperar la cámara
   </div>
 

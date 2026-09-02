@@ -1,7 +1,8 @@
 
 import { Injectable, signal, computed } from '@angular/core';
 import { GameMode } from './game-mode.model';
-import { CameraViewMode, ToolModeContext } from './game-context.model';
+import { CameraViewMode, ToolModeContext, AppMode, EngineState, InputContext } from './game-context.model';
+import { AuthorityProfile, PROFILES } from './authority-profile.model';
 import { GameEntity } from '../entities/game.entity';
 import { Node, AbstractMesh } from '@babylonjs/core';
 
@@ -11,13 +12,21 @@ export class GameContextService {
   // ESTADO PRIVADO (SINGLE SOURCE OF TRUTH)
   // ==========================================
   
-  // Runtime Session
+  // --- LEGACY (Retrocompatibilidad) ---
   readonly #mode = signal<GameMode>(GameMode.EDITOR);
+  readonly #isTransitioning = signal<boolean>(false);
+  readonly #isInteracting = signal<boolean>(false);
+
+  // --- NUEVA ARQUITECTURA (Fase 1) ---
+  readonly #appMode = signal<AppMode>('EDITOR');
+  readonly #engineState = signal<EngineState>('STOPPED');
+  readonly #inputContext = signal<InputContext>('UI');
+  readonly #authorityProfile = signal<AuthorityProfile>(PROFILES.ADMIN_EDITING);
+
+  // Runtime Session
   readonly #cameraView = signal<CameraViewMode>('FPS');
   readonly #activePlayerEntity = signal<GameEntity | null>(null);
   readonly #isPointerLocked = signal<boolean>(false);
-  readonly #isTransitioning = signal<boolean>(false);
-  readonly #isInteracting = signal<boolean>(false);
 
   // Selection & Interaction
   readonly #selectedNode = signal<Node | null>(null);
@@ -42,12 +51,20 @@ export class GameContextService {
   // ESTADO PÚBLICO INMUTABLE (COMPUTED)
   // ==========================================
 
+  // --- LEGACY ---
   public readonly mode = computed(() => this.#mode());
+  public readonly isTransitioning = computed(() => this.#isTransitioning());
+  public readonly isInteracting = computed(() => this.#isInteracting());
+
+  // --- NUEVA ARQUITECTURA ---
+  public readonly appMode = computed(() => this.#appMode());
+  public readonly engineState = computed(() => this.#engineState());
+  public readonly inputContext = computed(() => this.#inputContext());
+  public readonly authorityProfile = computed(() => this.#authorityProfile());
+
   public readonly cameraView = computed(() => this.#cameraView());
   public readonly activePlayerEntity = computed(() => this.#activePlayerEntity());
   public readonly isPointerLocked = computed(() => this.#isPointerLocked());
-  public readonly isTransitioning = computed(() => this.#isTransitioning());
-  public readonly isInteracting = computed(() => this.#isInteracting());
 
   public readonly selectedNode = computed(() => this.#selectedNode());
   public readonly subSelectedObject = computed(() => this.#subSelectedObject());
@@ -65,7 +82,7 @@ export class GameContextService {
   public readonly activePlatformData = computed(() => this.#activePlatformData());
   public readonly platforms = computed(() => this.#platforms());
 
-  // Lógica Derivada Reactiva
+  // Lógica Derivada Reactiva (Manteniendo compatibilidad)
   public readonly isPlaying = computed(() => 
     this.#mode() === GameMode.TEST_LIVE || 
     this.#mode() === GameMode.PREVIEW_ADMIN || 
@@ -83,12 +100,58 @@ export class GameContextService {
   // MÉTODOS DE MUTACIÓN CONTROLADOS (SETTERS)
   // ==========================================
 
-  public setMode(newMode: GameMode): void { if (this.#mode() !== newMode) this.#mode.set(newMode); }
+  // --- LEGACY ---
+  public setMode(newMode: GameMode): void { 
+    if (this.#mode() !== newMode) {
+      this.#mode.set(newMode); 
+      // Adaptar nuevos estados al setear el modo legacy (transición progresiva)
+      if (newMode === GameMode.EDITOR) {
+        this.#appMode.set('EDITOR');
+        this.#engineState.set('STOPPED');
+        this.#inputContext.set('UI');
+        this.#authorityProfile.set(PROFILES.ADMIN_EDITING);
+      } else if (newMode === GameMode.TEST_LIVE) {
+        this.#appMode.set('EDITOR');
+        this.#engineState.set('PLAYING');
+        this.#inputContext.set('PLAYER');
+        this.#authorityProfile.set(PROFILES.ADMIN_PLAYING);
+      } else if (newMode === GameMode.EDITING_IN_GAME) {
+        this.#appMode.set('EDITOR');
+        this.#engineState.set('PAUSED');
+        this.#inputContext.set('UI');
+        this.#authorityProfile.set(PROFILES.ADMIN_EDITING);
+      } else if (newMode === GameMode.PREVIEW_ADMIN) {
+        this.#appMode.set('PLAYER');
+        this.#engineState.set('PLAYING');
+        this.#inputContext.set('PLAYER');
+        this.#authorityProfile.set(PROFILES.ADMIN_PLAYING);
+      } else if (newMode === GameMode.FINAL_USER) {
+        this.#appMode.set('PLAYER');
+        this.#engineState.set('PLAYING');
+        this.#inputContext.set('PLAYER');
+        this.#authorityProfile.set(PROFILES.PLAYER);
+      }
+    }
+  }
+
+  public setTransitioning(val: boolean): void { 
+    this.#isTransitioning.set(val); 
+    if (val) this.#engineState.set('TRANSITIONING');
+  }
+  public setInteracting(val: boolean): void { this.#isInteracting.set(val); }
+
+  // --- NUEVA ARQUITECTURA ---
+  public startTestLive(): void {
+    this.#appMode.set('EDITOR');
+    this.#engineState.set('PLAYING');
+    this.#inputContext.set('PLAYER');
+    this.#authorityProfile.set(PROFILES.ADMIN_PLAYING);
+    this.setMode(GameMode.TEST_LIVE); // Sincronizar legacy
+  }
+
   public setCameraView(view: CameraViewMode): void { this.#cameraView.set(view); }
   public setActivePlayer(entity: GameEntity | null): void { this.#activePlayerEntity.set(entity); }
   public setPointerLocked(locked: boolean): void { this.#isPointerLocked.set(locked); }
-  public setTransitioning(val: boolean): void { this.#isTransitioning.set(val); }
-  public setInteracting(val: boolean): void { this.#isInteracting.set(val); }
 
   public setSelectedNode(node: Node | null): void { this.#selectedNode.set(node); }
   public setSubSelectedObject(sub: 'collider' | 'camera' | 'light' | 'fog' | null): void { this.#subSelectedObject.set(sub); }

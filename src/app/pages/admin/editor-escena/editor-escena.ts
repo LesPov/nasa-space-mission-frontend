@@ -1,3 +1,4 @@
+
 // src/app/pages/admin/editor-escena/editor-escena.ts
 
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
@@ -32,6 +33,7 @@ import { EditorOrchestratorService } from '../../../services/editor/editor-orche
 import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
 import { InputRouterService } from '../../../core/engine/session/input-router.service';
 import { Subscription } from 'rxjs';
+import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 
 @Component({
   selector: 'app-editor-escena', 
@@ -61,9 +63,11 @@ export class EditorEscena implements OnInit, OnDestroy {
   public toolsSvc = inject(EditorToolsService);
   public runtime = inject(RuntimeEngineService);
   private inputRouter = inject(InputRouterService);
+  private eventBus = inject(GameEventBusService);
 
   public isInteracting = signal(false);
   private kbSub!: Subscription;
+  private ebSub!: Subscription;
 
   public get esAdmin(): boolean {
     return this.authSvc.isAdmin();
@@ -90,7 +94,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   public mostrandoCrearPlataforma = false;
   public nuevaPlataformaNombre = '';
   public vistaPrueba: 'FPS' | 'TPS' = 'FPS';
-  private activeCameraView = 'FPS';
 
   get objNombre() { return this.addObjSvc.objNombre; } set objNombre(v) { this.addObjSvc.objNombre = v; }
   get objTipo() { return this.addObjSvc.objTipo; } set objTipo(v) { this.addObjSvc.objTipo = v; }
@@ -115,17 +118,24 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
-    // Configuración explícita del contexto del Engine al entrar al Editor
     this.gameContext.setupContext('EDITOR', { submode: 'EDITING', cameraView: 'FPS' }); 
     this.addObjSvc.cargarAssets();
     if (this.esAdmin) {
        this.orchestrator.initialize();
     }
     
-    // Fase 2: Inicialización centralizada de input de editor
     this.keyboard.init();
     this.kbSub = this.inputRouter.getGlobalKeyboardStream(['UI', 'EDITOR_EDITING', 'EDITOR_PLAYTEST']).subscribe(e => {
         this.manejarAtajos(e);
+    });
+
+    this.ebSub = this.eventBus.events$.subscribe(event => {
+      if (event.type === 'GamePaused') {
+        if (this.misionIniciada && !this.cerrandoModalMision && this.stateSvc.playState() === 'PLAYING') {
+           this.mostrarModalMisionPreview = true;
+           this.cdr.detectChanges();
+        }
+      }
     });
   }
 
@@ -135,12 +145,9 @@ export class EditorEscena implements OnInit, OnDestroy {
   @HostListener('window:mouseup')
   onMouseUp() { this.layoutUI.onMouseUp(); }
 
-  // Reemplazado el HostListener de teclado por el manejador atado al Router
   manejarAtajos(event: KeyboardEvent) { 
     if (event.key === 'Escape') {
       if (this.mostrarModalMisionPreview) {
-        this.mostrarModalMisionPreview = false;
-        this.cdr.detectChanges();
         return;
       }
       if (this.stateSvc.previewMissionModal()) {
@@ -148,9 +155,15 @@ export class EditorEscena implements OnInit, OnDestroy {
         this.cdr.detectChanges();
         return;
       }
+      
+      if (this.misionIniciada && !this.mostrarModalMisionPreview && this.stateSvc.playState() === 'PLAYING') {
+          if (this.gameContext.isPointerLocked()) {
+              this.inputOrchestrator.unlockPointer();
+          } else {
+              this.eventBus.emit({ type: 'GamePaused' });
+          }
+      }
     }
-    // El delegado this.keyboard.handleKeydown fue removido porque 
-    // EditorKeyboardService ya se suscribe y gestiona su propia lógica internamente.
   }
 
   toggleNieblaTemporal() {
@@ -221,14 +234,14 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.mostrarModalMisionPreview = false;
     this.misionIniciada = true;
     this.orchestrator.iniciarModoPrueba(this.vistaPrueba);
+    
+    // 🔥 FIX: Capturamos el mouse inmediatamente al iniciar la prueba aprovechando el clic en el botón UI
+    this.inputOrchestrator.lockPointer();
   }
 
   comenzarMisionPreview() {
     this.cerrandoModalMision = true;
     
-    if (this.activeCameraView === 'TPS') this.runtime.toggleCameraUser(false, 60); 
-    else this.runtime.toggleCameraUser(true, 60);
-
     this.inputOrchestrator.lockPointer();
 
     setTimeout(() => {
@@ -236,7 +249,7 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.mostrarModalMisionPreview = false;
       this.cerrandoModalMision = false;
       this.cdr.detectChanges(); 
-    }, 2000); 
+    }, 300); 
   }
 
   handleMissionStart() {
@@ -257,6 +270,7 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   async detenerModoPrueba() {
     this.mostrarModalMisionPreview = false;
+    this.misionIniciada = false;
     await this.orchestrator.detenerModoPrueba();
   }
 
@@ -272,6 +286,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.keyboard.dispose();
     if (this.kbSub) this.kbSub.unsubscribe();
+    if (this.ebSub) this.ebSub.unsubscribe();
     this.orchestrator.destroy();
   }
 }

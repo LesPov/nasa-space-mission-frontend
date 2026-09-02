@@ -80,20 +80,16 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private kbSub!: Subscription;
   private fpsInterval: any;
 
-  // Propiedad de autoridad para el template UI
   public get canViewDebug(): boolean {
     return this.gameContext.authorityProfile().canViewDebug && !this.isDetached;
   }
 
   ngOnInit() {
-    // 🔥 FIX FASE 3.1: Inicializar los listeners globales del DOM para que el Input funcione en Player/Admin Preview.
-    // Sin esto, el motor está "sordo" a los eventos Pointer Lock y Teclado.
     this.inputOrchestrator.initializeListeners();
 
     this.route.queryParams.subscribe(params => {
       this.isDetached = params['detached'] === 'true';
       
-      // La capa de aplicación traduce la sesión a un contexto de ejecución explícito en el Engine
       const userIsAdmin = this.authSvc.isAdmin();
       const execContext = (userIsAdmin && !this.isDetached) ? 'ADMIN_PREVIEW' : 'PLAYER_PREVIEW';
       this.gameContext.setupContext(execContext, { cameraView: 'FPS' });
@@ -112,8 +108,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       if (event.type === 'ChangeSceneRequested') {
         this.cambiarPlataformaEnJuego(event.payload.sceneId);
       } else if (event.type === 'GamePaused') {
-        // 🔥 FIX FASE 3.1: Asegurar que el modal de pausa se abre cuando el juego pierde el Pointer Lock
-        // (ya sea por pulsar ESC u otra razón nativa del navegador).
         if (this.misionIniciada && !this.cerrandoModalUsuario) {
             this.modalMisionUsuario = true;
             this.cdr.detectChanges();
@@ -121,7 +115,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       }
     });
 
-    // Centralización del Input de teclado exclusivo de Gameplay / UI
     this.kbSub = this.inputRouter.getGlobalKeyboardStream(['GAMEPLAY', 'ADMIN_PREVIEW', 'UI']).subscribe(e => {
         this.handleKeyDown(e);
     });
@@ -136,7 +129,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       }
     }
     
-    // Función administrativa de cámara libre basada en la autoridad del engine
     if ((event.code === 'KeyC' || event.key.toLowerCase() === 'c') && event.ctrlKey && this.gameContext.authorityProfile().canUseAdminFeatures) {
       event.preventDefault();
       const canvas = this.motor3dSvc.getEngine()?.getRenderingCanvas();
@@ -255,7 +247,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
          this.eventBus.emit({ type: 'SequenceTriggered', payload: { sequenceId: this.episodioActual.uiSettings.initialSequence } });
       }
       this.cdr.detectChanges(); 
-    }, 2000); 
+    }, 400); 
   }
 
   onCanvasClick() {

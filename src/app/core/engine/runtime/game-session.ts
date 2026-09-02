@@ -1,4 +1,6 @@
 
+// src/app/core/engine/runtime/game-session.ts
+
 import { Injectable, inject, computed } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
@@ -71,10 +73,23 @@ export class GameSession {
              this.layoutSvc.ocultarMenu(); 
         }
 
+        // 🔥 Restaurar control de la cámara
+        const cam = this.ownership.getCamera();
+        const canvas = this.motor3dSvc.getEngine()?.getRenderingCanvas();
+        if (cam && canvas) {
+            try { cam.attachControl(canvas, true); } catch {}
+        }
+
       } else if (event.type === 'GamePaused') {
         this.context.setPointerLocked(false);
         this.inputSvc.disable();
         this.interactionSvc.disable();
+
+        // 🔥 Congelar la cámara del jugador (se detiene rotación por ratón)
+        const cam = this.ownership.getCamera();
+        if (cam && (this.ownership.getOwner() === 'PLAYER_FPS' || this.ownership.getOwner() === 'PLAYER_TPS')) {
+            try { cam.detachControl(); } catch {}
+        }
 
         const mode = this.context.mode();
         if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
@@ -89,18 +104,6 @@ export class GameSession {
   public start(playerEntity: GameEntity, view: CameraViewMode): void {
     this.context.startGameSession(playerEntity, view);
     
-    const mode = this.context.mode();
-    
-    if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
-      this.layoutSvc.mostrarMenu();
-      this.inputSvc.disable();
-      this.interactionSvc.disable();
-      this.context.setPointerLocked(false);
-    } else {
-      this.inputSvc.enable();
-      this.interactionSvc.enable();
-    }
-
     this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
     this.eventBus.emit({ type: 'MessageRequested', payload: null });
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
@@ -108,7 +111,6 @@ export class GameSession {
 
     this.sequenceSvc.resetearSecuencias();
 
-    // 🔥 FIX: Eliminado PlayerFogService, ahora FogOrchestrator manda de manera global.
     this.systems = [
       this.inputSvc,
       this.sequenceSvc,
@@ -131,6 +133,18 @@ export class GameSession {
           (system as any).start();
         }
     });
+
+    // 🔥 FIX: Habilitar inputs dependiendo del modo DESPUÉS de ejecutar los start() de cada sistema
+    // para evitar que los inicializadores sobreescriban la habilitación con un disable() involuntario.
+    const mode = this.context.mode();
+    if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
+      this.layoutSvc.mostrarMenu();
+      this.inputSvc.disable();
+      this.interactionSvc.disable();
+    } else {
+      this.inputSvc.enable();
+      this.interactionSvc.enable();
+    }
 
     this.cameraSvc.resetearTransiciones();
     const allEntities = this.entityManager.getAllEntities();

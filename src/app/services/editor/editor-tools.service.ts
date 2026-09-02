@@ -25,6 +25,7 @@ import { GizmoAdapterRegistryService } from './toolsservice/adapters/gizmo-adapt
 import { GameContextService } from '../../core/engine/session/game-context.service';
 import { InputRouterService } from '../../core/engine/session/input-router.service';
 import { Subscription } from 'rxjs';
+import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
@@ -38,6 +39,7 @@ export class EditorToolsService {
   private ownership = inject(CameraOwnershipService);
   private gameContext = inject(GameContextService);
   private inputRouter = inject(InputRouterService);
+  private inputOrchestrator = inject(InputOrchestratorService);
 
   private highlightSvc = inject(ToolsHighlightService);
   private debugSvc = inject(ToolsDebugService);
@@ -304,6 +306,10 @@ export class EditorToolsService {
           this.cameraSvc.pausarJuegoYActivarCamaraEditor();
         } else if (playSt === 'EDITING_IN_GAME') {
           if (canvas) canvas.focus();
+          
+          // 🔥 FIX: Volvemos al juego bloqueando el puntero interactivamente aquí, 
+          // sin necesidad de esperar a que termine la animación, cumpliendo políticas de navegador.
+          this.inputOrchestrator.lockPointer();
           this.cameraSvc.volverAJuego();
         }
       }

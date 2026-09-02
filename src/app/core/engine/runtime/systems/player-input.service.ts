@@ -1,3 +1,4 @@
+
 // src/app/core/engine/runtime/systems/player-input.service.ts
 
 import { Injectable, inject } from '@angular/core';
@@ -38,7 +39,13 @@ export class PlayerInputService implements IUpdatable {
   }
 
   public start(): void {
-    this.stop();
+    // 🔥 FIX: Removemos `this.stop()` o `this.disable()` de aquí.
+    // Solo debemos asegurar que la suscripción de eventos exista limpiamente,
+    // y dejar que GameSession dicte si el servicio está habilitado o no mediante enable()
+    if (this.inputSub) {
+      this.inputSub.unsubscribe();
+      this.inputSub = null;
+    }
 
     // Consume input de gameplay exclusivamente en los contextos activos de juego
     this.inputSub = this.inputRouter.getKeyboardStream([

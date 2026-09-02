@@ -30,6 +30,9 @@ export class EditorPlayModeService {
   private spawnManager = inject(SpawnManagerService);
 
   public prepararEscenaParaTest(vista: CameraViewMode, skipIntro: boolean = false): void {
+    // 🔥 FIX: Guardar el estado de la cámara del editor antes de empezar para poder volver
+    this.cameraSvc.guardarEstadoCamaraLibre();
+
     if (this.motor3d.getEditorCamera()) {
         this.motor3d.getEditorCamera().computeWorldMatrix();
     }
@@ -168,6 +171,7 @@ export class EditorPlayModeService {
         }
     });
 
+    // 🔥 FIX: Restaurar la cámara que guardamos antes de iniciar el Test Live
     this.cameraSvc.restaurarCamaraLibre();
     const editorCam = this.motor3d.getEditorCamera();
     

@@ -107,10 +107,18 @@ export class EditorCameraService {
     const editorCam = this.motor3d.getEditorCamera();
     if (!editorCam || !this.editorCamState) return;
 
+    // 1. Restaurar Posiciones Geométricas (Target y Rotaciones)
     editorCam.setTarget(this.editorCamState.target.clone());
     editorCam.radius = this.editorCamState.radius;
     editorCam.alpha = this.editorCamState.alpha;
     editorCam.beta = this.editorCamState.beta;
+
+    // 2. 🔥 Limpiar cualquier inercia sobrante que haga salir la cámara volando
+    editorCam.inertialAlphaOffset = 0;
+    editorCam.inertialBetaOffset = 0;
+    editorCam.inertialRadiusOffset = 0;
+    editorCam.inertialPanningX = 0;
+    editorCam.inertialPanningY = 0;
   }
 
   enfocarObjetoEnEditor(objeto: Node): void {
@@ -409,7 +417,6 @@ export class EditorCameraService {
     );
   }
 
-  // 🔥 FIX 4: Transición curva en "S" Bézier para no atravesar paredes o cabezas
   volarHaciaCamaraJuego(
     centroEpiral: Vector3,
     targetPos: Vector3,
@@ -421,7 +428,6 @@ export class EditorCameraService {
     const scene = this.motor3d.getScene();
     const editorCam = this.motor3d.getEditorCamera();
 
-    // 🔥 FIX: Tomar EXACTAMENTE donde está el editorCam, gracias al guardado previo
     const startPos = this.editorCamState?.position || editorCam.globalPosition.clone();
     const startTarget = startPos.add(editorCam.getDirection(Vector3.Forward()).scale(10));
     
@@ -436,13 +442,12 @@ export class EditorCameraService {
        this.motor3d.getRenderingPipeline().addCamera(proxyCam);
     }
     
-    // Curva Bézier cinemática: Empieza hacia donde mira el editor, y entra al player por donde el player mira
     const startDir = startTarget.subtract(startPos).normalize();
     const endDir = targetLookAt.subtract(targetPos).normalize();
     
     const p1 = startPos.add(startDir.scale(dist * 0.3));
-    const p2 = targetPos.subtract(endDir.scale(dist * 0.3)); // Viene desde atrás/orbitando
-    p2.y += Math.min(dist * 0.1, 2.0); // Leve elevación
+    const p2 = targetPos.subtract(endDir.scale(dist * 0.3)); 
+    p2.y += Math.min(dist * 0.1, 2.0); 
 
     const bezier = Curve3.CreateCubicBezier(startPos, p1, p2, targetPos, frames);
     const posPoints = bezier.getPoints();
@@ -501,7 +506,6 @@ export class EditorCameraService {
       return;
     }
 
-    // Limpiar estados físicos pegados
     const player = this.gameContext.activePlayerEntity();
     if (player && player.playerRuntime) {
       const state = player.playerRuntime.physicsState;

@@ -1,3 +1,4 @@
+
 // src/app/core/engine/session/game-context.service.ts
 
 import { Injectable, signal, computed } from '@angular/core';
@@ -282,7 +283,9 @@ export class GameContextService {
   public startGameSession(player: GameEntity, view: CameraViewMode): void {
     this.setActivePlayer(player);
     this.setCameraView(view);
-    this.setPointerLocked(true);
+    
+    // 🔥 Sincronizar el pointerlock con la realidad del DOM
+    this.setPointerLocked(!!document.pointerLockElement);
   }
 
   public stopGameSession(): void {

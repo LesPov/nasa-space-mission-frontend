@@ -1,6 +1,4 @@
 
-// src/app/services/editor/editor-orchestrator.service.ts
-
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AbstractMesh, Tags } from '@babylonjs/core';
@@ -103,7 +101,7 @@ export class EditorOrchestratorService {
     ).subscribe(() => {
       try {
         const state = this.stateSvc.playState();
-        if (this.authSvc.isAdmin() && this.editando() && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
+        if (this.gameContext.authorityProfile().canEdit && this.editando() && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
           this.guardarMapaEnBD(true); 
         }
       } catch (e) {
@@ -268,7 +266,7 @@ public destroy(): void {
 
   public guardarMapaEnBD(silencioso = false): void {
     const sceneId = this.editorSvc.escenaIdActiva();
-    if (!sceneId || !this.editando() || !this.authSvc.isAdmin()) return;
+    if (!sceneId || !this.editando() || !this.gameContext.authorityProfile().canEdit) return;
     this.estadoGuardado.set('Guardando...');
 
     const mapData = this.sceneSvc.obtenerDatosParaGuardar(this.editorSvc.escenaActualData());
@@ -347,7 +345,7 @@ public destroy(): void {
     this.runtime.stopTestSession();
     this.gameState.exitSandbox();
 
-    const isDebugMode = this.authSvc.isAdmin();
+    const isDebugMode = this.gameContext.authorityProfile().canSelectHidden;
 
     if (this.snapshotMemoria) {
         const currentId = this.editorSvc.escenaIdActiva();

@@ -8,7 +8,7 @@ import { EditorMapaService } from '../../editor-mapa.service';
 import { CoreSceneUtilsService } from '../../../core/engine/scene/utils/core-scene-utils.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
-import { AuthService } from '../../../core/services/auth';
+import { GameContextService } from '../../../core/engine/session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsClipboardService {
@@ -18,7 +18,7 @@ export class ToolsClipboardService {
   private sceneSvc = inject(EditorSceneService);
   private utilsSvc = inject(CoreSceneUtilsService);
   private entityManager = inject(EntityManagerService);
-  private authSvc = inject(AuthService);
+  private gameContext = inject(GameContextService);
 
   private objetoEnPortapapeles: AbstractMesh | null = null;
   private listenerCtrlZAgregado = false;
@@ -31,8 +31,8 @@ export class ToolsClipboardService {
   }
 
   private manejarCtrlZGlobal = (event: KeyboardEvent) => {
-    const isAdmin = this.authSvc.isAdmin();
-    if (!isAdmin) return;
+    const canEdit = this.gameContext.authorityProfile().canEdit;
+    if (!canEdit) return;
 
     const playState = this.state.playState();
     if (!(playState === 'EDITOR' || playState === 'EDITING_IN_GAME')) return;

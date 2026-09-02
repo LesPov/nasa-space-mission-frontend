@@ -15,13 +15,13 @@ import { ToolsGizmoService } from './toolsservice/tools-gizmo.service';
 import { ToolsHighlightService } from './toolsservice/tools-highlight.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
-import { AuthService } from '../../core/services/auth';
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
 import { LiveBuilderService } from './live-builder.service';
 import { PlayerInputService } from '../../core/engine/runtime/systems/player-input.service';
 import { EditorMapaService } from '../editor-mapa.service';
 import { DynamicLightingSystem } from '../../core/engine/runtime/systems/lighting/dynamic-lighting.system'; 
 import { GizmoAdapterRegistryService } from './toolsservice/adapters/gizmo-adapter-registry.service';
+import { GameContextService } from '../../core/engine/session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
@@ -32,8 +32,8 @@ export class EditorToolsService {
   private cameraSvc = inject(EditorCameraService);
   private entityManager = inject(EntityManagerService);
   private eventBus = inject(GameEventBusService);
-  private authSvc = inject(AuthService);
   private ownership = inject(CameraOwnershipService);
+  private gameContext = inject(GameContextService);
 
   private highlightSvc = inject(ToolsHighlightService);
   private debugSvc = inject(ToolsDebugService);
@@ -118,7 +118,7 @@ export class EditorToolsService {
   private castRayToSelectable(ray: Ray): AbstractMesh | null {
     const scene = this.motor3d.getScene();
     const jugador = this.state.jugadorActivo;
-    const isAdmin = this.authSvc.isAdmin();
+    const isAdmin = this.gameContext.authorityProfile().canSelectHidden;
     const playSt = this.state.playState();
 
     const hit = scene.pickWithRay(ray, (mesh) => {
@@ -229,7 +229,7 @@ export class EditorToolsService {
 
       const canvas = this.motor3d.getEngine().getRenderingCanvas();
       const playSt = this.state.playState();
-      const isAdmin = this.authSvc.isAdmin();
+      const isAdmin = this.gameContext.authorityProfile().canSelectHidden;
       const isLocked = !!document.pointerLockElement;
 
       if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
@@ -350,7 +350,7 @@ export class EditorToolsService {
       // 🔥 BLOQUEO DE TECLAS: Si está el modal, si escribe texto, o si está construyendo fantasma
       if (this.state.showAddObjectModal() || this.liveBuilder.isBuilding()) return; 
 
-      const isAdmin = this.authSvc.isAdmin();
+      const isAdmin = this.gameContext.authorityProfile().canSelectHidden;
       const playSt = this.state.playState();
 
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {

@@ -7,12 +7,12 @@ import { EditorStateService } from '../editor-state.service';
 import { ToolsDebugService } from './tools-debug.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { CoreSceneProjectionService } from '../../../core/engine/scene/utils/core-scene-projection.service';
-import { AuthService } from '../../../core/services/auth';
 import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
 import { EditorLiveSyncService } from '../editor-live-sync.service';
 import { EditorCinematicService } from '../editor-cinematic.service';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { GizmoAdapterRegistryService } from './adapters/gizmo-adapter-registry.service';
+import { GameContextService } from '../../../core/engine/session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsGizmoService {
@@ -23,7 +23,7 @@ export class ToolsGizmoService {
   private debugSvc = inject(ToolsDebugService);
   private entityManager = inject(EntityManagerService);
   private projectionSvc = inject(CoreSceneProjectionService);
-  private authSvc = inject(AuthService);
+  private gameContext = inject(GameContextService);
   private ownership = inject(CameraOwnershipService);
   private liveSync = inject(EditorLiveSyncService);
   private cinematicSvc = inject(EditorCinematicService);
@@ -229,9 +229,9 @@ export class ToolsGizmoService {
     this.gizmoManager.scaleGizmoEnabled = false;
 
     const modo = this.state.playState();
-    const isAdmin = this.authSvc.isAdmin();
+    const canUseGizmos = this.gameContext.authorityProfile().canUseGizmos;
 
-    if (!isAdmin || modo === 'PLAYING' || modo === 'INTERACTING' || modo === 'TRANSITIONING') {
+    if (!canUseGizmos || modo === 'PLAYING' || modo === 'INTERACTING' || modo === 'TRANSITIONING') {
       this.gizmoManager.attachToMesh(null);
       this.updateCenterDragMeshRenderState(null, null);
       return;
@@ -256,9 +256,9 @@ export class ToolsGizmoService {
     if (!this.gizmoManager) return;
 
     const modoJuego = this.state.playState();
-    const isAdmin = this.authSvc.isAdmin();
+    const canUseGizmos = this.gameContext.authorityProfile().canUseGizmos;
 
-    if (modoJuego === 'PLAYING' || modoJuego === 'TRANSITIONING' || modoJuego === 'INTERACTING' || !isAdmin) {
+    if (modoJuego === 'PLAYING' || modoJuego === 'TRANSITIONING' || modoJuego === 'INTERACTING' || !canUseGizmos) {
       this.gizmoManager.attachToMesh(null);
       this.gizmoManager.positionGizmoEnabled = false;
       this.gizmoManager.rotationGizmoEnabled = false;

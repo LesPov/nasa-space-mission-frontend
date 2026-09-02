@@ -7,11 +7,11 @@ import { EditorStateService } from '../editor-state.service';
 import { SceneNodesService } from './scene-nodes.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { CoreTriggerLoaderService } from '../../../core/engine/scene/utils/core-trigger-loader.service';
-import { AuthService } from '../../../core/services/auth';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { TriggerVisualizerService } from '../../../core/engine/scene/utils/trigger-visualizer.service';
 import { TriggerDto } from '../../../core/engine/models/api-dto.model';
-  
+import { GameContextService } from '../../../core/engine/session/game-context.service';
+
 @Injectable({ providedIn: 'root' })
 export class BuilderTriggerService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
@@ -22,7 +22,7 @@ export class BuilderTriggerService {
   private entityManager = inject(EntityManagerService);
   private triggerLoader = inject(CoreTriggerLoaderService);
   private triggerVisualizer = inject(TriggerVisualizerService);
-  private authSvc = inject(AuthService);
+  private gameContext = inject(GameContextService);
 
   public reconstruirMallaTrigger(oldMesh: AbstractMesh, nuevaForma: string): Mesh {
     const scene = this.motor3d.getScene();

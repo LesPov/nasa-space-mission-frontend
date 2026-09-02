@@ -1,20 +1,19 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Ray, Vector3, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
-import { AuthService } from '../../../core/services/auth';
 import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
+import { GameContextService } from '../../../core/engine/session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsSelectionService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
-  private authSvc = inject(AuthService);
   private ownership = inject(CameraOwnershipService);
+  private gameContext = inject(GameContextService);
 
   public normalizarNumero(valor: any, fallback: number): number {
     const n = Number(valor);
@@ -54,9 +53,9 @@ export class ToolsSelectionService {
   }
 
   public getSelectionMaxDistance(): number {
-    const isAdmin = this.authSvc.isAdmin();
+    const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
     const range = this.getSelectionRangeConfig();
-    return isAdmin ? range.fpsAdminMax : range.fpsUserMax;
+    return canSelectHidden ? range.fpsAdminMax : range.fpsUserMax;
   }
 
   private getMeshSelectionPoint(mesh: AbstractMesh): Vector3 {
@@ -103,7 +102,7 @@ export class ToolsSelectionService {
     const playSt = this.state.playState();
     const jugador = this.state.jugadorActivo;
     const entityPlayer = jugador ? this.entityManager.getEntityByMesh(jugador) : null;
-    const isAdmin = this.authSvc.isAdmin();
+    const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
 
     const hit = scene.pickWithRay(ray, (m) => {
       if (!m.isVisible && !Tags.MatchesQuery(m, "cinematic_proxy")) return false;
@@ -139,16 +138,16 @@ export class ToolsSelectionService {
 
     const rootNode = this.state.encontrarRaiz(picked);
     if (!(rootNode instanceof AbstractMesh)) return null;
-    if (this.esTriggerMesh(rootNode) && !isAdmin) return null;
+    if (this.esTriggerMesh(rootNode) && !canSelectHidden) return null;
 
     if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') {
-      if (!isAdmin) return null;
+      if (!canSelectHidden) return null;
       if (!this.canSelectByDistance(ray, rootNode, hit)) return null;
       return rootNode;
     }
 
     if (playSt === 'EDITOR') {
-      if (!isAdmin) return null;
+      if (!canSelectHidden) return null;
       if (!this.puedeTomarseParaSeleccion(rootNode)) return null;
       return rootNode;
     }

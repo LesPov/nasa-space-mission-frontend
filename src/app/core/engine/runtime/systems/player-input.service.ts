@@ -5,7 +5,6 @@ import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameContextService } from '../../session/game-context.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { GameEventBusService } from '../../events/game-event-bus.service';
-import { AuthService } from '../../../services/auth';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInputService implements IUpdatable {
@@ -21,7 +20,6 @@ export class PlayerInputService implements IUpdatable {
   private context = inject(GameContextService);
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private eventBus = inject(GameEventBusService);
-  private authSvc = inject(AuthService);
 
   public isRadialMenuOpen = false;
   private qPressed = false;
@@ -120,7 +118,7 @@ export class PlayerInputService implements IUpdatable {
       const keyStr = kbInfo.event.key ? kbInfo.event.key.toLowerCase() : '';
       const codeStr = kbInfo.event.code ? kbInfo.event.code.toLowerCase() : '';
 
-      if (keyStr === 'q' && this.authSvc.isAdmin() && this.context.isDebugMode() && this.context.cameraView() === 'FPS') {
+      if (keyStr === 'q' && this.context.authorityProfile().canViewDebug && this.context.cameraView() === 'FPS') {
         if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
           if (!this.qPressed) {
              this.qPressed = true;

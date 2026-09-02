@@ -17,7 +17,7 @@ export class GameContextService {
   readonly #isTransitioning = signal<boolean>(false);
   readonly #isInteracting = signal<boolean>(false);
 
-  // --- NUEVA ARQUITECTURA (Fase 1) ---
+  // --- NUEVA ARQUITECTURA (Fase 1 & 2) ---
   readonly #appMode = signal<AppMode>('EDITOR');
   readonly #engineState = signal<EngineState>('STOPPED');
   readonly #inputContext = signal<InputContext>('UI');

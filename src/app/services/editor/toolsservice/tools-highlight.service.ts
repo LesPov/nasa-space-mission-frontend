@@ -1,19 +1,20 @@
+
 // src/app/services/editor/toolsservice/tools-highlight.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Color3, Color4, Mesh, AbstractMesh, Tags, HighlightLayer, Node } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
-import { AuthService } from '../../../core/services/auth';
 import { TriggerVisualizerService } from '../../../core/engine/scene/utils/trigger-visualizer.service';
+import { GameContextService } from '../../../core/engine/session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsHighlightService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private state = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
-  private authSvc = inject(AuthService);
   private triggerVisualizer = inject(TriggerVisualizerService);
+  private gameContext = inject(GameContextService);
 
   private lastHoveredMeshId: number | null = null;
   private lastSelectedMeshId: number | null = null;
@@ -211,7 +212,7 @@ export class ToolsHighlightService {
 
     this.limpiarTodosLosEdges();
 
-    const isAdmin = this.authSvc.isAdmin();
+    const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
     const isFPS = this.state.modoVistaPrueba === 'FPS';
     const isLiveEditorMode = mode === 'PLAYING' || mode === 'EDITING_IN_GAME';
 
@@ -219,7 +220,7 @@ export class ToolsHighlightService {
         return; 
     }
 
-    const puedeResaltar = mode === 'EDITOR' || mode === 'EDITING_IN_GAME' || (mode === 'PLAYING' && isAdmin);
+    const puedeResaltar = mode === 'EDITOR' || mode === 'EDITING_IN_GAME' || (mode === 'PLAYING' && canSelectHidden);
     if (!puedeResaltar) return;
 
     const colorHover = '#3b82f6';   // Azul

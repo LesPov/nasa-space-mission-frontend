@@ -1,3 +1,4 @@
+
 import { AuthorityProfile } from './authority-profile.model';
 
 export type CameraViewMode = 'FPS' | 'TPS';

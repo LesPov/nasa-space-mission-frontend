@@ -9,7 +9,6 @@ import { SceneNodesService } from './sceneservice/scene-nodes.service';
 import { EditorStateService } from './editor-state.service';
 import { EditorMapaService } from '../editor-mapa.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
-import { AuthService } from '../../core/services/auth';
 import { GameContextService } from '../../core/engine/session/game-context.service';
 import { ShadowOrchestratorService } from '../../core/engine/runtime/shadows/shadow-orchestrator.service';
  
@@ -24,7 +23,6 @@ export class EditorSceneService {
   private state = inject(EditorStateService);
   private mapaSvc = inject(EditorMapaService);
   private entityManager = inject(EntityManagerService);
-  private authSvc = inject(AuthService);
   private gameContext = inject(GameContextService);
 
   public crearEntornoVisual(): void {
@@ -107,7 +105,7 @@ export class EditorSceneService {
   }
 
   public cargarEscenaDesdeDatos(dataBD: any): Promise<void> {
-    const isAdmin = this.authSvc.isAdmin();
+    const isAdmin = this.gameContext.authorityProfile().canSelectHidden;
     const mode = this.gameContext.mode();
     
     if (mode === 'EDITOR' || mode === 'EDITING_IN_GAME') {
@@ -125,7 +123,7 @@ export class EditorSceneService {
   }
 
   public instanciarPrefabFull(prefabData: any, targetPos: Vector3, rotationEuler?: Vector3, scale?: Vector3, parentNode?: AbstractMesh): void {
-    const isAdmin = this.authSvc.isAdmin();
+    const isAdmin = this.gameContext.authorityProfile().canSelectHidden;
     this.loaderSvc.instantiatePrefab(prefabData, targetPos, rotationEuler, scale, parentNode).then((mallas) => {
       if (isAdmin) {
         this.revelarEntidadesOcultasParaAdmin();
@@ -140,7 +138,7 @@ export class EditorSceneService {
   }
 
   public instanciarPrefabEnCentro(prefabData: any): void {
-    const isAdmin = this.authSvc.isAdmin();
+    const isAdmin = this.gameContext.authorityProfile().canSelectHidden;
     
     let camTarget = new Vector3(0, 1, 0);
     const editorCam = this.motor3d.getEditorCamera();

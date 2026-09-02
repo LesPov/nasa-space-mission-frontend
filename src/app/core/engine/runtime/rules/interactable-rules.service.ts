@@ -1,7 +1,7 @@
+
 import { Injectable, inject } from '@angular/core';
 import { GameEntity } from '../../entities/game.entity';
 import { GameContextService } from '../../session/game-context.service';
-import { GameMode } from '../../session/game-mode.model';
 import { AbstractMesh, Tags } from '@babylonjs/core';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 
@@ -34,20 +34,15 @@ export class InteractableRulesService {
     }
 
     const entity = this.entityManager.getEntityByMesh(mesh);
-    const mode = this.context.mode();
-    const isPlaying = mode !== GameMode.EDITOR;
-    const isAdmin = mode === GameMode.EDITOR || mode === GameMode.PREVIEW_ADMIN || mode === GameMode.TEST_LIVE;
+    const profile = this.context.authorityProfile();
 
     if (entity && (entity.type === 'trigger' || entity.type === 'trigger_compuesto')) {
-        // 🔥 FIX: Si estamos en cualquier modo que implique jugar (Test Live, Editing In Game, Usuario Final),
-        // los Triggers SIEMPRE deben ser ignorados por el raycast para evitar que el punto amarillo reaccione.
-        if (mode !== GameMode.EDITOR) return true; 
-        return !isAdmin; 
+        return !profile.canSeeTriggers; 
     }
 
     if (entity) {
-        if (!isAdmin && entity.visual?.isSelectable === false && !this.isInteractable(entity)) {
-            if (isPlaying) return true;
+        if (!profile.canSelectHidden && entity.visual?.isSelectable === false && !this.isInteractable(entity)) {
+            return true;
         }
     }
     return false;
@@ -59,10 +54,9 @@ export class InteractableRulesService {
 
     const entity = this.entityManager.getEntityByMesh(mesh);
     const selectable = entity?.visual?.isSelectable ?? true;
-    const mode = this.context.mode();
-    const isAdmin = mode === GameMode.EDITOR || mode === GameMode.PREVIEW_ADMIN || mode === GameMode.TEST_LIVE;
+    const profile = this.context.authorityProfile();
 
-    if (isAdmin) return !!selectable;
+    if (profile.canSelectHidden) return !!selectable;
     return false;
   }
 }

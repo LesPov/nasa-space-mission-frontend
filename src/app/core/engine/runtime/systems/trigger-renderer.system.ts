@@ -26,9 +26,9 @@ export class TriggerRendererSystem implements IUpdatable {
   }
 
   public postUpdate(dtMs: number): void {
-    const isDebugMode = this.context.isDebugMode();
+    const canSeeTriggers = this.context.authorityProfile().canSeeTriggers;
     
-    if (!isDebugMode) {
+    if (!canSeeTriggers) {
       if (this.debugLinesMesh && this.debugLinesMesh.isVisible) {
          this.debugLinesMesh.isVisible = false;
       }

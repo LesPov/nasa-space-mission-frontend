@@ -1,5 +1,3 @@
-
-
 import { Injectable, inject, Injector } from '@angular/core';
 import { ArcRotateCamera, UniversalCamera, Vector3, Scene, Camera, Matrix } from '@babylonjs/core';
 import { GameContextService } from '../../session/game-context.service';
@@ -82,11 +80,12 @@ export class CameraFactoryService {
         const cam = new UniversalCamera(`playerCameraFPS`, new Vector3(0, 0, 0), scene);
         cam.keysUp = []; cam.keysDown = []; cam.keysLeft = []; cam.keysRight = [];
         cam.speed = 0.3; cam.applyGravity = false;
+        // Defaults base seguros - El PlayerCameraManagerService sobrescribirá con el perfil real
+        cam.minZ = 0.05; cam.maxZ = 500000; cam.angularSensibility = 2500; cam.checkCollisions = false;
         this._cameras.set(cameraKey, cam);
       }
-      const cam = this._cameras.get(cameraKey) as UniversalCamera;
-      cam.minZ = 0.05; cam.maxZ = 500000; cam.angularSensibility = 2500; cam.checkCollisions = false;
-      return cam;
+      // 🔥 FIX FASE 3: Eliminada la mutación de estado cruzada durante las llamadas de Getter. 
+      return this._cameras.get(cameraKey) as UniversalCamera;
     }
 
     if (type === 'TPS') {
@@ -95,12 +94,12 @@ export class CameraFactoryService {
         cam.wheelPrecision = 15; cam.lowerRadiusLimit = this.TPS_MIN_RADIUS; cam.upperRadiusLimit = this.TPS_MAX_RADIUS;
         cam._panningMouseButton = 2; cam.allowUpsideDown = false;
         cam.collisionRadius = new Vector3(0.15, 0.15, 0.15); cam.upperBetaLimit = (Math.PI / 2) + 0.4;
+        // Defaults base seguros - El PlayerCameraManagerService sobrescribirá con el perfil real
+        cam.minZ = 0.05; cam.maxZ = 500000; cam.angularSensibilityX = 2000; cam.angularSensibilityY = 2000;
         this._cameras.set(cameraKey, cam);
       }
-      const cam = this._cameras.get(cameraKey) as ArcRotateCamera;
-      cam.minZ = 0.05; cam.maxZ = 500000; cam.angularSensibilityX = 2000; cam.angularSensibilityY = 2000;
-      cam.checkCollisions = mode === 'FINAL_USER' || mode === 'PREVIEW_ADMIN'; 
-      return cam;
+      // 🔥 FIX FASE 3: Eliminada la mutación de estado cruzada durante las llamadas de Getter. 
+      return this._cameras.get(cameraKey) as ArcRotateCamera;
     }
 
     if (type === 'ADMIN_FREE') {
@@ -121,7 +120,6 @@ export class CameraFactoryService {
         const cam = new UniversalCamera(`cinematicCam`, Vector3.Zero(), scene);
         cam.checkCollisions = false;
         cam.applyGravity = false;
-        // La cámara de cinemáticas no responde al input del jugador
         cam.keysUp = []; cam.keysDown = []; cam.keysLeft = []; cam.keysRight = [];
         this._cameras.set(cameraKey, cam);
       }

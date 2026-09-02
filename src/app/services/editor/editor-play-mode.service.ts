@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, MeshBuilder, Tags, Vector3, Observer, Scene } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Tags, Vector3, Observer, Scene } from '@babylonjs/core';
 
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { EditorStateService } from './editor-state.service';
@@ -37,7 +37,6 @@ export class EditorPlayModeService {
     let objMesh = this.state.objetoSeleccionado() as Mesh;
     let preferredEntity = objMesh ? this.entityManager.getEntityByMesh(objMesh) : null;
     
-    // 🔥 CONSUMIDOR DELEGADO: El SpawnManager resuelve todo centralizadamente.
     const playerEntity = this.spawnManager.resolvePlayerForSession(preferredEntity, true);
 
     if (!playerEntity || !playerEntity.view) {
@@ -117,6 +116,7 @@ export class EditorPlayModeService {
         }
 
         if (!skipIntro) this.transitionSvc.finishTestLiveTransition();
+        
         this.runtimeEngine.startTestSession(playerEntity!, vista);
         
         setTimeout(() => {
@@ -127,9 +127,6 @@ export class EditorPlayModeService {
                     this.motor3d.getEditorCamera()?.detachControl();
                     this.motor3d.getPlayerCameraFPS()?.detachControl();
                     this.motor3d.getPlayerCameraTPS()?.detachControl();
-                    
-                    const profile = CAMERA_BEHAVIOR_PROFILES[GameMode.TEST_LIVE];
-                    if (activeCam.minZ !== undefined) activeCam.minZ = profile.minZ;
                     
                     activeCam.attachControl(canvas, true);
                     

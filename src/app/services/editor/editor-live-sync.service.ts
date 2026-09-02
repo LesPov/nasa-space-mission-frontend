@@ -1,4 +1,3 @@
-// src/app/services/editor/editor-live-sync.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Quaternion } from '@babylonjs/core';
@@ -64,6 +63,15 @@ export class EditorLiveSyncService {
       environmentSettings: payload.environmentSettings,
       uiSettings: payload.uiSettings
     };
+
+    // 🔥 FIX: Prevenir duplicación masiva de objetos filtrando los que ya existen
+    // Esto evita que cada auto-guardado cargue una escena entera duplicando la cuenta de polígonos.
+    if (loadPayload.sceneObjectsDelta) {
+      loadPayload.sceneObjectsDelta = loadPayload.sceneObjectsDelta.filter(obj => !this.entityManager.getEntityByUid(obj.uid));
+    }
+    if (loadPayload.triggersDelta) {
+      loadPayload.triggersDelta = loadPayload.triggersDelta.filter(obj => !this.entityManager.getEntityByUid(obj.uid));
+    }
 
     await this.sceneLoader.loadSceneFromData(loadPayload);
 

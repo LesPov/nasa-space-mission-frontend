@@ -1,19 +1,27 @@
-
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Observer, Scene, KeyboardEventTypes } from '@babylonjs/core';
 import { PrefabRotationService } from './prefab-rotation.service';
+import { InputRouterService } from '../../../core/engine/session/input-router.service';
+import { Subscription } from 'rxjs';
+import { GameContextService } from '../../../core/engine/session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
 export class PrefabInputController {
   public isShiftDown = false;
   public isAltDown = false;
-  private observer: Observer<any> | null = null;
+  
+  private inputRouter = inject(InputRouterService);
+  private gameContext = inject(GameContextService);
+  
+  private sub: Subscription | null = null;
 
   constructor(private rotationSvc: PrefabRotationService) {}
 
   public attach(scene: Scene, onCancel: () => void): void {
-    if (this.observer) return;
-    this.observer = scene.onKeyboardObservable.add((kbInfo) => {
+    if (this.sub) return;
+    
+    // Centralizado al router, escuchando exclusivamente cuando estamos en edición
+    this.sub = this.inputRouter.getKeyboardStream(['EDITOR_EDITING']).subscribe((kbInfo) => {
       const isDown = kbInfo.type === KeyboardEventTypes.KEYDOWN;
       const key = kbInfo.event.key;
 
@@ -30,6 +38,9 @@ export class PrefabInputController {
         if (key === 'ArrowUp') this.rotationSvc.rotateX(-step);
         if (key === 'ArrowDown') this.rotationSvc.rotateX(step);
         
+        // Al estar colocando prefabs (LiveBuilder isBuilding() === true),
+        // el EditorToolsService se pausa automáticamente cediendo la tecla 'Q' a este controlador
+        // garantizando Un Solo Consumidor.
         if (key === 'q' || key === 'Q') this.rotationSvc.rotateY(-fineStep);
         if (key === 'e' || key === 'E') this.rotationSvc.rotateY(fineStep);
 
@@ -42,9 +53,9 @@ export class PrefabInputController {
   }
 
   public detach(scene: Scene): void {
-    if (this.observer) {
-      scene.onKeyboardObservable.remove(this.observer);
-      this.observer = null;
+    if (this.sub) {
+      this.sub.unsubscribe();
+      this.sub = null;
     }
     this.isShiftDown = false;
     this.isAltDown = false;

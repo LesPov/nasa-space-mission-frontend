@@ -30,6 +30,8 @@ import { AuthService } from '../../../core/services/auth';
 import { GameContextService } from '../../../core/engine/session/game-context.service'; 
 import { EditorOrchestratorService } from '../../../services/editor/editor-orchestrator.service';
 import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engine.service';
+import { InputRouterService } from '../../../core/engine/session/input-router.service';
+import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-editor-escena', 
@@ -58,8 +60,10 @@ export class EditorEscena implements OnInit, OnDestroy {
   private router = inject(Router);
   public toolsSvc = inject(EditorToolsService);
   public runtime = inject(RuntimeEngineService);
+  private inputRouter = inject(InputRouterService);
 
   public isInteracting = signal(false);
+  private kbSub!: Subscription;
 
   public get esAdmin(): boolean {
     return this.authSvc.isAdmin();
@@ -117,6 +121,12 @@ export class EditorEscena implements OnInit, OnDestroy {
     if (this.esAdmin) {
        this.orchestrator.initialize();
     }
+    
+    // Fase 2: Inicialización centralizada de input de editor
+    this.keyboard.init();
+    this.kbSub = this.inputRouter.getGlobalKeyboardStream(['UI', 'EDITOR_EDITING', 'EDITOR_PLAYTEST']).subscribe(e => {
+        this.manejarAtajos(e);
+    });
   }
 
   @HostListener('window:mousemove', ['$event'])
@@ -125,7 +135,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   @HostListener('window:mouseup')
   onMouseUp() { this.layoutUI.onMouseUp(); }
 
-  @HostListener('window:keydown', ['$event'])
+  // Reemplazado el HostListener de teclado por el manejador atado al Router
   manejarAtajos(event: KeyboardEvent) { 
     if (event.key === 'Escape') {
       if (this.mostrarModalMisionPreview) {
@@ -139,7 +149,8 @@ export class EditorEscena implements OnInit, OnDestroy {
         return;
       }
     }
-    this.keyboard.handleKeydown(event, this.editando); 
+    // El delegado this.keyboard.handleKeydown fue removido porque 
+    // EditorKeyboardService ya se suscribe y gestiona su propia lógica internamente.
   }
 
   toggleNieblaTemporal() {
@@ -259,6 +270,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.keyboard.dispose();
+    if (this.kbSub) this.kbSub.unsubscribe();
     this.orchestrator.destroy();
   }
 }

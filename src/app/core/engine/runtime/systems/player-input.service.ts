@@ -1,10 +1,12 @@
+// src/app/core/engine/runtime/systems/player-input.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { Observer, KeyboardInfo, Scene, KeyboardEventTypes } from '@babylonjs/core';
+import { KeyboardInfo, KeyboardEventTypes } from '@babylonjs/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameContextService } from '../../session/game-context.service';
-import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { GameEventBusService } from '../../events/game-event-bus.service';
+import { InputRouterService } from '../../session/input-router.service';
+import { Subscription } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInputService implements IUpdatable {
@@ -14,39 +16,46 @@ export class PlayerInputService implements IUpdatable {
   public actionPressedThisFrame = false;
   public inspectPressedThisFrame = false;
 
-  private tecladoObserver: Observer<KeyboardInfo> | null = null;
   private isEnabled: boolean = false;
+  private inputSub: Subscription | null = null;
 
   private context = inject(GameContextService);
-  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private eventBus = inject(GameEventBusService);
+  private inputRouter = inject(InputRouterService);
 
   public isRadialMenuOpen = false;
-  private qPressed = false;
-  private wasPointerLockedBeforeMenu = false; // 🔥 Guarda el estado del ratón para devolverte limpio al juego
+  private wasPointerLockedBeforeMenu = false;
 
   constructor() {
     this.eventBus.events$.subscribe(e => {
       if (e.type === 'RadialMenuToggled') {
         this.isRadialMenuOpen = e.payload;
         if (!e.payload) {
-             this.lockPointerAfterMenu();
+          this.lockPointerAfterMenu();
         }
       }
     });
   }
 
   public start(): void {
-    this.tecladoObserver = null; 
-    this.iniciarEscuchaTeclado(this.motor3d.getScene(), {
-      onToggleCamera: () => {
-         this.eventBus.emit({ type: 'ToggleCameraRequested' });
-      },
+    this.stop();
+
+    // Consume input de gameplay exclusivamente en los contextos activos de juego
+    this.inputSub = this.inputRouter.getKeyboardStream([
+      'GAMEPLAY',
+      'ADMIN_PREVIEW',
+      'EDITOR_PLAYTEST'
+    ]).subscribe(kbInfo => {
+      this.handleKeyboardEvent(kbInfo);
     });
   }
 
   public stop(): void {
-    this.detenerEscuchaTeclado(this.motor3d.getScene());
+    if (this.inputSub) {
+      this.inputSub.unsubscribe();
+      this.inputSub = null;
+    }
+    this.disable();
   }
 
   public enable(): void {
@@ -90,8 +99,8 @@ export class PlayerInputService implements IUpdatable {
       stateComp.intentions.jump = !!this.inputMap[' '] || !!this.inputMap['space'];
       
       if (stateComp.intentions.jump) {
-          this.inputMap[' '] = false;
-          this.inputMap['space'] = false;
+        this.inputMap[' '] = false;
+        this.inputMap['space'] = false;
       }
     } else {
       stateComp.intentions.moveForward = false;
@@ -108,85 +117,35 @@ export class PlayerInputService implements IUpdatable {
     this.inspectPressedThisFrame = false;
   }
   
-  private iniciarEscuchaTeclado(
-    scene: Scene, 
-    callbacks: { onToggleCamera: () => void }
-  ): void {
-    if (this.tecladoObserver) return; 
+  private handleKeyboardEvent(kbInfo: KeyboardInfo): void {
+    const keyStr = kbInfo.event.key ? kbInfo.event.key.toLowerCase() : '';
+    const codeStr = kbInfo.event.code ? kbInfo.event.code.toLowerCase() : '';
 
-    this.tecladoObserver = scene.onKeyboardObservable.add((kbInfo: KeyboardInfo) => {
-      const keyStr = kbInfo.event.key ? kbInfo.event.key.toLowerCase() : '';
-      const codeStr = kbInfo.event.code ? kbInfo.event.code.toLowerCase() : '';
+    if (!this.isEnabled) return;
 
-      if (keyStr === 'q' && this.context.authorityProfile().canViewDebug && this.context.cameraView() === 'FPS') {
-        if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
-          if (!this.qPressed) {
-             this.qPressed = true;
-             
-             // Guardamos si el cursor estaba bloqueado antes de abrir el menú para saber si debemos restaurarlo
-             if (!this.isRadialMenuOpen) {
-                 this.wasPointerLockedBeforeMenu = !!document.pointerLockElement;
-             }
-             
-             this.isRadialMenuOpen = !this.isRadialMenuOpen;
-             this.eventBus.emit({ type: 'RadialMenuToggled', payload: this.isRadialMenuOpen });
-             
-             if (this.isRadialMenuOpen) {
-                 this.unlockPointerForMenu();
-             }
-          }
-        } else if (kbInfo.type === KeyboardEventTypes.KEYUP) {
-          this.qPressed = false;
-        }
+    if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
+      this.inputMap[keyStr] = true;
+      this.inputMap[codeStr] = true;
+
+      if (keyStr === 'e' && !this.actionPressedThisFrame) this.actionPressedThisFrame = true;
+      if (keyStr === 'i' && !this.inspectPressedThisFrame) this.inspectPressedThisFrame = true;
+
+      if (keyStr === 'v' && !this.inputMap['v_handled']) {
+        this.inputMap['v_handled'] = true;
+        this.eventBus.emit({ type: 'ToggleCameraRequested' });
       }
+    } else if (kbInfo.type === KeyboardEventTypes.KEYUP) {
+      this.inputMap[keyStr] = false;
+      this.inputMap[codeStr] = false;
 
-      if (!this.isEnabled) return; 
-
-      if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
-        this.inputMap[keyStr] = true;
-        this.inputMap[codeStr] = true;
-
-        if (keyStr === 'e' && !this.actionPressedThisFrame) this.actionPressedThisFrame = true;
-        if (keyStr === 'i' && !this.inspectPressedThisFrame) this.inspectPressedThisFrame = true;
-
-        if (keyStr === 'v' && !this.inputMap['v_handled']) {
-          this.inputMap['v_handled'] = true;
-          callbacks.onToggleCamera();
-        }
-      } else {
-        this.inputMap[keyStr] = false;
-        this.inputMap[codeStr] = false;
-
-        if (keyStr === 'v') this.inputMap['v_handled'] = false;
-      }
-    });
-  }
-
-  private unlockPointerForMenu(): void {
-    if (document.pointerLockElement) {
-      try { document.exitPointerLock(); } catch(e) {}
+      if (keyStr === 'v') this.inputMap['v_handled'] = false;
     }
   }
 
   private lockPointerAfterMenu(): void {
-    // 🔥 FIX: Solo re-bloqueamos el cursor al cerrar el menú si ESTABA bloqueado (jugando) antes de abrirlo
     if (this.wasPointerLockedBeforeMenu) {
-      const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
-      if (canvas && !document.pointerLockElement) {
-        try { 
-          canvas.focus();
-          canvas.requestPointerLock(); 
-        } catch(e) {}
-      }
+      this.inputRouter.lockPointer();
     }
-  }
-
-  public detenerEscuchaTeclado(scene: Scene): void {
-    if (this.tecladoObserver) {
-      scene.onKeyboardObservable.remove(this.tecladoObserver);
-      this.tecladoObserver = null;
-    }
-    this.disable();
   }
 
   public resetearInputs(): void {
@@ -194,6 +153,5 @@ export class PlayerInputService implements IUpdatable {
     this.actionPressedThisFrame = false;
     this.inspectPressedThisFrame = false;
     this.isRadialMenuOpen = false;
-    this.qPressed = false;
   }
 }

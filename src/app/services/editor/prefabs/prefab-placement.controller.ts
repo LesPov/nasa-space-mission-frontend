@@ -2,18 +2,23 @@
 import { Injectable, inject } from '@angular/core';
 import { 
   Scene, Vector3, Matrix, AbstractMesh, Ray, 
-  KeyboardEventTypes, PointerEventTypes, Observer 
+  KeyboardEventTypes, PointerEventTypes
 } from '@babylonjs/core';
 import { GhostRendererService } from './ghost-renderer.service';
 import { EditorSceneService } from '../editor-scene.service';
 import { PlacementCalculatorService } from './placement-calculator.service';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
+import { InputRouterService } from '../../../core/engine/session/input-router.service';
+import { GameContextService } from '../../../core/engine/session/game-context.service';
+import { Subscription } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class PrefabPlacementController {
   private ghostRenderer = inject(GhostRendererService);
   private editorScene = inject(EditorSceneService);
   private placementCalculator = inject(PlacementCalculatorService);
+  private inputRouter = inject(InputRouterService);
+  private gameContext = inject(GameContextService);
 
   public isBuilding = false;
   private currentAsset: any = null;
@@ -24,9 +29,9 @@ export class PrefabPlacementController {
   private isModalOpenFn: () => boolean = () => false;
   private activePlayerFn: () => GameEntity | null = () => null;
 
-  private observerPointer: Observer<any> | null = null;
-  private observerKeyboard: Observer<any> | null = null;
-  private observerRender: Observer<any> | null = null;
+  private kbSub: Subscription | null = null;
+  private ptrSub: Subscription | null = null;
+  private observerRender: any = null;
 
   private isAltPressed = false;
   private isGPressed = false;
@@ -80,12 +85,12 @@ export class PrefabPlacementController {
 
     this.ghostRenderer.setTransform(this.targetPosition, this.targetRotation, this.ghostScale);
 
-    this.observerKeyboard = scene.onKeyboardObservable.add((kbInfo) => {
+    // 🔥 FIX: Transición a InputRouterService (Adiós observables nativos de Babylon)
+    this.kbSub = this.inputRouter.getKeyboardStream(['EDITOR_EDITING']).subscribe((kbInfo) => {
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
         if (kbInfo.event.key === 'Alt') this.isAltPressed = true;
         if (kbInfo.event.key.toLowerCase() === 'g') this.isGPressed = true;
         if (kbInfo.event.key === 'Escape') this.cancelBuild();
-        
         if (kbInfo.event.key.toLowerCase() === 'r') {
           this.targetRotation.y += Math.PI / 2; 
         }
@@ -95,7 +100,7 @@ export class PrefabPlacementController {
       }
     });
 
-    this.observerPointer = scene.onPointerObservable.add((pi) => {
+    this.ptrSub = this.inputRouter.getPointerStream(['EDITOR_EDITING']).subscribe((pi) => {
       if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
         if (!this.isModalOpenFn()) this.buildPrefab();
       }
@@ -123,7 +128,8 @@ export class PrefabPlacementController {
     if (!this.scene || !this.camera || this.isModalOpenFn()) return;
 
     let ray: Ray;
-    if (document.pointerLockElement) {
+    // 🔥 FIX: Uso del contexto en lugar de API DOM directa
+    if (this.gameContext.isPointerLocked()) {
       const engine = this.scene.getEngine();
       ray = this.scene.createPickingRay(engine.getRenderWidth() / 2, engine.getRenderHeight() / 2, Matrix.Identity(), this.camera);
     } else {
@@ -161,14 +167,9 @@ export class PrefabPlacementController {
     const rot = this.targetRotation.clone();
     const parent = this.targetParent;
 
-    // 🔥 FIX: Evaluar correctamente si el asset tiene jerarquía o propiedades avanzadas guardadas.
-    // Si tiene `prefabHierarchy`, significa que fue guardado explícitamente desde la escena y puede
-    // contener secuencias, colisionadores o scripts integrados.
     if (asset.properties?.prefabHierarchy) {
-      // 🟥 RUTINA PARA PREFABS REALES (Modelos 3D y Primitivas Guardadas con Propiedades)
       this.editorScene.instanciarPrefabFull(asset, pos, rot, Vector3.One(), parent || undefined);
     } else {
-      // 🟩 RUTINA PARA PRIMITIVAS BÁSICAS SINTÉTICAS (Cubo, Esfera vacíos del menú radial)
       const colorHex = asset.properties?.color || '#ffffff';
       this.editorScene.agregarObjetoCustom(
         asset.type,
@@ -189,14 +190,12 @@ export class PrefabPlacementController {
     this.ghostRenderer.destroyGhost();
     this.currentAsset = null;
 
-    if (scene) {
-      if (this.observerKeyboard) scene.onKeyboardObservable.remove(this.observerKeyboard);
-      if (this.observerPointer) scene.onPointerObservable.remove(this.observerPointer);
-      if (this.observerRender) scene.onBeforeRenderObservable.remove(this.observerRender);
+    if (this.kbSub) { this.kbSub.unsubscribe(); this.kbSub = null; }
+    if (this.ptrSub) { this.ptrSub.unsubscribe(); this.ptrSub = null; }
+    if (scene && this.observerRender) {
+      scene.onBeforeRenderObservable.remove(this.observerRender);
+      this.observerRender = null;
     }
-    this.observerKeyboard = null;
-    this.observerPointer = null;
-    this.observerRender = null;
     this.targetParent = null;
   }
 }

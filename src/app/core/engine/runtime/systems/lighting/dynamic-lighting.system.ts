@@ -1,4 +1,4 @@
-// src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
+
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
 import { PointLight, SpotLight, Vector3, Color3, Tags, ShadowGenerator, AbstractMesh } from '@babylonjs/core';
@@ -56,10 +56,8 @@ export class DynamicLightingSystem implements IUpdatable {
     this.pointPool = [];
     this.spotPool = [];
 
-    // 🔥 OPTIMIZACIÓN DE SOMBRAS: 512 en editor, 1024 en juego. 
-    // PointLights usan 6 texturas (Cubemap), 1024 es ideal para alta calidad con 0 lag.
-    const isEditor = this.context.mode() === 'EDITOR';
-    const shadowResolution = isEditor ? 512 : 1024; 
+    // 🔥 OPTIMIZACIÓN DE SOMBRAS: Reducido a 512 de forma estricta para evitar lag crítico de compilación en Admin/Player Preview
+    const shadowResolution = 512; 
 
     for (let i = 0; i < this.MAX_POOLED_POINTS; i++) {
       const pl = new PointLight(`pooled_point_${i}`, Vector3.Zero(), scene);

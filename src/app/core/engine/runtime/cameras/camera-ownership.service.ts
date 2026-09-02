@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject, signal, Injector } from '@angular/core';
 import { Camera } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -50,6 +49,11 @@ export class CameraOwnershipService {
 
   public getCamera(): Camera | null {
     return this.currentCamera();
+  }
+
+  // 🔥 FIX: Permite resetear el inicializador anti-bypass para que pueda reiniciarse sanamente en nuevas escenas
+  public resetWatcher(): void {
+    this.isWatcherInitialized = false;
   }
 
   private initAntiBypassWatcher(): void {

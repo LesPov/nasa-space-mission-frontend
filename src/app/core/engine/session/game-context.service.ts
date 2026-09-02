@@ -24,7 +24,7 @@ export class GameContextService {
   readonly #mode = signal<GameMode>(GameMode.EDITOR);
   readonly #appMode = signal<AppMode>('EDITOR');
   readonly #engineState = signal<EngineState>('STOPPED');
-  readonly #inputContext = signal<InputContext>('UI');
+  readonly #inputContext = signal<InputContext>('EDITOR_EDITING');
   readonly #authorityProfile = signal<AuthorityProfile>(PROFILES.ADMIN_EDITING);
 
   // Transiciones y Diálogos
@@ -108,7 +108,7 @@ export class GameContextService {
   public readonly isAdminPreview = computed(() => this.#executionContext() === 'ADMIN_PREVIEW');
 
   // ==========================================
-  // CONFIGURACIÓN DE CONTEXTO Y AUTORIDAD (FASE 1)
+  // CONFIGURACIÓN DE CONTEXTO Y AUTORIDAD (FASE 1 & 2)
   // ==========================================
 
   public setupContext(
@@ -127,7 +127,7 @@ export class GameContextService {
         this.#mode.set(GameMode.FINAL_USER);
         this.#appMode.set('PLAYER');
         this.#engineState.set('PLAYING');
-        this.#inputContext.set('PLAYER');
+        this.#inputContext.set('GAMEPLAY');
         this.#authorityProfile.set(PROFILES.PLAYER);
         break;
 
@@ -136,7 +136,7 @@ export class GameContextService {
         this.#mode.set(GameMode.PREVIEW_ADMIN);
         this.#appMode.set('PLAYER');
         this.#engineState.set('PLAYING');
-        this.#inputContext.set('PLAYER');
+        this.#inputContext.set('ADMIN_PREVIEW');
         this.#authorityProfile.set(PROFILES.ADMIN_PREVIEW);
         break;
 
@@ -156,7 +156,7 @@ export class GameContextService {
         this.#mode.set(GameMode.EDITOR);
         this.#appMode.set('EDITOR');
         this.#engineState.set('STOPPED');
-        this.#inputContext.set('UI');
+        this.#inputContext.set('EDITOR_EDITING');
         this.#authorityProfile.set(PROFILES.ADMIN_EDITING);
         break;
 
@@ -164,7 +164,7 @@ export class GameContextService {
         this.#mode.set(GameMode.TEST_LIVE);
         this.#appMode.set('EDITOR');
         this.#engineState.set('PLAYING');
-        this.#inputContext.set('PLAYER');
+        this.#inputContext.set('EDITOR_PLAYTEST');
         this.#authorityProfile.set(PROFILES.ADMIN_PLAYING);
         this.#cameraView.set('FPS');
         break;
@@ -173,7 +173,7 @@ export class GameContextService {
         this.#mode.set(GameMode.TEST_LIVE);
         this.#appMode.set('EDITOR');
         this.#engineState.set('PLAYING');
-        this.#inputContext.set('PLAYER');
+        this.#inputContext.set('EDITOR_PLAYTEST');
         this.#authorityProfile.set(PROFILES.ADMIN_PLAYING);
         this.#cameraView.set('TPS');
         break;
@@ -182,13 +182,16 @@ export class GameContextService {
         this.#mode.set(GameMode.EDITING_IN_GAME);
         this.#appMode.set('EDITOR');
         this.#engineState.set('PAUSED');
-        this.#inputContext.set('UI');
+        this.#inputContext.set('EDITOR_EDITING');
         this.#authorityProfile.set(PROFILES.ADMIN_EDITING);
         break;
     }
   }
 
-  // Retrocompatibilidad con llamadas legacy
+  public setInputContext(ctx: InputContext): void {
+    this.#inputContext.set(ctx);
+  }
+
   public setMode(newMode: GameMode): void {
     switch (newMode) {
       case GameMode.EDITOR:
@@ -217,7 +220,22 @@ export class GameContextService {
   }
 
   public setInteracting(val: boolean): void { 
-    this.#isInteracting.set(val); 
+    this.#isInteracting.set(val);
+    if (val) {
+      this.#inputContext.set('UI');
+    } else {
+      if (this.#executionContext() === 'PLAYER_PREVIEW') {
+        this.#inputContext.set('GAMEPLAY');
+      } else if (this.#executionContext() === 'ADMIN_PREVIEW') {
+        this.#inputContext.set('ADMIN_PREVIEW');
+      } else if (this.#executionContext() === 'EDITOR') {
+        this.#inputContext.set(
+          this.#editorSubmode() === 'PLAYTEST_FPS' || this.#editorSubmode() === 'PLAYTEST_TPS'
+            ? 'EDITOR_PLAYTEST'
+            : 'EDITOR_EDITING'
+        );
+      }
+    }
   }
 
   public setCameraView(view: CameraViewMode): void { this.#cameraView.set(view); }
@@ -230,9 +248,30 @@ export class GameContextService {
   public setInteractedObject(node: Node | null): void { this.#interactedObject.set(node); }
 
   public setCurrentTool(tool: ToolModeContext): void { this.#currentTool.set(tool); }
-  public setAddObjectModalOpen(isOpen: boolean): void { this.#isAddObjectModalOpen.set(isOpen); }
+  
+  public setAddObjectModalOpen(isOpen: boolean): void { 
+    this.#isAddObjectModalOpen.set(isOpen);
+    if (isOpen) {
+      this.#inputContext.set('UI');
+    } else {
+      this.#inputContext.set('EDITOR_EDITING');
+    }
+  }
+  
   public setFogDisabled(isDisabled: boolean): void { this.#isFogDisabled.set(isDisabled); }
-  public setPreviewMissionModalOpen(isOpen: boolean): void { this.#isPreviewMissionModalOpen.set(isOpen); }
+  
+  public setPreviewMissionModalOpen(isOpen: boolean): void { 
+    this.#isPreviewMissionModalOpen.set(isOpen);
+    if (isOpen) {
+      this.#inputContext.set('UI');
+    } else {
+      if (this.#editorSubmode() === 'PLAYTEST_FPS' || this.#editorSubmode() === 'PLAYTEST_TPS') {
+        this.#inputContext.set('EDITOR_PLAYTEST');
+      } else {
+        this.#inputContext.set('EDITOR_EDITING');
+      }
+    }
+  }
 
   public setSceneNodes(nodes: Node[]): void { this.#sceneNodes.set(nodes); }
   public setActiveEpisode(data: any): void { this.#activeEpisode.set(data); }

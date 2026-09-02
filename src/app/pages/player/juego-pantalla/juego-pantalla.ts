@@ -1,6 +1,7 @@
+
 // src/app/pages/player/juego-pantalla/juego-pantalla.ts
 
-import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef, HostListener } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription, forkJoin, of } from 'rxjs';
@@ -12,6 +13,7 @@ import { GameEventBusService } from '../../../core/engine/events/game-event-bus.
 import { EpisodiosService } from '../../../services/api/episodios';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { InputOrchestratorService } from '../../../core/engine/runtime/systems/input-orchestrator.service';
+import { InputRouterService } from '../../../core/engine/session/input-router.service';
 import { AuthService } from '../../../core/services/auth';
 import { GameStateService } from '../../../core/engine/runtime/state/game-state.service'; 
 import { AdminFreeCameraService } from '../../../core/engine/runtime/cameras/admin-free-camera.service';
@@ -46,6 +48,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private epiApiSvc = inject(EpisodiosService);
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private inputOrchestrator = inject(InputOrchestratorService);
+  private inputRouter = inject(InputRouterService);
   private authSvc = inject(AuthService);
   private gameStateSvc = inject(GameStateService); 
   private adminFreeCam = inject(AdminFreeCameraService);
@@ -59,7 +62,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private liveSync = inject(EditorLiveSyncService);
 
   public isInteracting = signal<boolean>(false);
-  public pointerLocked = signal<boolean>(false);
   public isLoading = signal<boolean>(true);
   
   public isDetached = false;
@@ -75,6 +77,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   public fps = signal<string>('0');
 
   private sub!: Subscription;
+  private kbSub!: Subscription;
   private fpsInterval: any;
 
   // Propiedad de autoridad para el template UI
@@ -82,27 +85,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     return this.gameContext.authorityProfile().canViewDebug && !this.isDetached;
   }
 
-  @HostListener('window:keydown', ['$event'])
-  handleKeyDown(event: KeyboardEvent) {
-    if (event.key === 'Escape' && this.misionIniciada && !this.modalMisionUsuario) {
-      if (document.pointerLockElement) {
-        document.exitPointerLock();
-      } else {
-        this.eventBus.emit({ type: 'GamePaused' });
-      }
-    }
-    
-    // Función administrativa de cámara libre basada en la autoridad del engine
-    if (event.code === 'KeyC' && event.ctrlKey && this.gameContext.authorityProfile().canUseAdminFeatures) {
-      event.preventDefault();
-      const canvas = this.motor3dSvc.getEngine()?.getRenderingCanvas();
-      if (canvas) {
-        this.adminFreeCam.toggle(canvas);
-      }
-    }
-  }
-
   ngOnInit() {
+    // 🔥 FIX FASE 3.1: Inicializar los listeners globales del DOM para que el Input funcione en Player/Admin Preview.
+    // Sin esto, el motor está "sordo" a los eventos Pointer Lock y Teclado.
+    this.inputOrchestrator.initializeListeners();
+
     this.route.queryParams.subscribe(params => {
       this.isDetached = params['detached'] === 'true';
       
@@ -124,8 +111,39 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     this.sub = this.eventBus.events$.subscribe(event => {
       if (event.type === 'ChangeSceneRequested') {
         this.cambiarPlataformaEnJuego(event.payload.sceneId);
+      } else if (event.type === 'GamePaused') {
+        // 🔥 FIX FASE 3.1: Asegurar que el modal de pausa se abre cuando el juego pierde el Pointer Lock
+        // (ya sea por pulsar ESC u otra razón nativa del navegador).
+        if (this.misionIniciada && !this.cerrandoModalUsuario) {
+            this.modalMisionUsuario = true;
+            this.cdr.detectChanges();
+        }
       }
     });
+
+    // Centralización del Input de teclado exclusivo de Gameplay / UI
+    this.kbSub = this.inputRouter.getGlobalKeyboardStream(['GAMEPLAY', 'ADMIN_PREVIEW', 'UI']).subscribe(e => {
+        this.handleKeyDown(e);
+    });
+  }
+
+  handleKeyDown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && this.misionIniciada && !this.modalMisionUsuario) {
+      if (this.gameContext.isPointerLocked()) {
+        this.inputOrchestrator.unlockPointer();
+      } else {
+        this.eventBus.emit({ type: 'GamePaused' });
+      }
+    }
+    
+    // Función administrativa de cámara libre basada en la autoridad del engine
+    if ((event.code === 'KeyC' || event.key.toLowerCase() === 'c') && event.ctrlKey && this.gameContext.authorityProfile().canUseAdminFeatures) {
+      event.preventDefault();
+      const canvas = this.motor3dSvc.getEngine()?.getRenderingCanvas();
+      if (canvas) {
+        this.adminFreeCam.toggle(canvas);
+      }
+    }
   }
 
   private cargarPlataforma(sceneId: number, isTeleport: boolean = false) {
@@ -241,7 +259,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   }
 
   onCanvasClick() {
-    if (this.misionIniciada && !this.pointerLocked() && !this.isInteracting() && !this.modalMisionUsuario) {
+    if (this.misionIniciada && !this.gameContext.isPointerLocked() && !this.isInteracting() && !this.modalMisionUsuario) {
       this.inputOrchestrator.lockPointer();
     }
   }
@@ -278,6 +296,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     this.inputOrchestrator.disposeListeners();
     this.liveBuilderSvc.destroy();
     if (this.sub) this.sub.unsubscribe();
+    if (this.kbSub) this.kbSub.unsubscribe();
     if (this.fpsInterval) clearInterval(this.fpsInterval);
   }
 }

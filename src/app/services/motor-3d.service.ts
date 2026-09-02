@@ -150,6 +150,7 @@ export class Motor3dService implements ISceneAccess {
 
   detenerMotor(): void {
     if (this.engine) {
+      this.ownership.resetWatcher(); // 🔥 FIX: Restablecer watcher para que pueda reiniciarse sin conflicto
       const fogOrch = this.injector.get(FogOrchestratorService);
       fogOrch.stop(); // Detenemos el orquestador global de niebla
       this.loopManager.dispose();

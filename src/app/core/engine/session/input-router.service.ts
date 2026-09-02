@@ -1,8 +1,15 @@
+// src/app/core/engine/session/input-router.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { Subject, Observable } from 'rxjs';
 import { filter } from 'rxjs/operators';
-import { KeyboardInfo, PointerInfo, Scene } from '@babylonjs/core';
+import { 
+  KeyboardInfo, 
+  PointerInfo, 
+  Scene, 
+  Observer as BabylonObserver, 
+  Nullable 
+} from '@babylonjs/core';
 import { ISceneAccess, SCENE_ACCESS_TOKEN } from '../scene/scene-access.token';
 import { GameContextService } from './game-context.service';
 import { GameEventBusService } from '../events/game-event-bus.service';
@@ -19,32 +26,62 @@ export class InputRouterService {
   private globalKeySubject = new Subject<KeyboardEvent>();
 
   private isListening = false;
+  private sceneKbObserver: Nullable<BabylonObserver<KeyboardInfo>> = null;
+  private scenePtrObserver: Nullable<BabylonObserver<PointerInfo>> = null;
 
   public initializeListeners(): void {
     if (this.isListening) return;
-    
+
     document.addEventListener('pointerlockchange', this.handlePointerLockChange);
     window.addEventListener('keydown', this.handleGlobalKeydown, true);
-    window.addEventListener('keyup', this.handleGlobalKeydown, true);
+    window.addEventListener('keyup', this.handleGlobalKeyup, true);
 
     const scene = this.motor3d.getScene();
     if (scene) {
-      scene.onKeyboardObservable.add((kbInfo) => {
-        this.keyboardSubject.next(kbInfo);
-      });
-      scene.onPointerObservable.add((pi) => {
-        this.pointerSubject.next(pi);
-      });
+      this.attachToScene(scene);
     }
 
     this.isListening = true;
   }
 
+  public attachToScene(scene: Scene): void {
+    if (this.sceneKbObserver) {
+      scene.onKeyboardObservable.remove(this.sceneKbObserver);
+      this.sceneKbObserver = null;
+    }
+    if (this.scenePtrObserver) {
+      scene.onPointerObservable.remove(this.scenePtrObserver);
+      this.scenePtrObserver = null;
+    }
+
+    this.sceneKbObserver = scene.onKeyboardObservable.add((kbInfo) => {
+      this.keyboardSubject.next(kbInfo);
+    });
+
+    this.scenePtrObserver = scene.onPointerObservable.add((pi) => {
+      this.pointerSubject.next(pi);
+    });
+  }
+
   public disposeListeners(): void {
     if (!this.isListening) return;
+
     document.removeEventListener('pointerlockchange', this.handlePointerLockChange);
     window.removeEventListener('keydown', this.handleGlobalKeydown, true);
-    window.removeEventListener('keyup', this.handleGlobalKeydown, true);
+    window.removeEventListener('keyup', this.handleGlobalKeyup, true);
+
+    const scene = this.motor3d.getScene();
+    if (scene) {
+      if (this.sceneKbObserver) {
+        scene.onKeyboardObservable.remove(this.sceneKbObserver);
+        this.sceneKbObserver = null;
+      }
+      if (this.scenePtrObserver) {
+        scene.onPointerObservable.remove(this.scenePtrObserver);
+        this.scenePtrObserver = null;
+      }
+    }
+
     this.isListening = false;
   }
 
@@ -80,26 +117,48 @@ export class InputRouterService {
     }
   };
 
+  private isUiInputElement(target: HTMLElement | null): boolean {
+    if (!target) return false;
+    return target.tagName === 'INPUT' || 
+           target.tagName === 'TEXTAREA' || 
+           target.tagName === 'SELECT' || 
+           target.isContentEditable;
+  }
+
   private handleGlobalKeydown = (event: KeyboardEvent) => {
-    const target = event.target as HTMLElement | null;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-    
+    if (this.isUiInputElement(event.target as HTMLElement)) return;
+    this.globalKeySubject.next(event);
+  };
+
+  private handleGlobalKeyup = (event: KeyboardEvent) => {
+    if (this.isUiInputElement(event.target as HTMLElement)) return;
     this.globalKeySubject.next(event);
   };
 
   public getKeyboardStream(allowedContexts: InputContext[]): Observable<KeyboardInfo> {
     return this.keyboardSubject.pipe(
-      filter(() => allowedContexts.includes(this.context.inputContext()))
+      filter(() => {
+        const currentCtx = this.context.inputContext();
+        return allowedContexts.includes(currentCtx);
+      })
     );
   }
 
   public getPointerStream(allowedContexts: InputContext[]): Observable<PointerInfo> {
     return this.pointerSubject.pipe(
-      filter(() => allowedContexts.includes(this.context.inputContext()))
+      filter(() => {
+        const currentCtx = this.context.inputContext();
+        return allowedContexts.includes(currentCtx);
+      })
     );
   }
 
-  public getGlobalKeyboardStream(): Observable<KeyboardEvent> {
-    return this.globalKeySubject.asObservable();
+  public getGlobalKeyboardStream(allowedContexts: InputContext[]): Observable<KeyboardEvent> {
+    return this.globalKeySubject.pipe(
+      filter(() => {
+        const currentCtx = this.context.inputContext();
+        return allowedContexts.includes(currentCtx);
+      })
+    );
   }
 }

@@ -1,4 +1,4 @@
-// src/app/core/engine/runtime/shadows/shadow-orchestrator.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { DirectionalLight, Vector3, CascadedShadowGenerator, ShadowGenerator, Scene, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -55,9 +55,9 @@ export class ShadowOrchestratorService implements IUpdatable {
     }
 
     if (!this.shadowGenerator) {
-       // 🔥 SOMBRAS FULL HD (4096) EN JUEGO
        const isEditor = this.context.mode() === 'EDITOR';
-       const shadowRes = isEditor ? 1024 : 4096; 
+       // 🔥 FIX DE RENDIMIENTO MÁXIMO: Reducido a 2048 para evitar VRAM Exhaustion y lag al inicializar la escena
+       const shadowRes = isEditor ? 1024 : 2048; 
 
        this.shadowGenerator = new CascadedShadowGenerator(shadowRes, this.mainSun);
        this.shadowGenerator.usePercentageCloserFiltering = true;

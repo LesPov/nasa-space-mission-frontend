@@ -1,3 +1,4 @@
+// src/app/services/editor/toolsservice/tools-clipboard.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
@@ -9,6 +10,8 @@ import { CoreSceneUtilsService } from '../../../core/engine/scene/utils/core-sce
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
 import { GameContextService } from '../../../core/engine/session/game-context.service';
+import { InputRouterService } from '../../../core/engine/session/input-router.service';
+import { Subscription } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsClipboardService {
@@ -19,33 +22,32 @@ export class ToolsClipboardService {
   private utilsSvc = inject(CoreSceneUtilsService);
   private entityManager = inject(EntityManagerService);
   private gameContext = inject(GameContextService);
+  private inputRouter = inject(InputRouterService);
 
   private objetoEnPortapapeles: AbstractMesh | null = null;
-  private listenerCtrlZAgregado = false;
+  private keySub: Subscription | null = null;
 
   public initKeyboardListeners(): void {
-    if (!this.listenerCtrlZAgregado) {
-      window.addEventListener('keydown', this.manejarCtrlZGlobal, true);
-      this.listenerCtrlZAgregado = true;
-    }
+    if (this.keySub) return;
+
+    this.keySub = this.inputRouter.getGlobalKeyboardStream(['EDITOR_EDITING']).subscribe(event => {
+      if (event.type !== 'keydown') return;
+      if (!this.gameContext.authorityProfile().canEdit) return;
+
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        event.stopPropagation();
+        this.deshacerAccion();
+      }
+    });
   }
 
-  private manejarCtrlZGlobal = (event: KeyboardEvent) => {
-    const canEdit = this.gameContext.authorityProfile().canEdit;
-    if (!canEdit) return;
-
-    const playState = this.state.playState();
-    if (!(playState === 'EDITOR' || playState === 'EDITING_IN_GAME')) return;
-    if (!event.ctrlKey && !event.metaKey) return;
-    if (event.key.toLowerCase() !== 'z') return;
-    
-    const target = event.target as HTMLElement | null;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
-    
-    event.preventDefault();
-    event.stopPropagation();
-    this.deshacerAccion();
-  };
+  public disposeKeyboardListeners(): void {
+    if (this.keySub) {
+      this.keySub.unsubscribe();
+      this.keySub = null;
+    }
+  }
 
   public copiarObjeto(): void {
     const obj = this.state.objetoSeleccionado() as AbstractMesh;

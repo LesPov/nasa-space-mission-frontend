@@ -1,59 +1,33 @@
 
-
 import { Injectable, inject } from '@angular/core';
-import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
-import { GameEventBusService } from '../../events/game-event-bus.service';
-
+import { InputRouterService } from '../../session/input-router.service';
+ 
+/**
+ * Adaptador de compatibilidad para la gestión de Pointer Lock.
+ * Centraliza las llamadas a través de InputRouterService.
+ */
 @Injectable({ providedIn: 'root' })
 export class InputOrchestratorService {
-  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
-  private eventBus = inject(GameEventBusService);
-  private isListening = false;
-
-  constructor() {
-    this.initializeListeners();
-  }
+  private inputRouter = inject(InputRouterService);
 
   public initializeListeners(): void {
-    if (this.isListening) return;
-    document.addEventListener('pointerlockchange', this.handlePointerLockChange);
-    this.isListening = true;
+    this.inputRouter.initializeListeners();
+  }
+
+  // 🔥 FIX: Permite forzar el enganche manual al canvas y la escena, solucionando el bug de movimiento en Producción
+  public attachToScene(scene: any): void {
+    this.inputRouter.attachToScene(scene);
   }
 
   public disposeListeners(): void {
-    if (!this.isListening) return;
-    document.removeEventListener('pointerlockchange', this.handlePointerLockChange);
-    this.isListening = false;
+    this.inputRouter.disposeListeners();
   }
 
   public lockPointer(): void {
-    const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
-    if (canvas && document.pointerLockElement !== canvas) {
-      try { 
-        canvas.focus();
-        canvas.requestPointerLock(); 
-      } catch (e) { 
-        console.warn('[InputOrchestrator] Fallo al bloquear el ratón:', e); 
-      }
-    }
+    this.inputRouter.lockPointer();
   }
 
   public unlockPointer(): void {
-    if (document.pointerLockElement) {
-      try { 
-        document.exitPointerLock(); 
-      } catch (e) { 
-        console.warn('[InputOrchestrator] Fallo al liberar el ratón:', e); 
-      }
-    }
+    this.inputRouter.unlockPointer();
   }
-
-  private handlePointerLockChange = () => {
-    const isLocked = !!document.pointerLockElement;
-    if (isLocked) {
-      this.eventBus.emit({ type: 'GameResumed' });
-    } else {
-      this.eventBus.emit({ type: 'GamePaused' });
-    }
-  };
 }

@@ -11,12 +11,21 @@ export type EditorSubmode = 'EDITING' | 'PLAYTEST_FPS' | 'PLAYTEST_TPS' | 'EDITI
 
 export type AppMode = 'EDITOR' | 'PLAYER';
 export type EngineState = 'STOPPED' | 'PLAYING' | 'PAUSED' | 'TRANSITIONING';
-export type InputContext = 'UI' | 'PLAYER' | 'ADMIN_FREE_CAM';
+
+/**
+ * Contextos de Input exclusivos de la Fase 2
+ */
+export type InputContext = 
+  | 'UI'
+  | 'GAMEPLAY'
+  | 'ADMIN_PREVIEW'
+  | 'EDITOR_EDITING'
+  | 'EDITOR_PLAYTEST';
 
 export interface GameContextState {
   executionContext: ExecutionContext;
   editorSubmode: EditorSubmode | null;
-  mode: GameMode; // Sincronizado para retrocompatibilidad
+  mode: GameMode;
   appMode: AppMode;
   engineState: EngineState;
   inputContext: InputContext;

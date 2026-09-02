@@ -1,8 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
-import { StandardMaterial, VideoTexture, Color3, Mesh, Tags, Quaternion } from '@babylonjs/core';
-import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../engine/scene/scene-access.token';
-import { GameSession } from './game-session';
+import { StandardMaterial, VideoTexture, Color3, Mesh, Tags } from '@babylonjs/core';
+ import { GameSession } from './game-session';
 import { PlayerCameraManagerService } from './systems/player-camera.service';
 import { EntityManagerService } from '../entities/entity-manager.service';
 import { GameEntity } from '../entities/game.entity';
@@ -14,6 +13,7 @@ import { InputOrchestratorService } from './systems/input-orchestrator.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
 import { AdminFreeCameraService } from './cameras/admin-free-camera.service';
 import { SpawnManagerService } from './systems/spawn-manager.service';
+import { ISceneAccess, SCENE_ACCESS_TOKEN } from '../scene/scene-access.token';
   
 @Injectable({ providedIn: 'root' })
 export class RuntimeEngineService {
@@ -41,6 +41,9 @@ export class RuntimeEngineService {
 
     return new Promise((resolve, reject) => {
       this.motor3d.getScene().executeWhenReady(() => {
+        
+        // 🔥 FIX: Aseguramos que el Input Router se enganche a la escena para recibir teclado nativo (WASD, Space, etc.)
+        this.inputOrchestrator.attachToScene(this.motor3d.getScene());
         
         // 🔥 CONSUMIDOR DELEGADO: El SpawnManager resuelve y prepara el jugador.
         const spawnEntity = this.spawnManager.resolvePlayerForSession(null, false);
@@ -74,9 +77,10 @@ export class RuntimeEngineService {
            this.playerCamSvc.iniciarCinematicaIntro(spawnEntity);
         }
 
+        // 🔥 FIX: Reemplazado document.pointerLockElement con this.gameContext.isPointerLocked()
         if (canvas) {
           this._prodClickFn = () => {
-             if (this.gameContext.isPlaying() && !document.pointerLockElement) {
+             if (this.gameContext.isPlaying() && !this.gameContext.isPointerLocked()) {
                 if (!skipIntro) this.playerCamSvc.detenerCinematicaIntro();
                 this.inputOrchestrator.lockPointer(); 
              }

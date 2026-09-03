@@ -4,12 +4,14 @@ import { AbstractMesh } from '@babylonjs/core';
 import { EditorStateService } from '../editor-state.service';
 import { SceneObjectBuilderService } from '../sceneservice/scene-object-builder.service';
 import { EpisodiosService } from '../../../services/api/episodios';
+import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })
 export class AddObjectModalService {
   private stateSvc = inject(EditorStateService);
   private builderSvc = inject(SceneObjectBuilderService);
   private epiApiSvc = inject(EpisodiosService);
+  private eventBus = inject(GameEventBusService);
 
   public objNombre: string = 'Objeto_' + Math.floor(Math.random() * 1000);
   public objTipo: string = 'cube';
@@ -86,10 +88,29 @@ export class AddObjectModalService {
   public crearObjeto3D(): void {
     if(!this.objNombre) return;
     const parent = this.objHacerHijo ? (this.stateSvc.objetoSeleccionado() as AbstractMesh | null) : null;
-    this.builderSvc.agregarObjetoCustom(
-      this.objTipo, this.objNombre, this.objRol, this.objColor, this.objSizeX, this.objSizeY, this.objSizeZ,
-      this.objAssetSeleccionado, this.objEsSolido, this.objEsSeleccionable, this.objMensaje, parent
-    );
+    
+    const assetPayload = {
+      isPrefab: true,
+      exactName: true,
+      name: this.objNombre,
+      type: this.objTipo,
+      scale: { x: this.objSizeX, y: this.objSizeY, z: this.objSizeZ },
+      properties: {
+        rol: this.objRol,
+        color: this.objColor,
+        isSolid: this.objEsSolido,
+        isSelectable: this.objEsSeleccionable,
+        mensaje: this.objMensaje,
+        path: this.objAssetSeleccionado?.path
+      },
+      assetId: this.objAssetSeleccionado?.id,
+      asset: this.objAssetSeleccionado,
+      targetParent: parent
+    };
+
+    // Delega la responsabilidad de colocación interactiva al Live Builder
+    this.eventBus.emit({ type: 'AssetSelectedForBuild', payload: assetPayload });
+    
     this.cerrarModalObjeto();
   }
 

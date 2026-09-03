@@ -1,6 +1,4 @@
 
-// src/app/pages/admin/editor-escena/editor-escena.ts
-
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -34,6 +32,8 @@ import { RuntimeEngineService } from '../../../core/engine/runtime/runtime-engin
 import { InputRouterService } from '../../../core/engine/session/input-router.service';
 import { Subscription } from 'rxjs';
 import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
+import { PlayerInputService } from '../../../core/engine/runtime/systems/player-input.service';
+import { LiveBuilderService } from '../../../services/editor/live-builder.service';
 
 @Component({
   selector: 'app-editor-escena', 
@@ -64,6 +64,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   public runtime = inject(RuntimeEngineService);
   private inputRouter = inject(InputRouterService);
   private eventBus = inject(GameEventBusService);
+  public inputSvc = inject(PlayerInputService);
+  private liveBuilderSvc = inject(LiveBuilderService);
 
   public isInteracting = signal(false);
   private kbSub!: Subscription;
@@ -131,10 +133,15 @@ export class EditorEscena implements OnInit, OnDestroy {
 
     this.ebSub = this.eventBus.events$.subscribe(event => {
       if (event.type === 'GamePaused') {
-        if (this.misionIniciada && !this.cerrandoModalMision && this.stateSvc.playState() === 'PLAYING') {
-           this.mostrarModalMisionPreview = true;
-           this.cdr.detectChanges();
-        }
+        // 🔥 FIX: Debounce para evitar popups al usar el menú radial
+        setTimeout(() => {
+            if (this.misionIniciada && !this.cerrandoModalMision && this.stateSvc.playState() === 'PLAYING') {
+               if (!this.inputSvc.isRadialMenuOpen && !this.liveBuilderSvc.isBuilding() && !this.gameContext.isPointerLocked()) {
+                   this.mostrarModalMisionPreview = true;
+                   this.cdr.detectChanges();
+               }
+            }
+        }, 150);
       }
     });
   }
@@ -157,6 +164,11 @@ export class EditorEscena implements OnInit, OnDestroy {
       }
       
       if (this.misionIniciada && !this.mostrarModalMisionPreview && this.stateSvc.playState() === 'PLAYING') {
+          // 🔥 FIX: Si está construyendo, el ESC cancela la construcción (manejado por el controller).
+          if (this.inputSvc.isRadialMenuOpen || this.liveBuilderSvc.isBuilding()) {
+              return;
+          }
+
           if (this.gameContext.isPointerLocked()) {
               this.inputOrchestrator.unlockPointer();
           } else {
@@ -207,7 +219,9 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   onCanvasClick() {
     if (this.stateSvc.playState() === 'PLAYING' && !this.gameSession.pointerLocked() && !this.isInteracting() && !this.mostrarModalMisionPreview) {
-      this.inputOrchestrator.lockPointer();
+      if (!this.inputSvc.isRadialMenuOpen) {
+          this.inputOrchestrator.lockPointer();
+      }
     }
   }
 

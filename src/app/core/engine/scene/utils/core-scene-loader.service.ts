@@ -136,11 +136,10 @@ export class CoreSceneLoaderService {
     }, 150);
 
     // 🔥 PRELOAD REAL (FASE DE OPTIMIZACIÓN)
-    // Instanciamos todas las luces reales y las preparamos para inyectarlas al Render Pipeline
     this.dynamicLighting.prepareAllLights(); 
     this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
 
-    // 🔥 WARM-UP DE GPU (Compilación de Shaders de Sombra antes del Gameplay)
+    // 🔥 WARM-UP DE GPU PROFUNDO (Compilación estricta antes de jugar)
     await new Promise<void>((resolve) => {
       scene.executeWhenReady(() => {
         
@@ -148,7 +147,6 @@ export class CoreSceneLoaderService {
         let originalPos = Vector3.Zero();
         let originalTarget = Vector3.Zero();
 
-        // 1. Simular la perspectiva del jugador al nacer para que Babylon calcule Frustum y Sombras locales
         if (actCam) {
             originalPos.copyFrom(actCam.globalPosition);
             if ((actCam as any).getTarget) originalTarget.copyFrom((actCam as any).getTarget());
@@ -157,7 +155,6 @@ export class CoreSceneLoaderService {
             if (spawnPoint && spawnPoint.view) {
                 actCam.position.copyFrom(spawnPoint.view.getAbsolutePosition());
                 actCam.position.y += 1.6;
-                // Mirar hacia donde mira el spawn
                 const fwd = spawnPoint.view.forward;
                 if ((actCam as any).setTarget) {
                     (actCam as any).setTarget(actCam.position.add(fwd.scale(10)));
@@ -165,20 +162,19 @@ export class CoreSceneLoaderService {
             }
         }
 
-        // 2. Ejecutar frames invisibles: Fuerzan al motor a volcar los shaders a la GPU y precompilar
-        // las Cascaded Shadows y las luces dinámicas locales antes de soltar la pantalla de carga.
-        scene.render(); 
-        scene.render();
+        // 🔥 OBLIGAR A RENDERIZAR VARIOS FRAMES INVISIBLES
+        // Esto garantiza que el Shadow Generator calcule las cascadas y los Shaders se compilen al 100%
+        for(let i = 0; i < 5; i++) {
+            scene.render(); 
+        }
 
-        // 3. Restaurar la cámara a su estado libre u original si estábamos en Editor Libre
         if (actCam) {
             actCam.position.copyFrom(originalPos);
             if ((actCam as any).setTarget) (actCam as any).setTarget(originalTarget);
         }
         
-        // 4. El último execute asegura que los shaders asíncronos hayan finalizado.
         scene.executeWhenReady(() => {
-           this.dynamicLighting.start(); // Corta las listas masivas de render de sombras dejándolas limpias para Streaming
+           this.dynamicLighting.start(); 
            resolve();
         });
       });
@@ -252,7 +248,7 @@ export class CoreSceneLoaderService {
         }
     });
 
-    this.dynamicLighting.prepareAllLights(); // Update Lights if new ones were added
+    this.dynamicLighting.prepareAllLights(); 
     this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
     return mallasCreadas;
   }

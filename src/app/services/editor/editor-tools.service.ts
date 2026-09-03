@@ -1,6 +1,4 @@
 
-// src/app/services/editor/editor-tools.service.ts
-
 import { Injectable, inject, effect } from '@angular/core';
 import {
   KeyboardEventTypes, Matrix, Mesh, PointerEventTypes,
@@ -146,7 +144,6 @@ export class EditorToolsService {
 
     if (!activeCam) return;
 
-    // 🔥 Delegamos a la única fuente de la verdad para selección respetando distancias.
     const rootNode = this.state.objetoHovereado() as AbstractMesh;
 
     if (rootNode) {
@@ -326,8 +323,6 @@ export class EditorToolsService {
       if (!activeCam) return;
 
       if (playSt === 'PLAYING') {
-        // 🔥 El sistema de interacciones del jugador (crosshair/raycast matemático) gestiona 
-        // 100% el hover mediante eventos. No necesitamos disparar raycasts del mouse aquí.
         return;
       }
 
@@ -359,7 +354,9 @@ export class EditorToolsService {
     const playSt = this.state.playState();
 
     if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
-      if (kbInfo.event.key.toLowerCase() === 'q' && profile.canViewDebug && playSt === 'EDITOR') {
+      
+      // 🔥 FIX: Habilitamos Q (Menú Radial) en EDITING_IN_GAME y en TEST_LIVE (PLAYING)
+      if (kbInfo.event.key.toLowerCase() === 'q' && profile.canViewDebug && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME' || playSt === 'PLAYING')) {
         if (!this.qPressed) {
           this.qPressed = true;
           this.eventBus.emit({ type: 'RadialMenuToggled', payload: true });

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { 
   AbstractMesh, Color3, Mesh, MeshBuilder, Scene, StandardMaterial, 
@@ -31,20 +32,10 @@ export class GhostRendererService {
     }
 
     let meshes: AbstractMesh[] = [];
+    const path = assetData.path || assetData.properties?.path || assetData.asset?.path;
 
-    if (assetData.isPrefab && assetData.type) {
-      let mesh: Mesh;
-      switch (assetData.type) {
-        case 'cube': mesh = MeshBuilder.CreateBox('ghost_cube', { size: 1 }, scene); break;
-        case 'sphere': mesh = MeshBuilder.CreateSphere('ghost_sphere', { diameter: 1 }, scene); break;
-        case 'cylinder': mesh = MeshBuilder.CreateCylinder('ghost_cyl', { height: 1, diameter: 1 }, scene); break;
-        case 'plane': mesh = MeshBuilder.CreatePlane('ghost_plane', { size: 1 }, scene); break;
-        default: mesh = MeshBuilder.CreateBox('ghost_default', { size: 1 }, scene); break;
-      }
-      meshes.push(mesh);
-    } 
-    else if (assetData.path || assetData.properties?.path) {
-      const path = assetData.path || assetData.properties?.path;
+    if (path) {
+      // Priorizamos cargar el modelo GLB si existe ruta
       const fullPath = 'http://localhost:4000' + path;
       
       const container = await this.modelLoader.getCachedAssetContainer(fullPath, scene);
@@ -54,6 +45,31 @@ export class GhostRendererService {
       meshes = instances.rootNodes as AbstractMesh[];
       
       instances.animationGroups.forEach(ag => { ag.stop(); ag.dispose(); });
+    }
+    else {
+      // Es primitiva u objeto sin asset real (Ej: Trigger, Luz o Cubo)
+      let mesh: Mesh;
+      switch (assetData.type) {
+        case 'cube': 
+        case 'trigger':
+        case 'trigger_compuesto':
+        case 'image_plane':
+        case 'video_plane':
+          mesh = MeshBuilder.CreateBox('ghost_cube', { size: 1 }, scene); break;
+        case 'sphere': 
+        case 'bubble':
+        case 'light_point':
+        case 'light_spot':
+        case 'light_directional':
+          mesh = MeshBuilder.CreateSphere('ghost_sphere', { diameter: 1 }, scene); break;
+        case 'cylinder': 
+          mesh = MeshBuilder.CreateCylinder('ghost_cyl', { height: 1, diameter: 1 }, scene); break;
+        case 'plane': 
+          mesh = MeshBuilder.CreatePlane('ghost_plane', { size: 1 }, scene); break;
+        default: 
+          mesh = MeshBuilder.CreateBox('ghost_default', { size: 1 }, scene); break;
+      }
+      meshes.push(mesh);
     }
 
     meshes.forEach(m => m.parent = this.ghostRoot);

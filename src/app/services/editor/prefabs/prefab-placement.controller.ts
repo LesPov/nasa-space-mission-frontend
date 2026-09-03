@@ -85,8 +85,7 @@ export class PrefabPlacementController {
 
     this.ghostRenderer.setTransform(this.targetPosition, this.targetRotation, this.ghostScale);
 
-    // 🔥 FIX: Transición a InputRouterService (Adiós observables nativos de Babylon)
-    this.kbSub = this.inputRouter.getKeyboardStream(['EDITOR_EDITING']).subscribe((kbInfo) => {
+    this.kbSub = this.inputRouter.getKeyboardStream(['EDITOR_EDITING', 'EDITOR_PLAYTEST', 'ADMIN_PREVIEW']).subscribe((kbInfo) => {
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
         if (kbInfo.event.key === 'Alt') this.isAltPressed = true;
         if (kbInfo.event.key.toLowerCase() === 'g') this.isGPressed = true;
@@ -100,7 +99,7 @@ export class PrefabPlacementController {
       }
     });
 
-    this.ptrSub = this.inputRouter.getPointerStream(['EDITOR_EDITING']).subscribe((pi) => {
+    this.ptrSub = this.inputRouter.getPointerStream(['EDITOR_EDITING', 'EDITOR_PLAYTEST', 'ADMIN_PREVIEW']).subscribe((pi) => {
       if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
         if (!this.isModalOpenFn()) this.buildPrefab();
       }
@@ -128,7 +127,6 @@ export class PrefabPlacementController {
     if (!this.scene || !this.camera || this.isModalOpenFn()) return;
 
     let ray: Ray;
-    // 🔥 FIX: Uso del contexto en lugar de API DOM directa
     if (this.gameContext.isPointerLocked()) {
       const engine = this.scene.getEngine();
       ray = this.scene.createPickingRay(engine.getRenderWidth() / 2, engine.getRenderHeight() / 2, Matrix.Identity(), this.camera);
@@ -165,20 +163,24 @@ export class PrefabPlacementController {
     const asset = this.currentAsset;
     const pos = this.targetPosition.clone();
     const rot = this.targetRotation.clone();
-    const parent = this.targetParent;
+    const parent = asset.targetParent !== undefined ? asset.targetParent : this.targetParent;
 
     if (asset.properties?.prefabHierarchy) {
-      this.editorScene.instanciarPrefabFull(asset, pos, rot, Vector3.One(), parent || undefined);
+      this.editorScene.instanciarPrefabFull(asset, pos, rot, this.targetScale, parent || undefined);
     } else {
       const colorHex = asset.properties?.color || '#ffffff';
+      const finalName = asset.exactName ? asset.name : `${asset.name}_${Math.floor(Math.random()*1000)}`;
+      
       this.editorScene.agregarObjetoCustom(
         asset.type,
-        `${asset.name}_${Math.floor(Math.random()*1000)}`,
-        'prop',
+        finalName,
+        asset.properties?.rol || 'prop',
         colorHex,
         this.targetScale.x, this.targetScale.y, this.targetScale.z,
-        null,
-        true, true, '',
+        asset.asset || asset, 
+        asset.properties?.isSolid ?? true, 
+        asset.properties?.isSelectable ?? true, 
+        asset.properties?.mensaje || '',
         parent,
         pos, rot
       );

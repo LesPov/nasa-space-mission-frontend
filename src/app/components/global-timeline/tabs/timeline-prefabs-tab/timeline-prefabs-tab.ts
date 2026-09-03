@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { EpisodiosService } from '../../../../services/api/episodios';
 import { EditorSceneService } from '../../../../services/editor/editor-scene.service';
+import { GameEventBusService } from '../../../../core/engine/events/game-event-bus.service';
 
 @Component({
   selector: 'app-timeline-prefabs-tab',
@@ -15,6 +16,7 @@ import { EditorSceneService } from '../../../../services/editor/editor-scene.ser
 export class TimelinePrefabsTab implements OnInit {
   private apiSvc = inject(EpisodiosService);
   private sceneSvc = inject(EditorSceneService);
+  private eventBus = inject(GameEventBusService);
 
   public prefabs: any[] = [];
   public filteredPrefabs: any[] = [];
@@ -64,9 +66,8 @@ export class TimelinePrefabsTab implements OnInit {
 
   instanciarEnEscena(prefab: any) {
     if (!prefab) return;
-    // 🔥 En lugar de activar el fantasma (LiveBuilder), usamos el EditorSceneService 
-    // para colocar el Prefab justo donde la cámara está mirando.
-    this.sceneSvc.instanciarPrefabEnCentro(prefab);
+    // 🔥 Recuperamos la funcionalidad de interactividad enviando al Live Builder
+    this.eventBus.emit({ type: 'AssetSelectedForBuild', payload: prefab });
   }
 
   eliminarPrefab(id: number) {

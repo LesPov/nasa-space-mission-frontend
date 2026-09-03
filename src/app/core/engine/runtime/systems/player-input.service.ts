@@ -31,7 +31,12 @@ export class PlayerInputService implements IUpdatable {
     this.eventBus.events$.subscribe(e => {
       if (e.type === 'RadialMenuToggled') {
         this.isRadialMenuOpen = e.payload;
-        if (!e.payload) {
+        if (this.isRadialMenuOpen) {
+          this.wasPointerLockedBeforeMenu = this.context.isPointerLocked();
+          if (this.wasPointerLockedBeforeMenu) {
+            this.inputRouter.unlockPointer();
+          }
+        } else {
           this.lockPointerAfterMenu();
         }
       }
@@ -39,9 +44,6 @@ export class PlayerInputService implements IUpdatable {
   }
 
   public start(): void {
-    // 🔥 FIX: Removemos `this.stop()` o `this.disable()` de aquí.
-    // Solo debemos asegurar que la suscripción de eventos exista limpiamente,
-    // y dejar que GameSession dicte si el servicio está habilitado o no mediante enable()
     if (this.inputSub) {
       this.inputSub.unsubscribe();
       this.inputSub = null;

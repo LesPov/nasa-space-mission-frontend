@@ -1,6 +1,4 @@
 
-// src/app/pages/player/juego-pantalla/juego-pantalla.ts
-
 import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -31,6 +29,7 @@ import { UiLoading } from '../../../components/ui-loading/ui-loading';
 import { UiRadialMenu } from '../../../components/ui-radial-menu/ui-radial-menu';
 import { WindowSyncService } from '../../../core/services/window-sync.service';
 import { LiveBuilderService } from '../../../services/editor/live-builder.service';
+import { PlayerInputService } from '../../../core/engine/runtime/systems/player-input.service';
 
 @Component({
   selector: 'app-juego-pantalla',
@@ -60,6 +59,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private cinematicSvc = inject(EditorCinematicService); 
   private liveBuilderSvc = inject(LiveBuilderService);
   private liveSync = inject(EditorLiveSyncService);
+  public inputSvc = inject(PlayerInputService);
 
   public isInteracting = signal<boolean>(false);
   public isLoading = signal<boolean>(true);
@@ -108,10 +108,13 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       if (event.type === 'ChangeSceneRequested') {
         this.cambiarPlataformaEnJuego(event.payload.sceneId);
       } else if (event.type === 'GamePaused') {
-        if (this.misionIniciada && !this.cerrandoModalUsuario) {
-            this.modalMisionUsuario = true;
-            this.cdr.detectChanges();
-        }
+        // 🔥 FIX: Debounce para evitar que el modal de misión salte cuando abrimos el Menú Radial
+        setTimeout(() => {
+            if (this.misionIniciada && !this.cerrandoModalUsuario && !this.inputSvc.isRadialMenuOpen && !this.liveBuilderSvc.isBuilding() && !this.gameContext.isPointerLocked()) {
+                this.modalMisionUsuario = true;
+                this.cdr.detectChanges();
+            }
+        }, 150);
       }
     });
 
@@ -122,6 +125,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
   handleKeyDown(event: KeyboardEvent) {
     if (event.key === 'Escape' && this.misionIniciada && !this.modalMisionUsuario) {
+      // 🔥 FIX: Si estamos en herramientas de edición, que el ESC no pause el juego, solo cancele la herramienta
+      if (this.inputSvc.isRadialMenuOpen || this.liveBuilderSvc.isBuilding()) {
+          return;
+      }
+
       if (this.gameContext.isPointerLocked()) {
         this.inputOrchestrator.unlockPointer();
       } else {
@@ -129,6 +137,13 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       }
     }
     
+    if ((event.code === 'KeyQ' || event.key.toLowerCase() === 'q') && this.canViewDebug && !event.repeat) {
+      // Evitar que abra repetidas veces
+      if (!this.inputSvc.isRadialMenuOpen && !this.liveBuilderSvc.isBuilding()) {
+          this.eventBus.emit({ type: 'RadialMenuToggled', payload: true });
+      }
+    }
+
     if ((event.code === 'KeyC' || event.key.toLowerCase() === 'c') && event.ctrlKey && this.gameContext.authorityProfile().canUseAdminFeatures) {
       event.preventDefault();
       const canvas = this.motor3dSvc.getEngine()?.getRenderingCanvas();
@@ -251,7 +266,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   }
 
   onCanvasClick() {
-    if (this.misionIniciada && !this.gameContext.isPointerLocked() && !this.isInteracting() && !this.modalMisionUsuario) {
+    if (this.misionIniciada && !this.gameContext.isPointerLocked() && !this.isInteracting() && !this.modalMisionUsuario && !this.inputSvc.isRadialMenuOpen) {
       this.inputOrchestrator.lockPointer();
     }
   }

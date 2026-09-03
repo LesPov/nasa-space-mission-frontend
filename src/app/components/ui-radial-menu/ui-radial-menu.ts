@@ -1,5 +1,5 @@
 
-import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
 import { EpisodiosService } from '../../services/api/episodios';
@@ -54,6 +54,13 @@ export class UiRadialMenu implements OnInit, OnDestroy {
 
   ngOnDestroy() {
     if (this.sub) this.sub.unsubscribe();
+  }
+
+  @HostListener('window:keydown', ['$event'])
+  handleKeyDown(event: KeyboardEvent) {
+    if (this.isOpen && event.key === 'Escape') {
+      this.closeMenu();
+    }
   }
 
   private lastFetchedAssets: any[] = [];

@@ -121,7 +121,6 @@ export class ToolsHighlightService {
     });
     this.meshesConEdges = [];
 
-    // 🔥 Limpiar el color hovereado/seleccionado de los Triggers sin destruir nada
     this.highlightedTriggers.forEach(m => {
         if (m && !m.isDisposed()) {
             this.triggerVisualizer.setHighlight(m, 'none');
@@ -136,7 +135,6 @@ export class ToolsHighlightService {
     try {
       const isMaterialTransparent = mesh.material && (mesh.material.alpha === 0);
 
-      // Usado para Spawns y Luces, NUNCA MÁS para Triggers
       if (forceEdges || !mesh.material || mesh.visibility < 0.01 || isMaterialTransparent) {
          if (mesh.visibility === 0) {
              mesh.visibility = 0.0001; 
@@ -165,7 +163,6 @@ export class ToolsHighlightService {
     const entity = this.entityManager.getEntityByMesh(pickedMesh);
     const isTrigger = entity?.type === 'trigger' || entity?.type === 'trigger_compuesto';
     
-    // 🔥 OPTIMIZACIÓN EXTREMA: Ruta aislada, cero geometría extra generada.
     if (isTrigger) {
         this.triggerVisualizer.setHighlight(pickedMesh, state);
         this.highlightedTriggers.push(pickedMesh);
@@ -214,17 +211,21 @@ export class ToolsHighlightService {
 
     const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
     const isFPS = this.state.modoVistaPrueba === 'FPS';
-    const isLiveEditorMode = mode === 'PLAYING' || mode === 'EDITING_IN_GAME';
+    
+    const isPlayingMode = mode === 'PLAYING';
 
-    if (isLiveEditorMode && isFPS) {
+    // 🔥 FIX DEL HOVER INVISIBLE PARA ADMINS
+    // Ahora garantizamos que si el usuario ES el creador (canSelectHidden), SIEMPRE verá 
+    // el highlight azul al hacer hover en Test Live.
+    if (isPlayingMode && isFPS && !canSelectHidden) {
         return; 
     }
 
     const puedeResaltar = mode === 'EDITOR' || mode === 'EDITING_IN_GAME' || (mode === 'PLAYING' && canSelectHidden);
     if (!puedeResaltar) return;
 
-    const colorHover = '#3b82f6';   // Azul
-    const colorSelected = '#facc15'; // Amarillo
+    const colorHover = '#3b82f6';   
+    const colorSelected = '#facc15'; 
 
     if (hovered && hovered !== selected) {
       this.procesarMesh(hovered, colorHover, 'hover');

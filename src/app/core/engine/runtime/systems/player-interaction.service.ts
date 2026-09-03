@@ -48,7 +48,8 @@ export class PlayerInteractionService implements IUpdatable {
   
   public disable(): void { 
     this.isEnabled = false; 
-    if (this.currentTarget !== null) {
+    // 🔥 FIX: Limpiar siempre si hay un target interactivo O una malla hovoreada (como una pared en modo Admin)
+    if (this.currentTarget !== null || this.currentHoveredMesh !== null) {
       this.currentTarget = null;
       this.canInteract = false;
       this.canInspect = false;
@@ -216,31 +217,32 @@ export class PlayerInteractionService implements IUpdatable {
         }
         
         if (rootEntity && rootEntity.view) {
+            // 🔥 SOLUCIÓN DEL BUG: Se elimina el early return que dejaba atascado el estado
             if (rootEntity.type === 'trigger' || rootEntity.type === 'trigger_compuesto') {
-                return;
-            }
+                // Ignoramos triggers silenciosamente para que la limpieza final de la función se ejecute correctamente.
+            } else {
+                const selectionDistance = this.getInteractionDistanceToTarget(rootEntity.view, this._probePoint);
+                this.lastInteractDistance = selectionDistance;
 
-            const selectionDistance = this.getInteractionDistanceToTarget(rootEntity.view, this._probePoint);
-            this.lastInteractDistance = selectionDistance;
-
-            const interactMax = rootEntity.interaction.interactDistanceFPS ?? 3.0;
-            const isInteractable = this.interactRules.isInteractable(rootEntity);
-            
-            const profile = this.context.authorityProfile();
-            let canAdminSelect = false;
-            
-            if (profile.canSelect && rootEntity.visual?.isSelectable !== false) {
-                const rangeCfg = entity.selectionRange?.fpsAdminMax ?? 10000;
-                if (selectionDistance <= rangeCfg) {
-                    canAdminSelect = true;
+                const interactMax = rootEntity.interaction.interactDistanceFPS ?? 3.0;
+                const isInteractable = this.interactRules.isInteractable(rootEntity);
+                
+                const profile = this.context.authorityProfile();
+                let canAdminSelect = false;
+                
+                if (profile.canSelect && rootEntity.visual?.isSelectable !== false) {
+                    const rangeCfg = entity.selectionRange?.fpsAdminMax ?? 10000;
+                    if (selectionDistance <= rangeCfg) {
+                        canAdminSelect = true;
+                    }
                 }
-            }
 
-            if ((isInteractable && selectionDistance <= interactMax) || canAdminSelect) {
-              hoverSelectable = rootEntity.view;
-              if (isInteractable && selectionDistance <= interactMax) {
-                  hitInteractuable = rootEntity;
-              }
+                if ((isInteractable && selectionDistance <= interactMax) || canAdminSelect) {
+                  hoverSelectable = rootEntity.view;
+                  if (isInteractable && selectionDistance <= interactMax) {
+                      hitInteractuable = rootEntity;
+                  }
+                }
             }
         }
       }

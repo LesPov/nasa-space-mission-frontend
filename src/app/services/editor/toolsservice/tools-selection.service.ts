@@ -1,3 +1,4 @@
+
 // src/app/services/editor/toolsservice/tools-selection.service.ts
 
 import { Injectable, inject } from '@angular/core';
@@ -71,7 +72,10 @@ export class ToolsSelectionService {
 
   private canSelectByDistance(ray: Ray, target: AbstractMesh, hit: any): boolean {
     const playSt = this.state.playState();
-    if (playSt !== 'PLAYING' && playSt !== 'EDITING_IN_GAME') return true;
+    
+    // 🔥 FIX: Solo restringimos por distancia si estamos jugando de verdad.
+    // Edit Live (EDITING_IN_GAME) ya no pasa por aquí, por lo que tiene distancia infinita.
+    if (playSt !== 'PLAYING') return true;
     if (this.state.modoVistaPrueba !== 'FPS') return true;
 
     const maxDistance = this.getSelectionMaxDistance();
@@ -123,6 +127,7 @@ export class ToolsSelectionService {
       const entity = this.entityManager.getEntityByMesh(m);
       if (entity?.type === 'trigger' || entity?.type === 'trigger_compuesto') {
           if (!profile.canSelectHidden) return false;
+          // 🔥 BLOQUEO DE TRIGGERS: Se sigue aplicando tanto en PLAYING como en EDITING_IN_GAME
           if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') return false;
       }
       return true;
@@ -142,17 +147,20 @@ export class ToolsSelectionService {
     if (!(rootNode instanceof AbstractMesh)) return null;
     if (this.esTriggerMesh(rootNode) && !profile.canSeeTriggers) return null;
 
-    if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') {
+    // 🔥 MODO JUEGO REAL: Requiere estar cerca del objeto (canSelectByDistance)
+    if (playSt === 'PLAYING') {
       if (!profile.canSelect) return null;
       if (!this.canSelectByDistance(ray, rootNode, hit)) return null;
       return rootNode;
     }
 
-    if (playSt === 'EDITOR') {
+    // 🔥 MODOS ADMINISTRATIVOS: Distancia infinita, pero respeta "isSelectable = false"
+    if (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME') {
       if (!profile.canSelect) return null;
       if (!this.puedeTomarseParaSeleccion(rootNode)) return null;
       return rootNode;
     }
+    
     return null;
   }
 }

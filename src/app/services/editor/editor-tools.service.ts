@@ -4,7 +4,7 @@
 import { Injectable, inject, effect } from '@angular/core';
 import {
   KeyboardEventTypes, Matrix, Mesh, PointerEventTypes,
-  Vector3, AbstractMesh, Ray, Tags, PointerInfo, KeyboardInfo
+  AbstractMesh, Tags, PointerInfo, KeyboardInfo
 } from '@babylonjs/core';
 
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
@@ -26,6 +26,7 @@ import { GameContextService } from '../../core/engine/session/game-context.servi
 import { InputRouterService } from '../../core/engine/session/input-router.service';
 import { Subscription } from 'rxjs';
 import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
+import { ToolsSelectionService } from './toolsservice/tools-selection.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
@@ -48,6 +49,8 @@ export class EditorToolsService {
   private liveBuilder = inject(LiveBuilderService);
   private dynamicLighting = inject(DynamicLightingSystem); 
   private registry = inject(GizmoAdapterRegistryService);
+  
+  private selectionSvc = inject(ToolsSelectionService);
 
   private lastHoverCheckTime = 0;
   private isGizmoSyncAttached = false;
@@ -106,7 +109,7 @@ export class EditorToolsService {
     this.eventBus.events$.subscribe(e => {
       if (e.type === 'ObjectFocused') {
         const playSt = this.state.playState();
-        if (playSt === 'PLAYING' && this.state.modoVistaPrueba === 'FPS') {
+        if ((playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') && this.state.modoVistaPrueba === 'FPS') {
           this.state.setObjetoHovereado(e.payload.mesh as AbstractMesh | null);
         }
       }
@@ -130,41 +133,6 @@ export class EditorToolsService {
     this.isGizmoSyncAttached = false;
   }
 
-  private castRayToSelectable(ray: Ray): AbstractMesh | null {
-    const scene = this.motor3d.getScene();
-    const jugador = this.state.jugadorActivo;
-    const profile = this.gameContext.authorityProfile();
-    const playSt = this.state.playState();
-
-    const hit = scene.pickWithRay(ray, (mesh) => {
-      if (!mesh.isPickable) return false;
-
-      if (Tags.MatchesQuery(mesh, "system_element || fog_element || editor_only || invisible_floor || proxy_collider || debug_element")) {
-        return false;
-      }
-
-      if (jugador && (mesh === jugador || mesh.isDescendantOf(jugador))) {
-        return false;
-      }
-
-      const baseNode = this.state.resolverObjetoSeleccionable(mesh) as AbstractMesh;
-      const entityMesh = this.entityManager.getEntityByMesh(baseNode);
-
-      if (entityMesh?.type === 'trigger' || entityMesh?.type === 'trigger_compuesto') {
-        if (!profile.canSelectHidden) return false;
-        if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') return false;
-      }
-
-      return true;
-    });
-
-    if (hit && hit.hit && hit.pickedMesh) {
-      return this.state.resolverObjetoSeleccionable(hit.pickedMesh);
-    }
-
-    return null;
-  }
-
   private manejarFPSAdminSelection(canvas: HTMLCanvasElement | null, isLocked: boolean): void {
     const scene = this.motor3d.getScene();
     const activeCam = this.ownership.getCamera();
@@ -178,12 +146,8 @@ export class EditorToolsService {
 
     if (!activeCam) return;
 
-    const ray = isLocked
-      ? activeCam.getForwardRay(10000)
-      : scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), activeCam);
-
-    ray.length = 10000;
-    const rootNode = this.castRayToSelectable(ray);
+    // 🔥 Delegamos a la única fuente de la verdad para selección respetando distancias.
+    const rootNode = this.state.objetoHovereado() as AbstractMesh;
 
     if (rootNode) {
       this.inputRouter.unlockPointer();
@@ -284,7 +248,6 @@ export class EditorToolsService {
     const canvas = this.motor3d.getEngine().getRenderingCanvas();
     const playSt = this.state.playState();
     const profile = this.gameContext.authorityProfile();
-    // 🔥 FIX: Centralizado a través del GameContextService
     const isLocked = this.gameContext.isPointerLocked();
 
     if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
@@ -297,7 +260,7 @@ export class EditorToolsService {
           if (activeCam) {
             const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), activeCam);
             ray.length = 10000;
-            const rootNode = this.castRayToSelectable(ray);
+            const rootNode = this.selectionSvc.resolverRootDesdeRay(ray, this.gizmoSvc.centerDragMesh as AbstractMesh);
             if (rootNode) {
               this.state.seleccionarObjeto(rootNode);
             }
@@ -306,9 +269,6 @@ export class EditorToolsService {
           this.cameraSvc.pausarJuegoYActivarCamaraEditor();
         } else if (playSt === 'EDITING_IN_GAME') {
           if (canvas) canvas.focus();
-          
-          // 🔥 FIX: Volvemos al juego bloqueando el puntero interactivamente aquí, 
-          // sin necesidad de esperar a que termine la animación, cumpliendo políticas de navegador.
           this.inputOrchestrator.lockPointer();
           this.cameraSvc.volverAJuego();
         }
@@ -318,6 +278,10 @@ export class EditorToolsService {
 
     if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
       if (playSt === 'PLAYING') {
+        if (!isLocked) {
+          this.inputRouter.lockPointer();
+          return;
+        }
         if (profile.canSelect) {
           this.manejarFPSAdminSelection(canvas, isLocked);
         }
@@ -338,7 +302,7 @@ export class EditorToolsService {
           );
           if (hitGizmo && hitGizmo.hit) return;
 
-          const rootNode = this.castRayToSelectable(ray);
+          const rootNode = this.selectionSvc.resolverRootDesdeRay(ray, this.gizmoSvc.centerDragMesh as AbstractMesh);
 
           if (rootNode) {
             if (this.state.objetoSeleccionado() === rootNode) {
@@ -362,16 +326,8 @@ export class EditorToolsService {
       if (!activeCam) return;
 
       if (playSt === 'PLAYING') {
-        if (isLocked) return; 
-
-        if (!profile.canSelect || this.state.modoVistaPrueba !== 'FPS') {
-          this.state.setObjetoHovereado(null);
-          return;
-        }
-
-        const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), activeCam);
-        const rootNode = this.castRayToSelectable(ray);
-        this.state.setObjetoHovereado(rootNode);
+        // 🔥 El sistema de interacciones del jugador (crosshair/raycast matemático) gestiona 
+        // 100% el hover mediante eventos. No necesitamos disparar raycasts del mouse aquí.
         return;
       }
 
@@ -390,7 +346,7 @@ export class EditorToolsService {
           return;
         }
 
-        const rootNode = this.castRayToSelectable(ray);
+        const rootNode = this.selectionSvc.resolverRootDesdeRay(ray, this.gizmoSvc.centerDragMesh as AbstractMesh);
         this.state.setObjetoHovereado(rootNode);
       }
     }
@@ -403,7 +359,6 @@ export class EditorToolsService {
     const playSt = this.state.playState();
 
     if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
-      // Apertura de menú radial exclusiva en modo EDITOR
       if (kbInfo.event.key.toLowerCase() === 'q' && profile.canViewDebug && playSt === 'EDITOR') {
         if (!this.qPressed) {
           this.qPressed = true;
@@ -421,7 +376,6 @@ export class EditorToolsService {
         }
       }
 
-      // Herramientas editoriales 1-4, F para enfocar
       if (profile.canEdit && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME')) {
         if (kbInfo.event.key === '1') this.setToolMode('select');
         if (kbInfo.event.key === '2') this.setToolMode('translate');

@@ -1,3 +1,4 @@
+
 // src/app/services/editor/editor-mode-transition.service.ts
 
 import { Injectable, inject } from '@angular/core';
@@ -42,6 +43,7 @@ export class EditorModeTransitionService {
   public beginResumeToTestLive(vista: CameraViewMode = 'FPS'): void {
     this.gameContext.setTransitioning(true);
     this.state.seleccionarObjeto(null);
+    this.state.setObjetoHovereado(null); // 🔥 FIX: Limpieza completa para evitar residuo pegado que rompa el Hover nuevo
   }
 
   public finishResumeToTestLive(vista: CameraViewMode = 'FPS'): void {

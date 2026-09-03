@@ -1,3 +1,4 @@
+// src/app/services/editor/editor-camera.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import {
@@ -107,13 +108,11 @@ export class EditorCameraService {
     const editorCam = this.motor3d.getEditorCamera();
     if (!editorCam || !this.editorCamState) return;
 
-    // 1. Restaurar Posiciones Geométricas (Target y Rotaciones)
     editorCam.setTarget(this.editorCamState.target.clone());
     editorCam.radius = this.editorCamState.radius;
     editorCam.alpha = this.editorCamState.alpha;
     editorCam.beta = this.editorCamState.beta;
 
-    // 2. 🔥 Limpiar cualquier inercia sobrante que haga salir la cámara volando
     editorCam.inertialAlphaOffset = 0;
     editorCam.inertialBetaOffset = 0;
     editorCam.inertialRadiusOffset = 0;
@@ -348,10 +347,15 @@ export class EditorCameraService {
     const startTarget = startPos.add(forward.scale(10));
 
     const targetToStart = startPos.subtract(finalTarget);
+    targetToStart.y = 0; // 🔥 PREVENIR QUE QUEDE ABAJO/ARRIBA EN EL EJE Y
     let dir = targetToStart.normalize();
-    if (dir.lengthSquared() === 0) dir = Vector3.Backward();
+    if (dir.lengthSquared() === 0) {
+        dir = new Vector3(0, 0, -1);
+    }
     
+    // 🔥 Le damos una elevación suave fija para siempre mirar ligeramente desde arriba
     const endPos = finalTarget.add(dir.scale(finalRadius));
+    endPos.y = finalTarget.y + Math.max(2.0, finalRadius * 0.4);
 
     this.animateCameraProxy(
       startPos, startTarget,

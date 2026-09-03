@@ -1,3 +1,6 @@
+
+// src/app/core/engine/models/api-dto.model.ts
+
 import { VisualMode } from '../world/world-settings.model';
 import { PlayerRuntimeConfig } from './player-config.model';
 
@@ -137,16 +140,22 @@ export interface SceneObjectPropertiesDto {
   audioVolumeEntrada?: number;
   audioMaxDistEntrada?: number;
   audioFadeInEntrada?: number;
+  audioProximityEntrada?: boolean;
+  audioSpatialEntrada?: boolean;
   
   audioLoopSalida?: boolean;
   audioVolumeSalida?: number;
   audioMaxDistSalida?: number;
   audioFadeInSalida?: number;
+  audioProximitySalida?: boolean;
+  audioSpatialSalida?: boolean;
   
   audioLoopNorm?: boolean;
   audioVolumeNorm?: number;
   audioMaxDistNorm?: number;
   audioFadeInNorm?: number;
+  audioProximityNorm?: boolean;
+  audioSpatialNorm?: boolean;
 
   prefabHierarchy?: SceneObjectDto[]; 
 }

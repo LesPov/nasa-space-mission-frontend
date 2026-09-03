@@ -1,4 +1,6 @@
 
+// src/app/core/engine/runtime/systems/player-trigger.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
 import { GameStateService } from '../state/game-state.service';
@@ -9,6 +11,7 @@ import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameContextService } from '../../session/game-context.service';
 import { InputOrchestratorService } from './input-orchestrator.service';
 import { PlayerCameraManagerService } from './player-camera.service';
+import { TriggerAudioService } from './trigger-audio.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService implements IUpdatable {
@@ -19,20 +22,11 @@ export class PlayerTriggerService implements IUpdatable {
   private context = inject(GameContextService);
   private inputOrchestrator = inject(InputOrchestratorService);
   private cameraSvc = inject(PlayerCameraManagerService);
+  private triggerAudioSvc = inject(TriggerAudioService);
   
   private activeTriggersInside = new Set<string>();
   private teleportCooldown: number = 0;
   private isTransitioning = false;
-  
-  // 🔥 GESTOR DE AUDIO ESPACIAL Y FADE (IN / OUT)
-  private activeAudios = new Map<string, { 
-      audio: HTMLAudioElement, 
-      entity: GameEntity, 
-      targetVol: number, 
-      maxDist: number, 
-      fadeInSecs: number, 
-      elapsedSecs: number 
-  }>();
 
   public start(): void {
     this.resetTransitionState();
@@ -68,12 +62,6 @@ export class PlayerTriggerService implements IUpdatable {
             }
         }
     }
-
-    this.activeAudios.forEach(data => {
-        data.audio.pause();
-        data.audio.currentTime = 0;
-    });
-    this.activeAudios.clear();
   }
 
   public resetTransitionState(): void {
@@ -90,61 +78,6 @@ export class PlayerTriggerService implements IUpdatable {
           this.verificarTriggers(playerEntity, true);
       } else {
           this.verificarTriggers(playerEntity, false);
-      }
-
-      // 🔥 LÓGICA DE AUDIO 3D (FADE-IN y FADE POR DISTANCIA)
-      if (this.activeAudios.size > 0) {
-          const playerPos = playerEntity.view!.getAbsolutePosition();
-          
-          this.activeAudios.forEach((audioData, key) => {
-              const mesh = audioData.entity.view as AbstractMesh;
-              
-              if (audioData.audio.ended && !audioData.audio.loop) {
-                  this.activeAudios.delete(key);
-                  return;
-              }
-
-              if (!mesh || audioData.audio.paused) return;
-
-              audioData.elapsedSecs += (dtMs / 1000);
-
-              // 1. Calcular Factor Fade In Cuadrático (Más suave)
-              let fadeFactor = 1.0;
-              if (audioData.fadeInSecs > 0) {
-                  let p = Math.min(1.0, audioData.elapsedSecs / audioData.fadeInSecs);
-                  fadeFactor = p * p;
-              }
-
-              const isInside = this.activeTriggersInside.has(audioData.entity.uid);
-              
-              if (isInside) {
-                  audioData.audio.volume = Math.max(0, Math.min(1, audioData.targetVol * fadeFactor));
-              } else {
-                  mesh.computeWorldMatrix(true);
-                  const bounds = mesh.getBoundingInfo().boundingBox;
-                  
-                  const clampX = Math.max(bounds.minimumWorld.x, Math.min(bounds.maximumWorld.x, playerPos.x));
-                  const clampY = Math.max(bounds.minimumWorld.y, Math.min(bounds.maximumWorld.y, playerPos.y));
-                  const clampZ = Math.max(bounds.minimumWorld.z, Math.min(bounds.maximumWorld.z, playerPos.z));
-                  
-                  const closestPoint = new Vector3(clampX, clampY, clampZ);
-                  const dist = Vector3.Distance(playerPos, closestPoint);
-                  
-                  if (dist >= audioData.maxDist) {
-                      // 🔥 Corta el audio y lo elimina obligando a re-entrar al trigger
-                      audioData.audio.volume = 0;
-                      audioData.audio.pause();
-                      audioData.audio.currentTime = 0;
-                      this.activeAudios.delete(key);
-                  } else {
-                      // Factor Distancia Exponencial (Más realista)
-                      let distFactor = 1.0 - (dist / audioData.maxDist);
-                      distFactor = distFactor * distFactor; 
-
-                      audioData.audio.volume = Math.max(0, Math.min(1, audioData.targetVol * distFactor * fadeFactor));
-                  }
-              }
-          });
       }
     }
   }
@@ -247,32 +180,27 @@ export class PlayerTriggerService implements IUpdatable {
       }
 
       let mensaje = '';
-      let soundUrl = '';
       let seqIdString = ''; 
-      let videoUrl = ''; 
 
       if (triggerEntity.trigger.isComposite) {
           if (eventType === 'on_enter') {
               mensaje = triggerEntity.trigger.mensajeEntrada;
-              soundUrl = triggerEntity.trigger.soundUrlEntrada;
               seqIdString = triggerEntity.trigger.seqEntrada;
-              videoUrl = triggerEntity.trigger.videoEntrada ?? '';
           } else if (eventType === 'on_exit') {
               mensaje = triggerEntity.trigger.mensajeSalida;
-              soundUrl = triggerEntity.trigger.soundUrlSalida;
               seqIdString = triggerEntity.trigger.seqSalida;
-              videoUrl = triggerEntity.trigger.videoSalida ?? '';
           }
       } else {
           if (triggerEntity.trigger.condition === eventType) {
               mensaje = triggerEntity.trigger.mensaje;
-              soundUrl = triggerEntity.trigger.soundUrl;
               seqIdString = triggerEntity.trigger.interactSequenceId;
-              videoUrl = triggerEntity.trigger.videoNorm ?? '';
           } else {
               return; 
           }
       }
+
+      // 📢 LLAMAR AL NUEVO SERVICIO DE AUDIO
+      this.triggerAudioSvc.playTriggerEvent(triggerEntity, eventType);
 
       if (mensaje && mensaje.trim() !== '') {
           const timeToHide = triggerEntity.trigger.isComposite ? 
@@ -280,56 +208,6 @@ export class PlayerTriggerService implements IUpdatable {
               triggerEntity.trigger.timeNorm;
           
           this.eventBus.emit({ type: 'MessageRequested', payload: { text: mensaje, durationMs: (timeToHide || 4.5) * 1000 } });
-      }
-
-      if (soundUrl && soundUrl.trim() !== '') {
-          try {
-             let audioKey = triggerEntity.uid + "_" + eventType;
-             let audioData = this.activeAudios.get(audioKey);
-             
-             const loop = triggerEntity.trigger.isComposite ? 
-                (eventType === 'on_enter' ? triggerEntity.trigger.audioLoopEntrada : triggerEntity.trigger.audioLoopSalida) : 
-                triggerEntity.trigger.audioLoopNorm;
-                
-             const targetVol = triggerEntity.trigger.isComposite ? 
-                (eventType === 'on_enter' ? triggerEntity.trigger.audioVolumeEntrada : triggerEntity.trigger.audioVolumeSalida) : 
-                triggerEntity.trigger.audioVolumeNorm;
-                
-             const maxDist = triggerEntity.trigger.isComposite ? 
-                (eventType === 'on_enter' ? triggerEntity.trigger.audioMaxDistEntrada : triggerEntity.trigger.audioMaxDistSalida) : 
-                triggerEntity.trigger.audioMaxDistNorm;
-
-             const fadeIn = triggerEntity.trigger.isComposite ? 
-                (eventType === 'on_enter' ? triggerEntity.trigger.audioFadeInEntrada : triggerEntity.trigger.audioFadeInSalida) : 
-                triggerEntity.trigger.audioFadeInNorm;
-             
-             if (!audioData) {
-                 const audio = new Audio(soundUrl);
-                 audio.loop = loop ?? false;
-                 audioData = { 
-                     audio, 
-                     entity: triggerEntity, 
-                     targetVol: targetVol ?? 0.8, 
-                     maxDist: maxDist ?? 50, 
-                     fadeInSecs: fadeIn ?? 1.0, 
-                     elapsedSecs: 0 
-                 };
-                 this.activeAudios.set(audioKey, audioData);
-             } else {
-                 audioData.audio.loop = loop ?? false;
-                 audioData.targetVol = targetVol ?? 0.8;
-                 audioData.maxDist = maxDist ?? 50;
-                 audioData.fadeInSecs = fadeIn ?? 1.0;
-                 audioData.elapsedSecs = 0; 
-             }
-             
-             audioData.audio.volume = 0;
-             if (!loop) audioData.audio.currentTime = 0;
-             
-             audioData.audio.play().catch(err => {
-                 console.warn(`[PlayerTriggerService] ⚠️ Bloqueo de audio por políticas del navegador o error:`, err);
-             });
-          } catch(e) {}
       }
 
       if (seqIdString && seqIdString.trim() !== '') {

@@ -1,4 +1,3 @@
-
 // src/app/core/engine/runtime/game-session.ts
 
 import { Injectable, inject, computed } from '@angular/core';
@@ -25,6 +24,8 @@ import { GameContextService } from '../session/game-context.service';
 import { LayoutService } from '../../../services/layout.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
 import { DynamicLightingSystem } from './systems/lighting/dynamic-lighting.system'; 
+import { TriggerAudioService } from './systems/trigger-audio.service';
+import { LocalRenderingSystem } from './systems/local-rendering.system';
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
@@ -48,6 +49,8 @@ export class GameSession {
   private renderSyncSvc = inject(RenderSync);
   private dynamicLighting = inject(DynamicLightingSystem); 
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
+  private triggerAudioSvc = inject(TriggerAudioService);
+  private localRendering = inject(LocalRenderingSystem); // 🔥 AÑADIDO
 
   public isPlaying = computed(() => this.context.isPlaying());
   public isDebugMode = computed(() => this.context.isDebugMode());
@@ -73,7 +76,6 @@ export class GameSession {
              this.layoutSvc.ocultarMenu(); 
         }
 
-        // 🔥 Restaurar control de la cámara
         const cam = this.ownership.getCamera();
         const canvas = this.motor3dSvc.getEngine()?.getRenderingCanvas();
         if (cam && canvas) {
@@ -85,7 +87,6 @@ export class GameSession {
         this.inputSvc.disable();
         this.interactionSvc.disable();
 
-        // 🔥 Congelar la cámara del jugador (se detiene rotación por ratón)
         const cam = this.ownership.getCamera();
         if (cam && (this.ownership.getOwner() === 'PLAYER_FPS' || this.ownership.getOwner() === 'PLAYER_TPS')) {
             try { cam.detachControl(); } catch {}
@@ -116,11 +117,13 @@ export class GameSession {
       this.sequenceSvc,
       this.cinematicDirector,
       this.kinematicsSvc,
+      this.triggerAudioSvc,
       this.triggerSvc,
       this.interactionSvc,
       this.playerAnimationSvc,
       this.cameraSvc,
       this.mediaCommandSvc,
+      this.localRendering, // 🔥 AÑADIDO: Orquestador de Culling
       this.renderSyncSvc,
       this.dynamicLighting, 
       this.objectAnimSvc,
@@ -134,8 +137,6 @@ export class GameSession {
         }
     });
 
-    // 🔥 FIX: Habilitar inputs dependiendo del modo DESPUÉS de ejecutar los start() de cada sistema
-    // para evitar que los inicializadores sobreescriban la habilitación con un disable() involuntario.
     const mode = this.context.mode();
     if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
       this.layoutSvc.mostrarMenu();

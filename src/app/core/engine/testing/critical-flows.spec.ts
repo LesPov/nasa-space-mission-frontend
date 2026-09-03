@@ -1,3 +1,4 @@
+// src/app/core/engine/testing/critical-flows.spec.ts
 
 import '@angular/compiler';
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
@@ -75,7 +76,9 @@ import { EpisodiosService } from '../../../services/api/episodios';
 import { AuthService } from '../../services/auth';
 import { EditorOrchestratorService } from '../../../services/editor/editor-orchestrator.service';
 import { EditorLiveSyncService } from '../../../services/editor/editor-live-sync.service';
-import { SnapshotReconcilerService } from '../../../services/editor/utils/snapshot-reconciler.service'; // 🔥 ADDED
+import { SnapshotReconcilerService } from '../../../services/editor/utils/snapshot-reconciler.service';
+import { TriggerAudioService } from '../runtime/systems/trigger-audio.service';
+import { LocalRenderingSystem } from '../runtime/systems/local-rendering.system'; // 🔥 AÑADIDO
 
 import { MeshBuilder, AbstractMesh } from '@babylonjs/core';
 import { GameMode } from '../session/game-mode.model';
@@ -162,6 +165,8 @@ describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
         FogRendererService,
         PlayerTriggerService,
         PlayerSequenceService,
+        TriggerAudioService,
+        LocalRenderingSystem, // 🔥 AÑADIDO
 
         EditorMapaService,
         EditorPlayModeService,
@@ -179,7 +184,7 @@ describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
         SceneNodesService,
         ToolsSelectionService,
         HistorialService,
-        SnapshotReconcilerService // 🔥 ADDED
+        SnapshotReconcilerService
       ]
     });
 

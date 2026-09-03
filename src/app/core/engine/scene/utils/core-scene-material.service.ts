@@ -43,10 +43,10 @@ export class CoreSceneMaterialService {
       return;
     }
     
-    // 🔥 FIX: Aumentamos la recepción de luces simultáneas para permitir sombras y focos 
-    // sin que objetos se apaguen cuando se les acercan varias luces.
-    if (material.maxSimultaneousLights !== 6) {
-        material.maxSimultaneousLights = 6;
+    // 🔥 FIX: Aumentamos la capacidad de recepción a 8 para asegurar que 
+    // las sombras del player no decaigan en la calle iluminada.
+    if (material.maxSimultaneousLights !== 8) {
+        material.maxSimultaneousLights = 8;
     }
 
     const c3Amb = ambientColorHex ? Color3.FromHexString(ambientColorHex) : new Color3(1, 1, 1);

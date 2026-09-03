@@ -1,5 +1,3 @@
-
-
 import { Injectable } from '@angular/core';
 import { Scene, Mesh, MeshBuilder, StandardMaterial, Color3, AbstractMesh, Tags, Vector3 } from '@babylonjs/core';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
@@ -29,7 +27,6 @@ export class ToolsDebugCameraService {
       Tags.AddTagsTo(this.debugCameraBox, "system_element editor_only debug_element");
     }
 
-    // 🔥 FIX 2: Usar PlayerConfig si es personaje.
     let cX = entity.camOffset.x || 0;
     let cY = entity.camOffset.y || 1.6;
     let cZ = entity.camOffset.z || 0;
@@ -49,8 +46,9 @@ export class ToolsDebugCameraService {
 
   public sync(offsetX: number, offsetY: number, offsetZ: number, breathX: number, breathY: number, breathZ: number): void {
     if (this.debugCameraBox && this.attachedMesh) {
-      const scaleY = this.attachedMesh.scaling.y || 1;
-      const localOffset = new Vector3(offsetX + breathX, (offsetY / scaleY) + breathY, offsetZ + breathZ);
+      // 🔥 FIX 1: Extirpación de la división de escala para no distorsionar 
+      // visualmente la representación de los ojos/cámara.
+      const localOffset = new Vector3(offsetX + breathX, offsetY + breathY, offsetZ + breathZ);
       this.attachedMesh.computeWorldMatrix(true);
       this.debugCameraBox.position = Vector3.TransformCoordinates(localOffset, this.attachedMesh.getWorldMatrix());
     }

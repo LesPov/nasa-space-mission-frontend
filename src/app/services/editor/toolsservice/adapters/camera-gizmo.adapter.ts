@@ -1,4 +1,3 @@
-
 import { IGizmoTargetAdapter } from './gizmo-target-adapter.interface';
 import { AbstractMesh, Matrix, Vector3 } from '@babylonjs/core';
 import { GameEntity } from '../../../../core/engine/entities/game.entity';
@@ -32,11 +31,15 @@ export class CameraGizmoAdapter implements IGizmoTargetAdapter {
       mesh.computeWorldMatrix(true);
       const invMat = Matrix.Invert(mesh.getWorldMatrix());
       const localPos = Vector3.TransformCoordinates(debugSvc.debugCameraBox.getAbsolutePosition(), invMat);
+      
+      // 🔥 FIX 1: Se eliminó el doble escalado que destrozaba la posición del Anchor de Cámara.
+      // Se utiliza la coordenada local pura. TransformCoordinates ya maneja la escala.
       entity.camOffset.x = localPos.x;
-      entity.camOffset.y = localPos.y * (mesh.scaling.y || 1);
+      entity.camOffset.y = localPos.y; 
       entity.camOffset.z = localPos.z;
+      
       if (entity.characterConfig && entity.playerConfig) {
-          entity.playerConfig.camera.fpsEyeLevel = entity.camOffset.y;
+          entity.playerConfig.camera.fpsEyeLevel = localPos.y;
       }
       entity.syncToView();
     }

@@ -10,8 +10,6 @@ export class ToolsDebugColliderService {
   private currentColliderKey: string = '';
 
   public update(scene: Scene, mesh: AbstractMesh, entity: GameEntity, subSelected: string | null): void {
-    // 🔥 CORRECCIÓN CRÍTICA (Bug 3): Forzar la visualización en el editor
-    // para CUALQUIER personaje, incluso si el subSelected no es 'collider'.
     const isCharacter = !!entity.characterConfig;
     if (subSelected !== 'collider' && !isCharacter) {
       this.dispose();
@@ -19,7 +17,6 @@ export class ToolsDebugColliderService {
     }
     
     this.attachedMesh = mesh;
-    // Si es personaje el motor lo fuerza siempre a capsule internamente, respetemos eso en el debug
     const type = isCharacter ? 'capsule' : (entity.collider.type || 'box');
 
     mesh.computeWorldMatrix(true);
@@ -27,9 +24,6 @@ export class ToolsDebugColliderService {
     const scaleY = Math.abs(mesh.scaling.y || 1);
     const scaleZ = Math.abs(mesh.scaling.z || 1);
 
-    // 🔥 CORRECCIÓN CRÍTICA (Bug 3): BabylonJS maneja los Ellipsoids como RADIOS.
-    // Por tanto, las dimensiones guardadas en BD son radios. Para el debug visual
-    // debemos multiplicar por 2 para mostrar los Diámetros (escala real que ocupa en escena).
     const sX = (entity.collider.sizeX ?? 0.5) * scaleX * 2;
     const sY = (entity.collider.sizeY ?? 0.5) * scaleY * 2;
     const sZ = (entity.collider.sizeZ ?? 0.5) * scaleZ * 2;
@@ -44,7 +38,6 @@ export class ToolsDebugColliderService {
     if (!this.debugCollider) {
       this.currentColliderKey = newKey;
       
-      // 🔥 CORRECCIÓN CRÍTICA: Renderizar visualmente la geometría exacta configurada
       if (type === 'capsule' || type === 'cylinder') {
          const r = Math.max(sX, sZ) / 2;
          this.debugCollider = MeshBuilder.CreateCapsule('debugColliderBox', { radius: r, height: sY }, scene);
@@ -57,19 +50,22 @@ export class ToolsDebugColliderService {
       const mat = new StandardMaterial('debugColliderMat', scene);
       mat.diffuseColor = new Color3(0, 1, 0); 
       mat.emissiveColor = new Color3(0, 0.8, 0);
-      mat.alpha = 0.25; // Color Sólido Semitransparente
+      mat.alpha = 0.25; 
       mat.alphaMode = Engine.ALPHA_COMBINE;
-      mat.wireframe = true; // Y también un Wireframe por encima para fácil distinción
+      mat.wireframe = true; 
       mat.disableLighting = true;
+      
       this.debugCollider.material = mat;
-      this.debugCollider.isPickable = false; // JAMÁS interfiere con la selección en editor
+      this.debugCollider.isPickable = false; 
+      
+      // 🔥 FIX DE PRECAUCIÓN: Excluimos permanentemente a la caja verde de debug
+      // de proyectar ni recibir sombras bajo ningún concepto.
+      this.debugCollider.receiveShadows = false;
       Tags.AddTagsTo(this.debugCollider, "system_element editor_only debug_element ignore_raycast");
 
       this.debugCollider.scaling.set(1, 1, 1);
     }
 
-    // Los offsets en la base de datos se pasan crudos a sync, porque Vector3.TransformCoordinates 
-    // aplicará internamente la matriz de escala del jugador para posicionarlo donde corresponde
     this.sync(entity.collider.offsetX || 0, entity.collider.offsetY || 0, entity.collider.offsetZ || 0, 0, 0, 0);
     
     if (mesh.rotationQuaternion) {

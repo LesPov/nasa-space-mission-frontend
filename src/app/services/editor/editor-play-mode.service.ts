@@ -134,8 +134,10 @@ export class EditorPlayModeService {
                     activeCam.attachControl(canvas, true);
                     
                     if (vista === 'FPS') {
-                      objMesh.visibility = 0;
-                      objMesh.getChildMeshes().forEach(m => m.visibility = 0);
+                      // 🔥 FIX: Establecer la visibilidad al 100% (1) en la primera entrada a FPS.
+                      // Evita el bug donde el cuerpo estaba completamente en 0 y el culling lo saltaba.
+                      objMesh.visibility = 1;
+                      objMesh.getChildMeshes().forEach(m => m.visibility = 1);
                     }
                 }
             }

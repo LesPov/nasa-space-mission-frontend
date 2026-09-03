@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { StandardMaterial, VideoTexture, Color3, Mesh, Tags } from '@babylonjs/core';
- import { GameSession } from './game-session';
+import { GameSession } from './game-session';
 import { PlayerCameraManagerService } from './systems/player-camera.service';
 import { EntityManagerService } from '../entities/entity-manager.service';
 import { GameEntity } from '../entities/game.entity';
@@ -42,10 +42,8 @@ export class RuntimeEngineService {
     return new Promise((resolve, reject) => {
       this.motor3d.getScene().executeWhenReady(() => {
         
-        // 🔥 FIX: Aseguramos que el Input Router se enganche a la escena para recibir teclado nativo (WASD, Space, etc.)
         this.inputOrchestrator.attachToScene(this.motor3d.getScene());
         
-        // 🔥 CONSUMIDOR DELEGADO: El SpawnManager resuelve y prepara el jugador.
         const spawnEntity = this.spawnManager.resolvePlayerForSession(null, false);
 
         if (!spawnEntity) {
@@ -77,7 +75,6 @@ export class RuntimeEngineService {
            this.playerCamSvc.iniciarCinematicaIntro(spawnEntity);
         }
 
-        // 🔥 FIX: Reemplazado document.pointerLockElement con this.gameContext.isPointerLocked()
         if (canvas) {
           this._prodClickFn = () => {
              if (this.gameContext.isPlaying() && !this.gameContext.isPointerLocked()) {
@@ -94,6 +91,9 @@ export class RuntimeEngineService {
   }
 
   public shutdownProductionGame(): void {
+    // 🔥 FIX: Restaurar la cabeza del jugador al Editor en caso de apagar la sesión en caliente
+    this.playerCamSvc.updateFirstPersonVisibility(false);
+    
     this.gameSession.stop();
     this.playerCamSvc.detenerCinematicaIntro(); 
     this.playerCamSvc.limpiarPivotTPS();
@@ -125,6 +125,8 @@ export class RuntimeEngineService {
   }
 
   public stopTestSession(): void {
+    // 🔥 FIX: Restaurar la cabeza del jugador al volver al Editor.
+    this.playerCamSvc.updateFirstPersonVisibility(false);
     this.gameSession.stop();
     this.playerCamSvc.limpiarPivotTPS();
     this.resetVideos();

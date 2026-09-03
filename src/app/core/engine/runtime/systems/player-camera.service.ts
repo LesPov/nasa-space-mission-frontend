@@ -62,23 +62,22 @@ export class PlayerCameraUpdater {
     const config = entity.playerConfig || cloneDefaultPlayerConfig();
     const scaleY = scaleNow.y || 1;
 
-    const playerHalfHeight = (colMeta.sizeY || 0.9) * scaleY;
-    const playerEyeLevel = (config.camera.fpsEyeLevel || 1.6) * scaleY;
+    const playerHalfHeight = colMeta.sizeY || 0.9;
+    const playerEyeLevel = config.camera.fpsEyeLevel ?? camMeta.y ?? 1.6;
 
     let targetEyeLevel = playerEyeLevel;
     let targetPivotY = this.manager.overrideTargetPivotY !== null
       ? this.manager.overrideTargetPivotY
-      : (config.camera.tpsPivotY || 1.5) * scaleY;
+      : (config.camera.tpsPivotY ?? 1.5);
 
     let breathY = 0;
     let breathZ = 0;
     let breathX = 0;
 
-    if (estadoFisico.isMoving || estadoFisico.isJumping || estadoFisico.isFalling) {
-        this.manager.breathLerp = Math.max(0, this.manager.breathLerp - 0.1);
-    } else {
-        this.manager.breathLerp = Math.min(1.0, this.manager.breathLerp + 0.05);
-    }
+    // 🔥 CORRECCIÓN DEFINITIVA: Mantenemos el lerp siempre en 1.0 para que la cámara acompañe 
+    // fielmente el offset físico de la cabeza/torso (ej. inclinarse al correr o saltar).
+    // Antes decaía a 0, dejando la cámara estática atrás mientras el cuerpo se adelantaba.
+    this.manager.breathLerp = 1.0;
 
     if (config.camera.headFollow && this.manager.headNode && this.manager.initialHeadLocal) {
       const currentGlobal = this.manager.headNode.getAbsolutePosition();
@@ -88,12 +87,13 @@ export class PlayerCameraUpdater {
       const rawBreathY = (currentLocal.y - this.manager.initialHeadLocal.y) * this.manager.breathLerp;
       const rawBreathZ = (currentLocal.z - this.manager.initialHeadLocal.z) * this.manager.breathLerp;
 
-      // 🔥 FIX 1: LERP DE RESPIRACIÓN
-      // Esto elimina el ruido introducido por la evaluación esquelética tardía de BabylonJS.
-      // Retiene el look del head bobbing pero lo aísla del root motion.
-      this.manager.currentBreathX += (rawBreathX - this.manager.currentBreathX) * 0.15;
-      this.manager.currentBreathY += (rawBreathY - this.manager.currentBreathY) * 0.15;
-      this.manager.currentBreathZ += (rawBreathZ - this.manager.currentBreathZ) * 0.15;
+      // 🔥 CORRECCIÓN: Suavizado dinámico más robusto. Lento al correr para evitar el mareo del head-bobbing,
+      // pero suficientemente continuo para mantener la cámara centrada en la cabeza cuando esta se inclina.
+      const lerpSpeed = (estadoFisico.isMoving || estadoFisico.isJumping || estadoFisico.isFalling) ? 0.08 : 0.15;
+
+      this.manager.currentBreathX += (rawBreathX - this.manager.currentBreathX) * lerpSpeed;
+      this.manager.currentBreathY += (rawBreathY - this.manager.currentBreathY) * lerpSpeed;
+      this.manager.currentBreathZ += (rawBreathZ - this.manager.currentBreathZ) * lerpSpeed;
 
       breathX = this.manager.currentBreathX;
       breathY = this.manager.currentBreathY;
@@ -123,8 +123,6 @@ export class PlayerCameraUpdater {
 
     jugador.computeWorldMatrix(true);
 
-    const sequenceLocksInput = seqRuntime.lockInput || seqRuntime.freezeOrientation;
-
     if (vista === 'TPS' && this.manager.cameraPivot) {
       if (!this.manager.isTransitioningCameras) {
         const minRadius = (config.camera.tpsMinRadius ?? 1.5) * scaleY;
@@ -136,7 +134,7 @@ export class PlayerCameraUpdater {
 
       this._localPivotPos.set(
         (camMeta.x || 0) + breathX,
-        (this.manager.currentPivotY / scaleY) + breathY,
+        this.manager.currentPivotY + breathY,
         (camMeta.z || 0) + breathZ
       );
 
@@ -152,7 +150,6 @@ export class PlayerCameraUpdater {
             
             const diffY = this._globalPivotPos.y - this.manager.cameraPivot.position.y;
             
-            // 🔥 FIX 3: SNAP THRESHOLD EN Y (MATA EL JITTER DE CÁMARA VERTICAL EN REPOSO)
             if (Math.abs(diffY) < 0.005 && !this.manager.isTransitioningCameras) {
                 this.manager.cameraPivot.position.y = this._globalPivotPos.y;
             } else {
@@ -168,14 +165,9 @@ export class PlayerCameraUpdater {
     if (vista === 'FPS') {
       const fpsCam = activeCamera as UniversalCamera;
 
-      if (!sequenceLocksInput && !seqRuntime.freezeOrientation) {
-        if (!jugador.rotationQuaternion) jugador.rotationQuaternion = Quaternion.Identity();
-        jugador.rotationQuaternion = Quaternion.FromEulerAngles(0, fpsCam.rotation.y || 0, 0);
-      }
-
       this._localCamPos.set(
         (camMeta.x || 0) + breathX,
-        (this.manager.currentEyeLevel / scaleY) + breathY,
+        this.manager.currentEyeLevel + breathY,
         (camMeta.z || 0) + breathZ
       );
 
@@ -190,7 +182,6 @@ export class PlayerCameraUpdater {
             
             const diffY = this._globalCamPos.y - fpsCam.position.y;
             
-            // 🔥 FIX 3: SNAP THRESHOLD EN Y (MATA EL JITTER DE CÁMARA VERTICAL EN REPOSO)
             if (Math.abs(diffY) < 0.005) {
                 fpsCam.position.y = this._globalCamPos.y; 
             } else {
@@ -301,9 +292,9 @@ export class PlayerCameraTransitions {
     const tpsCam = this.motor3d.getPlayerCameraTPS();
 
     if (vista === 'FPS') {
-        const tpsPivotY = (config.camera.tpsPivotY || 1.5) * scaleY;
+        const tpsPivotY = config.camera.tpsPivotY ?? 1.5;
         const camMeta = entity.camOffset || { x: 0, y: 1.6, z: 0 };
-        const localPivotPos = new Vector3(camMeta.x || 0, tpsPivotY / scaleY, camMeta.z || 0);
+        const localPivotPos = new Vector3(camMeta.x || 0, tpsPivotY, camMeta.z || 0);
         jugador.computeWorldMatrix(true);
         const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
 
@@ -359,7 +350,7 @@ export class PlayerCameraTransitions {
       const scaleY = entity.transform.scale.y || 1;
       const tpsCam = this.motor3d.getPlayerCameraTPS();
 
-      const tpsPivotY = (config.camera.tpsPivotY || 1.5) * scaleY;
+      const tpsPivotY = config.camera.tpsPivotY ?? 1.5;
       const maxR = (config.camera.tpsMaxRadius ?? 15) * scaleY;
 
       jugador.computeWorldMatrix(true);
@@ -367,7 +358,7 @@ export class PlayerCameraTransitions {
       if (playerForward.lengthSquared() === 0) playerForward.copyFromFloats(0, 0, 1);
 
       const camMeta = entity.camOffset || { x: 0, y: 1.6, z: 0 };
-      const localPivotPos = new Vector3(camMeta.x || 0, tpsPivotY / scaleY, camMeta.z || 0);
+      const localPivotPos = new Vector3(camMeta.x || 0, tpsPivotY, camMeta.z || 0);
       const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
       
       this.manager.cameraPivot.position.copyFrom(globalPivotPos);
@@ -391,9 +382,6 @@ export class PlayerCameraTransitions {
 
       tpsCam.setTarget(this.manager.cameraPivot);
       tpsCam.getViewMatrix(true);
-
-      jugador.visibility = 0;
-      jugador.getChildMeshes().forEach(m => m.visibility = 0);
       
       const canvas = this.motor3d.getEngine().getRenderingCanvas();
       this.ownership.setCamera('PLAYER_TPS', tpsCam, canvas, true);
@@ -416,7 +404,7 @@ export class PlayerCameraTransitions {
 
           this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
               if (tpsCam.radius < fadeLimit) {
-                 jugador.visibility = Math.max(0, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
+                 jugador.visibility = Math.max(0.0001, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
                  jugador.getChildMeshes().forEach(m => m.visibility = jugador.visibility);
               } else {
                  jugador.visibility = 1;
@@ -477,9 +465,8 @@ export class PlayerCameraTransitions {
       if (this.manager.isTransitioningCameras) {
         this.resetearTransiciones();
         if (jugador && !jugador.isDisposed()) {
-          const targetVisibility = currentVista === 'FPS' ? 1 : 0;
-          jugador.visibility = targetVisibility;
-          jugador.getChildMeshes().forEach(m => m.visibility = targetVisibility);
+          jugador.visibility = 1;
+          jugador.getChildMeshes().forEach(m => m.visibility = 1);
         }
       }
     }, durationMs + 500);
@@ -513,7 +500,7 @@ export class PlayerCameraTransitions {
 
       this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
           if (tpsCam.radius < fadeLimit) {
-             jugador.visibility = Math.max(0, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
+             jugador.visibility = Math.max(0.0001, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
              jugador.getChildMeshes().forEach(m => m.visibility = jugador.visibility);
           } else {
              jugador.visibility = 1;
@@ -527,6 +514,7 @@ export class PlayerCameraTransitions {
         this.resetearTransiciones();
         jugador.visibility = 1;
         jugador.getChildMeshes().forEach(m => m.visibility = 1);
+        this.manager.updateFirstPersonVisibility(false);
         
         this.manager.aplicarPerfilACamara(tpsCam, 'TPS', config, scaleNow);
       });
@@ -538,14 +526,14 @@ export class PlayerCameraTransitions {
       tpsCam.lowerRadiusLimit = null;
       tpsCam.upperRadiusLimit = null;
 
-      this.manager.overrideTargetPivotY = (config.camera.fpsEyeLevel || 1.6) * scaleNow;
+      this.manager.overrideTargetPivotY = config.camera.fpsEyeLevel ?? 1.6;
 
       this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
           tpsCam.alpha = fixedAlpha;
           tpsCam.beta = fixedBeta;
 
           if (tpsCam.radius < fadeLimit) {
-             jugador.visibility = Math.max(0, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
+             jugador.visibility = Math.max(0.0001, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
              jugador.getChildMeshes().forEach(m => m.visibility = jugador.visibility);
           } else {
              jugador.visibility = 1;
@@ -561,14 +549,16 @@ export class PlayerCameraTransitions {
         fpsCam.rotation.y = -fixedAlpha - Math.PI / 2;
         fpsCam.rotation.x = fixedBeta - Math.PI / 2;
 
-        if (this.manager.cameraPivot) {
-            fpsCam.position.copyFrom(this.manager.cameraPivot.getAbsolutePosition());
-        }
+        jugador.computeWorldMatrix(true);
+        const camMeta = entity.camOffset || { x: 0, y: 1.6, z: 0 };
+        const localCamPos = new Vector3(camMeta.x || 0, config.camera.fpsEyeLevel ?? 1.6, camMeta.z || 0);
+        fpsCam.position = Vector3.TransformCoordinates(localCamPos, jugador.getWorldMatrix());
         
         this.resetearTransiciones();
         
-        jugador.visibility = 0;
-        jugador.getChildMeshes().forEach(m => m.visibility = 0);
+        jugador.visibility = 1;
+        jugador.getChildMeshes().forEach(m => m.visibility = 1);
+        this.manager.updateFirstPersonVisibility(true);
         
         this.ownership.setCamera('PLAYER_FPS', fpsCam, canvas, attachControlForce);
         
@@ -645,6 +635,16 @@ export class PlayerCameraManagerService implements IUpdatable {
     this.transitions.toggleCameraView(entity, currentVista, isCinematicInitial, attachControlForce, onVistaChanged, customFrames);
   }
 
+  public updateFirstPersonVisibility(isFPS: boolean): void {
+    if (this.headNode) {
+      if (isFPS) {
+        this.headNode.scaling.set(0.001, 0.001, 0.001);
+      } else {
+        this.headNode.scaling.set(1, 1, 1);
+      }
+    }
+  }
+
   public inicializarCamaras(
     entity: GameEntity,
     vista: 'FPS' | 'TPS'
@@ -662,9 +662,9 @@ export class PlayerCameraManagerService implements IUpdatable {
     const config = entity.playerConfig || cloneDefaultPlayerConfig();
     const scaleY = entity.transform.scale.y || 1;
 
-    const playerEyeLevel = (config.camera.fpsEyeLevel || 1.6) * scaleY;
+    const playerEyeLevel = config.camera.fpsEyeLevel ?? camMeta.y ?? 1.6;
     this.currentEyeLevel = playerEyeLevel;
-    this.currentPivotY = (config.camera.tpsPivotY || 1.5) * scaleY;
+    this.currentPivotY = config.camera.tpsPivotY ?? 1.5;
     
     this.currentBreathX = 0;
     this.currentBreathY = 0;
@@ -703,7 +703,7 @@ export class PlayerCameraManagerService implements IUpdatable {
     fpsCam.rotation.set(pitch, yaw, 0);
 
     if (this.cameraPivot) {
-      const localPivotPos = new Vector3(camMeta.x || 0, this.currentPivotY / scaleY, camMeta.z || 0);
+      const localPivotPos = new Vector3(camMeta.x || 0, this.currentPivotY, camMeta.z || 0);
       jugador.computeWorldMatrix(true);
       this.cameraPivot.position = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
 
@@ -720,14 +720,17 @@ export class PlayerCameraManagerService implements IUpdatable {
     }
 
     if (vista === 'FPS') {
-      jugador.visibility = 0;
-      jugador.getChildMeshes().forEach(m => m.visibility = 0);
-      const localCamPos = new Vector3(camMeta.x || 0, this.currentEyeLevel / scaleY, camMeta.z || 0);
+      jugador.visibility = 1;
+      jugador.getChildMeshes().forEach(m => m.visibility = 1);
+      this.updateFirstPersonVisibility(true);
+      
+      const localCamPos = new Vector3(camMeta.x || 0, this.currentEyeLevel, camMeta.z || 0);
       fpsCam.position = Vector3.TransformCoordinates(localCamPos, jugador.getWorldMatrix());
       fpsCam.getViewMatrix(true);
     } else {
       jugador.visibility = 1;
       jugador.getChildMeshes().forEach(m => m.visibility = 1);
+      this.updateFirstPersonVisibility(false);
     }
   }
 

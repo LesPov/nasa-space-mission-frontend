@@ -1,4 +1,6 @@
 
+// src/app/components/inspector-escena/inspector-properties/prop-trigger/prop-trigger.ts
+
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -30,7 +32,6 @@ export class PropTrigger implements OnInit, OnDestroy {
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
-  // Control de Acordeones
   public accordions: Record<string, boolean> = {
     transform: true,
     config: true,
@@ -64,8 +65,13 @@ export class PropTrigger implements OnInit, OnDestroy {
   gameConditions: any[] = [];
 
   audioLoopEntrada = false; audioVolumeEntrada = 0.8; audioMaxDistEntrada = 50; audioFadeInEntrada = 1.0;
+  audioProximityEntrada = false; audioSpatialEntrada = true;
+  
   audioLoopSalida = false; audioVolumeSalida = 0.8; audioMaxDistSalida = 50; audioFadeInSalida = 1.0;
+  audioProximitySalida = false; audioSpatialSalida = true;
+  
   audioLoopNorm = false; audioVolumeNorm = 0.8; audioMaxDistNorm = 50; audioFadeInNorm = 1.0;
+  audioProximityNorm = false; audioSpatialNorm = true;
 
   animStatus = '';
 
@@ -154,6 +160,8 @@ export class PropTrigger implements OnInit, OnDestroy {
     this.audioVolumeNorm = entity.trigger.audioVolumeNorm ?? 0.8;
     this.audioMaxDistNorm = entity.trigger.audioMaxDistNorm ?? 50;
     this.audioFadeInNorm = entity.trigger.audioFadeInNorm ?? 1.0;
+    this.audioProximityNorm = entity.trigger.audioProximityNorm ?? false;
+    this.audioSpatialNorm = entity.trigger.audioSpatialNorm ?? true;
 
     this.triggerConditions = entity.trigger.conditions || ['on_enter'];
     this.triggerMensajeEntrada = entity.trigger.mensajeEntrada || '';
@@ -172,11 +180,15 @@ export class PropTrigger implements OnInit, OnDestroy {
     this.audioVolumeEntrada = entity.trigger.audioVolumeEntrada ?? 0.8;
     this.audioMaxDistEntrada = entity.trigger.audioMaxDistEntrada ?? 50;
     this.audioFadeInEntrada = entity.trigger.audioFadeInEntrada ?? 1.0;
+    this.audioProximityEntrada = entity.trigger.audioProximityEntrada ?? false;
+    this.audioSpatialEntrada = entity.trigger.audioSpatialEntrada ?? true;
     
     this.audioLoopSalida = entity.trigger.audioLoopSalida ?? false;
     this.audioVolumeSalida = entity.trigger.audioVolumeSalida ?? 0.8;
     this.audioMaxDistSalida = entity.trigger.audioMaxDistSalida ?? 50;
     this.audioFadeInSalida = entity.trigger.audioFadeInSalida ?? 1.0;
+    this.audioProximitySalida = entity.trigger.audioProximitySalida ?? false;
+    this.audioSpatialSalida = entity.trigger.audioSpatialSalida ?? true;
 
     this.cdr.detectChanges();
   }
@@ -280,11 +292,15 @@ export class PropTrigger implements OnInit, OnDestroy {
         entity.trigger.audioVolumeEntrada = this.audioVolumeEntrada;
         entity.trigger.audioMaxDistEntrada = this.audioMaxDistEntrada;
         entity.trigger.audioFadeInEntrada = this.audioFadeInEntrada;
+        entity.trigger.audioProximityEntrada = this.audioProximityEntrada;
+        entity.trigger.audioSpatialEntrada = this.audioSpatialEntrada;
         
         entity.trigger.audioLoopSalida = this.audioLoopSalida;
         entity.trigger.audioVolumeSalida = this.audioVolumeSalida;
         entity.trigger.audioMaxDistSalida = this.audioMaxDistSalida;
         entity.trigger.audioFadeInSalida = this.audioFadeInSalida;
+        entity.trigger.audioProximitySalida = this.audioProximitySalida;
+        entity.trigger.audioSpatialSalida = this.audioSpatialSalida;
     } else {
         entity.trigger.condition = this.triggerCondition;
         entity.trigger.isRepeatable = this.triggerRepeatable;
@@ -300,6 +316,8 @@ export class PropTrigger implements OnInit, OnDestroy {
         entity.trigger.audioVolumeNorm = this.audioVolumeNorm;
         entity.trigger.audioMaxDistNorm = this.audioMaxDistNorm;
         entity.trigger.audioFadeInNorm = this.audioFadeInNorm;
+        entity.trigger.audioProximityNorm = this.audioProximityNorm;
+        entity.trigger.audioSpatialNorm = this.audioSpatialNorm;
     }
 
     entity.isDirty = true;

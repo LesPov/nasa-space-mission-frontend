@@ -296,13 +296,24 @@ export class CharacterKinematicsService implements IUpdatable {
       if (!seqRuntime || !seqRuntime.running || !seqRuntime.allowMovement) {
         this._move.normalize().scaleInPlace(modSpeed);
       }
+    }
 
-      if (vista === 'TPS' && (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation))) {
+    // 🔥 FIX 2: ALINEAR EL CUERPO (ROTACIÓN YAW) A LA DIRECCIÓN DE LA CÁMARA EN FPS
+    if (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation)) {
+      if (vista === 'TPS' && estadoFisico.isMoving) {
         const targetAngle = Math.atan2(this._move.x, this._move.z);
         if (!isNaN(targetAngle)) {
           if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
           Quaternion.FromEulerAnglesToRef(0, targetAngle, 0, this._targetQuat);
           Quaternion.SlerpToRef(mesh.rotationQuaternion, this._targetQuat, 0.2, mesh.rotationQuaternion);
+        }
+      } else if (vista === 'FPS') {
+        // En FPS, el yaw del jugador debe anclarse estrictamente al yaw horizontal de la cámara.
+        const targetAngle = Math.atan2(this._forward.x, this._forward.z);
+        if (!isNaN(targetAngle)) {
+          if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
+          // Snapping inmediato, porque la cámara FPS no debe sentirse con latencia de rotación
+          Quaternion.FromEulerAnglesToRef(0, targetAngle, 0, mesh.rotationQuaternion);
         }
       }
     }
@@ -313,9 +324,6 @@ export class CharacterKinematicsService implements IUpdatable {
     if (isNaN(this._move.y)) this._move.y = 0;
     if (isNaN(this._move.z)) this._move.z = 0;
     
-    // 🔥 FIX 2: PRECISIÓN FÍSICA ESTRICTA
-    // Si no hay un vector de movimiento matemático real, NO LLAMAMOS a la API de colisión.
-    // Esto congela físicamente el objeto y previene jittering de colisiones estáticas.
     if (profile.collisionsEnabled) {
       if (this._move.lengthSquared() > 0.000001) {
          mesh.moveWithCollisions(this._move);
@@ -377,12 +385,10 @@ export class CharacterKinematicsService implements IUpdatable {
 
       estadoFisico.highestY = mesh.position.y;
       
-      // 🔥 FIX 3: GRAVEDAD EN REPOSO ELIMINADA
-      // Si el jugador está quieto en el suelo, no lo empujamos artificialmente contra el AABB.
       if (!estadoFisico.isMoving && !estadoFisico.isJumping && !intentions.jump && (!seqRuntime || !seqRuntime.forceJump)) {
          estadoFisico.velocidadY = 0;
       } else {
-         estadoFisico.velocidadY = -0.005; // Mantener ligero empuje para bajar pendientes suavemente
+         estadoFisico.velocidadY = -0.005; 
       }
 
       if (profile.jumpEnabled && (intentions.jump || (seqRuntime ? seqRuntime.forceJump : false)) && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {

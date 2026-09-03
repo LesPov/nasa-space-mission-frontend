@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Matrix } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
@@ -74,8 +73,6 @@ export class ToolsDebugService {
     return pPos;
   }
 
-  // 🔥 FIX 1: Bloqueamos actualizaciones inútiles en bucle de los Debug Meshes 
-  // si el usuario los está moviendo. Esto causaba peleas entre el cursor y el sistema.
   public actualizarDebugMeshes(selected: Mesh | null): void {
     const playState = this.state.playState();
     if (!selected || (playState !== 'EDITOR' && playState !== 'EDITING_IN_GAME')) {
@@ -125,10 +122,12 @@ export class ToolsDebugService {
 
     const colMeta = entity.collider;
     if (colMeta) {
-      this.colliderSvc.sync(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ, breathX, breathY, breathZ);
+      // 🔥 CORRECCIÓN DEFINITIVA: El collider físico NUNCA debe seguir la respiración ni la cabeza.
+      // Es un elemento rígido. Pasar los offsets de la cabeza causaba que el debug collider
+      // mostrara una falsa desincronización con el jugador real en el Editor.
+      this.colliderSvc.sync(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ, 0, 0, 0);
     }
 
-    // 🔥 FIX 2: Mantener offset de respiración para la cámara
     let cX = entity.camOffset.x || 0;
     let cY = entity.camOffset.y || 1.6;
     let cZ = entity.camOffset.z || 0;
@@ -166,4 +165,3 @@ export class ToolsDebugService {
     }
   }
 }
-

@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { DirectionalLight, Vector3, CascadedShadowGenerator, ShadowGenerator, Scene, AbstractMesh } from '@babylonjs/core';
+import { DirectionalLight, Vector3, CascadedShadowGenerator, ShadowGenerator, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -19,6 +19,7 @@ export class ShadowOrchestratorService implements IUpdatable {
 
   private mainSun: DirectionalLight | null = null;
   private shadowGenerator: CascadedShadowGenerator | null = null;
+  private frameCounter = 0;
 
   private getReferencePosition(): Vector3 {
       const playerEntity = this.context.activePlayerEntity();
@@ -33,12 +34,15 @@ export class ShadowOrchestratorService implements IUpdatable {
      const scene = this.motor3d.getScene();
      if (!scene || !this.mainSun) return;
 
+     this.frameCounter++;
+     // 🔥 FIX: Actualizar la lista de sombras periódicamente para enganchar objetos dinámicos creados post-carga (Como el TempPlayer_TestLive)
+     if (this.frameCounter % 60 === 0) {
+         this.asignarObjetosASombrasDeLuces();
+     }
+
      const refPos = this.getReferencePosition();
      
-     // 🔥 FIX SHADOW SHIMMERING (JITTER DE SOMBRAS):
-     // Mover la luz direccional en cada frame causa que las matrices de proyección de sombras 
-     // flutúen microscópicamente por los sub-píxeles de punto flotante. 
-     // Solo la movemos en saltos de 5 metros para mantener CSM 100% estabilizado internamente.
+     // 🔥 Mover la luz direccional en saltos de 5 metros para mantener el Cascade Shadow Map 100% estabilizado y sin flickering.
      if (Vector3.DistanceSquared(this.mainSun.position, refPos) > 25) {
          this.mainSun.position.copyFrom(refPos);
          this.mainSun.position.subtractInPlace(this.mainSun.direction.scale(100));
@@ -64,13 +68,17 @@ export class ShadowOrchestratorService implements IUpdatable {
        const shadowRes = isEditor ? 1024 : 2048; 
 
        this.shadowGenerator = new CascadedShadowGenerator(shadowRes, this.mainSun);
+       
+       // 🔥 FIX VISUAL (SOMBRAS POR CAPAS ELIMINADO): Gradiente difuminado entre los cortes de las cascadas.
+       this.shadowGenerator.cascadeBlendPercentage = 0.15; 
+       this.shadowGenerator.lambda = 0.8; 
+       
        this.shadowGenerator.usePercentageCloserFiltering = true;
        this.shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH;
        
        this.shadowGenerator.bias = 0.002;
        this.shadowGenerator.normalBias = 0.01;
-
-       this.shadowGenerator.shadowMaxZ = 80; 
+       this.shadowGenerator.shadowMaxZ = 100; 
        
        this.shadowGenerator.setDarkness(0.65);
        this.shadowGenerator.autoCalcDepthBounds = false; 
@@ -87,6 +95,7 @@ export class ShadowOrchestratorService implements IUpdatable {
            if (e.view && e.view instanceof AbstractMesh) {
                if (e.characterConfig || (e.visual?.isSolid && e.type !== 'image_plane' && !e.type.startsWith('light_'))) {
                    const processMeshForShadows = (m: AbstractMesh) => {
+                       // 🔥 FIX PLAYER SHADOW: Aseguramos que el jugador invisible (visibility=0.0001) entre al mapa de sombras
                        if (m.isVisible && m.isEnabled()) {
                            renderList.push(m);
                            m.receiveShadows = true;

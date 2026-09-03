@@ -17,6 +17,14 @@ export class PlayerConfigMutatorService {
     if (entity) {
        entity.playerConfig = JSON.parse(JSON.stringify(playerConfig));
        entity.selectionRange = JSON.parse(JSON.stringify(selectionRange));
+       
+       // 🔥 FIX 1: Garantiza que, si el Inspector de Jugador cambia los Ojos (fpsEyeLevel), 
+       // la caja magenta (Gizmo/camOffset) acompañe y no se desincronice.
+       if (!entity.camOffset) entity.camOffset = { x: 0, y: 1.6, z: 0 };
+       if (entity.playerConfig) {
+           entity.camOffset.y = entity.playerConfig.camera.fpsEyeLevel;
+       }
+
        entity.isDirty = true;
     }
 

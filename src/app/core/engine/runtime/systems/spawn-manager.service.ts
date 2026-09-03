@@ -11,19 +11,7 @@ export class SpawnManagerService {
   private entityManager = inject(EntityManagerService);
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
 
-  /**
-   * Resuelve qué jugador debe usarse en la sesión actual.
-   * Centraliza la lógica de prioridades:
-   * 1. Jugador persistente (Transición de escena).
-   * 2. Entidad preferida (Seleccionada explícitamente en el Editor).
-   * 3. Entidad jugable configurada en el mundo.
-   * 4. Spawn Point (Marcador convertido a jugador, o cápsula temporal si es Editor Preview).
-   * 
-   * @param preferredEntity Entidad sugerida.
-   * @param isEditorPreview Determina si los spawn points deben instanciar fantasmas de prueba sin alterar el JSON real.
-   */
   public resolvePlayerForSession(preferredEntity: GameEntity | null = null, isEditorPreview: boolean = false): GameEntity | null {
-    // 1. Prioridad Absoluta: Jugador viajando entre plataformas
     const persistentPlayer = this.entityManager.getAllEntities().find(e => e.isPersistent);
     if (persistentPlayer && !isEditorPreview) {
         this.handleSceneChangeSpawn(persistentPlayer);
@@ -32,18 +20,15 @@ export class SpawnManagerService {
 
     let targetEntity = preferredEntity;
 
-    // 2. Descartar entidades preferidas que no sean aptas para control (Props genéricos, triggers)
     if (!targetEntity || (!targetEntity.hasComponent('characterConfig') && targetEntity.rol !== 'spawn_point')) {
        const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
        targetEntity = characters.find(c => c.rol === 'player') || characters.find(c => c.characterConfig?.isPlayable) || null;
     }
 
-    // 3. Fallback final al Spawn Point
     if (!targetEntity) {
         targetEntity = this.entityManager.getAllEntities().find(e => e.rol === 'spawn_point') || null;
     }
 
-    // 3.5 Fallback Extremo: Si no hay ni jugador ni spawn point en el Editor, crear uno temporal donde mira la cámara
     if (!targetEntity && isEditorPreview) {
         const editorCam = this.motor3d.getEditorCamera();
         const targetPos = editorCam && typeof editorCam.getTarget === 'function' ? editorCam.getTarget() : new Vector3(0, 0, 0);
@@ -61,10 +46,9 @@ export class SpawnManagerService {
     }
 
     if (!targetEntity) {
-        return null; // El motor manejará el error (Ej: No hay spawn point en el juego final)
+        return null; 
     }
 
-    // 4. Adaptaciones y Alinamientos geométricos
     if (targetEntity.rol === 'spawn_point') {
         if (isEditorPreview) {
             targetEntity = this.createTempPlayerFromSpawn(
@@ -76,9 +60,6 @@ export class SpawnManagerService {
             targetEntity = this.upgradeSpawnToPlayer(targetEntity);
         }
     } else {
-        // Encontramos a un jugador real (Ej: Modelo importado). Lo forzamos hacia el spawn point si existe uno en paralelo.
-        // 🔥 FIX BUG: En el Editor (Test Live), NO forzamos al jugador a viajar al spawn point. 
-        // Respetamos la posición donde el creador lo dejó en la escena para probar fácil.
         if (!isEditorPreview) {
             const spawnPoint = this.entityManager.getAllEntities().find(e => e.rol === 'spawn_point' && e.uid !== targetEntity!.uid);
             if (spawnPoint && spawnPoint.view && targetEntity.view) {
@@ -96,7 +77,6 @@ export class SpawnManagerService {
         }
     }
 
-    // 5. Inyección oficial y preparación física
     if (targetEntity) {
         targetEntity.isPersistent = true;
         if (targetEntity.view) {
@@ -119,7 +99,11 @@ export class SpawnManagerService {
     } else {
         tempMesh.rotation.set(rotation.x, rotation.y, rotation.z);
     }
-    tempMesh.isVisible = false;
+    
+    // 🔥 FIX PLAYER SHADOWS: Para proyectar sombra, en vez de isVisible = false,
+    // inyectamos la opacidad absoluta 0. Esto permite que entre a los Arrays de render de sombras.
+    tempMesh.isVisible = true;
+    tempMesh.visibility = 0.0001; 
     
     const playerEntity = new GameEntity(window.crypto.randomUUID(), 'Jugador_Prueba', 'model', 'player');
     playerEntity.addComponent('characterConfig', new CharacterConfigComponent('player', true));
@@ -163,7 +147,6 @@ export class SpawnManagerService {
         persistentPlayer.view.computeWorldMatrix(true);
         persistentPlayer.syncTransformFromView();
     } else {
-        // Fallback seguro anti-caídas si el mapa está mal diseñado
         persistentPlayer.transform.position = { x: 0, y: 5, z: 0 };
         persistentPlayer.view.position.set(0, 5, 0);
         persistentPlayer.view.computeWorldMatrix(true);

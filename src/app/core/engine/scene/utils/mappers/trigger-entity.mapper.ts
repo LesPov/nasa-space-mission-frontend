@@ -1,4 +1,6 @@
 
+// src/app/core/engine/scene/utils/mappers/trigger-entity.mapper.ts
+
 import { Injectable } from '@angular/core';
 import { BaseEntityMapper } from './base-entity.mapper';
 import { GameEntity, TriggerConfigComponent } from '../../../entities/game.entity';
@@ -19,7 +21,6 @@ export class TriggerEntityMapper extends BaseEntityMapper {
     
     const trigger = obj as TriggerDto;
     
-    // 🔥 FIX LÓGICO: Reconocer un trigger compuesto cargado de la base de datos sin fallar.
     const isComposite = trigger.type === 'trigger_compuesto' || trigger.properties?.isComposite || trigger.actionProperties?.isComposite || false;
     const shape = trigger.properties?.triggerShape || trigger.actionProperties?.triggerShape || 'cube';
 
@@ -27,7 +28,6 @@ export class TriggerEntityMapper extends BaseEntityMapper {
       entity.trigger = new TriggerConfigComponent();
     }
 
-    // 🔥 FIX LÓGICO: Ahora sí forzamos estas propiedades para que la UI sepa que es Compuesto.
     entity.trigger.isComposite = isComposite;
     entity.trigger.triggerShape = shape;
     
@@ -55,6 +55,8 @@ export class TriggerEntityMapper extends BaseEntityMapper {
            entity.trigger.audioVolumeEntrada = trigger.actionProperties?.audioVolumeEntrada ?? trigger.properties?.audioVolumeEntrada ?? 0.8;
            entity.trigger.audioMaxDistEntrada = trigger.actionProperties?.audioMaxDistEntrada ?? trigger.properties?.audioMaxDistEntrada ?? 50;
            entity.trigger.audioFadeInEntrada = trigger.actionProperties?.audioFadeInEntrada ?? trigger.properties?.audioFadeInEntrada ?? 1.0;
+           entity.trigger.audioProximityEntrada = trigger.actionProperties?.audioProximityEntrada ?? trigger.properties?.audioProximityEntrada ?? false;
+           entity.trigger.audioSpatialEntrada = trigger.actionProperties?.audioSpatialEntrada ?? trigger.properties?.audioSpatialEntrada ?? true;
         }
         if (cond === 'on_exit') {
            entity.trigger.mensajeSalida = trigger.actionProperties?.mensaje || trigger.properties?.mensaje || '';
@@ -66,6 +68,8 @@ export class TriggerEntityMapper extends BaseEntityMapper {
            entity.trigger.audioVolumeSalida = trigger.actionProperties?.audioVolumeSalida ?? trigger.properties?.audioVolumeSalida ?? 0.8;
            entity.trigger.audioMaxDistSalida = trigger.actionProperties?.audioMaxDistSalida ?? trigger.properties?.audioMaxDistSalida ?? 50;
            entity.trigger.audioFadeInSalida = trigger.actionProperties?.audioFadeInSalida ?? trigger.properties?.audioFadeInSalida ?? 1.0;
+           entity.trigger.audioProximitySalida = trigger.actionProperties?.audioProximitySalida ?? trigger.properties?.audioProximitySalida ?? false;
+           entity.trigger.audioSpatialSalida = trigger.actionProperties?.audioSpatialSalida ?? trigger.properties?.audioSpatialSalida ?? true;
         }
     } else {
         entity.trigger.condition = cond;
@@ -78,13 +82,14 @@ export class TriggerEntityMapper extends BaseEntityMapper {
         entity.trigger.audioVolumeNorm = trigger.actionProperties?.audioVolumeNorm ?? trigger.properties?.audioVolumeNorm ?? 0.8;
         entity.trigger.audioMaxDistNorm = trigger.actionProperties?.audioMaxDistNorm ?? trigger.properties?.audioMaxDistNorm ?? 50;
         entity.trigger.audioFadeInNorm = trigger.actionProperties?.audioFadeInNorm ?? trigger.properties?.audioFadeInNorm ?? 1.0;
+        entity.trigger.audioProximityNorm = trigger.actionProperties?.audioProximityNorm ?? trigger.properties?.audioProximityNorm ?? false;
+        entity.trigger.audioSpatialNorm = trigger.actionProperties?.audioSpatialNorm ?? trigger.properties?.audioSpatialNorm ?? true;
     }
 
     entity.trigger.isRepeatable = trigger.properties?.isRepeatable ?? trigger.isRepeatable ?? false;
     entity.trigger.gameConditions = trigger.properties?.gameConditions || trigger.actionProperties?.gameConditions || [];
     entity.trigger.stateMutations = trigger.properties?.stateMutations || trigger.actionProperties?.stateMutations || [];
     
-    // 🔥 FIX TypeScript TS2322: Casteo estricto del ActionType garantizando los 2 valores válidos
     const rawActionType = trigger.properties?.actionType || trigger.actionType || trigger.actionProperties?.actionType;
     entity.trigger.actionType = (rawActionType === 'change_scene') ? 'change_scene' : 'show_message';
     
@@ -96,7 +101,6 @@ export class TriggerEntityMapper extends BaseEntityMapper {
     const transform = entity.transform;
     const trigger = entity.trigger;
 
-    // 🔥 FIX: Clonamos las propiedades base para no pasar referencias mutables que alteren los ejes
     const baseData = {
       name: entity.name, parentId: entity.parentId, type: entity.type,
       position: { ...transform.position }, 
@@ -118,6 +122,8 @@ export class TriggerEntityMapper extends BaseEntityMapper {
             actionProps.audioVolumeEntrada = trigger?.audioVolumeEntrada ?? 0.8;
             actionProps.audioMaxDistEntrada = trigger?.audioMaxDistEntrada ?? 50;
             actionProps.audioFadeInEntrada = trigger?.audioFadeInEntrada ?? 1.0;
+            actionProps.audioProximityEntrada = trigger?.audioProximityEntrada ?? false;
+            actionProps.audioSpatialEntrada = trigger?.audioSpatialEntrada ?? true;
          }
          if (cond === 'on_exit') {
             actionProps.mensaje = trigger?.mensajeSalida || '';
@@ -129,6 +135,8 @@ export class TriggerEntityMapper extends BaseEntityMapper {
             actionProps.audioVolumeSalida = trigger?.audioVolumeSalida ?? 0.8;
             actionProps.audioMaxDistSalida = trigger?.audioMaxDistSalida ?? 50;
             actionProps.audioFadeInSalida = trigger?.audioFadeInSalida ?? 1.0;
+            actionProps.audioProximitySalida = trigger?.audioProximitySalida ?? false;
+            actionProps.audioSpatialSalida = trigger?.audioSpatialSalida ?? true;
          }
          dtos.push({
            uid: `${entity.uid}_${cond}`, 
@@ -165,7 +173,9 @@ export class TriggerEntityMapper extends BaseEntityMapper {
            audioLoopNorm: trigger?.audioLoopNorm ?? false,
            audioVolumeNorm: trigger?.audioVolumeNorm ?? 0.8,
            audioMaxDistNorm: trigger?.audioMaxDistNorm ?? 50,
-           audioFadeInNorm: trigger?.audioFadeInNorm ?? 1.0
+           audioFadeInNorm: trigger?.audioFadeInNorm ?? 1.0,
+           audioProximityNorm: trigger?.audioProximityNorm ?? false,
+           audioSpatialNorm: trigger?.audioSpatialNorm ?? true
          }
        });
     }

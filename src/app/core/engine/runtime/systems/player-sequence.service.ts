@@ -1,5 +1,6 @@
+
 import { Injectable, inject } from '@angular/core';
-import { Vector3, Quaternion, Color3, StandardMaterial, AbstractMesh } from '@babylonjs/core';
+import { Vector3, Quaternion } from '@babylonjs/core';
 import { PlayerClipSequence, PlayerSequenceStep, cloneDefaultPlayerConfig } from '../../models/player-config.model';
 import { GameStateService } from '../state/game-state.service';
 import { GameEntity } from '../../entities/game.entity';
@@ -25,30 +26,6 @@ export interface SeqRuntime {
 interface SequenceActionHandler {
     execute(step: PlayerSequenceStep, entity: GameEntity, entityManager: EntityManagerService, dtMs: number, dtFraction: number, runtime: SeqRuntime): void;
 }
-
-// 🔥 UTILIDAD PARA ACTUALIZAR MATERIALES DE LUZ EN TIEMPO REAL
-const applyLightVisuals = (entity: GameEntity) => {
-    if (!entity.view || !entity.light) return;
-    const scene = entity.view.getScene();
-    const isBW = scene?.metadata?.globalVisualMode === 'bw';
-    const hex = isBW ? entity.light.lightColorBW : entity.light.lightColor;
-    const c3 = Color3.FromHexString(hex || '#ffffff');
-    const brillo = (entity.light.renderIntensity ?? 5) / 5;
-
-    if (entity.view.material && (entity.view.material as any).emissiveColor) {
-        (entity.view.material as StandardMaterial).emissiveColor = c3.scale(brillo);
-    }
-    
-    entity.view.getChildMeshes().forEach((m: AbstractMesh) => {
-        if (m.material && m.material instanceof StandardMaterial) {
-           const nL = m.name.toLowerCase();
-           const mL = m.material.name.toLowerCase();
-           if (nL.includes('bulb') || nL.includes('light') || nL.includes('emit') || mL.includes('bulb') || mL.includes('light') || mL.includes('emit')) {
-               m.material.emissiveColor = c3.scale(brillo);
-           }
-        }
-    });
-};
 
 const ActionHandlers: Record<string, SequenceActionHandler> = {
     procMove: {
@@ -130,37 +107,37 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
     lightOn: {
         execute: (step, entity) => {
             if (!entity.light) return;
+            if (entity.playerConfig?.animationEnabled?.lightOn === false) return;
             entity.light.renderIntensity = entity.light.intensity > 0 ? entity.light.intensity : 1.0;
             entity.isDirty = true;
-            applyLightVisuals(entity); // 🔥 FUEGO VISUAL INMEDIATO
         }
     },
     lightOff: {
         execute: (step, entity) => {
             if (!entity.light) return;
+            if (entity.playerConfig?.animationEnabled?.lightOff === false) return;
             entity.light.renderIntensity = 0;
             entity.isDirty = true;
-            applyLightVisuals(entity); // 🔥 FUEGO VISUAL INMEDIATO
         }
     },
     lightPulse: {
         execute: (step, entity) => {
             if (!entity.light) return;
+            if (entity.playerConfig?.animationEnabled?.lightPulse === false) return;
             const freq = step.speedRatio || 1;
             const timeSec = performance.now() / 1000;
             entity.light.renderIntensity = entity.light.intensity * (0.5 + 0.5 * Math.sin(timeSec * Math.PI * 2 * freq));
             entity.isDirty = true;
-            applyLightVisuals(entity); // 🔥 FUEGO VISUAL INMEDIATO
         }
     },
     lightFlicker: {
         execute: (step, entity) => {
             if (!entity.light) return;
+            if (entity.playerConfig?.animationEnabled?.lightFlicker === false) return;
             const freq = step.speedRatio || 1;
             if (Math.random() < (0.1 * freq)) {
                 entity.light.renderIntensity = Math.random() > 0.5 ? entity.light.intensity : 0;
                 entity.isDirty = true;
-                applyLightVisuals(entity); // 🔥 FUEGO VISUAL INMEDIATO
             }
         }
     }

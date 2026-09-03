@@ -115,7 +115,8 @@ export class Motor3dService implements ISceneAccess {
       this.scene.fogEnabled = this.ownership.getOwner() !== 'EDITOR';
     });
 
-    const ambientLight = new HemisphericLight('globalLight', new Vector3(0, 1, 0), this.scene);
+    // Se instancia con el nombre correcto que espera WorldSettingsService
+    const ambientLight = new HemisphericLight('ambientLight', new Vector3(0, 1, 0), this.scene);
     ambientLight.intensity = 1.0;
     ambientLight.diffuse = new Color3(1, 1, 1);
     ambientLight.groundColor = new Color3(0.2, 0.2, 0.2);

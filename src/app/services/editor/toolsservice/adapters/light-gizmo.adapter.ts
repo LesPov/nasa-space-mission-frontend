@@ -29,9 +29,16 @@ export class LightGizmoAdapter implements IGizmoTargetAdapter {
 
   syncEntity(mesh: AbstractMesh, entity: GameEntity, debugSvc: ToolsDebugService, state: EditorStateService, motor3d: ISceneAccess): void {
     if (debugSvc.debugLightBox && entity.light) {
-      mesh.computeWorldMatrix(true);
-      const invMat = Matrix.Invert(mesh.getWorldMatrix());
+      let targetParent: AbstractMesh = mesh;
+      if (entity.light.attachedNodeName) {
+          const found = mesh.getDescendants(false).find(n => n.name === entity.light!.attachedNodeName);
+          if (found) targetParent = found as AbstractMesh;
+      }
+      
+      targetParent.computeWorldMatrix(true);
+      const invMat = Matrix.Invert(targetParent.getWorldMatrix());
       const localPos = Vector3.TransformCoordinates(debugSvc.debugLightBox.getAbsolutePosition(), invMat);
+      
       entity.light.lightPosX = localPos.x;
       entity.light.lightPosY = localPos.y;
       entity.light.lightPosZ = localPos.z;

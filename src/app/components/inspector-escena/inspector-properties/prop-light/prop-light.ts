@@ -44,6 +44,10 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   lightPosX = 0;
   lightPosY = 0;
   lightPosZ = 0;
+  
+  lightRotX = 0;
+  lightRotY = 0;
+  lightRotZ = 0;
 
   public childNodes: AttachedNodeOption[] = [];
   public attachedNodePath: string = '';
@@ -159,6 +163,10 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.lightPosX = this.formatNum(entity.light.lightPosX ?? 0);
     this.lightPosY = this.formatNum(entity.light.lightPosY ?? 0);
     this.lightPosZ = this.formatNum(entity.light.lightPosZ ?? 0);
+    
+    this.lightRotX = this.formatNum(entity.light.lightRotX ?? 0);
+    this.lightRotY = this.formatNum(entity.light.lightRotY ?? 0);
+    this.lightRotZ = this.formatNum(entity.light.lightRotZ ?? 0);
 
     this.enabled = entity.light.enabled ?? true;
     this.castShadows = entity.light.castShadows ?? true;
@@ -211,6 +219,11 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.light.lightPosX = this.lightPosX;
       entity.light.lightPosY = this.lightPosY;
       entity.light.lightPosZ = this.lightPosZ;
+      
+      entity.light.lightRotX = this.lightRotX;
+      entity.light.lightRotY = this.lightRotY;
+      entity.light.lightRotZ = this.lightRotZ;
+      
       entity.light.lightColor = this.lightColor;
       entity.light.lightColorBW = this.lightColorBW;
       entity.light.intensity = this.intensity;

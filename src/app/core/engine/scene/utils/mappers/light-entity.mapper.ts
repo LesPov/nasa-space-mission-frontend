@@ -24,9 +24,15 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.intensity = props.intensity ?? 1.0;
       entity.light.range = props.range ?? 50;
       entity.light.angle = props.angle ?? 60;
+      
       entity.light.lightPosX = props.lightPosX ?? 0;
       entity.light.lightPosY = props.lightPosY ?? 0;
       entity.light.lightPosZ = props.lightPosZ ?? 0;
+      
+      entity.light.lightRotX = props.lightRotX ?? 0;
+      entity.light.lightRotY = props.lightRotY ?? 0;
+      entity.light.lightRotZ = props.lightRotZ ?? 0;
+      
       entity.light.attachedNodePath = props.attachedNodePath || '';
       entity.light.attachedNodeName = props.attachedNodeName || '';
       entity.light.renderIntensity = entity.light.intensity;

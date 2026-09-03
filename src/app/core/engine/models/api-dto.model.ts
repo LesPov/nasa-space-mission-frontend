@@ -110,6 +110,9 @@ export interface SceneObjectPropertiesDto {
   lightPosX?: number;
   lightPosY?: number;
   lightPosZ?: number;
+  lightRotX?: number;
+  lightRotY?: number;
+  lightRotZ?: number;
   attachedNodePath?: string;
   attachedNodeName?: string;
   triggerShape?: string;

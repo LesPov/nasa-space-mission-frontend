@@ -43,10 +43,13 @@ export class CoreSceneMaterialService {
       return;
     }
     
-    // 🔥 FIX: Aumentamos la capacidad de recepción a 8 para asegurar que 
-    // las sombras del player no decaigan en la calle iluminada.
-    if (material.maxSimultaneousLights !== 8) {
-        material.maxSimultaneousLights = 8;
+    // 🔥 LÍMITE ABSOLUTO ARQUITECTÓNICO (Shader Safe Pool Guarantee)
+    // El Dynamic Lighting System usa exactamente 3 Luces Locales + 1 Sun + 1 Hemi = 5 Luces.
+    // Presupuestamos maxSimultaneousLights = 6 para dejar un margen seguro y 
+    // JAMÁS provocar el error GL_MAX_VERTEX_UNIFORM_BUFFERS (12-14 en hardware modesto).
+    const SAFE_LIGHT_BUDGET = 6;
+    if (material.maxSimultaneousLights !== SAFE_LIGHT_BUDGET) {
+        material.maxSimultaneousLights = SAFE_LIGHT_BUDGET;
     }
 
     const c3Amb = ambientColorHex ? Color3.FromHexString(ambientColorHex) : new Color3(1, 1, 1);

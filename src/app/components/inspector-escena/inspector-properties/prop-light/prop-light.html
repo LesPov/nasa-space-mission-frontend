@@ -52,13 +52,22 @@
     </select>
   </div>
 
-  <div class="section-mini-head" style="margin-top: 15px;">
+  <div class="section-mini-head">
     <h5>Ajuste Fino de Posición Local</h5>
   </div>
   <div class="grid-3" style="margin-bottom: 15px;">
     <div class="field"><label>Loc X</label><input type="number" step="0.1" [(ngModel)]="lightPosX" (ngModelChange)="aplicarLuz()" /></div>
     <div class="field"><label>Loc Y</label><input type="number" step="0.1" [(ngModel)]="lightPosY" (ngModelChange)="aplicarLuz()" /></div>
     <div class="field"><label>Loc Z</label><input type="number" step="0.1" [(ngModel)]="lightPosZ" (ngModelChange)="aplicarLuz()" /></div>
+  </div>
+
+  <div class="section-mini-head" *ngIf="isSpot || isDirectional">
+    <h5>Dirección Local (Grados)</h5>
+  </div>
+  <div class="grid-3" style="margin-bottom: 15px;" *ngIf="isSpot || isDirectional">
+    <div class="field"><label>Pitch (X)</label><input type="number" step="5" [(ngModel)]="lightRotX" (ngModelChange)="aplicarLuz()" /></div>
+    <div class="field"><label>Yaw (Y)</label><input type="number" step="5" [(ngModel)]="lightRotY" (ngModelChange)="aplicarLuz()" /></div>
+    <div class="field"><label>Roll (Z)</label><input type="number" step="5" [(ngModel)]="lightRotZ" (ngModelChange)="aplicarLuz()" /></div>
   </div>
 
   <div class="grid-2">

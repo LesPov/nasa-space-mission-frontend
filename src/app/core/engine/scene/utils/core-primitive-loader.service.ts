@@ -104,7 +104,8 @@ export class CorePrimitiveLoaderService {
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = Color3.FromHexString(activeColor);
       mat.wireframe = true;
-      mat.maxSimultaneousLights = 8; // 🔥 FIX LÍMITE LUCES
+      // 🔥 FIX GL_MAX_VERTEX_UNIFORM_BUFFERS limit
+      mat.maxSimultaneousLights = 8; 
       mesh.material = mat;
       mesh.isVisible = false;
     } 
@@ -130,7 +131,8 @@ export class CorePrimitiveLoaderService {
         mat.disableLighting = false;
       }
 
-      mat.maxSimultaneousLights = 8; // 🔥 FIX LÍMITE LUCES
+      // 🔥 FIX GL_MAX_VERTEX_UNIFORM_BUFFERS limit
+      mat.maxSimultaneousLights = 8; 
       mat.fogEnabled = !entity.visual.ignoraNiebla;
       mesh.material = mat;
     }

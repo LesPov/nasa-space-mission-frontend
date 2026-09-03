@@ -1,3 +1,4 @@
+
 // src/app/services/editor/editor-orchestrator.service.ts
 
 import { Injectable, inject, signal } from '@angular/core';
@@ -27,6 +28,7 @@ import { EditorModeTransitionService } from './editor-mode-transition.service';
 import { EditorLiveSyncService } from './editor-live-sync.service';
 import { MissionModalService } from './modals/mission-modal.service';
 import { CameraViewMode } from '../../core/engine/session/game-context.model';
+import { SnapshotReconcilerService } from './utils/snapshot-reconciler.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorOrchestratorService {
@@ -50,6 +52,7 @@ export class EditorOrchestratorService {
   private liveSync = inject(EditorLiveSyncService);
   private router = inject(Router);
   private missionSvc = inject(MissionModalService);
+  private snapshotReconciler = inject(SnapshotReconcilerService);
 
   public readonly editando = signal(false);
   public readonly isPlayable = signal(false);
@@ -353,46 +356,8 @@ export class EditorOrchestratorService {
         } else {
             const cambiosEnPlay: any = this.sceneSvc.obtenerDatosParaGuardar(this.editorSvc.escenaActualData(), true); 
             
-            if (!this.snapshotMemoria.sceneObjects) this.snapshotMemoria.sceneObjects = this.snapshotMemoria.sceneObjectsDelta || [];
-            if (!this.snapshotMemoria.triggers) this.snapshotMemoria.triggers = this.snapshotMemoria.triggersDelta || [];
-            if (!this.snapshotMemoria.deletedObjects) this.snapshotMemoria.deletedObjects = [];
-            if (!this.snapshotMemoria.deletedTriggers) this.snapshotMemoria.deletedTriggers = [];
-
-            delete this.snapshotMemoria.sceneObjectsDelta;
-            delete this.snapshotMemoria.triggersDelta;
-
-            cambiosEnPlay.sceneObjectsDelta.forEach((delta: any) => {
-                if (delta.name === 'Jugador_Prueba') return;
-                const index = this.snapshotMemoria.sceneObjects.findIndex((o: any) => o.uid === delta.uid);
-                if (index !== -1) this.snapshotMemoria.sceneObjects[index] = delta;
-                else this.snapshotMemoria.sceneObjects.push(delta);
-            });
-
-            cambiosEnPlay.triggersDelta.forEach((delta: any) => {
-                const index = this.snapshotMemoria.triggers.findIndex((o: any) => o.uid === delta.uid);
-                if (index !== -1) this.snapshotMemoria.triggers[index] = delta;
-                else this.snapshotMemoria.triggers.push(delta);
-            });
-
-            if (cambiosEnPlay.environmentSettings) {
-                this.snapshotMemoria.environmentSettings = JSON.parse(JSON.stringify(cambiosEnPlay.environmentSettings));
-            }
-            if (cambiosEnPlay.uiSettings) {
-                this.snapshotMemoria.uiSettings = JSON.parse(JSON.stringify(cambiosEnPlay.uiSettings));
-            }
-
-            if (cambiosEnPlay.cinematicsDelta) {
-                this.snapshotMemoria.cinematics = JSON.parse(JSON.stringify(cambiosEnPlay.cinematicsDelta));
-            }
-
-            if (cambiosEnPlay.deletedObjects.length > 0) {
-                this.snapshotMemoria.sceneObjects = this.snapshotMemoria.sceneObjects.filter((o: any) => !cambiosEnPlay.deletedObjects.includes(o.uid));
-                this.snapshotMemoria.deletedObjects = [...new Set([...this.snapshotMemoria.deletedObjects, ...cambiosEnPlay.deletedObjects])];
-            }
-            if (cambiosEnPlay.deletedTriggers.length > 0) {
-                this.snapshotMemoria.triggers = this.snapshotMemoria.triggers.filter((o: any) => !cambiosEnPlay.deletedTriggers.includes(o.uid));
-                this.snapshotMemoria.deletedTriggers = [...new Set([...this.snapshotMemoria.deletedTriggers, ...cambiosEnPlay.deletedTriggers])];
-            }
+            // 🔥 FASE 3: LÓGICA DE RECONCILIACIÓN EXTRAÍDA Y DELEGADA
+            this.snapshotMemoria = this.snapshotReconciler.mergeSnapshots(this.snapshotMemoria, cambiosEnPlay);
         }
 
         this.editorSvc.setEscenaActualData(JSON.parse(JSON.stringify(this.snapshotMemoria)));

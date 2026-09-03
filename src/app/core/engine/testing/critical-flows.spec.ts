@@ -75,6 +75,7 @@ import { EpisodiosService } from '../../../services/api/episodios';
 import { AuthService } from '../../services/auth';
 import { EditorOrchestratorService } from '../../../services/editor/editor-orchestrator.service';
 import { EditorLiveSyncService } from '../../../services/editor/editor-live-sync.service';
+import { SnapshotReconcilerService } from '../../../services/editor/utils/snapshot-reconciler.service'; // 🔥 ADDED
 
 import { MeshBuilder, AbstractMesh } from '@babylonjs/core';
 import { GameMode } from '../session/game-mode.model';
@@ -83,7 +84,6 @@ import { cloneDefaultPlayerConfig } from '../models/player-config.model';
 
 setupBrowserMocks();
 
-// 🔥 Fix 1: Instanciamos un mock de WindowSyncService que no requiera zona de Angular (NgZone)
 class MockWindowSyncService {
   messages$ = of({});
   broadcast = vi.fn();
@@ -119,7 +119,7 @@ describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
         { provide: ActivatedRoute, useValue: { queryParams: of({}), snapshot: { paramMap: { get: vi.fn() } } } },
         { provide: EpisodiosService, useClass: MockEpisodiosService },
         { provide: AuthService, useClass: MockAuthService },
-        { provide: WindowSyncService, useClass: MockWindowSyncService }, // 🔥 Fix
+        { provide: WindowSyncService, useClass: MockWindowSyncService },
         
         Motor3dService,
         { provide: SCENE_ACCESS_TOKEN, useExisting: Motor3dService },
@@ -157,7 +157,7 @@ describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
         PlayerAnimationService,
         RenderSync,
         ObjectAnimationService,
-        FogOrchestratorService, // 🔥 Fix: Faltaba incluir el nuevo FogOrchestratorService en la suite
+        FogOrchestratorService, 
         AdminFreeCameraService,
         FogRendererService,
         PlayerTriggerService,
@@ -179,6 +179,7 @@ describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
         SceneNodesService,
         ToolsSelectionService,
         HistorialService,
+        SnapshotReconcilerService // 🔥 ADDED
       ]
     });
 

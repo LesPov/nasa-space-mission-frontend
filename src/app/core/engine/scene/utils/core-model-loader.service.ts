@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
 import '@babylonjs/loaders';
@@ -171,7 +172,6 @@ export class CoreModelLoaderService {
       }
       
       if (m.material) {
-          // 🔥 HACER MATERIAL ÚNICO AL CARGAR SI EL PREFAB TIENE CONFIGURACIÓN PROPIA
           this.materialSvc.asegurarMaterialUnico(m, entity.uid);
           
           const activeAmbient = isBW ? entity.visual.ambientColorBW : entity.visual.ambientColor;
@@ -184,6 +184,7 @@ export class CoreModelLoaderService {
         rootNode.freezeWorldMatrix();
     }
 
+    // 🔥 CORRECCIÓN CRÍTICA DE FÍSICAS (Bug 1 - Atraviesa Objetos)
     if (entity.visual.isSolid && !isCharacter && entity.collider.type !== 'mesh') {
         let colMesh: Mesh;
         if (entity.collider.type === 'sphere') {
@@ -197,7 +198,10 @@ export class CoreModelLoaderService {
 
         colMesh.parent = rootNode;
         colMesh.position.set(entity.collider.offsetX ?? 0, entity.collider.offsetY ?? 0, entity.collider.offsetZ ?? 0);
-        colMesh.isVisible = false;
+        
+        // 🔥 Para que el motor detecte colisiones, DEBE estar visible, pero con opacidad cero.
+        colMesh.isVisible = true; 
+        colMesh.visibility = 0;
         colMesh.checkCollisions = true; 
         Tags.AddTagsTo(colMesh, "proxy_collider system_element");
     }

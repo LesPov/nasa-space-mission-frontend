@@ -20,7 +20,6 @@ export class ShadowOrchestratorService implements IUpdatable {
   private mainSun: DirectionalLight | null = null;
   private shadowGenerator: CascadedShadowGenerator | null = null;
 
-  // 🔥 OBTIENE LA POSICIÓN DEL JUGADOR (NO DE LA CÁMARA)
   private getReferencePosition(): Vector3 {
       const playerEntity = this.context.activePlayerEntity();
       if (playerEntity && playerEntity.view) {
@@ -34,10 +33,16 @@ export class ShadowOrchestratorService implements IUpdatable {
      const scene = this.motor3d.getScene();
      if (!scene || !this.mainSun) return;
 
-     // 🔥 El sol sigue al jugador. Evita que las sombras parpadeen si la cámara se aleja
      const refPos = this.getReferencePosition();
-     this.mainSun.position.copyFrom(refPos);
-     this.mainSun.position.subtractInPlace(this.mainSun.direction.scale(100));
+     
+     // 🔥 FIX SHADOW SHIMMERING (JITTER DE SOMBRAS):
+     // Mover la luz direccional en cada frame causa que las matrices de proyección de sombras 
+     // flutúen microscópicamente por los sub-píxeles de punto flotante. 
+     // Solo la movemos en saltos de 5 metros para mantener CSM 100% estabilizado internamente.
+     if (Vector3.DistanceSquared(this.mainSun.position, refPos) > 25) {
+         this.mainSun.position.copyFrom(refPos);
+         this.mainSun.position.subtractInPlace(this.mainSun.direction.scale(100));
+     }
   }
 
   public asignarObjetosASombrasDeLuces(): void {
@@ -56,18 +61,15 @@ export class ShadowOrchestratorService implements IUpdatable {
 
     if (!this.shadowGenerator) {
        const isEditor = this.context.mode() === 'EDITOR';
-       // 🔥 FIX DE RENDIMIENTO MÁXIMO: Reducido a 2048 para evitar VRAM Exhaustion y lag al inicializar la escena
        const shadowRes = isEditor ? 1024 : 2048; 
 
        this.shadowGenerator = new CascadedShadowGenerator(shadowRes, this.mainSun);
        this.shadowGenerator.usePercentageCloserFiltering = true;
        this.shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH;
        
-       // 🔥 FIX: Bias súper bajo para que las sombras conecten perfectamente con los objetos en el suelo.
        this.shadowGenerator.bias = 0.002;
        this.shadowGenerator.normalBias = 0.01;
 
-       // 🔥 RANGO SÚPER AMPLIO: 80 Metros de radio alrededor del jugador
        this.shadowGenerator.shadowMaxZ = 80; 
        
        this.shadowGenerator.setDarkness(0.65);
@@ -83,10 +85,7 @@ export class ShadowOrchestratorService implements IUpdatable {
         for (let i = 0; i < entities.length; i++) {
            const e = entities[i];
            if (e.view && e.view instanceof AbstractMesh) {
-               // 🔥 INCLUYE PRIMITIVAS (Cubos, Esferas, Pisos "Plane")
                if (e.characterConfig || (e.visual?.isSolid && e.type !== 'image_plane' && !e.type.startsWith('light_'))) {
-                   
-                   // 🔥 FIX: Función recursiva que garantiza que todo (Padre e hijos) castée y reciba sombra
                    const processMeshForShadows = (m: AbstractMesh) => {
                        if (m.isVisible && m.isEnabled()) {
                            renderList.push(m);

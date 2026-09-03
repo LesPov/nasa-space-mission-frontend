@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { UniversalCamera, Vector3 } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -44,7 +43,8 @@ export class AdminFreeCameraService {
       const player = this.context.activePlayerEntity();
       if (player && player.playerRuntime) {
         const state = player.playerRuntime.physicsState;
-        state.velocidadY = -0.05;
+        // 🔥 CORRECCIÓN CRÍTICA (Bug 2) - Alineado con CharacterKinematicsService
+        state.velocidadY = -0.005; 
         state.isJumping = false;
         state.isFalling = false;
         state.isHardLanding = false;

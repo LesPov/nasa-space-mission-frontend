@@ -116,7 +116,10 @@ export class PropPhysics implements OnInit, OnDestroy {
           }
           colMesh.parent = this.objeto;
           colMesh.position.set(this.colliderOffX, this.colliderOffY, this.colliderOffZ);
-          colMesh.isVisible = false;
+          
+          // 🔥 CORRECCIÓN CRÍTICA DE FÍSICAS (Igual que en el CoreModelLoaderService)
+          colMesh.isVisible = true;
+          colMesh.visibility = 0;
           colMesh.checkCollisions = true;
           Tags.AddTagsTo(colMesh, "proxy_collider system_element");
       }

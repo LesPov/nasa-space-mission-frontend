@@ -19,7 +19,6 @@ export class CharacterKinematicsService implements IUpdatable {
   private ownership = inject(CameraOwnershipService);
   private context = inject(GameContextService);
 
-  // 🔥 PRE-ASIGNACIÓN: Evitar que el GC mate el framerate al declarar objetos por cada frame.
   private _localCapsuleCenter = Vector3.Zero();
   private _capsuleCenter = Vector3.Zero();
   private _rayOrigin = Vector3.Zero();
@@ -30,7 +29,6 @@ export class CharacterKinematicsService implements IUpdatable {
   private _pForward = Vector3.Zero();
   private _targetQuat = Quaternion.Identity();
 
-  // 🔥 FIX TS2339: Referencias estáticas locales para evitar ForwardReadOnly y no generar Garbage Collection
   private _forwardDir = new Vector3(0, 0, 1);
   private _upDir = new Vector3(0, 1, 0);
   private _rightDir = new Vector3(1, 0, 0);
@@ -315,10 +313,17 @@ export class CharacterKinematicsService implements IUpdatable {
     if (isNaN(this._move.y)) this._move.y = 0;
     if (isNaN(this._move.z)) this._move.z = 0;
     
+    // 🔥 FIX 2: PRECISIÓN FÍSICA ESTRICTA
+    // Si no hay un vector de movimiento matemático real, NO LLAMAMOS a la API de colisión.
+    // Esto congela físicamente el objeto y previene jittering de colisiones estáticas.
     if (profile.collisionsEnabled) {
-      mesh.moveWithCollisions(this._move);
+      if (this._move.lengthSquared() > 0.000001) {
+         mesh.moveWithCollisions(this._move);
+      }
     } else {
-      mesh.position.addInPlace(this._move);
+      if (this._move.lengthSquared() > 0.000001) {
+         mesh.position.addInPlace(this._move);
+      }
     }
   }
 
@@ -371,7 +376,14 @@ export class CharacterKinematicsService implements IUpdatable {
       }
 
       estadoFisico.highestY = mesh.position.y;
-      estadoFisico.velocidadY = -0.05; 
+      
+      // 🔥 FIX 3: GRAVEDAD EN REPOSO ELIMINADA
+      // Si el jugador está quieto en el suelo, no lo empujamos artificialmente contra el AABB.
+      if (!estadoFisico.isMoving && !estadoFisico.isJumping && !intentions.jump && (!seqRuntime || !seqRuntime.forceJump)) {
+         estadoFisico.velocidadY = 0;
+      } else {
+         estadoFisico.velocidadY = -0.005; // Mantener ligero empuje para bajar pendientes suavemente
+      }
 
       if (profile.jumpEnabled && (intentions.jump || (seqRuntime ? seqRuntime.forceJump : false)) && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
         estadoFisico.velocidadY = (config.jump.force || 0.16) * scaleFactor;

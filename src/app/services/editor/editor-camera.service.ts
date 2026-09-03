@@ -1,4 +1,3 @@
-// src/app/services/editor/editor-camera.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import {
@@ -513,7 +512,8 @@ export class EditorCameraService {
     const player = this.gameContext.activePlayerEntity();
     if (player && player.playerRuntime) {
       const state = player.playerRuntime.physicsState;
-      state.velocidadY = -0.05;
+      // 🔥 CORRECCIÓN CRÍTICA (Bug 2) - Alineado con CharacterKinematicsService
+      state.velocidadY = -0.005;
       state.isJumping = false;
       state.isFalling = false;
       state.isHardLanding = false;

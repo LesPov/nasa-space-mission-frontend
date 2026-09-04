@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, MeshBuilder, Tags, Vector3 } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -8,6 +9,7 @@ import { CoreModelLoaderService } from '../../../core/engine/scene/utils/core-mo
 import { BuilderTriggerService } from './builder-trigger.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { ShadowOrchestratorService } from '../../../core/engine/runtime/shadows/shadow-orchestrator.service';
+import { DynamicLightingSystem } from '../../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 import { AssetDto, SceneObjectDto } from '../../../core/engine/models/api-dto.model';
 
 @Injectable({ providedIn: 'root' })
@@ -18,6 +20,7 @@ export class SceneObjectBuilderService {
   private modelLoader = inject(CoreModelLoaderService);
   private primitiveLoader = inject(CorePrimitiveLoaderService);
   private shadowOrchestrator = inject(ShadowOrchestratorService);
+  private dynamicLighting = inject(DynamicLightingSystem);
   private triggerBuilderSvc = inject(BuilderTriggerService);
   private entityManager = inject(EntityManagerService);
 
@@ -104,6 +107,8 @@ export class SceneObjectBuilderService {
           ent.isDirty = true;
       }
       
+      // 🔥 RECONSTRUIR LUCES Y SOMBRAS PARA INCLUIR AL NUEVO OBJETO
+      this.dynamicLighting.prepareAllLights();
       this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
       
       this.nodesSvc.actualizarListaNodos();
@@ -112,3 +117,4 @@ export class SceneObjectBuilderService {
     }
   }
 }
+ 

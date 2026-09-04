@@ -15,6 +15,8 @@ import { CAMERA_BEHAVIOR_PROFILES } from '../../core/engine/runtime/cameras/came
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
 import { EditorModeTransitionService } from './editor-mode-transition.service';
 import { SpawnManagerService } from '../../core/engine/runtime/systems/spawn-manager.service';
+import { DynamicLightingSystem } from '../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
+import { ShadowOrchestratorService } from '../../core/engine/runtime/shadows/shadow-orchestrator.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
@@ -28,9 +30,10 @@ export class EditorPlayModeService {
   private ownership = inject(CameraOwnershipService);
   private transitionSvc = inject(EditorModeTransitionService);
   private spawnManager = inject(SpawnManagerService);
+  private dynamicLighting = inject(DynamicLightingSystem);
+  private shadowOrchestrator = inject(ShadowOrchestratorService);
 
-  public prepararEscenaParaTest(vista: CameraViewMode, skipIntro: boolean = false): void {
-    // 🔥 FIX: Guardar el estado de la cámara del editor antes de empezar para poder volver
+  public async prepararEscenaParaTest(vista: CameraViewMode, skipIntro: boolean = false): Promise<void> {
     this.cameraSvc.guardarEstadoCamaraLibre();
 
     if (this.motor3d.getEditorCamera()) {
@@ -52,6 +55,10 @@ export class EditorPlayModeService {
     this.gameContext.setCameraView(vista);
     this.state.seleccionarObjeto(null);
     
+    // 🔥 FIX ARRANQUE FRÍO: Establecer al jugador como activo ANTES del warm-up 
+    // para que las luces locales y sombras calculen prioridades desde su posición real.
+    this.gameContext.setActivePlayer(playerEntity);
+
     this.motor3d.getScene().meshes.forEach(m => {
         if (Tags.MatchesQuery(m, "editor_only")) {
             m.isVisible = false;
@@ -96,6 +103,25 @@ export class EditorPlayModeService {
         targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
     }
 
+    // 🔥 PREPARACIÓN TOTAL Y WARM-UP ANTES DE DEJAR ENTRAR AL JUGADOR
+    this.dynamicLighting.prepareAllLights();
+    this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
+
+    await new Promise<void>((resolve) => {
+        this.motor3d.getScene().executeWhenReady(() => {
+            // Reiniciamos contadores para el frame 1 perfecto
+            this.dynamicLighting.start();
+            this.shadowOrchestrator.start();
+
+            // Renderizar 5 frames forzados para compilar shaders y llenar shadow maps
+            for(let i = 0; i < 5; i++) {
+                this.motor3d.getScene().render();
+            }
+
+            this.motor3d.getScene().executeWhenReady(() => resolve());
+        });
+    });
+
     let hideObserver: Observer<Scene> | null = null;
     
     if (vista === 'FPS' && !skipIntro) {
@@ -104,7 +130,9 @@ export class EditorPlayModeService {
         if (cam && this.ownership.getOwner() === 'TRANSITION_PROXY') {
           const dist = Vector3.Distance(cam.globalPosition, targetPos);
           if (dist < 3.5) {
-            let alpha = Math.max(0, (dist - 0.5) / 3.0);
+            // 🔥 FIX ZERO POPPING: Garantizamos que la opacidad JAMÁS sea 0 absoluto, 
+            // evitando que el frustum cull lo elimine del pipeline gráfico prematuramente.
+            let alpha = Math.max(0.0001, (dist - 0.5) / 3.0);
             alpha = alpha * alpha; 
             objMesh.visibility = alpha;
             objMesh.getChildMeshes().forEach(m => m.visibility = alpha);
@@ -134,8 +162,6 @@ export class EditorPlayModeService {
                     activeCam.attachControl(canvas, true);
                     
                     if (vista === 'FPS') {
-                      // 🔥 FIX: Establecer la visibilidad al 100% (1) en la primera entrada a FPS.
-                      // Evita el bug donde el cuerpo estaba completamente en 0 y el culling lo saltaba.
                       objMesh.visibility = 1;
                       objMesh.getChildMeshes().forEach(m => m.visibility = 1);
                     }
@@ -173,7 +199,6 @@ export class EditorPlayModeService {
         }
     });
 
-    // 🔥 FIX: Restaurar la cámara que guardamos antes de iniciar el Test Live
     this.cameraSvc.restaurarCamaraLibre();
     const editorCam = this.motor3d.getEditorCamera();
     

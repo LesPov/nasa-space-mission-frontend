@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, MeshBuilder, Tags, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
@@ -135,7 +134,7 @@ export class CoreSceneLoaderService {
       });
     }, 150);
 
-    // 🔥 PRELOAD REAL (FASE DE OPTIMIZACIÓN)
+    // 🔥 PRELOAD REAL
     this.dynamicLighting.prepareAllLights(); 
     this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
 
@@ -162,8 +161,12 @@ export class CoreSceneLoaderService {
             }
         }
 
-        // 🔥 OBLIGAR A RENDERIZAR VARIOS FRAMES INVISIBLES
-        // Esto garantiza que el Shadow Generator calcule las cascadas y los Shaders se compilen al 100%
+        // 🔥 FIX ARRANQUE FRÍO: Iniciamos los sistemas de luz y sombra ANTES de renderizar el warm-up
+        this.dynamicLighting.start(); 
+        this.shadowOrchestrator.start(); 
+
+        // 🔥 OBLIGAR A RENDERIZAR VARIOS FRAMES INVISIBLES CON LUCES PRENDIDAS
+        // Esto garantiza que el Shadow Generator calcule las cascadas y los Shaders se compilen con las luces conectadas
         for(let i = 0; i < 5; i++) {
             scene.render(); 
         }
@@ -174,7 +177,6 @@ export class CoreSceneLoaderService {
         }
         
         scene.executeWhenReady(() => {
-           this.dynamicLighting.start(); 
            resolve();
         });
       });
@@ -252,4 +254,4 @@ export class CoreSceneLoaderService {
     this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
     return mallasCreadas;
   }
-} 
+}

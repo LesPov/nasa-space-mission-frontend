@@ -74,9 +74,6 @@ export class PlayerCameraUpdater {
     let breathZ = 0;
     let breathX = 0;
 
-    // 🔥 CORRECCIÓN DEFINITIVA: Mantenemos el lerp siempre en 1.0 para que la cámara acompañe 
-    // fielmente el offset físico de la cabeza/torso (ej. inclinarse al correr o saltar).
-    // Antes decaía a 0, dejando la cámara estática atrás mientras el cuerpo se adelantaba.
     this.manager.breathLerp = 1.0;
 
     if (config.camera.headFollow && this.manager.headNode && this.manager.initialHeadLocal) {
@@ -87,8 +84,6 @@ export class PlayerCameraUpdater {
       const rawBreathY = (currentLocal.y - this.manager.initialHeadLocal.y) * this.manager.breathLerp;
       const rawBreathZ = (currentLocal.z - this.manager.initialHeadLocal.z) * this.manager.breathLerp;
 
-      // 🔥 CORRECCIÓN: Suavizado dinámico más robusto. Lento al correr para evitar el mareo del head-bobbing,
-      // pero suficientemente continuo para mantener la cámara centrada en la cabeza cuando esta se inclina.
       const lerpSpeed = (estadoFisico.isMoving || estadoFisico.isJumping || estadoFisico.isFalling) ? 0.08 : 0.15;
 
       this.manager.currentBreathX += (rawBreathX - this.manager.currentBreathX) * lerpSpeed;
@@ -404,8 +399,10 @@ export class PlayerCameraTransitions {
 
           this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
               if (tpsCam.radius < fadeLimit) {
-                 jugador.visibility = Math.max(0.0001, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
-                 jugador.getChildMeshes().forEach(m => m.visibility = jugador.visibility);
+                 // 🔥 FIX ZERO POPPING: Garantizamos que la opacidad JAMÁS sea 0
+                 let alpha = Math.max(0.0001, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
+                 jugador.visibility = alpha;
+                 jugador.getChildMeshes().forEach(m => m.visibility = alpha);
               } else {
                  jugador.visibility = 1;
                  jugador.getChildMeshes().forEach(m => m.visibility = 1);
@@ -500,8 +497,10 @@ export class PlayerCameraTransitions {
 
       this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
           if (tpsCam.radius < fadeLimit) {
-             jugador.visibility = Math.max(0.0001, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
-             jugador.getChildMeshes().forEach(m => m.visibility = jugador.visibility);
+             // 🔥 FIX ZERO POPPING: Garantizamos que la opacidad JAMÁS sea 0
+             let alpha = Math.max(0.0001, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
+             jugador.visibility = alpha;
+             jugador.getChildMeshes().forEach(m => m.visibility = alpha);
           } else {
              jugador.visibility = 1;
              jugador.getChildMeshes().forEach(m => m.visibility = 1);
@@ -533,8 +532,10 @@ export class PlayerCameraTransitions {
           tpsCam.beta = fixedBeta;
 
           if (tpsCam.radius < fadeLimit) {
-             jugador.visibility = Math.max(0.0001, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
-             jugador.getChildMeshes().forEach(m => m.visibility = jugador.visibility);
+             // 🔥 FIX ZERO POPPING: Garantizamos que la opacidad JAMÁS sea 0
+             let alpha = Math.max(0.0001, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
+             jugador.visibility = alpha;
+             jugador.getChildMeshes().forEach(m => m.visibility = alpha);
           } else {
              jugador.visibility = 1;
              jugador.getChildMeshes().forEach(m => m.visibility = 1);

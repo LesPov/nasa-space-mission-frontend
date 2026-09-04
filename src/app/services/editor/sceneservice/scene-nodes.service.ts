@@ -5,6 +5,8 @@ import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/sce
 import { EditorStateService } from '../editor-state.service';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
+import { DynamicLightingSystem } from '../../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
+import { ShadowOrchestratorService } from '../../../core/engine/runtime/shadows/shadow-orchestrator.service';
 
 @Injectable({ providedIn: 'root' })
 export class SceneNodesService {
@@ -12,6 +14,8 @@ export class SceneNodesService {
   private state = inject(EditorStateService);
   private mapaSvc = inject(EditorMapaService);
   private entityManager = inject(EntityManagerService); 
+  private dynamicLighting = inject(DynamicLightingSystem);
+  private shadowOrchestrator = inject(ShadowOrchestratorService);
 
   public actualizarListaNodos(): void {
     if (!this.motor3d.getScene()) return;
@@ -54,6 +58,10 @@ export class SceneNodesService {
       });
 
       setTimeout(() => {
+        // 🔥 ACTUALIZAR LUCES TRAS ELIMINACIÓN
+        this.dynamicLighting.prepareAllLights();
+        this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
+
         this.actualizarListaNodos();
         this.mapaSvc.onMapChanged.next();
       }, 0);

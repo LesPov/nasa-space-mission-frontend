@@ -1,3 +1,4 @@
+
 // src/app/core/engine/runtime/game-session.ts
 
 import { Injectable, inject, computed } from '@angular/core';
@@ -23,7 +24,6 @@ import { GameMode } from '../session/game-mode.model';
 import { GameContextService } from '../session/game-context.service';
 import { LayoutService } from '../../../services/layout.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
-import { DynamicLightingSystem } from './systems/lighting/dynamic-lighting.system'; 
 import { TriggerAudioService } from './systems/trigger-audio.service';
 import { LocalRenderingSystem } from './systems/local-rendering.system';
 
@@ -47,10 +47,9 @@ export class GameSession {
   private playerAnimationSvc = inject(PlayerAnimationService);
   private cinematicDirector = inject(CinematicDirectorService);
   private renderSyncSvc = inject(RenderSync);
-  private dynamicLighting = inject(DynamicLightingSystem); 
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private triggerAudioSvc = inject(TriggerAudioService);
-  private localRendering = inject(LocalRenderingSystem); // 🔥 AÑADIDO
+  private localRendering = inject(LocalRenderingSystem); 
 
   public isPlaying = computed(() => this.context.isPlaying());
   public isDebugMode = computed(() => this.context.isDebugMode());
@@ -112,6 +111,8 @@ export class GameSession {
 
     this.sequenceSvc.resetearSecuencias();
 
+    // 🔥 FIX: Sistemas globales (Luces/Sombras) extraídos. 
+    // Aquí solo se inician los sistemas puramente dependientes de la sesión interactiva.
     this.systems = [
       this.inputSvc,
       this.sequenceSvc,
@@ -123,9 +124,8 @@ export class GameSession {
       this.playerAnimationSvc,
       this.cameraSvc,
       this.mediaCommandSvc,
-      this.localRendering, // 🔥 AÑADIDO: Orquestador de Culling
+      this.localRendering, 
       this.renderSyncSvc,
-      this.dynamicLighting, 
       this.objectAnimSvc,
       this.bubbleSvc
     ];

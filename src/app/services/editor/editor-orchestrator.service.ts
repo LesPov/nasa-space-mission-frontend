@@ -75,7 +75,6 @@ export class EditorOrchestratorService {
   public initialize(): void {
     this.cargarEpisodios();
 
-    // 🔥 Activar el sistema de Ghost Preview / colocación en tiempo real.
     this.liveBuilderSvc.initialize();
 
     this.reqPlatformSub = this.editorSvc.onRequestPlatformChange.subscribe(id => {
@@ -322,7 +321,7 @@ export class EditorOrchestratorService {
     }
   }
 
-  public iniciarModoPrueba(vista: CameraViewMode, skipIntro: boolean = false): void {
+  public async iniciarModoPrueba(vista: CameraViewMode, skipIntro: boolean = false): Promise<void> {
     if (!this.isPlayable()) return;
     this.guardarMapaEnBD(true);
     
@@ -332,7 +331,7 @@ export class EditorOrchestratorService {
       this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
     }
 
-    this.playModeSvc.prepararEscenaParaTest(vista, skipIntro);
+    await this.playModeSvc.prepararEscenaParaTest(vista, skipIntro);
   }
 
   public async detenerModoPrueba(): Promise<void> {
@@ -355,8 +354,6 @@ export class EditorOrchestratorService {
             this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
         } else {
             const cambiosEnPlay: any = this.sceneSvc.obtenerDatosParaGuardar(this.editorSvc.escenaActualData(), true); 
-            
-            // 🔥 FASE 3: LÓGICA DE RECONCILIACIÓN EXTRAÍDA Y DELEGADA
             this.snapshotMemoria = this.snapshotReconciler.mergeSnapshots(this.snapshotMemoria, cambiosEnPlay);
         }
 

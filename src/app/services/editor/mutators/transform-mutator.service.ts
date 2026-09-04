@@ -75,11 +75,19 @@ export class TransformMutatorService {
     this.historialSvc.registrarCambioTransform(objeto, () => {
       if (entity) {
         entity.transform.rotation = { x: rx, y: ry, z: rz };
+        if (entity.transform.rotationQuaternion) {
+            const q = Quaternion.FromEulerAngles(rx, ry, rz);
+            entity.transform.rotationQuaternion = { x: q.x, y: q.y, z: q.z, w: q.w };
+        }
         entity.isDirty = true;
         entity.syncToView();
       } else {
-        objeto.rotationQuaternion = Quaternion.FromEulerAngles(rx, ry, rz);
-        objeto.rotation.set(0, 0, 0);
+        if (objeto.rotationQuaternion) {
+            objeto.rotationQuaternion = Quaternion.FromEulerAngles(rx, ry, rz);
+            objeto.rotation.set(0, 0, 0);
+        } else {
+            objeto.rotation.set(rx, ry, rz);
+        }
       }
     });
 

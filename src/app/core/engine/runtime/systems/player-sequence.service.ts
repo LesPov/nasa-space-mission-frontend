@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Vector3, Quaternion } from '@babylonjs/core';
 import { PlayerClipSequence, PlayerSequenceStep, cloneDefaultPlayerConfig } from '../../models/player-config.model';
@@ -45,14 +44,32 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
             const ry = (step.procY || 0) * (Math.PI / 180) * dtFraction;
             const rz = (step.procZ || 0) * (Math.PI / 180) * dtFraction;
             
-            const currentQuat = Quaternion.FromEulerAngles(entity.transform.rotation.x, entity.transform.rotation.y, entity.transform.rotation.z);
+            let currentQuat: Quaternion;
+            if (entity.transform.rotationQuaternion) {
+                currentQuat = new Quaternion(
+                    entity.transform.rotationQuaternion.x, 
+                    entity.transform.rotationQuaternion.y, 
+                    entity.transform.rotationQuaternion.z, 
+                    entity.transform.rotationQuaternion.w
+                );
+            } else {
+                currentQuat = Quaternion.FromEulerAngles(entity.transform.rotation.x, entity.transform.rotation.y, entity.transform.rotation.z);
+            }
+            
             const deltaQuat = Quaternion.FromEulerAngles(rx, ry, rz);
             currentQuat.multiplyInPlace(deltaQuat);
             
-            const newEuler = currentQuat.toEulerAngles();
-            entity.transform.rotation.x = newEuler.x;
-            entity.transform.rotation.y = newEuler.y;
-            entity.transform.rotation.z = newEuler.z;
+            if (entity.transform.rotationQuaternion) {
+                entity.transform.rotationQuaternion.x = currentQuat.x;
+                entity.transform.rotationQuaternion.y = currentQuat.y;
+                entity.transform.rotationQuaternion.z = currentQuat.z;
+                entity.transform.rotationQuaternion.w = currentQuat.w;
+            } else {
+                const newEuler = currentQuat.toEulerAngles();
+                entity.transform.rotation.x = newEuler.x;
+                entity.transform.rotation.y = newEuler.y;
+                entity.transform.rotation.z = newEuler.z;
+            }
             entity.isDirty = true;
         }
     },
@@ -159,7 +176,7 @@ export class PlayerSequenceService implements IUpdatable {
     stepEntered: boolean;
     jumpTriggered: boolean;
     orientationLocked: boolean;
-    rotation: { x: number, y: number, z: number } | null;
+    rotation: { x: number, y: number, z: number, w?: number } | null;
   }>();
 
   constructor() {
@@ -209,7 +226,11 @@ export class PlayerSequenceService implements IUpdatable {
   }
 
   private captureSequenceOrientationState(entity: GameEntity, state: any): void {
-    state.rotation = { ...entity.transform.rotation };
+    if (entity.transform.rotationQuaternion) {
+        state.rotation = { ...entity.transform.rotationQuaternion };
+    } else {
+        state.rotation = { ...entity.transform.rotation };
+    }
     state.orientationLocked = true;
   }
 
@@ -354,7 +375,11 @@ export class PlayerSequenceService implements IUpdatable {
     }
 
     if (state.orientationLocked && state.rotation) {
-        entity.transform.rotation = { ...state.rotation };
+        if (state.rotation.w !== undefined) {
+           entity.transform.rotationQuaternion = { ...state.rotation } as any;
+        } else {
+           entity.transform.rotation = { ...state.rotation } as any;
+        }
         entity.isDirty = true;
     }
 

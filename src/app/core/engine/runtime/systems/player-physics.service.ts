@@ -1,6 +1,4 @@
 
-
-
 import { Injectable } from '@angular/core';
 import { Vector3 } from '@babylonjs/core';
 
@@ -16,12 +14,13 @@ export interface EstadoFisico {
   recoveryFrame: number;
   velocidadY: number;
   highestY: number; 
+  groundNormal?: Vector3 | null;
 }
 
 @Injectable({ providedIn: 'root' })
 export class PlayerPhysicsService {
   // Servicio puramente stateless. La lógica pesada de gravedad y raycasts
-  // ha sido trasladada a los controladores dedicados (Ej: PlayerController).
+  // ha sido trasladada a los controladores dedicados (Ej: CharacterKinematicsService).
   
   public sanitizeForwardDir(dir: Vector3): Vector3 {
     const d = dir.clone();

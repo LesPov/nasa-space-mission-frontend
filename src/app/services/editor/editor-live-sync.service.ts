@@ -64,8 +64,6 @@ export class EditorLiveSyncService {
       uiSettings: payload.uiSettings
     };
 
-    // 🔥 FIX: Prevenir duplicación masiva de objetos filtrando los que ya existen
-    // Esto evita que cada auto-guardado cargue una escena entera duplicando la cuenta de polígonos.
     if (loadPayload.sceneObjectsDelta) {
       loadPayload.sceneObjectsDelta = loadPayload.sceneObjectsDelta.filter(obj => !this.entityManager.getEntityByUid(obj.uid));
     }
@@ -103,12 +101,12 @@ export class EditorLiveSyncService {
         payload.rotationQuaternion.z,
         payload.rotationQuaternion.w
       );
-      const euler = mesh.rotationQuaternion.toEulerAngles();
-      entity.transform.rotation = { x: euler.x, y: euler.y, z: euler.z };
+      entity.transform.rotationQuaternion = { ...payload.rotationQuaternion };
     } else {
       mesh.rotationQuaternion = null;
       mesh.rotation.set(payload.rotation.x, payload.rotation.y, payload.rotation.z);
       entity.transform.rotation = { ...payload.rotation };
+      entity.transform.rotationQuaternion = null;
     }
 
     entity.isDirty = true;

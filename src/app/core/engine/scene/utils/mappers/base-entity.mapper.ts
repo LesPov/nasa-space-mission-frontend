@@ -1,9 +1,9 @@
-
 import { inject } from '@angular/core';
 import { GameEntity } from '../../../entities/game.entity';
 import { SceneObjectDto, TriggerDto, SceneObjectPropertiesDto } from '../../../models/api-dto.model';
 import { CoreSceneUtilsService } from '../core-scene-utils.service';
 import { EntityMapperStrategy } from './entity-mapper-strategy.interface';
+import { Quaternion } from '@babylonjs/core';
 
 export abstract class BaseEntityMapper implements EntityMapperStrategy {
   protected utilsSvc = inject(CoreSceneUtilsService);
@@ -100,20 +100,34 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
       selectionRange: entity.selectionRange,
       playerConfig: entity.playerConfig,
       animationNames: entity.animationNames,
-      autoAnim: entity.autoAnim || undefined, // 🔥 FIX TypeScript TS2322 (null no es undefined)
+      autoAnim: entity.autoAnim || undefined, 
       path: entity.visual.path 
     };
   }
 
   extractToDtos(entity: GameEntity): any[] {
     const props = this.extractEntityProperties(entity);
+
+    // 🔥 Conversión en el Borde (Adapter Pattern para Guardado Serializado)
+    let rot = entity.transform.rotation;
+    if (entity.transform.rotationQuaternion) {
+        const q = new Quaternion(
+            entity.transform.rotationQuaternion.x, 
+            entity.transform.rotationQuaternion.y, 
+            entity.transform.rotationQuaternion.z, 
+            entity.transform.rotationQuaternion.w
+        );
+        const euler = q.toEulerAngles();
+        rot = { x: euler.x, y: euler.y, z: euler.z };
+    }
+
     return [{
       uid: entity.uid,
       name: entity.name,
       type: entity.type,
       parentId: entity.parentId,
       position: entity.transform.position,
-      rotation: entity.transform.rotation,
+      rotation: rot,
       scale: entity.transform.scale,
       assetId: entity.visual.assetId || null,
       properties: props

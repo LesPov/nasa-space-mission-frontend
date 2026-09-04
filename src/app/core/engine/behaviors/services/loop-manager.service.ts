@@ -1,6 +1,6 @@
-
 import { Injectable } from '@angular/core';
 import { Scene, Observer } from '@babylonjs/core';
+import { TransformTelemetryService } from '../../telemetry/transform-telemetry.service';
 
 export enum GamePhase {
   PRE_UPDATE = 0,
@@ -29,12 +29,12 @@ export class LoopManagerService {
   private observer: Observer<Scene> | null = null;
 
   private phases: Map<GamePhase, Map<string, LoopCallback>> = new Map();
-
-  // 🔥 OPTIMIZACIÓN: Se separan el Map (búsqueda) y el Array (iteración rápida y sin GC)
   private updatablesMap = new Map<string, IUpdatable>();
   private updatablesList: IUpdatable[] = [];
 
-  constructor() {
+  private frameCount = 0;
+
+  constructor(private telemetry: TransformTelemetryService) {
     Object.values(GamePhase).forEach(phase => {
       if (typeof phase === 'number') {
         this.phases.set(phase as GamePhase, new Map());
@@ -50,8 +50,13 @@ export class LoopManagerService {
     this.scene = scene;
     
     this.observer = this.scene.onBeforeRenderObservable.add(() => {
+      this.frameCount++;
+      this.telemetry.beginFrame(this.frameCount);
+      
       const dtMs = this.scene!.getEngine().getDeltaTime();
       this.executeFrame(dtMs);
+      
+      this.telemetry.endFrame();
     });
   }
 
@@ -105,9 +110,10 @@ export class LoopManagerService {
   }
 
   private executePhase(phase: GamePhase, dtMs: number): void {
+    this.telemetry.setPhase(GamePhase[phase]);
+    
     const phaseMap = this.phases.get(phase);
     if (phaseMap) {
-      // Evita generar arrays intermedios
       for (const [id, callback] of phaseMap.entries()) {
         try {
           callback(dtMs);
@@ -117,7 +123,6 @@ export class LoopManagerService {
       }
     }
 
-    // 🔥 Iteración directa sin generar Map.values() ni destructuración
     for (let i = 0; i < this.updatablesList.length; i++) {
       const sys = this.updatablesList[i];
       try {

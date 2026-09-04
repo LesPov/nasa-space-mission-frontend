@@ -1,9 +1,7 @@
-// src/app/components/inspector-escena/inspector-properties/prop-transform/prop-transform.ts
-
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh } from '@babylonjs/core';
+import { AbstractMesh, Quaternion } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
@@ -15,7 +13,7 @@ import { EditorLiveSyncService } from '../../../../services/editor/editor-live-s
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-transform.html',
-  styleUrls: ['./prop-transform.css'] // <-- Cambiado de ../inspector-properties.css a local
+  styleUrls: ['./prop-transform.css'] 
 })
 export class PropTransform implements OnInit, OnDestroy, OnChanges {
   @Input() objeto!: AbstractMesh;
@@ -27,7 +25,6 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   private liveSync = inject(EditorLiveSyncService);
   private subs: Subscription[] = [];
 
-  // Control de Acordeones
   public accordions: Record<string, boolean> = {
     transform: true,
     projection: true,
@@ -106,9 +103,23 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.localPosY = this.formatNum(entity.transform.position.y);
     this.localPosZ = this.formatNum(entity.transform.position.z);
 
-    this.localRotX = this.formatNum(entity.transform.rotation.x * (180 / Math.PI));
-    this.localRotY = this.formatNum(entity.transform.rotation.y * (180 / Math.PI));
-    this.localRotZ = this.formatNum(entity.transform.rotation.z * (180 / Math.PI));
+    // 🔥 Transformación a Euler Solo para Render de UI 
+    if (entity.transform.rotationQuaternion) {
+        const q = new Quaternion(
+            entity.transform.rotationQuaternion.x, 
+            entity.transform.rotationQuaternion.y, 
+            entity.transform.rotationQuaternion.z, 
+            entity.transform.rotationQuaternion.w
+        );
+        const euler = q.toEulerAngles();
+        this.localRotX = this.formatNum(euler.x * (180 / Math.PI));
+        this.localRotY = this.formatNum(euler.y * (180 / Math.PI));
+        this.localRotZ = this.formatNum(euler.z * (180 / Math.PI));
+    } else {
+        this.localRotX = this.formatNum(entity.transform.rotation.x * (180 / Math.PI));
+        this.localRotY = this.formatNum(entity.transform.rotation.y * (180 / Math.PI));
+        this.localRotZ = this.formatNum(entity.transform.rotation.z * (180 / Math.PI));
+    }
 
     this.localEscX = this.formatNum(entity.transform.scale.x);
     this.localEscY = this.formatNum(entity.transform.scale.y);
@@ -119,7 +130,6 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.esTrigger = entity.type === 'trigger' || entity.type === 'trigger_compuesto';
     this.esBubble = entity.type === 'bubble';
     
-    // Auto-expandir projection si es imagen
     if (this.esImagePlane) this.accordions['projection'] = true;
 
     this.objColor = entity.visual.color || '#ffffff';
@@ -205,7 +215,7 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     setTimeout(() => this.animStatus = '', 2000);
   }
 
-  forzarRecalculo() {
+  forzarRecalculoProyeccion() {
     this.transformMutator.forzarRecalculoProyeccion(this.objeto);
     this.animStatus = '🎯 Proyección actualizada';
     setTimeout(() => this.animStatus = '', 2000);

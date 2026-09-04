@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Vector3, Matrix, Quaternion } from '@babylonjs/core';
 import { EntityManagerService } from '../core/engine/entities/entity-manager.service';
@@ -82,11 +81,23 @@ export class EditorCinematicToolsService {
         const entity = this.entityManager.getEntityByUid(track.targetUid || '');
         if (entity && entity.view) {
            pos = {x: entity.transform.position.x, y: entity.transform.position.y, z: entity.transform.position.z};
-           rot = {
-               x: entity.transform.rotation.x * 180 / Math.PI, 
-               y: entity.transform.rotation.y * 180 / Math.PI, 
-               z: entity.transform.rotation.z * 180 / Math.PI
-           };
+           
+           if (entity.transform.rotationQuaternion) {
+               const q = new Quaternion(
+                   entity.transform.rotationQuaternion.x, 
+                   entity.transform.rotationQuaternion.y, 
+                   entity.transform.rotationQuaternion.z, 
+                   entity.transform.rotationQuaternion.w
+               );
+               const euler = q.toEulerAngles();
+               rot = { x: euler.x * 180 / Math.PI, y: euler.y * 180 / Math.PI, z: euler.z * 180 / Math.PI };
+           } else {
+               rot = {
+                   x: entity.transform.rotation.x * 180 / Math.PI, 
+                   y: entity.transform.rotation.y * 180 / Math.PI, 
+                   z: entity.transform.rotation.z * 180 / Math.PI
+               };
+           }
         }
     }
 

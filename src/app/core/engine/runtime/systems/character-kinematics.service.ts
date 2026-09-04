@@ -10,6 +10,7 @@ import { GameContextService } from '../../session/game-context.service';
 import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 import { GameMode } from '../../session/game-mode.model';
 import { getMovementProfileForOwner, MovementProfile } from '../movement/movement-profile.model';
+import { TransformTelemetryService } from '../../telemetry/transform-telemetry.service';
 
 @Injectable({ providedIn: 'root' })
 export class CharacterKinematicsService implements IUpdatable {
@@ -166,7 +167,7 @@ export class CharacterKinematicsService implements IUpdatable {
     } else {
       this.applyNormalMovement(
         mesh, config, estadoFisico, intentions, seqRuntime, 
-        vista, scaleFactor, scaleY, profile
+        vista, scaleFactor, scaleY, profile, entity
       );
     }
     
@@ -218,6 +219,14 @@ export class CharacterKinematicsService implements IUpdatable {
     const hitInfo = scene.pickWithRay(this._rayCol, collFn);
     estadoFisico.isGrounded = hitInfo ? hitInfo.hit : false;
 
+    // 🔥 FIX FASE 3: Adquisición precisa de la normal geométrica del suelo contactado
+    if (estadoFisico.isGrounded && hitInfo && hitInfo.hit) {
+      const normal = hitInfo.getNormal(true);
+      estadoFisico.groundNormal = normal || Vector3.Up();
+    } else {
+      estadoFisico.groundNormal = null;
+    }
+
     if (estadoFisico.velocidadY > 0) estadoFisico.isGrounded = false;
   }
 
@@ -256,8 +265,11 @@ export class CharacterKinematicsService implements IUpdatable {
     vista: 'FPS' | 'TPS', 
     scaleFactor: number, 
     scaleY: number,
-    profile: MovementProfile
+    profile: MovementProfile,
+    entity: GameEntity
   ): void {
+    const telemetry = TransformTelemetryService.instance;
+
     if (!profile.customInputEnabled) {
       intentions.moveForward = false;
       intentions.moveBackward = false;
@@ -298,7 +310,9 @@ export class CharacterKinematicsService implements IUpdatable {
       }
     }
 
-    // 🔥 FIX 2: ALINEAR EL CUERPO (ROTACIÓN YAW) A LA DIRECCIÓN DE LA CÁMARA EN FPS
+    // TELEMETRÍA ROTACIÓN ANTES
+    const qBeforeRot = mesh.rotationQuaternion ? mesh.rotationQuaternion.clone() : null;
+
     if (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation)) {
       if (vista === 'TPS' && estadoFisico.isMoving) {
         const targetAngle = Math.atan2(this._move.x, this._move.z);
@@ -308,15 +322,22 @@ export class CharacterKinematicsService implements IUpdatable {
           Quaternion.SlerpToRef(mesh.rotationQuaternion, this._targetQuat, 0.2, mesh.rotationQuaternion);
         }
       } else if (vista === 'FPS') {
-        // En FPS, el yaw del jugador debe anclarse estrictamente al yaw horizontal de la cámara.
         const targetAngle = Math.atan2(this._forward.x, this._forward.z);
         if (!isNaN(targetAngle)) {
           if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
-          // Snapping inmediato, porque la cámara FPS no debe sentirse con latencia de rotación
           Quaternion.FromEulerAnglesToRef(0, targetAngle, 0, mesh.rotationQuaternion);
         }
       }
     }
+
+    if (telemetry && telemetry.enabled && mesh.rotationQuaternion) {
+        telemetry.logEvent(
+          entity.uid, entity.rol, 'CharacterKinematics', 'rotationQuaternion', 'WRITE',
+          qBeforeRot, mesh.rotationQuaternion, telemetry.calculateQuaternionError(qBeforeRot, mesh.rotationQuaternion)
+        );
+    }
+
+    const posBeforeGrav = mesh.position.clone();
 
     this.calculateGravityAndJump(mesh, estadoFisico, config, intentions, seqRuntime, scaleFactor, scaleY, profile);
 
@@ -324,6 +345,10 @@ export class CharacterKinematicsService implements IUpdatable {
     if (isNaN(this._move.y)) this._move.y = 0;
     if (isNaN(this._move.z)) this._move.z = 0;
     
+    if (telemetry && telemetry.enabled) {
+        telemetry.logEvent(entity.uid, entity.rol, 'CharacterKinematics', 'velocidadY', 'WRITE', null, estadoFisico.velocidadY);
+    }
+
     if (profile.collisionsEnabled) {
       if (this._move.lengthSquared() > 0.000001) {
          mesh.moveWithCollisions(this._move);
@@ -332,6 +357,10 @@ export class CharacterKinematicsService implements IUpdatable {
       if (this._move.lengthSquared() > 0.000001) {
          mesh.position.addInPlace(this._move);
       }
+    }
+
+    if (telemetry && telemetry.enabled) {
+        telemetry.logEvent(entity.uid, entity.rol, 'CharacterKinematics', 'position', 'WRITE', posBeforeGrav, mesh.position);
     }
   }
 
@@ -385,17 +414,27 @@ export class CharacterKinematicsService implements IUpdatable {
 
       estadoFisico.highestY = mesh.position.y;
       
-      if (!estadoFisico.isMoving && !estadoFisico.isJumping && !intentions.jump && (!seqRuntime || !seqRuntime.forceJump)) {
-         estadoFisico.velocidadY = 0;
-      } else {
-         estadoFisico.velocidadY = -0.005; 
-      }
+      const wantsToJump = profile.jumpEnabled && (intentions.jump || (seqRuntime ? seqRuntime.forceJump : false));
 
-      if (profile.jumpEnabled && (intentions.jump || (seqRuntime ? seqRuntime.forceJump : false)) && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
-        estadoFisico.velocidadY = (config.jump.force || 0.16) * scaleFactor;
-        estadoFisico.isJumping = true;
-        estadoFisico.isGrounded = false;
-        intentions.jump = false; 
+      if (!estadoFisico.isMoving && !wantsToJump) {
+         estadoFisico.velocidadY = 0;
+      } else if (wantsToJump && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
+         estadoFisico.velocidadY = (config.jump.force || 0.16) * scaleFactor;
+         estadoFisico.isJumping = true;
+         estadoFisico.isGrounded = false;
+         intentions.jump = false; 
+      } else {
+         // Moving on ground
+         // 🔥 FIX FASE 3: Eliminación de Jitter. 
+         // Si la normal del suelo es plana (o casi plana), no aplicamos velocidadY hacia abajo.
+         // Esto evita el ciclo de moveWithCollisions() hundiendo y repeliendo al jugador constantemente,
+         // logrando que la cámara FPS y TPS sean perfectamente estables y orgánicas.
+         if (estadoFisico.groundNormal && estadoFisico.groundNormal.y > 0.999) {
+             estadoFisico.velocidadY = 0;
+         } else {
+             // En rampas/escaleras, aplicamos gravedad real para que se adhiera bien sin flotar horizontalmente
+             estadoFisico.velocidadY = -Math.abs((config.jump.gravity || 0.018) * scaleFactor);
+         }
       }
     } else {
       if (mesh.position.y > estadoFisico.highestY) estadoFisico.highestY = mesh.position.y;

@@ -14,6 +14,7 @@ import { GameContextService } from '../../session/game-context.service';
 import { CameraOwnershipService } from '../../runtime/cameras/camera-ownership.service';
 import { CAMERA_BEHAVIOR_PROFILES } from '../../runtime/cameras/camera-behavior-profile.model';
 import { GameEventBusService } from '../../events/game-event-bus.service';
+import { TransformTelemetryService } from '../../telemetry/transform-telemetry.service';
 
 export class PlayerCameraUpdater {
   private _localPivotPos = Vector3.Zero();
@@ -33,6 +34,12 @@ export class PlayerCameraUpdater {
     const activeCamera = this.ownership.getCamera();
     
     if (playerEntity && activeCamera && playerEntity.playerRuntime?.seqRuntime) {
+      
+      const telemetry = TransformTelemetryService.instance;
+      if (telemetry && telemetry.enabled && playerEntity.view) {
+         telemetry.logEvent(playerEntity.uid, playerEntity.rol, 'PlayerCameraUpdater', 'getWorldMatrix', 'READ', undefined, undefined);
+      }
+
       this.actualizarPosicionCamara(
         playerEntity,
         activeCamera,
@@ -139,16 +146,18 @@ export class PlayerCameraUpdater {
         if (Vector3.DistanceSquared(this.manager.cameraPivot.position, this._globalPivotPos) > 400) {
             this.manager.cameraPivot.position.copyFrom(this._globalPivotPos);
         } else {
-            const lerpSpeedXZ = this.manager.isTransitioningCameras ? 1.0 : 0.8;
-            this.manager.cameraPivot.position.x += (this._globalPivotPos.x - this.manager.cameraPivot.position.x) * lerpSpeedXZ;
-            this.manager.cameraPivot.position.z += (this._globalPivotPos.z - this.manager.cameraPivot.position.z) * lerpSpeedXZ;
-            
             const diffY = this._globalPivotPos.y - this.manager.cameraPivot.position.y;
             
-            if (Math.abs(diffY) < 0.005 && !this.manager.isTransitioningCameras) {
+            // 🔥 FIX FASE 3: Reducimos el umbral de SNAP a 0.0001
+            // Esto garantiza que micro-variaciones por el terreno sean interpoladas suavemente
+            // en vez de causar un temblor instantáneo en la cámara.
+            if (Math.abs(diffY) < 0.0001 && !this.manager.isTransitioningCameras) {
                 this.manager.cameraPivot.position.y = this._globalPivotPos.y;
             } else {
-                // 🔥 FIX TPS JUMP LERP: Más rápido en Y durante caída/salto para que no pierda al jugador de cuadro
+                const lerpSpeedXZ = this.manager.isTransitioningCameras ? 1.0 : 0.8;
+                this.manager.cameraPivot.position.x += (this._globalPivotPos.x - this.manager.cameraPivot.position.x) * lerpSpeedXZ;
+                this.manager.cameraPivot.position.z += (this._globalPivotPos.z - this.manager.cameraPivot.position.z) * lerpSpeedXZ;
+                
                 const lerpSpeedY = this.manager.isTransitioningCameras ? 1.0 : ((estadoFisico.isJumping || estadoFisico.isFalling) ? 0.95 : 0.2);
                 this.manager.cameraPivot.position.y += diffY * lerpSpeedY;
             }
@@ -175,9 +184,9 @@ export class PlayerCameraUpdater {
             fpsCam.position.z += (this._globalCamPos.z - fpsCam.position.z) * 0.5;
             fpsCam.position.y += (this._globalCamPos.y - fpsCam.position.y) * 0.5;
         } else {
-            // 🔥 FIX CRÍTICO FPS JUMP CLIPPING: 
-            // En FPS no debe haber Latencia Vertical en el Gameplay regular, 
+            // 🔥 FIX CRÍTICO FASE 3: En FPS no debe haber Latencia Vertical en el Gameplay regular, 
             // de lo contrario la cabeza atraviesa la cámara (ojos) al saltar/caer bruscamente.
+            // Gracias a que eliminamos el Jitter físico del jugador, esta asignación directa ahora es perfectamente suave.
             fpsCam.position.copyFrom(this._globalCamPos);
         }
       }

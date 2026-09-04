@@ -1,14 +1,19 @@
-
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
+import { TransformTelemetryService } from '../telemetry/transform-telemetry.service';
 import { 
   SelectionRangeComponent, CamOffsetComponent, 
   AnimationNamesComponent, AutoAnimComponent, InitialHeadLocalComponent 
 } from './player-sub-components';
 
 export class TransformComponent {
-  constructor(public position = { x: 0, y: 0, z: 0 }, public rotation = { x: 0, y: 0, z: 0 }, public scale = { x: 1, y: 1, z: 1 }) {}
+  constructor(
+    public position = { x: 0, y: 0, z: 0 }, 
+    public rotation = { x: 0, y: 0, z: 0 }, 
+    public scale = { x: 1, y: 1, z: 1 },
+    public rotationQuaternion?: { x: number, y: number, z: number, w: number } | null
+  ) {}
 }
 
 export class VisualComponent {
@@ -247,15 +252,48 @@ export class GameEntity {
   public syncToView(): void {
     if (!this.view) return;
     const t = this.transform;
+    const telemetry = TransformTelemetryService.instance;
 
-    this.view.position.set(t.position.x, t.position.y, t.position.z);
-    this.view.scaling.set(t.scale.x, t.scale.y, t.scale.z);
+    const qBefore = this.view.rotationQuaternion ? this.view.rotationQuaternion.clone() : null;
 
+    const p = this.view.position;
+    if (Math.abs(p.x - t.position.x) > 0.0001 || Math.abs(p.y - t.position.y) > 0.0001 || Math.abs(p.z - t.position.z) > 0.0001) {
+        this.view.position.set(t.position.x, t.position.y, t.position.z);
+    }
+
+    const s = this.view.scaling;
+    if (Math.abs(s.x - t.scale.x) > 0.0001 || Math.abs(s.y - t.scale.y) > 0.0001 || Math.abs(s.z - t.scale.z) > 0.0001) {
+        this.view.scaling.set(t.scale.x, t.scale.y, t.scale.z);
+    }
+
+    // 🔥 FASE 2: Evitamos conversiones continuas entre Euler y Quaternion si ya poseemos la información en Quaternion
     if (this.view.rotationQuaternion) {
-      Quaternion.FromEulerAnglesToRef(t.rotation.x, t.rotation.y, t.rotation.z, this.view.rotationQuaternion);
+      let targetQuat: Quaternion;
+      if (t.rotationQuaternion) {
+         targetQuat = new Quaternion(t.rotationQuaternion.x, t.rotationQuaternion.y, t.rotationQuaternion.z, t.rotationQuaternion.w);
+      } else {
+         targetQuat = Quaternion.FromEulerAngles(t.rotation.x, t.rotation.y, t.rotation.z);
+         t.rotationQuaternion = { x: targetQuat.x, y: targetQuat.y, z: targetQuat.z, w: targetQuat.w };
+      }
+
+      const dot = Quaternion.Dot(this.view.rotationQuaternion, targetQuat);
+      
+      if (Math.abs(dot) < 0.99999) { 
+          this.view.rotationQuaternion.copyFrom(targetQuat);
+      }
       this.view.rotation.set(0, 0, 0);
     } else {
-      this.view.rotation.set(t.rotation.x, t.rotation.y, t.rotation.z);
+      const r = this.view.rotation;
+      if (Math.abs(r.x - t.rotation.x) > 0.0001 || Math.abs(r.y - t.rotation.y) > 0.0001 || Math.abs(r.z - t.rotation.z) > 0.0001) {
+          this.view.rotation.set(t.rotation.x, t.rotation.y, t.rotation.z);
+      }
+    }
+
+    if (telemetry && telemetry.enabled) {
+      telemetry.logEvent(
+        this.uid, this.rol, 'GameEntity (syncToView)', 'rotationQuaternion', 'SYNC',
+        qBefore, this.view.rotationQuaternion, telemetry.calculateQuaternionError(qBefore, this.view.rotationQuaternion)
+      );
     }
 
     this.view.name = this.name;
@@ -265,17 +303,29 @@ export class GameEntity {
   public syncTransformFromView(): void {
     if (!this.view) return;
     const t = this.transform;
+    const telemetry = TransformTelemetryService.instance;
 
     t.position = { x: this.view.position.x, y: this.view.position.y, z: this.view.position.z };
     t.scale = { x: this.view.scaling.x, y: this.view.scaling.y, z: this.view.scaling.z };
     
     if (this.view.rotationQuaternion) {
-      const euler = this.view.rotationQuaternion.toEulerAngles();
-      t.rotation = { x: euler.x, y: euler.y, z: euler.z };
+      if (!t.rotationQuaternion) t.rotationQuaternion = { x: 0, y: 0, z: 0, w: 1 };
+      t.rotationQuaternion.x = this.view.rotationQuaternion.x;
+      t.rotationQuaternion.y = this.view.rotationQuaternion.y;
+      t.rotationQuaternion.z = this.view.rotationQuaternion.z;
+      t.rotationQuaternion.w = this.view.rotationQuaternion.w;
+      
+      // 🔥 FASE 2: Eliminado "toEulerAngles()" constante por frame que drenaba recursos.
+      if (telemetry && telemetry.enabled) {
+        telemetry.logEvent(
+          this.uid, this.rol, 'GameEntity (syncTransformFromView)', 'transform.rotation', 'SYNC',
+          this.view.rotationQuaternion, new Vector3(0,0,0)
+        );
+      }
     } else {
       t.rotation = { x: this.view.rotation.x, y: this.view.rotation.y, z: this.view.rotation.z };
+      t.rotationQuaternion = null;
     }
-    this.isDirty = true;
   }
 
   public getAbsolutePosition(): Vector3 {

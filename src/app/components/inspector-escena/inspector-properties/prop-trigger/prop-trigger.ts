@@ -1,6 +1,3 @@
-
-// src/app/components/inspector-escena/inspector-properties/prop-trigger/prop-trigger.ts
-
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -134,9 +131,23 @@ export class PropTrigger implements OnInit, OnDestroy {
     this.localPosY = this.formatNum(entity.transform.position.y); 
     this.localPosZ = this.formatNum(entity.transform.position.z);
     
-    this.localRotX = this.formatNum(entity.transform.rotation.x * (180 / Math.PI));
-    this.localRotY = this.formatNum(entity.transform.rotation.y * (180 / Math.PI));
-    this.localRotZ = this.formatNum(entity.transform.rotation.z * (180 / Math.PI));
+    // 🔥 Adaptador Euler a Quaternion para Render de UI
+    if (entity.transform.rotationQuaternion) {
+        const q = new Quaternion(
+            entity.transform.rotationQuaternion.x, 
+            entity.transform.rotationQuaternion.y, 
+            entity.transform.rotationQuaternion.z, 
+            entity.transform.rotationQuaternion.w
+        );
+        const euler = q.toEulerAngles();
+        this.localRotX = this.formatNum(euler.x * (180 / Math.PI));
+        this.localRotY = this.formatNum(euler.y * (180 / Math.PI));
+        this.localRotZ = this.formatNum(euler.z * (180 / Math.PI));
+    } else {
+        this.localRotX = this.formatNum(entity.transform.rotation.x * (180 / Math.PI));
+        this.localRotY = this.formatNum(entity.transform.rotation.y * (180 / Math.PI));
+        this.localRotZ = this.formatNum(entity.transform.rotation.z * (180 / Math.PI));
+    }
 
     this.localEscX = this.formatNum(entity.transform.scale.x); 
     this.localEscY = this.formatNum(entity.transform.scale.y); 
@@ -214,6 +225,12 @@ export class PropTrigger implements OnInit, OnDestroy {
           const rz = this.localRotZ * (Math.PI / 180);
           
           entity.transform.rotation = { x: rx, y: ry, z: rz };
+          // 🔥 Inyección directa del Quaternion
+          if (entity.transform.rotationQuaternion) {
+             const q = Quaternion.FromEulerAngles(rx, ry, rz);
+             entity.transform.rotationQuaternion = { x: q.x, y: q.y, z: q.z, w: q.w };
+          }
+
           entity.isDirty = true;
           entity.syncToView();
       } else {

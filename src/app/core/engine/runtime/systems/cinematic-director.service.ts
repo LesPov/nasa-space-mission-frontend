@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject, signal } from '@angular/core';
 import { Vector3, Quaternion, UniversalCamera, Matrix, ArcRotateCamera } from '@babylonjs/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -328,8 +327,13 @@ export class CinematicDirectorService implements IUpdatable {
           const entity = this.entityManager.getEntityByUid(track.targetUid);
           if (entity && entity.view) {
               entity.transform.position = { x: finalPos.x, y: finalPos.y, z: finalPos.z };
-              const euler = finalRot.toEulerAngles();
-              entity.transform.rotation = { x: euler.x, y: euler.y, z: euler.z };
+              
+              if (entity.transform.rotationQuaternion) {
+                  entity.transform.rotationQuaternion = { x: finalRot.x, y: finalRot.y, z: finalRot.z, w: finalRot.w };
+              } else {
+                  const euler = finalRot.toEulerAngles();
+                  entity.transform.rotation = { x: euler.x, y: euler.y, z: euler.z };
+              }
               
               entity.view.position.copyFrom(finalPos);
               entity.view.rotationQuaternion = finalRot;

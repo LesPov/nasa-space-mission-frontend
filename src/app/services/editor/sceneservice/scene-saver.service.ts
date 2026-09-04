@@ -1,5 +1,5 @@
-
 import { Injectable, inject } from '@angular/core'; 
+import { Quaternion } from '@babylonjs/core';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
 import { EntityPersistenceMapperService } from '../../../core/engine/scene/utils/entity-persistence-mapper.service';
@@ -36,14 +36,24 @@ export class SceneSaverService {
       const dtos = this.persistenceMapper.extractToDtos(entity);
       
       dtos.forEach(dto => {
-          // 🔥 BLINDAJE DE GUARDADO PARA TRIGGERS COMPUESTOS: 
-          // Aseguramos obligatoriamente que TODO DTO generado contenga exactamente 
-          // las dimensiones físicas de la malla, ignorando fallos del Mapper.
           dto.position = { x: entity.transform.position.x, y: entity.transform.position.y, z: entity.transform.position.z };
-          dto.rotation = { x: entity.transform.rotation.x, y: entity.transform.rotation.y, z: entity.transform.rotation.z };
+          
+          // 🔥 Conversión en Borde para Guardado DB Legacy
+          let rot = entity.transform.rotation;
+          if (entity.transform.rotationQuaternion) {
+             const q = new Quaternion(
+                entity.transform.rotationQuaternion.x, 
+                entity.transform.rotationQuaternion.y, 
+                entity.transform.rotationQuaternion.z, 
+                entity.transform.rotationQuaternion.w
+             );
+             const euler = q.toEulerAngles();
+             rot = { x: euler.x, y: euler.y, z: euler.z };
+          }
+          dto.rotation = { x: rot.x, y: rot.y, z: rot.z };
+          
           dto.scale = { x: entity.transform.scale.x, y: entity.transform.scale.y, z: entity.transform.scale.z };
           
-          // Por seguridad con backends Legacy que esperan 'size' en lugar de 'scale'
           dto.size = { x: entity.transform.scale.x, y: entity.transform.scale.y, z: entity.transform.scale.z };
 
           if (dto.type === 'trigger' || dto.type === 'trigger_compuesto') {

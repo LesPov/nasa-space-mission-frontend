@@ -134,9 +134,16 @@ export class CoreModelLoaderService {
     const updatedBounds = rootNode.getHierarchyBoundingVectors();
     const finalRealSize = updatedBounds.max.subtract(updatedBounds.min);
     
-    const finalSizeX = (entity.collider.sizeX === 1) ? Math.max(0.1, finalRealSize.x / scaleX) : entity.collider.sizeX!;
-    const finalSizeY = (entity.collider.sizeY === 1) ? Math.max(0.1, finalRealSize.y / scaleY) : entity.collider.sizeY!;
-    const finalSizeZ = (entity.collider.sizeZ === 1) ? Math.max(0.1, finalRealSize.z / scaleZ) : entity.collider.sizeZ!;
+    // 🔥 FIX ARQUITECTURA RADIAL: BabylonJS Ellipsoid usa Half-Sizes (Radios).
+    // Dividimos finalRealSize entre 2 para que concuerde.
+    const finalSizeX = (entity.collider.sizeX === 1) ? Math.max(0.1, (finalRealSize.x / 2) / scaleX) : entity.collider.sizeX!;
+    const finalSizeY = (entity.collider.sizeY === 1) ? Math.max(0.1, (finalRealSize.y / 2) / scaleY) : entity.collider.sizeY!;
+    const finalSizeZ = (entity.collider.sizeZ === 1) ? Math.max(0.1, (finalRealSize.z / 2) / scaleZ) : entity.collider.sizeZ!;
+
+    // Si es nuevo cálculo, empujamos el Offset Y para que pise el suelo y no atraviese 
+    if (entity.collider.sizeY === 1 && (entity.collider.offsetY === 0 || entity.collider.offsetY === undefined)) {
+        entity.collider.offsetY = finalSizeY; 
+    }
 
     entity.collider.sizeX = finalSizeX;
     entity.collider.sizeY = finalSizeY;
@@ -184,22 +191,21 @@ export class CoreModelLoaderService {
         rootNode.freezeWorldMatrix();
     }
 
-    // 🔥 CORRECCIÓN CRÍTICA DE FÍSICAS (Bug 1 - Atraviesa Objetos)
     if (entity.visual.isSolid && !isCharacter && entity.collider.type !== 'mesh') {
         let colMesh: Mesh;
+        // 🔥 FIX PROXY: El proxy visual siempre requiere * 2 porque los Builders usan Full-Size
         if (entity.collider.type === 'sphere') {
-            colMesh = MeshBuilder.CreateSphere(`col_${obj.uid}`, { diameterX: finalSizeX, diameterY: finalSizeY, diameterZ: finalSizeZ }, scene);
+            colMesh = MeshBuilder.CreateSphere(`col_${obj.uid}`, { diameterX: finalSizeX * 2, diameterY: finalSizeY * 2, diameterZ: finalSizeZ * 2 }, scene);
         } else if (entity.collider.type === 'capsule') {
-            const r = Math.max(finalSizeX, finalSizeZ) / 2;
-            colMesh = MeshBuilder.CreateCapsule(`col_${obj.uid}`, { radius: r, height: finalSizeY }, scene);
+            const r = Math.max(finalSizeX, finalSizeZ); 
+            colMesh = MeshBuilder.CreateCapsule(`col_${obj.uid}`, { radius: r, height: finalSizeY * 2 }, scene);
         } else {
-            colMesh = MeshBuilder.CreateBox(`col_${obj.uid}`, { width: finalSizeX, height: finalSizeY, depth: finalSizeZ }, scene);
+            colMesh = MeshBuilder.CreateBox(`col_${obj.uid}`, { width: finalSizeX * 2, height: finalSizeY * 2, depth: finalSizeZ * 2 }, scene);
         }
 
         colMesh.parent = rootNode;
         colMesh.position.set(entity.collider.offsetX ?? 0, entity.collider.offsetY ?? 0, entity.collider.offsetZ ?? 0);
         
-        // 🔥 Para que el motor detecte colisiones, DEBE estar visible, pero con opacidad cero.
         colMesh.isVisible = true; 
         colMesh.visibility = 0;
         colMesh.checkCollisions = true; 

@@ -99,38 +99,36 @@ export class PropPhysics implements OnInit, OnDestroy {
           this.colliderOffZ * Math.abs(ws.z)
       );
 
-      // Limpiamos los proxies generados automáticamente, no los personalizados del GLTF
       const proxies = this.objeto.getChildMeshes(true).filter(m => Tags.MatchesQuery(m, "proxy_collider") && m.name.startsWith("col_"));
       proxies.forEach(p => p.dispose());
 
       if (entity.visual.isSolid && !this.esPersonaje) {
           const scene = this.objeto.getScene();
           let colMesh: Mesh;
+
+          // 🔥 FIX PROXY: Multiplicar por 2 siempre, ya que las UI/Models asumen la fuente de verdad como HALF SIZE (radios)
           if (this.colliderType === 'sphere') {
-              colMesh = MeshBuilder.CreateSphere(`col_${entity.uid}`, { diameterX: this.colliderSizeX, diameterY: this.colliderSizeY, diameterZ: this.colliderSizeZ }, scene);
+              colMesh = MeshBuilder.CreateSphere(`col_${entity.uid}`, { diameterX: this.colliderSizeX * 2, diameterY: this.colliderSizeY * 2, diameterZ: this.colliderSizeZ * 2 }, scene);
           } else if (this.colliderType === 'capsule') {
-              const r = Math.max(this.colliderSizeX, this.colliderSizeZ) / 2;
-              colMesh = MeshBuilder.CreateCapsule(`col_${entity.uid}`, { radius: r, height: this.colliderSizeY }, scene);
+              const r = Math.max(this.colliderSizeX, this.colliderSizeZ); 
+              colMesh = MeshBuilder.CreateCapsule(`col_${entity.uid}`, { radius: r, height: this.colliderSizeY * 2 }, scene);
           } else {
-              colMesh = MeshBuilder.CreateBox(`col_${entity.uid}`, { width: this.colliderSizeX, height: this.colliderSizeY, depth: this.colliderSizeZ }, scene);
+              colMesh = MeshBuilder.CreateBox(`col_${entity.uid}`, { width: this.colliderSizeX * 2, height: this.colliderSizeY * 2, depth: this.colliderSizeZ * 2 }, scene);
           }
+
           colMesh.parent = this.objeto;
           colMesh.position.set(this.colliderOffX, this.colliderOffY, this.colliderOffZ);
           
-          // 🔥 CORRECCIÓN CRÍTICA DE FÍSICAS (Igual que en el CoreModelLoaderService)
           colMesh.isVisible = true;
           colMesh.visibility = 0;
           colMesh.checkCollisions = true;
           Tags.AddTagsTo(colMesh, "proxy_collider system_element");
       }
     } else {
-       // Si es malla exacta, eliminamos los primitivos
        const proxies = this.objeto.getChildMeshes(true).filter(m => Tags.MatchesQuery(m, "proxy_collider") && m.name.startsWith("col_"));
        proxies.forEach(p => p.dispose());
        
-       // Activamos la colisión real en la geometría del modelo
        this.objeto.getChildMeshes(false).forEach(m => {
-           // Ignoramos decals, permitimos colliders personalizados (proxycol) y geometría con vértices
            if (!Tags.MatchesQuery(m, "decal") && m.getTotalVertices() > 0) {
                m.checkCollisions = true;
            }

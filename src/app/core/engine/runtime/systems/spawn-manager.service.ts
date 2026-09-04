@@ -92,7 +92,8 @@ export class SpawnManagerService {
     const scene = this.motor3d.getScene();
     const tempMesh = MeshBuilder.CreateCapsule("TempPlayer_TestLive", { height: 1.8, radius: 0.4 }, scene);
     
-    tempMesh.position.set(position.x, position.y, position.z);
+    // 🔥 FIX SPAWN: La cápsula se centra nativamente en su medio. Levantamos para que los pies toquen position.
+    tempMesh.position.set(position.x, position.y + 0.9, position.z);
 
     if (rotationQuat) {
         tempMesh.rotationQuaternion = rotationQuat.clone();
@@ -100,8 +101,10 @@ export class SpawnManagerService {
         tempMesh.rotation.set(rotation.x, rotation.y, rotation.z);
     }
     
-    // 🔥 FIX PLAYER SHADOWS: Para proyectar sombra, en vez de isVisible = false,
-    // inyectamos la opacidad absoluta 0. Esto permite que entre a los Arrays de render de sombras.
+    // 🔥 FIX COLLIDER TEST LIVE: Asignar el ellipsoid nativo a la cápsula de prueba
+    tempMesh.ellipsoid = new Vector3(0.4, 0.9, 0.4);
+    tempMesh.ellipsoidOffset = new Vector3(0, 0.9, 0); 
+
     tempMesh.isVisible = true;
     tempMesh.visibility = 0.0001; 
     

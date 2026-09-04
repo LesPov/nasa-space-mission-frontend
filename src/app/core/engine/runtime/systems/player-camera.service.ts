@@ -148,7 +148,8 @@ export class PlayerCameraUpdater {
             if (Math.abs(diffY) < 0.005 && !this.manager.isTransitioningCameras) {
                 this.manager.cameraPivot.position.y = this._globalPivotPos.y;
             } else {
-                const lerpSpeedY = this.manager.isTransitioningCameras ? 1.0 : ((estadoFisico.isJumping || estadoFisico.isFalling) ? 0.8 : 0.15);
+                // 🔥 FIX TPS JUMP LERP: Más rápido en Y durante caída/salto para que no pierda al jugador de cuadro
+                const lerpSpeedY = this.manager.isTransitioningCameras ? 1.0 : ((estadoFisico.isJumping || estadoFisico.isFalling) ? 0.95 : 0.2);
                 this.manager.cameraPivot.position.y += diffY * lerpSpeedY;
             }
         }
@@ -169,20 +170,15 @@ export class PlayerCameraUpdater {
       Vector3.TransformCoordinatesToRef(this._localCamPos, jugador.getWorldMatrix(), this._globalCamPos);
 
       if (!isNaN(this._globalCamPos.x) && !isNaN(this._globalCamPos.y) && !isNaN(this._globalCamPos.z)) {
-        if (Math.abs(fpsCam.position.y - this._globalCamPos.y) > 5.0 || this.manager.isTransitioningCameras) {
-            fpsCam.position.copyFrom(this._globalCamPos);
+        if (this.manager.isTransitioningCameras) {
+            fpsCam.position.x += (this._globalCamPos.x - fpsCam.position.x) * 0.5;
+            fpsCam.position.z += (this._globalCamPos.z - fpsCam.position.z) * 0.5;
+            fpsCam.position.y += (this._globalCamPos.y - fpsCam.position.y) * 0.5;
         } else {
-            fpsCam.position.x = this._globalCamPos.x;
-            fpsCam.position.z = this._globalCamPos.z;
-            
-            const diffY = this._globalCamPos.y - fpsCam.position.y;
-            
-            if (Math.abs(diffY) < 0.005) {
-                fpsCam.position.y = this._globalCamPos.y; 
-            } else {
-                const yLerp = (estadoFisico.isJumping || estadoFisico.isFalling) ? 0.8 : 0.25;
-                fpsCam.position.y += diffY * yLerp;
-            }
+            // 🔥 FIX CRÍTICO FPS JUMP CLIPPING: 
+            // En FPS no debe haber Latencia Vertical en el Gameplay regular, 
+            // de lo contrario la cabeza atraviesa la cámara (ojos) al saltar/caer bruscamente.
+            fpsCam.position.copyFrom(this._globalCamPos);
         }
       }
     }
@@ -399,7 +395,6 @@ export class PlayerCameraTransitions {
 
           this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
               if (tpsCam.radius < fadeLimit) {
-                 // 🔥 FIX ZERO POPPING: Garantizamos que la opacidad JAMÁS sea 0
                  let alpha = Math.max(0.0001, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
                  jugador.visibility = alpha;
                  jugador.getChildMeshes().forEach(m => m.visibility = alpha);
@@ -497,7 +492,6 @@ export class PlayerCameraTransitions {
 
       this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
           if (tpsCam.radius < fadeLimit) {
-             // 🔥 FIX ZERO POPPING: Garantizamos que la opacidad JAMÁS sea 0
              let alpha = Math.max(0.0001, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
              jugador.visibility = alpha;
              jugador.getChildMeshes().forEach(m => m.visibility = alpha);
@@ -532,7 +526,6 @@ export class PlayerCameraTransitions {
           tpsCam.beta = fixedBeta;
 
           if (tpsCam.radius < fadeLimit) {
-             // 🔥 FIX ZERO POPPING: Garantizamos que la opacidad JAMÁS sea 0
              let alpha = Math.max(0.0001, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
              jugador.visibility = alpha;
              jugador.getChildMeshes().forEach(m => m.visibility = alpha);

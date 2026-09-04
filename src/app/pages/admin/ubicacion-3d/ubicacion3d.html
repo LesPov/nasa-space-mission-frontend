@@ -1,0 +1,45 @@
+
+<div class="ubicacion-widget" [class.size-large]="widgetSize() === 'large'">
+  
+  <div class="ubicacion-canvas">
+    <svg #svgArea width="120" height="120" class="ubicacion-svg">
+      <defs>
+        <!-- Marcadores SVG para las cabezas de flecha (Solid & Clean) -->
+        <marker id="arrow-XPos" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 1 L 10 5 L 0 9 z" fill="#ef4444" /></marker>
+        <marker id="arrow-XNeg" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 1 L 10 5 L 0 9 z" fill="#ef4444" /></marker>
+        <marker id="arrow-YPos" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 1 L 10 5 L 0 9 z" fill="#4ade80" /></marker>
+        <marker id="arrow-YNeg" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 1 L 10 5 L 0 9 z" fill="#4ade80" /></marker>
+        <marker id="arrow-ZPos" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 1 L 10 5 L 0 9 z" fill="#3b82f6" /></marker>
+        <marker id="arrow-ZNeg" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M 0 1 L 10 5 L 0 9 z" fill="#3b82f6" /></marker>
+      </defs>
+
+      <!-- 1. Líneas Traseras -->
+      <g #backLines></g>
+      
+      <!-- 2. Esfera Central -->
+      <circle cx="60" cy="60" r="14" fill="rgba(30, 41, 59, 0.85)" stroke="rgba(255,255,255,0.15)" stroke-width="1.5"/>
+      
+      <!-- 3. Líneas Frontales -->
+      <g #frontLines></g>
+      
+      <!-- 4. Hit Areas (Invisibles, por encima de las líneas y antes del texto) -->
+      <g #hitGroup></g>
+
+      <!-- 5. Etiquetas de texto (Siempre por encima de toda geometría) -->
+      <g #labelsGroup font-family="sans-serif" font-weight="900" font-size="11" text-anchor="middle" alignment-baseline="middle"></g>
+    </svg>
+  </div>
+  
+  <div class="ubicacion-toolbar">
+    <button class="ubi-btn" [class.active]="isOrtho()" title="Vista 2D (Ortogonal)" (click)="on2DClick()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><path d="M3 9h18"></path><path d="M9 21V9"></path></svg>
+    </button>
+    <button class="ubi-btn" [class.active]="!isOrtho()" title="Vista 3D (Perspectiva)" (click)="on3DClick()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+    </button>
+    <button class="ubi-btn" [class.active]="widgetSize() === 'large'" title="Ajustar Tamaño" (click)="onSizeClick()">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg>
+    </button>
+  </div>
+
+</div>

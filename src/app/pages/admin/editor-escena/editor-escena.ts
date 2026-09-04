@@ -1,4 +1,3 @@
-
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -14,7 +13,7 @@ import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
 import { UiMission } from '../../../components/ui-mission/ui-mission';
 import { UiRadialMenu } from '../../../components/ui-radial-menu/ui-radial-menu';
-
+ 
 import { EditorMapaService } from '../../../services/editor-mapa.service';
 import { EditorStateService } from '../../../services/editor/editor-state.service';
 import { EditorToolsService } from '../../../services/editor/editor-tools.service';
@@ -34,13 +33,14 @@ import { Subscription } from 'rxjs';
 import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { PlayerInputService } from '../../../core/engine/runtime/systems/player-input.service';
 import { LiveBuilderService } from '../../../services/editor/live-builder.service';
-
+import { Ubicacion3D } from '../ubicacion-3d/ubicacion3d';
+ 
 @Component({
   selector: 'app-editor-escena', 
   standalone: true,
   imports: [
     MotorBabylon, InspectorEscena, ToolbarEscena, CommonModule, FormsModule,
-    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading, UiMission, UiRadialMenu 
+    MiniVisorEscena, GlobalTimeline, UiHud, UiInspect, UiLoading, UiMission, UiRadialMenu, Ubicacion3D 
   ],
   templateUrl: './editor-escena.html',
   styleUrl: './editor-escena.css', 
@@ -133,7 +133,6 @@ export class EditorEscena implements OnInit, OnDestroy {
 
     this.ebSub = this.eventBus.events$.subscribe(event => {
       if (event.type === 'GamePaused') {
-        // 🔥 FIX: Debounce para evitar popups al usar el menú radial
         setTimeout(() => {
             if (this.misionIniciada && !this.cerrandoModalMision && this.stateSvc.playState() === 'PLAYING') {
                if (!this.inputSvc.isRadialMenuOpen && !this.liveBuilderSvc.isBuilding() && !this.gameContext.isPointerLocked()) {
@@ -164,7 +163,6 @@ export class EditorEscena implements OnInit, OnDestroy {
       }
       
       if (this.misionIniciada && !this.mostrarModalMisionPreview && this.stateSvc.playState() === 'PLAYING') {
-          // 🔥 FIX: Si está construyendo, el ESC cancela la construcción (manejado por el controller).
           if (this.inputSvc.isRadialMenuOpen || this.liveBuilderSvc.isBuilding()) {
               return;
           }
@@ -248,14 +246,11 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.mostrarModalMisionPreview = false;
     this.misionIniciada = true;
     this.orchestrator.iniciarModoPrueba(this.vistaPrueba);
-    
-    // 🔥 FIX: Capturamos el mouse inmediatamente al iniciar la prueba aprovechando el clic en el botón UI
     this.inputOrchestrator.lockPointer();
   }
 
   comenzarMisionPreview() {
     this.cerrandoModalMision = true;
-    
     this.inputOrchestrator.lockPointer();
 
     setTimeout(() => {

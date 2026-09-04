@@ -242,8 +242,9 @@
 
         <div class="canvas-container" (click)="onCanvasClick()">
           <div class="fps-badge">FPS: {{ fps }}</div>
-
-          <ng-container>
+  <!-- NUEVO WIDGET UBICACION 3D -->
+  <app-ubicacion3d *ngIf="stateSvc.playState() === 'EDITOR' || stateSvc.playState() === 'EDITING_IN_GAME'"></app-ubicacion3d> 
+            <ng-container>
             <button class="toggle-panel-btn toggle-right" (click)="layoutUI.toggleInspector()" [title]="layoutUI.showInspector() ? 'Ocultar Inspector' : 'Mostrar Inspector'">{{ layoutUI.showInspector() ? '▶' : '◀' }}</button>
             <button class="toggle-panel-btn toggle-bottom" (click)="layoutUI.toggleTimeline()" [title]="layoutUI.showTimeline() ? 'Ocultar Timeline' : 'Mostrar Timeline'">{{ layoutUI.showTimeline() ? '▼' : '▲' }}</button>
             <app-toolbar-escena *ngIf="stateSvc.playState() === 'EDITOR' || stateSvc.playState() === 'EDITING_IN_GAME' || (stateSvc.playState() === 'PLAYING' && !gameSession.pointerLocked())"></app-toolbar-escena>

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, Vector3, PointerEventTypes, Tags, AbstractMesh } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -46,24 +45,10 @@ export class ToolsGizmoService {
     this.gizmoManager.usePointerToAttachGizmos = false;
     this.gizmoManager.clearGizmoOnEmptyPointerEvent = true;
 
-    this.gizmoManager.positionGizmoEnabled = true;
-    this.gizmoManager.rotationGizmoEnabled = true;
-    this.gizmoManager.scaleGizmoEnabled = true;
-
-    if (this.gizmoManager.gizmos.positionGizmo) {
-      this.gizmoManager.gizmos.positionGizmo.snapDistance = 0;
-      this.gizmoManager.gizmos.positionGizmo.planarGizmoEnabled = false;
-      this.gizmoManager.gizmos.positionGizmo.updateGizmoRotationToMatchAttachedMesh = false;
-    }
-
-    if (this.gizmoManager.gizmos.rotationGizmo) {
-      this.gizmoManager.gizmos.rotationGizmo.snapDistance = 0;
-      this.gizmoManager.gizmos.rotationGizmo.updateGizmoRotationToMatchAttachedMesh = false;
-    }
-
-    if (this.gizmoManager.gizmos.scaleGizmo) {
-      this.gizmoManager.gizmos.scaleGizmo.snapDistance = 0;
-    }
+    // Inicialmente apagados hasta que la herramienta solicite uno
+    this.gizmoManager.positionGizmoEnabled = false;
+    this.gizmoManager.rotationGizmoEnabled = false;
+    this.gizmoManager.scaleGizmoEnabled = false;
 
     const utilityLayer = this.gizmoManager.utilityLayer;
 
@@ -76,13 +61,16 @@ export class ToolsGizmoService {
     this.centerDragMesh.isVisible = false;
     Tags.AddTagsTo(this.centerDragMesh, "system_element editor_only gizmo ignore_raycast");
 
-    this.gizmoPivotNode = new Mesh('gizmoPivotNode', utilityLayer.utilityLayerScene);
+    // 🔥 FIX: Crear el pivot en la escena principal, no en la utilityLayer
+    this.gizmoPivotNode = new Mesh('gizmoPivotNode', scene);
+    this.gizmoPivotNode.isPickable = false;
+    Tags.AddTagsTo(this.gizmoPivotNode, "system_element editor_only ignore_raycast");
 
     const centerDragBehavior = new PointerDragBehavior();
     centerDragBehavior.moveAttached = false;
     this.centerDragMesh.addBehavior(centerDragBehavior);
 
-    this.setupDragEvents(centerDragBehavior);
+    this.setupCenterDragEvent(centerDragBehavior);
   }
 
   public dispose(): void {
@@ -119,15 +107,7 @@ export class ToolsGizmoService {
     }
   }
 
-  private setupDragEvents(centerDragBehavior: PointerDragBehavior): void {
-    const onDragStart = () => {
-      this.isDraggingGizmo = true;
-      const mesh = this.state.objetoSeleccionado() as Mesh;
-      if (mesh && !Tags.MatchesQuery(mesh, "cinematic_proxy")) {
-        this.estadoAntesDeArrastrar = this.historialSvc.obtenerEstado(mesh);
-      }
-    };
-
+  private setupCenterDragEvent(centerDragBehavior: PointerDragBehavior): void {
     const onDraggingCenter = (event: any) => {
       const mesh = this.state.objetoSeleccionado() as Mesh;
       const subSelected = this.state.subObjetoSeleccionado();
@@ -143,9 +123,6 @@ export class ToolsGizmoService {
                this.centerDragMesh.position.copyFrom(dragTarget.getAbsolutePosition());
             }
 
-            // 🔥 FIX DEL RETRASO VISUAL (LAG) EN LOS EJES DEL GIZMO
-            // Forzamos la actualización posicional del Attach Target (Pivot) en tiempo real
-            // durante el evento de drag del centro.
             if (!subSelected && this.gizmoPivotNode) {
                this.gizmoPivotNode.position.copyFrom(mesh.getAbsolutePosition());
             }
@@ -159,74 +136,73 @@ export class ToolsGizmoService {
       }
     };
 
-    const onDraggingGizmo = () => {
-      const mesh = this.state.objetoSeleccionado() as Mesh;
-      const subSelected = this.state.subObjetoSeleccionado();
-      const entity = mesh ? this.entityManager.getEntityByMesh(mesh) : null;
-      if (!mesh || !this.gizmoPivotNode || !entity) return;
-
-      const adapter = this.registry.getAdapter(subSelected, entity);
-      if (adapter) {
-          adapter.onGizmoDragged(mesh, this.gizmoPivotNode);
-          
-          if (!subSelected) {
-              this.updateCenterDragMeshRenderState(mesh, subSelected);
-              this.broadcastLiveTransform(mesh); 
-          }
-      }
-      this.mapaSvc.onGizmoDrag.next();
-    };
-
-    const onDragEnd = () => {
-      this.isDraggingGizmo = false;
-      const mesh = this.state.objetoSeleccionado() as Mesh;
-      const subSelected = this.state.subObjetoSeleccionado();
-      
-      if (!mesh) return;
-
-      if (!subSelected && this.estadoAntesDeArrastrar && !Tags.MatchesQuery(mesh, "cinematic_proxy")) {
-        this.historialSvc.registrarAccionTransform(mesh, this.estadoAntesDeArrastrar);
-        this.estadoAntesDeArrastrar = null;
-        
-        const entity = this.entityManager.getEntityByMesh(mesh);
-        if (entity && entity.type === 'image_plane') {
-            this.projectionSvc.actualizarProyeccion(mesh);
-        }
-      }
-
-      queueMicrotask(() => { 
-        this.mapaSvc.onGizmoDrag.next(); 
-        this.mapaSvc.onMapChanged.next(); 
-      });
-    };
-
-    centerDragBehavior.onDragStartObservable.add(onDragStart);
+    centerDragBehavior.onDragStartObservable.add(this.onDragStart);
     centerDragBehavior.onDragObservable.add(onDraggingCenter);
-    centerDragBehavior.onDragEndObservable.add(onDragEnd);
+    centerDragBehavior.onDragEndObservable.add(this.onDragEnd);
+  }
 
-    if (this.gizmoManager?.gizmos.positionGizmo) {
-      this.gizmoManager.gizmos.positionGizmo.onDragStartObservable.add(onDragStart);
-      this.gizmoManager.gizmos.positionGizmo.onDragObservable.add(onDraggingGizmo);
-      this.gizmoManager.gizmos.positionGizmo.onDragEndObservable.add(onDragEnd);
+  private onDragStart = () => {
+    this.isDraggingGizmo = true;
+    const mesh = this.state.objetoSeleccionado() as Mesh;
+    if (mesh && !Tags.MatchesQuery(mesh, "cinematic_proxy")) {
+      this.estadoAntesDeArrastrar = this.historialSvc.obtenerEstado(mesh);
     }
-    if (this.gizmoManager?.gizmos.rotationGizmo) {
-      this.gizmoManager.gizmos.rotationGizmo.onDragStartObservable.add(onDragStart);
-      this.gizmoManager.gizmos.rotationGizmo.onDragObservable.add(onDraggingGizmo);
-      this.gizmoManager.gizmos.rotationGizmo.onDragEndObservable.add(onDragEnd);
+  };
+
+  private onDraggingGizmo = () => {
+    const mesh = this.state.objetoSeleccionado() as Mesh;
+    const subSelected = this.state.subObjetoSeleccionado();
+    const entity = mesh ? this.entityManager.getEntityByMesh(mesh) : null;
+    if (!mesh || !this.gizmoPivotNode || !entity) return;
+
+    const adapter = this.registry.getAdapter(subSelected, entity);
+    if (adapter) {
+        adapter.onGizmoDragged(mesh, this.gizmoPivotNode);
+        
+        if (!subSelected) {
+            this.updateCenterDragMeshRenderState(mesh, subSelected);
+            this.broadcastLiveTransform(mesh); 
+        }
     }
-    if (this.gizmoManager?.gizmos.scaleGizmo) {
-      this.gizmoManager.gizmos.scaleGizmo.onDragStartObservable.add(onDragStart);
-      this.gizmoManager.gizmos.scaleGizmo.onDragObservable.add(onDraggingGizmo);
-      this.gizmoManager.gizmos.scaleGizmo.onDragEndObservable.add(onDragEnd);
+    this.mapaSvc.onGizmoDrag.next();
+  };
+
+  private onDragEnd = () => {
+    this.isDraggingGizmo = false;
+    const mesh = this.state.objetoSeleccionado() as Mesh;
+    const subSelected = this.state.subObjetoSeleccionado();
+    
+    if (!mesh) return;
+
+    if (!subSelected && this.estadoAntesDeArrastrar && !Tags.MatchesQuery(mesh, "cinematic_proxy")) {
+      this.historialSvc.registrarAccionTransform(mesh, this.estadoAntesDeArrastrar);
+      this.estadoAntesDeArrastrar = null;
+      
+      const entity = this.entityManager.getEntityByMesh(mesh);
+      if (entity && entity.type === 'image_plane') {
+          this.projectionSvc.actualizarProyeccion(mesh);
+      }
     }
+
+    queueMicrotask(() => { 
+      this.mapaSvc.onGizmoDrag.next(); 
+      this.mapaSvc.onMapChanged.next(); 
+    });
+  };
+
+  private setupGizmoObservables(gizmo: any) {
+    if (!gizmo) return;
+    gizmo.onDragStartObservable.removeCallback(this.onDragStart);
+    gizmo.onDragObservable.removeCallback(this.onDraggingGizmo);
+    gizmo.onDragEndObservable.removeCallback(this.onDragEnd);
+
+    gizmo.onDragStartObservable.add(this.onDragStart);
+    gizmo.onDragObservable.add(this.onDraggingGizmo);
+    gizmo.onDragEndObservable.add(this.onDragEnd);
   }
 
   public actualizarGizmosActivos(): void {
     if (!this.gizmoManager) return;
-
-    this.gizmoManager.positionGizmoEnabled = false;
-    this.gizmoManager.rotationGizmoEnabled = false;
-    this.gizmoManager.scaleGizmoEnabled = false;
 
     const modo = this.state.playState();
     const canUseGizmos = this.gameContext.authorityProfile().canUseGizmos;
@@ -237,15 +213,39 @@ export class ToolsGizmoService {
       return;
     }
 
-    if (this.state.objetoSeleccionado() || this.state.subObjetoSeleccionado()) {
-      switch (this.state.currentTool()) {
-        case 'select': break;
-        case 'translate': this.gizmoManager.positionGizmoEnabled = true; break;
-        case 'rotate': 
-          if (!this.state.subObjetoSeleccionado()) this.gizmoManager.rotationGizmoEnabled = true;
-          break;
-        case 'scale': this.gizmoManager.scaleGizmoEnabled = true; break;
-      }
+    const currentTool = this.state.currentTool();
+    const hasSelection = !!(this.state.objetoSeleccionado() || this.state.subObjetoSeleccionado());
+
+    const wantPosition = hasSelection && currentTool === 'translate';
+    const wantRotation = hasSelection && currentTool === 'rotate' && !this.state.subObjetoSeleccionado();
+    const wantScale = hasSelection && currentTool === 'scale';
+
+    // 🔥 FIX: Solo actualizar si hay un cambio real, previniendo la destrucción y creación constante
+    if (this.gizmoManager.positionGizmoEnabled !== wantPosition) {
+       this.gizmoManager.positionGizmoEnabled = wantPosition;
+       if (wantPosition && this.gizmoManager.gizmos.positionGizmo) {
+         this.gizmoManager.gizmos.positionGizmo.snapDistance = 0;
+         this.gizmoManager.gizmos.positionGizmo.planarGizmoEnabled = false;
+         this.gizmoManager.gizmos.positionGizmo.updateGizmoRotationToMatchAttachedMesh = false;
+         this.setupGizmoObservables(this.gizmoManager.gizmos.positionGizmo);
+       }
+    }
+
+    if (this.gizmoManager.rotationGizmoEnabled !== wantRotation) {
+       this.gizmoManager.rotationGizmoEnabled = wantRotation;
+       if (wantRotation && this.gizmoManager.gizmos.rotationGizmo) {
+         this.gizmoManager.gizmos.rotationGizmo.snapDistance = 0;
+         this.gizmoManager.gizmos.rotationGizmo.updateGizmoRotationToMatchAttachedMesh = false;
+         this.setupGizmoObservables(this.gizmoManager.gizmos.rotationGizmo);
+       }
+    }
+
+    if (this.gizmoManager.scaleGizmoEnabled !== wantScale) {
+       this.gizmoManager.scaleGizmoEnabled = wantScale;
+       if (wantScale && this.gizmoManager.gizmos.scaleGizmo) {
+         this.gizmoManager.gizmos.scaleGizmo.snapDistance = 0;
+         this.setupGizmoObservables(this.gizmoManager.gizmos.scaleGizmo);
+       }
     }
     
     const obj = this.state.objetoSeleccionado() as Mesh;

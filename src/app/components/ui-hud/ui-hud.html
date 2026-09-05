@@ -1,4 +1,6 @@
 
+<!-- src/app/pages/player/juego-pantalla/juego-pantalla.html -->
+
 <div class="crosshair-ui" 
      *ngIf="gameSession.isPlaying() && gameSession.pointerLocked() && gameSession.cameraView() === 'FPS'" 
      [class.hovering]="hoveredMesh() !== null">
@@ -11,8 +13,8 @@
      [style.background-color]="cinematicDirector.fadeColor()">
 </div>
 
-<!-- Cinematic Overlay UI (Arquitectura Separada) -->
-<div class="cinematic-overlay-layer" *ngFor="let state of cinematicDirector.activeOverlays()"
+<!-- Cinematic Overlay UI (Arquitectura Separada y Optimizada con trackBy) -->
+<div class="cinematic-overlay-layer" *ngFor="let state of cinematicDirector.activeOverlays(); trackBy: trackByOverlayId"
      [style.z-index]="5000 + (state.value.zIndex || 0)"
      [style.pointer-events]="'none'"
      [style.position]="'absolute'"

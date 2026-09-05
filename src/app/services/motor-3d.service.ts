@@ -9,7 +9,9 @@ import { ISceneAccess } from '../core/engine/scene/scene-access.token';
 import { ShadowOrchestratorService } from '../core/engine/runtime/shadows/shadow-orchestrator.service';
 import { DynamicLightingSystem } from '../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 import { FogOrchestratorService } from '../core/engine/runtime/systems/fog-orchestrator.service';
- 
+import { PlayerSequenceService } from '../core/engine/runtime/systems/player-sequence.service';
+import { PlayerTriggerService } from '../core/engine/runtime/systems/player-trigger.service';
+
 @Injectable({
   providedIn: 'root'
 })
@@ -95,10 +97,17 @@ export class Motor3dService implements ISceneAccess {
     const dynamicLighting = this.injector.get(DynamicLightingSystem);
     this.loopManager.registerSystem(dynamicLighting);
 
-    // 🔥 REGISTRO GLOBAL DEL NUEVO FOG ORCHESTRATOR
     const fogOrch = this.injector.get(FogOrchestratorService);
     this.loopManager.registerSystem(fogOrch);
-    fogOrch.start(); // Iniciarlo para que esté disponible en Editor inmediatamente
+    fogOrch.start();
+
+    // 🔥 REGISTRO GLOBAL DE SECUENCIAS Y TRIGGERS PARA CINEMATICAS EN EDITOR
+    const seqSvc = this.injector.get(PlayerSequenceService);
+    this.loopManager.registerSystem(seqSvc);
+    
+    const trigSvc = this.injector.get(PlayerTriggerService);
+    this.loopManager.registerSystem(trigSvc);
+    trigSvc.start();
 
     this.cameraFactory.initializeCameras(this.scene, canvas);
 
@@ -115,7 +124,6 @@ export class Motor3dService implements ISceneAccess {
       this.scene.fogEnabled = this.ownership.getOwner() !== 'EDITOR';
     });
 
-    // Se instancia con el nombre correcto que espera WorldSettingsService
     const ambientLight = new HemisphericLight('ambientLight', new Vector3(0, 1, 0), this.scene);
     ambientLight.intensity = 1.0;
     ambientLight.diffuse = new Color3(1, 1, 1);
@@ -151,9 +159,13 @@ export class Motor3dService implements ISceneAccess {
 
   detenerMotor(): void {
     if (this.engine) {
-      this.ownership.resetWatcher(); // 🔥 FIX: Restablecer watcher para que pueda reiniciarse sin conflicto
+      this.ownership.resetWatcher(); 
       const fogOrch = this.injector.get(FogOrchestratorService);
-      fogOrch.stop(); // Detenemos el orquestador global de niebla
+      fogOrch.stop();
+      
+      const trigSvc = this.injector.get(PlayerTriggerService);
+      trigSvc.stop();
+      
       this.loopManager.dispose();
       this.cameraFactory.dispose();
       this.engine.stopRenderLoop();

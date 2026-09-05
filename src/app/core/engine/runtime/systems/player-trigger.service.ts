@@ -1,6 +1,4 @@
 
-// src/app/core/engine/runtime/systems/player-trigger.service.ts
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3 } from '@babylonjs/core';
 import { GameStateService } from '../state/game-state.service';
@@ -12,6 +10,8 @@ import { GameContextService } from '../../session/game-context.service';
 import { InputOrchestratorService } from './input-orchestrator.service';
 import { PlayerCameraManagerService } from './player-camera.service';
 import { TriggerAudioService } from './trigger-audio.service';
+import { CinematicDirectorService } from './cinematic-director.service';
+import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService implements IUpdatable {
@@ -23,6 +23,8 @@ export class PlayerTriggerService implements IUpdatable {
   private inputOrchestrator = inject(InputOrchestratorService);
   private cameraSvc = inject(PlayerCameraManagerService);
   private triggerAudioSvc = inject(TriggerAudioService);
+  private cinematicDirector = inject(CinematicDirectorService);
+  private ownership = inject(CameraOwnershipService);
   
   private activeTriggersInside = new Set<string>();
   private teleportCooldown: number = 0;
@@ -71,29 +73,39 @@ export class PlayerTriggerService implements IUpdatable {
   }
 
   public update(dtMs: number): void {
+    const isCinematic = this.cinematicDirector.isPlaying;
     const playerEntity = this.context.activePlayerEntity();
-    if (playerEntity) {
-      if (this.teleportCooldown > 0) {
-          this.teleportCooldown -= dtMs;
-          this.verificarTriggers(playerEntity, true);
-      } else {
-          this.verificarTriggers(playerEntity, false);
-      }
+    
+    // 🔥 FIX: Permite que el sistema opere durante Cinemáticas en el Editor aunque no exista el Player.
+    if (!playerEntity && !isCinematic) return;
+
+    if (this.teleportCooldown > 0) {
+        this.teleportCooldown -= dtMs;
+        this.verificarTriggers(playerEntity, true);
+    } else {
+        this.verificarTriggers(playerEntity, false);
     }
   }
 
-  public verificarTriggers(entity: GameEntity, silent: boolean = false): void {
+  public verificarTriggers(entity: GameEntity | null, silent: boolean = false): void {
     if (this.isTransitioning) return;
 
-    const jugador = entity.view as Mesh;
-    if (!jugador) return;
-
-    const colMeta = entity.collider || { offsetY: 0.9 };
-    const playerCenterY = colMeta.offsetY * (entity.transform.scale.y || 1);
-    const playerPos = jugador.getAbsolutePosition();
+    let probePoint = Vector3.Zero();
     
-    const probePoint = playerPos.clone();
-    probePoint.y += playerCenterY;
+    // 🔥 MODO B: PROXIMIDAD CINEMÁTICA. Detecta si la cámara cruza los Triggers!
+    if (this.cinematicDirector.isPlaying) {
+        const cam = this.ownership.getCamera();
+        if (cam) probePoint.copyFrom(cam.globalPosition);
+    } else if (entity) {
+        const jugador = entity.view as Mesh;
+        if (!jugador) return;
+        const colMeta = entity.collider || { offsetY: 0.9 };
+        const playerCenterY = colMeta.offsetY * (entity.transform.scale.y || 1);
+        probePoint.copyFrom(jugador.getAbsolutePosition());
+        probePoint.y += playerCenterY;
+    } else {
+        return;
+    }
 
     const entities = this.entityManager.getAllEntities();
 
@@ -116,6 +128,7 @@ export class PlayerTriggerService implements IUpdatable {
         const mesh = triggerEntity.view as AbstractMesh;
         if (!mesh) continue;
 
+        // 🔥 Evaluación Matemática Segura
         const isInside = mesh.intersectsPoint(probePoint);
         const wasInside = this.activeTriggersInside.has(triggerEntity.uid);
 
@@ -199,7 +212,6 @@ export class PlayerTriggerService implements IUpdatable {
           }
       }
 
-      // 📢 LLAMAR AL NUEVO SERVICIO DE AUDIO
       this.triggerAudioSvc.playTriggerEvent(triggerEntity, eventType);
 
       if (mensaje && mensaje.trim() !== '') {

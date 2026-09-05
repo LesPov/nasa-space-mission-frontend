@@ -54,4 +54,13 @@ export class CinematicLogger {
   static logMigration(action: string, detail?: string) {
     if(CINEMATIC_DEBUG) console.log(`[CinematicMigration] ${action}=${detail || ''}`);
   }
+
+  // 🔥 NUEVOS LOGS PARA AUDITORÍA DE LIFECYCLE Y WATCHDOG
+  static logTestLiveLifecycle(action: 'ENTER' | 'EXIT', owner?: string, camName?: string) {
+    if(CINEMATIC_DEBUG) console.log(`[TestLiveLifecycle] ${action} | ownerRestore: ${owner || 'none'} | camRestore: ${camName || 'none'}`);
+  }
+
+  static logPlaybackWarning(type: string, data: any) {
+    console.warn(`[CinematicPlaybackWarning] ${type}`, data);
+  }
 }

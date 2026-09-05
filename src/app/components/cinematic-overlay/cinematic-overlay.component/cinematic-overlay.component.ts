@@ -17,6 +17,10 @@ export class CinematicOverlayComponent {
     return this.director.activeOverlays();
   }
 
+  public trackByOverlayId(index: number, state: any): string {
+     return state.id;
+  }
+
   getBgStyle(el: any) {
     const v = el.value;
     const isFull = v.fullscreenBg;

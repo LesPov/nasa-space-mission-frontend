@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Tags, Vector3, Observer, Scene } from '@babylonjs/core';
+import { AbstractMesh, Mesh, Tags, Vector3, Observer, Scene, Camera } from '@babylonjs/core';
 
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { EditorStateService } from './editor-state.service';
@@ -12,11 +12,12 @@ import { CameraViewMode } from '../../core/engine/session/game-context.model';
 import { GameMode } from '../../core/engine/session/game-mode.model';
 import { GameContextService } from '../../core/engine/session/game-context.service';
 import { CAMERA_BEHAVIOR_PROFILES } from '../../core/engine/runtime/cameras/camera-behavior-profile.model';
-import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
+import { CameraOwnershipService, CameraOwner } from '../../core/engine/runtime/cameras/camera-ownership.service';
 import { EditorModeTransitionService } from './editor-mode-transition.service';
 import { SpawnManagerService } from '../../core/engine/runtime/systems/spawn-manager.service';
 import { DynamicLightingSystem } from '../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 import { ShadowOrchestratorService } from '../../core/engine/runtime/shadows/shadow-orchestrator.service';
+import { CinematicLogger } from '../../core/engine/runtime/cinematics/cinematic-logger';
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
@@ -33,8 +34,17 @@ export class EditorPlayModeService {
   private dynamicLighting = inject(DynamicLightingSystem);
   private shadowOrchestrator = inject(ShadowOrchestratorService);
 
+  // 🔥 STATE PRESERVATION: Mantiene en memoria el estado exacto de la cámara antes del Test
+  private preTestOwner: CameraOwner = 'NONE';
+  private preTestCamera: Camera | null = null;
+
   public async prepararEscenaParaTest(vista: CameraViewMode, skipIntro: boolean = false): Promise<void> {
     this.cameraSvc.guardarEstadoCamaraLibre();
+
+    // Capturar propiedad absoluta
+    this.preTestOwner = this.ownership.getOwner();
+    this.preTestCamera = this.ownership.getCamera();
+    CinematicLogger.logTestLiveLifecycle('ENTER', this.preTestOwner, this.preTestCamera?.name);
 
     if (this.motor3d.getEditorCamera()) {
         this.motor3d.getEditorCamera().computeWorldMatrix();
@@ -55,8 +65,6 @@ export class EditorPlayModeService {
     this.gameContext.setCameraView(vista);
     this.state.seleccionarObjeto(null);
     
-    // 🔥 FIX ARRANQUE FRÍO: Establecer al jugador como activo ANTES del warm-up 
-    // para que las luces locales y sombras calculen prioridades desde su posición real.
     this.gameContext.setActivePlayer(playerEntity);
 
     this.motor3d.getScene().meshes.forEach(m => {
@@ -103,17 +111,14 @@ export class EditorPlayModeService {
         targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
     }
 
-    // 🔥 PREPARACIÓN TOTAL Y WARM-UP ANTES DE DEJAR ENTRAR AL JUGADOR
     this.dynamicLighting.prepareAllLights();
     this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
 
     await new Promise<void>((resolve) => {
         this.motor3d.getScene().executeWhenReady(() => {
-            // Reiniciamos contadores para el frame 1 perfecto
             this.dynamicLighting.start();
             this.shadowOrchestrator.start();
 
-            // Renderizar 5 frames forzados para compilar shaders y llenar shadow maps
             for(let i = 0; i < 5; i++) {
                 this.motor3d.getScene().render();
             }
@@ -130,8 +135,6 @@ export class EditorPlayModeService {
         if (cam && this.ownership.getOwner() === 'TRANSITION_PROXY') {
           const dist = Vector3.Distance(cam.globalPosition, targetPos);
           if (dist < 3.5) {
-            // 🔥 FIX ZERO POPPING: Garantizamos que la opacidad JAMÁS sea 0 absoluto, 
-            // evitando que el frustum cull lo elimine del pipeline gráfico prematuramente.
             let alpha = Math.max(0.0001, (dist - 0.5) / 3.0);
             alpha = alpha * alpha; 
             objMesh.visibility = alpha;
@@ -200,11 +203,17 @@ export class EditorPlayModeService {
     });
 
     this.cameraSvc.restaurarCamaraLibre();
-    const editorCam = this.motor3d.getEditorCamera();
-    
     this.inputOrchestrator.unlockPointer();
     
+    // 🔥 FIX: POP Y RESTAURACIÓN DEL STACK DE CÁMARA (Para no romper Cinematic Camera View)
     const canvas = this.motor3d.getEngine().getRenderingCanvas();
-    this.ownership.setCamera('EDITOR', editorCam, canvas, true);
+    const camToRestore = this.preTestCamera && !this.preTestCamera.isDisposed() ? this.preTestCamera : this.motor3d.getEditorCamera();
+    const ownerToRestore = this.preTestOwner !== 'NONE' ? this.preTestOwner : 'EDITOR';
+
+    CinematicLogger.logTestLiveLifecycle('EXIT', ownerToRestore, camToRestore.name);
+    this.ownership.setCamera(ownerToRestore, camToRestore, canvas, true);
+
+    this.preTestOwner = 'NONE';
+    this.preTestCamera = null;
   }
 }

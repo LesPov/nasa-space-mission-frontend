@@ -70,6 +70,11 @@ export class UiHud implements OnInit, OnDestroy {
     });
   }
 
+  // 🔥 MEJORA RENDIMIENTO: ngFor trackBy identifier impide la sobrecreación de nodos en Overlays
+  public trackByOverlayId(index: number, state: any): string {
+     return state.id;
+  }
+
   public getOverlayTransform(state: any): string {
      let translateX = '-50%';
      let translateY = '-50%';
@@ -100,9 +105,6 @@ export class UiHud implements OnInit, OnDestroy {
   }
 
   public getOverlayBackground(overlay: OverlayValue): string {
-     // 🔥 FIX COMPOSICIÓN: Se eliminó la inyección de `bgOpacity` en los colores base.
-     // La opacidad la gestiona nativamente el DOM [style.opacity] multiplicada por la curva de animación,
-     // previniendo el bug de doble-opacidad que apagaba los gradientes excesivamente.
      if (overlay.bgType === 'SOLID' || overlay.bgType === 'TRANSPARENT') {
          return overlay.bgColor || '#000000';
      } else if (overlay.bgType === 'GRADIENT') {
@@ -120,7 +122,6 @@ export class UiHud implements OnInit, OnDestroy {
              return `linear-gradient(to bottom, ${colorA}, ${colorB})`;
          }
      } else if (overlay.bgType === 'RADIAL_GRADIENT') {
-         // 🔥 FIX SINTAXIS CSS: radial-gradient(circle at X% Y%, C1 0%, C2 R%, C2 100%)
          const c1Alpha = overlay.bgCenterOpacity !== undefined ? overlay.bgCenterOpacity : 0;
          const colorA = this.hexToRgba(overlay.bgColor || '#000000', c1Alpha);
          const colorB = this.hexToRgba(overlay.gradientColorB || '#000000', 1);

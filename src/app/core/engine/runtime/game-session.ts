@@ -1,12 +1,9 @@
 
-// src/app/core/engine/runtime/game-session.ts
-
 import { Injectable, inject, computed } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
 import { ObjectAnimationService } from './systems/object-animation.service';
 import { GameEventBusService } from '../events/game-event-bus.service';
-import { PlayerTriggerService } from './systems/player-trigger.service';
 import { PlayerCameraManagerService } from './systems/player-camera.service';
 import { PlayerBubbleService } from './systems/player-bubble.service';
 import { PlayerSequenceService } from './systems/player-sequence.service';
@@ -17,7 +14,6 @@ import { CharacterKinematicsService } from './systems/character-kinematics.servi
 import { PlayerAnimationService } from './systems/player-animation.service';
 import { RenderSync } from './systems/render-sync';
 import { MediaCommandSystem } from './systems/media-command.system';
-import { CinematicDirectorService } from './systems/cinematic-director.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene/scene-access.token';
 import { CameraViewMode } from '../session/game-context.model';
 import { GameMode } from '../session/game-mode.model';
@@ -32,7 +28,6 @@ export class GameSession {
   private entityManager = inject(EntityManagerService);
   private objectAnimSvc = inject(ObjectAnimationService);
   private eventBus = inject(GameEventBusService);
-  private triggerSvc = inject(PlayerTriggerService);
   private cameraSvc = inject(PlayerCameraManagerService);
   private bubbleSvc = inject(PlayerBubbleService);
   private inputSvc = inject(PlayerInputService);
@@ -45,7 +40,6 @@ export class GameSession {
   private sequenceSvc = inject(PlayerSequenceService);
   private kinematicsSvc = inject(CharacterKinematicsService);
   private playerAnimationSvc = inject(PlayerAnimationService);
-  private cinematicDirector = inject(CinematicDirectorService);
   private renderSyncSvc = inject(RenderSync);
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private triggerAudioSvc = inject(TriggerAudioService);
@@ -111,15 +105,11 @@ export class GameSession {
 
     this.sequenceSvc.resetearSecuencias();
 
-    // 🔥 FIX: Sistemas globales (Luces/Sombras) extraídos. 
-    // Aquí solo se inician los sistemas puramente dependientes de la sesión interactiva.
+    // 🔥 FIX LFC: CinematicDirector ya NO pertenece al array destructible de GameSession.
     this.systems = [
       this.inputSvc,
-      this.sequenceSvc,
-      this.cinematicDirector,
       this.kinematicsSvc,
       this.triggerAudioSvc,
-      this.triggerSvc,
       this.interactionSvc,
       this.playerAnimationSvc,
       this.cameraSvc,
@@ -177,7 +167,6 @@ export class GameSession {
     this.inputSvc.disable();
     this.interactionSvc.disable();
     this.sequenceSvc.resetearSecuencias();
-    this.cinematicDirector.stop();
 
     this.systems.forEach(system => {
         this.loopManager.unregisterSystem(system.id);

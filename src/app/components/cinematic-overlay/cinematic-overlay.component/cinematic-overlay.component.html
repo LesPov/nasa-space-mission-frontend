@@ -1,15 +1,12 @@
 
 <div class="cinematic-overlays-container">
-  <ng-container *ngFor="let el of overlays">
-    
-    <!-- ESTRUCTURA INDEPENDIZADA: BG y CONTENT son hermanos bajo el Canvas -->
+  <ng-container *ngFor="let el of overlays; trackBy: trackByOverlayId">
     
     <!-- BACKGROUND LAYER -->
     <div class="overlay-bg" [ngStyle]="getBgStyle(el)" [style.z-index]="(el.value.zIndex || 10) - 1"></div>
     
     <!-- CONTENT LAYER -->
     <div class="overlay-content" [ngStyle]="getContentStyle(el)" [style.z-index]="el.value.zIndex || 10">
-         
          <!-- IMAGE -->
          <img *ngIf="el.type === 'image' && el.value.image"
               [src]="el.value.image"

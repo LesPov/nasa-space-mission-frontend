@@ -14,10 +14,12 @@ export type GameEvent =
   | { type: 'GameResumed' }
   | { type: 'CameraViewChanged', payload: 'FPS' | 'TPS' }
   | { type: 'SequenceTriggered', payload: { sequenceId: string } }
+  | { type: 'SequenceSyncRequested', payload: { sequenceId: string, elapsedMs: number } }
   | { type: 'ToggleCameraRequested' }
   | { type: 'ChangeSceneRequested', payload: { sceneId: number } }
   | { type: 'CinematicStarted', payload: { cinematicId: string } }
   | { type: 'CinematicStopped' }
+  | { type: 'CinematicSeeked', payload: { timeMs: number } }
   | { type: 'DialogueRequested', payload: { actor?: string, text?: string, durationMs: number } }
   | { type: 'RadialMenuToggled', payload: boolean }
   | { type: 'AssetSelectedForBuild', payload: any | null };

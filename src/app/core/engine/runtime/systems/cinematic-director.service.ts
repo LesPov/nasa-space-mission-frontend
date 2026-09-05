@@ -62,6 +62,20 @@ export class CinematicDirectorService implements IUpdatable {
 
   public editorWantsCamera = false; 
 
+  // 🔥 WARMUP POOL: Cero Allocations (Sin new Vector3() por Frame)
+  private static _sPos = Vector3.Zero();
+  private static _ePos = Vector3.Zero();
+  private static _globalSPos = Vector3.Zero();
+  private static _globalEPos = Vector3.Zero();
+  private static _finalPos = Vector3.Zero();
+  private static _finalRot = Quaternion.Identity();
+  private static _qStart = Quaternion.Identity();
+  private static _qEnd = Quaternion.Identity();
+  private static _tempDir = Vector3.Zero();
+  private static _vStart = Vector3.Zero();
+  private static _vEnd = Vector3.Zero();
+  private static _forwardDir = new Vector3(0, 0, 1);
+
   constructor() {
     this.eventBus.events$.subscribe(event => {
       if (event.type === 'SequenceTriggered') { }
@@ -90,15 +104,15 @@ export class CinematicDirectorService implements IUpdatable {
     return node;
   }
 
-  private getLookQuat(pos: Vector3, target: Vector3, fallbackForward: Vector3): Quaternion {
-      let dir = target.subtract(pos);
-      if (dir.lengthSquared() < 0.001) dir = fallbackForward.clone();
-      dir.normalize();
+  private getLookQuatToRef(pos: Vector3, target: Vector3, fallbackForward: Vector3, ref: Quaternion): void {
+      target.subtractToRef(pos, CinematicDirectorService._tempDir);
+      if (CinematicDirectorService._tempDir.lengthSquared() < 0.001) CinematicDirectorService._tempDir.copyFrom(fallbackForward);
+      CinematicDirectorService._tempDir.normalize();
       
-      const yaw = Math.atan2(dir.x, dir.z);
-      const pitch = Math.atan2(-dir.y, Math.sqrt(dir.x * dir.x + dir.z * dir.z));
+      const yaw = Math.atan2(CinematicDirectorService._tempDir.x, CinematicDirectorService._tempDir.z);
+      const pitch = Math.atan2(-CinematicDirectorService._tempDir.y, Math.sqrt(CinematicDirectorService._tempDir.x * CinematicDirectorService._tempDir.x + CinematicDirectorService._tempDir.z * CinematicDirectorService._tempDir.z));
       
-      return Quaternion.RotationYawPitchRoll(yaw, pitch, 0);
+      Quaternion.RotationYawPitchRollToRef(yaw, pitch, 0, ref);
   }
 
   public takeOverCamera(prevOwner: CameraOwner, prevCam: any) {
@@ -236,7 +250,7 @@ export class CinematicDirectorService implements IUpdatable {
     if (!this.activeSequence) return;
     CinematicLogger.logPlayback('SEEK', `${Math.round(timeMs)}ms`);
     this.currentTimeMs = Math.max(0, Math.min(timeMs, this.activeSequence.durationMs));
-    this.lastEvaluatedTimeMs = this.currentTimeMs;
+    this.lastEvaluatedTimeMs = this.currentTimeMs; 
     
     if (!this.cinematicCamera) {
        this.cinematicCamera = this.cameraFactory.getCamera('CINEMATIC', this.motor3d.getScene());
@@ -248,6 +262,8 @@ export class CinematicDirectorService implements IUpdatable {
     }
     
     this.evaluateFrame(0, true);
+    // Emite el evento de Seek para sincronizar luces y secuencias automáticas deterministas
+    this.eventBus.emit({ type: 'CinematicSeeked', payload: { timeMs: this.currentTimeMs } });
   }
 
   public update(dtMs: number): void {
@@ -310,7 +326,6 @@ export class CinematicDirectorService implements IUpdatable {
               if (this.currentTimeMs >= start && this.currentTimeMs <= end) {
                   const elapsed = this.currentTimeMs - start;
                   
-                  // 🔥 ACTUALIZADO: Función genérica de interpolación con control independiente de earlyOut
                   const calcAnim = (elapsedTime: number, durTotal: number, delayIn: number, fIn: number, fOut: number, aIn: string, aOut: string, earlyOut: number = 0) => {
                       let o = 1, x = 0, y = 0, s = 1;
                       const actualEnd = durTotal - earlyOut;
@@ -343,15 +358,13 @@ export class CinematicDirectorService implements IUpdatable {
                       return { o, x, y, s };
                   };
 
-                  // Animación del contenedor general (Fondo Local)
                   const containerAnim = calcAnim(
                       elapsed, dur, 0, 
                       kf.value.fadeInMs || 0, kf.value.fadeOutMs || 0, 
                       kf.value.animIn || 'FADE_IN', kf.value.animOut || 'FADE_OUT',
-                      0 // El fondo usa la duración total completa
+                      0 
                   );
                   
-                  // Propiedades independientes para el contenido visual (Imagen/Texto)
                   const cDelay = kf.value.contentDelayMs || 0;
                   const cEarlyOut = kf.value.contentEarlyOutMs || 0;
                   const cFadeIn = kf.value.contentFadeInMs !== undefined ? kf.value.contentFadeInMs : (kf.value.fadeInMs || 0);
@@ -363,7 +376,7 @@ export class CinematicDirectorService implements IUpdatable {
                       elapsed, dur, cDelay, 
                       cFadeIn, cFadeOut, 
                       cAnimIn, cAnimOut,
-                      cEarlyOut // Descuenta milisegundos para que salga antes que el fondo
+                      cEarlyOut
                   );
                   
                   let realType = track.type;
@@ -410,10 +423,29 @@ export class CinematicDirectorService implements IUpdatable {
              }
          }
       }
-      else if (track.type === 'event' && !isScrubbing) {
+      else if (track.type === 'event') {
          for (const kf of track.keyframes) {
-             if (kf.timeMs > this.lastEvaluatedTimeMs && kf.timeMs <= this.currentTimeMs) {
-                CinematicLogger.logPlayback('EVENT TRIGGERED', kf.value.eventName);
+             if (isScrubbing) {
+                 if (kf.timeMs <= this.currentTimeMs) {
+                     try {
+                         const payloadStr = kf.value.eventPayload || '{}';
+                         const payload = typeof payloadStr === 'string' ? JSON.parse(payloadStr) : payloadStr;
+                         if (payload && payload.sequenceId) {
+                             const elapsed = this.currentTimeMs - kf.timeMs;
+                             this.eventBus.emit({ type: 'SequenceSyncRequested', payload: { sequenceId: payload.sequenceId, elapsedMs: elapsed } });
+                         }
+                     } catch(e) {}
+                 }
+             } else {
+                 if (kf.timeMs > this.lastEvaluatedTimeMs && kf.timeMs <= this.currentTimeMs) {
+                     CinematicLogger.logPlayback('EVENT TRIGGERED', kf.value.eventName);
+                     try {
+                         const payloadStr = kf.value.eventPayload || '{}';
+                         const payload = typeof payloadStr === 'string' ? JSON.parse(payloadStr) : payloadStr;
+                         const evtName = kf.value.eventName || 'SequenceTriggered';
+                         this.eventBus.emit({ type: evtName as any, payload });
+                     } catch(e) {}
+                 }
              }
          }
       }
@@ -441,48 +473,51 @@ export class CinematicDirectorService implements IUpdatable {
       const val1 = kf1.value;
       const val2 = kf2.value;
 
-      const sPos = new Vector3(val1.position?.x || 0, val1.position?.y || 0, val1.position?.z || 0);
-      const ePos = new Vector3(val2.position?.x || 0, val2.position?.y || 0, val2.position?.z || 0);
+      CinematicDirectorService._sPos.set(val1.position?.x || 0, val1.position?.y || 0, val1.position?.z || 0);
+      CinematicDirectorService._ePos.set(val2.position?.x || 0, val2.position?.y || 0, val2.position?.z || 0);
       
-      let globalSPos = sPos;
-      let globalEPos = ePos;
-      let baseMatrix = Matrix.Identity();
+      let baseMatrix = null;
+      let useGlobal = false;
 
       if (val1.useLocalSpaceUid) {
           const baseEntity = this.actorResolver.resolve(val1.useLocalSpaceUid);
           if (baseEntity && baseEntity.view) {
               baseMatrix = baseEntity.view.getWorldMatrix();
-              globalSPos = Vector3.TransformCoordinates(sPos, baseMatrix);
-              globalEPos = Vector3.TransformCoordinates(ePos, baseMatrix);
+              Vector3.TransformCoordinatesToRef(CinematicDirectorService._sPos, baseMatrix, CinematicDirectorService._globalSPos);
+              Vector3.TransformCoordinatesToRef(CinematicDirectorService._ePos, baseMatrix, CinematicDirectorService._globalEPos);
+              useGlobal = true;
           }
       }
 
+      const pStart = useGlobal ? CinematicDirectorService._globalSPos : CinematicDirectorService._sPos;
+      const pEnd = useGlobal ? CinematicDirectorService._globalEPos : CinematicDirectorService._ePos;
+
       let moveMode = val1.movementMode || 'linear';
-      let finalPos = Vector3.Lerp(globalSPos, globalEPos, t);
+      Vector3.LerpToRef(pStart, pEnd, t, CinematicDirectorService._finalPos);
       const animationName = val1.animationName || 'idle';
 
       const targetUid = val1.targetUid || val1.cameraTargetUid || track.targetUid;
       const orientMode = val1.orientationMode || track.orientationMode || 'free';
 
       if (moveMode === 'hold') {
-          finalPos = globalSPos; 
+          CinematicDirectorService._finalPos.copyFrom(pStart);
       } 
       else if (moveMode === 'orbit' && targetUid) {
           const targetEntity = this.actorResolver.resolve(targetUid);
           if (targetEntity && targetEntity.view) {
               const center = targetEntity.view.getAbsolutePosition();
               
-              const vStart = globalSPos.subtract(center);
-              const vEnd = globalEPos.subtract(center);
+              pStart.subtractToRef(center, CinematicDirectorService._vStart);
+              pEnd.subtractToRef(center, CinematicDirectorService._vEnd);
               
-              const rStart = Math.sqrt(vStart.x * vStart.x + vStart.z * vStart.z);
-              const rEnd = Math.sqrt(vEnd.x * vEnd.x + vEnd.z * vEnd.z);
+              const rStart = Math.sqrt(CinematicDirectorService._vStart.x * CinematicDirectorService._vStart.x + CinematicDirectorService._vStart.z * CinematicDirectorService._vStart.z);
+              const rEnd = Math.sqrt(CinematicDirectorService._vEnd.x * CinematicDirectorService._vEnd.x + CinematicDirectorService._vEnd.z * CinematicDirectorService._vEnd.z);
               const currentRadius = rStart + (rEnd - rStart) * t;
               
-              const currentY = globalSPos.y + (globalEPos.y - globalSPos.y) * t;
+              const currentY = pStart.y + (pEnd.y - pStart.y) * t;
               
-              const startAngle = Math.atan2(vStart.z, vStart.x);
-              let endAngle = Math.atan2(vEnd.z, vEnd.x);
+              const startAngle = Math.atan2(CinematicDirectorService._vStart.z, CinematicDirectorService._vStart.x);
+              let endAngle = Math.atan2(CinematicDirectorService._vEnd.z, CinematicDirectorService._vEnd.x);
               
               let baseDiff = endAngle - startAngle;
               if (baseDiff > Math.PI) baseDiff -= Math.PI * 2;
@@ -499,7 +534,7 @@ export class CinematicDirectorService implements IUpdatable {
               const totalAngleDelta = baseDiff + (turns * Math.PI * 2 * dirMultiplier);
               const currentAngle = startAngle + (totalAngleDelta * t);
               
-              finalPos = new Vector3(
+              CinematicDirectorService._finalPos.set(
                   center.x + Math.cos(currentAngle) * currentRadius,
                   currentY,
                   center.z + Math.sin(currentAngle) * currentRadius
@@ -507,29 +542,49 @@ export class CinematicDirectorService implements IUpdatable {
           }
       }
 
-      let finalRot: Quaternion;
-
       if ((orientMode === 'lookAt' || moveMode === 'orbit') && targetUid) {
           const targetEntity = this.actorResolver.resolve(targetUid);
           if (targetEntity && targetEntity.view) {
               const targetPos = targetEntity.view.getAbsolutePosition();
-              finalRot = this.getLookQuat(finalPos, targetPos, Vector3.Forward());
+              this.getLookQuatToRef(CinematicDirectorService._finalPos, targetPos, CinematicDirectorService._forwardDir, CinematicDirectorService._finalRot);
           } else {
-              finalRot = Quaternion.Identity();
+              CinematicDirectorService._finalRot.copyFromFloats(0,0,0,1);
           }
       } else {
-          const sRotE = new Vector3(val1.rotation?.x || 0, val1.rotation?.y || 0, val1.rotation?.z || 0);
-          let qStart = Quaternion.FromEulerAngles(sRotE.x * Math.PI/180, sRotE.y * Math.PI/180, sRotE.z * Math.PI/180);
-          if (val1.useLocalSpaceUid) qStart = Quaternion.FromRotationMatrix(baseMatrix.getRotationMatrix()).multiply(qStart);
+          Quaternion.FromEulerAnglesToRef(
+              (val1.rotation?.x || 0) * Math.PI/180, 
+              (val1.rotation?.y || 0) * Math.PI/180, 
+              (val1.rotation?.z || 0) * Math.PI/180,
+              CinematicDirectorService._qStart
+          );
+          if (baseMatrix) {
+              const baseRot = Quaternion.FromRotationMatrix(baseMatrix.getRotationMatrix());
+              baseRot.multiplyToRef(CinematicDirectorService._qStart, CinematicDirectorService._qStart);
+          }
 
-          const eRotE = new Vector3(val2.rotation?.x || 0, val2.rotation?.y || 0, val2.rotation?.z || 0);
-          let qEnd = Quaternion.FromEulerAngles(eRotE.x * Math.PI/180, eRotE.y * Math.PI/180, eRotE.z * Math.PI/180);
-          if (val1.useLocalSpaceUid) qEnd = Quaternion.FromRotationMatrix(baseMatrix.getRotationMatrix()).multiply(qEnd);
+          Quaternion.FromEulerAnglesToRef(
+              (val2.rotation?.x || 0) * Math.PI/180, 
+              (val2.rotation?.y || 0) * Math.PI/180, 
+              (val2.rotation?.z || 0) * Math.PI/180,
+              CinematicDirectorService._qEnd
+          );
+          if (baseMatrix) {
+              const baseRot = Quaternion.FromRotationMatrix(baseMatrix.getRotationMatrix());
+              baseRot.multiplyToRef(CinematicDirectorService._qEnd, CinematicDirectorService._qEnd);
+          }
 
-          finalRot = moveMode === 'hold' ? qStart : Quaternion.Slerp(qStart, qEnd, t);
+          if (moveMode === 'hold') {
+              CinematicDirectorService._finalRot.copyFrom(CinematicDirectorService._qStart);
+          } else {
+              Quaternion.SlerpToRef(CinematicDirectorService._qStart, CinematicDirectorService._qEnd, t, CinematicDirectorService._finalRot);
+          }
       }
 
       if (isCamera && this.cinematicCamera) {
+          if (!this.cinematicCamera.rotationQuaternion) {
+              this.cinematicCamera.rotationQuaternion = new Quaternion();
+          }
+
           if (activeCameraId) {
               const camDef = this.cameraRegistry.getCamera(activeCameraId);
               if (camDef) {
@@ -539,19 +594,17 @@ export class CinematicDirectorService implements IUpdatable {
                       const targetEntity = this.actorResolver.resolve(camDef.cameraTargetUid);
                       if (targetEntity && targetEntity.view) {
                           const targetPos = targetEntity.view.getAbsolutePosition();
-                          this.cinematicCamera.rotationQuaternion = this.getLookQuat(this.cinematicCamera.position, targetPos, Vector3.Forward());
+                          this.getLookQuatToRef(this.cinematicCamera.position, targetPos, CinematicDirectorService._forwardDir, CinematicDirectorService._finalRot);
+                          this.cinematicCamera.rotationQuaternion.copyFrom(CinematicDirectorService._finalRot);
                       } else {
-                          this.cinematicCamera.rotationQuaternion = Quaternion.Identity();
+                          this.cinematicCamera.rotationQuaternion.copyFromFloats(0,0,0,1);
                       }
                   } else {
-                      const q = Quaternion.FromEulerAngles(camDef.rotation.x * Math.PI/180, camDef.rotation.y * Math.PI/180, camDef.rotation.z * Math.PI/180);
-                      this.cinematicCamera.rotationQuaternion = q;
+                      Quaternion.FromEulerAnglesToRef(camDef.rotation.x * Math.PI/180, camDef.rotation.y * Math.PI/180, camDef.rotation.z * Math.PI/180, this.cinematicCamera.rotationQuaternion);
                   }
 
                   if (camDef.fov !== undefined) this.cinematicCamera.fov = camDef.fov;
                   return; 
-              } else {
-                  CinematicLogger.warn(`Cámara inexistente: No se encontró la cámara '${activeCameraId}'. Usando Interpolación fallback.`);
               }
           }
 
@@ -563,23 +616,25 @@ export class CinematicDirectorService implements IUpdatable {
           if (currentFov > Math.PI) currentFov = Math.PI;
 
           this.cinematicCamera.fov = currentFov;
-          this.cinematicCamera.position.copyFrom(finalPos);
-          this.cinematicCamera.rotationQuaternion = finalRot;
+          this.cinematicCamera.position.copyFrom(CinematicDirectorService._finalPos);
+          this.cinematicCamera.rotationQuaternion.copyFrom(CinematicDirectorService._finalRot);
       } 
       else if (!isCamera && track.targetUid) {
           const entity = this.actorResolver.resolve(track.targetUid);
           if (entity && entity.view) {
-              entity.transform.position = { x: finalPos.x, y: finalPos.y, z: finalPos.z };
+              entity.transform.position = { x: CinematicDirectorService._finalPos.x, y: CinematicDirectorService._finalPos.y, z: CinematicDirectorService._finalPos.z };
               
               if (entity.transform.rotationQuaternion) {
-                  entity.transform.rotationQuaternion = { x: finalRot.x, y: finalRot.y, z: finalRot.z, w: finalRot.w };
+                  entity.transform.rotationQuaternion = { x: CinematicDirectorService._finalRot.x, y: CinematicDirectorService._finalRot.y, z: CinematicDirectorService._finalRot.z, w: CinematicDirectorService._finalRot.w };
               } else {
-                  const euler = finalRot.toEulerAngles();
+                  const euler = CinematicDirectorService._finalRot.toEulerAngles();
                   entity.transform.rotation = { x: euler.x, y: euler.y, z: euler.z };
               }
               
-              entity.view.position.copyFrom(finalPos);
-              entity.view.rotationQuaternion = finalRot;
+              entity.view.position.copyFrom(CinematicDirectorService._finalPos);
+              if (!entity.view.rotationQuaternion) entity.view.rotationQuaternion = new Quaternion();
+              entity.view.rotationQuaternion.copyFrom(CinematicDirectorService._finalRot);
+              
               entity.view.computeWorldMatrix(true);
               
               if (entity.playerRuntime) {

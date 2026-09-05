@@ -149,13 +149,16 @@ export class EditorSceneService {
     this.instanciarPrefabFull(prefabData, camTarget);
   }
 
+  // 🔥 SOLUCIÓN AL ERROR TS2345: La firma ahora incluye correctamente las cámaras reusables.
   public obtenerDatosParaGuardar(escenaActualData: any, forceFull: boolean = false): { 
     sceneObjectsDelta: any[]; 
     triggersDelta: any[]; 
     cinematicsDelta: any[]; 
+    cinematicCamerasDelta: any[]; 
     deletedObjects: string[]; 
     deletedTriggers: string[]; 
     deletedCinematics: string[]; 
+    deletedCinematicCameras: string[];
     environmentSettings: any; 
     spawnPoint: any 
   } { 

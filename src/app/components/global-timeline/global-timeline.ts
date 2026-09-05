@@ -1,5 +1,4 @@
 
-
 import { Component, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { TimelineClipsTab } from './tabs/timeline-clips-tab/timeline-clips-tab';
@@ -9,6 +8,7 @@ import { TimelinePrefabsTab } from './tabs/timeline-prefabs-tab/timeline-prefabs
 import { TimelinePlatformTab } from './tabs/timeline-platform-tab/timeline-platform-tab';
 import { EditorCinematicProxyService } from '../../services/editor-cinematic-proxy.service';
 import { EditorCinematicToolsService } from '../../services/editor-cinematic-tools.service';
+import { EditorStateService } from '../../services/editor/editor-state.service';
   
 @Component({
   selector: 'app-global-timeline', 
@@ -25,12 +25,12 @@ import { EditorCinematicToolsService } from '../../services/editor-cinematic-too
   styleUrl: './global-timeline.css'
 })
 export class GlobalTimeline {
-  public activeTab: string = 'clips';
+  public stateSvc = inject(EditorStateService);
   private proxySvc = inject(EditorCinematicProxyService);
   private cinematicTools = inject(EditorCinematicToolsService);
 
   cambiarTab(tab: string) {
-    this.activeTab = tab;
+    this.stateSvc.setActiveBottomTab(tab);
     if (tab !== 'director') {
         this.proxySvc.clear();
         if (this.cinematicTools.isInsideCamera) {

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, MeshBuilder, Tags, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
@@ -11,6 +12,7 @@ import { WorldSettingsService } from '../../world/world-settings.service';
 import { GameContextService } from '../../session/game-context.service';
 import { SpawnManagerService } from '../../runtime/systems/spawn-manager.service';
 import { EditorCinematicService } from '../../../../services/editor/editor-cinematic.service';
+import { CinematicCameraRegistryService } from '../../runtime/cameras/cinematic-camera-registry.service';
 import { PlayerCameraManagerService } from '../../runtime/systems/player-camera.service';
 import { PlayerTriggerService } from '../../runtime/systems/player-trigger.service';
 import { SceneLoadPayload, SceneObjectDto, TriggerDto } from '../../models/api-dto.model';
@@ -31,6 +33,7 @@ export class CoreSceneLoaderService {
   private gameContext = inject(GameContextService);
   private spawnManager = inject(SpawnManagerService);
   private cinematicSvc = inject(EditorCinematicService);
+  private cameraRegistry = inject(CinematicCameraRegistryService);
   private cameraSvc = inject(PlayerCameraManagerService); 
   private triggerSvc = inject(PlayerTriggerService);
   private dynamicLighting = inject(DynamicLightingSystem); 
@@ -70,6 +73,10 @@ export class CoreSceneLoaderService {
     this.worldSettingsSvc.applyToScene(scene, (m) => this.motor3d.setVisualMode(m));
 
     this.cinematicSvc.loadFromData(dataBD.cinematics || dataBD.cinematicsDelta || []);
+    
+    if (dataBD.cinematicCameras || dataBD.cinematicCamerasDelta) {
+       this.cameraRegistry.loadFromData(dataBD.cinematicCameras || dataBD.cinematicCamerasDelta || []);
+    }
 
     scene.cameras.forEach(cam => cam.maxZ = 10000);
 
@@ -134,11 +141,9 @@ export class CoreSceneLoaderService {
       });
     }, 150);
 
-    // 🔥 PRELOAD REAL
     this.dynamicLighting.prepareAllLights(); 
     this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
 
-    // 🔥 WARM-UP DE GPU PROFUNDO (Compilación estricta antes de jugar)
     await new Promise<void>((resolve) => {
       scene.executeWhenReady(() => {
         
@@ -161,12 +166,9 @@ export class CoreSceneLoaderService {
             }
         }
 
-        // 🔥 FIX ARRANQUE FRÍO: Iniciamos los sistemas de luz y sombra ANTES de renderizar el warm-up
         this.dynamicLighting.start(); 
         this.shadowOrchestrator.start(); 
 
-        // 🔥 OBLIGAR A RENDERIZAR VARIOS FRAMES INVISIBLES CON LUCES PRENDIDAS
-        // Esto garantiza que el Shadow Generator calcule las cascadas y los Shaders se compilen con las luces conectadas
         for(let i = 0; i < 5; i++) {
             scene.render(); 
         }

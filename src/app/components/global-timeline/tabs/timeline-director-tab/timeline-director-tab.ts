@@ -1,72 +1,328 @@
 
-import { Component, ChangeDetectorRef, inject, HostListener, OnInit, OnDestroy } from '@angular/core';
+import { Component, ChangeDetectorRef, inject, OnInit, OnDestroy, effect, untracked, ViewChild, ElementRef, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { Tags } from '@babylonjs/core';
 import { EditorStateService } from '../../../../services/editor/editor-state.service';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 import { EditorCinematicService } from '../../../../services/editor/editor-cinematic.service';
-import { CinematicDirectorService } from '../../../../core/engine/runtime/systems/cinematic-director.service';
-  import { CinematicSequence, CinematicTrack, CinematicClip } from '../../../../core/engine/models/cinematic.model';
+import { CinematicSequence, CinematicTrack, CinematicKeyframe } from '../../../../core/engine/models/cinematic.model';
 import { Subscription } from 'rxjs';
 import { EditorCinematicToolsService } from '../../../../services/editor-cinematic-tools.service';
 import { EditorCinematicProxyService } from '../../../../services/editor-cinematic-proxy.service';
+import { CinematicPlaybackManagerService } from '../../../../core/engine/runtime/cinematics/cinematic-playback-manager.service';
+import { EditorLayoutService } from '../../../../services/editor/editor-layout.service';
+import { CinematicCameraRegistryService } from '../../../../core/engine/runtime/cameras/cinematic-camera-registry.service';
+import { CinematicLogger } from '../../../../core/engine/runtime/cinematics/cinematic-logger';
 
 @Component({
   selector: 'app-timeline-director-tab',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, ],
   templateUrl: './timeline-director-tab.html',
   styleUrls: ['./timeline-director-tab.css']
 })
 export class TimelineDirectorTab implements OnInit, OnDestroy {
+  @ViewChild('scrollWrapper') scrollWrapper!: ElementRef<HTMLDivElement>;
+
   public stateSvc = inject(EditorStateService);
   public mapaSvc = inject(EditorMapaService);
-  private entityManager = inject(EntityManagerService);
   public cinematicSvc = inject(EditorCinematicService);
-  public cinematicDirector = inject(CinematicDirectorService);
+  public playbackManager = inject(CinematicPlaybackManagerService);
   public proxySvc = inject(EditorCinematicProxyService);
   public cinematicTools = inject(EditorCinematicToolsService);
+  public layoutUI = inject(EditorLayoutService);
+  public cameraRegistry = inject(CinematicCameraRegistryService);
   private cdr = inject(ChangeDetectorRef);
 
   get cinematics() { return this.cinematicSvc.cinematics(); }
   
-  public selectedCinematicId: string | null = null;
-  public selectedTrackIndex: number = -1;
-  public selectedClipIndex: number = -1;
-  public cinematicPlayhead: number = 0;
-  public cinematicIsPlaying = false;
-  private cinematicTimer: any;
-  public sceneEntities: any[] = [];
   public isScrubbing = false;
-
+  public isPanning = false;
+  private panStartX = 0;
+  private scrollStartX = 0;
+  private draggedKeyframe: { trackIdx: number, kfId: string } | null = null;
+  
   private subs: Subscription[] = [];
 
-  ngOnInit() {
-    this.sceneEntities = this.entityManager.getAllEntities()
-      .map(e => ({ uid: e.uid, name: e.name }))
-      .sort((a,b) => a.name.localeCompare(b.name));
+  // =====================================
+  // SCALING & ZOOM LOGIC
+  // =====================================
+  public pixelsPerSecond = 100;
+  public zoomFactor = 1.0;
 
+  get timelineMaxMs(): number {
+     // RANGO BASE DEFINITIVO Y OBLIGATORIO DE 5 MINUTOS: 300,000ms
+     const cinematicDuration = this.cinematicSvc.currentCinematic()?.durationMs || 5000;
+     return Math.max(cinematicDuration, 300000); 
+  }
+
+  get timelineWidth(): number {
+     return (this.timelineMaxMs / 1000) * this.pixelsPerSecond * this.zoomFactor;
+  }
+
+  timeToPx(ms: number): number {
+     return (ms / 1000) * this.pixelsPerSecond * this.zoomFactor;
+  }
+
+  pxToTime(px: number): number {
+     return (px / (this.pixelsPerSecond * this.zoomFactor)) * 1000;
+  }
+
+  formatTime(ms: number): string {
+      const totalS = Math.floor(ms / 1000);
+      const mins = Math.floor(totalS / 60);
+      const secs = totalS % 60;
+      const millis = Math.floor(ms % 1000);
+      return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`;
+  }
+
+  formatTimeShort(ms: number): string {
+      const totalS = Math.floor(ms / 1000);
+      const mins = Math.floor(totalS / 60);
+      const secs = totalS % 60;
+      if (mins > 0) return `${mins}:${secs.toString().padStart(2, '0')}`;
+      return `${secs}s`;
+  }
+
+  zoomIn() { 
+      this.zoomFactor = Math.min(20.0, this.zoomFactor * 1.25); 
+      CinematicLogger.logPlayback('ZOOM', `x${this.zoomFactor.toFixed(2)}`); 
+  }
+  
+  zoomOut() { 
+      this.zoomFactor = Math.max(0.01, this.zoomFactor / 1.25); 
+      CinematicLogger.logPlayback('ZOOM', `x${this.zoomFactor.toFixed(2)}`); 
+  }
+
+  fitTimeline() {
+     if (!this.scrollWrapper) return;
+     const container = this.scrollWrapper.nativeElement;
+     const availableWidth = Math.max(100, container.clientWidth - 240); // 220px header + padding
+     // Adaptar al Rango Total Visual del Escenario (timelineMaxMs)
+     const durationS = this.timelineMaxMs / 1000;
+     if (durationS > 0) {
+        this.zoomFactor = availableWidth / (durationS * this.pixelsPerSecond);
+        CinematicLogger.logPlayback('FIT', `x${this.zoomFactor.toFixed(2)}`);
+     }
+  }
+
+  getTimelineMarks(): number[] {
+      const marks = [];
+      const pxPerSec = this.pixelsPerSecond * this.zoomFactor;
+      
+      let stepMs = 1000;
+      if (pxPerSec < 5) stepMs = 60000; // 1 min
+      else if (pxPerSec < 15) stepMs = 10000; // 10s
+      else if (pxPerSec < 40) stepMs = 5000; // 5s
+      else if (pxPerSec > 200) stepMs = 500; // 0.5s
+      else if (pxPerSec > 500) stepMs = 100; // 0.1s
+
+      for (let i = 0; i <= this.timelineMaxMs; i += stepMs) {
+        marks.push(i);
+      }
+      return marks;
+  }
+
+  onScroll() { }
+
+  onScrollWrapperMouseDown(event: MouseEvent) {
+      if (event.button === 1 || (event.button === 0 && event.altKey)) {
+          this.isPanning = true;
+          this.panStartX = event.clientX;
+          this.scrollStartX = this.scrollWrapper.nativeElement.scrollLeft;
+          event.preventDefault();
+      }
+  }
+
+  onScrollWrapperWheel(event: WheelEvent) {
+      if (event.shiftKey) {
+          this.scrollWrapper.nativeElement.scrollLeft += event.deltaY;
+          event.preventDefault();
+      } else if (event.ctrlKey || event.metaKey) {
+          if (event.deltaY < 0) this.zoomIn();
+          else this.zoomOut();
+          event.preventDefault();
+      }
+  }
+
+  onTimelineMouseDown(event: MouseEvent) {
+      if (event.button !== 0) return;
+      this.isScrubbing = true;
+      this.updateScrub(event);
+  }
+
+  @HostListener('window:mousemove', ['$event'])
+  onGlobalMouseMove(event: MouseEvent) {
+      if (this.isScrubbing) {
+         this.updateScrub(event);
+      } else if (this.isPanning) {
+         const dx = event.clientX - this.panStartX;
+         this.scrollWrapper.nativeElement.scrollLeft = this.scrollStartX - dx;
+      } else if (this.draggedKeyframe) {
+         const currentCin = this.cinematicSvc.currentCinematic();
+         if (!currentCin) return;
+         
+         const track = currentCin.tracks[this.draggedKeyframe.trackIdx];
+         const kf = track.keyframes.find(k => k.id === this.draggedKeyframe!.kfId);
+         
+         if (kf && this.scrollWrapper) {
+            const rect = this.scrollWrapper.nativeElement.getBoundingClientRect();
+            let x = event.clientX - rect.left - 220 + this.scrollWrapper.nativeElement.scrollLeft;
+            x = Math.max(0, x);
+            let newTime = this.pxToTime(x);
+            
+            // Limitación Visual de Keyframe Máximo de 5 Minutos (Base Framework Lógica)
+            const clampedTime = Math.max(0, Math.min(newTime, 300000)); 
+            
+            if (kf.timeMs !== clampedTime) {
+                kf.timeMs = clampedTime;
+                
+                // 🔥 AUTOEXPANSIÓN LÓGICA DURANTE DRAG
+                if (kf.timeMs > currentCin.durationMs) {
+                    CinematicLogger.logAutoExpand(currentCin.durationMs, kf.timeMs);
+                    currentCin.durationMs = kf.timeMs;
+                }
+                
+                this.cdr.detectChanges();
+            }
+         }
+      }
+  }
+
+  @HostListener('window:mouseup', ['$event'])
+  onGlobalMouseUp(event: MouseEvent) {
+      this.isScrubbing = false;
+      this.isPanning = false;
+      
+      if (this.draggedKeyframe) {
+          const currentCin = this.cinematicSvc.currentCinematic();
+          if (currentCin) {
+              const track = currentCin.tracks[this.draggedKeyframe.trackIdx];
+              track.keyframes.sort((a,b) => a.timeMs - b.timeMs);
+              this.cinematicSvc.selectedKeyframeId.set(this.draggedKeyframe.kfId);
+              
+              this.persistCinematics();
+              this.proxySvc.rebuild(currentCin);
+          }
+          this.draggedKeyframe = null;
+          this.cdr.detectChanges();
+      }
+  }
+
+  updateScrub(event: MouseEvent) {
+      if (!this.scrollWrapper) return;
+      const rect = this.scrollWrapper.nativeElement.getBoundingClientRect();
+      const x = Math.max(0, event.clientX - rect.left - 220 + this.scrollWrapper.nativeElement.scrollLeft);
+      const timeMs = this.pxToTime(x);
+      
+      // La reproducción sí se detiene estrictamente cuando se alcanza el final configurado de la Cinemática.
+      const durationMs = this.cinematicSvc.currentCinematic()?.durationMs || 5000;
+      const clampedTime = Math.max(0, Math.min(timeMs, durationMs));
+
+      this.playbackManager.seek(clampedTime);
+  }
+
+  // =====================================
+  // CORE TIMELINE LOGIC
+  // =====================================
+
+  constructor() {
+    effect(() => {
+       const playhead = this.playbackManager.playheadMs();
+       if (this.playbackManager.isPlaying()) {
+           this.autoScrollToPlayhead(playhead);
+       }
+    });
+
+    effect(() => {
+      const selected = this.stateSvc.objetoSeleccionado();
+      untracked(() => {
+        if (selected && Tags.MatchesQuery(selected, "cinematic_proxy")) {
+           if (selected.name.startsWith('proxy_reusable_cam_')) {
+               let camId = selected.name.replace('proxy_reusable_cam_', '');
+               if (this.cinematicSvc.selectedReusableCameraId() !== camId) {
+                   this.cinematicSvc.selectedReusableCameraId.set(camId);
+                   this.cinematicSvc.selectedTrackIndex.set(-1);
+                   this.cinematicSvc.selectedKeyframeId.set(null);
+                   CinematicLogger.logSelection('ReusableCamera', camId);
+                   this.layoutUI.showInspector.set(true);
+                   this.cdr.detectChanges();
+               }
+           } else {
+               let kfId = selected.name.replace('proxy_cam_', '');
+               this.cinematicSvc.selectedReusableCameraId.set(null);
+               const currentCin = this.cinematicSvc.currentCinematic();
+               if (currentCin) {
+                   currentCin.tracks.forEach((track, tIdx) => {
+                       const kf = track.keyframes.find(k => k.id === kfId);
+                       if (kf) {
+                           if (this.cinematicSvc.selectedTrackIndex() !== tIdx || this.cinematicSvc.selectedKeyframeId() !== kfId) {
+                               this.cinematicSvc.selectedTrackIndex.set(tIdx);
+                               this.cinematicSvc.selectedKeyframeId.set(kfId);
+                               CinematicLogger.logSelection(`Track_${tIdx}`, kfId);
+                               this.layoutUI.showInspector.set(true); 
+                               this.autoScrollToPlayhead(kf.timeMs);
+                               this.cdr.detectChanges();
+                           }
+                       }
+                   });
+               }
+           }
+        }
+      });
+    });
+  }
+
+  autoScrollToPlayhead(ms: number) {
+      if (!this.scrollWrapper) return;
+      const px = this.timeToPx(ms);
+      const wrapper = this.scrollWrapper.nativeElement;
+      const leftOffset = 220; 
+      const visibleStart = wrapper.scrollLeft;
+      const visibleEnd = wrapper.scrollLeft + wrapper.clientWidth - leftOffset;
+      
+      if (this.isPanning || this.isScrubbing || this.draggedKeyframe) return;
+
+      if (px < visibleStart || px > visibleEnd - 50) {
+          wrapper.scrollLeft = Math.max(0, px - 50); 
+      }
+  }
+
+  ngOnInit() {
     this.subs.push(
       this.cinematicSvc.onProxyMoved.subscribe(data => {
-        if (this.currentCinematic) {
-          this.currentCinematic.tracks.forEach(track => {
-            track.clips.forEach(clip => {
-              if (clip.id === data.clipId) {
-                 clip.startPosition = { x: data.position.x, y: data.position.y, z: data.position.z };
-                 clip.startRotation = { x: data.rotation.x, y: data.rotation.y, z: data.rotation.z };
-              }
-            });
-          });
-          this.persistCinematics();
-          this.cdr.detectChanges();
+        if (data.type === 'keyframe') {
+            const currentCin = this.cinematicSvc.currentCinematic();
+            if (currentCin) {
+              currentCin.tracks.forEach(track => {
+                track.keyframes.forEach(kf => {
+                  if (kf.id === data.id) {
+                     if (!kf.value) kf.value = {};
+                     kf.value.position = { x: data.position.x, y: data.position.y, z: data.position.z };
+                     kf.value.rotation = { x: data.rotation.x, y: data.rotation.y, z: data.rotation.z };
+                  }
+                });
+              });
+              this.persistCinematics();
+              this.cdr.detectChanges();
+            }
+        } else if (data.type === 'camera') {
+            const camDef = this.cameraRegistry.getCamera(data.id);
+            if (camDef) {
+               camDef.position = { x: data.position.x, y: data.position.y, z: data.position.z };
+               camDef.rotation = { x: data.rotation.x, y: data.rotation.y, z: data.rotation.z };
+               this.cameraRegistry.registerCamera(camDef);
+               this.persistCinematics();
+               this.cdr.detectChanges();
+            }
         }
       })
     );
     
-    // Automatically rebuild proxies if there is a selected cinematic initially
-    if (this.currentCinematic) {
-       this.proxySvc.rebuild(this.currentCinematic);
+    if (this.cinematicSvc.currentCinematic()) {
+       this.proxySvc.rebuild(this.cinematicSvc.currentCinematic());
     }
   }
 
@@ -75,22 +331,65 @@ export class TimelineDirectorTab implements OnInit, OnDestroy {
     if (this.cinematicTools.isInsideCamera) {
         this.cinematicTools.salirCamara();
     }
+    this.playbackManager.stop();
     this.subs.forEach(s => s.unsubscribe());
-    if (this.cinematicTimer) clearInterval(this.cinematicTimer);
   }
 
-  get currentCinematic() { return this.cinematics.find(c => c.id === this.selectedCinematicId) || null; }
-  get currentTrack() { return this.currentCinematic?.tracks[this.selectedTrackIndex] || null; }
-  
-  get currentCinematicClip() { 
-      const clip = this.currentTrack?.clips[this.selectedClipIndex] || null; 
-      if (clip) {
-          if (!clip.startPosition) clip.startPosition = {x:0, y:0, z:0};
-          if (!clip.endPosition) clip.endPosition = {x:0, y:0, z:0};
-          if (!clip.startRotation) clip.startRotation = {x:0, y:0, z:0};
-          if (!clip.endRotation) clip.endRotation = {x:0, y:0, z:0};
-      }
-      return clip;
+  getTrackIcon(type: string): string {
+     switch(type) {
+       case 'camera': return '🎥';
+       case 'actor': return '🧍';
+       case 'object': return '📦';
+       case 'dialogue': return '💬';
+       case 'event': return '⚡';
+       case 'text': return '🔤';
+       case 'image': return '🖼️';
+       case 'background': return '🟩';
+       case 'overlay': return '📄';
+       default: return '📄';
+     }
+  }
+
+  seleccionarTrack(tIdx: number, event: Event) {
+     event.stopPropagation();
+     this.cinematicSvc.selectedTrackIndex.set(tIdx);
+     this.cinematicSvc.selectedKeyframeId.set(null);
+     this.cinematicSvc.selectedReusableCameraId.set(null);
+     
+     const track = this.cinematicSvc.currentCinematic()?.tracks[tIdx];
+     if (track) CinematicLogger.logSelection('TRACK', track.id);
+
+     this.layoutUI.showInspector.set(true); 
+     this.cdr.detectChanges();
+  }
+
+  seleccionarKeyframe(tIdx: number, kf: CinematicKeyframe, event?: MouseEvent) {
+     if (event && event.button === 0) {
+         event.stopPropagation();
+         this.draggedKeyframe = { trackIdx: tIdx, kfId: kf.id };
+     }
+     
+     this.cinematicSvc.selectedTrackIndex.set(tIdx);
+     this.cinematicSvc.selectedKeyframeId.set(kf.id);
+     this.cinematicSvc.selectedReusableCameraId.set(null);
+     
+     const track = this.cinematicSvc.currentCinematic()?.tracks[tIdx];
+     if (track) {
+         CinematicLogger.logSelection('KEYFRAME', kf.id);
+         this.layoutUI.showInspector.set(true); 
+         if (track.type === 'camera' && !this.cinematicTools.isInsideCamera) {
+             this.cinematicTools.enfocarCamara(kf);
+             const proxyMesh = this.proxySvc.getProxyById(kf.id);
+             if (proxyMesh) {
+                this.stateSvc.seleccionarObjeto(proxyMesh);
+             }
+         }
+     }
+     this.cdr.detectChanges();
+  }
+
+  preventClickPropagation(event: MouseEvent) {
+      event.stopPropagation();
   }
 
   persistCinematics() {
@@ -99,17 +398,13 @@ export class TimelineDirectorTab implements OnInit, OnDestroy {
 
   seleccionarCinematica(id: string) {
     if (this.cinematicTools.isInsideCamera) this.cinematicTools.salirCamara();
-    this.selectedCinematicId = id;
-    this.selectedTrackIndex = -1;
-    this.selectedClipIndex = -1;
-    this.cinematicPlayhead = 0;
-    if (this.cinematicIsPlaying) this.stopCinematic();
-    this.proxySvc.rebuild(this.currentCinematic);
-  }
-
-  copiarId(id: string) {
-    navigator.clipboard.writeText(id);
-    alert('ID de cinemática copiado: ' + id);
+    this.cinematicSvc.selectedCinematicId.set(id);
+    this.cinematicSvc.selectedTrackIndex.set(-1);
+    this.cinematicSvc.selectedKeyframeId.set(null);
+    this.cinematicSvc.selectedReusableCameraId.set(null);
+    if (this.playbackManager.isPlaying()) this.playbackManager.stop();
+    this.proxySvc.rebuild(this.cinematicSvc.currentCinematic());
+    CinematicLogger.logSelection('CINEMATIC', id);
   }
 
   nuevaCinematica() {
@@ -120,176 +415,101 @@ export class TimelineDirectorTab implements OnInit, OnDestroy {
       tracks: []
     };
     this.cinematicSvc.cinematics.update(v => [...v, cin]);
-    this.selectedCinematicId = cin.id;
+    this.cinematicSvc.selectedCinematicId.set(cin.id);
     this.persistCinematics();
-    this.proxySvc.rebuild(this.currentCinematic);
+    this.proxySvc.rebuild(this.cinematicSvc.currentCinematic());
   }
 
-  eliminarCinematica(id: string) {
-    this.cinematicSvc.deletedCinematics.push(id);
-    this.cinematicSvc.cinematics.update(v => v.filter(c => c.id !== id));
-    this.selectedCinematicId = this.cinematics.length > 0 ? this.cinematics[0].id : null;
-    this.persistCinematics();
-    this.proxySvc.rebuild(this.currentCinematic);
-  }
+  agregarTrack(type: string) {
+      const cin = this.cinematicSvc.currentCinematic();
+      if (!cin) return;
 
-  agregarTrack(cin: CinematicSequence) {
+      let name = 'Nueva Pista';
+      if(type==='camera') name = 'Cámara Libre';
+      if(type==='actor') name = 'Personaje / Actor';
+      if(type==='object') name = 'Objeto Animado';
+      if(type==='dialogue') name = 'Subtítulos / Diálogos';
+      if(type==='text') name = 'Texto Cinemático';
+      if(type==='image') name = 'Imagen / Logo';
+      if(type==='background') name = 'Fondo Global';
+      if(type==='event') name = 'Eventos Lógicos';
+
       cin.tracks.push({
           id: 'trk_' + Math.random().toString(36).substr(2,6),
-          name: 'Nueva Pista',
-          type: 'camera',
-          clips: []
+          name: name,
+          type: type as any,
+          keyframes: []
       });
       this.persistCinematics();
-  }
-  
-  quitarTrack(cin: CinematicSequence, index: number) {
-      cin.tracks.splice(index, 1);
-      this.selectedTrackIndex = -1;
-      this.selectedClipIndex = -1;
-      this.persistCinematics();
-      this.proxySvc.rebuild(this.currentCinematic);
+      CinematicLogger.logPlayback('TRACK CREATED', type);
   }
 
-  agregarClip(track: CinematicTrack) {
-      track.clips.push({
-         id: 'clip_' + Math.random().toString(36).substr(2,6),
-         startTimeMs: 0,
-         durationMs: 2000,
-         easing: 'easeInOut',
-         startPosition: {x:0, y:0, z:0},
-         endPosition: {x:0, y:0, z:0},
-         startRotation: {x:0, y:0, z:0},
-         endRotation: {x:0, y:0, z:0},
-         fadeMode: 'none'
-      });
-      this.persistCinematics();
-      this.proxySvc.rebuild(this.currentCinematic);
-  }
+  agregarKeyframe(track: CinematicTrack) {
+      let newTime = 0;
+      let newValue: any = {};
 
-  seleccionarClip(tIdx: number, cIdx: number) {
-     this.selectedTrackIndex = tIdx;
-     this.selectedClipIndex = cIdx;
-     
-     const track = this.currentCinematic?.tracks[tIdx];
-     if (track) {
-         const clip = track.clips[cIdx];
-         if (clip) {
-             if (!clip.startPosition) clip.startPosition = {x:0, y:0, z:0};
-             if (!clip.endPosition) clip.endPosition = {x:0, y:0, z:0};
-             if (!clip.startRotation) clip.startRotation = {x:0, y:0, z:0};
-             if (!clip.endRotation) clip.endRotation = {x:0, y:0, z:0};
-             
-             if (track.type === 'camera' && !this.cinematicTools.isInsideCamera) {
-                 this.cinematicTools.enfocarCamara(clip);
-                 const proxyMesh = this.proxySvc.getProxyById(clip.id);
-                 if (proxyMesh) {
-                    this.stateSvc.seleccionarObjeto(proxyMesh);
-                 }
-             }
-         }
-     }
-  }
-
-  quitarClip() {
-      if (this.currentTrack && this.selectedClipIndex >= 0) {
-          this.currentTrack.clips.splice(this.selectedClipIndex, 1);
-          this.selectedClipIndex = -1;
-          this.persistCinematics();
-          this.proxySvc.rebuild(this.currentCinematic);
+      if (track.type === 'camera' || track.type === 'actor' || track.type === 'object') {
+          newValue = {
+             position: {x:0, y:0, z:0},
+             rotation: {x:0, y:0, z:0},
+             fov: 0.8,
+             movementMode: 'linear',
+             orientationMode: 'free'
+          };
+      } else if (track.type === 'dialogue') {
+          newValue = { actorName: '', text: 'Nuevo diálogo', durationMs: 2000 };
+      } else if (track.type === 'text') {
+          newValue = { title: 'TÍTULO', text: 'Subtítulo', durationMs: 4000, fadeInMs: 500, fadeOutMs: 500, textAlign: 'center', opacity: 1, scale: 1 };
+      } else if (track.type === 'image') {
+          newValue = { assetId: null, image: '', durationMs: 4000, fadeInMs: 500, fadeOutMs: 500, fitMode: 'CONTAIN', opacity: 1, scale: 1, rotation: 0, maxWidth: 800, maxHeight: 800 };
+      } else if (track.type === 'background') {
+          newValue = { bgType: 'SOLID', bgColor: '#000000', opacity: 1, durationMs: 4000, fadeInMs: 1000, fadeOutMs: 1000, animIn: 'FADE_IN', animOut: 'FADE_OUT' };
+      } else if (track.type === 'event') {
+          newValue = { eventName: 'mi_evento', eventPayload: '' };
       }
+
+      if (track.keyframes.length > 0) {
+          const lastKf = track.keyframes[track.keyframes.length - 1];
+          newTime = lastKf.timeMs + 3000;
+          newValue = JSON.parse(JSON.stringify(lastKf.value));
+      }
+      
+      const currentCin = this.cinematicSvc.currentCinematic();
+      if (currentCin) {
+          if (newTime > 300000) newTime = 300000;
+          
+          // 🔥 AUTOEXPANSIÓN LÓGICA AL CREAR KEYFRAME (BOTÓN +KF)
+          if (newTime > currentCin.durationMs) {
+              CinematicLogger.logAutoExpand(currentCin.durationMs, newTime);
+              currentCin.durationMs = newTime;
+          }
+      }
+
+      track.keyframes.push({
+         id: 'kf_' + Math.random().toString(36).substr(2,6),
+         timeMs: newTime,
+         interpolation: 'easeInOut',
+         value: newValue
+      });
+      
+      track.keyframes.sort((a,b) => a.timeMs - b.timeMs);
+      this.persistCinematics();
+      this.proxySvc.rebuild(currentCin);
   }
 
   togglePlayCinematic() {
-    const cin = this.currentCinematic;
-    if (!cin) return;
-    
-    if (this.cinematicIsPlaying) {
-      this.cinematicDirector.pause();
-      this.cinematicIsPlaying = false;
-      clearInterval(this.cinematicTimer);
+    if (this.playbackManager.isPlaying()) {
+      this.playbackManager.pause();
     } else {
-      const errors = this.cinematicSvc.validateCinematic(cin);
+      const errors = this.playbackManager.play(this.cinematicSvc.currentCinematic());
       if (errors.length > 0) {
          alert("Errores en la cinemática:\n" + errors.join('\n'));
-         return;
       }
-      
-      this.cinematicDirector.editorWantsCamera = this.cinematicTools.isInsideCamera;
-      this.cinematicDirector.play(cin);
-      this.cinematicDirector.seek(this.cinematicPlayhead);
-      this.cinematicIsPlaying = true;
-      
-      this.cinematicTimer = setInterval(() => {
-         this.cinematicPlayhead = this.cinematicDirector.currentTimeMs;
-         if (!this.cinematicDirector.isPlaying) {
-             this.cinematicIsPlaying = false;
-             clearInterval(this.cinematicTimer);
-         }
-         this.cdr.detectChanges();
-      }, 16);
     }
   }
 
   stopCinematic() {
-    this.cinematicDirector.stop();
-    this.cinematicIsPlaying = false;
-    this.cinematicPlayhead = 0;
-    clearInterval(this.cinematicTimer);
+    this.playbackManager.stop();
     this.cdr.detectChanges();
-  }
-
-  getTimelineMarks(durationMs: number): number[] {
-    const marks = [];
-    const step = 1000; 
-    for (let i = 0; i <= durationMs; i += step) {
-      marks.push(i);
-    }
-    return marks;
-  }
-
-  onTimelineMouseDown(event: MouseEvent, durationMs: number) {
-    this.isScrubbing = true;
-    this.updateScrub(event, durationMs);
-  }
-
-  @HostListener('window:mousemove', ['$event'])
-  onTimelineMouseMove(event: MouseEvent) {
-    if (this.isScrubbing && this.currentCinematic) {
-      this.updateScrub(event, this.currentCinematic.durationMs);
-    }
-  }
-
-  @HostListener('window:mouseup')
-  onTimelineMouseUp() {
-    this.isScrubbing = false;
-  }
-
-  updateScrub(event: MouseEvent, durationMs: number) {
-    const el = document.querySelector('.timeline-ruler') as HTMLElement;
-    if (!el) return;
-    const rect = el.getBoundingClientRect();
-    const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width));
-    const percent = x / rect.width;
-    this.cinematicPlayhead = percent * durationMs;
-    this.cinematicDirector.seek(this.cinematicPlayhead);
-    this.proxySvc.renderScene();
-  }
-
-  enfocarCamara() {
-     this.cinematicTools.enfocarCamara(this.currentCinematicClip);
-  }
-
-  entrarCamara() {
-     this.cinematicTools.entrarCamara(this.currentCinematicClip);
-  }
-
-  salirCamara() {
-     this.cinematicTools.salirCamara();
-  }
-
-  capturarPosRot(targetClip: CinematicClip, isStart: boolean) {
-    this.cinematicTools.capturarPosRot(this.currentTrack, targetClip, isStart);
-    this.proxySvc.rebuild(this.currentCinematic);
   }
 }

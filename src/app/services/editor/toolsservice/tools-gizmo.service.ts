@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, Vector3, PointerEventTypes, Tags, AbstractMesh } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -45,7 +46,6 @@ export class ToolsGizmoService {
     this.gizmoManager.usePointerToAttachGizmos = false;
     this.gizmoManager.clearGizmoOnEmptyPointerEvent = true;
 
-    // Inicialmente apagados hasta que la herramienta solicite uno
     this.gizmoManager.positionGizmoEnabled = false;
     this.gizmoManager.rotationGizmoEnabled = false;
     this.gizmoManager.scaleGizmoEnabled = false;
@@ -61,7 +61,6 @@ export class ToolsGizmoService {
     this.centerDragMesh.isVisible = false;
     Tags.AddTagsTo(this.centerDragMesh, "system_element editor_only gizmo ignore_raycast");
 
-    // 🔥 FIX: Crear el pivot en la escena principal, no en la utilityLayer
     this.gizmoPivotNode = new Mesh('gizmoPivotNode', scene);
     this.gizmoPivotNode.isPickable = false;
     Tags.AddTagsTo(this.gizmoPivotNode, "system_element editor_only ignore_raycast");
@@ -91,13 +90,24 @@ export class ToolsGizmoService {
 
   private broadcastLiveTransform(mesh: AbstractMesh): void {
     if (Tags.MatchesQuery(mesh, "cinematic_proxy")) {
-        const clipId = mesh.name.replace('proxy_cam_', '');
         const euler = mesh.rotationQuaternion ? mesh.rotationQuaternion.toEulerAngles() : mesh.rotation;
-        this.cinematicSvc.onProxyMoved.next({
-            clipId,
-            position: mesh.position,
-            rotation: new Vector3(euler.x * 180/Math.PI, euler.y * 180/Math.PI, euler.z * 180/Math.PI)
-        });
+        if (mesh.name.startsWith('proxy_reusable_cam_')) {
+            const camId = mesh.name.replace('proxy_reusable_cam_', '');
+            this.cinematicSvc.onProxyMoved.next({
+                type: 'camera',
+                id: camId,
+                position: mesh.position,
+                rotation: new Vector3(euler.x * 180/Math.PI, euler.y * 180/Math.PI, euler.z * 180/Math.PI)
+            });
+        } else {
+            const keyframeId = mesh.name.replace('proxy_cam_', '');
+            this.cinematicSvc.onProxyMoved.next({
+                type: 'keyframe',
+                id: keyframeId,
+                position: mesh.position,
+                rotation: new Vector3(euler.x * 180/Math.PI, euler.y * 180/Math.PI, euler.z * 180/Math.PI)
+            });
+        }
         return;
     }
 
@@ -220,7 +230,6 @@ export class ToolsGizmoService {
     const wantRotation = hasSelection && currentTool === 'rotate' && !this.state.subObjetoSeleccionado();
     const wantScale = hasSelection && currentTool === 'scale';
 
-    // 🔥 FIX: Solo actualizar si hay un cambio real, previniendo la destrucción y creación constante
     if (this.gizmoManager.positionGizmoEnabled !== wantPosition) {
        this.gizmoManager.positionGizmoEnabled = wantPosition;
        if (wantPosition && this.gizmoManager.gizmos.positionGizmo) {

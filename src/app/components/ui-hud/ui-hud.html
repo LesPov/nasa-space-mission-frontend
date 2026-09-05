@@ -1,4 +1,3 @@
-<!-- src/app/components/ui-hud/ui-hud.html -->
 
 <div class="crosshair-ui" 
      *ngIf="gameSession.isPlaying() && gameSession.pointerLocked() && gameSession.cameraView() === 'FPS'" 
@@ -12,7 +11,102 @@
      [style.background-color]="cinematicDirector.fadeColor()">
 </div>
 
-<!-- Componente UI dedicado a Cinemáticas y Diálogos -->
+<!-- Cinematic Overlay UI (Arquitectura Separada) -->
+<div class="cinematic-overlay-layer" *ngFor="let state of cinematicDirector.activeOverlays()"
+     [style.z-index]="5000 + (state.value.zIndex || 0)"
+     [style.pointer-events]="'none'"
+     [style.position]="'absolute'"
+     [style.top]="0" [style.left]="0"
+     [style.width]="'100%'" [style.height]="'100%'">
+    
+    <!-- FONDO LOCAL (INDEPENDIENTE Y POTENCIALMENTE FULLSCREEN) -->
+    <div class="cinematic-overlay-bg"
+         *ngIf="state.value.bgType && state.value.bgType !== 'NONE'"
+         [style.position]="'absolute'"
+         [style.left]="state.value.fullscreenBg ? '0' : 'calc(' + ((state.value.positionX !== undefined ? state.value.positionX : 0.5) * 100) + '% - ' + (getOverlayWidthPx(state.value, state.type) / 2) + 'px)'"
+         [style.top]="state.value.fullscreenBg ? '0' : 'calc(' + ((state.value.positionY !== undefined ? state.value.positionY : 0.5) * 100) + '% - ' + (getOverlayHeightPx(state.value, state.type) / 2) + 'px)'"
+         [style.width]="state.value.fullscreenBg ? '100%' : getOverlayWidth(state.value, state.type)"
+         [style.height]="state.value.fullscreenBg ? '100%' : getOverlayHeight(state.value, state.type)"
+         [style.transform]="state.value.fullscreenBg ? 'none' : getOverlayTransform(state)"
+         [style.opacity]="state.opacity * (state.value.bgOpacity !== undefined ? state.value.bgOpacity : 1)"
+         [style.background]="getOverlayBackground(state.value)"
+         [style.border]="getOverlayBorder(state.value)"
+         [style.border-radius.px]="state.value.fullscreenBg ? 0 : (state.value.borderRadius || 0)">
+    </div>
+
+    <!-- CAJA DEL CONTENIDO (TEXTO/IMAGEN) CON ANIMACIONES PROPIAS -->
+    <div class="cinematic-overlay-box"
+         [style.position]="'absolute'"
+         [style.transform]="getOverlayTransform(state)"
+         [style.left.%]="(state.value.positionX !== undefined ? state.value.positionX : 0.5) * 100"
+         [style.top.%]="(state.value.positionY !== undefined ? state.value.positionY : 0.5) * 100"
+         [style.width]="getOverlayWidth(state.value, state.type)"
+         [style.height]="getOverlayHeight(state.value, state.type)"
+         [style.max-width]="state.value.maxWidth ? state.value.maxWidth + 'px' : (state.type === 'image' ? '100vw' : 'none')"
+         [style.max-height]="state.value.maxHeight ? state.value.maxHeight + 'px' : (state.type === 'image' ? '100vh' : 'none')"
+         [style.display]="'flex'"
+         [style.flex-direction]="'column'"
+         [style.justify-content]="'center'"
+         [style.align-items]="getAlignItems(state.value.textAlign)">
+         
+         <!-- WRAPPER INTERNO (MANEJA OPACITY DE CONTENIDO DE FORMA INDEPENDIENTE AL FONDO) -->
+         <div class="cinematic-content-wrapper"
+              [style.opacity]="state.contentOpacity"
+              [style.transform]="getContentTransform(state)"
+              [style.text-align]="state.value.textAlign || 'center'"
+              [style.display]="'flex'"
+              [style.flex-direction]="'column'"
+              [style.justify-content]="'center'"
+              [style.align-items]="getAlignItems(state.value.textAlign)"
+              [style.width]="'100%'" [style.height]="'100%'">
+
+             <img *ngIf="state.type === 'image' && state.value.image" 
+                  [src]="state.value.image" 
+                  [style.width]="state.value.width ? state.value.width + 'px' : (state.value.imageWidth ? state.value.imageWidth + 'px' : 'auto')" 
+                  [style.height]="state.value.height ? state.value.height + 'px' : (state.value.imageHeight ? state.value.imageHeight + 'px' : 'auto')"
+                  [style.max-width]="'100%'"
+                  [style.max-height]="'100%'"
+                  [style.object-fit]="state.value.fitMode ? state.value.fitMode.toLowerCase() : 'contain'"
+                  [style.transform]="state.value.rotation ? 'rotate(' + state.value.rotation + 'deg)' : 'none'"
+                  [style.border-radius.px]="state.value.borderRadius || 0" />
+
+             <ng-container *ngIf="state.type === 'text'">
+                 <h1 class="cinematic-title" *ngIf="state.value.title"
+                     [style.font-family]="state.value.fontFamily || 'inherit'"
+                     [style.font-size.px]="state.value.fontSize || 48"
+                     [style.font-weight]="getFontWeight(state.value.fontWeight)"
+                     [style.font-style]="state.value.fontStyle === 'Italic' ? 'italic' : 'normal'"
+                     [style.color]="state.value.color || '#ffffff'"
+                     [style.text-transform]="state.value.textTransform || 'none'"
+                     [style.letter-spacing.px]="state.value.letterSpacing || 0"
+                     [style.line-height]="state.value.lineHeight || 1.2"
+                     [style.text-shadow]="getTextShadow(state.value)"
+                     [style.-webkit-text-stroke]="getTextOutline(state.value)"
+                     [style.margin]="0"
+                     [style.white-space]="'pre-wrap'">
+                     {{ state.value.title }}
+                 </h1>
+
+                 <h3 class="cinematic-subtitle" *ngIf="state.value.text"
+                     [style.font-family]="state.value.fontFamily || 'inherit'"
+                     [style.font-size.px]="(state.value.fontSize || 48) * 0.5"
+                     [style.font-weight]="getFontWeight(state.value.fontWeight)"
+                     [style.font-style]="state.value.fontStyle === 'Italic' ? 'italic' : 'normal'"
+                     [style.color]="state.value.secondaryColor || '#e2e8f0'"
+                     [style.text-transform]="state.value.textTransform || 'none'"
+                     [style.letter-spacing.px]="(state.value.letterSpacing || 0) * 0.8"
+                     [style.line-height]="state.value.lineHeight || 1.2"
+                     [style.text-shadow]="getTextShadow(state.value)"
+                     [style.-webkit-text-stroke]="getTextOutline(state.value)"
+                     [style.margin]="state.value.title ? '10px 0 0 0' : '0'"
+                     [style.white-space]="'pre-wrap'">
+                     {{ state.value.text }}
+                 </h3>
+             </ng-container>
+         </div>
+    </div>
+</div>
+
 <app-ui-dialogos></app-ui-dialogos>
 
 <!-- Toast: Mensaje Narrativo / UI -->
@@ -27,15 +121,12 @@
   <div class="modern-toast-box">
     <div class="toast-title">{{ targetInteractuable()?.name }}</div>
     <div class="toast-actions-grid">
-      <!-- Opción de Editar (Solo cuando tiene permiso editorial real de Playtest) -->
       <div class="action-item" *ngIf="canEdit() && gameSession.cameraView() === 'FPS'">
         <kbd class="key-cap">Click</kbd><span class="action-label">Editar</span>
       </div>
-      <!-- Opción de Evento/Trigger -->
       <div class="action-item" *ngIf="actionAvailable()">
         <kbd class="key-cap">E</kbd><span class="action-label">Acción</span>
       </div>
-      <!-- Opción de Lectura/Inspección -->
       <div class="action-item" *ngIf="inspectAvailable()">
         <kbd class="key-cap">I</kbd><span class="action-label">Leer</span>
       </div>
@@ -43,28 +134,19 @@
   </div>
 </div>
 
-<!-- Status Global -->
 <div class="hud-container" *ngIf="!hideStatus">
-  
-  <!-- Jugador Libre o Admin Preview: Bloqueado -->
   <div class="hud-message hud-playing" *ngIf="gameSession.isPlaying() && gameSession.pointerLocked() && !canEdit()">
     <span class="hud-icon">🎮</span> "WASD" Mover • "Espacio" Saltar • "V" Cambiar Cámara
   </div>
-  
-  <!-- Jugador Libre o Admin Preview: Pausado -->
   <div class="hud-message hud-paused" *ngIf="gameSession.isPlaying() && !gameSession.pointerLocked() && !canEdit()">
     <span class="hud-icon">⏸️</span> Juego Pausado | Click en pantalla para reanudar
   </div>
-
-  <!-- Modo Editor Probando (Playtest dentro del Editor con autoridad canEdit) -->
   <div class="hud-message hud-playing" style="background-color: rgba(59, 130, 246, 0.75); border: 1px solid rgba(59, 130, 246, 0.5);" *ngIf="playState === 'PLAYING' && canEdit() && gameSession.pointerLocked()">
     <span class="hud-icon">🛠️</span> MODO PRUEBA LIBRE | "WASD" Mover • "ESC" Pausar • Doble Clic para Editar Libre
   </div>
-
   <div class="hud-message hud-paused" style="border-color: #3b82f6; color: #60a5fa;" *ngIf="playState === 'PLAYING' && canEdit() && !gameSession.pointerLocked()">
     <span class="hud-icon">🖱️</span> Haz click en el fondo para recuperar la cámara
   </div>
-
   <div class="hud-message hud-editing" *ngIf="playState === 'EDITING_IN_GAME'">
     <span class="hud-icon">⚙️</span> MODO EDICIÓN EN VIVO | Doble Clic en el fondo para reanudar
   </div>

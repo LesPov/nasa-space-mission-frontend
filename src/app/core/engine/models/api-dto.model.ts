@@ -1,8 +1,7 @@
 
-// src/app/core/engine/models/api-dto.model.ts
-
 import { VisualMode } from '../world/world-settings.model';
 import { PlayerRuntimeConfig } from './player-config.model';
+import { CinematicCameraDefinition } from './cinematic-camera.model';
 
 export interface Vector3Dto {
   x: number;
@@ -218,9 +217,11 @@ export interface SceneSavePayload {
   sceneObjectsDelta: SceneObjectDto[];
   triggersDelta: TriggerDto[];
   cinematicsDelta: CinematicDto[];
+  cinematicCamerasDelta: CinematicCameraDefinition[];
   deletedObjects: string[];
   deletedTriggers: string[];
   deletedCinematics: string[];
+  deletedCinematicCameras: string[];
   environmentSettings: WorldSettingsDto;
   spawnPoint: Vector3Dto;
 }
@@ -236,6 +237,8 @@ export interface SceneLoadPayload {
   uiSettings?: any;
   cinematics?: CinematicDto[];
   cinematicsDelta?: CinematicDto[];
+  cinematicCameras?: CinematicCameraDefinition[];
+  cinematicCamerasDelta?: CinematicCameraDefinition[];
   sceneObjects?: SceneObjectDto[];
   sceneObjectsDelta?: SceneObjectDto[];
   triggers?: TriggerDto[];

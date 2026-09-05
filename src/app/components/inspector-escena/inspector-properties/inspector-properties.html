@@ -1,4 +1,4 @@
-<!-- src/app/components/inspector-escena/inspector-properties/inspector-properties.html -->
+
 <div class="properties-shell">
   <div class="prop-tabs">
     <ng-container *ngIf="objetoActual">
@@ -15,10 +15,13 @@
     
     <button class="tab-btn" [class.active]="pestanaActiva === 'world'" (click)="cambiarPestana('world')" title="Entorno Global">🌍</button>
     <button class="tab-btn" [class.active]="pestanaActiva === 'mission'" (click)="cambiarPestana('mission')" title="UI & Misión">📝</button>
+    
+    <!-- NUEVA PESTAÑA DEL DIRECTOR GLOBAL -->
+    <button class="tab-btn" *ngIf="stateSvc.activeBottomTab() === 'director'" [class.active]="pestanaActiva === 'cinematic'" (click)="cambiarPestana('cinematic')" title="Cinemática">🎥</button>
   </div>
 
   <div class="prop-content-scroll">
-    <div class="panel-header" *ngIf="pestanaActiva !== 'world' && pestanaActiva !== 'mission'">
+    <div class="panel-header" *ngIf="pestanaActiva !== 'world' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic'">
       <span>
         {{ pestanaActiva === 'transform' ? 'Transformación Básica' : '' }}
         {{ pestanaActiva === 'physics' ? 'Colisiones y Cámaras' : '' }}
@@ -47,15 +50,36 @@
       </div>
     </ng-container>
 
+    <!-- 🔥 NUEVO INSPECTOR DE CINEMÁTICA INTEGRADO -->
+    <ng-container *ngIf="pestanaActiva === 'cinematic'">
+      <app-cinematic-inspector
+         [cinematic]="cinematicSvc.currentCinematic()"
+         [track]="cinematicSvc.currentTrack()"
+         [keyframe]="cinematicSvc.currentKeyframe()"
+         [reusableCamera]="cinematicSvc.currentReusableCamera()"
+         [sceneEntities]="sceneEntities()"
+         (propertyChanged)="onCinematicPropertyChanged()"
+         (timeChanged)="onCinematicTimeChanged()"
+         (transformChanged)="onCinematicTransformChanged()"
+         (actionDeleteCinematic)="eliminarCinematica()"
+         (actionDeleteTrack)="quitarTrack()"
+         (actionDeleteKeyframe)="quitarKeyframe($event)"
+         (actionCapturePosRot)="capturarPosRot($event)">
+      </app-cinematic-inspector>
+      
+      <div *ngIf="!cinematicSvc.currentCinematic() && !cinematicSvc.currentReusableCamera()" style="text-align: center; padding: 40px; color: #666; font-style: italic;">
+         Selecciona o crea una cinemática o cámara reutilizable en la línea de tiempo inferior para ver sus propiedades.
+      </div>
+    </ng-container>
+
     <!-- Pestañas Específicas de Objeto -->
-    <div class="prop-body" *ngIf="objetoActual && pestanaActiva !== 'world' && pestanaActiva !== 'mission'">
+    <div class="prop-body" *ngIf="objetoActual && pestanaActiva !== 'world' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic'">
       
       <div class="obj-title-bar">
         <span class="icon">{{ esTrigger ? '📍' : (esLuz ? '💡' : (esBurbuja ? '🫧' : (esVideo ? '📺' : (esPersonaje ? '🧍' : '🧊')))) }}</span>
         <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" />
       </div>
 
-      <!-- 🔥 NUEVO: Botón para guardar como Prefab -->
       <button class="btn-secondary full" style="margin-bottom: 15px;" (click)="guardarComoPrefab()">📦 Guardar como Prefab</button>
 
       <app-prop-transform *ngIf="pestanaActiva === 'transform' && !esTrigger" [objeto]="objetoActual"></app-prop-transform>
@@ -65,7 +89,6 @@
       <app-prop-animation *ngIf="pestanaActiva === 'animation' && (esPersonaje || esLuzConModelo)" [objeto]="objetoActual"></app-prop-animation>
       <app-prop-sequences *ngIf="pestanaActiva === 'sequences' && (esPersonaje || esTrigger || esLuz || esBurbuja)" [objeto]="objetoActual"></app-prop-sequences>
       <app-prop-light *ngIf="pestanaActiva === 'light' && esLuz" [objeto]="objetoActual"></app-prop-light>
-      
       <app-prop-bubble *ngIf="pestanaActiva === 'bubble' && esBurbuja" [objeto]="objetoActual"></app-prop-bubble>
       <app-prop-video *ngIf="pestanaActiva === 'video' && esVideo" [objeto]="objetoActual"></app-prop-video>
 

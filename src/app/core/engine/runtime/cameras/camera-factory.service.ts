@@ -1,3 +1,4 @@
+
 import { Injectable, inject, Injector } from '@angular/core';
 import { ArcRotateCamera, UniversalCamera, Vector3, Scene, Camera, Matrix } from '@babylonjs/core';
 import { GameContextService } from '../../session/game-context.service';
@@ -80,11 +81,9 @@ export class CameraFactoryService {
         const cam = new UniversalCamera(`playerCameraFPS`, new Vector3(0, 0, 0), scene);
         cam.keysUp = []; cam.keysDown = []; cam.keysLeft = []; cam.keysRight = [];
         cam.speed = 0.3; cam.applyGravity = false;
-        // Defaults base seguros - El PlayerCameraManagerService sobrescribirá con el perfil real
         cam.minZ = 0.05; cam.maxZ = 500000; cam.angularSensibility = 2500; cam.checkCollisions = false;
         this._cameras.set(cameraKey, cam);
       }
-      // 🔥 FIX FASE 3: Eliminada la mutación de estado cruzada durante las llamadas de Getter. 
       return this._cameras.get(cameraKey) as UniversalCamera;
     }
 
@@ -94,11 +93,9 @@ export class CameraFactoryService {
         cam.wheelPrecision = 15; cam.lowerRadiusLimit = this.TPS_MIN_RADIUS; cam.upperRadiusLimit = this.TPS_MAX_RADIUS;
         cam._panningMouseButton = 2; cam.allowUpsideDown = false;
         cam.collisionRadius = new Vector3(0.15, 0.15, 0.15); cam.upperBetaLimit = (Math.PI / 2) + 0.4;
-        // Defaults base seguros - El PlayerCameraManagerService sobrescribirá con el perfil real
         cam.minZ = 0.05; cam.maxZ = 500000; cam.angularSensibilityX = 2000; cam.angularSensibilityY = 2000;
         this._cameras.set(cameraKey, cam);
       }
-      // 🔥 FIX FASE 3: Eliminada la mutación de estado cruzada durante las llamadas de Getter. 
       return this._cameras.get(cameraKey) as ArcRotateCamera;
     }
 
@@ -115,6 +112,8 @@ export class CameraFactoryService {
       return cam;
     }
 
+    // 🔥 MANTENEMOS LA CÁMARA MAESTRA FÍSICA CINEMÁTICA
+    // Ésta adoptará las propiedades de las "CinematicCameraDefinition" registradas al reproducir.
     if (type === 'CINEMATIC') {
       if (!this._cameras.has(cameraKey)) {
         const cam = new UniversalCamera(`cinematicCam`, Vector3.Zero(), scene);

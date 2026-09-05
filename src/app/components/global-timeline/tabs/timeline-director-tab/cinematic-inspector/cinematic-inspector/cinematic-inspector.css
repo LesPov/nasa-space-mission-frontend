@@ -1,0 +1,30 @@
+
+.properties-shell { flex: 1; display: flex; flex-direction: column; background: #111; overflow-y: auto;}
+.panel-header { display: flex; justify-content: space-between; align-items: center; padding: 12px 15px; background: #1e1e1e; border-bottom: 1px solid #333; color: #fff; font-size: 13px; font-weight: bold; }
+.status-pill { background: #3b82f6; color: white; padding: 2px 8px; border-radius: 12px; font-size: 10px; }
+.prop-body { padding: 15px; display: flex; flex-direction: column; gap: 10px; }
+
+.accordion-section { background: #1a1a1a; border: 1px solid #333; border-radius: 6px; overflow: hidden; margin-bottom: 10px; }
+.accordion-header { background: #222; padding: 8px 12px; border-bottom: 1px solid #333; }
+.accordion-header h4 { margin: 0; font-size: 11px; color: #aaa; text-transform: uppercase; }
+.accordion-content { padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+
+.grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field.wide { grid-column: 1 / -1; }
+.field label { font-size: 10px; color: #888; font-weight: bold; }
+.field input, .field select { background: #0f0f0f; border: 1px solid #444; color: #fff; padding: 6px 8px; border-radius: 4px; font-size: 11px; outline: none; transition: 0.2s;}
+.field input:focus, .field select:focus { border-color: #3b82f6; }
+
+.help-text { font-size: 9px; color: #666; margin: 0; line-height: 1.2; }
+
+.btn-primary, .btn-danger, .btn-secondary { border: none; padding: 8px 12px; border-radius: 4px; font-size: 11px; font-weight: bold; cursor: pointer; transition: 0.2s; }
+.btn-primary { background: #3b82f6; color: white; }
+.btn-primary:hover { background: #2563eb; }
+.btn-secondary { background: #334155; color: white; }
+.btn-secondary:hover { background: #475569; }
+.btn-danger { background: transparent; border: 1px solid #ef4444; color: #ef4444; }
+.btn-danger:hover { background: rgba(239, 68, 68, 0.1); }
+.full { width: 100%; display: block; }

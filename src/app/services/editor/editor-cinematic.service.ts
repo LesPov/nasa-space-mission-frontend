@@ -1,78 +1,200 @@
 
-
-import { Injectable, signal, inject } from '@angular/core';
-import { CinematicSequence } from '../../core/engine/models/cinematic.model';
+import { Injectable, signal, computed, inject } from '@angular/core';
+import { CinematicSequence, CinematicTrack, CinematicKeyframe } from '../../core/engine/models/cinematic.model';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
+import { CinematicCameraRegistryService } from '../../core/engine/runtime/cameras/cinematic-camera-registry.service';
 import { Subject } from 'rxjs';
 import { Vector3 } from '@babylonjs/core';
+import { CinematicLogger } from '../../core/engine/runtime/cinematics/cinematic-logger';
 
 @Injectable({ providedIn: 'root' })
 export class EditorCinematicService {
   private entityManager = inject(EntityManagerService);
+  private cameraRegistry = inject(CinematicCameraRegistryService);
 
   public cinematics = signal<CinematicSequence[]>([]);
   public deletedCinematics: string[] = [];
 
-  // Evento para sincronizar Gizmos con el Timeline de forma limpia
-  public onProxyMoved = new Subject<{ clipId: string, position: Vector3, rotation: Vector3 }>();
+  public selectedCinematicId = signal<string | null>(null);
+  public selectedTrackIndex = signal<number>(-1);
+  public selectedKeyframeId = signal<string | null>(null);
+  public selectedReusableCameraId = signal<string | null>(null);
+
+  public currentCinematic = computed(() => this.cinematics().find(c => c.id === this.selectedCinematicId()) || null);
+  public currentTrack = computed(() => this.currentCinematic()?.tracks[this.selectedTrackIndex()] || null);
+  
+  public currentKeyframe = computed(() => {
+     const track = this.currentTrack();
+     if (!track) return null;
+     const kf = track.keyframes.find(k => k.id === this.selectedKeyframeId()) || null;
+     if (kf) {
+         if (!kf.value) kf.value = {};
+         if (track.type === 'camera' || track.type === 'actor' || track.type === 'object') {
+             if (!kf.value.position) kf.value.position = {x:0, y:0, z:0};
+             if (!kf.value.rotation) kf.value.rotation = {x:0, y:0, z:0};
+         }
+     }
+     return kf;
+  });
+
+  public currentReusableCamera = computed(() => {
+     const id = this.selectedReusableCameraId();
+     if (!id) return null;
+     return this.cameraRegistry.getCamera(id) || null;
+  });
+
+  public onProxyMoved = new Subject<{ type: 'keyframe' | 'camera', id: string, position: Vector3, rotation: Vector3 }>();
 
   public loadFromData(data: any[]): void {
-    // 🔥 FIX SUPREMO: Clonación profunda y mapeo correcto de UID de Base de Datos a ID de Frontend
-    // Esto evita que al recargar la plataforma se dupliquen las cinemáticas.
     const clone = data ? JSON.parse(JSON.stringify(data)) : [];
     
     clone.forEach((seq: any) => {
-        // La BD manda 'id' (int) y 'uid' (string). El frontend necesita que el 'id' sea el string.
         seq.id = seq.uid || seq.id; 
         seq.tracks = seq.tracks || [];
         
+        const newTracks: any[] = [];
+        let maxTimeFound = 0; // 🔥 WARMUP: Buscaremos el tiempo máximo real
+
         seq.tracks.forEach((track: any) => {
-            track.clips = track.clips || [];
-            track.clips.forEach((clip: any) => {
-                if (!clip.startPosition) clip.startPosition = {x:0, y:0, z:0};
-                if (!clip.endPosition) clip.endPosition = {x:0, y:0, z:0};
-                if (!clip.startRotation) clip.startRotation = {x:0, y:0, z:0};
-                if (!clip.endRotation) clip.endRotation = {x:0, y:0, z:0};
+            if (!track.type) track.type = 'camera'; 
+            
+            track.keyframes = track.keyframes || [];
+            track.keyframes.forEach((kf: any) => {
+                if (!kf.value) kf.value = {};
+                
+                // 🔥 AUTO-HEALING: Actualizamos el tiempo máximo encontrado
+                if (kf.timeMs > maxTimeFound) {
+                    maxTimeFound = kf.timeMs;
+                }
+
+                if (!kf.value.targetUid && (kf.value.cameraTargetUid || track.targetUid)) {
+                    kf.value.targetUid = kf.value.cameraTargetUid || track.targetUid;
+                }
+                if (!kf.value.cameraId && track.cameraId) {
+                    kf.value.cameraId = track.cameraId;
+                }
+                if (!kf.value.orientationMode && track.orientationMode) {
+                    kf.value.orientationMode = track.orientationMode;
+                }
+                if (!kf.value.movementMode) {
+                    kf.value.movementMode = track.orientationMode === 'orbit' ? 'orbit' : 'linear';
+                }
+                if (kf.value.movementMode === 'orbit' && !kf.value.orbitDirection) {
+                    kf.value.orbitDirection = 'clockwise';
+                    kf.value.orbitTurns = 0; 
+                }
             });
+
+            track.keyframes.sort((a: any, b: any) => a.timeMs - b.timeMs);
+
+            if (track.type === 'overlay') {
+                const hasText = track.keyframes.some((k: any) => k.value.title || k.value.text);
+                const hasImage = track.keyframes.some((k: any) => k.value.image || k.value.assetId);
+                
+                if (hasText && hasImage) {
+                    CinematicLogger.logMigration('overlayToTextAndImage', track.name);
+                    
+                    const textTrack = JSON.parse(JSON.stringify(track));
+                    textTrack.id = track.id + '_text';
+                    textTrack.type = 'text';
+                    textTrack.name = track.name + ' (Texto)';
+                    
+                    const imageTrack = JSON.parse(JSON.stringify(track));
+                    imageTrack.id = track.id + '_image';
+                    imageTrack.type = 'image';
+                    imageTrack.name = track.name + ' (Imagen)';
+                    
+                    newTracks.push(textTrack, imageTrack);
+                } else if (hasImage) {
+                    CinematicLogger.logMigration('overlayToImage', track.name);
+                    track.type = 'image';
+                    newTracks.push(track);
+                } else {
+                    CinematicLogger.logMigration('overlayToText', track.name);
+                    track.type = 'text';
+                    newTracks.push(track);
+                }
+            } else {
+                newTracks.push(track);
+            }
         });
+
+        seq.tracks = newTracks;
+
+        // 🔥 AUTO-HEALING: Reparamos la duración si la DB viene desfasada
+        if (!seq.durationMs || seq.durationMs < maxTimeFound) {
+            CinematicLogger.warn(`Auto-sanitizando duración de cinemática '${seq.name}'. Ajustada a ${maxTimeFound}ms para evitar bloqueos.`);
+            seq.durationMs = maxTimeFound;
+        }
     });
     
     this.cinematics.set(clone);
-    this.deletedCinematics = []; // Limpiamos la caché de borrados al cargar una escena limpia
+    this.deletedCinematics = [];
+  }
+
+  public eliminarCinematica(id: string): void {
+    this.deletedCinematics.push(id);
+    this.cinematics.update(v => v.filter(c => c.id !== id));
+    this.selectedCinematicId.set(this.cinematics().length > 0 ? this.cinematics()[0].id : null);
+    this.selectedTrackIndex.set(-1);
+    this.selectedKeyframeId.set(null);
+  }
+
+  public quitarTrack(cin: CinematicSequence, index: number): void {
+    cin.tracks.splice(index, 1);
+    this.selectedTrackIndex.set(-1);
+    this.selectedKeyframeId.set(null);
+  }
+
+  public quitarKeyframe(track: CinematicTrack, id: string): void {
+    track.keyframes = track.keyframes.filter(k => k.id !== id);
+    this.selectedKeyframeId.set(null);
   }
 
   public validateCinematic(cinematic: CinematicSequence): string[] {
     const errors: string[] = [];
     
-    if (cinematic.durationMs <= 0) {
+    if (!cinematic.durationMs || cinematic.durationMs <= 0) {
       errors.push('La duración de la cinemática debe ser mayor a 0ms.');
     }
 
-    cinematic.tracks.forEach((track, tIdx) => {
-      if (track.type === 'actor' && !track.targetUid) {
-        errors.push(`Pista '${track.name}' (Actor) no tiene un objetivo asignado.`);
+    cinematic.tracks.forEach((track) => {
+      if ((track.type === 'actor' || track.type === 'object') && !track.targetUid && !track.keyframes.some(k => k.value.targetUid)) {
+        errors.push(`Pista '${track.name}' (${track.type}) no tiene un objetivo asignado.`);
       }
-
-      const sortedClips = [...track.clips].sort((a, b) => a.startTimeMs - b.startTimeMs);
       
-      for (let i = 0; i < sortedClips.length; i++) {
-        const clip = sortedClips[i];
+      const sortedKfs = [...track.keyframes].sort((a, b) => a.timeMs - b.timeMs);
+      
+      for (let i = 0; i < sortedKfs.length; i++) {
+        const kf = sortedKfs[i];
         
-        if (clip.useLocalSpaceUid && !this.entityManager.getEntityByUid(clip.useLocalSpaceUid)) {
-             errors.push(`Actor o anclaje relativo perdido en pista '${track.name}'.`);
+        if (kf.value?.useLocalSpaceUid && !this.entityManager.getEntityByUid(kf.value.useLocalSpaceUid)) {
+             errors.push(`Advertencia: Actor de anclaje relativo perdido en pista '${track.name}'.`);
         }
-        if (clip.cameraTargetUid && !this.entityManager.getEntityByUid(clip.cameraTargetUid)) {
-             errors.push(`El objetivo a mirar de la pista '${track.name}' ya no existe en el mapa.`);
+        
+        const target = kf.value?.targetUid || kf.value?.cameraTargetUid || track.targetUid;
+        if (target && !this.entityManager.getEntityByUid(target)) {
+             errors.push(`Advertencia: El objetivo a mirar (Target) asignado en '${track.name}' ya no existe en el mapa.`);
         }
 
-        if (clip.startTimeMs + clip.durationMs > cinematic.durationMs) {
-           errors.push(`El clip en la pista '${track.name}' excede la duración total de la cinemática.`);
+        if (kf.timeMs > cinematic.durationMs) {
+           errors.push(`El Keyframe en la pista '${track.name}' excede la duración total de la cinemática.`);
         }
-        if (i < sortedClips.length - 1) {
-          const nextClip = sortedClips[i+1];
-          if (clip.startTimeMs + clip.durationMs > nextClip.startTimeMs) {
-            errors.push(`Solape de tiempo detectado en la pista '${track.name}' entre clips.`);
-          }
+        if (kf.timeMs < 0) {
+           errors.push(`El Keyframe en la pista '${track.name}' tiene un tiempo negativo.`);
+        }
+
+        if (kf.value?.fov !== undefined) {
+           if (kf.value.fov < 0.1 || kf.value.fov > Math.PI) {
+               errors.push(`FOV inválido en pista '${track.name}'. Rango válido: 0.1 a 3.14 radianes.`);
+               CinematicLogger.warn(`Invalid FOV: ${kf.value.fov}`);
+           }
+        }
+        
+        if (kf.value?.movementMode === 'orbit') {
+            if (!target) {
+               errors.push(`Advertencia crítica en pista '${track.name}': Se requiere un Target válido para utilizar el Modo Órbita (Orbit).`);
+            }
         }
       }
     });

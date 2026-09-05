@@ -1,73 +1,164 @@
 
-.cinematic-timeline-container {
-  flex: 1; display: flex; flex-direction: column; background: #111;
-  border-top: 1px solid #333; border-bottom: 1px solid #333; overflow: hidden; margin-top: 10px;
-}
-.timeline-headers {
-  display: flex; height: 30px; background: #232323; border-bottom: 1px solid #444; flex-shrink: 0;
-}
-.track-list-header {
-  width: 200px; border-right: 1px solid #444; display: flex; align-items: center; padding: 0 10px; background: #1c1c1c; flex-shrink: 0;
-}
-.timeline-ruler {
-  flex: 1; position: relative; cursor: text; background: #2a2a2a;
-}
-.ruler-marks { position: absolute; width: 100%; height: 100%; pointer-events: none; }
-.ruler-mark { position: absolute; top: 5px; font-size: 9px; color: #888; border-left: 1px solid #555; padding-left: 3px; height: 10px; }
-.playhead {
-  position: absolute; top: 0; bottom: 0; width: 2px; background: #ef4444; z-index: 10; pointer-events: none; height: 100%;
-}
-.timeline-body {
-  display: flex; flex: 1; overflow-y: auto; overflow-x: hidden; position: relative;
-}
-.track-list {
-  width: 200px; background: #1c1c1c; border-right: 1px solid #444; flex-shrink: 0;
-}
-.track-content {
-  flex: 1; position: relative; overflow-x: hidden; overflow-y: hidden; background: #111;
-}
-.track-row {
-  height: 40px; border-bottom: 1px solid #333; display: flex; align-items: center; padding: 0 10px; justify-content: space-between; box-sizing: border-box;
-}
-.track-row.selected { background: #2a2a2a; }
-.track-row-content {
-  height: 40px; border-bottom: 1px solid #333; position: relative; box-sizing: border-box; width: 100%;
-}
-.target-select {
-  background: #111; color: #fff; border: 1px solid #444; padding: 2px 4px; font-size: 10px; width: 140px; border-radius: 3px;
-}
-.clip-block {
-  position: absolute; top: 4px; height: 32px; background: rgba(96, 165, 250, 0.4); border: 1px solid #60a5fa; border-radius: 4px; cursor: pointer; display: flex; align-items: center; padding: 0 5px; box-sizing: border-box; overflow: hidden; transition: 0.1s;
-}
-.clip-block.selected { background: rgba(250, 204, 21, 0.4); border-color: #facc15; }
-.clip-label { font-size: 10px; color: #fff; white-space: nowrap; font-weight: bold; pointer-events: none; }
-
 .clip-topbar { display: flex; gap: 8px; padding: 8px 12px; background: #232323; border-bottom: 1px solid #111; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
 .sequence-chip { border: 1px solid #333; background: #1c1c1c; color: #aaa; border-radius: 4px; padding: 4px 10px; cursor: pointer; font-size: 11px; font-weight: 600; transition: 0.1s; }
 .sequence-chip:hover { background: #2a2a2a; color: white; }
 .sequence-chip.active { border-color: #4b73b5; background: rgba(75,115,181,0.15); color: #fff; }
-.sequence-settings { padding: 8px 12px; background: #1e1e1e; border-bottom: 1px solid #111; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; flex-shrink: 0; }
 
-.step-del { background: transparent; color: #f87171; border: none; font-size: 12px; cursor: pointer; line-height: 1; padding: 0;}
-.step-del:hover { color: #ef4444; transform: scale(1.1); }
-
-.step-editor-panel { padding: 12px; background: #1a1a1a; flex: 1; overflow-y: auto; }
-.step-editor-panel h4 { margin: 0 0 10px 0; color: #fbbf24; font-size: 11px; text-transform: uppercase; border-bottom: 1px solid #333; padding-bottom: 6px; }
-.step-editor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; align-items: start; }
-
-/* Form Controls */
-.field { display: flex; flex-direction: column; gap: 4px; }
-.field.wide { grid-column: span 2; }
-.field label { font-size: 10px; color: #888; }
-.field input[type="text"], .field input[type="number"], .field select, textarea { width: 100%; box-sizing: border-box; background: #111; border: 1px solid #333; border-radius: 3px; color: #ddd; padding: 5px 8px; outline: none; font-size: 11px; transition: 0.1s; }
-.field input:focus, .field select:focus, textarea:focus { border-color: #4b73b5; }
-.btn-primary, .btn-secondary, .btn-danger, .btn-ghost { border: none; padding: 5px 10px; border-radius: 3px; font-weight: bold; font-size: 10px; cursor: pointer; transition: 0.1s; }
+.btn-primary, .btn-secondary, .btn-danger, .btn-ghost { border: none; padding: 5px 10px; border-radius: 3px; font-weight: bold; font-size: 10px; cursor: pointer; transition: 0.1s; display: flex; align-items: center; justify-content: center; gap: 6px;}
 .btn-primary { background: #4b73b5; color: white; }
 .btn-primary:hover { background: #35588c; }
 .btn-secondary { background: #2d915f; color: white; }
 .btn-secondary:hover { background: #1d6b44; }
-.btn-danger { background: #a83d3d; color: white; }
-.btn-danger:hover { background: #7d2a2a; }
 .btn-ghost { background: transparent; border: 1px solid #444; color: #ccc; }
 .btn-ghost:hover { background: #333; color: white; }
 .btn-ghost.small, .btn-primary.small, .btn-danger.small, .btn-secondary.small { padding: 3px 6px; font-size: 9px; }
+
+/* NUEVO LAYOUT: Flex Dinámico para Scroll Horizontal Constante */
+.director-layout { display: flex; flex: 1; flex-direction: column; background: #111; overflow: hidden; min-height: 0;}
+
+.timeline-toolbar { display: flex; align-items: center; padding: 8px 12px; background: #1e1e1e; border-bottom: 1px solid #333; gap: 8px; flex-shrink: 0; flex-wrap: wrap;}
+.toolbar-divider { width: 1px; height: 15px; background: #444; margin: 0 4px; }
+
+.timeline-scroll-wrapper {
+   flex: 1;
+   overflow: auto; 
+   display: flex;
+   flex-direction: column;
+   background: #111;
+   position: relative;
+}
+
+.timeline-scroll-wrapper::-webkit-scrollbar { height: 10px; width: 10px; }
+.timeline-scroll-wrapper::-webkit-scrollbar-track { background: #1c1c1c; }
+.timeline-scroll-wrapper::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
+
+.timeline-row {
+   display: flex;
+   min-width: min-content;
+   border-bottom: 1px solid #333;
+}
+
+.timeline-row.header {
+   position: sticky;
+   top: 0;
+   z-index: 20;
+   background: #232323;
+   height: 30px;
+   border-bottom: 1px solid #444;
+}
+
+.timeline-row.track {
+   height: 40px;
+   transition: background 0.1s;
+}
+.timeline-row.track:hover { background: rgba(255,255,255,0.02); }
+.timeline-row.track.selected { background: rgba(59, 130, 246, 0.1); }
+
+.track-header-cell {
+   position: sticky;
+   left: 0;
+   width: 220px;
+   flex-shrink: 0;
+   background: #1c1c1c;
+   border-right: 1px solid #444;
+   z-index: 15;
+   display: flex;
+   align-items: center;
+   justify-content: space-between;
+   padding: 0 10px;
+   box-sizing: border-box;
+   cursor: pointer;
+}
+
+.timeline-row.header .track-header-cell {
+   z-index: 25; /* above both top and left */
+   background: #2d2d2d;
+   cursor: default;
+}
+
+.track-info { display: flex; align-items: center; gap: 8px; overflow: hidden; flex: 1; }
+.track-icon { font-size: 14px; flex-shrink: 0; }
+.track-name { font-size: 11px; color: #ddd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-weight: 600; }
+
+.track-content-cell {
+   position: relative;
+   flex: 1;
+   min-width: 800px; /* Will be overridden dynamically by timelineWidth */
+   box-sizing: border-box;
+}
+
+.timeline-row.header .track-content-cell {
+   cursor: text;
+   background: #2a2a2a;
+}
+
+.ruler-marks { position: absolute; width: 100%; height: 100%; pointer-events: none; }
+.ruler-mark { position: absolute; top: 5px; font-size: 10px; color: #888; border-left: 1px solid #555; padding-left: 4px; height: 10px; white-space: nowrap; }
+
+.playhead-line {
+   position: absolute;
+   top: 0;
+   bottom: 0;
+   width: 2px;
+   background: #ef4444;
+   z-index: 10;
+   pointer-events: none;
+}
+
+.keyframe-point {
+   position: absolute;
+   top: 50%;
+   transform: translateY(-50%);
+   width: 16px;
+   height: 16px;
+   margin-left: -8px;
+   cursor: pointer;
+   display: flex;
+   align-items: center;
+   justify-content: center;
+   z-index: 5;
+}
+
+.keyframe-diamond {
+   width: 10px;
+   height: 10px;
+   background: #60a5fa;
+   transform: rotate(45deg);
+   border: 1px solid #111;
+   transition: 0.1s;
+}
+
+.keyframe-point.selected .keyframe-diamond {
+   background: #facc15;
+   border-color: #fff;
+   transform: rotate(45deg) scale(1.3);
+}
+
+.duration-bar {
+   position: absolute;
+   left: 8px; /* Start just right of the diamond */
+   top: 50%;
+   transform: translateY(-50%);
+   height: 14px;
+   border-radius: 3px;
+   font-size: 9px;
+   color: #fff;
+   padding: 0 4px;
+   overflow: hidden;
+   white-space: nowrap;
+   text-overflow: ellipsis;
+   pointer-events: none; /* Diamond receives the click */
+   display: flex;
+   align-items: center;
+   z-index: 4;
+}
+
+.duration-bar.overlay-bar {
+   background: rgba(96, 165, 250, 0.4);
+   border: 1px solid rgba(96, 165, 250, 0.8);
+}
+
+.duration-bar.dialogue-bar {
+   background: rgba(251, 191, 36, 0.4);
+   border: 1px solid rgba(251, 191, 36, 0.8);
+}

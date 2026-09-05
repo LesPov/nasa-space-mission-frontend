@@ -1,5 +1,5 @@
 
-import { Injectable, inject, computed } from '@angular/core';
+import { Injectable, inject, computed, signal } from '@angular/core';
 import { Node, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { GameContextService } from '../../core/engine/session/game-context.service';
@@ -15,6 +15,15 @@ export class EditorStateService {
   private entityManager = inject(EntityManagerService);
   private gameContext = inject(GameContextService);
   private interactRules = inject(InteractableRulesService);
+
+  // ==========================================
+  // ESTADO GLOBAL DE PANELES
+  // ==========================================
+  public activeBottomTab = signal<string>('clips');
+
+  public setActiveBottomTab(tab: string): void {
+    this.activeBottomTab.set(tab);
+  }
 
   // ==========================================
   // FACHADA DE ESTADO (COMPUTED READONLY)

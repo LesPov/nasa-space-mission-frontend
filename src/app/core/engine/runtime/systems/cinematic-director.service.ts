@@ -7,12 +7,13 @@ import { CameraOwnershipService, CameraOwner } from '../cameras/camera-ownership
 import { CameraFactoryService } from '../cameras/camera-factory.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { GameEventBusService } from '../../events/game-event-bus.service';
-import { getMovementProfileForOwner } from '../movement/movement-profile.model';
 import { CinematicCurveEvaluator } from '../cinematics/cinematic-curve-evaluator';
 import { CinematicActorResolverService } from '../cinematics/cinematic-actor-resolver.service';
 import { CinematicCameraRegistryService } from '../cameras/cinematic-camera-registry.service';
 import { ActiveCameraResolver } from '../cinematics/active-camera-resolver';
 import { CinematicLogger } from '../cinematics/cinematic-logger';
+import { GameContextService } from '../../session/game-context.service';
+import { GameMode } from '../../session/game-mode.model';
 
 export interface ActiveOverlayState {
   id: string;
@@ -38,6 +39,7 @@ export class CinematicDirectorService implements IUpdatable {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private eventBus = inject(GameEventBusService);
   private cameraRegistry = inject(CinematicCameraRegistryService);
+  private gameContext = inject(GameContextService);
 
   public activeSequence: CinematicSequence | null = null;
   public isPlaying = false;
@@ -56,13 +58,14 @@ export class CinematicDirectorService implements IUpdatable {
   private cinematicCameraMesh: Mesh | null = null;
 
   private lastEvaluatedTimeMs = 0;
+  private lastDtMs = 16;
   private activeDialogueClipId: string | null = null;
   private lastActiveOverlays = new Set<string>();
   private lastActiveCameraId: string | null = null;
 
   public editorWantsCamera = false; 
 
-  // 🔥 WARMUP POOL: Cero Allocations (Sin new Vector3() por Frame)
+  // 🔥 WARMUP POOL: Cero Allocations
   private static _sPos = Vector3.Zero();
   private static _ePos = Vector3.Zero();
   private static _globalSPos = Vector3.Zero();
@@ -76,10 +79,20 @@ export class CinematicDirectorService implements IUpdatable {
   private static _vEnd = Vector3.Zero();
   private static _forwardDir = new Vector3(0, 0, 1);
 
+  private savedActorStates = new Map<string, any>();
+
   constructor() {
     this.eventBus.events$.subscribe(event => {
       if (event.type === 'SequenceTriggered') { }
     });
+  }
+
+  private updateCinematicState(): void {
+    this.gameContext.setCinematicState(
+      this.isPlaying, 
+      this.activeSequence ? this.activeSequence.id : null, 
+      this.currentTimeMs
+    );
   }
 
   private createCameraMesh(scene: any): Mesh {
@@ -136,31 +149,57 @@ export class CinematicDirectorService implements IUpdatable {
       }
   }
 
+  private loadSequence(sequence: CinematicSequence) {
+      if (this.activeSequence?.id === sequence.id) return;
+      
+      this.activeSequence = sequence;
+      this.currentTimeMs = 0;
+      this.lastEvaluatedTimeMs = 0;
+      this.activeDialogueClipId = null;
+      this.lastActiveOverlays.clear();
+
+      const uidsToPrefetch: string[] = [];
+      sequence.tracks.forEach(t => {
+        if ((t.type === 'actor' || t.type === 'object') && t.targetUid) uidsToPrefetch.push(t.targetUid);
+        if (t.type === 'camera' && t.targetUid) uidsToPrefetch.push(t.targetUid); 
+        t.keyframes.forEach(kf => {
+           if (kf.value?.useLocalSpaceUid) uidsToPrefetch.push(kf.value.useLocalSpaceUid);
+           if (kf.value?.targetUid) uidsToPrefetch.push(kf.value.targetUid);
+           if (kf.value?.cameraTargetUid) uidsToPrefetch.push(kf.value.cameraTargetUid);
+        });
+      });
+      this.actorResolver.prefetch(uidsToPrefetch);
+      
+      // 🔥 CAPTURAR EL ESTADO INICIAL VERDADERO DE LOS ACTORES ANTES DE MODIFICARLOS
+      this.savedActorStates.clear();
+      sequence.tracks.forEach(t => {
+        if ((t.type === 'actor' || t.type === 'object') && t.targetUid) {
+          const entity = this.actorResolver.resolve(t.targetUid);
+          if (entity && !this.savedActorStates.has(t.targetUid)) {
+             this.savedActorStates.set(t.targetUid, {
+                position: { ...entity.transform.position },
+                rotation: { ...entity.transform.rotation },
+                rotationQuaternion: entity.transform.rotationQuaternion ? { ...entity.transform.rotationQuaternion } : null,
+                scale: { ...entity.transform.scale }
+             });
+          }
+        }
+      });
+  }
+
   public play(sequence: CinematicSequence): void {
     if (this.isPlaying && this.activeSequence?.id === sequence.id) return;
     
     CinematicLogger.logPlayback('PLAY', sequence.name);
-    this.activeSequence = sequence;
-    this.isPlaying = true;
     
+    this.loadSequence(sequence);
+
+    this.isPlaying = true;
     if (this.currentTimeMs >= sequence.durationMs) {
       this.currentTimeMs = 0;
     }
-    this.lastEvaluatedTimeMs = this.currentTimeMs;
-    this.activeDialogueClipId = null;
-    this.lastActiveOverlays.clear();
-
-    const uidsToPrefetch: string[] = [];
-    sequence.tracks.forEach(t => {
-      if ((t.type === 'actor' || t.type === 'object') && t.targetUid) uidsToPrefetch.push(t.targetUid);
-      if (t.type === 'camera' && t.targetUid) uidsToPrefetch.push(t.targetUid); 
-      t.keyframes.forEach(kf => {
-         if (kf.value?.useLocalSpaceUid) uidsToPrefetch.push(kf.value.useLocalSpaceUid);
-         if (kf.value?.targetUid) uidsToPrefetch.push(kf.value.targetUid);
-         if (kf.value?.cameraTargetUid) uidsToPrefetch.push(kf.value.cameraTargetUid);
-      });
-    });
-    this.actorResolver.prefetch(uidsToPrefetch);
+    
+    this.updateCinematicState();
 
     const hasCameraTrack = sequence.tracks.some(t => t.type === 'camera');
     if (hasCameraTrack) {
@@ -181,12 +220,12 @@ export class CinematicDirectorService implements IUpdatable {
         }
     }
 
+    // Autoridad Estricta
     sequence.tracks.forEach(t => {
       if ((t.type === 'actor' || t.type === 'object') && t.targetUid) {
         const entity = this.actorResolver.resolve(t.targetUid);
         if (entity) {
-            entity.isCinematicControlled = true;
-            if (entity.view) entity.view.checkCollisions = false;
+            entity.movementAuthority = 'CINEMATIC_FULL';
         }
       }
     });
@@ -197,8 +236,10 @@ export class CinematicDirectorService implements IUpdatable {
   public pause(): void {
     this.isPlaying = false;
     CinematicLogger.logPlayback('PAUSE');
+    this.updateCinematicState();
   }
 
+  // 🔥 EVENTO DE ABORTO (RESET ABSOLUTO A 0)
   public stop(): void {
     this.isPlaying = false;
     this.currentTimeMs = 0;
@@ -210,6 +251,7 @@ export class CinematicDirectorService implements IUpdatable {
     this.lastActiveOverlays.clear();
     
     CinematicLogger.logPlayback('STOP');
+    this.updateCinematicState();
 
     if (this.activeDialogueClipId) {
        this.eventBus.emit({ type: 'DialogueRequested', payload: { durationMs: 0 } });
@@ -225,16 +267,29 @@ export class CinematicDirectorService implements IUpdatable {
         if ((t.type === 'actor' || t.type === 'object') && t.targetUid) {
           const entity = this.actorResolver.resolve(t.targetUid);
           if (entity) {
-             entity.isCinematicControlled = false;
-             if (entity.playerRuntime) entity.playerRuntime.cinematicAnimation = null;
-             
-             if (entity.view && entity.playerConfig) {
-                 const profile = getMovementProfileForOwner(this.ownership.getOwner());
-                 entity.view.checkCollisions = profile.collisionsEnabled;
+             entity.movementAuthority = 'GAMEPLAY';
+             if (entity.playerRuntime) {
+                 entity.playerRuntime.cinematicAnimation = null;
+                 entity.playerRuntime.cinematicClipOverride = null;
+                 entity.playerRuntime.seqRuntime = null;
              }
           }
         }
       });
+
+      // 🔥 RESETEAR POSICIONES A SU ESTADO INICIAL SIEMPRE EN STOP (Sin importar Editor/Runtime)
+      this.savedActorStates.forEach((state, uid) => {
+         const entity = this.actorResolver.resolve(uid);
+         if (entity) {
+            entity.transform.position = { ...state.position };
+            entity.transform.rotation = { ...state.rotation };
+            entity.transform.rotationQuaternion = state.rotationQuaternion ? { ...state.rotationQuaternion } : null;
+            entity.transform.scale = { ...state.scale };
+            entity.isDirty = true;
+            entity.syncToView();
+         }
+      });
+      this.savedActorStates.clear();
 
       if (this.ownership.getOwner() === 'CINEMATIC_DIRECTOR') {
          this.releaseCamera();
@@ -246,12 +301,74 @@ export class CinematicDirectorService implements IUpdatable {
     this.eventBus.emit({ type: 'CinematicStopped' });
   }
 
-  public seek(timeMs: number): void {
+  // 🔥 EVENTO DE FINALIZACIÓN NATURAL
+  public finish(): void {
+    this.isPlaying = false;
+    this.fadeOpacity.set(0);
+    this.activeOverlays.set([]);
+    this.overlayTransformTranslate.set({ x: 0, y: 0 });
+    this.overlayTransformScale.set(1);
+    this.lastActiveOverlays.clear();
+    
+    CinematicLogger.logPlayback('FINISH');
+    this.updateCinematicState();
+
+    if (this.activeDialogueClipId) {
+       this.eventBus.emit({ type: 'DialogueRequested', payload: { durationMs: 0 } });
+       this.activeDialogueClipId = null;
+    }
+
+    if (this.cinematicCameraMesh) {
+        this.cinematicCameraMesh.setEnabled(false);
+    }
+
+    if (this.activeSequence) {
+      this.activeSequence.tracks.forEach(t => {
+        if ((t.type === 'actor' || t.type === 'object') && t.targetUid) {
+          const entity = this.actorResolver.resolve(t.targetUid);
+          if (entity) {
+             entity.movementAuthority = 'GAMEPLAY';
+             if (entity.playerRuntime) {
+                 entity.playerRuntime.cinematicAnimation = null;
+                 entity.playerRuntime.cinematicClipOverride = null;
+                 entity.playerRuntime.seqRuntime = null;
+             }
+          }
+        }
+      });
+
+      // Se limpian los estados guardados sin restaurar posiciones, dejándolos donde terminaron.
+      this.savedActorStates.clear(); 
+
+      if (this.ownership.getOwner() === 'CINEMATIC_DIRECTOR') {
+         this.releaseCamera();
+      }
+      this.activeSequence = null;
+    }
+
+    this.actorResolver.clearCache(); 
+    this.eventBus.emit({ type: 'CinematicStopped' });
+  }
+
+  public seek(timeMs: number, cinematic?: CinematicSequence): void {
+    if (cinematic) this.loadSequence(cinematic);
     if (!this.activeSequence) return;
+    
     CinematicLogger.logPlayback('SEEK', `${Math.round(timeMs)}ms`);
     this.currentTimeMs = Math.max(0, Math.min(timeMs, this.activeSequence.durationMs));
     this.lastEvaluatedTimeMs = this.currentTimeMs; 
     
+    this.updateCinematicState();
+
+    this.activeSequence.tracks.forEach(t => {
+      if ((t.type === 'actor' || t.type === 'object') && t.targetUid) {
+        const entity = this.actorResolver.resolve(t.targetUid);
+        if (entity) {
+            entity.movementAuthority = 'CINEMATIC_FULL';
+        }
+      }
+    });
+
     if (!this.cinematicCamera) {
        this.cinematicCamera = this.cameraFactory.getCamera('CINEMATIC', this.motor3d.getScene());
        this.cinematicCameraMesh = this.createCameraMesh(this.motor3d.getScene());
@@ -262,7 +379,6 @@ export class CinematicDirectorService implements IUpdatable {
     }
     
     this.evaluateFrame(0, true);
-    // Emite el evento de Seek para sincronizar luces y secuencias automáticas deterministas
     this.eventBus.emit({ type: 'CinematicSeeked', payload: { timeMs: this.currentTimeMs } });
   }
 
@@ -270,14 +386,23 @@ export class CinematicDirectorService implements IUpdatable {
     if (!this.isPlaying || !this.activeSequence) return;
 
     this.currentTimeMs += dtMs;
+    this.lastDtMs = dtMs;
 
     if (this.currentTimeMs >= this.activeSequence.durationMs) {
        this.currentTimeMs = this.activeSequence.durationMs;
+       this.updateCinematicState();
        this.evaluateFrame(dtMs, false);
-       this.stop();
+       
+       const mode = this.gameContext.mode();
+       if (mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME) {
+           this.pause(); // En editor dejamos el playhead al final (Timeline)
+       } else {
+           this.finish();  // En juego liberamos la cámara y devolvemos control naturalmente
+       }
        return;
     }
 
+    this.updateCinematicState();
     this.evaluateFrame(dtMs, false);
     this.lastEvaluatedTimeMs = this.currentTimeMs;
   }
@@ -311,9 +436,9 @@ export class CinematicDirectorService implements IUpdatable {
                 else if (kf1.value.fadeMode === 'fadeOut') currentFade = t;
                 else if (kf1.value.fadeMode === 'holdBlack') currentFade = 1.0;
 
-                this.evaluateTransformTrack(track, kf1, kf2, true, t, activeCameraId);
+                this.evaluateTransformTrack(track, kf1, kf2, true, t, activeCameraId, isScrubbing);
              } else if (track.type !== 'camera') {
-                this.evaluateTransformTrack(track, kf1, kf2, false, t);
+                this.evaluateTransformTrack(track, kf1, kf2, false, t, undefined, isScrubbing);
              }
           }
       } 
@@ -469,12 +594,24 @@ export class CinematicDirectorService implements IUpdatable {
     }
   }
 
-  private evaluateTransformTrack(track: CinematicTrack, kf1: CinematicKeyframe, kf2: CinematicKeyframe, isCamera: boolean, t: number, activeCameraId?: string): void {
+  private evaluateTransformTrack(track: CinematicTrack, kf1: CinematicKeyframe, kf2: CinematicKeyframe, isCamera: boolean, t: number, activeCameraId?: string, isScrubbing: boolean = false): void {
       const val1 = kf1.value;
-      const val2 = kf2.value;
+      const applyPosition = true; 
+
+      if (track.type === 'actor' && track.targetUid) {
+          const entity = this.actorResolver.resolve(track.targetUid);
+          if (entity) {
+              entity.movementAuthority = 'CINEMATIC_FULL';
+          }
+      } else if (!isCamera && track.targetUid) {
+          const entity = this.actorResolver.resolve(track.targetUid);
+          if (entity) {
+              entity.movementAuthority = 'CINEMATIC_FULL';
+          }
+      }
 
       CinematicDirectorService._sPos.set(val1.position?.x || 0, val1.position?.y || 0, val1.position?.z || 0);
-      CinematicDirectorService._ePos.set(val2.position?.x || 0, val2.position?.y || 0, val2.position?.z || 0);
+      CinematicDirectorService._ePos.set(kf2.value.position?.x || 0, kf2.value.position?.y || 0, kf2.value.position?.z || 0);
       
       let baseMatrix = null;
       let useGlobal = false;
@@ -494,7 +631,6 @@ export class CinematicDirectorService implements IUpdatable {
 
       let moveMode = val1.movementMode || 'linear';
       Vector3.LerpToRef(pStart, pEnd, t, CinematicDirectorService._finalPos);
-      const animationName = val1.animationName || 'idle';
 
       const targetUid = val1.targetUid || val1.cameraTargetUid || track.targetUid;
       const orientMode = val1.orientationMode || track.orientationMode || 'free';
@@ -546,7 +682,10 @@ export class CinematicDirectorService implements IUpdatable {
           const targetEntity = this.actorResolver.resolve(targetUid);
           if (targetEntity && targetEntity.view) {
               const targetPos = targetEntity.view.getAbsolutePosition();
-              this.getLookQuatToRef(CinematicDirectorService._finalPos, targetPos, CinematicDirectorService._forwardDir, CinematicDirectorService._finalRot);
+              const sourcePos = applyPosition ? CinematicDirectorService._finalPos : 
+                  (track.targetUid ? (this.actorResolver.resolve(track.targetUid)?.view?.getAbsolutePosition() || CinematicDirectorService._finalPos) : CinematicDirectorService._finalPos);
+              
+              this.getLookQuatToRef(sourcePos, targetPos, CinematicDirectorService._forwardDir, CinematicDirectorService._finalRot);
           } else {
               CinematicDirectorService._finalRot.copyFromFloats(0,0,0,1);
           }
@@ -563,9 +702,9 @@ export class CinematicDirectorService implements IUpdatable {
           }
 
           Quaternion.FromEulerAnglesToRef(
-              (val2.rotation?.x || 0) * Math.PI/180, 
-              (val2.rotation?.y || 0) * Math.PI/180, 
-              (val2.rotation?.z || 0) * Math.PI/180,
+              (kf2.value.rotation?.x || 0) * Math.PI/180, 
+              (kf2.value.rotation?.y || 0) * Math.PI/180, 
+              (kf2.value.rotation?.z || 0) * Math.PI/180,
               CinematicDirectorService._qEnd
           );
           if (baseMatrix) {
@@ -609,7 +748,7 @@ export class CinematicDirectorService implements IUpdatable {
           }
 
           let startFov = val1.fov !== undefined ? val1.fov : 0.8;
-          let endFov = val2.fov !== undefined ? val2.fov : startFov;
+          let endFov = kf2.value.fov !== undefined ? kf2.value.fov : startFov;
           let currentFov = moveMode === 'hold' ? startFov : (startFov + (endFov - startFov) * t);
           
           if (currentFov < 0.1) currentFov = 0.1;
@@ -622,7 +761,10 @@ export class CinematicDirectorService implements IUpdatable {
       else if (!isCamera && track.targetUid) {
           const entity = this.actorResolver.resolve(track.targetUid);
           if (entity && entity.view) {
-              entity.transform.position = { x: CinematicDirectorService._finalPos.x, y: CinematicDirectorService._finalPos.y, z: CinematicDirectorService._finalPos.z };
+              if (applyPosition) {
+                  entity.transform.position = { x: CinematicDirectorService._finalPos.x, y: CinematicDirectorService._finalPos.y, z: CinematicDirectorService._finalPos.z };
+                  entity.view.position.copyFrom(CinematicDirectorService._finalPos);
+              }
               
               if (entity.transform.rotationQuaternion) {
                   entity.transform.rotationQuaternion = { x: CinematicDirectorService._finalRot.x, y: CinematicDirectorService._finalRot.y, z: CinematicDirectorService._finalRot.z, w: CinematicDirectorService._finalRot.w };
@@ -631,14 +773,14 @@ export class CinematicDirectorService implements IUpdatable {
                   entity.transform.rotation = { x: euler.x, y: euler.y, z: euler.z };
               }
               
-              entity.view.position.copyFrom(CinematicDirectorService._finalPos);
               if (!entity.view.rotationQuaternion) entity.view.rotationQuaternion = new Quaternion();
               entity.view.rotationQuaternion.copyFrom(CinematicDirectorService._finalRot);
               
               entity.view.computeWorldMatrix(true);
               
               if (entity.playerRuntime) {
-                  entity.playerRuntime.cinematicAnimation = animationName;
+                  entity.playerRuntime.cinematicAnimation = val1.action || val1.animationName || 'idle';
+                  entity.playerRuntime.cinematicClipOverride = val1.clipOverride || null;
               }
           }
       }

@@ -8,7 +8,6 @@ import { GameEventBusService } from '../../events/game-event-bus.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { Subscription } from 'rxjs';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
-import { CinematicDirectorService } from './cinematic-director.service';
 import { GameContextService } from '../../session/game-context.service';
 
 export interface SeqRuntime {
@@ -175,7 +174,6 @@ export class PlayerSequenceService implements IUpdatable {
   private gameState = inject(GameStateService);
   private eventBus = inject(GameEventBusService);
   private entityManager = inject(EntityManagerService);
-  private cinematicDirector = inject(CinematicDirectorService);
   private context = inject(GameContextService);
 
   private eventSub!: Subscription;
@@ -207,7 +205,43 @@ export class PlayerSequenceService implements IUpdatable {
     });
   }
 
-  // 🔥 WARMUP: Arraque determinista para Cinemáticas
+  // 🔥 FASE 2: Nuevo Punto de Entrada exclusivo para la evaluación del Director Cinematográfico
+  public evaluateCinematicAction(entity: GameEntity, step: PlayerSequenceStep, dtMs: number, absoluteTimeMs: number): void {
+      const defaultRuntime = this.getDefaultRuntime(entity);
+      const runtime: SeqRuntime = { ...defaultRuntime, step, running: true, absoluteTimeMs };
+      
+      const config = entity.playerConfig || cloneDefaultPlayerConfig();
+
+      runtime.loop = !!step.loop;
+      runtime.allowMovement = step.allowMovement !== false;
+      runtime.lockInput = !!step.lockInput;
+      runtime.blend = typeof step.blend === 'number' ? step.blend : config.blend.defaultBlend;
+      
+      const lowerAction = step.action;
+      runtime.forceForwardWalk = runtime.allowMovement && lowerAction === 'walk';
+      runtime.forceForwardRun = runtime.allowMovement && lowerAction === 'run';
+      runtime.forceJump = lowerAction === 'jumpStart';
+
+      const handler = ActionHandlers[step.action];
+      if (handler) {
+          const durMs = Math.max(1, step.durationMs || 1000);
+          handler.execute(step, entity, this.entityManager, dtMs, dtMs / durMs, runtime);
+      }
+
+      const soY = step.offsetY || 0;
+      const soF = step.offsetForward || 0;
+      if (soY !== 0 || soF !== 0) {
+          const durSec = Math.max(0.001, step.durationMs / 1000);
+          const dtSec = dtMs / 1000;
+          runtime.rootMotion.y = (soY / durSec) * dtSec;
+          runtime.rootMotion.z = (soF / durSec) * dtSec;
+      }
+
+      if (entity.playerRuntime) {
+          entity.playerRuntime.seqRuntime = runtime;
+      }
+  }
+
   public startAllAutoPlaySequences(): void {
     const allEntities = this.entityManager.getAllEntities();
     for (let i = 0; i < allEntities.length; i++) {
@@ -223,7 +257,6 @@ export class PlayerSequenceService implements IUpdatable {
     }
   }
 
-  // 🔥 SYNC: Actualiza las luces automáticas en Base al Scrubbing (Seek) de la Timeline
   public syncAllAutoPlaySequences(elapsedMs: number): void {
     const allEntities = this.entityManager.getAllEntities();
     for (let i = 0; i < allEntities.length; i++) {
@@ -240,19 +273,23 @@ export class PlayerSequenceService implements IUpdatable {
   public physicsUpdate(dtMs: number): void {
     let effectiveDt = dtMs;
 
-    // 🔥 PAUSA DINÁMICA: Si el juego está pausado o si la cinemática está pausada
-    if (this.context.engineState() === 'PAUSED' && !this.cinematicDirector.isPlaying) {
+    if (this.context.engineState() === 'PAUSED' && !this.context.isCinematicPlaying()) {
        effectiveDt = 0;
     }
-    if (this.cinematicDirector.activeSequence && !this.cinematicDirector.isPlaying) {
+    if (this.context.activeCinematicId() && !this.context.isCinematicPlaying()) {
        effectiveDt = 0;
     }
 
     const entities = this.entityManager.getAllEntities();
     for (let i = 0; i < entities.length; i++) {
         const entity = entities[i];
+
+        // 🔥 FASE 1 & 2: SI ESTÁ BAJO CONTROL DEL DIRECTOR Y EJECUTANDO LOCOMOCIÓN, SALTAMOS ESTA EVALUACIÓN SECUENCIAL NORMAL
+        if (entity.movementAuthority === 'CINEMATIC_LOCOMOTION' || entity.movementAuthority === 'CINEMATIC_FULL') {
+             continue;
+        }
+
         if (entity.playerConfig?.sequences && entity.playerConfig.sequences.length > 0) {
-            // Evaluamos secuencias activas
             const runtime = this.actualizarSecuencia(effectiveDt, entity);
             if (entity.playerRuntime) {
                 entity.playerRuntime.seqRuntime = runtime;
@@ -276,8 +313,6 @@ export class PlayerSequenceService implements IUpdatable {
           if (state.cinematicTied) {
               this.activeSequences.delete(uid);
               
-              // Si estamos en un GameSession activo (Test Live o Final),
-              // las luces deben retomar su flujo normal e independiente sin detenerse.
               if (this.context.isPlaying()) {
                   const entity = this.entityManager.getEntityByUid(uid);
                   if (entity && entity.playerConfig && entity.playerConfig.sequences) {
@@ -346,13 +381,12 @@ export class PlayerSequenceService implements IUpdatable {
       state.elapsedMs = 0;
       state.stepEntered = true;
       state.jumpTriggered = false;
-      state.cinematicTied = this.cinematicDirector.isPlaying; // Vinculación a Cinemática Automática
+      state.cinematicTied = this.context.isCinematicPlaying(); 
 
       this.captureSequenceOrientationState(entity, state);
     }
   }
 
-  // 🔥 DETERMINISMO ABSOLUTO (SEEKING)
   public syncSequenceToTime(sequenceId: string, elapsedMs: number): void {
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
@@ -502,8 +536,7 @@ export class PlayerSequenceService implements IUpdatable {
         ActionHandlers['stopBaked']?.execute(step, entity, this.entityManager, dtMs, 0, runtime);
     }
     
-    // 🔥 WARMUP DEL TIEMPO ABSOLUTO: La Cinemática dicta el ritmo
-    if (state.cinematicTied) runtime.absoluteTimeMs = this.cinematicDirector.currentTimeMs;
+    if (state.cinematicTied) runtime.absoluteTimeMs = this.context.cinematicTimeMs();
 
     const handler = ActionHandlers[step.action];
     if (handler) {

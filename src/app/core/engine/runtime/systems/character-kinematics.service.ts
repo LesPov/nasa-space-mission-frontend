@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
@@ -38,10 +39,11 @@ export class CharacterKinematicsService implements IUpdatable {
     const scene = this.motor3d.getScene();
     const mode = this.context.mode();
     
-    if (mode === GameMode.EDITOR) return;
+    // 🔥 PERMITIMOS QUE LAS CINEMÁTICAS EJECUTEN FÍSICAS EN MODO EDITOR
+    const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
     const activeCamera = this.ownership.getCamera();
-    if (!activeCamera) return;
+    if (!activeCamera && !isEditor) return;
 
     const activePlayer = this.context.activePlayerEntity();
     const cameraView = this.context.cameraView();
@@ -54,7 +56,14 @@ export class CharacterKinematicsService implements IUpdatable {
       const entity = entities[i];
       if (!entity.hasComponent('characterConfig')) continue;
 
-      if (entity.isCinematicControlled) {
+      // En el editor, solo procesamos a los que están controlados por la cinemática
+      if (isEditor && entity.movementAuthority === 'GAMEPLAY') {
+          continue; 
+      }
+
+      // 🔥 FASE 1: CHEQUEO DE AUTORIDAD ESTRICTA
+      if (entity.movementAuthority === 'CINEMATIC_FULL') {
+         // El Director tiene control 100% Interpolado del Transform. Físicas desactivadas.
          if (entity.playerRuntime) {
             entity.playerRuntime.intentions.moveForward = false;
             entity.playerRuntime.intentions.moveBackward = false;
@@ -65,9 +74,15 @@ export class CharacterKinematicsService implements IUpdatable {
             const estadoFisico = entity.playerRuntime.physicsState;
             estadoFisico.velocidadY = 0;
             estadoFisico.isGrounded = true;
+            if (entity.view) {
+                estadoFisico.highestY = entity.view.position.y; // Evita daño de caída al finalizar cinemática
+            }
          }
          continue; 
       }
+
+      // Si llegamos aquí, la autoridad es 'GAMEPLAY' o 'CINEMATIC_LOCOMOTION'.
+      // En ambos casos, las físicas y la cinemática de locomoción DEBEN procesarse.
 
       const isPlayer = activePlayer && entity.uid === activePlayer.uid;
       const vista = isPlayer ? cameraView : 'FPS'; 
@@ -86,7 +101,7 @@ export class CharacterKinematicsService implements IUpdatable {
 
       const cameraToUseForDirection = (isPlayer && activeProfile.type === 'EDITOR_FREE') 
           ? (vista === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS()) 
-          : activeCamera;
+          : (activeCamera || this.motor3d.getEditorCamera());
 
       const seqRuntime = entity.playerRuntime?.seqRuntime;
       if (!seqRuntime) continue; 
@@ -141,7 +156,7 @@ export class CharacterKinematicsService implements IUpdatable {
       m.checkCollisions && m !== mesh && !m.isDescendantOf(mesh) && !Tags.MatchesQuery(m, "editor_only || fog_element");
 
     if (seqRuntime && seqRuntime.running && seqRuntime.step) {
-      if (seqRuntime.rootMotion && (seqRuntime.rootMotion.y !== 0 || seqRuntime.rootMotion.z !== 0 || seqRuntime.lockInput || seqRuntime.freezeOrientation)) {
+      if (seqRuntime.rootMotion && (seqRuntime.rootMotion.y !== 0 || seqRuntime.rootMotion.z !== 0)) {
         isCinematicSequence = true;
         dy = seqRuntime.rootMotion.y;
         df = seqRuntime.rootMotion.z;
@@ -219,7 +234,6 @@ export class CharacterKinematicsService implements IUpdatable {
     const hitInfo = scene.pickWithRay(this._rayCol, collFn);
     estadoFisico.isGrounded = hitInfo ? hitInfo.hit : false;
 
-    // 🔥 FIX FASE 3: Adquisición precisa de la normal geométrica del suelo contactado
     if (estadoFisico.isGrounded && hitInfo && hitInfo.hit) {
       const normal = hitInfo.getNormal(true);
       estadoFisico.groundNormal = normal || Vector3.Up();
@@ -289,12 +303,26 @@ export class CharacterKinematicsService implements IUpdatable {
     }
 
     if (seqRuntime && seqRuntime.running && seqRuntime.allowMovement) {
+      let forwardSource = this._forward;
+      
+      if (entity.movementAuthority === 'CINEMATIC_LOCOMOTION') {
+          if (mesh.getDirectionToRef) {
+              mesh.getDirectionToRef(this._forwardDir, this._pForward);
+          } else {
+              this._pForward.copyFrom(mesh.getDirection(this._forwardDir));
+          }
+          this._pForward.y = 0;
+          if (this._pForward.lengthSquared() < 0.0001) this._pForward.set(0, 0, 1);
+          this._pForward.normalize();
+          forwardSource = this._pForward;
+      }
+
       if (seqRuntime.forceForwardRun) {
-         this._forward.scaleToRef((config.movement.runSpeed || 0.09) * scaleFactor, this._pForward);
+         forwardSource.scaleToRef((config.movement.runSpeed || 0.09) * scaleFactor, this._pForward);
          this._move.addInPlace(this._pForward);
       }
       if (seqRuntime.forceForwardWalk) {
-         this._forward.scaleToRef((config.movement.walkSpeed || 0.045) * scaleFactor, this._pForward);
+         forwardSource.scaleToRef((config.movement.walkSpeed || 0.045) * scaleFactor, this._pForward);
          this._move.addInPlace(this._pForward);
       }
     }
@@ -310,7 +338,6 @@ export class CharacterKinematicsService implements IUpdatable {
       }
     }
 
-    // TELEMETRÍA ROTACIÓN ANTES
     const qBeforeRot = mesh.rotationQuaternion ? mesh.rotationQuaternion.clone() : null;
 
     if (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation)) {
@@ -424,15 +451,9 @@ export class CharacterKinematicsService implements IUpdatable {
          estadoFisico.isGrounded = false;
          intentions.jump = false; 
       } else {
-         // Moving on ground
-         // 🔥 FIX FASE 3: Eliminación de Jitter. 
-         // Si la normal del suelo es plana (o casi plana), no aplicamos velocidadY hacia abajo.
-         // Esto evita el ciclo de moveWithCollisions() hundiendo y repeliendo al jugador constantemente,
-         // logrando que la cámara FPS y TPS sean perfectamente estables y orgánicas.
          if (estadoFisico.groundNormal && estadoFisico.groundNormal.y > 0.999) {
              estadoFisico.velocidadY = 0;
          } else {
-             // En rampas/escaleras, aplicamos gravedad real para que se adhiera bien sin flotar horizontalmente
              estadoFisico.velocidadY = -Math.abs((config.jump.gravity || 0.018) * scaleFactor);
          }
       }

@@ -57,6 +57,13 @@ export class GameContextService {
   readonly #platforms = signal<any[]>([]);
 
   // ==========================================
+  // ESTADO NEUTRAL CINEMÁTICO (Alta Frecuencia)
+  // ==========================================
+  private _isCinematicPlaying = false;
+  private _activeCinematicId: string | null = null;
+  private _cinematicTimeMs = 0;
+
+  // ==========================================
   // ESTADO PÚBLICO INMUTABLE (COMPUTED)
   // ==========================================
 
@@ -108,9 +115,20 @@ export class GameContextService {
   public readonly isPlayerPreview = computed(() => this.#executionContext() === 'PLAYER_PREVIEW');
   public readonly isAdminPreview = computed(() => this.#executionContext() === 'ADMIN_PREVIEW');
 
+  // LECTURAS DE ALTA FRECUENCIA CINEMÁTICA (Mantiene GC bajo)
+  public isCinematicPlaying(): boolean { return this._isCinematicPlaying; }
+  public activeCinematicId(): string | null { return this._activeCinematicId; }
+  public cinematicTimeMs(): number { return this._cinematicTimeMs; }
+
   // ==========================================
   // CONFIGURACIÓN DE CONTEXTO Y AUTORIDAD (FASE 1 & 2)
   // ==========================================
+
+  public setCinematicState(isPlaying: boolean, activeId: string | null, timeMs: number): void {
+    this._isCinematicPlaying = isPlaying;
+    this._activeCinematicId = activeId;
+    this._cinematicTimeMs = timeMs;
+  }
 
   public setupContext(
     context: ExecutionContext,

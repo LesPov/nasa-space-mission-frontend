@@ -1,4 +1,5 @@
 
+import { PlayerActionKey } from './player-config.model';
 
 export interface Vector3State {
   x: number;
@@ -34,7 +35,12 @@ export interface TransformValue {
 }
 
 export interface ActorValue extends TransformValue {
+  // Animación estática interpolada
   animationName?: string;
+  
+  // 🔥 FASE 2: Soporte para Locomoción Integrada (Action Steps)
+  action?: PlayerActionKey;
+  clipOverride?: string;
 }
 
 export interface DialogueValue {
@@ -50,11 +56,8 @@ export interface EventValue {
 }
 
 export interface OverlayValue {
-  // Contenido de Texto e Imagen
   title?: string;
   text?: string;
-  
-  // Contenido Imagen
   assetId?: number;
   image?: string;
   imageWidth?: number;
@@ -63,23 +66,17 @@ export interface OverlayValue {
   maxHeight?: number;
   fitMode?: 'CONTAIN' | 'COVER' | 'STRETCH';
   tintColor?: string;
-  
-  // Tiempos y Animaciones In/Out (Afectan a la caja / Fondo Local)
   durationMs?: number;
   fadeInMs?: number;
   fadeOutMs?: number;
   animIn?: 'INSTANT' | 'FADE_IN' | 'SLIDE_UP' | 'SLIDE_DOWN' | 'SLIDE_LEFT' | 'SLIDE_RIGHT' | 'SCALE_IN';
   animOut?: 'INSTANT' | 'FADE_OUT' | 'SLIDE_UP' | 'SLIDE_DOWN' | 'SLIDE_LEFT' | 'SLIDE_RIGHT' | 'SCALE_OUT' | 'ZOOM_THROUGH';
-
-  // Animaciones independientes del contenido (Imagen / Texto)
   contentDelayMs?: number;
-  contentEarlyOutMs?: number; // 🔥 NUEVO: Permite que la imagen termine su animación antes que el fondo
+  contentEarlyOutMs?: number; 
   contentFadeInMs?: number;
   contentFadeOutMs?: number;
   contentAnimIn?: 'INSTANT' | 'FADE_IN' | 'SLIDE_UP' | 'SLIDE_DOWN' | 'SLIDE_LEFT' | 'SLIDE_RIGHT' | 'SCALE_IN';
   contentAnimOut?: 'INSTANT' | 'FADE_OUT' | 'SLIDE_UP' | 'SLIDE_DOWN' | 'SLIDE_LEFT' | 'SLIDE_RIGHT' | 'SCALE_OUT' | 'ZOOM_THROUGH';
-
-  // Tipografía
   fontFamily?: string;
   fontSize?: number;
   fontWeight?: 'Normal' | 'Medium' | 'Bold' | 'Black';
@@ -88,52 +85,40 @@ export interface OverlayValue {
   textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
   letterSpacing?: number;
   lineHeight?: number;
-
-  // Colores y Opacidad
   color?: string;
   secondaryColor?: string;
   opacity?: number;
-
-  // Sombras
   shadowEnabled?: boolean;
   shadowColor?: string;
   shadowBlur?: number;
   shadowOffsetX?: number;
   shadowOffsetY?: number;
-
-  // Borde (Outline)
   outlineEnabled?: boolean;
   outlineColor?: string;
   outlineWidth?: number;
-
-  // Fondo y Caja
-  fullscreenBg?: boolean; // 🔥 NUEVO: Permite fondo del tamaño del Viewport completo (100vw/vh)
+  fullscreenBg?: boolean; 
   bgType?: 'NONE' | 'SOLID' | 'TRANSPARENT' | 'BORDER_ONLY' | 'RADIAL_GRADIENT' | 'GRADIENT';
   bgColor?: string;
-  bgCenterOpacity?: number; // 🔥 NUEVO: Permite crear viñetas limpias independientes del overlay
+  bgCenterOpacity?: number; 
   gradientColorB?: string;
   gradientDirection?: 'TOP_TO_BOTTOM' | 'BOTTOM_TO_TOP' | 'LEFT_TO_RIGHT' | 'RIGHT_TO_LEFT' | 'RADIAL';
   bgOpacity?: number;
-  bgRadius?: number; // 🔥 NUEVO: Radio del Gradiente Radial
-  bgCenterX?: number; // 🔥 NUEVO: Epicentro X
-  bgCenterY?: number; // 🔥 NUEVO: Epicentro Y
+  bgRadius?: number; 
+  bgCenterX?: number; 
+  bgCenterY?: number; 
   borderColor?: string;
   borderWidth?: number;
   borderRadius?: number;
   paddingX?: number;
   paddingY?: number;
-
-  // Dimensiones y Layout
-  width?: number; // 0 = Auto
-  height?: number; // 0 = Auto
-  positionX?: number; // 0.0 a 1.0 (Resolución independiente)
-  positionY?: number; // 0.0 a 1.0
+  width?: number; 
+  height?: number; 
+  positionX?: number; 
+  positionY?: number; 
   anchor?: 'TOP_LEFT' | 'TOP_CENTER' | 'TOP_RIGHT' | 'CENTER_LEFT' | 'CENTER' | 'CENTER_RIGHT' | 'BOTTOM_LEFT' | 'BOTTOM_CENTER' | 'BOTTOM_RIGHT';
   zIndex?: number;
   scale?: number;
-  rotation?: number; // Rotación en 2D para imágenes
-
-  // Legacy variables
+  rotation?: number; 
   subtitle?: string;
   icon?: string;
   logo?: string;

@@ -10,7 +10,6 @@ import { GameContextService } from '../../session/game-context.service';
 import { InputOrchestratorService } from './input-orchestrator.service';
 import { PlayerCameraManagerService } from './player-camera.service';
 import { TriggerAudioService } from './trigger-audio.service';
-import { CinematicDirectorService } from './cinematic-director.service';
 import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 
 @Injectable({ providedIn: 'root' })
@@ -23,7 +22,6 @@ export class PlayerTriggerService implements IUpdatable {
   private inputOrchestrator = inject(InputOrchestratorService);
   private cameraSvc = inject(PlayerCameraManagerService);
   private triggerAudioSvc = inject(TriggerAudioService);
-  private cinematicDirector = inject(CinematicDirectorService);
   private ownership = inject(CameraOwnershipService);
   
   private activeTriggersInside = new Set<string>();
@@ -73,7 +71,7 @@ export class PlayerTriggerService implements IUpdatable {
   }
 
   public update(dtMs: number): void {
-    const isCinematic = this.cinematicDirector.isPlaying;
+    const isCinematic = this.context.isCinematicPlaying();
     const playerEntity = this.context.activePlayerEntity();
     
     // 🔥 FIX: Permite que el sistema opere durante Cinemáticas en el Editor aunque no exista el Player.
@@ -81,19 +79,19 @@ export class PlayerTriggerService implements IUpdatable {
 
     if (this.teleportCooldown > 0) {
         this.teleportCooldown -= dtMs;
-        this.verificarTriggers(playerEntity, true);
+        this.verificarTriggers(playerEntity, true, isCinematic);
     } else {
-        this.verificarTriggers(playerEntity, false);
+        this.verificarTriggers(playerEntity, false, isCinematic);
     }
   }
 
-  public verificarTriggers(entity: GameEntity | null, silent: boolean = false): void {
+  public verificarTriggers(entity: GameEntity | null, silent: boolean = false, isCinematic: boolean = false): void {
     if (this.isTransitioning) return;
 
     let probePoint = Vector3.Zero();
     
     // 🔥 MODO B: PROXIMIDAD CINEMÁTICA. Detecta si la cámara cruza los Triggers!
-    if (this.cinematicDirector.isPlaying) {
+    if (isCinematic) {
         const cam = this.ownership.getCamera();
         if (cam) probePoint.copyFrom(cam.globalPosition);
     } else if (entity) {

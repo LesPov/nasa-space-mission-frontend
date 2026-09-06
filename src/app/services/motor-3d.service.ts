@@ -11,6 +11,7 @@ import { DynamicLightingSystem } from '../core/engine/runtime/systems/lighting/d
 import { FogOrchestratorService } from '../core/engine/runtime/systems/fog-orchestrator.service';
 import { PlayerSequenceService } from '../core/engine/runtime/systems/player-sequence.service';
 import { PlayerTriggerService } from '../core/engine/runtime/systems/player-trigger.service';
+import { PlayerAnimationService } from '../core/engine/runtime/systems/player-animation.service';
 
 @Injectable({
   providedIn: 'root'
@@ -100,6 +101,10 @@ export class Motor3dService implements ISceneAccess {
     const fogOrch = this.injector.get(FogOrchestratorService);
     this.loopManager.registerSystem(fogOrch);
     fogOrch.start();
+
+    // 🔥 REGISTRO GLOBAL DE ANIMACIONES DE PLAYER PARA EDITOR (CINEMATICAS)
+    const playerAnimSvc = this.injector.get(PlayerAnimationService);
+    this.loopManager.registerSystem(playerAnimSvc);
 
     // 🔥 REGISTRO GLOBAL DE SECUENCIAS Y TRIGGERS PARA CINEMATICAS EN EDITOR
     const seqSvc = this.injector.get(PlayerSequenceService);

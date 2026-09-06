@@ -53,7 +53,6 @@ export class TimelineDirectorTab implements OnInit, OnDestroy {
   public zoomFactor = 1.0;
 
   get timelineMaxMs(): number {
-     // RANGO BASE DEFINITIVO Y OBLIGATORIO DE 5 MINUTOS: 300,000ms
      const cinematicDuration = this.cinematicSvc.currentCinematic()?.durationMs || 5000;
      return Math.max(cinematicDuration, 300000); 
   }
@@ -99,8 +98,7 @@ export class TimelineDirectorTab implements OnInit, OnDestroy {
   fitTimeline() {
      if (!this.scrollWrapper) return;
      const container = this.scrollWrapper.nativeElement;
-     const availableWidth = Math.max(100, container.clientWidth - 240); // 220px header + padding
-     // Adaptar al Rango Total Visual del Escenario (timelineMaxMs)
+     const availableWidth = Math.max(100, container.clientWidth - 240);
      const durationS = this.timelineMaxMs / 1000;
      if (durationS > 0) {
         this.zoomFactor = availableWidth / (durationS * this.pixelsPerSecond);
@@ -113,11 +111,11 @@ export class TimelineDirectorTab implements OnInit, OnDestroy {
       const pxPerSec = this.pixelsPerSecond * this.zoomFactor;
       
       let stepMs = 1000;
-      if (pxPerSec < 5) stepMs = 60000; // 1 min
-      else if (pxPerSec < 15) stepMs = 10000; // 10s
-      else if (pxPerSec < 40) stepMs = 5000; // 5s
-      else if (pxPerSec > 200) stepMs = 500; // 0.5s
-      else if (pxPerSec > 500) stepMs = 100; // 0.1s
+      if (pxPerSec < 5) stepMs = 60000;
+      else if (pxPerSec < 15) stepMs = 10000;
+      else if (pxPerSec < 40) stepMs = 5000;
+      else if (pxPerSec > 200) stepMs = 500;
+      else if (pxPerSec > 500) stepMs = 100;
 
       for (let i = 0; i <= this.timelineMaxMs; i += stepMs) {
         marks.push(i);
@@ -173,13 +171,11 @@ export class TimelineDirectorTab implements OnInit, OnDestroy {
             x = Math.max(0, x);
             let newTime = this.pxToTime(x);
             
-            // Limitación Visual de Keyframe Máximo de 5 Minutos (Base Framework Lógica)
             const clampedTime = Math.max(0, Math.min(newTime, 300000)); 
             
             if (kf.timeMs !== clampedTime) {
                 kf.timeMs = clampedTime;
                 
-                // 🔥 AUTOEXPANSIÓN LÓGICA DURANTE DRAG
                 if (kf.timeMs > currentCin.durationMs) {
                     CinematicLogger.logAutoExpand(currentCin.durationMs, kf.timeMs);
                     currentCin.durationMs = kf.timeMs;
@@ -217,7 +213,6 @@ export class TimelineDirectorTab implements OnInit, OnDestroy {
       const x = Math.max(0, event.clientX - rect.left - 220 + this.scrollWrapper.nativeElement.scrollLeft);
       const timeMs = this.pxToTime(x);
       
-      // La reproducción sí se detiene estrictamente cuando se alcanza el final configurado de la Cinemática.
       const durationMs = this.cinematicSvc.currentCinematic()?.durationMs || 5000;
       const clampedTime = Math.max(0, Math.min(timeMs, durationMs));
 
@@ -398,11 +393,15 @@ export class TimelineDirectorTab implements OnInit, OnDestroy {
 
   seleccionarCinematica(id: string) {
     if (this.cinematicTools.isInsideCamera) this.cinematicTools.salirCamara();
+    
+    // 🔥 FIX: Resetear estado forzado para la nueva cinemática
+    this.playbackManager.stop();
+    
     this.cinematicSvc.selectedCinematicId.set(id);
     this.cinematicSvc.selectedTrackIndex.set(-1);
     this.cinematicSvc.selectedKeyframeId.set(null);
     this.cinematicSvc.selectedReusableCameraId.set(null);
-    if (this.playbackManager.isPlaying()) this.playbackManager.stop();
+    
     this.proxySvc.rebuild(this.cinematicSvc.currentCinematic());
     CinematicLogger.logSelection('CINEMATIC', id);
   }
@@ -478,7 +477,6 @@ export class TimelineDirectorTab implements OnInit, OnDestroy {
       if (currentCin) {
           if (newTime > 300000) newTime = 300000;
           
-          // 🔥 AUTOEXPANSIÓN LÓGICA AL CREAR KEYFRAME (BOTÓN +KF)
           if (newTime > currentCin.durationMs) {
               CinematicLogger.logAutoExpand(currentCin.durationMs, newTime);
               currentCin.durationMs = newTime;

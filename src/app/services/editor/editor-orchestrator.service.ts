@@ -29,6 +29,7 @@ import { EditorLiveSyncService } from './editor-live-sync.service';
 import { MissionModalService } from './modals/mission-modal.service';
 import { CameraViewMode } from '../../core/engine/session/game-context.model';
 import { SnapshotReconcilerService } from './utils/snapshot-reconciler.service';
+import { CinematicPlaybackManagerService } from '../../core/engine/runtime/cinematics/cinematic-playback-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorOrchestratorService {
@@ -53,6 +54,7 @@ export class EditorOrchestratorService {
   private router = inject(Router);
   private missionSvc = inject(MissionModalService);
   private snapshotReconciler = inject(SnapshotReconcilerService);
+  private playbackManager = inject(CinematicPlaybackManagerService);
 
   public readonly editando = signal(false);
   public readonly isPlayable = signal(false);
@@ -323,6 +325,10 @@ export class EditorOrchestratorService {
 
   public async iniciarModoPrueba(vista: CameraViewMode, skipIntro: boolean = false): Promise<void> {
     if (!this.isPlayable()) return;
+    
+    // 🔥 FIX: Garantizar que cualquier secuencia en memoria sea purgada y devuelva el mapa a estado original
+    this.playbackManager.stop();
+    
     this.guardarMapaEnBD(true);
     
     if (!skipIntro) {

@@ -9,6 +9,7 @@ import { TimelinePlatformTab } from './tabs/timeline-platform-tab/timeline-platf
 import { EditorCinematicProxyService } from '../../services/editor-cinematic-proxy.service';
 import { EditorCinematicToolsService } from '../../services/editor-cinematic-tools.service';
 import { EditorStateService } from '../../services/editor/editor-state.service';
+import { CinematicPlaybackManagerService } from '../../core/engine/runtime/cinematics/cinematic-playback-manager.service';
   
 @Component({
   selector: 'app-global-timeline', 
@@ -28,6 +29,7 @@ export class GlobalTimeline {
   public stateSvc = inject(EditorStateService);
   private proxySvc = inject(EditorCinematicProxyService);
   private cinematicTools = inject(EditorCinematicToolsService);
+  private playbackManager = inject(CinematicPlaybackManagerService);
 
   cambiarTab(tab: string) {
     this.stateSvc.setActiveBottomTab(tab);
@@ -36,6 +38,8 @@ export class GlobalTimeline {
         if (this.cinematicTools.isInsideCamera) {
             this.cinematicTools.salirCamara();
         }
+        // 🔥 FIX: Limpia la cinemática para evitar desincronización de actores en Editor
+        this.playbackManager.stop();
     }
   }
 }

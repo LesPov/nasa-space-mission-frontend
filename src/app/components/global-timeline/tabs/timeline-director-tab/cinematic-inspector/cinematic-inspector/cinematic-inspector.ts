@@ -46,6 +46,7 @@ export class CinematicInspector implements OnChanges, OnInit {
   public transitionWarning: string | null = null;
 
   public listaAssets: any[] = [];
+  public availableClips: string[] = [];
   public archivoSubida: File | null = null;
   public subiendoAsset = false;
 
@@ -76,6 +77,11 @@ export class CinematicInspector implements OnChanges, OnInit {
            if (!this.keyframe.value.targetUid && this.keyframe.value.cameraTargetUid) {
                this.keyframe.value.targetUid = this.keyframe.value.cameraTargetUid;
            }
+
+           if (this.track?.type === 'actor') {
+               this.cargarClipsDisponibles();
+           }
+
        } else if (this.track?.type === 'background') {
            if (this.keyframe.value.opacity === undefined) this.keyframe.value.opacity = 1;
            if (!this.keyframe.value.bgType) this.keyframe.value.bgType = 'SOLID';
@@ -131,6 +137,12 @@ export class CinematicInspector implements OnChanges, OnInit {
         );
       }
     });
+  }
+
+  cargarClipsDisponibles() {
+      // Dummy list for now to allow selecting an animation clip.
+      // Normally you'd read the entity.animationNames of the track.targetUid.
+      this.availableClips = ['idle', 'walk', 'run', 'attack', 'die'];
   }
 
   seleccionarArchivoSubida(event: any) {

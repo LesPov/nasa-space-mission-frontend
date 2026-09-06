@@ -6,7 +6,7 @@ import { EditorCinematicToolsService } from '../../../../services/editor-cinemat
 import { EditorCinematicProxyService } from '../../../../services/editor-cinematic-proxy.service';
 import { CinematicSequence } from '../../models/cinematic.model';
 import { CinematicLogger } from './cinematic-logger';
- import { CameraOwnershipService } from '../cameras/camera-ownership.service';
+import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 import { GameContextService } from '../../session/game-context.service';
 
 @Injectable({ providedIn: 'root' })
@@ -23,7 +23,6 @@ export class CinematicPlaybackManagerService {
   
   private playbackTimer: any = null;
   
-  // Watchdog variables
   private lastWatchdogTime = 0;
   private stalledTicks = 0;
 
@@ -34,8 +33,11 @@ export class CinematicPlaybackManagerService {
     if (errors.length > 0) return errors;
 
     this.cinematicDirector.editorWantsCamera = this.cinematicTools.isInsideCamera;
+    
+    // Play will handle loading and capturing states seamlessly
     this.cinematicDirector.play(cinematic);
-    this.cinematicDirector.seek(this.playheadMs());
+    
+    this.playheadMs.set(this.cinematicDirector.currentTimeMs);
     
     this.isPlaying.set(true);
     this.stalledTicks = 0;
@@ -45,11 +47,10 @@ export class CinematicPlaybackManagerService {
     this.playbackTimer = setInterval(() => {
       this.playheadMs.set(this.cinematicDirector.currentTimeMs);
 
-      // 🔥 WATCHDOG: Monitorea si el Update Loop ha muerto externamente
       if (this.isPlaying()) {
          if (this.lastWatchdogTime === this.cinematicDirector.currentTimeMs) {
              this.stalledTicks++;
-             if (this.stalledTicks > 60) { // Approx 1s stalled
+             if (this.stalledTicks > 60) {
                  CinematicLogger.logPlaybackWarning('timeStalled', { 
                      time: this.lastWatchdogTime, 
                      mode: this.gameContext.mode(), 
@@ -83,16 +84,17 @@ export class CinematicPlaybackManagerService {
     this.isPlaying.set(false);
     this.playheadMs.set(0);
     if (this.playbackTimer) clearInterval(this.playbackTimer);
+    this.proxySvc.renderScene();
   }
 
   public seek(timeMs: number): void {
     this.playheadMs.set(timeMs);
     const cinematic = this.cinematicSvc.currentCinematic();
-    if (cinematic && !this.cinematicDirector.activeSequence) {
-        this.cinematicDirector.activeSequence = cinematic;
-    }
     this.cinematicDirector.editorWantsCamera = this.cinematicTools.isInsideCamera;
-    this.cinematicDirector.seek(timeMs);
+    
+    if (cinematic) {
+        this.cinematicDirector.seek(timeMs, cinematic);
+    }
     this.proxySvc.renderScene();
   }
 }

@@ -9,6 +9,7 @@ import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 
 export interface AnimState {
+  isSynced: boolean;
   animacionesJugador: AnimationGroup[];
   animActual: AnimationGroup | null;
   animIdle: AnimationGroup | null;
@@ -35,14 +36,26 @@ export class PlayerAnimationService implements IUpdatable {
 
   public animationUpdate(dtMs: number): void {
     const entities = this.entityManager.getAllEntities();
+    let scene: Scene | null = null;
 
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
       if (!entity.hasComponent('characterConfig')) continue;
 
-      const seqRuntime = entity.playerRuntime?.seqRuntime;
+      const state = this.getState(entity.uid);
+      
+      // 🔥 FIX: Auto-sincronizar animaciones en modo Editor si no se ha hecho
+      if (!state.isSynced && entity.view) {
+          scene = scene || (entity.view as Mesh).getScene();
+          if (scene) {
+              this.sincronizarAnimaciones(scene, entity);
+          }
+      }
+
+      const seqRuntime = entity.playerRuntime?.seqRuntime || null;
       const estadoFisico = entity.playerRuntime?.physicsState;
-      if (seqRuntime && estadoFisico) {
+      
+      if (estadoFisico) {
         this.gestionarAnimaciones(entity, estadoFisico, seqRuntime);
       }
     }
@@ -51,6 +64,7 @@ export class PlayerAnimationService implements IUpdatable {
   private getState(entityUid: string): AnimState {
     if (!this.states.has(entityUid)) {
       this.states.set(entityUid, { 
+        isSynced: false,
         animacionesJugador: [], animActual: null, animIdle: null, animWalk: null, animRun: null, 
         animJump: null, animJumpLoop: null, animFall: null, animLandSoft: null, animHardLanding: null, 
         animClimb: null, animClimbFinish: null, animHangIdle: null, animVault: null, animStepUp: null, 
@@ -114,7 +128,7 @@ export class PlayerAnimationService implements IUpdatable {
     state.animJumpLoop = this.resolveAnimation(state, anims.jumpLoop, state.animJump);
     state.animFall = this.resolveAnimation(state, anims.fall, state.animJumpLoop || state.animJump);
     state.animLandSoft = this.resolveAnimation(state, anims.landSoft, state.animIdle);
-    state.animHardLanding = this.resolveAnimation(state, anims.landHard, state.animLandSoft || state.animIdle);
+    state.animHardLanding = this.resolveAnimation(state, anims.landHard, state.animLandSoft || state.animIdle); // 🔥 FIX APLICADO
     state.animClimb = this.resolveAnimation(state, anims.climbUp, state.animIdle);
     state.animClimbFinish = this.resolveAnimation(state, anims.climbFinish, state.animClimb);
     state.animHangIdle = this.resolveAnimation(state, anims.hangIdle, state.animClimb);
@@ -124,6 +138,8 @@ export class PlayerAnimationService implements IUpdatable {
 
     if (state.animWalk) state.animWalk.speedRatio = 1.0;
     if (state.animRun) state.animRun.speedRatio = 1.0;
+
+    state.isSynced = true;
   }
 
   private isActionEnabled(action: PlayerActionKey, config: PlayerRuntimeConfig): boolean {
@@ -214,13 +230,27 @@ export class PlayerAnimationService implements IUpdatable {
     this.playAnim(entity, state.animIdle, true);
   }
 
-  public gestionarAnimaciones(entity: GameEntity, estadoFisico: EstadoFisico, seqRuntime: SeqRuntime): void {
+  public gestionarAnimaciones(entity: GameEntity, estadoFisico: EstadoFisico, seqRuntime: SeqRuntime | null): void {
     const state = this.getState(entity.uid);
     const config = entity.playerConfig || cloneDefaultPlayerConfig();
     
-    if (entity.isCinematicControlled) {
-        const animKey = entity.playerRuntime?.cinematicAnimation || 'idle';
-        const targetAnim = this.getAnimationForAction(state, animKey as PlayerActionKey);
+    // 🔥 FASE 2: Animación Cinemática Forzada por el Director (Locomoción Matemática)
+    if (entity.movementAuthority === 'CINEMATIC_FULL') {
+        let targetAnim: AnimationGroup | null = null;
+        
+        // 1. Intentamos con el Clip Override (Si el usuario forzó una animación específica)
+        const clipOverride = entity.playerRuntime?.cinematicClipOverride;
+        if (clipOverride) {
+            targetAnim = this.resolveAnimation(state, clipOverride, null);
+        }
+        
+        // 2. Si no hay override, usamos la Acción Semántica
+        if (!targetAnim) {
+            const animKey = entity.playerRuntime?.cinematicAnimation || 'idle';
+            targetAnim = this.getAnimationForAction(state, animKey as PlayerActionKey);
+        }
+
+        // Reproducimos la animación con un pequeño blending para transiciones suaves
         this.playAnim(entity, targetAnim, true, 0.1);
         return;
     }

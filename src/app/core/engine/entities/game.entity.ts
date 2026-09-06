@@ -1,3 +1,4 @@
+
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
@@ -113,9 +114,12 @@ export class PlayerRuntimeComponent {
     },
     public seqRuntime: SeqRuntime | null = null,
     public stopBakedRequested: boolean = false,
-    public cinematicAnimation: string | null = null
+    public cinematicAnimation: string | null = null,
+    public cinematicClipOverride: string | null = null
   ) {}
 }
+
+export type MovementAuthority = 'GAMEPLAY' | 'CINEMATIC_FULL' | 'CINEMATIC_LOCOMOTION';
 
 export class GameEntity {
   public uid: string;
@@ -126,7 +130,14 @@ export class GameEntity {
   public orderIndex: number = 0;
   public isPersistent: boolean = false;
 
-  public isCinematicControlled: boolean = false;
+  public movementAuthority: MovementAuthority = 'GAMEPLAY';
+
+  get isCinematicControlled(): boolean { 
+    return this.movementAuthority !== 'GAMEPLAY'; 
+  }
+  set isCinematicControlled(val: boolean) { 
+    this.movementAuthority = val ? 'CINEMATIC_FULL' : 'GAMEPLAY'; 
+  }
 
   public view: AbstractMesh | null = null;
   public isDirty: boolean = true; 
@@ -266,7 +277,6 @@ export class GameEntity {
         this.view.scaling.set(t.scale.x, t.scale.y, t.scale.z);
     }
 
-    // 🔥 FASE 2: Evitamos conversiones continuas entre Euler y Quaternion si ya poseemos la información en Quaternion
     if (this.view.rotationQuaternion) {
       let targetQuat: Quaternion;
       if (t.rotationQuaternion) {
@@ -315,7 +325,6 @@ export class GameEntity {
       t.rotationQuaternion.z = this.view.rotationQuaternion.z;
       t.rotationQuaternion.w = this.view.rotationQuaternion.w;
       
-      // 🔥 FASE 2: Eliminado "toEulerAngles()" constante por frame que drenaba recursos.
       if (telemetry && telemetry.enabled) {
         telemetry.logEvent(
           this.uid, this.rol, 'GameEntity (syncTransformFromView)', 'transform.rotation', 'SYNC',

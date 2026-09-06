@@ -1,3 +1,4 @@
+
 import { IGizmoTargetAdapter } from './gizmo-target-adapter.interface';
 import { AbstractMesh, Matrix, Vector3 } from '@babylonjs/core';
 import { GameEntity } from '../../../../core/engine/entities/game.entity';
@@ -10,21 +11,21 @@ export class CameraGizmoAdapter implements IGizmoTargetAdapter {
     return subSelected === 'camera';
   }
 
-  getAttachTarget(debugSvc: ToolsDebugService, pivotNode: AbstractMesh | null, mesh: AbstractMesh | null): AbstractMesh | null {
+  getAttachTarget(debugSvc: ToolsDebugService, pivotNode: AbstractMesh | null, mesh: AbstractMesh | null, entity: GameEntity | null): AbstractMesh | null {
     return debugSvc.debugCameraBox;
   }
 
-  getCenterDragTarget(debugSvc: ToolsDebugService, mesh: AbstractMesh | null): AbstractMesh | null {
-    return debugSvc.debugCameraBox;
+  getCenterPosition(debugSvc: ToolsDebugService, mesh: AbstractMesh | null, entity: GameEntity | null): Vector3 | null {
+    return debugSvc.debugCameraBox ? debugSvc.debugCameraBox.getAbsolutePosition() : null;
   }
 
-  applyDragDelta(delta: Vector3, debugSvc: ToolsDebugService, mesh: AbstractMesh): void {
+  applyDragDelta(delta: Vector3, debugSvc: ToolsDebugService, mesh: AbstractMesh, entity: GameEntity | null): void {
     if (debugSvc.debugCameraBox) {
       debugSvc.debugCameraBox.position.addInPlace(delta);
     }
   }
 
-  onGizmoDragged(mesh: AbstractMesh, pivotNode: AbstractMesh | null): void { }
+  onGizmoDragged(mesh: AbstractMesh, pivotNode: AbstractMesh | null, entity: GameEntity | null): void { }
 
   syncEntity(mesh: AbstractMesh, entity: GameEntity, debugSvc: ToolsDebugService, state: EditorStateService, motor3d: ISceneAccess): void {
     if (debugSvc.debugCameraBox) {
@@ -32,8 +33,6 @@ export class CameraGizmoAdapter implements IGizmoTargetAdapter {
       const invMat = Matrix.Invert(mesh.getWorldMatrix());
       const localPos = Vector3.TransformCoordinates(debugSvc.debugCameraBox.getAbsolutePosition(), invMat);
       
-      // 🔥 FIX 1: Se eliminó el doble escalado que destrozaba la posición del Anchor de Cámara.
-      // Se utiliza la coordenada local pura. TransformCoordinates ya maneja la escala.
       entity.camOffset.x = localPos.x;
       entity.camOffset.y = localPos.y; 
       entity.camOffset.z = localPos.z;

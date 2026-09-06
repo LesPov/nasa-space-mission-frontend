@@ -143,6 +143,7 @@ export class GameEntity {
   public isDirty: boolean = true; 
 
   private components = new Map<string, any>();
+  private _tempVisualCenterLocal = Vector3.Zero();
 
   constructor(uid: string, name: string, type: string, rol: string = 'prop') {
     this.uid = uid;
@@ -176,6 +177,50 @@ export class GameEntity {
     if (type === 'trigger' || type === 'trigger_compuesto') {
       this.addComponent('triggerConfig', new TriggerConfigComponent());
       this.addComponent('triggerRuntime', new TriggerRuntimeComponent());
+    }
+  }
+
+  /**
+   * FASE A - NORMALIZACIÓN VISUAL CENTER
+   * Obtiene el centro visual local (Camera Focus Point) sin instanciar nuevos objetos.
+   * Derivado dinámicamente de las dimensiones físicas reales (Capsule/Box).
+   */
+  public getVisualCenterLocalToRef(result: Vector3): void {
+    const col = this.collider;
+    const isCharacter = !!this.characterConfig;
+    
+    let cx = col?.offsetX || 0;
+    let cy = col?.offsetY || 0;
+    let cz = col?.offsetZ || 0;
+
+    if (isCharacter) {
+        // 'offsetY' es el centro de gravedad (cintura).
+        // 'sizeY' es la mitad de la altura.
+        // Sumamos la mitad del segmento superior para llegar al pecho/cuello.
+        cy += (col?.sizeY || 0.9) * 0.5;
+    }
+
+    result.set(cx, cy, cz);
+  }
+
+  /**
+   * FASE A - NORMALIZACIÓN VISUAL CENTER
+   * Obtiene el centro visual en coordenadas absolutas del mundo (World Space).
+   * O(1) Allocation-Free (Apto para Update Loops).
+   */
+  public getVisualCenterAbsoluteToRef(result: Vector3): void {
+    this.getVisualCenterLocalToRef(this._tempVisualCenterLocal);
+    
+    if (this.view) {
+        this.view.computeWorldMatrix(true);
+        Vector3.TransformCoordinatesToRef(this._tempVisualCenterLocal, this.view.getWorldMatrix(), result);
+    } else {
+        // Fallback matemático puro si la malla no está renderizada
+        result.set(
+            this.transform.position.x + this._tempVisualCenterLocal.x,
+            this.transform.position.y + this._tempVisualCenterLocal.y,
+            this.transform.position.z + this._tempVisualCenterLocal.z
+        );
     }
   }
 

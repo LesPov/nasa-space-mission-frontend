@@ -11,23 +11,21 @@ export class ColliderGizmoAdapter implements IGizmoTargetAdapter {
     return subSelected === 'collider';
   }
 
-  getAttachTarget(debugSvc: ToolsDebugService, pivotNode: AbstractMesh | null, mesh: AbstractMesh | null): AbstractMesh | null {
+  getAttachTarget(debugSvc: ToolsDebugService, pivotNode: AbstractMesh | null, mesh: AbstractMesh | null, entity: GameEntity | null): AbstractMesh | null {
     return debugSvc.debugCollider;
   }
 
-  getCenterDragTarget(debugSvc: ToolsDebugService, mesh: AbstractMesh | null): AbstractMesh | null {
-    return debugSvc.debugCollider;
+  getCenterPosition(debugSvc: ToolsDebugService, mesh: AbstractMesh | null, entity: GameEntity | null): Vector3 | null {
+    return debugSvc.debugCollider ? debugSvc.debugCollider.getAbsolutePosition() : null;
   }
 
-  applyDragDelta(delta: Vector3, debugSvc: ToolsDebugService, mesh: AbstractMesh): void {
+  applyDragDelta(delta: Vector3, debugSvc: ToolsDebugService, mesh: AbstractMesh, entity: GameEntity | null): void {
     if (debugSvc.debugCollider) {
       debugSvc.debugCollider.position.addInPlace(delta);
     }
   }
 
-  onGizmoDragged(mesh: AbstractMesh, pivotNode: AbstractMesh | null): void {
-    // Already handled natively because it attaches directly to debugCollider
-  }
+  onGizmoDragged(mesh: AbstractMesh, pivotNode: AbstractMesh | null, entity: GameEntity | null): void {}
 
   syncEntity(mesh: AbstractMesh, entity: GameEntity, debugSvc: ToolsDebugService, state: EditorStateService, motor3d: ISceneAccess): void {
     if (debugSvc.debugCollider) {

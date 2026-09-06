@@ -10,6 +10,7 @@ import { ToolsDebugColliderService } from './tools-debug-collider.service';
 import { ToolsDebugCameraService } from './tools-debug-camera.service';
 import { ToolsDebugLightService } from './tools-debug-light.service';
 import { ToolsDebugFogService } from './tools-debug-fog.service';
+import { ToolsDebugVisualCenterService } from './tools-debug-visual-center.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsDebugService {
@@ -23,6 +24,7 @@ export class ToolsDebugService {
   private cameraSvc = inject(ToolsDebugCameraService);
   private lightSvc = inject(ToolsDebugLightService);
   private fogSvc = inject(ToolsDebugFogService);
+  private visualCenterSvc = inject(ToolsDebugVisualCenterService);
 
   get debugCollider() { return this.colliderSvc.debugCollider; }
   get debugCameraBox() { return this.cameraSvc.debugCameraBox; }
@@ -80,6 +82,7 @@ export class ToolsDebugService {
       this.cameraSvc.dispose();
       this.lightSvc.dispose();
       this.fogSvc.dispose();
+      this.visualCenterSvc.dispose();
       return;
     }
 
@@ -92,6 +95,7 @@ export class ToolsDebugService {
     this.colliderSvc.update(scene, selected, entity, subSelected);
     this.cameraSvc.update(scene, selected, entity, subSelected);
     this.lightSvc.update(scene, selected, entity, subSelected);
+    this.visualCenterSvc.update(scene, selected, entity, subSelected);
 
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
     const isFPS = this.state.modoVistaPrueba === 'FPS';
@@ -122,9 +126,6 @@ export class ToolsDebugService {
 
     const colMeta = entity.collider;
     if (colMeta) {
-      // 🔥 CORRECCIÓN DEFINITIVA: El collider físico NUNCA debe seguir la respiración ni la cabeza.
-      // Es un elemento rígido. Pasar los offsets de la cabeza causaba que el debug collider
-      // mostrara una falsa desincronización con el jugador real en el Editor.
       this.colliderSvc.sync(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ, 0, 0, 0);
     }
 
@@ -137,6 +138,7 @@ export class ToolsDebugService {
     }
 
     this.cameraSvc.sync(cX, cY, cZ, breathX, breathY, breathZ);
+    this.visualCenterSvc.sync();
     
     if (entity.type?.startsWith('light_') && entity.light) {
        this.lightSvc.sync(entity.light.lightPosX ?? 0, entity.light.lightPosY ?? 0, entity.light.lightPosZ ?? 0, breathX, breathY, breathZ);

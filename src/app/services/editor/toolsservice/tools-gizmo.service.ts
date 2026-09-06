@@ -121,20 +121,21 @@ export class ToolsGizmoService {
     const onDraggingCenter = (event: any) => {
       const mesh = this.state.objetoSeleccionado() as Mesh;
       const subSelected = this.state.subObjetoSeleccionado();
-      const entity = mesh ? this.entityManager.getEntityByMesh(mesh) : null;
+      const entity = mesh ? this.entityManager.getEntityByMesh(mesh) || null : null;
 
       if (mesh && this.centerDragMesh && entity) {
         const adapter = this.registry.getAdapter(subSelected, entity);
         if (adapter) {
-            adapter.applyDragDelta(event.delta, this.debugSvc, mesh);
+            adapter.applyDragDelta(event.delta, this.debugSvc, mesh, entity);
             
-            const dragTarget = adapter.getCenterDragTarget(this.debugSvc, mesh);
-            if (dragTarget) {
-               this.centerDragMesh.position.copyFrom(dragTarget.getAbsolutePosition());
+            // 🔥 Actualizar el cuadrado blanco flotante con el API renovada
+            const centerPos = adapter.getCenterPosition(this.debugSvc, mesh, entity);
+            if (centerPos) {
+               this.centerDragMesh.position.copyFrom(centerPos);
             }
 
             if (!subSelected && this.gizmoPivotNode) {
-               this.gizmoPivotNode.position.copyFrom(mesh.getAbsolutePosition());
+               adapter.getAttachTarget(this.debugSvc, this.gizmoPivotNode, mesh, entity);
             }
 
             if (!subSelected) {
@@ -162,12 +163,12 @@ export class ToolsGizmoService {
   private onDraggingGizmo = () => {
     const mesh = this.state.objetoSeleccionado() as Mesh;
     const subSelected = this.state.subObjetoSeleccionado();
-    const entity = mesh ? this.entityManager.getEntityByMesh(mesh) : null;
+    const entity = mesh ? this.entityManager.getEntityByMesh(mesh) || null : null;
     if (!mesh || !this.gizmoPivotNode || !entity) return;
 
     const adapter = this.registry.getAdapter(subSelected, entity);
     if (adapter) {
-        adapter.onGizmoDragged(mesh, this.gizmoPivotNode);
+        adapter.onGizmoDragged(mesh, this.gizmoPivotNode, entity);
         
         if (!subSelected) {
             this.updateCenterDragMeshRenderState(mesh, subSelected);
@@ -297,12 +298,12 @@ export class ToolsGizmoService {
     if (!this.gizmoPivotNode || !this.centerDragMesh) return;
 
     let targetMesh: AbstractMesh | null = null;
-    const entity = selected ? this.entityManager.getEntityByMesh(selected) : null;
+    const entity = selected ? this.entityManager.getEntityByMesh(selected) || null : null;
     
     if (selected && entity) {
       const adapter = this.registry.getAdapter(subSelected, entity);
       if (adapter) {
-        targetMesh = adapter.getAttachTarget(this.debugSvc, this.gizmoPivotNode, selected);
+        targetMesh = adapter.getAttachTarget(this.debugSvc, this.gizmoPivotNode, selected, entity);
       }
     }
 
@@ -337,12 +338,12 @@ export class ToolsGizmoService {
       if (!this.centerDragMesh || !this.gizmoManager || !this.gizmoPivotNode) return;
 
       if (obj && !this.isDraggingGizmo && !Tags.MatchesQuery(obj, "cinematic_proxy")) {
-        const entity = this.entityManager.getEntityByMesh(obj);
+        const entity = this.entityManager.getEntityByMesh(obj) || null;
         const adapter = entity ? this.registry.getAdapter(subSelected, entity) : null;
         if (adapter) {
-            const dragTarget = adapter.getCenterDragTarget(this.debugSvc, obj);
-            if (dragTarget) {
-                this.centerDragMesh.position.copyFrom(dragTarget.getAbsolutePosition());
+            const centerPos = adapter.getCenterPosition(this.debugSvc, obj, entity);
+            if (centerPos) {
+                this.centerDragMesh.position.copyFrom(centerPos);
             }
         }
       }

@@ -65,7 +65,7 @@ export class CinematicDirectorService implements IUpdatable {
 
   public editorWantsCamera = false; 
 
-  // 🔥 WARMUP POOL: Cero Allocations
+  // 🔥 WARMUP POOL: Cero Allocations & FASE A (Visual Center)
   private static _sPos = Vector3.Zero();
   private static _ePos = Vector3.Zero();
   private static _globalSPos = Vector3.Zero();
@@ -78,6 +78,7 @@ export class CinematicDirectorService implements IUpdatable {
   private static _vStart = Vector3.Zero();
   private static _vEnd = Vector3.Zero();
   private static _forwardDir = new Vector3(0, 0, 1);
+  private static _tempTargetCenter = Vector3.Zero(); 
 
   private savedActorStates = new Map<string, any>();
 
@@ -170,7 +171,6 @@ export class CinematicDirectorService implements IUpdatable {
       });
       this.actorResolver.prefetch(uidsToPrefetch);
       
-      // 🔥 CAPTURAR EL ESTADO INICIAL VERDADERO DE LOS ACTORES ANTES DE MODIFICARLOS
       this.savedActorStates.clear();
       sequence.tracks.forEach(t => {
         if ((t.type === 'actor' || t.type === 'object') && t.targetUid) {
@@ -220,7 +220,6 @@ export class CinematicDirectorService implements IUpdatable {
         }
     }
 
-    // Autoridad Estricta
     sequence.tracks.forEach(t => {
       if ((t.type === 'actor' || t.type === 'object') && t.targetUid) {
         const entity = this.actorResolver.resolve(t.targetUid);
@@ -239,7 +238,6 @@ export class CinematicDirectorService implements IUpdatable {
     this.updateCinematicState();
   }
 
-  // 🔥 EVENTO DE ABORTO (RESET ABSOLUTO A 0)
   public stop(): void {
     this.isPlaying = false;
     this.currentTimeMs = 0;
@@ -277,7 +275,6 @@ export class CinematicDirectorService implements IUpdatable {
         }
       });
 
-      // 🔥 RESETEAR POSICIONES A SU ESTADO INICIAL SIEMPRE EN STOP (Sin importar Editor/Runtime)
       this.savedActorStates.forEach((state, uid) => {
          const entity = this.actorResolver.resolve(uid);
          if (entity) {
@@ -301,7 +298,6 @@ export class CinematicDirectorService implements IUpdatable {
     this.eventBus.emit({ type: 'CinematicStopped' });
   }
 
-  // 🔥 EVENTO DE FINALIZACIÓN NATURAL
   public finish(): void {
     this.isPlaying = false;
     this.fadeOpacity.set(0);
@@ -337,7 +333,6 @@ export class CinematicDirectorService implements IUpdatable {
         }
       });
 
-      // Se limpian los estados guardados sin restaurar posiciones, dejándolos donde terminaron.
       this.savedActorStates.clear(); 
 
       if (this.ownership.getOwner() === 'CINEMATIC_DIRECTOR') {
@@ -395,9 +390,9 @@ export class CinematicDirectorService implements IUpdatable {
        
        const mode = this.gameContext.mode();
        if (mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME) {
-           this.pause(); // En editor dejamos el playhead al final (Timeline)
+           this.pause(); 
        } else {
-           this.finish();  // En juego liberamos la cámara y devolvemos control naturalmente
+           this.finish();  
        }
        return;
     }
@@ -641,7 +636,8 @@ export class CinematicDirectorService implements IUpdatable {
       else if (moveMode === 'orbit' && targetUid) {
           const targetEntity = this.actorResolver.resolve(targetUid);
           if (targetEntity && targetEntity.view) {
-              const center = targetEntity.view.getAbsolutePosition();
+              targetEntity.getVisualCenterAbsoluteToRef(CinematicDirectorService._tempTargetCenter);
+              const center = CinematicDirectorService._tempTargetCenter;
               
               pStart.subtractToRef(center, CinematicDirectorService._vStart);
               pEnd.subtractToRef(center, CinematicDirectorService._vEnd);
@@ -681,7 +677,8 @@ export class CinematicDirectorService implements IUpdatable {
       if ((orientMode === 'lookAt' || moveMode === 'orbit') && targetUid) {
           const targetEntity = this.actorResolver.resolve(targetUid);
           if (targetEntity && targetEntity.view) {
-              const targetPos = targetEntity.view.getAbsolutePosition();
+              targetEntity.getVisualCenterAbsoluteToRef(CinematicDirectorService._tempTargetCenter);
+              const targetPos = CinematicDirectorService._tempTargetCenter;
               const sourcePos = applyPosition ? CinematicDirectorService._finalPos : 
                   (track.targetUid ? (this.actorResolver.resolve(track.targetUid)?.view?.getAbsolutePosition() || CinematicDirectorService._finalPos) : CinematicDirectorService._finalPos);
               
@@ -732,7 +729,8 @@ export class CinematicDirectorService implements IUpdatable {
                   if (camDef.cameraTargetUid) {
                       const targetEntity = this.actorResolver.resolve(camDef.cameraTargetUid);
                       if (targetEntity && targetEntity.view) {
-                          const targetPos = targetEntity.view.getAbsolutePosition();
+                          targetEntity.getVisualCenterAbsoluteToRef(CinematicDirectorService._tempTargetCenter);
+                          const targetPos = CinematicDirectorService._tempTargetCenter;
                           this.getLookQuatToRef(this.cinematicCamera.position, targetPos, CinematicDirectorService._forwardDir, CinematicDirectorService._finalRot);
                           this.cinematicCamera.rotationQuaternion.copyFrom(CinematicDirectorService._finalRot);
                       } else {
@@ -777,6 +775,9 @@ export class CinematicDirectorService implements IUpdatable {
               entity.view.rotationQuaternion.copyFrom(CinematicDirectorService._finalRot);
               
               entity.view.computeWorldMatrix(true);
+              
+              // 🔥 FIX 2: Marcamos la entidad como sucia para asegurar perfecta coherencia de los demás sistemas
+              entity.isDirty = true;
               
               if (entity.playerRuntime) {
                   entity.playerRuntime.cinematicAnimation = val1.action || val1.animationName || 'idle';

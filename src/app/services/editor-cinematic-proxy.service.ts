@@ -14,6 +14,9 @@ export class EditorCinematicProxyService {
   
   private cameraProxies: Mesh[] = [];
   private reusableCameraProxies: Mesh[] = [];
+  
+  // 🔥 Optimización 0-allocations para LookAt proxy
+  private static _tempTargetCenter = Vector3.Zero();
 
   private getLookQuat(pos: Vector3, target: Vector3, fallbackForward: Vector3): Quaternion {
     let dir = target.subtract(pos);
@@ -39,7 +42,9 @@ export class EditorCinematicProxyService {
              if (targetUid && (kf.value.orientationMode === 'lookAt' || kf.value.movementMode === 'orbit')) {
                  const targetEnt = this.entityManager.getEntityByUid(targetUid);
                  if (targetEnt && targetEnt.view) {
-                     const targetPos = targetEnt.view.getAbsolutePosition();
+                     // 🔥 FASE A: Apuntar el proxy de cámara al Visual Center (Pecho), no a los pies
+                     targetEnt.getVisualCenterAbsoluteToRef(EditorCinematicProxyService._tempTargetCenter);
+                     const targetPos = EditorCinematicProxyService._tempTargetCenter;
                      const pos = new Vector3(kf.value.position.x, kf.value.position.y, kf.value.position.z);
                      const quat = this.getLookQuat(pos, targetPos, Vector3.Forward());
                      const euler = quat.toEulerAngles();
@@ -59,7 +64,8 @@ export class EditorCinematicProxyService {
        if (camDef.cameraTargetUid) {
            const targetEnt = this.entityManager.getEntityByUid(camDef.cameraTargetUid);
            if (targetEnt && targetEnt.view) {
-               const targetPos = targetEnt.view.getAbsolutePosition();
+               targetEnt.getVisualCenterAbsoluteToRef(EditorCinematicProxyService._tempTargetCenter);
+               const targetPos = EditorCinematicProxyService._tempTargetCenter;
                const pos = new Vector3(camDef.position.x, camDef.position.y, camDef.position.z);
                const quat = this.getLookQuat(pos, targetPos, Vector3.Forward());
                const euler = quat.toEulerAngles();

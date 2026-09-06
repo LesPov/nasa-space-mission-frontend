@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
@@ -182,7 +181,7 @@ export class CharacterKinematicsService implements IUpdatable {
     } else {
       this.applyNormalMovement(
         mesh, config, estadoFisico, intentions, seqRuntime, 
-        vista, scaleFactor, scaleY, profile, entity
+        vista, scaleFactor, scaleY, profile, entity, dtMs
       );
     }
     
@@ -258,6 +257,7 @@ export class CharacterKinematicsService implements IUpdatable {
     else this._pForward.normalize();
 
     if (dy !== 0 && !isNaN(dy)) mesh.position.y += dy;
+    // dy/df en Cinemática ya están escalados por tiempo internamente (PlayerSequenceService)
     if (df !== 0 && !isNaN(df)) mesh.position.addInPlace(this._pForward.scaleInPlace(df));
 
     mesh.computeWorldMatrix(true);
@@ -280,9 +280,14 @@ export class CharacterKinematicsService implements IUpdatable {
     scaleFactor: number, 
     scaleY: number,
     profile: MovementProfile,
-    entity: GameEntity
+    entity: GameEntity,
+    dtMs: number
   ): void {
     const telemetry = TransformTelemetryService.instance;
+
+    // 🔥 FASE B: Normalización Temporal a 60 FPS
+    const TARGET_FRAME_TIME = 1000 / 60;
+    const timeRatio = dtMs / TARGET_FRAME_TIME;
 
     if (!profile.customInputEnabled) {
       intentions.moveForward = false;
@@ -295,6 +300,7 @@ export class CharacterKinematicsService implements IUpdatable {
 
     this.calculateLandingRecovery(estadoFisico, config);
 
+    // Sumatoria de intenciones (Matemática Pura Unitaria)
     if (!estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
       if (intentions.moveForward) this._move.addInPlace(this._forward);
       if (intentions.moveBackward) this._move.subtractInPlace(this._forward);
@@ -317,12 +323,13 @@ export class CharacterKinematicsService implements IUpdatable {
           forwardSource = this._pForward;
       }
 
+      // Cinemáticas: Locomoción Action Steps
       if (seqRuntime.forceForwardRun) {
-         forwardSource.scaleToRef((config.movement.runSpeed || 0.09) * scaleFactor, this._pForward);
+         forwardSource.scaleToRef((config.movement.runSpeed || 0.09) * scaleFactor * timeRatio, this._pForward);
          this._move.addInPlace(this._pForward);
       }
       if (seqRuntime.forceForwardWalk) {
-         forwardSource.scaleToRef((config.movement.walkSpeed || 0.045) * scaleFactor, this._pForward);
+         forwardSource.scaleToRef((config.movement.walkSpeed || 0.045) * scaleFactor * timeRatio, this._pForward);
          this._move.addInPlace(this._pForward);
       }
     }
@@ -330,23 +337,30 @@ export class CharacterKinematicsService implements IUpdatable {
     estadoFisico.isMoving = this._move.lengthSquared() > 0.001;
     estadoFisico.isRunning = intentions.run || (seqRuntime ? seqRuntime.forceForwardRun : false);
 
+    // Aplicar Vector Horizontal Físico a Gameplay
     if (estadoFisico.isMoving && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
       const modSpeed = (estadoFisico.isRunning ? (config.movement.runSpeed || 0.09) : (config.movement.walkSpeed || 0.045)) * scaleFactor;
       
       if (!seqRuntime || !seqRuntime.running || !seqRuntime.allowMovement) {
-        this._move.normalize().scaleInPlace(modSpeed);
+        this._move.normalize().scaleInPlace(modSpeed * timeRatio);
       }
     }
 
     const qBeforeRot = mesh.rotationQuaternion ? mesh.rotationQuaternion.clone() : null;
 
+    // 🔥 FASE B: Rotación TPS independiente del Framerate mediante Slerp Exponencial
     if (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation)) {
       if (vista === 'TPS' && estadoFisico.isMoving) {
         const targetAngle = Math.atan2(this._move.x, this._move.z);
         if (!isNaN(targetAngle)) {
           if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
           Quaternion.FromEulerAnglesToRef(0, targetAngle, 0, this._targetQuat);
-          Quaternion.SlerpToRef(mesh.rotationQuaternion, this._targetQuat, 0.2, mesh.rotationQuaternion);
+          
+          let baseRotSpeed = config.movement.rotationSpeed || 0.2;
+          if (baseRotSpeed === 0.1) baseRotSpeed = 0.2; // Compatibilidad con factor hardcodeado antiguo de 0.2
+
+          const slerpFactor = 1 - Math.pow(1 - baseRotSpeed, timeRatio);
+          Quaternion.SlerpToRef(mesh.rotationQuaternion, this._targetQuat, slerpFactor, mesh.rotationQuaternion);
         }
       } else if (vista === 'FPS') {
         const targetAngle = Math.atan2(this._forward.x, this._forward.z);
@@ -366,6 +380,8 @@ export class CharacterKinematicsService implements IUpdatable {
 
     const posBeforeGrav = mesh.position.clone();
 
+    // La Gravedad y Salto quedan inalterados (No multiplicados por timeRatio)
+    // Para mantener la estabilidad estricta requerida por moveWithCollisions.
     this.calculateGravityAndJump(mesh, estadoFisico, config, intentions, seqRuntime, scaleFactor, scaleY, profile);
 
     if (isNaN(this._move.x)) this._move.x = 0;
@@ -376,6 +392,7 @@ export class CharacterKinematicsService implements IUpdatable {
         telemetry.logEvent(entity.uid, entity.rol, 'CharacterKinematics', 'velocidadY', 'WRITE', null, estadoFisico.velocidadY);
     }
 
+    // Resolución física final
     if (profile.collisionsEnabled) {
       if (this._move.lengthSquared() > 0.000001) {
          mesh.moveWithCollisions(this._move);

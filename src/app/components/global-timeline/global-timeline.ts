@@ -6,6 +6,7 @@ import { TimelineAutoAnimTab } from './tabs/timeline-auto-anim-tab/timeline-auto
 import { TimelineDirectorTab } from './tabs/timeline-director-tab/timeline-director-tab';
 import { TimelinePrefabsTab } from './tabs/timeline-prefabs-tab/timeline-prefabs-tab';
 import { TimelinePlatformTab } from './tabs/timeline-platform-tab/timeline-platform-tab';
+import { TimelineRolesTab } from './tabs/timeline-roles-tab/timeline-roles-tab';
 import { EditorCinematicProxyService } from '../../services/editor-cinematic-proxy.service';
 import { EditorCinematicToolsService } from '../../services/editor-cinematic-tools.service';
 import { EditorStateService } from '../../services/editor/editor-state.service';
@@ -20,7 +21,8 @@ import { CinematicPlaybackManagerService } from '../../core/engine/runtime/cinem
     TimelineAutoAnimTab, 
     TimelineDirectorTab, 
     TimelinePrefabsTab, 
-    TimelinePlatformTab
+    TimelinePlatformTab,
+    TimelineRolesTab 
   ],
   templateUrl: './global-timeline.html',
   styleUrl: './global-timeline.css'
@@ -38,7 +40,6 @@ export class GlobalTimeline {
         if (this.cinematicTools.isInsideCamera) {
             this.cinematicTools.salirCamara();
         }
-        // 🔥 FIX: Limpia la cinemática para evitar desincronización de actores en Editor
         this.playbackManager.stop();
     }
   }

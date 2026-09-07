@@ -230,7 +230,7 @@
               <option value="TPS">🧍 3ra Persona</option>
             </select>
             
-            <button class="btn-vp btn-play" *ngIf="stateSvc.playState() === 'EDITOR'" [disabled]="!isPlayable" (click)="iniciarModoPrueba()">▶️ Jugar Preview</button>
+            <button class="btn-vp btn-play" *ngIf="stateSvc.playState() === 'EDITOR'" [disabled]="!isPlayable" (click)="handleAdminPlayClick()">▶️ Jugar Preview</button>
             
             <button class="btn-vp btn-window" *ngIf="stateSvc.playState() === 'EDITOR'" [disabled]="!isPlayable" (click)="abrirVentanaPreview()">🪟 Ventana Externa</button>
 
@@ -242,20 +242,20 @@
 
         <div class="canvas-container" (click)="onCanvasClick()">
           <div class="fps-badge">FPS: {{ fps }}</div>
-  <!-- NUEVO WIDGET UBICACION 3D -->
-  <app-ubicacion3d *ngIf="stateSvc.playState() === 'EDITOR' || stateSvc.playState() === 'EDITING_IN_GAME'"></app-ubicacion3d> 
-            <ng-container>
+          <app-ubicacion3d *ngIf="stateSvc.playState() === 'EDITOR' || stateSvc.playState() === 'EDITING_IN_GAME'"></app-ubicacion3d> 
+          
+          <ng-container>
             <button class="toggle-panel-btn toggle-right" (click)="layoutUI.toggleInspector()" [title]="layoutUI.showInspector() ? 'Ocultar Inspector' : 'Mostrar Inspector'">{{ layoutUI.showInspector() ? '▶' : '◀' }}</button>
             <button class="toggle-panel-btn toggle-bottom" (click)="layoutUI.toggleTimeline()" [title]="layoutUI.showTimeline() ? 'Ocultar Timeline' : 'Mostrar Timeline'">{{ layoutUI.showTimeline() ? '▼' : '▲' }}</button>
             <app-toolbar-escena *ngIf="stateSvc.playState() === 'EDITOR' || stateSvc.playState() === 'EDITING_IN_GAME' || (stateSvc.playState() === 'PLAYING' && !gameSession.pointerLocked())"></app-toolbar-escena>
           </ng-container>
 
-          <app-ui-hud  
-            [playState]="stateSvc.playState()">
-          </app-ui-hud>
-
+          <app-ui-hud [playState]="stateSvc.playState()"></app-ui-hud>
           <app-ui-radial-menu></app-ui-radial-menu>
           
+          <!-- 🔥 FASE 1: Inyección del selector de roles en Test Live -->
+          <app-ui-role-selector></app-ui-role-selector>
+
           <app-ui-mission 
             *ngIf="mostrarModalMisionPreview || stateSvc.previewMissionModal()" 
             [episodio]="episodioCompletoData"

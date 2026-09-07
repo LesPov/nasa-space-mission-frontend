@@ -1,5 +1,5 @@
 
-import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, signal, ChangeDetectorRef, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription, forkJoin, of } from 'rxjs';
@@ -27,14 +27,17 @@ import { UiInspect } from '../../../components/ui-inspect/ui-inspect';
 import { UiMission } from '../../../components/ui-mission/ui-mission';
 import { UiLoading } from '../../../components/ui-loading/ui-loading';
 import { UiRadialMenu } from '../../../components/ui-radial-menu/ui-radial-menu';
+import { UiRoleSelectorComponent } from '../../../components/ui-role-selector/ui-role-selector'; 
 import { WindowSyncService } from '../../../core/services/window-sync.service';
 import { LiveBuilderService } from '../../../services/editor/live-builder.service';
 import { PlayerInputService } from '../../../core/engine/runtime/systems/player-input.service';
+import { RoleModalService } from '../../../services/editor/modals/role-modal.service'; 
+import { NarrativeRoleDto } from '../../../core/engine/models/api-dto.model';
 
 @Component({
   selector: 'app-juego-pantalla',
   standalone: true, 
-  imports: [CommonModule, MotorBabylon, UiHud, UiInspect, UiMission, UiLoading, UiRadialMenu],
+  imports: [CommonModule, MotorBabylon, UiHud, UiInspect, UiMission, UiLoading, UiRadialMenu, UiRoleSelectorComponent],
   templateUrl: './juego-pantalla.html',
   styleUrls: ['./juego-pantalla.css']
 })
@@ -60,6 +63,12 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private liveBuilderSvc = inject(LiveBuilderService);
   private liveSync = inject(EditorLiveSyncService);
   public inputSvc = inject(PlayerInputService);
+  
+  // 🔥 FIX TS2341 ARQUITECTÓNICO: Mantenemos el servicio privado por encapsulación...
+  private roleModalSvc = inject(RoleModalService); 
+  
+  // ... y exponemos el estado estrictamente necesario como Signal Computed público para la plantilla
+  public isRoleSelectorVisible = computed(() => this.roleModalSvc.showRoleSelector());
 
   public isInteracting = signal<boolean>(false);
   public isLoading = signal<boolean>(true);
@@ -108,9 +117,8 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       if (event.type === 'ChangeSceneRequested') {
         this.cambiarPlataformaEnJuego(event.payload.sceneId);
       } else if (event.type === 'GamePaused') {
-        // 🔥 FIX: Debounce para evitar que el modal de misión salte cuando abrimos el Menú Radial
         setTimeout(() => {
-            if (this.misionIniciada && !this.cerrandoModalUsuario && !this.inputSvc.isRadialMenuOpen && !this.liveBuilderSvc.isBuilding() && !this.gameContext.isPointerLocked()) {
+            if (this.misionIniciada && !this.cerrandoModalUsuario && !this.inputSvc.isRadialMenuOpen && !this.liveBuilderSvc.isBuilding() && !this.gameContext.isPointerLocked() && !this.isRoleSelectorVisible()) {
                 this.modalMisionUsuario = true;
                 this.cdr.detectChanges();
             }
@@ -124,8 +132,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   }
 
   handleKeyDown(event: KeyboardEvent) {
-    if (event.key === 'Escape' && this.misionIniciada && !this.modalMisionUsuario) {
-      // 🔥 FIX: Si estamos en herramientas de edición, que el ESC no pause el juego, solo cancele la herramienta
+    if (event.key === 'Escape' && this.misionIniciada && !this.modalMisionUsuario && !this.isRoleSelectorVisible()) {
       if (this.inputSvc.isRadialMenuOpen || this.liveBuilderSvc.isBuilding()) {
           return;
       }
@@ -138,7 +145,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     }
     
     if ((event.code === 'KeyQ' || event.key.toLowerCase() === 'q') && this.canViewDebug && !event.repeat) {
-      // Evitar que abra repetidas veces
       if (!this.inputSvc.isRadialMenuOpen && !this.liveBuilderSvc.isBuilding()) {
           this.eventBus.emit({ type: 'RadialMenuToggled', payload: true });
       }
@@ -171,19 +177,36 @@ export class JuegoPantalla implements OnInit, OnDestroy {
             sceneObjects: res.escenaData.sceneObjects,
             triggers: res.escenaData.triggers,
             scene: res.escenaData.scene,
-            cinematics: res.escenaData.cinematics || []
+            cinematics: res.escenaData.cinematics || [],
+            narrativeRoles: [] 
           };
           
           this.playerStateActual = res.partida;
           
+          if (!res.escenaData.scene?.narrativeRoles) {
+             const rolesFetched = await this.epiApiSvc.obtenerRoles(this.episodioActual.id).toPromise();
+             this.episodioActual.narrativeRoles = rolesFetched || [];
+          } else {
+             this.episodioActual.narrativeRoles = res.escenaData.scene.narrativeRoles;
+          }
+
+          // Evitar que el LoadGame sobreescriba un Role activo en caso de Teleport
+          const roleBeforeLoad = this.gameStateSvc.playerRole;
+          this.gameStateSvc.loadGame(this.playerStateActual);
+          if (isTeleport && roleBeforeLoad) {
+             this.gameStateSvc.setPlayerRole(roleBeforeLoad);
+          }
+          
+          if (isTeleport) {
+              this.gameStateSvc.clearSceneState();
+          }
+
           const localLogic = res.escenaData.scene?.environmentSettings?.logicSettings;
           if (localLogic?.initialVariables) {
               localLogic.initialVariables.forEach((vr: any) => {
-                  if (vr.key) this.playerStateActual.worldState[vr.key] = vr.value;
+                  if (vr.key) this.gameStateSvc.setVar(vr.key, vr.value, 'scene');
               });
           }
-
-          this.gameStateSvc.loadGame(this.playerStateActual);
           
           await this.runtime.bootProductionGame(this.episodioActual, isTeleport);
           
@@ -241,6 +264,27 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     this.cargarPlataforma(sceneId, true);
   }
 
+  handleMissionStart() {
+      const currentRole = this.gameStateSvc.playerRole;
+      const playableRoles = (this.episodioActual?.narrativeRoles || []).filter((r: NarrativeRoleDto) => r.isEnabled && r.isPlayable);
+
+      if (!currentRole && playableRoles.length > 0) {
+          this.modalMisionUsuario = false; 
+          this.roleModalSvc.openSelector(playableRoles, (uid) => {
+              this.gameStateSvc.setPlayerRole(uid);
+              
+              this.runtime.shutdownProductionGame();
+              this.runtime.bootProductionGame(this.episodioActual, false).then(() => {
+                  this.comenzarMisionUsuario();
+              });
+          }, () => {
+              this.modalMisionUsuario = true;
+          });
+      } else {
+          this.comenzarMisionUsuario();
+      }
+  }
+
   comenzarMisionUsuario() {
     this.cerrandoModalUsuario = true; 
     const owner = this.ownership.getOwner();
@@ -266,7 +310,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   }
 
   onCanvasClick() {
-    if (this.misionIniciada && !this.gameContext.isPointerLocked() && !this.isInteracting() && !this.modalMisionUsuario && !this.inputSvc.isRadialMenuOpen) {
+    if (this.misionIniciada && !this.gameContext.isPointerLocked() && !this.isInteracting() && !this.modalMisionUsuario && !this.inputSvc.isRadialMenuOpen && !this.isRoleSelectorVisible()) {
       this.inputOrchestrator.lockPointer();
     }
   }

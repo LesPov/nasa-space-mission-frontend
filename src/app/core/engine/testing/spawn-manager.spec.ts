@@ -6,10 +6,15 @@ import { GameEntity, CharacterConfigComponent, PlayerRuntimeComponent } from '..
 import { MeshBuilder, Vector3, NullEngine, Scene } from '@babylonjs/core';
 import { TestBed } from '@angular/core/testing';
 import { SCENE_ACCESS_TOKEN } from '../scene/scene-access.token';
+import { GameStateService } from '../runtime/state/game-state.service';
+import { GameContextService } from '../session/game-context.service';
+import { CoreSceneLoaderService } from '../scene/utils/core-scene-loader.service';
 
-describe('SpawnManagerService (Fase 5)', () => {
+describe('SpawnManagerService (Fase 1 - Role Resolving Update)', () => {
   let spawnManager: SpawnManagerService;
   let entityManager: EntityManagerService;
+  let gameState: GameStateService;
+  let context: GameContextService;
   let scene: Scene;
 
   beforeEach(() => {
@@ -20,6 +25,22 @@ describe('SpawnManagerService (Fase 5)', () => {
       providers: [
         EntityManagerService,
         SpawnManagerService,
+        GameStateService,
+        GameContextService,
+        {
+          provide: CoreSceneLoaderService,
+          useValue: {
+            instantiatePrefab: async () => {
+              const mesh = MeshBuilder.CreateBox('mock', { size: 1 }, scene);
+              const ent = new GameEntity('char_militar', 'Mock', 'model');
+              ent.bindView(mesh);
+              TestBed.inject(EntityManagerService).addEntity(ent);
+              const map = new Map<string, any>();
+              map.set('char_militar', mesh);
+              return map;
+            }
+          }
+        },
         {
           provide: SCENE_ACCESS_TOKEN,
           useValue: {
@@ -32,6 +53,8 @@ describe('SpawnManagerService (Fase 5)', () => {
 
     entityManager = TestBed.inject(EntityManagerService);
     spawnManager = TestBed.inject(SpawnManagerService);
+    gameState = TestBed.inject(GameStateService);
+    context = TestBed.inject(GameContextService);
   });
 
   afterEach(() => {
@@ -39,84 +62,41 @@ describe('SpawnManagerService (Fase 5)', () => {
     scene.dispose();
   });
 
-  it('1. Debe retornar jugador temporal si no hay jugador ni spawn_point en el mapa (En Preview)', () => {
-    const result = spawnManager.resolvePlayerForSession(null, true);
+  it('Debe resolver el jugador asimilando un Character 3D al Spawn Point según el NarrativeRole', async () => {
+    // 1. Configuramos el Episodio con un rol militar
+    context.setActiveEpisode({
+        narrativeRoles: [{
+            uid: 'role_militar',
+            characterSceneObjectUid: 'char_militar',
+            spawnSceneObjectUid: 'spawn_plaza',
+            characterPrefab: { id: 1 }
+        }]
+    });
+
+    // 2. Establecemos el Game State como si el usuario hubiera seleccionado "Militar"
+    gameState.setPlayerRole('role_militar');
+
+    // 4. Creamos el marcador del Spawn (ubicado en el centro, Ej: X:5)
+    const spawnMesh = MeshBuilder.CreateBox('spawn_mesh', {size: 1}, scene);
+    spawnMesh.position.set(5, 0, 5);
+    const spawnEntity = new GameEntity('spawn_plaza', 'Spawn Principal', 'cube', 'spawn_point');
+    spawnEntity.bindView(spawnMesh);
+    
+    // 🔥 FIX TEST: Forzamos la actualización posicional en el GameEntity para que lo reconozca
+    spawnEntity.syncTransformFromView(); 
+    entityManager.addEntity(spawnEntity);
+
+    // 5. Ejecutamos el SpawnManager de forma asíncrona
+    const result = await spawnManager.resolvePlayerForSession(null, false);
+    
+    // Validaciones:
     expect(result).toBeDefined();
-    expect(result?.view?.name).toBe('TempPlayer_TestLive');
-  });
-
-  it('2. Debe ascender un spawn_point a jugador real en modo Runtime', () => {
-    const spawnMesh = MeshBuilder.CreateBox('spawn', {size: 1}, scene);
-    const spawnEntity = new GameEntity('123', 'Spawn', 'cube', 'spawn_point');
-    spawnEntity.bindView(spawnMesh);
-    entityManager.addEntity(spawnEntity);
-
-    const result = spawnManager.resolvePlayerForSession(null, false);
-    
-    expect(result).toBeDefined();
-    expect(result?.uid).toBe('123');
-    expect(result?.hasComponent('characterConfig')).toBe(true);
-    expect(result?.rol).toBe('player');
-    expect(result?.isPersistent).toBe(true);
-  });
-
-  it('3. Debe instanciar una malla temporal sobre el spawn en modo Editor TestLive', () => {
-    const spawnMesh = MeshBuilder.CreateBox('spawn', {size: 1}, scene);
-    const spawnEntity = new GameEntity('123', 'Spawn', 'cube', 'spawn_point');
-    spawnEntity.bindView(spawnMesh);
-    entityManager.addEntity(spawnEntity);
-
-    const result = spawnManager.resolvePlayerForSession(null, true);
-    
-    expect(result).toBeDefined();
-    expect(result?.uid).not.toBe('123'); // Es uno nuevo
-    expect(result?.rol).toBe('player');
-    expect(result?.view?.name).toBe('TempPlayer_TestLive');
-  });
-
-  it('4. Si existe un jugador configurado, en Runtime, lo fuerza a viajar al spawn point si hay uno', () => {
-    const playerMesh = MeshBuilder.CreateCapsule('player', {height: 1.8}, scene);
-    const playerEntity = new GameEntity('player', 'Jugador', 'model', 'player');
-    playerEntity.addComponent('characterConfig', new CharacterConfigComponent('player', true));
-    playerEntity.addComponent('playerRuntime', new PlayerRuntimeComponent());
-    playerEntity.bindView(playerMesh);
-    entityManager.addEntity(playerEntity);
-
-    const spawnMesh = MeshBuilder.CreateBox('spawn', {size: 1}, scene);
-    spawnMesh.position.set(10, 0, 10);
-    const spawnEntity = new GameEntity('spawn', 'Spawn', 'cube', 'spawn_point');
-    spawnEntity.bindView(spawnMesh);
-    entityManager.addEntity(spawnEntity);
-
-    const result = spawnManager.resolvePlayerForSession(null, false); // isPreview = false
-    
-    expect(result).toBe(playerEntity);
-    expect(result?.view?.position.x).toBe(10);
-    expect(result?.view?.position.z).toBe(10);
-    expect(entityManager.getEntityByUid('spawn')).toBeUndefined(); // El spawn debió eliminarse
-  });
-
-  it('5. En modo TestLive, NO debe forzar al jugador a viajar al spawn point', () => {
-    const playerMesh = MeshBuilder.CreateCapsule('player', {height: 1.8}, scene);
-    playerMesh.position.set(5, 0, 5); // Posicionado manualmente en 5,0,5
-
-    const playerEntity = new GameEntity('player', 'Jugador', 'model', 'player');
-    playerEntity.addComponent('characterConfig', new CharacterConfigComponent('player', true));
-    playerEntity.addComponent('playerRuntime', new PlayerRuntimeComponent());
-    playerEntity.bindView(playerMesh);
-    entityManager.addEntity(playerEntity);
-
-    const spawnMesh = MeshBuilder.CreateBox('spawn', {size: 1}, scene);
-    spawnMesh.position.set(10, 0, 10); // Hay un spawn en 10,0,10
-    const spawnEntity = new GameEntity('spawn', 'Spawn', 'cube', 'spawn_point');
-    spawnEntity.bindView(spawnMesh);
-    entityManager.addEntity(spawnEntity);
-
-    const result = spawnManager.resolvePlayerForSession(null, true); // isPreview = true
-    
-    expect(result).toBe(playerEntity);
-    expect(result?.view?.position.x).toBe(5); // Se queda en 5, no viaja a 10
+    expect(result?.uid).toBe('char_militar'); // Se usó el modelo 3D
+    expect(result?.rol).toBe('player'); // Fue ascendido a player
+    expect(result?.view?.position.x).toBe(5); // Fue teletransportado a la X:5
     expect(result?.view?.position.z).toBe(5);
-    expect(entityManager.getEntityByUid('spawn')).toBeDefined(); // El spawn no debe eliminarse porque no se consumió
+    
+    // El spawn debió ser eliminado de la memoria y la escena
+    expect(entityManager.getEntityByUid('spawn_plaza')).toBeUndefined();
   });
 });

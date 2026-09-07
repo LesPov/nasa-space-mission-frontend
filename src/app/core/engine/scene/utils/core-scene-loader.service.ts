@@ -80,7 +80,10 @@ export class CoreSceneLoaderService {
 
     scene.cameras.forEach(cam => cam.maxZ = 10000);
 
-    const objetosBD: SceneObjectDto[] = dataBD.sceneObjects || dataBD.sceneObjectsDelta || [];
+    // 🔥 FIX: Descartar basura histórica que rompe la arquitectura limpia del nuevo Player Runtime
+    let objetosBD: SceneObjectDto[] = dataBD.sceneObjects || dataBD.sceneObjectsDelta || [];
+    objetosBD = objetosBD.filter(obj => obj.name !== 'Jugador_Prueba' && obj.name !== 'TempPlayer_Fallback');
+    
     const triggersBD: TriggerDto[] = dataBD.triggers || dataBD.triggersDelta || [];
 
     const mallasCreadas = new Map<string, Mesh>();
@@ -92,6 +95,8 @@ export class CoreSceneLoaderService {
         const isLight = obj.type?.startsWith('light_');
         const objRol = obj.properties?.rol || obj.rol || 'prop';
 
+        // Si ya hay un Persistent Player cruzando la frontera de un nivel, 
+        // no renderizamos la basura guardada en el DB que coincida con rol Player.
         if (isPlaying && persistentPlayer && objRol === 'player') {
             return Promise.resolve();
         }
@@ -124,7 +129,8 @@ export class CoreSceneLoaderService {
     });
 
     if (isPlaying) {
-        const resolvedPlayer = this.spawnManager.resolvePlayerForSession(null, false);
+        // 🔥 Esperamos asíncronamente a que el modelo (Prefab) termine de instanciarse si viene de un Rol
+        const resolvedPlayer = await this.spawnManager.resolvePlayerForSession(null, false);
         
         if (persistentPlayer && resolvedPlayer && resolvedPlayer.uid === persistentPlayer.uid) {
             this.cameraSvc.transicionEntradaPlataforma(persistentPlayer);
@@ -185,11 +191,12 @@ export class CoreSceneLoaderService {
     });
   }
 
-  public async instantiatePrefab(prefabData: SceneObjectDto, positionTarget: Vector3, rotationEuler?: Vector3, scale?: Vector3, parentNode?: AbstractMesh): Promise<Map<string, Mesh>> {
+  // 🔥 Se adapta para aceptar directamente PrefabDto (que trae hierarchy en properties)
+  public async instantiatePrefab(prefab: any, positionTarget: Vector3, rotationEuler?: Vector3, scale?: Vector3, parentNode?: AbstractMesh): Promise<Map<string, Mesh>> {
     const mallasCreadas = new Map<string, Mesh>();
     const uidMap = new Map<string, string>(); 
 
-    const hierarchy = prefabData.properties?.prefabHierarchy || [prefabData];
+    const hierarchy = prefab.properties?.prefabHierarchy || [prefab];
     const promesasCarga: any[] = [];
 
     for (const item of hierarchy) {

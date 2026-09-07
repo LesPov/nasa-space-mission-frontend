@@ -1,5 +1,3 @@
-
-
 import { Component, Input, Output, EventEmitter, OnChanges, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -30,8 +28,6 @@ export class UiMission implements OnChanges {
   public tieneInventario = false;
   public tieneMapaUnLocker = false;
   public tieneHistoria = false;
-
-  // 🔥 100% SIGNAL REACTIVITY: Eliminados Lifecycle Hooks ineficientes (DoCheck, KeyValueDiffers)
 
   public ui = computed(() => {
     const s = this.worldSettingsSvc.uiSettings();
@@ -71,10 +67,12 @@ export class UiMission implements OnChanges {
 
   public objetivosGlobales = computed(() => {
      const s = this.worldSettingsSvc.uiSettings();
-     const worldState = this.playerState?.worldState || {};
+     const ws = this.playerState?.worldState || {};
+     const episodeState = ws.schemaVersion === 2 ? ws.episode : ws;
+     const globalState = ws.schemaVersion === 2 ? ws.global : ws;
 
-     if (worldState['mision_en_curso']) {
-        let activeObj = worldState['objetivos_activos'];
+     if (episodeState['mision_en_curso'] || globalState['mision_en_curso']) {
+        let activeObj = episodeState['objetivos_activos'] || globalState['objetivos_activos'];
         if (typeof activeObj === 'string') {
            activeObj = activeObj.split('\n').map((str: string) => str.trim()).filter((str: string) => str.length > 0);
         }
@@ -112,10 +110,12 @@ export class UiMission implements OnChanges {
   }
 
   procesarEstadoJugador() {
-    const worldState = this.playerState?.worldState || {};
+    const ws = this.playerState?.worldState || {};
+    const globalState = ws.schemaVersion === 2 ? ws.global : ws;
+    
     this.tieneInventario = (this.playerState?.inventory || []).length > 0;
-    this.tieneMapaUnLocker = !!worldState['mapa_desbloqueado'];
-    this.tieneHistoria = !!worldState['lore_desbloqueado'];
+    this.tieneMapaUnLocker = !!globalState['mapa_desbloqueado'];
+    this.tieneHistoria = !!globalState['lore_desbloqueado'];
   }
 
   cambiarTitulo(nuevoTitulo: string) {

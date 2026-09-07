@@ -1,11 +1,10 @@
-<!-- src/app/pages/player/juego-pantalla/juego-pantalla.html -->
 
 <div class="juego-container">
   
   <app-ui-loading *ngIf="isLoading()" texto="Cargando Entorno 3D..."></app-ui-loading>
 
   <div class="canvas-wrapper" 
-       [style.pointer-events]="(modalMisionUsuario && !cerrandoModalUsuario) ? 'none' : 'all'"
+       [style.pointer-events]="(modalMisionUsuario && !cerrandoModalUsuario) || isRoleSelectorVisible() ? 'none' : 'all'"
        (click)="onCanvasClick()">
      <div class="fps-badge" *ngIf="!isLoading()">FPS: {{ fps() }}</div>
      <app-motor-babylon></app-motor-babylon>
@@ -16,8 +15,10 @@
     [hideStatus]="modalMisionUsuario">
   </app-ui-hud>
 
-  <!-- EL MENÚ RADIAL EN INYECCIÓN DIRECTA -->
   <app-ui-radial-menu></app-ui-radial-menu>
+
+  <!-- 🔥 FASE 1: Inyección Modal Selector de Roles -->
+  <app-ui-role-selector></app-ui-role-selector>
 
   <app-ui-inspect (onClose)="cerrarInteraccion()"></app-ui-inspect>
 
@@ -28,7 +29,7 @@
     [misionIniciada]="misionIniciada" 
     [cerrando]="cerrandoModalUsuario" 
     [isDebugMode]="canViewDebug" 
-    (onStart)="comenzarMisionUsuario()" 
+    (onStart)="handleMissionStart()" 
     (onExit)="salirDelJuego()">
   </app-ui-mission>
 

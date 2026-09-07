@@ -1,6 +1,4 @@
 
-// src/app/services/editor/editor-orchestrator.service.ts
-
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AbstractMesh, Tags } from '@babylonjs/core';
@@ -120,6 +118,10 @@ export class EditorOrchestratorService {
     this.liveBuilderSvc.destroy(); 
   }
 
+  public getGameState(): GameStateService {
+    return this.gameState;
+  }
+
   public cargarEpisodios(): void {
     this.epiApiSvc.obtenerEpisodios().subscribe({
       next: (res) => { this.listaEpisodios.set(res); },
@@ -174,8 +176,20 @@ export class EditorOrchestratorService {
       next: async (res) => {
         this.episodioCompletoData = res; 
         this.editorSvc.setEscenaIdActiva(sceneId);
+        
+        // 🔥 Cargar roles en los datos locales del episodio para evitar otra request
+        if (!episodio.narrativeRoles) {
+           this.epiApiSvc.obtenerRoles(episodio.id).subscribe({
+              next: (roles) => {
+                 episodio.narrativeRoles = roles;
+                 this.editorSvc.setEpisodioActualData(episodio);
+              }
+           });
+        } else {
+           this.editorSvc.setEpisodioActualData(episodio);
+        }
+
         this.editorSvc.setEscenaActualData(res);
-        this.editorSvc.setEpisodioActualData(episodio);
         
         this.cargandoTexto.set('Preparando modelos, texturas y físicas 3D...');
         
@@ -308,7 +322,11 @@ export class EditorOrchestratorService {
     const obj = this.stateSvc.objetoSeleccionado() as AbstractMesh;
     let playable = false;
     
-    if (obj) {
+    // Primero, si ya forzamos un rol narrativo jugable
+    if (this.gameState.playerRole) {
+       playable = true;
+    } 
+    else if (obj) {
         const entity = this.entityManager.getEntityByMesh(obj);
         if (entity?.characterConfig) playable = true;
     }
@@ -323,16 +341,18 @@ export class EditorOrchestratorService {
     }
   }
 
-  public async iniciarModoPrueba(vista: CameraViewMode, skipIntro: boolean = false): Promise<void> {
+  // 🔥 FASE 1: Se añade el parámetro de rol narrativo explícito
+  public async iniciarModoPrueba(vista: CameraViewMode, skipIntro: boolean = false, roleUid?: string): Promise<void> {
     if (!this.isPlayable()) return;
     
-    // 🔥 FIX: Garantizar que cualquier secuencia en memoria sea purgada y devuelva el mapa a estado original
     this.playbackManager.stop();
-    
     this.guardarMapaEnBD(true);
     
     if (!skipIntro) {
       this.gameState.enterSandbox();
+      if (roleUid) {
+         this.gameState.setPlayerRole(roleUid);
+      }
       this.transitionSvc.beginTestLive();
       this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
     }

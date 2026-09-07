@@ -34,14 +34,12 @@ export class EditorPlayModeService {
   private dynamicLighting = inject(DynamicLightingSystem);
   private shadowOrchestrator = inject(ShadowOrchestratorService);
 
-  // 🔥 STATE PRESERVATION: Mantiene en memoria el estado exacto de la cámara antes del Test
   private preTestOwner: CameraOwner = 'NONE';
   private preTestCamera: Camera | null = null;
 
   public async prepararEscenaParaTest(vista: CameraViewMode, skipIntro: boolean = false): Promise<void> {
     this.cameraSvc.guardarEstadoCamaraLibre();
 
-    // Capturar propiedad absoluta
     this.preTestOwner = this.ownership.getOwner();
     this.preTestCamera = this.ownership.getCamera();
     CinematicLogger.logTestLiveLifecycle('ENTER', this.preTestOwner, this.preTestCamera?.name);
@@ -53,7 +51,8 @@ export class EditorPlayModeService {
     let objMesh = this.state.objetoSeleccionado() as Mesh;
     let preferredEntity = objMesh ? this.entityManager.getEntityByMesh(objMesh) : null;
     
-    const playerEntity = this.spawnManager.resolvePlayerForSession(preferredEntity, true);
+    // 🔥 El Spawn Manager ahora requiere espera asíncrona porque puede invocar la instanciación de un Prefab
+    const playerEntity = await this.spawnManager.resolvePlayerForSession(preferredEntity, true);
 
     if (!playerEntity || !playerEntity.view) {
         console.warn("No hay personaje jugable ni spawn point para iniciar el Test Live.");
@@ -205,7 +204,6 @@ export class EditorPlayModeService {
     this.cameraSvc.restaurarCamaraLibre();
     this.inputOrchestrator.unlockPointer();
     
-    // 🔥 FIX: POP Y RESTAURACIÓN DEL STACK DE CÁMARA (Para no romper Cinematic Camera View)
     const canvas = this.motor3d.getEngine().getRenderingCanvas();
     const camToRestore = this.preTestCamera && !this.preTestCamera.isDisposed() ? this.preTestCamera : this.motor3d.getEditorCamera();
     const ownerToRestore = this.preTestOwner !== 'NONE' ? this.preTestOwner : 'EDITOR';

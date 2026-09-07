@@ -53,10 +53,31 @@ export class EditorCinematicService {
         seq.tracks = seq.tracks || [];
         
         const newTracks: any[] = [];
-        let maxTimeFound = 0; // 🔥 WARMUP: Buscaremos el tiempo máximo real
+        let maxTimeFound = 0;
 
         seq.tracks.forEach((track: any) => {
             if (!track.type) track.type = 'camera'; 
+            
+            // 🔥 MIGRACIÓN LEGACY: Convertir clips a keyframes automáticamente para retrocompatibilidad
+            if (track.clips && (!track.keyframes || track.keyframes.length === 0)) {
+                CinematicLogger.logMigration('clipsToKeyframes', track.name);
+                track.keyframes = [];
+                track.clips.forEach((clip: any) => {
+                    track.keyframes.push({
+                        id: clip.id + '_start',
+                        timeMs: clip.startTimeMs,
+                        interpolation: clip.easing || 'linear',
+                        value: { position: clip.startPosition, rotation: clip.startRotation, fov: clip.startFov }
+                    });
+                    track.keyframes.push({
+                        id: clip.id + '_end',
+                        timeMs: clip.startTimeMs + clip.durationMs,
+                        interpolation: 'step', // Termina y no extrapola
+                        value: { position: clip.endPosition, rotation: clip.endRotation, fov: clip.endFov }
+                    });
+                });
+                delete track.clips;
+            }
             
             track.keyframes = track.keyframes || [];
             track.keyframes.forEach((kf: any) => {

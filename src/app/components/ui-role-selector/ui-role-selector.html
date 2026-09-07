@@ -1,0 +1,33 @@
+<div class="role-modal-overlay" *ngIf="roleModal.showRoleSelector()">
+  <div class="role-modal-box">
+    
+    <div class="role-modal-header">
+      <h2>SELECCIONA TU PERSONAJE</h2>
+      <p>Elige tu rol narrativo para iniciar la simulación.</p>
+    </div>
+
+    <div class="role-grid">
+      <!-- 🔥 FIX: La iteración correcta sobre el signal requiere paréntesis () -->
+      <div class="role-card" 
+           *ngFor="let role of roleModal.availableRoles()" 
+           (click)="selectRole(role.uid)">
+        
+        <div class="role-avatar-placeholder">
+           <span class="icon">👤</span>
+        </div>
+        
+        <div class="role-info">
+           <h3>{{ role.name }}</h3>
+           <p>{{ role.description || 'Sin descripción disponible.' }}</p>
+        </div>
+        
+        <div class="role-select-btn">Elegir</div>
+      </div>
+    </div>
+
+    <div class="role-modal-footer">
+      <button class="btn-cancel" (click)="cancel()">Cancelar y Volver</button>
+    </div>
+
+  </div>
+</div>

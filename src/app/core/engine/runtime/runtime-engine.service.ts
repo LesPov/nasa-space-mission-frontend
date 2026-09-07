@@ -40,58 +40,61 @@ export class RuntimeEngineService {
     await this.loaderSvc.loadSceneFromData(episodeData);
 
     return new Promise((resolve, reject) => {
-      this.motor3d.getScene().executeWhenReady(() => {
-        
-        this.inputOrchestrator.attachToScene(this.motor3d.getScene());
-        
-        const spawnEntity = this.spawnManager.resolvePlayerForSession(null, false);
+      this.motor3d.getScene().executeWhenReady(async () => {
+        try {
+            this.inputOrchestrator.attachToScene(this.motor3d.getScene());
+            
+            // 🔥 El Spawn Manager ahora requiere espera asíncrona porque puede invocar la instanciación de un Prefab
+            const spawnEntity = await this.spawnManager.resolvePlayerForSession(null, false);
 
-        if (!spawnEntity) {
-          reject(new Error('No hay punto de aparición (Spawn Point) en el mapa.'));
-          return;
-        }
-
-        this.resetVideos();
-
-        this.motor3d.getScene().meshes.forEach(m => {
-            if (Tags.MatchesQuery(m, "editor_only")) {
-                m.isVisible = false;
-                m.setEnabled(false);
+            if (!spawnEntity) {
+              reject(new Error('No hay punto de aparición (Spawn Point) en el mapa.'));
+              return;
             }
-        });
 
-        const activeView = skipIntro ? this.gameContext.cameraView() : 'TPS'; 
+            this.resetVideos();
 
-        this.playerCamSvc.inicializarCamaras(spawnEntity, activeView);
-        const targetCam = activeView === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS();
-        targetCam.getViewMatrix(true);
-        
-        const canvas = this.motor3d.getEngine().getRenderingCanvas();
-        this.ownership.setCamera(activeView === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', targetCam, canvas, true);
+            this.motor3d.getScene().meshes.forEach(m => {
+                if (Tags.MatchesQuery(m, "editor_only")) {
+                    m.isVisible = false;
+                    m.setEnabled(false);
+                }
+            });
 
-        this.gameSession.start(spawnEntity, activeView);
-        
-        if (!skipIntro) {
-           this.playerCamSvc.iniciarCinematicaIntro(spawnEntity);
+            const activeView = skipIntro ? this.gameContext.cameraView() : 'TPS'; 
+
+            this.playerCamSvc.inicializarCamaras(spawnEntity, activeView);
+            const targetCam = activeView === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS();
+            targetCam.getViewMatrix(true);
+            
+            const canvas = this.motor3d.getEngine().getRenderingCanvas();
+            this.ownership.setCamera(activeView === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', targetCam, canvas, true);
+
+            this.gameSession.start(spawnEntity, activeView);
+            
+            if (!skipIntro) {
+               this.playerCamSvc.iniciarCinematicaIntro(spawnEntity);
+            }
+
+            if (canvas) {
+              this._prodClickFn = () => {
+                 if (this.gameContext.isPlaying() && !this.gameContext.isPointerLocked()) {
+                    if (!skipIntro) this.playerCamSvc.detenerCinematicaIntro();
+                    this.inputOrchestrator.lockPointer(); 
+                 }
+              };
+              canvas.addEventListener('click', this._prodClickFn);
+            }
+
+            resolve(spawnEntity);
+        } catch (e) {
+            reject(e);
         }
-
-        if (canvas) {
-          this._prodClickFn = () => {
-             if (this.gameContext.isPlaying() && !this.gameContext.isPointerLocked()) {
-                if (!skipIntro) this.playerCamSvc.detenerCinematicaIntro();
-                this.inputOrchestrator.lockPointer(); 
-             }
-          };
-          canvas.addEventListener('click', this._prodClickFn);
-        }
-
-        resolve(spawnEntity);
       });
     });
   }
 
   public shutdownProductionGame(): void {
-    // 🔥 FIX: Restaurar la cabeza del jugador al Editor en caso de apagar la sesión en caliente
     this.playerCamSvc.updateFirstPersonVisibility(false);
     
     this.gameSession.stop();
@@ -125,7 +128,6 @@ export class RuntimeEngineService {
   }
 
   public stopTestSession(): void {
-    // 🔥 FIX: Restaurar la cabeza del jugador al volver al Editor.
     this.playerCamSvc.updateFirstPersonVisibility(false);
     this.gameSession.stop();
     this.playerCamSvc.limpiarPivotTPS();

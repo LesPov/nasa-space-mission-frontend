@@ -1,3 +1,4 @@
+
 // src/app/core/engine/testing/critical-flows.spec.ts
 
 import '@angular/compiler';
@@ -78,7 +79,7 @@ import { EditorOrchestratorService } from '../../../services/editor/editor-orche
 import { EditorLiveSyncService } from '../../../services/editor/editor-live-sync.service';
 import { SnapshotReconcilerService } from '../../../services/editor/utils/snapshot-reconciler.service';
 import { TriggerAudioService } from '../runtime/systems/trigger-audio.service';
-import { LocalRenderingSystem } from '../runtime/systems/local-rendering.system'; // 🔥 AÑADIDO
+import { LocalRenderingSystem } from '../runtime/systems/local-rendering.system';
 
 import { MeshBuilder, AbstractMesh } from '@babylonjs/core';
 import { GameMode } from '../session/game-mode.model';
@@ -166,7 +167,7 @@ describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
         PlayerTriggerService,
         PlayerSequenceService,
         TriggerAudioService,
-        LocalRenderingSystem, // 🔥 AÑADIDO
+        LocalRenderingSystem,
 
         EditorMapaService,
         EditorPlayModeService,
@@ -238,7 +239,11 @@ describe('Critical Game Flows (FASE 3 - Unificación Live Sync)', () => {
     gameContext.setMode(GameMode.EDITOR);
     stateSvc.seleccionarObjeto(playerMesh);
     
-    orchestrator.iniciarModoPrueba('FPS', true);
+    // 🔥 FIX TEST: Forzar la actualización del estado de jugabilidad antes de testear
+    orchestrator.revisarSiEsJugable(); 
+    
+    await orchestrator.iniciarModoPrueba('FPS', true);
+    
     expect(gameContext.mode()).toBe(GameMode.TEST_LIVE);
     expect(stateSvc.playState()).toBe('PLAYING');
 

@@ -1,18 +1,17 @@
-
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
-import { Ubicacion3D } from './ubicacion3d';
+import { TimelineRolesTab } from './timeline-roles-tab';
 
-describe('Ubicacion3D', () => {
-  let component: Ubicacion3D;
-  let fixture: ComponentFixture<Ubicacion3D>;
+describe('TimelineRolesTab', () => {
+  let component: TimelineRolesTab;
+  let fixture: ComponentFixture<TimelineRolesTab>;
 
   beforeEach(async () => {
     await TestBed.configureTestingModule({
-      imports: [Ubicacion3D],
+      imports: [TimelineRolesTab],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(Ubicacion3D);
+    fixture = TestBed.createComponent(TimelineRolesTab);
     component = fixture.componentInstance;
     await fixture.whenStable();
   });

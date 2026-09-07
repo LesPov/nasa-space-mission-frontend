@@ -4,12 +4,14 @@ export interface GameCondition {
   type: 'var_eq' | 'var_neq' | 'has_item' | 'missing_item' | 'role_eq';
   key: string;
   value?: string | number | boolean;
+  scope?: string; // 🔥 NUEVO FASE 1
 }
 
 export interface GameStateMutation {
   type: 'set_var' | 'add_item' | 'remove_item';
   key: string;
   value?: string | number | boolean;
+  scope?: string; // 🔥 NUEVO FASE 1
 }
 
 export type PlayerActionKey =

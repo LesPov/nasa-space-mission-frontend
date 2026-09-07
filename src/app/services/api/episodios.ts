@@ -5,7 +5,7 @@ import { EpisodeApiService } from './episode-api.service';
 import { SceneApiService } from './scene-api.service';
 import { AssetApiService } from './asset-api.service';
 import { PlayerStateApiService } from './player-state-api.service';
-import { SceneSavePayload, SceneLoadPayload } from '../../core/engine/models/api-dto.model';
+import { SceneSavePayload, SceneLoadPayload, NarrativeRoleDto } from '../../core/engine/models/api-dto.model';
 
 @Injectable({
   providedIn: 'root'
@@ -66,5 +66,21 @@ export class EpisodiosService {
 
   guardarEstadoJugador(episodeId: number, slot: number = 1, stateData: any): Observable<any> {
     return this.playerStateApi.guardarEstadoJugador(episodeId, slot, stateData);
+  }
+
+  obtenerRoles(episodeId: number): Observable<NarrativeRoleDto[]> {
+    return this.episodeApi.obtenerRoles(episodeId);
+  }
+
+  crearRol(episodeId: number, roleData: NarrativeRoleDto): Observable<NarrativeRoleDto> {
+    return this.episodeApi.crearRol(episodeId, roleData);
+  }
+
+  actualizarRol(roleId: number, roleData: Partial<NarrativeRoleDto>): Observable<NarrativeRoleDto> {
+    return this.episodeApi.actualizarRol(roleId, roleData);
+  }
+
+  eliminarRol(roleId: number): Observable<any> {
+    return this.episodeApi.eliminarRol(roleId);
   }
 }

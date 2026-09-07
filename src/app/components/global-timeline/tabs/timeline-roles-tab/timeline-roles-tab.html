@@ -1,0 +1,70 @@
+
+<div class="roles-layout">
+  <div class="roles-sidebar">
+    <button class="btn-primary full" (click)="nuevoRol()">+ Añadir Rol</button>
+    <div class="roles-list">
+      <div *ngFor="let role of roles" class="role-item" 
+           [class.active]="selectedRoleId === role.id"
+           (click)="selectedRoleId = role.id!">
+        <span class="icon">{{ role.isPlayable ? '🎮' : '🤖' }}</span>
+        <span class="name">{{ role.name }}</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="role-editor" *ngIf="selectedRole">
+    <div class="editor-header">
+      <h3>Configuración del Rol</h3>
+      <button class="btn-danger" (click)="eliminarRol(selectedRole.id!)">🗑️ Eliminar</button>
+    </div>
+
+    <div class="editor-grid">
+      <div class="field wide">
+        <label>Nombre del Rol</label>
+        <input type="text" [(ngModel)]="selectedRole.name" (ngModelChange)="guardarRol(selectedRole)">
+      </div>
+      <div class="field wide">
+        <label>Descripción / Lore</label>
+        <textarea [(ngModel)]="selectedRole.description" (ngModelChange)="guardarRol(selectedRole)" rows="3"></textarea>
+      </div>
+
+      <div class="field">
+        <label>Personaje 3D (Prefab)</label>
+        <select [(ngModel)]="selectedRole.characterPrefabId" (ngModelChange)="guardarRol(selectedRole)">
+          <option [ngValue]="null">-- Seleccionar Personaje --</option>
+          <option *ngFor="let p of prefabs" [ngValue]="p.id">📦 {{ p.name }}</option>
+        </select>
+        <p class="help-text">Guarda un modelo 3D como Prefab en el mapa para usarlo aquí.</p>
+      </div>
+
+      <div class="field">
+        <label>Punto de Aparición (Spawn Point)</label>
+        <div style="display: flex; gap: 5px;">
+           <select [(ngModel)]="selectedRole.spawnSceneObjectUid" (ngModelChange)="guardarRol(selectedRole)" style="flex:1;">
+             <option [ngValue]="null">-- Spawn Predeterminado --</option>
+             <option *ngFor="let s of spawnPoints" [value]="s.uid">📍 {{ s.name }}</option>
+           </select>
+           <button class="btn-secondary" (click)="actualizarSpawnPoints()" title="Actualizar lista de Spawns">🔄</button>
+        </div>
+        <p class="help-text">El lugar exacto donde aparecerá en esta escena.</p>
+      </div>
+
+      <div class="checkbox-modern">
+        <input type="checkbox" id="chkPlayable" [(ngModel)]="selectedRole.isPlayable" (ngModelChange)="guardarRol(selectedRole)">
+        <label for="chkPlayable">Jugable por el usuario</label>
+      </div>
+      
+      <div class="checkbox-modern">
+        <input type="checkbox" id="chkEnabled" [(ngModel)]="selectedRole.isEnabled" (ngModelChange)="guardarRol(selectedRole)">
+        <label for="chkEnabled">Habilitado en el juego</label>
+      </div>
+    </div>
+  </div>
+
+  <div class="empty-state" *ngIf="!selectedRole && !loading">
+    Selecciona un rol de la lista o crea uno nuevo para configurarlo.
+  </div>
+  <div class="empty-state" *ngIf="loading">
+    Cargando roles...
+  </div>
+</div>

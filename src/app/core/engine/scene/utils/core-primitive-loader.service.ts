@@ -11,6 +11,8 @@ import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { EntityPersistenceMapperService } from './entity-persistence-mapper.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
 import { CameraOwnershipService } from '../../runtime/cameras/camera-ownership.service';
+import { GameContextService } from '../../session/game-context.service';
+import { GameMode } from '../../session/game-mode.model';
  
 @Injectable({ providedIn: 'root' })
 export class CorePrimitiveLoaderService {
@@ -21,6 +23,7 @@ export class CorePrimitiveLoaderService {
   private persistenceMapper = inject(EntityPersistenceMapperService);
   private worldSettingsSvc = inject(WorldSettingsService);
   private ownership = inject(CameraOwnershipService);
+  private gameContext = inject(GameContextService);
 
   public cargarPrimitiva(obj: any, mallasCreadas: Map<string, Mesh>): void {
     const scene = this.motor3d.getScene();
@@ -104,7 +107,6 @@ export class CorePrimitiveLoaderService {
       const mat = new StandardMaterial('mat_' + obj.name, scene);
       mat.emissiveColor = Color3.FromHexString(activeColor);
       mat.wireframe = true;
-      // 🔥 FIX GL_MAX_VERTEX_UNIFORM_BUFFERS limit
       mat.maxSimultaneousLights = 8; 
       mesh.material = mat;
       mesh.isVisible = false;
@@ -131,7 +133,6 @@ export class CorePrimitiveLoaderService {
         mat.disableLighting = false;
       }
 
-      // 🔥 FIX GL_MAX_VERTEX_UNIFORM_BUFFERS limit
       mat.maxSimultaneousLights = 8; 
       mat.fogEnabled = !entity.visual.ignoraNiebla;
       mesh.material = mat;
@@ -139,8 +140,12 @@ export class CorePrimitiveLoaderService {
 
     if (entity.rol === 'spawn_point') {
         mesh.checkCollisions = false;
+        Tags.AddTagsTo(mesh, "editor_only ignore_raycast");
+        const isEditorMode = this.gameContext.mode() === GameMode.EDITOR || this.gameContext.mode() === GameMode.EDITING_IN_GAME;
+        mesh.isVisible = isEditorMode;
+
         if (mesh.material && mesh.material instanceof StandardMaterial) {
-            mesh.material.alpha = 0.4;
+            mesh.material.alpha = isEditorMode ? 0.4 : 0.0;
             mesh.material.wireframe = false;
             mesh.material.emissiveColor = new Color3(0, 1, 0);
         }

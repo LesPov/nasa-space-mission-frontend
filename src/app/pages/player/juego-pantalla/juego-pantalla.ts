@@ -33,7 +33,8 @@ import { LiveBuilderService } from '../../../services/editor/live-builder.servic
 import { PlayerInputService } from '../../../core/engine/runtime/systems/player-input.service';
 import { RoleModalService } from '../../../services/editor/modals/role-modal.service'; 
 import { NarrativeRoleDto } from '../../../core/engine/models/api-dto.model';
-
+import { PlatformLifecycleService } from '../../../core/engine/runtime/systems/platform-lifecycle.service';
+ 
 @Component({
   selector: 'app-juego-pantalla',
   standalone: true, 
@@ -63,11 +64,9 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private liveBuilderSvc = inject(LiveBuilderService);
   private liveSync = inject(EditorLiveSyncService);
   public inputSvc = inject(PlayerInputService);
+  private platformLifecycle = inject(PlatformLifecycleService);
   
-  // 🔥 FIX TS2341 ARQUITECTÓNICO: Mantenemos el servicio privado por encapsulación...
   private roleModalSvc = inject(RoleModalService); 
-  
-  // ... y exponemos el estado estrictamente necesario como Signal Computed público para la plantilla
   public isRoleSelectorVisible = computed(() => this.roleModalSvc.showRoleSelector());
 
   public isInteracting = signal<boolean>(false);
@@ -165,7 +164,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     forkJoin({
       escenaData: this.epiApiSvc.obtenerEscenaCompleta(sceneId),
       partida: this.epiApiSvc.cargarEstadoJugador(sceneId, 1).pipe(
-        catchError(err => of({ worldState: {}, inventory: [] }))
+        catchError(() => of({ worldState: {}, inventory: [] }))
       )
     }).subscribe({
       next: async (res) => {
@@ -190,7 +189,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
              this.episodioActual.narrativeRoles = res.escenaData.scene.narrativeRoles;
           }
 
-          // Evitar que el LoadGame sobreescriba un Role activo en caso de Teleport
           const roleBeforeLoad = this.gameStateSvc.playerRole;
           this.gameStateSvc.loadGame(this.playerStateActual);
           if (isTeleport && roleBeforeLoad) {
@@ -222,9 +220,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
           this.cdr.detectChanges();
 
-          this.fpsInterval = setInterval(() => {
-            this.fps.set(this.motor3dSvc.getCurrentFps().toFixed(0));
-          }, 500);
+          if (!this.fpsInterval) {
+            this.fpsInterval = setInterval(() => {
+              this.fps.set(this.motor3dSvc.getCurrentFps().toFixed(0));
+            }, 500);
+          }
 
           if (this.isDetached) {
              this.windowSync.messages$.subscribe(async msg => {
@@ -247,7 +247,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
           this.salirDelJuego();
         }
       },
-      error: (err) => {
+      error: () => {
         this.isLoading.set(false);
         alert('Error crítico al cargar el mapa.');
         this.salirDelJuego();
@@ -260,6 +260,8 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       const stateToSave = this.gameStateSvc.getSaveData();
       this.epiApiSvc.guardarEstadoJugador(this.episodioActual.id, 1, stateToSave).subscribe();
     }
+    
+    // Limpieza integral y atómica sin fugas de la plataforma saliente
     this.runtime.shutdownProductionGame();
     this.cargarPlataforma(sceneId, true);
   }
@@ -291,7 +293,9 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     
     if (owner !== 'ADMIN_FREE') {
         const view = this.gameContext.cameraView();
-        this.runtime.toggleCameraUser(view === 'TPS', 60);
+        if (view === 'TPS') {
+            this.runtime.toggleCameraUser(true, 60);
+        }
     }
 
     this.inputOrchestrator.lockPointer();

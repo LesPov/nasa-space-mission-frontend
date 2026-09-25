@@ -44,7 +44,6 @@ export class PlayerAnimationService implements IUpdatable {
 
       const state = this.getState(entity.uid);
       
-      // 🔥 FIX: Auto-sincronizar animaciones en modo Editor si no se ha hecho
       if (!state.isSynced && entity.view) {
           scene = scene || (entity.view as Mesh).getScene();
           if (scene) {
@@ -119,6 +118,11 @@ export class PlayerAnimationService implements IUpdatable {
       state.animacionesJugador = scene.animationGroups.filter(isTargetingObj);
     }
 
+    // Normalizar speedRatio en todas las animaciones de la entidad
+    state.animacionesJugador.forEach(ag => {
+      ag.speedRatio = 1.0;
+    });
+
     const anims = config.animations;
 
     state.animIdle = this.resolveAnimation(state, anims.idle, null);
@@ -128,7 +132,7 @@ export class PlayerAnimationService implements IUpdatable {
     state.animJumpLoop = this.resolveAnimation(state, anims.jumpLoop, state.animJump);
     state.animFall = this.resolveAnimation(state, anims.fall, state.animJumpLoop || state.animJump);
     state.animLandSoft = this.resolveAnimation(state, anims.landSoft, state.animIdle);
-    state.animHardLanding = this.resolveAnimation(state, anims.landHard, state.animLandSoft || state.animIdle); // 🔥 FIX APLICADO
+    state.animHardLanding = this.resolveAnimation(state, anims.landHard, state.animLandSoft || state.animIdle);
     state.animClimb = this.resolveAnimation(state, anims.climbUp, state.animIdle);
     state.animClimbFinish = this.resolveAnimation(state, anims.climbFinish, state.animClimb);
     state.animHangIdle = this.resolveAnimation(state, anims.hangIdle, state.animClimb);
@@ -138,6 +142,7 @@ export class PlayerAnimationService implements IUpdatable {
 
     if (state.animWalk) state.animWalk.speedRatio = 1.0;
     if (state.animRun) state.animRun.speedRatio = 1.0;
+    if (state.animIdle) state.animIdle.speedRatio = 1.0;
 
     state.isSynced = true;
   }
@@ -208,11 +213,15 @@ export class PlayerAnimationService implements IUpdatable {
   public detenerTodasGlobal(): void {
     this.states.forEach(state => {
       if (state.animActual) { state.animActual.stop(); state.animActual = null; }
-      state.animacionesJugador.forEach(a => a.stop());
+      state.animacionesJugador.forEach(a => {
+        a.stop();
+        a.speedRatio = 1.0;
+      });
     });
   }
 
   public limpiarEstados(): void {
+    this.detenerTodasGlobal();
     this.states.clear();
   }
 
@@ -222,11 +231,15 @@ export class PlayerAnimationService implements IUpdatable {
       state.animActual.stop();
       state.animActual = null;
     }
-    state.animacionesJugador.forEach(a => a.stop());
+    state.animacionesJugador.forEach(a => {
+      a.stop();
+      a.speedRatio = 1.0;
+    });
   }
 
   public reproducirIdle(entity: GameEntity): void {
     const state = this.getState(entity.uid);
+    if (state.animIdle) state.animIdle.speedRatio = 1.0;
     this.playAnim(entity, state.animIdle, true);
   }
 
@@ -234,23 +247,19 @@ export class PlayerAnimationService implements IUpdatable {
     const state = this.getState(entity.uid);
     const config = entity.playerConfig || cloneDefaultPlayerConfig();
     
-    // 🔥 FASE 2: Animación Cinemática Forzada por el Director (Locomoción Matemática)
     if (entity.movementAuthority === 'CINEMATIC_FULL') {
         let targetAnim: AnimationGroup | null = null;
         
-        // 1. Intentamos con el Clip Override (Si el usuario forzó una animación específica)
         const clipOverride = entity.playerRuntime?.cinematicClipOverride;
         if (clipOverride) {
             targetAnim = this.resolveAnimation(state, clipOverride, null);
         }
         
-        // 2. Si no hay override, usamos la Acción Semántica
         if (!targetAnim) {
             const animKey = entity.playerRuntime?.cinematicAnimation || 'idle';
             targetAnim = this.getAnimationForAction(state, animKey as PlayerActionKey);
         }
 
-        // Reproducimos la animación con un pequeño blending para transiciones suaves
         this.playAnim(entity, targetAnim, true, 0.1);
         return;
     }
@@ -288,13 +297,16 @@ export class PlayerAnimationService implements IUpdatable {
       
       if (estadoFisico.isMoving) {
         if (estadoFisico.isRunning) {
+          if (state.animRun) state.animRun.speedRatio = 1.0;
           if (this.isActionEnabled('run', config)) this.playAnim(entity, state.animRun || state.animWalk || state.animIdle, true, finalBlendSpeed);
           else this.playAnim(entity, state.animIdle, true, finalBlendSpeed);
         } else {
+          if (state.animWalk) state.animWalk.speedRatio = 1.0;
           if (this.isActionEnabled('walk', config)) this.playAnim(entity, state.animWalk || state.animIdle, true, finalBlendSpeed);
           else this.playAnim(entity, state.animIdle, true, finalBlendSpeed);
         }
       } else {
+        if (state.animIdle) state.animIdle.speedRatio = 1.0;
         if (this.isActionEnabled('idle', config)) this.playAnim(entity, state.animIdle, true, finalBlendSpeed);
         else this.playAnim(entity, null, true, finalBlendSpeed);
       }

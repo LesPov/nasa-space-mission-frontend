@@ -14,7 +14,8 @@ import { CameraOwnershipService } from './cameras/camera-ownership.service';
 import { AdminFreeCameraService } from './cameras/admin-free-camera.service';
 import { SpawnManagerService } from './systems/spawn-manager.service';
 import { ISceneAccess, SCENE_ACCESS_TOKEN } from '../scene/scene-access.token';
-  
+import { PlatformLifecycleService } from './systems/platform-lifecycle.service';
+   
 @Injectable({ providedIn: 'root' })
 export class RuntimeEngineService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
@@ -28,12 +29,11 @@ export class RuntimeEngineService {
   private ownership = inject(CameraOwnershipService);
   private adminFreeCam = inject(AdminFreeCameraService);
   private spawnManager = inject(SpawnManagerService); 
+  private platformLifecycle = inject(PlatformLifecycleService);
 
   private _prodClickFn: (() => void) | null = null;
 
   public async bootProductionGame(episodeData: any, skipIntro: boolean = false): Promise<GameEntity> {
-    this.entityManager.clear(); 
-    
     this.motor3d.forceResize();
     this.loaderSvc.createInvisibleFloor(this.motor3d.getScene());
     
@@ -44,9 +44,7 @@ export class RuntimeEngineService {
         try {
             this.inputOrchestrator.attachToScene(this.motor3d.getScene());
             
-            // 🔥 El Spawn Manager ahora requiere espera asíncrona porque puede invocar la instanciación de un Prefab
             const spawnEntity = await this.spawnManager.resolvePlayerForSession(null, false);
-
             if (!spawnEntity) {
               reject(new Error('No hay punto de aparición (Spawn Point) en el mapa.'));
               return;
@@ -61,7 +59,8 @@ export class RuntimeEngineService {
                 }
             });
 
-            const activeView = skipIntro ? this.gameContext.cameraView() : 'TPS'; 
+            // Preservar la perspectiva exacta configurada en el contexto
+            const activeView = this.gameContext.cameraView();
 
             this.playerCamSvc.inicializarCamaras(spawnEntity, activeView);
             const targetCam = activeView === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS();
@@ -72,11 +71,11 @@ export class RuntimeEngineService {
 
             this.gameSession.start(spawnEntity, activeView);
             
-            if (!skipIntro) {
+            if (!skipIntro && activeView === 'TPS') {
                this.playerCamSvc.iniciarCinematicaIntro(spawnEntity);
             }
 
-            if (canvas) {
+            if (canvas && !this._prodClickFn) {
               this._prodClickFn = () => {
                  if (this.gameContext.isPlaying() && !this.gameContext.isPointerLocked()) {
                     if (!skipIntro) this.playerCamSvc.detenerCinematicaIntro();
@@ -96,15 +95,13 @@ export class RuntimeEngineService {
 
   public shutdownProductionGame(): void {
     this.playerCamSvc.updateFirstPersonVisibility(false);
-    
     this.gameSession.stop();
     this.playerCamSvc.detenerCinematicaIntro(); 
     this.playerCamSvc.limpiarPivotTPS();
     this.resetVideos();
     this.adminFreeCam.dispose();
-    
     this.inputOrchestrator.unlockPointer();
-    this.entityManager.clear();
+    this.platformLifecycle.cleanCurrentPlatform();
 
     const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
     if (canvas && this._prodClickFn) {

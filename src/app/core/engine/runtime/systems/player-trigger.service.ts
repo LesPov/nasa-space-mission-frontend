@@ -11,6 +11,7 @@ import { InputOrchestratorService } from './input-orchestrator.service';
 import { PlayerCameraManagerService } from './player-camera.service';
 import { TriggerAudioService } from './trigger-audio.service';
 import { CameraOwnershipService } from '../cameras/camera-ownership.service';
+import { CinematicDirectorService } from './cinematic-director.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerTriggerService implements IUpdatable {
@@ -23,6 +24,7 @@ export class PlayerTriggerService implements IUpdatable {
   private cameraSvc = inject(PlayerCameraManagerService);
   private triggerAudioSvc = inject(TriggerAudioService);
   private ownership = inject(CameraOwnershipService);
+  private cinematicDirector = inject(CinematicDirectorService);
   
   private activeTriggersInside = new Set<string>();
   private teleportCooldown: number = 0;
@@ -71,10 +73,11 @@ export class PlayerTriggerService implements IUpdatable {
   }
 
   public update(dtMs: number): void {
+    if (this.isTransitioning) return;
+
     const isCinematic = this.context.isCinematicPlaying();
     const playerEntity = this.context.activePlayerEntity();
     
-    // 🔥 FIX: Permite que el sistema opere durante Cinemáticas en el Editor aunque no exista el Player.
     if (!playerEntity && !isCinematic) return;
 
     if (this.teleportCooldown > 0) {
@@ -90,7 +93,6 @@ export class PlayerTriggerService implements IUpdatable {
 
     let probePoint = Vector3.Zero();
     
-    // 🔥 MODO B: PROXIMIDAD CINEMÁTICA. Detecta si la cámara cruza los Triggers!
     if (isCinematic) {
         const cam = this.ownership.getCamera();
         if (cam) probePoint.copyFrom(cam.globalPosition);
@@ -126,7 +128,6 @@ export class PlayerTriggerService implements IUpdatable {
         const mesh = triggerEntity.view as AbstractMesh;
         if (!mesh) continue;
 
-        // 🔥 Evaluación Matemática Segura
         const isInside = mesh.intersectsPoint(probePoint);
         const wasInside = this.activeTriggersInside.has(triggerEntity.uid);
 
@@ -159,6 +160,7 @@ export class PlayerTriggerService implements IUpdatable {
   }
 
   private ejecutarLogicaTrigger(triggerEntity: GameEntity, eventType: string): void {
+      if (this.isTransitioning) return;
       if (!triggerEntity.trigger || triggerEntity.triggerRuntime?.isEnabled === false) return;
       
       if (!triggerEntity.trigger.isRepeatable) {
@@ -171,11 +173,16 @@ export class PlayerTriggerService implements IUpdatable {
           if (targetId) {
               this.isTransitioning = true;
               
+              // Detener inmediatamente cinemáticas o audios de la plataforma que se abandona
+              this.cinematicDirector.stop();
+              this.triggerAudioSvc.stop();
+
               const playerEntity = this.context.activePlayerEntity();
               if (playerEntity && playerEntity.playerRuntime) {
                   playerEntity.playerRuntime.intentions = { moveForward: false, moveBackward: false, moveLeft: false, moveRight: false, run: false, jump: false };
                   playerEntity.playerRuntime.physicsState.isMoving = false;
                   playerEntity.playerRuntime.physicsState.isRunning = false;
+                  playerEntity.playerRuntime.physicsState.velocidadY = 0;
               }
               this.inputOrchestrator.unlockPointer();
               

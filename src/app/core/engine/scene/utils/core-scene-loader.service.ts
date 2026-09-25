@@ -80,7 +80,6 @@ export class CoreSceneLoaderService {
 
     scene.cameras.forEach(cam => cam.maxZ = 10000);
 
-    // 🔥 FIX: Descartar basura histórica que rompe la arquitectura limpia del nuevo Player Runtime
     let objetosBD: SceneObjectDto[] = dataBD.sceneObjects || dataBD.sceneObjectsDelta || [];
     objetosBD = objetosBD.filter(obj => obj.name !== 'Jugador_Prueba' && obj.name !== 'TempPlayer_Fallback');
     
@@ -95,8 +94,6 @@ export class CoreSceneLoaderService {
         const isLight = obj.type?.startsWith('light_');
         const objRol = obj.properties?.rol || obj.rol || 'prop';
 
-        // Si ya hay un Persistent Player cruzando la frontera de un nivel, 
-        // no renderizamos la basura guardada en el DB que coincida con rol Player.
         if (isPlaying && persistentPlayer && objRol === 'player') {
             return Promise.resolve();
         }
@@ -129,9 +126,7 @@ export class CoreSceneLoaderService {
     });
 
     if (isPlaying) {
-        // 🔥 Esperamos asíncronamente a que el modelo (Prefab) termine de instanciarse si viene de un Rol
         const resolvedPlayer = await this.spawnManager.resolvePlayerForSession(null, false);
-        
         if (persistentPlayer && resolvedPlayer && resolvedPlayer.uid === persistentPlayer.uid) {
             this.cameraSvc.transicionEntradaPlataforma(persistentPlayer);
             this.triggerSvc.resetTransitionState();
@@ -152,7 +147,6 @@ export class CoreSceneLoaderService {
 
     await new Promise<void>((resolve) => {
       scene.executeWhenReady(() => {
-        
         const actCam = scene.activeCamera;
         let originalPos = Vector3.Zero();
         let originalTarget = Vector3.Zero();
@@ -175,23 +169,16 @@ export class CoreSceneLoaderService {
         this.dynamicLighting.start(); 
         this.shadowOrchestrator.start(); 
 
-        for(let i = 0; i < 5; i++) {
-            scene.render(); 
-        }
-
         if (actCam) {
             actCam.position.copyFrom(originalPos);
             if ((actCam as any).setTarget) (actCam as any).setTarget(originalTarget);
         }
         
-        scene.executeWhenReady(() => {
-           resolve();
-        });
+        resolve();
       });
     });
   }
 
-  // 🔥 Se adapta para aceptar directamente PrefabDto (que trae hierarchy en properties)
   public async instantiatePrefab(prefab: any, positionTarget: Vector3, rotationEuler?: Vector3, scale?: Vector3, parentNode?: AbstractMesh): Promise<Map<string, Mesh>> {
     const mallasCreadas = new Map<string, Mesh>();
     const uidMap = new Map<string, string>(); 

@@ -16,6 +16,14 @@ import { CAMERA_BEHAVIOR_PROFILES } from '../../runtime/cameras/camera-behavior-
 import { GameEventBusService } from '../../events/game-event-bus.service';
 import { TransformTelemetryService } from '../../telemetry/transform-telemetry.service';
 
+export interface CameraStateSnapshot {
+  view: 'FPS' | 'TPS';
+  fpsRotation?: { x: number; y: number };
+  tpsAlpha?: number;
+  tpsBeta?: number;
+  tpsRadius?: number;
+}
+
 export class PlayerCameraUpdater {
   private _localPivotPos = Vector3.Zero();
   private _localCamPos = Vector3.Zero();
@@ -34,7 +42,6 @@ export class PlayerCameraUpdater {
     const activeCamera = this.ownership.getCamera();
     
     if (playerEntity && activeCamera && playerEntity.playerRuntime?.seqRuntime) {
-      
       const telemetry = TransformTelemetryService.instance;
       if (telemetry && telemetry.enabled && playerEntity.view) {
          telemetry.logEvent(playerEntity.uid, playerEntity.rol, 'PlayerCameraUpdater', 'getWorldMatrix', 'READ', undefined, undefined);
@@ -147,10 +154,6 @@ export class PlayerCameraUpdater {
             this.manager.cameraPivot.position.copyFrom(this._globalPivotPos);
         } else {
             const diffY = this._globalPivotPos.y - this.manager.cameraPivot.position.y;
-            
-            // 🔥 FIX FASE 3: Reducimos el umbral de SNAP a 0.0001
-            // Esto garantiza que micro-variaciones por el terreno sean interpoladas suavemente
-            // en vez de causar un temblor instantáneo en la cámara.
             if (Math.abs(diffY) < 0.0001 && !this.manager.isTransitioningCameras) {
                 this.manager.cameraPivot.position.y = this._globalPivotPos.y;
             } else {
@@ -179,16 +182,7 @@ export class PlayerCameraUpdater {
       Vector3.TransformCoordinatesToRef(this._localCamPos, jugador.getWorldMatrix(), this._globalCamPos);
 
       if (!isNaN(this._globalCamPos.x) && !isNaN(this._globalCamPos.y) && !isNaN(this._globalCamPos.z)) {
-        if (this.manager.isTransitioningCameras) {
-            fpsCam.position.x += (this._globalCamPos.x - fpsCam.position.x) * 0.5;
-            fpsCam.position.z += (this._globalCamPos.z - fpsCam.position.z) * 0.5;
-            fpsCam.position.y += (this._globalCamPos.y - fpsCam.position.y) * 0.5;
-        } else {
-            // 🔥 FIX CRÍTICO FASE 3: En FPS no debe haber Latencia Vertical en el Gameplay regular, 
-            // de lo contrario la cabeza atraviesa la cámara (ojos) al saltar/caer bruscamente.
-            // Gracias a que eliminamos el Jitter físico del jugador, esta asignación directa ahora es perfectamente suave.
-            fpsCam.position.copyFrom(this._globalCamPos);
-        }
+        fpsCam.position.copyFrom(this._globalCamPos);
       }
     }
   }
@@ -197,9 +191,7 @@ export class PlayerCameraUpdater {
 export class PlayerCameraTransitions {
   private introAnimatable: Animatable | null = null;
   private transitionTimeoutId: any = null;
-  private introTimeoutId: any = null;
-  public savedRelativeTpsAngle: number | null = null;
-  public savedRelativeTpsPitch: number | null = null;
+  public savedCameraSnapshot: CameraStateSnapshot | null = null;
 
   constructor(
     private manager: PlayerCameraManagerService,
@@ -219,17 +211,12 @@ export class PlayerCameraTransitions {
       clearTimeout(this.transitionTimeoutId);
       this.transitionTimeoutId = null;
     }
-    if (this.introTimeoutId) {
-      clearTimeout(this.introTimeoutId);
-      this.introTimeoutId = null;
-    }
   }
 
   public iniciarCinematicaIntro(entity: GameEntity): void {
       const config = entity.playerConfig || cloneDefaultPlayerConfig();
       const scaleY = entity.transform.scale.y || 1;
       const tpsCam = this.motor3d.getPlayerCameraTPS();
-
       if (!tpsCam) return;
 
       const startRadius = 0.8 * scaleY;
@@ -277,154 +264,107 @@ export class PlayerCameraTransitions {
       }
   }
 
+  /**
+   * Salida de plataforma preservando el estado original de la perspectiva (FPS o TPS).
+   */
   public transicionSalidaPlataforma(entity: GameEntity, onComplete: () => void): void {
     this.manager.isTransitioningCameras = true;
+    const currentView = this.context.cameraView();
+
+    // Capturar snapshot sin mutar la perspectiva del jugador
+    if (currentView === 'FPS') {
+      const fpsCam = this.motor3d.getPlayerCameraFPS();
+      this.savedCameraSnapshot = {
+        view: 'FPS',
+        fpsRotation: { x: fpsCam.rotation.x, y: fpsCam.rotation.y }
+      };
+    } else {
+      const tpsCam = this.motor3d.getPlayerCameraTPS();
+      this.savedCameraSnapshot = {
+        view: 'TPS',
+        tpsAlpha: tpsCam.alpha,
+        tpsBeta: tpsCam.beta,
+        tpsRadius: tpsCam.radius
+      };
+    }
+
+    onComplete();
+  }
+
+  /**
+   * Entrada a la nueva plataforma restaurando la perspectiva en la que venía el jugador.
+   */
+  public transicionEntradaPlataforma(entity: GameEntity): void {
     const jugador = entity.view as Mesh;
-    if (!jugador) {
-        onComplete();
-        return;
+    if (!jugador) return;
+
+    this.manager.isTransitioningCameras = false;
+
+    if (!this.manager.cameraPivot || this.manager.cameraPivot.isDisposed()) {
+      this.manager.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.getScene());
+      this.manager.cameraPivot.isVisible = false;
+      Tags.AddTagsTo(this.manager.cameraPivot, "system_element ignore_raycast");
     }
 
     const config = entity.playerConfig || cloneDefaultPlayerConfig();
     const scaleY = entity.transform.scale.y || 1;
-    const vista = this.context.cameraView();
+    const canvas = this.motor3d.getEngine().getRenderingCanvas();
 
-    const tpsCam = this.motor3d.getPlayerCameraTPS();
+    const snapshot = this.savedCameraSnapshot;
+    const targetView: 'FPS' | 'TPS' = snapshot?.view || this.context.cameraView();
 
-    if (vista === 'FPS') {
-        const tpsPivotY = config.camera.tpsPivotY ?? 1.5;
-        const camMeta = entity.camOffset || { x: 0, y: 1.6, z: 0 };
-        const localPivotPos = new Vector3(camMeta.x || 0, tpsPivotY, camMeta.z || 0);
-        jugador.computeWorldMatrix(true);
-        const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
+    jugador.computeWorldMatrix(true);
+    const camMeta = entity.camOffset || { x: 0, y: 1.6, z: 0 };
 
-        const playerForward = jugador.forward.clone().normalize();
-        if (playerForward.lengthSquared() === 0) playerForward.copyFromFloats(0, 0, 1);
+    if (targetView === 'FPS') {
+      const fpsCam = this.motor3d.getPlayerCameraFPS();
+      const localCamPos = new Vector3(camMeta.x || 0, config.camera.fpsEyeLevel ?? 1.6, camMeta.z || 0);
+      fpsCam.position = Vector3.TransformCoordinates(localCamPos, jugador.getWorldMatrix());
 
-        const maxR = (config.camera.tpsMaxRadius ?? 15) * scaleY;
-        
-        this.context.setCameraView('TPS');
-        this.eventBus.emit({ type: 'CameraViewChanged', payload: 'TPS' });
-        
-        tpsCam.alpha = Math.atan2(-playerForward.z, -playerForward.x);
-        tpsCam.beta = Math.max(0.01, Math.min(Math.PI - 0.01, Math.acos(Math.max(-1, Math.min(1, -playerForward.y)))));
-        tpsCam.radius = maxR;
-        
-        if (!this.manager.cameraPivot || this.manager.cameraPivot.isDisposed()) {
-          this.manager.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.getScene());
-          this.manager.cameraPivot.isVisible = false;
-          Tags.AddTagsTo(this.manager.cameraPivot, "system_element ignore_raycast");
-        }
-        this.manager.cameraPivot.position.copyFrom(globalPivotPos);
-        tpsCam.lockedTarget = this.manager.cameraPivot;
-        tpsCam.getViewMatrix(true);
-        
-        const canvas = this.motor3d.getEngine().getRenderingCanvas();
-        this.ownership.setCamera('PLAYER_TPS', tpsCam, canvas, true);
-        
-        onComplete();
-    } else {
-        const playerForward = jugador.forward.clone().normalize();
-        if (playerForward.lengthSquared() === 0) playerForward.copyFromFloats(0, 0, 1);
-        const playerAlpha = Math.atan2(-playerForward.z, -playerForward.x);
-        this.savedRelativeTpsAngle = tpsCam.alpha - playerAlpha;
-        this.savedRelativeTpsPitch = tpsCam.beta;
-
-        onComplete();
-    }
-  }
-
-  public transicionEntradaPlataforma(entity: GameEntity): void {
-      const jugador = entity.view as Mesh;
-      if (!jugador) return;
-
-      this.manager.isTransitioningCameras = true;
-
-      if (!this.manager.cameraPivot || this.manager.cameraPivot.isDisposed()) {
-        this.manager.cameraPivot = MeshBuilder.CreateBox('cameraPivot', { size: 0.1 }, this.motor3d.getScene());
-        this.manager.cameraPivot.isVisible = false;
-        Tags.AddTagsTo(this.manager.cameraPivot, "system_element ignore_raycast");
-      }
-
-      const config = entity.playerConfig || cloneDefaultPlayerConfig();
-      const scaleY = entity.transform.scale.y || 1;
-      const tpsCam = this.motor3d.getPlayerCameraTPS();
-
-      const tpsPivotY = config.camera.tpsPivotY ?? 1.5;
-      const maxR = (config.camera.tpsMaxRadius ?? 15) * scaleY;
-
-      jugador.computeWorldMatrix(true);
-      const playerForward = jugador.forward.clone().normalize();
-      if (playerForward.lengthSquared() === 0) playerForward.copyFromFloats(0, 0, 1);
-
-      const camMeta = entity.camOffset || { x: 0, y: 1.6, z: 0 };
-      const localPivotPos = new Vector3(camMeta.x || 0, tpsPivotY, camMeta.z || 0);
-      const globalPivotPos = Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix());
-      
-      this.manager.cameraPivot.position.copyFrom(globalPivotPos);
-
-      const playerAlpha = Math.atan2(-playerForward.z, -playerForward.x);
-
-      if (this.savedRelativeTpsAngle !== null && this.savedRelativeTpsPitch !== null) {
-          tpsCam.alpha = playerAlpha + this.savedRelativeTpsAngle;
-          tpsCam.beta = this.savedRelativeTpsPitch;
-          this.savedRelativeTpsAngle = null;
-          this.savedRelativeTpsPitch = null;
+      if (snapshot?.fpsRotation) {
+        fpsCam.rotation.x = snapshot.fpsRotation.x;
+        fpsCam.rotation.y = snapshot.fpsRotation.y;
       } else {
-          tpsCam.alpha = playerAlpha;
-          tpsCam.beta = Math.max(0.01, Math.min(Math.PI - 0.01, Math.acos(Math.max(-1, Math.min(1, -playerForward.y)))));
+        const forward = jugador.forward.clone().normalize();
+        if (forward.lengthSquared() === 0) forward.copyFromFloats(0, 0, 1);
+        fpsCam.rotation.set(0, Math.atan2(forward.x, forward.z), 0);
       }
 
-      const startRadius = 0.05;
-      tpsCam.radius = startRadius;
-      
-      tpsCam.checkCollisions = false;
+      this.context.setCameraView('FPS');
+      this.eventBus.emit({ type: 'CameraViewChanged', payload: 'FPS' });
+      this.ownership.setCamera('PLAYER_FPS', fpsCam, canvas, true);
+      this.manager.aplicarPerfilACamara(fpsCam, 'FPS', config, scaleY);
+      this.manager.updateFirstPersonVisibility(true);
+    } else {
+      const tpsCam = this.motor3d.getPlayerCameraTPS();
+      const localPivotPos = new Vector3(camMeta.x || 0, config.camera.tpsPivotY ?? 1.5, camMeta.z || 0);
+      this.manager.cameraPivot.position.copyFrom(Vector3.TransformCoordinates(localPivotPos, jugador.getWorldMatrix()));
+      tpsCam.lockedTarget = this.manager.cameraPivot;
 
-      tpsCam.setTarget(this.manager.cameraPivot);
-      tpsCam.getViewMatrix(true);
-      
-      const canvas = this.motor3d.getEngine().getRenderingCanvas();
+      if (snapshot?.tpsAlpha !== undefined && snapshot?.tpsBeta !== undefined) {
+        tpsCam.alpha = snapshot.tpsAlpha;
+        tpsCam.beta = snapshot.tpsBeta;
+        tpsCam.radius = Math.max(config.camera.tpsMinRadius ?? 1.5, Math.min(config.camera.tpsMaxRadius ?? 15, snapshot.tpsRadius || 5)) * scaleY;
+      } else {
+        const forward = jugador.forward.clone().normalize();
+        if (forward.lengthSquared() === 0) forward.copyFromFloats(0, 0, 1);
+        tpsCam.alpha = Math.atan2(-forward.z, -forward.x);
+        tpsCam.beta = Math.PI / 2.5;
+        tpsCam.radius = (config.camera.tpsRadius || 5) * scaleY;
+      }
+
+      this.context.setCameraView('TPS');
+      this.eventBus.emit({ type: 'CameraViewChanged', payload: 'TPS' });
       this.ownership.setCamera('PLAYER_TPS', tpsCam, canvas, true);
+      this.manager.aplicarPerfilACamara(tpsCam, 'TPS', config, scaleY);
+      this.manager.updateFirstPersonVisibility(false);
+    }
 
-      if (this.introTimeoutId) clearTimeout(this.introTimeoutId);
-
-      this.introTimeoutId = setTimeout(() => {
-          const ease = new CubicEase();
-          ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
-
-          const frames = 150; 
-          const animRad = new Animation('enterPlatRadius', 'radius', 60, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CONSTANT);
-          animRad.setKeys([
-              { frame: 0, value: startRadius },
-              { frame: frames, value: maxR }
-          ]);
-          animRad.setEasingFunction(ease);
-
-          const fadeLimit = 2.5 * scaleY;
-
-          this.loopManager.register('CameraFadeTransition', GamePhase.CAMERA, () => {
-              if (tpsCam.radius < fadeLimit) {
-                 let alpha = Math.max(0.0001, (tpsCam.radius - 0.05) / (fadeLimit - 0.05));
-                 jugador.visibility = alpha;
-                 jugador.getChildMeshes().forEach(m => m.visibility = alpha);
-              } else {
-                 jugador.visibility = 1;
-                 jugador.getChildMeshes().forEach(m => m.visibility = 1);
-              }
-          });
-
-          this.motor3d.getScene().beginDirectAnimation(tpsCam, [animRad], 0, frames, false, 1.0, () => {
-              this.manager.isTransitioningCameras = false;
-              this.loopManager.unregister('CameraFadeTransition');
-              
-              jugador.visibility = 1;
-              jugador.getChildMeshes().forEach(m => m.visibility = 1);
-              
-              this.manager.aplicarPerfilACamara(tpsCam, 'TPS', config, scaleY);
-              
-              this.eventBus.emit({ type: 'GameResumed' });
-          });
-      }, 1000);
+    jugador.visibility = 1;
+    jugador.getChildMeshes().forEach(m => m.visibility = 1);
+    this.savedCameraSnapshot = null;
+    this.resetearTransiciones();
+    this.eventBus.emit({ type: 'GameResumed' });
   }
 
   public toggleCameraView(
@@ -451,7 +391,6 @@ export class PlayerCameraTransitions {
     const fpsCam = this.motor3d.getPlayerCameraFPS();
     const tpsCam = this.motor3d.getPlayerCameraTPS();
     const canvas = this.motor3d.getEngine().getRenderingCanvas();
-
     const framesTransicion = customFrames !== undefined ? customFrames : (isCinematicInitial ? 300 : 45);
 
     this.loopManager.unregister('CameraFadeTransition');
@@ -475,7 +414,6 @@ export class PlayerCameraTransitions {
     const fadeLimit = 2.5 * scaleNow;
 
     if (currentVista === 'FPS') {
-      
       tpsCam.checkCollisions = false;
       tpsCam.lowerRadiusLimit = null;
       tpsCam.upperRadiusLimit = null;
@@ -485,9 +423,7 @@ export class PlayerCameraTransitions {
       }
 
       tpsCam.alpha = -(fpsCam.rotation.y || 0) - Math.PI / 2;
-      const currentBeta = (fpsCam.rotation.x || 0) + Math.PI / 2;
-      
-      tpsCam.beta = currentBeta;
+      tpsCam.beta = (fpsCam.rotation.x || 0) + Math.PI / 2;
       tpsCam.radius = 0.05; 
 
       tpsCam.inertialAlphaOffset = 0;
@@ -517,7 +453,6 @@ export class PlayerCameraTransitions {
         jugador.visibility = 1;
         jugador.getChildMeshes().forEach(m => m.visibility = 1);
         this.manager.updateFirstPersonVisibility(false);
-        
         this.manager.aplicarPerfilACamara(tpsCam, 'TPS', config, scaleNow);
       });
     } else {
@@ -564,7 +499,6 @@ export class PlayerCameraTransitions {
         this.manager.updateFirstPersonVisibility(true);
         
         this.ownership.setCamera('PLAYER_FPS', fpsCam, canvas, attachControlForce);
-        
         this.manager.aplicarPerfilACamara(fpsCam, 'FPS', config, scaleNow);
         this.manager.aplicarPerfilACamara(tpsCam, 'TPS', config, scaleNow);
       });

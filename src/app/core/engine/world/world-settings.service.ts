@@ -1,6 +1,14 @@
 import { Injectable, signal } from '@angular/core';
 import { Color3, Color4, HemisphericLight, Scene, Vector3 } from '@babylonjs/core';
-import { WorldSettings, MissionUiSettings, DEFAULT_WORLD_SETTINGS, DEFAULT_MISSION_UI_SETTINGS, VisualMode } from './world-settings.model';
+import { 
+  WorldSettings, 
+  MissionUiSettings, 
+  DEFAULT_WORLD_SETTINGS, 
+  DEFAULT_MISSION_UI_SETTINGS, 
+  VisualMode,
+  GravityPreset,
+  GRAVITY_PRESETS 
+} from './world-settings.model';
 
 @Injectable({ providedIn: 'root' })
 export class WorldSettingsService {
@@ -12,11 +20,38 @@ export class WorldSettingsService {
       const clearHex = worldData.clearColor?.length >= 7 ? worldData.clearColor.substring(0, 7) : DEFAULT_WORLD_SETTINGS.clearColor;
       const clearHexBW = worldData.clearColorBW?.length >= 7 ? worldData.clearColorBW.substring(0, 7) : DEFAULT_WORLD_SETTINGS.clearColorBW;
 
+      let preset: GravityPreset = (worldData.gravityPreset as GravityPreset) || 'earth';
+      if (!GRAVITY_PRESETS[preset]) preset = 'earth';
+
+      let magnitude = Number(worldData.gravityMagnitude);
+      if (!Number.isFinite(magnitude) || magnitude < 0) {
+        magnitude = GRAVITY_PRESETS[preset].magnitude;
+      }
+
+      let dirX = Number(worldData.gravityVector?.x ?? 0);
+      let dirY = Number(worldData.gravityVector?.y ?? -1);
+      let dirZ = Number(worldData.gravityVector?.z ?? 0);
+
+      // Si es un preset predefinido (no custom), sincronizar con la fuente única de verdad
+      if (preset !== 'custom') {
+        const def = GRAVITY_PRESETS[preset];
+        magnitude = def.magnitude;
+        dirX = def.direction.x;
+        dirY = def.direction.y;
+        dirZ = def.direction.z;
+      }
+
+      // Cálculo del valor equivalente en Babylon (-0.25 base para 9.81)
+      const babylonY = (magnitude / 9.81) * -0.25;
+
       this.settings.set({
         visualMode: worldData.visualMode === 'bw' ? 'bw' : 'normal',
         clearColor: clearHex,
         clearColorBW: clearHexBW,
-        gravityY: Number.isFinite(Number(worldData.gravityY)) ? Number(worldData.gravityY) : DEFAULT_WORLD_SETTINGS.gravityY,
+        gravityY: Number.isFinite(Number(worldData.gravityY)) ? Number(worldData.gravityY) : babylonY,
+        gravityPreset: preset,
+        gravityMagnitude: magnitude,
+        gravityVector: { x: dirX, y: dirY, z: dirZ },
         ambientIntensity: Number.isFinite(Number(worldData.ambientIntensity)) ? Number(worldData.ambientIntensity) : DEFAULT_WORLD_SETTINGS.ambientIntensity,
         ambientDiffuse: worldData.ambientDiffuse || DEFAULT_WORLD_SETTINGS.ambientDiffuse,
         ambientGround: worldData.ambientGround || DEFAULT_WORLD_SETTINGS.ambientGround,
@@ -47,8 +82,39 @@ export class WorldSettingsService {
     }
   }
 
+  public setGravityPreset(preset: GravityPreset, customMagnitude?: number): void {
+    if (!GRAVITY_PRESETS[preset]) return;
+    
+    if (preset === 'custom') {
+      const mag = customMagnitude !== undefined && Number.isFinite(customMagnitude) && customMagnitude >= 0 ? customMagnitude : 9.81;
+      const babylonY = (mag / 9.81) * -0.25;
+      this.settings.update(s => ({
+        ...s,
+        gravityPreset: 'custom',
+        gravityMagnitude: mag,
+        gravityY: babylonY,
+        gravityVector: { x: 0, y: -1, z: 0 }
+      }));
+    } else {
+      const def = GRAVITY_PRESETS[preset];
+      this.settings.update(s => ({
+        ...s,
+        gravityPreset: preset,
+        gravityMagnitude: def.magnitude,
+        gravityY: def.babylonScale,
+        gravityVector: { ...def.direction }
+      }));
+    }
+  }
+
   public updateWorldSettings(partial: Partial<WorldSettings>): void {
-    this.settings.update(s => ({ ...s, ...partial }));
+    this.settings.update(s => {
+      const next = { ...s, ...partial };
+      if (partial.gravityMagnitude !== undefined && next.gravityPreset === 'custom') {
+        next.gravityY = (next.gravityMagnitude / 9.81) * -0.25;
+      }
+      return next;
+    });
   }
 
   public updateUiSettings(partial: Partial<MissionUiSettings>): void {
@@ -60,17 +126,18 @@ export class WorldSettingsService {
     const w = this.settings();
     const ui = this.uiSettings();
 
-    // Sincronizar metadata
     scene.metadata = {
       ...(scene.metadata || {}),
       globalVisualMode: w.visualMode,
       globalClearColor: w.clearColor,
       globalClearColorBW: w.clearColorBW,
+      gravityPreset: w.gravityPreset,
+      gravityMagnitude: w.gravityMagnitude,
+      gravityVector: w.gravityVector,
       uiSettings: ui,
       logicSettings: w.logicSettings || {}
     };
 
-    // 🔥 FIX MAGICO: Permite que los colores ambientes de los materiales individuales funcionen.
     scene.ambientColor = new Color3(1, 1, 1); 
 
     let ambient = scene.lights.find(l => l.name === 'ambientLight') as HemisphericLight;
@@ -86,7 +153,12 @@ export class WorldSettingsService {
 
     const activeClear = w.visualMode === 'bw' ? w.clearColorBW : w.clearColor;
     scene.clearColor = Color4.FromHexString(activeClear + 'ff');
-    scene.gravity = new Vector3(0, w.gravityY, 0);
+    
+    // Aplicación del vector de gravedad físico a BabylonJS
+    const gY = w.gravityVector.y * Math.abs(w.gravityY);
+    const gX = w.gravityVector.x * Math.abs(w.gravityY);
+    const gZ = w.gravityVector.z * Math.abs(w.gravityY);
+    scene.gravity = new Vector3(gX, gY, gZ);
 
     setVisualModeFn(w.visualMode);
 

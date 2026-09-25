@@ -15,14 +15,10 @@ export class SpawnManagerService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private gameState = inject(GameStateService);
   private context = inject(GameContextService);
-  
-  // 🔥 FIX ARQUITECTÓNICO (NG0200): Inyectamos el Injector en lugar del servicio estático
-  // Esto rompe la dependencia circular (SpawnManager <-> SceneLoader) resolviendo el loader 
-  // en tiempo de ejecución solo cuando se necesita.
   private injector = inject(Injector);
 
   public async resolvePlayerForSession(preferredEntity: GameEntity | null = null, isEditorPreview: boolean = false): Promise<GameEntity | null> {
-    // 1. Teletransporte natural (Jugador persistente ya existe en memoria entre escenas)
+    // 1. Jugador persistente existente (transición entre plataformas)
     const persistentPlayer = this.entityManager.getAllEntities().find(e => e.isPersistent);
     if (persistentPlayer && !isEditorPreview) {
         this.handleSceneChangeSpawn(persistentPlayer);
@@ -31,7 +27,7 @@ export class SpawnManagerService {
 
     let targetEntity = preferredEntity;
 
-    // 🔥 2. FASE 1: RESOLUCIÓN DE NARRATIVE ROLE CORRECTA (Prefab de Character + Spawn)
+    // 2. Resolución de Rol Narrativo (Prefab de Character + Spawn Point)
     if (!targetEntity) {
         const activeRoleUid = this.gameState.playerRole;
         if (activeRoleUid) {
@@ -42,11 +38,8 @@ export class SpawnManagerService {
             if (roleDef) {
                 let charEntity: GameEntity | null = null;
 
-                // 2.a Instanciar el modelo 3D oficial del Rol desde el Prefab configurado
                 if (roleDef.characterPrefab) {
-                    // 🔥 Lazy Injection para evitar dependencias circulares
                     const sceneLoader = this.injector.get(CoreSceneLoaderService);
-                    
                     const mallas = await sceneLoader.instantiatePrefab(
                         roleDef.characterPrefab,
                         Vector3.Zero()
@@ -55,11 +48,8 @@ export class SpawnManagerService {
                     charEntity = this.entityManager.getEntityByMesh(rootMesh) || null;
                 } 
                 
-                // 2.b Mover al punto de Spawn designado por el Rol para la escena actual
                 let spawnEntity = roleDef.spawnSceneObjectUid ? this.entityManager.getEntityByUid(roleDef.spawnSceneObjectUid) : null;
-                
                 if (!spawnEntity) {
-                    // Fallback to first available spawn point in the scene
                     spawnEntity = this.entityManager.getAllEntities().find(e => !e.isPersistent && e.rol === 'spawn_point') || null;
                 }
 
@@ -87,14 +77,12 @@ export class SpawnManagerService {
                     charEntity.syncTransformFromView();
 
                     targetEntity = this.upgradeToPlayer(charEntity);
-                } else {
-                    console.warn(`[SpawnManager] Rol '${roleDef.name}' no tiene Prefab de personaje. Evaluando fallbacks...`);
                 }
             }
         }
     }
 
-    // 3. Fallbacks Clásicos si no hay Rol (Compatibilidad con mapas que no usan el nuevo sistema)
+    // 3. Fallbacks de búsqueda en la escena
     if (!targetEntity || (!targetEntity.hasComponent('characterConfig') && targetEntity.rol !== 'spawn_point')) {
        const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
        targetEntity = characters.find(c => c.rol === 'player') || characters.find(c => c.characterConfig?.isPlayable) || null;
@@ -104,8 +92,7 @@ export class SpawnManagerService {
         targetEntity = this.entityManager.getAllEntities().find(e => e.rol === 'spawn_point') || null;
     }
 
-    // 🔥 PREVENCIÓN DE CUBO ROJO: Si el único "player" que hallamos es un spawn_point (un cubo estático), 
-    // JAMÁS lo convertimos visualmente en el jugador. Instanciamos una cápsula genérica transparente.
+    // 4. Si el objetivo es solo un spawn_point, instanciar cápsula transparente (invisible en producción)
     if (targetEntity && targetEntity.rol === 'spawn_point') {
         const spawnTransform = { 
             position: targetEntity.transform.position, 
@@ -116,26 +103,25 @@ export class SpawnManagerService {
         targetEntity = this.createTempPlayerFromSpawn(
             spawnTransform.position,
             spawnTransform.rotation,
-            spawnTransform.rotationQuaternion
+            spawnTransform.rotationQuaternion,
+            isEditorPreview
         );
     }
 
-    // 4. Fallback extremo de TestLive Editor (Cámara flotante en la Posición actual si no hay ni spawn)
+    // 5. Fallback para editor sin spawn point
     if (!targetEntity && isEditorPreview) {
         const editorCam = this.motor3d.getEditorCamera();
         const targetPos = editorCam && typeof editorCam.getTarget === 'function' ? editorCam.getTarget() : new Vector3(0, 0, 0);
         targetEntity = this.createTempPlayerFromSpawn(
             { x: targetPos.x, y: targetPos.y + 1, z: targetPos.z },
             { x: 0, y: 0, z: 0 },
-            null
+            null,
+            true
         );
     }
 
-    if (!targetEntity) {
-        return null; 
-    }
+    if (!targetEntity) return null;
 
-    // 5. Configurar persistencia transversal e Inercia
     targetEntity.isPersistent = true;
     if (targetEntity.view) {
         Tags.AddTagsTo(targetEntity.view, "persistent_player");
@@ -145,7 +131,7 @@ export class SpawnManagerService {
     return targetEntity;
   }
 
-  private createTempPlayerFromSpawn(position: any, rotation: any, rotationQuat: any): GameEntity {
+  private createTempPlayerFromSpawn(position: any, rotation: any, rotationQuat: any, isEditorPreview: boolean): GameEntity {
     const scene = this.motor3d.getScene();
     const tempMesh = MeshBuilder.CreateCapsule("TempPlayer_Fallback", { height: 1.8, radius: 0.4 }, scene);
     
@@ -160,9 +146,9 @@ export class SpawnManagerService {
     tempMesh.ellipsoid = new Vector3(0.4, 0.9, 0.4);
     tempMesh.ellipsoidOffset = new Vector3(0, 0.9, 0); 
 
-    // 🔥 FIX: Lo hacemos visible pero transparente, para que el editor note que es el fallback
-    tempMesh.isVisible = true; 
-    tempMesh.visibility = 0.5; 
+    // En producción es completamente invisible
+    tempMesh.isVisible = isEditorPreview; 
+    tempMesh.visibility = isEditorPreview ? 0.4 : 0.0; 
     tempMesh.isPickable = false;
     
     const playerEntity = new GameEntity(window.crypto.randomUUID(), 'Jugador_Fallback_Auto', 'model', 'player');
@@ -192,7 +178,6 @@ export class SpawnManagerService {
   private handleSceneChangeSpawn(persistentPlayer: GameEntity): void {
     if (!persistentPlayer || !persistentPlayer.view) return;
 
-    // 🔥 Al cambiar de escena, buscamos si la nueva tiene un Spawn_Point
     let newSpawn = this.entityManager.getAllEntities().find(e => !e.isPersistent && e.rol === 'spawn_point');
 
     if (newSpawn && newSpawn.view) {
@@ -201,7 +186,7 @@ export class SpawnManagerService {
         if (newSpawn.view.rotationQuaternion) {
             persistentPlayer.view.rotationQuaternion = newSpawn.view.rotationQuaternion.clone();
             persistentPlayer.view.rotation.set(0, 0, 0);
-            persistentPlayer.transform.rotation = { ...newSpawn.transform.rotation };
+            persistentPlayer.transform.rotationQuaternion = { ...newSpawn.transform.rotationQuaternion } as any;
         } else {
             persistentPlayer.view.rotation.copyFrom(newSpawn.view.rotation);
             persistentPlayer.view.rotationQuaternion = null;
@@ -212,13 +197,14 @@ export class SpawnManagerService {
         persistentPlayer.view.computeWorldMatrix(true);
         persistentPlayer.syncTransformFromView();
     } else {
-        persistentPlayer.transform.position = { x: 0, y: 5, z: 0 };
-        persistentPlayer.view.position.set(0, 5, 0);
+        persistentPlayer.transform.position = { x: 0, y: 1.5, z: 0 };
+        persistentPlayer.view.position.set(0, 1.5, 0);
         persistentPlayer.view.computeWorldMatrix(true);
     }
 
     this.resetPhysicsInertia(persistentPlayer);
 
+    // Eliminar la malla del marcador de spawn en la plataforma de destino
     if (newSpawn) {
         this.entityManager.removeEntity(newSpawn.uid);
     }

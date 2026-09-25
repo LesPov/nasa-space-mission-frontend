@@ -1,12 +1,57 @@
-
+import { Vector3Dto } from '../models/api-dto.model';
 
 export type VisualMode = 'normal' | 'bw';
+
+export type GravityPreset = 'earth' | 'mars' | 'moon' | 'zero_g' | 'custom';
+
+export interface GravityDefinition {
+  preset: GravityPreset;
+  magnitude: number; // En m/s² (Tierra = 9.81, Marte = 3.71, Luna = 1.62, 0G = 0.0)
+  direction: Vector3Dto;
+  babylonScale: number; // Factor de conversión a unidades Babylon
+}
+
+export const GRAVITY_PRESETS: Record<GravityPreset, GravityDefinition> = {
+  earth: {
+    preset: 'earth',
+    magnitude: 9.81,
+    direction: { x: 0, y: -1, z: 0 },
+    babylonScale: -0.25
+  },
+  mars: {
+    preset: 'mars',
+    magnitude: 3.71,
+    direction: { x: 0, y: -1, z: 0 },
+    babylonScale: -0.0945
+  },
+  moon: {
+    preset: 'moon',
+    magnitude: 1.62,
+    direction: { x: 0, y: -1, z: 0 },
+    babylonScale: -0.0413
+  },
+  zero_g: {
+    preset: 'zero_g',
+    magnitude: 0.0,
+    direction: { x: 0, y: 0, z: 0 },
+    babylonScale: 0.0
+  },
+  custom: {
+    preset: 'custom',
+    magnitude: 9.81,
+    direction: { x: 0, y: -1, z: 0 },
+    babylonScale: -0.25
+  }
+};
 
 export interface WorldSettings {
   visualMode: VisualMode;
   clearColor: string;
   clearColorBW: string;
-  gravityY: number;
+  gravityY: number; // Compatibilidad legacy Babylon
+  gravityPreset: GravityPreset;
+  gravityMagnitude: number; // m/s²
+  gravityVector: Vector3Dto;
   ambientIntensity: number;
   ambientDiffuse: string;
   ambientGround: string;
@@ -30,7 +75,7 @@ export interface MissionUiSettings {
   initialSequence: string;
   objetivos: string[];
   recompensas: string[];
-  requisitos: string[]; // 🔥 ADDED: Permisos para entrar
+  requisitos: string[];
 }
 
 export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
@@ -38,6 +83,9 @@ export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   clearColor: '#0d1729',
   clearColorBW: '#555555',
   gravityY: -0.25,
+  gravityPreset: 'earth',
+  gravityMagnitude: 9.81,
+  gravityVector: { x: 0, y: -1, z: 0 },
   ambientIntensity: 0.6,
   ambientDiffuse: '#ffffff',
   ambientGround: '#333333',
@@ -60,5 +108,5 @@ export const DEFAULT_MISSION_UI_SETTINGS: MissionUiSettings = {
   initialSequence: '',
   objetivos: [],
   recompensas: [],
-  requisitos: [] // 🔥 ADDED
+  requisitos: []
 };

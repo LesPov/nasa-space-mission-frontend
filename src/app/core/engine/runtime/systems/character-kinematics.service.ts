@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
@@ -11,6 +10,7 @@ import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 import { GameMode } from '../../session/game-mode.model';
 import { getMovementProfileForOwner, MovementProfile } from '../movement/movement-profile.model';
 import { TransformTelemetryService } from '../../telemetry/transform-telemetry.service';
+import { WorldSettingsService } from '../../world/world-settings.service';
 
 @Injectable({ providedIn: 'root' })
 export class CharacterKinematicsService implements IUpdatable {
@@ -19,6 +19,7 @@ export class CharacterKinematicsService implements IUpdatable {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private ownership = inject(CameraOwnershipService);
   private context = inject(GameContextService);
+  private worldSettingsSvc = inject(WorldSettingsService);
 
   private _localCapsuleCenter = Vector3.Zero();
   private _capsuleCenter = Vector3.Zero();
@@ -35,10 +36,11 @@ export class CharacterKinematicsService implements IUpdatable {
   private _rightDir = new Vector3(1, 0, 0);
 
   public physicsUpdate(dtMs: number): void {
+    if (dtMs <= 0) return; // Si la simulación está en pausa (0x), salimos de inmediato
+
     const scene = this.motor3d.getScene();
     const mode = this.context.mode();
     
-    // 🔥 PERMITIMOS QUE LAS CINEMÁTICAS EJECUTEN FÍSICAS EN MODO EDITOR
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
     const activeCamera = this.ownership.getCamera();
@@ -55,14 +57,11 @@ export class CharacterKinematicsService implements IUpdatable {
       const entity = entities[i];
       if (!entity.hasComponent('characterConfig')) continue;
 
-      // En el editor, solo procesamos a los que están controlados por la cinemática
       if (isEditor && entity.movementAuthority === 'GAMEPLAY') {
           continue; 
       }
 
-      // 🔥 FASE 1: CHEQUEO DE AUTORIDAD ESTRICTA
       if (entity.movementAuthority === 'CINEMATIC_FULL') {
-         // El Director tiene control 100% Interpolado del Transform. Físicas desactivadas.
          if (entity.playerRuntime) {
             entity.playerRuntime.intentions.moveForward = false;
             entity.playerRuntime.intentions.moveBackward = false;
@@ -74,14 +73,11 @@ export class CharacterKinematicsService implements IUpdatable {
             estadoFisico.velocidadY = 0;
             estadoFisico.isGrounded = true;
             if (entity.view) {
-                estadoFisico.highestY = entity.view.position.y; // Evita daño de caída al finalizar cinemática
+                estadoFisico.highestY = entity.view.position.y;
             }
          }
          continue; 
       }
-
-      // Si llegamos aquí, la autoridad es 'GAMEPLAY' o 'CINEMATIC_LOCOMOTION'.
-      // En ambos casos, las físicas y la cinemática de locomoción DEBEN procesarse.
 
       const isPlayer = activePlayer && entity.uid === activePlayer.uid;
       const vista = isPlayer ? cameraView : 'FPS'; 
@@ -162,15 +158,21 @@ export class CharacterKinematicsService implements IUpdatable {
       }
     }
 
+    // Resolver factor de gravedad ambiental desde WorldSettings de la plataforma
+    const currentWorld = this.worldSettingsSvc.settings();
+    const envGravityMag = currentWorld.gravityMagnitude !== undefined ? currentWorld.gravityMagnitude : 9.81;
+    const gravityFactor = envGravityMag / 9.81;
+    const isZeroG = currentWorld.gravityPreset === 'zero_g' || envGravityMag === 0;
+
     if (seqRuntime && seqRuntime.running && seqRuntime.forceJump && profile.jumpEnabled && !estadoFisico.isJumping && !estadoFisico.isFalling) {
       estadoFisico.velocidadY = (config.jump.force || 0.16) * scaleFactor;
       estadoFisico.isJumping = true;
     }
 
-    if (profile.gravityEnabled) {
+    if (profile.gravityEnabled && !isZeroG) {
       this.detectGround(scene, playerHalfHeight, scaleY, collFn, estadoFisico);
     } else {
-      estadoFisico.isGrounded = true;
+      estadoFisico.isGrounded = isZeroG ? false : true;
       estadoFisico.velocidadY = 0;
       estadoFisico.isFalling = false;
       estadoFisico.isJumping = false;
@@ -181,7 +183,7 @@ export class CharacterKinematicsService implements IUpdatable {
     } else {
       this.applyNormalMovement(
         mesh, config, estadoFisico, intentions, seqRuntime, 
-        vista, scaleFactor, scaleY, profile, entity, dtMs
+        vista, scaleFactor, scaleY, profile, entity, dtMs, gravityFactor, isZeroG
       );
     }
     
@@ -257,7 +259,6 @@ export class CharacterKinematicsService implements IUpdatable {
     else this._pForward.normalize();
 
     if (dy !== 0 && !isNaN(dy)) mesh.position.y += dy;
-    // dy/df en Cinemática ya están escalados por tiempo internamente (PlayerSequenceService)
     if (df !== 0 && !isNaN(df)) mesh.position.addInPlace(this._pForward.scaleInPlace(df));
 
     mesh.computeWorldMatrix(true);
@@ -281,11 +282,12 @@ export class CharacterKinematicsService implements IUpdatable {
     scaleY: number,
     profile: MovementProfile,
     entity: GameEntity,
-    dtMs: number
+    dtMs: number,
+    gravityFactor: number,
+    isZeroG: boolean
   ): void {
     const telemetry = TransformTelemetryService.instance;
 
-    // 🔥 FASE B: Normalización Temporal a 60 FPS
     const TARGET_FRAME_TIME = 1000 / 60;
     const timeRatio = dtMs / TARGET_FRAME_TIME;
 
@@ -300,7 +302,6 @@ export class CharacterKinematicsService implements IUpdatable {
 
     this.calculateLandingRecovery(estadoFisico, config);
 
-    // Sumatoria de intenciones (Matemática Pura Unitaria)
     if (!estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
       if (intentions.moveForward) this._move.addInPlace(this._forward);
       if (intentions.moveBackward) this._move.subtractInPlace(this._forward);
@@ -323,7 +324,6 @@ export class CharacterKinematicsService implements IUpdatable {
           forwardSource = this._pForward;
       }
 
-      // Cinemáticas: Locomoción Action Steps
       if (seqRuntime.forceForwardRun) {
          forwardSource.scaleToRef((config.movement.runSpeed || 0.09) * scaleFactor * timeRatio, this._pForward);
          this._move.addInPlace(this._pForward);
@@ -337,7 +337,6 @@ export class CharacterKinematicsService implements IUpdatable {
     estadoFisico.isMoving = this._move.lengthSquared() > 0.001;
     estadoFisico.isRunning = intentions.run || (seqRuntime ? seqRuntime.forceForwardRun : false);
 
-    // Aplicar Vector Horizontal Físico a Gameplay
     if (estadoFisico.isMoving && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
       const modSpeed = (estadoFisico.isRunning ? (config.movement.runSpeed || 0.09) : (config.movement.walkSpeed || 0.045)) * scaleFactor;
       
@@ -348,7 +347,6 @@ export class CharacterKinematicsService implements IUpdatable {
 
     const qBeforeRot = mesh.rotationQuaternion ? mesh.rotationQuaternion.clone() : null;
 
-    // 🔥 FASE B: Rotación TPS independiente del Framerate mediante Slerp Exponencial
     if (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation)) {
       if (vista === 'TPS' && estadoFisico.isMoving) {
         const targetAngle = Math.atan2(this._move.x, this._move.z);
@@ -357,7 +355,7 @@ export class CharacterKinematicsService implements IUpdatable {
           Quaternion.FromEulerAnglesToRef(0, targetAngle, 0, this._targetQuat);
           
           let baseRotSpeed = config.movement.rotationSpeed || 0.2;
-          if (baseRotSpeed === 0.1) baseRotSpeed = 0.2; // Compatibilidad con factor hardcodeado antiguo de 0.2
+          if (baseRotSpeed === 0.1) baseRotSpeed = 0.2;
 
           const slerpFactor = 1 - Math.pow(1 - baseRotSpeed, timeRatio);
           Quaternion.SlerpToRef(mesh.rotationQuaternion, this._targetQuat, slerpFactor, mesh.rotationQuaternion);
@@ -380,9 +378,8 @@ export class CharacterKinematicsService implements IUpdatable {
 
     const posBeforeGrav = mesh.position.clone();
 
-    // La Gravedad y Salto quedan inalterados (No multiplicados por timeRatio)
-    // Para mantener la estabilidad estricta requerida por moveWithCollisions.
-    this.calculateGravityAndJump(mesh, estadoFisico, config, intentions, seqRuntime, scaleFactor, scaleY, profile);
+    // Cálculo de gravedad con factor dinámico del planeta activo
+    this.calculateGravityAndJump(mesh, estadoFisico, config, intentions, seqRuntime, scaleFactor, scaleY, profile, gravityFactor, isZeroG);
 
     if (isNaN(this._move.x)) this._move.x = 0;
     if (isNaN(this._move.y)) this._move.y = 0;
@@ -392,7 +389,6 @@ export class CharacterKinematicsService implements IUpdatable {
         telemetry.logEvent(entity.uid, entity.rol, 'CharacterKinematics', 'velocidadY', 'WRITE', null, estadoFisico.velocidadY);
     }
 
-    // Resolución física final
     if (profile.collisionsEnabled) {
       if (this._move.lengthSquared() > 0.000001) {
          mesh.moveWithCollisions(this._move);
@@ -432,10 +428,12 @@ export class CharacterKinematicsService implements IUpdatable {
     seqRuntime: SeqRuntime | null, 
     scaleFactor: number, 
     scaleY: number,
-    profile: MovementProfile
+    profile: MovementProfile,
+    gravityFactor: number,
+    isZeroG: boolean
   ): void {
-    if (!profile.gravityEnabled) {
-       estadoFisico.isGrounded = true;
+    if (!profile.gravityEnabled || isZeroG) {
+       estadoFisico.isGrounded = isZeroG ? false : true;
        estadoFisico.velocidadY = 0;
        estadoFisico.isFalling = false;
        estadoFisico.isJumping = false;
@@ -471,15 +469,17 @@ export class CharacterKinematicsService implements IUpdatable {
          if (estadoFisico.groundNormal && estadoFisico.groundNormal.y > 0.999) {
              estadoFisico.velocidadY = 0;
          } else {
-             estadoFisico.velocidadY = -Math.abs((config.jump.gravity || 0.018) * scaleFactor);
+             estadoFisico.velocidadY = -Math.abs((config.jump.gravity || 0.018) * scaleFactor * gravityFactor);
          }
       }
     } else {
       if (mesh.position.y > estadoFisico.highestY) estadoFisico.highestY = mesh.position.y;
 
       const gravityMul = estadoFisico.isJumping ? 0.55 : (config.jump.jumpFallMultiplier || 1.0);
-      estadoFisico.velocidadY -= (config.jump.gravity || 0.018) * scaleFactor * gravityMul;
-      const maxFallSpeed = config.jump.maxFallSpeed || 0.8;
+      const effectiveGrav = (config.jump.gravity || 0.018) * scaleFactor * gravityMul * gravityFactor;
+      estadoFisico.velocidadY -= effectiveGrav;
+      
+      const maxFallSpeed = (config.jump.maxFallSpeed || 0.8) * Math.sqrt(Math.max(0.1, gravityFactor));
 
       if (estadoFisico.velocidadY < -maxFallSpeed * scaleFactor) {
         estadoFisico.velocidadY = -maxFallSpeed * scaleFactor;

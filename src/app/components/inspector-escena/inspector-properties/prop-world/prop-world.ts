@@ -1,5 +1,3 @@
-
-
 import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -9,7 +7,7 @@ import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 import { WorldSettingsService } from '../../../../core/engine/world/world-settings.service';
-import { VisualMode } from '../../../../core/engine/world/world-settings.model';
+import { VisualMode, GravityPreset, GRAVITY_PRESETS } from '../../../../core/engine/world/world-settings.model';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
 import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
 
@@ -40,6 +38,12 @@ export class PropWorld implements OnInit, OnDestroy {
   ambientDirZ = 0;
 
   gravedadY = -0.25;
+  gravityPreset: GravityPreset = 'earth';
+  gravityMagnitude = 9.81;
+  gravityDirX = 0;
+  gravityDirY = -1;
+  gravityDirZ = 0;
+
   visualMode: VisualMode = 'normal';
 
   ngOnInit() {
@@ -67,7 +71,47 @@ export class PropWorld implements OnInit, OnDestroy {
     this.ambientDirZ = w.ambientDirZ;
     this.gravedadY = w.gravityY;
 
+    this.gravityPreset = w.gravityPreset || 'earth';
+    this.gravityMagnitude = w.gravityMagnitude !== undefined ? w.gravityMagnitude : 9.81;
+    this.gravityDirX = w.gravityVector?.x ?? 0;
+    this.gravityDirY = w.gravityVector?.y ?? -1;
+    this.gravityDirZ = w.gravityVector?.z ?? 0;
+
     this.cdr.detectChanges();
+  }
+
+  onGravityPresetChange() {
+    this.worldSettingsSvc.setGravityPreset(this.gravityPreset, this.gravityMagnitude);
+    const updated = this.worldSettingsSvc.settings();
+    this.gravityMagnitude = updated.gravityMagnitude;
+    this.gravedadY = updated.gravityY;
+    this.gravityDirX = updated.gravityVector.x;
+    this.gravityDirY = updated.gravityVector.y;
+    this.gravityDirZ = updated.gravityVector.z;
+
+    this.worldSettingsSvc.applyToScene(this.motor3dSvc.getScene(), (mode) => this.motor3dSvc.setVisualMode(mode));
+    this.editorSvc.onMapChanged.next();
+  }
+
+  aplicarGravedadCustom() {
+    if (this.gravityPreset !== 'custom') return;
+    
+    let mag = Number(this.gravityMagnitude);
+    if (!Number.isFinite(mag) || mag < 0) mag = 9.81;
+    this.gravityMagnitude = mag;
+
+    const babylonY = (mag / 9.81) * -0.25;
+    this.gravedadY = babylonY;
+
+    this.worldSettingsSvc.updateWorldSettings({
+      gravityPreset: 'custom',
+      gravityMagnitude: mag,
+      gravityY: babylonY,
+      gravityVector: { x: this.gravityDirX, y: this.gravityDirY, z: this.gravityDirZ }
+    });
+
+    this.worldSettingsSvc.applyToScene(this.motor3dSvc.getScene(), (mode) => this.motor3dSvc.setVisualMode(mode));
+    this.editorSvc.onMapChanged.next();
   }
 
   aplicarModoVisualCambiado() {
@@ -101,12 +145,6 @@ export class PropWorld implements OnInit, OnDestroy {
       ambientDirY: this.ambientDirY,
       ambientDirZ: this.ambientDirZ
     });
-    this.worldSettingsSvc.applyToScene(this.motor3dSvc.getScene(), (mode) => this.motor3dSvc.setVisualMode(mode));
-    this.editorSvc.onMapChanged.next();
-  }
-
-  aplicarGravedad() {
-    this.worldSettingsSvc.updateWorldSettings({ gravityY: this.gravedadY });
     this.worldSettingsSvc.applyToScene(this.motor3dSvc.getScene(), (mode) => this.motor3dSvc.setVisualMode(mode));
     this.editorSvc.onMapChanged.next();
   }

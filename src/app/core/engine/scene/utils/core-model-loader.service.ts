@@ -134,13 +134,10 @@ export class CoreModelLoaderService {
     const updatedBounds = rootNode.getHierarchyBoundingVectors();
     const finalRealSize = updatedBounds.max.subtract(updatedBounds.min);
     
-    // 🔥 FIX ARQUITECTURA RADIAL: BabylonJS Ellipsoid usa Half-Sizes (Radios).
-    // Dividimos finalRealSize entre 2 para que concuerde.
     const finalSizeX = (entity.collider.sizeX === 1) ? Math.max(0.1, (finalRealSize.x / 2) / scaleX) : entity.collider.sizeX!;
     const finalSizeY = (entity.collider.sizeY === 1) ? Math.max(0.1, (finalRealSize.y / 2) / scaleY) : entity.collider.sizeY!;
     const finalSizeZ = (entity.collider.sizeZ === 1) ? Math.max(0.1, (finalRealSize.z / 2) / scaleZ) : entity.collider.sizeZ!;
 
-    // Si es nuevo cálculo, empujamos el Offset Y para que pise el suelo y no atraviese 
     if (entity.collider.sizeY === 1 && (entity.collider.offsetY === 0 || entity.collider.offsetY === undefined)) {
         entity.collider.offsetY = finalSizeY; 
     }
@@ -180,7 +177,6 @@ export class CoreModelLoaderService {
       
       if (m.material) {
           this.materialSvc.asegurarMaterialUnico(m, entity.uid);
-          
           const activeAmbient = isBW ? entity.visual.ambientColorBW : entity.visual.ambientColor;
           await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbient);
       }
@@ -193,7 +189,6 @@ export class CoreModelLoaderService {
 
     if (entity.visual.isSolid && !isCharacter && entity.collider.type !== 'mesh') {
         let colMesh: Mesh;
-        // 🔥 FIX PROXY: El proxy visual siempre requiere * 2 porque los Builders usan Full-Size
         if (entity.collider.type === 'sphere') {
             colMesh = MeshBuilder.CreateSphere(`col_${obj.uid}`, { diameterX: finalSizeX * 2, diameterY: finalSizeY * 2, diameterZ: finalSizeZ * 2 }, scene);
         } else if (entity.collider.type === 'capsule') {
@@ -218,7 +213,10 @@ export class CoreModelLoaderService {
     };
     setFog(rootNode);
 
-    anims.forEach(ag => ag.stop());
+    anims.forEach(ag => {
+      ag.stop();
+      ag.speedRatio = 1.0;
+    });
     entity.animationNames = anims.map(a => a.name);
 
     if (isLight) {
@@ -233,10 +231,14 @@ export class CoreModelLoaderService {
 
     if (entity.rol === 'spawn_point') {
         rootNode.checkCollisions = false;
+        Tags.AddTagsTo(rootNode, "editor_only ignore_raycast");
+        rootNode.isVisible = isEditor;
         subMeshes.forEach(m => {
             m.checkCollisions = false;
+            Tags.AddTagsTo(m, "editor_only ignore_raycast");
+            m.isVisible = isEditor;
             if (m.material && m.material instanceof StandardMaterial) {
-                m.material.alpha = 0.4;
+                m.material.alpha = isEditor ? 0.4 : 0.0;
                 m.material.wireframe = false;
             }
         });

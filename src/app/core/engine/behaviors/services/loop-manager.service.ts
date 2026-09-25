@@ -1,7 +1,8 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
 import { Scene, Observer } from '@babylonjs/core';
 import { TransformTelemetryService } from '../../telemetry/transform-telemetry.service';
-
+import { SimulationClockService } from '../../runtime/time/simulation-clock.service';
+ 
 export enum GamePhase {
   PRE_UPDATE = 0,
   PHYSICS = 1,
@@ -33,6 +34,7 @@ export class LoopManagerService {
   private updatablesList: IUpdatable[] = [];
 
   private frameCount = 0;
+  private clock = inject(SimulationClockService);
 
   constructor(private telemetry: TransformTelemetryService) {
     Object.values(GamePhase).forEach(phase => {
@@ -48,13 +50,14 @@ export class LoopManagerService {
     }
     
     this.scene = scene;
+    this.clock.reset();
     
     this.observer = this.scene.onBeforeRenderObservable.add(() => {
       this.frameCount++;
       this.telemetry.beginFrame(this.frameCount);
       
-      const dtMs = this.scene!.getEngine().getDeltaTime();
-      this.executeFrame(dtMs);
+      const rawDtMs = this.scene!.getEngine().getDeltaTime();
+      this.executeFrame(rawDtMs);
       
       this.telemetry.endFrame();
     });
@@ -69,6 +72,7 @@ export class LoopManagerService {
     this.updatablesList = [];
     this.observer = null;
     this.scene = null;
+    this.clock.reset();
   }
 
   public registerSystem(system: IUpdatable): void {
@@ -100,13 +104,36 @@ export class LoopManagerService {
     });
   }
 
-  private executeFrame(dtMs: number): void {
-    this.executePhase(GamePhase.PRE_UPDATE, dtMs);
-    this.executePhase(GamePhase.PHYSICS, dtMs);
-    this.executePhase(GamePhase.LOGIC, dtMs);
-    this.executePhase(GamePhase.ANIMATION, dtMs);
-    this.executePhase(GamePhase.CAMERA, dtMs);
-    this.executePhase(GamePhase.POST_UPDATE, dtMs);
+  private executeFrame(rawDtMs: number): void {
+    const clock = this.clock;
+    clock.advance(rawDtMs);
+
+    const renderDt = clock.renderDeltaTimeMs;
+    const simSteps = clock.substeps;
+
+    // 1. PRE_UPDATE siempre en tiempo real (Render Dt)
+    this.executePhase(GamePhase.PRE_UPDATE, renderDt);
+
+    // 2. FÍSICAS y LÓGICA: Ejecutadas por substep de simulación controlado
+    if (clock.timeScale > 0 && simSteps.length > 0) {
+      for (let s = 0; s < simSteps.length; s++) {
+        const stepDt = simSteps[s];
+        this.executePhase(GamePhase.PHYSICS, stepDt);
+        this.executePhase(GamePhase.LOGIC, stepDt);
+      }
+    } else if (clock.timeScale === 0) {
+      // 0x PAUSA: Las físicas y la lógica no avanzan (0 dt)
+      this.executePhase(GamePhase.PHYSICS, 0);
+      this.executePhase(GamePhase.LOGIC, 0);
+    }
+
+    // 3. ANIMACIONES: En tiempo de simulación si está activo, o frame delta
+    const animDt = clock.timeScale === 0 ? 0 : renderDt;
+    this.executePhase(GamePhase.ANIMATION, animDt);
+
+    // 4. CÁMARA y POST_UPDATE: Siempre en tiempo de render para fluidez absoluta del usuario
+    this.executePhase(GamePhase.CAMERA, renderDt);
+    this.executePhase(GamePhase.POST_UPDATE, renderDt);
   }
 
   private executePhase(phase: GamePhase, dtMs: number): void {

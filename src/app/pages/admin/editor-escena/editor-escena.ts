@@ -1,4 +1,3 @@
-
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -38,6 +37,7 @@ import { PlayerInputService } from '../../../core/engine/runtime/systems/player-
 import { LiveBuilderService } from '../../../services/editor/live-builder.service';
 import { Ubicacion3D } from '../ubicacion-3d/ubicacion3d';
 import { NarrativeRoleDto } from '../../../core/engine/models/api-dto.model';
+import { EditorModeTransitionService } from '../../../services/editor/editor-mode-transition.service';
  
 @Component({
   selector: 'app-editor-escena', 
@@ -60,7 +60,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   public inputOrchestrator = inject(InputOrchestratorService);
   public addObjSvc = inject(AddObjectModalService);
   public missionSvc = inject(MissionModalService);
-  // 🔥 FIX TS2341: Modificador publico
   public roleModalSvc = inject(RoleModalService); 
   public authSvc = inject(AuthService);
   private gameContext = inject(GameContextService); 
@@ -72,6 +71,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   private eventBus = inject(GameEventBusService);
   public inputSvc = inject(PlayerInputService);
   private liveBuilderSvc = inject(LiveBuilderService);
+  private transitionSvc = inject(EditorModeTransitionService);
 
   public isInteracting = signal(false);
   private kbSub!: Subscription;
@@ -129,23 +129,34 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.gameContext.setupContext('EDITOR', { submode: 'EDITING', cameraView: 'FPS' }); 
     this.addObjSvc.cargarAssets();
     if (this.esAdmin) {
-       this.orchestrator.initialize();
+      this.orchestrator.initialize();
     }
     
     this.keyboard.init();
     this.kbSub = this.inputRouter.getGlobalKeyboardStream(['UI', 'EDITOR_EDITING', 'EDITOR_PLAYTEST']).subscribe(e => {
-        this.manejarAtajos(e);
+      this.manejarAtajos(e);
     });
 
     this.ebSub = this.eventBus.events$.subscribe(event => {
       if (event.type === 'GamePaused') {
         setTimeout(() => {
-            if (this.misionIniciada && !this.cerrandoModalMision && this.stateSvc.playState() === 'PLAYING') {
-               if (!this.inputSvc.isRadialMenuOpen && !this.liveBuilderSvc.isBuilding() && !this.gameContext.isPointerLocked() && !this.roleModalSvc.showRoleSelector()) {
-                   this.mostrarModalMisionPreview = true;
-                   this.cdr.detectChanges();
-               }
+          // Solo abrir el modal si el estado actual es genuinamente PLAYING y no estamos saliendo al Editor
+          if (
+            this.misionIniciada && 
+            !this.cerrandoModalMision && 
+            this.stateSvc.playState() === 'PLAYING' &&
+            !this.transitionSvc.isExitingPlayMode()
+          ) {
+            if (
+              !this.inputSvc.isRadialMenuOpen && 
+              !this.liveBuilderSvc.isBuilding() && 
+              !this.gameContext.isPointerLocked() && 
+              !this.roleModalSvc.showRoleSelector()
+            ) {
+              this.mostrarModalMisionPreview = true;
+              this.cdr.detectChanges();
             }
+          }
         }, 150);
       }
     });
@@ -167,14 +178,19 @@ export class EditorEscena implements OnInit, OnDestroy {
         return;
       }
       
-      if (this.misionIniciada && !this.mostrarModalMisionPreview && this.stateSvc.playState() === 'PLAYING') {
-          if (this.inputSvc.isRadialMenuOpen || this.liveBuilderSvc.isBuilding() || this.roleModalSvc.showRoleSelector()) return;
+      if (
+        this.misionIniciada && 
+        !this.mostrarModalMisionPreview && 
+        this.stateSvc.playState() === 'PLAYING' && 
+        !this.transitionSvc.isExitingPlayMode()
+      ) {
+        if (this.inputSvc.isRadialMenuOpen || this.liveBuilderSvc.isBuilding() || this.roleModalSvc.showRoleSelector()) return;
 
-          if (this.gameContext.isPointerLocked()) {
-              this.inputOrchestrator.unlockPointer();
-          } else {
-              this.eventBus.emit({ type: 'GamePaused' });
-          }
+        if (this.gameContext.isPointerLocked()) {
+          this.inputOrchestrator.unlockPointer();
+        } else {
+          this.eventBus.emit({ type: 'GamePaused' });
+        }
       }
     }
   }
@@ -219,9 +235,15 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   onCanvasClick() {
-    if (this.stateSvc.playState() === 'PLAYING' && !this.gameSession.pointerLocked() && !this.isInteracting() && !this.mostrarModalMisionPreview) {
+    if (
+      this.stateSvc.playState() === 'PLAYING' && 
+      !this.gameSession.pointerLocked() && 
+      !this.isInteracting() && 
+      !this.mostrarModalMisionPreview && 
+      !this.transitionSvc.isExitingPlayMode()
+    ) {
       if (!this.inputSvc.isRadialMenuOpen && !this.roleModalSvc.showRoleSelector()) {
-          this.inputOrchestrator.lockPointer();
+        this.inputOrchestrator.lockPointer();
       }
     }
   }
@@ -251,7 +273,7 @@ export class EditorEscena implements OnInit, OnDestroy {
 
     if (playableRoles.length > 0) {
       this.roleModalSvc.openSelector(playableRoles, (uid) => {
-         this.iniciarModoPrueba(uid);
+        this.iniciarModoPrueba(uid);
       });
     } else {
       this.iniciarModoPrueba();
@@ -280,28 +302,28 @@ export class EditorEscena implements OnInit, OnDestroy {
 
   handleMissionStart() {
     if (this.stateSvc.previewMissionModal() && !this.mostrarModalMisionPreview) {
-       this.stateSvc.setPreviewMissionModal(false);
+      this.stateSvc.setPreviewMissionModal(false);
     } else {
-       const currentRole = this.orchestrator.getGameState().playerRole;
-       const roles = this.editorSvc.episodioActualData()?.narrativeRoles || [];
-       const playableRoles = roles.filter((r: NarrativeRoleDto) => r.isEnabled && r.isPlayable);
+      const currentRole = this.orchestrator.getGameState().playerRole;
+      const roles = this.editorSvc.episodioActualData()?.narrativeRoles || [];
+      const playableRoles = roles.filter((r: NarrativeRoleDto) => r.isEnabled && r.isPlayable);
 
-       if (!currentRole && playableRoles.length > 0) {
-           this.roleModalSvc.openSelector(playableRoles, (uid) => {
-               this.orchestrator.getGameState().setPlayerRole(uid);
-               this.comenzarMisionPreview();
-           });
-       } else {
-           this.comenzarMisionPreview();
-       }
+      if (!currentRole && playableRoles.length > 0) {
+        this.roleModalSvc.openSelector(playableRoles, (uid) => {
+          this.orchestrator.getGameState().setPlayerRole(uid);
+          this.comenzarMisionPreview();
+        });
+      } else {
+        this.comenzarMisionPreview();
+      }
     }
   }
 
   handleMissionExit() {
     if (this.stateSvc.previewMissionModal() && !this.mostrarModalMisionPreview) {
-       this.stateSvc.setPreviewMissionModal(false);
+      this.stateSvc.setPreviewMissionModal(false);
     } else {
-       this.detenerModoPrueba();
+      this.detenerModoPrueba();
     }
   }
 

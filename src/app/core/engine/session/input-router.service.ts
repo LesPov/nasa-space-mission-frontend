@@ -14,6 +14,7 @@ import { ISceneAccess, SCENE_ACCESS_TOKEN } from '../scene/scene-access.token';
 import { GameContextService } from './game-context.service';
 import { GameEventBusService } from '../events/game-event-bus.service';
 import { InputContext } from './game-context.model';
+import { GameMode } from './game-mode.model';
 
 @Injectable({ providedIn: 'root' })
 export class InputRouterService {
@@ -28,6 +29,13 @@ export class InputRouterService {
   private isListening = false;
   private sceneKbObserver: Nullable<BabylonObserver<KeyboardInfo>> = null;
   private scenePtrObserver: Nullable<BabylonObserver<PointerInfo>> = null;
+
+  // Bandera de supresión para evitar emitir GamePaused durante la salida de Test Live
+  private suppressPointerLockEvents = false;
+
+  public setSuppressPointerLockEvents(suppress: boolean): void {
+    this.suppressPointerLockEvents = suppress;
+  }
 
   public initializeListeners(): void {
     if (this.isListening) return;
@@ -110,10 +118,23 @@ export class InputRouterService {
   private handlePointerLockChange = () => {
     const isLocked = !!document.pointerLockElement;
     this.context.setPointerLocked(isLocked);
+
+    // Si los eventos están suprimidos o no estamos en modo de juego real, no emitir GamePaused
+    if (this.suppressPointerLockEvents) {
+      return;
+    }
+
+    const currentMode = this.context.mode();
+    if (currentMode === GameMode.EDITOR || currentMode === GameMode.EDITING_IN_GAME) {
+      return;
+    }
+
     if (isLocked) {
       this.eventBus.emit({ type: 'GameResumed' });
     } else {
-      this.eventBus.emit({ type: 'GamePaused' });
+      if (this.context.isPlaying()) {
+        this.eventBus.emit({ type: 'GamePaused' });
+      }
     }
   };
 

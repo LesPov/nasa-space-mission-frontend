@@ -1,6 +1,5 @@
-
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Mesh, Tags, Vector3, Observer, Scene, Camera } from '@babylonjs/core';
+import { Mesh, Tags, Vector3, Observer, Scene, ArcRotateCamera } from '@babylonjs/core';
 
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { EditorStateService } from './editor-state.service';
@@ -9,15 +8,21 @@ import { EntityManagerService } from '../../core/engine/entities/entity-manager.
 import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.service';
 import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
 import { CameraViewMode } from '../../core/engine/session/game-context.model';
-import { GameMode } from '../../core/engine/session/game-mode.model';
 import { GameContextService } from '../../core/engine/session/game-context.service';
-import { CAMERA_BEHAVIOR_PROFILES } from '../../core/engine/runtime/cameras/camera-behavior-profile.model';
-import { CameraOwnershipService, CameraOwner } from '../../core/engine/runtime/cameras/camera-ownership.service';
+import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
 import { EditorModeTransitionService } from './editor-mode-transition.service';
 import { SpawnManagerService } from '../../core/engine/runtime/systems/spawn-manager.service';
 import { DynamicLightingSystem } from '../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 import { ShadowOrchestratorService } from '../../core/engine/runtime/shadows/shadow-orchestrator.service';
 import { CinematicLogger } from '../../core/engine/runtime/cinematics/cinematic-logger';
+
+export interface EditorCameraSnapshot {
+  target: Vector3;
+  radius: number;
+  alpha: number;
+  beta: number;
+  position: Vector3;
+}
 
 @Injectable({ providedIn: 'root' })
 export class EditorPlayModeService {
@@ -34,53 +39,57 @@ export class EditorPlayModeService {
   private dynamicLighting = inject(DynamicLightingSystem);
   private shadowOrchestrator = inject(ShadowOrchestratorService);
 
-  private preTestOwner: CameraOwner = 'NONE';
-  private preTestCamera: Camera | null = null;
+  private editorSnapshot: EditorCameraSnapshot | null = null;
 
   public async prepararEscenaParaTest(vista: CameraViewMode, skipIntro: boolean = false): Promise<void> {
+    const editorCam = this.motor3d.getEditorCamera();
+    if (editorCam) {
+      editorCam.computeWorldMatrix();
+      // Capturamos el snapshot del editor de manera inmutable
+      this.editorSnapshot = {
+        target: editorCam.getTarget().clone(),
+        radius: editorCam.radius,
+        alpha: editorCam.alpha,
+        beta: editorCam.beta,
+        position: editorCam.globalPosition.clone()
+      };
+    }
     this.cameraSvc.guardarEstadoCamaraLibre();
 
-    this.preTestOwner = this.ownership.getOwner();
-    this.preTestCamera = this.ownership.getCamera();
-    CinematicLogger.logTestLiveLifecycle('ENTER', this.preTestOwner, this.preTestCamera?.name);
-
-    if (this.motor3d.getEditorCamera()) {
-        this.motor3d.getEditorCamera().computeWorldMatrix();
-    }
+    CinematicLogger.logTestLiveLifecycle('ENTER', 'EDITOR', editorCam?.name);
 
     let objMesh = this.state.objetoSeleccionado() as Mesh;
     let preferredEntity = objMesh ? this.entityManager.getEntityByMesh(objMesh) : null;
-    
-    // 🔥 El Spawn Manager ahora requiere espera asíncrona porque puede invocar la instanciación de un Prefab
+
     const playerEntity = await this.spawnManager.resolvePlayerForSession(preferredEntity, true);
 
     if (!playerEntity || !playerEntity.view) {
-        console.warn("No hay personaje jugable ni spawn point para iniciar el Test Live.");
-        return;
+      console.warn('No hay personaje jugable ni spawn point para iniciar el Test Live.');
+      return;
     }
 
     objMesh = playerEntity.view as Mesh;
 
     this.gameContext.setCameraView(vista);
     this.state.seleccionarObjeto(null);
-    
+
     this.gameContext.setActivePlayer(playerEntity);
 
     this.motor3d.getScene().meshes.forEach(m => {
-        if (Tags.MatchesQuery(m, "editor_only")) {
-            m.isVisible = false;
-            m.setEnabled(false);
-        }
+      if (Tags.MatchesQuery(m, 'editor_only')) {
+        m.isVisible = false;
+        m.setEnabled(false);
+      }
 
-        const entity = this.entityManager.getEntityByMesh(m);
-        if (entity) {
-            if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = false;
-            if (entity.type === 'image_plane') m.isVisible = false; 
-            if (entity.rol === 'spawn_point' && entity.uid !== playerEntity!.uid) { 
-                m.isVisible = false; 
-                m.setEnabled(false); 
-            }
+      const entity = this.entityManager.getEntityByMesh(m);
+      if (entity) {
+        if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = false;
+        if (entity.type === 'image_plane') m.isVisible = false; 
+        if (entity.rol === 'spawn_point' && entity.uid !== playerEntity!.uid) { 
+          m.isVisible = false; 
+          m.setEnabled(false); 
         }
+      }
     });
 
     objMesh.computeWorldMatrix(true);
@@ -89,45 +98,45 @@ export class EditorPlayModeService {
 
     const scaleY = objMesh.scaling.y || 1;
     const tpsMaxRadius = (playerEntity.playerConfig?.camera?.tpsRadius ?? 5) * scaleY;
-    
+
     const rawTpsPivotY = playerEntity.playerConfig?.camera?.tpsPivotY ?? 1.5;
     const rawFpsEyeLevel = playerEntity.playerConfig?.camera?.fpsEyeLevel ?? 1.6;
     const camMeta = playerEntity.camOffset || { x: 0, y: 1.6, z: 0 };
 
     let targetLookAt: Vector3;
     let targetPos: Vector3;
-    
+
     const localSpiralCenter = new Vector3(camMeta.x || 0, rawFpsEyeLevel, camMeta.z || 0);
     const centroEpiral = Vector3.TransformCoordinates(localSpiralCenter, objMesh.getWorldMatrix());
 
     if (vista === 'FPS') {
-        const localCamPos = new Vector3(camMeta.x || 0, rawFpsEyeLevel, camMeta.z || 0);
-        targetPos = Vector3.TransformCoordinates(localCamPos, objMesh.getWorldMatrix());
-        targetLookAt = targetPos.add(playerForward.scale(10));
+      const localCamPos = new Vector3(camMeta.x || 0, rawFpsEyeLevel, camMeta.z || 0);
+      targetPos = Vector3.TransformCoordinates(localCamPos, objMesh.getWorldMatrix());
+      targetLookAt = targetPos.add(playerForward.scale(10));
     } else {
-        const localPivotPos = new Vector3(camMeta.x || 0, rawTpsPivotY, camMeta.z || 0);
-        targetLookAt = Vector3.TransformCoordinates(localPivotPos, objMesh.getWorldMatrix());
-        targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
+      const localPivotPos = new Vector3(camMeta.x || 0, rawTpsPivotY, camMeta.z || 0);
+      targetLookAt = Vector3.TransformCoordinates(localPivotPos, objMesh.getWorldMatrix());
+      targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
     }
 
     this.dynamicLighting.prepareAllLights();
     this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
 
     await new Promise<void>((resolve) => {
-        this.motor3d.getScene().executeWhenReady(() => {
-            this.dynamicLighting.start();
-            this.shadowOrchestrator.start();
+      this.motor3d.getScene().executeWhenReady(() => {
+        this.dynamicLighting.start();
+        this.shadowOrchestrator.start();
 
-            for(let i = 0; i < 5; i++) {
-                this.motor3d.getScene().render();
-            }
+        for (let i = 0; i < 5; i++) {
+          this.motor3d.getScene().render();
+        }
 
-            this.motor3d.getScene().executeWhenReady(() => resolve());
-        });
+        this.motor3d.getScene().executeWhenReady(() => resolve());
+      });
     });
 
     let hideObserver: Observer<Scene> | null = null;
-    
+
     if (vista === 'FPS' && !skipIntro) {
       hideObserver = this.motor3d.getScene().onBeforeRenderObservable.add(() => {
         const cam = this.ownership.getCamera();
@@ -144,74 +153,100 @@ export class EditorPlayModeService {
     }
 
     const finishSetup = () => {
-        if (hideObserver) {
-          this.motor3d.getScene().onBeforeRenderObservable.remove(hideObserver);
-        }
+      if (hideObserver) {
+        this.motor3d.getScene().onBeforeRenderObservable.remove(hideObserver);
+      }
 
-        if (!skipIntro) this.transitionSvc.finishTestLiveTransition();
-        
-        this.runtimeEngine.startTestSession(playerEntity!, vista);
-        
-        setTimeout(() => {
-            const canvas = this.motor3d.getEngine().getRenderingCanvas();
-            if (canvas) {
-                const activeCam = this.ownership.getCamera();
-                if (activeCam) {
-                    this.motor3d.getEditorCamera()?.detachControl();
-                    this.motor3d.getPlayerCameraFPS()?.detachControl();
-                    this.motor3d.getPlayerCameraTPS()?.detachControl();
-                    
-                    activeCam.attachControl(canvas, true);
-                    
-                    if (vista === 'FPS') {
-                      objMesh.visibility = 1;
-                      objMesh.getChildMeshes().forEach(m => m.visibility = 1);
-                    }
-                }
+      if (!skipIntro) this.transitionSvc.finishTestLiveTransition();
+
+      this.runtimeEngine.startTestSession(playerEntity!, vista);
+
+      setTimeout(() => {
+        const canvas = this.motor3d.getEngine().getRenderingCanvas();
+        if (canvas) {
+          const activeCam = this.ownership.getCamera();
+          if (activeCam) {
+            this.motor3d.getEditorCamera()?.detachControl();
+            this.motor3d.getPlayerCameraFPS()?.detachControl();
+            this.motor3d.getPlayerCameraTPS()?.detachControl();
+
+            activeCam.attachControl(canvas, true);
+
+            if (vista === 'FPS') {
+              objMesh.visibility = 1;
+              objMesh.getChildMeshes().forEach(m => m.visibility = 1);
             }
-        }, 100);
+          }
+        }
+      }, 100);
     };
 
     if (skipIntro) {
       finishSetup();
     } else {
       this.cameraSvc.volarHaciaCamaraJuego(
-          centroEpiral, targetPos, targetLookAt, playerForward, vista === 'FPS', () => finishSetup()
+        centroEpiral, targetPos, targetLookAt, playerForward, vista === 'FPS', () => finishSetup()
       );
     }
   }
 
   public restaurarEscenaPostTest(isDebugMode: boolean): void {
-    this.motor3d.getScene().meshes.forEach(m => {
-        if (Tags.MatchesQuery(m, "editor_only")) {
-            m.setEnabled(true);
-            m.isVisible = true;
-        }
+    const scene = this.motor3d.getScene();
+    const canvas = this.motor3d.getEngine().getRenderingCanvas();
+    const editorCam = this.motor3d.getEditorCamera();
 
-        const entity = this.entityManager.getEntityByMesh(m);
-        if (entity) {
-            if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = isDebugMode;
-            if (entity.type === 'bubble') m.isVisible = true;
-            if (entity.type === 'image_plane') m.isVisible = isDebugMode; 
-            if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') m.isVisible = isDebugMode;
-            if (entity.rol === 'spawn_point') { 
-                m.setEnabled(true); 
-                m.isVisible = true; 
-            }
+    // 1. Liberar completamente el ownership de gameplay y desenlazar el anti-bypass
+    this.ownership.releaseGameplayOwnership();
+
+    // 2. Desvincular controles de cámaras de juego
+    try { this.motor3d.getPlayerCameraFPS()?.detachControl(); } catch {}
+    try { this.motor3d.getPlayerCameraTPS()?.detachControl(); } catch {}
+
+    // 3. Restaurar visibilidad de entidades del editor
+    scene.meshes.forEach(m => {
+      if (Tags.MatchesQuery(m, 'editor_only')) {
+        m.setEnabled(true);
+        m.isVisible = true;
+      }
+
+      const entity = this.entityManager.getEntityByMesh(m);
+      if (entity) {
+        if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = isDebugMode;
+        if (entity.type === 'bubble') m.isVisible = true;
+        if (entity.type === 'image_plane') m.isVisible = isDebugMode; 
+        if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') m.isVisible = isDebugMode;
+        if (entity.rol === 'spawn_point') { 
+          m.setEnabled(true); 
+          m.isVisible = true; 
         }
+      }
     });
 
-    this.cameraSvc.restaurarCamaraLibre();
-    this.inputOrchestrator.unlockPointer();
-    
-    const canvas = this.motor3d.getEngine().getRenderingCanvas();
-    const camToRestore = this.preTestCamera && !this.preTestCamera.isDisposed() ? this.preTestCamera : this.motor3d.getEditorCamera();
-    const ownerToRestore = this.preTestOwner !== 'NONE' ? this.preTestOwner : 'EDITOR';
+    // 4. Restaurar la cámara orbital del Editor
+    if (editorCam) {
+      scene.activeCameras = [];
+      scene.activeCamera = editorCam;
 
-    CinematicLogger.logTestLiveLifecycle('EXIT', ownerToRestore, camToRestore.name);
-    this.ownership.setCamera(ownerToRestore, camToRestore, canvas, true);
+      if (this.editorSnapshot) {
+        editorCam.setTarget(this.editorSnapshot.target.clone());
+        editorCam.radius = this.editorSnapshot.radius;
+        editorCam.alpha = this.editorSnapshot.alpha;
+        editorCam.beta = this.editorSnapshot.beta;
+      } else {
+        this.cameraSvc.restaurarCamaraLibre();
+      }
 
-    this.preTestOwner = 'NONE';
-    this.preTestCamera = null;
+      editorCam.inertialAlphaOffset = 0;
+      editorCam.inertialBetaOffset = 0;
+      editorCam.inertialRadiusOffset = 0;
+      editorCam.inertialPanningX = 0;
+      editorCam.inertialPanningY = 0;
+
+      this.ownership.setCamera('EDITOR', editorCam, canvas, true);
+    }
+
+    CinematicLogger.logTestLiveLifecycle('EXIT', 'EDITOR', editorCam?.name);
+
+    this.editorSnapshot = null;
   }
 }

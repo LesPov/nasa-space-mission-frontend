@@ -1,4 +1,3 @@
-
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AbstractMesh, Tags } from '@babylonjs/core';
@@ -28,6 +27,7 @@ import { MissionModalService } from './modals/mission-modal.service';
 import { CameraViewMode } from '../../core/engine/session/game-context.model';
 import { SnapshotReconcilerService } from './utils/snapshot-reconciler.service';
 import { CinematicPlaybackManagerService } from '../../core/engine/runtime/cinematics/cinematic-playback-manager.service';
+import { InputRouterService } from '../../core/engine/session/input-router.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorOrchestratorService {
@@ -43,6 +43,7 @@ export class EditorOrchestratorService {
   private runtime = inject(RuntimeEngineService);
   private entityManager = inject(EntityManagerService);
   private inputOrchestrator = inject(InputOrchestratorService);
+  private inputRouter = inject(InputRouterService);
   private gameContext = inject(GameContextService);
   private cinematicSvc = inject(EditorCinematicService);
   private liveBuilderSvc = inject(LiveBuilderService);
@@ -86,13 +87,13 @@ export class EditorOrchestratorService {
     this.eventBusSub = this.eventBus.events$.subscribe(event => {
       if (event.type === 'ChangeSceneRequested') {
         if (this.stateSvc.playState() === 'PLAYING' || this.stateSvc.playState() === 'EDITING_IN_GAME') {
-            this.cambiarPlataformaTestLive(event.payload.sceneId);
+          this.cambiarPlataformaTestLive(event.payload.sceneId);
         }
       }
     });
 
     this.mapChangeSub = this.editorSvc.onMapChanged.subscribe(() => {
-       setTimeout(() => this.revisarSiEsJugable(), 0);
+      setTimeout(() => this.revisarSiEsJugable(), 0);
     });
 
     this.autoSaveSub = this.editorSvc.onMapChanged.pipe(
@@ -152,16 +153,16 @@ export class EditorOrchestratorService {
     this.cargandoTexto.set('Cargando herramientas de creador...');
     
     this.epiApiSvc.obtenerPlataformasEscena(episodio.id).subscribe({
-       next: (plataformas) => {
-         this.editorSvc.setPlataformasEscena(plataformas);
-         const sceneId = episodio.initialScene?.id || plataformas[0]?.id || episodio.id;
-         this.procesarCarga(episodio, sceneId);
-       },
-       error: (err) => {
-         console.error('Error cargando plataformas', err);
-         const sceneId = episodio.initialScene?.id || episodio.id;
-         this.procesarCarga(episodio, sceneId);
-       }
+      next: (plataformas) => {
+        this.editorSvc.setPlataformasEscena(plataformas);
+        const sceneId = episodio.initialScene?.id || plataformas[0]?.id || episodio.id;
+        this.procesarCarga(episodio, sceneId);
+      },
+      error: (err) => {
+        console.error('Error cargando plataformas', err);
+        const sceneId = episodio.initialScene?.id || episodio.id;
+        this.procesarCarga(episodio, sceneId);
+      }
     });
   }
 
@@ -177,16 +178,15 @@ export class EditorOrchestratorService {
         this.episodioCompletoData = res; 
         this.editorSvc.setEscenaIdActiva(sceneId);
         
-        // 🔥 Cargar roles en los datos locales del episodio para evitar otra request
         if (!episodio.narrativeRoles) {
-           this.epiApiSvc.obtenerRoles(episodio.id).subscribe({
-              next: (roles) => {
-                 episodio.narrativeRoles = roles;
-                 this.editorSvc.setEpisodioActualData(episodio);
-              }
-           });
+          this.epiApiSvc.obtenerRoles(episodio.id).subscribe({
+            next: (roles) => {
+              episodio.narrativeRoles = roles;
+              this.editorSvc.setEpisodioActualData(episodio);
+            }
+          });
         } else {
-           this.editorSvc.setEpisodioActualData(episodio);
+          this.editorSvc.setEpisodioActualData(episodio);
         }
 
         this.editorSvc.setEscenaActualData(res);
@@ -197,7 +197,7 @@ export class EditorOrchestratorService {
         this.toolsSvc.activarEventosEditor();
         this.sceneSvc.crearSuelo();
 
-        if(res) {
+        if (res) {
           await this.sceneSvc.cargarEscenaDesdeDatos(res);
         }
 
@@ -226,9 +226,9 @@ export class EditorOrchestratorService {
 
     this.epiApiSvc.crearPlataformaEscena(epId, nombre).subscribe({
       next: (nuevaEscena) => {
-         const actuales = this.editorSvc.plataformasEscena();
-         this.editorSvc.setPlataformasEscena([...actuales, nuevaEscena]);
-         this.cambiarPlataformaActiva(nuevaEscena.id);
+        const actuales = this.editorSvc.plataformasEscena();
+        this.editorSvc.setPlataformasEscena([...actuales, nuevaEscena]);
+        this.cambiarPlataformaActiva(nuevaEscena.id);
       },
       error: (err) => alert('Error creando la plataforma')
     });
@@ -259,7 +259,7 @@ export class EditorOrchestratorService {
         this.motor3dSvc.forceResize(); 
         this.sceneSvc.crearSuelo();
 
-        if(res) {
+        if (res) {
           await this.sceneSvc.cargarEscenaDesdeDatos(res);
         }
 
@@ -322,26 +322,24 @@ export class EditorOrchestratorService {
     const obj = this.stateSvc.objetoSeleccionado() as AbstractMesh;
     let playable = false;
     
-    // Primero, si ya forzamos un rol narrativo jugable
     if (this.gameState.playerRole) {
-       playable = true;
+      playable = true;
     } 
     else if (obj) {
-        const entity = this.entityManager.getEntityByMesh(obj);
-        if (entity?.characterConfig) playable = true;
+      const entity = this.entityManager.getEntityByMesh(obj);
+      if (entity?.characterConfig) playable = true;
     }
     
     if (!playable) {
-        const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
-        playable = characters.some(c => c.characterConfig?.isPlayable) || characters.length > 0;
+      const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
+      playable = characters.some(c => c.characterConfig?.isPlayable) || characters.length > 0;
     }
     
     if (this.isPlayable() !== playable) {
-        this.isPlayable.set(playable);
+      this.isPlayable.set(playable);
     }
   }
 
-  // 🔥 FASE 1: Se añade el parámetro de rol narrativo explícito
   public async iniciarModoPrueba(vista: CameraViewMode, skipIntro: boolean = false, roleUid?: string): Promise<void> {
     if (!this.isPlayable()) return;
     
@@ -351,59 +349,81 @@ export class EditorOrchestratorService {
     if (!skipIntro) {
       this.gameState.enterSandbox();
       if (roleUid) {
-         this.gameState.setPlayerRole(roleUid);
+        this.gameState.setPlayerRole(roleUid);
       }
-      this.transitionSvc.beginTestLive();
+      this.transitionSvc.beginTestLive(vista);
       this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
     }
 
     await this.playModeSvc.prepararEscenaParaTest(vista, skipIntro);
   }
 
+  /**
+   * Orden estricto de detención de Test Live:
+   * 1. Marcar transición de salida y suprimir eventos de pointer lock.
+   * 2. Desbloquear el puntero del navegador.
+   * 3. Detener la sesión de runtime y salir del sandbox de GameState.
+   * 4. Reconciliar/recargar escena original del snapshot.
+   * 5. Restaurar visibilidad, cámara orbital y controles del Editor.
+   * 6. Finalizar la transición devolviendo el contexto de input al Editor.
+   */
   public async detenerModoPrueba(): Promise<void> {
     if (this.stateSvc.playState() === 'EDITOR') return;
     
+    // 1. Suprimir la emisión de GamePaused provocada por el desbloqueo del puntero
+    this.inputRouter.setSuppressPointerLockEvents(true);
+    this.transitionSvc.beginStopTestLive();
+
+    // 2. Liberar el puntero en el DOM
+    this.inputOrchestrator.unlockPointer();
+
     this.cargandoEscena.set(true);
     this.cargandoTexto.set('Restaurando Editor...');
 
-    this.transitionSvc.stopTestLive();
+    // 3. Detener la sesión de gameplay y restaurar el estado sandbox de datos
     this.runtime.stopTestSession();
     this.gameState.exitSandbox();
 
     const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
 
+    // 4. Reconciliar y recargar mallas si existía un snapshot en memoria
     if (this.snapshotMemoria) {
-        const currentId = this.editorSvc.escenaIdActiva();
-        const snapId = this.snapshotMemoria.scene?.id || this.snapshotMemoria.id;
+      const currentId = this.editorSvc.escenaIdActiva();
+      const snapId = this.snapshotMemoria.scene?.id || this.snapshotMemoria.id;
 
-        if (snapId && currentId !== snapId) {
-            this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
-        } else {
-            const cambiosEnPlay: any = this.sceneSvc.obtenerDatosParaGuardar(this.editorSvc.escenaActualData(), true); 
-            this.snapshotMemoria = this.snapshotReconciler.mergeSnapshots(this.snapshotMemoria, cambiosEnPlay);
-        }
+      if (snapId && currentId !== snapId) {
+        this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
+      } else {
+        const cambiosEnPlay: any = this.sceneSvc.obtenerDatosParaGuardar(this.editorSvc.escenaActualData(), true); 
+        this.snapshotMemoria = this.snapshotReconciler.mergeSnapshots(this.snapshotMemoria, cambiosEnPlay);
+      }
 
-        this.editorSvc.setEscenaActualData(JSON.parse(JSON.stringify(this.snapshotMemoria)));
+      this.editorSvc.setEscenaActualData(JSON.parse(JSON.stringify(this.snapshotMemoria)));
 
-        this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
-        this.entityManager.clear();
+      this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
+      this.entityManager.clear();
 
-        const scene = this.motor3dSvc.getScene();
-        const meshesToDispose = scene.meshes.filter(m => !Tags.MatchesQuery(m, "system_element") && !Tags.MatchesQuery(m, "editor_only"));
-        meshesToDispose.forEach(m => {
-            if (!m.isDisposed()) m.dispose(false, false); 
-        });
+      const scene = this.motor3dSvc.getScene();
+      const meshesToDispose = scene.meshes.filter(m => !Tags.MatchesQuery(m, "system_element") && !Tags.MatchesQuery(m, "editor_only"));
+      meshesToDispose.forEach(m => {
+        if (!m.isDisposed()) m.dispose(false, false); 
+      });
 
-        await this.sceneSvc.cargarEscenaDesdeDatos(this.snapshotMemoria);
-        this.snapshotMemoria = null;
+      await this.sceneSvc.cargarEscenaDesdeDatos(this.snapshotMemoria);
+      this.snapshotMemoria = null;
     }
 
+    // 5. Restaurar cámara orbital del Editor, controles y visibilidad
     this.playModeSvc.restaurarEscenaPostTest(canSelectHidden);
     
+    // 6. Finalizar la transición de salida y restaurar el contexto de entrada al Editor
+    this.transitionSvc.finishStopTestLive();
+    this.inputRouter.setSuppressPointerLockEvents(false);
+
     this.cargandoEscena.set(false);
     this.revisarSiEsJugable(); 
 
-    setTimeout(() => this.editorSvc.onMapChanged.next(), 500);
+    setTimeout(() => this.editorSvc.onMapChanged.next(), 300);
   }
 
   public salirDelEditor(): void {
@@ -416,8 +436,8 @@ export class EditorOrchestratorService {
 
     this.gameContext.setInteracting(false);
     if (this.fpsInterval) {
-        clearInterval(this.fpsInterval);
-        this.fpsInterval = null;
+      clearInterval(this.fpsInterval);
+      this.fpsInterval = null;
     }
   }
 }

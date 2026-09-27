@@ -1,6 +1,5 @@
-
 import { Injectable, inject, signal, Injector } from '@angular/core';
-import { Camera } from '@babylonjs/core';
+import { Camera, Scene, Observer, Nullable } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 
 export type CameraOwner = 'NONE' | 'EDITOR' | 'PLAYER_FPS' | 'PLAYER_TPS' | 'ADMIN_FREE' | 'TRANSITION_PROXY' | 'CINEMATIC_DIRECTOR';
@@ -20,26 +19,35 @@ export class CameraOwnershipService {
   public currentOwner = signal<CameraOwner>('NONE');
   public currentCamera = signal<Camera | null>(null);
 
-  private isWatcherInitialized = false;
+  private bypassObserver: Nullable<Observer<Scene>> = null;
 
   public setCamera(owner: CameraOwner, camera: Camera, canvas?: HTMLCanvasElement | null, attachControl: boolean = true): void {
-    if (!camera || !this.motor3d.getScene()) return;
+    const scene = this.motor3d.getScene();
+    if (!camera || !scene) return;
 
-    this.initAntiBypassWatcher();
+    // Si el nuevo dueño es el Editor o NONE, desmantelamos la protección anti-bypass
+    if (owner === 'EDITOR' || owner === 'NONE') {
+      this.detachAntiBypassWatcher();
+    }
 
     const prevCam = this.currentCamera();
-    if (prevCam && canvas) {
+    if (prevCam && prevCam !== camera && canvas) {
       try { prevCam.detachControl(); } catch {}
     }
 
     this.currentOwner.set(owner);
     this.currentCamera.set(camera);
 
-    this.motor3d.getScene().activeCameras = []; 
-    this.motor3d.getScene().activeCamera = camera;
+    scene.activeCameras = [];
+    scene.activeCamera = camera;
 
     if (canvas && attachControl) {
       try { camera.attachControl(canvas, true); } catch {}
+    }
+
+    // El anti-bypass solo se activa para cámaras que requieren protección de gameplay
+    if (this.isGameplayOwner(owner)) {
+      this.initAntiBypassWatcher();
     }
   }
 
@@ -51,27 +59,56 @@ export class CameraOwnershipService {
     return this.currentCamera();
   }
 
-  // 🔥 FIX: Permite resetear el inicializador anti-bypass para que pueda reiniciarse sanamente en nuevas escenas
+  /**
+   * Libera y revoca completamente el ownership de gameplay.
+   * Desconecta el observer anti-bypass de Babylon.js para evitar que secuestre la cámara del editor.
+   */
+  public releaseGameplayOwnership(): void {
+    this.detachAntiBypassWatcher();
+
+    const currentCam = this.currentCamera();
+    if (currentCam) {
+      try { currentCam.detachControl(); } catch {}
+    }
+
+    this.currentOwner.set('NONE');
+    this.currentCamera.set(null);
+  }
+
   public resetWatcher(): void {
-    this.isWatcherInitialized = false;
+    this.detachAntiBypassWatcher();
+  }
+
+  private isGameplayOwner(owner: CameraOwner): boolean {
+    return owner === 'PLAYER_FPS' || owner === 'PLAYER_TPS' || owner === 'CINEMATIC_DIRECTOR' || owner === 'ADMIN_FREE';
   }
 
   private initAntiBypassWatcher(): void {
-    if (this.isWatcherInitialized) return;
-    this.isWatcherInitialized = true;
+    const scene = this.motor3d.getScene();
+    if (!scene || this.bypassObserver) return;
 
-    this.motor3d.getScene().onBeforeRenderObservable.add(() => {
-      const actualActive = this.motor3d.getScene().activeCamera;
+    this.bypassObserver = scene.onBeforeRenderObservable.add(() => {
+      const owner = this.currentOwner();
+      // Solo hacer cumplir si el dueño actual es estrictamente de gameplay
+      if (!this.isGameplayOwner(owner)) {
+        return;
+      }
+
+      const actualActive = scene.activeCamera;
       const trackedCamera = this.currentCamera();
 
-      if (actualActive && actualActive !== trackedCamera) {
-        console.warn(`[CameraOwnership] ⚠️ BYPASS DETECTADO: Cámara activa mutada externamente a '${actualActive.name}'. Restaurando cámara dueña '${trackedCamera?.name}'.`);
-        
-        if (trackedCamera) {
-            this.motor3d.getScene().activeCameras = [];
-            this.motor3d.getScene().activeCamera = trackedCamera;
-        }
+      if (actualActive && trackedCamera && actualActive !== trackedCamera) {
+        scene.activeCameras = [];
+        scene.activeCamera = trackedCamera;
       }
     });
+  }
+
+  private detachAntiBypassWatcher(): void {
+    const scene = this.motor3d?.getScene?.();
+    if (scene && this.bypassObserver) {
+      scene.onBeforeRenderObservable.remove(this.bypassObserver);
+    }
+    this.bypassObserver = null;
   }
 }

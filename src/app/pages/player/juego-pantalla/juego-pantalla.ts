@@ -86,6 +86,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
   private sub!: Subscription;
   private kbSub!: Subscription;
+  private syncSub: Subscription | null = null; // 🔥 FIX LFC: Manejador para el leak de Live Sync
   private fpsInterval: any;
 
   public get canViewDebug(): boolean {
@@ -161,6 +162,11 @@ export class JuegoPantalla implements OnInit, OnDestroy {
   private cargarPlataforma(sceneId: number, isTeleport: boolean = false) {
     this.isLoading.set(true);
     
+    if (this.syncSub) {
+      this.syncSub.unsubscribe();
+      this.syncSub = null;
+    }
+
     forkJoin({
       escenaData: this.epiApiSvc.obtenerEscenaCompleta(sceneId),
       partida: this.epiApiSvc.cargarEstadoJugador(sceneId, 1).pipe(
@@ -227,7 +233,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
           }
 
           if (this.isDetached) {
-             this.windowSync.messages$.subscribe(async msg => {
+             this.syncSub = this.windowSync.messages$.subscribe(async msg => {
                if (msg.type === 'SYNC_MAP_DATA') {
                  this.isSyncing.set(true);
                  if (this.liveSync.requiresFullReboot(msg.payload)) {
@@ -352,6 +358,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     this.liveBuilderSvc.destroy();
     if (this.sub) this.sub.unsubscribe();
     if (this.kbSub) this.kbSub.unsubscribe();
+    if (this.syncSub) this.syncSub.unsubscribe();
     if (this.fpsInterval) clearInterval(this.fpsInterval);
   }
 }

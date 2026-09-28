@@ -2,7 +2,7 @@
 import { Injectable, inject, effect } from '@angular/core';
 import {
   KeyboardEventTypes, Matrix, Mesh, PointerEventTypes,
-  AbstractMesh, Tags, PointerInfo, KeyboardInfo
+  AbstractMesh, Tags, PointerInfo, KeyboardInfo, Observer, Scene
 } from '@babylonjs/core';
 
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
@@ -51,12 +51,15 @@ export class EditorToolsService {
   private selectionSvc = inject(ToolsSelectionService);
 
   private lastHoverCheckTime = 0;
-  private isGizmoSyncAttached = false;
   private isInitialized = false;
   private qPressed = false;
 
   private pointerSub: Subscription | null = null;
   private keyboardSub: Subscription | null = null;
+  
+  // 🔥 FIX LFC: Variables reales de control para evitar Memory Leaks
+  private gizmoDragSub: Subscription | null = null;
+  private renderObserver: Observer<Scene> | null = null;
 
   constructor() {
     effect(() => {
@@ -123,12 +126,21 @@ export class EditorToolsService {
       this.keyboardSub.unsubscribe();
       this.keyboardSub = null;
     }
+    if (this.gizmoDragSub) {
+      this.gizmoDragSub.unsubscribe();
+      this.gizmoDragSub = null;
+    }
+    if (this.renderObserver) {
+      const scene = this.motor3d.getScene();
+      if (scene) scene.onBeforeRenderObservable.remove(this.renderObserver);
+      this.renderObserver = null;
+    }
+
     this.clipboardSvc.disposeKeyboardListeners();
     this.gizmoSvc.dispose();
     this.debugSvc.actualizarDebugMeshes(null);
     this.highlightSvc.dispose();
     this.isInitialized = false; 
-    this.isGizmoSyncAttached = false;
   }
 
   private manejarFPSAdminSelection(canvas: HTMLCanvasElement | null, isLocked: boolean): void {
@@ -189,11 +201,10 @@ export class EditorToolsService {
     this.gizmoSvc.initGizmos();
     this.clipboardSvc.initKeyboardListeners();
 
-    if (!this.isGizmoSyncAttached) {
-      this.mapaSvc.onGizmoDrag.subscribe(() => {
+    if (!this.gizmoDragSub) {
+      this.gizmoDragSub = this.mapaSvc.onGizmoDrag.subscribe(() => {
         this.syncEntityFromGizmoDrag();
       });
-      this.isGizmoSyncAttached = true;
     }
 
     this.gizmoSvc.gizmoManager?.utilityLayer.utilityLayerScene.onPointerObservable.add((pi) => {
@@ -221,7 +232,7 @@ export class EditorToolsService {
       }
     });
 
-    scene.onBeforeRenderObservable.add(() => {
+    this.renderObserver = scene.onBeforeRenderObservable.add(() => {
       this.dynamicLighting.update(this.motor3d.getEngine().getDeltaTime()); 
 
       const obj = this.state.objetoSeleccionado() as Mesh;
@@ -355,7 +366,6 @@ export class EditorToolsService {
 
     if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
       
-      // 🔥 FIX: Habilitamos Q (Menú Radial) en EDITING_IN_GAME y en TEST_LIVE (PLAYING)
       if (kbInfo.event.key.toLowerCase() === 'q' && profile.canViewDebug && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME' || playSt === 'PLAYING')) {
         if (!this.qPressed) {
           this.qPressed = true;

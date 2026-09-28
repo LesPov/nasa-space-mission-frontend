@@ -32,7 +32,6 @@ export class WorldSettingsService {
       let dirY = Number(worldData.gravityVector?.y ?? -1);
       let dirZ = Number(worldData.gravityVector?.z ?? 0);
 
-      // Si es un preset predefinido (no custom), sincronizar con la fuente única de verdad
       if (preset !== 'custom') {
         const def = GRAVITY_PRESETS[preset];
         magnitude = def.magnitude;
@@ -41,7 +40,6 @@ export class WorldSettingsService {
         dirZ = def.direction.z;
       }
 
-      // Cálculo del valor equivalente en Babylon (-0.25 base para 9.81)
       const babylonY = (magnitude / 9.81) * -0.25;
 
       this.settings.set({
@@ -64,6 +62,8 @@ export class WorldSettingsService {
 
     if (uiData) {
       this.uiSettings.set({
+        missionTitle: uiData.missionTitle || DEFAULT_MISSION_UI_SETTINGS.missionTitle,
+        missionDescription: uiData.missionDescription || DEFAULT_MISSION_UI_SETTINGS.missionDescription,
         primaryColor: uiData.primaryColor || DEFAULT_MISSION_UI_SETTINGS.primaryColor,
         bgColor: uiData.bgColor || DEFAULT_MISSION_UI_SETTINGS.bgColor,
         bgOpacity: Number.isFinite(Number(uiData.bgOpacity)) ? Number(uiData.bgOpacity) : DEFAULT_MISSION_UI_SETTINGS.bgOpacity,
@@ -79,6 +79,9 @@ export class WorldSettingsService {
         recompensas: Array.isArray(uiData.recompensas) ? uiData.recompensas : [],
         requisitos: Array.isArray(uiData.requisitos) ? uiData.requisitos : []
       });
+    } else {
+        // Restaurar defaults si la plataforma no tiene UI settings guardadas
+        this.uiSettings.set({ ...DEFAULT_MISSION_UI_SETTINGS });
     }
   }
 
@@ -154,7 +157,6 @@ export class WorldSettingsService {
     const activeClear = w.visualMode === 'bw' ? w.clearColorBW : w.clearColor;
     scene.clearColor = Color4.FromHexString(activeClear + 'ff');
     
-    // Aplicación del vector de gravedad físico a BabylonJS
     const gY = w.gravityVector.y * Math.abs(w.gravityY);
     const gX = w.gravityVector.x * Math.abs(w.gravityY);
     const gZ = w.gravityVector.z * Math.abs(w.gravityY);

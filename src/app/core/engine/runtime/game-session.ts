@@ -1,4 +1,3 @@
-
 import { Injectable, inject, computed } from '@angular/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
@@ -22,6 +21,7 @@ import { LayoutService } from '../../../services/layout.service';
 import { CameraOwnershipService } from './cameras/camera-ownership.service';
 import { TriggerAudioService } from './systems/trigger-audio.service';
 import { LocalRenderingSystem } from './systems/local-rendering.system';
+import { MissionManagerSystem } from './systems/mission-manager.system';
 
 @Injectable({ providedIn: 'root' })
 export class GameSession {
@@ -44,6 +44,7 @@ export class GameSession {
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private triggerAudioSvc = inject(TriggerAudioService);
   private localRendering = inject(LocalRenderingSystem); 
+  private missionManager = inject(MissionManagerSystem);
 
   public isPlaying = computed(() => this.context.isPlaying());
   public isDebugMode = computed(() => this.context.isDebugMode());
@@ -105,7 +106,6 @@ export class GameSession {
 
     this.sequenceSvc.resetearSecuencias();
 
-    // 🔥 FIX LFC: CinematicDirector ya NO pertenece al array destructible de GameSession.
     this.systems = [
       this.inputSvc,
       this.kinematicsSvc,
@@ -117,7 +117,8 @@ export class GameSession {
       this.localRendering, 
       this.renderSyncSvc,
       this.objectAnimSvc,
-      this.bubbleSvc
+      this.bubbleSvc,
+      this.missionManager
     ];
 
     this.systems.forEach(system => {

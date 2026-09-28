@@ -1,12 +1,12 @@
 import { Component, Input, Output, EventEmitter, OnChanges, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms';
 import { WorldSettingsService } from '../../core/engine/world/world-settings.service';
+import { MissionManagerSystem } from '../../core/engine/runtime/systems/mission-manager.system';
 
 @Component({
   selector: 'app-ui-mission',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule],
   templateUrl: './ui-mission.html',
   styleUrls: ['./ui-mission.css']
 })
@@ -20,10 +20,9 @@ export class UiMission implements OnChanges {
 
   @Output() onStart = new EventEmitter<void>();
   @Output() onExit = new EventEmitter<void>();
-  @Output() mapaNombreChange = new EventEmitter<string>();
-  @Output() mapaDescChange = new EventEmitter<string>();
 
   private worldSettingsSvc = inject(WorldSettingsService);
+  public missionManager = inject(MissionManagerSystem);
 
   public tieneInventario = false;
   public tieneMapaUnLocker = false;
@@ -36,9 +35,8 @@ export class UiMission implements OnChanges {
       bgColor: s.bgColor || '#0f172a',
       bgOpacity: Number.isFinite(Number(s.bgOpacity)) ? Number(s.bgOpacity) : 0.85,
       textColor: s.textColor || '#cbd5e1',
-      loreQuote: s.loreQuote || '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."',
-      loreAuthor: s.loreAuthor || 'Anónimo',
-      initialSequence: s.initialSequence || '',
+      loreQuote: s.loreQuote || '"La exploración espacial no es un destino, sino un viaje constante hacia lo desconocido."',
+      loreAuthor: s.loreAuthor || 'Control de Misión',
       overlayColor: s.overlayColor || '#050508',
       overlayOpacity: Number.isFinite(Number(s.overlayOpacity)) ? Number(s.overlayOpacity) : 0.7,
       blurIntensity: Number.isFinite(Number(s.blurIntensity)) ? Number(s.blurIntensity) : 8,
@@ -51,36 +49,11 @@ export class UiMission implements OnChanges {
 
   public logicSettings = computed(() => this.worldSettingsSvc.settings().logicSettings || {});
 
-  public objetivosLocales = computed(() => {
-     const val = this.logicSettings().objetivosLocales;
-     if (!val) return [];
-     if (Array.isArray(val)) return val;
-     return val.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-  });
-
   public recompensasLocales = computed(() => {
      const val = this.logicSettings().recompensasLocales;
      if (!val) return [];
      if (Array.isArray(val)) return val;
      return val.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
-  });
-
-  public objetivosGlobales = computed(() => {
-     const s = this.worldSettingsSvc.uiSettings();
-     const ws = this.playerState?.worldState || {};
-     const episodeState = ws.schemaVersion === 2 ? ws.episode : ws;
-     const globalState = ws.schemaVersion === 2 ? ws.global : ws;
-
-     if (episodeState['mision_en_curso'] || globalState['mision_en_curso']) {
-        let activeObj = episodeState['objetivos_activos'] || globalState['objetivos_activos'];
-        if (typeof activeObj === 'string') {
-           activeObj = activeObj.split('\n').map((str: string) => str.trim()).filter((str: string) => str.length > 0);
-        }
-        if (Array.isArray(activeObj) && activeObj.length > 0) return activeObj;
-     }
-
-     if (Array.isArray(s.objetivos) && s.objetivos.length > 0) return s.objetivos;
-     return ['Explora el área y sobrevive.'];
   });
 
   public recompensasGlobales = computed(() => {
@@ -116,28 +89,6 @@ export class UiMission implements OnChanges {
     this.tieneInventario = (this.playerState?.inventory || []).length > 0;
     this.tieneMapaUnLocker = !!globalState['mapa_desbloqueado'];
     this.tieneHistoria = !!globalState['lore_desbloqueado'];
-  }
-
-  cambiarTitulo(nuevoTitulo: string) {
-    if (this.episodio) {
-      if (this.episodio.episode) {
-        this.episodio.episode.title = nuevoTitulo;
-      } else {
-        this.episodio.title = nuevoTitulo;
-      }
-      this.mapaNombreChange.emit(nuevoTitulo);
-    }
-  }
-
-  cambiarDesc(nuevaDesc: string) {
-    if (this.episodio) {
-      if (this.episodio.episode) {
-        this.episodio.episode.description = nuevaDesc;
-      } else {
-        this.episodio.description = nuevaDesc;
-      }
-      this.mapaDescChange.emit(nuevaDesc);
-    }
   }
 
   hexToRgba(hex: string, alpha: number): string {

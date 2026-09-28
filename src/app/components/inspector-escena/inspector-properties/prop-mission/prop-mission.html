@@ -1,117 +1,343 @@
+<div class="sub-tabs-container" style="display: flex; gap: 8px; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 10px;">
+  <button class="btn-ghost" [class.active-sub]="seccionActiva === 'metadata'" (click)="seccionActiva = 'metadata'" style="flex: 1; padding: 8px 10px; font-weight: bold;">
+    📖 Datos del Episodio
+  </button>
+  <button class="btn-ghost" [class.active-sub]="seccionActiva === 'aerospace'" (click)="seccionActiva = 'aerospace'" style="flex: 1; padding: 8px 10px; font-weight: bold;">
+    🚀 Misión Aeroespacial
+  </button>
+  <button class="btn-ghost" [class.active-sub]="seccionActiva === 'ui'" (click)="seccionActiva = 'ui'" style="flex: 1; padding: 8px 10px; font-weight: bold;">
+    🎨 Estilo & UI Modal
+  </button>
+</div>
 
+<!-- ========================================================================= -->
+<!-- 0. SECCIÓN METADATA NARRATIVA DEL EPISODIO                                -->
+<!-- ========================================================================= -->
+<ng-container *ngIf="seccionActiva === 'metadata'">
+  <div class="section-card">
+    <div class="section-head">
+      <h4>Identificación del Episodio Global</h4>
+    </div>
+    <div class="field wide" style="margin-bottom: 15px;">
+      <label>Título del Episodio</label>
+      <input type="text" [(ngModel)]="episodeTitle" (ngModelChange)="aplicarMetadataEpisodio()" placeholder="Ej: Exploración Lunar" />
+    </div>
+    <div class="field wide">
+      <label>Descripción / Sinopsis</label>
+      <textarea rows="4" [(ngModel)]="episodeDescription" (ngModelChange)="aplicarMetadataEpisodio()" placeholder="Describe la misión o historia general del episodio..."></textarea>
+    </div>
+    <p class="help-text" style="margin-top: 10px;">
+      Estos datos se mostrarán en la pantalla principal del jugador (UI Modal) y en el menú de selección de episodios.
+    </p>
+  </div>
+</ng-container>
 
-<div class="section-card">
-  <div class="section-head">
-    <h4>Diseño Visual de la Tarjeta</h4>
+<!-- ========================================================================= -->
+<!-- 1. SECCIÓN AEROESPACIAL: FICHA TÉCNICA, NAVE, PRESUPUESTO Y COMPONENTES  -->
+<!-- ========================================================================= -->
+<ng-container *ngIf="seccionActiva === 'aerospace'">
+  <div class="section-card" *ngIf="cargandoProfile">
+    <p style="color: #60a5fa; font-size: 12px; text-align: center; margin: 20px 0;">Cargando perfil técnico de misión...</p>
   </div>
 
-  <div class="grid-2">
-    <div class="field">
-      <label>Color Principal (Acentos)</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="uiSettings.primaryColor" (ngModelChange)="aplicarCambios()" class="color-picker">
-        <span class="color-hex-text">{{ uiSettings.primaryColor.toUpperCase() }}</span>
+  <div class="section-card" *ngIf="!cargandoProfile && !missionProfile">
+    <div class="section-head">
+      <h4>Sin Perfil de Misión</h4>
+    </div>
+    <p class="help-text" style="color: #cbd5e1; margin-bottom: 15px;">
+      Este episodio aún no tiene un perfil aeroespacial persistido en la base de datos.
+    </p>
+    <button class="btn-primary full" (click)="inicializarPerfilPorDefecto()">
+      ✨ Inicializar Ficha de Misión Aeroespacial
+    </button>
+  </div>
+
+  <div *ngIf="!cargandoProfile && missionProfile">
+    <!-- IDENTIFICACIÓN -->
+    <div class="section-card">
+      <div class="section-head">
+        <h4>Identificación Técnica</h4>
+        <span class="status-pill" [style.background]="getStatusColor(missionProfile.missionStatus)">
+          {{ missionProfile.missionStatus }}
+        </span>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label>Nombre de Misión</label>
+          <input type="text" [(ngModel)]="missionProfile.missionName" (ngModelChange)="marcarModificado()" placeholder="Ej: Proyecto Artemis" />
+        </div>
+        <div class="field">
+          <label>Código de Misión</label>
+          <input type="text" [(ngModel)]="missionProfile.missionCode" (ngModelChange)="marcarModificado()" placeholder="Ej: ART-01" />
+        </div>
+      </div>
+
+      <div class="grid-2" style="margin-top: 10px;">
+        <div class="field">
+          <label>Estado Operacional</label>
+          <select [(ngModel)]="missionProfile.missionStatus" (ngModelChange)="marcarModificado()">
+            <option value="PLANNING">Planificación (PLANNING)</option>
+            <option value="PRE_LAUNCH">Pre-Lanzamiento (PRE_LAUNCH)</option>
+            <option value="IN_FLIGHT">En Vuelo (IN_FLIGHT)</option>
+            <option value="ORBIT_INSERTION">Inserción Orbital (ORBIT_INSERTION)</option>
+            <option value="LANDED">Aterrizado (LANDED)</option>
+            <option value="COMPLETED">Completada (COMPLETED)</option>
+            <option value="ABORTED">Abortada (ABORTED)</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Progreso (%) [{{ missionProfile.completionPercentage }}%]</label>
+          <input type="number" min="0" max="100" step="1" [(ngModel)]="missionProfile.completionPercentage" (ngModelChange)="marcarModificado()" />
+        </div>
+      </div>
+
+      <div class="field wide" style="margin-top: 10px;">
+        <label>Fase de Misión Actual</label>
+        <input type="text" [(ngModel)]="missionProfile.currentPhase" (ngModelChange)="marcarModificado()" placeholder="Ej: Despliegue de Paneles y Calibración" />
+      </div>
+
+      <div class="field wide" style="margin-top: 10px;">
+        <label>Descripción Operativa</label>
+        <textarea rows="2" [(ngModel)]="missionProfile.description" (ngModelChange)="marcarModificado()" placeholder="Objetivos y restricciones de vuelo..."></textarea>
       </div>
     </div>
 
-    <div class="field">
-      <label>Color de Fondo</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="uiSettings.bgColor" (ngModelChange)="aplicarCambios()" class="color-picker">
-        <span class="color-hex-text">{{ uiSettings.bgColor.toUpperCase() }}</span>
+    <!-- NAVE ESPACIAL -->
+    <div class="section-card">
+      <div class="section-head">
+        <h4>Vehículo Espacial (Spacecraft)</h4>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label>Nombre de la Nave</label>
+          <input type="text" [(ngModel)]="missionProfile.spacecraftName" (ngModelChange)="marcarModificado()" placeholder="Ej: Odyssey-IV" />
+        </div>
+        <div class="field">
+          <label>Modelo / Clase</label>
+          <input type="text" [(ngModel)]="missionProfile.spacecraftModel" (ngModelChange)="marcarModificado()" placeholder="Ej: Deep Space Explorer" />
+        </div>
+      </div>
+
+      <div class="grid-3" style="margin-top: 10px;">
+        <div class="field">
+          <label>Masa (kg)</label>
+          <input type="number" min="1" step="50" [(ngModel)]="missionProfile.spacecraftMassKg" (ngModelChange)="marcarModificado()" />
+        </div>
+        <div class="field">
+          <label>Potencia (Watts)</label>
+          <input type="number" min="0" step="100" [(ngModel)]="missionProfile.spacecraftPowerWatts" (ngModelChange)="marcarModificado()" />
+        </div>
+        <div class="field">
+          <label>Combustible (kg)</label>
+          <input type="number" min="0" step="100" [(ngModel)]="missionProfile.spacecraftFuelCapacityKg" (ngModelChange)="marcarModificado()" />
+        </div>
+      </div>
+    </div>
+
+    <!-- PRESUPUESTO -->
+    <div class="section-card">
+      <div class="section-head">
+        <h4>Finanzas y Presupuesto</h4>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label>Presupuesto Asignado ($)</label>
+          <input type="number" min="0" step="10000" [(ngModel)]="missionProfile.assignedBudget" (ngModelChange)="recalcularPresupuesto()" />
+        </div>
+        <div class="field">
+          <label>Presupuesto Gastado ($)</label>
+          <input type="number" min="0" step="10000" [(ngModel)]="missionProfile.spentBudget" (ngModelChange)="recalcularPresupuesto()" />
+        </div>
+      </div>
+
+      <div class="field wide" style="margin-top: 10px; background: rgba(34, 197, 94, 0.1); border: 1px solid #22c55e; border-radius: 6px; padding: 10px;">
+        <label style="color: #4ade80; font-weight: bold; margin: 0;">Presupuesto Remanente Calculado</label>
+        <div style="font-size: 16px; font-weight: bold; color: white; margin-top: 4px;">
+          ${{ missionProfile.remainingBudget | number:'1.2-2' }}
+        </div>
+      </div>
+    </div>
+
+    <!-- SUBSISTEMAS Y COMPONENTES -->
+    <div class="section-card">
+      <div class="section-head">
+        <h4>Subsistemas Técnicos ({{ (missionProfile.components && missionProfile.components.length) || 0 }})</h4>
+        <button class="btn-secondary small" (click)="agregarComponenteDefecto()">+ Componente</button>
+      </div>
+
+      <div *ngFor="let comp of missionProfile.components; let i = index" 
+           style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+          <span style="font-size: 11px; font-weight: bold; color: #60a5fa;">{{ comp.name || 'Componente' }}</span>
+          <button class="btn-danger small" (click)="quitarComponente(i)">✕</button>
+        </div>
+
+        <div class="grid-2">
+          <div class="field">
+            <label>Tipo Subsistema</label>
+            <select [(ngModel)]="comp.type" (ngModelChange)="marcarModificado()">
+              <option value="propulsion">Propulsión</option>
+              <option value="power">Energía</option>
+              <option value="navigation">Navegación</option>
+              <option value="communications">Comunicaciones</option>
+              <option value="lifeSupport">Soporte Vital</option>
+              <option value="thermalControl">Control Térmico</option>
+              <option value="structure">Estructura</option>
+              <option value="avionics">Aviónica</option>
+              <option value="payload">Carga Útil</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Fabricante</label>
+            <input type="text" [(ngModel)]="comp.manufacturer" (ngModelChange)="marcarModificado()" placeholder="NASA, ESA, etc." />
+          </div>
+        </div>
+
+        <div class="grid-2" style="margin-top: 8px;">
+          <div class="field">
+            <label>Salud / Integridad (%)</label>
+            <input type="number" min="0" max="100" step="1" [(ngModel)]="comp.health" (ngModelChange)="marcarModificado()" />
+          </div>
+          <div class="field">
+            <label>Estado</label>
+            <select [(ngModel)]="comp.status" (ngModelChange)="marcarModificado()">
+              <option value="NOMINAL">Nominal</option>
+              <option value="DEGRADED">Degradado</option>
+              <option value="CRITICAL">Crítico</option>
+              <option value="OFFLINE">Offline</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BOTÓN DE GUARDADO PERSISTENTE EN BASE DE DATOS -->
+    <button class="btn-primary full" style="margin-top: 10px; padding: 12px; font-size: 13px;" (click)="guardarPerfilEnServidor()">
+      💾 Guardar Ficha de Misión en Base de Datos
+    </button>
+    <p class="status-line" *ngIf="statusMensaje">{{ statusMensaje }}</p>
+  </div>
+</ng-container>
+
+<!-- ========================================================================= -->
+<!-- 2. SECCIÓN UI / MODAL: COLORES, CITAS, FONDOS Y SECUENCIA INICIAL          -->
+<!-- ========================================================================= -->
+<ng-container *ngIf="seccionActiva === 'ui'">
+  <div class="section-card">
+    <div class="section-head">
+      <h4>Diseño Visual de la Tarjeta</h4>
+    </div>
+
+    <div class="grid-2">
+      <div class="field">
+        <label>Color Principal (Acentos)</label>
+        <div class="color-picker-wrapper">
+          <input type="color" [(ngModel)]="uiSettings.primaryColor" (ngModelChange)="aplicarCambiosUI()" class="color-picker">
+          <span class="color-hex-text">{{ uiSettings.primaryColor.toUpperCase() }}</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Color de Fondo</label>
+        <div class="color-picker-wrapper">
+          <input type="color" [(ngModel)]="uiSettings.bgColor" (ngModelChange)="aplicarCambiosUI()" class="color-picker">
+          <span class="color-hex-text">{{ uiSettings.bgColor.toUpperCase() }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top: 10px;">
+      <div class="field">
+        <label>Opacidad del Fondo</label>
+        <input type="number" step="0.05" min="0" max="1" [(ngModel)]="uiSettings.bgOpacity" (ngModelChange)="aplicarCambiosUI()" />
+      </div>
+      <div class="field">
+        <label>Bordes Redondeados (px)</label>
+        <input type="number" step="1" min="0" max="50" [(ngModel)]="uiSettings.borderRadius" (ngModelChange)="aplicarCambiosUI()" />
       </div>
     </div>
   </div>
 
-  <div class="grid-2" style="margin-top: 10px;">
-    <div class="field">
-      <label>Opacidad del Fondo</label>
-      <input type="number" step="0.05" min="0" max="1" [(ngModel)]="uiSettings.bgOpacity" (ngModelChange)="aplicarCambios()" />
+  <div class="section-card">
+    <div class="section-head">
+      <h4>Fondo de Pantalla (Overlay y Blur)</h4>
     </div>
-    <div class="field">
-      <label>Bordes Redondeados (px)</label>
-      <input type="number" step="1" min="0" max="50" [(ngModel)]="uiSettings.borderRadius" (ngModelChange)="aplicarCambios()" />
-    </div>
-  </div>
-</div>
 
-<div class="section-card">
-  <div class="section-head">
-    <h4>Fondo de Pantalla (Overlay y Blur)</h4>
-  </div>
-
-  <div class="grid-2">
-    <div class="field">
-      <label>Color Capa Externa</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="uiSettings.overlayColor" (ngModelChange)="aplicarCambios()" class="color-picker">
+    <div class="grid-2">
+      <div class="field">
+        <label>Color Capa Externa</label>
+        <div class="color-picker-wrapper">
+          <input type="color" [(ngModel)]="uiSettings.overlayColor" (ngModelChange)="aplicarCambiosUI()" class="color-picker">
+        </div>
+      </div>
+      <div class="field">
+        <label>Opacidad Externa</label>
+        <input type="number" step="0.05" min="0" max="1" [(ngModel)]="uiSettings.overlayOpacity" (ngModelChange)="aplicarCambiosUI()" />
       </div>
     </div>
-    <div class="field">
-      <label>Opacidad Externa</label>
-      <input type="number" step="0.05" min="0" max="1" [(ngModel)]="uiSettings.overlayOpacity" (ngModelChange)="aplicarCambios()" />
+
+    <div class="field wide" style="margin-top: 10px;">
+      <label>Intensidad del Desenfoque (Blur px)</label>
+      <input type="number" step="1" min="0" max="30" [(ngModel)]="uiSettings.blurIntensity" (ngModelChange)="aplicarCambiosUI()" />
     </div>
   </div>
 
-  <div class="field wide" style="margin-top: 10px;">
-    <label>Intensidad del Desenfoque (Blur px)</label>
-    <input type="number" step="1" min="0" max="30" [(ngModel)]="uiSettings.blurIntensity" (ngModelChange)="aplicarCambios()" />
-  </div>
-</div>
-
-<div class="section-card">
-  <div class="section-head">
-    <h4>Lore y Narrativa (Panel Lateral)</h4>
-  </div>
-  
-  <div class="field wide" style="margin-bottom: 10px;">
-    <label>Cita de Lore (Ambientación)</label>
-    <textarea rows="3" [(ngModel)]="uiSettings.loreQuote" (ngModelChange)="aplicarCambios()" placeholder='"Una frase misteriosa sobre el mundo..."'></textarea>
-  </div>
-  
-  <div class="field wide" style="margin-bottom: 10px;">
-    <label>Autor de la Cita</label>
-    <input type="text" [(ngModel)]="uiSettings.loreAuthor" (ngModelChange)="aplicarCambios()" placeholder="Ej: Superviviente Anónimo" />
-  </div>
-  
-  <div class="field wide">
-    <label>Color de Texto de Lore/Misión</label>
-    <div class="color-picker-wrapper">
-      <input type="color" [(ngModel)]="uiSettings.textColor" (ngModelChange)="aplicarCambios()" class="color-picker">
-      <span class="color-hex-text">{{ uiSettings.textColor.toUpperCase() }}</span>
+  <div class="section-card">
+    <div class="section-head">
+      <h4>Lore y Narrativa (Panel Lateral)</h4>
+    </div>
+    
+    <div class="field wide" style="margin-bottom: 10px;">
+      <label>Cita de Lore (Ambientación)</label>
+      <textarea rows="3" [(ngModel)]="uiSettings.loreQuote" (ngModelChange)="aplicarCambiosUI()" placeholder='"Una frase misteriosa sobre el mundo..."'></textarea>
+    </div>
+    
+    <div class="field wide" style="margin-bottom: 10px;">
+      <label>Autor de la Cita</label>
+      <input type="text" [(ngModel)]="uiSettings.loreAuthor" (ngModelChange)="aplicarCambiosUI()" placeholder="Ej: Control de Misión" />
+    </div>
+    
+    <div class="field wide">
+      <label>Color de Texto de Lore/Misión</label>
+      <div class="color-picker-wrapper">
+        <input type="color" [(ngModel)]="uiSettings.textColor" (ngModelChange)="aplicarCambiosUI()" class="color-picker">
+        <span class="color-hex-text">{{ uiSettings.textColor.toUpperCase() }}</span>
+      </div>
     </div>
   </div>
-</div>
 
-<div class="section-card">
-  <div class="section-head">
-    <h4>Objetivos, Requisitos y Recompensas (Globales)</h4>
-  </div>
-  <p class="help-text" style="margin-bottom: 10px;">Escribe cada ítem en una línea nueva. El sistema los separará automáticamente como una lista con viñetas.</p>
+  <div class="section-card">
+    <div class="section-head">
+      <h4>Objetivos, Requisitos y Recompensas (Globales)</h4>
+    </div>
+    <p class="help-text" style="margin-bottom: 10px;">Escribe cada ítem en una línea nueva.</p>
 
-  <div class="field wide" style="margin-bottom: 15px;">
-    <label style="color: #f87171; font-weight: bold;">Permisos / Requisitos</label>
-    <textarea rows="2" [(ngModel)]="uiSettings.requisitos" (ngModelChange)="aplicarCambios()" placeholder="Nivel 5&#10;Tarjeta de Acceso"></textarea>
+    <div class="field wide" style="margin-bottom: 15px;">
+      <label style="color: #f87171; font-weight: bold;">Permisos / Requisitos</label>
+      <textarea rows="2" [(ngModel)]="uiSettings.requisitos" (ngModelChange)="aplicarCambiosUI()" placeholder="Traje Presurizado&#10;Licencia Orbital"></textarea>
+    </div>
+
+    <div class="field wide" style="margin-bottom: 15px;">
+      <label style="color: #60a5fa; font-weight: bold;">Objetivo Principal (Episodio)</label>
+      <textarea rows="4" [(ngModel)]="uiSettings.objetivos" (ngModelChange)="aplicarCambiosUI()" placeholder="Alcanzar órbita de transferencia.&#10;Reparar antena de telemetría."></textarea>
+    </div>
+
+    <div class="field wide">
+      <label style="color: #4ade80; font-weight: bold;">Recompensas al Completar</label>
+      <textarea rows="3" [(ngModel)]="uiSettings.recompensas" (ngModelChange)="aplicarCambiosUI()" placeholder="Certificación de Vuelo&#10;50,000 Créditos"></textarea>
+    </div>
   </div>
 
-  <div class="field wide" style="margin-bottom: 15px;">
-    <label style="color: #60a5fa; font-weight: bold;">Objetivo Principal (Episodio)</label>
-    <textarea rows="4" [(ngModel)]="uiSettings.objetivos" (ngModelChange)="aplicarCambios()" placeholder="Encuentra la llave roja.&#10;Sobrevive a la horda."></textarea>
+  <div class="section-card">
+    <div class="section-head">
+      <h4>Cinemática Inicial</h4>
+    </div>
+    <div class="field wide">
+      <label>ID de la Secuencia al Iniciar (Opcional)</label>
+      <input type="text" [(ngModel)]="uiSettings.initialSequence" (ngModelChange)="aplicarCambiosUI()" placeholder="Ej: seq_intro_01" />
+    </div>
   </div>
-
-  <div class="field wide">
-    <label style="color: #4ade80; font-weight: bold;">Recompensas al Completar</label>
-    <textarea rows="3" [(ngModel)]="uiSettings.recompensas" (ngModelChange)="aplicarCambios()" placeholder="100 Monedas de Oro&#10;Rifle de Asalto"></textarea>
-  </div>
-</div>
-
-<div class="section-card">
-  <div class="section-head">
-    <h4>Cinemática Inicial</h4>
-  </div>
-  <div class="field wide">
-    <label>ID de la Secuencia al Iniciar (Opcional)</label>
-    <input type="text" [(ngModel)]="uiSettings.initialSequence" (ngModelChange)="aplicarCambios()" placeholder="Ej: seq_intro_01" />
-  </div>
-  <p class="help-text" style="margin-top: 5px;">Si pones el ID de una Secuencia/Clip, se reproducirá automáticamente cuando el jugador cierre este modal de Misión e inicie la partida.</p>
-</div>
+</ng-container>

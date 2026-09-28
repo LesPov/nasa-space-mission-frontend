@@ -1,4 +1,3 @@
-
 import { Component, OnInit, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { Router } from '@angular/router';
@@ -22,6 +21,8 @@ export class SeleccionEpisodios implements OnInit {
   public listaEpisodios: any[] = [];
   public hoveredEpisodio: number | null = null;
   public cargando = true;
+  public errorConexion = false;
+  public errorMensaje = '';
 
   ngOnInit() {
     this.cargarEpisodios();
@@ -29,23 +30,31 @@ export class SeleccionEpisodios implements OnInit {
 
   cargarEpisodios() {
     this.cargando = true;
+    this.errorConexion = false;
+    this.errorMensaje = '';
+
     this.epiApiSvc.obtenerEpisodios().subscribe({
       next: (res: any) => { 
         this.listaEpisodios = Array.isArray(res) ? res : (res?.data || res?.episodes || []); 
         this.cargando = false;
+        this.errorConexion = false;
         this.cdr.detectChanges(); 
       },
       error: (err) => {
-        console.error('Error al cargar episodios', err);
+        console.error('Error al cargar episodios:', err);
         this.cargando = false;
+        this.errorConexion = true;
+        if (err.status === 0) {
+          this.errorMensaje = 'No se pudo conectar al servidor en http://localhost:4000. Verifica que el backend esté encendido.';
+        } else {
+          this.errorMensaje = err.error?.message || err.message || 'Error al comunicarse con la API de episodios.';
+        }
         this.cdr.detectChanges();
       }
     });
   }
 
   jugarEpisodio(id: number) {
-    // 🔥 Ahora asume que el ID inicial del episodio funciona como ID de escena 
-    // hasta que implementemos la pantalla completa de selección de escenas.
     this.router.navigate(['/jugador/jugar', id]);
   }
 

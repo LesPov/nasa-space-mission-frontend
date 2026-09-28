@@ -1,4 +1,3 @@
-
 <!-- src/app/pages/admin/editor-escena/editor-escena.html -->
 <ng-container *ngIf="!editando && !cargandoEscena">
   <div class="galeria-header">
@@ -263,8 +262,6 @@
             [cerrando]="cerrandoModalMision" 
             [isDebugMode]="true" 
             [isPreviewOnly]="stateSvc.previewMissionModal() && !mostrarModalMisionPreview"
-            (mapaNombreChange)="mapaActualNombre = $event; episodioCompletoData.title = $event;"
-            (mapaDescChange)="episodioCompletoData.description = $event;"
             (onStart)="handleMissionStart()" 
             (onExit)="handleMissionExit()">
           </app-ui-mission>

@@ -1,11 +1,16 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { EpisodeApiService } from './episode-api.service';
 import { SceneApiService } from './scene-api.service';
 import { AssetApiService } from './asset-api.service';
 import { PlayerStateApiService } from './player-state-api.service';
-import { SceneSavePayload, SceneLoadPayload, NarrativeRoleDto } from '../../core/engine/models/api-dto.model';
+import { 
+  SceneSavePayload, 
+  SceneLoadPayload, 
+  NarrativeRoleDto, 
+  MissionProfileDto, 
+  CreateMissionProfileDto 
+} from '../../core/engine/models/api-dto.model';
 
 @Injectable({
   providedIn: 'root'
@@ -82,5 +87,17 @@ export class EpisodiosService {
 
   eliminarRol(roleId: number): Observable<any> {
     return this.episodeApi.eliminarRol(roleId);
+  }
+
+  obtenerMissionProfile(episodeId: number): Observable<MissionProfileDto> {
+    return this.episodeApi.obtenerMissionProfile(episodeId);
+  }
+
+  crearMissionProfile(episodeId: number, profile: CreateMissionProfileDto): Observable<MissionProfileDto> {
+    return this.episodeApi.crearMissionProfile(episodeId, profile);
+  }
+
+  actualizarMissionProfile(episodeId: number, profile: Partial<MissionProfileDto>): Observable<MissionProfileDto> {
+    return this.episodeApi.actualizarMissionProfile(episodeId, profile);
   }
 }

@@ -90,8 +90,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   get listaEpisodios() { return this.orchestrator.listaEpisodios(); }
   get episodioCompletoData() { return this.orchestrator.episodioCompletoData; }
   set episodioCompletoData(v) { this.orchestrator.episodioCompletoData = v; }
-  get mapaActualNombre() { return this.orchestrator.mapaActualNombre; }
-  set mapaActualNombre(v) { this.orchestrator.mapaActualNombre = v; }
 
   public mostrarModalMisionPreview = false;
   public cerrandoModalMision = false; 

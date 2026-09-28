@@ -1,7 +1,9 @@
-
 import { VisualMode } from '../world/world-settings.model';
 import { PlayerRuntimeConfig } from './player-config.model';
 import { CinematicCameraDefinition } from './cinematic-camera.model';
+
+// 🔥 FIX FASE 2: Frontend-specific contract mirror para respetar la seguridad de compilación de Angular
+export * from './space-mission.model';
 
 export interface Vector3Dto { x: number; y: number; z: number; }
 export interface AssetDto { id?: number; path?: string; type?: string; name?: string; }
@@ -18,7 +20,6 @@ export interface AutoAnimDto { enabled: boolean; type: string; axis: string; amo
 export interface GameConditionDto { type: string; key: string; value?: string | number | boolean; scope?: string; }
 export interface GameStateMutationDto { type: string; key: string; value?: string | number | boolean; scope?: string; }
 
-// 🔥 FASE 1: DTO OFICIAL CORREGIDO
 export interface NarrativeRoleDto {
   id?: number;
   episodeId?: number;

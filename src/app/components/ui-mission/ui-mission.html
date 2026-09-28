@@ -1,5 +1,3 @@
-
-
 <div class="user-mission-overlay" 
      [class.closing]="cerrando"
      [style.background-color]="hexToRgba(ui().overlayColor, ui().overlayOpacity)"
@@ -8,17 +6,10 @@
   
   <div class="mission-topbar">
     <div class="brand">
-      <ng-container *ngIf="!isDebugMode">
         <h2 [style.color]="ui().primaryColor" style="font-weight: 800; margin: 0; text-transform: uppercase;">
           {{ episodeTitle }}
         </h2>
         <p style="color: #94a3b8; font-size: 11px; margin: 0; letter-spacing: 1px;">SISTEMA EN LÍNEA</p>
-      </ng-container>
-
-      <ng-container *ngIf="isDebugMode">
-        <input type="text" [ngModel]="episodeTitle" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui().primaryColor" style="background: rgba(0,0,0,0.5); border: 1px dashed #64748b; font-weight: 800; text-transform: uppercase; outline: none; padding: 4px; border-radius: 4px;" title="Modificar Título del Episodio" />
-        <p style="color: #60a5fa; margin: 0; letter-spacing: 1px; padding-top: 4px;">MODO EDICIÓN (PREVIEW)</p>
-      </ng-container>
     </div>
     
     <div class="top-actions">
@@ -42,6 +33,15 @@
         <p [style.color]="ui().textColor" style="font-style: italic;">{{ ui().loreQuote }}</p>
         <span [style.color]="ui().primaryColor" style="font-weight: bold;">- {{ ui().loreAuthor }}</span>
       </div>
+      
+      <!-- Telemetría Dinámica Visual si existe un Mission Profile activo -->
+      <div *ngIf="missionManager.activeProfile()" style="margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
+         <h4 style="margin: 0 0 5px 0; color: #cbd5e1; font-size: 10px; letter-spacing: 1px;">NAVE: {{ missionManager.activeProfile()?.spacecraftName }}</h4>
+         <p style="margin: 0; color: #94a3b8; font-size: 10px;">ESTADO: <strong [style.color]="ui().primaryColor">{{ missionManager.currentStatus() }}</strong></p>
+         <div style="width: 100%; height: 4px; background: rgba(0,0,0,0.5); border-radius: 2px; margin-top: 8px;">
+            <div [style.width.%]="missionManager.completionPercentage()" [style.background]="ui().primaryColor" style="height: 100%; border-radius: 2px; transition: width 0.3s;"></div>
+         </div>
+      </div>
     </aside>
 
     <main class="mission-content">
@@ -54,9 +54,7 @@
         <div class="card-scroll-area" [style.padding.px]="ui().padding">
           <div class="card-header">
             <h4 [style.color]="ui().textColor">REPORTE DE MISIÓN</h4>
-            
-            <h2 *ngIf="!isDebugMode" [style.color]="ui().primaryColor">{{ episodeTitle }}</h2>
-            <input *ngIf="isDebugMode" type="text" [ngModel]="episodeTitle" (ngModelChange)="cambiarTitulo($event)" [style.color]="ui().primaryColor" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; font-size: clamp(16px, 2.5vw, 24px); font-weight: 900; text-transform: uppercase; text-align: center; width: 100%; outline: none; margin: 5px 0; border-radius: 4px;" />
+            <h2 [style.color]="ui().primaryColor">{{ episodeTitle }}</h2>
             
             <span *ngIf="!misionIniciada" [style.color]="ui().textColor">INICIANDO SIMULACIÓN NEURAL...</span>
             <span *ngIf="misionIniciada" [style.color]="ui().primaryColor">SIMULACIÓN EN PAUSA</span>
@@ -70,8 +68,7 @@
           </div>
           
           <div class="card-description">
-            <p *ngIf="!isDebugMode" [style.color]="ui().textColor">{{ episodeDescription }}</p>
-            <textarea *ngIf="isDebugMode" [ngModel]="episodeDescription" (ngModelChange)="cambiarDesc($event)" [style.color]="ui().textColor" rows="3" style="background: rgba(0,0,0,0.3); border: 1px dashed #64748b; width: 100%; font-size: clamp(11px, 1.5vw, 13px); font-family: inherit; resize: vertical; outline: none; padding: 10px; border-radius: 6px; box-sizing: border-box;" placeholder="Escribe la descripción de la misión aquí..."></textarea>
+            <p [style.color]="ui().textColor">{{ episodeDescription }}</p>
           </div>
 
           <div class="card-objectives" [style.border-left-color]="ui().primaryColor" style="background: rgba(0,0,0,0.4);">
@@ -86,24 +83,17 @@
               </ul>
             </ng-container>
 
-            <!-- OBJETIVO GLOBAL -->
-            <h4 [style.color]="ui().primaryColor" [style.margin-top.px]="requisitosGlobales().length > 0 ? 15 : 0">OBJETIVO PRINCIPAL (EPISODIO)</h4>
+            <!-- OBJETIVOS DINÁMICOS -->
+            <h4 [style.color]="ui().primaryColor" [style.margin-top.px]="requisitosGlobales().length > 0 ? 15 : 0">OBJETIVOS DE LA MISIÓN</h4>
             <ul>
-              <li *ngIf="objetivosGlobales().length === 0" [style.color]="ui().textColor"><span class="dot" [style.background]="ui().primaryColor"></span> <i>Buscando señal...</i></li>
-              <li *ngFor="let obj of objetivosGlobales()" [style.color]="ui().textColor">
-                <span class="dot" [style.background]="ui().primaryColor"></span> {{ obj }}
+              <li *ngFor="let obj of missionManager.activeObjectives()" [style.color]="obj.completed ? '#64748b' : ui().textColor" style="display: flex; align-items: flex-start; gap: 8px;">
+                <span style="font-size: 14px; line-height: 1; flex-shrink: 0;" [style.color]="obj.completed ? '#22c55e' : ui().primaryColor">
+                   {{ obj.completed ? '☑' : '☐' }}
+                </span>
+                <span [style.text-decoration]="obj.completed ? 'line-through' : 'none'">{{ obj.text }}</span>
+                <span *ngIf="obj.isLocal" style="font-size: 9px; color: #60a5fa; margin-left: auto;">(Zona)</span>
               </li>
             </ul>
-
-            <!-- OBJETIVO LOCAL -->
-            <ng-container *ngIf="objetivosLocales().length > 0">
-              <h4 style="color: #60a5fa; margin-top: 15px;">OBJETIVOS DE LA ZONA</h4>
-              <ul>
-                <li *ngFor="let obj of objetivosLocales()" [style.color]="ui().textColor">
-                  <span class="dot" style="background: #60a5fa;"></span> {{ obj }}
-                </li>
-              </ul>
-            </ng-container>
 
             <!-- RECOMPENSAS -->
             <ng-container *ngIf="recompensasGlobales().length > 0 || recompensasLocales().length > 0">

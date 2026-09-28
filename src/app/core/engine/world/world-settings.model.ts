@@ -62,6 +62,8 @@ export interface WorldSettings {
 }
 
 export interface MissionUiSettings {
+  missionTitle: string;
+  missionDescription: string;
   primaryColor: string;
   bgColor: string;
   bgOpacity: number;
@@ -95,6 +97,8 @@ export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
 };
 
 export const DEFAULT_MISSION_UI_SETTINGS: MissionUiSettings = {
+  missionTitle: 'Operación Desconocida',
+  missionDescription: 'Explora esta zona y descubre sus secretos.',
   primaryColor: '#ef4444',
   bgColor: '#0f172a',
   bgOpacity: 0.85,
@@ -104,7 +108,7 @@ export const DEFAULT_MISSION_UI_SETTINGS: MissionUiSettings = {
   borderRadius: 12,
   textColor: '#cbd5e1',
   loreQuote: '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."',
-  loreAuthor: 'Anónimo',
+  loreAuthor: 'Control de Misión',
   initialSequence: '',
   objetivos: [],
   recompensas: [],

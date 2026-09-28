@@ -1,4 +1,3 @@
-
 import { Injectable } from '@angular/core';
 import { Color3, Texture, RawTexture, Scene, AbstractMesh } from '@babylonjs/core';
 
@@ -6,6 +5,15 @@ import { Color3, Texture, RawTexture, Scene, AbstractMesh } from '@babylonjs/cor
 export class CoreSceneMaterialService {
   
   private bwTextureCache = new Map<string, Texture>();
+
+  public clearCache(): void {
+    this.bwTextureCache.forEach(t => {
+      if (t) {
+        try { t.dispose(); } catch (e) {}
+      }
+    });
+    this.bwTextureCache.clear();
+  }
 
   public asegurarMaterialUnico(mesh: AbstractMesh, uid: string): void {
       if (!mesh.material) return;
@@ -112,7 +120,7 @@ export class CoreSceneMaterialService {
   private async getOrCreateBwTexture(originalTexture: Texture, scene: Scene): Promise<Texture> {
       if (!originalTexture || !originalTexture.name) return originalTexture;
       
-      const cacheKey = originalTexture.name + "_bw";
+      const cacheKey = originalTexture.name + "_bw_" + scene.uid;
       if (this.bwTextureCache.has(cacheKey)) {
           return this.bwTextureCache.get(cacheKey)!;
       }

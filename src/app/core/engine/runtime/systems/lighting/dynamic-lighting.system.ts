@@ -213,8 +213,14 @@ export class DynamicLightingSystem implements IUpdatable {
   }
 
   public stop(): void {
-      this.pointPool.forEach(p => { p.light.dispose(); p.sg?.dispose(); });
-      this.spotPool.forEach(p => { p.light.dispose(); p.sg?.dispose(); });
+      this.pointPool.forEach(p => { 
+        if (p.light && !p.light.isDisposed()) p.light.dispose(); 
+        if (p.sg) p.sg.dispose(); 
+      });
+      this.spotPool.forEach(p => { 
+        if (p.light && !p.light.isDisposed()) p.light.dispose(); 
+        if (p.sg) p.sg.dispose(); 
+      });
       this.pointPool = [];
       this.spotPool = [];
       this.virtualLights = [];

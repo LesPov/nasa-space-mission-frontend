@@ -18,6 +18,7 @@ import { PlayerTriggerService } from '../../runtime/systems/player-trigger.servi
 import { SceneLoadPayload, SceneObjectDto, TriggerDto } from '../../models/api-dto.model';
 import { DynamicLightingSystem } from '../../runtime/systems/lighting/dynamic-lighting.system'; 
 import { ShadowOrchestratorService } from '../../runtime/shadows/shadow-orchestrator.service';
+import { EngineSessionService } from '../../session/engine-session.service';
   
 @Injectable({ providedIn: 'root' })
 export class CoreSceneLoaderService {
@@ -37,6 +38,7 @@ export class CoreSceneLoaderService {
   private cameraSvc = inject(PlayerCameraManagerService); 
   private triggerSvc = inject(PlayerTriggerService);
   private dynamicLighting = inject(DynamicLightingSystem); 
+  private sessionSvc = inject(EngineSessionService);
 
   public createInvisibleFloor(scene: any): void {
     const old = scene.getMeshByName('sueloInvisible');
@@ -52,6 +54,7 @@ export class CoreSceneLoaderService {
   }
 
   public async loadSceneFromData(dataBD: SceneLoadPayload): Promise<void> {
+    const sessionId = this.sessionSvc.getSessionId();
     if (!dataBD) return;
 
     const scene = this.motor3d.getScene();
@@ -88,8 +91,10 @@ export class CoreSceneLoaderService {
     const mallasCreadas = new Map<string, Mesh>();
 
     for (let i = 0; i < objetosBD.length; i += 5) {
+      if (!this.sessionSvc.isSessionActive(sessionId)) return;
       const chunk = objetosBD.slice(i, i + 5);
       const chunkPromises = chunk.map((obj: SceneObjectDto) => {
+        if (!this.sessionSvc.isSessionActive(sessionId)) return Promise.resolve();
         const isModel = obj.type === 'model';
         const isLight = obj.type?.startsWith('light_');
         const objRol = obj.properties?.rol || obj.rol || 'prop';
@@ -110,12 +115,15 @@ export class CoreSceneLoaderService {
     }
 
     for (let i = 0; i < triggersBD.length; i += 10) {
+      if (!this.sessionSvc.isSessionActive(sessionId)) return;
       const chunk = triggersBD.slice(i, i + 10);
       chunk.forEach((trigger: TriggerDto) => {
         this.loaderTriggerSvc.cargarTrigger(trigger, mallasCreadas);
       });
       await new Promise(resolve => setTimeout(resolve, 15));
     }
+
+    if (!this.sessionSvc.isSessionActive(sessionId)) return;
 
     mallasCreadas.forEach((mesh, uid) => {
       const entity = this.entityManager.getEntityByUid(uid);
@@ -133,7 +141,10 @@ export class CoreSceneLoaderService {
         }
     }
 
+    if (!this.sessionSvc.isSessionActive(sessionId)) return;
+
     setTimeout(() => {
+      if (!this.sessionSvc.isSessionActive(sessionId)) return;
       mallasCreadas.forEach((mesh) => {
         const entity = this.entityManager.getEntityByMesh(mesh);
         if (entity?.type === 'image_plane') {
@@ -146,7 +157,9 @@ export class CoreSceneLoaderService {
     this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
 
     await new Promise<void>((resolve) => {
+      if (!this.sessionSvc.isSessionActive(sessionId)) return resolve();
       scene.executeWhenReady(() => {
+        if (!this.sessionSvc.isSessionActive(sessionId)) return resolve();
         const actCam = scene.activeCamera;
         let originalPos = Vector3.Zero();
         let originalTarget = Vector3.Zero();
@@ -180,6 +193,7 @@ export class CoreSceneLoaderService {
   }
 
   public async instantiatePrefab(prefab: any, positionTarget: Vector3, rotationEuler?: Vector3, scale?: Vector3, parentNode?: AbstractMesh): Promise<Map<string, Mesh>> {
+    const sessionId = this.sessionSvc.getSessionId();
     const mallasCreadas = new Map<string, Mesh>();
     const uidMap = new Map<string, string>(); 
 
@@ -187,6 +201,7 @@ export class CoreSceneLoaderService {
     const promesasCarga: any[] = [];
 
     for (const item of hierarchy) {
+        if (!this.sessionSvc.isSessionActive(sessionId)) return mallasCreadas;
         const newUid = window.crypto.randomUUID();
         const originalUidForMap = (item as any).originalUid || item.uid || window.crypto.randomUUID();
         uidMap.set(originalUidForMap, newUid);
@@ -234,6 +249,7 @@ export class CoreSceneLoaderService {
     }
 
     await Promise.all(promesasCarga);
+    if (!this.sessionSvc.isSessionActive(sessionId)) return mallasCreadas;
 
     mallasCreadas.forEach((mesh, uid) => {
         const entity = this.entityManager.getEntityByUid(uid);

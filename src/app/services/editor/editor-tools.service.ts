@@ -126,7 +126,7 @@ export class EditorToolsService {
     this.clipboardSvc.disposeKeyboardListeners();
     this.gizmoSvc.dispose();
     this.debugSvc.actualizarDebugMeshes(null);
-    this.highlightSvc.actualizarHighlights(null, null);
+    this.highlightSvc.dispose();
     this.isInitialized = false; 
     this.isGizmoSyncAttached = false;
   }

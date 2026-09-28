@@ -1,7 +1,6 @@
-
 // src/app/services/editor/toolsservice/tools-highlight.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Color3, Color4, Mesh, AbstractMesh, Tags, HighlightLayer, Node } from '@babylonjs/core';
+import { Color3, Color4, Mesh, AbstractMesh, Tags, HighlightLayer, Node, Scene } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
@@ -21,12 +20,19 @@ export class ToolsHighlightService {
   private lastMode: string | null = null;
 
   private highlightLayer: HighlightLayer | null = null;
+  private currentScene: Scene | null = null;
   private meshesConEdges: AbstractMesh[] = [];
   private highlightedTriggers: AbstractMesh[] = [];
 
   public initHighlights(): void {
     const scene = this.motor3d.getScene();
     if (!scene) return;
+
+    // 🔥 FIX: Invalidar capa si la escena ha cambiado de sesión sin usar getScene()
+    if (this.highlightLayer && this.currentScene !== scene) {
+      this.highlightLayer.dispose();
+      this.highlightLayer = null;
+    }
 
     if (!this.highlightLayer) {
       this.highlightLayer = new HighlightLayer("editor_highlights", scene, {
@@ -35,7 +41,21 @@ export class ToolsHighlightService {
       });
       this.highlightLayer.blurHorizontalSize = 1.5;
       this.highlightLayer.blurVerticalSize = 1.5;
+      this.currentScene = scene;
     }
+  }
+
+  public dispose(): void {
+    if (this.highlightLayer) {
+      this.highlightLayer.dispose();
+      this.highlightLayer = null;
+    }
+    this.currentScene = null;
+    this.meshesConEdges = [];
+    this.highlightedTriggers = [];
+    this.lastHoveredMeshId = null;
+    this.lastSelectedMeshId = null;
+    this.lastMode = null;
   }
 
   private esMeshExcluida(mesh: AbstractMesh): boolean {

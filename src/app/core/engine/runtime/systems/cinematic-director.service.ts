@@ -1,4 +1,3 @@
-
 import { Injectable, inject, signal } from '@angular/core';
 import { Vector3, Quaternion, UniversalCamera, Matrix, StandardMaterial, Color3, Mesh, MeshBuilder, Tags } from '@babylonjs/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -785,5 +784,23 @@ export class CinematicDirectorService implements IUpdatable {
               }
           }
       }
+  }
+
+  public dispose(): void {
+    this.stop();
+
+    if (this.cinematicCameraMesh && !this.cinematicCameraMesh.isDisposed()) {
+      this.cinematicCameraMesh.dispose();
+    }
+    this.cinematicCameraMesh = null;
+
+    if (this.cinematicCamera && !this.cinematicCamera.isDisposed()) {
+      this.cinematicCamera.dispose();
+    }
+    this.cinematicCamera = null;
+
+    this.activeSequence = null;
+    this.savedActorStates.clear();
+    this.actorResolver.clearCache();
   }
 }

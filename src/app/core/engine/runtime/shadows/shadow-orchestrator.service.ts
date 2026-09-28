@@ -37,6 +37,17 @@ export class ShadowOrchestratorService implements IUpdatable {
       this.frameCounter = 0;
   }
 
+  public stop(): void {
+      if (this.mainSun) {
+          this.mainSun.dispose();
+          this.mainSun = null;
+      }
+      if (this.shadowGenerator) {
+          this.shadowGenerator.dispose();
+          this.shadowGenerator = null;
+      }
+  }
+
   public update(dtMs: number): void {
      const scene = this.motor3d.getScene();
      if (!scene || !this.mainSun) return;

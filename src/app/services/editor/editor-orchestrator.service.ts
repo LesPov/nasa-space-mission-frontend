@@ -1,3 +1,4 @@
+
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AbstractMesh, Tags } from '@babylonjs/core';
@@ -28,6 +29,7 @@ import { CameraViewMode } from '../../core/engine/session/game-context.model';
 import { SnapshotReconcilerService } from './utils/snapshot-reconciler.service';
 import { CinematicPlaybackManagerService } from '../../core/engine/runtime/cinematics/cinematic-playback-manager.service';
 import { InputRouterService } from '../../core/engine/session/input-router.service';
+import { EngineSessionService } from '../../core/engine/session/engine-session.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorOrchestratorService {
@@ -54,6 +56,7 @@ export class EditorOrchestratorService {
   private missionSvc = inject(MissionModalService);
   private snapshotReconciler = inject(SnapshotReconcilerService);
   private playbackManager = inject(CinematicPlaybackManagerService);
+  private sessionSvc = inject(EngineSessionService);
 
   public readonly editando = signal(false);
   public readonly isPlayable = signal(false);
@@ -167,6 +170,7 @@ export class EditorOrchestratorService {
   }
 
   public async procesarCarga(episodio: any, sceneId: number): Promise<void> {
+    const sessionId = this.sessionSvc.startNewSession();
     this.mapaActualNombre = episodio.title;
     if (!this.editando()) {
       this.editando.set(true);
@@ -175,12 +179,14 @@ export class EditorOrchestratorService {
     
     this.epiApiSvc.obtenerEscenaCompleta(sceneId).subscribe({
       next: async (res) => {
+        if (!this.sessionSvc.isSessionActive(sessionId)) return;
         this.episodioCompletoData = res; 
         this.editorSvc.setEscenaIdActiva(sceneId);
         
         if (!episodio.narrativeRoles) {
           this.epiApiSvc.obtenerRoles(episodio.id).subscribe({
             next: (roles) => {
+              if (!this.sessionSvc.isSessionActive(sessionId)) return;
               episodio.narrativeRoles = roles;
               this.editorSvc.setEpisodioActualData(episodio);
             }
@@ -201,7 +207,10 @@ export class EditorOrchestratorService {
           await this.sceneSvc.cargarEscenaDesdeDatos(res);
         }
 
+        if (!this.sessionSvc.isSessionActive(sessionId)) return;
+
         this.motor3dSvc.getScene().executeWhenReady(() => {
+          if (!this.sessionSvc.isSessionActive(sessionId)) return;
           this.cargandoEscena.set(false);
           this.revisarSiEsJugable(); 
           
@@ -213,6 +222,7 @@ export class EditorOrchestratorService {
         });
       },
       error: (err) => {
+        if (!this.sessionSvc.isSessionActive(sessionId)) return;
         this.cargandoEscena.set(false);
         alert('Error conectando con el servidor. No se pudo cargar la escena.');
       }
@@ -242,6 +252,7 @@ export class EditorOrchestratorService {
   }
 
   public async cambiarPlataformaTestLive(sceneId: number): Promise<void> {
+    const sessionId = this.sessionSvc.startNewSession();
     this.cargandoEscena.set(true);
     this.cargandoTexto.set('Teletransportando a nueva zona...');
     
@@ -252,6 +263,7 @@ export class EditorOrchestratorService {
 
     this.epiApiSvc.obtenerEscenaCompleta(sceneId).subscribe({
       next: async (res) => {
+        if (!this.sessionSvc.isSessionActive(sessionId)) return;
         this.episodioCompletoData = res; 
         this.editorSvc.setEscenaIdActiva(sceneId);
         this.editorSvc.setEscenaActualData(res);
@@ -262,9 +274,13 @@ export class EditorOrchestratorService {
         if (res) {
           await this.sceneSvc.cargarEscenaDesdeDatos(res);
         }
+        
+        if (!this.sessionSvc.isSessionActive(sessionId)) return;
 
         this.motor3dSvc.getScene().executeWhenReady(() => {
+          if (!this.sessionSvc.isSessionActive(sessionId)) return;
           setTimeout(() => {
+            if (!this.sessionSvc.isSessionActive(sessionId)) return;
             this.playModeSvc.prepararEscenaParaTest(this.gameContext.cameraView(), true);
             this.cargandoEscena.set(false);
             this.revisarSiEsJugable();
@@ -272,6 +288,7 @@ export class EditorOrchestratorService {
         });
       },
       error: (err) => {
+        if (!this.sessionSvc.isSessionActive(sessionId)) return;
         this.cargandoEscena.set(false);
         alert('Error al teletransportar a la plataforma.');
         this.detenerModoPrueba();
@@ -358,15 +375,6 @@ export class EditorOrchestratorService {
     await this.playModeSvc.prepararEscenaParaTest(vista, skipIntro);
   }
 
-  /**
-   * Orden estricto de detención de Test Live:
-   * 1. Marcar transición de salida y suprimir eventos de pointer lock.
-   * 2. Desbloquear el puntero del navegador.
-   * 3. Detener la sesión de runtime y salir del sandbox de GameState.
-   * 4. Reconciliar/recargar escena original del snapshot.
-   * 5. Restaurar visibilidad, cámara orbital y controles del Editor.
-   * 6. Finalizar la transición devolviendo el contexto de input al Editor.
-   */
   public async detenerModoPrueba(): Promise<void> {
     if (this.stateSvc.playState() === 'EDITOR') return;
     
@@ -390,6 +398,7 @@ export class EditorOrchestratorService {
     if (this.snapshotMemoria) {
       const currentId = this.editorSvc.escenaIdActiva();
       const snapId = this.snapshotMemoria.scene?.id || this.snapshotMemoria.id;
+      const currentSessionId = this.sessionSvc.startNewSession();
 
       if (snapId && currentId !== snapId) {
         this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
@@ -411,6 +420,7 @@ export class EditorOrchestratorService {
 
       await this.sceneSvc.cargarEscenaDesdeDatos(this.snapshotMemoria);
       this.snapshotMemoria = null;
+      if (!this.sessionSvc.isSessionActive(currentSessionId)) return;
     }
 
     // 5. Restaurar cámara orbital del Editor, controles y visibilidad
@@ -427,6 +437,7 @@ export class EditorOrchestratorService {
   }
 
   public salirDelEditor(): void {
+    this.sessionSvc.invalidateSession();
     this.editando.set(false);
     this.cargandoEscena.set(false);
     this.layoutSvc.mostrarMenu();

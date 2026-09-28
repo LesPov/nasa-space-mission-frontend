@@ -171,6 +171,11 @@ export class GhostRendererService {
       this.ghostRoot.dispose(false, true);
       this.ghostRoot = null;
     }
+    if (this.ghostMaterial) {
+      this.ghostMaterial.dispose();
+      this.ghostMaterial = null;
+    }
     this.currentAssetId = null;
+    this.currentScene = null;
   }
 }

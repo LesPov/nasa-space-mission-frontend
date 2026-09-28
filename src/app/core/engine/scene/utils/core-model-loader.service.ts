@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
 import '@babylonjs/loaders';
@@ -10,6 +9,8 @@ import { EntityPersistenceMapperService } from './entity-persistence-mapper.serv
 import { WorldSettingsService } from '../../world/world-settings.service';
 import { GameContextService } from '../../session/game-context.service';
 import { GameMode } from '../../session/game-mode.model';
+import { SceneAssetCacheService } from './scene-asset-cache.service';
+import { EngineSessionService } from '../../session/engine-session.service';
 
 @Injectable({ providedIn: 'root' })
 export class CoreModelLoaderService {
@@ -19,30 +20,26 @@ export class CoreModelLoaderService {
   private persistenceMapper = inject(EntityPersistenceMapperService);
   private worldSettingsSvc = inject(WorldSettingsService);
   private gameContext = inject(GameContextService);
-
-  private assetRegistry = new Map<string, AssetContainer>();
+  private assetCache = inject(SceneAssetCacheService);
+  private sessionSvc = inject(EngineSessionService);
 
   public async getCachedAssetContainer(fullPath: string, scene: any): Promise<AssetContainer> {
-    if (!this.assetRegistry.has(fullPath)) {
-      const lastSlash = fullPath.lastIndexOf('/');
-      const rootUrl = fullPath.substring(0, lastSlash + 1);
-      const fileName = fullPath.substring(lastSlash + 1);
-      const container = await SceneLoader.LoadAssetContainerAsync(rootUrl, fileName, scene);
-      
-      container.materials.forEach(mat => {
-          if (!scene.materials.includes(mat)) scene.addMaterial(mat);
-      });
-      container.textures.forEach(tex => {
-          if (!scene.textures.includes(tex)) scene.addTexture(tex);
-      });
+    const extension = fullPath.substring(fullPath.lastIndexOf('.'));
+    const container = await this.assetCache.getFreshAssetContainer(fullPath, scene, extension);
+    
+    container.materials.forEach(mat => {
+        if (!scene.materials.includes(mat)) scene.addMaterial(mat);
+    });
+    container.textures.forEach(tex => {
+        if (!scene.textures.includes(tex)) scene.addTexture(tex);
+    });
 
-      this.assetRegistry.set(fullPath, container);
-    }
-    return this.assetRegistry.get(fullPath)!;
+    return container;
   }
 
   public async cargarModeloAsync(obj: any, mallasCreadas: Map<string, Mesh>): Promise<void> {
     const scene = this.motor3d.getScene();
+    const sessionId = this.sessionSvc.getSessionId();
     const path = obj.properties?.path || obj.asset?.path;
 
     if (!path) {
@@ -54,6 +51,12 @@ export class CoreModelLoaderService {
 
     try {
       const container = await this.getCachedAssetContainer(fullPath, scene);
+      
+      if (!this.sessionSvc.isSessionActive(sessionId) || scene.isDisposed) {
+        container.dispose();
+        return;
+      }
+
       const instances = container.instantiateModelsToScene(name => name ? `${obj.uid}_${name}` : obj.uid, false, { doNotInstantiate: true });
       
       const wrapperMesh = new Mesh(obj.name, scene);
@@ -97,7 +100,9 @@ export class CoreModelLoaderService {
       await this.aplicarTransformacionesYEntidad(wrapperMesh, obj, mallasCreadas, instances.rootNodes as AbstractMesh[], instances.animationGroups);
     } catch (e) {
       console.error(`[CoreModelLoader] Error cargando GLB ${path}`, e);
-      await this.crearMallaError(obj, scene, mallasCreadas);
+      if (this.sessionSvc.isSessionActive(sessionId) && !scene.isDisposed) {
+        await this.crearMallaError(obj, scene, mallasCreadas);
+      }
     }
   }
 

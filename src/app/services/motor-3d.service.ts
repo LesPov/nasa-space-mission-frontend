@@ -1,4 +1,3 @@
-
 import { Injectable, inject, Injector } from '@angular/core';
 import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4, UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera } from '@babylonjs/core';
 import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
@@ -12,6 +11,7 @@ import { FogOrchestratorService } from '../core/engine/runtime/systems/fog-orche
 import { PlayerSequenceService } from '../core/engine/runtime/systems/player-sequence.service';
 import { PlayerTriggerService } from '../core/engine/runtime/systems/player-trigger.service';
 import { PlayerAnimationService } from '../core/engine/runtime/systems/player-animation.service';
+import { CoreSceneMaterialService } from '../core/engine/scene/utils/core-scene-material.service';
 
 @Injectable({
   providedIn: 'root'
@@ -28,6 +28,8 @@ export class Motor3dService implements ISceneAccess {
   public renderingPipeline!: DefaultRenderingPipeline;
   public glowLayer!: GlowLayer; 
   public currentFps: number = 0;
+
+  private resizeListener = () => this.forceResize();
 
   getScene(): Scene { return this.scene; }
   getEngine(): Engine { return this.engine; }
@@ -102,11 +104,9 @@ export class Motor3dService implements ISceneAccess {
     this.loopManager.registerSystem(fogOrch);
     fogOrch.start();
 
-    // 🔥 REGISTRO GLOBAL DE ANIMACIONES DE PLAYER PARA EDITOR (CINEMATICAS)
     const playerAnimSvc = this.injector.get(PlayerAnimationService);
     this.loopManager.registerSystem(playerAnimSvc);
 
-    // 🔥 REGISTRO GLOBAL DE SECUENCIAS Y TRIGGERS PARA CINEMATICAS EN EDITOR
     const seqSvc = this.injector.get(PlayerSequenceService);
     this.loopManager.registerSystem(seqSvc);
     
@@ -139,7 +139,8 @@ export class Motor3dService implements ISceneAccess {
       this.currentFps = this.engine.getFps();
     });
 
-    window.addEventListener('resize', () => this.forceResize());
+    window.removeEventListener('resize', this.resizeListener);
+    window.addEventListener('resize', this.resizeListener);
   }
 
   setVisualMode(mode: 'normal' | 'bw'): void {
@@ -163,6 +164,14 @@ export class Motor3dService implements ISceneAccess {
   }
 
   detenerMotor(): void {
+    window.removeEventListener('resize', this.resizeListener);
+    
+    this.injector.get(CoreSceneMaterialService).clearCache();
+    this.injector.get(ShadowOrchestratorService).stop();
+    this.injector.get(PlayerAnimationService).limpiarEstados();
+    this.injector.get(CinematicDirectorService).dispose();
+    this.injector.get(DynamicLightingSystem).stop();
+
     if (this.engine) {
       this.ownership.resetWatcher(); 
       const fogOrch = this.injector.get(FogOrchestratorService);
@@ -173,9 +182,14 @@ export class Motor3dService implements ISceneAccess {
       
       this.loopManager.dispose();
       this.cameraFactory.dispose();
+      
       this.engine.stopRenderLoop();
-      this.scene.dispose();
+      if(this.scene) {
+        this.scene.dispose();
+      }
       this.engine.dispose();
+      this.scene = null as any;
+      this.engine = null as any;
     }
   }
 }

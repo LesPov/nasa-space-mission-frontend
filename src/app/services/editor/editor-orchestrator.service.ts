@@ -180,7 +180,10 @@ export class EditorOrchestratorService {
     this.epiApiSvc.obtenerEscenaCompleta(sceneId).subscribe({
       next: async (res) => {
         if (!this.sessionSvc.isSessionActive(sessionId)) return;
-        this.episodioCompletoData = res; 
+        
+        // 🔥 FIX CRÍTICO: Inyectamos explícitamente el objeto Episode dentro del payload 
+        // para que la UI no pierda el contexto de qué episodio padre estamos editando.
+        this.episodioCompletoData = { ...res, episode: episodio }; 
         this.editorSvc.setEscenaIdActiva(sceneId);
         
         if (!episodio.narrativeRoles) {
@@ -264,7 +267,9 @@ export class EditorOrchestratorService {
     this.epiApiSvc.obtenerEscenaCompleta(sceneId).subscribe({
       next: async (res) => {
         if (!this.sessionSvc.isSessionActive(sessionId)) return;
-        this.episodioCompletoData = res; 
+        // Mantenemos el episodio inyectado en el payload también en Test Live
+        const currentEpisodio = this.editorSvc.episodioActualData();
+        this.episodioCompletoData = { ...res, episode: currentEpisodio }; 
         this.editorSvc.setEscenaIdActiva(sceneId);
         this.editorSvc.setEscenaActualData(res);
         
@@ -378,23 +383,18 @@ export class EditorOrchestratorService {
   public async detenerModoPrueba(): Promise<void> {
     if (this.stateSvc.playState() === 'EDITOR') return;
     
-    // 1. Suprimir la emisión de GamePaused provocada por el desbloqueo del puntero
     this.inputRouter.setSuppressPointerLockEvents(true);
     this.transitionSvc.beginStopTestLive();
-
-    // 2. Liberar el puntero en el DOM
     this.inputOrchestrator.unlockPointer();
 
     this.cargandoEscena.set(true);
     this.cargandoTexto.set('Restaurando Editor...');
 
-    // 3. Detener la sesión de gameplay y restaurar el estado sandbox de datos
     this.runtime.stopTestSession();
     this.gameState.exitSandbox();
 
     const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
 
-    // 4. Reconciliar y recargar mallas si existía un snapshot en memoria
     if (this.snapshotMemoria) {
       const currentId = this.editorSvc.escenaIdActiva();
       const snapId = this.snapshotMemoria.scene?.id || this.snapshotMemoria.id;
@@ -423,10 +423,7 @@ export class EditorOrchestratorService {
       if (!this.sessionSvc.isSessionActive(currentSessionId)) return;
     }
 
-    // 5. Restaurar cámara orbital del Editor, controles y visibilidad
     this.playModeSvc.restaurarEscenaPostTest(canSelectHidden);
-    
-    // 6. Finalizar la transición de salida y restaurar el contexto de entrada al Editor
     this.transitionSvc.finishStopTestLive();
     this.inputRouter.setSuppressPointerLockEvents(false);
 

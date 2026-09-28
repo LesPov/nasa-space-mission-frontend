@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
@@ -15,6 +16,10 @@ export class EpisodeApiService {
 
   crearEpisodio(title: string, description: string): Observable<any> {
     return this.http.post<any>(`${this.baseUrl}/episodes`, { title, description });
+  }
+
+  actualizarEpisodio(episodeId: number, data: { title: string, description?: string }): Observable<any> {
+    return this.http.put<any>(`${this.baseUrl}/episodes/${episodeId}`, data);
   }
 
   obtenerRoles(episodeId: number): Observable<NarrativeRoleDto[]> {

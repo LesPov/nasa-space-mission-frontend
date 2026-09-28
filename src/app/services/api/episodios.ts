@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Observable } from 'rxjs';
 import { EpisodeApiService } from './episode-api.service';
@@ -27,6 +28,10 @@ export class EpisodiosService {
 
   crearEpisodio(title: string, description: string): Observable<any> {
     return this.episodeApi.crearEpisodio(title, description);
+  }
+
+  actualizarEpisodio(episodeId: number, data: { title: string, description?: string }): Observable<any> {
+    return this.episodeApi.actualizarEpisodio(episodeId, data);
   }
 
   obtenerPlataformasEscena(episodeId: number): Observable<any[]> {

@@ -1,7 +1,9 @@
+
 import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Subscription } from 'rxjs';
+import { Subscription, Subject } from 'rxjs';
+import { debounceTime } from 'rxjs/operators';
 
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { WorldSettingsService } from '../../../../core/engine/world/world-settings.service';
@@ -18,7 +20,7 @@ import { EpisodiosService } from '../../../../services/api/episodios';
   standalone: true, 
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-mission.html',
-  styleUrls: ['./prop-mission.css']
+  styleUrls: ['../inspector-properties.css']
 })
 export class PropMission implements OnInit, OnDestroy {
   public editorSvc = inject(EditorMapaService);
@@ -26,8 +28,10 @@ export class PropMission implements OnInit, OnDestroy {
   private epiApiSvc = inject(EpisodiosService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
+  
+  private episodeSaveSubject = new Subject<void>();
 
-  public seccionActiva: 'aerospace' | 'ui' | 'metadata' = 'metadata';
+  public seccionActiva: 'mission' | 'ui' | 'metadata' | 'aerospace' = 'mission';
 
   public missionProfile: MissionProfileDto | null = null;
   public cargandoProfile = false;
@@ -36,9 +40,14 @@ export class PropMission implements OnInit, OnDestroy {
   public uiSettings: any = {};
   public episodeTitle = '';
   public episodeDescription = '';
+  public sceneName = '';
 
   get currentEpisode() {
     return this.editorSvc.episodioActualData();
+  }
+
+  get currentScene() {
+    return this.editorSvc.escenaActualData();
   }
 
   get currentEpisodeId(): number | null {
@@ -52,7 +61,14 @@ export class PropMission implements OnInit, OnDestroy {
     
     this.subs.push(
       this.editorSvc.onMapChanged.subscribe(() => {
-         // Silencioso para evitar parpadeos si se editó desde otro lado
+         this.leerEstadoUI();
+         this.leerMetadataEpisodio();
+      }),
+      
+      this.episodeSaveSubject.pipe(
+        debounceTime(1000)
+      ).subscribe(() => {
+        this.guardarMetadataEpisodioEnBackend();
       })
     );
   }
@@ -67,6 +83,12 @@ export class PropMission implements OnInit, OnDestroy {
         this.episodeTitle = ep.title || '';
         this.episodeDescription = ep.description || '';
     }
+    
+    const sc = this.currentScene;
+    if (sc) {
+        this.sceneName = sc.scene?.name || 'Zona actual';
+    }
+    this.cdr.detectChanges();
   }
 
   public aplicarMetadataEpisodio() {
@@ -75,8 +97,22 @@ export class PropMission implements OnInit, OnDestroy {
         ep.title = this.episodeTitle;
         ep.description = this.episodeDescription;
         this.editorSvc.setEpisodioActualData(ep);
-        this.marcarModificado();
+        
+        this.episodeSaveSubject.next();
     }
+  }
+
+  private guardarMetadataEpisodioEnBackend() {
+      const epId = this.currentEpisodeId;
+      if (!epId) return;
+
+      this.epiApiSvc.actualizarEpisodio(epId, {
+          title: this.episodeTitle,
+          description: this.episodeDescription
+      }).subscribe({
+          next: () => console.log('Metadata del episodio guardada.'),
+          error: (e) => console.error('Error guardando metadata del episodio', e)
+      });
   }
 
   public cargarPerfilMision() {
@@ -116,28 +152,7 @@ export class PropMission implements OnInit, OnDestroy {
       spacecraftMassKg: 12500,
       spacecraftPowerWatts: 45000,
       spacecraftFuelCapacityKg: 8000,
-      components: [
-        {
-          id: 'prop-ion-01',
-          type: 'propulsion',
-          name: 'Propulsor Iónico NEXT-C',
-          manufacturer: 'Aerojet Rocketdyne',
-          status: 'NOMINAL',
-          health: 100,
-          specifications: { thrustKn: 0.236, specificImpulseSec: 4190 },
-          configuration: { throttle: 100 }
-        },
-        {
-          id: 'pwr-solar-01',
-          type: 'power',
-          name: 'Paneles Solares Ultraflex',
-          manufacturer: 'Northrop Grumman',
-          status: 'NOMINAL',
-          health: 100,
-          specifications: { powerGenerationWatts: 15000 },
-          configuration: { autoTracking: true }
-        }
-      ]
+      components: []
     };
 
     this.cargandoProfile = true;
@@ -165,7 +180,7 @@ export class PropMission implements OnInit, OnDestroy {
   }
 
   public marcarModificado() {
-    this.editorSvc.onMapChanged.next();
+    // Si cambian cosas aeroespaciales que no son de UI, solo preparamos para Guardar Perfil manualmente
   }
 
   public agregarComponenteDefecto() {
@@ -175,11 +190,11 @@ export class PropMission implements OnInit, OnDestroy {
     const newComp: SpacecraftComponentDto = {
       id: 'comp_' + Math.random().toString(36).substring(2, 7),
       type: 'avionics',
-      name: 'Módulo de Navegación Computarizada',
+      name: 'Módulo de Navegación',
       manufacturer: 'Honeywell Aerospace',
       status: 'NOMINAL',
       health: 100,
-      specifications: { bandwidthMbps: 1000 },
+      specifications: {},
       configuration: {}
     };
 
@@ -229,17 +244,17 @@ export class PropMission implements OnInit, OnDestroy {
     const s = this.worldSettingsSvc.uiSettings();
     this.uiSettings = {
       ...s,
-      objetivos: s.objetivos.join('\n'),
-      recompensas: s.recompensas.join('\n'),
-      requisitos: (s.requisitos || []).join('\n')
+      objetivos: Array.isArray(s.objetivos) ? s.objetivos.join('\n') : (s.objetivos || ''),
+      recompensas: Array.isArray(s.recompensas) ? s.recompensas.join('\n') : (s.recompensas || ''),
+      requisitos: Array.isArray(s.requisitos) ? s.requisitos.join('\n') : (s.requisitos || '')
     };
     this.cdr.detectChanges();
   }
 
   aplicarCambiosUI() {
-    const objStr = typeof this.uiSettings.objetivos === 'string' ? this.uiSettings.objetivos : (this.uiSettings.objetivos as any).join('\n');
-    const recStr = typeof this.uiSettings.recompensas === 'string' ? this.uiSettings.recompensas : (this.uiSettings.recompensas as any).join('\n');
-    const reqStr = typeof this.uiSettings.requisitos === 'string' ? this.uiSettings.requisitos : (this.uiSettings.requisitos || []).join('\n');
+    const objStr = typeof this.uiSettings.objetivos === 'string' ? this.uiSettings.objetivos : '';
+    const recStr = typeof this.uiSettings.recompensas === 'string' ? this.uiSettings.recompensas : '';
+    const reqStr = typeof this.uiSettings.requisitos === 'string' ? this.uiSettings.requisitos : '';
 
     const objetivosArray = objStr.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
     const recompensasArray = recStr.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
@@ -258,9 +273,9 @@ export class PropMission implements OnInit, OnDestroy {
 
     this.worldSettingsSvc.updateUiSettings(newSettings);
 
-    const epiData = this.editorSvc.episodioActualData();
-    if (epiData) {
-      epiData.uiSettings = newSettings;
+    const escenaActual = this.editorSvc.escenaActualData();
+    if (escenaActual && escenaActual.scene) {
+        escenaActual.scene.uiSettings = newSettings;
     }
 
     this.editorSvc.onMapChanged.next(); 

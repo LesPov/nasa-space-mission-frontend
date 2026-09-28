@@ -1,8 +1,8 @@
+
 import { VisualMode } from '../world/world-settings.model';
 import { PlayerRuntimeConfig } from './player-config.model';
 import { CinematicCameraDefinition } from './cinematic-camera.model';
 
-// 🔥 FIX FASE 2: Frontend-specific contract mirror para respetar la seguridad de compilación de Angular
 export * from './space-mission.model';
 
 export interface Vector3Dto { x: number; y: number; z: number; }
@@ -83,12 +83,12 @@ export interface WorldSettingsDto {
 export interface SceneSavePayload {
   sceneObjectsDelta: SceneObjectDto[]; triggersDelta: TriggerDto[]; cinematicsDelta: CinematicDto[]; cinematicCamerasDelta: CinematicCameraDefinition[];
   deletedObjects: string[]; deletedTriggers: string[]; deletedCinematics: string[]; deletedCinematicCameras: string[];
-  environmentSettings: WorldSettingsDto; spawnPoint: Vector3Dto;
+  environmentSettings: WorldSettingsDto; uiSettings?: any; spawnPoint: Vector3Dto;
 }
 
 export interface SceneLoadPayload {
   scene?: {
-    id?: number; episodeId?: number; episodeVersionId?: number; name?: string; environmentSettings?: any;
+    id?: number; episodeId?: number; episodeVersionId?: number; name?: string; environmentSettings?: any; uiSettings?: any;
     narrativeRoles?: NarrativeRoleDto[]; 
   };
   environmentSettings?: any; uiSettings?: any; cinematics?: CinematicDto[]; cinematicsDelta?: CinematicDto[];

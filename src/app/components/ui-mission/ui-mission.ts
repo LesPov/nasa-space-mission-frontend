@@ -1,3 +1,4 @@
+
 import { Component, Input, Output, EventEmitter, OnChanges, inject, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { WorldSettingsService } from '../../core/engine/world/world-settings.service';
@@ -31,11 +32,13 @@ export class UiMission implements OnChanges {
   public ui = computed(() => {
     const s = this.worldSettingsSvc.uiSettings();
     return {
+      missionTitle: s.missionTitle || 'Misión Principal',
+      missionDescription: s.missionDescription || 'Explora y sobrevive.',
       primaryColor: s.primaryColor || '#ef4444',
       bgColor: s.bgColor || '#0f172a',
       bgOpacity: Number.isFinite(Number(s.bgOpacity)) ? Number(s.bgOpacity) : 0.85,
       textColor: s.textColor || '#cbd5e1',
-      loreQuote: s.loreQuote || '"La exploración espacial no es un destino, sino un viaje constante hacia lo desconocido."',
+      loreQuote: s.loreQuote || '"La historia no la escriben los que obedecen, sino los que se atreven a cambiarla."',
       loreAuthor: s.loreAuthor || 'Control de Misión',
       overlayColor: s.overlayColor || '#050508',
       overlayOpacity: Number.isFinite(Number(s.overlayOpacity)) ? Number(s.overlayOpacity) : 0.7,
@@ -47,21 +50,17 @@ export class UiMission implements OnChanges {
     };
   });
 
-  public logicSettings = computed(() => this.worldSettingsSvc.settings().logicSettings || {});
-
-  public recompensasLocales = computed(() => {
-     const val = this.logicSettings().recompensasLocales;
-     if (!val) return [];
-     if (Array.isArray(val)) return val;
-     return val.split('\n').map((s: string) => s.trim()).filter((s: string) => s.length > 0);
+  public objetivos = computed(() => {
+     const s = this.worldSettingsSvc.uiSettings();
+     return Array.isArray(s.objetivos) ? s.objetivos : [];
   });
 
-  public recompensasGlobales = computed(() => {
+  public recompensas = computed(() => {
      const s = this.worldSettingsSvc.uiSettings();
      return Array.isArray(s.recompensas) ? s.recompensas : [];
   });
 
-  public requisitosGlobales = computed(() => {
+  public requisitos = computed(() => {
      const s = this.worldSettingsSvc.uiSettings();
      return Array.isArray(s.requisitos) ? s.requisitos : [];
   });
@@ -70,16 +69,18 @@ export class UiMission implements OnChanges {
     this.procesarEstadoJugador();
   }
 
+  // 🔥 FIX CRÍTICO: La fuente de verdad del Título Global del Episodio inyectado desde EditorOrchestrator
   get episodeTitle(): string {
-    return this.episodio?.title || this.episodio?.episode?.title || 'EPISODIO DESCONOCIDO';
+    return this.episodio?.episode?.title || this.episodio?.title || 'EPISODIO DESCONOCIDO';
   }
 
-  get episodeDescription(): string {
-    return this.episodio?.description || this.episodio?.episode?.description || 'No hay descripción disponible. Explora bajo tu propio riesgo.';
+  // 🔥 FIX CRÍTICO: La fuente de verdad del Nombre de la Plataforma (SceneName)
+  get platformName(): string {
+    return this.episodio?.scene?.name || 'ZONA ACTUAL';
   }
 
   get episodeThumbnail(): string {
-    return this.episodio?.thumbnailUrl || this.episodio?.episode?.thumbnailUrl || '';
+    return this.episodio?.episode?.thumbnailUrl || this.episodio?.thumbnailUrl || '';
   }
 
   procesarEstadoJugador() {

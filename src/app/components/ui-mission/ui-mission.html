@@ -1,3 +1,4 @@
+
 <div class="user-mission-overlay" 
      [class.closing]="cerrando"
      [style.background-color]="hexToRgba(ui().overlayColor, ui().overlayOpacity)"
@@ -6,10 +7,10 @@
   
   <div class="mission-topbar">
     <div class="brand">
-        <h2 [style.color]="ui().primaryColor" style="font-weight: 800; margin: 0; text-transform: uppercase;">
-          {{ episodeTitle }}
+        <p style="color: #94a3b8; font-size: 11px; margin: 0; letter-spacing: 2px;">EPISODIO: {{ episodeTitle }}</p>
+        <h2 [style.color]="ui().primaryColor" style="font-weight: 800; margin: 2px 0 0 0; text-transform: uppercase;">
+          ZONA: {{ platformName }}
         </h2>
-        <p style="color: #94a3b8; font-size: 11px; margin: 0; letter-spacing: 1px;">SISTEMA EN LÍNEA</p>
     </div>
     
     <div class="top-actions">
@@ -34,7 +35,7 @@
         <span [style.color]="ui().primaryColor" style="font-weight: bold;">- {{ ui().loreAuthor }}</span>
       </div>
       
-      <!-- Telemetría Dinámica Visual si existe un Mission Profile activo -->
+      <!-- Telemetría Dinámica Aeroespacial (Fase 2) -->
       <div *ngIf="missionManager.activeProfile()" style="margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 10px;">
          <h4 style="margin: 0 0 5px 0; color: #cbd5e1; font-size: 10px; letter-spacing: 1px;">NAVE: {{ missionManager.activeProfile()?.spacecraftName }}</h4>
          <p style="margin: 0; color: #94a3b8; font-size: 10px;">ESTADO: <strong [style.color]="ui().primaryColor">{{ missionManager.currentStatus() }}</strong></p>
@@ -53,8 +54,8 @@
         
         <div class="card-scroll-area" [style.padding.px]="ui().padding">
           <div class="card-header">
-            <h4 [style.color]="ui().textColor">REPORTE DE MISIÓN</h4>
-            <h2 [style.color]="ui().primaryColor">{{ episodeTitle }}</h2>
+            <h4 [style.color]="ui().textColor">REPORTE DE MISIÓN LOCAL</h4>
+            <h2 [style.color]="ui().primaryColor">{{ ui().missionTitle || 'Misión Principal' }}</h2>
             
             <span *ngIf="!misionIniciada" [style.color]="ui().textColor">INICIANDO SIMULACIÓN NEURAL...</span>
             <span *ngIf="misionIniciada" [style.color]="ui().primaryColor">SIMULACIÓN EN PAUSA</span>
@@ -68,42 +69,39 @@
           </div>
           
           <div class="card-description">
-            <p [style.color]="ui().textColor">{{ episodeDescription }}</p>
+            <p [style.color]="ui().textColor">{{ ui().missionDescription || 'Explora y sobrevive.' }}</p>
           </div>
 
           <div class="card-objectives" [style.border-left-color]="ui().primaryColor" style="background: rgba(0,0,0,0.4);">
             
             <!-- REQUISITOS (PERMISOS) -->
-            <ng-container *ngIf="requisitosGlobales().length > 0">
+            <ng-container *ngIf="requisitos().length > 0">
               <h4 style="color: #f87171;">PERMISOS / REQUISITOS</h4>
               <ul>
-                <li *ngFor="let req of requisitosGlobales()" [style.color]="ui().textColor">
+                <li *ngFor="let req of requisitos()" [style.color]="ui().textColor">
                   <span class="dot" style="background: #f87171;"></span> {{ req }}
                 </li>
               </ul>
             </ng-container>
 
             <!-- OBJETIVOS DINÁMICOS -->
-            <h4 [style.color]="ui().primaryColor" [style.margin-top.px]="requisitosGlobales().length > 0 ? 15 : 0">OBJETIVOS DE LA MISIÓN</h4>
-            <ul>
-              <li *ngFor="let obj of missionManager.activeObjectives()" [style.color]="obj.completed ? '#64748b' : ui().textColor" style="display: flex; align-items: flex-start; gap: 8px;">
-                <span style="font-size: 14px; line-height: 1; flex-shrink: 0;" [style.color]="obj.completed ? '#22c55e' : ui().primaryColor">
-                   {{ obj.completed ? '☑' : '☐' }}
+            <h4 [style.color]="ui().primaryColor" [style.margin-top.px]="requisitos().length > 0 ? 15 : 0">OBJETIVOS DE LA ZONA</h4>
+            <ul *ngIf="objetivos().length > 0">
+              <li *ngFor="let obj of objetivos()" [style.color]="ui().textColor" style="display: flex; align-items: flex-start; gap: 8px;">
+                <span style="font-size: 14px; line-height: 1; flex-shrink: 0;" [style.color]="ui().primaryColor">
+                   ☐
                 </span>
-                <span [style.text-decoration]="obj.completed ? 'line-through' : 'none'">{{ obj.text }}</span>
-                <span *ngIf="obj.isLocal" style="font-size: 9px; color: #60a5fa; margin-left: auto;">(Zona)</span>
+                <span>{{ obj }}</span>
               </li>
             </ul>
+            <p *ngIf="objetivos().length === 0" style="color: #64748b; font-size: 11px; font-style: italic; margin: 0;">Ningún objetivo especificado en esta área.</p>
 
             <!-- RECOMPENSAS -->
-            <ng-container *ngIf="recompensasGlobales().length > 0 || recompensasLocales().length > 0">
+            <ng-container *ngIf="recompensas().length > 0">
               <h4 [style.color]="ui().primaryColor" style="margin-top: 15px;">RECOMPENSAS</h4>
               <ul>
-                <li *ngFor="let rec of recompensasGlobales()" [style.color]="ui().textColor">
-                  <span class="dot" [style.background]="ui().primaryColor"></span> {{ rec }} <span style="font-size:9px; color:#888;">(Global)</span>
-                </li>
-                <li *ngFor="let rec of recompensasLocales()" [style.color]="ui().textColor">
-                  <span class="dot" style="background: #60a5fa;"></span> {{ rec }} <span style="font-size:9px; color:#888;">(Zona)</span>
+                <li *ngFor="let rec of recompensas()" [style.color]="ui().textColor">
+                  <span class="dot" [style.background]="ui().primaryColor"></span> {{ rec }}
                 </li>
               </ul>
             </ng-container>

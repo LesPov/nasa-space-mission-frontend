@@ -1,3 +1,4 @@
+
 import { Injectable } from '@angular/core';
 import { Color3, Texture, RawTexture, Scene, AbstractMesh } from '@babylonjs/core';
 
@@ -48,18 +49,18 @@ export class CoreSceneMaterialService {
       ambientColorHex?: string, 
       colorHex?: string, 
       esEmisivo: boolean = false, 
-      brilloIntensidad: number = 1.0
+      brilloIntensidad: number = 1.0,
+      texturePath?: string
   ): Promise<void> {
     if (!material) return;
     
     if (material.getClassName() === 'MultiMaterial' && material.subMaterials) {
       for (const subMat of material.subMaterials) {
-        await this.ajustarMaterialGLB(subMat, isBW, scene, ambientColorHex, colorHex, esEmisivo, brilloIntensidad);
+        await this.ajustarMaterialGLB(subMat, isBW, scene, ambientColorHex, colorHex, esEmisivo, brilloIntensidad, texturePath);
       }
       return;
     }
     
-    // Límite arquitectónico seguro de luces
     const SAFE_LIGHT_BUDGET = 6;
     if (material.maxSimultaneousLights !== SAFE_LIGHT_BUDGET) {
         material.maxSimultaneousLights = SAFE_LIGHT_BUDGET;
@@ -85,7 +86,6 @@ export class CoreSceneMaterialService {
          material.metadata.originalAlbedoColor = material.albedoColor ? material.albedoColor.clone() : new Color3(0.8, 0.8, 0.8);
       }
 
-      // 🎨 FIX: Tintado Seguro con PBR
       if (isCustomTint) {
           material.albedoColor = c3Tint;
       } else {
@@ -98,17 +98,24 @@ export class CoreSceneMaterialService {
           material.emissiveColor = new Color3(0,0,0);
       }
 
-      if (isBW && scene) {
-         if (material.metadata.originalAlbedoTexture) {
-             const bwTex = await this.getOrCreateBwTexture(material.metadata.originalAlbedoTexture, scene);
-             if (material.albedoTexture !== bwTex) material.albedoTexture = bwTex;
-         }
-         if (material.albedoColor.r !== 0.8 && !isCustomTint) material.albedoColor.copyFromFloats(0.8, 0.8, 0.8);
+      if (texturePath && scene) {
+          let tex: any = new Texture('http://localhost:4000' + texturePath, scene);
+          if (isBW) tex = await this.getOrCreateBwTexture(tex, scene);
+          material.albedoTexture = tex;
       } else {
-         if (material.albedoTexture !== material.metadata.originalAlbedoTexture) {
-             material.albedoTexture = material.metadata.originalAlbedoTexture;
-         }
+          if (isBW && scene) {
+             if (material.metadata.originalAlbedoTexture) {
+                 const bwTex = await this.getOrCreateBwTexture(material.metadata.originalAlbedoTexture, scene);
+                 if (material.albedoTexture !== bwTex) material.albedoTexture = bwTex;
+             }
+             if (material.albedoColor.r !== 0.8 && !isCustomTint) material.albedoColor.copyFromFloats(0.8, 0.8, 0.8);
+          } else {
+             if (material.albedoTexture !== material.metadata.originalAlbedoTexture) {
+                 material.albedoTexture = material.metadata.originalAlbedoTexture;
+             }
+          }
       }
+
     } else if (material.getClassName().includes('Standard')) {
       material.ambientColor = c3Amb;
       
@@ -118,7 +125,6 @@ export class CoreSceneMaterialService {
          material.metadata.originalDiffuseColor = material.diffuseColor ? material.diffuseColor.clone() : new Color3(0.8, 0.8, 0.8);
       }
 
-      // 🎨 FIX: Tintado Seguro con Standard
       if (isCustomTint) {
           material.diffuseColor = c3Tint;
       } else {
@@ -131,16 +137,22 @@ export class CoreSceneMaterialService {
           material.emissiveColor = new Color3(0,0,0);
       }
 
-      if (isBW && scene) {
-         if (material.metadata.originalDiffuseTexture) {
-             const bwTex = await this.getOrCreateBwTexture(material.metadata.originalDiffuseTexture, scene);
-             if (material.diffuseTexture !== bwTex) material.diffuseTexture = bwTex;
-         }
-         if (material.diffuseColor.r !== 0.8 && !isCustomTint) material.diffuseColor.copyFromFloats(0.8, 0.8, 0.8);
+      if (texturePath && scene) {
+          let tex: any = new Texture('http://localhost:4000' + texturePath, scene);
+          if (isBW) tex = await this.getOrCreateBwTexture(tex, scene);
+          material.diffuseTexture = tex;
       } else {
-         if (material.diffuseTexture !== material.metadata.originalDiffuseTexture) {
-             material.diffuseTexture = material.metadata.originalDiffuseTexture;
-         }
+          if (isBW && scene) {
+             if (material.metadata.originalDiffuseTexture) {
+                 const bwTex = await this.getOrCreateBwTexture(material.metadata.originalDiffuseTexture, scene);
+                 if (material.diffuseTexture !== bwTex) material.diffuseTexture = bwTex;
+             }
+             if (material.diffuseColor.r !== 0.8 && !isCustomTint) material.diffuseColor.copyFromFloats(0.8, 0.8, 0.8);
+          } else {
+             if (material.diffuseTexture !== material.metadata.originalDiffuseTexture) {
+                 material.diffuseTexture = material.metadata.originalDiffuseTexture;
+             }
+          }
       }
     }
   }

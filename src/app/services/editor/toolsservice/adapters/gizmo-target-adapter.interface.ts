@@ -6,7 +6,7 @@ import { EditorStateService } from '../../editor-state.service';
 import { ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
 
 export interface IGizmoTargetAdapter {
-  supports(subSelected: string | null, entity: GameEntity | null): boolean;
+  supports(subSelected: string | null, entity: GameEntity | null, mesh?: AbstractMesh | null): boolean;
   
   getAttachTarget(debugSvc: ToolsDebugService, pivotNode: AbstractMesh | null, mesh: AbstractMesh | null, entity: GameEntity | null): AbstractMesh | null;
   

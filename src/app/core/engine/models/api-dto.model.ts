@@ -1,4 +1,3 @@
-
 import { VisualMode } from '../world/world-settings.model';
 import { PlayerRuntimeConfig } from './player-config.model';
 import { CinematicCameraDefinition } from './cinematic-camera.model';
@@ -20,6 +19,7 @@ export interface AutoAnimDto { enabled: boolean; type: string; axis: string; amo
 export interface GameConditionDto { type: string; key: string; value?: string | number | boolean; scope?: string; }
 export interface GameStateMutationDto { type: string; key: string; value?: string | number | boolean; scope?: string; }
 
+// 🔥 RESTAURADO: Modelo vital para la carga de roles de episodios
 export interface NarrativeRoleDto {
   id?: number;
   episodeId?: number;
@@ -57,6 +57,7 @@ export interface SceneObjectPropertiesDto {
   audioLoopNorm?: boolean; audioVolumeNorm?: number; audioMaxDistNorm?: number; audioFadeInNorm?: number;
   audioProximityNorm?: boolean; audioSpatialNorm?: boolean;
   prefabHierarchy?: SceneObjectDto[]; 
+  partOverrides?: Record<string, any>; // 🔥 Agregado soporte de overrides de partes internas
 }
 
 export interface SceneObjectDto {
@@ -70,8 +71,6 @@ export interface TriggerDto extends SceneObjectDto {
 
 export interface CinematicDto { id: string; uid?: string; name: string; durationMs: number; tracks: any[]; }
 
-// 🔥 FIX ARQUITECTÓNICO: Limpieza de la duplicación histórica. 
-// Las lógicas de misión, objetivos y recompensas locales han sido eliminadas para evitar colisiones.
 export interface LogicSettingsDto {
   initialVariables?: { key: string, value: string | number | boolean }[];
 }

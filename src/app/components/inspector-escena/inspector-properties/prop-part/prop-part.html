@@ -1,0 +1,79 @@
+
+<div class="accordion-section expanded">
+  <div class="accordion-header" style="cursor: default;">
+    <h4><span>🧩</span> Identificación de Parte</h4>
+  </div>
+  <div class="accordion-content">
+    <div class="field wide">
+      <label>Nombre Original del Nodo:</label>
+      <input type="text" [value]="objeto.name" readonly style="opacity: 0.7;" />
+    </div>
+  </div>
+</div>
+
+<div class="accordion-section expanded">
+  <div class="accordion-header" style="cursor: default;">
+    <h4><span>📍</span> Transformación Local</h4>
+    <button class="btn-ghost small" (click)="restaurarTransformacion()">↺ Restaurar</button>
+  </div>
+  <div class="accordion-content">
+    <div class="grid-3">
+      <div class="field"><label>Pos X</label><input type="number" step="0.01" [(ngModel)]="localPosX" (ngModelChange)="aplicarTransformacion()" /></div>
+      <div class="field"><label>Pos Y</label><input type="number" step="0.01" [(ngModel)]="localPosY" (ngModelChange)="aplicarTransformacion()" /></div>
+      <div class="field"><label>Pos Z</label><input type="number" step="0.01" [(ngModel)]="localPosZ" (ngModelChange)="aplicarTransformacion()" /></div>
+
+      <div class="field"><label style="color: #60a5fa;">Rot X°</label><input type="number" step="1" [(ngModel)]="localRotX" (ngModelChange)="aplicarTransformacion()" /></div>
+      <div class="field"><label style="color: #60a5fa;">Rot Y°</label><input type="number" step="1" [(ngModel)]="localRotY" (ngModelChange)="aplicarTransformacion()" /></div>
+      <div class="field"><label style="color: #60a5fa;">Rot Z°</label><input type="number" step="1" [(ngModel)]="localRotZ" (ngModelChange)="aplicarTransformacion()" /></div>
+
+      <div class="field"><label style="color: #facc15;">Escala X</label><input type="number" step="0.1" [(ngModel)]="localEscX" (ngModelChange)="aplicarTransformacion()" /></div>
+      <div class="field"><label style="color: #facc15;">Escala Y</label><input type="number" step="0.1" [(ngModel)]="localEscY" (ngModelChange)="aplicarTransformacion()" /></div>
+      <div class="field"><label style="color: #facc15;">Escala Z</label><input type="number" step="0.1" [(ngModel)]="localEscZ" (ngModelChange)="aplicarTransformacion()" /></div>
+    </div>
+  </div>
+</div>
+
+<div class="accordion-section expanded">
+  <div class="accordion-header" style="cursor: default;">
+    <h4><span>🎨</span> Material y Textura (Local)</h4>
+    <button class="btn-ghost small" (click)="restaurarMaterial()">↺ Restaurar</button>
+  </div>
+  <div class="accordion-content">
+    <div class="grid-2">
+      <div class="field">
+        <label>Color Base</label>
+        <div class="color-box-modern">
+          <input type="color" [(ngModel)]="objColor" (ngModelChange)="aplicarMaterial()" class="color-swatch-input">
+          <span class="hex-text">{{ objColor.toUpperCase() }}</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Color (Modo B&N)</label>
+        <div class="color-box-modern">
+          <input type="color" [(ngModel)]="objColorBW" (ngModelChange)="aplicarMaterial()" class="color-swatch-input">
+          <span class="hex-text">{{ objColorBW.toUpperCase() }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-top: 15px;">
+      <div class="field wide">
+        <label>Intensidad Emisiva / Brillo (x{{ objBrilloIntensidad | number:'1.1-1' }})</label>
+        <input type="number" step="0.1" min="0" max="10" [(ngModel)]="objBrilloIntensidad" (ngModelChange)="aplicarMaterial()" />
+      </div>
+    </div>
+
+    <div class="checkbox-modern" style="margin-top: 10px;">
+      <input type="checkbox" id="chkEmisivoPart" [(ngModel)]="objEsEmisivo" (ngModelChange)="aplicarMaterial()">
+      <label for="chkEmisivoPart" style="color: #facc15;">🌟 Emitir Luz Autónoma (Brillar)</label>
+    </div>
+
+    <div class="field wide" style="margin-top: 15px; border-top: 1px dashed #334155; padding-top: 15px;">
+      <label>Reemplazar Textura (Assets)</label>
+      <select [(ngModel)]="objTexturePath" (ngModelChange)="aplicarMaterial()" style="margin-top: 5px;">
+        <option value="">-- Textura original del modelo --</option>
+        <option *ngFor="let asset of listaAssets" [value]="asset.path">🖼️ {{ asset.name }}</option>
+      </select>
+    </div>
+  </div>
+</div>

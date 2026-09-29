@@ -15,6 +15,7 @@ import { EditorCinematicService } from '../../../services/editor/editor-cinemati
 import { EditorCinematicToolsService } from '../../../services/editor-cinematic-tools.service';
 import { EditorCinematicProxyService } from '../../../services/editor-cinematic-proxy.service';
 import { CinematicPlaybackManagerService } from '../../../core/engine/runtime/cinematics/cinematic-playback-manager.service';
+import { GameEntity } from '../../../core/engine/entities/game.entity';
 
 import { PropTransform } from './prop-transform/prop-transform';
 import { PropTrigger } from './prop-trigger/prop-trigger';
@@ -23,24 +24,25 @@ import { PropSequences } from './prop-sequences/prop-sequences';
 import { PropAnimation } from './prop-animation/prop-animation';
 import { PropPhysics } from './prop-physics/prop-physics';
 import { PropWorld } from './prop-world/prop-world';
- import { PropLight } from './prop-light/prop-light'; 
+import { PropLight } from './prop-light/prop-light'; 
 import { PropBubble } from './prop-bubble/prop-bubble';
 import { PropVideo } from './prop-video/prop-video';
 import { PropMission } from './prop-mission/prop-mission';
 import { CinematicInspector } from '../../global-timeline/tabs/timeline-director-tab/cinematic-inspector/cinematic-inspector/cinematic-inspector';
 import { PropPlatform } from './prop-platform/prop-platform';
-    
+import { PropPart } from './prop-part/prop-part';
+
 @Component({
   selector: 'app-inspector-properties',
   standalone: true,
   imports: [
     CommonModule, PropTransform, PropTrigger, PropPlayer, PropSequences, 
-    PropAnimation, PropPhysics, PropWorld, PropPlatform, PropLight, PropBubble, PropVideo, PropMission, CinematicInspector
+    PropAnimation, PropPhysics, PropWorld, PropPlatform, PropLight, PropBubble, PropVideo, PropMission, CinematicInspector, PropPart
   ],
   templateUrl: './inspector-properties.html',
   styleUrl: './inspector-properties.css'
 })
-export class InspectorProperties implements OnInit, OnDestroy {
+export class InspectorProperties implements OnInit, OnDestroy { 
   public editorSvc = EditorMapaService;
   public stateSvc = inject(EditorStateService);
   private sceneNodesSvc = inject(SceneNodesService);
@@ -71,6 +73,9 @@ export class InspectorProperties implements OnInit, OnDestroy {
   public esLuzConModelo = false;
   public esBurbuja = false;
   public esVideo = false;
+  
+  public esParte = false;
+  public rootEntityForPart: GameEntity | null = null;
 
   public sceneEntities = computed(() => this.entityManager.getAllEntities().map(e => ({uid: e.uid, name: e.name})).sort((a,b)=>a.name.localeCompare(b.name)));
 
@@ -79,32 +84,46 @@ export class InspectorProperties implements OnInit, OnDestroy {
       const obj = this.stateSvc.objetoSeleccionado() as AbstractMesh;
       this.objetoActual = obj || null;
       if (obj) {
-        const entity = this.entityManager.getEntityByMesh(obj);
-        const type = entity?.type || 'unknown';
+        const rootNode = this.stateSvc.encontrarRaiz(obj);
+        this.esParte = rootNode !== null && rootNode !== obj;
 
-        this.esTrigger = type === 'trigger' || type === 'trigger_compuesto';
-        this.esLuz = type.startsWith('light_');
-        this.esLuzConModelo = this.esLuz && !!entity?.visual?.assetId;
-        this.esBurbuja = type === 'bubble';
-        this.esVideo = type === 'video_plane';
-        this.esPersonaje = !!entity?.characterConfig;
-        
-        if (this.esPersonaje) this.familiaResumen = 'Personaje / Player';
-        else if (this.esTrigger) this.familiaResumen = 'Trigger de Evento';
-        else if (this.esLuzConModelo) this.familiaResumen = 'Luz con Modelo 3D';
-        else if (this.esLuz) this.familiaResumen = 'Fuente de Luz';
-        else if (this.esBurbuja) this.familiaResumen = 'Burbuja (TWD)';
-        else if (this.esVideo) this.familiaResumen = 'Pantalla TV/Video';
-        else this.familiaResumen = 'Objeto normal';
-        
-        if (this.pestanaActiva === 'player' && (!this.esPersonaje || this.esTrigger)) this.cambiarPestana('transform');
-        if (this.pestanaActiva === 'animation' && (!this.esPersonaje && !this.esLuzConModelo)) this.cambiarPestana('transform');
-        if (this.pestanaActiva === 'sequences' && !this.esPersonaje && !this.esTrigger && !this.esLuz && !this.esBurbuja) this.cambiarPestana('transform');
-        if (this.pestanaActiva === 'light' && !this.esLuz) this.cambiarPestana('transform');
-        if (this.pestanaActiva === 'physics' && (this.esLuz && !this.esLuzConModelo || this.esBurbuja)) this.cambiarPestana('transform');
-        if (this.pestanaActiva === 'bubble' && !this.esBurbuja) this.cambiarPestana('transform');
-        if (this.pestanaActiva === 'video' && !this.esVideo) this.cambiarPestana('transform');
+        if (this.esParte) {
+           this.familiaResumen = 'Parte Interna 3D';
+           this.rootEntityForPart = this.entityManager.getEntityByMesh(rootNode as AbstractMesh) || null;
+           
+           if (this.pestanaActiva !== 'part') this.cambiarPestana('part');
+        } else {
+           this.rootEntityForPart = null;
+           const entity = this.entityManager.getEntityByMesh(obj);
+           const type = entity?.type || 'unknown';
+
+           this.esTrigger = type === 'trigger' || type === 'trigger_compuesto';
+           this.esLuz = type.startsWith('light_');
+           this.esLuzConModelo = this.esLuz && !!entity?.visual?.assetId;
+           this.esBurbuja = type === 'bubble';
+           this.esVideo = type === 'video_plane';
+           this.esPersonaje = !!entity?.characterConfig;
+           
+           if (this.esPersonaje) this.familiaResumen = 'Personaje / Player';
+           else if (this.esTrigger) this.familiaResumen = 'Trigger de Evento';
+           else if (this.esLuzConModelo) this.familiaResumen = 'Luz con Modelo 3D';
+           else if (this.esLuz) this.familiaResumen = 'Fuente de Luz';
+           else if (this.esBurbuja) this.familiaResumen = 'Burbuja (TWD)';
+           else if (this.esVideo) this.familiaResumen = 'Pantalla TV/Video';
+           else this.familiaResumen = 'Objeto normal';
+           
+           if (this.pestanaActiva === 'part') this.cambiarPestana('transform');
+           if (this.pestanaActiva === 'player' && (!this.esPersonaje || this.esTrigger)) this.cambiarPestana('transform');
+           if (this.pestanaActiva === 'animation' && (!this.esPersonaje && !this.esLuzConModelo)) this.cambiarPestana('transform');
+           if (this.pestanaActiva === 'sequences' && !this.esPersonaje && !this.esTrigger && !this.esLuz && !this.esBurbuja) this.cambiarPestana('transform');
+           if (this.pestanaActiva === 'light' && !this.esLuz) this.cambiarPestana('transform');
+           if (this.pestanaActiva === 'physics' && (this.esLuz && !this.esLuzConModelo || this.esBurbuja)) this.cambiarPestana('transform');
+           if (this.pestanaActiva === 'bubble' && !this.esBurbuja) this.cambiarPestana('transform');
+           if (this.pestanaActiva === 'video' && !this.esVideo) this.cambiarPestana('transform');
+        }
       } else {
+        this.esParte = false;
+        this.rootEntityForPart = null;
         this.esTrigger = false;
         this.esPersonaje = false;
         this.esLuz = false;
@@ -113,7 +132,6 @@ export class InspectorProperties implements OnInit, OnDestroy {
         this.esVideo = false;
         this.familiaResumen = 'Sin selección';
         
-        // 🔥 FIX: Respetar si la pestaña actual es Platform (y no forzar World)
         if (this.pestanaActiva !== 'world' && this.pestanaActiva !== 'platform' && this.pestanaActiva !== 'mission' && this.pestanaActiva !== 'cinematic') {
           if (this.stateSvc.activeBottomTab() === 'director') {
               this.cambiarPestana('cinematic');
@@ -162,12 +180,15 @@ export class InspectorProperties implements OnInit, OnDestroy {
   guardarComoPrefab() {
     if (!this.objetoActual) return;
     
-    const nombreDefecto = this.objetoActual.name + '_Prefab';
+    const rootMesh = this.stateSvc.encontrarRaiz(this.objetoActual) as AbstractMesh;
+    const meshTarget = rootMesh || this.objetoActual;
+    
+    const nombreDefecto = meshTarget.name + '_Prefab';
     const nombre = prompt('Ingresa un nombre para el nuevo Prefab:', nombreDefecto);
     
     if (!nombre || nombre.trim() === '') return;
     
-    this.prefabManager.createPrefabFromMesh(this.objetoActual, nombre).then(() => {
+    this.prefabManager.createPrefabFromMesh(meshTarget, nombre).then(() => {
         alert('📦 Prefab guardado exitosamente.\nBúscalo en la pestaña "Prefabs" de la Línea de Tiempo.');
     }).catch(err => {
         alert('Error al crear Prefab: ' + err);

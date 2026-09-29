@@ -8,6 +8,21 @@ import {
   AnimationNamesComponent, AutoAnimComponent, InitialHeadLocalComponent 
 } from './player-sub-components';
 
+export interface PartOverride {
+  position?: { x: number, y: number, z: number };
+  rotation?: { x: number, y: number, z: number };
+  scale?: { x: number, y: number, z: number };
+  color?: string;
+  colorBW?: string;
+  esEmisivo?: boolean;
+  brilloIntensidad?: number;
+  texturePath?: string;
+}
+
+export class PartOverridesComponent {
+  constructor(public overrides: Record<string, PartOverride> = {}) {}
+}
+
 export class TransformComponent {
   constructor(
     public position = { x: 0, y: 0, z: 0 }, 
@@ -153,6 +168,7 @@ export class GameEntity {
 
     this.addComponent('transform', new TransformComponent());
     this.addComponent('visual', new VisualComponent());
+    this.addComponent('partOverrides', new PartOverridesComponent()); // 🔥 INYECCIÓN DE OVERRIDES
     
     const isSphere = type === 'sphere' || type === 'bubble';
     this.addComponent('physics', new PhysicsComponent(isSphere ? 'sphere' : 'box'));
@@ -180,11 +196,6 @@ export class GameEntity {
     }
   }
 
-  /**
-   * FASE A - NORMALIZACIÓN VISUAL CENTER
-   * Obtiene el centro visual local (Camera Focus Point) sin instanciar nuevos objetos.
-   * Derivado dinámicamente de las dimensiones físicas reales (Capsule/Box).
-   */
   public getVisualCenterLocalToRef(result: Vector3): void {
     const col = this.collider;
     const isCharacter = !!this.characterConfig;
@@ -194,20 +205,12 @@ export class GameEntity {
     let cz = col?.offsetZ || 0;
 
     if (isCharacter) {
-        // 'offsetY' es el centro de gravedad (cintura).
-        // 'sizeY' es la mitad de la altura.
-        // Sumamos la mitad del segmento superior para llegar al pecho/cuello.
         cy += (col?.sizeY || 0.9) * 0.5;
     }
 
     result.set(cx, cy, cz);
   }
 
-  /**
-   * FASE A - NORMALIZACIÓN VISUAL CENTER
-   * Obtiene el centro visual en coordenadas absolutas del mundo (World Space).
-   * O(1) Allocation-Free (Apto para Update Loops).
-   */
   public getVisualCenterAbsoluteToRef(result: Vector3): void {
     this.getVisualCenterLocalToRef(this._tempVisualCenterLocal);
     
@@ -215,7 +218,6 @@ export class GameEntity {
         this.view.computeWorldMatrix(true);
         Vector3.TransformCoordinatesToRef(this._tempVisualCenterLocal, this.view.getWorldMatrix(), result);
     } else {
-        // Fallback matemático puro si la malla no está renderizada
         result.set(
             this.transform.position.x + this._tempVisualCenterLocal.x,
             this.transform.position.y + this._tempVisualCenterLocal.y,
@@ -270,6 +272,9 @@ export class GameEntity {
   get triggerRuntime(): TriggerRuntimeComponent | undefined { return this.getComponent<TriggerRuntimeComponent>('triggerRuntime'); }
   get playerRuntime(): PlayerRuntimeComponent { return this.getComponent<PlayerRuntimeComponent>('playerRuntime')!; }
   get interactionRuntime(): InteractionRuntimeComponent { return this.getComponent<InteractionRuntimeComponent>('interactionRuntime')!; }
+
+  get partOverrides(): PartOverridesComponent | undefined { return this.getComponent<PartOverridesComponent>('partOverrides'); }
+  set partOverrides(v) { if(v) this.addComponent('partOverrides', v); }
 
   get initialHeadLocal() { return this.getComponent<InitialHeadLocalComponent>('initialHeadLocal')?.position; }
   set initialHeadLocal(v) { if(v) this.addComponent('initialHeadLocal', new InitialHeadLocalComponent(v)); else this.removeComponent('initialHeadLocal'); }

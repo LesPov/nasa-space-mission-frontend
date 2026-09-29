@@ -124,11 +124,10 @@ export class ToolsGizmoService {
       const entity = mesh ? this.entityManager.getEntityByMesh(mesh) || null : null;
 
       if (mesh && this.centerDragMesh && entity) {
-        const adapter = this.registry.getAdapter(subSelected, entity);
+        const adapter = this.registry.getAdapter(subSelected, entity, mesh);
         if (adapter) {
             adapter.applyDragDelta(event.delta, this.debugSvc, mesh, entity);
             
-            // 🔥 Actualizar el cuadrado blanco flotante con el API renovada
             const centerPos = adapter.getCenterPosition(this.debugSvc, mesh, entity);
             if (centerPos) {
                this.centerDragMesh.position.copyFrom(centerPos);
@@ -166,7 +165,7 @@ export class ToolsGizmoService {
     const entity = mesh ? this.entityManager.getEntityByMesh(mesh) || null : null;
     if (!mesh || !this.gizmoPivotNode || !entity) return;
 
-    const adapter = this.registry.getAdapter(subSelected, entity);
+    const adapter = this.registry.getAdapter(subSelected, entity, mesh);
     if (adapter) {
         adapter.onGizmoDragged(mesh, this.gizmoPivotNode, entity);
         
@@ -301,7 +300,7 @@ export class ToolsGizmoService {
     const entity = selected ? this.entityManager.getEntityByMesh(selected) || null : null;
     
     if (selected && entity) {
-      const adapter = this.registry.getAdapter(subSelected, entity);
+      const adapter = this.registry.getAdapter(subSelected, entity, selected);
       if (adapter) {
         targetMesh = adapter.getAttachTarget(this.debugSvc, this.gizmoPivotNode, selected, entity);
       }
@@ -339,7 +338,7 @@ export class ToolsGizmoService {
 
       if (obj && !this.isDraggingGizmo && !Tags.MatchesQuery(obj, "cinematic_proxy")) {
         const entity = this.entityManager.getEntityByMesh(obj) || null;
-        const adapter = entity ? this.registry.getAdapter(subSelected, entity) : null;
+        const adapter = entity ? this.registry.getAdapter(subSelected, entity, obj) : null;
         if (adapter) {
             const centerPos = adapter.getCenterPosition(this.debugSvc, obj, entity);
             if (centerPos) {

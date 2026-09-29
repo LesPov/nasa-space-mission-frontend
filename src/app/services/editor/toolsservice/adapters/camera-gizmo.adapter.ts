@@ -7,7 +7,7 @@ import { EditorStateService } from '../../editor-state.service';
 import { ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
 
 export class CameraGizmoAdapter implements IGizmoTargetAdapter {
-  supports(subSelected: string | null, entity: GameEntity | null): boolean {
+  supports(subSelected: string | null, entity: GameEntity | null, mesh?: AbstractMesh | null): boolean {
     return subSelected === 'camera';
   }
 

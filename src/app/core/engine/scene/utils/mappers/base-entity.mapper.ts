@@ -1,5 +1,6 @@
+
 import { inject } from '@angular/core';
-import { GameEntity } from '../../../entities/game.entity';
+import { GameEntity, PartOverridesComponent } from '../../../entities/game.entity';
 import { SceneObjectDto, TriggerDto, SceneObjectPropertiesDto } from '../../../models/api-dto.model';
 import { CoreSceneUtilsService } from '../core-scene-utils.service';
 import { EntityMapperStrategy } from './entity-mapper-strategy.interface';
@@ -39,6 +40,8 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
     entity.visual.assetId = obj.assetId || null;
     
     entity.visual.internalScale = props.internalScale;
+    
+    entity.partOverrides = new PartOverridesComponent(props.partOverrides || {}); // 🔥 Carga de DB a Memoria
 
     entity.interaction.mensaje = props.mensaje || '';
     entity.interaction.interactDistanceFPS = this.utilsSvc.normalizarNumero(props.interactDistanceFPS, 3.0);
@@ -88,6 +91,7 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
       mostrarBorde: entity.visual.mostrarBorde,
       brilloIntensidad: entity.visual.brilloIntensidad,
       internalScale: entity.visual.internalScale,
+      partOverrides: entity.partOverrides?.overrides, // 🔥 Extracción a DTO para guardado BD
       mensaje: entity.interaction.mensaje,
       interactDistanceFPS: entity.interaction.interactDistanceFPS,
       interactDistanceTPS: entity.interaction.interactDistanceTPS,
@@ -108,7 +112,6 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
   extractToDtos(entity: GameEntity): any[] {
     const props = this.extractEntityProperties(entity);
 
-    // 🔥 Conversión en el Borde (Adapter Pattern para Guardado Serializado)
     let rot = entity.transform.rotation;
     if (entity.transform.rotationQuaternion) {
         const q = new Quaternion(

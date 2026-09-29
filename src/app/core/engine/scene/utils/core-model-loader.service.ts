@@ -1,5 +1,6 @@
+
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3, Tags } from '@babylonjs/core';
+import { AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3, Tags, Quaternion } from '@babylonjs/core';
 import '@babylonjs/loaders';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { CoreSceneMaterialService } from '../utils/core-scene-material.service';
@@ -159,9 +160,10 @@ export class CoreModelLoaderService {
     const isEditor = this.gameContext.mode() === GameMode.EDITOR || this.gameContext.mode() === GameMode.EDITING_IN_GAME || this.gameContext.mode() === GameMode.TEST_LIVE;
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
 
-    // 🔥 FIX: Pasamos el activeColorHex (tinte) que el usuario haya seleccionado o tenga guardado
     const activeAmbient = isBW ? entity.visual.ambientColorBW : entity.visual.ambientColor;
-    const activeColor = isBW ? entity.visual.colorBW : entity.visual.color;
+    const activeColorHex = isBW ? entity.visual.colorBW : entity.visual.color;
+
+    const partOverrides = entity.partOverrides?.overrides || {};
 
     for (const m of subMeshes) {
       const nameL = m.name.toLowerCase();
@@ -179,19 +181,51 @@ export class CoreModelLoaderService {
       m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
       m.receiveShadows = true;
       
-      if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled) {
+      if (!m.metadata) m.metadata = {};
+      if (!m.metadata.originalTransform) {
+          m.metadata.originalTransform = {
+              position: m.position.clone(),
+              rotation: m.rotation.clone(),
+              rotationQuaternion: m.rotationQuaternion ? m.rotationQuaternion.clone() : null,
+              scaling: m.scaling.clone()
+          };
+      }
+
+      const override = partOverrides[m.name];
+      if (override) {
+         if (override.position) m.position.set(override.position.x, override.position.y, override.position.z);
+         if (override.rotation) {
+             if (m.rotationQuaternion) m.rotationQuaternion = Quaternion.FromEulerAngles(override.rotation.x, override.rotation.y, override.rotation.z);
+             else m.rotation.set(override.rotation.x, override.rotation.y, override.rotation.z);
+         }
+         if (override.scale) m.scaling.set(override.scale.x, override.scale.y, override.scale.z);
+      }
+      
+      if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled && !override) {
           m.computeWorldMatrix(true);
           m.freezeWorldMatrix();
       }
       
       if (m.material) {
           this.materialSvc.asegurarMaterialUnico(m, entity.uid);
-          // 🔥 AQUÍ: Ajustamos con los parámetros extendidos
-          await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbient, activeColor, entity.visual.esEmisivo, entity.visual.brilloIntensidad);
+          
+          if (override) {
+             const activeColorOverride = isBW ? (override.colorBW || override.color) : override.color;
+             await this.materialSvc.ajustarMaterialGLB(
+                 m.material, isBW, scene, 
+                 activeAmbient, 
+                 activeColorOverride || activeColorHex, 
+                 override.esEmisivo ?? entity.visual.esEmisivo, 
+                 override.brilloIntensidad ?? entity.visual.brilloIntensidad,
+                 override.texturePath
+             );
+          } else {
+             await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbient, activeColorHex, entity.visual.esEmisivo, entity.visual.brilloIntensidad);
+          }
       }
     }
 
-    if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled) {
+    if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled && Object.keys(partOverrides).length === 0) {
         rootNode.computeWorldMatrix(true);
         rootNode.freezeWorldMatrix();
     }
@@ -249,6 +283,7 @@ export class CoreModelLoaderService {
             if (m.material && m.material instanceof StandardMaterial) {
                 m.material.alpha = isEditor ? 0.4 : 0.0;
                 m.material.wireframe = false;
+                m.material.emissiveColor = new Color3(0, 1, 0);
             }
         });
     }

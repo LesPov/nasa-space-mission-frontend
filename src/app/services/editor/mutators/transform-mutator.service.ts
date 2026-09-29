@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -167,7 +168,6 @@ export class TransformMutatorService {
     const activeColorHex = isBW ? config.colorBW : config.color;
     const activeAmbientHex = isBW ? config.ambientColorBW : config.ambientColor;
 
-    // 🔥 FIX: Extender la propagación jerárquica a cualquier entidad que provenga de un modelo 3D
     const isModelBased = entity.type === 'model' || (entity.type.startsWith('light_') && (!!entity.visual.assetId || !!entity.visual.path));
 
     if (isModelBased) {
@@ -175,13 +175,26 @@ export class TransformMutatorService {
         objeto.getChildMeshes().forEach((m: AbstractMesh) => {
             if (m.material) {
                 this.materialSvc.asegurarMaterialUnico(m, entity.uid);
-                // Llamamos a ajustarMaterialGLB pasando todos los nuevos parámetros para tintar las mallas hijas
-                this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbientHex, activeColorHex, config.esEmisivo, config.brilloIntensidad);
+                
+                // 🔥 PROTECCIÓN DE PARTS: Aplicamos el color base PERO respetamos el override si existe
+                const override = entity.partOverrides?.overrides[m.name];
+                if (override) {
+                    const activeColorOverride = isBW ? (override.colorBW || override.color) : override.color;
+                    this.materialSvc.ajustarMaterialGLB(
+                        m.material, isBW, scene, 
+                        activeAmbientHex, 
+                        activeColorOverride || activeColorHex, 
+                        override.esEmisivo ?? config.esEmisivo, 
+                        override.brilloIntensidad ?? config.brilloIntensidad,
+                        override.texturePath
+                    );
+                } else {
+                    this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbientHex, activeColorHex, config.esEmisivo, config.brilloIntensidad);
+                }
             }
         });
     }
 
-    // Materiales Standard simples (primitivas y hologramas)
     if (objeto.material && objeto.material instanceof StandardMaterial) {
       if (entity.type === 'image_plane') {
         const decalMat = entity.mediaRuntime?.runtimeDecalMaterial as StandardMaterial | undefined;
@@ -218,9 +231,6 @@ export class TransformMutatorService {
       }
     }
 
-    // 🔥 Override final específico para bulbos de luz funcionales.
-    // Esto asegura que, aunque hayamos pintado de rojo el poste de metal, 
-    // el bombillo interno se pinte del color de la luz real que emite.
     if (entity.type.startsWith('light_') && entity.light) {
         const activeLightColorHex = isBW ? entity.light.lightColorBW : entity.light.lightColor;
         const c3Light = Color3.FromHexString(activeLightColorHex || '#ffffff');

@@ -11,13 +11,12 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
   private static _tempWorldOffset = Vector3.Zero();
   private static _tempWorldCenter = Vector3.Zero();
 
-  supports(subSelected: string | null, entity: GameEntity | null): boolean {
-    return !subSelected;
+  supports(subSelected: string | null, entity: GameEntity | null, mesh?: AbstractMesh | null): boolean {
+    return !subSelected && (!mesh || !entity || mesh === entity.view);
   }
 
   getAttachTarget(debugSvc: ToolsDebugService, pivotNode: AbstractMesh | null, mesh: AbstractMesh | null, entity: GameEntity | null): AbstractMesh | null {
     if (mesh && pivotNode && entity) {
-      // 🔥 FIX: Posicionar el pivote exactamente en el Visual Center (Pecho del actor)
       entity.getVisualCenterAbsoluteToRef(BaseEntityGizmoAdapter._tempWorldCenter);
       pivotNode.position.copyFrom(BaseEntityGizmoAdapter._tempWorldCenter);
       
@@ -46,7 +45,6 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
 
   onGizmoDragged(mesh: AbstractMesh, pivotNode: AbstractMesh | null, entity: GameEntity | null): void {
     if (pivotNode && entity) {
-      // 1. Clocar la Rotación y Escala directamente al Mesh base
       if (pivotNode.rotationQuaternion) {
         if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
         mesh.rotationQuaternion.copyFrom(pivotNode.rotationQuaternion);
@@ -55,15 +53,12 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
       }
       mesh.scaling.copyFrom(pivotNode.scaling);
 
-      // 2. Calcular la posición del Mesh base compensando el Visual Center
       entity.getVisualCenterLocalToRef(BaseEntityGizmoAdapter._tempLocal);
 
-      // Aplicar escala a la coordenada local
       BaseEntityGizmoAdapter._tempLocal.x *= mesh.scaling.x;
       BaseEntityGizmoAdapter._tempLocal.y *= mesh.scaling.y;
       BaseEntityGizmoAdapter._tempLocal.z *= mesh.scaling.z;
 
-      // Transformar a World Space usando la rotación del Pivot
       const rotMatrix = Matrix.Identity();
       if (mesh.rotationQuaternion) {
          mesh.rotationQuaternion.toRotationMatrix(rotMatrix);
@@ -73,7 +68,6 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
 
       Vector3.TransformCoordinatesToRef(BaseEntityGizmoAdapter._tempLocal, rotMatrix, BaseEntityGizmoAdapter._tempWorldOffset);
 
-      // 3. Mesh Position (Pies) = Pivot Position (Pecho) - Offset Rotado
       mesh.position.copyFrom(pivotNode.position).subtractInPlace(BaseEntityGizmoAdapter._tempWorldOffset);
     }
   }

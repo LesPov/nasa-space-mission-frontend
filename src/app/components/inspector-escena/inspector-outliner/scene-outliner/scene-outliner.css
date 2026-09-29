@@ -6,7 +6,7 @@
 
 .tree-items {
   overflow-y: auto;
-  overflow-x: hidden; /* Obligatorio para evitar scroll horizontal */
+  overflow-x: hidden; /* CERO SCROLL HORIZONTAL */
   flex: 1;
   min-height: 0;
   padding: 5px;
@@ -30,6 +30,7 @@
 .outliner-item {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   height: 24px;
   min-height: 24px;
   padding: 0 5px;
@@ -38,6 +39,8 @@
   transition: background 0.1s ease;
   color: #d1d1d1;
   font-size: 11px;
+  position: relative;
+  user-select: none;
 }
 
 .outliner-item:hover {
@@ -75,7 +78,7 @@
   flex-shrink: 0;
 }
 
-/* 🔥 TRUNCADO DE TEXTOS LARGOS (ELLIPSIS) SIN DEFORMAR EL PANEL */
+/* TRUNCADO FLEX DE NOMBRES LARGOS */
 .name-text {
   flex: 1 1 auto;
   min-width: 0;
@@ -84,9 +87,14 @@
   text-overflow: ellipsis;
   display: block;
   line-height: 24px;
+  transition: opacity 0.2s;
 }
 
-/* Edición In-Line de Nombres */
+.name-text.hidden {
+  opacity: 0.4;
+  font-style: italic;
+}
+
 .inline-edit-input {
   flex: 1 1 auto;
   min-width: 0;
@@ -98,4 +106,74 @@
   font-size: 11px;
   outline: none;
   height: 20px;
+}
+
+/* ========================================================
+   CONTROLES DERECHOS (Ojo y Candado)
+   ======================================================== */
+.node-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0; /* Ocultos por defecto para diseño limpio */
+  transition: opacity 0.2s;
+  flex-shrink: 0;
+}
+
+.outliner-item:hover .node-actions, 
+.outliner-item.selected .node-actions {
+  opacity: 1; /* Aparecen sutilmente al pasar o seleccionar */
+}
+
+.action-btn {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.action-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+.action-btn.off { opacity: 0.3; }
+.action-btn.locked { color: #facc15; }
+
+/* ========================================================
+   ESTILOS DE DRAG & DROP
+   ======================================================== */
+.outliner-item.dragging { 
+  opacity: 0.3; 
+}
+
+.outliner-item.drag-over-inside { 
+  background: rgba(59, 130, 246, 0.3); 
+  border: 1px dashed #60a5fa; 
+}
+
+.outliner-item.drag-over-top::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: #60a5fa;
+  box-shadow: 0 0 5px #60a5fa;
+  z-index: 10;
+}
+
+.outliner-item.drag-over-bottom::after {
+  content: '';
+  position: absolute;
+  bottom: -2px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background-color: #60a5fa;
+  box-shadow: 0 0 5px #60a5fa;
+  z-index: 10;
 }

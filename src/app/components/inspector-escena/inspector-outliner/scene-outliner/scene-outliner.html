@@ -3,10 +3,16 @@
     
     <div class="outliner-item" 
          [class.selected]="isSelected(node)"
+         [draggable]="isDraggable(node)"
+         (dragstart)="onDragStart(node, $event)"
+         (dragover)="onDragOver(node, $event)"
+         (dragleave)="onDragLeave($event)"
+         (drop)="onDrop(node, $event)"
+         (dragend)="onDragEnd($event)"
          (click)="selectNode(node, $event)"
          (dblclick)="startEditing(node, $event)">
       
-      <!-- Lógica inteligente: Abre el nodo si el usuario lo solicita O si el buscador hizo match adentro -->
+      <!-- Flecha de Expansión -->
       <button *ngIf="getUsefulChildren(node).length > 0" class="expand-btn" (click)="toggleExpand(node, $event)">
         <span class="arrow" [class.expanded]="isExpanded(node) || matchesSearch(node)">▶</span>
       </button>
@@ -14,12 +20,11 @@
 
       <span class="icon">{{ getIcon(node) }}</span>
       
-      <!-- Display Name or Input -->
-      <span class="name-text" *ngIf="editingNodeId !== node.uniqueId.toString()" [title]="node.name">
+      <!-- Display Name o Input -->
+      <span class="name-text" *ngIf="editingNodeId !== node.uniqueId.toString()" [title]="getDisplayName(node)" [class.hidden]="!isNodeVisible(node)">
           {{ getDisplayName(node) }}
       </span>
       
-      <!-- Input inline con interceptor de eventos para partes -->
       <input *ngIf="editingNodeId === node.uniqueId.toString()"
              type="text"
              [id]="'editInput_' + node.uniqueId"
@@ -28,9 +33,19 @@
              (keydown)="handleKeyDown($event, node)"
              (click)="$event.stopPropagation()"
              class="inline-edit-input" />
+             
+      <!-- Controles Secundarios a la derecha (Ojo y Candado) -->
+      <div class="node-actions" (click)="$event.stopPropagation()">
+          <button class="action-btn" [class.off]="!isNodeVisible(node)" (click)="toggleVisibility(node, $event)" [title]="isNodeVisible(node) ? 'Ocultar' : 'Mostrar'">
+              👁
+          </button>
+          <button class="action-btn" [class.locked]="isNodeLocked(node)" (click)="toggleLock(node, $event)" [title]="isNodeLocked(node) ? 'Desbloquear' : 'Bloquear'">
+              {{ isNodeLocked(node) ? '🔒' : '🔓' }}
+          </button>
+      </div>
     </div>
 
-    <!-- Recursive Children: Pasa de largo los Wrappers Técnicos mediante el getUsefulChildren -->
+    <!-- Hijos Recursivos (Saltando Wrappers) -->
     <app-scene-outliner *ngIf="getUsefulChildren(node).length > 0 && (isExpanded(node) || matchesSearch(node))" 
                         [nodes]="getUsefulChildren(node)" 
                         [depth]="depth + 1">

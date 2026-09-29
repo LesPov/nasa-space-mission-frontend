@@ -1,7 +1,7 @@
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Node, AbstractMesh, Tags, Mesh } from '@babylonjs/core';
+import { Node, AbstractMesh, Tags, Mesh, Camera, Light } from '@babylonjs/core';
 import { EditorStateService } from '../../../../services/editor/editor-state.service';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { OutlinerStateService } from '../outliner-state.service';
@@ -49,7 +49,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
   get filteredNodes(): Node[] {
     let list = this.depth === 0 ? this.stateSvc.nodosEscena() : this.nodes;
     
-    // Filtro para ignorar colisionadores y decals técnicos de Babylon
     if (this.depth > 0) {
        list = list.filter(n => {
            if (n.name.includes('proxycol')) return false;
@@ -61,7 +60,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
 
     const term = this.searchTerm;
     if (term) {
-      // Si la búsqueda coincide con el nodo actual O con alguno de sus hijos útiles
       return list.filter(n => this.nodeOrChildMatches(n, term));
     }
     return list;
@@ -83,7 +81,7 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
   }
 
   // ========================================================
-  // MAGIA VISUAL: REPRESENTACIÓN DERIVADA DE JERARQUÍA
+  // REPRESENTACIÓN DERIVADA
   // ========================================================
 
   getUsefulChildren(node: Node): Node[] {
@@ -95,7 +93,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
       if (child.name.includes('proxycol') || child.name.startsWith('decal_')) continue;
 
       if (this.isTechnicalWrapper(child)) {
-        // En lugar de renderizar la carpeta inútil, "extraemos" sus hijos hacia este nivel visual recursivamente
         result.push(...this.getUsefulChildren(child));
       } else {
         result.push(child);
@@ -105,12 +102,10 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
   }
 
   isTechnicalWrapper(node: Node): boolean {
-    // 1. Si es la raíz oficial de la entidad, NUNCA la ignoramos.
     if (node instanceof AbstractMesh) {
       const entity = this.entityManager.getEntityByMesh(node);
       if (entity && entity.view === node) return false;
 
-      // 2. Si el usuario lo ha modificado (tiene partOverrides), NUNCA lo ignoramos.
       const rootMesh = this.stateSvc.encontrarRaiz(node);
       if (rootMesh) {
         const rootEnt = this.entityManager.getEntityByMesh(rootMesh as AbstractMesh);
@@ -118,19 +113,13 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
       }
     }
 
-    // 3. Si tiene geometría real (polígonos), es una parte física importante.
     if (node instanceof Mesh && node.getTotalVertices() > 0) return false;
     if (node.getClassName() === "InstancedMesh") {
          const source = (node as any).sourceMesh;
          if (source && source.getTotalVertices() > 0) return false;
     }
 
-    // 4. Luces o Cámaras internas nunca se ocultan.
     if (node.getClassName().includes("Light") || node.getClassName().includes("Camera")) return false;
-
-    // Si llegamos aquí, el nodo no tiene polígonos, ni materiales, ni identidad de juego.
-    // Es un simple TransformNode estructural creado por Blender (__root__, Armature, Sketchfab...).
-    // Se oculta visualmente (Bypass).
     return true;
   }
 
@@ -142,36 +131,43 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     const entity = this.entityManager.getEntityByMesh(rootMesh);
     
     if (node === rootMesh && entity) {
-        return entity.name; // Nombre principal del objeto
+        return entity.name;
     }
 
     if (!entity || !entity.partOverrides) return node.name;
 
     const override = entity.partOverrides.overrides[node.name];
-    return override?.displayName || node.name; // Nombre amigable o técnico de la parte
+    return override?.displayName || node.name;
   }
 
   getIcon(node: Node): string {
+    if (node instanceof Camera) return '🎥';
     if (node instanceof AbstractMesh) {
+        const rootMesh = this.stateSvc.encontrarRaiz(node);
+        if (rootMesh !== node) return '🧩'; // Es una parte
+
         const entity = this.entityManager.getEntityByMesh(node);
-        // Si la entidad existe y la malla ES la vista principal de la entidad (Objeto Raíz)
-        if (entity && entity.view === node) {
-            if (entity.rol === 'player') return '🏃';
+        if (entity) {
+            if (entity.rol === 'player') return '🎮';
             if (entity.rol === 'spawn_point') return '📍';
-            if (entity.type.startsWith('light_')) return '💡';
-            if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') return '⚡';
+            if (entity.type === 'trigger') return '⚡';
+            if (entity.type === 'trigger_compuesto') return '💠';
             if (entity.type === 'bubble') return '🫧';
             if (entity.type === 'video_plane') return '📺';
             if (entity.type === 'image_plane') return '🖼️';
+            if (entity.type.startsWith('light_')) return '💡';
             if (entity.characterConfig) {
                 if (entity.characterConfig.characterType === 'politico') return '👔';
                 if (entity.characterConfig.characterType === 'militar') return '🪖';
                 return '🤖';
             }
+            if (entity.visual?.assetId) return '📦';
+            if (entity.type === 'cube') return '🧊';
+            if (entity.type === 'sphere') return '⚽';
+            if (entity.type === 'cylinder') return '🛢️';
+            if (entity.type === 'plane') return '🗺️';
             return '📦'; 
         }
-        // Si es un AbstractMesh pero NO es la raíz de una entidad, es una parte interna
-        return '🧩';
     }
     return '📌';
   }
@@ -189,6 +185,10 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     return this.outlinerState.isExpanded(node.uniqueId.toString());
   }
 
+  // ========================================================
+  // SELECCIÓN Y ESTADOS (VISIBILIDAD / BLOQUEO)
+  // ========================================================
+
   selectNode(node: Node, event: Event) {
     event.stopPropagation();
     if (this.editingNodeId) return; 
@@ -201,13 +201,202 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
        this.stateSvc.seleccionarObjeto(node);
        this.stateSvc.setSubObjetoSeleccionado(null);
     } else {
-       // Seleccionamos la raíz y el Motor 3D lo interpretará como Parte Interna
        this.stateSvc.seleccionarObjeto(node); 
     }
   }
 
   isSelected(node: Node): boolean {
     return this.stateSvc.objetoSeleccionado() === node;
+  }
+
+  isNodeVisible(node: Node): boolean {
+    if (node instanceof AbstractMesh) {
+      return node.isVisible && node.isEnabled();
+    }
+    return true;
+  }
+
+  toggleVisibility(node: Node, event: Event) {
+    event.stopPropagation();
+    if (node instanceof AbstractMesh) {
+      const isVis = node.isVisible && node.isEnabled();
+      node.setEnabled(!isVis);
+      node.isVisible = !isVis;
+    }
+  }
+
+  isNodeLocked(node: Node): boolean {
+    if (node instanceof Camera) return true;
+    if (node instanceof AbstractMesh) {
+      const rootMesh = this.stateSvc.encontrarRaiz(node);
+      const baseNode: AbstractMesh = rootMesh instanceof AbstractMesh ? rootMesh : node;
+      const entity = this.entityManager.getEntityByMesh(baseNode);
+      if (entity && entity.visual) {
+        return !entity.visual.isSelectable;
+      }
+    }
+    return false;
+  }
+
+  toggleLock(node: Node, event: Event) {
+    event.stopPropagation();
+    if (node instanceof Camera) return; 
+    if (node instanceof AbstractMesh) {
+      const rootMesh = this.stateSvc.encontrarRaiz(node);
+      const baseNode: AbstractMesh = rootMesh instanceof AbstractMesh ? rootMesh : node;
+      const entity = this.entityManager.getEntityByMesh(baseNode);
+      if (entity && entity.visual) {
+        entity.visual.isSelectable = !entity.visual.isSelectable;
+        baseNode.isPickable = entity.visual.isSelectable;
+        baseNode.getChildMeshes().forEach(m => m.isPickable = entity.visual.isSelectable);
+        entity.isDirty = true;
+        this.mapaSvc.onMapChanged.next();
+      }
+    }
+  }
+
+  // ========================================================
+  // DRAG & DROP
+  // ========================================================
+
+  isDraggable(node: Node): boolean {
+    if (node instanceof Camera) return false;
+    if (node instanceof AbstractMesh) {
+      const rootMesh = this.stateSvc.encontrarRaiz(node);
+      if (rootMesh === node) return true; // Objetos Raíz sí se mueven
+    }
+    return false; // Partes bloqueadas en su modelo
+  }
+
+  onDragStart(node: Node, event: DragEvent) {
+    if (!this.isDraggable(node)) {
+      event.preventDefault();
+      return;
+    }
+    this.outlinerState.draggedNode.set(node);
+    if (event.dataTransfer) {
+      event.dataTransfer.setData('text/plain', node.uniqueId.toString());
+      event.dataTransfer.effectAllowed = 'move';
+    }
+    setTimeout(() => (event.target as HTMLElement).classList.add('dragging'), 10);
+  }
+
+  onDragOver(node: Node, event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    
+    const dragged = this.outlinerState.draggedNode();
+    if (!dragged || dragged === node || this.isDescendant(node, dragged)) {
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+      return;
+    }
+
+    if (!this.isDraggable(node)) {
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
+      return;
+    }
+
+    if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+
+    const targetEl = (event.target as HTMLElement).closest('.outliner-item');
+    if (!targetEl) return;
+
+    const rect = targetEl.getBoundingClientRect();
+    const y = event.clientY - rect.top;
+
+    this.clearDragVisuals();
+
+    if (y < rect.height * 0.25) {
+      this.outlinerState.dropAction.set('above');
+      targetEl.classList.add('drag-over-top');
+    } else if (y > rect.height * 0.75) {
+      this.outlinerState.dropAction.set('below');
+      targetEl.classList.add('drag-over-bottom');
+    } else {
+      this.outlinerState.dropAction.set('inside');
+      targetEl.classList.add('drag-over-inside');
+      this.outlinerState.expand(node.uniqueId.toString());
+    }
+  }
+
+  onDragLeave(event: DragEvent) {
+    const targetEl = (event.target as HTMLElement).closest('.outliner-item');
+    if (targetEl) {
+      targetEl.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-inside');
+    }
+  }
+
+  onDrop(node: Node, event: DragEvent) {
+    event.preventDefault();
+    event.stopPropagation();
+    this.clearDragVisuals();
+
+    const draggedNode = this.outlinerState.draggedNode();
+    const action = this.outlinerState.dropAction();
+
+    if (!draggedNode || draggedNode === node || this.isDescendant(node, draggedNode)) {
+      this.outlinerState.draggedNode.set(null);
+      return;
+    }
+
+    if (!this.isDraggable(draggedNode) || !this.isDraggable(node)) {
+      this.outlinerState.draggedNode.set(null);
+      return;
+    }
+
+    const draggedEntity = this.entityManager.getEntityByMesh(draggedNode as AbstractMesh);
+    const targetEntity = this.entityManager.getEntityByMesh(node as AbstractMesh);
+
+    const setParentSafe = (child: Node, parent: Node | null) => {
+      if (typeof (child as any).setParent === 'function') {
+        (child as any).setParent(parent);
+      } else {
+        child.parent = parent;
+      }
+    };
+
+    if (action === 'inside') {
+      setParentSafe(draggedNode, node);
+      if (draggedEntity) {
+          draggedEntity.parentId = targetEntity ? targetEntity.uid : null;
+          draggedEntity.syncTransformFromView();
+          draggedEntity.isDirty = true;
+      }
+    } else {
+      const newParent = node.parent;
+      setParentSafe(draggedNode, newParent);
+      const newParentEntity = newParent ? this.entityManager.getEntityByMesh(newParent as AbstractMesh) : null;
+      
+      if (draggedEntity) {
+          draggedEntity.parentId = newParentEntity ? newParentEntity.uid : null;
+          draggedEntity.syncTransformFromView();
+          draggedEntity.isDirty = true;
+      }
+    }
+
+    this.mapaSvc.onMapChanged.next();
+    this.outlinerState.draggedNode.set(null);
+  }
+
+  onDragEnd(event: DragEvent) {
+    (event.target as HTMLElement).classList.remove('dragging');
+    this.clearDragVisuals();
+    this.outlinerState.draggedNode.set(null);
+  }
+
+  private clearDragVisuals() {
+    document.querySelectorAll('.outliner-item').forEach(i => {
+      i.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-inside');
+    });
+  }
+
+  private isDescendant(target: Node, potentialParent: Node): boolean {
+    let current = target.parent;
+    while (current) {
+      if (current === potentialParent) return true;
+      current = current.parent;
+    }
+    return false;
   }
 
   // ========================================================

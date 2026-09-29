@@ -1,6 +1,7 @@
 
 import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, effect, Input, Output, EventEmitter, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms'; // 🔥 FIX NG8002: Requerido para ngModel bidireccional
 import { AbstractMesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { auditTime } from 'rxjs/operators';
@@ -15,7 +16,7 @@ import { EditorCinematicService } from '../../../services/editor/editor-cinemati
 import { EditorCinematicToolsService } from '../../../services/editor-cinematic-tools.service';
 import { EditorCinematicProxyService } from '../../../services/editor-cinematic-proxy.service';
 import { CinematicPlaybackManagerService } from '../../../core/engine/runtime/cinematics/cinematic-playback-manager.service';
-import { GameEntity } from '../../../core/engine/entities/game.entity';
+import { GameEntity, PartOverridesComponent } from '../../../core/engine/entities/game.entity';
 
 import { PropTransform } from './prop-transform/prop-transform';
 import { PropTrigger } from './prop-trigger/prop-trigger';
@@ -31,12 +32,12 @@ import { PropMission } from './prop-mission/prop-mission';
 import { CinematicInspector } from '../../global-timeline/tabs/timeline-director-tab/cinematic-inspector/cinematic-inspector/cinematic-inspector';
 import { PropPlatform } from './prop-platform/prop-platform';
 import { PropPart } from './prop-part/prop-part';
-
+ 
 @Component({
   selector: 'app-inspector-properties',
   standalone: true,
   imports: [
-    CommonModule, PropTransform, PropTrigger, PropPlayer, PropSequences, 
+    CommonModule, FormsModule, PropTransform, PropTrigger, PropPlayer, PropSequences, 
     PropAnimation, PropPhysics, PropWorld, PropPlatform, PropLight, PropBubble, PropVideo, PropMission, CinematicInspector, PropPart
   ],
   templateUrl: './inspector-properties.html',
@@ -78,6 +79,60 @@ export class InspectorProperties implements OnInit, OnDestroy {
   public rootEntityForPart: GameEntity | null = null;
 
   public sceneEntities = computed(() => this.entityManager.getAllEntities().map(e => ({uid: e.uid, name: e.name})).sort((a,b)=>a.name.localeCompare(b.name)));
+
+  // 🔥 FIX RENOMBRAR PARTE: Getters y Setters reactivos que abstraen el ID interno (mesh.name) del Nombre Visible (displayName)
+  get partDisplayName(): string {
+    if (!this.esParte || !this.objetoActual || !this.rootEntityForPart) return '';
+    const override = this.rootEntityForPart.partOverrides?.overrides[this.objetoActual.name];
+    return override?.displayName || this.objetoActual.name;
+  }
+
+  set partDisplayName(val: string) {
+    if (!this.esParte || !this.objetoActual || !this.rootEntityForPart) return;
+    const valClean = val.trim();
+    if (!valClean) return;
+
+    if (!this.rootEntityForPart.partOverrides) {
+        this.rootEntityForPart.partOverrides = new PartOverridesComponent();
+    }
+    if (!this.rootEntityForPart.partOverrides.overrides[this.objetoActual.name]) {
+        this.rootEntityForPart.partOverrides.overrides[this.objetoActual.name] = {};
+    }
+    
+    this.rootEntityForPart.partOverrides.overrides[this.objetoActual.name].displayName = valClean;
+    
+    this.rootEntityForPart.isDirty = true;
+    this.editorMapa.onMapChanged.next();
+  }
+
+  // 🔥 FIX RENOMBRAR RAÍZ:
+  get entityName(): string {
+    if (!this.objetoActual) return '';
+    const entity = this.entityManager.getEntityByMesh(this.objetoActual);
+    return entity ? entity.name : this.objetoActual.name;
+  }
+
+  set entityName(val: string) {
+    if (!this.objetoActual) return;
+    const valClean = val.trim();
+    if (!valClean) return;
+    const entity = this.entityManager.getEntityByMesh(this.objetoActual);
+    if (entity) {
+      entity.name = valClean;
+      entity.isDirty = true;
+      this.editorMapa.onMapChanged.next();
+    }
+  }
+
+  restaurarNombreParte() {
+    if (!this.esParte || !this.objetoActual || !this.rootEntityForPart) return;
+    const override = this.rootEntityForPart.partOverrides?.overrides[this.objetoActual.name];
+    if (override && override.displayName) {
+        delete override.displayName;
+        this.rootEntityForPart.isDirty = true;
+        this.editorMapa.onMapChanged.next();
+    }
+  }
 
   constructor() {
     effect(() => {

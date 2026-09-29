@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
-import { PointLight, SpotLight, Vector3, Color3, Tags, ShadowGenerator, AbstractMesh, Matrix, StandardMaterial } from '@babylonjs/core';
+import { PointLight, SpotLight, Vector3, Color3, Tags, ShadowGenerator, AbstractMesh, Matrix } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 import { CameraOwnershipService } from '../../cameras/camera-ownership.service';
@@ -13,7 +13,7 @@ export type LightVisualState = 'PRELOADED' | 'ACTIVE';
 
 interface VirtualLight {
     entity: GameEntity;
-    materials: StandardMaterial[];
+    materials: any[]; // 🔥 FIX PBR: Cambiado a `any` para admitir PBRMaterial
     baseColor: Color3;
     currentMultiplier: number;
     targetMultiplier: number;
@@ -24,7 +24,7 @@ interface PoolSlot {
     index: number;
     type: 'point' | 'spot';
     light: PointLight | SpotLight;
-    sg: ShadowGenerator | null; // Si no es nulo, la luz SIEMPRE tiene shadowEnabled = true
+    sg: ShadowGenerator | null; 
     assignedEntityUid: string | null;
     currentIntensity: number;
 }
@@ -125,9 +125,6 @@ export class DynamicLightingSystem implements IUpdatable {
                   const addMesh = (m: AbstractMesh) => {
                       if (m.isVisible && m.isEnabled() && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element")) {
                           this.shadowCastersCache.push(m);
-                          // 🔥 FIX CRÍTICO SHADOW RECOMPILATION: receiveShadows SIEMPRE true.
-                          // Las mallas SIEMPRE están listas para recibir, lo que evita que WebGL 
-                          // destruya y recompile el shader al moverse el jugador.
                           m.receiveShadows = true;
                       }
                   };
@@ -139,15 +136,19 @@ export class DynamicLightingSystem implements IUpdatable {
 
       const lightEntities = this.entityManager.getAllEntities().filter(e => e.type.startsWith('light_'));
       for (const e of lightEntities) {
-          const mats: StandardMaterial[] = [];
+          const mats: any[] = [];
           if (e.view) {
-              if (e.view.material instanceof StandardMaterial) mats.push(e.view.material);
+              if (e.view.material) mats.push(e.view.material);
               e.view.getChildMeshes(false).forEach((m: AbstractMesh) => {
-                  if (m.material instanceof StandardMaterial) {
+                  if (m.material) { // 🔥 FIX PBR: Removed instanceof StandardMaterial
                      const nL = m.name.toLowerCase();
                      const mL = m.material.name.toLowerCase();
                      if (nL.includes('bulb') || nL.includes('light') || nL.includes('emit') || mL.includes('bulb') || mL.includes('light') || mL.includes('emit')) {
-                         mats.push(m.material);
+                         const override = e.partOverrides?.overrides[m.name];
+                         // 🔥 FIX PARTOVERRIDE CONFLICT: Solo controlamos la luz si el usuario NO ha configurado un color/emisión custom en el PartEditor.
+                         if (!override || (override.color === undefined && override.esEmisivo === undefined)) {
+                             mats.push(m.material);
+                         }
                      }
                   }
               });
@@ -168,8 +169,6 @@ export class DynamicLightingSystem implements IUpdatable {
 
           const pLight = new PointLight(`pool_point_${i}`, Vector3.Zero(), scene);
           pLight.intensity = 0; pLight.diffuse = Color3.Black(); 
-          // 🔥 FIX CRÍTICO WEBGL MISMATCH: shadowEnabled es INMUTABLE.
-          // Se define en true o false en el nacimiento de la luz y NUNCA cambia.
           pLight.shadowEnabled = hasShadows;
           pLight.setEnabled(false); 
           Tags.AddTagsTo(pLight, "system_element");
@@ -256,12 +255,11 @@ export class DynamicLightingSystem implements IUpdatable {
       const topVirtuals = activeVirtuals.slice(0, this.MAX_LOCAL_SHADER_LIGHTS);
       const topUids = new Set(topVirtuals.map(x => x.entity.uid));
 
-      // 1. Liberar slots que ya no están en el top
       const releaseSlot = (slot: PoolSlot) => {
           if (slot.assignedEntityUid && !topUids.has(slot.assignedEntityUid)) {
               slot.assignedEntityUid = null;
               if (slot.sg && slot.sg.getShadowMap()?.renderList) {
-                  slot.sg.getShadowMap()!.renderList!.length = 0; // Desactivar sombras vaciando la lista
+                  slot.sg.getShadowMap()!.renderList!.length = 0; 
               }
           }
       };
@@ -269,7 +267,6 @@ export class DynamicLightingSystem implements IUpdatable {
       this.pointPool.forEach(releaseSlot);
       this.spotPool.forEach(releaseSlot);
 
-      // 2. Asignar nuevos
       topVirtuals.forEach(vl => {
           const isPoint = vl.entity.type === 'light_point';
           const pool = isPoint ? this.pointPool : this.spotPool;
@@ -278,7 +275,6 @@ export class DynamicLightingSystem implements IUpdatable {
           let existingSlot = pool.find(s => s.assignedEntityUid === vl.entity.uid);
 
           if (!existingSlot) {
-              // Buscar slot libre. Priorizar el que coincida con el requerimiento de sombras.
               let freeSlot = null;
               if (wantsShadow) freeSlot = pool.find(s => s.sg !== null && s.assignedEntityUid === null);
               if (!freeSlot) freeSlot = pool.find(s => s.sg === null && s.assignedEntityUid === null);
@@ -294,7 +290,6 @@ export class DynamicLightingSystem implements IUpdatable {
           }
 
           if (existingSlot) {
-              // Actualizar posicion en el instante para que Warmup compile correcto
               this.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
               existingSlot.light.position.copyFrom(this._tempPos);
               
@@ -303,13 +298,10 @@ export class DynamicLightingSystem implements IUpdatable {
                   spot.direction.copyFrom(this._tempDir);
               }
 
-              // 🔥 FIX DINÁMICO DE SOMBRAS: Si el slot TIENE ShadowGenerator
               if (existingSlot.sg) {
                   if (wantsShadow) {
                       this.rebuildShadowRenderList(existingSlot, vl.entity.uid);
                   } else {
-                      // Si la luz virtual no quiere sombra, pero nos tocó un slot con ShadowGenerator,
-                      // vaciamos la lista para que no proyecte, pero EVITAMOS tocar shadowEnabled.
                       existingSlot.sg.getShadowMap()!.renderList!.length = 0;
                   }
               }
@@ -366,7 +358,9 @@ export class DynamicLightingSystem implements IUpdatable {
           const b = vl.baseColor.b * emissiveScale;
 
           for(let j = 0; j < vl.materials.length; j++) {
-              vl.materials[j].emissiveColor.set(r, g, b);
+              if (vl.materials[j].emissiveColor) {
+                  vl.materials[j].emissiveColor.set(r, g, b);
+              }
           }
       }
 

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3, Tags, Quaternion } from '@babylonjs/core';
 import '@babylonjs/loaders';
@@ -40,7 +41,8 @@ export class CoreModelLoaderService {
   public async cargarModeloAsync(obj: any, mallasCreadas: Map<string, Mesh>): Promise<void> {
     const scene = this.motor3d.getScene();
     const sessionId = this.sessionSvc.getSessionId();
-    const path = obj.properties?.path || obj.asset?.path;
+    // 🔥 FIX: Revisar también en el root level para entidades legacy de luces
+    const path = obj.properties?.path || obj.asset?.path || obj.path;
 
     if (!path) {
       await this.crearMallaError(obj, scene, mallasCreadas);
@@ -206,9 +208,9 @@ export class CoreModelLoaderService {
       }
       
       if (m.material) {
-          this.materialSvc.asegurarMaterialUnico(m, entity.uid);
-          
           if (override) {
+             // 🔥 FIX: Aísla el material para esta parte y aplica las propiedades exclusivas
+             this.materialSvc.asegurarMaterialUnicoParaParte(m, entity.uid, m.name);
              const activeColorOverride = isBW ? (override.colorBW || override.color) : override.color;
              await this.materialSvc.ajustarMaterialGLB(
                  m.material, isBW, scene, 
@@ -217,9 +219,11 @@ export class CoreModelLoaderService {
                  override.esEmisivo ?? entity.visual.esEmisivo, 
                  override.brilloIntensidad ?? entity.visual.brilloIntensidad,
                  override.texturePath,
-                 override.textureSource || (override.texturePath ? 'asset' : 'original') // 🔥 TEXTURE SOURCE APLICADO CORRECTAMENTE
+                 override.textureSource || (override.texturePath ? 'asset' : 'original') 
              );
           } else {
+             // Modo base compartido para las partes no modificadas
+             this.materialSvc.asegurarMaterialUnico(m, entity.uid);
              await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbient, activeColorHex, entity.visual.esEmisivo, entity.visual.brilloIntensidad);
           }
       }
@@ -267,7 +271,7 @@ export class CoreModelLoaderService {
           entity.light = new LightComponent();
           entity.light.lightPosY = 0.5;
       }
-      if (!obj.asset && !obj.properties?.path) {
+      if (!obj.asset && !obj.properties?.path && !obj.path) {
           rootNode.isVisible = false;
       }
     }

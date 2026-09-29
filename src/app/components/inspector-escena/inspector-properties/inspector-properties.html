@@ -80,14 +80,22 @@
 
     <div class="prop-body" *ngIf="objetoActual && pestanaActiva !== 'world' && pestanaActiva !== 'platform' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic'">
       
+      <!-- 🔥 ROOT NAME RENAMING (Vinculado a entityName setter) -->
       <div class="obj-title-bar" *ngIf="!esParte">
         <span class="icon">{{ esTrigger ? '📍' : (esLuz ? '💡' : (esBurbuja ? '🫧' : (esVideo ? '📺' : (esPersonaje ? '🧍' : '🧊')))) }}</span>
-        <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" />
+        <input type="text" [(ngModel)]="entityName" class="obj-name-input" />
       </div>
       
-      <div class="obj-title-bar" *ngIf="esParte" style="border-color: #3b82f6; background: rgba(59, 130, 246, 0.1);">
-        <span class="icon" style="color: #60a5fa;">🧩</span>
-        <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" style="color: #60a5fa;" />
+      <!-- 🔥 PART RENAMING (Vinculado a partDisplayName setter) -->
+      <div class="obj-title-bar" *ngIf="esParte" style="border-color: #3b82f6; background: rgba(59, 130, 246, 0.1); flex-wrap: wrap;">
+        <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
+          <span class="icon" style="color: #60a5fa;">🧩</span>
+          <input type="text" [(ngModel)]="partDisplayName" class="obj-name-input" style="color: #60a5fa; font-weight: bold;" title="Renombrar esta parte" />
+        </div>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-top: 6px;">
+          <span style="font-size: 9px; color: #64748b; font-family: monospace;" title="ID Interno Inmutable">ID: {{ objetoActual.name }}</span>
+          <button class="btn-ghost small" (click)="restaurarNombreParte()" title="Restaurar nombre original">↺ Restaurar</button>
+        </div>
       </div>
 
       <button class="btn-secondary full" style="margin-bottom: 12px;" *ngIf="!esParte" (click)="guardarComoPrefab()">📦 Guardar como Prefab</button>

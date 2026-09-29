@@ -36,7 +36,9 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
     entity.visual.esEmisivo = props.esEmisivo ?? false;
     entity.visual.brilloIntensidad = this.utilsSvc.normalizarNumero(props.brilloIntensidad, 1.0);
     entity.visual.mostrarBorde = props.mostrarBorde ?? (entity.type !== 'plane'); 
-    entity.visual.path = props.path || obj.asset?.path || props.videoUrl || props.imageUrl || '';
+    
+    // 🔥 FIX: Permite hidratar el path desde la raíz del objeto para luces antiguas
+    entity.visual.path = props.path || obj.asset?.path || (obj as any).path || props.videoUrl || props.imageUrl || '';
     entity.visual.assetId = obj.assetId || null;
     
     entity.visual.internalScale = props.internalScale;

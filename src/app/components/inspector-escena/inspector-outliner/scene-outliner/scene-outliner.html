@@ -1,31 +1,39 @@
+<ul [class.tree-items]="depth === 0">
+  <li *ngFor="let node of filteredNodes; trackBy: trackById">
+    
+    <div class="outliner-item" 
+         [class.selected]="isSelected(node)"
+         (click)="selectNode(node, $event)"
+         (dblclick)="startEditing(node, $event)">
+      
+      <!-- Lógica inteligente: Abre el nodo si el usuario lo solicita O si el buscador hizo match adentro -->
+      <button *ngIf="getUsefulChildren(node).length > 0" class="expand-btn" (click)="toggleExpand(node, $event)">
+        <span class="arrow" [class.expanded]="isExpanded(node) || matchesSearch(node)">▶</span>
+      </button>
+      <div *ngIf="getUsefulChildren(node).length === 0" style="width: 20px; flex-shrink: 0;"></div>
 
-<div class="tree-items" 
-     (dragover)="onDragOverRoot($event)" 
-     (dragleave)="onDragLeaveRoot($event)" 
-     (drop)="onDropRoot($event)">
-     
-  <app-outliner-node-item *ngFor="let root of rootNodes; trackBy: trackByUid" 
-                          [node]="root" 
-                          [depth]="0">
-  </app-outliner-node-item>
-  
-  <div *ngIf="rootNodes.length === 0" class="empty-state">
-    No hay objetos válidos en la raíz de esta escena.
-  </div>
-</div>
+      <span class="icon">{{ getIcon(node) }}</span>
+      
+      <!-- Display Name or Input -->
+      <span class="name-text" *ngIf="editingNodeId !== node.uniqueId.toString()" [title]="node.name">
+          {{ getDisplayName(node) }}
+      </span>
+      
+      <!-- Input inline con interceptor de eventos para partes -->
+      <input *ngIf="editingNodeId === node.uniqueId.toString()"
+             type="text"
+             [id]="'editInput_' + node.uniqueId"
+             [(ngModel)]="editingName"
+             (blur)="saveEdit(node)"
+             (keydown)="handleKeyDown($event, node)"
+             (click)="$event.stopPropagation()"
+             class="inline-edit-input" />
+    </div>
 
-<!-- Context Menu Overlay -->
-<div class="context-menu-overlay" *ngIf="outlinerState.contextMenuOpen()" (click)="closeContextMenu()" (contextmenu)="closeContextMenu(); $event.preventDefault()">
-  <div class="context-menu" 
-       [style.left.px]="outlinerState.contextMenuPosition().x" 
-       [style.top.px]="outlinerState.contextMenuPosition().y"
-       (click)="$event.stopPropagation()">
-       
-    <button (click)="focusNode()"><span>🎯</span> Enfocar Cámara</button>
-    <div class="divider"></div>
-    <button (click)="duplicateNode()"><span>📑</span> Duplicar</button>
-    <button (click)="saveAsPrefab()"><span>📦</span> Guardar como Prefab</button>
-    <div class="divider"></div>
-    <button class="danger" (click)="deleteNode()"><span>🗑️</span> Eliminar</button>
-  </div>
-</div>
+    <!-- Recursive Children: Pasa de largo los Wrappers Técnicos mediante el getUsefulChildren -->
+    <app-scene-outliner *ngIf="getUsefulChildren(node).length > 0 && (isExpanded(node) || matchesSearch(node))" 
+                        [nodes]="getUsefulChildren(node)" 
+                        [depth]="depth + 1">
+    </app-scene-outliner>
+  </li>
+</ul>

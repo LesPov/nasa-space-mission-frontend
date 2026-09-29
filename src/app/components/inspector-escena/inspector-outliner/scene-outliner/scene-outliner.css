@@ -1,4 +1,3 @@
-
 :host {
   display: flex;
   flex-direction: column;
@@ -7,9 +6,12 @@
 
 .tree-items {
   overflow-y: auto;
+  overflow-x: hidden; /* Obligatorio para evitar scroll horizontal */
   flex: 1;
   min-height: 0;
   padding: 5px;
+  list-style: none;
+  margin: 0;
 }
 
 .tree-items::-webkit-scrollbar { width: 5px; } 
@@ -25,49 +27,75 @@
   text-align: center;
 }
 
-/* Context Menu */
-.context-menu-overlay {
-  position: fixed;
-  top: 0; left: 0; width: 100vw; height: 100vh;
-  z-index: 10000;
-}
-
-.context-menu {
-  position: absolute;
-  background: #2b2b2b;
-  border: 1px solid #111;
-  border-radius: 6px;
-  box-shadow: 0 5px 15px rgba(0,0,0,0.8);
-  min-width: 160px;
-  padding: 5px 0;
-  display: flex;
-  flex-direction: column;
-}
-
-.context-menu button {
-  background: transparent;
-  border: none;
-  color: #d1d1d1;
-  padding: 8px 15px;
-  text-align: left;
-  font-size: 12px;
-  cursor: pointer;
+.outliner-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  height: 24px;
+  min-height: 24px;
+  padding: 0 5px;
+  cursor: pointer;
+  border-radius: 3px;
+  transition: background 0.1s ease;
+  color: #d1d1d1;
+  font-size: 11px;
 }
 
-.context-menu button:hover {
-  background: #3b82f6;
+.outliner-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.outliner-item.selected {
+  background: rgba(59, 130, 246, 0.4);
   color: white;
+  font-weight: 500;
 }
 
-.context-menu .danger:hover {
-  background: #ef4444;
+.expand-btn {
+  background: transparent;
+  border: none;
+  color: #888;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+  flex-shrink: 0;
 }
 
-.divider {
-  height: 1px;
-  background: #111;
-  margin: 5px 0;
+.expand-btn:hover { color: #fff; }
+.arrow { font-size: 9px; transition: transform 0.15s ease; }
+.arrow.expanded { transform: rotate(90deg); color: #60a5fa;}
+
+.icon {
+  margin-right: 6px;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+/* 🔥 TRUNCADO DE TEXTOS LARGOS (ELLIPSIS) SIN DEFORMAR EL PANEL */
+.name-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+  line-height: 24px;
+}
+
+/* Edición In-Line de Nombres */
+.inline-edit-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  background: #020617;
+  color: #60a5fa;
+  border: 1px solid #3b82f6;
+  border-radius: 3px;
+  padding: 0px 4px;
+  font-size: 11px;
+  outline: none;
+  height: 20px;
 }

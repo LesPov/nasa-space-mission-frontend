@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -167,16 +168,17 @@ export class TransformMutatorService {
     const activeColorHex = isBW ? config.colorBW : config.color;
     const activeAmbientHex = isBW ? config.ambientColorBW : config.ambientColor;
 
+    // 🔥 FIX: Evalúa isModelBased de manera más robusta, permitiendo light_spot si tiene path válido.
     const isModelBased = entity.type === 'model' || (entity.type.startsWith('light_') && (!!entity.visual.assetId || !!entity.visual.path));
 
     if (isModelBased) {
         const scene = objeto.getScene();
         objeto.getChildMeshes().forEach((m: AbstractMesh) => {
             if (m.material) {
-                this.materialSvc.asegurarMaterialUnico(m, entity.uid);
-                
                 const override = entity.partOverrides?.overrides[m.name];
                 if (override) {
+                    // 🔥 FIX AISLAMIENTO MATERIAL: Si tiene un override individual, aisla y clona el material para esta malla específica
+                    this.materialSvc.asegurarMaterialUnicoParaParte(m, entity.uid, m.name);
                     const activeColorOverride = isBW ? (override.colorBW || override.color) : override.color;
                     this.materialSvc.ajustarMaterialGLB(
                         m.material, isBW, scene, 
@@ -185,9 +187,11 @@ export class TransformMutatorService {
                         override.esEmisivo ?? config.esEmisivo, 
                         override.brilloIntensidad ?? config.brilloIntensidad,
                         override.texturePath,
-                        override.textureSource || (override.texturePath ? 'asset' : 'original') // 🔥 TEXTURE SOURCE
+                        override.textureSource || (override.texturePath ? 'asset' : 'original') 
                     );
                 } else {
+                    // Mantiene los materiales originales vinculados a la entidad para cambiar colores globales
+                    this.materialSvc.asegurarMaterialUnico(m, entity.uid);
                     this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbientHex, activeColorHex, config.esEmisivo, config.brilloIntensidad);
                 }
             }
@@ -238,12 +242,19 @@ export class TransformMutatorService {
             (objeto.material as StandardMaterial).emissiveColor = c3Light;
         }
 
+        // 🔥 FIX PBR BULB COLOR OVERRIDE: Ahora busca emisivos en PBRMaterial también.
         objeto.getChildMeshes().forEach((m: AbstractMesh) => {
-           if (m.material && m.material instanceof StandardMaterial) {
+           if (m.material) { 
                const nL = m.name.toLowerCase();
                const mL = m.material.name.toLowerCase();
                if (nL.includes('bulb') || nL.includes('light') || nL.includes('emit') || mL.includes('bulb') || mL.includes('light') || mL.includes('emit')) {
-                   m.material.emissiveColor = c3Light;
+                   const override = entity.partOverrides?.overrides[m.name];
+                   // 🔥 FIX PART OVERRIDE: Solo sobreescribe el color si el usuario NO ha configurado un override de color en la parte visual
+                   if (!override || (override.color === undefined && override.esEmisivo === undefined)) {
+                       if ((m.material as any).emissiveColor) {
+                           (m.material as any).emissiveColor = c3Light;
+                       }
+                   }
                }
            }
         });

@@ -1,3 +1,4 @@
+
 import { Injectable } from '@angular/core';
 import { Color3, Texture, RawTexture, Scene, AbstractMesh } from '@babylonjs/core';
 
@@ -37,6 +38,34 @@ export class CoreSceneMaterialService {
               }
           } catch (e) {
               console.warn("No se pudo clonar el material para hacerlo único:", e);
+          }
+      }
+  }
+
+  // 🔥 NUEVO MÉTODO: Aísla el material específicamente para una parte modificada por el usuario, sin afectar a mallas vecinas
+  public asegurarMaterialUnicoParaParte(mesh: AbstractMesh, uid: string, partName: string): void {
+      if (!mesh.material) return;
+      
+      const uniqueSuffix = `${uid}_${partName.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      if (!mesh.material.name.includes(uniqueSuffix)) {
+          try {
+              if (mesh.material.getClassName() === 'MultiMaterial') {
+                  const multiMat = mesh.material as any;
+                  const newMultiMat = multiMat.clone(multiMat.name + "_" + uniqueSuffix);
+                  if (newMultiMat.subMaterials) {
+                      newMultiMat.subMaterials = multiMat.subMaterials.map((subMat: any) => {
+                          if (subMat && !subMat.name.includes(uniqueSuffix) && typeof subMat.clone === 'function') {
+                              return subMat.clone(subMat.name + "_" + uniqueSuffix);
+                          }
+                          return subMat;
+                      });
+                  }
+                  mesh.material = newMultiMat;
+              } else if (typeof (mesh.material as any).clone === 'function') {
+                  mesh.material = (mesh.material as any).clone(mesh.material.name + "_" + uniqueSuffix);
+              }
+          } catch (e) {
+              console.warn("No se pudo clonar el material para hacerlo único por parte:", e);
           }
       }
   }

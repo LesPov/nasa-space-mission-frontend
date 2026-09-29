@@ -1,3 +1,4 @@
+
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
@@ -17,6 +18,7 @@ export interface PartOverride {
   brilloIntensidad?: number;
   texturePath?: string;
   textureSource?: 'original' | 'solid' | 'asset';
+  displayName?: string; // 🔥 NUEVO: Identificador visible y amigable para el Outliner y Editor
 }
 
 export class PartOverridesComponent {
@@ -168,7 +170,7 @@ export class GameEntity {
 
     this.addComponent('transform', new TransformComponent());
     this.addComponent('visual', new VisualComponent());
-    this.addComponent('partOverrides', new PartOverridesComponent()); // 🔥 INYECCIÓN DE OVERRIDES
+    this.addComponent('partOverrides', new PartOverridesComponent()); 
     
     const isSphere = type === 'sphere' || type === 'bubble';
     this.addComponent('physics', new PhysicsComponent(isSphere ? 'sphere' : 'box'));

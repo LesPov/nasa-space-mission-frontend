@@ -1,6 +1,4 @@
 
-
-
 <div class="panel-header">
   <div style="display: flex; align-items: center; gap: 6px;">
     <span class="icon">📁</span>
@@ -9,109 +7,32 @@
   <input 
     type="text" 
     class="search-outliner" 
-    placeholder="🔍 Buscar..." 
-    [(ngModel)]="searchTerm" 
-    (input)="onSearchChange()">
+    placeholder="🔍 Buscar entidad..." 
+    [ngModel]="outlinerState.searchTerm()" 
+    (ngModelChange)="onSearchChange($event)">
 </div>
 
-<div class="outliner-tree">
-  <div class="tree-collection root-episode">
-    <span class="icon">🎬</span>
-    <span>Episodio: {{ mapaSvc.episodioActualData()?.title || 'Episodio Actual' }}</span>
-  </div>
-
-  <div class="tree-items">
+<div class="platform-list">
+  
+  <ng-container *ngFor="let plat of plataformas; trackBy: trackById">
     
-    <ng-template #nodeTemplate let-nodo="nodo" let-depth="depth">
-      <ng-container *ngIf="cumpleFiltro(nodo)">
-        
-        <div
-          class="node-item"
-          draggable="true"
-          (dragstart)="onDragStart($event, nodo)"
-          (dragover)="onDragOver($event, nodo)"
-          (dragleave)="onDragLeave($event)"
-          (drop)="onDrop($event, nodo)"
-          (dragend)="onDragEnd($event)"
-          [class.selected]="esSeleccionado(nodo) && !stateSvc.subObjetoSeleccionado()"
-          [class.locked]="esBloqueado(nodo)"
-          [style.padding-left.px]="15 + (depth * 15)"
-          (click)="seleccionarDesdeLista(nodo)"
-        >
-          <div class="node-left">
-            <span class="tree-expander" 
-                  [style.visibility]="tieneHijosCache(nodo) ? 'visible' : 'hidden'" 
-                  (click)="toggleExpandir(nodo, $event)">
-              {{ estaExpandido(nodo) ? '▼' : '▶' }}
-            </span>
-            <span class="node-icon">{{ getIcono(nodo) }}</span>
-            <span class="node-name" [innerHTML]="resaltarTexto(nodo.name)"></span>
-          </div>
-
-          <div class="node-right">
-            <span class="badge-icon" *ngIf="tieneAnimaciones(nodo)" title="Tiene Animaciones">🏃</span>
-            <span class="badge-icon" *ngIf="tieneSecuencias(nodo)" title="Tiene Secuencias">🎞️</span>
-            <span class="badge-icon" *ngIf="tieneCapsula(nodo)" title="Tiene Cuerpo Físico">📦</span>
-            <span class="badge-icon" *ngIf="tieneCamara(nodo)" title="Tiene Cámara FPS">🎥</span>
-            <span class="badge-icon" *ngIf="tieneLuzInterna(nodo)" title="Emite Luz">💡</span>
-            <span class="badge-icon" *ngIf="tieneNiebla(nodo)" title="Emite Niebla Local">☁️</span>
-          </div>
-        </div>
-
-        <div class="sub-tree-container" *ngIf="estaExpandido(nodo)">
-          
-          <div class="node-item sub-item" *ngIf="tieneCapsula(nodo)" [class.selected]="esSubSeleccionado(nodo, 'collider')" [style.padding-left.px]="35 + (depth * 15)" (click)="seleccionarSubItem('physics', 'collider', nodo, $event)">
-            <span class="node-icon">📦</span><span class="node-name" style="color:#aaa;">Cuerpo Físico</span>
-          </div>
-          <div class="node-item sub-item" *ngIf="tieneCamara(nodo)" [class.selected]="esSubSeleccionado(nodo, 'camera')" [style.padding-left.px]="35 + (depth * 15)" (click)="seleccionarSubItem('physics', 'camera', nodo, $event)">
-            <span class="node-icon">🎥</span><span class="node-name" style="color:#aaa;">Cámara FPS</span>
-          </div>
-          <div class="node-item sub-item" *ngIf="tieneLuzInterna(nodo)" [class.selected]="esSubSeleccionado(nodo, 'light')" [style.padding-left.px]="35 + (depth * 15)" (click)="seleccionarSubItem('light', 'light', nodo, $event)">
-            <span class="node-icon">💡</span><span class="node-name" style="color:#facc15;">Ubicación Luz</span>
-          </div>
-
-          <ng-container *ngIf="esTrigger(nodo)">
-            <div class="node-item sub-item" *ngIf="getTriggerConditions(nodo).includes('on_enter')" [style.padding-left.px]="35 + (depth * 15)" (click)="seleccionarSubItem('transform', null, nodo, $event)">
-              <span class="node-icon">🟩</span><span class="node-name" style="color:#4ade80;">Evento: Al Entrar</span>
-            </div>
-            <div class="node-item sub-item" *ngIf="getTriggerConditions(nodo).includes('on_exit')" [style.padding-left.px]="35 + (depth * 15)" (click)="seleccionarSubItem('transform', null, nodo, $event)">
-              <span class="node-icon">🟥</span><span class="node-name" style="color:#f87171;">Evento: Al Salir</span>
-            </div>
-          </ng-container>
-
-          <ng-container *ngFor="let childNode of getHijosCache(nodo); trackBy: trackByUid">
-             <ng-container *ngTemplateOutlet="nodeTemplate; context:{ nodo: childNode, depth: depth + 1 }"></ng-container>
-          </ng-container>
-
-        </div>
-      </ng-container>
-    </ng-template>
-
-    <ng-container *ngFor="let plat of plataformas; trackBy: trackById">
-      <div class="tree-collection platform-node" 
-           [class.active]="plat.id === plataformaActivaId" 
-           (click)="cambiarPlataforma(plat.id)"
-           (dragover)="plat.id === plataformaActivaId ? onDragOverRoot($event) : null"
-           (dragleave)="plat.id === plataformaActivaId ? onDragLeaveRoot($event) : null"
-           (drop)="plat.id === plataformaActivaId ? onDropRoot($event) : null">
-        
-        <div style="display:flex; align-items:center; gap:8px;">
-           <span class="icon">🗺️</span>
-           <span>{{ plat.name }}</span>
-        </div>
-        <span class="status-badge" *ngIf="plat.id === plataformaActivaId">ACTIVA</span>
+    <!-- Platform Header (Collapsible behavior driven by selection) -->
+    <div class="platform-header" 
+         [class.active]="plat.id === plataformaActivaId" 
+         (click)="cambiarPlataforma(plat.id)">
+      
+      <div class="platform-info">
+         <span class="icon">{{ plat.id === plataformaActivaId ? '▼' : '▶' }} 🌍</span>
+         <span>{{ plat.name }}</span>
       </div>
+      <span class="status-badge" *ngIf="plat.id === plataformaActivaId">ACTIVA</span>
+    </div>
 
-      <div class="platform-children" *ngIf="plat.id === plataformaActivaId">
-        <ng-container *ngFor="let nodoRaiz of listaNodosCache; trackBy: trackByUid">
-          <ng-container *ngTemplateOutlet="nodeTemplate; context:{ nodo: nodoRaiz, depth: 1 }"></ng-container>
-        </ng-container>
-        
-        <div *ngIf="listaNodosCache.length === 0" style="padding: 10px 20px; color: #666; font-size: 11px; font-style: italic;">
-          No hay objetos en esta plataforma.
-        </div>
-      </div>
-    </ng-container>
+    <!-- Active Platform Content (Renders SceneOutliner) -->
+    <div class="platform-content" *ngIf="plat.id === plataformaActivaId">
+        <app-scene-outliner></app-scene-outliner>
+    </div>
 
-  </div>
+  </ng-container>
+
 </div>

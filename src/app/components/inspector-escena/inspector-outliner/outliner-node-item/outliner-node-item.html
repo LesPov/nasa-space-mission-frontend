@@ -1,0 +1,56 @@
+
+<ng-container *ngIf="meetsFilter">
+  <div class="node-item"
+       draggable="true"
+       (dragstart)="onDragStart($event)"
+       (dragover)="onDragOver($event)"
+       (dragleave)="onDragLeave($event)"
+       (drop)="onDrop($event)"
+       (dragend)="onDragEnd($event)"
+       (click)="selectNode($event)"
+       (dblclick)="startRename($event)"
+       (contextmenu)="openContextMenu($event)"
+       [class.selected]="isSelected"
+       [class.locked]="!isSelectable"
+       [class.hidden]="!isVisible"
+       [style.padding-left.px]="paddingLeft">
+    
+    <div class="node-left">
+      <!-- Expander -->
+      <span class="tree-expander" 
+            [style.visibility]="hasChildren ? 'visible' : 'hidden'" 
+            (click)="toggleExpand($event)">
+        {{ isExpanded ? '▼' : '▶' }}
+      </span>
+      
+      <!-- Icon -->
+      <span class="node-icon" [title]="entityType">{{ icon }}</span>
+      
+      <!-- Name / Input -->
+      <span class="node-name" *ngIf="!isRenaming" [innerHTML]="highlightedName"></span>
+      <input #renameInput class="rename-input" *ngIf="isRenaming" 
+             [(ngModel)]="editName" 
+             (blur)="commitRename()" 
+             (keydown.enter)="commitRename()"
+             (keydown.escape)="cancelRename()"
+             (click)="$event.stopPropagation()">
+    </div>
+
+    <div class="node-right">
+      <span class="action-btn" [class.active]="isVisible" (click)="toggleVisibility($event)" [title]="isVisible ? 'Ocultar' : 'Mostrar'">
+        {{ isVisible ? '👁' : '🚫' }}
+      </span>
+      <span class="action-btn" [class.active]="!isSelectable" (click)="toggleLock($event)" [title]="isSelectable ? 'Bloquear' : 'Desbloquear'">
+        {{ isSelectable ? '🔓' : '🔒' }}
+      </span>
+    </div>
+  </div>
+
+  <!-- Recursive Children -->
+  <div class="sub-tree-container" *ngIf="isExpanded">
+    <app-outliner-node-item *ngFor="let child of children; trackBy: trackByUid" 
+                            [node]="child" 
+                            [depth]="depth + 1">
+    </app-outliner-node-item>
+  </div>
+</ng-container>

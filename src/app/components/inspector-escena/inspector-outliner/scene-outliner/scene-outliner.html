@@ -1,0 +1,31 @@
+
+<div class="tree-items" 
+     (dragover)="onDragOverRoot($event)" 
+     (dragleave)="onDragLeaveRoot($event)" 
+     (drop)="onDropRoot($event)">
+     
+  <app-outliner-node-item *ngFor="let root of rootNodes; trackBy: trackByUid" 
+                          [node]="root" 
+                          [depth]="0">
+  </app-outliner-node-item>
+  
+  <div *ngIf="rootNodes.length === 0" class="empty-state">
+    No hay objetos válidos en la raíz de esta escena.
+  </div>
+</div>
+
+<!-- Context Menu Overlay -->
+<div class="context-menu-overlay" *ngIf="outlinerState.contextMenuOpen()" (click)="closeContextMenu()" (contextmenu)="closeContextMenu(); $event.preventDefault()">
+  <div class="context-menu" 
+       [style.left.px]="outlinerState.contextMenuPosition().x" 
+       [style.top.px]="outlinerState.contextMenuPosition().y"
+       (click)="$event.stopPropagation()">
+       
+    <button (click)="focusNode()"><span>🎯</span> Enfocar Cámara</button>
+    <div class="divider"></div>
+    <button (click)="duplicateNode()"><span>📑</span> Duplicar</button>
+    <button (click)="saveAsPrefab()"><span>📦</span> Guardar como Prefab</button>
+    <div class="divider"></div>
+    <button class="danger" (click)="deleteNode()"><span>🗑️</span> Eliminar</button>
+  </div>
+</div>

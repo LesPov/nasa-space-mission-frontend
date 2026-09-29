@@ -1,0 +1,73 @@
+
+:host {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.tree-items {
+  overflow-y: auto;
+  flex: 1;
+  min-height: 0;
+  padding: 5px;
+}
+
+.tree-items::-webkit-scrollbar { width: 5px; } 
+.tree-items::-webkit-scrollbar-track { background: #1c1c1c; }
+.tree-items::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+.tree-items::-webkit-scrollbar-thumb:hover { background: #666; }
+
+.empty-state {
+  padding: 20px; 
+  color: #666; 
+  font-size: 11px; 
+  font-style: italic;
+  text-align: center;
+}
+
+/* Context Menu */
+.context-menu-overlay {
+  position: fixed;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  z-index: 10000;
+}
+
+.context-menu {
+  position: absolute;
+  background: #2b2b2b;
+  border: 1px solid #111;
+  border-radius: 6px;
+  box-shadow: 0 5px 15px rgba(0,0,0,0.8);
+  min-width: 160px;
+  padding: 5px 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.context-menu button {
+  background: transparent;
+  border: none;
+  color: #d1d1d1;
+  padding: 8px 15px;
+  text-align: left;
+  font-size: 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.context-menu button:hover {
+  background: #3b82f6;
+  color: white;
+}
+
+.context-menu .danger:hover {
+  background: #ef4444;
+}
+
+.divider {
+  height: 1px;
+  background: #111;
+  margin: 5px 0;
+}

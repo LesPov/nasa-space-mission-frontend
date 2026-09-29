@@ -159,6 +159,10 @@ export class CoreModelLoaderService {
     const isEditor = this.gameContext.mode() === GameMode.EDITOR || this.gameContext.mode() === GameMode.EDITING_IN_GAME || this.gameContext.mode() === GameMode.TEST_LIVE;
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
 
+    // 🔥 FIX: Pasamos el activeColorHex (tinte) que el usuario haya seleccionado o tenga guardado
+    const activeAmbient = isBW ? entity.visual.ambientColorBW : entity.visual.ambientColor;
+    const activeColor = isBW ? entity.visual.colorBW : entity.visual.color;
+
     for (const m of subMeshes) {
       const nameL = m.name.toLowerCase();
       if (nameL.includes('proxycol')) Tags.AddTagsTo(m, "proxy_collider ignore_raycast system_element");
@@ -182,8 +186,8 @@ export class CoreModelLoaderService {
       
       if (m.material) {
           this.materialSvc.asegurarMaterialUnico(m, entity.uid);
-          const activeAmbient = isBW ? entity.visual.ambientColorBW : entity.visual.ambientColor;
-          await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbient);
+          // 🔥 AQUÍ: Ajustamos con los parámetros extendidos
+          await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbient, activeColor, entity.visual.esEmisivo, entity.visual.brilloIntensidad);
       }
     }
 

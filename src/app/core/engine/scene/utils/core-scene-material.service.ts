@@ -41,27 +41,36 @@ export class CoreSceneMaterialService {
       }
   }
 
-  public async ajustarMaterialGLB(material: any, isBW: boolean = false, scene?: Scene, ambientColorHex?: string): Promise<void> {
+  public async ajustarMaterialGLB(
+      material: any, 
+      isBW: boolean = false, 
+      scene?: Scene, 
+      ambientColorHex?: string, 
+      colorHex?: string, 
+      esEmisivo: boolean = false, 
+      brilloIntensidad: number = 1.0
+  ): Promise<void> {
     if (!material) return;
     
     if (material.getClassName() === 'MultiMaterial' && material.subMaterials) {
       for (const subMat of material.subMaterials) {
-        await this.ajustarMaterialGLB(subMat, isBW, scene, ambientColorHex);
+        await this.ajustarMaterialGLB(subMat, isBW, scene, ambientColorHex, colorHex, esEmisivo, brilloIntensidad);
       }
       return;
     }
     
-    // 🔥 LÍMITE ABSOLUTO ARQUITECTÓNICO (Shader Safe Pool Guarantee)
-    // El Dynamic Lighting System usa exactamente 3 Luces Locales + 1 Sun + 1 Hemi = 5 Luces.
-    // Presupuestamos maxSimultaneousLights = 6 para dejar un margen seguro y 
-    // JAMÁS provocar el error GL_MAX_VERTEX_UNIFORM_BUFFERS (12-14 en hardware modesto).
+    // Límite arquitectónico seguro de luces
     const SAFE_LIGHT_BUDGET = 6;
     if (material.maxSimultaneousLights !== SAFE_LIGHT_BUDGET) {
         material.maxSimultaneousLights = SAFE_LIGHT_BUDGET;
     }
 
     const c3Amb = ambientColorHex ? Color3.FromHexString(ambientColorHex) : new Color3(1, 1, 1);
+    const c3Tint = colorHex ? Color3.FromHexString(colorHex) : new Color3(1, 1, 1);
+    const brillo = Math.max(0, Math.min(10, brilloIntensidad));
     
+    const isCustomTint = colorHex && colorHex.toLowerCase() !== '#ffffff';
+
     if (material.getClassName().includes('PBR')) {
       material.ambientColor = c3Amb;
       
@@ -76,28 +85,50 @@ export class CoreSceneMaterialService {
          material.metadata.originalAlbedoColor = material.albedoColor ? material.albedoColor.clone() : new Color3(0.8, 0.8, 0.8);
       }
 
+      // 🎨 FIX: Tintado Seguro con PBR
+      if (isCustomTint) {
+          material.albedoColor = c3Tint;
+      } else {
+          if (material.metadata.originalAlbedoColor) material.albedoColor.copyFrom(material.metadata.originalAlbedoColor);
+      }
+
+      if (esEmisivo) {
+          material.emissiveColor = isCustomTint ? c3Tint.scale(brillo) : (material.metadata.originalAlbedoColor || new Color3(1,1,1)).scale(brillo);
+      } else {
+          material.emissiveColor = new Color3(0,0,0);
+      }
+
       if (isBW && scene) {
          if (material.metadata.originalAlbedoTexture) {
              const bwTex = await this.getOrCreateBwTexture(material.metadata.originalAlbedoTexture, scene);
              if (material.albedoTexture !== bwTex) material.albedoTexture = bwTex;
          }
-         if (material.albedoColor.r !== 0.8) material.albedoColor.copyFromFloats(0.8, 0.8, 0.8);
+         if (material.albedoColor.r !== 0.8 && !isCustomTint) material.albedoColor.copyFromFloats(0.8, 0.8, 0.8);
       } else {
          if (material.albedoTexture !== material.metadata.originalAlbedoTexture) {
              material.albedoTexture = material.metadata.originalAlbedoTexture;
-         }
-         if (!material.albedoColor.equals(material.metadata.originalAlbedoColor)) {
-             material.albedoColor.copyFrom(material.metadata.originalAlbedoColor);
          }
       }
     } else if (material.getClassName().includes('Standard')) {
       material.ambientColor = c3Amb;
       
       if (!material.metadata) material.metadata = {};
-      
       if (material.metadata.originalDiffuseTexture === undefined) {
          material.metadata.originalDiffuseTexture = material.diffuseTexture || null;
          material.metadata.originalDiffuseColor = material.diffuseColor ? material.diffuseColor.clone() : new Color3(0.8, 0.8, 0.8);
+      }
+
+      // 🎨 FIX: Tintado Seguro con Standard
+      if (isCustomTint) {
+          material.diffuseColor = c3Tint;
+      } else {
+          if (material.metadata.originalDiffuseColor) material.diffuseColor.copyFrom(material.metadata.originalDiffuseColor);
+      }
+
+      if (esEmisivo) {
+          material.emissiveColor = isCustomTint ? c3Tint.scale(brillo) : (material.metadata.originalDiffuseColor || new Color3(1,1,1)).scale(brillo);
+      } else {
+          material.emissiveColor = new Color3(0,0,0);
       }
 
       if (isBW && scene) {
@@ -105,13 +136,10 @@ export class CoreSceneMaterialService {
              const bwTex = await this.getOrCreateBwTexture(material.metadata.originalDiffuseTexture, scene);
              if (material.diffuseTexture !== bwTex) material.diffuseTexture = bwTex;
          }
-         if (material.diffuseColor.r !== 0.8) material.diffuseColor.copyFromFloats(0.8, 0.8, 0.8);
+         if (material.diffuseColor.r !== 0.8 && !isCustomTint) material.diffuseColor.copyFromFloats(0.8, 0.8, 0.8);
       } else {
          if (material.diffuseTexture !== material.metadata.originalDiffuseTexture) {
              material.diffuseTexture = material.metadata.originalDiffuseTexture;
-         }
-         if (!material.diffuseColor.equals(material.metadata.originalDiffuseColor)) {
-             material.diffuseColor.copyFrom(material.metadata.originalDiffuseColor);
          }
       }
     }

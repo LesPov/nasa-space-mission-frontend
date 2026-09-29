@@ -125,7 +125,10 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.localEscY = this.formatNum(entity.transform.scale.y);
     this.localEscZ = this.formatNum(entity.transform.scale.z);
 
-    this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane', 'image_plane', 'model'].includes(entity.type);
+    // 🔥 FIX OBLIGATORIO: Aseguramos que la sección de color se muestre si es un modelo GLB (sea rol prop, light, etc)
+    const hasAsset = !!entity.visual.assetId || !!entity.visual.path;
+    this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane', 'image_plane', 'model'].includes(entity.type) || (entity.type.startsWith('light_') && hasAsset);
+    
     this.esImagePlane = entity.type === 'image_plane';
     this.esTrigger = entity.type === 'trigger' || entity.type === 'trigger_compuesto';
     this.esBubble = entity.type === 'bubble';

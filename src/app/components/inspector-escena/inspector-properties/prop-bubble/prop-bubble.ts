@@ -1,5 +1,4 @@
 
-
 import { Component, Input, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -12,11 +11,11 @@ import { EntityManagerService } from '../../../../core/engine/entities/entity-ma
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-bubble.html',
-  styleUrls: ['../inspector-properties.css']
+  styleUrls: ['./prop-bubble.css']
 })
 export class PropBubble implements OnInit {
   @Input() objeto!: AbstractMesh;
-  private editorSvc = inject(EditorMapaService);
+  private editorSvc = EditorMapaService;
   private entityManager = inject(EntityManagerService); 
 
   respawnTime: number = 8;
@@ -38,6 +37,6 @@ export class PropBubble implements OnInit {
       entity.syncToView();
     } 
     
-    this.editorSvc.onMapChanged.next();
+    this.editorSvc.prototype.onMapChanged.next();
   }
 }

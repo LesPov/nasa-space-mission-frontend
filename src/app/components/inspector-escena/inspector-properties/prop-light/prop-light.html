@@ -4,86 +4,77 @@
     <h4>Propiedades de la Luz</h4>
   </div>
 
-  <div class="grid-2" style="margin-bottom: 15px;">
-    <div class="checkbox-field" style="background: rgba(250, 204, 21, 0.1); padding: 8px; border: 1px solid #facc15; border-radius: 6px;">
-      <input type="checkbox" id="chkLightEnabled" [(ngModel)]="enabled" (ngModelChange)="aplicarLuz()">
-      <label for="chkLightEnabled" style="cursor: pointer; color: #facc15; font-weight: bold; margin: 0;">💡 Encendida</label>
-    </div>
-    <div class="checkbox-field" style="background: rgba(96, 165, 250, 0.1); padding: 8px; border: 1px solid #60a5fa; border-radius: 6px;">
-      <input type="checkbox" id="chkCastShadows" [(ngModel)]="castShadows" (ngModelChange)="aplicarLuz()">
-      <label for="chkCastShadows" style="cursor: pointer; color: #60a5fa; font-weight: bold; margin: 0;">🌑 Sombras</label>
-    </div>
-  </div>
-
-  <div class="grid-2" style="margin-bottom: 15px;">
-    <div class="field">
-      <label>Color Normal</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="lightColor" (ngModelChange)="aplicarLuz()" class="color-picker">
-        <span class="color-hex-text">{{ lightColor.toUpperCase() }}</span>
+  <div style="padding: 12px;">
+    <div class="grid-2" style="margin-bottom: 15px;">
+      <div class="checkbox-modern" style="border-color: #facc15; background: rgba(250, 204, 21, 0.1);">
+        <input type="checkbox" id="chkLightEnabled" [(ngModel)]="enabled" (ngModelChange)="aplicarLuz()" style="accent-color: #facc15;">
+        <label for="chkLightEnabled" style="color: #facc15;">💡 Encendida</label>
+      </div>
+      <div class="checkbox-modern" style="border-color: #60a5fa; background: rgba(96, 165, 250, 0.1);">
+        <input type="checkbox" id="chkCastShadows" [(ngModel)]="castShadows" (ngModelChange)="aplicarLuz()">
+        <label for="chkCastShadows" style="color: #60a5fa;">🌑 Sombras</label>
       </div>
     </div>
-    <div class="field">
-      <label style="color: #cbd5e1; font-weight: bold;">Color en B&N</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="lightColorBW" (ngModelChange)="aplicarLuz()" class="color-picker">
-        <span class="color-hex-text">{{ lightColorBW.toUpperCase() }}</span>
+
+    <div class="grid-2" style="margin-bottom: 15px;">
+      <div class="field">
+        <label>Color Normal</label>
+        <div class="color-box-modern">
+          <input type="color" [(ngModel)]="lightColor" (ngModelChange)="aplicarLuz()" class="color-swatch-input">
+          <span class="hex-text">{{ lightColor.toUpperCase() }}</span>
+        </div>
+      </div>
+      <div class="field">
+        <label>Color B&N</label>
+        <div class="color-box-modern">
+          <input type="color" [(ngModel)]="lightColorBW" (ngModelChange)="aplicarLuz()" class="color-swatch-input">
+          <span class="hex-text">{{ lightColorBW.toUpperCase() }}</span>
+        </div>
       </div>
     </div>
-  </div>
 
-  <div
-    class="field wide"
-    *ngIf="childNodes.length > 0"
-    style="margin-bottom: 15px; border: 1px solid #4b73b5; padding: 12px; border-radius: 6px; background: rgba(75, 115, 181, 0.1);"
-  >
-    <label style="color: #60a5fa; font-weight: bold; font-size: 13px;">🔗 Atar Luz a la Animación:</label>
-    <p class="help-text" style="color: #cbd5e1; margin-bottom: 8px; font-size: 11px;">
-      Elige la pieza que sí se mueve. Si pegas la luz al nodo correcto, viajará con la secuencia.
-    </p>
-
-    <select
-      [(ngModel)]="attachedNodePath"
-      (ngModelChange)="aplicarLuz()"
-      style="margin-top: 5px; font-weight: bold; background: #d8dce6; padding: 8px;"
-    >
-      <option value="">-- Suelo / Centro del Modelo (Estático) --</option>
-      <option *ngFor="let node of childNodes" [value]="node.value">🦴 Pieza: {{ node.label }}</option>
-    </select>
-  </div>
-
-  <div class="section-mini-head">
-    <h5>Ajuste Fino de Posición Local</h5>
-  </div>
-  <div class="grid-3" style="margin-bottom: 15px;">
-    <div class="field"><label>Loc X</label><input type="number" step="0.1" [(ngModel)]="lightPosX" (ngModelChange)="aplicarLuz()" /></div>
-    <div class="field"><label>Loc Y</label><input type="number" step="0.1" [(ngModel)]="lightPosY" (ngModelChange)="aplicarLuz()" /></div>
-    <div class="field"><label>Loc Z</label><input type="number" step="0.1" [(ngModel)]="lightPosZ" (ngModelChange)="aplicarLuz()" /></div>
-  </div>
-
-  <div class="section-mini-head" *ngIf="isSpot || isDirectional">
-    <h5>Dirección Local (Grados)</h5>
-  </div>
-  <div class="grid-3" style="margin-bottom: 15px;" *ngIf="isSpot || isDirectional">
-    <div class="field"><label>Pitch (X)</label><input type="number" step="5" [(ngModel)]="lightRotX" (ngModelChange)="aplicarLuz()" /></div>
-    <div class="field"><label>Yaw (Y)</label><input type="number" step="5" [(ngModel)]="lightRotY" (ngModelChange)="aplicarLuz()" /></div>
-    <div class="field"><label>Roll (Z)</label><input type="number" step="5" [(ngModel)]="lightRotZ" (ngModelChange)="aplicarLuz()" /></div>
-  </div>
-
-  <div class="grid-2">
-    <div class="field wide">
-      <label>Intensidad de Luz</label>
-      <input type="number" step="0.1" min="0" [(ngModel)]="intensity" (ngModelChange)="aplicarLuz()" />
+    <div class="field wide" *ngIf="childNodes.length > 0" style="margin-bottom: 15px; padding: 10px; border: 1px solid #334155; border-radius: 6px; background: rgba(59, 130, 246, 0.05);">
+      <label style="color: #60a5fa;">🔗 Atar Luz a Hueso/Pieza:</label>
+      <select [(ngModel)]="attachedNodePath" (ngModelChange)="aplicarLuz()" style="margin-top: 6px;">
+        <option value="">-- Suelo / Centro (Estático) --</option>
+        <option *ngFor="let node of childNodes" [value]="node.value">🦴 {{ node.label }}</option>
+      </select>
+      <p class="help-text">Si pegas la luz al nodo correcto, viajará con la animación.</p>
     </div>
 
-    <div class="field wide" *ngIf="isPoint || isSpot">
-      <label>Rango de Iluminación (Distancia)</label>
-      <input type="number" step="1" min="0" [(ngModel)]="range" (ngModelChange)="aplicarLuz()" />
+    <div class="section-mini-head">
+      <h5>Ajuste Fino de Posición Local</h5>
+    </div>
+    <div class="grid-3" style="margin-bottom: 15px;">
+      <div class="field"><label>Loc X</label><input type="number" step="0.1" [(ngModel)]="lightPosX" (ngModelChange)="aplicarLuz()" /></div>
+      <div class="field"><label>Loc Y</label><input type="number" step="0.1" [(ngModel)]="lightPosY" (ngModelChange)="aplicarLuz()" /></div>
+      <div class="field"><label>Loc Z</label><input type="number" step="0.1" [(ngModel)]="lightPosZ" (ngModelChange)="aplicarLuz()" /></div>
     </div>
 
-    <div class="field wide" *ngIf="isSpot">
-      <label>Apertura del Cono (Grados)</label>
-      <input type="number" step="1" min="1" max="179" [(ngModel)]="angle" (ngModelChange)="aplicarLuz()" />
+    <div class="section-mini-head" *ngIf="isSpot || isDirectional">
+      <h5>Dirección Local (Grados)</h5>
+    </div>
+    <div class="grid-3" style="margin-bottom: 15px;" *ngIf="isSpot || isDirectional">
+      <div class="field"><label>Pitch (X)</label><input type="number" step="5" [(ngModel)]="lightRotX" (ngModelChange)="aplicarLuz()" /></div>
+      <div class="field"><label>Yaw (Y)</label><input type="number" step="5" [(ngModel)]="lightRotY" (ngModelChange)="aplicarLuz()" /></div>
+      <div class="field"><label>Roll (Z)</label><input type="number" step="5" [(ngModel)]="lightRotZ" (ngModelChange)="aplicarLuz()" /></div>
+    </div>
+
+    <div class="grid-2">
+      <div class="field wide">
+        <label>Intensidad</label>
+        <input type="number" step="0.1" min="0" [(ngModel)]="intensity" (ngModelChange)="aplicarLuz()" />
+      </div>
+
+      <div class="field wide" *ngIf="isPoint || isSpot">
+        <label>Rango (Distancia)</label>
+        <input type="number" step="1" min="0" [(ngModel)]="range" (ngModelChange)="aplicarLuz()" />
+      </div>
+
+      <div class="field wide" *ngIf="isSpot">
+        <label>Apertura (Grados)</label>
+        <input type="number" step="1" min="1" max="179" [(ngModel)]="angle" (ngModelChange)="aplicarLuz()" />
+      </div>
     </div>
   </div>
 </div>

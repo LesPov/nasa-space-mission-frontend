@@ -1,5 +1,4 @@
 
-
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -20,7 +19,7 @@ interface ClipViewModel { name: string; group: AnimationGroup; targetCount: numb
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-animation.html',
-  styleUrls: ['../inspector-properties.css']
+  styleUrls: ['./prop-animation.css']
 })
 export class PropAnimation implements OnInit, OnDestroy, OnChanges {
   @Input() objeto!: AbstractMesh;

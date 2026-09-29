@@ -1,4 +1,3 @@
-
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
@@ -17,6 +16,7 @@ export interface PartOverride {
   esEmisivo?: boolean;
   brilloIntensidad?: number;
   texturePath?: string;
+  textureSource?: 'original' | 'solid' | 'asset';
 }
 
 export class PartOverridesComponent {

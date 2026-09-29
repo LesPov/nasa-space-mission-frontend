@@ -1,79 +1,105 @@
-
-<div class="accordion-section expanded">
-  <div class="accordion-header" style="cursor: default;">
-    <h4><span>🧩</span> Identificación de Parte</h4>
+<div class="accordion-section" [class.expanded]="accordions['transform']">
+  <div class="accordion-header" (click)="toggleAcordeon('transform')">
+    <h4><span class="icon">🧩</span> Transformación (Parte Local)</h4>
+    <span class="chevron">▶</span>
   </div>
-  <div class="accordion-content">
-    <div class="field wide">
-      <label>Nombre Original del Nodo:</label>
-      <input type="text" [value]="objeto.name" readonly style="opacity: 0.7;" />
-    </div>
-  </div>
-</div>
-
-<div class="accordion-section expanded">
-  <div class="accordion-header" style="cursor: default;">
-    <h4><span>📍</span> Transformación Local</h4>
-    <button class="btn-ghost small" (click)="restaurarTransformacion()">↺ Restaurar</button>
-  </div>
-  <div class="accordion-content">
+  <div class="accordion-content" *ngIf="accordions['transform']">
     <div class="grid-3">
-      <div class="field"><label>Pos X</label><input type="number" step="0.01" [(ngModel)]="localPosX" (ngModelChange)="aplicarTransformacion()" /></div>
-      <div class="field"><label>Pos Y</label><input type="number" step="0.01" [(ngModel)]="localPosY" (ngModelChange)="aplicarTransformacion()" /></div>
-      <div class="field"><label>Pos Z</label><input type="number" step="0.01" [(ngModel)]="localPosZ" (ngModelChange)="aplicarTransformacion()" /></div>
+      <div class="field"><label>Posición X</label><input type="number" step="0.01" [ngModel]="localPosX" (ngModelChange)="localPosX = $event; aplicarPosicion()" /></div>
+      <div class="field"><label>Posición Y</label><input type="number" step="0.01" [ngModel]="localPosY" (ngModelChange)="localPosY = $event; aplicarPosicion()" /></div>
+      <div class="field"><label>Posición Z</label><input type="number" step="0.01" [ngModel]="localPosZ" (ngModelChange)="localPosZ = $event; aplicarPosicion()" /></div>
 
-      <div class="field"><label style="color: #60a5fa;">Rot X°</label><input type="number" step="1" [(ngModel)]="localRotX" (ngModelChange)="aplicarTransformacion()" /></div>
-      <div class="field"><label style="color: #60a5fa;">Rot Y°</label><input type="number" step="1" [(ngModel)]="localRotY" (ngModelChange)="aplicarTransformacion()" /></div>
-      <div class="field"><label style="color: #60a5fa;">Rot Z°</label><input type="number" step="1" [(ngModel)]="localRotZ" (ngModelChange)="aplicarTransformacion()" /></div>
+      <div class="field"><label>Rotación X°</label><input type="number" step="1" [ngModel]="localRotX" (ngModelChange)="localRotX = $event; aplicarRotacion()" /></div>
+      <div class="field"><label>Rotación Y°</label><input type="number" step="1" [ngModel]="localRotY" (ngModelChange)="localRotY = $event; aplicarRotacion()" /></div>
+      <div class="field"><label>Rotación Z°</label><input type="number" step="1" [ngModel]="localRotZ" (ngModelChange)="localRotZ = $event; aplicarRotacion()" /></div>
 
-      <div class="field"><label style="color: #facc15;">Escala X</label><input type="number" step="0.1" [(ngModel)]="localEscX" (ngModelChange)="aplicarTransformacion()" /></div>
-      <div class="field"><label style="color: #facc15;">Escala Y</label><input type="number" step="0.1" [(ngModel)]="localEscY" (ngModelChange)="aplicarTransformacion()" /></div>
-      <div class="field"><label style="color: #facc15;">Escala Z</label><input type="number" step="0.1" [(ngModel)]="localEscZ" (ngModelChange)="aplicarTransformacion()" /></div>
+      <div class="field"><label>Escala X</label><input type="number" step="0.01" [ngModel]="localEscX" (ngModelChange)="localEscX = $event; aplicarEscala()" /></div>
+      <div class="field"><label>Escala Y</label><input type="number" step="0.01" [ngModel]="localEscY" (ngModelChange)="localEscY = $event; aplicarEscala()" /></div>
+      <div class="field"><label>Escala Z</label><input type="number" step="0.01" [ngModel]="localEscZ" (ngModelChange)="localEscZ = $event; aplicarEscala()" /></div>
     </div>
   </div>
 </div>
 
-<div class="accordion-section expanded">
-  <div class="accordion-header" style="cursor: default;">
-    <h4><span>🎨</span> Material y Textura (Local)</h4>
-    <button class="btn-ghost small" (click)="restaurarMaterial()">↺ Restaurar</button>
+<div class="accordion-section" [class.expanded]="accordions['visuals']">
+  <div class="accordion-header" (click)="toggleAcordeon('visuals')">
+    <h4><span class="icon">🎨</span> Renderizado de la Parte</h4>
+    <span class="chevron">▶</span>
   </div>
-  <div class="accordion-content">
+  <div class="accordion-content" *ngIf="accordions['visuals']">
     <div class="grid-2">
       <div class="field">
-        <label>Color Base</label>
+        <label>Color Normal</label>
         <div class="color-box-modern">
-          <input type="color" [(ngModel)]="objColor" (ngModelChange)="aplicarMaterial()" class="color-swatch-input">
+          <input type="color" [(ngModel)]="objColor" (ngModelChange)="aplicarVisuales()" class="color-swatch-input">
           <span class="hex-text">{{ objColor.toUpperCase() }}</span>
         </div>
       </div>
       <div class="field">
-        <label>Color (Modo B&N)</label>
+        <label>Color B&N</label>
         <div class="color-box-modern">
-          <input type="color" [(ngModel)]="objColorBW" (ngModelChange)="aplicarMaterial()" class="color-swatch-input">
+          <input type="color" [(ngModel)]="objColorBW" (ngModelChange)="aplicarVisuales()" class="color-swatch-input">
           <span class="hex-text">{{ objColorBW.toUpperCase() }}</span>
         </div>
       </div>
     </div>
 
-    <div class="grid-2" style="margin-top: 15px;">
-      <div class="field wide">
-        <label>Intensidad Emisiva / Brillo (x{{ objBrilloIntensidad | number:'1.1-1' }})</label>
-        <input type="number" step="0.1" min="0" max="10" [(ngModel)]="objBrilloIntensidad" (ngModelChange)="aplicarMaterial()" />
-      </div>
+    <div class="field wide" style="margin-top: 12px;">
+      <label>Fuerza de Brillo / Emisión (x{{ (objBrilloIntensidad | number:'1.1-1') }})</label>
+      <input type="number" step="0.1" min="0" max="10" [(ngModel)]="objBrilloIntensidad" (ngModelChange)="aplicarVisuales()" />
     </div>
 
-    <div class="checkbox-modern" style="margin-top: 10px;">
-      <input type="checkbox" id="chkEmisivoPart" [(ngModel)]="objEsEmisivo" (ngModelChange)="aplicarMaterial()">
-      <label for="chkEmisivoPart" style="color: #facc15;">🌟 Emitir Luz Autónoma (Brillar)</label>
+    <div class="checkbox-modern" style="margin-top: 12px;">
+      <input type="checkbox" id="chkEsEmisivoPart" [(ngModel)]="objEsEmisivo" (ngModelChange)="aplicarVisuales()">
+      <label for="chkEsEmisivoPart" style="color: #facc15;">🌟 Brilla (Neón)</label>
     </div>
+  </div>
+</div>
 
-    <div class="field wide" style="margin-top: 15px; border-top: 1px dashed #334155; padding-top: 15px;">
-      <label>Reemplazar Textura (Assets)</label>
-      <select [(ngModel)]="objTexturePath" (ngModelChange)="aplicarMaterial()" style="margin-top: 5px;">
-        <option value="">-- Textura original del modelo --</option>
-        <option *ngFor="let asset of listaAssets" [value]="asset.path">🖼️ {{ asset.name }}</option>
+<div class="accordion-section" [class.expanded]="accordions['texture']">
+  <div class="accordion-header" (click)="toggleAcordeon('texture')">
+    <h4><span class="icon">🖼️</span> Textura de la Parte</h4>
+    <span class="chevron">▶</span>
+  </div>
+  <div class="accordion-content" *ngIf="accordions['texture']">
+    
+    <div class="field wide" style="margin-bottom: 15px;">
+      <label>Fuente de Textura</label>
+      <select [(ngModel)]="textureSource" (ngModelChange)="aplicarTextura()">
+        <option value="original">📦 Original (Del modelo 3D)</option>
+        <option value="solid">🟥 Color Sólido (Sin Textura)</option>
+        <option value="asset">🖼️ Personalizada (Desde Assets)</option>
       </select>
     </div>
+
+    <ng-container *ngIf="textureSource === 'original'">
+       <div style="background: rgba(59, 130, 246, 0.05); padding: 12px; border-radius: 6px; border: 1px solid #3b82f6; text-align: center;">
+         <p style="color: #60a5fa; font-size: 11px; margin: 0 0 10px 0;">La parte está utilizando su material original.</p>
+         <button class="btn-primary" (click)="restaurarTexturaOriginal()">🔄 Forzar Restauración Original</button>
+       </div>
+    </ng-container>
+
+    <ng-container *ngIf="textureSource === 'solid'">
+       <div style="background: rgba(248, 113, 113, 0.05); padding: 12px; border-radius: 6px; border: 1px solid #ef4444;">
+         <p style="color: #f87171; font-size: 11px; margin: 0 0 10px 0;">La textura ha sido eliminada. Ajusta el color en la sección "Renderizado".</p>
+         <button class="btn-ghost full" (click)="restaurarTexturaOriginal()">❌ Quitar y volver a Original</button>
+       </div>
+    </ng-container>
+
+    <ng-container *ngIf="textureSource === 'asset'">
+       <div class="field wide" style="margin-bottom: 12px;">
+         <label>Seleccionar Textura desde Assets:</label>
+         <select [(ngModel)]="objAssetSeleccionado" (ngModelChange)="aplicarTextura()" class="modal-input">
+           <option [ngValue]="null">-- Elige una imagen --</option>
+           <option *ngFor="let asset of listaAssets" [ngValue]="asset">🖼️ {{ asset.name }}</option>
+         </select>
+       </div>
+
+       <div *ngIf="objAssetSeleccionado" style="background: #020617; padding: 10px; border-radius: 6px; border: 1px solid #334155; text-align: center;">
+          <img [src]="'http://localhost:4000' + objAssetSeleccionado.path" style="max-width: 100%; max-height: 120px; border-radius: 4px; border: 1px solid #475569; margin-bottom: 10px;" />
+          <p style="color: #94a3b8; font-size: 10px; font-family: monospace; margin: 0 0 10px 0;">{{ objAssetSeleccionado.path }}</p>
+          <button class="btn-danger full" (click)="restaurarTexturaOriginal()">🗑️ Quitar textura</button>
+       </div>
+    </ng-container>
+
   </div>
 </div>

@@ -1,23 +1,22 @@
-
-
 <div class="properties-shell">
   <!-- CÁMARA REUTILIZABLE (BASE) -->
   <ng-container *ngIf="isCamera && reusableCamera">
     <div class="panel-header">
       <span>Cámara Cinematográfica (Base)</span>
+      <span class="status-pill">BASE</span>
     </div>
     <div class="prop-body">
       <div class="field wide">
         <label>Nombre</label>
         <input type="text" [(ngModel)]="reusableCamera.name" (ngModelChange)="onCamChange()">
       </div>
-      <div class="field wide" style="margin-top: 5px;">
+      <div class="field wide">
         <label>ID Referencia</label>
-        <input type="text" [value]="reusableCamera.id" readonly style="opacity: 0.7;">
+        <input type="text" [value]="reusableCamera.id" readonly style="opacity: 0.5;">
       </div>
       
-      <div class="accordion-section expanded" style="margin-top: 15px;">
-        <div class="accordion-header"><h4>Transformación Base</h4></div>
+      <div class="accordion-section expanded" style="margin-top: 8px;">
+        <div class="accordion-header" style="cursor: default;"><h4>Transformación Base</h4></div>
         <div class="accordion-content">
           <div class="grid-3">
             <div class="field"><label>Pos X</label><input type="number" step="0.1" [(ngModel)]="reusableCamera.position.x" (ngModelChange)="onCamChange()"></div>
@@ -28,16 +27,16 @@
             <div class="field"><label>Rot Y</label><input type="number" step="1" [(ngModel)]="reusableCamera.rotation.y" (ngModelChange)="onCamChange()"></div>
             <div class="field"><label>Rot Z</label><input type="number" step="1" [(ngModel)]="reusableCamera.rotation.z" (ngModelChange)="onCamChange()"></div>
           </div>
-          <button class="btn-secondary full" style="margin-top: 10px;" (click)="captureCamera(reusableCamera.id)">🎯 Capturar Vista Actual</button>
+          <button class="btn-secondary full" style="margin-top: 12px;" (click)="captureCamera(reusableCamera.id)">🎯 Capturar Vista Actual</button>
         </div>
       </div>
 
       <div class="accordion-section expanded">
-        <div class="accordion-header"><h4>Lente y Configuración</h4></div>
+        <div class="accordion-header" style="cursor: default;"><h4>Lente y Configuración</h4></div>
         <div class="accordion-content">
           <div class="grid-2">
             <div class="field">
-              <label>FOV</label>
+              <label>FOV (Grados)</label>
               <input type="number" step="1" min="5" max="170" [(ngModel)]="fovDeg" (ngModelChange)="onFovChange()">
             </div>
             <div class="field">
@@ -51,14 +50,9 @@
         </div>
       </div>
 
-      <div class="accordion-section expanded">
-        <div class="accordion-header"><h4>Vista Previa</h4></div>
-        <div class="accordion-content">
-          <div class="grid-2">
-            <button class="btn-primary" (click)="enterCamera(reusableCamera.id)" *ngIf="!isInsideCamera(reusableCamera.id)">🎥 Entrar Vista</button>
-            <button class="btn-danger" (click)="exitCamera()" *ngIf="isInsideCamera(reusableCamera.id)">❌ Salir Vista</button>
-          </div>
-        </div>
+      <div class="actions-row wrap" style="margin-top: 8px;">
+        <button class="btn-primary full" (click)="enterCamera(reusableCamera.id)" *ngIf="!isInsideCamera(reusableCamera.id)">🎥 Entrar Vista</button>
+        <button class="btn-danger full" style="color: white; background: #ef4444; border-color: #ef4444;" (click)="exitCamera()" *ngIf="isInsideCamera(reusableCamera.id)">❌ Salir Vista</button>
       </div>
     </div>
   </ng-container>
@@ -72,13 +66,13 @@
     <div class="prop-body">
       
       <div class="accordion-section expanded">
-        <div class="accordion-header"><h4>IDENTIFICACIÓN DE PISTA</h4></div>
+        <div class="accordion-header" style="cursor: default;"><h4>Identificación de Pista</h4></div>
         <div class="accordion-content">
-          <div class="field wide">
+          <div class="field wide" style="margin-bottom: 12px;">
             <label>Nombre de la Pista</label>
             <input type="text" [(ngModel)]="track.name" (ngModelChange)="onPropChange()" />
           </div>
-          <div class="field wide" style="margin-top: 5px;">
+          <div class="field wide">
             <label>Descripción / Notas</label>
             <textarea [(ngModel)]="track.description" (ngModelChange)="onPropChange()" rows="3" placeholder="Ej: Plano secuencia..."></textarea>
           </div>
@@ -95,8 +89,8 @@
 
       <p class="help-text" style="color: #60a5fa; text-align: center; margin-top: 10px;">Selecciona un Keyframe en el Timeline inferior para configurar sus valores.</p>
 
-      <div class="actions-row wrap" style="margin-top: 20px;">
-         <button class="btn-danger full" (click)="actionDeleteTrack.emit()">🗑️ Eliminar Pista Entera</button>
+      <div class="actions-row wrap" style="margin-top: 15px;">
+         <button class="btn-danger full" (click)="actionDeleteTrack.emit()">🗑️ Eliminar Pista</button>
       </div>
     </div>
   </ng-container>
@@ -104,14 +98,14 @@
   <!-- KEYFRAME ESPECÍFICO -->
   <ng-container *ngIf="isKeyframe && keyframe && track">
     <div class="panel-header">
-      <span>Keyframe (Estado Temporal)</span>
+      <span>Keyframe (Temporal)</span>
       <span class="status-pill">KF</span>
     </div>
     <div class="prop-body">
       
       <!-- TIEMPO -->
       <div class="accordion-section expanded">
-        <div class="accordion-header"><h4>Timing y Enlace</h4></div>
+        <div class="accordion-header" style="cursor: default;"><h4>Timing y Enlace</h4></div>
         <div class="accordion-content">
           <div class="grid-2">
             <div class="field">
@@ -119,11 +113,11 @@
               <input type="number" step="100" [(ngModel)]="keyframe.timeMs" (ngModelChange)="onTimeChange()">
             </div>
             <div class="field" *ngIf="track.type === 'camera' || track.type === 'actor' || track.type === 'object'">
-              <label>Movimiento a Siguiente KF</label>
+              <label>Modo de Movimiento</label>
               <select [(ngModel)]="keyframe.value.movementMode" (ngModelChange)="onTransformChange()">
-                <option value="linear">Linear / Curve</option>
-                <option value="hold">Hold (Mantener Quieto)</option>
-                <option value="orbit">Orbit (Órbita Multi-vuelta)</option>
+                <option value="linear">Linear / Curva</option>
+                <option value="hold">Hold (Quieto)</option>
+                <option value="orbit">Orbit (Órbita)</option>
               </select>
             </div>
             <div class="field" *ngIf="keyframe.value.movementMode !== 'hold' && track.type !== 'event'">
@@ -133,17 +127,17 @@
                 <option value="easeIn">Ease In</option>
                 <option value="easeOut">Ease Out</option>
                 <option value="easeInOut">Ease In Out</option>
-                <option value="step">Step (Corte directo)</option>
+                <option value="step">Step (Corte)</option>
               </select>
             </div>
           </div>
           
-          <div *ngIf="transitionWarning" style="margin-top: 10px; font-size: 11px; color: #ef4444; background: rgba(239,68,68,0.1); padding: 8px; border-radius: 4px; border: 1px solid #ef4444;">
+          <div *ngIf="transitionWarning" style="margin-top: 12px; font-size: 10px; color: #ef4444; background: rgba(239,68,68,0.1); padding: 8px; border-radius: 4px; border: 1px solid rgba(239, 68, 68, 0.3);">
               ⚠️ {{ transitionWarning }}
           </div>
 
-          <div style="margin-top: 10px; font-size: 11px; color: #94a3b8; background: #0f172a; padding: 8px; border-radius: 4px; border: 1px solid #334155;">
-              ⏱️ Duración hacia el próximo: <strong style="color: #60a5fa;">{{ durationToNext }}</strong>
+          <div style="margin-top: 12px; font-size: 10px; color: #94a3b8; background: #020617; padding: 8px; border-radius: 4px; border: 1px solid #334155; text-align: center;">
+              ⏱️ Duración al próximo: <strong style="color: #60a5fa;">{{ durationToNext }}</strong>
           </div>
         </div>
       </div>
@@ -151,9 +145,9 @@
       <!-- BACKGROUND TRACK (GLOBAL) -->
       <ng-container *ngIf="track.type === 'background'">
           <div class="accordion-section expanded">
-             <div class="accordion-header"><h4>Fondo Global</h4></div>
+             <div class="accordion-header" style="cursor: default;"><h4>Fondo Global</h4></div>
              <div class="accordion-content">
-               <div class="field wide">
+               <div class="field wide" style="margin-bottom: 12px;">
                   <label>Tipo de Fondo</label>
                   <select [(ngModel)]="keyframe.value.bgType" (ngModelChange)="onTransformChange()">
                      <option value="SOLID">Color Sólido</option>
@@ -163,13 +157,23 @@
                </div>
                
                <div class="grid-2">
-                 <div class="field"><label>Color Principal</label><input type="color" [(ngModel)]="keyframe.value.bgColor" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field">
+                    <label>Color Principal</label>
+                    <div class="color-box-modern">
+                       <input type="color" [(ngModel)]="keyframe.value.bgColor" (ngModelChange)="onTransformChange()" class="color-swatch-input">
+                    </div>
+                 </div>
                  <div class="field"><label>Opacidad Global</label><input type="number" step="0.1" min="0" max="1" [(ngModel)]="keyframe.value.opacity" (ngModelChange)="onTransformChange()"></div>
                </div>
 
                <ng-container *ngIf="keyframe.value.bgType === 'GRADIENT'">
-                   <div class="grid-2" style="margin-top: 10px;">
-                     <div class="field"><label>Color Secundario</label><input type="color" [(ngModel)]="keyframe.value.gradientColorB" (ngModelChange)="onTransformChange()"></div>
+                   <div class="grid-2" style="margin-top: 12px;">
+                     <div class="field">
+                        <label>Color Secundario</label>
+                        <div class="color-box-modern">
+                           <input type="color" [(ngModel)]="keyframe.value.gradientColorB" (ngModelChange)="onTransformChange()" class="color-swatch-input">
+                        </div>
+                     </div>
                      <div class="field">
                         <label>Dirección</label>
                         <select [(ngModel)]="keyframe.value.gradientDirection" (ngModelChange)="onTransformChange()">
@@ -177,23 +181,23 @@
                             <option value="BOTTOM_TO_TOP">Abajo a Arriba</option>
                             <option value="LEFT_TO_RIGHT">Izquierda a Derecha</option>
                             <option value="RIGHT_TO_LEFT">Derecha a Izquierda</option>
-                            <option value="RADIAL">Radial (Centro hacia fuera)</option>
+                            <option value="RADIAL">Radial</option>
                         </select>
                      </div>
                    </div>
                </ng-container>
                
-               <div class="field wide" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #333;">
-                  <label style="color: #fbbf24;">Duración Total en Pantalla (ms)</label>
+               <div class="field wide" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #334155;">
+                  <label style="color: #fbbf24;">Duración en Pantalla (ms)</label>
                   <input type="number" step="500" min="0" [(ngModel)]="keyframe.value.durationMs" (ngModelChange)="onTransformChange()">
                </div>
              </div>
           </div>
           
           <div class="accordion-section expanded">
-             <div class="accordion-header"><h4>Animación de Entrada y Salida</h4></div>
+             <div class="accordion-header" style="cursor: default;"><h4>Animación Entrada/Salida</h4></div>
              <div class="accordion-content">
-                <div class="grid-2">
+                <div class="grid-2" style="margin-bottom: 12px;">
                    <div class="field">
                       <label style="color: #4ade80;">Anim. Entrada</label>
                       <select [(ngModel)]="keyframe.value.animIn" (ngModelChange)="onTransformChange()">
@@ -205,7 +209,8 @@
                       <label>Duración In (ms)</label>
                       <input type="number" step="100" [(ngModel)]="keyframe.value.fadeInMs" (ngModelChange)="onTransformChange()">
                    </div>
-                   
+                </div>
+                <div class="grid-2">
                    <div class="field">
                       <label style="color: #f87171;">Anim. Salida</label>
                       <select [(ngModel)]="keyframe.value.animOut" (ngModelChange)="onTransformChange()">
@@ -225,39 +230,36 @@
       <!-- CÁMARA & ACTOR & OBJECT -->
       <ng-container *ngIf="track.type === 'camera' || track.type === 'actor' || track.type === 'object'">
         
-        <!-- 🔥 FASE 2: LOCOMOCIÓN (ACCIÓN DE ACTOR) -->
+        <!-- FASE 2: LOCOMOCIÓN (ACCIÓN DE ACTOR) -->
         <ng-container *ngIf="track.type === 'actor'">
-          <div class="accordion-section expanded" style="border-color: #60a5fa;">
-            <div class="accordion-header"><h4>Locomoción (Action Step)</h4></div>
+          <div class="accordion-section expanded" style="border-color: #3b82f6;">
+            <div class="accordion-header" style="cursor: default;"><h4>Acción de Locomoción</h4></div>
             <div class="accordion-content">
-              <div class="field wide">
+              <div class="field wide" style="margin-bottom: 12px;">
                 <label style="color: #60a5fa;">Acción Cinemática</label>
                 <select [(ngModel)]="keyframe.value.action" (ngModelChange)="onTransformChange()">
-                  <option [ngValue]="undefined">-- Ninguna (Interpolación Transform) --</option>
+                  <option [ngValue]="undefined">-- Ninguna (Interpolación Espacial) --</option>
                   <option value="idle">🧍 Esperar (Idle)</option>
                   <option value="walk">🚶 Caminar al objetivo</option>
                   <option value="run">🏃 Correr al objetivo</option>
                 </select>
               </div>
-              <div class="field wide" *ngIf="keyframe.value.action" style="margin-top: 5px;">
-                 <label>Animación 3D Específica (Opcional)</label>
+              <div class="field wide" *ngIf="keyframe.value.action">
+                 <label>Animación 3D Específica</label>
                  <select [(ngModel)]="keyframe.value.clipOverride" (ngModelChange)="onTransformChange()">
-                   <option [ngValue]="undefined">-- Automática (Player Config) --</option>
+                   <option [ngValue]="undefined">-- Automática --</option>
                    <option *ngFor="let clip of availableClips" [value]="clip">🎬 {{ clip }}</option>
                  </select>
               </div>
-              <p class="help-text" *ngIf="keyframe.value.action" style="color: #fbbf24; margin-top: 8px;">
-                * <b>Nota:</b> Durante una acción de locomoción, la posición y rotación se interpolarán <b>estrictamente</b> de A hacia B en el tiempo definido. El personaje reproducirá esta animación mientras se desplaza matemáticamente por el mapa.
-              </p>
             </div>
           </div>
         </ng-container>
         
         <div class="accordion-section expanded">
-          <div class="accordion-header"><h4>Cámara y Enfoque (Este KF)</h4></div>
+          <div class="accordion-header" style="cursor: default;"><h4>Cámara y Enfoque</h4></div>
           <div class="accordion-content">
             
-            <div class="field wide" *ngIf="track.type === 'camera'">
+            <div class="field wide" *ngIf="track.type === 'camera'" style="margin-bottom: 12px;">
               <label>Cámara a utilizar</label>
               <select [(ngModel)]="keyframe.value.cameraId" (ngModelChange)="onPropChange()">
                 <option [ngValue]="undefined">-- Continuar con la anterior --</option>
@@ -265,7 +267,7 @@
               </select>
             </div>
 
-            <div class="grid-2" style="margin-top: 5px;">
+            <div class="grid-2">
               <div class="field wide">
                 <label>Mirar A (Target)</label>
                 <select [(ngModel)]="keyframe.value.targetUid" (ngModelChange)="onTransformChange()">
@@ -276,18 +278,18 @@
               <div class="field wide">
                 <label>Orientación</label>
                 <select [(ngModel)]="keyframe.value.orientationMode" (ngModelChange)="onTransformChange()">
-                  <option value="free">🌐 Libre (Respeta rotación XYZ)</option>
-                  <option value="lookAt" [disabled]="!keyframe.value.targetUid">🎯 Look At (Sigue al Target)</option>
+                  <option value="free">🌐 Libre (Ejes fijos)</option>
+                  <option value="lookAt" [disabled]="!keyframe.value.targetUid">🎯 Sigue al Target</option>
                 </select>
               </div>
             </div>
 
             <!-- PARÁMETROS ORBIT -->
-            <div class="field wide" *ngIf="keyframe.value.movementMode === 'orbit'" style="margin-top: 10px; background: rgba(59, 130, 246, 0.1); border: 1px solid #3b82f6; padding: 10px; border-radius: 6px;">
-                <label style="color: #60a5fa;">💫 Configuración de Órbita</label>
-                <div class="grid-2" style="margin-top: 5px;">
+            <div class="field wide" *ngIf="keyframe.value.movementMode === 'orbit'" style="margin-top: 12px; background: rgba(59, 130, 246, 0.05); border: 1px solid #334155; padding: 10px; border-radius: 6px;">
+                <label style="color: #60a5fa;">💫 Configuración Órbita</label>
+                <div class="grid-2" style="margin-top: 8px;">
                   <div class="field">
-                    <label>Vueltas completas (360°)</label>
+                    <label>Vueltas (360°)</label>
                     <input type="number" step="1" min="0" [(ngModel)]="keyframe.value.orbitTurns" (ngModelChange)="onTransformChange()" />
                   </div>
                   <div class="field">
@@ -305,360 +307,294 @@
 
         <!-- POSICIÓN FÍSICA -->
         <div class="accordion-section expanded">
-          <div class="accordion-header"><h4>Transformación Espacial</h4></div>
+          <div class="accordion-header" style="cursor: default;"><h4>Transformación Espacial</h4></div>
           <div class="accordion-content">
-            <div class="grid-3">
+            <div class="grid-3" style="margin-bottom: 12px;">
               <div class="field"><label>Pos X</label><input type="number" step="0.1" [(ngModel)]="keyframe.value.position.x" (ngModelChange)="onTransformChange()"></div>
               <div class="field"><label>Pos Y</label><input type="number" step="0.1" [(ngModel)]="keyframe.value.position.y" (ngModelChange)="onTransformChange()"></div>
               <div class="field"><label>Pos Z</label><input type="number" step="0.1" [(ngModel)]="keyframe.value.position.z" (ngModelChange)="onTransformChange()"></div>
-              
-              <!-- Se oculta la rotación si la cámara está atada a un Target por LookAt -->
-              <div class="field" [style.opacity]="keyframe.value.orientationMode === 'lookAt' ? '0.4' : '1'" [style.pointer-events]="keyframe.value.orientationMode === 'lookAt' ? 'none' : 'auto'">
+            </div>
+            <div class="grid-3">
+              <div class="field" [style.opacity]="keyframe.value.orientationMode === 'lookAt' ? '0.3' : '1'" [style.pointer-events]="keyframe.value.orientationMode === 'lookAt' ? 'none' : 'auto'">
                   <label>Rot X°</label><input type="number" step="5" [(ngModel)]="keyframe.value.rotation.x" (ngModelChange)="onTransformChange()">
               </div>
-              <div class="field" [style.opacity]="keyframe.value.orientationMode === 'lookAt' ? '0.4' : '1'" [style.pointer-events]="keyframe.value.orientationMode === 'lookAt' ? 'none' : 'auto'">
+              <div class="field" [style.opacity]="keyframe.value.orientationMode === 'lookAt' ? '0.3' : '1'" [style.pointer-events]="keyframe.value.orientationMode === 'lookAt' ? 'none' : 'auto'">
                   <label>Rot Y°</label><input type="number" step="5" [(ngModel)]="keyframe.value.rotation.y" (ngModelChange)="onTransformChange()">
               </div>
-              <div class="field" [style.opacity]="keyframe.value.orientationMode === 'lookAt' ? '0.4' : '1'" [style.pointer-events]="keyframe.value.orientationMode === 'lookAt' ? 'none' : 'auto'">
+              <div class="field" [style.opacity]="keyframe.value.orientationMode === 'lookAt' ? '0.3' : '1'" [style.pointer-events]="keyframe.value.orientationMode === 'lookAt' ? 'none' : 'auto'">
                   <label>Rot Z°</label><input type="number" step="5" [(ngModel)]="keyframe.value.rotation.z" (ngModelChange)="onTransformChange()">
               </div>
             </div>
             
-            <div class="field wide" *ngIf="track.type === 'camera'" style="margin-top: 10px;">
-              <label>FOV (Lente)</label>
+            <div class="field wide" *ngIf="track.type === 'camera'" style="margin-top: 12px;">
+              <label>Lente FOV (Grados)</label>
               <input type="number" step="1" min="5" max="170" [(ngModel)]="fovDeg" (ngModelChange)="onFovChange()">
             </div>
             
-            <button class="btn-secondary full" style="margin-top: 15px;" (click)="captureTransform()">🎯 Sobrescribir desde Editor</button>
+            <button class="btn-secondary full" style="margin-top: 16px;" (click)="captureTransform()">🎯 Sobrescribir desde Editor</button>
           </div>
         </div>
 
-        <div class="accordion-section expanded" *ngIf="track.type === 'camera'">
-          <div class="accordion-header"><h4>Herramientas de Vista</h4></div>
-          <div class="accordion-content">
-            <div class="grid-2">
-              <button class="btn-primary" (click)="enterCameraKf()" *ngIf="!isInsideCameraKf()">🎥 Entrar en Vista</button>
-              <button class="btn-danger" (click)="exitCameraKf()" *ngIf="isInsideCameraKf()">❌ Salir de Vista</button>
-            </div>
-          </div>
+        <div class="actions-row wrap" *ngIf="track.type === 'camera'">
+            <button class="btn-primary full" (click)="enterCameraKf()" *ngIf="!isInsideCameraKf()">🎥 Entrar en Vista</button>
+            <button class="btn-danger full" style="color: white; background: #ef4444; border-color: #ef4444;" (click)="exitCameraKf()" *ngIf="isInsideCameraKf()">❌ Salir de Vista</button>
         </div>
       </ng-container>
 
       <!-- DIALOGO -->
       <ng-container *ngIf="track.type === 'dialogue'">
          <div class="accordion-section expanded">
-            <div class="accordion-header"><h4>Diálogo</h4></div>
+            <div class="accordion-header" style="cursor: default;"><h4>Diálogo</h4></div>
             <div class="accordion-content">
-               <div class="field wide">
+               <div class="field wide" style="margin-bottom: 12px;">
                   <label>Actor / Personaje</label>
                   <input type="text" [(ngModel)]="keyframe.value.actorName" (ngModelChange)="onTransformChange()">
                </div>
-               <div class="field wide">
+               <div class="field wide" style="margin-bottom: 12px;">
                   <label>Texto</label>
                   <textarea [(ngModel)]="keyframe.value.text" (ngModelChange)="onTransformChange()" rows="3"></textarea>
                </div>
                <div class="field wide">
-                  <label>Duración del Mensaje (ms)</label>
+                  <label>Duración (ms)</label>
                   <input type="number" step="100" [(ngModel)]="keyframe.value.durationMs" (ngModelChange)="onTransformChange()">
                </div>
             </div>
          </div>
       </ng-container>
 
-      <!-- TEXT TRACK -->
+      <!-- TEXT / OVERLAY TRACK -->
       <ng-container *ngIf="track.type === 'text' || track.type === 'overlay'">
          
          <div class="accordion-section expanded">
-            <div class="accordion-header"><h4>Contenido de Texto</h4></div>
+            <div class="accordion-header" style="cursor: default;"><h4>Contenido Base</h4></div>
             <div class="accordion-content">
-               <div class="field wide">
+               <div class="field wide" style="margin-bottom: 12px;">
                   <label>Título Principal</label>
                   <input type="text" [(ngModel)]="keyframe.value.title" (ngModelChange)="onTransformChange()">
                </div>
-               <div class="field wide">
-                  <label>Subtítulo / Texto Secundario</label>
+               <div class="field wide" style="margin-bottom: 12px;">
+                  <label>Texto Secundario</label>
                   <textarea [(ngModel)]="keyframe.value.text" (ngModelChange)="onTransformChange()" rows="2"></textarea>
                </div>
-
-               <div class="field wide" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid #333;">
-                  <label style="color: #fbbf24;">Duración Total en Pantalla (ms)</label>
+               <div class="field wide" style="padding-top: 12px; border-top: 1px solid #334155;">
+                  <label style="color: #fbbf24;">Duración Total (ms)</label>
                   <input type="number" step="500" min="0" [(ngModel)]="keyframe.value.durationMs" (ngModelChange)="onTransformChange()">
                </div>
             </div>
          </div>
 
          <div class="accordion-section expanded">
-            <div class="accordion-header"><h4>Tipografía</h4></div>
+            <div class="accordion-header" style="cursor: default;"><h4>Tipografía</h4></div>
             <div class="accordion-content">
-               <div class="grid-2">
+               <div class="grid-2" style="margin-bottom: 12px;">
                  <div class="field">
-                    <label>Familia de Fuente</label>
-                    <input type="text" [(ngModel)]="keyframe.value.fontFamily" (ngModelChange)="onTransformChange()" placeholder="Bebas Neue, Arial, serif...">
+                    <label>Fuente</label>
+                    <input type="text" [(ngModel)]="keyframe.value.fontFamily" (ngModelChange)="onTransformChange()" placeholder="Ej: Arial, serif...">
                  </div>
                  <div class="field">
-                    <label>Tamaño Título (px)</label>
+                    <label>Tamaño (px)</label>
                     <input type="number" step="1" min="10" [(ngModel)]="keyframe.value.fontSize" (ngModelChange)="onTransformChange()">
                  </div>
                </div>
-               <div class="grid-3">
+               <div class="grid-3" style="margin-bottom: 12px;">
                  <div class="field">
                     <label>Peso</label>
                     <select [(ngModel)]="keyframe.value.fontWeight" (ngModelChange)="onTransformChange()">
-                      <option value="Normal">Normal</option>
-                      <option value="Medium">Medium</option>
-                      <option value="Bold">Bold</option>
-                      <option value="Black">Black</option>
+                      <option value="Normal">Normal</option><option value="Medium">Medium</option><option value="Bold">Bold</option><option value="Black">Black</option>
                     </select>
                  </div>
                  <div class="field">
-                    <label>Alineación</label>
+                    <label>Align</label>
                     <select [(ngModel)]="keyframe.value.textAlign" (ngModelChange)="onTransformChange()">
-                      <option value="left">Left</option>
-                      <option value="center">Center</option>
-                      <option value="right">Right</option>
+                      <option value="left">Left</option><option value="center">Center</option><option value="right">Right</option>
                     </select>
                  </div>
                  <div class="field">
                     <label>Estilo</label>
                     <select [(ngModel)]="keyframe.value.fontStyle" (ngModelChange)="onTransformChange()">
-                      <option value="Normal">Normal</option>
-                      <option value="Italic">Italic</option>
+                      <option value="Normal">Normal</option><option value="Italic">Italic</option>
                     </select>
                  </div>
                </div>
                <div class="grid-3">
                  <div class="field">
-                    <label>Transform</label>
+                    <label>Casing</label>
                     <select [(ngModel)]="keyframe.value.textTransform" (ngModelChange)="onTransformChange()">
-                      <option value="none">None</option>
-                      <option value="uppercase">UPPERCASE</option>
-                      <option value="lowercase">lowercase</option>
-                      <option value="capitalize">Capitalize</option>
+                      <option value="none">None</option><option value="uppercase">UPPER</option><option value="lowercase">lower</option><option value="capitalize">Cap</option>
                     </select>
                  </div>
-                 <div class="field">
-                    <label>Espacio Letras (px)</label>
-                    <input type="number" step="1" [(ngModel)]="keyframe.value.letterSpacing" (ngModelChange)="onTransformChange()">
-                 </div>
-                 <div class="field">
-                    <label>Line Height</label>
-                    <input type="number" step="0.1" [(ngModel)]="keyframe.value.lineHeight" (ngModelChange)="onTransformChange()">
-                 </div>
+                 <div class="field"><label>Letras px</label><input type="number" step="1" [(ngModel)]="keyframe.value.letterSpacing" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field"><label>Altura Lin</label><input type="number" step="0.1" [(ngModel)]="keyframe.value.lineHeight" (ngModelChange)="onTransformChange()"></div>
                </div>
             </div>
          </div>
 
          <div class="accordion-section expanded">
-            <div class="accordion-header"><h4>Color y Efectos del Texto</h4></div>
+            <div class="accordion-header" style="cursor: default;"><h4>Color y Efectos</h4></div>
             <div class="accordion-content">
-               <div class="grid-3">
+               <div class="grid-3" style="margin-bottom: 12px;">
                  <div class="field">
-                    <label>Color Título</label>
-                    <input type="color" [(ngModel)]="keyframe.value.color" (ngModelChange)="onTransformChange()">
+                    <label>Título</label>
+                    <div class="color-box-modern"><input type="color" [(ngModel)]="keyframe.value.color" (ngModelChange)="onTransformChange()" class="color-swatch-input"></div>
                  </div>
                  <div class="field">
-                    <label>Color Subtítulo</label>
-                    <input type="color" [(ngModel)]="keyframe.value.secondaryColor" (ngModelChange)="onTransformChange()">
+                    <label>Subtítulo</label>
+                    <div class="color-box-modern"><input type="color" [(ngModel)]="keyframe.value.secondaryColor" (ngModelChange)="onTransformChange()" class="color-swatch-input"></div>
                  </div>
-                 <div class="field">
-                    <label>Opacidad Global</label>
-                    <input type="number" step="0.1" min="0" max="1" [(ngModel)]="keyframe.value.opacity" (ngModelChange)="onTransformChange()">
-                 </div>
+                 <div class="field"><label>Opacidad</label><input type="number" step="0.1" min="0" max="1" [(ngModel)]="keyframe.value.opacity" (ngModelChange)="onTransformChange()"></div>
                </div>
 
-               <div class="field wide" style="margin-top: 5px; border-top: 1px dashed #444; padding-top: 10px;">
-                 <label><input type="checkbox" [(ngModel)]="keyframe.value.shadowEnabled" (ngModelChange)="onTransformChange()"> Activar Sombra</label>
+               <div class="checkbox-modern" style="margin-bottom: 8px;">
+                 <input type="checkbox" id="chkShadowText" [(ngModel)]="keyframe.value.shadowEnabled" (ngModelChange)="onTransformChange()">
+                 <label for="chkShadowText">Activar Sombra</label>
                </div>
-               <div class="grid-2" *ngIf="keyframe.value.shadowEnabled">
-                 <div class="field"><label>Color Sombra</label><input type="color" [(ngModel)]="keyframe.value.shadowColor" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field"><label>Blur Sombra</label><input type="number" step="1" [(ngModel)]="keyframe.value.shadowBlur" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field"><label>Offset X</label><input type="number" step="1" [(ngModel)]="keyframe.value.shadowOffsetX" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field"><label>Offset Y</label><input type="number" step="1" [(ngModel)]="keyframe.value.shadowOffsetY" (ngModelChange)="onTransformChange()"></div>
+               <div class="grid-2" *ngIf="keyframe.value.shadowEnabled" style="margin-bottom: 12px; background: #020617; padding: 8px; border-radius: 4px; border: 1px solid #334155;">
+                 <div class="field"><label>Color</label><div class="color-box-modern"><input type="color" [(ngModel)]="keyframe.value.shadowColor" (ngModelChange)="onTransformChange()" class="color-swatch-input"></div></div>
+                 <div class="field"><label>Blur</label><input type="number" step="1" [(ngModel)]="keyframe.value.shadowBlur" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field"><label>Off X</label><input type="number" step="1" [(ngModel)]="keyframe.value.shadowOffsetX" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field"><label>Off Y</label><input type="number" step="1" [(ngModel)]="keyframe.value.shadowOffsetY" (ngModelChange)="onTransformChange()"></div>
                </div>
 
-               <div class="field wide" style="margin-top: 5px; border-top: 1px dashed #444; padding-top: 10px;">
-                 <label><input type="checkbox" [(ngModel)]="keyframe.value.outlineEnabled" (ngModelChange)="onTransformChange()"> Activar Borde (Outline)</label>
+               <div class="checkbox-modern" style="margin-bottom: 8px;">
+                 <input type="checkbox" id="chkOutlineText" [(ngModel)]="keyframe.value.outlineEnabled" (ngModelChange)="onTransformChange()">
+                 <label for="chkOutlineText">Activar Borde</label>
                </div>
-               <div class="grid-2" *ngIf="keyframe.value.outlineEnabled">
-                 <div class="field"><label>Color Borde</label><input type="color" [(ngModel)]="keyframe.value.outlineColor" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field"><label>Grosor Borde</label><input type="number" step="0.5" [(ngModel)]="keyframe.value.outlineWidth" (ngModelChange)="onTransformChange()"></div>
+               <div class="grid-2" *ngIf="keyframe.value.outlineEnabled" style="background: #020617; padding: 8px; border-radius: 4px; border: 1px solid #334155;">
+                 <div class="field"><label>Color</label><div class="color-box-modern"><input type="color" [(ngModel)]="keyframe.value.outlineColor" (ngModelChange)="onTransformChange()" class="color-swatch-input"></div></div>
+                 <div class="field"><label>Grosor</label><input type="number" step="0.5" [(ngModel)]="keyframe.value.outlineWidth" (ngModelChange)="onTransformChange()"></div>
                </div>
             </div>
          </div>
 
          <div class="accordion-section expanded">
-            <div class="accordion-header"><h4>Tamaño y Posición (Layout)</h4></div>
+            <div class="accordion-header" style="cursor: default;"><h4>Distribución</h4></div>
             <div class="accordion-content">
-               <div class="grid-2">
-                 <div class="field"><label>Ancho (0 = Auto)</label><input type="number" step="10" [(ngModel)]="keyframe.value.width" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field"><label>Alto (0 = Auto)</label><input type="number" step="10" [(ngModel)]="keyframe.value.height" (ngModelChange)="onTransformChange()"></div>
+               <div class="grid-2" style="margin-bottom: 12px;">
+                 <div class="field"><label>Ancho (0=Auto)</label><input type="number" step="10" [(ngModel)]="keyframe.value.width" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field"><label>Alto (0=Auto)</label><input type="number" step="10" [(ngModel)]="keyframe.value.height" (ngModelChange)="onTransformChange()"></div>
                </div>
                
-               <div class="grid-2" style="margin-top: 10px;">
-                 <div class="field"><label>Posición X (0.0 a 1.0)</label><input type="number" step="0.05" min="0" max="1" [(ngModel)]="keyframe.value.positionX" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field"><label>Posición Y (0.0 a 1.0)</label><input type="number" step="0.05" min="0" max="1" [(ngModel)]="keyframe.value.positionY" (ngModelChange)="onTransformChange()"></div>
+               <div class="grid-2">
+                 <div class="field"><label>Pos X (0 a 1)</label><input type="number" step="0.05" min="0" max="1" [(ngModel)]="keyframe.value.positionX" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field"><label>Pos Y (0 a 1)</label><input type="number" step="0.05" min="0" max="1" [(ngModel)]="keyframe.value.positionY" (ngModelChange)="onTransformChange()"></div>
                  <div class="field wide">
-                    <label>Punto de Anclaje (Anchor)</label>
+                    <label>Punto Anclaje</label>
                     <select [(ngModel)]="keyframe.value.anchor" (ngModelChange)="onTransformChange()">
-                      <option value="TOP_LEFT">Top Left</option>
-                      <option value="TOP_CENTER">Top Center</option>
-                      <option value="TOP_RIGHT">Top Right</option>
-                      <option value="CENTER_LEFT">Center Left</option>
-                      <option value="CENTER">Center</option>
-                      <option value="CENTER_RIGHT">Center Right</option>
-                      <option value="BOTTOM_LEFT">Bottom Left</option>
-                      <option value="BOTTOM_CENTER">Bottom Center</option>
-                      <option value="BOTTOM_RIGHT">Bottom Right</option>
+                      <option value="TOP_LEFT">Top Left</option><option value="TOP_CENTER">Top Center</option><option value="TOP_RIGHT">Top Right</option>
+                      <option value="CENTER_LEFT">Center Left</option><option value="CENTER">Center</option><option value="CENTER_RIGHT">Center Right</option>
+                      <option value="BOTTOM_LEFT">Bottom Left</option><option value="BOTTOM_CENTER">Bottom Center</option><option value="BOTTOM_RIGHT">Bottom Right</option>
                     </select>
                  </div>
-                 <div class="field wide">
-                   <label>Capa / Z-Index</label>
-                   <input type="number" step="1" [(ngModel)]="keyframe.value.zIndex" (ngModelChange)="onTransformChange()">
-                 </div>
-                 <div class="field wide">
-                   <label>Escala Inicial</label>
-                   <input type="number" step="0.1" [(ngModel)]="keyframe.value.scale" (ngModelChange)="onTransformChange()">
-                 </div>
+                 <div class="field"><label>Z-Index</label><input type="number" step="1" [(ngModel)]="keyframe.value.zIndex" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field"><label>Escala</label><input type="number" step="0.1" [(ngModel)]="keyframe.value.scale" (ngModelChange)="onTransformChange()"></div>
                </div>
             </div>
          </div>
 
-         <!-- 🔥 NUEVO SISTEMA SEPARADO PARA FONDOS Y CONTENIDOS 🔥 -->
          <div class="accordion-section expanded">
-            <div class="accordion-header"><h4>Animación del Fondo Local</h4></div>
+            <div class="accordion-header" style="cursor: default;"><h4>Animación: Fondo Local</h4></div>
             <div class="accordion-content">
+               <div class="grid-2" style="margin-bottom: 12px;">
+                  <div class="field">
+                     <label style="color: #4ade80;">Entrada</label>
+                     <select [(ngModel)]="keyframe.value.animIn" (ngModelChange)="onTransformChange()">
+                        <option value="INSTANT">Corte</option><option value="FADE_IN">Fade In</option><option value="SLIDE_UP">Slide Up</option>
+                        <option value="SLIDE_DOWN">Slide Down</option><option value="SLIDE_LEFT">Slide Left</option><option value="SLIDE_RIGHT">Slide Right</option>
+                        <option value="SCALE_IN">Scale In</option>
+                     </select>
+                  </div>
+                  <div class="field"><label>Dur In (ms)</label><input type="number" step="100" [(ngModel)]="keyframe.value.fadeInMs" (ngModelChange)="onTransformChange()"></div>
+               </div>
                <div class="grid-2">
                   <div class="field">
-                     <label style="color: #4ade80;">Anim. Entrada</label>
-                     <select [(ngModel)]="keyframe.value.animIn" (ngModelChange)="onTransformChange()">
-                        <option value="INSTANT">Instant (Corte)</option>
-                        <option value="FADE_IN">Fade In</option>
-                        <option value="SLIDE_UP">Slide Up</option>
-                        <option value="SLIDE_DOWN">Slide Down</option>
-                        <option value="SLIDE_LEFT">Slide Left</option>
-                        <option value="SLIDE_RIGHT">Slide Right</option>
-                        <option value="SCALE_IN">Scale In</option>
-                     </select>
-                  </div>
-                  <div class="field">
-                     <label>Duración In (ms)</label>
-                     <input type="number" step="100" [(ngModel)]="keyframe.value.fadeInMs" (ngModelChange)="onTransformChange()">
-                  </div>
-                  
-                  <div class="field">
-                     <label style="color: #f87171;">Anim. Salida</label>
+                     <label style="color: #f87171;">Salida</label>
                      <select [(ngModel)]="keyframe.value.animOut" (ngModelChange)="onTransformChange()">
-                        <option value="INSTANT">Instant (Corte)</option>
-                        <option value="FADE_OUT">Fade Out</option>
-                        <option value="SLIDE_UP">Slide Up</option>
-                        <option value="SLIDE_DOWN">Slide Down</option>
-                        <option value="SLIDE_LEFT">Slide Left</option>
-                        <option value="SLIDE_RIGHT">Slide Right</option>
-                        <option value="SCALE_OUT">Scale Out</option>
-                        <option value="ZOOM_THROUGH">Zoom Through</option>
+                        <option value="INSTANT">Corte</option><option value="FADE_OUT">Fade Out</option><option value="SLIDE_UP">Slide Up</option>
+                        <option value="SLIDE_DOWN">Slide Down</option><option value="SLIDE_LEFT">Slide Left</option><option value="SLIDE_RIGHT">Slide Right</option>
+                        <option value="SCALE_OUT">Scale Out</option><option value="ZOOM_THROUGH">Zoom Through</option>
                      </select>
                   </div>
-                  <div class="field">
-                     <label>Duración Out (ms)</label>
-                     <input type="number" step="100" [(ngModel)]="keyframe.value.fadeOutMs" (ngModelChange)="onTransformChange()">
-                  </div>
+                  <div class="field"><label>Dur Out (ms)</label><input type="number" step="100" [(ngModel)]="keyframe.value.fadeOutMs" (ngModelChange)="onTransformChange()"></div>
                </div>
             </div>
          </div>
 
          <div class="accordion-section expanded">
-            <div class="accordion-header"><h4>Animación del Contenido (Independiente)</h4></div>
+            <div class="accordion-header" style="cursor: default;"><h4>Animación: Contenido Interno</h4></div>
             <div class="accordion-content">
-               <div class="field wide">
-                  <label>Retraso de Entrada (ms)</label>
-                  <input type="number" step="100" [(ngModel)]="keyframe.value.contentDelayMs" (ngModelChange)="onTransformChange()">
-               </div>
-               <div class="field wide" style="margin-top: 5px;">
-                  <label>Adelantar Salida (Termina antes del fondo) (ms)</label>
-                  <input type="number" step="100" [(ngModel)]="keyframe.value.contentEarlyOutMs" (ngModelChange)="onTransformChange()" placeholder="Ej: 200">
-               </div>
-               <div class="grid-2" style="margin-top: 10px;">
+               <div class="field wide" style="margin-bottom: 8px;"><label>Retraso de Entrada (ms)</label><input type="number" step="100" [(ngModel)]="keyframe.value.contentDelayMs" (ngModelChange)="onTransformChange()"></div>
+               <div class="field wide" style="margin-bottom: 12px;"><label>Adelantar Salida (ms)</label><input type="number" step="100" [(ngModel)]="keyframe.value.contentEarlyOutMs" (ngModelChange)="onTransformChange()"></div>
+               
+               <div class="grid-2" style="margin-bottom: 12px;">
                   <div class="field">
-                     <label style="color: #4ade80;">Anim. Entrada</label>
+                     <label style="color: #4ade80;">Entrada</label>
                      <select [(ngModel)]="keyframe.value.contentAnimIn" (ngModelChange)="onTransformChange()">
-                        <option [ngValue]="undefined">-- Igual que Fondo --</option>
-                        <option value="INSTANT">Instant (Corte)</option>
-                        <option value="FADE_IN">Fade In</option>
-                        <option value="SLIDE_UP">Slide Up</option>
-                        <option value="SLIDE_DOWN">Slide Down</option>
-                        <option value="SLIDE_LEFT">Slide Left</option>
-                        <option value="SLIDE_RIGHT">Slide Right</option>
-                        <option value="SCALE_IN">Scale In</option>
+                        <option [ngValue]="undefined">-- Heredar --</option><option value="INSTANT">Corte</option><option value="FADE_IN">Fade In</option>
+                        <option value="SLIDE_UP">Slide Up</option><option value="SLIDE_DOWN">Slide Down</option><option value="SLIDE_LEFT">Slide Left</option>
+                        <option value="SLIDE_RIGHT">Slide Right</option><option value="SCALE_IN">Scale In</option>
                      </select>
                   </div>
+                  <div class="field"><label>Dur In (ms)</label><input type="number" step="100" [(ngModel)]="keyframe.value.contentFadeInMs" (ngModelChange)="onTransformChange()"></div>
+               </div>
+               <div class="grid-2">
                   <div class="field">
-                     <label>Duración In (ms)</label>
-                     <input type="number" step="100" [(ngModel)]="keyframe.value.contentFadeInMs" (ngModelChange)="onTransformChange()">
-                  </div>
-                  
-                  <div class="field">
-                     <label style="color: #f87171;">Anim. Salida</label>
+                     <label style="color: #f87171;">Salida</label>
                      <select [(ngModel)]="keyframe.value.contentAnimOut" (ngModelChange)="onTransformChange()">
-                        <option [ngValue]="undefined">-- Igual que Fondo --</option>
-                        <option value="INSTANT">Instant (Corte)</option>
-                        <option value="FADE_OUT">Fade Out</option>
-                        <option value="SLIDE_UP">Slide Up</option>
-                        <option value="SLIDE_DOWN">Slide Down</option>
-                        <option value="SLIDE_LEFT">Slide Left</option>
-                        <option value="SLIDE_RIGHT">Slide Right</option>
-                        <option value="SCALE_OUT">Scale Out</option>
-                        <option value="ZOOM_THROUGH">Zoom Through</option>
+                        <option [ngValue]="undefined">-- Heredar --</option><option value="INSTANT">Corte</option><option value="FADE_OUT">Fade Out</option>
+                        <option value="SLIDE_UP">Slide Up</option><option value="SLIDE_DOWN">Slide Down</option><option value="SLIDE_LEFT">Slide Left</option>
+                        <option value="SLIDE_RIGHT">Slide Right</option><option value="SCALE_OUT">Scale Out</option><option value="ZOOM_THROUGH">Zoom</option>
                      </select>
                   </div>
-                  <div class="field">
-                     <label>Duración Out (ms)</label>
-                     <input type="number" step="100" [(ngModel)]="keyframe.value.contentFadeOutMs" (ngModelChange)="onTransformChange()">
-                  </div>
+                  <div class="field"><label>Dur Out (ms)</label><input type="number" step="100" [(ngModel)]="keyframe.value.contentFadeOutMs" (ngModelChange)="onTransformChange()"></div>
                </div>
             </div>
          </div>
          
          <div class="accordion-section expanded">
-            <div class="accordion-header"><h4>Fondo y Caja</h4></div>
+            <div class="accordion-header" style="cursor: default;"><h4>Caja Estilizada (Fondo)</h4></div>
             <div class="accordion-content">
-               <div class="field wide" style="margin-bottom: 10px;">
-                 <label><input type="checkbox" [(ngModel)]="keyframe.value.fullscreenBg" (ngModelChange)="onTransformChange()"> Fondo Ocupa Toda la Pantalla (Fullscreen)</label>
+               <div class="checkbox-modern" style="margin-bottom: 12px;">
+                 <input type="checkbox" id="chkFs" [(ngModel)]="keyframe.value.fullscreenBg" (ngModelChange)="onTransformChange()">
+                 <label for="chkFs">Forzar Pantalla Completa</label>
                </div>
-               <div class="field wide">
-                  <label>Tipo de Fondo (Opcional)</label>
+               
+               <div class="field wide" style="margin-bottom: 12px;">
+                  <label>Tipo de Relleno</label>
                   <select [(ngModel)]="keyframe.value.bgType" (ngModelChange)="onTransformChange()">
-                     <option value="NONE">Ninguno (Solo imagen)</option>
+                     <option value="NONE">Transparente</option>
                      <option value="SOLID">Sólido Fijo</option>
-                     <option value="TRANSPARENT">Semitransparente</option>
+                     <option value="TRANSPARENT">Sólido con Alfa</option>
                      <option value="BORDER_ONLY">Solo Borde</option>
-                     <option value="RADIAL_GRADIENT">Gradiente Radial (Viñeta)</option>
+                     <option value="RADIAL_GRADIENT">Gradiente Radial</option>
                   </select>
                </div>
 
-               <div class="grid-3" *ngIf="keyframe.value.bgType !== 'NONE'">
-                 <div class="field" *ngIf="keyframe.value.bgType !== 'BORDER_ONLY'"><label>Color Fondo / Centro</label><input type="color" [(ngModel)]="keyframe.value.bgColor" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field" *ngIf="keyframe.value.bgType === 'RADIAL_GRADIENT'"><label>Opacidad Centro</label><input type="number" step="0.1" min="0" max="1" [(ngModel)]="keyframe.value.bgCenterOpacity" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field" *ngIf="keyframe.value.bgType === 'TRANSPARENT' || keyframe.value.bgType === 'RADIAL_GRADIENT'"><label>Opacidad Borde/Ext</label><input type="number" step="0.1" min="0" max="1" [(ngModel)]="keyframe.value.bgOpacity" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field" *ngIf="keyframe.value.bgType === 'RADIAL_GRADIENT'"><label>Color Exterior</label><input type="color" [(ngModel)]="keyframe.value.gradientColorB" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field" *ngIf="keyframe.value.bgType === 'RADIAL_GRADIENT'"><label>Radio de Gradiente (%)</label><input type="number" step="5" [(ngModel)]="keyframe.value.bgRadius" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field" *ngIf="keyframe.value.bgType === 'RADIAL_GRADIENT'"><label>Epicentro X (%)</label><input type="number" step="5" [(ngModel)]="keyframe.value.bgCenterX" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field" *ngIf="keyframe.value.bgType === 'RADIAL_GRADIENT'"><label>Epicentro Y (%)</label><input type="number" step="5" [(ngModel)]="keyframe.value.bgCenterY" (ngModelChange)="onTransformChange()"></div>
+               <div class="grid-3" *ngIf="keyframe.value.bgType !== 'NONE'" style="margin-bottom: 12px;">
+                 <div class="field" *ngIf="keyframe.value.bgType !== 'BORDER_ONLY'"><label>Color</label><div class="color-box-modern" style="padding: 2px 4px;"><input type="color" [(ngModel)]="keyframe.value.bgColor" (ngModelChange)="onTransformChange()" class="color-swatch-input"></div></div>
+                 <div class="field" *ngIf="keyframe.value.bgType === 'RADIAL_GRADIENT'"><label>Opac C.</label><input type="number" step="0.1" min="0" max="1" [(ngModel)]="keyframe.value.bgCenterOpacity" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field" *ngIf="keyframe.value.bgType === 'TRANSPARENT' || keyframe.value.bgType === 'RADIAL_GRADIENT'"><label>Opac Ext.</label><input type="number" step="0.1" min="0" max="1" [(ngModel)]="keyframe.value.bgOpacity" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field" *ngIf="keyframe.value.bgType === 'RADIAL_GRADIENT'"><label>Color B</label><div class="color-box-modern" style="padding: 2px 4px;"><input type="color" [(ngModel)]="keyframe.value.gradientColorB" (ngModelChange)="onTransformChange()" class="color-swatch-input"></div></div>
+                 <div class="field" *ngIf="keyframe.value.bgType === 'RADIAL_GRADIENT'"><label>Radio %</label><input type="number" step="5" [(ngModel)]="keyframe.value.bgRadius" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field" *ngIf="keyframe.value.bgType === 'RADIAL_GRADIENT'"><label>X %</label><input type="number" step="5" [(ngModel)]="keyframe.value.bgCenterX" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field" *ngIf="keyframe.value.bgType === 'RADIAL_GRADIENT'"><label>Y %</label><input type="number" step="5" [(ngModel)]="keyframe.value.bgCenterY" (ngModelChange)="onTransformChange()"></div>
                  
-                 <div class="field" *ngIf="keyframe.value.bgType === 'BORDER_ONLY'"><label>Color Borde Caja</label><input type="color" [(ngModel)]="keyframe.value.borderColor" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field" *ngIf="keyframe.value.bgType === 'BORDER_ONLY'"><label>Grosor Borde Caja</label><input type="number" step="1" [(ngModel)]="keyframe.value.borderWidth" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field" *ngIf="keyframe.value.fullscreenBg !== true"><label>Radio Esquinas (px)</label><input type="number" step="1" [(ngModel)]="keyframe.value.borderRadius" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field" *ngIf="keyframe.value.fullscreenBg !== true"><label>Padding X</label><input type="number" step="1" [(ngModel)]="keyframe.value.paddingX" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field" *ngIf="keyframe.value.fullscreenBg !== true"><label>Padding Y</label><input type="number" step="1" [(ngModel)]="keyframe.value.paddingY" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field" *ngIf="keyframe.value.bgType === 'BORDER_ONLY'"><label>Color Borde</label><div class="color-box-modern" style="padding: 2px 4px;"><input type="color" [(ngModel)]="keyframe.value.borderColor" (ngModelChange)="onTransformChange()" class="color-swatch-input"></div></div>
+                 <div class="field" *ngIf="keyframe.value.bgType === 'BORDER_ONLY'"><label>Grosor</label><input type="number" step="1" [(ngModel)]="keyframe.value.borderWidth" (ngModelChange)="onTransformChange()"></div>
+                 
+                 <div class="field" *ngIf="keyframe.value.fullscreenBg !== true"><label>Redondeo</label><input type="number" step="1" [(ngModel)]="keyframe.value.borderRadius" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field" *ngIf="keyframe.value.fullscreenBg !== true"><label>Pad X</label><input type="number" step="1" [(ngModel)]="keyframe.value.paddingX" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field" *ngIf="keyframe.value.fullscreenBg !== true"><label>Pad Y</label><input type="number" step="1" [(ngModel)]="keyframe.value.paddingY" (ngModelChange)="onTransformChange()"></div>
                </div>
                
-               <div class="field wide" style="margin-top: 5px; border-top: 1px dashed #444; padding-top: 10px;">
-                 <label><input type="checkbox" [(ngModel)]="keyframe.value.shadowEnabled" (ngModelChange)="onTransformChange()"> Activar Sombra de Caja</label>
+               <div class="checkbox-modern" style="margin-bottom: 8px;">
+                 <input type="checkbox" id="chkBoxS" [(ngModel)]="keyframe.value.shadowEnabled" (ngModelChange)="onTransformChange()">
+                 <label for="chkBoxS">Sombra de Caja</label>
                </div>
-               <div class="grid-2" *ngIf="keyframe.value.shadowEnabled">
-                 <div class="field"><label>Color Sombra</label><input type="color" [(ngModel)]="keyframe.value.shadowColor" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field"><label>Blur Sombra</label><input type="number" step="1" [(ngModel)]="keyframe.value.shadowBlur" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field"><label>Offset X</label><input type="number" step="1" [(ngModel)]="keyframe.value.shadowOffsetX" (ngModelChange)="onTransformChange()"></div>
-                 <div class="field"><label>Offset Y</label><input type="number" step="1" [(ngModel)]="keyframe.value.shadowOffsetY" (ngModelChange)="onTransformChange()"></div>
+               <div class="grid-2" *ngIf="keyframe.value.shadowEnabled" style="background: #020617; padding: 8px; border-radius: 4px; border: 1px solid #334155;">
+                 <div class="field"><label>Color</label><div class="color-box-modern" style="padding: 2px 4px;"><input type="color" [(ngModel)]="keyframe.value.shadowColor" (ngModelChange)="onTransformChange()" class="color-swatch-input"></div></div>
+                 <div class="field"><label>Blur</label><input type="number" step="1" [(ngModel)]="keyframe.value.shadowBlur" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field"><label>Off X</label><input type="number" step="1" [(ngModel)]="keyframe.value.shadowOffsetX" (ngModelChange)="onTransformChange()"></div>
+                 <div class="field"><label>Off Y</label><input type="number" step="1" [(ngModel)]="keyframe.value.shadowOffsetY" (ngModelChange)="onTransformChange()"></div>
                </div>
             </div>
          </div>
@@ -667,9 +603,9 @@
       <!-- EVENTO -->
       <ng-container *ngIf="track.type === 'event'">
          <div class="accordion-section expanded">
-            <div class="accordion-header"><h4>Evento Lógico</h4></div>
+            <div class="accordion-header" style="cursor: default;"><h4>Evento Lógico</h4></div>
             <div class="accordion-content">
-               <div class="field wide">
+               <div class="field wide" style="margin-bottom: 12px;">
                   <label>Nombre del Evento</label>
                   <input type="text" [(ngModel)]="keyframe.value.eventName" (ngModelChange)="onTransformChange()">
                </div>
@@ -681,7 +617,7 @@
          </div>
       </ng-container>
 
-      <div class="actions-row wrap" style="margin-top: 10px; display: flex; gap: 10px;">
+      <div class="actions-row wrap" style="margin-top: 16px;">
          <button class="btn-danger full" (click)="deleteKeyframe()">🗑️ Borrar Keyframe</button>
       </div>
     </div>
@@ -690,21 +626,22 @@
   <!-- CINEMATICA GLOBAL -->
   <ng-container *ngIf="isCinematic && cinematic">
     <div class="panel-header">
-      <span>Cinemática Global</span>
-      <span class="status-pill">GLOBAL</span>
+      <span>Cinemática (Global)</span>
+      <span class="status-pill">SEQ</span>
     </div>
     <div class="prop-body">
-      <div class="field wide">
-        <label>Nombre</label>
+      <div class="field wide" style="margin-bottom: 12px;">
+        <label>Nombre de Cinemática</label>
         <input type="text" [(ngModel)]="cinematic.name" (ngModelChange)="onPropChange()">
       </div>
-      <div class="field wide" style="margin-top: 10px;">
+      <div class="field wide">
         <label>Duración Total (ms)</label>
         <input type="number" step="100" [(ngModel)]="cinematic.durationMs" (ngModelChange)="onCinematicDurationChange()">
       </div>
-      <div class="actions-row wrap" style="margin-top: 20px; display: flex; gap: 10px;">
-         <button class="btn-danger full" (click)="actionDeleteCinematic.emit()">🗑️ Eliminar Cinemática Entera</button>
+      <div class="actions-row wrap" style="margin-top: 24px;">
+         <button class="btn-danger full" (click)="actionDeleteCinematic.emit()">🗑️ Borrar Cinemática Completa</button>
       </div>
     </div>
   </ng-container>
 </div>
+ 

@@ -1,10 +1,13 @@
 
-<button class="btn-ghost small full" style="margin-bottom: 10px;" (click)="restaurarPlayerConfigDefault()">
-  🔄 Reset a Valores de Fábrica
+<button class="btn-ghost small full" style="margin-bottom: 8px; border: 1px solid #334155;" (click)="restaurarPlayerConfigDefault()">
+  <span class="icon">🔄</span> Reset a Valores de Fábrica
 </button>
 
 <div class="accordion-section" [class.expanded]="acordeonesPlayer['movement']">
-  <div class="accordion-header" (click)="toggleAcordeon('movement')"><h4>▶ Movimiento Base</h4></div>
+  <div class="accordion-header" (click)="toggleAcordeon('movement')">
+    <h4><span class="icon">🏃</span> Movimiento Base</h4>
+    <span class="chevron">▶</span>
+  </div>
   <div class="accordion-content" *ngIf="acordeonesPlayer['movement']">
     <div class="grid-2">
       <div class="field"><label>Vel. Caminar</label><input type="number" step="0.001" [ngModel]="playerConfig.movement.walkSpeed" (ngModelChange)="playerConfig.movement.walkSpeed = $event; aplicarPlayerConfig()" /></div>
@@ -16,7 +19,10 @@
 </div>
 
 <div class="accordion-section" [class.expanded]="acordeonesPlayer['jump']">
-  <div class="accordion-header" (click)="toggleAcordeon('jump')"><h4>▶ Salto y Gravedad</h4></div>
+  <div class="accordion-header" (click)="toggleAcordeon('jump')">
+    <h4><span class="icon">⏫</span> Salto y Gravedad</h4>
+    <span class="chevron">▶</span>
+  </div>
   <div class="accordion-content" *ngIf="acordeonesPlayer['jump']">
     <div class="grid-2">
       <div class="field"><label>Fuerza Salto</label><input type="number" step="0.001" [ngModel]="playerConfig.jump.force" (ngModelChange)="playerConfig.jump.force = $event; aplicarPlayerConfig()" /></div>
@@ -28,189 +34,143 @@
   </div>
 </div>
 
-<!-- 🔥 SECCIÓN DE NIEBLA ESTILO MODERN UI -->
-<div class="accordion-section fog-accordion" [class.expanded]="acordeonesPlayer['fog']">
-  <div class="accordion-header" (click)="toggleAcordeon('fog')"><h4>▶ Rendimiento y Niebla Volumétrica</h4></div>
+<div class="accordion-section" [class.expanded]="acordeonesPlayer['fog']">
+  <div class="accordion-header" (click)="toggleAcordeon('fog')">
+    <h4><span class="icon">☁️</span> Rendimiento y Niebla</h4>
+    <span class="chevron">▶</span>
+  </div>
   <div class="accordion-content" *ngIf="acordeonesPlayer['fog']">
     
-    <div class="checkbox-field fog-enable-box">
+    <div class="checkbox-modern fog-enable-box">
       <input type="checkbox" id="chkPlayerFog" [ngModel]="playerConfig.fog.enabled" (ngModelChange)="playerConfig.fog.enabled = $event; aplicarPlayerConfig()" />
-      <label for="chkPlayerFog">Habilitar Muros de Niebla (Silent Hill Mode)</label>
+      <label for="chkPlayerFog">Muros de Niebla Volumétrica</label>
     </div>
 
     <ng-container *ngIf="playerConfig.fog.enabled">
       
-      <!-- Pestañas Principales (Modos de Vista de Cámara) -->
-      <div class="ring-selector-container" style="background: transparent; border: 1px solid #334155;">
+      <div class="ring-selector-container">
         <button class="ring-tab" [class.active]="activeFogMode === 'FPS'" (click)="activeFogMode = 'FPS'">👁️ FPS</button>
         <button class="ring-tab" [class.active]="activeFogMode === 'TPS'" (click)="activeFogMode = 'TPS'">🧍 TPS</button>
         <button class="ring-tab" [class.active]="activeFogMode === 'FPS_BW'" (click)="activeFogMode = 'FPS_BW'">🎞️ FPS (B&N)</button>
         <button class="ring-tab" [class.active]="activeFogMode === 'TPS_BW'" (click)="activeFogMode = 'TPS_BW'">🎞️ TPS (B&N)</button>
       </div>
 
-      <!-- Ajustes Globales del Modo Activo -->
-      <div class="ring-editor" style="margin-bottom: 20px;">
+      <div class="ring-editor" style="margin-bottom: 12px;">
         <div class="ring-header">
           <div class="ring-title-box">
-            <div>
-              <h3>Ajustes Globales (Fondo)</h3>
-              <p>Distancia máxima de visión y color base.</p>
-            </div>
+            <h3>Fondo / Distancia</h3>
           </div>
         </div>
-        <div class="ring-cards-grid">
+        <div class="grid-2">
           <div class="param-card">
-            <div class="param-title"><span class="icon">👁️</span> Corte Render (Max Z)</div>
+            <div class="param-title">Corte Render (Max Z)</div>
             <div class="param-input-box">
               <input type="number" step="10" min="10" [ngModel]="getGlobalRenderDist()" (ngModelChange)="setGlobalRenderDist($event)">
               <span class="unit">m</span>
             </div>
-            <input type="range" min="30" max="1000" [ngModel]="getGlobalRenderDist()" (ngModelChange)="setGlobalRenderDist($event)" class="slider blue">
+            <input type="range" min="30" max="1000" [ngModel]="getGlobalRenderDist()" (ngModelChange)="setGlobalRenderDist($event)" class="slider">
           </div>
           <div class="param-card">
-            <div class="param-title"><span class="icon">🎨</span> Color Base Global</div>
-            <div class="param-input-box color-box-modern">
+            <div class="param-title">Color Base Global</div>
+            <div class="color-box-modern" style="margin-bottom: 8px;">
               <input type="color" [ngModel]="getGlobalFogColor()" (ngModelChange)="setGlobalFogColor($event)" class="color-swatch-input">
-              <span class="hex-text" style="color:white; flex:1;">{{ getGlobalFogColor() | uppercase }}</span>
+              <span class="hex-text">{{ getGlobalFogColor() | uppercase }}</span>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Pestañas de Anillos (🔥 REDUCIDO A 3) -->
       <div class="ring-selector-container">
         <button *ngFor="let i of [0,1,2]" class="ring-tab" [class.active]="activeFogLevel === i" (click)="activeFogLevel = i">
           <div class="radio-circle"></div> Anillo {{i + 1}}
         </button>
       </div>
 
-      <!-- Editor del Anillo Seleccionado -->
       <div class="ring-editor" *ngIf="currentFogLevel as lvl">
         <div class="ring-header">
           <div class="ring-title-box">
-            <div class="ring-icon"></div>
-            <div>
-              <h3>Anillo {{activeFogLevel + 1}}</h3>
-              <p>Configura los parámetros del anillo seleccionado</p>
-            </div>
+            <h3>Parámetros del Anillo {{activeFogLevel + 1}}</h3>
           </div>
-          <button class="btn-reset-fog" (click)="restaurarTodaLaNiebla()">
-            <span class="icon">🔄</span> Restablecer Todo
-          </button>
+          <button class="btn-ghost small" (click)="restaurarTodaLaNiebla()"><span class="icon">🔄</span> Reset</button>
         </div>
 
-        <div class="ring-cards-grid">
-          <!-- Distancia -->
+        <div class="grid-2">
           <div class="param-card">
-            <div class="param-title"><span class="icon">↔️</span> Distancia mínima (Z)</div>
+            <div class="param-title">Distancia (Z)</div>
             <div class="param-input-box">
               <input type="number" [(ngModel)]="lvl.distance" (ngModelChange)="aplicarPlayerConfig()">
               <span class="unit">m</span>
             </div>
-            <input type="range" min="0" max="1000" [(ngModel)]="lvl.distance" (ngModelChange)="aplicarPlayerConfig()" class="slider blue">
           </div>
-          <!-- Altura -->
           <div class="param-card">
-            <div class="param-title"><span class="icon">↕️</span> Altura total (Y)</div>
+            <div class="param-title">Altura total (Y)</div>
             <div class="param-input-box">
               <input type="number" [(ngModel)]="lvl.height" (ngModelChange)="aplicarPlayerConfig()">
               <span class="unit">m</span>
             </div>
-            <input type="range" min="0" max="500" [(ngModel)]="lvl.height" (ngModelChange)="aplicarPlayerConfig()" class="slider blue">
           </div>
-          <!-- Grosor -->
           <div class="param-card">
-            <div class="param-title"><span class="icon">⇥</span> Grosor de muro (Z)</div>
+            <div class="param-title">Grosor (Z)</div>
             <div class="param-input-box">
               <input type="number" [(ngModel)]="lvl.thickness" (ngModelChange)="aplicarPlayerConfig()">
               <span class="unit">m</span>
             </div>
-            <input type="range" min="0" max="500" [(ngModel)]="lvl.thickness" (ngModelChange)="aplicarPlayerConfig()" class="slider blue">
           </div>
-          <!-- Elevacion -->
           <div class="param-card">
-            <div class="param-title"><span class="icon">↑</span> Elevación (Y)</div>
+            <div class="param-title">Elevación (Y)</div>
             <div class="param-input-box">
               <input type="number" [(ngModel)]="lvl.offsetY" (ngModelChange)="aplicarPlayerConfig()">
               <span class="unit">m</span>
             </div>
-            <input type="range" min="-100" max="100" [(ngModel)]="lvl.offsetY" (ngModelChange)="aplicarPlayerConfig()" class="slider blue">
           </div>
-          <!-- Opacidad -->
           <div class="param-card">
-            <div class="param-title"><span class="icon">◧</span> Opacidad global (%)</div>
+            <div class="param-title">Opacidad (%)</div>
             <div class="param-input-box">
               <input type="number" [(ngModel)]="lvl.opacity" (ngModelChange)="aplicarPlayerConfig()">
               <span class="unit">%</span>
             </div>
-            <input type="range" min="0" max="100" [(ngModel)]="lvl.opacity" (ngModelChange)="aplicarPlayerConfig()" class="slider blue">
           </div>
-          <!-- Color -->
           <div class="param-card">
-            <div class="param-title"><span class="icon">🎨</span> Color del anillo</div>
-            <div class="param-input-box color-box-modern">
+            <div class="param-title">Color (Opcional)</div>
+            <div class="color-box-modern">
                <input type="color" [ngModel]="lvl.color || getGlobalFogColor()" (ngModelChange)="lvl.color = $event; aplicarPlayerConfig()" class="color-swatch-input">
-               <span class="hex-text" style="color:white; flex:1;">{{ (lvl.color || getGlobalFogColor()) | uppercase }}</span>
-               <button class="btn-clear-color" (click)="lvl.color = undefined; aplicarPlayerConfig()" title="Eliminar Color Custom">🧹</button>
+               <button class="btn-ghost small" (click)="lvl.color = undefined; aplicarPlayerConfig()" title="Limpiar">✕</button>
             </div>
           </div>
         </div>
 
         <div class="matrix-card">
-          <div class="matrix-header">
-            <span class="icon" style="font-size:24px;">📚</span>
-            <div>
-              <h4>Ajustes manuales de las 12 capas</h4>
-              <p>Configura opacidad y altura para cada capa (1 = interna, 12 = externa).<br>
-              <span style="color: #fbbf24; font-size: 11px;">* Clic Izq: +5 | Clic Der: -5</span></p>
-            </div>
+          <div class="section-mini-head" style="margin-top: 0;">
+             <h5>Ajuste de 12 capas internas (1=dentro, 12=fuera)</h5>
           </div>
-
           <div class="matrix-grid">
-            <!-- Headers -->
             <div class="matrix-row">
               <div class="matrix-label">Capa</div>
               <div class="matrix-cells">
                 <div *ngFor="let idx of indices12Capas" class="m-cell header-cell">{{ idx + 1 }}</div>
               </div>
             </div>
-            <!-- Opacity -->
             <div class="matrix-row">
-              <div class="matrix-label">Opacidad (%)</div>
+              <div class="matrix-label">Opac (%)</div>
               <div class="matrix-cells">
-                <div *ngFor="let idx of indices12Capas" 
-                     class="m-cell value-cell blue-cell"
-                     title="Clic Izq +5 | Clic Der -5"
-                     (click)="ajustarCapa(lvl, 'opacity', idx, 5, $event)"
-                     (contextmenu)="ajustarCapa(lvl, 'opacity', idx, -5, $event)">
+                <div *ngFor="let idx of indices12Capas" class="m-cell value-cell blue-cell" (click)="ajustarCapa(lvl, 'opacity', idx, 5, $event)" (contextmenu)="ajustarCapa(lvl, 'opacity', idx, -5, $event)">
                   {{ lvl.layerOpacities![idx] }}
                 </div>
               </div>
             </div>
-            <!-- Height -->
             <div class="matrix-row">
-              <div class="matrix-label">Altura (%)</div>
+              <div class="matrix-label">Alto (%)</div>
               <div class="matrix-cells">
-                <div *ngFor="let idx of indices12Capas" 
-                     class="m-cell value-cell green-cell"
-                     title="Clic Izq +5 | Clic Der -5"
-                     (click)="ajustarCapa(lvl, 'height', idx, 5, $event)"
-                     (contextmenu)="ajustarCapa(lvl, 'height', idx, -5, $event)">
+                <div *ngFor="let idx of indices12Capas" class="m-cell value-cell green-cell" (click)="ajustarCapa(lvl, 'height', idx, 5, $event)" (contextmenu)="ajustarCapa(lvl, 'height', idx, -5, $event)">
                   {{ lvl.layerHeights![idx] }}
                 </div>
               </div>
             </div>
           </div>
-          
-          <div class="matrix-legend">
-            <span><span class="dot blue-dot"></span> Opacidad: transparencia de cada capa</span>
-            <span><span class="dot green-dot"></span> Altura: posición vertical relativa</span>
-          </div>
         </div>
         
         <div class="ring-actions">
-           <button class="btn-cancel-ring" (click)="restaurarTodaLaNiebla()">Cancelar</button>
-           <button class="btn-save-ring" (click)="aplicarPlayerConfig()">✓ Guardar cambios</button>
+           <button class="btn-primary" (click)="aplicarPlayerConfig()">Aplicar</button>
         </div>
       </div>
     </ng-container>
@@ -218,38 +178,41 @@
 </div>
 
 <div class="accordion-section" [class.expanded]="acordeonesPlayer['camera']">
-  <div class="accordion-header" (click)="toggleAcordeon('camera')"><h4>▶ Cámara</h4></div>
+  <div class="accordion-header" (click)="toggleAcordeon('camera')">
+    <h4><span class="icon">🎥</span> Cámara</h4>
+    <span class="chevron">▶</span>
+  </div>
   <div class="accordion-content" *ngIf="acordeonesPlayer['camera']">
     <div class="grid-3">
       <div class="field"><label>Ojos (FPS Y)</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.fpsEyeLevel" (ngModelChange)="playerConfig.camera.fpsEyeLevel = $event; aplicarPlayerConfig()" /></div>
       <div class="field"><label>Pivote (TPS Y)</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.tpsPivotY" (ngModelChange)="playerConfig.camera.tpsPivotY = $event; aplicarPlayerConfig()" /></div>
-      <div class="field"><label>Distancia Base TPS</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.tpsRadius" (ngModelChange)="playerConfig.camera.tpsRadius = $event; aplicarPlayerConfig()" /></div>
+      <div class="field"><label>Distancia TPS</label><input type="number" step="0.01" [ngModel]="playerConfig.camera.tpsRadius" (ngModelChange)="playerConfig.camera.tpsRadius = $event; aplicarPlayerConfig()" /></div>
       
-      <div class="field">
+      <div class="field wide" style="grid-column: span 1;">
         <label>Dist. Mínima TPS</label>
-        <input type="number" step="0.1" min="0.1" [ngModel]="playerConfig.camera.tpsMinRadius" (ngModelChange)="playerConfig.camera.tpsMinRadius = $event; aplicarPlayerConfig()" title="Evita que la cámara atraviese al jugador al hacer Zoom in" />
+        <input type="number" step="0.1" min="0.1" [ngModel]="playerConfig.camera.tpsMinRadius" (ngModelChange)="playerConfig.camera.tpsMinRadius = $event; aplicarPlayerConfig()" />
       </div>
-      <div class="field">
+      <div class="field wide" style="grid-column: span 2;">
         <label>Dist. Máxima TPS</label>
-        <input type="number" step="10" min="1" [ngModel]="playerConfig.camera.tpsMaxRadius" (ngModelChange)="playerConfig.camera.tpsMaxRadius = $event; aplicarPlayerConfig()" title="Tope al alejar la cámara (Zoom out)" />
+        <input type="number" step="10" min="1" [ngModel]="playerConfig.camera.tpsMaxRadius" (ngModelChange)="playerConfig.camera.tpsMaxRadius = $event; aplicarPlayerConfig()" />
       </div>
     </div>
-    <p class="help-text" style="margin-top: 10px; color: #4ade80;">
-      * Aumenta la <b>Dist. Máxima TPS</b> para poder ver todo el paisaje a lo lejos.
-    </p>
   </div>
 </div>
 
 <div class="accordion-section" [class.expanded]="acordeonesPlayer['selection']">
-  <div class="accordion-header" (click)="toggleAcordeon('selection')"><h4>▶ Rango de Selección (1ra Persona)</h4></div>
+  <div class="accordion-header" (click)="toggleAcordeon('selection')">
+    <h4><span class="icon">🎯</span> Rango de Selección</h4>
+    <span class="chevron">▶</span>
+  </div>
   <div class="accordion-content" *ngIf="acordeonesPlayer['selection']">
     <div class="grid-2">
       <div class="field">
-        <label>Admin: Distancia Max</label>
+        <label>Admin (m)</label>
         <input type="number" step="100" min="0" [ngModel]="selectionRange.fpsAdminMax" (ngModelChange)="selectionRange.fpsAdminMax = $event; aplicarPlayerConfig()" />
       </div>
       <div class="field">
-        <label>User: Distancia Max</label>
+        <label>Jugador (m)</label>
         <input type="number" step="0.1" min="0" [ngModel]="selectionRange.fpsUserMax" (ngModelChange)="selectionRange.fpsUserMax = $event; aplicarPlayerConfig()" />
       </div>
     </div>
@@ -257,7 +220,10 @@
 </div>
 
 <div class="accordion-section" [class.expanded]="acordeonesPlayer['animEnabled']">
-  <div class="accordion-header" (click)="toggleAcordeon('animEnabled')"><h4>▶ Permitir Acciones (Toggles)</h4></div>
+  <div class="accordion-header" (click)="toggleAcordeon('animEnabled')">
+    <h4><span class="icon">✅</span> Habilitar Animaciones</h4>
+    <span class="chevron">▶</span>
+  </div>
   <div class="accordion-content" *ngIf="acordeonesPlayer['animEnabled']">
     <div class="grid-2">
       <div class="field"><label>Idle</label><select [ngModel]="playerConfig.animationEnabled.idle" (ngModelChange)="cambiarHabilitadoAnim('idle', $event)"><option [ngValue]="true">Sí</option><option [ngValue]="false">No</option></select></div>

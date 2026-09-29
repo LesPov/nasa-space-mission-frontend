@@ -1,3 +1,4 @@
+
 import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject, effect, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -19,7 +20,7 @@ import { EpisodiosService } from '../../../../services/api/episodios';
   standalone: true, 
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-mission.html',
-  styleUrls: ['../inspector-properties.css']
+  styleUrls: ['./prop-mission.css']
 })
 export class PropMission implements OnInit, OnDestroy {
   public editorSvc = inject(EditorMapaService);
@@ -56,8 +57,6 @@ export class PropMission implements OnInit, OnDestroy {
   }
 
   constructor() {
-    // 🔥 EFECTO REACTIVO 1: Actualización instantánea al cambiar de Plataforma (Escena)
-    // El 'effect' de Angular se ejecutará automáticamente si this.editorSvc.escenaIdActiva() cambia.
     effect(() => {
       const sceneId = this.editorSvc.escenaIdActiva();
       
@@ -65,8 +64,6 @@ export class PropMission implements OnInit, OnDestroy {
         if (sceneId !== this.lastSceneId) {
           this.lastSceneId = sceneId;
           
-          // Damos un respiro asíncrono de 50ms para que el CoreSceneLoaderService
-          // haya finalizado por completo la carga de datos en el WorldSettingsService
           setTimeout(() => {
             this.leerMetadataEpisodio();
             this.leerEstadoUI();
@@ -78,11 +75,8 @@ export class PropMission implements OnInit, OnDestroy {
   }
 
   ngOnInit() {
-    // Nota: Las lecturas iniciales ahora están orquestadas por el effect() superior
-    
     this.subs.push(
       this.editorSvc.onMapChanged.subscribe(() => {
-         // Mantener la reactividad ante otras mutaciones menores sin resetear el binding de inputs
          this.cdr.detectChanges();
       }),
       
@@ -169,7 +163,7 @@ export class PropMission implements OnInit, OnDestroy {
       assignedBudget: 50000000,
       spentBudget: 0,
       spacecraftName: 'Orbital Scout-I',
-      spacecraftModel: 'Surveyor Class Mk-1',
+      spacecraftModel: 'Surveyor Mk-1',
       spacecraftMassKg: 12500,
       spacecraftPowerWatts: 45000,
       spacecraftFuelCapacityKg: 8000,
@@ -201,7 +195,6 @@ export class PropMission implements OnInit, OnDestroy {
   }
 
   public marcarModificado() {
-    // Si cambian cosas aeroespaciales que no son de UI, solo preparamos para Guardar Perfil manualmente
   }
 
   public agregarComponenteDefecto() {

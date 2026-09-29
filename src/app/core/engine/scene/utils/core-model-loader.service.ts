@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3, Tags, Quaternion } from '@babylonjs/core';
 import '@babylonjs/loaders';
@@ -217,7 +216,8 @@ export class CoreModelLoaderService {
                  activeColorOverride || activeColorHex, 
                  override.esEmisivo ?? entity.visual.esEmisivo, 
                  override.brilloIntensidad ?? entity.visual.brilloIntensidad,
-                 override.texturePath
+                 override.texturePath,
+                 override.textureSource || (override.texturePath ? 'asset' : 'original') // 🔥 TEXTURE SOURCE APLICADO CORRECTAMENTE
              );
           } else {
              await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbient, activeColorHex, entity.visual.esEmisivo, entity.visual.brilloIntensidad);

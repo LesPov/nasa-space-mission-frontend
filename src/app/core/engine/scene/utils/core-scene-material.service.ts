@@ -1,4 +1,3 @@
-
 import { Injectable } from '@angular/core';
 import { Color3, Texture, RawTexture, Scene, AbstractMesh } from '@babylonjs/core';
 
@@ -50,13 +49,14 @@ export class CoreSceneMaterialService {
       colorHex?: string, 
       esEmisivo: boolean = false, 
       brilloIntensidad: number = 1.0,
-      texturePath?: string
+      texturePath?: string,
+      textureSource: 'original' | 'solid' | 'asset' = 'original'
   ): Promise<void> {
     if (!material) return;
     
     if (material.getClassName() === 'MultiMaterial' && material.subMaterials) {
       for (const subMat of material.subMaterials) {
-        await this.ajustarMaterialGLB(subMat, isBW, scene, ambientColorHex, colorHex, esEmisivo, brilloIntensidad, texturePath);
+        await this.ajustarMaterialGLB(subMat, isBW, scene, ambientColorHex, colorHex, esEmisivo, brilloIntensidad, texturePath, textureSource);
       }
       return;
     }
@@ -86,27 +86,31 @@ export class CoreSceneMaterialService {
          material.metadata.originalAlbedoColor = material.albedoColor ? material.albedoColor.clone() : new Color3(0.8, 0.8, 0.8);
       }
 
-      if (isCustomTint) {
+      if (isCustomTint || textureSource === 'solid') {
           material.albedoColor = c3Tint;
       } else {
           if (material.metadata.originalAlbedoColor) material.albedoColor.copyFrom(material.metadata.originalAlbedoColor);
       }
 
       if (esEmisivo) {
-          material.emissiveColor = isCustomTint ? c3Tint.scale(brillo) : (material.metadata.originalAlbedoColor || new Color3(1,1,1)).scale(brillo);
+          material.emissiveColor = (isCustomTint || textureSource === 'solid') ? c3Tint.scale(brillo) : (material.metadata.originalAlbedoColor || new Color3(1,1,1)).scale(brillo);
       } else {
           material.emissiveColor = new Color3(0,0,0);
       }
 
-      if (texturePath && scene) {
+      if (textureSource === 'asset' && texturePath && scene) {
           let tex: any = new Texture('http://localhost:4000' + texturePath, scene);
           if (isBW) tex = await this.getOrCreateBwTexture(tex, scene);
           material.albedoTexture = tex;
+      } else if (textureSource === 'solid') {
+          material.albedoTexture = null;
       } else {
           if (isBW && scene) {
              if (material.metadata.originalAlbedoTexture) {
                  const bwTex = await this.getOrCreateBwTexture(material.metadata.originalAlbedoTexture, scene);
                  if (material.albedoTexture !== bwTex) material.albedoTexture = bwTex;
+             } else {
+                 material.albedoTexture = null;
              }
              if (material.albedoColor.r !== 0.8 && !isCustomTint) material.albedoColor.copyFromFloats(0.8, 0.8, 0.8);
           } else {
@@ -125,27 +129,31 @@ export class CoreSceneMaterialService {
          material.metadata.originalDiffuseColor = material.diffuseColor ? material.diffuseColor.clone() : new Color3(0.8, 0.8, 0.8);
       }
 
-      if (isCustomTint) {
+      if (isCustomTint || textureSource === 'solid') {
           material.diffuseColor = c3Tint;
       } else {
           if (material.metadata.originalDiffuseColor) material.diffuseColor.copyFrom(material.metadata.originalDiffuseColor);
       }
 
       if (esEmisivo) {
-          material.emissiveColor = isCustomTint ? c3Tint.scale(brillo) : (material.metadata.originalDiffuseColor || new Color3(1,1,1)).scale(brillo);
+          material.emissiveColor = (isCustomTint || textureSource === 'solid') ? c3Tint.scale(brillo) : (material.metadata.originalDiffuseColor || new Color3(1,1,1)).scale(brillo);
       } else {
           material.emissiveColor = new Color3(0,0,0);
       }
 
-      if (texturePath && scene) {
+      if (textureSource === 'asset' && texturePath && scene) {
           let tex: any = new Texture('http://localhost:4000' + texturePath, scene);
           if (isBW) tex = await this.getOrCreateBwTexture(tex, scene);
           material.diffuseTexture = tex;
+      } else if (textureSource === 'solid') {
+          material.diffuseTexture = null;
       } else {
           if (isBW && scene) {
              if (material.metadata.originalDiffuseTexture) {
                  const bwTex = await this.getOrCreateBwTexture(material.metadata.originalDiffuseTexture, scene);
                  if (material.diffuseTexture !== bwTex) material.diffuseTexture = bwTex;
+             } else {
+                 material.diffuseTexture = null;
              }
              if (material.diffuseColor.r !== 0.8 && !isCustomTint) material.diffuseColor.copyFromFloats(0.8, 0.8, 0.8);
           } else {

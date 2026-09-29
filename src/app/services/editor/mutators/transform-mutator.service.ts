@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -176,7 +175,6 @@ export class TransformMutatorService {
             if (m.material) {
                 this.materialSvc.asegurarMaterialUnico(m, entity.uid);
                 
-                // 🔥 PROTECCIÓN DE PARTS: Aplicamos el color base PERO respetamos el override si existe
                 const override = entity.partOverrides?.overrides[m.name];
                 if (override) {
                     const activeColorOverride = isBW ? (override.colorBW || override.color) : override.color;
@@ -186,7 +184,8 @@ export class TransformMutatorService {
                         activeColorOverride || activeColorHex, 
                         override.esEmisivo ?? config.esEmisivo, 
                         override.brilloIntensidad ?? config.brilloIntensidad,
-                        override.texturePath
+                        override.texturePath,
+                        override.textureSource || (override.texturePath ? 'asset' : 'original') // 🔥 TEXTURE SOURCE
                     );
                 } else {
                     this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbientHex, activeColorHex, config.esEmisivo, config.brilloIntensidad);

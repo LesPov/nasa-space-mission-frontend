@@ -13,7 +13,7 @@ import { EntityManagerService } from '../../../../core/engine/entities/entity-ma
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-physics.html',
-  styleUrls: ['../inspector-properties.css'] 
+  styleUrls: ['./prop-physics.css'] 
 })
 export class PropPhysics implements OnInit, OnDestroy {
   @Input() objeto!: AbstractMesh;
@@ -106,7 +106,6 @@ export class PropPhysics implements OnInit, OnDestroy {
           const scene = this.objeto.getScene();
           let colMesh: Mesh;
 
-          // 🔥 FIX PROXY: Multiplicar por 2 siempre, ya que las UI/Models asumen la fuente de verdad como HALF SIZE (radios)
           if (this.colliderType === 'sphere') {
               colMesh = MeshBuilder.CreateSphere(`col_${entity.uid}`, { diameterX: this.colliderSizeX * 2, diameterY: this.colliderSizeY * 2, diameterZ: this.colliderSizeZ * 2 }, scene);
           } else if (this.colliderType === 'capsule') {

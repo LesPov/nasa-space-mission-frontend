@@ -1,5 +1,4 @@
 
-
 import { Component, Input, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -11,7 +10,7 @@ import { EntityManagerService } from '../../../../core/engine/entities/entity-ma
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-video.html',
-  styleUrls: ['../inspector-properties.css']
+  styleUrls: ['./prop-video.css']
 })
 export class PropVideo {
   @Input() objeto!: AbstractMesh;

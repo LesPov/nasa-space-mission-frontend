@@ -1,5 +1,4 @@
 
-
 import { Component, Input, OnInit, OnChanges, SimpleChanges, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -23,7 +22,7 @@ const ACTION_ROWS_LIGHT = [...ACTION_ROWS_PROP, { key: 'lightOn', label: '💡 F
   standalone: true,
   imports: [CommonModule, FormsModule],
   templateUrl: './prop-sequences.html',
-  styleUrls: ['../inspector-properties.css']
+  styleUrls: ['./prop-sequences.css']
 }) 
 export class PropSequences implements OnInit, OnChanges {
   @Input() objeto!: AbstractMesh;

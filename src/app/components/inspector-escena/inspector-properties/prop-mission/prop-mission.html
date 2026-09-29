@@ -1,69 +1,71 @@
 
-<div class="sub-tabs-container" style="display: flex; gap: 8px; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 10px;">
-  <button class="btn-ghost" [class.active-sub]="seccionActiva === 'metadata'" (click)="seccionActiva = 'metadata'" style="flex: 1; padding: 8px 10px; font-weight: bold;">
-    📖 Datos Globales
+<div class="sub-tabs-container">
+  <button class="btn-ghost" [class.active-sub]="seccionActiva === 'metadata'" (click)="seccionActiva = 'metadata'">
+    <span class="icon">📖</span> Global
   </button>
-  <button class="btn-ghost" [class.active-sub]="seccionActiva === 'mission'" (click)="seccionActiva = 'mission'" style="flex: 1; padding: 8px 10px; font-weight: bold; color: #4ade80;">
-    🎯 Misión Local
+  <button class="btn-ghost" [class.active-sub]="seccionActiva === 'mission'" (click)="seccionActiva = 'mission'" [style.color]="seccionActiva === 'mission' ? '#4ade80' : ''">
+    <span class="icon">🎯</span> Local
   </button>
-  <button class="btn-ghost" [class.active-sub]="seccionActiva === 'ui'" (click)="seccionActiva = 'ui'" style="flex: 1; padding: 8px 10px; font-weight: bold;">
-    🎨 Diseño Modal
+  <button class="btn-ghost" [class.active-sub]="seccionActiva === 'ui'" (click)="seccionActiva = 'ui'">
+    <span class="icon">🎨</span> Diseño
   </button>
-  <button class="btn-ghost" [class.active-sub]="seccionActiva === 'aerospace'" (click)="seccionActiva = 'aerospace'" style="flex: 1; padding: 8px 10px; font-weight: bold; color: #fbbf24;">
-    🚀 Aeroespacial
+  <button class="btn-ghost" [class.active-sub]="seccionActiva === 'aerospace'" (click)="seccionActiva = 'aerospace'" [style.color]="seccionActiva === 'aerospace' ? '#fbbf24' : ''">
+    <span class="icon">🚀</span> Aero
   </button>
 </div>
 
 <!-- ========================================================================= -->
-<!-- 0. SECCIÓN METADATA NARRATIVA DEL EPISODIO Y PLATAFORMA                 -->
+<!-- 0. METADATA                                                               -->
 <!-- ========================================================================= -->
 <ng-container *ngIf="seccionActiva === 'metadata'">
   <div class="section-card">
     <div class="section-head">
-      <h4>Identificación del Episodio (Global)</h4>
+      <h4>Identificación Global</h4>
     </div>
-    <div class="field wide" style="margin-bottom: 15px;">
-      <label>Título del Episodio</label>
-      <input type="text" [(ngModel)]="episodeTitle" (ngModelChange)="aplicarMetadataEpisodio()" placeholder="Ej: Exploración Lunar" />
+    <div class="accordion-content">
+      <div class="field wide" style="margin-bottom: 12px;">
+        <label>Título del Episodio</label>
+        <input type="text" [(ngModel)]="episodeTitle" (ngModelChange)="aplicarMetadataEpisodio()" placeholder="Ej: Exploración Lunar" />
+      </div>
+      <div class="field wide">
+        <label>Descripción / Sinopsis</label>
+        <textarea rows="4" [(ngModel)]="episodeDescription" (ngModelChange)="aplicarMetadataEpisodio()" placeholder="Describe la historia general del episodio..."></textarea>
+      </div>
+      <p class="help-text">Estos datos pertenecen al Episodio completo y se verán en el menú de selección de partidas.</p>
     </div>
-    <div class="field wide">
-      <label>Descripción / Sinopsis</label>
-      <textarea rows="4" [(ngModel)]="episodeDescription" (ngModelChange)="aplicarMetadataEpisodio()" placeholder="Describe la historia general del episodio..."></textarea>
-    </div>
-    <p class="help-text" style="margin-top: 10px;">
-      Estos datos pertenecen al Episodio completo y se verán en el menú de selección de partidas.
-    </p>
   </div>
 
   <div class="section-card">
     <div class="section-head">
-      <h4 style="color: #c084fc;">Nombre de la Plataforma Actual (Local)</h4>
+      <h4 style="color: #c084fc;">Plataforma Actual (Local)</h4>
     </div>
-    <div class="field wide" style="margin-bottom: 15px;">
-      <label>Zona / Escena</label>
-      <input type="text" [value]="sceneName" readonly style="opacity: 0.7; background: #000;" />
+    <div class="accordion-content">
+      <div class="field wide">
+        <label>Zona / Escena</label>
+        <input type="text" [value]="sceneName" readonly style="opacity: 0.6; cursor: not-allowed;" />
+      </div>
+      <p class="help-text">Para cambiar el nombre de la plataforma, usa el administrador de zonas superior.</p>
     </div>
-    <p class="help-text">Para cambiar el nombre de la plataforma, usa el administrador de zonas superior.</p>
   </div>
 </ng-container>
 
 <!-- ========================================================================= -->
-<!-- 1. SECCIÓN MISIÓN LOCAL (OBJETIVOS Y RECOMPENSAS EXCLUSIVAS DE LA ZONA)   -->
+<!-- 1. SECCIÓN MISIÓN LOCAL                                                   -->
 <!-- ========================================================================= -->
 <ng-container *ngIf="seccionActiva === 'mission'">
   <div class="section-card">
     <div class="section-head">
       <h4 style="color: #4ade80;">Misión Principal en: {{ sceneName }}</h4>
     </div>
-    
-    <div class="field wide" style="margin-bottom: 15px;">
-      <label>Título de la Misión (Opcional)</label>
-      <input type="text" [(ngModel)]="uiSettings.missionTitle" (ngModelChange)="aplicarCambiosUI()" placeholder="Ej: Investigar la anomalía" />
-    </div>
-    
-    <div class="field wide" style="margin-bottom: 15px;">
-      <label>Descripción de Misión</label>
-      <textarea rows="3" [(ngModel)]="uiSettings.missionDescription" (ngModelChange)="aplicarCambiosUI()" placeholder="Explica qué debe hacer el jugador en esta plataforma."></textarea>
+    <div class="accordion-content">
+      <div class="field wide" style="margin-bottom: 12px;">
+        <label>Título de la Misión (Opcional)</label>
+        <input type="text" [(ngModel)]="uiSettings.missionTitle" (ngModelChange)="aplicarCambiosUI()" placeholder="Ej: Investigar la anomalía" />
+      </div>
+      <div class="field wide">
+        <label>Descripción de Misión</label>
+        <textarea rows="3" [(ngModel)]="uiSettings.missionDescription" (ngModelChange)="aplicarCambiosUI()" placeholder="Explica qué debe hacer el jugador en esta plataforma."></textarea>
+      </div>
     </div>
   </div>
 
@@ -71,85 +73,88 @@
     <div class="section-head">
       <h4>Objetivos y Recompensas</h4>
     </div>
-    <p class="help-text" style="margin-bottom: 10px;">Escribe cada ítem en una línea nueva.</p>
+    <div class="accordion-content">
+      <p class="help-text" style="margin-bottom: 10px; margin-top: 0;">Escribe cada ítem en una línea nueva.</p>
 
-    <div class="field wide" style="margin-bottom: 15px;">
-      <label style="color: #60a5fa; font-weight: bold;">Objetivos (Para esta Zona)</label>
-      <textarea rows="4" [(ngModel)]="uiSettings.objetivos" (ngModelChange)="aplicarCambiosUI()" placeholder="Alcanzar puerta oeste.&#10;Encontrar llave magnética."></textarea>
-    </div>
+      <div class="field wide" style="margin-bottom: 12px;">
+        <label style="color: #60a5fa;">Objetivos (Para esta Zona)</label>
+        <textarea rows="4" [(ngModel)]="uiSettings.objetivos" (ngModelChange)="aplicarCambiosUI()" placeholder="Alcanzar puerta oeste.&#10;Encontrar llave magnética."></textarea>
+      </div>
 
-    <div class="field wide" style="margin-bottom: 15px;">
-      <label style="color: #facc15; font-weight: bold;">Recompensas al Completar</label>
-      <textarea rows="3" [(ngModel)]="uiSettings.recompensas" (ngModelChange)="aplicarCambiosUI()" placeholder="Llave magnética&#10;Nivel de acceso 2"></textarea>
-    </div>
+      <div class="field wide" style="margin-bottom: 12px;">
+        <label style="color: #facc15;">Recompensas al Completar</label>
+        <textarea rows="3" [(ngModel)]="uiSettings.recompensas" (ngModelChange)="aplicarCambiosUI()" placeholder="Llave magnética&#10;Nivel de acceso 2"></textarea>
+      </div>
 
-    <div class="field wide" style="margin-bottom: 15px;">
-      <label style="color: #f87171; font-weight: bold;">Permisos / Requisitos Mínimos</label>
-      <textarea rows="2" [(ngModel)]="uiSettings.requisitos" (ngModelChange)="aplicarCambiosUI()" placeholder="Traje de radiación"></textarea>
+      <div class="field wide">
+        <label style="color: #f87171;">Permisos / Requisitos Mínimos</label>
+        <textarea rows="2" [(ngModel)]="uiSettings.requisitos" (ngModelChange)="aplicarCambiosUI()" placeholder="Traje de radiación"></textarea>
+      </div>
     </div>
   </div>
 </ng-container>
 
 <!-- ========================================================================= -->
-<!-- 2. SECCIÓN UI / MODAL: COLORES, CITAS, FONDOS Y SECUENCIA INICIAL         -->
+<!-- 2. SECCIÓN UI / MODAL                                                     -->
 <!-- ========================================================================= -->
 <ng-container *ngIf="seccionActiva === 'ui'">
   <div class="section-card">
     <div class="section-head">
       <h4>Diseño Visual del UI Modal</h4>
     </div>
-
-    <div class="grid-2">
-      <div class="field">
-        <label>Color Principal (Acentos)</label>
-        <div class="color-picker-wrapper">
-          <input type="color" [(ngModel)]="uiSettings.primaryColor" (ngModelChange)="aplicarCambiosUI()" class="color-picker">
-          <span class="color-hex-text">{{ uiSettings.primaryColor.toUpperCase() }}</span>
+    <div class="accordion-content">
+      <div class="grid-2" style="margin-bottom: 12px;">
+        <div class="field">
+          <label>Color Principal</label>
+          <div class="color-box-modern">
+            <input type="color" [(ngModel)]="uiSettings.primaryColor" (ngModelChange)="aplicarCambiosUI()" class="color-swatch-input">
+            <span class="hex-text">{{ uiSettings.primaryColor.toUpperCase() }}</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Fondo Modal</label>
+          <div class="color-box-modern">
+            <input type="color" [(ngModel)]="uiSettings.bgColor" (ngModelChange)="aplicarCambiosUI()" class="color-swatch-input">
+            <span class="hex-text">{{ uiSettings.bgColor.toUpperCase() }}</span>
+          </div>
         </div>
       </div>
 
-      <div class="field">
-        <label>Color de Fondo</label>
-        <div class="color-picker-wrapper">
-          <input type="color" [(ngModel)]="uiSettings.bgColor" (ngModelChange)="aplicarCambiosUI()" class="color-picker">
-          <span class="color-hex-text">{{ uiSettings.bgColor.toUpperCase() }}</span>
+      <div class="grid-2">
+        <div class="field">
+          <label>Opacidad Fondo</label>
+          <input type="number" step="0.05" min="0" max="1" [(ngModel)]="uiSettings.bgOpacity" (ngModelChange)="aplicarCambiosUI()" />
         </div>
-      </div>
-    </div>
-
-    <div class="grid-2" style="margin-top: 10px;">
-      <div class="field">
-        <label>Opacidad del Fondo</label>
-        <input type="number" step="0.05" min="0" max="1" [(ngModel)]="uiSettings.bgOpacity" (ngModelChange)="aplicarCambiosUI()" />
-      </div>
-      <div class="field">
-        <label>Bordes Redondeados (px)</label>
-        <input type="number" step="1" min="0" max="50" [(ngModel)]="uiSettings.borderRadius" (ngModelChange)="aplicarCambiosUI()" />
+        <div class="field">
+          <label>Redondeo (px)</label>
+          <input type="number" step="1" min="0" max="50" [(ngModel)]="uiSettings.borderRadius" (ngModelChange)="aplicarCambiosUI()" />
+        </div>
       </div>
     </div>
   </div>
 
   <div class="section-card">
     <div class="section-head">
-      <h4>Fondo de Pantalla (Overlay y Blur)</h4>
+      <h4>Fondo de Pantalla (Overlay)</h4>
     </div>
-
-    <div class="grid-2">
-      <div class="field">
-        <label>Color Capa Externa</label>
-        <div class="color-picker-wrapper">
-          <input type="color" [(ngModel)]="uiSettings.overlayColor" (ngModelChange)="aplicarCambiosUI()" class="color-picker">
+    <div class="accordion-content">
+      <div class="grid-2" style="margin-bottom: 12px;">
+        <div class="field">
+          <label>Color Capa Externa</label>
+          <div class="color-box-modern">
+            <input type="color" [(ngModel)]="uiSettings.overlayColor" (ngModelChange)="aplicarCambiosUI()" class="color-swatch-input">
+          </div>
+        </div>
+        <div class="field">
+          <label>Opacidad Externa</label>
+          <input type="number" step="0.05" min="0" max="1" [(ngModel)]="uiSettings.overlayOpacity" (ngModelChange)="aplicarCambiosUI()" />
         </div>
       </div>
-      <div class="field">
-        <label>Opacidad Externa</label>
-        <input type="number" step="0.05" min="0" max="1" [(ngModel)]="uiSettings.overlayOpacity" (ngModelChange)="aplicarCambiosUI()" />
-      </div>
-    </div>
 
-    <div class="field wide" style="margin-top: 10px;">
-      <label>Intensidad del Desenfoque (Blur px)</label>
-      <input type="number" step="1" min="0" max="30" [(ngModel)]="uiSettings.blurIntensity" (ngModelChange)="aplicarCambiosUI()" />
+      <div class="field wide">
+        <label>Desenfoque de Fondo (Blur px)</label>
+        <input type="number" step="1" min="0" max="30" [(ngModel)]="uiSettings.blurIntensity" (ngModelChange)="aplicarCambiosUI()" />
+      </div>
     </div>
   </div>
 
@@ -157,22 +162,23 @@
     <div class="section-head">
       <h4>Lore y Narrativa</h4>
     </div>
-    
-    <div class="field wide" style="margin-bottom: 10px;">
-      <label>Cita de Lore (Ambientación)</label>
-      <textarea rows="3" [(ngModel)]="uiSettings.loreQuote" (ngModelChange)="aplicarCambiosUI()" placeholder='"Una frase misteriosa sobre el mundo..."'></textarea>
-    </div>
-    
-    <div class="field wide" style="margin-bottom: 10px;">
-      <label>Autor de la Cita</label>
-      <input type="text" [(ngModel)]="uiSettings.loreAuthor" (ngModelChange)="aplicarCambiosUI()" placeholder="Ej: Control de Misión" />
-    </div>
-    
-    <div class="field wide">
-      <label>Color de Texto</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="uiSettings.textColor" (ngModelChange)="aplicarCambiosUI()" class="color-picker">
-        <span class="color-hex-text">{{ uiSettings.textColor.toUpperCase() }}</span>
+    <div class="accordion-content">
+      <div class="field wide" style="margin-bottom: 12px;">
+        <label>Cita de Lore (Ambientación)</label>
+        <textarea rows="3" [(ngModel)]="uiSettings.loreQuote" (ngModelChange)="aplicarCambiosUI()" placeholder='"Una frase misteriosa sobre el mundo..."'></textarea>
+      </div>
+      
+      <div class="field wide" style="margin-bottom: 12px;">
+        <label>Autor de la Cita</label>
+        <input type="text" [(ngModel)]="uiSettings.loreAuthor" (ngModelChange)="aplicarCambiosUI()" placeholder="Ej: Control de Misión" />
+      </div>
+      
+      <div class="field wide">
+        <label>Color de Texto Principal</label>
+        <div class="color-box-modern">
+          <input type="color" [(ngModel)]="uiSettings.textColor" (ngModelChange)="aplicarCambiosUI()" class="color-swatch-input">
+          <span class="hex-text">{{ uiSettings.textColor.toUpperCase() }}</span>
+        </div>
       </div>
     </div>
   </div>
@@ -181,199 +187,181 @@
     <div class="section-head">
       <h4>Cinemática Inicial</h4>
     </div>
-    <div class="field wide">
-      <label>ID de la Secuencia al Iniciar (Opcional)</label>
-      <input type="text" [(ngModel)]="uiSettings.initialSequence" (ngModelChange)="aplicarCambiosUI()" placeholder="Ej: seq_intro_01" />
+    <div class="accordion-content">
+      <div class="field wide">
+        <label>ID de Secuencia al Iniciar (Opcional)</label>
+        <input type="text" [(ngModel)]="uiSettings.initialSequence" (ngModelChange)="aplicarCambiosUI()" placeholder="Ej: seq_intro_01" />
+      </div>
     </div>
   </div>
 </ng-container>
 
 <!-- ========================================================================= -->
-<!-- 3. SECCIÓN AEROESPACIAL: FICHA TÉCNICA, NAVE, PRESUPUESTO Y COMPONENTES  -->
+<!-- 3. SECCIÓN AEROESPACIAL                                                   -->
 <!-- ========================================================================= -->
 <ng-container *ngIf="seccionActiva === 'aerospace'">
   <div class="section-card" *ngIf="cargandoProfile">
-    <p style="color: #60a5fa; font-size: 12px; text-align: center; margin: 20px 0;">Cargando perfil técnico de misión...</p>
+    <div class="accordion-content" style="text-align: center;">
+       <p style="color: #60a5fa; font-size: 11px; margin: 10px 0;">Cargando perfil técnico...</p>
+    </div>
   </div>
 
   <div class="section-card" *ngIf="!cargandoProfile && !missionProfile">
     <div class="section-head">
       <h4>Sin Perfil de Misión</h4>
     </div>
-    <p class="help-text" style="color: #cbd5e1; margin-bottom: 15px;">
-      Este episodio aún no tiene un perfil aeroespacial persistido en la base de datos.
-    </p>
-    <button class="btn-primary full" (click)="inicializarPerfilPorDefecto()">
-      ✨ Inicializar Ficha de Misión Aeroespacial
-    </button>
+    <div class="accordion-content">
+      <p class="help-text" style="margin-bottom: 15px; margin-top: 0;">Este episodio aún no tiene un perfil aeroespacial persistido en la base de datos.</p>
+      <button class="btn-primary full" (click)="inicializarPerfilPorDefecto()">
+        ✨ Inicializar Ficha Técnica
+      </button>
+    </div>
   </div>
 
   <div *ngIf="!cargandoProfile && missionProfile">
-    <!-- IDENTIFICACIÓN -->
     <div class="section-card">
       <div class="section-head">
         <h4>Identificación Técnica</h4>
-        <span class="status-pill" [style.background]="getStatusColor(missionProfile.missionStatus)">
+        <span class="status-pill" [style.color]="getStatusColor(missionProfile.missionStatus)" [style.border-color]="getStatusColor(missionProfile.missionStatus)">
           {{ missionProfile.missionStatus }}
         </span>
       </div>
-
-      <div class="grid-2">
-        <div class="field">
-          <label>Nombre de Misión</label>
-          <input type="text" [(ngModel)]="missionProfile.missionName" (ngModelChange)="marcarModificado()" placeholder="Ej: Proyecto Artemis" />
+      <div class="accordion-content">
+        <div class="grid-2" style="margin-bottom: 12px;">
+          <div class="field">
+            <label>Nombre de Misión</label>
+            <input type="text" [(ngModel)]="missionProfile.missionName" (ngModelChange)="marcarModificado()" placeholder="Ej: Artemis" />
+          </div>
+          <div class="field">
+            <label>Código de Misión</label>
+            <input type="text" [(ngModel)]="missionProfile.missionCode" (ngModelChange)="marcarModificado()" placeholder="Ej: ART-01" />
+          </div>
         </div>
-        <div class="field">
-          <label>Código de Misión</label>
-          <input type="text" [(ngModel)]="missionProfile.missionCode" (ngModelChange)="marcarModificado()" placeholder="Ej: ART-01" />
-        </div>
-      </div>
 
-      <div class="grid-2" style="margin-top: 10px;">
-        <div class="field">
-          <label>Estado Operacional</label>
-          <select [(ngModel)]="missionProfile.missionStatus" (ngModelChange)="marcarModificado()">
-            <option value="PLANNING">Planificación (PLANNING)</option>
-            <option value="PRE_LAUNCH">Pre-Lanzamiento (PRE_LAUNCH)</option>
-            <option value="IN_FLIGHT">En Vuelo (IN_FLIGHT)</option>
-            <option value="ORBIT_INSERTION">Inserción Orbital (ORBIT_INSERTION)</option>
-            <option value="LANDED">Aterrizado (LANDED)</option>
-            <option value="COMPLETED">Completada (COMPLETED)</option>
-            <option value="ABORTED">Abortada (ABORTED)</option>
-          </select>
+        <div class="grid-2" style="margin-bottom: 12px;">
+          <div class="field">
+            <label>Estado Operacional</label>
+            <select [(ngModel)]="missionProfile.missionStatus" (ngModelChange)="marcarModificado()">
+              <option value="PLANNING">PLANNING</option>
+              <option value="PRE_LAUNCH">PRE_LAUNCH</option>
+              <option value="IN_FLIGHT">IN_FLIGHT</option>
+              <option value="ORBIT_INSERTION">ORBIT_INSERTION</option>
+              <option value="LANDED">LANDED</option>
+              <option value="COMPLETED">COMPLETED</option>
+              <option value="ABORTED">ABORTED</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Progreso: {{ missionProfile.completionPercentage }}%</label>
+            <input type="number" min="0" max="100" step="1" [(ngModel)]="missionProfile.completionPercentage" (ngModelChange)="marcarModificado()" />
+          </div>
         </div>
-        <div class="field">
-          <label>Progreso (%) [{{ missionProfile.completionPercentage }}%]</label>
-          <input type="number" min="0" max="100" step="1" [(ngModel)]="missionProfile.completionPercentage" (ngModelChange)="marcarModificado()" />
+
+        <div class="field wide" style="margin-bottom: 12px;">
+          <label>Fase de Misión Actual</label>
+          <input type="text" [(ngModel)]="missionProfile.currentPhase" (ngModelChange)="marcarModificado()" placeholder="Ej: Despliegue de Paneles" />
         </div>
-      </div>
 
-      <div class="field wide" style="margin-top: 10px;">
-        <label>Fase de Misión Actual</label>
-        <input type="text" [(ngModel)]="missionProfile.currentPhase" (ngModelChange)="marcarModificado()" placeholder="Ej: Despliegue de Paneles y Calibración" />
-      </div>
-
-      <div class="field wide" style="margin-top: 10px;">
-        <label>Descripción Operativa</label>
-        <textarea rows="2" [(ngModel)]="missionProfile.description" (ngModelChange)="marcarModificado()" placeholder="Objetivos y restricciones de vuelo..."></textarea>
+        <div class="field wide">
+          <label>Descripción Operativa</label>
+          <textarea rows="2" [(ngModel)]="missionProfile.description" (ngModelChange)="marcarModificado()" placeholder="Objetivos y restricciones..."></textarea>
+        </div>
       </div>
     </div>
 
-    <!-- NAVE ESPACIAL -->
     <div class="section-card">
       <div class="section-head">
         <h4>Vehículo Espacial (Spacecraft)</h4>
       </div>
-
-      <div class="grid-2">
-        <div class="field">
-          <label>Nombre de la Nave</label>
-          <input type="text" [(ngModel)]="missionProfile.spacecraftName" (ngModelChange)="marcarModificado()" placeholder="Ej: Odyssey-IV" />
+      <div class="accordion-content">
+        <div class="grid-2" style="margin-bottom: 12px;">
+          <div class="field">
+            <label>Nombre de la Nave</label>
+            <input type="text" [(ngModel)]="missionProfile.spacecraftName" (ngModelChange)="marcarModificado()" />
+          </div>
+          <div class="field">
+            <label>Modelo / Clase</label>
+            <input type="text" [(ngModel)]="missionProfile.spacecraftModel" (ngModelChange)="marcarModificado()" />
+          </div>
         </div>
-        <div class="field">
-          <label>Modelo / Clase</label>
-          <input type="text" [(ngModel)]="missionProfile.spacecraftModel" (ngModelChange)="marcarModificado()" placeholder="Ej: Deep Space Explorer" />
-        </div>
-      </div>
-
-      <div class="grid-3" style="margin-top: 10px;">
-        <div class="field">
-          <label>Masa (kg)</label>
-          <input type="number" min="1" step="50" [(ngModel)]="missionProfile.spacecraftMassKg" (ngModelChange)="marcarModificado()" />
-        </div>
-        <div class="field">
-          <label>Potencia (Watts)</label>
-          <input type="number" min="0" step="100" [(ngModel)]="missionProfile.spacecraftPowerWatts" (ngModelChange)="marcarModificado()" />
-        </div>
-        <div class="field">
-          <label>Combustible (kg)</label>
-          <input type="number" min="0" step="100" [(ngModel)]="missionProfile.spacecraftFuelCapacityKg" (ngModelChange)="marcarModificado()" />
+        <div class="grid-3">
+          <div class="field"><label>Masa (kg)</label><input type="number" step="50" [(ngModel)]="missionProfile.spacecraftMassKg" (ngModelChange)="marcarModificado()" /></div>
+          <div class="field"><label>Potencia (W)</label><input type="number" step="100" [(ngModel)]="missionProfile.spacecraftPowerWatts" (ngModelChange)="marcarModificado()" /></div>
+          <div class="field"><label>Combustible (kg)</label><input type="number" step="100" [(ngModel)]="missionProfile.spacecraftFuelCapacityKg" (ngModelChange)="marcarModificado()" /></div>
         </div>
       </div>
     </div>
 
-    <!-- PRESUPUESTO -->
     <div class="section-card">
       <div class="section-head">
         <h4>Finanzas y Presupuesto</h4>
       </div>
-
-      <div class="grid-2">
-        <div class="field">
-          <label>Presupuesto Asignado ($)</label>
-          <input type="number" min="0" step="10000" [(ngModel)]="missionProfile.assignedBudget" (ngModelChange)="recalcularPresupuesto()" />
+      <div class="accordion-content">
+        <div class="grid-2" style="margin-bottom: 12px;">
+          <div class="field">
+            <label>Asignado ($)</label>
+            <input type="number" min="0" step="10000" [(ngModel)]="missionProfile.assignedBudget" (ngModelChange)="recalcularPresupuesto()" />
+          </div>
+          <div class="field">
+            <label>Gastado ($)</label>
+            <input type="number" min="0" step="10000" [(ngModel)]="missionProfile.spentBudget" (ngModelChange)="recalcularPresupuesto()" />
+          </div>
         </div>
-        <div class="field">
-          <label>Presupuesto Gastado ($)</label>
-          <input type="number" min="0" step="10000" [(ngModel)]="missionProfile.spentBudget" (ngModelChange)="recalcularPresupuesto()" />
-        </div>
-      </div>
-
-      <div class="field wide" style="margin-top: 10px; background: rgba(34, 197, 94, 0.1); border: 1px solid #22c55e; border-radius: 6px; padding: 10px;">
-        <label style="color: #4ade80; font-weight: bold; margin: 0;">Presupuesto Remanente Calculado</label>
-        <div style="font-size: 16px; font-weight: bold; color: white; margin-top: 4px;">
-          ${{ missionProfile.remainingBudget | number:'1.2-2' }}
+        <div class="field wide" style="background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); border-radius: 4px; padding: 8px;">
+          <label style="color: #4ade80; margin: 0;">Presupuesto Remanente</label>
+          <div style="font-size: 14px; font-weight: bold; color: white; margin-top: 2px;">
+            ${{ missionProfile.remainingBudget | number:'1.2-2' }}
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- SUBSISTEMAS Y COMPONENTES -->
     <div class="section-card">
       <div class="section-head">
-        <h4>Subsistemas Técnicos ({{ (missionProfile.components && missionProfile.components.length) || 0 }})</h4>
-        <button class="btn-secondary small" (click)="agregarComponenteDefecto()">+ Componente</button>
+        <h4>Subsistemas ({{ (missionProfile.components && missionProfile.components.length) || 0 }})</h4>
+        <button class="btn-secondary small" (click)="agregarComponenteDefecto()">+ Nuevo</button>
       </div>
-
-      <div *ngFor="let comp of missionProfile.components; let i = index" 
-           style="background: #0f172a; border: 1px solid #334155; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
-        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
-          <span style="font-size: 11px; font-weight: bold; color: #60a5fa;">{{ comp.name || 'Componente' }}</span>
-          <button class="btn-danger small" (click)="quitarComponente(i)">✕</button>
-        </div>
-
-        <div class="grid-2">
-          <div class="field">
-            <label>Tipo Subsistema</label>
-            <select [(ngModel)]="comp.type" (ngModelChange)="marcarModificado()">
-              <option value="propulsion">Propulsión</option>
-              <option value="power">Energía</option>
-              <option value="navigation">Navegación</option>
-              <option value="communications">Comunicaciones</option>
-              <option value="lifeSupport">Soporte Vital</option>
-              <option value="thermalControl">Control Térmico</option>
-              <option value="structure">Estructura</option>
-              <option value="avionics">Aviónica</option>
-              <option value="payload">Carga Útil</option>
-            </select>
+      <div class="accordion-content" style="padding-bottom: 4px;">
+        <div *ngFor="let comp of missionProfile.components; let i = index" 
+             style="background: rgba(255,255,255,0.02); border: 1px solid #334155; border-radius: 6px; padding: 10px; margin-bottom: 10px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+            <span style="font-size: 11px; font-weight: bold; color: #60a5fa;">{{ comp.name || 'Componente' }}</span>
+            <button class="btn-danger small" (click)="quitarComponente(i)">✕</button>
           </div>
-          <div class="field">
-            <label>Fabricante</label>
-            <input type="text" [(ngModel)]="comp.manufacturer" (ngModelChange)="marcarModificado()" placeholder="NASA, ESA, etc." />
+          <div class="grid-2" style="margin-bottom: 8px;">
+            <div class="field">
+              <label>Tipo</label>
+              <select [(ngModel)]="comp.type" (ngModelChange)="marcarModificado()">
+                <option value="propulsion">Propulsión</option>
+                <option value="power">Energía</option>
+                <option value="navigation">Navegación</option>
+                <option value="communications">Comunicaciones</option>
+                <option value="lifeSupport">Soporte Vital</option>
+                <option value="structure">Estructura</option>
+                <option value="payload">Carga Útil</option>
+              </select>
+            </div>
+            <div class="field"><label>Fabricante</label><input type="text" [(ngModel)]="comp.manufacturer" (ngModelChange)="marcarModificado()" /></div>
           </div>
-        </div>
-
-        <div class="grid-2" style="margin-top: 8px;">
-          <div class="field">
-            <label>Salud / Integridad (%)</label>
-            <input type="number" min="0" max="100" step="1" [(ngModel)]="comp.health" (ngModelChange)="marcarModificado()" />
-          </div>
-          <div class="field">
-            <label>Estado</label>
-            <select [(ngModel)]="comp.status" (ngModelChange)="marcarModificado()">
-              <option value="NOMINAL">Nominal</option>
-              <option value="DEGRADED">Degradado</option>
-              <option value="CRITICAL">Crítico</option>
-              <option value="OFFLINE">Offline</option>
-            </select>
+          <div class="grid-2">
+            <div class="field"><label>Salud (%)</label><input type="number" min="0" max="100" step="1" [(ngModel)]="comp.health" (ngModelChange)="marcarModificado()" /></div>
+            <div class="field">
+              <label>Estado</label>
+              <select [(ngModel)]="comp.status" (ngModelChange)="marcarModificado()">
+                <option value="NOMINAL">Nominal</option>
+                <option value="DEGRADED">Degradado</option>
+                <option value="CRITICAL">Crítico</option>
+                <option value="OFFLINE">Offline</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- BOTÓN DE GUARDADO PERSISTENTE EN BASE DE DATOS -->
-    <button class="btn-primary full" style="margin-top: 10px; padding: 12px; font-size: 13px;" (click)="guardarPerfilEnServidor()">
+    <button class="btn-primary full" style="margin-top: 8px; padding: 10px;" (click)="guardarPerfilEnServidor()">
       💾 Guardar Ficha Aeroespacial
     </button>
-    <p class="status-line" *ngIf="statusMensaje">{{ statusMensaje }}</p>
+    <div class="status-line" *ngIf="statusMensaje">{{ statusMensaje }}</div>
   </div>
 </ng-container>

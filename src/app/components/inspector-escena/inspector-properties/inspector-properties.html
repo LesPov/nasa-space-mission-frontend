@@ -14,11 +14,8 @@
     </ng-container>
     
     <button class="tab-btn" [class.active]="pestanaActiva === 'world'" (click)="cambiarPestana('world')" title="Entorno Global">🌍</button>
-    
     <button class="tab-btn" [class.active]="pestanaActiva === 'platform'" (click)="cambiarPestana('platform')" title="Configuración de Plataforma">🗺️</button>
-    
     <button class="tab-btn" [class.active]="pestanaActiva === 'mission'" (click)="cambiarPestana('mission')" title="UI & Misión">📝</button>
-    
     <button class="tab-btn" *ngIf="stateSvc.activeBottomTab() === 'director'" [class.active]="pestanaActiva === 'cinematic'" (click)="cambiarPestana('cinematic')" title="Cinemática">🎥</button>
   </div>
 
@@ -47,7 +44,7 @@
     </ng-container>
 
     <ng-container *ngIf="pestanaActiva === 'platform'">
-      <div class="panel-header"><span style="color: #60a5fa;">Configuración de Plataforma</span><span class="status-pill" style="background-color: #2563eb;">Local</span></div>
+      <div class="panel-header"><span style="color: #60a5fa;">Configuración de Plataforma</span><span class="status-pill" style="background-color: rgba(37, 99, 235, 0.3); border-color: #3b82f6;">Local</span></div>
       <div class="prop-body">
          <app-prop-platform></app-prop-platform>
       </div>
@@ -76,7 +73,7 @@
          (actionCapturePosRot)="capturarPosRot($event)">
       </app-cinematic-inspector>
       
-      <div *ngIf="!cinematicSvc.currentCinematic() && !cinematicSvc.currentReusableCamera()" style="text-align: center; padding: 40px; color: #666; font-style: italic;">
+      <div *ngIf="!cinematicSvc.currentCinematic() && !cinematicSvc.currentReusableCamera()" style="text-align: center; padding: 40px; color: #64748b; font-size: 13px; font-style: italic;">
          Selecciona o crea una cinemática o cámara reutilizable en la línea de tiempo inferior para ver sus propiedades.
       </div>
     </ng-container>
@@ -88,12 +85,12 @@
         <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" />
       </div>
       
-      <div class="obj-title-bar" *ngIf="esParte" style="border-color: #60a5fa; background: rgba(59, 130, 246, 0.1);">
-        <span class="icon">🧩</span>
+      <div class="obj-title-bar" *ngIf="esParte" style="border-color: #3b82f6; background: rgba(59, 130, 246, 0.1);">
+        <span class="icon" style="color: #60a5fa;">🧩</span>
         <input type="text" [value]="objetoActual.name" readonly class="obj-name-input" style="color: #60a5fa;" />
       </div>
 
-      <button class="btn-secondary full" style="margin-bottom: 15px;" *ngIf="!esParte" (click)="guardarComoPrefab()">📦 Guardar como Prefab</button>
+      <button class="btn-secondary full" style="margin-bottom: 12px;" *ngIf="!esParte" (click)="guardarComoPrefab()">📦 Guardar como Prefab</button>
 
       <app-prop-transform *ngIf="pestanaActiva === 'transform' && !esTrigger && !esParte" [objeto]="objetoActual"></app-prop-transform>
       <app-prop-part *ngIf="pestanaActiva === 'part' && esParte && rootEntityForPart" [objeto]="objetoActual" [entity]="rootEntityForPart"></app-prop-part>
@@ -107,7 +104,7 @@
       <app-prop-bubble *ngIf="pestanaActiva === 'bubble' && esBurbuja" [objeto]="objetoActual"></app-prop-bubble>
       <app-prop-video *ngIf="pestanaActiva === 'video' && esVideo" [objeto]="objetoActual"></app-prop-video>
 
-      <button class="btn-danger full" style="margin-top: 20px;" *ngIf="!esParte" (click)="eliminarObjeto()">🗑️ Eliminar objeto de la escena</button>
+      <button class="btn-danger full" style="margin-top: 16px;" *ngIf="!esParte" (click)="eliminarObjeto()">🗑️ Eliminar objeto de la escena</button>
     </div>
   </div>
 </div>

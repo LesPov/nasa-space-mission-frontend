@@ -3,65 +3,70 @@
   <div class="section-head">
     <h4>Filtro Visual de Cámara</h4>
   </div>
-  <div class="field">
-    <label>Modo visual del episodio</label>
-    <select [(ngModel)]="visualMode" (ngModelChange)="aplicarModoVisualCambiado()">
-      <option value="normal">Normal / Color</option>
-      <option value="bw">Blanco y negro (Época antigua)</option>
-    </select>
-    <p class="help-text">
-      No cambia los colores de tus modelos 3D, solo le pone un filtro a la cámara del jugador y del editor. Ideal para flashbacks o historias antiguas.
-    </p>
+  <div style="padding: 12px;">
+    <div class="field wide">
+      <select [(ngModel)]="visualMode" (ngModelChange)="aplicarModoVisualCambiado()">
+        <option value="normal">Normal / Color</option>
+        <option value="bw">Blanco y negro (Época antigua)</option>
+      </select>
+      <p class="help-text">
+        Filtro global que afecta tanto al Editor como al Juego Final. Útil para flashbacks.
+      </p>
+    </div>
   </div>
 </div>
 
 <div class="section-card">
   <div class="section-head"><h4>Cielo y Entorno Global</h4></div>
-  <div class="grid-2">
-    <div class="field">
-      <label>Cielo Normal</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="clearColorHex" (ngModelChange)="aplicarFondo()" class="color-picker">
-        <span class="color-hex-text">{{ clearColorHex.toUpperCase() }}</span>
+  <div style="padding: 12px;">
+    <div class="grid-2">
+      <div class="field">
+        <label>Cielo Normal</label>
+        <div class="color-box-modern">
+          <input type="color" [(ngModel)]="clearColorHex" (ngModelChange)="aplicarFondo()" class="color-swatch-input">
+          <span class="hex-text">{{ clearColorHex.toUpperCase() }}</span>
+        </div>
       </div>
-    </div>
-    <div class="field">
-      <label style="color: #cbd5e1; font-weight: bold;">Cielo B&N</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="clearColorHexBW" (ngModelChange)="aplicarFondo()" class="color-picker">
-        <span class="color-hex-text">{{ clearColorHexBW.toUpperCase() }}</span>
+      <div class="field">
+        <label>Cielo B&N</label>
+        <div class="color-box-modern">
+          <input type="color" [(ngModel)]="clearColorHexBW" (ngModelChange)="aplicarFondo()" class="color-swatch-input">
+          <span class="hex-text">{{ clearColorHexBW.toUpperCase() }}</span>
+        </div>
       </div>
     </div>
   </div>
 </div>
 
 <div class="section-card">
-  <div class="section-head"><h4>Luz Ambiental (Relleno Global)</h4></div>
-  <div class="grid-3" style="margin-bottom: 8px;">
-    <div class="field">
-      <label>Intens. Ambiental</label>
-      <input type="number" step="0.1" min="0" max="2" [(ngModel)]="ambientIntensity" (ngModelChange)="aplicarIluminacion()" />
-    </div>
-    <div class="field">
-      <label>Color Cielo</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="ambientColorHex" (ngModelChange)="aplicarIluminacion()" class="color-picker">
+  <div class="section-head"><h4>Luz Ambiental (Relleno)</h4></div>
+  <div style="padding: 12px;">
+    <div class="grid-3" style="margin-bottom: 12px;">
+      <div class="field">
+        <label>Intensidad</label>
+        <input type="number" step="0.1" min="0" max="2" [(ngModel)]="ambientIntensity" (ngModelChange)="aplicarIluminacion()" />
+      </div>
+      <div class="field">
+        <label>Color Cielo</label>
+        <div class="color-box-modern">
+          <input type="color" [(ngModel)]="ambientColorHex" (ngModelChange)="aplicarIluminacion()" class="color-swatch-input">
+        </div>
+      </div>
+      <div class="field">
+        <label>Color Suelo</label>
+        <div class="color-box-modern">
+          <input type="color" [(ngModel)]="groundColorHex" (ngModelChange)="aplicarIluminacion()" class="color-swatch-input">
+        </div>
       </div>
     </div>
-    <div class="field">
-      <label>Color Suelo</label>
-      <div class="color-picker-wrapper">
-        <input type="color" [(ngModel)]="groundColorHex" (ngModelChange)="aplicarIluminacion()" class="color-picker">
-      </div>
+    
+    <div class="section-mini-head">
+       <h5>Dirección del Sol Global</h5>
     </div>
-  </div>
-  
-  <div class="section-mini-head" style="margin-top: 15px; margin-bottom: 5px;">
-     <label style="font-size: 11px; color: #999;">Dirección Básica del Sol Global</label>
-  </div>
-  <div class="grid-3">
-    <div class="field"><label>Dir X</label><input type="number" step="0.1" [(ngModel)]="ambientDirX" (ngModelChange)="aplicarIluminacion()" /></div>
-    <div class="field"><label>Dir Y</label><input type="number" step="0.1" [(ngModel)]="ambientDirY" (ngModelChange)="aplicarIluminacion()" /></div>
-    <div class="field"><label>Dir Z</label><input type="number" step="0.1" [(ngModel)]="ambientDirZ" (ngModelChange)="aplicarIluminacion()" /></div>
+    <div class="grid-3">
+      <div class="field"><label>Dir X</label><input type="number" step="0.1" [(ngModel)]="ambientDirX" (ngModelChange)="aplicarIluminacion()" /></div>
+      <div class="field"><label>Dir Y</label><input type="number" step="0.1" [(ngModel)]="ambientDirY" (ngModelChange)="aplicarIluminacion()" /></div>
+      <div class="field"><label>Dir Z</label><input type="number" step="0.1" [(ngModel)]="ambientDirZ" (ngModelChange)="aplicarIluminacion()" /></div>
+    </div>
   </div>
 </div>

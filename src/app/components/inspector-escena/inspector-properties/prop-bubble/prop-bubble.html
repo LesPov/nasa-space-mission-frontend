@@ -1,23 +1,23 @@
 
 <div class="section-card">
   <div class="section-head">
-    <h4>Burbuja Interactiva (Estilo Telltale)</h4>
+    <h4>Burbuja Interactiva</h4>
   </div>
-  <p class="help-text" style="color: #cbd5e1; margin-bottom: 10px;">
-    Esta burbuja solo será visible en modo juego cuando mires hacia ella. Emitirá un brillo blanco y latirá suavemente.
-  </p>
+  <div style="padding: 12px;">
+    <p class="help-text" style="margin-bottom: 12px;">
+      Esta burbuja solo será visible en modo juego cuando mires hacia ella. Emitirá un brillo blanco y latirá suavemente.
+    </p>
 
-  <div class="grid-2">
-    <div class="field">
+    <div class="field wide">
       <label>Tiempo Reaparición (s)</label>
       <input type="number" step="0.5" [ngModel]="respawnTime" (ngModelChange)="respawnTime = $event; aplicarBurbuja()" />
     </div>
-  </div>
 
-  <div class="field wide" style="background: rgba(59, 130, 246, 0.1); padding: 10px; border: 1px solid #3b82f6; border-radius: 6px; margin-top: 15px;">
-    <label style="color: #60a5fa; font-weight: bold;">Configuración de Eventos</label>
-    <p style="font-size: 11px; color: #a1a1a1; margin-top: 5px;">
-      Para darle funcionalidad a esta burbuja (encender un video, reproducir un sonido, etc.), ve a la pestaña superior <b>"🎞️ Secuencias"</b> y añade pasos.
-    </p>
+    <div class="field wide" style="background: rgba(59, 130, 246, 0.05); padding: 10px; border: 1px solid #334155; border-radius: 6px; margin-top: 15px;">
+      <label style="color: #60a5fa;">Configuración de Eventos</label>
+      <p class="help-text">
+        Para darle funcionalidad a esta burbuja (encender video, audio, etc.), ve a la pestaña <b>"🎞️ Secuencias"</b> y añade pasos.
+      </p>
+    </div>
   </div>
 </div>

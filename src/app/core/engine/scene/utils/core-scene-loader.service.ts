@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, MeshBuilder, Tags, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
@@ -222,7 +221,9 @@ export class CoreSceneLoaderService {
         if (isRoot) {
             finalPos = { x: positionTarget.x, y: positionTarget.y, z: positionTarget.z };
             if (rotationEuler) finalRot = { x: rotationEuler.x, y: rotationEuler.y, z: rotationEuler.z };
-            if (scale) finalScale = { x: scale.x * itemScale.x, y: scale.y * itemScale.y, z: scale.z * itemScale.z };
+            // 🔥 FASE 2 FIX: Aplicar la escala deseada directamente, sin multiplicar por la escala nativa
+            // para evitar el crecimiento cuadrático (30 -> 900) o la reducción extrema (0.003 -> 0.000009)
+            if (scale) finalScale = { x: scale.x, y: scale.y, z: scale.z };
         }
 
         const mockDbObject: SceneObjectDto = {

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3, Tags, Quaternion } from '@babylonjs/core';
 import '@babylonjs/loaders';
@@ -67,28 +66,12 @@ export class CoreModelLoaderService {
       });
 
       wrapperMesh.computeWorldMatrix(true);
-      const bounds = wrapperMesh.getHierarchyBoundingVectors();
-      const realSize = bounds.max.subtract(bounds.min);
-      const maxSize = Math.max(realSize.x, realSize.y, realSize.z);
 
-      if (obj.isNewCreation && maxSize > 0.01) {
-          const compensacion = 1.0 / maxSize; 
-          
-          if (!obj.properties) obj.properties = {};
-          obj.properties.internalScale = compensacion; 
-          
-          instances.rootNodes.forEach(node => {
-              const tNode = node as TransformNode;
-              if (tNode.scaling) {
-                  tNode.scaling.scaleInPlace(compensacion);
-              }
-          });
-          
-          obj.scale = { x: 1, y: 1, z: 1 };
-          wrapperMesh.computeWorldMatrix(true);
-          delete obj.isNewCreation;
-
-      } else if (obj.properties?.internalScale) {
+      // FASE 1 - NORMALIZACIÓN DE ESCALA:
+      // Se ha eliminado la reducción artificial basada en 'maxSize' para permitir
+      // que los nuevos Assets se instancien con su tamaño y escala nativa original (1:1).
+      // Solo se aplica escalado interno si el objeto de base de datos posee un 'internalScale' legacy.
+      if (obj.properties?.internalScale !== undefined && obj.properties?.internalScale !== null) {
           const compensacion = obj.properties.internalScale;
           instances.rootNodes.forEach(node => {
               const tNode = node as TransformNode;
@@ -97,6 +80,10 @@ export class CoreModelLoaderService {
               }
           });
           wrapperMesh.computeWorldMatrix(true);
+      }
+      
+      if (obj.isNewCreation) {
+          delete obj.isNewCreation;
       }
       
       await this.aplicarTransformacionesYEntidad(wrapperMesh, obj, mallasCreadas, instances.rootNodes as AbstractMesh[], instances.animationGroups);

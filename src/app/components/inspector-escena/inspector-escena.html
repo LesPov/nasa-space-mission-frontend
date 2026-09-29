@@ -7,7 +7,7 @@
   <app-inspector-outliner 
     class="outliner-panel"
     [style.height.%]="outlinerHeight"
-    (tabSelect)="activeTab = $event">
+    (tabSelect)="activeTab = $any($event)">
   </app-inspector-outliner>
   
   <!-- 🔥 BARRA DIVISORA HORIZONTAL (SPLITTER) -->

@@ -1,4 +1,4 @@
-
+<!-- Encabezado fijo y buscador -->
 <div class="panel-header">
   <div style="display: flex; align-items: center; gap: 6px;">
     <span class="icon">📁</span>
@@ -7,30 +7,47 @@
   <input 
     type="text" 
     class="search-outliner" 
-    placeholder="🔍 Buscar entidad..." 
+    placeholder="🔍 Buscar..." 
     [ngModel]="outlinerState.searchTerm()" 
     (ngModelChange)="onSearchChange($event)">
 </div>
 
+<!-- Contenedor scrolleable de las colecciones -->
 <div class="platform-list">
   
   <ng-container *ngFor="let plat of plataformas; trackBy: trackById">
     
-    <!-- Platform Header (Collapsible behavior driven by selection) -->
-    <div class="platform-header" 
-         [class.active]="plat.id === plataformaActivaId" 
-         (click)="cambiarPlataforma(plat.id)">
-      
-      <div class="platform-info">
-         <span class="icon">{{ plat.id === plataformaActivaId ? '▼' : '▶' }} 🌍</span>
-         <span>{{ plat.name }}</span>
+    <!-- NODO PADRE: LA COLECCIÓN / PLATAFORMA -->
+    <div class="outliner-node platform-node" [class.active-scene]="plat.id === plataformaActivaId">
+      <div class="node-content">
+        <!-- Flecha de expansión -->
+        <button class="expand-btn" (click)="toggleExpand(plat.id, $event)">
+          <span class="arrow" [class.expanded]="isExpanded(plat.id)">▶</span>
+        </button>
+        
+        <!-- Nombre de la colección -->
+        <div class="node-label" (click)="cambiarPlataforma(plat.id)">
+          <span class="icon">🌎</span>
+          <span class="name" [title]="plat.name">{{ plat.name }}</span>
+          <span class="badge" *ngIf="plat.id === plataformaActivaId">ACTIVA</span>
+        </div>
       </div>
-      <span class="status-badge" *ngIf="plat.id === plataformaActivaId">ACTIVA</span>
     </div>
 
-    <!-- Active Platform Content (Renders SceneOutliner) -->
-    <div class="platform-content" *ngIf="plat.id === plataformaActivaId">
-        <app-scene-outliner></app-scene-outliner>
+    <!-- HIJOS: LOS OBJETOS DE LA COLECCIÓN (Indentados) -->
+    <div class="outliner-children" *ngIf="isExpanded(plat.id)">
+        
+        <ng-container *ngIf="plat.id === plataformaActivaId">
+           <app-scene-outliner class="scene-outliner-wrapper"></app-scene-outliner>
+        </ng-container>
+
+        <ng-container *ngIf="plat.id !== plataformaActivaId">
+           <div class="empty-hint">
+              <span class="icon">📦</span> 
+              <span>Haz clic en el nombre de la plataforma para ver sus objetos.</span>
+           </div>
+        </ng-container>
+
     </div>
 
   </ng-container>

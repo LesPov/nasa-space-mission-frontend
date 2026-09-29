@@ -1,100 +1,278 @@
-
 :host {
-  background: #1c1c1c;
+  background: #111111; /* Color de fondo Blender */
   display: flex;
   flex-direction: column;
   height: 100%;
+  user-select: none;
+  overflow: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 }
 
+/* --- HEADER Y BUSCADOR --- */
 .panel-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  border-bottom: 1px solid #111;
+  border-bottom: 1px solid #222;
   font-size: 11px; 
   font-weight: 600;
   text-transform: uppercase;
-  background: #2d2d2d;
-  color: #d1d1d1;
+  background: #1c1c1c;
+  color: #ccc;
   flex-shrink: 0;
   gap: 10px;
 }
 
 .search-outliner {
-  background: #1c1c1c;
-  border: 1px solid #3d3d3d;
-  color: #e6e6e6;
+  background: #000;
+  border: 1px solid #333;
+  color: #eee;
   border-radius: 4px;
   padding: 4px 8px;
   font-size: 11px;
-  width: 140px;
+  width: 120px;
   outline: none;
   transition: all 0.2s;
 }
+
 .search-outliner:focus {
-  border-color: #60a5fa;
-  background: #151515;
-  width: 160px;
+  border-color: #3b82f6;
+  width: 150px;
 }
 
+/* --- CONTENEDOR PRINCIPAL --- */
 .platform-list {
   display: flex;
   flex-direction: column;
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden; /* CERO SCROLL HORIZONTAL */
+  padding: 6px 0;
+  width: 100%;
 }
 
-.platform-list::-webkit-scrollbar { width: 5px; } 
-.platform-list::-webkit-scrollbar-track { background: #1c1c1c; }
-.platform-list::-webkit-scrollbar-thumb { background: #444; border-radius: 3px; }
+.platform-list::-webkit-scrollbar { width: 6px; } 
+.platform-list::-webkit-scrollbar-track { background: transparent; }
+.platform-list::-webkit-scrollbar-thumb { background: #444; border-radius: 4px; }
 
-.platform-header {
-  background: #232323;
+/* --- DISEÑO DE COLECCIONES (PLATAFORMAS) --- */
+.outliner-node {
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
   cursor: pointer;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  border-bottom: 1px solid #1a1a1a;
-  padding: 10px 12px;
-  color: #a1a1a1;
-  font-size: 11px;
+  height: 26px; /* Altura compacta */
+  min-height: 26px;
+  transition: background 0.1s;
+}
+
+.outliner-node:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.platform-node {
   font-weight: bold;
-  transition: background 0.2s, border-left 0.2s;
-  flex-shrink: 0;
-  border-left: 3px solid transparent;
+  color: #f8fafc;
 }
 
-.platform-header:hover {
-  background: #2a2a2a;
-  color: #e2e8f0;
+.platform-node.active-scene {
+  background: rgba(59, 130, 246, 0.15);
 }
 
-.platform-header.active {
-  background: rgba(59, 130, 246, 0.1);
-  border-left: 3px solid #60a5fa;
-  color: white;
-}
-
-.platform-info {
+.node-content {
   display: flex;
   align-items: center;
-  gap: 8px;
+  width: 100%;
+  gap: 2px;
+  overflow: hidden;
 }
 
-.status-badge {
+.expand-btn {
+  background: transparent;
+  border: none;
+  color: #aaa;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  cursor: pointer;
+  padding: 0;
+  outline: none;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.expand-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+.arrow { font-size: 9px; transition: transform 0.15s ease; display: inline-block; }
+.arrow.expanded { transform: rotate(90deg); }
+
+.node-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  overflow: hidden;
+  height: 100%;
+}
+
+.node-label .icon { font-size: 13px; opacity: 0.9; flex-shrink: 0; }
+.node-label .name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.badge {
+  font-size: 8px;
   background: #3b82f6;
   color: white;
-  font-size: 9px;
-  padding: 2px 6px;
+  padding: 2px 5px;
   border-radius: 4px;
   font-weight: bold;
+  margin-left: auto;
+  margin-right: 6px;
+  flex-shrink: 0;
 }
 
-.platform-content {
+.outliner-children {
   display: flex;
   flex-direction: column;
-  flex: 1;
-  min-height: 200px; /* Asegura espacio para el árbol */
-  background: #1a1a1a;
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.empty-hint {
+  font-size: 10px;
+  color: #64748b;
+  padding: 6px 10px;
+  margin: 2px 8px 6px 24px;
+  background: rgba(0,0,0,0.2);
+  border-radius: 4px;
+  border: 1px dashed #333;
+}
+
+/* =========================================================================
+   🔥 FIX DEFINITIVO PARA LA LISTA INTERNA (app-scene-outliner)
+   Fuerza estricta de filas horizontales (Rows), tamaño pequeño y árbol
+   ========================================================================= */
+
+/* 1. Resetear todos los margenes y paddings internos molestos */
+::ng-deep .scene-outliner-wrapper ul {
+  list-style: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+}
+
+::ng-deep .scene-outliner-wrapper li {
+  margin: 0 !important;
+  padding: 0 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  width: 100% !important;
+  position: relative;
+}
+
+/* 2. Indentación limpia estilo árbol de Blender (Subniveles) */
+::ng-deep .scene-outliner-wrapper ul ul {
+  padding-left: 14px !important; /* Espacio exacto de la indentación */
+  position: relative;
+}
+
+/* Línea vertical guía de jerarquía */
+::ng-deep .scene-outliner-wrapper ul ul::before {
+  content: '';
+  position: absolute;
+  top: 0; bottom: 0; left: 6px;
+  border-left: 1px dotted #555;
+  z-index: 1;
+}
+
+/* 3. EL ITEM (La Fila Real) */
+::ng-deep .scene-outliner-wrapper .outliner-item {
+  display: flex !important;
+  flex-direction: row !important; /* 🔥 ESTO EVITA LAS CAJAS GIGANTES */
+  align-items: center !important;
+  justify-content: flex-start !important;
+  width: 100% !important;
+  height: 24px !important; /* Altura idéntica a Blender */
+  min-height: 24px !important;
+  box-sizing: border-box !important;
+  padding: 0 6px 0 24px !important; /* Padding izquierdo para dejar espacio al árbol */
+  margin: 0 !important;
+  border-radius: 2px !important;
+  color: #cbd5e1 !important;
+  font-size: 11px !important;
+  background: transparent !important;
+  border: none !important;
+  position: relative;
+  z-index: 2;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+/* Conector horizontal del árbol */
+::ng-deep .scene-outliner-wrapper ul ul > li > .outliner-item::before {
+  content: '';
+  position: absolute;
+  left: 6px; /* Pegado a la línea vertical */
+  top: 12px; /* Mitad de los 24px de altura */
+  width: 12px;
+  border-top: 1px dotted #555;
+  pointer-events: none;
+}
+
+/* 4. Alinear íconos y texto EN LÍNEA dentro de la fila */
+::ng-deep .scene-outliner-wrapper .outliner-item > div,
+::ng-deep .scene-outliner-wrapper .outliner-item > span,
+::ng-deep .scene-outliner-wrapper .outliner-item > i {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  height: 100% !important;
+  gap: 6px !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  flex-shrink: 0; /* Impide que los iconos se aplasten */
+}
+
+/* 5. Truncar el texto larguísimo para que NO haya scroll horizontal */
+::ng-deep .scene-outliner-wrapper .outliner-item .name-text,
+::ng-deep .scene-outliner-wrapper .outliner-item .item-name,
+::ng-deep .scene-outliner-wrapper .outliner-item span:last-child {
+  flex: 1 1 auto !important; /* Permite crecer pero respeta el límite */
+  min-width: 0 !important;   /* OBLIGATORIO para que el ellipsis funcione en flex */
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  display: block !important;
+  line-height: 24px !important; /* Centrado vertical perfecto */
+}
+
+/* 6. Interacción Visual (Hover y Selección) */
+::ng-deep .scene-outliner-wrapper .outliner-item:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #fff !important;
+}
+
+::ng-deep .scene-outliner-wrapper .outliner-item.selected,
+::ng-deep .scene-outliner-wrapper .outliner-item.active,
+::ng-deep .scene-outliner-wrapper .selected {
+  background: rgba(59, 130, 246, 0.3) !important;
+  color: #fff !important;
+}
+
+/* Si tienes botones de acción a la derecha (ojos de visibilidad, candados) */
+::ng-deep .scene-outliner-wrapper .outliner-item .actions,
+::ng-deep .scene-outliner-wrapper .outliner-item button {
+  margin-left: auto !important;
+  background: transparent !important;
+  border: none !important;
+  color: #888 !important;
 }

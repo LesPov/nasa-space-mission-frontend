@@ -2,7 +2,7 @@
 import { Injectable, inject } from '@angular/core';
 import { 
   AbstractMesh, Color3, Mesh, MeshBuilder, Scene, StandardMaterial, 
-  TransformNode, Vector3, Tags, Node, Light, Camera, Engine 
+  TransformNode, Vector3, Tags, Node, Light, Camera, Engine, Quaternion 
 } from '@babylonjs/core';
 import { CoreModelLoaderService } from '../../../core/engine/scene/utils/core-model-loader.service';
 
@@ -35,7 +35,6 @@ export class GhostRendererService {
     const path = assetData.path || assetData.properties?.path || assetData.asset?.path;
 
     if (path) {
-      // Priorizamos cargar el modelo GLB si existe ruta
       const fullPath = 'http://localhost:4000' + path;
       
       const container = await this.modelLoader.getCachedAssetContainer(fullPath, scene);
@@ -47,7 +46,6 @@ export class GhostRendererService {
       instances.animationGroups.forEach(ag => { ag.stop(); ag.dispose(); });
     }
     else {
-      // Es primitiva u objeto sin asset real (Ej: Trigger, Luz o Cubo)
       let mesh: Mesh;
       switch (assetData.type) {
         case 'cube': 
@@ -110,12 +108,18 @@ export class GhostRendererService {
   public setTransform(position: Vector3, rotation: Vector3, scale: Vector3) {
     if (this.ghostRoot) {
       this.ghostRoot.position.copyFrom(position);
-      this.ghostRoot.rotation.copyFrom(rotation);
+      
+      if (this.ghostRoot.rotationQuaternion) {
+          this.ghostRoot.rotationQuaternion = Quaternion.FromEulerAngles(rotation.x, rotation.y, rotation.z);
+      } else {
+          this.ghostRoot.rotation.copyFrom(rotation);
+      }
+      
       this.ghostRoot.scaling.copyFrom(scale);
     }
   }
 
-  public getBoundingInfo(currentRotation: Vector3) {
+  public getBoundingInfo(currentRotation: Vector3, currentScale: Vector3) {
     if (!this.ghostRoot) return null;
     
     const childMeshes = this.ghostRoot.getChildMeshes(false);
@@ -123,11 +127,23 @@ export class GhostRendererService {
 
     const pos = this.ghostRoot.position.clone();
     const scl = this.ghostRoot.scaling.clone();
-    const rot = this.ghostRoot.rotation.clone();
+    
+    let rotQuat = null;
+    let rotEuler = null;
+    
+    if (this.ghostRoot.rotationQuaternion) {
+        rotQuat = this.ghostRoot.rotationQuaternion.clone();
+    } else {
+        rotEuler = this.ghostRoot.rotation.clone();
+    }
 
+    // Centrar en el origen absoluto para calcular la bounding box real
     this.ghostRoot.position = Vector3.Zero();
-    this.ghostRoot.rotation.copyFrom(currentRotation);
-    this.ghostRoot.scaling = Vector3.One();
+    this.ghostRoot.scaling.copyFrom(currentScale);
+    
+    // 🔥 FORZAR Cuaternión para evitar solapamientos rotacionales
+    this.ghostRoot.rotationQuaternion = Quaternion.FromEulerAngles(currentRotation.x, currentRotation.y, currentRotation.z);
+    
     this.ghostRoot.computeWorldMatrix(true);
 
     let min = new Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE);
@@ -140,7 +156,9 @@ export class GhostRendererService {
       if (Tags.MatchesQuery(m, "proxy_collider")) return;
 
       m.computeWorldMatrix(true);
-      const vectors = m.getBoundingInfo().boundingBox.vectorsWorld;
+      const boundingInfo = m.getBoundingInfo();
+      const vectors = boundingInfo.boundingBox.vectorsWorld;
+      
       vectors.forEach(v => {
         min = Vector3.Minimize(min, v);
         max = Vector3.Maximize(max, v);
@@ -153,9 +171,17 @@ export class GhostRendererService {
         max = Vector3.Zero();
     }
 
-    this.ghostRoot.position = pos;
-    this.ghostRoot.rotation.copyFrom(rot);
-    this.ghostRoot.scaling = scl;
+    // Restaurar transformaciones originales
+    this.ghostRoot.position.copyFrom(pos);
+    this.ghostRoot.scaling.copyFrom(scl);
+    
+    if (rotQuat) {
+        this.ghostRoot.rotationQuaternion = rotQuat;
+    } else if (rotEuler) {
+        this.ghostRoot.rotationQuaternion = null;
+        this.ghostRoot.rotation.copyFrom(rotEuler);
+    }
+    
     this.ghostRoot.computeWorldMatrix(true);
 
     return { 

@@ -1,9 +1,11 @@
+
 import { Injectable, inject } from '@angular/core';
-import { Vector3, AbstractMesh, Ray, Scene, Tags, Mesh } from '@babylonjs/core';
+import { Vector3, AbstractMesh, Ray, Scene, Tags, Mesh, Quaternion } from '@babylonjs/core';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 
 export interface PlacementResult {
   position: Vector3;
+  rotation: Vector3;
   color: 'green' | 'yellow' | 'blue' | 'red';
   parent: AbstractMesh | null;
 }
@@ -12,8 +14,6 @@ export interface PlacementResult {
 export class PlacementCalculatorService {
   private entityManager = inject(EntityManagerService);
 
-  // 🔥 NUEVO: Escala por la jerarquía hasta encontrar el Nodo Raíz real del objeto, 
-  // asegurando que las medidas se tomen del modelo completo y no de una sub-malla.
   private resolveEntityMesh(mesh: AbstractMesh): AbstractMesh {
       let current: any = mesh;
       while (current && current.name !== '__root__') {
@@ -28,43 +28,56 @@ export class PlacementCalculatorService {
     scene: Scene,
     ray: Ray,
     playerMesh: AbstractMesh | null | undefined,
-    ghostBounds: { min: Vector3; max: Vector3; extends: Vector3; center: Vector3 } | null,
+    currentRotation: Vector3,
+    ghostScale: Vector3,
     isAltPressed: boolean,
     isGPressed: boolean,
-    buildDistance: number
+    isFPressed: boolean,
+    buildDistance: number,
+    boundsCalculator: (rot: Vector3, scale: Vector3) => any
   ): PlacementResult {
     
     const hit = scene.pickWithRay(ray, (mesh) => {
       if (!mesh.isPickable || !mesh.isVisible) return false;
-      if (Tags.MatchesQuery(mesh, "system_element || fog_element || editor_only || proxy_collider || ghost_preview")) return false;
+      if (Tags.MatchesQuery(mesh, "ghost_preview || proxy_collider || fog_element || debug_element")) return false;
+      if (Tags.MatchesQuery(mesh, "system_element") && !Tags.MatchesQuery(mesh, "invisible_floor")) return false;
       if (playerMesh && (mesh === playerMesh || mesh.isDescendantOf(playerMesh))) return false;
       return true;
     });
 
+    let finalRot = currentRotation.clone();
+
+    // 🔥 Recalcular Bounding Box SIEMPRE con la rotación final y escala del frame actual
+    const ghostBounds = boundsCalculator(finalRot, ghostScale);
+
     if (hit && hit.hit && hit.pickedMesh && hit.pickedPoint && hit.getNormal) {
       const normal = hit.getNormal(true, true) || Vector3.Up();
       const pickedPoint = hit.pickedPoint.clone();
-      
       const rootMesh = this.resolveEntityMesh(hit.pickedMesh);
       const snapNormal = this.getCardinalNormal(normal);
 
-      if (isAltPressed && rootMesh && ghostBounds) {
-        const perfectPos = this.calculatePerfectSnapPosition(rootMesh, ghostBounds, snapNormal);
-        return { position: perfectPos, color: 'blue', parent: null };
-      } 
-      else if (isGPressed) {
-        const offsetPos = this.calculateSurfaceRestPosition(pickedPoint, snapNormal, ghostBounds);
-        return { position: offsetPos, color: 'yellow', parent: rootMesh };
-      } 
-      else {
-        const offsetPos = this.calculateSurfaceRestPosition(pickedPoint, snapNormal, ghostBounds);
-        return { position: offsetPos, color: 'green', parent: null };
+      // 🔥 TECLA F - ANCLAJE PERFECTO A SUPERFICIE (Suelo / Pared)
+      if (isFPressed) {
+        const restPos = this.calculateSurfaceRestPosition(pickedPoint, snapNormal, ghostBounds);
+        return { position: restPos, rotation: finalRot, color: 'yellow', parent: null };
       }
+
+      // 🔥 TECLA ALT - ANCLAJE MODULAR (Pasillos, Paredes a ras de suelo)
+      if (isAltPressed && rootMesh && ghostBounds) {
+        const snapPos = this.calculatePerfectSnapPosition(rootMesh, ghostBounds, snapNormal);
+        return { position: snapPos, rotation: finalRot, color: 'blue', parent: null };
+      } 
+      
+      // Default hit: Solo colocar en el punto de impacto
+      return { position: pickedPoint, rotation: finalRot, color: 'green', parent: null };
     } 
 
-    if (isAltPressed && ghostBounds && playerMesh) {
+    // Si no hay hit, se queda flotando a la distancia
+    const defaultPos = ray.origin.add(ray.direction.scale(buildDistance));
+    
+    // Fallback ALT si no apunta directo al objeto pero está encima
+    if (isAltPressed && playerMesh && ghostBounds) {
         const referenceMesh = this.findMeshUnderPlayer(scene, playerMesh);
-        
         if (referenceMesh) {
             const camDir = ray.direction.clone();
             const snapNormal = Vector3.Zero();
@@ -77,14 +90,18 @@ export class PlacementCalculatorService {
             else if (absX > absZ) snapNormal.x = Math.sign(camDir.x);
             else snapNormal.z = Math.sign(camDir.z);
 
+            // Invertimos la dirección de cámara para obtener la normal de la cara a pegar
+            snapNormal.scaleInPlace(-1);
+
             const perfectPos = this.calculatePerfectSnapPosition(referenceMesh, ghostBounds, snapNormal);
-            return { position: perfectPos, color: 'blue', parent: null };
+            return { position: perfectPos, rotation: finalRot, color: 'blue', parent: null };
         }
     }
 
     return {
-        position: ray.origin.add(ray.direction.scale(buildDistance)),
-        color: 'blue',
+        position: defaultPos,
+        rotation: finalRot,
+        color: 'green',
         parent: null
     };
   }
@@ -124,43 +141,52 @@ export class PlacementCalculatorService {
     };
   }
 
+  /**
+   * 🔥 ANCLAJE MODULAR (ALT): Une dos piezas como Lego, manteniendo los pisos alineados
+   */
   private calculatePerfectSnapPosition(targetMesh: AbstractMesh, ghostBounds: any, snapNormal: Vector3): Vector3 {
     const tInfo = this.getAccurateBoundingInfo(targetMesh);
     const gInfo = ghostBounds; 
 
-    let posX = 0;
-    let posY = 0;
-    let posZ = 0;
+    let posX = tInfo.center.x - gInfo.center.x; // Por defecto: alinear centros X
+    let posY = tInfo.min.y - gInfo.min.y;       // Por defecto: ALINEAR PISOS (Y)
+    let posZ = tInfo.center.z - gInfo.center.z; // Por defecto: alinear centros Z
 
+    // Resolviendo Eje X
     if (snapNormal.x > 0.5) posX = tInfo.max.x - gInfo.min.x; 
     else if (snapNormal.x < -0.5) posX = tInfo.min.x - gInfo.max.x; 
-    else posX = tInfo.center.x - gInfo.center.x; 
 
+    // Resolviendo Eje Z
     if (snapNormal.z > 0.5) posZ = tInfo.max.z - gInfo.min.z;
     else if (snapNormal.z < -0.5) posZ = tInfo.min.z - gInfo.max.z;
-    else posZ = tInfo.center.z - gInfo.center.z;
 
+    // Resolviendo Eje Y (Techo / Suelo)
     if (snapNormal.y > 0.5) {
-        posY = tInfo.max.y - gInfo.min.y; 
+        posY = tInfo.max.y - gInfo.min.y; // Apilar encima (Techo)
     } else if (snapNormal.y < -0.5) {
-        posY = tInfo.min.y - gInfo.max.y; 
-    } else {
-        posY = tInfo.min.y - gInfo.min.y; 
+        posY = tInfo.min.y - gInfo.max.y; // Colgar desde abajo
     }
+
+    // Nota: Si la normal es lateral (X o Z), `posY` se mantiene como `tInfo.min.y - gInfo.min.y`.
+    // Esto asegura que al conectar un pasillo a una habitación, AMBOS SUELOS estén a la misma altura,
+    // independientemente de que el pivot de uno esté en el techo y el otro en el piso.
 
     return new Vector3(posX, posY, posZ);
   }
 
+  /**
+   * 🔥 ANCLAJE A SUPERFICIE (F): Descansa la base del objeto en el punto de impacto exacto
+   */
   private calculateSurfaceRestPosition(pickedPoint: Vector3, snapNormal: Vector3, bounds: any): Vector3 {
       if (!bounds) return pickedPoint.clone();
 
       const offset = new Vector3(0, 0, 0);
       
-      if (snapNormal.x > 0.5) offset.x = -bounds.min.x;
-      else if (snapNormal.x < -0.5) offset.x = -bounds.max.x;
-      
       if (snapNormal.y > 0.5) offset.y = -bounds.min.y;
       else if (snapNormal.y < -0.5) offset.y = -bounds.max.y;
+      
+      if (snapNormal.x > 0.5) offset.x = -bounds.min.x;
+      else if (snapNormal.x < -0.5) offset.x = -bounds.max.x;
       
       if (snapNormal.z > 0.5) offset.z = -bounds.min.z;
       else if (snapNormal.z < -0.5) offset.z = -bounds.max.z;

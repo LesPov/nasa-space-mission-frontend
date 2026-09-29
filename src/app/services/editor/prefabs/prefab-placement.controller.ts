@@ -10,6 +10,7 @@ import { PlacementCalculatorService } from './placement-calculator.service';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
 import { InputRouterService } from '../../../core/engine/session/input-router.service';
 import { GameContextService } from '../../../core/engine/session/game-context.service';
+import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 import { Subscription } from 'rxjs';
 
 @Injectable({ providedIn: 'root' })
@@ -19,6 +20,7 @@ export class PrefabPlacementController {
   private placementCalculator = inject(PlacementCalculatorService);
   private inputRouter = inject(InputRouterService);
   private gameContext = inject(GameContextService);
+  private eventBus = inject(GameEventBusService);
 
   public isBuilding = false;
   private currentAsset: any = null;
@@ -35,9 +37,11 @@ export class PrefabPlacementController {
 
   private isAltPressed = false;
   private isGPressed = false;
+  private isFPressed = false;
   private buildDistance = 15;
 
   private targetPosition = Vector3.Zero();
+  private baseRotation = Vector3.Zero();
   private targetRotation = Vector3.Zero();
   
   private targetScale = Vector3.One(); 
@@ -57,10 +61,12 @@ export class PrefabPlacementController {
     this.activePlayerFn = activePlayerFn;
 
     this.targetPosition = Vector3.Zero();
+    this.baseRotation = Vector3.Zero();
     this.targetRotation = Vector3.Zero();
     this.targetParent = null;
     this.isAltPressed = false;
     this.isGPressed = false;
+    this.isFPressed = false;
     this.buildDistance = 15;
 
     let sx = 1, sy = 1, sz = 1;
@@ -84,18 +90,29 @@ export class PrefabPlacementController {
     if (!this.isBuilding) return; 
 
     this.ghostRenderer.setTransform(this.targetPosition, this.targetRotation, this.ghostScale);
+    
+    // 🔥 HUD Actualizado con instrucciones exactas
+    this.eventBus.emit({ 
+        type: 'MessageRequested', 
+        payload: { 
+            text: "Construcción: [Clic] Colocar | [Clic Der] Cancelar | [F] Anclar a Suelo | [ALT] Unir Módulos | [R] Rotar 90°", 
+            durationMs: 999999 
+        } 
+    });
 
     this.kbSub = this.inputRouter.getKeyboardStream(['EDITOR_EDITING', 'EDITOR_PLAYTEST', 'ADMIN_PREVIEW']).subscribe((kbInfo) => {
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
         if (kbInfo.event.key === 'Alt') this.isAltPressed = true;
         if (kbInfo.event.key.toLowerCase() === 'g') this.isGPressed = true;
+        if (kbInfo.event.key.toLowerCase() === 'f') this.isFPressed = true;
         if (kbInfo.event.key === 'Escape') this.cancelBuild();
         if (kbInfo.event.key.toLowerCase() === 'r') {
-          this.targetRotation.y += Math.PI / 2; 
+          this.baseRotation.y += Math.PI / 2; 
         }
       } else if (kbInfo.type === KeyboardEventTypes.KEYUP) {
         if (kbInfo.event.key === 'Alt') this.isAltPressed = false;
         if (kbInfo.event.key.toLowerCase() === 'g') this.isGPressed = false;
+        if (kbInfo.event.key.toLowerCase() === 'f') this.isFPressed = false;
       }
     });
 
@@ -137,19 +154,22 @@ export class PrefabPlacementController {
     ray.length = this.buildDistance + 10;
     
     const playerEntity = this.activePlayerFn();
-    const bounds = this.ghostRenderer.getBoundingInfo(this.targetRotation);
 
     const result = this.placementCalculator.calculatePlacement(
         this.scene, 
         ray, 
         playerEntity?.view, 
-        bounds, 
+        this.baseRotation,
+        this.ghostScale,
         this.isAltPressed, 
         this.isGPressed, 
-        this.buildDistance
+        this.isFPressed,
+        this.buildDistance,
+        (rot, scale) => this.ghostRenderer.getBoundingInfo(rot, scale)
     );
 
     this.targetPosition = result.position;
+    this.targetRotation = result.rotation;
     this.currentColor = result.color;
     this.targetParent = result.parent;
 
@@ -188,6 +208,10 @@ export class PrefabPlacementController {
   }
 
   public stop(scene: Scene | null) {
+    if (this.isBuilding) {
+        this.eventBus.emit({ type: 'MessageRequested', payload: null });
+    }
+    
     this.isBuilding = false;
     this.ghostRenderer.destroyGhost();
     this.currentAsset = null;

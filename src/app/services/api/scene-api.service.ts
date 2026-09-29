@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable } from 'rxjs';
@@ -15,6 +16,11 @@ export class SceneApiService {
 
   crearPlataformaEscena(episodeId: number, name: string): Observable<any> {
     return this.http.post<any>(`${this.baseUrl}/${episodeId}/scenes`, { name });
+  }
+
+  // 🔥 NUEVO: Endpoint para actualizar la identidad e información directa de la escena
+  actualizarPlataformaEscena(sceneId: number, data: { name?: string }): Observable<any> {
+    return this.http.put<any>(`${this.baseUrl}/scenes/${sceneId}`, data);
   }
 
   obtenerEscenaCompleta(sceneId: number): Observable<SceneLoadPayload> {

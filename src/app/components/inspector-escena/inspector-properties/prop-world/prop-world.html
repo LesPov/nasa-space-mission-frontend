@@ -1,3 +1,4 @@
+
 <div class="section-card">
   <div class="section-head">
     <h4>Filtro Visual de Cámara</h4>
@@ -15,7 +16,7 @@
 </div>
 
 <div class="section-card">
-  <div class="section-head"><h4>Cielo y Entorno</h4></div>
+  <div class="section-head"><h4>Cielo y Entorno Global</h4></div>
   <div class="grid-2">
     <div class="field">
       <label>Cielo Normal</label>
@@ -56,56 +57,11 @@
   </div>
   
   <div class="section-mini-head" style="margin-top: 15px; margin-bottom: 5px;">
-     <label style="font-size: 11px; color: #999;">Dirección Básica de Luz</label>
+     <label style="font-size: 11px; color: #999;">Dirección Básica del Sol Global</label>
   </div>
   <div class="grid-3">
     <div class="field"><label>Dir X</label><input type="number" step="0.1" [(ngModel)]="ambientDirX" (ngModelChange)="aplicarIluminacion()" /></div>
     <div class="field"><label>Dir Y</label><input type="number" step="0.1" [(ngModel)]="ambientDirY" (ngModelChange)="aplicarIluminacion()" /></div>
     <div class="field"><label>Dir Z</label><input type="number" step="0.1" [(ngModel)]="ambientDirZ" (ngModelChange)="aplicarIluminacion()" /></div>
   </div>
-</div>
-
-<!-- 🔥 SECCIÓN DE GRAVEDAD POR PLATAFORMA (FASE 1) -->
-<div class="section-card">
-  <div class="section-head">
-    <h4>Físicas y Gravedad de la Zona</h4>
-  </div>
-  
-  <div class="field wide" style="margin-bottom: 10px;">
-    <label style="color: #60a5fa; font-weight: bold;">Preset de Gravedad</label>
-    <select [(ngModel)]="gravityPreset" (ngModelChange)="onGravityPresetChange()">
-      <option value="earth">🌍 Tierra (9.81 m/s²)</option>
-      <option value="mars">🔴 Marte (3.71 m/s²)</option>
-      <option value="moon">🌕 Luna (1.62 m/s²)</option>
-      <option value="zero_g">🚀 Espacio / 0G (0.00 m/s²)</option>
-      <option value="custom">⚙️ Personalizada</option>
-    </select>
-  </div>
-
-  <div class="grid-2" style="margin-bottom: 10px;">
-    <div class="field">
-      <label>Magnitud (m/s²)</label>
-      <input type="number" step="0.1" min="0" max="100" 
-             [(ngModel)]="gravityMagnitude" 
-             [disabled]="gravityPreset !== 'custom'"
-             (ngModelChange)="aplicarGravedadCustom()" />
-    </div>
-    <div class="field">
-      <label>Escala Babylon (Y)</label>
-      <input type="number" step="0.01" [(ngModel)]="gravedadY" readonly style="opacity: 0.7;" />
-    </div>
-  </div>
-
-  <div class="section-mini-head" style="margin-top: 10px; margin-bottom: 5px;" *ngIf="gravityPreset === 'custom'">
-    <label style="font-size: 10px; color: #aaa;">Vector de Dirección</label>
-  </div>
-  <div class="grid-3" *ngIf="gravityPreset === 'custom'">
-    <div class="field"><label>Dir X</label><input type="number" step="0.1" [(ngModel)]="gravityDirX" (ngModelChange)="aplicarGravedadCustom()" /></div>
-    <div class="field"><label>Dir Y</label><input type="number" step="0.1" [(ngModel)]="gravityDirY" (ngModelChange)="aplicarGravedadCustom()" /></div>
-    <div class="field"><label>Dir Z</label><input type="number" step="0.1" [(ngModel)]="gravityDirZ" (ngModelChange)="aplicarGravedadCustom()" /></div>
-  </div>
-
-  <p class="help-text" style="margin-top: 10px;">
-    La gravedad configurada aquí pertenece exclusivamente a esta plataforma. Al viajar a otra zona, se aplicará su propia configuración física.
-  </p>
 </div>

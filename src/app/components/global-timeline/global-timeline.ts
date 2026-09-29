@@ -5,7 +5,6 @@ import { TimelineClipsTab } from './tabs/timeline-clips-tab/timeline-clips-tab';
 import { TimelineAutoAnimTab } from './tabs/timeline-auto-anim-tab/timeline-auto-anim-tab';
 import { TimelineDirectorTab } from './tabs/timeline-director-tab/timeline-director-tab';
 import { TimelinePrefabsTab } from './tabs/timeline-prefabs-tab/timeline-prefabs-tab';
-import { TimelinePlatformTab } from './tabs/timeline-platform-tab/timeline-platform-tab';
 import { TimelineRolesTab } from './tabs/timeline-roles-tab/timeline-roles-tab';
 import { EditorCinematicProxyService } from '../../services/editor-cinematic-proxy.service';
 import { EditorCinematicToolsService } from '../../services/editor-cinematic-tools.service';
@@ -21,7 +20,6 @@ import { CinematicPlaybackManagerService } from '../../core/engine/runtime/cinem
     TimelineAutoAnimTab, 
     TimelineDirectorTab, 
     TimelinePrefabsTab, 
-    TimelinePlatformTab,
     TimelineRolesTab 
   ],
   templateUrl: './global-timeline.html',

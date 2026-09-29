@@ -5,10 +5,8 @@
     <button class="tab-btn" [class.active]="stateSvc.activeBottomTab() === 'animaciones'" (click)="cambiarTab('animaciones')">🏃 Anim. Auto</button>
     <button class="tab-btn" [class.active]="stateSvc.activeBottomTab() === 'director'" (click)="cambiarTab('director')">🎥 Director (Global)</button>
     <button class="tab-btn" [class.active]="stateSvc.activeBottomTab() === 'prefabs'" (click)="cambiarTab('prefabs')">📦 Prefabs</button>
-    <!-- 🔥 FASE 1: Pestaña de Roles Habilitada -->
     <button class="tab-btn" [class.active]="stateSvc.activeBottomTab() === 'roles'" (click)="cambiarTab('roles')">🎭 Roles Narrativos</button>
-    
-    <button class="tab-btn" [class.active]="stateSvc.activeBottomTab() === 'plataforma'" (click)="cambiarTab('plataforma')" style="margin-left: auto; border-left: 1px solid #111;">🗺️ Lógica Plataforma</button>
+    <!-- 🔥 Lógica Plataforma ELIMINADA del Timeline -->
   </div>
 
   <div class="timeline-content">
@@ -16,8 +14,6 @@
      <app-timeline-auto-anim-tab *ngIf="stateSvc.activeBottomTab() === 'animaciones'"></app-timeline-auto-anim-tab>
      <app-timeline-director-tab *ngIf="stateSvc.activeBottomTab() === 'director'"></app-timeline-director-tab>
      <app-timeline-prefabs-tab *ngIf="stateSvc.activeBottomTab() === 'prefabs'"></app-timeline-prefabs-tab>
-     <!-- 🔥 FASE 1: Renderizado del componente de Roles -->
      <app-timeline-roles-tab *ngIf="stateSvc.activeBottomTab() === 'roles'"></app-timeline-roles-tab>
-     <app-timeline-platform-tab *ngIf="stateSvc.activeBottomTab() === 'plataforma'"></app-timeline-platform-tab>
   </div>
 </div>

@@ -1,5 +1,4 @@
-
-import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject } from '@angular/core';
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject, effect, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription, Subject } from 'rxjs';
@@ -42,6 +41,8 @@ export class PropMission implements OnInit, OnDestroy {
   public episodeDescription = '';
   public sceneName = '';
 
+  private lastSceneId: number | null = null;
+
   get currentEpisode() {
     return this.editorSvc.episodioActualData();
   }
@@ -54,15 +55,35 @@ export class PropMission implements OnInit, OnDestroy {
     return this.currentEpisode?.id || null;
   }
 
+  constructor() {
+    // 🔥 EFECTO REACTIVO 1: Actualización instantánea al cambiar de Plataforma (Escena)
+    // El 'effect' de Angular se ejecutará automáticamente si this.editorSvc.escenaIdActiva() cambia.
+    effect(() => {
+      const sceneId = this.editorSvc.escenaIdActiva();
+      
+      untracked(() => {
+        if (sceneId !== this.lastSceneId) {
+          this.lastSceneId = sceneId;
+          
+          // Damos un respiro asíncrono de 50ms para que el CoreSceneLoaderService
+          // haya finalizado por completo la carga de datos en el WorldSettingsService
+          setTimeout(() => {
+            this.leerMetadataEpisodio();
+            this.leerEstadoUI();
+            this.cargarPerfilMision();
+          }, 50);
+        }
+      });
+    });
+  }
+
   ngOnInit() {
-    this.leerMetadataEpisodio();
-    this.leerEstadoUI();
-    this.cargarPerfilMision();
+    // Nota: Las lecturas iniciales ahora están orquestadas por el effect() superior
     
     this.subs.push(
       this.editorSvc.onMapChanged.subscribe(() => {
-         this.leerEstadoUI();
-         this.leerMetadataEpisodio();
+         // Mantener la reactividad ante otras mutaciones menores sin resetear el binding de inputs
+         this.cdr.detectChanges();
       }),
       
       this.episodeSaveSubject.pipe(

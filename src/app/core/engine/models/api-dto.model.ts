@@ -70,9 +70,10 @@ export interface TriggerDto extends SceneObjectDto {
 
 export interface CinematicDto { id: string; uid?: string; name: string; durationMs: number; tracks: any[]; }
 
+// 🔥 FIX ARQUITECTÓNICO: Limpieza de la duplicación histórica. 
+// Las lógicas de misión, objetivos y recompensas locales han sido eliminadas para evitar colisiones.
 export interface LogicSettingsDto {
   initialVariables?: { key: string, value: string | number | boolean }[];
-  objetivosLocales?: string | string[]; recompensasLocales?: string | string[];
 }
 
 export interface WorldSettingsDto {

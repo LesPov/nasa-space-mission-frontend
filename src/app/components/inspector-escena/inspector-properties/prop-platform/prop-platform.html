@@ -1,0 +1,71 @@
+
+<div class="section-card">
+  <div class="section-head">
+    <h4 style="color: #60a5fa;">Identidad de la Plataforma</h4>
+  </div>
+  <div class="field wide" style="margin-bottom: 10px;">
+    <label>Nombre Local (Zona / Escena)</label>
+    <input type="text" [(ngModel)]="sceneName" (ngModelChange)="aplicarNombre()" placeholder="Ej: Laboratorio Subterráneo" />
+  </div>
+  <p class="help-text">
+    Este es el nombre con el que esta sección del mapa se conectará a través de puertas o transiciones.
+  </p>
+</div>
+
+<div class="section-card">
+  <div class="section-head">
+    <h4 style="color: #4ade80;">Físicas y Gravedad Local</h4>
+  </div>
+  
+  <div class="field wide" style="margin-bottom: 10px;">
+    <label>Preset de Gravedad</label>
+    <select [(ngModel)]="gravityPreset" (ngModelChange)="onGravityPresetChange()">
+      <option value="earth">🌍 Tierra (9.81 m/s²)</option>
+      <option value="mars">🔴 Marte (3.71 m/s²)</option>
+      <option value="moon">🌕 Luna (1.62 m/s²)</option>
+      <option value="zero_g">🚀 Espacio / 0G (0.00 m/s²)</option>
+      <option value="custom">⚙️ Personalizada</option>
+    </select>
+  </div>
+
+  <div class="grid-2" style="margin-bottom: 10px;">
+    <div class="field">
+      <label>Magnitud (m/s²)</label>
+      <input type="number" step="0.1" min="0" max="100" 
+             [(ngModel)]="gravityMagnitude" 
+             [disabled]="gravityPreset !== 'custom'"
+             (ngModelChange)="aplicarGravedadCustom()" />
+    </div>
+    <div class="field">
+      <label>Escala Interna (Y)</label>
+      <input type="number" step="0.01" [(ngModel)]="gravedadY" readonly style="opacity: 0.7;" />
+    </div>
+  </div>
+
+  <div class="section-mini-head" style="margin-top: 10px; margin-bottom: 5px;" *ngIf="gravityPreset === 'custom'">
+    <label style="font-size: 10px; color: #aaa;">Vector de Dirección Local</label>
+  </div>
+  <div class="grid-3" *ngIf="gravityPreset === 'custom'">
+    <div class="field"><label>Dir X</label><input type="number" step="0.1" [(ngModel)]="gravityDirX" (ngModelChange)="aplicarGravedadCustom()" /></div>
+    <div class="field"><label>Dir Y</label><input type="number" step="0.1" [(ngModel)]="gravityDirY" (ngModelChange)="aplicarGravedadCustom()" /></div>
+    <div class="field"><label>Dir Z</label><input type="number" step="0.1" [(ngModel)]="gravityDirZ" (ngModelChange)="aplicarGravedadCustom()" /></div>
+  </div>
+
+  <p class="help-text" style="margin-top: 10px;">
+    La gravedad configurada aquí pertenece <b>exclusivamente a esta plataforma</b>. Al viajar a otra zona del episodio, las leyes físicas cambiarán según el entorno de destino.
+  </p>
+</div>
+
+<div class="section-card">
+  <div class="section-head">
+    <h4 style="color: #facc15;">Variables Iniciales de Aparición (Spawn)</h4>
+  </div>
+  <p class="help-text" style="margin-bottom: 12px;">Estas variables en memoria se setean automáticamente cuando el jugador entra por primera vez a esta plataforma.</p>
+  
+  <div *ngFor="let cond of initialVariables; let i = index" style="display: flex; gap: 8px; margin-bottom: 6px;">
+    <input type="text" [(ngModel)]="cond.key" (ngModelChange)="persistPlatformLogic()" placeholder="Clave (Ej: estado_luz)" style="flex: 1; font-size: 11px; padding: 6px;">
+    <input type="text" [(ngModel)]="cond.value" (ngModelChange)="persistPlatformLogic()" placeholder="Valor (Ej: true)" style="flex: 1; font-size: 11px; padding: 6px;">
+    <button class="btn-danger" (click)="quitarVariableInicial(i)" style="padding: 4px 8px;">✕</button>
+  </div>
+  <button class="btn-secondary full" style="margin-top: 5px;" (click)="agregarVariableInicial()">+ Agregar Variable Local</button>
+</div>

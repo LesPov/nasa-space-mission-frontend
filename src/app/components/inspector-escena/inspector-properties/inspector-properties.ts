@@ -23,18 +23,19 @@ import { PropSequences } from './prop-sequences/prop-sequences';
 import { PropAnimation } from './prop-animation/prop-animation';
 import { PropPhysics } from './prop-physics/prop-physics';
 import { PropWorld } from './prop-world/prop-world';
-import { PropLight } from './prop-light/prop-light'; 
+ import { PropLight } from './prop-light/prop-light'; 
 import { PropBubble } from './prop-bubble/prop-bubble';
 import { PropVideo } from './prop-video/prop-video';
 import { PropMission } from './prop-mission/prop-mission';
 import { CinematicInspector } from '../../global-timeline/tabs/timeline-director-tab/cinematic-inspector/cinematic-inspector/cinematic-inspector';
+import { PropPlatform } from './prop-platform/prop-platform';
     
 @Component({
   selector: 'app-inspector-properties',
   standalone: true,
   imports: [
     CommonModule, PropTransform, PropTrigger, PropPlayer, PropSequences, 
-    PropAnimation, PropPhysics, PropWorld, PropLight, PropBubble, PropVideo, PropMission, CinematicInspector
+    PropAnimation, PropPhysics, PropWorld, PropPlatform, PropLight, PropBubble, PropVideo, PropMission, CinematicInspector
   ],
   templateUrl: './inspector-properties.html',
   styleUrl: './inspector-properties.css'
@@ -47,7 +48,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
   private entityManager = inject(EntityManagerService);
   private prefabManager = inject(PrefabManagerService); 
   public cinematicSvc = inject(EditorCinematicService);
-  private cinematicTools = inject(EditorCinematicToolsService);
+  private cinematicTools = inject(EditorCinematicToolsService); 
   private proxySvc = inject(EditorCinematicProxyService);
   private playbackManager = inject(CinematicPlaybackManagerService);
   private cdr = inject(ChangeDetectorRef);
@@ -112,7 +113,8 @@ export class InspectorProperties implements OnInit, OnDestroy {
         this.esVideo = false;
         this.familiaResumen = 'Sin selección';
         
-        if (this.pestanaActiva !== 'world' && this.pestanaActiva !== 'mission' && this.pestanaActiva !== 'cinematic') {
+        // 🔥 FIX: Respetar si la pestaña actual es Platform (y no forzar World)
+        if (this.pestanaActiva !== 'world' && this.pestanaActiva !== 'platform' && this.pestanaActiva !== 'mission' && this.pestanaActiva !== 'cinematic') {
           if (this.stateSvc.activeBottomTab() === 'director') {
               this.cambiarPestana('cinematic');
           } else {
@@ -172,9 +174,6 @@ export class InspectorProperties implements OnInit, OnDestroy {
     });
   }
 
-  // ==========================================
-  // HANDLERS PARA CINEMATIC INSPECTOR
-  // ==========================================
   onCinematicPropertyChanged() {
       this.editorMapa.onMapChanged.next();
   }
@@ -187,7 +186,6 @@ export class InspectorProperties implements OnInit, OnDestroy {
           this.cinematicSvc.selectedKeyframeId.set(kf.id);
           this.editorMapa.onMapChanged.next();
           this.proxySvc.rebuild(this.cinematicSvc.currentCinematic());
-          // 🔥 FORZAR EVALUACIÓN DE OVERLAYS PARA ACTUALIZAR VISTA PREVIA INSTANTÁNEAMENTE
           this.playbackManager.seek(this.playbackManager.playheadMs());
       }
   }
@@ -200,7 +198,6 @@ export class InspectorProperties implements OnInit, OnDestroy {
           const proxyMesh = this.proxySvc.getProxyById(kf.id);
           if (proxyMesh) this.stateSvc.seleccionarObjeto(proxyMesh);
       }
-      // 🔥 FORZAR EVALUACIÓN DE OVERLAYS PARA ACTUALIZAR VISTA PREVIA INSTANTÁNEAMENTE
       this.playbackManager.seek(this.playbackManager.playheadMs());
   }
 

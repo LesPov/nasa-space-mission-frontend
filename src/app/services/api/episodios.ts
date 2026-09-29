@@ -42,6 +42,11 @@ export class EpisodiosService {
     return this.sceneApi.crearPlataformaEscena(episodeId, name);
   }
 
+  // 🔥 NUEVO: Exposición del método de actualización de escena
+  actualizarPlataformaEscena(sceneId: number, data: { name?: string }): Observable<any> {
+    return this.sceneApi.actualizarPlataformaEscena(sceneId, data);
+  }
+
   obtenerEscenaCompleta(sceneId: number): Observable<SceneLoadPayload> {
     return this.sceneApi.obtenerEscenaCompleta(sceneId);
   }

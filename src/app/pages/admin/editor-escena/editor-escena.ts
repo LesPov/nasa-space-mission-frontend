@@ -1,4 +1,4 @@
-import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect, untracked } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -120,6 +120,19 @@ export class EditorEscena implements OnInit, OnDestroy {
   constructor() {
     effect(() => {
       this.stateSvc.playState();
+    });
+
+    // 🔥 EFECTO REACTIVO 2: Mantiene el Dropdown del Viewport en Sincronía
+    // Escucha silenciosamente el cambio de plataforma (orquestado habitualmente por el Outliner)
+    // para reflejarlo en la vista, previniendo incoherencias visuales.
+    effect(() => {
+       const activeId = this.editorSvc.escenaIdActiva();
+       untracked(() => {
+          if (activeId !== this.plataformaActualId) {
+             this.plataformaActualId = activeId;
+             this.cdr.detectChanges();
+          }
+       });
     });
   }
 

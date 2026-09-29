@@ -8,20 +8,22 @@
         <button class="tab-btn" *ngIf="(esPersonaje || esLuzConModelo) && !esTrigger" [class.active]="pestanaActiva === 'animation'" (click)="cambiarPestana('animation')" title="Mapeo de Animaciones">🏃</button>
         <button class="tab-btn" *ngIf="esPersonaje || esTrigger || esLuz || esBurbuja" [class.active]="pestanaActiva === 'sequences'" (click)="cambiarPestana('sequences')" title="Creador de Secuencias">🎞️</button>
         <button class="tab-btn" *ngIf="esLuz" [class.active]="pestanaActiva === 'light'" (click)="cambiarPestana('light')" title="Propiedades de Luz">💡</button>
-        
         <button class="tab-btn" *ngIf="esBurbuja" [class.active]="pestanaActiva === 'bubble'" (click)="cambiarPestana('bubble')" title="Burbuja Interactiva">🫧</button>
         <button class="tab-btn" *ngIf="esVideo" [class.active]="pestanaActiva === 'video'" (click)="cambiarPestana('video')" title="Pantalla de Video">📺</button>
     </ng-container>
     
     <button class="tab-btn" [class.active]="pestanaActiva === 'world'" (click)="cambiarPestana('world')" title="Entorno Global">🌍</button>
+    
+    <!-- 🔥 NUEVO: Botón de Configuración Local de Plataforma -->
+    <button class="tab-btn" [class.active]="pestanaActiva === 'platform'" (click)="cambiarPestana('platform')" title="Configuración de Plataforma">🗺️</button>
+    
     <button class="tab-btn" [class.active]="pestanaActiva === 'mission'" (click)="cambiarPestana('mission')" title="UI & Misión">📝</button>
     
-    <!-- NUEVA PESTAÑA DEL DIRECTOR GLOBAL -->
     <button class="tab-btn" *ngIf="stateSvc.activeBottomTab() === 'director'" [class.active]="pestanaActiva === 'cinematic'" (click)="cambiarPestana('cinematic')" title="Cinemática">🎥</button>
   </div>
 
   <div class="prop-content-scroll">
-    <div class="panel-header" *ngIf="pestanaActiva !== 'world' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic'">
+    <div class="panel-header" *ngIf="pestanaActiva !== 'world' && pestanaActiva !== 'platform' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic'">
       <span>
         {{ pestanaActiva === 'transform' ? 'Transformación Básica' : '' }}
         {{ pestanaActiva === 'physics' ? 'Colisiones y Cámaras' : '' }}
@@ -35,11 +37,19 @@
       <span class="status-pill">{{ familiaResumen }}</span>
     </div>
 
-    <!-- Pestañas Globales -->
+    <!-- Pestañas Globales y de Área -->
     <ng-container *ngIf="pestanaActiva === 'world'">
-      <div class="panel-header"><span>Configuración del Escenario</span><span class="status-pill">Global</span></div>
+      <div class="panel-header"><span>Configuración del Entorno Visual</span><span class="status-pill">Global</span></div>
       <div class="prop-body">
          <app-prop-world></app-prop-world>
+      </div>
+    </ng-container>
+
+    <!-- 🔥 NUEVA PESTAÑA: PLATAFORMA LOCAL -->
+    <ng-container *ngIf="pestanaActiva === 'platform'">
+      <div class="panel-header"><span style="color: #60a5fa;">Configuración de Plataforma</span><span class="status-pill" style="background-color: #2563eb;">Local</span></div>
+      <div class="prop-body">
+         <app-prop-platform></app-prop-platform>
       </div>
     </ng-container>
 
@@ -50,7 +60,6 @@
       </div>
     </ng-container>
 
-    <!-- 🔥 NUEVO INSPECTOR DE CINEMÁTICA INTEGRADO -->
     <ng-container *ngIf="pestanaActiva === 'cinematic'">
       <app-cinematic-inspector
          [cinematic]="cinematicSvc.currentCinematic()"
@@ -72,8 +81,7 @@
       </div>
     </ng-container>
 
-    <!-- Pestañas Específicas de Objeto -->
-    <div class="prop-body" *ngIf="objetoActual && pestanaActiva !== 'world' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic'">
+    <div class="prop-body" *ngIf="objetoActual && pestanaActiva !== 'world' && pestanaActiva !== 'platform' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic'">
       
       <div class="obj-title-bar">
         <span class="icon">{{ esTrigger ? '📍' : (esLuz ? '💡' : (esBurbuja ? '🫧' : (esVideo ? '📺' : (esPersonaje ? '🧍' : '🧊')))) }}</span>

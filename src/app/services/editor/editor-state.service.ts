@@ -51,7 +51,6 @@ export class EditorStateService {
   public fogDesactivadoTemporalmente = computed(() => this.gameContext.isFogDisabled());
   public previewMissionModal = computed(() => this.gameContext.isPreviewMissionModalOpen());
 
-  // Compatibilidad con componentes legacy mediante Getters/Setters que mapean al SSOT
   public get modoVistaPrueba() { return this.gameContext.cameraView(); }
   public set modoVistaPrueba(val: any) { if (val) this.gameContext.setCameraView(val); }
 
@@ -93,6 +92,23 @@ export class EditorStateService {
 
   public encontrarRaiz(mesh: AbstractMesh): Node | null {
     if (!mesh) return null;
+
+    // REGLA 1: Si es el cuerpo visual de luz, devolvemos el nodo representativo de la luz (su entidad view)
+    if (Tags.MatchesQuery(mesh, "light_visual") || (mesh as any).metadata?.isLightVisual) {
+      const entityUid = (mesh as any).metadata?.entityUid;
+      if (entityUid) {
+        const ent = this.entityManager.getEntityByUid(entityUid);
+        if (ent && ent.view) return ent.view;
+      }
+      return mesh.parent instanceof AbstractMesh ? mesh.parent : mesh;
+    }
+
+    // REGLA 2: Si la propia malla es una entidad de luz (anclada o independiente), ella misma es su raíz atómica
+    const selfEntity = this.entityManager.getEntityByMesh(mesh);
+    if (selfEntity && selfEntity.type.startsWith('light_')) {
+      return mesh;
+    }
+
     let current: Node | null = mesh;
 
     while (current) {
@@ -100,10 +116,17 @@ export class EditorStateService {
         current = current.parent;
         continue;
       }
+      
+      // Si nos topamos con un nodo o visual de luz en el camino, nos detenemos estrictamente en la luz
+      if (Tags.MatchesQuery(current, "light_visual || light_entity") || (current as any).metadata?.isLightVisual) {
+        return current;
+      }
+
       if (Tags.MatchesQuery(current, "system_element || editor_only || fog_element || debug_element || proxy_collider || invisible_floor")) {
         current = current.parent;
         continue;
       }
+      
       const entity = this.entityManager.getEntityByMesh(current as AbstractMesh);
       if (entity) {
         return current;
@@ -118,6 +141,10 @@ export class EditorStateService {
   }
 
   public esMeshIgnorable(mesh: AbstractMesh | null | undefined): boolean {
+    if (!mesh) return true;
+    if (Tags.MatchesQuery(mesh, "light_visual") || (mesh as any).metadata?.isLightVisual) {
+      return false; // El cuerpo visual de luz es 100% interactivo en el editor
+    }
     return this.interactRules.isMeshIgnorable(mesh as AbstractMesh, this.jugadorActivo);
   }
 
@@ -136,6 +163,11 @@ export class EditorStateService {
 
   public puedeSeleccionarse(mesh: AbstractMesh): boolean {
     if (!mesh) return false;
+    
+    if (Tags.MatchesQuery(mesh, "light_visual") || (mesh as any).metadata?.isLightVisual) {
+      return true;
+    }
+
     if (this.esMeshIgnorable(mesh)) return false;
 
     const root = this.resolverObjetoSeleccionable(mesh) as AbstractMesh | null;

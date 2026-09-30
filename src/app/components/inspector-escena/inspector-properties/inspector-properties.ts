@@ -1,4 +1,3 @@
-
 import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, effect, Input, Output, EventEmitter, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -138,40 +137,53 @@ export class InspectorProperties implements OnInit, OnDestroy {
       const obj = this.stateSvc.objetoSeleccionado() as AbstractMesh;
       this.objetoActual = obj || null;
       if (obj) {
+        const entity = this.entityManager.getEntityByMesh(obj);
+        const type = entity?.type || 'unknown';
+
+        // Si es una entidad de luz (incluso si está emparentada a un modelo), se maneja como entidad de luz autónoma
+        const esEntidadLuz = type.startsWith('light_') || (obj as any).metadata?.isLightVisual;
+
         const rootNode = this.stateSvc.encontrarRaiz(obj);
-        this.esParte = rootNode !== null && rootNode !== obj;
+        this.esParte = !esEntidadLuz && rootNode !== null && rootNode !== obj;
 
         if (this.esParte) {
            this.familiaResumen = 'Parte Interna 3D';
            this.rootEntityForPart = this.entityManager.getEntityByMesh(rootNode as AbstractMesh) || null;
-           
            if (this.pestanaActiva !== 'part') this.cambiarPestana('part');
         } else {
            this.rootEntityForPart = null;
-           const entity = this.entityManager.getEntityByMesh(obj);
-           const type = entity?.type || 'unknown';
 
            this.esTrigger = type === 'trigger' || type === 'trigger_compuesto';
-           this.esLuz = type.startsWith('light_');
+           this.esLuz = esEntidadLuz;
            this.esLuzConModelo = this.esLuz && !!entity?.visual?.assetId;
            this.esBurbuja = type === 'bubble';
            this.esVideo = type === 'video_plane';
            this.esPersonaje = !!entity?.characterConfig;
            
-           if (this.esPersonaje) this.familiaResumen = 'Personaje / Player';
-           else if (this.esTrigger) this.familiaResumen = 'Trigger de Evento';
-           else if (this.esLuzConModelo) this.familiaResumen = 'Luz con Modelo 3D';
-           else if (this.esLuz) this.familiaResumen = 'Fuente de Luz';
-           else if (this.esBurbuja) this.familiaResumen = 'Burbuja (TWD)';
-           else if (this.esVideo) this.familiaResumen = 'Pantalla TV/Video';
-           else this.familiaResumen = 'Objeto normal';
+           if (this.esLuz) {
+             this.familiaResumen = this.esLuzConModelo ? 'Luz con Modelo 3D' : 'Fuente de Luz';
+             // Cambiar automáticamente a la pestaña de luz para conveniencia del usuario
+             if (this.pestanaActiva !== 'light' && this.pestanaActiva !== 'transform') {
+               this.cambiarPestana('light');
+             }
+           } else if (this.esPersonaje) {
+             this.familiaResumen = 'Personaje / Player';
+           } else if (this.esTrigger) {
+             this.familiaResumen = 'Trigger de Evento';
+           } else if (this.esBurbuja) {
+             this.familiaResumen = 'Burbuja (TWD)';
+           } else if (this.esVideo) {
+             this.familiaResumen = 'Pantalla TV/Video';
+           } else {
+             this.familiaResumen = 'Objeto normal';
+           }
            
            if (this.pestanaActiva === 'part') this.cambiarPestana('transform');
            if (this.pestanaActiva === 'player' && (!this.esPersonaje || this.esTrigger)) this.cambiarPestana('transform');
            if (this.pestanaActiva === 'animation' && (!this.esPersonaje && !this.esLuzConModelo)) this.cambiarPestana('transform');
            if (this.pestanaActiva === 'sequences' && !this.esPersonaje && !this.esTrigger && !this.esLuz && !this.esBurbuja) this.cambiarPestana('transform');
            if (this.pestanaActiva === 'light' && !this.esLuz) this.cambiarPestana('transform');
-           if (this.pestanaActiva === 'physics' && (this.esLuz && !this.esLuzConModelo || this.esBurbuja)) this.cambiarPestana('transform');
+           if (this.pestanaActiva === 'physics' && ((this.esLuz && !this.esLuzConModelo) || this.esBurbuja)) this.cambiarPestana('transform');
            if (this.pestanaActiva === 'bubble' && !this.esBurbuja) this.cambiarPestana('transform');
            if (this.pestanaActiva === 'video' && !this.esVideo) this.cambiarPestana('transform');
         }

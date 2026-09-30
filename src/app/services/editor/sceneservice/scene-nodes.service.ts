@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
@@ -25,6 +24,7 @@ export class SceneNodesService {
       !c.name.includes('proxy') && !c.name.includes('mock') && !c.name.includes('admin')
     );
 
+    // Mantenemos solo los nodos raíz verdaderos en la colección principal del Outliner
     this.state.setNodosEscena([
       ...camarasValidas,
       ...scene.meshes.filter(m =>
@@ -58,7 +58,6 @@ export class SceneNodesService {
       });
 
       setTimeout(() => {
-        // 🔥 ACTUALIZAR LUCES TRAS ELIMINACIÓN
         this.dynamicLighting.prepareAllLights();
         this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
 

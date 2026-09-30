@@ -46,10 +46,23 @@ export class SceneObjectBuilderService {
       return;
     }
 
-    if ((tipo === 'model' || tipo.startsWith('light_')) && asset) {
+    const isLight = tipo.startsWith('light_');
+
+    if (isLight) {
         sizeX = 1;
         sizeY = 1;
         sizeZ = 1;
+    } else if (tipo === 'model' && asset) {
+        sizeX = 1;
+        sizeY = 1;
+        sizeZ = 1;
+    }
+
+    // Resolución segura del UID del padre desde EntityManager
+    let resolvedParentUid: string | null = null;
+    if (parentNode) {
+      const parentEntity = this.entityManager.getEntityByMesh(parentNode);
+      resolvedParentUid = parentEntity ? parentEntity.uid : (parentNode.metadata?.entityUid || parentNode.metadata?.uid || null);
     }
 
     const mockDbObject: SceneObjectDto & { isNewCreation?: boolean } = {
@@ -58,35 +71,34 @@ export class SceneObjectBuilderService {
       type: tipo,
       isNewCreation: true, 
       properties: {
-        rol: tipo.startsWith('light_') ? 'light' : rol,
+        rol: isLight ? 'light' : rol,
         color: colorHex,
         colorBW: colorHex,
-        isSolid: isSolid,
+        isSolid: isLight ? false : isSolid,
         isSelectable: isSelectable,
         mensaje: mensaje,
         path: asset?.path
       },
       assetId: asset?.id || null,
-      position: position ? { x: position.x, y: position.y, z: position.z } : (parentNode ? {x:0, y: 0, z:0} : { x: 0, y: 0, z: 0 }),
+      position: position ? { x: position.x, y: position.y, z: position.z } : (parentNode ? { x: 0, y: 0.5, z: 0 } : { x: 0, y: 0, z: 0 }),
       rotation: localRotation ? { x: localRotation.x, y: localRotation.y, z: localRotation.z } : { x: 0, y: 0, z: 0 },
       scale: { x: sizeX, y: sizeY, z: sizeZ },
-      parentId: parentNode?.metadata?.uid || null
+      parentId: resolvedParentUid
     };
 
-    if (tipo.startsWith('light_')) {
+    if (isLight) {
         mockDbObject.properties!.intensity = 5;
         mockDbObject.properties!.lightColor = colorHex;
         mockDbObject.properties!.lightColorBW = colorHex;
-        mockDbObject.properties!.lightPosX = 0;
-        mockDbObject.properties!.lightPosY = 0.5;
-        mockDbObject.properties!.lightPosZ = 0;
+        mockDbObject.properties!.lightPosX = mockDbObject.position.x;
+        mockDbObject.properties!.lightPosY = mockDbObject.position.y;
+        mockDbObject.properties!.lightPosZ = mockDbObject.position.z;
         mockDbObject.properties!.angle = 45;
         mockDbObject.properties!.isEnabled = true;
         (mockDbObject.properties as any).castShadows = true;
     }
 
     const isModel = tipo === 'model';
-    const isLight = tipo.startsWith('light_');
     const mallasCreadas = new Map<string, Mesh>();
 
     if ((isLight && asset) || (isModel && asset)) {
@@ -99,15 +111,31 @@ export class SceneObjectBuilderService {
     if (newMesh) {
       if (parentNode) {
          newMesh.setParent(parentNode);
+         
+         // Compensar escala visual de la esfera frente a la escala heredada del modelo padre
+         if (isLight) {
+            parentNode.computeWorldMatrix(true);
+            const parentScale = new Vector3();
+            parentNode.getWorldMatrix().decompose(parentScale);
+            const visual = newMesh.getChildMeshes().find(m => Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual);
+            if (visual) {
+               visual.scaling.set(
+                 0.4 / Math.max(0.0001, Math.abs(parentScale.x)),
+                 0.4 / Math.max(0.0001, Math.abs(parentScale.y)),
+                 0.4 / Math.max(0.0001, Math.abs(parentScale.z))
+               );
+               visual.renderingGroupId = 1;
+            }
+         }
       }
       
       const ent = this.entityManager.getEntityByMesh(newMesh);
       if (ent) {
-          ent.syncToView(); 
+          ent.parentId = resolvedParentUid;
+          ent.syncTransformFromView(); 
           ent.isDirty = true;
       }
       
-      // 🔥 RECONSTRUIR LUCES Y SOMBRAS PARA INCLUIR AL NUEVO OBJETO
       this.dynamicLighting.prepareAllLights();
       this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
       
@@ -117,4 +145,3 @@ export class SceneObjectBuilderService {
     }
   }
 }
- 

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3, Tags, Quaternion } from '@babylonjs/core';
 import '@babylonjs/loaders';
@@ -40,7 +41,6 @@ export class CoreModelLoaderService {
   public async cargarModeloAsync(obj: any, mallasCreadas: Map<string, Mesh>): Promise<void> {
     const scene = this.motor3d.getScene();
     const sessionId = this.sessionSvc.getSessionId();
-    // 🔥 FIX: Revisar también en el root level para entidades legacy de luces
     const path = obj.properties?.path || obj.asset?.path || obj.path;
 
     if (!path) {
@@ -67,10 +67,6 @@ export class CoreModelLoaderService {
 
       wrapperMesh.computeWorldMatrix(true);
 
-      // FASE 1 - NORMALIZACIÓN DE ESCALA:
-      // Se ha eliminado la reducción artificial basada en 'maxSize' para permitir
-      // que los nuevos Assets se instancien con su tamaño y escala nativa original (1:1).
-      // Solo se aplica escalado interno si el objeto de base de datos posee un 'internalScale' legacy.
       if (obj.properties?.internalScale !== undefined && obj.properties?.internalScale !== null) {
           const compensacion = obj.properties.internalScale;
           instances.rootNodes.forEach(node => {
@@ -106,13 +102,19 @@ export class CoreModelLoaderService {
 
   private async aplicarTransformacionesYEntidad(rootNode: Mesh, obj: any, mallasCreadas: Map<string, Mesh>, allMeshes: AbstractMesh[] = [], anims: any[] = []): Promise<void> {
     const scene = this.motor3d.getScene();
-    const isModel = obj.type === 'model';
     const isLight = obj.type?.startsWith('light_');
-    const rolSaved = obj.properties?.rol || obj.rol || 'prop';
+    const rolSaved = obj.properties?.rol || obj.rol || (isLight ? 'light' : 'prop');
 
-    const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, obj.type, rolSaved);
+    // 🔥 MODELO PRINCIPAL: Siempre es 'model' si contiene un asset 3D GLB
+    const entityType = isLight ? 'model' : obj.type;
+    const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, entityType, rolSaved);
     this.persistenceMapper.applyDbToEntity(obj, entity);
     
+    // Forzamos el tipo 'model' para que el icono del padre sea 📦 y no usurpe el bombillo
+    if (isLight) {
+        entity.type = 'model';
+    }
+
     const isCharacter = entity.type === 'character' || entity.rol === 'player';
 
     const scaleX = entity.transform.scale.x;
@@ -196,7 +198,6 @@ export class CoreModelLoaderService {
       
       if (m.material) {
           if (override) {
-             // 🔥 FIX: Aísla el material para esta parte y aplica las propiedades exclusivas
              this.materialSvc.asegurarMaterialUnicoParaParte(m, entity.uid, m.name);
              const activeColorOverride = isBW ? (override.colorBW || override.color) : override.color;
              await this.materialSvc.ajustarMaterialGLB(
@@ -209,7 +210,6 @@ export class CoreModelLoaderService {
                  override.textureSource || (override.texturePath ? 'asset' : 'original') 
              );
           } else {
-             // Modo base compartido para las partes no modificadas
              this.materialSvc.asegurarMaterialUnico(m, entity.uid);
              await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbient, activeColorHex, entity.visual.esEmisivo, entity.visual.brilloIntensidad);
           }
@@ -253,33 +253,87 @@ export class CoreModelLoaderService {
     });
     entity.animationNames = anims.map(a => a.name);
 
-    if (isLight) {
-      if (!entity.light) {
-          entity.light = new LightComponent();
-          entity.light.lightPosY = 0.5;
-      }
-      if (!obj.asset && !obj.properties?.path && !obj.path) {
-          rootNode.isVisible = false;
-      }
-    }
-
-    if (entity.rol === 'spawn_point') {
-        rootNode.checkCollisions = false;
-        Tags.AddTagsTo(rootNode, "editor_only ignore_raycast");
-        rootNode.isVisible = isEditor;
-        subMeshes.forEach(m => {
-            m.checkCollisions = false;
-            Tags.AddTagsTo(m, "editor_only ignore_raycast");
-            m.isVisible = isEditor;
-            if (m.material && m.material instanceof StandardMaterial) {
-                m.material.alpha = isEditor ? 0.4 : 0.0;
-                m.material.wireframe = false;
-                m.material.emissiveColor = new Color3(0, 1, 0);
-            }
-        });
-    }
-
     this.entityManager.addEntity(entity);
     mallasCreadas.set(entity.uid, rootNode);
+
+    // =========================================================================
+    // 🔥 ARQUITECTURA CRÍTICA: SI EL MODELO TIENE LUZ, SE INSTANCIA COMO HIJO
+    // =========================================================================
+    if (isLight) {
+        const lightType = obj.type; // 'light_spot', 'light_point', etc.
+        const lightUid = `${entity.uid}_light`;
+        const lightName = `Luz ${entity.name}`;
+
+        const lightNode = new Mesh(lightName, scene);
+        lightNode.parent = rootNode;
+        lightNode.position.set(
+            obj.properties?.lightPosX ?? 0,
+            obj.properties?.lightPosY ?? (finalSizeY > 0 ? finalSizeY : 1.5),
+            obj.properties?.lightPosZ ?? 0
+        );
+
+        if (obj.properties?.lightRotX !== undefined) {
+            lightNode.rotation.set(
+                (obj.properties.lightRotX || 0) * Math.PI / 180,
+                (obj.properties.lightRotY || 0) * Math.PI / 180,
+                (obj.properties.lightRotZ || 0) * Math.PI / 180
+            );
+        }
+
+        Tags.AddTagsTo(lightNode, "light_entity");
+
+        // Crear la esfera visual editorial dentro del nodo de luz
+        const visualSphere = MeshBuilder.CreateSphere(`visual_${lightName}`, { diameter: 1.0, segments: 16 }, scene);
+        visualSphere.parent = lightNode;
+        visualSphere.isPickable = true;
+        visualSphere.checkCollisions = false;
+        visualSphere.receiveShadows = false;
+        visualSphere.renderingGroupId = 1;
+
+        // Compensación de escala respecto al modelo padre (para que mida 0.4m exactos en el mundo)
+        const parentScale = new Vector3();
+        rootNode.getWorldMatrix().decompose(parentScale);
+        const safeX = Math.max(0.0001, Math.abs(parentScale.x * scaleX));
+        const safeY = Math.max(0.0001, Math.abs(parentScale.y * scaleY));
+        const safeZ = Math.max(0.0001, Math.abs(parentScale.z * scaleZ));
+        visualSphere.scaling.set(0.4 / safeX, 0.4 / safeY, 0.4 / safeZ);
+
+        const lightColorHex = obj.properties?.lightColor || '#facc15';
+        const lightVisualMat = new StandardMaterial(`mat_visual_${lightName}`, scene);
+        const c3 = Color3.FromHexString(lightColorHex);
+        lightVisualMat.emissiveColor = c3.clone();
+        lightVisualMat.diffuseColor = c3.clone();
+        lightVisualMat.specularColor = Color3.Black();
+        lightVisualMat.disableLighting = true;
+        lightVisualMat.fogEnabled = false;
+        visualSphere.material = lightVisualMat;
+
+        Tags.AddTagsTo(visualSphere, "light_visual editor_only");
+        visualSphere.metadata = { entityUid: lightUid, isLightVisual: true };
+        lightNode.metadata = { entityUid: lightUid, isLightRoot: true };
+
+        const isEditorMode = this.gameContext.mode() === GameMode.EDITOR || this.gameContext.mode() === GameMode.EDITING_IN_GAME;
+        visualSphere.isVisible = isEditorMode;
+        visualSphere.setEnabled(isEditorMode);
+
+        // Crear la entidad independiente de Luz como hija del modelo
+        const lightEntity = new GameEntity(lightUid, lightName, lightType, 'light');
+        lightEntity.parentId = entity.uid;
+        lightEntity.light = new LightComponent();
+        lightEntity.light.lightColor = lightColorHex;
+        lightEntity.light.lightColorBW = obj.properties?.lightColorBW || lightColorHex;
+        lightEntity.light.intensity = obj.properties?.intensity ?? 5.0;
+        lightEntity.light.range = obj.properties?.range ?? 50;
+        lightEntity.light.angle = obj.properties?.angle ?? 45;
+        lightEntity.light.enabled = obj.properties?.isEnabled ?? true;
+        lightEntity.light.castShadows = obj.properties?.castShadows ?? true;
+        lightEntity.light.lightPosX = lightNode.position.x;
+        lightEntity.light.lightPosY = lightNode.position.y;
+        lightEntity.light.lightPosZ = lightNode.position.z;
+
+        lightEntity.bindView(lightNode);
+        this.entityManager.addEntity(lightEntity);
+        mallasCreadas.set(lightUid, lightNode);
+    }
   }
 }

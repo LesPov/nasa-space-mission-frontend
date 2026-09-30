@@ -13,7 +13,7 @@ export type LightVisualState = 'PRELOADED' | 'ACTIVE';
 
 interface VirtualLight {
     entity: GameEntity;
-    materials: any[]; // 🔥 FIX PBR: Cambiado a `any` para admitir PBRMaterial
+    materials: any[];
     baseColor: Color3;
     currentMultiplier: number;
     targetMultiplier: number;
@@ -75,6 +75,20 @@ export class DynamicLightingSystem implements IUpdatable {
           return;
       }
 
+      if (Tags.MatchesQuery(entity.view, "light_visual") || (entity.view as any).metadata?.isLightVisual || Tags.MatchesQuery(entity.view, "light_entity")) {
+          entity.view.computeWorldMatrix(true);
+          outPos.copyFrom(entity.view.getAbsolutePosition());
+          
+          if (entity.view.rotationQuaternion) {
+              Matrix.FromQuaternionToRef(entity.view.rotationQuaternion, DynamicLightingSystem._localRotMatrix);
+          } else {
+              Matrix.RotationYawPitchRollToRef(entity.view.rotation.y, entity.view.rotation.x, entity.view.rotation.z, DynamicLightingSystem._localRotMatrix);
+          }
+          Vector3.TransformNormalToRef(DynamicLightingSystem._downDir, DynamicLightingSystem._localRotMatrix, outDir);
+          outDir.normalize();
+          return;
+      }
+
       let targetParent: AbstractMesh = entity.view;
       if (entity.light.attachedNodeName) {
           const found = entity.view.getDescendants(false).find(n => n.name === entity.light!.attachedNodeName);
@@ -123,7 +137,7 @@ export class DynamicLightingSystem implements IUpdatable {
           if (e.view && e.view.isVisible && e.view.isEnabled()) {
               if (e.characterConfig || (e.visual?.isSolid && e.type !== 'image_plane' && !e.type.startsWith('light_'))) {
                   const addMesh = (m: AbstractMesh) => {
-                      if (m.isVisible && m.isEnabled() && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element")) {
+                      if (m.isVisible && m.isEnabled() && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual")) {
                           this.shadowCastersCache.push(m);
                           m.receiveShadows = true;
                       }
@@ -138,14 +152,16 @@ export class DynamicLightingSystem implements IUpdatable {
       for (const e of lightEntities) {
           const mats: any[] = [];
           if (e.view) {
-              if (e.view.material) mats.push(e.view.material);
+              const isVisualMesh = Tags.MatchesQuery(e.view, "light_visual") || (e.view as any).metadata?.isLightVisual;
+              if (e.view.material && !isVisualMesh) mats.push(e.view.material);
+              
               e.view.getChildMeshes(false).forEach((m: AbstractMesh) => {
-                  if (m.material) { // 🔥 FIX PBR: Removed instanceof StandardMaterial
+                  if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) return;
+                  if (m.material) {
                      const nL = m.name.toLowerCase();
                      const mL = m.material.name.toLowerCase();
                      if (nL.includes('bulb') || nL.includes('light') || nL.includes('emit') || mL.includes('bulb') || mL.includes('light') || mL.includes('emit')) {
                          const override = e.partOverrides?.overrides[m.name];
-                         // 🔥 FIX PARTOVERRIDE CONFLICT: Solo controlamos la luz si el usuario NO ha configurado un color/emisión custom en el PartEditor.
                          if (!override || (override.color === undefined && override.esEmisivo === undefined)) {
                              mats.push(m.material);
                          }
@@ -242,7 +258,7 @@ export class DynamicLightingSystem implements IUpdatable {
       }
       for(let i=0; i<this.shadowCastersCache.length; i++) {
           const m = this.shadowCastersCache[i];
-          if (!parentMeshes.has(m)) {
+          if (!parentMeshes.has(m) && !Tags.MatchesQuery(m, "light_visual") && !(m as any).metadata?.isLightVisual) {
               rList.push(m);
           }
       }

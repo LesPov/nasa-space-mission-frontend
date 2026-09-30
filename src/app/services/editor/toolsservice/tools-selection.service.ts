@@ -1,6 +1,4 @@
 
-// src/app/services/editor/toolsservice/tools-selection.service.ts
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Ray, Vector3, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
@@ -73,8 +71,6 @@ export class ToolsSelectionService {
   private canSelectByDistance(ray: Ray, target: AbstractMesh, hit: any): boolean {
     const playSt = this.state.playState();
     
-    // 🔥 FIX: Solo restringimos por distancia si estamos jugando de verdad.
-    // Edit Live (EDITING_IN_GAME) ya no pasa por aquí, por lo que tiene distancia infinita.
     if (playSt !== 'PLAYING') return true;
     if (this.state.modoVistaPrueba !== 'FPS') return true;
 
@@ -91,8 +87,10 @@ export class ToolsSelectionService {
 
   private puedeTomarseParaSeleccion(mesh: AbstractMesh): boolean {
     if (!mesh) return false;
+    
+    // El cuerpo visual de luz es siempre seleccionable
+    if (Tags.MatchesQuery(mesh, "light_visual") || (mesh as any).metadata?.isLightVisual) return true;
     if (this.state.esMeshIgnorable(mesh)) return false;
-
     if (Tags.MatchesQuery(mesh, "cinematic_proxy")) return true;
 
     const root = this.state.encontrarRaiz(mesh) as AbstractMesh | null;
@@ -110,6 +108,9 @@ export class ToolsSelectionService {
     const profile = this.gameContext.authorityProfile();
 
     const hit = scene.pickWithRay(ray, (m) => {
+      // 1. El cuerpo visual de luz DEBE ser pickable y no filtrado por ignore_raycast
+      if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) return true;
+
       if (!m.isVisible && !Tags.MatchesQuery(m, "cinematic_proxy")) return false;
       if (!m.isPickable) return false;
       
@@ -121,13 +122,14 @@ export class ToolsSelectionService {
       }
 
       if (Tags.MatchesQuery(m, "cinematic_proxy")) return true;
-      if (Tags.MatchesQuery(m, "system_element || fog_element || ignore_raycast || editor_only || invisible_floor")) return false;
+      if (Tags.MatchesQuery(m, "system_element || fog_element || ignore_raycast || editor_only || invisible_floor")) {
+        return false;
+      }
       if (m === centerDragMesh) return false;
       
       const entity = this.entityManager.getEntityByMesh(m);
       if (entity?.type === 'trigger' || entity?.type === 'trigger_compuesto') {
           if (!profile.canSelectHidden) return false;
-          // 🔥 BLOQUEO DE TRIGGERS: Se sigue aplicando tanto en PLAYING como en EDITING_IN_GAME
           if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') return false;
       }
       return true;
@@ -137,8 +139,19 @@ export class ToolsSelectionService {
 
     const picked = hit.pickedMesh as AbstractMesh;
 
+    // 1. Cinemáticas
     if (Tags.MatchesQuery(picked, "cinematic_proxy")) {
         return (picked.parent as AbstractMesh) || picked;
+    }
+
+    // 2. Luz Visual -> Devolvemos estrictamente el nodo representativo de la luz registrado en EntityManager
+    if (Tags.MatchesQuery(picked, "light_visual") || (picked as any).metadata?.isLightVisual) {
+        const entityUid = (picked as any).metadata?.entityUid;
+        if (entityUid) {
+            const ent = this.entityManager.getEntityByUid(entityUid);
+            if (ent && ent.view) return ent.view as AbstractMesh;
+        }
+        return picked.parent instanceof AbstractMesh ? picked.parent : picked;
     }
 
     if (this.state.esMeshIgnorable(picked)) return null;
@@ -147,14 +160,12 @@ export class ToolsSelectionService {
     if (!(rootNode instanceof AbstractMesh)) return null;
     if (this.esTriggerMesh(rootNode) && !profile.canSeeTriggers) return null;
 
-    // 🔥 MODO JUEGO REAL: Requiere estar cerca del objeto (canSelectByDistance)
     if (playSt === 'PLAYING') {
       if (!profile.canSelect) return null;
       if (!this.canSelectByDistance(ray, rootNode, hit)) return null;
       return rootNode;
     }
 
-    // 🔥 MODOS ADMINISTRATIVOS: Distancia infinita, pero respeta "isSelectable = false"
     if (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME') {
       if (!profile.canSelect) return null;
       if (!this.puedeTomarseParaSeleccion(rootNode)) return null;

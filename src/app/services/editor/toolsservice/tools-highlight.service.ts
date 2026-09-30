@@ -1,4 +1,3 @@
-// src/app/services/editor/toolsservice/tools-highlight.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Color3, Color4, Mesh, AbstractMesh, Tags, HighlightLayer, Node, Scene } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
@@ -28,7 +27,6 @@ export class ToolsHighlightService {
     const scene = this.motor3d.getScene();
     if (!scene) return;
 
-    // 🔥 FIX: Invalidar capa si la escena ha cambiado de sesión sin usar getScene()
     if (this.highlightLayer && this.currentScene !== scene) {
       this.highlightLayer.dispose();
       this.highlightLayer = null;
@@ -59,6 +57,9 @@ export class ToolsHighlightService {
   }
 
   private esMeshExcluida(mesh: AbstractMesh): boolean {
+    if (Tags.MatchesQuery(mesh, "light_visual") || (mesh as any).metadata?.isLightVisual) {
+      return false;
+    }
     const n = mesh.name?.toLowerCase?.() ?? '';
     return (
       Tags.MatchesQuery(
@@ -78,6 +79,12 @@ export class ToolsHighlightService {
     const meshes = new Set<AbstractMesh>();
     if (!baseNode || baseNode.isDisposed()) return [];
 
+    // Si es un cuerpo visual de luz, devolvemos solo esta malla sin recorrer al padre
+    if (baseNode instanceof AbstractMesh && (Tags.MatchesQuery(baseNode, "light_visual") || (baseNode as any).metadata?.isLightVisual)) {
+      meshes.add(baseNode);
+      return Array.from(meshes);
+    }
+
     const entity = baseNode instanceof AbstractMesh ? this.entityManager.getEntityByMesh(baseNode) : null;
     const entityUid = entity?.uid ?? null;
 
@@ -85,6 +92,11 @@ export class ToolsHighlightService {
       if (!node || node.isDisposed()) return;
 
       if (node instanceof AbstractMesh) {
+        // Ignoramos cuerpos de luz hijos al resaltar el modelo padre
+        if (Tags.MatchesQuery(node, "light_visual") || (node as any).metadata?.isLightVisual) {
+          return;
+        }
+
         const e = this.entityManager.getEntityByMesh(node);
         if (e && entityUid && e.uid !== entityUid) {
           return; 
@@ -180,6 +192,12 @@ export class ToolsHighlightService {
     if (!pickedMesh || pickedMesh.isDisposed()) return;
     if (this.esMeshExcluida(pickedMesh)) return;
 
+    // Resaltado directo e individual del cuerpo visual de luz
+    if (Tags.MatchesQuery(pickedMesh, "light_visual") || (pickedMesh as any).metadata?.isLightVisual) {
+      this.aplicarOutline(pickedMesh, colorHex, false);
+      return;
+    }
+
     const entity = this.entityManager.getEntityByMesh(pickedMesh);
     const isTrigger = entity?.type === 'trigger' || entity?.type === 'trigger_compuesto';
     
@@ -231,12 +249,8 @@ export class ToolsHighlightService {
 
     const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
     const isFPS = this.state.modoVistaPrueba === 'FPS';
-    
     const isPlayingMode = mode === 'PLAYING';
 
-    // 🔥 FIX DEL HOVER INVISIBLE PARA ADMINS
-    // Ahora garantizamos que si el usuario ES el creador (canSelectHidden), SIEMPRE verá 
-    // el highlight azul al hacer hover en Test Live.
     if (isPlayingMode && isFPS && !canSelectHidden) {
         return; 
     }

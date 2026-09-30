@@ -2,7 +2,7 @@
 import { Injectable, inject, effect } from '@angular/core';
 import {
   KeyboardEventTypes, Matrix, Mesh, PointerEventTypes,
-  AbstractMesh, Tags, PointerInfo, KeyboardInfo, Observer, Scene
+  AbstractMesh, Tags, PointerInfo, KeyboardInfo, Observer, Scene, Vector3
 } from '@babylonjs/core';
 
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
@@ -25,6 +25,7 @@ import { InputRouterService } from '../../core/engine/session/input-router.servi
 import { Subscription } from 'rxjs';
 import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
 import { ToolsSelectionService } from './toolsservice/tools-selection.service';
+import { BaseEntityGizmoAdapter } from './toolsservice/adapters/base-entity-gizmo.adapter';
 
 @Injectable({ providedIn: 'root' })
 export class EditorToolsService {
@@ -56,10 +57,10 @@ export class EditorToolsService {
 
   private pointerSub: Subscription | null = null;
   private keyboardSub: Subscription | null = null;
-  
-  // 🔥 FIX LFC: Variables reales de control para evitar Memory Leaks
   private gizmoDragSub: Subscription | null = null;
   private renderObserver: Observer<Scene> | null = null;
+
+  private baseGizmoAdapter = new BaseEntityGizmoAdapter();
 
   constructor() {
     effect(() => {
@@ -241,6 +242,13 @@ export class EditorToolsService {
       if (obj && !this.gizmoSvc.isDraggingGizmo) {
         this.debugSvc.syncBreathAnimations(obj);
       }
+
+      // 🔥 COMPENSACIÓN CONTINUA: Mantiene las esferas de luz siempre en tamaño de 0.4m
+      scene.meshes.forEach(m => {
+        if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) {
+          this.baseGizmoAdapter.compensarEscalaVisual(m.parent as AbstractMesh || m);
+        }
+      });
     });
 
     this.motor3d.getEditorCamera().attachControl(this.motor3d.getEngine().getRenderingCanvas(), true);

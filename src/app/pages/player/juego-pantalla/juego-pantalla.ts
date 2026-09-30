@@ -86,7 +86,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
 
   private sub!: Subscription;
   private kbSub!: Subscription;
-  private syncSub: Subscription | null = null; 
+  private syncSub: Subscription | null = null; // 🔥 FIX LFC: Manejador para el leak de Live Sync
   private fpsInterval: any;
 
   public get canViewDebug(): boolean {
@@ -145,9 +145,6 @@ export class JuegoPantalla implements OnInit, OnDestroy {
     }
     
     if ((event.code === 'KeyQ' || event.key.toLowerCase() === 'q') && this.canViewDebug && !event.repeat) {
-      // Bloqueamos en TPS la apertura del menú si se pulsa Q
-      if (this.gameContext.cameraView() === 'TPS') return;
-
       if (!this.inputSvc.isRadialMenuOpen && !this.liveBuilderSvc.isBuilding()) {
           this.eventBus.emit({ type: 'RadialMenuToggled', payload: true });
       }
@@ -270,6 +267,7 @@ export class JuegoPantalla implements OnInit, OnDestroy {
       this.epiApiSvc.guardarEstadoJugador(this.episodioActual.id, 1, stateToSave).subscribe();
     }
     
+    // Limpieza integral y atómica sin fugas de la plataforma saliente
     this.runtime.shutdownProductionGame();
     this.cargarPlataforma(sceneId, true);
   }

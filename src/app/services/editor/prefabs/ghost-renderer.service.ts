@@ -1,8 +1,7 @@
-
 import { Injectable, inject } from '@angular/core';
 import { 
   AbstractMesh, Color3, Mesh, MeshBuilder, Scene, StandardMaterial, 
-  TransformNode, Vector3, Tags, Node, Light, Camera, Engine, Quaternion 
+  TransformNode, Vector3, Tags, Node, Light, Camera, Engine, Quaternion, LinesMesh 
 } from '@babylonjs/core';
 import { CoreModelLoaderService } from '../../../core/engine/scene/utils/core-model-loader.service';
 
@@ -14,6 +13,11 @@ export class GhostRendererService {
   private ghostMaterial: StandardMaterial | null = null;
   private currentScene: Scene | null = null;
   private currentAssetId: string | null = null;
+
+  // Meshes de Debug visual para el Placement
+  private debugTargetMarker: Mesh | null = null;
+  private debugGhostMarker: Mesh | null = null;
+  private debugLine: Mesh | null = null;
 
   public async createGhost(assetData: any, scene: Scene): Promise<TransformNode | null> {
     this.destroyGhost();
@@ -119,36 +123,36 @@ export class GhostRendererService {
     }
   }
 
-  public getBoundingInfo(currentRotation: Vector3, currentScale: Vector3) {
+  /**
+   * 🔥 VITAL: Extrae la geometría matemática del prefab eliminando la influencia
+   * de la rotación actual para crear conectores puros en espacio Local.
+   */
+  public getLocalBoundingBox(): { min: Vector3, max: Vector3 } | null {
     if (!this.ghostRoot) return null;
     
-    const childMeshes = this.ghostRoot.getChildMeshes(false);
-    if (childMeshes.length === 0) return null;
-
-    const pos = this.ghostRoot.position.clone();
-    const scl = this.ghostRoot.scaling.clone();
-    
-    let rotQuat = null;
-    let rotEuler = null;
-    
-    if (this.ghostRoot.rotationQuaternion) {
-        rotQuat = this.ghostRoot.rotationQuaternion.clone();
-    } else {
-        rotEuler = this.ghostRoot.rotation.clone();
-    }
-
-    // Centrar en el origen absoluto para calcular la bounding box real
-    this.ghostRoot.position = Vector3.Zero();
-    this.ghostRoot.scaling.copyFrom(currentScale);
-    
-    // 🔥 FORZAR Cuaternión para evitar solapamientos rotacionales
-    this.ghostRoot.rotationQuaternion = Quaternion.FromEulerAngles(currentRotation.x, currentRotation.y, currentRotation.z);
-    
-    this.ghostRoot.computeWorldMatrix(true);
-
     let min = new Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE);
     let max = new Vector3(Number.MIN_VALUE, Number.MIN_VALUE, Number.MIN_VALUE);
     let hasValidMesh = false;
+
+    const childMeshes = this.ghostRoot.getChildMeshes(false);
+    if (childMeshes.length === 0) return null;
+
+    // Respaldar transformaciones actuales
+    const pos = this.ghostRoot.position.clone();
+    const rot = this.ghostRoot.rotationQuaternion ? this.ghostRoot.rotationQuaternion.clone() : null;
+    const scl = this.ghostRoot.scaling.clone();
+
+    // Resetear al origen para análisis puro
+    this.ghostRoot.position = Vector3.Zero();
+    if (this.ghostRoot.rotationQuaternion) {
+        this.ghostRoot.rotationQuaternion.copyFromFloats(0,0,0,1);
+    } else {
+        this.ghostRoot.rotation.copyFromFloats(0,0,0);
+    }
+    this.ghostRoot.scaling = Vector3.One();
+    this.ghostRoot.computeWorldMatrix(true);
+
+    const invWorld = this.ghostRoot.getWorldMatrix().clone().invert();
 
     childMeshes.forEach(m => {
       if (!m.isVisible) return; 
@@ -156,43 +160,69 @@ export class GhostRendererService {
       if (Tags.MatchesQuery(m, "proxy_collider")) return;
 
       m.computeWorldMatrix(true);
-      const boundingInfo = m.getBoundingInfo();
-      const vectors = boundingInfo.boundingBox.vectorsWorld;
-      
-      vectors.forEach(v => {
-        min = Vector3.Minimize(min, v);
-        max = Vector3.Maximize(max, v);
+      const vectorsWorld = m.getBoundingInfo().boundingBox.vectorsWorld;
+      vectorsWorld.forEach(vw => {
+        const vLocal = Vector3.TransformCoordinates(vw, invWorld);
+        min = Vector3.Minimize(min, vLocal);
+        max = Vector3.Maximize(max, vLocal);
       });
       hasValidMesh = true;
     });
 
-    if (!hasValidMesh) {
-        min = Vector3.Zero();
-        max = Vector3.Zero();
-    }
-
-    // Restaurar transformaciones originales
+    // Restaurar transformaciones reales
     this.ghostRoot.position.copyFrom(pos);
-    this.ghostRoot.scaling.copyFrom(scl);
-    
-    if (rotQuat) {
-        this.ghostRoot.rotationQuaternion = rotQuat;
-    } else if (rotEuler) {
-        this.ghostRoot.rotationQuaternion = null;
-        this.ghostRoot.rotation.copyFrom(rotEuler);
+    if (rot) {
+        this.ghostRoot.rotationQuaternion = rot;
     }
-    
+    this.ghostRoot.scaling.copyFrom(scl);
     this.ghostRoot.computeWorldMatrix(true);
 
-    return { 
-      min, 
-      max, 
-      extends: max.subtract(min).scale(0.5),
-      center: max.add(min).scale(0.5) 
-    };
+    if (!hasValidMesh) return { min: Vector3.Zero(), max: Vector3.Zero() };
+    return { min, max };
+  }
+
+  /**
+   * 🔥 DEBUG VISUAL: Muestra explícitamente los puntos de conexión al usar ALT
+   */
+  public updateDebugVisuals(show: boolean, targetPos?: Vector3, ghostPos?: Vector3) {
+    if (!this.currentScene) return;
+
+    if (!show || !targetPos || !ghostPos) {
+       if (this.debugTargetMarker) this.debugTargetMarker.isVisible = false;
+       if (this.debugGhostMarker) this.debugGhostMarker.isVisible = false;
+       if (this.debugLine) this.debugLine.isVisible = false;
+       return;
+    }
+
+    if (!this.debugTargetMarker) {
+        this.debugTargetMarker = MeshBuilder.CreateSphere('debug_target', { diameter: 0.15 }, this.currentScene);
+        const tMat = new StandardMaterial('debug_target_mat', this.currentScene);
+        tMat.emissiveColor = new Color3(1, 0, 0); tMat.disableLighting = true;
+        this.debugTargetMarker.material = tMat;
+        Tags.AddTagsTo(this.debugTargetMarker, "system_element editor_only debug_element ignore_raycast");
+
+        this.debugGhostMarker = MeshBuilder.CreateSphere('debug_ghost', { diameter: 0.15 }, this.currentScene);
+        const gMat = new StandardMaterial('debug_ghost_mat', this.currentScene);
+        gMat.emissiveColor = new Color3(0, 0.5, 1); gMat.disableLighting = true;
+        this.debugGhostMarker.material = gMat;
+        Tags.AddTagsTo(this.debugGhostMarker, "system_element editor_only debug_element ignore_raycast");
+    }
+
+    if (this.debugLine) this.debugLine.dispose();
+    this.debugLine = MeshBuilder.CreateLines('debug_line', { points: [targetPos, ghostPos] }, this.currentScene);
+    (this.debugLine as LinesMesh).color = new Color3(1, 1, 0);
+    Tags.AddTagsTo(this.debugLine, "system_element editor_only debug_element ignore_raycast");
+
+    if (!this.debugTargetMarker || !this.debugGhostMarker) return;
+
+    this.debugTargetMarker.position.copyFrom(targetPos);
+    this.debugGhostMarker.position.copyFrom(ghostPos);
+    this.debugTargetMarker.isVisible = true;
+    this.debugGhostMarker.isVisible = true;
   }
 
   public destroyGhost() {
+    this.updateDebugVisuals(false);
     if (this.ghostRoot) {
       this.ghostRoot.dispose(false, true);
       this.ghostRoot = null;
@@ -201,6 +231,10 @@ export class GhostRendererService {
       this.ghostMaterial.dispose();
       this.ghostMaterial = null;
     }
+    if (this.debugTargetMarker) { this.debugTargetMarker.dispose(); this.debugTargetMarker = null; }
+    if (this.debugGhostMarker) { this.debugGhostMarker.dispose(); this.debugGhostMarker = null; }
+    if (this.debugLine) { this.debugLine.dispose(); this.debugLine = null; }
+
     this.currentAssetId = null;
     this.currentScene = null;
   }

@@ -176,6 +176,6 @@ export class UiRadialMenu implements OnInit, OnDestroy {
 
   private selectAsset(asset: any) {
     this.eventBus.emit({ type: 'AssetSelectedForBuild', payload: asset });
-    this.closeMenu();
+    this.closeMenu(); // Cierra el menú al seleccionar un item. LiveBuilder continuará esperando clics
   }
 }

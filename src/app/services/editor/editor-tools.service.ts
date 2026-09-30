@@ -57,6 +57,7 @@ export class EditorToolsService {
   private pointerSub: Subscription | null = null;
   private keyboardSub: Subscription | null = null;
   
+  // 🔥 FIX LFC: Variables reales de control para evitar Memory Leaks
   private gizmoDragSub: Subscription | null = null;
   private renderObserver: Observer<Scene> | null = null;
 
@@ -366,14 +367,6 @@ export class EditorToolsService {
     if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
       
       if (kbInfo.event.key.toLowerCase() === 'q' && profile.canViewDebug && (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME' || playSt === 'PLAYING')) {
-        
-        // Bloqueo de Q en 3era persona si estamos jugando. (Solo Admin Free Cam la usa libremente).
-        if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') {
-           if (this.gameContext.cameraView() === 'TPS' && this.ownership.getOwner() !== 'EDITOR') {
-               return;
-           }
-        }
-
         if (!this.qPressed) {
           this.qPressed = true;
           this.eventBus.emit({ type: 'RadialMenuToggled', payload: true });

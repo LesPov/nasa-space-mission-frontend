@@ -1,4 +1,3 @@
-
 // src/app/core/engine/runtime/systems/player-input.service.ts
 
 import { Injectable, inject } from '@angular/core';
@@ -161,6 +160,11 @@ export class PlayerInputService implements IUpdatable {
     this.inputMap = {};
     this.actionPressedThisFrame = false;
     this.inspectPressedThisFrame = false;
-    this.isRadialMenuOpen = false;
+    
+    // 🔥 CORRECCIÓN: El menú radial NO debe resetearse aquí. 
+    // Su ciclo de vida depende exclusivamente del evento RadialMenuToggled,
+    // de lo contrario, al perder el foco (GamePaused), el juego "olvidaba"
+    // que fue pausado por la tecla Q y abría accidentalmente la Misión.
+    // this.isRadialMenuOpen = false;
   }
 }

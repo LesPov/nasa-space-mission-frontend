@@ -1,47 +1,263 @@
 
-<div class="radial-overlay" *ngIf="isOpen" 
-     (mousedown)="handleOverlayClick($event)"
-     (contextmenu)="handleOverlayClick($event)">
+<!-- src/app/components/ui-radial-menu/ui-radial-menu.html -->
+<div class="library-overlay" *ngIf="isOpen" (mousedown)="handleOverlayClick($event)">
   
-  <div class="radial-container">
-    
-    <!-- HUD Central de Información -->
-    <div class="center-info">
-      <div class="center-icon" *ngIf="hoveredItem">{{ hoveredItem.icon }}</div>
-      <h3 *ngIf="hoveredItem">{{ hoveredItem.name }}</h3>
-      <h3 *ngIf="!hoveredItem" style="color: #94a3b8;">Menú de Construcción</h3>
+  <div class="library-modal">
+    <!-- TOP HEADER -->
+    <header class="lib-header">
+      <div class="header-brand">
+        <div class="brand-icon">📦</div>
+        <div class="brand-text">
+          <h2>BIBLIOTECA GENERAL</h2>
+          <p>Gestor Central de Prefabs y Assets</p>
+        </div>
+      </div>
       
-      <p *ngIf="hoveredItem && hoveredItem.type === 'group'" class="desc-badge blue">Abrir Categoría</p>
-      <p *ngIf="hoveredItem && hoveredItem.type === 'asset'" class="desc-badge green">Equipar Objeto</p>
-      <p *ngIf="hoveredItem && hoveredItem.type === 'action'" class="desc-badge gray">Atrás</p>
-      
-      <p *ngIf="!hoveredItem" style="margin-top: 10px;">Selecciona una categoría</p>
-    </div>
+      <div class="header-search">
+        <span class="search-icon">🔍</span>
+        <input type="text" placeholder="Buscar prefabs, modelos, luces..." 
+               [value]="searchQuery" (input)="onSearchChange($event)">
+      </div>
 
-    <!-- Items posicionados radialmente via JS Styles -->
-    <div class="radial-item" *ngFor="let item of currentItems; let i = index" 
-         [style.transform]="getItemTransform(i)"
-         (mouseenter)="hoveredItem = item"
-         (mouseleave)="hoveredItem = null"
-         (mousedown)="handleItemClick(item, $event)">
+      <button class="btn-close" (click)="closeMenu()">✕</button>
+    </header>
+
+    <div class="lib-body">
       
-      <div class="item-bg" 
-           [style.transform]="getInverseRotation(i)"
-           [class.is-group]="item.type === 'group'"
-           [class.is-back]="item.type === 'action'">
-         <span class="item-icon">{{ item.icon }}</span>
-      </div>
+      <!-- SIDEBAR NAVEGACIÓN -->
+      <aside class="lib-sidebar" *ngIf="!isSearching">
+        <div class="lib-section" *ngFor="let lib of libraries">
+          <div class="lib-header-toggle" (click)="lib.expanded = !lib.expanded">
+            <span class="folder-icon">{{ lib.expanded ? '📂' : '📁' }}</span> {{ lib.name }}
+          </div>
+          
+          <div class="coll-section" *ngIf="lib.expanded">
+            <div class="coll-group" *ngFor="let coll of lib.collections">
+              <div class="coll-header-toggle" (click)="coll.expanded = !coll.expanded">
+                <span class="folder-icon" style="color: #64748b;">{{ coll.expanded ? '🔽' : '▶️' }}</span> {{ coll.name }}
+              </div>
+              
+              <div class="cat-list" *ngIf="coll.expanded">
+                 <button class="cat-btn" 
+                         *ngFor="let cat of coll.categories"
+                         [class.active]="activeCategory === cat"
+                         (click)="selectCategory(cat, lib.name, coll.name)">
+                   <span class="cat-bullet"></span>
+                   {{ cat.name }} <span class="count">{{ cat.items.length }}</span>
+                 </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- SIDEBAR MODO BÚSQUEDA -->
+      <aside class="lib-sidebar search-sidebar" *ngIf="isSearching">
+        <div class="search-info">
+           <h4>Resultados de búsqueda</h4>
+           <p>Para: "{{ searchQuery }}"</p>
+           <span class="count-badge">{{ filteredItems.length }} encontrados</span>
+        </div>
+      </aside>
+
+      <!-- ÁREA CENTRAL: GRID DE CARDS -->
+      <main class="lib-grid-area" (scroll)="onGridScroll()">
+        <div class="grid-header">
+           <h3 *ngIf="!isSearching">
+             {{ activeLibraryName }} <span class="divider">/</span> {{ activeCollectionName }} <span class="divider">/</span> <span class="highlight">{{ activeCategory?.name }}</span>
+           </h3>
+           <h3 *ngIf="isSearching">Mostrando resultados globales</h3>
+        </div>
+
+        <div class="cards-container">
+           <ng-container *ngIf="!isSearching">
+              <div class="asset-card" 
+                   *ngFor="let item of activeCategory?.items"
+                   [class.selected]="selectedItem === item"
+                   [class.is-hovered]="hoveredItem === item && isPreviewActive"
+                   [class.is-light]="item.type.startsWith('light_')"
+                   (click)="selectItem(item)"
+                   (dblclick)="equipSelectedItem()"
+                   (mouseenter)="onCardEnter(item, $event)"
+                   (mouseleave)="onCardLeave()">
+                   
+                   <div class="card-preview">
+                      <div class="thumbnail-layer" [style.background-image]="item.thumbnailUrl && !item.type.startsWith('light_') ? 'url(' + item.thumbnailUrl + ')' : 'none'">
+                         <span class="card-icon" *ngIf="!item.thumbnailUrl || item.type.startsWith('light_')">{{ item.icon }}</span>
+                      </div>
+                      <!-- El canvas flotante se posicionará aquí por código -->
+                   </div>
+                   <div class="card-info">
+                      <span class="card-type">{{ item.displayType }}</span>
+                      <h4 class="card-name" [title]="item.name">{{ item.name }}</h4>
+                   </div>
+              </div>
+              <div class="empty-state" *ngIf="activeCategory?.items?.length === 0">
+                 No hay elementos en esta categoría.
+              </div>
+           </ng-container>
+
+           <ng-container *ngIf="isSearching">
+              <div class="asset-card" 
+                   *ngFor="let item of filteredItems"
+                   [class.selected]="selectedItem === item"
+                   [class.is-hovered]="hoveredItem === item && isPreviewActive"
+                   [class.is-light]="item.type.startsWith('light_')"
+                   (click)="selectItem(item)"
+                   (dblclick)="equipSelectedItem()"
+                   (mouseenter)="onCardEnter(item, $event)"
+                   (mouseleave)="onCardLeave()">
+                   
+                   <div class="card-preview">
+                      <div class="thumbnail-layer" [style.background-image]="item.thumbnailUrl && !item.type.startsWith('light_') ? 'url(' + item.thumbnailUrl + ')' : 'none'">
+                         <span class="card-icon" *ngIf="!item.thumbnailUrl || item.type.startsWith('light_')">{{ item.icon }}</span>
+                      </div>
+                   </div>
+                   <div class="card-info">
+                      <span class="card-type">{{ item.displayType }}</span>
+                      <h4 class="card-name" [title]="item.name">{{ item.name }}</h4>
+                   </div>
+              </div>
+              <div class="empty-state" *ngIf="filteredItems.length === 0">
+                 Ningún prefab coincide con la búsqueda.
+              </div>
+           </ng-container>
+        </div>
+      </main>
+
+      <!-- PANEL DERECHO: DETALLES O EDICIÓN -->
+      <aside class="lib-details" *ngIf="selectedItem && !isEditing">
+         
+         <div class="details-preview" #detailsPreviewArea [class.is-light]="selectedItem.type.startsWith('light_')">
+            <div class="studio-bg"></div>
+            <div class="grid-overlay"></div>
+            <!-- Icono Fallback si no hay Canvas -->
+            <span class="huge-icon" *ngIf="!isPreviewActive">{{ selectedItem.icon }}</span>
+         </div>
+
+         <div class="details-content">
+            <div class="d-header">
+               <div style="display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap;">
+                  <span class="badge-type">{{ selectedItem.displayType }}</span>
+                  <span class="badge-type" style="color: #4ade80; border-color: rgba(74, 222, 128, 0.3); background: rgba(74, 222, 128, 0.15);" *ngIf="selectedItem.tags.includes('interactive')">INTERACTIVO</span>
+               </div>
+               <h3 class="d-name">{{ selectedItem.name }}</h3>
+               <p class="d-id">ID DB: {{ selectedItem.id ?? 'Nativo' }}</p>
+            </div>
+
+            <div class="d-section">
+               <h4>CLASIFICACIÓN</h4>
+               <div class="d-row"><span>Biblioteca:</span> <strong>{{ selectedItem.library }}</strong></div>
+               <div class="d-row"><span>Colección:</span> <strong>{{ selectedItem.collection }}</strong></div>
+               <div class="d-row"><span>Categoría:</span> <strong>{{ selectedItem.category }}</strong></div>
+            </div>
+
+            <div class="d-section" *ngIf="selectedItem.tags && selectedItem.tags.length > 0">
+               <h4>ETIQUETAS</h4>
+               <div class="tags-container">
+                  <span class="tag" *ngFor="let tag of selectedItem.tags">{{ tag }}</span>
+               </div>
+            </div>
+
+            <div class="d-section">
+               <h4>DESCRIPCIÓN</h4>
+               <p class="d-desc">{{ selectedItem.description || 'Sin descripción detallada.' }}</p>
+            </div>
+         </div>
+
+         <div class="details-footer">
+            <div class="d-actions-row">
+               <button class="btn-ghost" *ngIf="canEdit" (click)="openEditForm()">✏️ EDITAR</button>
+               <button class="btn-danger" *ngIf="canEdit" (click)="deletePrefab(selectedItem)">🗑️ BORRAR</button>
+            </div>
+            <button class="btn-equip" (click)="equipSelectedItem()">
+               <span class="icon">🔨</span> CONSTRUIR
+            </button>
+         </div>
+      </aside>
+
+      <!-- PANEL DERECHO: FORMULARIO DE EDICIÓN -->
+      <aside class="lib-details" *ngIf="selectedItem && isEditing">
+         <div class="edit-header">
+            <h3>Editando Prefab</h3>
+         </div>
+         <div class="details-content edit-content">
+            <div class="form-group">
+               <label>Nombre Público</label>
+               <input type="text" [(ngModel)]="editForm.name">
+            </div>
+            <div class="form-group">
+               <label>Tipo (Técnico)</label>
+               <select [(ngModel)]="editForm.type">
+                 <option value="model">3D Object (.glb)</option>
+                 <option value="cube">Cube</option>
+                 <option value="sphere">Sphere</option>
+                 <option value="cylinder">Cylinder</option>
+                 <option value="plane">Plane</option>
+                 <option value="light_directional">Light: Directional</option>
+                 <option value="light_spot">Light: Spot</option>
+                 <option value="light_point">Light: Point</option>
+                 <option value="trigger">Trigger</option>
+                 <option value="trigger_compuesto">Trigger Compuesto</option>
+                 <option value="bubble">Bubble</option>
+                 <option value="image_plane">Image Plane</option>
+                 <option value="video_plane">Video Plane</option>
+               </select>
+            </div>
+            <div class="form-group">
+               <label>Biblioteca General</label>
+               <input type="text" [(ngModel)]="editForm.library" list="datalist-lib">
+            </div>
+            <div class="form-group">
+               <label>Colección Interna</label>
+               <input type="text" [(ngModel)]="editForm.collection" list="datalist-coll">
+            </div>
+            <div class="form-group">
+               <label>Categoría</label>
+               <input type="text" [(ngModel)]="editForm.category" list="datalist-cat">
+            </div>
+            <div class="form-group">
+               <label>URL de Imagen (Thumbnail)</label>
+               <div style="display:flex; gap: 5px;">
+                  <input type="text" [(ngModel)]="editForm.thumbnailUrl" style="flex:1">
+                  <button class="btn-thumb" (click)="generateThumbnail()" [disabled]="isGeneratingThumb" title="Capturar 3D actual">
+                     {{ isGeneratingThumb ? '...' : '📸 3D' }}
+                  </button>
+               </div>
+            </div>
+            <div class="form-group">
+               <label>Descripción / Metadata</label>
+               <textarea [(ngModel)]="editForm.description" rows="3"></textarea>
+            </div>
+            <div class="form-group">
+               <label>Etiquetas (Separadas por comas)</label>
+               <input type="text" [(ngModel)]="editForm.tags">
+            </div>
+         </div>
+         <div class="details-footer">
+            <button class="btn-cancel full" style="margin-bottom: 10px;" (click)="isEditing = false">Cancelar</button>
+            <button class="btn-save full" (click)="savePrefab()" [disabled]="isSaving">{{ isSaving ? 'Guardando...' : '💾 GUARDAR CAMBIOS' }}</button>
+         </div>
+      </aside>
       
-      <div class="item-label" [style.transform]="getInverseRotation(i)">
-        {{ item.name }}
-      </div>
+      <aside class="lib-details empty" *ngIf="!selectedItem">
+         <span class="icon">🔍</span>
+         <p>Selecciona un objeto para ver sus propiedades.</p>
+      </aside>
 
     </div>
   </div>
 
-  <div class="controls-hint">
-    <div class="hint"><kbd>Clic Izquierdo</kbd> Seleccionar</div>
-    <div class="hint"><kbd>Clic Derecho</kbd> Cerrar / Desequipar</div>
-  </div>
+  <!-- Datalists para autocompletado en Formulario -->
+  <datalist id="datalist-lib"><option *ngFor="let l of allLibraries" [value]="l"></option></datalist>
+  <datalist id="datalist-coll"><option *ngFor="let c of allCollections" [value]="c"></option></datalist>
+  <datalist id="datalist-cat"><option *ngFor="let c of allCategories" [value]="c"></option></datalist>
 
+  <!-- LIENZO FLOTANTE PARA EL PREVIEW 3D -->
+  <!-- Se utiliza display block pero la clase is-visible maneja la opacidad suave -->
+  <canvas #previewCanvas class="preview-canvas" [style.display]="isPreviewActive ? 'block' : 'none'" [class.is-visible]="isPreviewActive"></canvas>
+  
+  <button class="preview-reset-btn" *ngIf="isPreviewActive && !hoveredItem" (click)="resetPreviewCamera()" [ngStyle]="resetBtnStyle" title="Resetear Vista">
+     🎥 Reset Vista
+  </button>
 </div>

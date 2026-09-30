@@ -7,6 +7,7 @@ import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera
 import { EditorStateService } from './editor-state.service';
 import { Subscription } from 'rxjs';
 import { PrefabPlacementController } from './prefabs/prefab-placement.controller';
+import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
 
 @Injectable({ providedIn: 'root' })
 export class LiveBuilderService {
@@ -16,6 +17,7 @@ export class LiveBuilderService {
   private context = inject(GameContextService);
   private ownership = inject(CameraOwnershipService);
   private state = inject(EditorStateService);
+  private inputOrchestrator = inject(InputOrchestratorService);
 
   private sub: Subscription | null = null;
 
@@ -36,8 +38,15 @@ export class LiveBuilderService {
             }
 
             if (scene && camera) {
-                // 🔥 MODO EDITOR: Congelar la cámara del editor para que no gire mientras movemos el ratón
+                // 🔥 MODO EDITOR: Congelar la cámara del editor normal
                 this.detachEditorCamera();
+                
+                // 🔥 TRANSFERENCIA DE CONTROL ABSOLUTA (UI -> ESCENA 3D)
+                const canvas = this.motor3d.getEngine().getRenderingCanvas();
+                if (canvas) {
+                    canvas.focus();
+                    this.inputOrchestrator.lockPointer();
+                }
 
                 this.placementCtrl.start(
                     e.payload, 
@@ -46,7 +55,8 @@ export class LiveBuilderService {
                     () => {
                         // OnCancel / OnStop
                         this.eventBus.emit({ type: 'RadialMenuToggled', payload: false });
-                        this.restoreEditorCamera(); // Devolver el control a la cámara
+                        this.restoreEditorCamera(); 
+                        this.inputOrchestrator.unlockPointer(); // Liberar ratón
                     },
                     () => this.state.showAddObjectModal(),
                     () => this.context.activePlayerEntity()
@@ -71,6 +81,7 @@ export class LiveBuilderService {
   public stopBuilding(): void {
     if (this.placementCtrl.isBuilding) {
         this.placementCtrl.stop(this.motor3d.getScene());
+        this.inputOrchestrator.unlockPointer();
         this.restoreEditorCamera();
     }
   }

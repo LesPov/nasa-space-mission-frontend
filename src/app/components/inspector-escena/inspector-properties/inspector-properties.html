@@ -16,11 +16,12 @@
     <button class="tab-btn" [class.active]="pestanaActiva === 'world'" (click)="cambiarPestana('world')" title="Entorno Global">🌍</button>
     <button class="tab-btn" [class.active]="pestanaActiva === 'platform'" (click)="cambiarPestana('platform')" title="Configuración de Plataforma">🗺️</button>
     <button class="tab-btn" [class.active]="pestanaActiva === 'mission'" (click)="cambiarPestana('mission')" title="UI & Misión">📝</button>
+    <button class="tab-btn" [class.active]="pestanaActiva === 'prefabs'" (click)="cambiarPestana('prefabs')" title="Catálogo de Prefabs">📦</button>
     <button class="tab-btn" *ngIf="stateSvc.activeBottomTab() === 'director'" [class.active]="pestanaActiva === 'cinematic'" (click)="cambiarPestana('cinematic')" title="Cinemática">🎥</button>
   </div>
 
   <div class="prop-content-scroll">
-    <div class="panel-header" *ngIf="pestanaActiva !== 'world' && pestanaActiva !== 'platform' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic'">
+    <div class="panel-header" *ngIf="pestanaActiva !== 'world' && pestanaActiva !== 'platform' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic' && pestanaActiva !== 'prefabs'">
       <span>
         {{ pestanaActiva === 'transform' ? 'Transformación Básica' : '' }}
         {{ pestanaActiva === 'part' ? 'Propiedades de la Parte' : '' }}
@@ -57,6 +58,11 @@
       </div>
     </ng-container>
 
+    <ng-container *ngIf="pestanaActiva === 'prefabs'">
+      <div class="panel-header"><span>Catálogo de Prefabs</span><span class="status-pill">Assets</span></div>
+      <app-timeline-prefabs-tab></app-timeline-prefabs-tab>
+    </ng-container>
+
     <ng-container *ngIf="pestanaActiva === 'cinematic'">
       <app-cinematic-inspector
          [cinematic]="cinematicSvc.currentCinematic()"
@@ -78,15 +84,15 @@
       </div>
     </ng-container>
 
-    <div class="prop-body" *ngIf="objetoActual && pestanaActiva !== 'world' && pestanaActiva !== 'platform' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic'">
+    <div class="prop-body" *ngIf="objetoActual && pestanaActiva !== 'world' && pestanaActiva !== 'platform' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic' && pestanaActiva !== 'prefabs'">
       
-      <!-- 🔥 ROOT NAME RENAMING (Vinculado a entityName setter) -->
+      <!-- ROOT NAME RENAMING -->
       <div class="obj-title-bar" *ngIf="!esParte">
         <span class="icon">{{ esTrigger ? '📍' : (esLuz ? '💡' : (esBurbuja ? '🫧' : (esVideo ? '📺' : (esPersonaje ? '🧍' : '🧊')))) }}</span>
         <input type="text" [(ngModel)]="entityName" class="obj-name-input" />
       </div>
       
-      <!-- 🔥 PART RENAMING (Vinculado a partDisplayName setter) -->
+      <!-- PART RENAMING -->
       <div class="obj-title-bar" *ngIf="esParte" style="border-color: #3b82f6; background: rgba(59, 130, 246, 0.1); flex-wrap: wrap;">
         <div style="display: flex; align-items: center; gap: 10px; width: 100%;">
           <span class="icon" style="color: #60a5fa;">🧩</span>

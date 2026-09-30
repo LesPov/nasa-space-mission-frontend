@@ -1,8 +1,9 @@
 
 <!-- src/app/pages/player/juego-pantalla/juego-pantalla.html -->
 
+<!-- 🔥 FIX PUNTERO AMARILLO: Aparece en FPS de juego, y ahora también en Editor Libre bajo Placement -->
 <div class="crosshair-ui" 
-     *ngIf="gameSession.isPlaying() && gameSession.pointerLocked() && gameSession.cameraView() === 'FPS'" 
+     *ngIf="(gameSession.isPlaying() && gameSession.pointerLocked() && gameSession.cameraView() === 'FPS') || (gameContext.executionContext() === 'EDITOR' && gameContext.isPointerLocked())" 
      [class.hovering]="hoveredMesh() !== null">
 </div>
 

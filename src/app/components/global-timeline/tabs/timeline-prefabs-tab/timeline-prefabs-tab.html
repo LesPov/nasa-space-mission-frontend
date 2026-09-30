@@ -1,64 +1,44 @@
 
-<div class="prefabs-layout">
-  <!-- COLUMNA IZQUIERDA: LISTA DE PREFABS -->
-  <div class="prefabs-main">
-    <div class="toolbar">
-      <input type="text" placeholder="🔍 Buscar Prefab por nombre..." [(ngModel)]="searchTerm" (input)="filterPrefabs()" class="search-input">
-      <button class="btn-refresh" (click)="loadPrefabs()" title="Actualizar lista">🔄</button>
+<div class="search-bar">
+  <input type="text" placeholder="🔍 Buscar prefabs..." [(ngModel)]="searchQuery" (input)="onSearchChange($event)">
+</div>
+
+<div class="filters" *ngIf="!isSearching">
+  <select [(ngModel)]="activeLibraryName" (change)="onLibraryChange()">
+    <option *ngFor="let lib of libraries" [value]="lib.name">{{ lib.name }}</option>
+  </select>
+  <select [(ngModel)]="activeCollectionName" (change)="onCollectionChange()" *ngIf="activeLibrary">
+    <option *ngFor="let col of activeLibrary.collections" [value]="col.name">{{ col.name }}</option>
+  </select>
+  <select [(ngModel)]="activeCategoryName" (change)="onCategoryChange()" *ngIf="activeCollection">
+    <option *ngFor="let cat of activeCollection.categories" [value]="cat.name">{{ cat.name }} ({{ cat.items.length }})</option>
+  </select>
+</div>
+
+<div class="grid-area">
+  <div class="asset-card" 
+       *ngFor="let item of displayItems" 
+       [class.selected]="selectedItem === item"
+       (click)="selectItem(item)">
+    <div class="card-preview" [style.background-image]="item.thumbnailUrl && !item.type.startsWith('light_') ? 'url(http://localhost:4000' + item.thumbnailUrl + ')' : 'none'">
+      <span class="card-icon" *ngIf="!item.thumbnailUrl || item.type.startsWith('light_')">{{ item.icon }}</span>
     </div>
-    
-    <div class="grid">
-      <div class="prefab-card" 
-           *ngFor="let p of filteredPrefabs" 
-           [class.selected]="selectedPrefab?.id === p.id"
-           (click)="selectPrefab(p)">
-         <div class="icon">📦</div>
-         <div class="name" [title]="p.name">{{ p.name }}</div>
-      </div>
-      
-      <div *ngIf="filteredPrefabs.length === 0 && !cargando" class="empty-state">
-        No se encontraron prefabs. Selecciona un objeto en la escena y usa el Inspector para guardarlo como Prefab.
-      </div>
-      <div *ngIf="cargando" class="empty-state" style="color: #60a5fa;">
-        Cargando biblioteca de prefabs...
-      </div>
-    </div>
-  </div>
-
-  <!-- COLUMNA DERECHA: MINI INSPECTOR DE PREFAB -->
-  <div class="prefab-inspector" *ngIf="selectedPrefab">
-    <div class="inspector-header">
-      <button class="btn-close" (click)="selectedPrefab = null">×</button>
-      <h3>{{ selectedPrefab.name }}</h3>
-      <span>ID: {{ selectedPrefab.id }}</span>
-    </div>
-    
-    <div class="inspector-body">
-      
-      <div class="info-box">
-        <h4>Resumen de Componentes</h4>
-        <div class="badge-list">
-           <span class="badge" *ngFor="let badge of getResumen(selectedPrefab)">{{ badge }}</span>
-        </div>
-      </div>
-
-      <div class="info-box" *ngIf="selectedPrefab.type">
-        <h4>Base Geometry</h4>
-        <div style="font-size: 11px; color: #aaa;">
-          Tipo: <strong style="color: #fff;">{{ selectedPrefab.type }}</strong>
-        </div>
-      </div>
-
-      <div style="flex: 1;"></div> <!-- Empuja los botones hacia abajo -->
-
-      <button class="btn-action btn-spawn" (click)="instanciarEnEscena(selectedPrefab)">
-        ➕ Instanciar en Escena
-      </button>
-
-      <button class="btn-action btn-delete" (click)="eliminarPrefab(selectedPrefab.id)">
-        🗑️ Eliminar Prefab
-      </button>
-
+    <div class="card-info">
+      <div class="card-type">{{ item.displayType }}</div>
+      <div class="card-name" [title]="item.name">{{ item.name }}</div>
     </div>
   </div>
+  
+  <div *ngIf="displayItems.length === 0" style="grid-column: 1/-1; text-align: center; color: #64748b; padding: 20px; font-size: 11px; font-style: italic;">
+    No se encontraron prefabs.
+  </div>
+</div>
+
+<div class="selected-panel" *ngIf="selectedItem">
+  <div class="selected-header">
+    <h4 [title]="selectedItem.name">{{ selectedItem.name }}</h4>
+    <button style="background: transparent; border: none; color: #94a3b8; cursor: pointer;" (click)="selectedItem = null">✕</button>
+  </div>
+  <p style="margin: 0; font-size: 10px; color: #94a3b8;">{{ selectedItem.displayType }} | ID: {{ selectedItem.id }}</p>
+  <button class="btn-place" (click)="placeItem()">🔨 INSTANCIAR / COLOCAR</button>
 </div>

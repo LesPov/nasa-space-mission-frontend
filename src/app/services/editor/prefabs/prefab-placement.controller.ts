@@ -2,7 +2,7 @@
 import { Injectable, inject } from '@angular/core';
 import { 
   Scene, Vector3, Matrix, AbstractMesh, Ray, 
-  KeyboardEventTypes, PointerEventTypes
+  KeyboardEventTypes, PointerEventTypes, ArcRotateCamera
 } from '@babylonjs/core';
 import { GhostRendererService } from './ghost-renderer.service';
 import { EditorSceneService } from '../editor-scene.service';
@@ -38,14 +38,11 @@ export class PrefabPlacementController {
   private isAltPressed = false;
   private isGPressed = false;
   private isFPressed = false;
-  private isShiftPressed = false; // 🔥 NUEVO: Ajuste fino
+  private isShiftPressed = false; 
   private buildDistance = 15;
 
-  // 🔥 Control de Ajuste Manual
   private activeNudgeAxis: 'X' | 'Y' | 'Z' | null = null;
   private manualOffset = Vector3.Zero();
-
-  // 🔥 Control indexado para la rueda del ratón
   private ghostConnIndex = -1; 
 
   private targetPosition = Vector3.Zero();
@@ -57,6 +54,15 @@ export class PrefabPlacementController {
   
   private targetParent: AbstractMesh | null = null;
   private currentColor: 'green' | 'yellow' | 'blue' | 'red' = 'green';
+
+  // 🔥 Controles de Navegación Free Fly
+  private keys = { w: false, a: false, s: false, d: false, space: false, c: false };
+  private preventContextMenu = (e: Event) => e.preventDefault();
+
+  // 🔥 Variables para inyección temporal FPS sobre ArcRotateCamera
+  private originalRadius: number = 10;
+  private flyYaw = 0;
+  private flyPitch = 0;
 
   public async start(asset: any, scene: Scene, camera: any, onCancel: () => void, isModalOpenFn: () => boolean, activePlayerFn: () => GameEntity | null) {
     this.stop(scene);
@@ -79,7 +85,25 @@ export class PrefabPlacementController {
     this.activeNudgeAxis = null;
     this.manualOffset.setAll(0);
     this.buildDistance = 15;
-    this.ghostConnIndex = -1; // -1 = Modo Automático
+    this.ghostConnIndex = -1; 
+    
+    this.keys = { w: false, a: false, s: false, d: false, space: false, c: false };
+    
+    // 🔥 Setup de la cámara para que actúe como una Free Fly (FPS) pura
+    if (this.camera && this.camera.getClassName() === 'ArcRotateCamera') {
+        const arcCam = this.camera as ArcRotateCamera;
+        this.originalRadius = arcCam.radius;
+        
+        // Inicializamos nuestro pitch/yaw basados en la dirección actual
+        const forward = arcCam.getDirection(Vector3.Forward());
+        this.flyPitch = Math.asin(forward.y); 
+        this.flyYaw = Math.atan2(forward.z, forward.x); 
+        
+        // Acercamos el target a la nariz de la cámara (convirtiéndola virtualmente en un First Person View)
+        arcCam.setTarget(arcCam.position.add(forward.scale(0.05)));
+    }
+
+    window.addEventListener('contextmenu', this.preventContextMenu);
 
     let sx = 1, sy = 1, sz = 1;
     const rootItem = asset.properties?.prefabHierarchy?.[0] || asset;
@@ -102,56 +126,105 @@ export class PrefabPlacementController {
     if (!this.isBuilding) return; 
 
     this.ghostRenderer.setTransform(this.targetPosition, this.targetRotation, this.ghostScale);
-    this.updateHUD(); // 🔥 NUEVO: Mostrar UI Inicial
+    this.updateHUD(); 
 
     this.kbSub = this.inputRouter.getKeyboardStream(['EDITOR_EDITING', 'EDITOR_PLAYTEST', 'ADMIN_PREVIEW']).subscribe((kbInfo) => {
       if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
+        const code = kbInfo.event.code;
+        const key = kbInfo.event.key.toLowerCase();
+
+        if (code === 'KeyW' || key === 'w') this.keys.w = true;
+        if (code === 'KeyA' || key === 'a') this.keys.a = true;
+        if (code === 'KeyS' || key === 's') this.keys.s = true;
+        if (code === 'KeyD' || key === 'd') this.keys.d = true;
+        if (code === 'Space' || key === ' ') this.keys.space = true;
+        if ((code === 'KeyC' || key === 'c') && !this.activeNudgeAxis) this.keys.c = true;
+        
         if (kbInfo.event.key === 'Alt') this.isAltPressed = true;
         if (kbInfo.event.key === 'Shift') this.isShiftPressed = true;
-        if (kbInfo.event.key.toLowerCase() === 'g') this.isGPressed = true;
-        if (kbInfo.event.key.toLowerCase() === 'f') this.isFPressed = true;
+        if (key === 'g') this.isGPressed = true;
+        if (key === 'f') this.isFPressed = true;
+        
         if (kbInfo.event.key === 'Escape') this.cancelBuild();
         
-        // 🔥 NUEVO: Selección de Ejes y Limpieza
-        if (kbInfo.event.key.toLowerCase() === 'x') { this.activeNudgeAxis = this.activeNudgeAxis === 'X' ? null : 'X'; this.updateHUD(); }
-        if (kbInfo.event.key.toLowerCase() === 'y') { this.activeNudgeAxis = this.activeNudgeAxis === 'Y' ? null : 'Y'; this.updateHUD(); }
-        if (kbInfo.event.key.toLowerCase() === 'z') { this.activeNudgeAxis = this.activeNudgeAxis === 'Z' ? null : 'Z'; this.updateHUD(); }
-        if (kbInfo.event.key.toLowerCase() === 'c') { this.manualOffset.setAll(0); this.updateHUD(); }
+        if (key === 'x') { this.activeNudgeAxis = this.activeNudgeAxis === 'X' ? null : 'X'; this.updateHUD(); }
+        if (key === 'y') { this.activeNudgeAxis = this.activeNudgeAxis === 'Y' ? null : 'Y'; this.updateHUD(); }
+        if (key === 'z') { this.activeNudgeAxis = this.activeNudgeAxis === 'Z' ? null : 'Z'; this.updateHUD(); }
+        if (key === 'c' && this.activeNudgeAxis) { this.manualOffset.setAll(0); this.updateHUD(); }
 
-        // 🔥 FIX ROTACIÓN: Devuelve el control a Automático (-1) para que el algoritmo busque el encaje perfecto con la nueva base 
-        if (kbInfo.event.key.toLowerCase() === 'r' && !kbInfo.event.repeat) {
+        if (key === 'r' && !kbInfo.event.repeat) {
           this.baseRotation.y += Math.PI / 2; 
           this.ghostConnIndex = -1; 
           this.updateHUD();
         }
       } else if (kbInfo.type === KeyboardEventTypes.KEYUP) {
+        const code = kbInfo.event.code;
+        const key = kbInfo.event.key.toLowerCase();
+
+        if (code === 'KeyW' || key === 'w') this.keys.w = false;
+        if (code === 'KeyA' || key === 'a') this.keys.a = false;
+        if (code === 'KeyS' || key === 's') this.keys.s = false;
+        if (code === 'KeyD' || key === 'd') this.keys.d = false;
+        if (code === 'Space' || key === ' ') this.keys.space = false;
+        if (code === 'KeyC' || key === 'c') this.keys.c = false;
+        
         if (kbInfo.event.key === 'Alt') {
             this.isAltPressed = false;
-            this.ghostConnIndex = -1; // Resetear anclaje manual al soltar
-            this.ghostRenderer.updateDebugVisuals(false); // Ocultar debug points
+            this.ghostConnIndex = -1; 
+            this.ghostRenderer.updateDebugVisuals(false); 
             this.updateHUD();
         }
         if (kbInfo.event.key === 'Shift') this.isShiftPressed = false;
-        if (kbInfo.event.key.toLowerCase() === 'g') this.isGPressed = false;
-        if (kbInfo.event.key.toLowerCase() === 'f') this.isFPressed = false;
+        if (key === 'g') this.isGPressed = false;
+        if (key === 'f') this.isFPressed = false;
       }
     });
 
     this.ptrSub = this.inputRouter.getPointerStream(['EDITOR_EDITING', 'EDITOR_PLAYTEST', 'ADMIN_PREVIEW']).subscribe((pi) => {
-      if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
-        if (!this.isModalOpenFn()) this.buildPrefab();
+      if (pi.type === PointerEventTypes.POINTERDOWN) {
+        if (pi.event.button === 0) {
+          if (!this.isModalOpenFn()) this.buildPrefab();
+        } else if (pi.event.button === 2) {
+          this.cancelBuild();
+        }
       }
-      if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 2) {
-        this.cancelBuild();
+      
+      if (pi.type === PointerEventTypes.POINTERMOVE) {
+        // 🔥 FREE FLY MOUSE LOOK EXACTO Y PRECISO
+        if (this.gameContext.isPointerLocked() && this.camera && this.camera.getClassName() === 'ArcRotateCamera') {
+           const arcCam = this.camera as ArcRotateCamera;
+           const sens = 0.003;
+           const moveX = pi.event.movementX || (pi.event as any).mozMovementX || (pi.event as any).webkitMovementX || 0;
+           const moveY = pi.event.movementY || (pi.event as any).mozMovementY || (pi.event as any).webkitMovementY || 0;
+           
+           this.flyYaw -= moveX * sens;
+           this.flyPitch -= moveY * sens;
+           
+           // Limitar el cabeceo para que no gire el cuello al revés
+           const halfPi = Math.PI / 2 - 0.01;
+           if (this.flyPitch < -halfPi) this.flyPitch = -halfPi;
+           if (this.flyPitch > halfPi) this.flyPitch = halfPi;
+           
+           const r = Math.cos(this.flyPitch);
+           const dir = new Vector3(
+              r * Math.cos(this.flyYaw),
+              Math.sin(this.flyPitch),
+              r * Math.sin(this.flyYaw)
+           );
+           
+           // Rotar manteniendo el pivot firmemente pegado a la cámara actual
+           const currentPos = arcCam.position.clone();
+           arcCam.setTarget(currentPos.add(dir.scale(0.05)));
+        }
       }
+
       if (pi.type === PointerEventTypes.POINTERWHEEL) {
         const event = pi.event as WheelEvent;
-        const dir = Math.sign(event.deltaY) * -1; // -1 invierte para que wheel up = positivo
+        const dir = Math.sign(event.deltaY) * -1; 
         
-        // 🔥 LÓGICA DE CONTROL MANUAL DE OFFSET (Prioridad Máxima si hay eje activo)
         if (this.activeNudgeAxis) {
             event.preventDefault();
-            const step = this.isShiftPressed ? 0.05 : 0.5; // Ajuste Fino / Ajuste Normal (Metros)
+            const step = this.isShiftPressed ? 0.05 : 0.5; 
             const amount = dir * step;
             
             if (this.activeNudgeAxis === 'X') this.manualOffset.x += amount;
@@ -175,19 +248,54 @@ export class PrefabPlacementController {
     });
   }
 
-  // 🔥 NUEVO: Función para mantener el HUD sincronizado con el estado
   private updateHUD() {
     let msg = '';
     if (this.activeNudgeAxis) {
         msg = `⚙️ EJE [${this.activeNudgeAxis}] ACTIVO | Offset: (${this.manualOffset.x.toFixed(2)}, ${this.manualOffset.y.toFixed(2)}, ${this.manualOffset.z.toFixed(2)}) | [Wheel] Ajustar | [Shift] Fino | [C] Reset Offset | [X/Y/Z] Salir`;
     } else {
-        msg = `Construcción: [Clic] Colocar | [Clic Der] Cancelar | [F] Suelo | [ALT] Unir | [X/Y/Z] Mover Manual | [R] Rotar`;
+        msg = `[Click] Instanciar | [Click Der / ESC] Cancelar | [Mouse] Mirar | [WASD] Volar | [Espacio/C] Subir/Bajar | [F] Suelo | [ALT] Unir | [X/Y/Z] Offset | [R] Rotar`;
     }
     
     this.eventBus.emit({ 
         type: 'MessageRequested', 
         payload: { text: msg, durationMs: 999999 } 
     });
+  }
+
+  private handleCameraMovement() {
+    if (!this.camera || this.camera.getClassName() !== 'ArcRotateCamera') return;
+    const arcCam = this.camera as ArcRotateCamera;
+    const engine = this.scene!.getEngine();
+    
+    let dt = engine.getDeltaTime() / 1000;
+    if (dt > 0.1) dt = 0.1; // Clamp de estabilidad
+    
+    const speed = this.isShiftPressed ? 30 * dt : 12 * dt;
+
+    const moveVector = Vector3.Zero();
+    const forward = arcCam.getDirection(Vector3.Forward());
+    const right = arcCam.getDirection(Vector3.Right());
+
+    if (this.keys.w) moveVector.addInPlace(forward);
+    if (this.keys.s) moveVector.addInPlace(forward.scale(-1));
+    if (this.keys.d) moveVector.addInPlace(right);
+    if (this.keys.a) moveVector.addInPlace(right.scale(-1));
+    if (this.keys.space) moveVector.addInPlace(Vector3.Up());
+    if (this.keys.c) moveVector.addInPlace(Vector3.Down());
+
+    if (moveVector.lengthSquared() > 0) {
+      moveVector.normalize().scaleInPlace(speed);
+      
+      // 🔥 FREE FLY REAL: Trasladar el objetivo (target) mutando directamente el Vector.
+      // Al NO usar el método setTarget(), BabylonJS no recalcula el Alpha ni el Beta.
+      // Como resultado, en el siguiente refresco de la matriz, la cámara entera 
+      // (posición incluida) se trasladará rígidamente conservando la misma orientación.
+      arcCam.getTarget().addInPlace(moveVector);
+      
+      // Forzamos actualización de matriz para que los rayos (placement) y el ghost 
+      // utilicen la nueva posición inmediatamente en este mismo frame.
+      arcCam.getViewMatrix();
+    }
   }
 
   private cancelBuild() {
@@ -197,6 +305,8 @@ export class PrefabPlacementController {
 
   private updatePlacementLogic() {
     if (!this.scene || !this.camera || this.isModalOpenFn()) return;
+
+    this.handleCameraMovement();
 
     let ray: Ray;
     if (this.gameContext.isPointerLocked()) {
@@ -214,7 +324,7 @@ export class PrefabPlacementController {
         this.isAltPressed, this.isGPressed, this.isFPressed, this.buildDistance,
         this.ghostConnIndex,
         () => this.ghostRenderer.getLocalBoundingBox(),
-        this.manualOffset // 🔥 Pasamos el Offset al calculador
+        this.manualOffset 
     );
 
     this.targetPosition = result.position;
@@ -233,7 +343,7 @@ export class PrefabPlacementController {
 
     const asset = this.currentAsset;
     const pos = this.targetPosition.clone();
-    const rot = this.targetRotation.clone(); // 🔥 Se guarda la rotación combinada final
+    const rot = this.targetRotation.clone(); 
     const parent = asset.targetParent !== undefined ? asset.targetParent : this.targetParent;
 
     if (asset.properties?.prefabHierarchy) {
@@ -256,6 +366,15 @@ export class PrefabPlacementController {
         this.eventBus.emit({ type: 'MessageRequested', payload: null });
     }
     
+    // Restaurar la cámara al orbit mode para el editor normal
+    if (this.camera && this.camera.getClassName() === 'ArcRotateCamera') {
+        const arcCam = this.camera as ArcRotateCamera;
+        const forward = arcCam.getDirection(Vector3.Forward());
+        arcCam.setTarget(arcCam.position.add(forward.scale(this.originalRadius || 10)));
+    }
+    
+    window.removeEventListener('contextmenu', this.preventContextMenu);
+
     this.isBuilding = false;
     this.ghostRenderer.destroyGhost();
     this.currentAsset = null;
@@ -269,4 +388,3 @@ export class PrefabPlacementController {
     this.targetParent = null;
   }
 }
-

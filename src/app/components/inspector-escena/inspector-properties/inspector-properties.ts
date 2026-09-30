@@ -1,7 +1,7 @@
 
 import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, effect, Input, Output, EventEmitter, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { FormsModule } from '@angular/forms'; // 🔥 FIX NG8002: Requerido para ngModel bidireccional
+import { FormsModule } from '@angular/forms';
 import { AbstractMesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { auditTime } from 'rxjs/operators';
@@ -32,13 +32,14 @@ import { PropMission } from './prop-mission/prop-mission';
 import { CinematicInspector } from '../../global-timeline/tabs/timeline-director-tab/cinematic-inspector/cinematic-inspector/cinematic-inspector';
 import { PropPlatform } from './prop-platform/prop-platform';
 import { PropPart } from './prop-part/prop-part';
+import { TimelinePrefabsTab } from '../../global-timeline/tabs/timeline-prefabs-tab/timeline-prefabs-tab';
  
 @Component({
   selector: 'app-inspector-properties',
   standalone: true,
   imports: [
     CommonModule, FormsModule, PropTransform, PropTrigger, PropPlayer, PropSequences, 
-    PropAnimation, PropPhysics, PropWorld, PropPlatform, PropLight, PropBubble, PropVideo, PropMission, CinematicInspector, PropPart
+    PropAnimation, PropPhysics, PropWorld, PropPlatform, PropLight, PropBubble, PropVideo, PropMission, CinematicInspector, PropPart, TimelinePrefabsTab
   ],
   templateUrl: './inspector-properties.html',
   styleUrl: './inspector-properties.css'
@@ -80,7 +81,6 @@ export class InspectorProperties implements OnInit, OnDestroy {
 
   public sceneEntities = computed(() => this.entityManager.getAllEntities().map(e => ({uid: e.uid, name: e.name})).sort((a,b)=>a.name.localeCompare(b.name)));
 
-  // 🔥 FIX RENOMBRAR PARTE: Getters y Setters reactivos que abstraen el ID interno (mesh.name) del Nombre Visible (displayName)
   get partDisplayName(): string {
     if (!this.esParte || !this.objetoActual || !this.rootEntityForPart) return '';
     const override = this.rootEntityForPart.partOverrides?.overrides[this.objetoActual.name];
@@ -105,7 +105,6 @@ export class InspectorProperties implements OnInit, OnDestroy {
     this.editorMapa.onMapChanged.next();
   }
 
-  // 🔥 FIX RENOMBRAR RAÍZ:
   get entityName(): string {
     if (!this.objetoActual) return '';
     const entity = this.entityManager.getEntityByMesh(this.objetoActual);
@@ -187,7 +186,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
         this.esVideo = false;
         this.familiaResumen = 'Sin selección';
         
-        if (this.pestanaActiva !== 'world' && this.pestanaActiva !== 'platform' && this.pestanaActiva !== 'mission' && this.pestanaActiva !== 'cinematic') {
+        if (this.pestanaActiva !== 'world' && this.pestanaActiva !== 'platform' && this.pestanaActiva !== 'mission' && this.pestanaActiva !== 'cinematic' && this.pestanaActiva !== 'prefabs') {
           if (this.stateSvc.activeBottomTab() === 'director') {
               this.cambiarPestana('cinematic');
           } else {

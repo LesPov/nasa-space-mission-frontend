@@ -23,6 +23,7 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
     entity.transform.scale = { x: scaleX !== 0 ? scaleX : 1, y: scaleY !== 0 ? scaleY : 1, z: scaleZ !== 0 ? scaleZ : 1 };
 
     entity.parentId = obj.parentId || null;
+    entity.transformSpace = props.transformSpace || 'LOCAL';
     
     entity.visual.color = props.color?.substring(0, 7) || (entity.type === 'model' ? '#ffffff' : '#888888');
     entity.visual.colorBW = props.colorBW?.substring(0, 7) || entity.visual.color;
@@ -37,13 +38,12 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
     entity.visual.brilloIntensidad = this.utilsSvc.normalizarNumero(props.brilloIntensidad, 1.0);
     entity.visual.mostrarBorde = props.mostrarBorde ?? (entity.type !== 'plane'); 
     
-    // 🔥 FIX: Permite hidratar el path desde la raíz del objeto para luces antiguas
     entity.visual.path = props.path || obj.asset?.path || (obj as any).path || props.videoUrl || props.imageUrl || '';
     entity.visual.assetId = obj.assetId || null;
     
     entity.visual.internalScale = props.internalScale;
     
-    entity.partOverrides = new PartOverridesComponent(props.partOverrides || {}); // 🔥 Carga de DB a Memoria
+    entity.partOverrides = new PartOverridesComponent(props.partOverrides || {}); 
 
     entity.interaction.mensaje = props.mensaje || '';
     entity.interaction.interactDistanceFPS = this.utilsSvc.normalizarNumero(props.interactDistanceFPS, 3.0);
@@ -82,6 +82,7 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
   extractEntityProperties(entity: GameEntity): Partial<SceneObjectPropertiesDto> {
     return {
       rol: entity.characterConfig ? entity.characterConfig.characterType : entity.rol,
+      transformSpace: entity.transformSpace,
       color: entity.visual.color,
       colorBW: entity.visual.colorBW,
       ambientColor: entity.visual.ambientColor,
@@ -93,7 +94,7 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
       mostrarBorde: entity.visual.mostrarBorde,
       brilloIntensidad: entity.visual.brilloIntensidad,
       internalScale: entity.visual.internalScale,
-      partOverrides: entity.partOverrides?.overrides, // 🔥 Extracción a DTO para guardado BD
+      partOverrides: entity.partOverrides?.overrides, 
       mensaje: entity.interaction.mensaje,
       interactDistanceFPS: entity.interaction.interactDistanceFPS,
       interactDistanceTPS: entity.interaction.interactDistanceTPS,

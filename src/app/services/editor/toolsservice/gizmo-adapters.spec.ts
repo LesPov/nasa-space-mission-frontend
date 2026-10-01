@@ -6,8 +6,7 @@ import { CameraGizmoAdapter } from './adapters/camera-gizmo.adapter';
 import { ColliderGizmoAdapter } from './adapters/collider-gizmo.adapter';
 import { FogGizmoAdapter } from './adapters/fog-gizmo.adapter';
 import { GizmoAdapterRegistryService } from './adapters/gizmo-adapter-registry.service';
-import { LightGizmoAdapter } from './adapters/light-gizmo.adapter';
- 
+
 describe('Gizmo Target Adapter System (Fase 8)', () => {
   let registry: GizmoAdapterRegistryService;
   let entity: GameEntity;
@@ -19,19 +18,16 @@ describe('Gizmo Target Adapter System (Fase 8)', () => {
   });
 
   it('1. Debe registrar y resolver los adaptadores correctamente según subSelected', () => {
-    const baseAdapter = registry.getAdapter(null, entity);
+    const baseAdapter = registry.getAdapter(null, entity, null);
     expect(baseAdapter).toBeInstanceOf(BaseEntityGizmoAdapter);
 
-    const colliderAdapter = registry.getAdapter('collider', entity);
+    const colliderAdapter = registry.getAdapter('collider', entity, null);
     expect(colliderAdapter).toBeInstanceOf(ColliderGizmoAdapter);
 
-    const cameraAdapter = registry.getAdapter('camera', entity);
+    const cameraAdapter = registry.getAdapter('camera', entity, null);
     expect(cameraAdapter).toBeInstanceOf(CameraGizmoAdapter);
 
-    const lightAdapter = registry.getAdapter('light', entity);
-    expect(lightAdapter).toBeInstanceOf(LightGizmoAdapter);
-
-    const fogAdapter = registry.getAdapter('fog', entity);
+    const fogAdapter = registry.getAdapter('fog', entity, null);
     expect(fogAdapter).toBeInstanceOf(FogGizmoAdapter);
   });
 

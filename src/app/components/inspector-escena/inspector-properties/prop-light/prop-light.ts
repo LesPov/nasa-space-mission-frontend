@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { AbstractMesh, TransformNode } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
+import { EditorStateService } from '../../../../services/editor/editor-state.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
 
@@ -24,6 +25,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   @Input() objeto!: AbstractMesh;
 
   private editorSvc = inject(EditorMapaService);
+  private stateSvc = inject(EditorStateService);
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
@@ -70,9 +72,12 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   private getAllAttachableNodes(): Array<TransformNode | AbstractMesh> {
     if (!this.objeto) return [];
 
+    const root = this.stateSvc.encontrarRaiz(this.objeto);
+    if (!root) return [];
+
     const nodes = [
-      ...(this.objeto.getChildTransformNodes(false) || []),
-      ...(this.objeto.getChildMeshes(false) || [])
+      ...(root.getChildren(undefined, false).filter((node): node is TransformNode => node instanceof TransformNode) || []),
+      ...(root.getChildMeshes(false) || [])
     ] as Array<TransformNode | AbstractMesh>;
 
     const unique = new Map<string, TransformNode | AbstractMesh>();
@@ -88,6 +93,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   private buildNodePath(node: any): string {
     const parts: string[] = [];
     let current: any = node;
+    const root = this.stateSvc.encontrarRaiz(this.objeto);
 
     while (current) {
       if (current.name) {
@@ -95,8 +101,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       }
 
       const parent: any = current.parent;
-      if (!parent || parent === this.objeto) {
-        if (parent && parent !== this.objeto && parent.name) {
+      if (!parent || parent === root) {
+        if (parent && parent !== root && parent.name) {
           parts.unshift(parent.name);
         }
         break;
@@ -200,6 +206,21 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (entity && entity.light) {
+      
+      // 🔥 FIX ARQUITECTÓNICO: Si hay un objetivo, reparentamos nativamente en BabylonJS
+      if (targetNode && targetNode instanceof AbstractMesh) {
+         if (this.objeto.parent !== targetNode) {
+             this.objeto.setParent(targetNode);
+             entity.syncTransformFromView();
+         }
+      } else {
+         const root = this.stateSvc.encontrarRaiz(this.objeto);
+         if (root && root !== this.objeto && this.objeto.parent !== root) {
+             this.objeto.setParent(root as AbstractMesh);
+             entity.syncTransformFromView();
+         }
+      }
+
       entity.light.lightColor = this.lightColor;
       entity.light.lightColorBW = this.lightColorBW;
       entity.light.intensity = this.intensity;

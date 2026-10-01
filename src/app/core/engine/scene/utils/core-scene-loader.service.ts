@@ -1,5 +1,6 @@
+
 import { Injectable, inject } from '@angular/core';
-import { Mesh, Vector3, MeshBuilder, Tags, AbstractMesh } from '@babylonjs/core';
+import { Mesh, Vector3, MeshBuilder, Tags, AbstractMesh, Quaternion } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { CoreSceneUtilsService } from './core-scene-utils.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
@@ -128,7 +129,44 @@ export class CoreSceneLoaderService {
       const entity = this.entityManager.getEntityByUid(uid);
       if (entity && entity.parentId) {
         const parentNode = mallasCreadas.get(entity.parentId) || scene.getMeshByName(entity.parentId);
-        if (parentNode) mesh.setParent(parentNode);
+        
+        // 🔥 FASE 4: Aisla las luces World Space del árbol de transformaciones
+        if (entity.transformSpace === 'WORLD') {
+           if (parentNode && entity.isLegacyLocalTransform) {
+               // Migración Legacy Local a World Absoluta
+               const localPos = new Vector3(entity.transform.position.x, entity.transform.position.y, entity.transform.position.z);
+               parentNode.computeWorldMatrix(true);
+               const worldPos = Vector3.TransformCoordinates(localPos, parentNode.getWorldMatrix());
+               
+               let worldRotEuler = new Vector3(entity.transform.rotation.x, entity.transform.rotation.y, entity.transform.rotation.z);
+               if (entity.transform.rotationQuaternion) {
+                   worldRotEuler = new Quaternion(entity.transform.rotationQuaternion.x, entity.transform.rotationQuaternion.y, entity.transform.rotationQuaternion.z, entity.transform.rotationQuaternion.w).toEulerAngles();
+               }
+               const localQuat = Quaternion.FromEulerAngles(worldRotEuler.x, worldRotEuler.y, worldRotEuler.z);
+               const parentQuat = Quaternion.FromRotationMatrix(parentNode.getWorldMatrix().getRotationMatrix());
+               const worldQuat = parentQuat.multiply(localQuat);
+               const finalEuler = worldQuat.toEulerAngles();
+
+               mesh.position.copyFrom(worldPos);
+               entity.transform.position = { x: worldPos.x, y: worldPos.y, z: worldPos.z };
+               
+               if (mesh.rotationQuaternion) {
+                   mesh.rotationQuaternion.copyFrom(worldQuat);
+                   entity.transform.rotationQuaternion = { x: worldQuat.x, y: worldQuat.y, z: worldQuat.z, w: worldQuat.w };
+               } else {
+                   mesh.rotation.copyFrom(finalEuler);
+                   entity.transform.rotation = { x: finalEuler.x, y: finalEuler.y, z: finalEuler.z };
+               }
+               
+               entity.isLegacyLocalTransform = false;
+               entity.syncToView(); 
+           }
+        } else {
+           if (parentNode) {
+               mesh.setParent(parentNode);
+               entity.syncTransformFromView();
+           }
+        }
       }
     });
 
@@ -221,8 +259,6 @@ export class CoreSceneLoaderService {
         if (isRoot) {
             finalPos = { x: positionTarget.x, y: positionTarget.y, z: positionTarget.z };
             if (rotationEuler) finalRot = { x: rotationEuler.x, y: rotationEuler.y, z: rotationEuler.z };
-            // 🔥 FASE 2 FIX: Aplicar la escala deseada directamente, sin multiplicar por la escala nativa
-            // para evitar el crecimiento cuadrático (30 -> 900) o la reducción extrema (0.003 -> 0.000009)
             if (scale) finalScale = { x: scale.x, y: scale.y, z: scale.z };
         }
 
@@ -256,9 +292,41 @@ export class CoreSceneLoaderService {
         const entity = this.entityManager.getEntityByUid(uid);
         if (entity && entity.parentId) {
             const parentMesh = mallasCreadas.get(entity.parentId) || this.motor3d.getScene().getMeshByName(entity.parentId);
-            if (parentMesh) {
-                mesh.setParent(parentMesh);
-                entity.syncTransformFromView();
+            
+            if (entity.transformSpace === 'WORLD') {
+               if (parentMesh && entity.isLegacyLocalTransform) {
+                   const localPos = new Vector3(entity.transform.position.x, entity.transform.position.y, entity.transform.position.z);
+                   parentMesh.computeWorldMatrix(true);
+                   const worldPos = Vector3.TransformCoordinates(localPos, parentMesh.getWorldMatrix());
+                   
+                   let worldRotEuler = new Vector3(entity.transform.rotation.x, entity.transform.rotation.y, entity.transform.rotation.z);
+                   if (entity.transform.rotationQuaternion) {
+                       worldRotEuler = new Quaternion(entity.transform.rotationQuaternion.x, entity.transform.rotationQuaternion.y, entity.transform.rotationQuaternion.z, entity.transform.rotationQuaternion.w).toEulerAngles();
+                   }
+                   const localQuat = Quaternion.FromEulerAngles(worldRotEuler.x, worldRotEuler.y, worldRotEuler.z);
+                   const parentQuat = Quaternion.FromRotationMatrix(parentMesh.getWorldMatrix().getRotationMatrix());
+                   const worldQuat = parentQuat.multiply(localQuat);
+                   const finalEuler = worldQuat.toEulerAngles();
+
+                   mesh.position.copyFrom(worldPos);
+                   entity.transform.position = { x: worldPos.x, y: worldPos.y, z: worldPos.z };
+                   
+                   if (mesh.rotationQuaternion) {
+                       mesh.rotationQuaternion.copyFrom(worldQuat);
+                       entity.transform.rotationQuaternion = { x: worldQuat.x, y: worldQuat.y, z: worldQuat.z, w: worldQuat.w };
+                   } else {
+                       mesh.rotation.copyFrom(finalEuler);
+                       entity.transform.rotation = { x: finalEuler.x, y: finalEuler.y, z: finalEuler.z };
+                   }
+                   
+                   entity.isLegacyLocalTransform = false;
+                   entity.syncToView(); 
+               }
+            } else {
+               if (parentMesh) {
+                   mesh.setParent(parentMesh);
+                   entity.syncTransformFromView();
+               }
             }
         }
     });

@@ -8,7 +8,6 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
 import { ToolsDebugColliderService } from './tools-debug-collider.service';
 import { ToolsDebugCameraService } from './tools-debug-camera.service';
-import { ToolsDebugLightService } from './tools-debug-light.service';
 import { ToolsDebugFogService } from './tools-debug-fog.service';
 import { ToolsDebugVisualCenterService } from './tools-debug-visual-center.service';
 
@@ -22,13 +21,11 @@ export class ToolsDebugService {
 
   private colliderSvc = inject(ToolsDebugColliderService);
   private cameraSvc = inject(ToolsDebugCameraService);
-  private lightSvc = inject(ToolsDebugLightService);
   private fogSvc = inject(ToolsDebugFogService);
   private visualCenterSvc = inject(ToolsDebugVisualCenterService);
 
   get debugCollider() { return this.colliderSvc.debugCollider; }
   get debugCameraBox() { return this.cameraSvc.debugCameraBox; }
-  get debugLightBox() { return this.lightSvc.debugLightBox; }
   get debugFogStartSphere() { return this.fogSvc.debugFogStartSphere; }
   get debugFogEndSphere() { return this.fogSvc.debugFogEndSphere; }
 
@@ -80,7 +77,6 @@ export class ToolsDebugService {
     if (!selected || (playState !== 'EDITOR' && playState !== 'EDITING_IN_GAME')) {
       this.colliderSvc.dispose();
       this.cameraSvc.dispose();
-      this.lightSvc.dispose();
       this.fogSvc.dispose();
       this.visualCenterSvc.dispose();
       return;
@@ -94,7 +90,6 @@ export class ToolsDebugService {
 
     this.colliderSvc.update(scene, selected, entity, subSelected);
     this.cameraSvc.update(scene, selected, entity, subSelected);
-    this.lightSvc.update(scene, selected, entity, subSelected);
     this.visualCenterSvc.update(scene, selected, entity, subSelected);
 
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
@@ -139,10 +134,6 @@ export class ToolsDebugService {
 
     this.cameraSvc.sync(cX, cY, cZ, breathX, breathY, breathZ);
     this.visualCenterSvc.sync();
-    
-    if (entity.type?.startsWith('light_') && entity.light) {
-      this.lightSvc.sync(entity.transform.position.x, entity.transform.position.y, entity.transform.position.z, breathX, breathY, breathZ);
-    }
 
     const fogConfig = entity.playerConfig?.fog;
     if (fogConfig) {

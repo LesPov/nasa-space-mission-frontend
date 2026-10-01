@@ -18,7 +18,7 @@ export interface PartOverride {
   brilloIntensidad?: number;
   texturePath?: string;
   textureSource?: 'original' | 'solid' | 'asset';
-  displayName?: string; // 🔥 NUEVO: Identificador visible y amigable para el Outliner y Editor
+  displayName?: string;
 }
 
 export class PartOverridesComponent {
@@ -143,6 +143,10 @@ export class GameEntity {
   public parentId: string | null = null;
   public orderIndex: number = 0;
   public isPersistent: boolean = false;
+  
+  // 🔥 FASE 4: Arquitectura World Space Pura para luces
+  public transformSpace: 'LOCAL' | 'WORLD' | 'ATTACHED' = 'LOCAL';
+  public isLegacyLocalTransform: boolean = false;
 
   public movementAuthority: MovementAuthority = 'GAMEPLAY';
 
@@ -182,6 +186,7 @@ export class GameEntity {
 
     if (type.startsWith('light_')) {
       this.addComponent('light', new LightComponent());
+      this.transformSpace = 'WORLD'; // Las luces son World Space por defecto
     }
 
     if (type === 'video_plane' || type === 'image_plane') {

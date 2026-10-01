@@ -105,12 +105,10 @@ export class CoreModelLoaderService {
     const isLight = obj.type?.startsWith('light_');
     const rolSaved = obj.properties?.rol || obj.rol || (isLight ? 'light' : 'prop');
 
-    // 🔥 MODELO PRINCIPAL: Siempre es 'model' si contiene un asset 3D GLB
     const entityType = isLight ? 'model' : obj.type;
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, entityType, rolSaved);
     this.persistenceMapper.applyDbToEntity(obj, entity);
     
-    // Forzamos el tipo 'model' para que el icono del padre sea 📦 y no usurpe el bombillo
     if (isLight) {
         entity.type = 'model';
     }
@@ -256,33 +254,45 @@ export class CoreModelLoaderService {
     this.entityManager.addEntity(entity);
     mallasCreadas.set(entity.uid, rootNode);
 
-    // =========================================================================
-    // 🔥 ARQUITECTURA CRÍTICA: SI EL MODELO TIENE LUZ, SE INSTANCIA COMO HIJO
-    // =========================================================================
+    // 🔥 FASE 4: Aislando Físicamente a las Luces del Transform graph de Babylon
     if (isLight) {
-        const lightType = obj.type; // 'light_spot', 'light_point', etc.
+        const lightType = obj.type; 
         const lightUid = `${entity.uid}_light`;
         const lightName = `Luz ${entity.name}`;
 
         const lightNode = new Mesh(lightName, scene);
-        lightNode.parent = rootNode;
         
-        // Coordenadas locales en base al TransformComponent original importado
-        const lightPosX = obj.position?.x ?? 0;
-        const lightPosY = obj.position?.y ?? (finalSizeY > 0 ? finalSizeY : 1.5);
-        const lightPosZ = obj.position?.z ?? 0;
+        const lightEntity = new GameEntity(lightUid, lightName, lightType, 'light');
+        lightEntity.parentId = entity.uid;
+        lightEntity.transformSpace = 'WORLD';
         
-        lightNode.position.set(lightPosX, lightPosY, lightPosZ);
+        // Conversión temprana de Coordenada Local del Editor/JSON a Coordenada World absoluta
+        const localPos = new Vector3(
+           obj.position?.x ?? 0, 
+           obj.position?.y ?? (finalSizeY > 0 ? finalSizeY : 1.5), 
+           obj.position?.z ?? 0
+        );
+        
+        rootNode.computeWorldMatrix(true);
+        const worldPos = Vector3.TransformCoordinates(localPos, rootNode.getWorldMatrix());
+        
+        lightNode.position.copyFrom(worldPos);
+        lightEntity.transform.position = { x: worldPos.x, y: worldPos.y, z: worldPos.z };
 
-        const lightRotX = obj.rotation?.x ?? 0;
-        const lightRotY = obj.rotation?.y ?? 0;
-        const lightRotZ = obj.rotation?.z ?? 0;
+        const localRotX = obj.rotation?.x ?? 0;
+        const localRotY = obj.rotation?.y ?? 0;
+        const localRotZ = obj.rotation?.z ?? 0;
 
-        lightNode.rotation.set(lightRotX, lightRotY, lightRotZ);
+        const localQuat = Quaternion.FromEulerAngles(localRotX, localRotY, localRotZ);
+        const parentQuat = Quaternion.FromRotationMatrix(rootNode.getWorldMatrix().getRotationMatrix());
+        const worldQuat = parentQuat.multiply(localQuat);
+        const finalEuler = worldQuat.toEulerAngles();
+
+        lightNode.rotation.copyFrom(finalEuler);
+        lightEntity.transform.rotation = { x: finalEuler.x, y: finalEuler.y, z: finalEuler.z };
 
         Tags.AddTagsTo(lightNode, "light_entity");
 
-        // Crear la esfera visual editorial dentro del nodo de luz
         const visualSphere = MeshBuilder.CreateSphere(`visual_${lightName}`, { diameter: 1.0, segments: 16 }, scene);
         visualSphere.parent = lightNode;
         visualSphere.isPickable = true;
@@ -290,13 +300,7 @@ export class CoreModelLoaderService {
         visualSphere.receiveShadows = false;
         visualSphere.renderingGroupId = 1;
 
-        // Compensación de escala respecto al modelo padre (para que mida 0.4m exactos en el mundo)
-        const parentScale = new Vector3();
-        rootNode.getWorldMatrix().decompose(parentScale);
-        const safeX = Math.max(0.0001, Math.abs(parentScale.x * scaleX));
-        const safeY = Math.max(0.0001, Math.abs(parentScale.y * scaleY));
-        const safeZ = Math.max(0.0001, Math.abs(parentScale.z * scaleZ));
-        visualSphere.scaling.set(0.4 / safeX, 0.4 / safeY, 0.4 / safeZ);
+        visualSphere.scaling.set(0.4, 0.4, 0.4);
 
         const lightColorHex = obj.properties?.lightColor || '#facc15';
         const lightVisualMat = new StandardMaterial(`mat_visual_${lightName}`, scene);
@@ -316,9 +320,6 @@ export class CoreModelLoaderService {
         visualSphere.isVisible = isEditorMode;
         visualSphere.setEnabled(isEditorMode);
 
-        // Crear la entidad independiente de Luz como hija del modelo
-        const lightEntity = new GameEntity(lightUid, lightName, lightType, 'light');
-        lightEntity.parentId = entity.uid;
         lightEntity.light = new LightComponent();
         lightEntity.light.lightColor = lightColorHex;
         lightEntity.light.lightColorBW = obj.properties?.lightColorBW || lightColorHex;
@@ -328,9 +329,15 @@ export class CoreModelLoaderService {
         lightEntity.light.enabled = obj.properties?.isEnabled ?? true;
         lightEntity.light.castShadows = obj.properties?.castShadows ?? true;
         
-        // Mapeo seguro de transformación local
-        lightEntity.transform.position = { x: lightNode.position.x, y: lightNode.position.y, z: lightNode.position.z };
-        lightEntity.transform.rotation = { x: lightNode.rotation.x, y: lightNode.rotation.y, z: lightNode.rotation.z };
+        if (obj.properties?.attachedNodeName) {
+            const boneNode = rootNode.getDescendants(false).find(n => n.name === obj.properties!.attachedNodeName);
+            if (boneNode) {
+                lightNode.setParent(boneNode as AbstractMesh);
+                lightEntity.transformSpace = 'ATTACHED';
+                lightEntity.light.attachedNodeName = obj.properties.attachedNodeName;
+                lightEntity.light.attachedNodePath = obj.properties.attachedNodePath || '';
+            }
+        }
 
         lightEntity.bindView(lightNode);
         this.entityManager.addEntity(lightEntity);

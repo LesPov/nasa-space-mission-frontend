@@ -139,24 +139,23 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
     });
   }
 
+  /**
+   * 🔥 FASE 4: Ahora `compensarEscalaVisual` calcula la escala absoluta mundial total usando `.decompose()`.
+   * Garantiza que el multiplicador del tamaño visual (0.4m) sea perfecto y sin deformaciones.
+   */
   public compensarEscalaVisual(mesh: AbstractMesh): void {
     if (!mesh) return;
     const visual = mesh.getChildMeshes().find(m => Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual);
-    if (visual && mesh.parent) {
-      mesh.parent.computeWorldMatrix(true);
-      const parentScale = new Vector3();
-      mesh.parent.getWorldMatrix().decompose(parentScale);
+    
+    if (visual) {
+      mesh.computeWorldMatrix(true);
+      const absScale = new Vector3();
+      mesh.getWorldMatrix().decompose(absScale);
       
-      const safeX = Math.max(0.0001, Math.abs(parentScale.x * mesh.scaling.x));
-      const safeY = Math.max(0.0001, Math.abs(parentScale.y * mesh.scaling.y));
-      const safeZ = Math.max(0.0001, Math.abs(parentScale.z * mesh.scaling.z));
+      const safeX = Math.max(0.0001, Math.abs(absScale.x));
+      const safeY = Math.max(0.0001, Math.abs(absScale.y));
+      const safeZ = Math.max(0.0001, Math.abs(absScale.z));
 
-      visual.scaling.set(0.4 / safeX, 0.4 / safeY, 0.4 / safeZ);
-      visual.renderingGroupId = 1;
-    } else if (visual) {
-      const safeX = Math.max(0.0001, Math.abs(mesh.scaling.x));
-      const safeY = Math.max(0.0001, Math.abs(mesh.scaling.y));
-      const safeZ = Math.max(0.0001, Math.abs(mesh.scaling.z));
       visual.scaling.set(0.4 / safeX, 0.4 / safeY, 0.4 / safeZ);
       visual.renderingGroupId = 1;
     }

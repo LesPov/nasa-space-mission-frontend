@@ -109,15 +109,15 @@ export class SceneObjectBuilderService {
          newMesh.setParent(parentNode);
          
          if (isLight) {
-            parentNode.computeWorldMatrix(true);
-            const parentScale = new Vector3();
-            parentNode.getWorldMatrix().decompose(parentScale);
+            newMesh.computeWorldMatrix(true);
+            const absScale = new Vector3();
+            newMesh.getWorldMatrix().decompose(absScale);
             const visual = newMesh.getChildMeshes().find(m => Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual);
             if (visual) {
                visual.scaling.set(
-                 0.4 / Math.max(0.0001, Math.abs(parentScale.x)),
-                 0.4 / Math.max(0.0001, Math.abs(parentScale.y)),
-                 0.4 / Math.max(0.0001, Math.abs(parentScale.z))
+                 0.4 / Math.max(0.0001, Math.abs(absScale.x)),
+                 0.4 / Math.max(0.0001, Math.abs(absScale.y)),
+                 0.4 / Math.max(0.0001, Math.abs(absScale.z))
                );
                visual.renderingGroupId = 1;
             }

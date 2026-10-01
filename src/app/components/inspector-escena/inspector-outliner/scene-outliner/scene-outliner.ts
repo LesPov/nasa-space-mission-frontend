@@ -35,7 +35,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
   private sub: Subscription | null = null;
 
   ngOnInit() {
-    // Suscripción universal en todos los niveles para garantizar reactividad instantánea del árbol
     this.sub = this.mapaSvc.onMapChanged.subscribe(() => {
       this.cdr.markForCheck();
       this.cdr.detectChanges();
@@ -49,10 +48,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     }
   }
 
-  // ========================================================
-  // FILTROS Y BÚSQUEDA
-  // ========================================================
-  
   get searchTerm(): string {
     return this.outlinerState.searchTerm().toLowerCase().trim();
   }
@@ -65,7 +60,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
            if (n.name.includes('proxycol')) return false;
            if (n.name.startsWith('decal_')) return false;
            
-           // El cuerpo visual de luz se muestra exclusivamente como hijo del nodo luz
            if (Tags.MatchesQuery(n, "light_visual") || (n as any).metadata?.isLightVisual) return true;
            if (Tags.MatchesQuery(n, "light_entity")) return true;
            
@@ -76,8 +70,19 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
            return true;
        });
     } else {
-       // A nivel raíz: solo mostramos nodos que NO tengan parent
-       list = list.filter(n => n.parent === null);
+       // 🔥 FASE 4: Mostrar mallas raíz físicas y excluir a los hijos lógicos
+       list = list.filter(n => {
+           if (n.parent !== null) return false;
+           
+           if (n instanceof AbstractMesh) {
+               const entity = this.entityManager.getEntityByMesh(n);
+               if (entity && entity.parentId) {
+                   const parentEnt = this.entityManager.getEntityByUid(entity.parentId);
+                   if (parentEnt && parentEnt.view) return false;
+               }
+           }
+           return true;
+       });
     }
 
     const term = this.searchTerm;
@@ -102,22 +107,29 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     return children.some(c => this.nodeOrChildMatches(c, term));
   }
 
-  // ========================================================
-  // REPRESENTACIÓN DERIVADA
-  // ========================================================
-
   getUsefulChildren(node: Node): Node[] {
     const result: Node[] = [];
     const children = node.getChildren();
     
+    // 🔥 FASE 4: Inyección de hijos lógicos (Luces World Space)
+    if (node instanceof AbstractMesh) {
+        const entity = this.entityManager.getEntityByMesh(node);
+        if (entity) {
+            const logicalChildren = this.entityManager.getAllEntities().filter(e => e.parentId === entity.uid);
+            for (const lc of logicalChildren) {
+                if (lc.view && lc.view.parent === null && !children.includes(lc.view)) {
+                    children.push(lc.view);
+                }
+            }
+        }
+    }
+
     for (const child of children) {
-      // 1. Cuerpo visual editorial de la luz: solo como hijo directo del nodo luz
       if (Tags.MatchesQuery(child, "light_visual") || (child as any).metadata?.isLightVisual) {
         result.push(child);
         continue;
       }
       
-      // 2. Entidad de luz anclada/hija dentro de un modelo
       if (Tags.MatchesQuery(child, "light_entity")) {
         result.push(child);
         continue;
@@ -200,7 +212,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     if (node instanceof AbstractMesh) {
         const entity = this.entityManager.getEntityByMesh(node);
         if (entity) {
-            // Si la entidad es una luz hija pura
             if (entity.type.startsWith('light_')) return '💡';
             if (entity.rol === 'player') return '🎮';
             if (entity.rol === 'spawn_point') return '📍';
@@ -223,7 +234,7 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
         }
 
         const rootMesh = this.stateSvc.encontrarRaiz(node);
-        if (rootMesh !== node) return '🧩'; // Subparte de un modelo
+        if (rootMesh !== node) return '🧩'; 
     }
     return '📌';
   }
@@ -241,17 +252,12 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     return this.outlinerState.isExpanded(node.uniqueId.toString());
   }
 
-  // ========================================================
-  // SELECCIÓN Y ESTADOS
-  // ========================================================
-
   selectNode(node: Node, event: Event) {
     event.stopPropagation();
     if (this.editingNodeId) return; 
 
     if (!(node instanceof AbstractMesh)) return;
 
-    // Si es el cuerpo visual o el nodo de luz, seleccionar estrictamente la luz sin seleccionar el modelo padre
     if (Tags.MatchesQuery(node, "light_visual") || (node as any).metadata?.isLightVisual) {
        const entityUid = (node as any).metadata?.entityUid;
        if (entityUid) {
@@ -284,7 +290,8 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
        this.stateSvc.seleccionarObjeto(node);
        this.stateSvc.setSubObjetoSeleccionado(null);
     } else {
-       this.stateSvc.seleccionarObjeto(node); 
+       this.stateSvc.seleccionarObjeto(node);
+       this.stateSvc.setSubObjetoSeleccionado(null);
     }
   }
 
@@ -292,7 +299,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     const selected = this.stateSvc.objetoSeleccionado();
     if (selected === node) return true;
     
-    // Si está seleccionado el nodo de luz padre o su cuerpo visual
     if (selected instanceof AbstractMesh && node instanceof AbstractMesh) {
       const selectedEntity = this.entityManager.getEntityByMesh(selected);
       const nodeEntity = this.entityManager.getEntityByMesh(node);
@@ -354,10 +360,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
       }
     }
   }
-
-  // ========================================================
-  // DRAG & DROP
-  // ========================================================
 
   isDraggable(node: Node): boolean {
     if (node instanceof Camera) return false;
@@ -457,19 +459,28 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     };
 
     if (action === 'inside') {
-      setParentSafe(draggedNode, node);
+      // 🔥 FIX 4: Si se arrastra algo, aplicamos lógicamente la relación
       if (draggedEntity) {
           draggedEntity.parentId = targetEntity ? targetEntity.uid : null;
+          
+          if (draggedEntity.transformSpace !== 'WORLD') {
+             setParentSafe(draggedNode, node);
+          }
+          
           draggedEntity.syncTransformFromView();
           draggedEntity.isDirty = true;
       }
     } else {
       const newParent = node.parent;
-      setParentSafe(draggedNode, newParent);
       const newParentEntity = newParent ? this.entityManager.getEntityByMesh(newParent as AbstractMesh) : null;
       
       if (draggedEntity) {
           draggedEntity.parentId = newParentEntity ? newParentEntity.uid : null;
+          
+          if (draggedEntity.transformSpace !== 'WORLD') {
+             setParentSafe(draggedNode, newParent);
+          }
+          
           draggedEntity.syncTransformFromView();
           draggedEntity.isDirty = true;
       }
@@ -500,10 +511,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     }
     return false;
   }
-
-  // ========================================================
-  // EDICIÓN EN LÍNEA
-  // ========================================================
   
   startEditing(node: Node, event: Event) {
     event.stopPropagation();
@@ -559,4 +566,5 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
       } else if (event.key === 'Escape') {
           this.cancelEdit();
       }
-  }}
+  }
+}

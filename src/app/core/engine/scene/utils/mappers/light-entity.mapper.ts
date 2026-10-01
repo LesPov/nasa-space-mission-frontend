@@ -18,6 +18,20 @@ export class LightEntityMapper extends BaseEntityMapper {
     super.applyDbToEntity(obj, entity);
     const props = obj.properties || {} as SceneObjectPropertiesDto;
 
+    // Migración Legacy a Transform Space
+    if (!props.transformSpace) {
+        if (props.attachedNodeName) {
+            entity.transformSpace = 'ATTACHED';
+        } else {
+            entity.transformSpace = 'WORLD';
+            if (obj.parentId) {
+                entity.isLegacyLocalTransform = true; // Se evaluará al instanciar
+            }
+        }
+    } else {
+        entity.transformSpace = props.transformSpace;
+    }
+
     if (entity.light) {
       entity.light.lightColor = props.lightColor?.substring(0, 7) || '#ffffff';
       entity.light.lightColorBW = props.lightColorBW?.substring(0, 7) || entity.light.lightColor;
@@ -25,7 +39,6 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.range = props.range ?? 50;
       entity.light.angle = props.angle ?? 60;
       
-      // --- Retrocompatibilidad temporal para mapas antiguos que guardaron la posición de la luz en properties ---
       if ((props as any).lightPosX !== undefined) {
          entity.transform.position.x = (props as any).lightPosX;
          entity.transform.position.y = (props as any).lightPosY ?? 0;

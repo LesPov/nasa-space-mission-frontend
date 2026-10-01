@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
-import { PointLight, SpotLight, Vector3, Color3, Tags, ShadowGenerator, AbstractMesh, Matrix } from '@babylonjs/core';
+import { PointLight, SpotLight, Vector3, Color3, Tags, ShadowGenerator, AbstractMesh } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 import { CameraOwnershipService } from '../../cameras/camera-ownership.service';
@@ -52,10 +52,7 @@ export class DynamicLightingSystem implements IUpdatable {
   private lastAssignedSet = '';
   private shouldLogSummary = false;
 
-  private static _localOffset = Vector3.Zero();
-  private static _localDir = Vector3.Zero();
-  private static _downDir = new Vector3(0, -1, 0);
-  private static _localRotMatrix = Matrix.Identity();
+  private static _Z_AXIS = new Vector3(0, 0, 1);
   private _tempPos = Vector3.Zero();
   private _tempDir = Vector3.Zero();
 
@@ -68,46 +65,27 @@ export class DynamicLightingSystem implements IUpdatable {
       return camera ? camera.globalPosition : Vector3.Zero();
   }
 
+  /**
+   * 🔥 FASE 4: Absoluta pureza arquitectónica. 
+   * Se delega TODO el cálculo matricial al motor interno de BabylonJS.
+   * La posición es el AbsolutePosition de la malla real.
+   * La dirección es el eje +Z Local transformado por la matriz World de la malla (Forward).
+   */
   private getLightWorldTransform(entity: GameEntity, outPos: Vector3, outDir: Vector3): void {
-      if (!entity.view || !entity.light) {
+      if (!entity.view) {
           outPos.set(0, 0, 0);
-          outDir.set(0, -1, 0);
+          outDir.copyFrom(DynamicLightingSystem._Z_AXIS);
           return;
       }
 
-      if (Tags.MatchesQuery(entity.view, "light_visual") || (entity.view as any).metadata?.isLightVisual || Tags.MatchesQuery(entity.view, "light_entity")) {
-          entity.view.computeWorldMatrix(true);
-          outPos.copyFrom(entity.view.getAbsolutePosition());
-          
-          if (entity.view.rotationQuaternion) {
-              Matrix.FromQuaternionToRef(entity.view.rotationQuaternion, DynamicLightingSystem._localRotMatrix);
-          } else {
-              Matrix.RotationYawPitchRollToRef(entity.view.rotation.y, entity.view.rotation.x, entity.view.rotation.z, DynamicLightingSystem._localRotMatrix);
-          }
-          Vector3.TransformNormalToRef(DynamicLightingSystem._downDir, DynamicLightingSystem._localRotMatrix, outDir);
-          outDir.normalize();
-          return;
+      entity.view.computeWorldMatrix(true);
+      outPos.copyFrom(entity.view.getAbsolutePosition());
+      
+      if (entity.view.getDirectionToRef) {
+          entity.view.getDirectionToRef(DynamicLightingSystem._Z_AXIS, outDir);
+      } else {
+          outDir.copyFrom(entity.view.getDirection(DynamicLightingSystem._Z_AXIS));
       }
-
-      let targetParent: AbstractMesh = entity.view;
-      if (entity.light.attachedNodeName) {
-          const found = entity.view.getDescendants(false).find(n => n.name === entity.light!.attachedNodeName);
-          if (found) targetParent = found as AbstractMesh;
-      }
-
-      targetParent.computeWorldMatrix(true);
-      const worldMatrix = targetParent.getWorldMatrix();
-
-      DynamicLightingSystem._localOffset.set(entity.transform.position.x, entity.transform.position.y, entity.transform.position.z);
-      Vector3.TransformCoordinatesToRef(DynamicLightingSystem._localOffset, worldMatrix, outPos);
-
-      const rx = entity.transform.rotation.x;
-      const ry = entity.transform.rotation.y;
-      const rz = entity.transform.rotation.z;
-
-      Matrix.RotationYawPitchRollToRef(ry, rx, rz, DynamicLightingSystem._localRotMatrix);
-      Vector3.TransformNormalToRef(DynamicLightingSystem._downDir, DynamicLightingSystem._localRotMatrix, DynamicLightingSystem._localDir);
-      Vector3.TransformNormalToRef(DynamicLightingSystem._localDir, worldMatrix, outDir);
       outDir.normalize();
   }
 

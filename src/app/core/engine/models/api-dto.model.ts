@@ -36,7 +36,9 @@ export interface NarrativeRoleDto {
 }
 
 export interface SceneObjectPropertiesDto {
-  rol?: string; characterConfig?: CharacterConfigDto; color?: string; colorBW?: string; ambientColor?: string; ambientColorBW?: string;
+  rol?: string; 
+  transformSpace?: 'LOCAL' | 'WORLD' | 'ATTACHED';
+  characterConfig?: CharacterConfigDto; color?: string; colorBW?: string; ambientColor?: string; ambientColorBW?: string;
   isSolid?: boolean; isSelectable?: boolean; ignoraNiebla?: boolean; esEmisivo?: boolean; mostrarBorde?: boolean; brilloIntensidad?: number;
   internalScale?: number; mensaje?: string; interactDistanceFPS?: number; interactDistanceTPS?: number; interactSequenceIdFPS?: string;
   interactSequenceIdTPS?: string; interactSequenceId?: string; respawnTime?: number; collider?: ColliderDto; capsule?: ColliderDto;

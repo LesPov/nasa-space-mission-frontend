@@ -75,6 +75,13 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
 
   animStatus = '';
 
+  get isWorldSpace(): boolean {
+    if (!this.objeto) return true;
+    const ent = this.entityManager.getEntityByMesh(this.objeto);
+    if (ent && ent.transformSpace === 'WORLD') return true;
+    return !this.objeto.parent;
+  }
+
   ngOnInit() {
     this.syncData();
     this.subs.push(
@@ -104,7 +111,6 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (!entity) return;
 
-    // LOCAL
     this.localPosX = this.formatNum(entity.transform.position.x);
     this.localPosY = this.formatNum(entity.transform.position.y);
     this.localPosZ = this.formatNum(entity.transform.position.z);
@@ -130,7 +136,6 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.localEscY = this.formatNum(entity.transform.scale.y);
     this.localEscZ = this.formatNum(entity.transform.scale.z);
 
-    // WORLD ABSOLUTO
     this.objeto.computeWorldMatrix(true);
     const absPos = this.objeto.getAbsolutePosition();
     this.worldPosX = this.formatNum(absPos.x);

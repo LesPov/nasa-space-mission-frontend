@@ -22,7 +22,6 @@ export class ShadowOrchestratorService implements IUpdatable {
 
   private mainSun: DirectionalLight | null = null;
   private shadowGenerator: CascadedShadowGenerator | null = null;
-  private frameCounter = 0;
 
   private getReferencePosition(): Vector3 {
       const playerEntity = this.context.activePlayerEntity();
@@ -33,29 +32,21 @@ export class ShadowOrchestratorService implements IUpdatable {
       return camera ? camera.globalPosition : Vector3.Zero();
   }
 
-  /**
-   * Determina si la entidad debe proyectar sombras bajo la luz solar direccional.
-   * La oclusión óptica de postes, arquitectura y túneles no depende de 'isSolid'.
-   */
   private isEligibleShadowCaster(e: GameEntity): boolean {
       if (!e.view || !e.view.isVisible || !e.view.isEnabled()) return false;
 
-      // Descartar triggers, imágenes proyectadas, burbujas y elementos no oclusores
       if (e.type === 'image_plane' || e.type === 'bubble' || e.type === 'trigger' || e.type === 'trigger_compuesto') {
           return false;
       }
 
-      // Si es una fuente de luz abstracta sin geometría física asociada, no proyecta sombra
       if (e.type.startsWith('light_') && !e.visual?.assetId && !e.visual?.path) {
           return false;
       }
 
-      // Personajes, jugador y NPCs
       if (e.characterConfig || e.rol === 'player' || e.rol === 'npc') {
           return true;
       }
 
-      // Geometría real: modelos GLB (postes, arquitectura, edificios) y primitivas
       const renderableTypes = ['model', 'cube', 'sphere', 'cylinder', 'plane'];
       if (renderableTypes.includes(e.type) || !!e.visual?.assetId || !!e.visual?.path) {
           return true;
@@ -65,7 +56,10 @@ export class ShadowOrchestratorService implements IUpdatable {
   }
 
   public start(): void {
-      this.frameCounter = 0;
+      // 🔥 FIX DE RENDIMIENTO CRÍTICO: La lista de sombras solares se compila
+      // de forma global exclusivamente al arrancar o al hacer Spawn de un nuevo objeto.
+      // Delegamos el Culling nativo de sombras al Frustum del CascadedShadowGenerator de BabylonJS.
+      this.asignarObjetosASombrasDeLuces();
   }
 
   public stop(): void {
@@ -83,14 +77,9 @@ export class ShadowOrchestratorService implements IUpdatable {
      const scene = this.motor3d.getScene();
      if (!scene || !this.mainSun) return;
 
-     this.frameCounter++;
-     if (this.frameCounter === 1 || this.frameCounter % 60 === 0) {
-         this.asignarObjetosASombrasDeLuces();
-     }
-
+     // La única responsabilidad por Frame de la orquestación solar es acompañar al player/cámara
      const refPos = this.getReferencePosition();
-     
-     if (this.frameCounter === 1 || Vector3.DistanceSquared(this.mainSun.position, refPos) > 25) {
+     if (Vector3.DistanceSquared(this.mainSun.position, refPos) > 25) {
          this.mainSun.position.copyFrom(refPos);
          this.mainSun.position.subtractInPlace(this.mainSun.direction.scale(100));
      }
@@ -133,34 +122,21 @@ export class ShadowOrchestratorService implements IUpdatable {
         renderList.length = 0;
         
         const entities = this.entityManager.getAllEntities();
-        const refPos = this.getReferencePosition();
-
-        const profile: ShadowProfile = {
-            maxShadowDistance: 35,
-            lod1Distance: 30, 
-            lod2Distance: 50,
-            lod3Distance: 100,
-            updateIntervalMs: 1000
-        };
 
         for (let i = 0; i < entities.length; i++) {
            const e = entities[i];
            if (this.isEligibleShadowCaster(e) && e.view) {
-               const lodValue = Number(this.shadowLOD.calculateLOD(e.view.getAbsolutePosition(), refPos, profile));
-               
-               if (lodValue === 0) {
-                   const processMeshForShadows = (m: AbstractMesh) => {
-                       if (m.isVisible && m.isEnabled() && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
-                           if (m instanceof Mesh && m.getTotalVertices() > 0) {
-                               renderList.push(m);
-                           }
-                           m.receiveShadows = true;
+               const processMeshForShadows = (m: AbstractMesh) => {
+                   if (!Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
+                       if (m instanceof Mesh && m.getTotalVertices() > 0) {
+                           renderList.push(m);
                        }
-                   };
+                       m.receiveShadows = true;
+                   }
+               };
 
-                   processMeshForShadows(e.view);
-                   e.view.getChildMeshes(false).forEach(processMeshForShadows);
-               } 
+               processMeshForShadows(e.view);
+               e.view.getChildMeshes(false).forEach(processMeshForShadows);
            } else if (e.view) {
                if (!Tags.MatchesQuery(e.view, "light_visual || debug_element || proxy_collider")) {
                    e.view.receiveShadows = true;

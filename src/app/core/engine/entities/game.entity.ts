@@ -1,3 +1,4 @@
+// file: src/app/core/engine/entities/game.entity.ts
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
@@ -58,6 +59,7 @@ export class InteractionComponent {
 }
 
 export type LightContainmentMode = 'GLOBAL' | 'INTERIOR' | 'EXTERIOR';
+export type LightDistanceReferenceMode = 'AUTO' | 'CAMERA' | 'PLAYER';
 
 export class LightComponent {
   constructor(
@@ -78,7 +80,15 @@ export class LightComponent {
     public shadowDarkness: number = 0.0,
     public shadowBias: number = 0.0005,
     public shadowNormalBias: number = 0.01,
-    public excludeExteriorMeshes: boolean = true
+    public excludeExteriorMeshes: boolean = true,
+    // --- LIGHT DISTANCE & HYSTERESIS SYSTEM ---
+    public distanceControlEnabled: boolean = true,
+    public activationDistance: number = 65,
+    public deactivationDistance: number = 75,
+    public distanceShadowsEnabled: boolean = true,
+    public shadowActivationDistance: number = 30,
+    public shadowDeactivationDistance: number = 36,
+    public distanceReferenceMode: LightDistanceReferenceMode = 'AUTO'
   ) {}
 }
 

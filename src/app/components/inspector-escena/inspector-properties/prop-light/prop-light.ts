@@ -1,3 +1,4 @@
+// file: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.ts
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -7,7 +8,7 @@ import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorStateService } from '../../../../services/editor/editor-state.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
-import { LightContainmentMode } from '../../../../core/engine/entities/game.entity';
+import { LightContainmentMode, LightDistanceReferenceMode } from '../../../../core/engine/entities/game.entity';
 import { LightContainmentService } from '../../../../core/engine/runtime/systems/lighting/light-containment.service';
 import { DynamicLightingSystem } from '../../../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 
@@ -61,12 +62,27 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   shadowNormalBias: number = 0.01;
   excludeExteriorMeshes: boolean = true;
 
+  // --- DISTANCE & HYSTERESIS PROPERTIES ---
+  distanceControlEnabled: boolean = true;
+  activationDistance: number = 65;
+  deactivationDistance: number = 75;
+  distanceShadowsEnabled: boolean = true;
+  shadowActivationDistance: number = 30;
+  shadowDeactivationDistance: number = 36;
+  distanceReferenceMode: LightDistanceReferenceMode = 'AUTO';
+
+  // --- TELEMETRÍA EN VIVO ---
+  currentDistance: number = 0;
+  isLightActiveStatus: boolean = false;
+  isShadowActiveStatus: boolean = false;
+
   public childNodes: AttachedNodeOption[] = [];
   public containerOptions: ContainerOption[] = [];
   public attachedNodePath: string = '';
   public attachedNodeName: string = '';
 
   animStatus = '';
+  private telemetryInterval: any = null;
 
   ngOnInit() {
     this.syncData();
@@ -74,6 +90,11 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       this.editorSvc.onGizmoDrag.subscribe(() => this.syncData()),
       this.editorSvc.onMapChanged.subscribe(() => this.syncData())
     );
+
+    // Actualizador de telemetría a 10 Hz para depuración en tiempo real en el inspector
+    this.telemetryInterval = setInterval(() => {
+      this.updateTelemetry();
+    }, 100);
   }
 
   ngOnChanges(changes: SimpleChanges) {
@@ -84,6 +105,24 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
   ngOnDestroy() {
     this.subs.forEach(s => s.unsubscribe());
+    if (this.telemetryInterval) {
+      clearInterval(this.telemetryInterval);
+      this.telemetryInterval = null;
+    }
+  }
+
+  private updateTelemetry(): void {
+    if (!this.objeto) return;
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (!entity) return;
+
+    const vl = this.dynamicLighting.getVirtualLightByUid(entity.uid);
+    if (vl) {
+      this.currentDistance = parseFloat(vl.lastEvaluatedDistance.toFixed(2));
+      this.isLightActiveStatus = vl.isLightInRange && (entity.light?.enabled ?? true);
+      this.isShadowActiveStatus = vl.isShadowInRange && (entity.light?.castShadows ?? true);
+      this.cdr.detectChanges();
+    }
   }
 
   private getAllAttachableNodes(): Array<TransformNode | AbstractMesh> {
@@ -186,6 +225,15 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.shadowNormalBias = entity.light.shadowNormalBias ?? 0.01;
     this.excludeExteriorMeshes = entity.light.excludeExteriorMeshes ?? true;
 
+    // --- DISTANCE & HYSTERESIS SYNC ---
+    this.distanceControlEnabled = entity.light.distanceControlEnabled ?? true;
+    this.activationDistance = entity.light.activationDistance ?? 65;
+    this.deactivationDistance = entity.light.deactivationDistance ?? 75;
+    this.distanceShadowsEnabled = entity.light.distanceShadowsEnabled ?? true;
+    this.shadowActivationDistance = entity.light.shadowActivationDistance ?? 30;
+    this.shadowDeactivationDistance = entity.light.shadowDeactivationDistance ?? 36;
+    this.distanceReferenceMode = entity.light.distanceReferenceMode ?? 'AUTO';
+
     this.attachedNodePath = entity.light.attachedNodePath || '';
     this.attachedNodeName = entity.light.attachedNodeName || '';
 
@@ -212,14 +260,12 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       value: this.buildNodePath(n)
     }));
 
-    // Sincronizar lista de posibles contenedores arquitectónicos
     this.containerOptions = this.entityManager.getAllEntities()
       .filter(e => e.uid !== entity.uid && (e.type === 'model' || e.type === 'cube'))
       .map(e => ({ label: e.name, uid: e.uid }));
 
-    // 🔥 Asegurar que la luz seleccionada esté activa y sincronizada en el runtime 3D al seleccionar
     this.dynamicLighting.syncLightImmediate(entity);
-
+    this.updateTelemetry();
     this.cdr.detectChanges();
   }
 
@@ -252,6 +298,14 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
          }
       }
 
+      // Validar coherencia de histéresis: deactivation debe ser >= activation
+      if (this.deactivationDistance < this.activationDistance) {
+        this.deactivationDistance = this.activationDistance + 5;
+      }
+      if (this.shadowDeactivationDistance < this.shadowActivationDistance) {
+        this.shadowDeactivationDistance = this.shadowActivationDistance + 4;
+      }
+
       entity.light.lightColor = this.lightColor;
       entity.light.lightColorBW = this.lightColorBW;
       entity.light.intensity = this.intensity;
@@ -263,7 +317,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.light.attachedNodeName = this.attachedNodeName;
       entity.light.attachedNodePath = this.attachedNodePath;
 
-      // --- ASIGNACIÓN DE PARÁMETROS DE CONTENCIÓN ---
       entity.light.containmentMode = this.containmentMode;
       entity.light.containerEntityUid = this.containerEntityUid;
       entity.light.affectDescendantsOnly = this.affectDescendantsOnly;
@@ -271,18 +324,24 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.light.shadowBias = this.shadowBias;
       entity.light.shadowNormalBias = this.shadowNormalBias;
       entity.light.excludeExteriorMeshes = this.excludeExteriorMeshes;
+
+      entity.light.distanceControlEnabled = this.distanceControlEnabled;
+      entity.light.activationDistance = this.activationDistance;
+      entity.light.deactivationDistance = this.deactivationDistance;
+      entity.light.distanceShadowsEnabled = this.distanceShadowsEnabled;
+      entity.light.shadowActivationDistance = this.shadowActivationDistance;
+      entity.light.shadowDeactivationDistance = this.shadowDeactivationDistance;
+      entity.light.distanceReferenceMode = this.distanceReferenceMode;
       
       entity.isDirty = true;
       entity.syncToView(); 
 
-      // 1. Invalidar caché de contención para refresco inmediato
       this.containmentSvc.markDirty(entity.uid);
-
-      // 2. 🔥 ACTUALIZACIÓN EN TIEMPO REAL DIRECTA A BABYLONJS
       this.dynamicLighting.syncLightImmediate(entity);
+      this.updateTelemetry();
     }
 
     this.editorSvc.onMapChanged.next();
-    this.animStatus = '💡 Luz y contención actualizadas';
+    this.animStatus = '💡 Parámetros de iluminación y distancia actualizados';
   }
 }

@@ -1,4 +1,4 @@
-
+// file: src/app/core/engine/models/api-dto.model.ts
 import { VisualMode } from '../world/world-settings.model';
 import { PlayerRuntimeConfig } from './player-config.model';
 import { CinematicCameraDefinition } from './cinematic-camera.model';
@@ -57,6 +57,15 @@ export interface SceneObjectPropertiesDto {
   shadowBias?: number;
   shadowNormalBias?: number;
   excludeExteriorMeshes?: boolean;
+
+  // --- LIGHT DISTANCE PROPERTIES ---
+  distanceControlEnabled?: boolean;
+  activationDistance?: number;
+  deactivationDistance?: number;
+  distanceShadowsEnabled?: boolean;
+  shadowActivationDistance?: number;
+  shadowDeactivationDistance?: number;
+  distanceReferenceMode?: 'AUTO' | 'CAMERA' | 'PLAYER';
 
   triggerShape?: string; isComposite?: boolean; seqEntrada?: string;
   timeEntrada?: number; videoEntrada?: string; mensajeSalida?: string; soundUrlSalida?: string; seqSalida?: string; timeSalida?: number;

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
@@ -19,11 +18,11 @@ export class LocalRenderingSystem implements IUpdatable {
 
   private frameCounter = 0;
 
-  // 🔥 DISTANCIAS DE RENDIMIENTO
-  // Pre-warm de mallas a los 160m para evitar que aparezcan de golpe visualmente.
-  // Cull destructivo a los 180m, suficiente para limpiar mallas fuera de la ciudad.
-  private readonly PREWARM_RADIUS_SQ = 160 * 160; 
-  private readonly CULL_RADIUS_SQ = 180 * 180; 
+  // 🔥 DISTANCIAS DE RENDIMIENTO AJUSTADAS Y CON HYSTERESIS
+  // Pre-warm de mallas a los 200m para evitar popping con neblina habilitada
+  // Cull destructivo a los 250m, suficiente para limpiar mallas fuera de la ciudad.
+  private readonly PREWARM_RADIUS_SQ = 200 * 200; 
+  private readonly CULL_RADIUS_SQ = 250 * 250; 
 
   private getReferencePosition(): Vector3 {
       const playerEntity = this.context.activePlayerEntity();
@@ -37,8 +36,8 @@ export class LocalRenderingSystem implements IUpdatable {
   public update(dtMs: number): void {
       this.frameCounter++;
       
-      // Mantenemos la CPU libre ejecutando esto en intervalos holgados (~4 veces por segundo a 60fps)
-      if (this.frameCounter % 15 !== 0) return;
+      // Mantenemos la CPU libre ejecutando esto en intervalos ultra holgados (~2 veces por segundo a 60fps)
+      if (this.frameCounter % 30 !== 0) return;
 
       const mode = this.context.mode();
       const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
@@ -57,7 +56,7 @@ export class LocalRenderingSystem implements IUpdatable {
           // Triggers y luces se manejan con sus propios sistemas de proximidad
           if (e.type === 'trigger' || e.type === 'trigger_compuesto' || e.type.startsWith('light_')) continue;
 
-          // Si el Creador está editando, siempre lo mostramos todo
+          // Si el Creador está editando, siempre lo mostramos todo para no frustrarlo
           if (isEditor) {
               if (!mesh.isEnabled()) {
                   mesh.setEnabled(true);
@@ -67,13 +66,13 @@ export class LocalRenderingSystem implements IUpdatable {
 
           const meshPos = mesh.getAbsolutePosition();
           
-          // 🔥 OPTIMIZACIÓN MATEMÁTICA: Rechazo rápido usando distancias absolutas (Rectángulo) antes de Pitágoras.
+          // 🔥 OPTIMIZACIÓN MATEMÁTICA RÁPIDA: Rectángulo delimitador
           const dx = Math.abs(refPos.x - meshPos.x);
           const dz = Math.abs(refPos.z - meshPos.z);
 
-          if (dx > 200 || dz > 200) {
+          if (dx > 300 || dz > 300) {
               if (mesh.isEnabled()) {
-                  mesh.setEnabled(false); // Retira 100% de la carga de Draw Calls de la GPU
+                  mesh.setEnabled(false); // Retira 100% de la carga de Draw Calls
               }
               continue;
           }
@@ -86,7 +85,7 @@ export class LocalRenderingSystem implements IUpdatable {
               }
           } else if (distSq < this.PREWARM_RADIUS_SQ) {
               if (!mesh.isEnabled()) {
-                  mesh.setEnabled(true); // Precarga antes de que el Fog lo revele (Zero Popping)
+                  mesh.setEnabled(true); // Precarga segura (Zero Popping)
               }
           }
       }

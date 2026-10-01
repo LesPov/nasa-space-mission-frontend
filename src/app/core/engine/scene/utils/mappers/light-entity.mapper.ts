@@ -1,7 +1,7 @@
-
+// file: src/app/core/engine/scene/utils/mappers/light-entity.mapper.ts
 import { Injectable } from '@angular/core';
 import { BaseEntityMapper } from './base-entity.mapper';
-import { GameEntity, LightContainmentMode } from '../../../entities/game.entity';
+import { GameEntity, LightContainmentMode, LightDistanceReferenceMode } from '../../../entities/game.entity';
 import { SceneObjectDto, TriggerDto, SceneObjectPropertiesDto } from '../../../models/api-dto.model';
 
 @Injectable({ providedIn: 'root' })
@@ -63,6 +63,21 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.shadowBias = props.shadowBias ?? 0.0005;
       entity.light.shadowNormalBias = props.shadowNormalBias ?? 0.01;
       entity.light.excludeExteriorMeshes = props.excludeExteriorMeshes ?? true;
+
+      // --- MAPPING DE LIGHT DISTANCE & HYSTERESIS ---
+      entity.light.distanceControlEnabled = props.distanceControlEnabled ?? true;
+      
+      // Defaults con aumento de ~30% respecto al rango base óptico
+      const defaultAct = Math.max(20, (props.range ?? 50) * 1.3);
+      entity.light.activationDistance = props.activationDistance ?? defaultAct;
+      entity.light.deactivationDistance = props.deactivationDistance ?? (entity.light.activationDistance + 10);
+      
+      entity.light.distanceShadowsEnabled = props.distanceShadowsEnabled ?? true;
+      const defaultShadowAct = Math.max(10, entity.light.activationDistance * 0.5);
+      entity.light.shadowActivationDistance = props.shadowActivationDistance ?? defaultShadowAct;
+      entity.light.shadowDeactivationDistance = props.shadowDeactivationDistance ?? (entity.light.shadowActivationDistance + 6);
+      
+      entity.light.distanceReferenceMode = (props.distanceReferenceMode as LightDistanceReferenceMode) || 'AUTO';
     }
   }
 
@@ -87,7 +102,14 @@ export class LightEntityMapper extends BaseEntityMapper {
         shadowDarkness: entity.light.shadowDarkness,
         shadowBias: entity.light.shadowBias,
         shadowNormalBias: entity.light.shadowNormalBias,
-        excludeExteriorMeshes: entity.light.excludeExteriorMeshes
+        excludeExteriorMeshes: entity.light.excludeExteriorMeshes,
+        distanceControlEnabled: entity.light.distanceControlEnabled,
+        activationDistance: entity.light.activationDistance,
+        deactivationDistance: entity.light.deactivationDistance,
+        distanceShadowsEnabled: entity.light.distanceShadowsEnabled,
+        shadowActivationDistance: entity.light.shadowActivationDistance,
+        shadowDeactivationDistance: entity.light.shadowDeactivationDistance,
+        distanceReferenceMode: entity.light.distanceReferenceMode
       } : {})
     };
   }

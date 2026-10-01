@@ -1,3 +1,5 @@
+
+// file: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
 import { PointLight, SpotLight, Vector3, Color3, Tags, ShadowGenerator, AbstractMesh, Mesh, StandardMaterial } from '@babylonjs/core';
@@ -12,13 +14,17 @@ import { GameMode } from '../../../session/game-mode.model';
 
 export type LightVisualState = 'PRELOADED' | 'ACTIVE';
 
-interface VirtualLight {
+export interface VirtualLight {
     entity: GameEntity;
     materials: any[];
     baseColor: Color3;
     currentMultiplier: number;
     targetMultiplier: number;
     distSq: number;
+    // --- ESTADO DE DISTANCIA E HISTÉRESIS ---
+    isLightInRange: boolean;
+    isShadowInRange: boolean;
+    lastEvaluatedDistance: number;
 }
 
 interface PoolSlot {
@@ -48,8 +54,13 @@ export class DynamicLightingSystem implements IUpdatable {
   private shadowCastersCache: AbstractMesh[] = [];
   private frameCounter = 0;
 
+  // 🔥 LÍMITES ESTRICTOS DE RENDIMIENTO (MÁXIMO 3 LUCES)
   private MAX_LOCAL_SHADER_LIGHTS = 3;
   private MAX_SHADOW_LIGHTS = 3;
+
+  // 🔥 CONSTANTES PARA FADE Y RENDIMIENTO (Previenen el parpadeo y los saltos visuales)
+  private readonly LIGHT_VISUAL_MIN_INTENSITY = 0.0001;
+  private readonly LIGHT_DISABLE_THRESHOLD = 0.00001;
 
   private lastAssignedSet = '';
   private shouldLogSummary = false;
@@ -58,18 +69,39 @@ export class DynamicLightingSystem implements IUpdatable {
   private _tempPos = Vector3.Zero();
   private _tempDir = Vector3.Zero();
 
-  private getReferencePosition(): Vector3 {
-      const playerEntity = this.context.activePlayerEntity();
-      if (playerEntity && playerEntity.view) {
-          return playerEntity.view.getAbsolutePosition();
+  public getVirtualLightByUid(uid: string): VirtualLight | undefined {
+    return this.virtualLights.find(v => v.entity.uid === uid);
+  }
+
+  public getReferencePosition(customMode?: 'AUTO' | 'CAMERA' | 'PLAYER'): Vector3 {
+      const mode = this.context.mode();
+      const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
+      const refMode = customMode || 'AUTO';
+
+      if (refMode === 'CAMERA') {
+        const camera = this.ownership.getCamera() || this.motor3d.getEditorCamera();
+        return camera ? camera.globalPosition : Vector3.Zero();
       }
+
+      if (refMode === 'PLAYER') {
+        const playerEntity = this.context.activePlayerEntity();
+        if (playerEntity && playerEntity.view) {
+          return playerEntity.view.getAbsolutePosition();
+        }
+      }
+
+      // Modo AUTO: En Editor Libre usa la cámara de editor; en Test Live / Juego usa el Player
+      if (!isEditor) {
+        const playerEntity = this.context.activePlayerEntity();
+        if (playerEntity && playerEntity.view) {
+            return playerEntity.view.getAbsolutePosition();
+        }
+      }
+
       const camera = this.ownership.getCamera() || this.motor3d.getEditorCamera();
       return camera ? camera.globalPosition : Vector3.Zero();
   }
 
-  /**
-   * Obtiene la posición y dirección mundial de la entidad lumínica.
-   */
   private getLightWorldTransform(entity: GameEntity, outPos: Vector3, outDir: Vector3): void {
       if (!entity.view) {
           outPos.set(entity.transform.position.x, entity.transform.position.y, entity.transform.position.z);
@@ -88,10 +120,6 @@ export class DynamicLightingSystem implements IUpdatable {
       outDir.normalize();
   }
 
-  /**
-   * Evalúa si una entidad califica ópticamente para ser un bloqueador de luz (Shadow Caster).
-   * La oclusión es visual: NO depende de 'isSolid'.
-   */
   private isEligibleShadowCaster(e: GameEntity): boolean {
       if (!e.view || !e.view.isVisible || !e.view.isEnabled()) return false;
       
@@ -146,7 +174,6 @@ export class DynamicLightingSystem implements IUpdatable {
       this.MAX_SHADOW_LIGHTS = Math.min(3, availableUBOsForShadows);
       this.MAX_LOCAL_SHADER_LIGHTS = 3;
 
-      // 1. Recolección de mallas casters y marcación de receivers
       this.entityManager.getAllEntities().forEach(e => {
           if (this.isEligibleShadowCaster(e) && e.view) {
               const addMesh = (m: AbstractMesh) => {
@@ -171,17 +198,14 @@ export class DynamicLightingSystem implements IUpdatable {
           }
       });
 
-      // 2. Registro de entidades de luz y recolección de materiales emisivos
       const lightEntities = this.entityManager.getAllEntities().filter(e => e.type.startsWith('light_'));
       for (const e of lightEntities) {
           this.registerOrUpdateVirtualLight(e);
       }
 
-      // 3. Inicialización del Pool de Luces y ShadowGenerators calibrados físicamente
       for(let i = 0; i < this.MAX_LOCAL_SHADER_LIGHTS; i++) {
           const hasShadows = i < this.MAX_SHADOW_LIGHTS;
 
-          // --- POINT LIGHT (CUBEMAP 360°) ---
           const pLight = new PointLight(`pool_point_${i}`, Vector3.Zero(), scene);
           pLight.intensity = 0; 
           pLight.diffuse = Color3.Black(); 
@@ -201,7 +225,6 @@ export class DynamicLightingSystem implements IUpdatable {
           }
           this.pointPool.push({ index: i, type: 'point', light: pLight, sg: pSg, assignedEntityUid: null, currentIntensity: 0 });
 
-          // --- SPOT LIGHT (2D CONE) ---
           const sLight = new SpotLight(`pool_spot_${i}`, Vector3.Zero(), new Vector3(0, -1, 0), Math.PI/3, 2, scene);
           sLight.intensity = 0; 
           sLight.diffuse = Color3.Black(); 
@@ -227,7 +250,7 @@ export class DynamicLightingSystem implements IUpdatable {
       this.frameCounter = 0;
       this.shouldLogSummary = true;
 
-      // Asignar slots inmediatamente en el primer frame
+      this.evaluateDistanceAndHysteresis();
       this.allocatePoolSlots();
   }
 
@@ -261,9 +284,12 @@ export class DynamicLightingSystem implements IUpdatable {
               entity: e,
               materials: mats,
               baseColor,
-              currentMultiplier: 1.0,
-              targetMultiplier: 1.0,
-              distSq: 0
+              currentMultiplier: 0.0,
+              targetMultiplier: 0.0,
+              distSq: 0,
+              isLightInRange: false,
+              isShadowInRange: false,
+              lastEvaluatedDistance: 0
           };
           this.virtualLights.push(vl);
       } else {
@@ -298,10 +324,6 @@ export class DynamicLightingSystem implements IUpdatable {
       this.lastAssignedSet = '';
   }
 
-  /**
-   * Reconstruye la lista de renderizado de sombras excluyendo únicamente la bombilla visual de la luz.
-   * El poste, mástil o paredes padre PERMANECEN en la renderList para proyectar sombras.
-   */
   private rebuildShadowRenderList(slot: PoolSlot, entityToExcludeUid: string): void {
       if (!slot.sg) return;
       const rList = slot.sg.getShadowMap()?.renderList;
@@ -326,15 +348,107 @@ export class DynamicLightingSystem implements IUpdatable {
       }
   }
 
-  private allocatePoolSlots(): void {
-      const mode = this.context.mode();
-      const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
+  /**
+   * 🔥 CÁLCULO DE TRANSICIÓN SUAVE BASADO EN DISTANCIA.
+   * Interpola el multiplicador de la luz utilizando una curva `smoothstep`.
+   */
+  private evaluateDistanceAndHysteresis(): void {
+      for (let i = 0; i < this.virtualLights.length; i++) {
+          const vl = this.virtualLights[i];
+          const lightComp = vl.entity.light;
+          if (!lightComp || !vl.entity.view || !lightComp.enabled) {
+              vl.isLightInRange = false;
+              vl.isShadowInRange = false;
+              vl.targetMultiplier = 0;
+              continue;
+          }
 
+          const refPos = this.getReferencePosition(lightComp.distanceReferenceMode);
+          this.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
+          
+          vl.distSq = Vector3.DistanceSquared(refPos, this._tempPos);
+          const dist = Math.sqrt(vl.distSq);
+          vl.lastEvaluatedDistance = dist;
+
+          // 1. Evaluación de Rango de Luz y Multiplicador (Fade Suave)
+          if (lightComp.distanceControlEnabled) {
+              const actDist = Math.max(0.1, lightComp.activationDistance ?? 65);
+              const deactDist = Math.max(actDist, lightComp.deactivationDistance ?? (actDist + 10));
+
+              // La luz alcanza su brillo original (100%) en el 60% inicial de su radio de activación.
+              const fadeStartDist = actDist * 0.6;
+              const fadeEndDist = actDist; 
+
+              if (vl.isLightInRange) {
+                  // Apagado físico real superada la histéresis
+                  if (dist > deactDist) {
+                      vl.isLightInRange = false;
+                      vl.targetMultiplier = 0;
+                  } else {
+                      // Curva de atenuación suave
+                      if (dist <= fadeStartDist) {
+                          vl.targetMultiplier = 1.0;
+                      } else if (dist >= fadeEndDist) {
+                          // Retenemos el mínimo técnico en vez de 0 absoluto para que el shader
+                          // quede compilado y el culling sea invisible, previniendo lag spikes
+                          vl.targetMultiplier = this.LIGHT_DISABLE_THRESHOLD;
+                      } else {
+                          // Interpolación Smoothstep (orgánica)
+                          let t = 1.0 - ((dist - fadeStartDist) / (fadeEndDist - fadeStartDist));
+                          t = Math.max(0, Math.min(1, t));
+                          vl.targetMultiplier = (t * t * (3.0 - 2.0 * t));
+                      }
+                  }
+              } else {
+                  // Activación
+                  if (dist <= actDist) {
+                      vl.isLightInRange = true;
+                      if (dist <= fadeStartDist) {
+                          vl.targetMultiplier = 1.0;
+                      } else {
+                          let t = 1.0 - ((dist - fadeStartDist) / (fadeEndDist - fadeStartDist));
+                          t = Math.max(0, Math.min(1, t));
+                          vl.targetMultiplier = (t * t * (3.0 - 2.0 * t));
+                      }
+                  } else {
+                      vl.targetMultiplier = 0;
+                  }
+              }
+          } else {
+              vl.isLightInRange = true;
+              vl.targetMultiplier = 1.0;
+          }
+
+          // 2. Evaluación de Sombras por Distancia (Manteniendo su lógica original exacta)
+          if (vl.isLightInRange && lightComp.castShadows) {
+              if (lightComp.distanceShadowsEnabled) {
+                  const sActDist = Math.max(0.1, lightComp.shadowActivationDistance ?? 30);
+                  const sDeactDist = Math.max(sActDist, lightComp.shadowDeactivationDistance ?? (sActDist + 6));
+
+                  if (vl.isShadowInRange) {
+                      if (dist > sDeactDist) {
+                          vl.isShadowInRange = false;
+                      }
+                  } else {
+                      if (dist <= sActDist) {
+                          vl.isShadowInRange = true;
+                      }
+                  }
+              } else {
+                  vl.isShadowInRange = true;
+              }
+          } else {
+              vl.isShadowInRange = false;
+          }
+      }
+  }
+
+  private allocatePoolSlots(): void {
+      // Filtrar estrictamente solo aquellas luces virtuales evaluadas como activas en rango
       const activeVirtuals = this.virtualLights.filter(vl => 
-        isEditor ? (vl.entity.light?.enabled !== false) : (vl.targetMultiplier > 0.01 || vl.currentMultiplier > 0.01)
+          vl.entity.light?.enabled !== false && vl.isLightInRange
       );
 
-      // Si hay una entidad seleccionada en el editor, garantizar que tenga prioridad #1 absoluta
       const selectedMesh = this.context.selectedNode() as AbstractMesh;
       let selectedUid: string | null = null;
       if (selectedMesh) {
@@ -346,25 +460,40 @@ export class DynamicLightingSystem implements IUpdatable {
         }
       }
 
-      if (selectedUid) {
-        const selIdx = activeVirtuals.findIndex(v => v.entity.uid === selectedUid);
-        if (selIdx > 0) {
-          const [selectedItem] = activeVirtuals.splice(selIdx, 1);
-          activeVirtuals.unshift(selectedItem);
-        }
-      } else {
-        activeVirtuals.sort((a, b) => a.distSq - b.distSq);
-      }
+      // Slot Hysteresis: Prioriza slots ya asignados para evitar flickering
+      activeVirtuals.sort((a, b) => {
+          if (selectedUid) {
+              if (a.entity.uid === selectedUid) return -1;
+              if (b.entity.uid === selectedUid) return 1;
+          }
+          
+          const isA_Assigned = this.pointPool.some(s => s.assignedEntityUid === a.entity.uid) || this.spotPool.some(s => s.assignedEntityUid === a.entity.uid);
+          const isB_Assigned = this.pointPool.some(s => s.assignedEntityUid === b.entity.uid) || this.spotPool.some(s => s.assignedEntityUid === b.entity.uid);
+          
+          let distA = a.distSq;
+          let distB = b.distSq;
+          
+          // Mantiene las luces ya procesadas con un peso favorable
+          if (isA_Assigned) distA *= 0.8; 
+          if (isB_Assigned) distB *= 0.8; 
+          
+          return distA - distB;
+      });
 
+      // 🔥 LÍMITE ESTRUCTURAL: MÁXIMO 3 LUCES SIEMPRE
       const topVirtuals = activeVirtuals.slice(0, this.MAX_LOCAL_SHADER_LIGHTS);
       const topUids = new Set(topVirtuals.map(x => x.entity.uid));
 
+      // Soltamos únicamente los slots de luces que se cayeron del Top 3
       const releaseSlot = (slot: PoolSlot) => {
           if (slot.assignedEntityUid && !topUids.has(slot.assignedEntityUid)) {
               slot.assignedEntityUid = null;
               if (slot.sg && slot.sg.getShadowMap()?.renderList) {
                   slot.sg.getShadowMap()!.renderList!.length = 0; 
               }
+              slot.currentIntensity = 0;
+              slot.light.intensity = 0;
+              slot.light.setEnabled(false);
               this.containmentSvc.clearContainment(slot.light);
           }
       };
@@ -377,7 +506,7 @@ export class DynamicLightingSystem implements IUpdatable {
       topVirtuals.forEach(vl => {
           const isPoint = vl.entity.type === 'light_point';
           const pool = isPoint ? this.pointPool : this.spotPool;
-          const wantsShadow = vl.entity.light?.castShadows !== false;
+          const wantsShadow = vl.isShadowInRange;
 
           let existingSlot = pool.find(s => s.assignedEntityUid === vl.entity.uid);
 
@@ -391,6 +520,7 @@ export class DynamicLightingSystem implements IUpdatable {
                   freeSlot.assignedEntityUid = vl.entity.uid;
                   freeSlot.currentIntensity = 0; 
                   freeSlot.light.intensity = 0;
+                  // 🔥 El Shader compilará aquí, pero como su target es mínimo (fade in), será invisible.
                   freeSlot.light.setEnabled(true); 
                   existingSlot = freeSlot;
               }
@@ -423,11 +553,12 @@ export class DynamicLightingSystem implements IUpdatable {
                           existingSlot.sg.normalBias = existingSlot.type === 'point' ? 0.005 : 0.015;
                       }
                   } else {
-                      existingSlot.sg.getShadowMap()!.renderList!.length = 0;
+                      if (existingSlot.sg.getShadowMap()?.renderList) {
+                          existingSlot.sg.getShadowMap()!.renderList!.length = 0;
+                      }
                   }
               }
 
-              // Aplicar contención espacial a la luz activa
               if (scene) {
                 this.containmentSvc.applyContainment(existingSlot.light, vl.entity, scene);
               }
@@ -441,11 +572,6 @@ export class DynamicLightingSystem implements IUpdatable {
       }
   }
 
-  /**
-   * 🔥 SINCRONIZACIÓN INMEDIATA (TIEMPO REAL)
-   * Llamada al instante desde PropLight cuando cualquier propiedad del Inspector cambia.
-   * Cero delays, cero reconstrucciones de escena, cero recargas.
-   */
   public syncLightImmediate(entity: GameEntity): void {
       if (!this.isInitialized) {
           this.prepareAllLights();
@@ -459,23 +585,20 @@ export class DynamicLightingSystem implements IUpdatable {
       const hexColor = isBW ? lightComp.lightColorBW : lightComp.lightColor;
       const baseColor = Color3.FromHexString(hexColor || '#ffffff');
 
-      // 1. Registrar o actualizar en la lista de luces virtuales
       const vl = this.registerOrUpdateVirtualLight(entity);
       vl.baseColor = baseColor;
-      vl.currentMultiplier = 1.0;
-      vl.targetMultiplier = 1.0;
 
-      // 2. Localizar o asignar slot en el pool
+      this.evaluateDistanceAndHysteresis();
+
       const isPoint = entity.type === 'light_point';
       const pool = isPoint ? this.pointPool : this.spotPool;
 
       let slot = pool.find(s => s.assignedEntityUid === entity.uid);
-      if (!slot) {
+      if (!slot && vl.isLightInRange) {
           this.allocatePoolSlots();
           slot = pool.find(s => s.assignedEntityUid === entity.uid);
       }
 
-      // 3. Aplicar propiedades directas sobre la instancia Babylon Light real
       this.getLightWorldTransform(entity, this._tempPos, this._tempDir);
 
       if (slot) {
@@ -492,17 +615,20 @@ export class DynamicLightingSystem implements IUpdatable {
           slot.light.shadowMaxZ = lightRange;
           slot.light.diffuse.copyFrom(baseColor);
 
-          const finalIntensity = lightComp.enabled ? (lightComp.intensity ?? 1.0) : 0;
+          // Si estamos en Editor el cambio es instantáneo, en runtime es suave.
+          const finalIntensity = (lightComp.enabled && vl.isLightInRange) ? (lightComp.intensity ?? 1.0) * vl.targetMultiplier : 0;
+          
           slot.currentIntensity = finalIntensity;
           slot.light.intensity = finalIntensity;
 
-          const isLightActive = lightComp.enabled && finalIntensity > 0;
+          const isLightActive = lightComp.enabled && vl.isLightInRange && finalIntensity > this.LIGHT_DISABLE_THRESHOLD;
           slot.light.setEnabled(isLightActive);
 
-          // Sombras inmediatas
-          slot.light.shadowEnabled = lightComp.castShadows;
+          const wantsShadow = vl.isShadowInRange;
+          slot.light.shadowEnabled = wantsShadow;
+
           if (slot.sg) {
-              if (lightComp.castShadows) {
+              if (wantsShadow) {
                   this.rebuildShadowRenderList(slot, entity.uid);
                   if (lightComp.containmentMode === 'INTERIOR') {
                       slot.sg.setDarkness(lightComp.shadowDarkness ?? 0.0);
@@ -520,12 +646,10 @@ export class DynamicLightingSystem implements IUpdatable {
               }
           }
 
-          // Contención espacial inmediata
           this.containmentSvc.markDirty(entity.uid);
           this.containmentSvc.applyContainment(slot.light, entity, scene);
       }
 
-      // 4. Actualizar visual de la bombilla en el editor
       if (entity.view) {
           const visual = entity.view.getChildMeshes(false).find(m => 
               Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual
@@ -535,8 +659,7 @@ export class DynamicLightingSystem implements IUpdatable {
               visual.material.diffuseColor.copyFrom(baseColor);
           }
 
-          // Actualizar materiales de modelos 3D asociados si los hay
-          const emissiveScale = (lightComp.intensity / 5);
+          const emissiveScale = (lightComp.intensity / 5) * (vl.isLightInRange ? vl.targetMultiplier : 0.1);
           const r = baseColor.r * emissiveScale;
           const g = baseColor.g * emissiveScale;
           const b = baseColor.b * emissiveScale;
@@ -556,42 +679,31 @@ export class DynamicLightingSystem implements IUpdatable {
       this.frameCounter++;
       
       const isFirstFrame = this.frameCounter === 1;
-      const refPos = this.getReferencePosition();
       const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       const mode = this.context.mode();
       const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
-      // En el editor, los cambios deben ser directos y exactos
-      const lerpSpeed = (isFirstFrame || isEditor) ? 1.0 : Math.min(1.0, dtMs * 0.015);
+      // 🔥 LERP BASADO EN TIEMPO REAL: dtMs previene tirones en FPS inestables.
+      const lerpSpeed = (isFirstFrame || isEditor) ? 1.0 : Math.min(1.0, dtMs * 0.005);
+
+      this.evaluateDistanceAndHysteresis();
 
       for(let i = 0; i < this.virtualLights.length; i++) {
           const vl = this.virtualLights[i];
           const lightComp = vl.entity.light;
           
-          if (!lightComp || !vl.entity.view || !lightComp.enabled) {
+          if (!lightComp || !vl.entity.view || !lightComp.enabled || !vl.isLightInRange) {
               vl.targetMultiplier = 0;
-          } else {
-              this.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
-              vl.distSq = Vector3.DistanceSquared(refPos, this._tempPos);
-              
-              if (isEditor) {
-                  // En el editor, NO se atenúa la luz según la distancia de la cámara
-                  vl.targetMultiplier = 1.0;
-              } else {
-                  const dist = Math.sqrt(vl.distSq);
-                  if (dist <= 4) vl.targetMultiplier = 1.0;
-                  else if (dist >= 30) vl.targetMultiplier = 0.05; 
-                  else {
-                      const t = (dist - 4) / (30 - 4);
-                      vl.targetMultiplier = Math.max(0.05, 1.0 - t);
-                  }
-              }
           }
 
+          // Interpolación suave y orgánica (Fade)
           if (isEditor) {
               vl.currentMultiplier = vl.targetMultiplier;
           } else {
               vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
+              if (vl.currentMultiplier < this.LIGHT_DISABLE_THRESHOLD) {
+                  vl.currentMultiplier = 0;
+              }
           }
 
           const hexColor = lightComp ? (isBW ? lightComp.lightColorBW : lightComp.lightColor) : '#ffffff';
@@ -611,31 +723,25 @@ export class DynamicLightingSystem implements IUpdatable {
           }
       }
 
-      if (isFirstFrame || this.frameCounter % 30 === 0) {
+      if (isFirstFrame || this.frameCounter % 15 === 0) {
           this.allocatePoolSlots();
       }
 
       const syncSlot = (slot: PoolSlot) => {
           if (!slot.assignedEntityUid) {
-              if (isEditor) {
-                  slot.currentIntensity = 0;
-                  slot.light.intensity = 0;
-                  slot.light.diffuse.set(0, 0, 0);
-                  if (slot.light.isEnabled()) slot.light.setEnabled(false);
-              } else {
-                  slot.currentIntensity += (0 - slot.currentIntensity) * lerpSpeed;
-                  slot.light.intensity = slot.currentIntensity;
-                  if (slot.light.intensity < 0.01) {
-                      slot.light.diffuse.set(0, 0, 0);
-                      if (slot.light.isEnabled()) slot.light.setEnabled(false); 
-                  }
-              }
+              slot.currentIntensity = 0;
+              slot.light.intensity = 0;
+              slot.light.diffuse.set(0, 0, 0);
+              if (slot.light.isEnabled()) slot.light.setEnabled(false);
               return;
           }
 
           const vl = this.virtualLights.find(v => v.entity.uid === slot.assignedEntityUid);
-          if (!vl || !vl.entity.light) {
+          if (!vl || !vl.entity.light || !vl.isLightInRange) {
               slot.assignedEntityUid = null;
+              slot.currentIntensity = 0;
+              slot.light.intensity = 0;
+              slot.light.setEnabled(false);
               this.containmentSvc.clearContainment(slot.light);
               return;
           }
@@ -653,33 +759,32 @@ export class DynamicLightingSystem implements IUpdatable {
           slot.light.shadowMaxZ = lightRange;
           slot.light.diffuse.copyFrom(vl.baseColor);
 
+          // 🔥 APLICAR LA INTENSIDAD BASADA EN EL MULTIPLICADOR SUAVIZADO
           const animatedIntensity = vl.entity.light.renderIntensity ?? vl.entity.light.intensity ?? 1.0;
           let finalIntensity = animatedIntensity * vl.currentMultiplier;
           if (!vl.entity.light.enabled) finalIntensity = 0;
-          else if (!isEditor && vl.currentMultiplier <= 0.06) finalIntensity = 0; 
 
-          if (isEditor) {
-              slot.currentIntensity = finalIntensity;
-              slot.light.intensity = finalIntensity;
-          } else {
-              slot.currentIntensity += (finalIntensity - slot.currentIntensity) * lerpSpeed;
-              slot.light.intensity = slot.currentIntensity;
-          }
+          slot.currentIntensity = finalIntensity;
+          slot.light.intensity = finalIntensity;
 
-          const isEnabled = vl.entity.light.enabled && slot.light.intensity > 0;
+          // Habilitar la luz físicamente solo si supera el umbral microscópico para no causar popping visual.
+          const isEnabled = vl.entity.light.enabled && slot.light.intensity > this.LIGHT_DISABLE_THRESHOLD;
           if (slot.light.isEnabled() !== isEnabled) {
               slot.light.setEnabled(isEnabled);
           }
 
-          // Aplicar contención espacial en cada frame
-          this.containmentSvc.applyContainment(slot.light, vl.entity, scene);
+          const wantsShadow = vl.isShadowInRange;
+          if (slot.sg) {
+              const hasCasters = (slot.sg.getShadowMap()?.renderList?.length ?? 0) > 0;
+              if (wantsShadow && !hasCasters) {
+                  this.rebuildShadowRenderList(slot, vl.entity.uid);
+              } else if (!wantsShadow && hasCasters) {
+                  slot.sg.getShadowMap()!.renderList!.length = 0;
+              }
+          }
       };
 
       this.pointPool.forEach(syncSlot);
       this.spotPool.forEach(syncSlot);
-
-      if (this.shouldLogSummary && this.frameCounter % 60 === 0) {
-          this.shouldLogSummary = false;
-      }
   }
 }

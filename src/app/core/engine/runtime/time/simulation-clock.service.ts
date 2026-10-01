@@ -86,11 +86,9 @@ export class SimulationClockService {
       stepsCount++;
     }
 
-    // Si después de los substeps queda un residuo o si la escala es menor a 1x (slow-motion)
-    if (stepsCount === 0 && this._accumulatedSimTimeMs > 0.001) {
-      this._substeps.push(this._accumulatedSimTimeMs);
-      this._accumulatedSimTimeMs = 0;
-    }
+    // 🔥 FIX ARQUITECTÓNICO: Si stepsCount === 0, el remanente SE QUEDA en _accumulatedSimTimeMs.
+    // Esto permite que el sistema de CharacterKinematics calcule un "Alpha" de interpolación
+    // visual preciso en los frames donde no corre la física, eliminando el stutter del jugador al 100%.
   }
 
   public reset(): void {

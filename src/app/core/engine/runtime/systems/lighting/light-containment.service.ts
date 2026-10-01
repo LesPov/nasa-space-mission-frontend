@@ -168,9 +168,20 @@ export class LightContainmentService {
 
   /**
    * Aplica la configuración de contención directamente sobre la luz activa de BabylonJS.
+   * 🔥 FIX DE RENDIMIENTO CRÍTICO: Previene la recompilación masiva de Shaders comprobando el Caché de estado.
    */
   public applyContainment(light: PointLight | SpotLight, entity: GameEntity, scene: Scene): void {
     const mode: LightContainmentMode = entity.light?.containmentMode || 'GLOBAL';
+
+    // 🔥 Anti-Shader-Recompile Hysteresis Check
+    // Evita asignar un array a includedOnlyMeshes si la luz ya está confinada correctamente.
+    // Esto erradica el popping de meshes provocado por el shader re-evaluating lighting.
+    if ((light as any)._currentContainmentMode === mode && (light as any)._currentContainerUid === entity.light?.containerEntityUid) {
+        if (mode === 'GLOBAL') return;
+        if (this.interiorMeshesCache.has(entity.uid) && (light as any)._containmentAppliedForUid === entity.uid) {
+            return; 
+        }
+    }
 
     if (mode === 'INTERIOR') {
       const interiorMeshes = this.getInteriorMeshes(entity, scene);
@@ -182,17 +193,27 @@ export class LightContainmentService {
         light.excludedMeshes = [];
       }
     } else {
-      // Modo EXTERIOR o GLOBAL: se levanta cualquier restricción exclusiva interior
       light.includedOnlyMeshes = [];
       light.excludedMeshes = [];
     }
+    
+    // Guardar metadata local para el Hysteresis en frames posteriores
+    (light as any)._currentContainmentMode = mode;
+    (light as any)._currentContainerUid = entity.light?.containerEntityUid;
+    (light as any)._containmentAppliedForUid = entity.uid;
   }
 
   /**
    * Limpia las colecciones de contención de la luz para evitar residuos en slots reasignados.
    */
   public clearContainment(light: PointLight | SpotLight): void {
-    light.includedOnlyMeshes = [];
-    light.excludedMeshes = [];
+    // Si ya era Global, no asignamos Arrays vacíos de nuevo para evitar marcar Shaders como sucios
+    if ((light as any)._currentContainmentMode !== 'GLOBAL') {
+        light.includedOnlyMeshes = [];
+        light.excludedMeshes = [];
+        (light as any)._currentContainmentMode = 'GLOBAL';
+        (light as any)._currentContainerUid = undefined;
+        (light as any)._containmentAppliedForUid = undefined;
+    }
   }
 }

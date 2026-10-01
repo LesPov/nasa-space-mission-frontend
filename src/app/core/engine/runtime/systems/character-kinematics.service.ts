@@ -11,6 +11,7 @@ import { GameMode } from '../../session/game-mode.model';
 import { getMovementProfileForOwner, MovementProfile } from '../movement/movement-profile.model';
 import { TransformTelemetryService } from '../../telemetry/transform-telemetry.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
+import { SimulationClockService } from '../time/simulation-clock.service';
 
 @Injectable({ providedIn: 'root' })
 export class CharacterKinematicsService implements IUpdatable {
@@ -20,6 +21,7 @@ export class CharacterKinematicsService implements IUpdatable {
   private ownership = inject(CameraOwnershipService);
   private context = inject(GameContextService);
   private worldSettingsSvc = inject(WorldSettingsService);
+  private clock = inject(SimulationClockService);
 
   private _localCapsuleCenter = Vector3.Zero();
   private _capsuleCenter = Vector3.Zero();
@@ -112,6 +114,29 @@ export class CharacterKinematicsService implements IUpdatable {
       );
     }
   }
+
+  public animationUpdate(dtMs: number): void {
+      const mode = this.context.mode();
+      if (mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME) return;
+
+      const alpha = this.clock.accumulatedSimTimeMs / this.clock.fixedSubstepMs;
+      const safeAlpha = Math.max(0, Math.min(1, alpha));
+      
+      const entities = this.entityManager.getAllEntities();
+      for (let i = 0; i < entities.length; i++) {
+          const entity = entities[i];
+          if (!entity.hasComponent('characterConfig')) continue;
+          if (entity.movementAuthority === 'CINEMATIC_FULL') continue;
+
+          const mesh = entity.view as Mesh;
+          if (!mesh) continue;
+          
+          const estadoFisico = entity.playerRuntime.physicsState;
+
+          // Interpolación Suave y Perfecta Visual (Separada de Físicas)
+          Vector3.LerpToRef(estadoFisico.previousPosition, estadoFisico.currentPosition, safeAlpha, mesh.position);
+      }
+  }
   
   public updateKinematics(
     scene: Scene,
@@ -125,10 +150,16 @@ export class CharacterKinematicsService implements IUpdatable {
     const mesh = entity.view as Mesh;
     if (!mesh) return;
 
-    mesh.checkCollisions = profile.collisionsEnabled;
-
     const playerState = entity.playerRuntime;
     const estadoFisico = playerState.physicsState;
+
+    // 🔥 Restablecer la malla a la posición física exacta calculada en el frame anterior
+    // Esto previene que el motor de físicas herede un estado interpolado visualmente y se desvíe.
+    mesh.position.copyFrom(estadoFisico.currentPosition);
+    estadoFisico.previousPosition.copyFrom(estadoFisico.currentPosition);
+
+    mesh.checkCollisions = profile.collisionsEnabled;
+
     const intentions = playerState.intentions;
     const colMeta = entity.collider;
     const scaleY = entity.transform.scale.y || 1;
@@ -158,7 +189,6 @@ export class CharacterKinematicsService implements IUpdatable {
       }
     }
 
-    // Resolver factor de gravedad ambiental desde WorldSettings de la plataforma
     const currentWorld = this.worldSettingsSvc.settings();
     const envGravityMag = currentWorld.gravityMagnitude !== undefined ? currentWorld.gravityMagnitude : 9.81;
     const gravityFactor = envGravityMag / 9.81;
@@ -187,6 +217,9 @@ export class CharacterKinematicsService implements IUpdatable {
       );
     }
     
+    // 🔥 Guardar el estado físico real, inmutable para la interpolación posterior
+    estadoFisico.currentPosition.copyFrom(mesh.position);
+
     entity.syncTransformFromView();
     mesh.computeWorldMatrix(true);
   }
@@ -378,7 +411,6 @@ export class CharacterKinematicsService implements IUpdatable {
 
     const posBeforeGrav = mesh.position.clone();
 
-    // Cálculo de gravedad con factor dinámico del planeta activo
     this.calculateGravityAndJump(mesh, estadoFisico, config, intentions, seqRuntime, scaleFactor, scaleY, profile, gravityFactor, isZeroG);
 
     if (isNaN(this._move.x)) this._move.x = 0;

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3, Tags, Quaternion } from '@babylonjs/core';
 import '@babylonjs/loaders';
@@ -188,7 +189,10 @@ export class CoreModelLoaderService {
         if (override.scale) m.scaling.set(override.scale.x, override.scale.y, override.scale.z);
       }
       
-      if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled && !override) {
+      // 🔥 FREEZE WORLD MATRIX DE MANERA SEGURA:
+      // Nunca congelamos objetos interactivos que pudieran encender/apagar TVs, o cambiar visuales en runtime
+      const isInteractable = !!entity.interaction?.mensaje || !!entity.interaction?.interactSequenceIdFPS;
+      if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled && !override && !isInteractable) {
         m.computeWorldMatrix(true);
         m.freezeWorldMatrix();
       }
@@ -213,7 +217,8 @@ export class CoreModelLoaderService {
       }
     }
 
-    if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled && Object.keys(partOverrides).length === 0) {
+    const isInteractableRoot = !!entity.interaction?.mensaje || !!entity.interaction?.interactSequenceIdFPS;
+    if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled && Object.keys(partOverrides).length === 0 && !isInteractableRoot) {
       rootNode.computeWorldMatrix(true);
       rootNode.freezeWorldMatrix();
     }

@@ -35,6 +35,14 @@ export class SimulationClockService {
     return this._substeps;
   }
 
+  public get accumulatedSimTimeMs(): number {
+    return this._accumulatedSimTimeMs;
+  }
+
+  public get fixedSubstepMs(): number {
+    return this.FIXED_SUBSTEP_MS;
+  }
+
   public setTimeScale(scale: number): void {
     if (!Number.isFinite(scale) || scale < 0) scale = 1.0;
     // Límite superior seguro documentado: 10x

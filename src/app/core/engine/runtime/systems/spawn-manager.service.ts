@@ -1,4 +1,3 @@
-
 import { Injectable, inject, Injector } from '@angular/core';
 import { GameEntity, CharacterConfigComponent, PlayerRuntimeComponent } from '../../entities/game.entity';
 import { EntityManagerService } from '../../entities/entity-manager.service';
@@ -222,6 +221,11 @@ export class SpawnManagerService {
     state.isHardLanding = false;
     state.isRecoveringFromFall = false;
     
+    if (player.view) {
+      state.currentPosition.copyFrom(player.view.position);
+      state.previousPosition.copyFrom(player.view.position);
+    }
+
     player.playerRuntime.intentions = {
         moveForward: false, moveBackward: false, moveLeft: false, 
         moveRight: false, run: false, jump: false

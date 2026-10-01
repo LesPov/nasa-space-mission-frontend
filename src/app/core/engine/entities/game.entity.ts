@@ -1,4 +1,3 @@
-
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
 import { SeqRuntime } from '../runtime/systems/player-sequence.service';
@@ -138,7 +137,8 @@ export class PlayerRuntimeComponent {
     public physicsState = {
       isMoving: false, isRunning: false, isGrounded: true, isJumping: false, isFalling: false,
       isHardLanding: false, isRecoveringFromFall: false, landingFrame: 0, recoveryFrame: 0,
-      velocidadY: -0.1, highestY: -9999
+      velocidadY: -0.1, highestY: -9999,
+      previousPosition: Vector3.Zero(), currentPosition: Vector3.Zero()
     },
     public seqRuntime: SeqRuntime | null = null,
     public stopBakedRequested: boolean = false,

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { DirectionalLight, Vector3, CascadedShadowGenerator, ShadowGenerator, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -143,15 +142,10 @@ export class ShadowOrchestratorService implements IUpdatable {
             lod3Distance: 100,
             updateIntervalMs: 1000
         };
-        
-        const maxDistSq = (profile.maxShadowDistance + 20) * (profile.maxShadowDistance + 20);
 
         for (let i = 0; i < entities.length; i++) {
            const e = entities[i];
            if (this.isEligibleShadowCaster(e) && e.view) {
-               const distSq = Vector3.DistanceSquared(e.view.getAbsolutePosition(), refPos);
-               if (distSq > maxDistSq) continue; // 🔥 Frustum/LOD rápido para Sun Shadows
-               
                const lodValue = Number(this.shadowLOD.calculateLOD(e.view.getAbsolutePosition(), refPos, profile));
                
                if (lodValue === 0) {

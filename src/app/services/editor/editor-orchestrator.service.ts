@@ -1,4 +1,3 @@
-
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AbstractMesh, Tags } from '@babylonjs/core';
@@ -181,8 +180,6 @@ export class EditorOrchestratorService {
       next: async (res) => {
         if (!this.sessionSvc.isSessionActive(sessionId)) return;
         
-        // 🔥 FIX CRÍTICO: Inyectamos explícitamente el objeto Episode dentro del payload 
-        // para que la UI no pierda el contexto de qué episodio padre estamos editando.
         this.episodioCompletoData = { ...res, episode: episodio }; 
         this.editorSvc.setEscenaIdActiva(sceneId);
         
@@ -216,6 +213,9 @@ export class EditorOrchestratorService {
           if (!this.sessionSvc.isSessionActive(sessionId)) return;
           this.cargandoEscena.set(false);
           this.revisarSiEsJugable(); 
+          
+          // 🔥 FIX Carga Limpia: Restaurar estado visual correcto de las luces
+          this.toolsSvc.forceResetVisuals();
           
           if (!this.fpsInterval) {
             this.fpsInterval = setInterval(() => {
@@ -267,7 +267,6 @@ export class EditorOrchestratorService {
     this.epiApiSvc.obtenerEscenaCompleta(sceneId).subscribe({
       next: async (res) => {
         if (!this.sessionSvc.isSessionActive(sessionId)) return;
-        // Mantenemos el episodio inyectado en el payload también en Test Live
         const currentEpisodio = this.editorSvc.episodioActualData();
         this.episodioCompletoData = { ...res, episode: currentEpisodio }; 
         this.editorSvc.setEscenaIdActiva(sceneId);
@@ -430,7 +429,11 @@ export class EditorOrchestratorService {
     this.cargandoEscena.set(false);
     this.revisarSiEsJugable(); 
 
-    setTimeout(() => this.editorSvc.onMapChanged.next(), 300);
+    setTimeout(() => {
+        this.editorSvc.onMapChanged.next();
+        // 🔥 FIX Carga Limpia 2: Restaurar visuales de luces en un frame limpio
+        this.toolsSvc.forceResetVisuals();
+    }, 300);
   }
 
   public salirDelEditor(): void {

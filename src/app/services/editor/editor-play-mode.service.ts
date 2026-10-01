@@ -15,6 +15,7 @@ import { SpawnManagerService } from '../../core/engine/runtime/systems/spawn-man
 import { DynamicLightingSystem } from '../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 import { ShadowOrchestratorService } from '../../core/engine/runtime/shadows/shadow-orchestrator.service';
 import { CinematicLogger } from '../../core/engine/runtime/cinematics/cinematic-logger';
+import { ToolsHighlightService } from './toolsservice/tools-highlight.service';
 
 export interface EditorCameraSnapshot {
   target: Vector3;
@@ -38,6 +39,7 @@ export class EditorPlayModeService {
   private spawnManager = inject(SpawnManagerService);
   private dynamicLighting = inject(DynamicLightingSystem);
   private shadowOrchestrator = inject(ShadowOrchestratorService);
+  private highlightSvc = inject(ToolsHighlightService);
 
   private editorSnapshot: EditorCameraSnapshot | null = null;
 
@@ -45,7 +47,6 @@ export class EditorPlayModeService {
     const editorCam = this.motor3d.getEditorCamera();
     if (editorCam) {
       editorCam.computeWorldMatrix();
-      // Capturamos el snapshot del editor de manera inmutable
       this.editorSnapshot = {
         target: editorCam.getTarget().clone(),
         radius: editorCam.radius,
@@ -55,24 +56,17 @@ export class EditorPlayModeService {
       };
     }
     this.cameraSvc.guardarEstadoCamaraLibre();
-
     CinematicLogger.logTestLiveLifecycle('ENTER', 'EDITOR', editorCam?.name);
 
     let objMesh = this.state.objetoSeleccionado() as Mesh;
     let preferredEntity = objMesh ? this.entityManager.getEntityByMesh(objMesh) : null;
-
     const playerEntity = await this.spawnManager.resolvePlayerForSession(preferredEntity, true);
 
-    if (!playerEntity || !playerEntity.view) {
-      console.warn('No hay personaje jugable ni spawn point para iniciar el Test Live.');
-      return;
-    }
-
+    if (!playerEntity || !playerEntity.view) return;
     objMesh = playerEntity.view as Mesh;
 
     this.gameContext.setCameraView(vista);
     this.state.seleccionarObjeto(null);
-
     this.gameContext.setActivePlayer(playerEntity);
 
     this.motor3d.getScene().meshes.forEach(m => {
@@ -98,14 +92,12 @@ export class EditorPlayModeService {
 
     const scaleY = objMesh.scaling.y || 1;
     const tpsMaxRadius = (playerEntity.playerConfig?.camera?.tpsRadius ?? 5) * scaleY;
-
     const rawTpsPivotY = playerEntity.playerConfig?.camera?.tpsPivotY ?? 1.5;
     const rawFpsEyeLevel = playerEntity.playerConfig?.camera?.fpsEyeLevel ?? 1.6;
     const camMeta = playerEntity.camOffset || { x: 0, y: 1.6, z: 0 };
 
     let targetLookAt: Vector3;
     let targetPos: Vector3;
-
     const localSpiralCenter = new Vector3(camMeta.x || 0, rawFpsEyeLevel, camMeta.z || 0);
     const centroEpiral = Vector3.TransformCoordinates(localSpiralCenter, objMesh.getWorldMatrix());
 
@@ -126,17 +118,12 @@ export class EditorPlayModeService {
       this.motor3d.getScene().executeWhenReady(() => {
         this.dynamicLighting.start();
         this.shadowOrchestrator.start();
-
-        for (let i = 0; i < 5; i++) {
-          this.motor3d.getScene().render();
-        }
-
+        for (let i = 0; i < 5; i++) { this.motor3d.getScene().render(); }
         this.motor3d.getScene().executeWhenReady(() => resolve());
       });
     });
 
     let hideObserver: Observer<Scene> | null = null;
-
     if (vista === 'FPS' && !skipIntro) {
       hideObserver = this.motor3d.getScene().onBeforeRenderObservable.add(() => {
         const cam = this.ownership.getCamera();
@@ -153,12 +140,8 @@ export class EditorPlayModeService {
     }
 
     const finishSetup = () => {
-      if (hideObserver) {
-        this.motor3d.getScene().onBeforeRenderObservable.remove(hideObserver);
-      }
-
+      if (hideObserver) this.motor3d.getScene().onBeforeRenderObservable.remove(hideObserver);
       if (!skipIntro) this.transitionSvc.finishTestLiveTransition();
-
       this.runtimeEngine.startTestSession(playerEntity!, vista);
 
       setTimeout(() => {
@@ -169,9 +152,7 @@ export class EditorPlayModeService {
             this.motor3d.getEditorCamera()?.detachControl();
             this.motor3d.getPlayerCameraFPS()?.detachControl();
             this.motor3d.getPlayerCameraTPS()?.detachControl();
-
             activeCam.attachControl(canvas, true);
-
             if (vista === 'FPS') {
               objMesh.visibility = 1;
               objMesh.getChildMeshes().forEach(m => m.visibility = 1);
@@ -181,13 +162,8 @@ export class EditorPlayModeService {
       }, 100);
     };
 
-    if (skipIntro) {
-      finishSetup();
-    } else {
-      this.cameraSvc.volarHaciaCamaraJuego(
-        centroEpiral, targetPos, targetLookAt, playerForward, vista === 'FPS', () => finishSetup()
-      );
-    }
+    if (skipIntro) finishSetup();
+    else this.cameraSvc.volarHaciaCamaraJuego(centroEpiral, targetPos, targetLookAt, playerForward, vista === 'FPS', () => finishSetup());
   }
 
   public restaurarEscenaPostTest(isDebugMode: boolean): void {
@@ -195,15 +171,17 @@ export class EditorPlayModeService {
     const canvas = this.motor3d.getEngine().getRenderingCanvas();
     const editorCam = this.motor3d.getEditorCamera();
 
-    // 1. Liberar completamente el ownership de gameplay y desenlazar el anti-bypass
     this.ownership.releaseGameplayOwnership();
 
-    // 2. Desvincular controles de cámaras de juego
     try { this.motor3d.getPlayerCameraFPS()?.detachControl(); } catch {}
     try { this.motor3d.getPlayerCameraTPS()?.detachControl(); } catch {}
 
-    // 3. Restaurar visibilidad de entidades del editor
     scene.meshes.forEach(m => {
+      // 🔥 CORE FIX: Ignoramos los visuales de luces completamente. El HighlightSvc los maneja.
+      if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) {
+        return; 
+      }
+
       if (Tags.MatchesQuery(m, 'editor_only')) {
         m.setEnabled(true);
         m.isVisible = true;
@@ -211,6 +189,7 @@ export class EditorPlayModeService {
 
       const entity = this.entityManager.getEntityByMesh(m);
       if (entity) {
+        // Los marcadores lógicos invisibles
         if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = isDebugMode;
         if (entity.type === 'bubble') m.isVisible = true;
         if (entity.type === 'image_plane') m.isVisible = isDebugMode; 
@@ -222,7 +201,6 @@ export class EditorPlayModeService {
       }
     });
 
-    // 4. Restaurar la cámara orbital del Editor
     if (editorCam) {
       scene.activeCameras = [];
       scene.activeCamera = editorCam;
@@ -246,7 +224,9 @@ export class EditorPlayModeService {
     }
 
     CinematicLogger.logTestLiveLifecycle('EXIT', 'EDITOR', editorCam?.name);
-
     this.editorSnapshot = null;
+    
+    // 🔥 Aseguramos que la escena quede limpia reseteando el Highlight Service
+    this.highlightSvc.forceResetLightVisuals();
   }
 }

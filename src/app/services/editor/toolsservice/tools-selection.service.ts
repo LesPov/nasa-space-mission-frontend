@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Ray, Vector3, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
@@ -88,8 +87,10 @@ export class ToolsSelectionService {
   private puedeTomarseParaSeleccion(mesh: AbstractMesh): boolean {
     if (!mesh) return false;
     
-    // El cuerpo visual de luz es siempre seleccionable
-    if (Tags.MatchesQuery(mesh, "light_visual") || (mesh as any).metadata?.isLightVisual) return true;
+    // El cuerpo visual de luz solo puede tomarse si está visible
+    if (Tags.MatchesQuery(mesh, "light_visual") || (mesh as any).metadata?.isLightVisual) {
+      return mesh.isVisible === true;
+    }
     if (this.state.esMeshIgnorable(mesh)) return false;
     if (Tags.MatchesQuery(mesh, "cinematic_proxy")) return true;
 
@@ -108,17 +109,20 @@ export class ToolsSelectionService {
     const profile = this.gameContext.authorityProfile();
 
     const hit = scene.pickWithRay(ray, (m) => {
-      // 1. El cuerpo visual de luz DEBE ser pickable y no filtrado por ignore_raycast
-      if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) return true;
+      // Las mallas visuales de luz solo participan en el raycast si ya están visibles
+      const isLightVis = Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual;
+      if (isLightVis) {
+        return m.isVisible === true && m.isPickable === true;
+      }
 
       if (!m.isVisible && !Tags.MatchesQuery(m, "cinematic_proxy")) return false;
       if (!m.isPickable) return false;
       
       if (this.state.modoVistaPrueba === 'FPS' && entityPlayer) {
-          const entityHit = this.entityManager.getEntityByMesh(m);
-          if (entityHit && entityHit.uid === entityPlayer.uid) {
-              return false;
-          }
+        const entityHit = this.entityManager.getEntityByMesh(m);
+        if (entityHit && entityHit.uid === entityPlayer.uid) {
+          return false;
+        }
       }
 
       if (Tags.MatchesQuery(m, "cinematic_proxy")) return true;
@@ -129,8 +133,8 @@ export class ToolsSelectionService {
       
       const entity = this.entityManager.getEntityByMesh(m);
       if (entity?.type === 'trigger' || entity?.type === 'trigger_compuesto') {
-          if (!profile.canSelectHidden) return false;
-          if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') return false;
+        if (!profile.canSelectHidden) return false;
+        if (playSt === 'PLAYING' || playSt === 'EDITING_IN_GAME') return false;
       }
       return true;
     });
@@ -141,17 +145,18 @@ export class ToolsSelectionService {
 
     // 1. Cinemáticas
     if (Tags.MatchesQuery(picked, "cinematic_proxy")) {
-        return (picked.parent as AbstractMesh) || picked;
+      return (picked.parent as AbstractMesh) || picked;
     }
 
-    // 2. Luz Visual -> Devolvemos estrictamente el nodo representativo de la luz registrado en EntityManager
+    // 2. Luz Visual -> Devuelve el nodo representativo de la luz registrado en EntityManager
     if (Tags.MatchesQuery(picked, "light_visual") || (picked as any).metadata?.isLightVisual) {
-        const entityUid = (picked as any).metadata?.entityUid;
-        if (entityUid) {
-            const ent = this.entityManager.getEntityByUid(entityUid);
-            if (ent && ent.view) return ent.view as AbstractMesh;
-        }
-        return picked.parent instanceof AbstractMesh ? picked.parent : picked;
+      if (!picked.isVisible) return null;
+      const entityUid = (picked as any).metadata?.entityUid;
+      if (entityUid) {
+        const ent = this.entityManager.getEntityByUid(entityUid);
+        if (ent && ent.view) return ent.view as AbstractMesh;
+      }
+      return picked.parent instanceof AbstractMesh ? picked.parent : picked;
     }
 
     if (this.state.esMeshIgnorable(picked)) return null;

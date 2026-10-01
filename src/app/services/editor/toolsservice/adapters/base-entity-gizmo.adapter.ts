@@ -1,4 +1,3 @@
-
 import { IGizmoTargetAdapter } from './gizmo-target-adapter.interface';
 import { AbstractMesh, Vector3, Quaternion, Matrix, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../../../core/engine/entities/game.entity';
@@ -104,7 +103,6 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
       }
     }
     
-    // Scale handled entirely local for simplicity and stability on skewed hierarchy
     mesh.scaling.copyFrom(pivotNode.scaling);
 
     entity.getVisualCenterLocalToRef(BaseEntityGizmoAdapter._tempLocal);
@@ -121,7 +119,6 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
 
     Vector3.TransformCoordinatesToRef(BaseEntityGizmoAdapter._tempLocal, rotMatrix, BaseEntityGizmoAdapter._tempWorldOffset);
 
-    // Calc local position dynamically
     const targetWorldPos = pivotNode.position.subtract(BaseEntityGizmoAdapter._tempWorldOffset);
 
     if (mesh.parent) {
@@ -140,7 +137,6 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
   }
 
   /**
-   * 🔥 FASE 4: Ahora `compensarEscalaVisual` calcula la escala absoluta mundial total usando `.decompose()`.
    * Garantiza que el multiplicador del tamaño visual (0.4m) sea perfecto y sin deformaciones.
    */
   public compensarEscalaVisual(mesh: AbstractMesh): void {
@@ -157,6 +153,7 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
       const safeZ = Math.max(0.0001, Math.abs(absScale.z));
 
       visual.scaling.set(0.4 / safeX, 0.4 / safeY, 0.4 / safeZ);
+      visual.computeWorldMatrix(true); // 🔥 FIX: Obligamos a recalcular la matriz antes del siguiente frame
       visual.renderingGroupId = 1;
     }
   }

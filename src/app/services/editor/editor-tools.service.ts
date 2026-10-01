@@ -1,4 +1,3 @@
-
 import { Injectable, inject, effect } from '@angular/core';
 import {
   KeyboardEventTypes, Matrix, Mesh, PointerEventTypes,
@@ -116,6 +115,11 @@ export class EditorToolsService {
         }
       }
     });
+  }
+
+  // 🔥 CORE FIX: Delegación expuesta para limpiar las luces tras cargar la escena o salir del Test
+  public forceResetVisuals(): void {
+    this.highlightSvc.forceResetLightVisuals();
   }
 
   public limpiarEstado(): void {

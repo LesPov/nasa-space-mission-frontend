@@ -1,4 +1,3 @@
-
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -70,7 +69,7 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
            return true;
        });
     } else {
-       // 🔥 FASE 4: Mostrar mallas raíz físicas y excluir a los hijos lógicos
+       // Mostrar mallas raíz físicas y excluir a los hijos lógicos
        list = list.filter(n => {
            if (n.parent !== null) return false;
            
@@ -111,7 +110,7 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     const result: Node[] = [];
     const children = node.getChildren();
     
-    // 🔥 FASE 4: Inyección de hijos lógicos (Luces World Space)
+    // Inyección de hijos lógicos (Luces World Space)
     if (node instanceof AbstractMesh) {
         const entity = this.entityManager.getEntityByMesh(node);
         if (entity) {
@@ -308,9 +307,8 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
       if ((selected as any).metadata?.entityUid && (selected as any).metadata?.entityUid === (node as any).metadata?.entityUid) {
         return true;
       }
-      if (node.parent === selected && (Tags.MatchesQuery(node, "light_visual") || (node as any).metadata?.isLightVisual)) {
-        return true;
-      }
+      // 🔥 FIX 3 (HERENCIA FALSA DE LUZ): Eliminado el código que marcaba la luz como seleccionada
+      // si el nodo padre estaba seleccionado.
     }
     return false;
   }
@@ -459,7 +457,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     };
 
     if (action === 'inside') {
-      // 🔥 FIX 4: Si se arrastra algo, aplicamos lógicamente la relación
       if (draggedEntity) {
           draggedEntity.parentId = targetEntity ? targetEntity.uid : null;
           

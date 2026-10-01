@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3, Tags, Quaternion } from '@babylonjs/core';
 import '@babylonjs/loaders';
@@ -29,10 +28,10 @@ export class CoreModelLoaderService {
     const container = await this.assetCache.getFreshAssetContainer(fullPath, scene, extension);
     
     container.materials.forEach(mat => {
-        if (!scene.materials.includes(mat)) scene.addMaterial(mat);
+      if (!scene.materials.includes(mat)) scene.addMaterial(mat);
     });
     container.textures.forEach(tex => {
-        if (!scene.textures.includes(tex)) scene.addTexture(tex);
+      if (!scene.textures.includes(tex)) scene.addTexture(tex);
     });
 
     return container;
@@ -62,24 +61,24 @@ export class CoreModelLoaderService {
       
       const wrapperMesh = new Mesh(obj.name, scene);
       instances.rootNodes.forEach(node => {
-          node.parent = wrapperMesh;
+        node.parent = wrapperMesh;
       });
 
       wrapperMesh.computeWorldMatrix(true);
 
       if (obj.properties?.internalScale !== undefined && obj.properties?.internalScale !== null) {
-          const compensacion = obj.properties.internalScale;
-          instances.rootNodes.forEach(node => {
-              const tNode = node as TransformNode;
-              if (tNode.scaling) {
-                  tNode.scaling.scaleInPlace(compensacion);
-              }
-          });
-          wrapperMesh.computeWorldMatrix(true);
+        const compensacion = obj.properties.internalScale;
+        instances.rootNodes.forEach(node => {
+          const tNode = node as TransformNode;
+          if (tNode.scaling) {
+            tNode.scaling.scaleInPlace(compensacion);
+          }
+        });
+        wrapperMesh.computeWorldMatrix(true);
       }
       
       if (obj.isNewCreation) {
-          delete obj.isNewCreation;
+        delete obj.isNewCreation;
       }
       
       await this.aplicarTransformacionesYEntidad(wrapperMesh, obj, mallasCreadas, instances.rootNodes as AbstractMesh[], instances.animationGroups);
@@ -92,12 +91,12 @@ export class CoreModelLoaderService {
   }
 
   private async crearMallaError(obj: any, scene: any, mallasCreadas: Map<string, Mesh>): Promise<void> {
-      const fallbackMesh = MeshBuilder.CreateBox(obj.name, { size: 1 }, scene);
-      const fallbackMat = new StandardMaterial('error_mat', scene);
-      fallbackMat.wireframe = true;
-      fallbackMat.emissiveColor = new Color3(1, 0, 0); 
-      fallbackMesh.material = fallbackMat;
-      await this.aplicarTransformacionesYEntidad(fallbackMesh, obj, mallasCreadas, [fallbackMesh]);
+    const fallbackMesh = MeshBuilder.CreateBox(obj.name, { size: 1 }, scene);
+    const fallbackMat = new StandardMaterial('error_mat', scene);
+    fallbackMat.wireframe = true;
+    fallbackMat.emissiveColor = new Color3(1, 0, 0); 
+    fallbackMesh.material = fallbackMat;
+    await this.aplicarTransformacionesYEntidad(fallbackMesh, obj, mallasCreadas, [fallbackMesh]);
   }
 
   private async aplicarTransformacionesYEntidad(rootNode: Mesh, obj: any, mallasCreadas: Map<string, Mesh>, allMeshes: AbstractMesh[] = [], anims: any[] = []): Promise<void> {
@@ -110,7 +109,7 @@ export class CoreModelLoaderService {
     this.persistenceMapper.applyDbToEntity(obj, entity);
     
     if (isLight) {
-        entity.type = 'model';
+      entity.type = 'model';
     }
 
     const isCharacter = entity.type === 'character' || entity.rol === 'player';
@@ -133,7 +132,7 @@ export class CoreModelLoaderService {
     const finalSizeZ = (entity.collider.sizeZ === 1) ? Math.max(0.1, (finalRealSize.z / 2) / scaleZ) : entity.collider.sizeZ!;
 
     if (entity.collider.sizeY === 1 && (entity.collider.offsetY === 0 || entity.collider.offsetY === undefined)) {
-        entity.collider.offsetY = finalSizeY; 
+      entity.collider.offsetY = finalSizeY; 
     }
 
     entity.collider.sizeX = finalSizeX;
@@ -161,9 +160,9 @@ export class CoreModelLoaderService {
       m.isPickable = entity.visual.isSelectable; 
       
       if (entity.collider.type === 'mesh' && entity.visual.isSolid && !isCharacter) {
-          m.checkCollisions = m.getTotalVertices() > 0;
+        m.checkCollisions = m.getTotalVertices() > 0;
       } else {
-          m.checkCollisions = false;
+        m.checkCollisions = false;
       }
       
       m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
@@ -171,72 +170,72 @@ export class CoreModelLoaderService {
       
       if (!m.metadata) m.metadata = {};
       if (!m.metadata.originalTransform) {
-          m.metadata.originalTransform = {
-              position: m.position.clone(),
-              rotation: m.rotation.clone(),
-              rotationQuaternion: m.rotationQuaternion ? m.rotationQuaternion.clone() : null,
-              scaling: m.scaling.clone()
-          };
+        m.metadata.originalTransform = {
+          position: m.position.clone(),
+          rotation: m.rotation.clone(),
+          rotationQuaternion: m.rotationQuaternion ? m.rotationQuaternion.clone() : null,
+          scaling: m.scaling.clone()
+        };
       }
 
       const override = partOverrides[m.name];
       if (override) {
-         if (override.position) m.position.set(override.position.x, override.position.y, override.position.z);
-         if (override.rotation) {
-             if (m.rotationQuaternion) m.rotationQuaternion = Quaternion.FromEulerAngles(override.rotation.x, override.rotation.y, override.rotation.z);
-             else m.rotation.set(override.rotation.x, override.rotation.y, override.rotation.z);
-         }
-         if (override.scale) m.scaling.set(override.scale.x, override.scale.y, override.scale.z);
+        if (override.position) m.position.set(override.position.x, override.position.y, override.position.z);
+        if (override.rotation) {
+          if (m.rotationQuaternion) m.rotationQuaternion = Quaternion.FromEulerAngles(override.rotation.x, override.rotation.y, override.rotation.z);
+          else m.rotation.set(override.rotation.x, override.rotation.y, override.rotation.z);
+        }
+        if (override.scale) m.scaling.set(override.scale.x, override.scale.y, override.scale.z);
       }
       
       if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled && !override) {
-          m.computeWorldMatrix(true);
-          m.freezeWorldMatrix();
+        m.computeWorldMatrix(true);
+        m.freezeWorldMatrix();
       }
       
       if (m.material) {
-          if (override) {
-             this.materialSvc.asegurarMaterialUnicoParaParte(m, entity.uid, m.name);
-             const activeColorOverride = isBW ? (override.colorBW || override.color) : override.color;
-             await this.materialSvc.ajustarMaterialGLB(
-                 m.material, isBW, scene, 
-                 activeAmbient, 
-                 activeColorOverride || activeColorHex, 
-                 override.esEmisivo ?? entity.visual.esEmisivo, 
-                 override.brilloIntensidad ?? entity.visual.brilloIntensidad,
-                 override.texturePath,
-                 override.textureSource || (override.texturePath ? 'asset' : 'original') 
-             );
-          } else {
-             this.materialSvc.asegurarMaterialUnico(m, entity.uid);
-             await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbient, activeColorHex, entity.visual.esEmisivo, entity.visual.brilloIntensidad);
-          }
+        if (override) {
+          this.materialSvc.asegurarMaterialUnicoParaParte(m, entity.uid, m.name);
+          const activeColorOverride = isBW ? (override.colorBW || override.color) : override.color;
+          await this.materialSvc.ajustarMaterialGLB(
+            m.material, isBW, scene, 
+            activeAmbient, 
+            activeColorOverride || activeColorHex, 
+            override.esEmisivo ?? entity.visual.esEmisivo, 
+            override.brilloIntensidad ?? entity.visual.brilloIntensidad,
+            override.texturePath,
+            override.textureSource || (override.texturePath ? 'asset' : 'original') 
+          );
+        } else {
+          this.materialSvc.asegurarMaterialUnico(m, entity.uid);
+          await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbient, activeColorHex, entity.visual.esEmisivo, entity.visual.brilloIntensidad);
+        }
       }
     }
 
     if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled && Object.keys(partOverrides).length === 0) {
-        rootNode.computeWorldMatrix(true);
-        rootNode.freezeWorldMatrix();
+      rootNode.computeWorldMatrix(true);
+      rootNode.freezeWorldMatrix();
     }
 
     if (entity.visual.isSolid && !isCharacter && entity.collider.type !== 'mesh') {
-        let colMesh: Mesh;
-        if (entity.collider.type === 'sphere') {
-            colMesh = MeshBuilder.CreateSphere(`col_${obj.uid}`, { diameterX: finalSizeX * 2, diameterY: finalSizeY * 2, diameterZ: finalSizeZ * 2 }, scene);
-        } else if (entity.collider.type === 'capsule') {
-            const r = Math.max(finalSizeX, finalSizeZ); 
-            colMesh = MeshBuilder.CreateCapsule(`col_${obj.uid}`, { radius: r, height: finalSizeY * 2 }, scene);
-        } else {
-            colMesh = MeshBuilder.CreateBox(`col_${obj.uid}`, { width: finalSizeX * 2, height: finalSizeY * 2, depth: finalSizeZ * 2 }, scene);
-        }
+      let colMesh: Mesh;
+      if (entity.collider.type === 'sphere') {
+        colMesh = MeshBuilder.CreateSphere(`col_${obj.uid}`, { diameterX: finalSizeX * 2, diameterY: finalSizeY * 2, diameterZ: finalSizeZ * 2 }, scene);
+      } else if (entity.collider.type === 'capsule') {
+        const r = Math.max(finalSizeX, finalSizeZ); 
+        colMesh = MeshBuilder.CreateCapsule(`col_${obj.uid}`, { radius: r, height: finalSizeY * 2 }, scene);
+      } else {
+        colMesh = MeshBuilder.CreateBox(`col_${obj.uid}`, { width: finalSizeX * 2, height: finalSizeY * 2, depth: finalSizeZ * 2 }, scene);
+      }
 
-        colMesh.parent = rootNode;
-        colMesh.position.set(entity.collider.offsetX ?? 0, entity.collider.offsetY ?? 0, entity.collider.offsetZ ?? 0);
-        
-        colMesh.isVisible = true; 
-        colMesh.visibility = 0;
-        colMesh.checkCollisions = true; 
-        Tags.AddTagsTo(colMesh, "proxy_collider system_element");
+      colMesh.parent = rootNode;
+      colMesh.position.set(entity.collider.offsetX ?? 0, entity.collider.offsetY ?? 0, entity.collider.offsetZ ?? 0);
+      
+      colMesh.isVisible = true; 
+      colMesh.visibility = 0;
+      colMesh.checkCollisions = true; 
+      Tags.AddTagsTo(colMesh, "proxy_collider system_element");
     }
 
     const setFog = (mesh: AbstractMesh) => {
@@ -254,95 +253,106 @@ export class CoreModelLoaderService {
     this.entityManager.addEntity(entity);
     mallasCreadas.set(entity.uid, rootNode);
 
-    // 🔥 FASE 4: Aislando Físicamente a las Luces del Transform graph de Babylon
     if (isLight) {
-        const lightType = obj.type; 
-        const lightUid = `${entity.uid}_light`;
-        const lightName = `Luz ${entity.name}`;
+      const lightType = obj.type; 
+      const lightUid = `${entity.uid}_light`;
+      const lightName = `Luz ${entity.name}`;
 
-        const lightNode = new Mesh(lightName, scene);
-        
-        const lightEntity = new GameEntity(lightUid, lightName, lightType, 'light');
-        lightEntity.parentId = entity.uid;
-        lightEntity.transformSpace = 'WORLD';
-        
-        // Conversión temprana de Coordenada Local del Editor/JSON a Coordenada World absoluta
-        const localPos = new Vector3(
-           obj.position?.x ?? 0, 
-           obj.position?.y ?? (finalSizeY > 0 ? finalSizeY : 1.5), 
-           obj.position?.z ?? 0
-        );
-        
-        rootNode.computeWorldMatrix(true);
-        const worldPos = Vector3.TransformCoordinates(localPos, rootNode.getWorldMatrix());
-        
-        lightNode.position.copyFrom(worldPos);
-        lightEntity.transform.position = { x: worldPos.x, y: worldPos.y, z: worldPos.z };
+      const lightNode = new Mesh(lightName, scene);
+      lightNode.isPickable = false;
+      lightNode.isVisible = false;
+      
+      const lightEntity = new GameEntity(lightUid, lightName, lightType, 'light');
+      lightEntity.parentId = entity.uid;
+      lightEntity.transformSpace = 'WORLD';
+      
+      const localPos = new Vector3(
+        obj.position?.x ?? 0, 
+        obj.position?.y ?? (finalSizeY > 0 ? finalSizeY : 1.5), 
+        obj.position?.z ?? 0
+      );
+      
+      rootNode.computeWorldMatrix(true);
+      const worldPos = Vector3.TransformCoordinates(localPos, rootNode.getWorldMatrix());
+      
+      lightNode.position.copyFrom(worldPos);
+      lightEntity.transform.position = { x: worldPos.x, y: worldPos.y, z: worldPos.z };
 
-        const localRotX = obj.rotation?.x ?? 0;
-        const localRotY = obj.rotation?.y ?? 0;
-        const localRotZ = obj.rotation?.z ?? 0;
+      const localRotX = obj.rotation?.x ?? 0;
+      const localRotY = obj.rotation?.y ?? 0;
+      const localRotZ = obj.rotation?.z ?? 0;
 
-        const localQuat = Quaternion.FromEulerAngles(localRotX, localRotY, localRotZ);
-        const parentQuat = Quaternion.FromRotationMatrix(rootNode.getWorldMatrix().getRotationMatrix());
-        const worldQuat = parentQuat.multiply(localQuat);
-        const finalEuler = worldQuat.toEulerAngles();
+      const localQuat = Quaternion.FromEulerAngles(localRotX, localRotY, localRotZ);
+      const parentQuat = Quaternion.FromRotationMatrix(rootNode.getWorldMatrix().getRotationMatrix());
+      const worldQuat = parentQuat.multiply(localQuat);
+      const finalEuler = worldQuat.toEulerAngles();
 
-        lightNode.rotation.copyFrom(finalEuler);
-        lightEntity.transform.rotation = { x: finalEuler.x, y: finalEuler.y, z: finalEuler.z };
+      lightNode.rotation.copyFrom(finalEuler);
+      lightEntity.transform.rotation = { x: finalEuler.x, y: finalEuler.y, z: finalEuler.z };
 
-        Tags.AddTagsTo(lightNode, "light_entity");
+      Tags.AddTagsTo(lightNode, "light_entity");
 
-        const visualSphere = MeshBuilder.CreateSphere(`visual_${lightName}`, { diameter: 1.0, segments: 16 }, scene);
-        visualSphere.parent = lightNode;
-        visualSphere.isPickable = true;
-        visualSphere.checkCollisions = false;
-        visualSphere.receiveShadows = false;
-        visualSphere.renderingGroupId = 1;
+      const visualSphere = MeshBuilder.CreateSphere(`visual_${lightName}`, { diameter: 1.0, segments: 16 }, scene);
+      visualSphere.parent = lightNode;
+      visualSphere.isPickable = false;
+      visualSphere.checkCollisions = false;
+      visualSphere.receiveShadows = false;
+      visualSphere.renderingGroupId = 1;
 
-        visualSphere.scaling.set(0.4, 0.4, 0.4);
+      visualSphere.scaling.set(0.4, 0.4, 0.4);
 
-        const lightColorHex = obj.properties?.lightColor || '#facc15';
-        const lightVisualMat = new StandardMaterial(`mat_visual_${lightName}`, scene);
-        const c3 = Color3.FromHexString(lightColorHex);
-        lightVisualMat.emissiveColor = c3.clone();
-        lightVisualMat.diffuseColor = c3.clone();
-        lightVisualMat.specularColor = Color3.Black();
-        lightVisualMat.disableLighting = true;
-        lightVisualMat.fogEnabled = false;
-        visualSphere.material = lightVisualMat;
+      const lightColorHex = obj.properties?.lightColor || '#facc15';
+      const lightVisualMat = new StandardMaterial(`mat_visual_${lightName}`, scene);
+      const c3 = Color3.FromHexString(lightColorHex);
+      lightVisualMat.emissiveColor = c3.clone();
+      lightVisualMat.diffuseColor = c3.clone();
+      lightVisualMat.specularColor = Color3.Black();
+      lightVisualMat.disableLighting = true;
+      lightVisualMat.fogEnabled = false;
+      visualSphere.material = lightVisualMat;
 
-        // 🔥 FASE 5: Se remueve "editor_only" para delegar visibilidad selectiva al HighlightService
-        Tags.AddTagsTo(visualSphere, "light_visual"); 
-        visualSphere.metadata = { entityUid: lightUid, isLightVisual: true };
-        lightNode.metadata = { entityUid: lightUid, isLightRoot: true };
+      Tags.AddTagsTo(visualSphere, "light_visual"); 
+      visualSphere.metadata = { entityUid: lightUid, isLightVisual: true };
+      lightNode.metadata = { entityUid: lightUid, isLightRoot: true };
 
-        // 🔥 FASE 5: Se inicializa oculta. HighlightService la encenderá.
-        visualSphere.isVisible = false;
-        visualSphere.setEnabled(true);
+      if (lightType === 'light_spot' || lightType === 'light_directional') {
+        const cone = MeshBuilder.CreateCylinder(`dir_${lightName}`, { diameterTop: 0, diameterBottom: 0.15, height: 0.4 }, scene);
+        cone.parent = visualSphere;
+        cone.rotation.x = Math.PI / 2;
+        cone.position.z = 0.25;
+        cone.material = lightVisualMat;
+        cone.isPickable = false;
+        cone.renderingGroupId = 1;
+        cone.isVisible = false;
+        Tags.AddTagsTo(cone, "light_visual ignore_raycast");
+      }
 
-        lightEntity.light = new LightComponent();
-        lightEntity.light.lightColor = lightColorHex;
-        lightEntity.light.lightColorBW = obj.properties?.lightColorBW || lightColorHex;
-        lightEntity.light.intensity = obj.properties?.intensity ?? 5.0;
-        lightEntity.light.range = obj.properties?.range ?? 50;
-        lightEntity.light.angle = obj.properties?.angle ?? 45;
-        lightEntity.light.enabled = obj.properties?.isEnabled ?? true;
-        lightEntity.light.castShadows = (obj.properties as any)?.castShadows ?? true;
-        
-        if (obj.properties?.attachedNodeName) {
-            const boneNode = rootNode.getDescendants(false).find(n => n.name === obj.properties!.attachedNodeName);
-            if (boneNode) {
-                lightNode.setParent(boneNode as AbstractMesh);
-                lightEntity.transformSpace = 'ATTACHED';
-                lightEntity.light.attachedNodeName = obj.properties.attachedNodeName;
-                lightEntity.light.attachedNodePath = obj.properties.attachedNodePath || '';
-            }
+      // Nace estrictamente oculto por defecto
+      visualSphere.isVisible = false;
+      visualSphere.setEnabled(true);
+
+      lightEntity.light = new LightComponent();
+      lightEntity.light.lightColor = lightColorHex;
+      lightEntity.light.lightColorBW = obj.properties?.lightColorBW || lightColorHex;
+      lightEntity.light.intensity = obj.properties?.intensity ?? 5.0;
+      lightEntity.light.range = obj.properties?.range ?? 50;
+      lightEntity.light.angle = obj.properties?.angle ?? 45;
+      lightEntity.light.enabled = obj.properties?.isEnabled ?? true;
+      lightEntity.light.castShadows = (obj.properties as any)?.castShadows ?? true;
+      
+      if (obj.properties?.attachedNodeName) {
+        const boneNode = rootNode.getDescendants(false).find(n => n.name === obj.properties!.attachedNodeName);
+        if (boneNode) {
+          lightNode.setParent(boneNode as AbstractMesh);
+          lightEntity.transformSpace = 'ATTACHED';
+          lightEntity.light.attachedNodeName = obj.properties.attachedNodeName;
+          lightEntity.light.attachedNodePath = obj.properties.attachedNodePath || '';
         }
+      }
 
-        lightEntity.bindView(lightNode);
-        this.entityManager.addEntity(lightEntity);
-        mallasCreadas.set(lightUid, lightNode);
+      lightEntity.bindView(lightNode);
+      this.entityManager.addEntity(lightEntity);
+      mallasCreadas.set(lightUid, lightNode);
     }
   }
 }

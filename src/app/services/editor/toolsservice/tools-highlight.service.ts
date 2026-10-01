@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Color3, Color4, Mesh, AbstractMesh, Tags, HighlightLayer, Node, Scene } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
@@ -6,7 +5,7 @@ import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { TriggerVisualizerService } from '../../../core/engine/scene/utils/trigger-visualizer.service';
 import { GameContextService } from '../../../core/engine/session/game-context.service';
-import { GameEntity } from '../../../core/engine/entities/game.entity';
+import { LightVisualVisibilityService } from '../../../core/engine/scene/utils/light-visual-visibility.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsHighlightService {
@@ -15,6 +14,7 @@ export class ToolsHighlightService {
   private entityManager = inject(EntityManagerService);
   private triggerVisualizer = inject(TriggerVisualizerService);
   private gameContext = inject(GameContextService);
+  private lightVisualSvc = inject(LightVisualVisibilityService);
 
   private lastHoveredMeshId: number | null = null;
   private lastSelectedMeshId: number | null = null;
@@ -24,9 +24,6 @@ export class ToolsHighlightService {
   private currentScene: Scene | null = null;
   private meshesConEdges: AbstractMesh[] = [];
   private highlightedTriggers: AbstractMesh[] = [];
-
-  // 🔥 FASE 5: Colección viva de mallas visuales de luz mostradas en este frame
-  private visibleLightVisuals = new Set<AbstractMesh>();
 
   public initHighlights(): void {
     const scene = this.motor3d.getScene();
@@ -59,12 +56,20 @@ export class ToolsHighlightService {
     this.lastHoveredMeshId = null;
     this.lastSelectedMeshId = null;
     this.lastMode = null;
-    this.visibleLightVisuals.clear();
+    this.lightVisualSvc.hideAll();
+  }
+
+  /**
+   * Resetea forzosamente el estado visual de las luces.
+   */
+  public forceResetLightVisuals(): void {
+    this.lightVisualSvc.syncAllLightVisuals(this.state.objetoSeleccionado());
+    this.limpiarTodosLosEdges();
   }
 
   private esMeshExcluida(mesh: AbstractMesh): boolean {
     if (Tags.MatchesQuery(mesh, "light_visual") || (mesh as any).metadata?.isLightVisual) {
-      return false; // Nunca excluir prematuramente los light_visuals en highlight service
+      return false;
     }
     const n = mesh.name?.toLowerCase?.() ?? '';
     return (
@@ -100,7 +105,6 @@ export class ToolsHighlightService {
         if (Tags.MatchesQuery(node, "light_visual") || (node as any).metadata?.isLightVisual) {
           return;
         }
-
         const e = this.entityManager.getEntityByMesh(node);
         if (e && entityUid && e.uid !== entityUid) {
           return; 
@@ -109,16 +113,13 @@ export class ToolsHighlightService {
           meshes.add(node);
         }
       }
-
-      node.getChildren().forEach(child => {
-        traverse(child);
-      });
+      node.getChildren().forEach(child => traverse(child));
     };
 
     if (entity && entity.view) {
-        traverse(entity.view);
+      traverse(entity.view);
     } else {
-        traverse(baseNode);
+      traverse(baseNode);
     }
 
     return Array.from(meshes);
@@ -129,94 +130,13 @@ export class ToolsHighlightService {
     
     const className = node.getClassName();
     if (className === "Mesh" || className === "InstancedMesh") {
-        if (className === "InstancedMesh") {
-           const source = (node as any).sourceMesh;
-           return source && source.getTotalVertices() > 0;
-        }
-        return (node as Mesh).getTotalVertices() > 0;
+      if (className === "InstancedMesh") {
+        const source = (node as any).sourceMesh;
+        return source && source.getTotalVertices() > 0;
+      }
+      return (node as Mesh).getTotalVertices() > 0;
     }
     return false;
-  }
-
-  // 🔥 FASE 5: Responsabilidad delegada y limpia para el control de visuales de luz
-  private updateLightVisualsVisibility(selected: AbstractMesh | null, hovered: AbstractMesh | null): void {
-    const newVisible = new Set<AbstractMesh>();
-
-    const addLightVisuals = (mesh: AbstractMesh | null) => {
-        if (!mesh) return;
-        
-        let rootEntityUid = (mesh as any).metadata?.entityUid;
-        let rootEntity = rootEntityUid ? this.entityManager.getEntityByUid(rootEntityUid) : this.entityManager.getEntityByMesh(mesh);
-
-        const processEntity = (ent: GameEntity) => {
-            if (ent.type.startsWith('light_') && ent.view) {
-                ent.view.getChildMeshes().forEach(m => {
-                    if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) {
-                        newVisible.add(m);
-                    }
-                });
-            }
-        };
-
-        if (rootEntity) {
-            processEntity(rootEntity);
-            
-            // Buscar luces descendientes lógicamente
-            const allEntities = this.entityManager.getAllEntities();
-            const findLogicalDescendants = (parentUid: string) => {
-                for (let i = 0; i < allEntities.length; i++) {
-                    const e = allEntities[i];
-                    if (e.parentId === parentUid) {
-                        processEntity(e);
-                        findLogicalDescendants(e.uid);
-                    }
-                }
-            };
-            findLogicalDescendants(rootEntity.uid);
-        }
-
-        // Búsqueda física en BabylonJS por seguridad (luces atadas a huesos o partes sin entidad propia)
-        const descendants = mesh.getDescendants(false);
-        for (let i = 0; i < descendants.length; i++) {
-            const desc = descendants[i];
-            if (desc instanceof AbstractMesh) {
-                if (Tags.MatchesQuery(desc, "light_visual") || (desc as any).metadata?.isLightVisual) {
-                    newVisible.add(desc);
-                } else {
-                    let dEntityUid = (desc as any).metadata?.entityUid;
-                    let dEntity = dEntityUid ? this.entityManager.getEntityByUid(dEntityUid) : this.entityManager.getEntityByMesh(desc);
-                    if (dEntity && dEntity.type.startsWith('light_')) {
-                        processEntity(dEntity);
-                    }
-                }
-            }
-        }
-    };
-
-    const mode = this.state.playState();
-    const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
-    const isPlayingMode = mode === 'PLAYING';
-    const isFPS = this.state.modoVistaPrueba === 'FPS';
-    const hideAll = isPlayingMode && isFPS && !canSelectHidden;
-
-    if (!hideAll && (mode === 'EDITOR' || mode === 'EDITING_IN_GAME' || canSelectHidden)) {
-        addLightVisuals(selected);
-        addLightVisuals(hovered);
-    }
-
-    this.visibleLightVisuals.forEach(m => {
-        if (!newVisible.has(m) && !m.isDisposed()) {
-            m.isVisible = false;
-        }
-    });
-
-    newVisible.forEach(m => {
-        if (!m.isDisposed()) {
-            m.isVisible = true;
-        }
-    });
-
-    this.visibleLightVisuals = newVisible;
   }
 
   private limpiarTodosLosEdges(): void {
@@ -225,23 +145,23 @@ export class ToolsHighlightService {
     }
     
     this.meshesConEdges.forEach(m => {
-        if (m && !m.isDisposed()) {
-            try { 
-                m.disableEdgesRendering(); 
-                m.showBoundingBox = false; 
-                if ((m as any)._wasZeroVisibility) {
-                    m.visibility = 0;
-                    delete (m as any)._wasZeroVisibility;
-                }
-            } catch {}
-        }
+      if (m && !m.isDisposed()) {
+        try { 
+          m.disableEdgesRendering(); 
+          m.showBoundingBox = false; 
+          if ((m as any)._wasZeroVisibility) {
+            m.visibility = 0;
+            delete (m as any)._wasZeroVisibility;
+          }
+        } catch {}
+      }
     });
     this.meshesConEdges = [];
 
     this.highlightedTriggers.forEach(m => {
-        if (m && !m.isDisposed()) {
-            this.triggerVisualizer.setHighlight(m, 'none');
-        }
+      if (m && !m.isDisposed()) {
+        this.triggerVisualizer.setHighlight(m, 'none');
+      }
     });
     this.highlightedTriggers = [];
   }
@@ -250,26 +170,27 @@ export class ToolsHighlightService {
     if (!mesh || mesh.isDisposed()) return;
 
     try {
+      const isLightVisual = Tags.MatchesQuery(mesh, "light_visual") || (mesh as any).metadata?.isLightVisual;
       const isMaterialTransparent = mesh.material && (mesh.material.alpha === 0);
 
-      if (forceEdges || !mesh.material || mesh.visibility < 0.01 || isMaterialTransparent) {
-         if (mesh.visibility === 0) {
-             mesh.visibility = 0.0001; 
-             (mesh as any)._wasZeroVisibility = true;
-         }
-         mesh.enableEdgesRendering(0.9999);
-         mesh.edgesWidth = 15.0; 
-         const c3 = Color3.FromHexString(colorHex);
-         mesh.edgesColor = new Color4(c3.r, c3.g, c3.b, 1.0);
-         mesh.showBoundingBox = true;
-         this.meshesConEdges.push(mesh);
+      if (!isLightVisual && (forceEdges || !mesh.material || mesh.visibility < 0.01 || isMaterialTransparent)) {
+        if (mesh.visibility === 0) {
+          mesh.visibility = 0.0001; 
+          (mesh as any)._wasZeroVisibility = true;
+        }
+        mesh.enableEdgesRendering(0.9999);
+        mesh.edgesWidth = 15.0; 
+        const c3 = Color3.FromHexString(colorHex);
+        mesh.edgesColor = new Color4(c3.r, c3.g, c3.b, 1.0);
+        mesh.showBoundingBox = true;
+        this.meshesConEdges.push(mesh);
       } else {
-         if (this.highlightLayer) {
-             this.highlightLayer.addMesh(mesh as Mesh, Color3.FromHexString(colorHex));
-         }
+        if (this.highlightLayer) {
+          this.highlightLayer.addMesh(mesh as Mesh, Color3.FromHexString(colorHex));
+        }
       }
     } catch (e) {
-        console.warn('[Highlight] Error al aplicar en', mesh.name, e);
+      console.warn('[Highlight] Error al aplicar en', mesh.name, e);
     }
   }
 
@@ -277,9 +198,10 @@ export class ToolsHighlightService {
     if (!pickedMesh || pickedMesh.isDisposed()) return;
     if (this.esMeshExcluida(pickedMesh)) return;
 
-    // Resaltado directo e individual del cuerpo visual de luz
     if (Tags.MatchesQuery(pickedMesh, "light_visual") || (pickedMesh as any).metadata?.isLightVisual) {
-      this.aplicarOutline(pickedMesh, colorHex, false);
+      if (pickedMesh.isVisible) {
+        this.aplicarOutline(pickedMesh, colorHex, false);
+      }
       return;
     }
 
@@ -287,31 +209,29 @@ export class ToolsHighlightService {
     const isTrigger = entity?.type === 'trigger' || entity?.type === 'trigger_compuesto';
     
     if (isTrigger) {
-        this.triggerVisualizer.setHighlight(pickedMesh, state);
-        this.highlightedTriggers.push(pickedMesh);
-        return; 
+      this.triggerVisualizer.setHighlight(pickedMesh, state);
+      this.highlightedTriggers.push(pickedMesh);
+      return; 
     }
 
     const isSpawn = entity?.rol === 'spawn_point';
-    const isLightMarker = entity?.type?.startsWith('light_') && !entity?.visual?.assetId;
     
     if (entity) {
       const esPiso = entity.type === 'plane';
       const mostrarBorde = entity.visual?.mostrarBorde;
-
       if (esPiso && mostrarBorde !== true) return;
       if (mostrarBorde === false) return; 
     }
 
-    const forceEdges = isSpawn || isLightMarker;
+    const forceEdges = isSpawn;
     const meshesVisuales = this.recolectarMeshesVisuales(pickedMesh);
     
     if (meshesVisuales.length === 0) {
-       if (this.esRenderizable(pickedMesh)) {
-          this.aplicarOutline(pickedMesh, colorHex, forceEdges);
-       }
+      if (this.esRenderizable(pickedMesh)) {
+        this.aplicarOutline(pickedMesh, colorHex, forceEdges);
+      }
     } else {
-       meshesVisuales.forEach(m => this.aplicarOutline(m, colorHex, forceEdges));
+      meshesVisuales.forEach(m => this.aplicarOutline(m, colorHex, forceEdges));
     }
   }
 
@@ -330,18 +250,15 @@ export class ToolsHighlightService {
     this.lastSelectedMeshId = selectId;
     this.lastMode = mode; 
 
-    // 🔥 FASE 5: Recalcular la visibilidad de los cuerpos de luz en base a las nuevas selecciones
-    this.updateLightVisualsVisibility(selected, hovered);
-
+    // Sincronizar visibilidad de luces estrictamente según la selección directa
+    this.lightVisualSvc.syncAllLightVisuals(selected);
     this.limpiarTodosLosEdges();
 
     const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
     const isFPS = this.state.modoVistaPrueba === 'FPS';
     const isPlayingMode = mode === 'PLAYING';
 
-    if (isPlayingMode && isFPS && !canSelectHidden) {
-        return; 
-    }
+    if (isPlayingMode && isFPS && !canSelectHidden) return; 
 
     const puedeResaltar = mode === 'EDITOR' || mode === 'EDITING_IN_GAME' || (mode === 'PLAYING' && canSelectHidden);
     if (!puedeResaltar) return;

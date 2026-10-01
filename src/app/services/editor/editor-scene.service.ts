@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, MeshBuilder, Color4, Tags, Quaternion } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
@@ -95,15 +94,6 @@ export class EditorSceneService {
     this.nodesSvc.actualizarListaNodos();
   }
 
-  public revelarEntidadesOcultasParaAdmin(): void {
-    const allEntities = this.entityManager.getAllEntities();
-    allEntities.forEach(e => {
-      if (e.type === 'trigger' || e.type === 'trigger_compuesto' || e.type === 'image_plane' || e.type?.startsWith('light_')) {
-        if (e.view) e.view.isVisible = true;
-      }
-    });
-  }
-
   public cargarEscenaDesdeDatos(dataBD: any): Promise<void> {
     const isAdmin = this.gameContext.authorityProfile().canSelectHidden;
     const mode = this.gameContext.mode();
@@ -115,19 +105,14 @@ export class EditorSceneService {
     this.entityManager.clear();
 
     return this.loaderSvc.loadSceneFromData(dataBD).then(() => {
-      if (isAdmin) {
-        this.revelarEntidadesOcultasParaAdmin();
-      }
+      // 🔥 FIX: Ya no llamamos a 'revelarEntidadesOcultasParaAdmin' aquí.
+      // El HighlightService gestiona las luces y Babylon el culling normal de otros helpers.
       this.nodesSvc.actualizarListaNodos();
     });
   }
 
   public instanciarPrefabFull(prefabData: any, targetPos: Vector3, rotationEuler?: Vector3, scale?: Vector3, parentNode?: AbstractMesh): void {
-    const isAdmin = this.gameContext.authorityProfile().canSelectHidden;
     this.loaderSvc.instantiatePrefab(prefabData, targetPos, rotationEuler, scale, parentNode).then((mallas) => {
-      if (isAdmin) {
-        this.revelarEntidadesOcultasParaAdmin();
-      }
       this.nodesSvc.actualizarListaNodos();
       const iter = mallas.values().next();
       if (!iter.done) {
@@ -138,30 +123,15 @@ export class EditorSceneService {
   }
 
   public instanciarPrefabEnCentro(prefabData: any): void {
-    const isAdmin = this.gameContext.authorityProfile().canSelectHidden;
-    
     let camTarget = new Vector3(0, 1, 0);
     const editorCam = this.motor3d.getEditorCamera();
     if (editorCam && typeof editorCam.getTarget === 'function') {
       camTarget = editorCam.getTarget().clone();
     }
-    
     this.instanciarPrefabFull(prefabData, camTarget);
   }
 
-  // 🔥 SOLUCIÓN AL ERROR TS2345: La firma ahora incluye correctamente las cámaras reusables.
-  public obtenerDatosParaGuardar(escenaActualData: any, forceFull: boolean = false): { 
-    sceneObjectsDelta: any[]; 
-    triggersDelta: any[]; 
-    cinematicsDelta: any[]; 
-    cinematicCamerasDelta: any[]; 
-    deletedObjects: string[]; 
-    deletedTriggers: string[]; 
-    deletedCinematics: string[]; 
-    deletedCinematicCameras: string[];
-    environmentSettings: any; 
-    spawnPoint: any 
-  } { 
+  public obtenerDatosParaGuardar(escenaActualData: any, forceFull: boolean = false): any { 
     return this.saverSvc.obtenerDatosParaGuardar(escenaActualData, forceFull);
   }
 }

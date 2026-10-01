@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial, Texture, Vector3, VideoTexture, Tags, TransformNode } from '@babylonjs/core';
 import { CoreSceneProjectionService } from '../utils/core-scene-projection.service';
@@ -45,22 +44,19 @@ export class CorePrimitiveLoaderService {
         entity.light = new LightComponent();
       }
 
-      // 1. Nodo Raíz de la Luz (Transportador de Transformación y Anclaje)
       mesh = new Mesh(entity.name, scene);
-      mesh.isPickable = true;
+      mesh.isPickable = false;
       mesh.checkCollisions = false;
       mesh.receiveShadows = false;
-      mesh.isVisible = true;
+      mesh.isVisible = false;
 
-      // 2. Cuerpo Visual Editorial (Esfera unitaria calibrada)
       const visualSphere = MeshBuilder.CreateSphere(`visual_${entity.name}`, { diameter: 1.0, segments: 16 }, scene);
       visualSphere.parent = mesh;
-      visualSphere.isPickable = true;
+      visualSphere.isPickable = false;
       visualSphere.checkCollisions = false;
       visualSphere.receiveShadows = false;
       visualSphere.renderingGroupId = 1;
 
-      // Diámetro visible calibrado constante de 0.4 metros en el mundo
       visualSphere.scaling.set(0.4, 0.4, 0.4);
 
       const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
@@ -77,7 +73,6 @@ export class CorePrimitiveLoaderService {
       visualSphere.material = lightVisualMat;
 
       Tags.AddTagsTo(mesh, "light_entity");
-      // 🔥 FASE 5: Remueve "editor_only" para gestión de visibilidad fina
       Tags.AddTagsTo(visualSphere, "light_visual");
 
       mesh.metadata = { entityUid: entity.uid, isLightRoot: true };
@@ -91,10 +86,11 @@ export class CorePrimitiveLoaderService {
         cone.material = lightVisualMat;
         cone.isPickable = false;
         cone.renderingGroupId = 1;
+        cone.isVisible = false;
         Tags.AddTagsTo(cone, "light_visual ignore_raycast");
       }
 
-      // 🔥 FASE 5: Se inicia oculto, ToolsHighlightService tomará el control al vuelo
+      // Por defecto nace estrictamente oculto. LightVisualVisibilityService lo mostrará solo si se selecciona
       visualSphere.isVisible = false;
       visualSphere.setEnabled(true);
 
@@ -186,16 +182,16 @@ export class CorePrimitiveLoaderService {
       }
 
       if (entity.rol === 'spawn_point') {
-          mesh.checkCollisions = false;
-          Tags.AddTagsTo(mesh, "editor_only ignore_raycast");
-          const isEditorMode = this.gameContext.mode() === GameMode.EDITOR || this.gameContext.mode() === GameMode.EDITING_IN_GAME;
-          mesh.isVisible = isEditorMode;
+        mesh.checkCollisions = false;
+        Tags.AddTagsTo(mesh, "editor_only ignore_raycast");
+        const isEditorMode = this.gameContext.mode() === GameMode.EDITOR || this.gameContext.mode() === GameMode.EDITING_IN_GAME;
+        mesh.isVisible = isEditorMode;
 
-          if (mesh.material && mesh.material instanceof StandardMaterial) {
-              mesh.material.alpha = isEditorMode ? 0.4 : 0.0;
-              mesh.material.wireframe = false;
-              mesh.material.emissiveColor = new Color3(0, 1, 0);
-          }
+        if (mesh.material && mesh.material instanceof StandardMaterial) {
+          mesh.material.alpha = isEditorMode ? 0.4 : 0.0;
+          mesh.material.wireframe = false;
+          mesh.material.emissiveColor = new Color3(0, 1, 0);
+        }
       }
     }
 

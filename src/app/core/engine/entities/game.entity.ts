@@ -58,14 +58,28 @@ export class InteractionComponent {
   ) {}
 }
 
+export type LightContainmentMode = 'GLOBAL' | 'INTERIOR' | 'EXTERIOR';
+
 export class LightComponent {
   constructor(
-    public lightColor = '#ffffff', public lightColorBW = '#ffffff', public intensity = 1.0, 
-    public range = 50, public angle = 60,
-    public attachedNodePath = '', public attachedNodeName = '',
+    public lightColor = '#ffffff', 
+    public lightColorBW = '#ffffff', 
+    public intensity = 1.0, 
+    public range = 50, 
+    public angle = 60,
+    public attachedNodePath = '', 
+    public attachedNodeName = '',
     public renderIntensity?: number,
     public enabled: boolean = true,
-    public castShadows: boolean = true
+    public castShadows: boolean = true,
+    // --- LIGHT CONTAINMENT SYSTEM ---
+    public containmentMode: LightContainmentMode = 'GLOBAL',
+    public containerEntityUid: string = '',
+    public affectDescendantsOnly: boolean = true,
+    public shadowDarkness: number = 0.0,
+    public shadowBias: number = 0.0005,
+    public shadowNormalBias: number = 0.01,
+    public excludeExteriorMeshes: boolean = true
   ) {}
 }
 
@@ -144,7 +158,6 @@ export class GameEntity {
   public orderIndex: number = 0;
   public isPersistent: boolean = false;
   
-  // 🔥 FASE 4: Arquitectura World Space Pura para luces
   public transformSpace: 'LOCAL' | 'WORLD' | 'ATTACHED' = 'LOCAL';
   public isLegacyLocalTransform: boolean = false;
 
@@ -186,7 +199,7 @@ export class GameEntity {
 
     if (type.startsWith('light_')) {
       this.addComponent('light', new LightComponent());
-      this.transformSpace = 'WORLD'; // Las luces son World Space por defecto
+      this.transformSpace = 'WORLD';
     }
 
     if (type === 'video_plane' || type === 'image_plane') {

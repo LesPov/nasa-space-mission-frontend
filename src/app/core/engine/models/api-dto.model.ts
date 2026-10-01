@@ -46,7 +46,19 @@ export interface SceneObjectPropertiesDto {
   path?: string; videoUrl?: string; imageUrl?: string; profundidadProyeccion?: number; anguloProyeccion?: number; proyeccionAncho?: number;
   proyeccionAlto?: number; proyeccionRepeticiones?: number; proyeccionEspaciado?: number; proyeccionEje?: string; fadeDistance?: number;
   lightColor?: string; lightColorBW?: string; intensity?: number; renderIntensity?: number; range?: number; angle?: number;
-  attachedNodePath?: string; attachedNodeName?: string; triggerShape?: string; isComposite?: boolean; seqEntrada?: string;
+  attachedNodePath?: string; attachedNodeName?: string;
+  
+  // --- LIGHT CONTAINMENT PROPERTIES ---
+  containmentMode?: 'GLOBAL' | 'INTERIOR' | 'EXTERIOR';
+  containerEntityUid?: string;
+  interiorVolumeId?: string;
+  affectDescendantsOnly?: boolean;
+  shadowDarkness?: number;
+  shadowBias?: number;
+  shadowNormalBias?: number;
+  excludeExteriorMeshes?: boolean;
+
+  triggerShape?: string; isComposite?: boolean; seqEntrada?: string;
   timeEntrada?: number; videoEntrada?: string; mensajeSalida?: string; soundUrlSalida?: string; seqSalida?: string; timeSalida?: number;
   videoSalida?: string; condition?: string; actionType?: string; targetSceneId?: number | null; gameConditions?: GameConditionDto[];
   targetObjectName?: string; isRepeatable?: boolean; mensajeEntrada?: string; soundUrlEntrada?: string; soundUrl?: string;

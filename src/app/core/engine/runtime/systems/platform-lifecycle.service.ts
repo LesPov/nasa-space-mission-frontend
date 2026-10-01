@@ -1,4 +1,3 @@
-
 import { Injectable, inject, signal } from '@angular/core';
 import { Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -7,6 +6,7 @@ import { CinematicDirectorService } from './cinematic-director.service';
 import { TriggerAudioService } from './trigger-audio.service';
 import { PlayerAnimationService } from './player-animation.service';
 import { DynamicLightingSystem } from './lighting/dynamic-lighting.system';
+import { LightContainmentService } from './lighting/light-containment.service';
 import { PlayerTriggerService } from './player-trigger.service';
 import { GameStateService } from '../state/game-state.service';
 import { GameContextService } from '../../session/game-context.service';
@@ -28,6 +28,7 @@ export class PlatformLifecycleService {
   private triggerAudio = inject(TriggerAudioService);
   private playerAnimation = inject(PlayerAnimationService);
   private dynamicLighting = inject(DynamicLightingSystem);
+  private containmentSvc = inject(LightContainmentService);
   private playerTrigger = inject(PlayerTriggerService);
   private gameState = inject(GameStateService);
   private context = inject(GameContextService);
@@ -64,8 +65,9 @@ export class PlatformLifecycleService {
       this.playerAnimation.detenerTodasGlobal();
     }
 
-    // 5. Apagar y limpiar el pool de luces dinámicas
+    // 5. Apagar y limpiar el pool de luces dinámicas y su caché de contención
     this.dynamicLighting.stop();
+    this.containmentSvc.clearAllCache();
 
     // 6. Limpiar el estado de escena en el GameState (conservando global, episode y player)
     this.gameState.clearSceneState();

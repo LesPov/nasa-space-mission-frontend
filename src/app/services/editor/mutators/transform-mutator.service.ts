@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -7,6 +6,7 @@ import { CoreSceneProjectionService } from '../../../core/engine/scene/utils/cor
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
 import { CoreSceneMaterialService } from '../../../core/engine/scene/utils/core-scene-material.service';
+import { DynamicLightingSystem } from '../../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 
 export interface ProyeccionConfig {
   profundidadProyeccion: number;
@@ -47,6 +47,7 @@ export class TransformMutatorService {
   private entityManager = inject(EntityManagerService); 
   private worldSettingsSvc = inject(WorldSettingsService);
   private materialSvc = inject(CoreSceneMaterialService);
+  private dynamicLighting = inject(DynamicLightingSystem);
 
   public aplicarPosicion(objeto: AbstractMesh, localPos: { x: number, y: number, z: number }): void {
     const entity = this.entityManager.getEntityByMesh(objeto);
@@ -63,6 +64,9 @@ export class TransformMutatorService {
 
     if (entity && entity.type === 'image_plane') {
        this.projectionSvc.actualizarProyeccion(objeto as Mesh);
+    }
+    if (entity && entity.type.startsWith('light_')) {
+       this.dynamicLighting.syncLightImmediate(entity);
     }
     this.mapaSvc.onMapChanged.next();
   }
@@ -94,6 +98,9 @@ export class TransformMutatorService {
 
     if (entity && entity.type === 'image_plane') {
        this.projectionSvc.actualizarProyeccion(objeto as Mesh);
+    }
+    if (entity && entity.type.startsWith('light_')) {
+       this.dynamicLighting.syncLightImmediate(entity);
     }
     this.mapaSvc.onMapChanged.next();
   }
@@ -168,7 +175,6 @@ export class TransformMutatorService {
     const activeColorHex = isBW ? config.colorBW : config.color;
     const activeAmbientHex = isBW ? config.ambientColorBW : config.ambientColor;
 
-    // 🔥 FIX: Evalúa isModelBased de manera más robusta, permitiendo light_spot si tiene path válido.
     const isModelBased = entity.type === 'model' || (entity.type.startsWith('light_') && (!!entity.visual.assetId || !!entity.visual.path));
 
     if (isModelBased) {
@@ -177,7 +183,6 @@ export class TransformMutatorService {
             if (m.material) {
                 const override = entity.partOverrides?.overrides[m.name];
                 if (override) {
-                    // 🔥 FIX AISLAMIENTO MATERIAL: Si tiene un override individual, aisla y clona el material para esta malla específica
                     this.materialSvc.asegurarMaterialUnicoParaParte(m, entity.uid, m.name);
                     const activeColorOverride = isBW ? (override.colorBW || override.color) : override.color;
                     this.materialSvc.ajustarMaterialGLB(
@@ -190,7 +195,6 @@ export class TransformMutatorService {
                         override.textureSource || (override.texturePath ? 'asset' : 'original') 
                     );
                 } else {
-                    // Mantiene los materiales originales vinculados a la entidad para cambiar colores globales
                     this.materialSvc.asegurarMaterialUnico(m, entity.uid);
                     this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbientHex, activeColorHex, config.esEmisivo, config.brilloIntensidad);
                 }
@@ -242,14 +246,12 @@ export class TransformMutatorService {
             (objeto.material as StandardMaterial).emissiveColor = c3Light;
         }
 
-        // 🔥 FIX PBR BULB COLOR OVERRIDE: Ahora busca emisivos en PBRMaterial también.
         objeto.getChildMeshes().forEach((m: AbstractMesh) => {
            if (m.material) { 
                const nL = m.name.toLowerCase();
                const mL = m.material.name.toLowerCase();
                if (nL.includes('bulb') || nL.includes('light') || nL.includes('emit') || mL.includes('bulb') || mL.includes('light') || mL.includes('emit')) {
                    const override = entity.partOverrides?.overrides[m.name];
-                   // 🔥 FIX PART OVERRIDE: Solo sobreescribe el color si el usuario NO ha configurado un override de color en la parte visual
                    if (!override || (override.color === undefined && override.esEmisivo === undefined)) {
                        if ((m.material as any).emissiveColor) {
                            (m.material as any).emissiveColor = c3Light;
@@ -261,6 +263,9 @@ export class TransformMutatorService {
 
         entity.light.renderIntensity = (config.brilloIntensidad !== undefined) ? (this.clampBrightness(config.brilloIntensidad) * 5) : (entity.light.intensity || 5);
         entity.light.intensity = entity.light.renderIntensity;
+
+        // 🔥 Notificar inmediatamente al runtime de iluminación
+        this.dynamicLighting.syncLightImmediate(entity);
     }
 
     objeto.applyFog = !config.ignoraNiebla;

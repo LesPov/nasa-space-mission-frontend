@@ -130,10 +130,8 @@ export class CoreSceneLoaderService {
       if (entity && entity.parentId) {
         const parentNode = mallasCreadas.get(entity.parentId) || scene.getMeshByName(entity.parentId);
         
-        // 🔥 FASE 4: Aisla las luces World Space del árbol de transformaciones
         if (entity.transformSpace === 'WORLD') {
            if (parentNode && entity.isLegacyLocalTransform) {
-               // Migración Legacy Local a World Absoluta
                const localPos = new Vector3(entity.transform.position.x, entity.transform.position.y, entity.transform.position.z);
                parentNode.computeWorldMatrix(true);
                const worldPos = Vector3.TransformCoordinates(localPos, parentNode.getWorldMatrix());
@@ -260,6 +258,13 @@ export class CoreSceneLoaderService {
             finalPos = { x: positionTarget.x, y: positionTarget.y, z: positionTarget.z };
             if (rotationEuler) finalRot = { x: rotationEuler.x, y: rotationEuler.y, z: rotationEuler.z };
             if (scale) finalScale = { x: scale.x, y: scale.y, z: scale.z };
+        }
+
+        // --- PREFAB REMAPPING: Aislamiento del Contenedor de Luz Interior ---
+        if (propsClone.containerEntityUid && uidMap.has(propsClone.containerEntityUid)) {
+          propsClone.containerEntityUid = uidMap.get(propsClone.containerEntityUid);
+        } else if (propsClone.containerEntityUid && (item as any).containerOriginalUid && uidMap.has((item as any).containerOriginalUid)) {
+          propsClone.containerEntityUid = uidMap.get((item as any).containerOriginalUid);
         }
 
         const mockDbObject: SceneObjectDto = {

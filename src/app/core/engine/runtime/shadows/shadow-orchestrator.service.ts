@@ -1,6 +1,5 @@
-
 import { Injectable, inject } from '@angular/core';
-import { DirectionalLight, Vector3, CascadedShadowGenerator, ShadowGenerator, AbstractMesh } from '@babylonjs/core';
+import { DirectionalLight, Vector3, CascadedShadowGenerator, ShadowGenerator, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -9,6 +8,7 @@ import { WorldSettingsService } from '../../world/world-settings.service';
 import { GameContextService } from '../../session/game-context.service';
 import { ShadowLODManager } from './shadow-lod-manager.service';
 import { ShadowLOD, ShadowProfile } from './shadow.model';
+import { GameEntity } from '../../entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
 export class ShadowOrchestratorService implements IUpdatable {
@@ -31,6 +31,37 @@ export class ShadowOrchestratorService implements IUpdatable {
       }
       const camera = this.ownership.getCamera() || this.motor3d.getEditorCamera();
       return camera ? camera.globalPosition : Vector3.Zero();
+  }
+
+  /**
+   * Determina si la entidad debe proyectar sombras bajo la luz solar direccional.
+   * La oclusión óptica de postes, arquitectura y túneles no depende de 'isSolid'.
+   */
+  private isEligibleShadowCaster(e: GameEntity): boolean {
+      if (!e.view || !e.view.isVisible || !e.view.isEnabled()) return false;
+
+      // Descartar triggers, imágenes proyectadas, burbujas y elementos no oclusores
+      if (e.type === 'image_plane' || e.type === 'bubble' || e.type === 'trigger' || e.type === 'trigger_compuesto') {
+          return false;
+      }
+
+      // Si es una fuente de luz abstracta sin geometría física asociada, no proyecta sombra
+      if (e.type.startsWith('light_') && !e.visual?.assetId && !e.visual?.path) {
+          return false;
+      }
+
+      // Personajes, jugador y NPCs
+      if (e.characterConfig || e.rol === 'player' || e.rol === 'npc') {
+          return true;
+      }
+
+      // Geometría real: modelos GLB (postes, arquitectura, edificios) y primitivas
+      const renderableTypes = ['model', 'cube', 'sphere', 'cylinder', 'plane'];
+      if (renderableTypes.includes(e.type) || !!e.visual?.assetId || !!e.visual?.path) {
+          return true;
+      }
+
+      return false;
   }
 
   public start(): void {
@@ -91,8 +122,8 @@ export class ShadowOrchestratorService implements IUpdatable {
        this.shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
        this.shadowGenerator.bias = 0.0012;
        this.shadowGenerator.normalBias = 0.012;
-       this.shadowGenerator.shadowMaxZ = 26; 
-       this.shadowGenerator.setDarkness(0.3);
+       this.shadowGenerator.shadowMaxZ = 35; 
+       this.shadowGenerator.setDarkness(0.35);
        this.shadowGenerator.autoCalcDepthBounds = false; 
        this.shadowGenerator.stabilizeCascades = true; 
     }
@@ -105,7 +136,7 @@ export class ShadowOrchestratorService implements IUpdatable {
         const refPos = this.getReferencePosition();
 
         const profile: ShadowProfile = {
-            maxShadowDistance: 26,
+            maxShadowDistance: 35,
             lod1Distance: 30, 
             lod2Distance: 50,
             lod3Distance: 100,
@@ -114,25 +145,30 @@ export class ShadowOrchestratorService implements IUpdatable {
 
         for (let i = 0; i < entities.length; i++) {
            const e = entities[i];
-           if (e.view && e.view instanceof AbstractMesh) {
-               if (e.characterConfig || (e.visual?.isSolid && e.type !== 'image_plane' && !e.type.startsWith('light_'))) {
-                   
-                   const lodValue = Number(this.shadowLOD.calculateLOD(e.view.getAbsolutePosition(), refPos, profile));
-                   
-                   // 🔥 FIX CRÍTICO SHADOW RECOMPILATION: 
-                   // Independientemente de la distancia (LOD), NUNCA modificamos e.view.receiveShadows.
-                   // Las mallas siempre están preparadas para recibir sombras, pero su inclusión
-                   // en la RenderList (para PROYECTAR sombras) sí se filtra por distancia.
-                   if (lodValue === 0) {
-                       const processMeshForShadows = (m: AbstractMesh) => {
-                           if (m.isVisible && m.isEnabled()) {
+           if (this.isEligibleShadowCaster(e) && e.view) {
+               const lodValue = Number(this.shadowLOD.calculateLOD(e.view.getAbsolutePosition(), refPos, profile));
+               
+               if (lodValue === 0) {
+                   const processMeshForShadows = (m: AbstractMesh) => {
+                       if (m.isVisible && m.isEnabled() && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
+                           if (m instanceof Mesh && m.getTotalVertices() > 0) {
                                renderList.push(m);
                            }
-                       };
+                           m.receiveShadows = true;
+                       }
+                   };
 
-                       processMeshForShadows(e.view);
-                       e.view.getChildMeshes(false).forEach(processMeshForShadows);
-                   } 
+                   processMeshForShadows(e.view);
+                   e.view.getChildMeshes(false).forEach(processMeshForShadows);
+               } 
+           } else if (e.view) {
+               if (!Tags.MatchesQuery(e.view, "light_visual || debug_element || proxy_collider")) {
+                   e.view.receiveShadows = true;
+                   e.view.getChildMeshes(false).forEach(cm => {
+                       if (!Tags.MatchesQuery(cm, "light_visual || debug_element || proxy_collider")) {
+                           cm.receiveShadows = true;
+                       }
+                   });
                }
            }
         }

@@ -1,7 +1,7 @@
 
 import { Injectable } from '@angular/core';
 import { BaseEntityMapper } from './base-entity.mapper';
-import { GameEntity } from '../../../entities/game.entity';
+import { GameEntity, LightContainmentMode } from '../../../entities/game.entity';
 import { SceneObjectDto, TriggerDto, SceneObjectPropertiesDto } from '../../../models/api-dto.model';
 
 @Injectable({ providedIn: 'root' })
@@ -25,7 +25,7 @@ export class LightEntityMapper extends BaseEntityMapper {
         } else {
             entity.transformSpace = 'WORLD';
             if (obj.parentId) {
-                entity.isLegacyLocalTransform = true; // Se evaluará al instanciar
+                entity.isLegacyLocalTransform = true;
             }
         }
     } else {
@@ -54,6 +54,15 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.renderIntensity = entity.light.intensity;
       entity.light.enabled = props.isEnabled ?? true;
       entity.light.castShadows = (props as any).castShadows ?? true;
+
+      // --- MAPPING DE LIGHT CONTAINMENT ---
+      entity.light.containmentMode = (props.containmentMode as LightContainmentMode) || 'GLOBAL';
+      entity.light.containerEntityUid = props.containerEntityUid || '';
+      entity.light.affectDescendantsOnly = props.affectDescendantsOnly ?? true;
+      entity.light.shadowDarkness = props.shadowDarkness ?? 0.0;
+      entity.light.shadowBias = props.shadowBias ?? 0.0005;
+      entity.light.shadowNormalBias = props.shadowNormalBias ?? 0.01;
+      entity.light.excludeExteriorMeshes = props.excludeExteriorMeshes ?? true;
     }
   }
 
@@ -61,7 +70,25 @@ export class LightEntityMapper extends BaseEntityMapper {
     const base = super.extractEntityProperties(entity);
     return {
       ...base,
-      ...(entity.light ? entity.light : {})
+      ...(entity.light ? {
+        lightColor: entity.light.lightColor,
+        lightColorBW: entity.light.lightColorBW,
+        intensity: entity.light.intensity,
+        renderIntensity: entity.light.renderIntensity,
+        range: entity.light.range,
+        angle: entity.light.angle,
+        attachedNodePath: entity.light.attachedNodePath,
+        attachedNodeName: entity.light.attachedNodeName,
+        isEnabled: entity.light.enabled,
+        castShadows: entity.light.castShadows,
+        containmentMode: entity.light.containmentMode,
+        containerEntityUid: entity.light.containerEntityUid,
+        affectDescendantsOnly: entity.light.affectDescendantsOnly,
+        shadowDarkness: entity.light.shadowDarkness,
+        shadowBias: entity.light.shadowBias,
+        shadowNormalBias: entity.light.shadowNormalBias,
+        excludeExteriorMeshes: entity.light.excludeExteriorMeshes
+      } : {})
     };
   }
 }

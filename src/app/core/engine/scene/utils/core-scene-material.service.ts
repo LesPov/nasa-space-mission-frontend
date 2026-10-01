@@ -1,4 +1,3 @@
-
 import { Injectable } from '@angular/core';
 import { Color3, Texture, RawTexture, Scene, AbstractMesh } from '@babylonjs/core';
 
@@ -42,7 +41,7 @@ export class CoreSceneMaterialService {
       }
   }
 
-  // 🔥 NUEVO MÉTODO: Aísla el material específicamente para una parte modificada por el usuario, sin afectar a mallas vecinas
+  // Aísla el material específicamente para una parte modificada por el usuario
   public asegurarMaterialUnicoParaParte(mesh: AbstractMesh, uid: string, partName: string): void {
       if (!mesh.material) return;
       
@@ -90,7 +89,8 @@ export class CoreSceneMaterialService {
       return;
     }
     
-    const SAFE_LIGHT_BUDGET = 6;
+    // Asignar presupuesto de 8 luces concurrentes para soportar el sol direccional + pool de luces dinámicas con sombras
+    const SAFE_LIGHT_BUDGET = 8;
     if (material.maxSimultaneousLights !== SAFE_LIGHT_BUDGET) {
         material.maxSimultaneousLights = SAFE_LIGHT_BUDGET;
     }

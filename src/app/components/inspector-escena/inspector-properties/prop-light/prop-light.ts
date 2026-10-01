@@ -1,4 +1,3 @@
-
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -8,10 +7,18 @@ import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorStateService } from '../../../../services/editor/editor-state.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
+import { LightContainmentMode } from '../../../../core/engine/entities/game.entity';
+import { LightContainmentService } from '../../../../core/engine/runtime/systems/lighting/light-containment.service';
+import { DynamicLightingSystem } from '../../../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 
 interface AttachedNodeOption {
   label: string;
   value: string;
+}
+
+interface ContainerOption {
+  label: string;
+  uid: string;
 }
 
 @Component({
@@ -28,6 +35,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   private stateSvc = inject(EditorStateService);
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private entityManager = inject(EntityManagerService);
+  private containmentSvc = inject(LightContainmentService);
+  private dynamicLighting = inject(DynamicLightingSystem);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -43,7 +52,17 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   enabled = true;
   castShadows = true;
 
+  // --- CONTAINMENT PROPERTIES ---
+  containmentMode: LightContainmentMode = 'GLOBAL';
+  containerEntityUid: string = '';
+  affectDescendantsOnly: boolean = true;
+  shadowDarkness: number = 0.0;
+  shadowBias: number = 0.0005;
+  shadowNormalBias: number = 0.01;
+  excludeExteriorMeshes: boolean = true;
+
   public childNodes: AttachedNodeOption[] = [];
+  public containerOptions: ContainerOption[] = [];
   public attachedNodePath: string = '';
   public attachedNodeName: string = '';
 
@@ -66,8 +85,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   ngOnDestroy() {
     this.subs.forEach(s => s.unsubscribe());
   }
-
-  private formatNum(val: number): number { return parseFloat(Number(val || 0).toFixed(3)); }
 
   private getAllAttachableNodes(): Array<TransformNode | AbstractMesh> {
     if (!this.objeto) return [];
@@ -118,7 +135,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     if (!this.objeto || !path) return null;
 
     const nodes = this.getAllAttachableNodes();
-
     const byPath = nodes.find(n => this.buildNodePath(n) === path);
     if (byPath) return byPath;
 
@@ -161,6 +177,15 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.enabled = entity.light.enabled ?? true;
     this.castShadows = entity.light.castShadows ?? true;
 
+    // --- CONTAINMENT SYNC ---
+    this.containmentMode = entity.light.containmentMode ?? 'GLOBAL';
+    this.containerEntityUid = entity.light.containerEntityUid ?? '';
+    this.affectDescendantsOnly = entity.light.affectDescendantsOnly ?? true;
+    this.shadowDarkness = entity.light.shadowDarkness ?? 0.0;
+    this.shadowBias = entity.light.shadowBias ?? 0.0005;
+    this.shadowNormalBias = entity.light.shadowNormalBias ?? 0.01;
+    this.excludeExteriorMeshes = entity.light.excludeExteriorMeshes ?? true;
+
     this.attachedNodePath = entity.light.attachedNodePath || '';
     this.attachedNodeName = entity.light.attachedNodeName || '';
 
@@ -187,6 +212,14 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       value: this.buildNodePath(n)
     }));
 
+    // Sincronizar lista de posibles contenedores arquitectónicos
+    this.containerOptions = this.entityManager.getAllEntities()
+      .filter(e => e.uid !== entity.uid && (e.type === 'model' || e.type === 'cube'))
+      .map(e => ({ label: e.name, uid: e.uid }));
+
+    // 🔥 Asegurar que la luz seleccionada esté activa y sincronizada en el runtime 3D al seleccionar
+    this.dynamicLighting.syncLightImmediate(entity);
+
     this.cdr.detectChanges();
   }
 
@@ -206,8 +239,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (entity && entity.light) {
-      
-      // 🔥 FIX ARQUITECTÓNICO: Si hay un objetivo, reparentamos nativamente en BabylonJS
       if (targetNode && targetNode instanceof AbstractMesh) {
          if (this.objeto.parent !== targetNode) {
              this.objeto.setParent(targetNode);
@@ -231,12 +262,27 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.light.castShadows = this.castShadows;
       entity.light.attachedNodeName = this.attachedNodeName;
       entity.light.attachedNodePath = this.attachedNodePath;
+
+      // --- ASIGNACIÓN DE PARÁMETROS DE CONTENCIÓN ---
+      entity.light.containmentMode = this.containmentMode;
+      entity.light.containerEntityUid = this.containerEntityUid;
+      entity.light.affectDescendantsOnly = this.affectDescendantsOnly;
+      entity.light.shadowDarkness = this.shadowDarkness;
+      entity.light.shadowBias = this.shadowBias;
+      entity.light.shadowNormalBias = this.shadowNormalBias;
+      entity.light.excludeExteriorMeshes = this.excludeExteriorMeshes;
       
       entity.isDirty = true;
       entity.syncToView(); 
+
+      // 1. Invalidar caché de contención para refresco inmediato
+      this.containmentSvc.markDirty(entity.uid);
+
+      // 2. 🔥 ACTUALIZACIÓN EN TIEMPO REAL DIRECTA A BABYLONJS
+      this.dynamicLighting.syncLightImmediate(entity);
     }
 
     this.editorSvc.onMapChanged.next();
-    this.animStatus = '💡 Luz actualizada y re-anclada';
+    this.animStatus = '💡 Luz y contención actualizadas';
   }
 }

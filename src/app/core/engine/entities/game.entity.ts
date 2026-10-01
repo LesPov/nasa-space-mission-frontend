@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/entities/game.entity.ts
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
@@ -44,7 +43,6 @@ export class VisualComponent {
     public internalScale?: number,
     public ambientColor = '#ffffff',
     public ambientColorBW = '#ffffff',
-    // 🔥 NUEVO FASE CULLING: Exclusión per-objeto
     public disableCulling = false
   ) {}
 }
@@ -76,7 +74,6 @@ export class LightComponent {
     public renderIntensity?: number,
     public enabled: boolean = true,
     public castShadows: boolean = true,
-    // --- LIGHT CONTAINMENT SYSTEM ---
     public containmentMode: LightContainmentMode = 'GLOBAL',
     public containerEntityUid: string = '',
     public affectDescendantsOnly: boolean = true,
@@ -84,7 +81,6 @@ export class LightComponent {
     public shadowBias: number = 0.0005,
     public shadowNormalBias: number = 0.01,
     public excludeExteriorMeshes: boolean = true,
-    // --- LIGHT DISTANCE & HYSTERESIS SYSTEM ---
     public distanceControlEnabled: boolean = true,
     public activationDistance: number = 65,
     public deactivationDistance: number = 75,
@@ -171,7 +167,6 @@ export class GameEntity {
   public orderIndex: number = 0;
   public isPersistent: boolean = false;
   
-  // 🔥 ESTADO DE OPTIMIZACIÓN RUNTIME (Spatial Culling / Streaming)
   public isCulled: boolean = false;
   public runtimeVisibilityTarget: number = 1.0;
   public currentRuntimeVisibility: number = 1.0;
@@ -217,7 +212,7 @@ export class GameEntity {
 
     if (type.startsWith('light_')) {
       this.addComponent('light', new LightComponent());
-      this.transformSpace = 'WORLD';
+      // 🔥 FIX ARQUITECTURA LUZ: Eliminado `this.transformSpace = 'WORLD'` para que hereden LOCAL por defecto y respeten padres.
     }
 
     if (type === 'video_plane' || type === 'image_plane') {

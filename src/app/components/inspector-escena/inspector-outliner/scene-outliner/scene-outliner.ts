@@ -51,6 +51,14 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     return this.outlinerState.searchTerm().toLowerCase().trim();
   }
 
+  private getOrderIndex(node: Node): number {
+      if (node instanceof AbstractMesh) {
+          const ent = this.entityManager.getEntityByMesh(node);
+          if (ent) return ent.orderIndex || 0;
+      }
+      return (node as any).metadata?.orderIndex || 0;
+  }
+
   get filteredNodes(): Node[] {
     let list = this.depth === 0 ? this.stateSvc.nodosEscena() : this.nodes;
     
@@ -58,8 +66,7 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
        list = list.filter(n => {
            if (n.name.includes('proxycol')) return false;
            if (n.name.startsWith('decal_')) return false;
-           
-           if (Tags.MatchesQuery(n, "light_visual") || (n as any).metadata?.isLightVisual) return true;
+           if (Tags.MatchesQuery(n, "light_visual") || (n as any).metadata?.isLightVisual) return false;
            if (Tags.MatchesQuery(n, "light_entity")) return true;
            
            const childEntity = n instanceof AbstractMesh ? this.entityManager.getEntityByMesh(n) : null;
@@ -69,10 +76,8 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
            return true;
        });
     } else {
-       // Mostrar mallas raíz físicas y excluir a los hijos lógicos
        list = list.filter(n => {
            if (n.parent !== null) return false;
-           
            if (n instanceof AbstractMesh) {
                const entity = this.entityManager.getEntityByMesh(n);
                if (entity && entity.parentId) {
@@ -86,9 +91,10 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
 
     const term = this.searchTerm;
     if (term) {
-      return list.filter(n => this.nodeOrChildMatches(n, term));
+      list = list.filter(n => this.nodeOrChildMatches(n, term));
     }
-    return list;
+    
+    return list.sort((a, b) => this.getOrderIndex(a) - this.getOrderIndex(b));
   }
 
   private nodeOrChildMatches(node: Node, term: string): boolean {
@@ -110,7 +116,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     const result: Node[] = [];
     const children = node.getChildren();
     
-    // Inyección de hijos lógicos (Luces World Space)
     if (node instanceof AbstractMesh) {
         const entity = this.entityManager.getEntityByMesh(node);
         if (entity) {
@@ -125,7 +130,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
 
     for (const child of children) {
       if (Tags.MatchesQuery(child, "light_visual") || (child as any).metadata?.isLightVisual) {
-        result.push(child);
         continue;
       }
       
@@ -149,7 +153,8 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
         result.push(child);
       }
     }
-    return result;
+    
+    return result.sort((a, b) => this.getOrderIndex(a) - this.getOrderIndex(b));
   }
 
   isTechnicalWrapper(node: Node): boolean {
@@ -231,7 +236,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
             if (entity.type === 'plane') return '🗺️';
             return '📦'; 
         }
-
         const rootMesh = this.stateSvc.encontrarRaiz(node);
         if (rootMesh !== node) return '🧩'; 
     }
@@ -307,8 +311,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
       if ((selected as any).metadata?.entityUid && (selected as any).metadata?.entityUid === (node as any).metadata?.entityUid) {
         return true;
       }
-      // 🔥 FIX 3 (HERENCIA FALSA DE LUZ): Eliminado el código que marcaba la luz como seleccionada
-      // si el nodo padre estaba seleccionado.
     }
     return false;
   }
@@ -382,17 +384,26 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     setTimeout(() => (event.target as HTMLElement).classList.add('dragging'), 10);
   }
 
+  private isDescendant(target: Node, potentialParent: Node): boolean {
+    let current = target.parent;
+    while (current) {
+      if (current === potentialParent) return true;
+      current = current.parent;
+    }
+    return false;
+  }
+
   onDragOver(node: Node, event: DragEvent) {
     event.preventDefault();
     event.stopPropagation();
     
     const dragged = this.outlinerState.draggedNode();
-    if (!dragged || dragged === node || this.isDescendant(node, dragged)) {
+    if (!dragged || dragged === node || !this.isDraggable(dragged) || !this.isDraggable(node)) {
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
       return;
     }
 
-    if (!this.isDraggable(node)) {
+    if (this.isDescendant(node, dragged)) {
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'none';
       return;
     }
@@ -407,6 +418,7 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
 
     this.clearDragVisuals();
 
+    // 🔥 FIX: Permite soltar fuera, encima, o dentro del nodo
     if (y < rect.height * 0.25) {
       this.outlinerState.dropAction.set('above');
       targetEl.classList.add('drag-over-top');
@@ -435,53 +447,73 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     const draggedNode = this.outlinerState.draggedNode();
     const action = this.outlinerState.dropAction();
 
-    if (!draggedNode || draggedNode === node || this.isDescendant(node, draggedNode)) {
+    if (!draggedNode || draggedNode === node) {
       this.outlinerState.draggedNode.set(null);
       return;
     }
 
-    if (!this.isDraggable(draggedNode) || !this.isDraggable(node)) {
+    if (this.isDescendant(node, draggedNode)) {
       this.outlinerState.draggedNode.set(null);
       return;
     }
 
-    const draggedEntity = this.entityManager.getEntityByMesh(draggedNode as AbstractMesh);
-    const targetEntity = this.entityManager.getEntityByMesh(node as AbstractMesh);
+    const newParentNode = action === 'inside' ? node : node.parent;
 
-    const setParentSafe = (child: Node, parent: Node | null) => {
-      if (typeof (child as any).setParent === 'function') {
-        (child as any).setParent(parent);
-      } else {
-        child.parent = parent;
-      }
-    };
+    // 🔥 FIX DRAG & DROP PARENTING
+    if (draggedNode.parent !== newParentNode) {
+        const draggedEntity = this.entityManager.getEntityByMesh(draggedNode as AbstractMesh);
+        const newParentEntity = newParentNode ? this.entityManager.getEntityByMesh(newParentNode as AbstractMesh) : null;
+        
+        if (draggedEntity) {
+            draggedEntity.parentId = newParentEntity ? newParentEntity.uid : null;
+            
+            // setParent mantiene la posición, rotación y escala visual global en el mundo
+            if (typeof (draggedNode as any).setParent === 'function') {
+                (draggedNode as any).setParent(newParentNode);
+            } else {
+                draggedNode.parent = newParentNode;
+            }
+            draggedEntity.syncTransformFromView();
+            draggedEntity.isDirty = true;
+        }
+    }
 
-    if (action === 'inside') {
-      if (draggedEntity) {
-          draggedEntity.parentId = targetEntity ? targetEntity.uid : null;
-          
-          if (draggedEntity.transformSpace !== 'WORLD') {
-             setParentSafe(draggedNode, node);
-          }
-          
-          draggedEntity.syncTransformFromView();
-          draggedEntity.isDirty = true;
-      }
+    const allSiblings = newParentNode ? newParentNode.getChildren() : this.stateSvc.nodosEscena();
+
+    const validSiblings = allSiblings.filter(s => {
+       if (Tags.MatchesQuery(s, "light_visual") || (s as any).metadata?.isLightVisual) return false;
+       if (Tags.MatchesQuery(s, "system_element || editor_only || fog_element || debug_element || proxy_collider")) return false;
+       return true;
+    }).sort((a, b) => this.getOrderIndex(a) - this.getOrderIndex(b));
+
+    const draggedIdx = validSiblings.indexOf(draggedNode);
+    if (draggedIdx > -1) validSiblings.splice(draggedIdx, 1);
+
+    let targetIdx = validSiblings.length;
+    if (action === 'above') {
+        targetIdx = validSiblings.indexOf(node);
+    } else if (action === 'below') {
+        targetIdx = validSiblings.indexOf(node) + 1;
+    }
+
+    if (targetIdx > -1 && targetIdx <= validSiblings.length) {
+        validSiblings.splice(targetIdx, 0, draggedNode);
     } else {
-      const newParent = node.parent;
-      const newParentEntity = newParent ? this.entityManager.getEntityByMesh(newParent as AbstractMesh) : null;
-      
-      if (draggedEntity) {
-          draggedEntity.parentId = newParentEntity ? newParentEntity.uid : null;
-          
-          if (draggedEntity.transformSpace !== 'WORLD') {
-             setParentSafe(draggedNode, newParent);
-          }
-          
-          draggedEntity.syncTransformFromView();
-          draggedEntity.isDirty = true;
-      }
+        validSiblings.push(draggedNode);
     }
+
+    validSiblings.forEach((sibling, i) => {
+        if (sibling instanceof AbstractMesh) {
+            const entity = this.entityManager.getEntityByMesh(sibling);
+            if (entity) {
+                entity.orderIndex = i;
+                entity.isDirty = true;
+            } else {
+                if (!sibling.metadata) sibling.metadata = {};
+                sibling.metadata.orderIndex = i;
+            }
+        }
+    });
 
     this.nodesSvc.actualizarListaNodos();
     this.mapaSvc.onMapChanged.next();
@@ -498,15 +530,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     document.querySelectorAll('.outliner-item').forEach(i => {
       i.classList.remove('drag-over-top', 'drag-over-bottom', 'drag-over-inside');
     });
-  }
-
-  private isDescendant(target: Node, potentialParent: Node): boolean {
-    let current = target.parent;
-    while (current) {
-      if (current === potentialParent) return true;
-      current = current.parent;
-    }
-    return false;
   }
   
   startEditing(node: Node, event: Event) {

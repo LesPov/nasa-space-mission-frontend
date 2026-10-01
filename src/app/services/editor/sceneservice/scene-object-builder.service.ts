@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, MeshBuilder, Tags, Vector3 } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -64,6 +63,10 @@ export class SceneObjectBuilderService {
       resolvedParentUid = parentEntity ? parentEntity.uid : (parentNode.metadata?.entityUid || parentNode.metadata?.uid || null);
     }
 
+    // 🔥 FIX ESTRICTO: Solo cargamos el AssetContainer si existe una ruta real a un archivo (.glb).
+    // Si la luz no tiene un archivo asignado, entrará al Primitive Loader como corresponde, sin generar cubos de error.
+    const hasValidAssetPath = !!((asset as any)?.path || (asset as any)?.asset?.path || (asset as any)?.properties?.path);
+
     const mockDbObject: SceneObjectDto & { isNewCreation?: boolean } = {
       uid: window.crypto.randomUUID(),
       name: nombre,
@@ -76,7 +79,7 @@ export class SceneObjectBuilderService {
         isSolid: isLight ? false : isSolid,
         isSelectable: isSelectable,
         mensaje: mensaje,
-        path: asset?.path
+        path: hasValidAssetPath ? ((asset as any)?.path || (asset as any)?.asset?.path || (asset as any)?.properties?.path) : undefined
       },
       assetId: asset?.id || null,
       position: position ? { x: position.x, y: position.y, z: position.z } : (parentNode ? { x: 0, y: 0.5, z: 0 } : { x: 0, y: 0, z: 0 }),
@@ -97,7 +100,8 @@ export class SceneObjectBuilderService {
     const isModel = tipo === 'model';
     const mallasCreadas = new Map<string, Mesh>();
 
-    if ((isLight && asset) || (isModel && asset)) {
+    // 🔥 Flujo resuelto: Modelos importados van al modelo, primitivas y luces vacías van a primitiva.
+    if (isModel || (isLight && hasValidAssetPath)) {
       await this.modelLoader.cargarModeloAsync(mockDbObject, mallasCreadas);
     } else {
       this.primitiveLoader.cargarPrimitiva(mockDbObject, mallasCreadas);

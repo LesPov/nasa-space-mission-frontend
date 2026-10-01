@@ -18,15 +18,16 @@ export class LightEntityMapper extends BaseEntityMapper {
     super.applyDbToEntity(obj, entity);
     const props = obj.properties || {} as SceneObjectPropertiesDto;
 
-    // Migración Legacy a Transform Space
+    // 🔥 FIX LUZ LOCAL: Permitimos que las luces respeten a sus padres si los tienen.
+    // Solo forzamos la corrección posicional (isLegacyLocalTransform) si antes eran WORLD pero tenían un ParentID.
     if (!props.transformSpace) {
         if (props.attachedNodeName) {
             entity.transformSpace = 'ATTACHED';
+        } else if (obj.parentId) {
+            entity.transformSpace = 'LOCAL';
+            entity.isLegacyLocalTransform = true; // Notificamos al cargador que convierta las coordenadas de WORLD a LOCAL.
         } else {
             entity.transformSpace = 'WORLD';
-            if (obj.parentId) {
-                entity.isLegacyLocalTransform = true;
-            }
         }
     } else {
         entity.transformSpace = props.transformSpace;
@@ -55,7 +56,6 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.enabled = props.isEnabled ?? true;
       entity.light.castShadows = (props as any).castShadows ?? true;
 
-      // --- MAPPING DE LIGHT CONTAINMENT ---
       entity.light.containmentMode = (props.containmentMode as LightContainmentMode) || 'GLOBAL';
       entity.light.containerEntityUid = props.containerEntityUid || '';
       entity.light.affectDescendantsOnly = props.affectDescendantsOnly ?? true;
@@ -64,10 +64,8 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.shadowNormalBias = props.shadowNormalBias ?? 0.01;
       entity.light.excludeExteriorMeshes = props.excludeExteriorMeshes ?? true;
 
-      // --- MAPPING DE LIGHT DISTANCE & HYSTERESIS ---
       entity.light.distanceControlEnabled = props.distanceControlEnabled ?? true;
       
-      // Defaults con aumento de ~30% respecto al rango base óptico
       const defaultAct = Math.max(20, (props.range ?? 50) * 1.3);
       entity.light.activationDistance = props.activationDistance ?? defaultAct;
       entity.light.deactivationDistance = props.deactivationDistance ?? (entity.light.activationDistance + 10);

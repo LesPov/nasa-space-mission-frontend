@@ -77,7 +77,8 @@ export class CorePrimitiveLoaderService {
       visualSphere.material = lightVisualMat;
 
       Tags.AddTagsTo(mesh, "light_entity");
-      Tags.AddTagsTo(visualSphere, "light_visual editor_only");
+      // 🔥 FASE 5: Remueve "editor_only" para gestión de visibilidad fina
+      Tags.AddTagsTo(visualSphere, "light_visual");
 
       mesh.metadata = { entityUid: entity.uid, isLightRoot: true };
       visualSphere.metadata = { entityUid: entity.uid, isLightVisual: true };
@@ -90,12 +91,12 @@ export class CorePrimitiveLoaderService {
         cone.material = lightVisualMat;
         cone.isPickable = false;
         cone.renderingGroupId = 1;
-        Tags.AddTagsTo(cone, "light_visual editor_only ignore_raycast");
+        Tags.AddTagsTo(cone, "light_visual ignore_raycast");
       }
 
-      const isEditorMode = this.gameContext.mode() === GameMode.EDITOR || this.gameContext.mode() === GameMode.EDITING_IN_GAME;
-      visualSphere.isVisible = isEditorMode;
-      visualSphere.setEnabled(isEditorMode);
+      // 🔥 FASE 5: Se inicia oculto, ToolsHighlightService tomará el control al vuelo
+      visualSphere.isVisible = false;
+      visualSphere.setEnabled(true);
 
     } else {
       switch (obj.type) {

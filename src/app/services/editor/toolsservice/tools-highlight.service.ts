@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, Color4, Mesh, AbstractMesh, Tags, HighlightLayer, Node, Scene } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
@@ -5,6 +6,7 @@ import { EditorStateService } from '../editor-state.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { TriggerVisualizerService } from '../../../core/engine/scene/utils/trigger-visualizer.service';
 import { GameContextService } from '../../../core/engine/session/game-context.service';
+import { GameEntity } from '../../../core/engine/entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsHighlightService {
@@ -22,6 +24,9 @@ export class ToolsHighlightService {
   private currentScene: Scene | null = null;
   private meshesConEdges: AbstractMesh[] = [];
   private highlightedTriggers: AbstractMesh[] = [];
+
+  // 🔥 FASE 5: Colección viva de mallas visuales de luz mostradas en este frame
+  private visibleLightVisuals = new Set<AbstractMesh>();
 
   public initHighlights(): void {
     const scene = this.motor3d.getScene();
@@ -54,11 +59,12 @@ export class ToolsHighlightService {
     this.lastHoveredMeshId = null;
     this.lastSelectedMeshId = null;
     this.lastMode = null;
+    this.visibleLightVisuals.clear();
   }
 
   private esMeshExcluida(mesh: AbstractMesh): boolean {
     if (Tags.MatchesQuery(mesh, "light_visual") || (mesh as any).metadata?.isLightVisual) {
-      return false;
+      return false; // Nunca excluir prematuramente los light_visuals en highlight service
     }
     const n = mesh.name?.toLowerCase?.() ?? '';
     return (
@@ -79,7 +85,6 @@ export class ToolsHighlightService {
     const meshes = new Set<AbstractMesh>();
     if (!baseNode || baseNode.isDisposed()) return [];
 
-    // Si es un cuerpo visual de luz, devolvemos solo esta malla sin recorrer al padre
     if (baseNode instanceof AbstractMesh && (Tags.MatchesQuery(baseNode, "light_visual") || (baseNode as any).metadata?.isLightVisual)) {
       meshes.add(baseNode);
       return Array.from(meshes);
@@ -92,7 +97,6 @@ export class ToolsHighlightService {
       if (!node || node.isDisposed()) return;
 
       if (node instanceof AbstractMesh) {
-        // Ignoramos cuerpos de luz hijos al resaltar el modelo padre
         if (Tags.MatchesQuery(node, "light_visual") || (node as any).metadata?.isLightVisual) {
           return;
         }
@@ -132,6 +136,87 @@ export class ToolsHighlightService {
         return (node as Mesh).getTotalVertices() > 0;
     }
     return false;
+  }
+
+  // 🔥 FASE 5: Responsabilidad delegada y limpia para el control de visuales de luz
+  private updateLightVisualsVisibility(selected: AbstractMesh | null, hovered: AbstractMesh | null): void {
+    const newVisible = new Set<AbstractMesh>();
+
+    const addLightVisuals = (mesh: AbstractMesh | null) => {
+        if (!mesh) return;
+        
+        let rootEntityUid = (mesh as any).metadata?.entityUid;
+        let rootEntity = rootEntityUid ? this.entityManager.getEntityByUid(rootEntityUid) : this.entityManager.getEntityByMesh(mesh);
+
+        const processEntity = (ent: GameEntity) => {
+            if (ent.type.startsWith('light_') && ent.view) {
+                ent.view.getChildMeshes().forEach(m => {
+                    if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) {
+                        newVisible.add(m);
+                    }
+                });
+            }
+        };
+
+        if (rootEntity) {
+            processEntity(rootEntity);
+            
+            // Buscar luces descendientes lógicamente
+            const allEntities = this.entityManager.getAllEntities();
+            const findLogicalDescendants = (parentUid: string) => {
+                for (let i = 0; i < allEntities.length; i++) {
+                    const e = allEntities[i];
+                    if (e.parentId === parentUid) {
+                        processEntity(e);
+                        findLogicalDescendants(e.uid);
+                    }
+                }
+            };
+            findLogicalDescendants(rootEntity.uid);
+        }
+
+        // Búsqueda física en BabylonJS por seguridad (luces atadas a huesos o partes sin entidad propia)
+        const descendants = mesh.getDescendants(false);
+        for (let i = 0; i < descendants.length; i++) {
+            const desc = descendants[i];
+            if (desc instanceof AbstractMesh) {
+                if (Tags.MatchesQuery(desc, "light_visual") || (desc as any).metadata?.isLightVisual) {
+                    newVisible.add(desc);
+                } else {
+                    let dEntityUid = (desc as any).metadata?.entityUid;
+                    let dEntity = dEntityUid ? this.entityManager.getEntityByUid(dEntityUid) : this.entityManager.getEntityByMesh(desc);
+                    if (dEntity && dEntity.type.startsWith('light_')) {
+                        processEntity(dEntity);
+                    }
+                }
+            }
+        }
+    };
+
+    const mode = this.state.playState();
+    const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
+    const isPlayingMode = mode === 'PLAYING';
+    const isFPS = this.state.modoVistaPrueba === 'FPS';
+    const hideAll = isPlayingMode && isFPS && !canSelectHidden;
+
+    if (!hideAll && (mode === 'EDITOR' || mode === 'EDITING_IN_GAME' || canSelectHidden)) {
+        addLightVisuals(selected);
+        addLightVisuals(hovered);
+    }
+
+    this.visibleLightVisuals.forEach(m => {
+        if (!newVisible.has(m) && !m.isDisposed()) {
+            m.isVisible = false;
+        }
+    });
+
+    newVisible.forEach(m => {
+        if (!m.isDisposed()) {
+            m.isVisible = true;
+        }
+    });
+
+    this.visibleLightVisuals = newVisible;
   }
 
   private limpiarTodosLosEdges(): void {
@@ -244,6 +329,9 @@ export class ToolsHighlightService {
     this.lastHoveredMeshId = hoverId;
     this.lastSelectedMeshId = selectId;
     this.lastMode = mode; 
+
+    // 🔥 FASE 5: Recalcular la visibilidad de los cuerpos de luz en base a las nuevas selecciones
+    this.updateLightVisualsVisibility(selected, hovered);
 
     this.limpiarTodosLosEdges();
 

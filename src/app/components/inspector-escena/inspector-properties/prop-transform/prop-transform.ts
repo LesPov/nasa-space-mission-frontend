@@ -2,7 +2,7 @@
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh, Quaternion, Matrix, Vector3 } from '@babylonjs/core';
+import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh, Matrix } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
@@ -28,11 +28,14 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
 
   public accordions: Record<string, boolean> = {
     transform: true,
-    world: false,
     projection: true,
     visuals: true,
     interaction: false
   };
+
+  // 🔥 NUEVO ESTADO DE PRESENTACIÓN (UI Toggle)
+  public transformViewMode: 'LOCAL' | 'WORLD' = 'LOCAL';
+  private lastUid = '';
 
   localPosX = 0; localPosY = 0; localPosZ = 0;
   localRotX = 0; localRotY = 0; localRotZ = 0;
@@ -40,6 +43,7 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
 
   worldPosX = 0; worldPosY = 0; worldPosZ = 0;
   worldRotX = 0; worldRotY = 0; worldRotZ = 0;
+  worldEscX = 1; worldEscY = 1; worldEscZ = 1; // 🔥 NUEVO SCALE WORLD
 
   mostrarSeccionColor = false;
   esImagePlane = false;
@@ -111,6 +115,14 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (!entity) return;
 
+    // 🔥 SMART TOGGLE: Si cambiamos a una luz, force WORLD. Si no, conservar elección.
+    if (this.lastUid !== entity.uid) {
+        this.lastUid = entity.uid;
+        if (entity.type.startsWith('light_')) {
+            this.transformViewMode = 'WORLD';
+        }
+    }
+
     this.localPosX = this.formatNum(entity.transform.position.x);
     this.localPosY = this.formatNum(entity.transform.position.y);
     this.localPosZ = this.formatNum(entity.transform.position.z);
@@ -136,23 +148,25 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.localEscY = this.formatNum(entity.transform.scale.y);
     this.localEscZ = this.formatNum(entity.transform.scale.z);
 
+    // Cálculos Mundiales (World) absolutos
     this.objeto.computeWorldMatrix(true);
-    const absPos = this.objeto.getAbsolutePosition();
+    const absScale = new Vector3();
+    const absRot = new Quaternion();
+    const absPos = new Vector3();
+    this.objeto.getWorldMatrix().decompose(absScale, absRot, absPos);
+
     this.worldPosX = this.formatNum(absPos.x);
     this.worldPosY = this.formatNum(absPos.y);
     this.worldPosZ = this.formatNum(absPos.z);
     
-    let absRot: Vector3;
-    if (this.objeto.absoluteRotationQuaternion) {
-        absRot = this.objeto.absoluteRotationQuaternion.toEulerAngles();
-    } else {
-        const rotMat = this.objeto.getWorldMatrix().getRotationMatrix();
-        const q = Quaternion.FromRotationMatrix(rotMat);
-        absRot = q.toEulerAngles();
-    }
-    this.worldRotX = this.formatNum(absRot.x * (180 / Math.PI));
-    this.worldRotY = this.formatNum(absRot.y * (180 / Math.PI));
-    this.worldRotZ = this.formatNum(absRot.z * (180 / Math.PI));
+    const euler = absRot.toEulerAngles();
+    this.worldRotX = this.formatNum(euler.x * (180 / Math.PI));
+    this.worldRotY = this.formatNum(euler.y * (180 / Math.PI));
+    this.worldRotZ = this.formatNum(euler.z * (180 / Math.PI));
+
+    this.worldEscX = this.formatNum(absScale.x);
+    this.worldEscY = this.formatNum(absScale.y);
+    this.worldEscZ = this.formatNum(absScale.z);
 
     const hasAsset = !!entity.visual.assetId || !!entity.visual.path;
     this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane', 'image_plane', 'model'].includes(entity.type) || (entity.type.startsWith('light_') && hasAsset);
@@ -258,6 +272,31 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
           this.localRotZ = this.worldRotZ;
       }
       this.aplicarRotacion();
+  }
+
+  // 🔥 NUEVO MÉTODO PARA CALCULAR LA ESCALA MUNDIAL
+  aplicarWorldEscala() {
+      if (!this.objeto) return;
+      const worldScale = new Vector3(this.worldEscX, this.worldEscY, this.worldEscZ);
+      
+      if (this.objeto.parent) {
+          this.objeto.parent.computeWorldMatrix(true);
+          const parentScale = new Vector3();
+          this.objeto.parent.getWorldMatrix().decompose(parentScale);
+          
+          const safeX = parentScale.x !== 0 ? parentScale.x : 1;
+          const safeY = parentScale.y !== 0 ? parentScale.y : 1;
+          const safeZ = parentScale.z !== 0 ? parentScale.z : 1;
+
+          this.localEscX = this.formatNum(worldScale.x / safeX);
+          this.localEscY = this.formatNum(worldScale.y / safeY);
+          this.localEscZ = this.formatNum(worldScale.z / safeZ);
+      } else {
+          this.localEscX = this.worldEscX;
+          this.localEscY = this.worldEscY;
+          this.localEscZ = this.worldEscZ;
+      }
+      this.aplicarEscala();
   }
 
   aplicarProyeccion() {

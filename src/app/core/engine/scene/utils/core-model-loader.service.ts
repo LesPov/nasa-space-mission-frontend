@@ -312,13 +312,14 @@ export class CoreModelLoaderService {
         lightVisualMat.fogEnabled = false;
         visualSphere.material = lightVisualMat;
 
-        Tags.AddTagsTo(visualSphere, "light_visual editor_only");
+        // 🔥 FASE 5: Se remueve "editor_only" para delegar visibilidad selectiva al HighlightService
+        Tags.AddTagsTo(visualSphere, "light_visual"); 
         visualSphere.metadata = { entityUid: lightUid, isLightVisual: true };
         lightNode.metadata = { entityUid: lightUid, isLightRoot: true };
 
-        const isEditorMode = this.gameContext.mode() === GameMode.EDITOR || this.gameContext.mode() === GameMode.EDITING_IN_GAME;
-        visualSphere.isVisible = isEditorMode;
-        visualSphere.setEnabled(isEditorMode);
+        // 🔥 FASE 5: Se inicializa oculta. HighlightService la encenderá.
+        visualSphere.isVisible = false;
+        visualSphere.setEnabled(true);
 
         lightEntity.light = new LightComponent();
         lightEntity.light.lightColor = lightColorHex;
@@ -327,7 +328,7 @@ export class CoreModelLoaderService {
         lightEntity.light.range = obj.properties?.range ?? 50;
         lightEntity.light.angle = obj.properties?.angle ?? 45;
         lightEntity.light.enabled = obj.properties?.isEnabled ?? true;
-        lightEntity.light.castShadows = obj.properties?.castShadows ?? true;
+        lightEntity.light.castShadows = (obj.properties as any)?.castShadows ?? true;
         
         if (obj.properties?.attachedNodeName) {
             const boneNode = rootNode.getDescendants(false).find(n => n.name === obj.properties!.attachedNodeName);

@@ -1,4 +1,5 @@
 
+
 import { inject } from '@angular/core';
 import { GameEntity, PartOverridesComponent } from '../../../entities/game.entity';
 import { SceneObjectDto, TriggerDto, SceneObjectPropertiesDto } from '../../../models/api-dto.model';
@@ -38,6 +39,9 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
     entity.visual.brilloIntensidad = this.utilsSvc.normalizarNumero(props.brilloIntensidad, 1.0);
     entity.visual.mostrarBorde = props.mostrarBorde ?? (entity.type !== 'plane'); 
     
+    // 🔥 NUEVO FASE CULLING
+    entity.visual.disableCulling = props.disableCulling ?? false;
+
     entity.visual.path = props.path || obj.asset?.path || (obj as any).path || props.videoUrl || props.imageUrl || '';
     entity.visual.assetId = obj.assetId || null;
     
@@ -93,6 +97,7 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
       esEmisivo: entity.visual.esEmisivo,
       mostrarBorde: entity.visual.mostrarBorde,
       brilloIntensidad: entity.visual.brilloIntensidad,
+      disableCulling: entity.visual.disableCulling, // 🔥 FASE CULLING
       internalScale: entity.visual.internalScale,
       partOverrides: entity.partOverrides?.overrides, 
       mensaje: entity.interaction.mensaje,

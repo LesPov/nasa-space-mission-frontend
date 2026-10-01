@@ -1,3 +1,4 @@
+
 export type AnimBinding = string | string[] | null;
 
 export interface GameCondition {
@@ -148,6 +149,13 @@ export interface PlayerFogConfig {
   offsetXTPS?: number; offsetYTPS?: number; offsetZTPS?: number;
 }
 
+// 🔥 SEPARACIÓN ARQUITECTÓNICA: Culling Independiente de la Niebla
+export interface PlayerCullingConfig {
+  enabled: boolean;
+  cullDistance: number;
+  fadeMargin: number;
+}
+
 export interface PlayerRuntimeConfig {
   movement: PlayerMovementConfig;
   jump: PlayerJumpConfig;
@@ -159,6 +167,7 @@ export interface PlayerRuntimeConfig {
   sequences: PlayerClipSequence[];
   debug: PlayerDebugConfig;
   fog: PlayerFogConfig;
+  culling: PlayerCullingConfig; // 🔥 Nuevo nodo de configuración
 }
 
 export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
@@ -191,7 +200,9 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
     levelsTPS: structuredClone(defaultFogLevels),
     levelsFpsBW: structuredClone(defaultFogLevels),
     levelsTpsBW: structuredClone(defaultFogLevels)
-  }
+  },
+  // 🔥 Distancia de render global por defecto
+  culling: { enabled: true, cullDistance: 150, fadeMargin: 30 }
 };
 
 export function cloneDefaultPlayerConfig(): PlayerRuntimeConfig {
@@ -216,7 +227,9 @@ export function mergePlayerConfig(partial?: Partial<PlayerRuntimeConfig> | null)
     animationEnabled: { ...base.animationEnabled, ...(partial.animationEnabled || {}) },
     sequences: Array.isArray(partial.sequences) ? structuredClone(partial.sequences) : [],
     debug: { ...base.debug, ...(partial.debug || {}) },
-    fog: { ...base.fog, ...(partial.fog || {}) }
+    fog: { ...base.fog, ...(partial.fog || {}) },
+    // 🔥 Aseguramos la existencia e inmutabilidad del nuevo nodo
+    culling: { ...base.culling, ...(partial.culling || {}) }
   };
 }
 

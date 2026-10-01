@@ -1,4 +1,5 @@
 
+
 <!-- 1. TRANSFORMACIÓN ESPACIAL UNIFICADA -->
 <div class="accordion-section" [class.expanded]="accordions['transform']">
   <div class="accordion-header" (click)="toggleAcordeon('transform')">
@@ -133,6 +134,12 @@
         <input type="checkbox" id="chkIgnoraNiebla" [(ngModel)]="objIgnoraNiebla" (ngModelChange)="aplicarVisuales()">
         <label for="chkIgnoraNiebla" style="color: #a78bfa;">👁️ Ignora Niebla</label>
       </div>
+    </div>
+
+    <!-- 🔥 NUEVO FASE CULLING -->
+    <div class="checkbox-modern" style="margin-top: 8px;">
+      <input type="checkbox" id="chkDisableCulling" [(ngModel)]="objDisableCulling" (ngModelChange)="aplicarVisuales()">
+      <label for="chkDisableCulling" style="color: #fbbf24;">👁️ Ignorar Culling (Siempre Visible)</label>
     </div>
   </div>
 </div>

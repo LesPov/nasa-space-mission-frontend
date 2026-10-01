@@ -177,6 +177,32 @@
   </div>
 </div>
 
+<div class="accordion-section" [class.expanded]="acordeonesPlayer['culling']">
+  <div class="accordion-header" (click)="toggleAcordeon('culling')">
+    <h4><span class="icon">👁️</span> Optimización (Culling y Fade)</h4>
+    <span class="chevron">▶</span>
+  </div>
+  <div class="accordion-content" *ngIf="acordeonesPlayer['culling']">
+    <div class="checkbox-modern fog-enable-box" style="border-color: #facc15; background: rgba(250, 204, 21, 0.1);">
+      <input type="checkbox" id="chkCulling" [ngModel]="playerConfig.culling.enabled" (ngModelChange)="playerConfig.culling.enabled = $event; aplicarPlayerConfig()" />
+      <label for="chkCulling" style="color: #facc15;">Activar Culling y Fade por Distancia</label>
+    </div>
+    <ng-container *ngIf="playerConfig.culling.enabled">
+       <div class="grid-2">
+         <div class="field">
+            <label>Distancia Corte Final (m)</label>
+            <input type="number" step="10" min="10" [ngModel]="playerConfig.culling.cullDistance" (ngModelChange)="playerConfig.culling.cullDistance = $event; aplicarPlayerConfig()" />
+         </div>
+         <div class="field">
+            <label>Margen de Fade Out (m)</label>
+            <input type="number" step="5" min="0" [ngModel]="playerConfig.culling.fadeMargin" (ngModelChange)="playerConfig.culling.fadeMargin = $event; aplicarPlayerConfig()" />
+         </div>
+       </div>
+       <p class="help-text">Ejemplo: Si el corte es 150m y el margen es 30m, el objeto empezará a desvanecerse a los 120m y desaparecerá completamente a los 150m.</p>
+    </ng-container>
+  </div>
+</div>
+
 <div class="accordion-section" [class.expanded]="acordeonesPlayer['camera']">
   <div class="accordion-header" (click)="toggleAcordeon('camera')">
     <h4><span class="icon">🎥</span> Cámara</h4>

@@ -28,7 +28,7 @@ export class PropPlayer implements OnInit {
   private entityManager = inject(EntityManagerService);
 
   acordeonesPlayer: Record<string, boolean> = {
-    movement: true, jump: false, fog: true, camera: false, selection: false, physics: false, animEnabled: false
+    movement: true, jump: false, fog: false, camera: false, selection: false, physics: false, animEnabled: false, culling: true
   };
 
   playerConfig: PlayerRuntimeConfig = cloneDefaultPlayerConfig();

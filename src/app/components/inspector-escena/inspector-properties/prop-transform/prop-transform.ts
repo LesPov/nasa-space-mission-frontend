@@ -1,4 +1,5 @@
 
+
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -61,6 +62,7 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   
   objMostrarBorde = true; 
   objEsSeleccionable = true; 
+  objDisableCulling = false; // 🔥 NUEVO FASE CULLING
 
   objInteractDistanceFPS = 3.0;
   objInteractDistanceTPS = 5.0;
@@ -189,6 +191,9 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     
     this.objMostrarBorde = entity.visual.mostrarBorde ?? (entity.type !== 'plane'); 
     this.objEsSeleccionable = entity.visual.isSelectable ?? true; 
+    
+    // 🔥 NUEVO FASE CULLING
+    this.objDisableCulling = entity.visual.disableCulling ?? false;
 
     if (entity.media) {
       this.objProfundidadProyeccion = entity.media.profundidadProyeccion ?? 0.08;
@@ -313,7 +318,8 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
       color: this.objColor, colorBW: this.objColorBW, 
       ambientColor: this.objAmbientColor, ambientColorBW: this.objAmbientColorBW,
       ignoraNiebla: this.objIgnoraNiebla, esEmisivo: this.objEsEmisivo, brilloIntensidad: this.objBrilloIntensidad,
-      mostrarBorde: this.objMostrarBorde, isSelectable: this.objEsSeleccionable 
+      mostrarBorde: this.objMostrarBorde, isSelectable: this.objEsSeleccionable,
+      disableCulling: this.objDisableCulling // 🔥 FASE CULLING
     });
   }
 

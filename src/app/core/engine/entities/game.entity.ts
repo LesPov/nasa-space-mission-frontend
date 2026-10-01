@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/entities/game.entity.ts
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
@@ -42,7 +43,9 @@ export class VisualComponent {
     public mostrarBorde: boolean = true,
     public internalScale?: number,
     public ambientColor = '#ffffff',
-    public ambientColorBW = '#ffffff'
+    public ambientColorBW = '#ffffff',
+    // 🔥 NUEVO FASE CULLING: Exclusión per-objeto
+    public disableCulling = false
   ) {}
 }
 
@@ -168,6 +171,11 @@ export class GameEntity {
   public orderIndex: number = 0;
   public isPersistent: boolean = false;
   
+  // 🔥 ESTADO DE OPTIMIZACIÓN RUNTIME (Spatial Culling / Streaming)
+  public isCulled: boolean = false;
+  public runtimeVisibilityTarget: number = 1.0;
+  public currentRuntimeVisibility: number = 1.0;
+
   public transformSpace: 'LOCAL' | 'WORLD' | 'ATTACHED' = 'LOCAL';
   public isLegacyLocalTransform: boolean = false;
 

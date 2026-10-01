@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -29,6 +30,7 @@ export interface VisualConfig {
   brilloIntensidad: number;
   mostrarBorde?: boolean;
   isSelectable?: boolean;
+  disableCulling?: boolean; // 🔥 FASE CULLING
 }
 
 export interface InteraccionConfig {
@@ -157,6 +159,11 @@ export class TransformMutatorService {
     entity.visual.ignoraNiebla = config.ignoraNiebla;
     entity.visual.esEmisivo = config.esEmisivo;
     entity.visual.brilloIntensidad = this.clampBrightness(config.brilloIntensidad);
+    
+    // 🔥 FASE CULLING
+    if (config.disableCulling !== undefined) {
+       entity.visual.disableCulling = config.disableCulling;
+    }
     
     if (config.mostrarBorde !== undefined) {
        entity.visual.mostrarBorde = config.mostrarBorde;

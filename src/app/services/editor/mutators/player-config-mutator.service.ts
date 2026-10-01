@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -12,6 +13,13 @@ export class PlayerConfigMutatorService {
 
   public aplicarPlayerConfig(objeto: AbstractMesh, playerConfig: PlayerRuntimeConfig, selectionRange: SelectionRangeDto): void {
     this.sincronizarFogCompat(playerConfig);
+    
+    // 🔥 Sincronizar Culling Fallback
+    const culling: any = playerConfig.culling || {};
+    culling.enabled = culling.enabled ?? true;
+    culling.cullDistance = this.normalizarNumero(culling.cullDistance, 150);
+    culling.fadeMargin = this.normalizarNumero(culling.fadeMargin, 30);
+    playerConfig.culling = culling;
 
     const entity = this.entityManager.getEntityByMesh(objeto);
     if (entity) {

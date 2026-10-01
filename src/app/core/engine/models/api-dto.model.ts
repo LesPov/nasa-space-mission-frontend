@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/models/api-dto.model.ts
 import { VisualMode } from '../world/world-settings.model';
 import { PlayerRuntimeConfig } from './player-config.model';
@@ -48,6 +49,9 @@ export interface SceneObjectPropertiesDto {
   lightColor?: string; lightColorBW?: string; intensity?: number; renderIntensity?: number; range?: number; angle?: number;
   attachedNodePath?: string; attachedNodeName?: string;
   
+  // 🔥 NUEVO FASE CULLING: Exclusión per-objeto
+  disableCulling?: boolean;
+
   // --- LIGHT CONTAINMENT PROPERTIES ---
   containmentMode?: 'GLOBAL' | 'INTERIOR' | 'EXTERIOR';
   containerEntityUid?: string;

@@ -1,3 +1,4 @@
+
 import { VisualMode } from '../world/world-settings.model';
 import { PlayerRuntimeConfig } from './player-config.model';
 import { CinematicCameraDefinition } from './cinematic-camera.model';
@@ -19,7 +20,6 @@ export interface AutoAnimDto { enabled: boolean; type: string; axis: string; amo
 export interface GameConditionDto { type: string; key: string; value?: string | number | boolean; scope?: string; }
 export interface GameStateMutationDto { type: string; key: string; value?: string | number | boolean; scope?: string; }
 
-// 🔥 RESTAURADO: Modelo vital para la carga de roles de episodios
 export interface NarrativeRoleDto {
   id?: number;
   episodeId?: number;
@@ -44,7 +44,6 @@ export interface SceneObjectPropertiesDto {
   path?: string; videoUrl?: string; imageUrl?: string; profundidadProyeccion?: number; anguloProyeccion?: number; proyeccionAncho?: number;
   proyeccionAlto?: number; proyeccionRepeticiones?: number; proyeccionEspaciado?: number; proyeccionEje?: string; fadeDistance?: number;
   lightColor?: string; lightColorBW?: string; intensity?: number; renderIntensity?: number; range?: number; angle?: number;
-  lightPosX?: number; lightPosY?: number; lightPosZ?: number; lightRotX?: number; lightRotY?: number; lightRotZ?: number;
   attachedNodePath?: string; attachedNodeName?: string; triggerShape?: string; isComposite?: boolean; seqEntrada?: string;
   timeEntrada?: number; videoEntrada?: string; mensajeSalida?: string; soundUrlSalida?: string; seqSalida?: string; timeSalida?: number;
   videoSalida?: string; condition?: string; actionType?: string; targetSceneId?: number | null; gameConditions?: GameConditionDto[];
@@ -57,7 +56,7 @@ export interface SceneObjectPropertiesDto {
   audioLoopNorm?: boolean; audioVolumeNorm?: number; audioMaxDistNorm?: number; audioFadeInNorm?: number;
   audioProximityNorm?: boolean; audioSpatialNorm?: boolean;
   prefabHierarchy?: SceneObjectDto[]; 
-  partOverrides?: Record<string, any>; // 🔥 Agregado soporte de overrides de partes internas
+  partOverrides?: Record<string, any>; 
 }
 
 export interface SceneObjectDto {

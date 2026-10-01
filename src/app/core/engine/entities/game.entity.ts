@@ -61,14 +61,11 @@ export class InteractionComponent {
 export class LightComponent {
   constructor(
     public lightColor = '#ffffff', public lightColorBW = '#ffffff', public intensity = 1.0, 
-    public range = 50, public angle = 60, public lightPosX = 0, public lightPosY = 0, 
-    public lightPosZ = 0, public attachedNodePath = '', public attachedNodeName = '',
+    public range = 50, public angle = 60,
+    public attachedNodePath = '', public attachedNodeName = '',
     public renderIntensity?: number,
     public enabled: boolean = true,
-    public castShadows: boolean = true,
-    public lightRotX: number = 0,
-    public lightRotY: number = 0,
-    public lightRotZ: number = 0
+    public castShadows: boolean = true
   ) {}
 }
 

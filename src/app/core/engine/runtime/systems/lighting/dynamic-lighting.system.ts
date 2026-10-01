@@ -98,12 +98,12 @@ export class DynamicLightingSystem implements IUpdatable {
       targetParent.computeWorldMatrix(true);
       const worldMatrix = targetParent.getWorldMatrix();
 
-      DynamicLightingSystem._localOffset.set(entity.light.lightPosX || 0, entity.light.lightPosY || 0, entity.light.lightPosZ || 0);
+      DynamicLightingSystem._localOffset.set(entity.transform.position.x, entity.transform.position.y, entity.transform.position.z);
       Vector3.TransformCoordinatesToRef(DynamicLightingSystem._localOffset, worldMatrix, outPos);
 
-      const rx = (entity.light.lightRotX || 0) * Math.PI / 180;
-      const ry = (entity.light.lightRotY || 0) * Math.PI / 180;
-      const rz = (entity.light.lightRotZ || 0) * Math.PI / 180;
+      const rx = entity.transform.rotation.x;
+      const ry = entity.transform.rotation.y;
+      const rz = entity.transform.rotation.z;
 
       Matrix.RotationYawPitchRollToRef(ry, rx, rz, DynamicLightingSystem._localRotMatrix);
       Vector3.TransformNormalToRef(DynamicLightingSystem._downDir, DynamicLightingSystem._localRotMatrix, DynamicLightingSystem._localDir);

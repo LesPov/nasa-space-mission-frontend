@@ -266,19 +266,19 @@ export class CoreModelLoaderService {
 
         const lightNode = new Mesh(lightName, scene);
         lightNode.parent = rootNode;
-        lightNode.position.set(
-            obj.properties?.lightPosX ?? 0,
-            obj.properties?.lightPosY ?? (finalSizeY > 0 ? finalSizeY : 1.5),
-            obj.properties?.lightPosZ ?? 0
-        );
+        
+        // Coordenadas locales en base al TransformComponent original importado
+        const lightPosX = obj.position?.x ?? 0;
+        const lightPosY = obj.position?.y ?? (finalSizeY > 0 ? finalSizeY : 1.5);
+        const lightPosZ = obj.position?.z ?? 0;
+        
+        lightNode.position.set(lightPosX, lightPosY, lightPosZ);
 
-        if (obj.properties?.lightRotX !== undefined) {
-            lightNode.rotation.set(
-                (obj.properties.lightRotX || 0) * Math.PI / 180,
-                (obj.properties.lightRotY || 0) * Math.PI / 180,
-                (obj.properties.lightRotZ || 0) * Math.PI / 180
-            );
-        }
+        const lightRotX = obj.rotation?.x ?? 0;
+        const lightRotY = obj.rotation?.y ?? 0;
+        const lightRotZ = obj.rotation?.z ?? 0;
+
+        lightNode.rotation.set(lightRotX, lightRotY, lightRotZ);
 
         Tags.AddTagsTo(lightNode, "light_entity");
 
@@ -327,9 +327,10 @@ export class CoreModelLoaderService {
         lightEntity.light.angle = obj.properties?.angle ?? 45;
         lightEntity.light.enabled = obj.properties?.isEnabled ?? true;
         lightEntity.light.castShadows = obj.properties?.castShadows ?? true;
-        lightEntity.light.lightPosX = lightNode.position.x;
-        lightEntity.light.lightPosY = lightNode.position.y;
-        lightEntity.light.lightPosZ = lightNode.position.z;
+        
+        // Mapeo seguro de transformación local
+        lightEntity.transform.position = { x: lightNode.position.x, y: lightNode.position.y, z: lightNode.position.z };
+        lightEntity.transform.rotation = { x: lightNode.rotation.x, y: lightNode.rotation.y, z: lightNode.rotation.z };
 
         lightEntity.bindView(lightNode);
         this.entityManager.addEntity(lightEntity);

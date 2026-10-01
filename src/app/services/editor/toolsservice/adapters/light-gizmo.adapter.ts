@@ -39,9 +39,9 @@ export class LightGizmoAdapter implements IGizmoTargetAdapter {
       const invMat = Matrix.Invert(targetParent.getWorldMatrix());
       const localPos = Vector3.TransformCoordinates(debugSvc.debugLightBox.getAbsolutePosition(), invMat);
       
-      entity.light.lightPosX = localPos.x;
-      entity.light.lightPosY = localPos.y;
-      entity.light.lightPosZ = localPos.z;
+      entity.transform.position.x = localPos.x;
+      entity.transform.position.y = localPos.y;
+      entity.transform.position.z = localPos.z;
       entity.syncToView();
     }
   }

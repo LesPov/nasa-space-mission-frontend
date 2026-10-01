@@ -25,14 +25,17 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.range = props.range ?? 50;
       entity.light.angle = props.angle ?? 60;
       
-      entity.light.lightPosX = props.lightPosX ?? 0;
-      entity.light.lightPosY = props.lightPosY ?? 0;
-      entity.light.lightPosZ = props.lightPosZ ?? 0;
-      
-      entity.light.lightRotX = props.lightRotX ?? 0;
-      entity.light.lightRotY = props.lightRotY ?? 0;
-      entity.light.lightRotZ = props.lightRotZ ?? 0;
-      
+      // --- Retrocompatibilidad temporal para mapas antiguos que guardaron la posición de la luz en properties ---
+      if ((props as any).lightPosX !== undefined) {
+         entity.transform.position.x = (props as any).lightPosX;
+         entity.transform.position.y = (props as any).lightPosY ?? 0;
+         entity.transform.position.z = (props as any).lightPosZ ?? 0;
+         entity.transform.rotation.x = ((props as any).lightRotX ?? 0) * Math.PI / 180;
+         entity.transform.rotation.y = ((props as any).lightRotY ?? 0) * Math.PI / 180;
+         entity.transform.rotation.z = ((props as any).lightRotZ ?? 0) * Math.PI / 180;
+         entity.transform.rotationQuaternion = null;
+      }
+
       entity.light.attachedNodePath = props.attachedNodePath || '';
       entity.light.attachedNodeName = props.attachedNodeName || '';
       entity.light.renderIntensity = entity.light.intensity;

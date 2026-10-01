@@ -17,15 +17,12 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
 
   getAttachTarget(debugSvc: ToolsDebugService, pivotNode: AbstractMesh | null, mesh: AbstractMesh | null, entity: GameEntity | null): AbstractMesh | null {
     if (mesh && pivotNode && entity) {
-      // Si es una entidad de luz, el gizmo se ancla directamente sobre su posición absoluta
+      mesh.computeWorldMatrix(true);
+      const worldMatrix = mesh.getWorldMatrix();
+      
       if (entity.type.startsWith('light_') || (mesh as any).metadata?.isLightVisual) {
-        mesh.computeWorldMatrix(true);
         pivotNode.position.copyFrom(mesh.getAbsolutePosition());
-        if (mesh.rotationQuaternion) {
-          pivotNode.rotationQuaternion = mesh.rotationQuaternion.clone();
-        } else {
-          pivotNode.rotation = mesh.rotation.clone();
-        }
+        pivotNode.rotationQuaternion = Quaternion.FromRotationMatrix(worldMatrix.getRotationMatrix());
         pivotNode.scaling.set(1, 1, 1);
         this.compensarEscalaVisual(mesh);
         return pivotNode;
@@ -34,11 +31,7 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
       entity.getVisualCenterAbsoluteToRef(BaseEntityGizmoAdapter._tempWorldCenter);
       pivotNode.position.copyFrom(BaseEntityGizmoAdapter._tempWorldCenter);
       
-      if (mesh.rotationQuaternion) {
-        pivotNode.rotationQuaternion = mesh.rotationQuaternion.clone();
-      } else {
-        pivotNode.rotation = mesh.rotation.clone();
-      }
+      pivotNode.rotationQuaternion = Quaternion.FromRotationMatrix(worldMatrix.getRotationMatrix());
       pivotNode.scaling.copyFrom(mesh.scaling);
       return pivotNode;
     }
@@ -72,7 +65,6 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
   onGizmoDragged(mesh: AbstractMesh, pivotNode: AbstractMesh | null, entity: GameEntity | null): void {
     if (!pivotNode || !entity) return;
 
-    // Si es una entidad de luz (anclada o libre):
     if (entity.type.startsWith('light_') || (mesh as any).metadata?.isLightVisual) {
       if (mesh.parent) {
         mesh.parent.computeWorldMatrix(true);
@@ -84,9 +76,15 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
 
       if (pivotNode.rotationQuaternion) {
         if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
-        mesh.rotationQuaternion.copyFrom(pivotNode.rotationQuaternion);
-      } else {
-        mesh.rotation.copyFrom(pivotNode.rotation);
+        
+        if (mesh.parent) {
+            const parentRotMat = mesh.parent.getWorldMatrix().getRotationMatrix();
+            const parentQuat = Quaternion.FromRotationMatrix(parentRotMat);
+            parentQuat.invertInPlace();
+            mesh.rotationQuaternion = parentQuat.multiply(pivotNode.rotationQuaternion);
+        } else {
+            mesh.rotationQuaternion.copyFrom(pivotNode.rotationQuaternion);
+        }
       }
 
       this.compensarEscalaVisual(mesh);
@@ -95,14 +93,21 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
 
     if (pivotNode.rotationQuaternion) {
       if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
-      mesh.rotationQuaternion.copyFrom(pivotNode.rotationQuaternion);
-    } else {
-      mesh.rotation.copyFrom(pivotNode.rotation);
+      
+      if (mesh.parent) {
+          const parentRotMat = mesh.parent.getWorldMatrix().getRotationMatrix();
+          const parentQuat = Quaternion.FromRotationMatrix(parentRotMat);
+          parentQuat.invertInPlace();
+          mesh.rotationQuaternion = parentQuat.multiply(pivotNode.rotationQuaternion);
+      } else {
+          mesh.rotationQuaternion.copyFrom(pivotNode.rotationQuaternion);
+      }
     }
+    
+    // Scale handled entirely local for simplicity and stability on skewed hierarchy
     mesh.scaling.copyFrom(pivotNode.scaling);
 
     entity.getVisualCenterLocalToRef(BaseEntityGizmoAdapter._tempLocal);
-
     BaseEntityGizmoAdapter._tempLocal.x *= mesh.scaling.x;
     BaseEntityGizmoAdapter._tempLocal.y *= mesh.scaling.y;
     BaseEntityGizmoAdapter._tempLocal.z *= mesh.scaling.z;
@@ -116,7 +121,16 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
 
     Vector3.TransformCoordinatesToRef(BaseEntityGizmoAdapter._tempLocal, rotMatrix, BaseEntityGizmoAdapter._tempWorldOffset);
 
-    mesh.position.copyFrom(pivotNode.position).subtractInPlace(BaseEntityGizmoAdapter._tempWorldOffset);
+    // Calc local position dynamically
+    const targetWorldPos = pivotNode.position.subtract(BaseEntityGizmoAdapter._tempWorldOffset);
+
+    if (mesh.parent) {
+      mesh.parent.computeWorldMatrix(true);
+      const invParent = Matrix.Invert(mesh.parent.getWorldMatrix());
+      mesh.position = Vector3.TransformCoordinates(targetWorldPos, invParent);
+    } else {
+      mesh.position.copyFrom(targetWorldPos);
+    }
 
     mesh.getChildMeshes().forEach(m => {
       if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) {
@@ -137,7 +151,6 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
       const safeY = Math.max(0.0001, Math.abs(parentScale.y * mesh.scaling.y));
       const safeZ = Math.max(0.0001, Math.abs(parentScale.z * mesh.scaling.z));
 
-      // Mantener tamaño constante de 0.4m mundiales sin importar la escala diminuta del padre
       visual.scaling.set(0.4 / safeX, 0.4 / safeY, 0.4 / safeZ);
       visual.renderingGroupId = 1;
     } else if (visual) {
@@ -152,15 +165,6 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
   syncEntity(mesh: AbstractMesh, entity: GameEntity, debugSvc: ToolsDebugService, state: EditorStateService, motor3d: ISceneAccess): void {
     entity.syncTransformFromView();
     entity.syncToView();
-
-    if (entity.light) {
-      entity.light.lightPosX = entity.transform.position.x;
-      entity.light.lightPosY = entity.transform.position.y;
-      entity.light.lightPosZ = entity.transform.position.z;
-      entity.light.lightRotX = entity.transform.rotation.x * (180 / Math.PI);
-      entity.light.lightRotY = entity.transform.rotation.y * (180 / Math.PI);
-      entity.light.lightRotZ = entity.transform.rotation.z * (180 / Math.PI);
-    }
     this.compensarEscalaVisual(mesh);
   }
 }

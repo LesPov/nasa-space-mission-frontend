@@ -58,7 +58,6 @@ export class SceneObjectBuilderService {
         sizeZ = 1;
     }
 
-    // Resolución segura del UID del padre desde EntityManager
     let resolvedParentUid: string | null = null;
     if (parentNode) {
       const parentEntity = this.entityManager.getEntityByMesh(parentNode);
@@ -90,9 +89,6 @@ export class SceneObjectBuilderService {
         mockDbObject.properties!.intensity = 5;
         mockDbObject.properties!.lightColor = colorHex;
         mockDbObject.properties!.lightColorBW = colorHex;
-        mockDbObject.properties!.lightPosX = mockDbObject.position.x;
-        mockDbObject.properties!.lightPosY = mockDbObject.position.y;
-        mockDbObject.properties!.lightPosZ = mockDbObject.position.z;
         mockDbObject.properties!.angle = 45;
         mockDbObject.properties!.isEnabled = true;
         (mockDbObject.properties as any).castShadows = true;
@@ -112,7 +108,6 @@ export class SceneObjectBuilderService {
       if (parentNode) {
          newMesh.setParent(parentNode);
          
-         // Compensar escala visual de la esfera frente a la escala heredada del modelo padre
          if (isLight) {
             parentNode.computeWorldMatrix(true);
             const parentScale = new Vector3();

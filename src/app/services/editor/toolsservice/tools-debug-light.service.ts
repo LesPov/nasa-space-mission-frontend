@@ -10,7 +10,6 @@ export class ToolsDebugLightService {
   private attachedMesh: AbstractMesh | null = null;
   private currentEntity: GameEntity | null = null;
 
-  // Optimización para cálculos en tiempo real sin GC (Garbage Collector)
   private static _localOffset = Vector3.Zero();
   private static _localDir = Vector3.Zero();
   private static _downDir = new Vector3(0, -1, 0);
@@ -52,7 +51,7 @@ export class ToolsDebugLightService {
         this.debugLightDir = null;
     }
 
-    this.sync(entity.light.lightPosX || 0, entity.light.lightPosY || 0, entity.light.lightPosZ || 0, 0, 0, 0);
+    this.sync(entity.transform.position.x, entity.transform.position.y, entity.transform.position.z, 0, 0, 0);
   }
 
   public sync(offsetX: number, offsetY: number, offsetZ: number, breathX: number, breathY: number, breathZ: number): void {
@@ -72,9 +71,9 @@ export class ToolsDebugLightService {
       Vector3.TransformCoordinatesToRef(ToolsDebugLightService._localOffset, worldMatrix, this.debugLightBox.position);
       
       if (this.debugLightDir) {
-         const rx = (entity.light?.lightRotX || 0) * Math.PI / 180;
-         const ry = (entity.light?.lightRotY || 0) * Math.PI / 180;
-         const rz = (entity.light?.lightRotZ || 0) * Math.PI / 180;
+         const rx = entity.transform.rotation.x;
+         const ry = entity.transform.rotation.y;
+         const rz = entity.transform.rotation.z;
 
          Matrix.RotationYawPitchRollToRef(ry, rx, rz, ToolsDebugLightService._localRotMatrix);
          Vector3.TransformNormalToRef(ToolsDebugLightService._downDir, ToolsDebugLightService._localRotMatrix, ToolsDebugLightService._localDir);
@@ -84,7 +83,6 @@ export class ToolsDebugLightService {
          const targetPos = this.debugLightBox.position.add(worldDir);
          this.debugLightBox.lookAt(targetPos); 
          
-         // Fix cilindro originando en esfera visual apuntando a donde mira lookAt (Z)
          this.debugLightDir.rotation.x = Math.PI / 2;
          this.debugLightDir.position.z = 0.5; 
       }

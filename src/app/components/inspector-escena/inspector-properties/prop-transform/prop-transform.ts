@@ -1,7 +1,8 @@
+
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { AbstractMesh, Quaternion } from '@babylonjs/core';
+import { AbstractMesh, Quaternion, Matrix, Vector3 } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
@@ -12,7 +13,7 @@ import { EditorLiveSyncService } from '../../../../services/editor/editor-live-s
   selector: 'app-prop-transform',
   standalone: true,
   imports: [CommonModule, FormsModule],
-  templateUrl: './prop-transform.html',
+  templateUrl: './prop-transform.html', 
   styleUrls: ['./prop-transform.css'] 
 })
 export class PropTransform implements OnInit, OnDestroy, OnChanges {
@@ -27,6 +28,7 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
 
   public accordions: Record<string, boolean> = {
     transform: true,
+    world: false,
     projection: true,
     visuals: true,
     interaction: false
@@ -35,6 +37,9 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   localPosX = 0; localPosY = 0; localPosZ = 0;
   localRotX = 0; localRotY = 0; localRotZ = 0;
   localEscX = 1; localEscY = 1; localEscZ = 1;
+
+  worldPosX = 0; worldPosY = 0; worldPosZ = 0;
+  worldRotX = 0; worldRotY = 0; worldRotZ = 0;
 
   mostrarSeccionColor = false;
   esImagePlane = false;
@@ -99,11 +104,11 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (!entity) return;
 
+    // LOCAL
     this.localPosX = this.formatNum(entity.transform.position.x);
     this.localPosY = this.formatNum(entity.transform.position.y);
     this.localPosZ = this.formatNum(entity.transform.position.z);
 
-    // 🔥 Transformación a Euler Solo para Render de UI 
     if (entity.transform.rotationQuaternion) {
         const q = new Quaternion(
             entity.transform.rotationQuaternion.x, 
@@ -125,7 +130,25 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
     this.localEscY = this.formatNum(entity.transform.scale.y);
     this.localEscZ = this.formatNum(entity.transform.scale.z);
 
-    // 🔥 FIX OBLIGATORIO: Aseguramos que la sección de color se muestre si es un modelo GLB (sea rol prop, light, etc)
+    // WORLD ABSOLUTO
+    this.objeto.computeWorldMatrix(true);
+    const absPos = this.objeto.getAbsolutePosition();
+    this.worldPosX = this.formatNum(absPos.x);
+    this.worldPosY = this.formatNum(absPos.y);
+    this.worldPosZ = this.formatNum(absPos.z);
+    
+    let absRot: Vector3;
+    if (this.objeto.absoluteRotationQuaternion) {
+        absRot = this.objeto.absoluteRotationQuaternion.toEulerAngles();
+    } else {
+        const rotMat = this.objeto.getWorldMatrix().getRotationMatrix();
+        const q = Quaternion.FromRotationMatrix(rotMat);
+        absRot = q.toEulerAngles();
+    }
+    this.worldRotX = this.formatNum(absRot.x * (180 / Math.PI));
+    this.worldRotY = this.formatNum(absRot.y * (180 / Math.PI));
+    this.worldRotZ = this.formatNum(absRot.z * (180 / Math.PI));
+
     const hasAsset = !!entity.visual.assetId || !!entity.visual.path;
     this.mostrarSeccionColor = ['cube', 'sphere', 'cylinder', 'plane', 'image_plane', 'model'].includes(entity.type) || (entity.type.startsWith('light_') && hasAsset);
     
@@ -188,6 +211,48 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   aplicarEscala() {
     this.transformMutator.aplicarEscala(this.objeto, { x: this.localEscX, y: this.localEscY, z: this.localEscZ });
     this.broadcastLive();
+  }
+
+  aplicarWorldPosicion() {
+      if (!this.objeto) return;
+      const worldPos = new Vector3(this.worldPosX, this.worldPosY, this.worldPosZ);
+      if (this.objeto.parent) {
+          this.objeto.parent.computeWorldMatrix(true);
+          const invParent = Matrix.Invert(this.objeto.parent.getWorldMatrix());
+          const localPos = Vector3.TransformCoordinates(worldPos, invParent);
+          this.localPosX = this.formatNum(localPos.x);
+          this.localPosY = this.formatNum(localPos.y);
+          this.localPosZ = this.formatNum(localPos.z);
+      } else {
+          this.localPosX = this.worldPosX;
+          this.localPosY = this.worldPosY;
+          this.localPosZ = this.worldPosZ;
+      }
+      this.aplicarPosicion();
+  }
+
+  aplicarWorldRotacion() {
+      if (!this.objeto) return;
+      const worldRotEuler = new Vector3(this.worldRotX * Math.PI/180, this.worldRotY * Math.PI/180, this.worldRotZ * Math.PI/180);
+      const worldQuat = Quaternion.FromEulerAngles(worldRotEuler.x, worldRotEuler.y, worldRotEuler.z);
+      
+      if (this.objeto.parent) {
+          const parentRotMat = this.objeto.parent.getWorldMatrix().getRotationMatrix();
+          const parentQuat = Quaternion.FromRotationMatrix(parentRotMat);
+          parentQuat.invertInPlace();
+          
+          const localQuat = parentQuat.multiply(worldQuat);
+          const localEuler = localQuat.toEulerAngles();
+          
+          this.localRotX = this.formatNum(localEuler.x * 180/Math.PI);
+          this.localRotY = this.formatNum(localEuler.y * 180/Math.PI);
+          this.localRotZ = this.formatNum(localEuler.z * 180/Math.PI);
+      } else {
+          this.localRotX = this.worldRotX;
+          this.localRotY = this.worldRotY;
+          this.localRotZ = this.worldRotZ;
+      }
+      this.aplicarRotacion();
   }
 
   aplicarProyeccion() {

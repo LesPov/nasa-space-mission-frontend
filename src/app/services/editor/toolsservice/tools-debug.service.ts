@@ -141,7 +141,7 @@ export class ToolsDebugService {
     this.visualCenterSvc.sync();
     
     if (entity.type?.startsWith('light_') && entity.light) {
-       this.lightSvc.sync(entity.light.lightPosX ?? 0, entity.light.lightPosY ?? 0, entity.light.lightPosZ ?? 0, breathX, breathY, breathZ);
+      this.lightSvc.sync(entity.transform.position.x, entity.transform.position.y, entity.transform.position.z, breathX, breathY, breathZ);
     }
 
     const fogConfig = entity.playerConfig?.fog;

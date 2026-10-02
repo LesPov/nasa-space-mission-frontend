@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { EngineProfilerService, ProfilerMetrics } from './engine-profiler.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene/scene-access.token';
@@ -8,6 +9,7 @@ export interface PerformanceIncident {
   id: string;
   timestamp: string;
   mode: string;
+  contextStage: string;
   fps: number;
   minFps: number;
   frameTime: number;
@@ -87,6 +89,13 @@ export class PerformanceIncidentService {
     this.triggerIncident(30, 33.3);
     setTimeout(() => this.recoverIncident(), 2500);
   }
+  
+  private determineContextStage(): string {
+      if (this.context.isTransitioning()) return 'SCENE_LOADING_OR_TRANSITION';
+      if (this.context.isInteracting()) return 'EDITOR_INTERACTION';
+      if (this.context.isPlaying()) return 'TEST_LIVE_PLAY';
+      return 'IDLE_OR_UNKNOWN';
+  }
 
   private triggerIncident(fps: number, frameTime: number) {
     this.state = 'ACTIVE';
@@ -94,12 +103,14 @@ export class PerformanceIncidentService {
     const snap = this.profiler.getSnapshot();
     const prevSnap = this.metricsHistory.length > 0 ? this.metricsHistory[0] : undefined;
     
-    const diagnosis = this.analyzeCausality(snap, prevSnap);
+    const contextStage = this.determineContextStage();
+    const diagnosis = this.analyzeCausality(snap, prevSnap, contextStage);
     
     const incident: PerformanceIncident = {
       id: 'inc_' + Date.now(),
       timestamp: new Date().toLocaleTimeString(),
       mode: this.context.mode(),
+      contextStage: contextStage,
       fps,
       minFps: fps,
       frameTime,
@@ -117,7 +128,7 @@ export class PerformanceIncidentService {
     // Evitamos fugar RAM en memoria manteniendo máximo los 15 últimos incidentes de la sesión
     if (this.incidents.length > 15) this.incidents.pop();
 
-    console.warn(`🚨 [PerformanceIncident] ${diagnosis} | FPS: ${fps.toFixed(1)}`);
+    console.warn(`🚨 [PerformanceIncident] [${contextStage}] ${diagnosis} | FPS: ${fps.toFixed(1)}`);
 
     this.captureVisual(incident);
   }
@@ -133,8 +144,13 @@ export class PerformanceIncidentService {
     this.cooldownTimer = this.COOLDOWN_MS;
   }
 
-  private analyzeCausality(m: ProfilerMetrics, prev?: ProfilerMetrics): string {
+  private analyzeCausality(m: ProfilerMetrics, prev?: ProfilerMetrics, contextStage?: string): string {
     let text = '';
+    
+    // Si estamos en transición o carga, el spike es completamente esperado por la compilación WebGL
+    if (contextStage === 'SCENE_LOADING_OR_TRANSITION') {
+        return 'Shader Compilation / Scene Load (Spike Esperado)';
+    }
     
     // Comparación Diferencial vs. Buffer Histórico
     if (prev) {

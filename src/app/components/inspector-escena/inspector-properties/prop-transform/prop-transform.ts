@@ -5,6 +5,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh, Matrix } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
+import { auditTime } from 'rxjs/operators';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
@@ -91,8 +92,8 @@ export class PropTransform implements OnInit, OnDestroy, OnChanges {
   ngOnInit() {
     this.syncData();
     this.subs.push(
-      this.editorSvc.onGizmoDrag.subscribe(() => this.syncData()),
-      this.editorSvc.onMapChanged.subscribe(() => this.syncData())
+      this.editorSvc.onGizmoDrag.pipe(auditTime(100)).subscribe(() => this.syncData()),
+      this.editorSvc.onMapChanged.pipe(auditTime(100)).subscribe(() => this.syncData())
     );
   }
 

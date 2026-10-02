@@ -1,3 +1,4 @@
+
 import { Component, OnInit, OnDestroy, inject, NgZone, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { EngineProfilerService, ProfilerMetrics } from '../../core/engine/telemetry/engine-profiler.service';
@@ -40,7 +41,14 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
           
           // Actualización superficial para triggerear reactividad solo si cambió la longitud o hay updates
           const currentIncidents = this.incidentSvc.getIncidents();
-          this.incidents.set([...currentIncidents]);
+          
+          // 🔥 FIX: Prevenir que Angular asigne un Array nuevo cada 250ms sin justificación
+          if (this.incidents().length !== currentIncidents.length || 
+              (currentIncidents.length > 0 && this.incidents()[0]?.id !== currentIncidents[0]?.id) ||
+              (currentIncidents.length > 0 && this.incidents()[0]?.status !== currentIncidents[0]?.status)) {
+              
+              this.incidents.set([...currentIncidents]);
+          }
         }
       }, 250);
     });

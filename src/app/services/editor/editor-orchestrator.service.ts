@@ -1,3 +1,4 @@
+
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AbstractMesh, Tags } from '@babylonjs/core';
@@ -29,6 +30,7 @@ import { SnapshotReconcilerService } from './utils/snapshot-reconciler.service';
 import { CinematicPlaybackManagerService } from '../../core/engine/runtime/cinematics/cinematic-playback-manager.service';
 import { InputRouterService } from '../../core/engine/session/input-router.service';
 import { EngineSessionService } from '../../core/engine/session/engine-session.service';
+import { LiveLifecycleManagerService } from '../../core/engine/runtime/live/live-lifecycle-manager.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorOrchestratorService {
@@ -56,6 +58,7 @@ export class EditorOrchestratorService {
   private snapshotReconciler = inject(SnapshotReconcilerService);
   private playbackManager = inject(CinematicPlaybackManagerService);
   private sessionSvc = inject(EngineSessionService);
+  private liveLifecycle = inject(LiveLifecycleManagerService);
 
   public readonly editando = signal(false);
   public readonly isPlayable = signal(false);
@@ -73,7 +76,6 @@ export class EditorOrchestratorService {
   private eventBusSub!: Subscription;
   private reqPlatformSub!: Subscription;
   private mapChangeSub!: Subscription;
-  private snapshotMemoria: any = null;
 
   public initialize(): void {
     this.cargarEpisodios();
@@ -103,6 +105,7 @@ export class EditorOrchestratorService {
     ).subscribe(() => {
       try {
         const state = this.stateSvc.playState();
+        // 🔥 Solo guardamos automáticamente en BD si las modificaciones sucedieron como creador (Autoría legítima)
         if (this.gameContext.authorityProfile().canEdit && this.editando() && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
           this.guardarMapaEnBD(true); 
         }
@@ -214,7 +217,6 @@ export class EditorOrchestratorService {
           this.cargandoEscena.set(false);
           this.revisarSiEsJugable(); 
           
-          // 🔥 FIX Carga Limpia: Restaurar estado visual correcto de las luces
           this.toolsSvc.forceResetVisuals();
           
           if (!this.fpsInterval) {
@@ -285,6 +287,8 @@ export class EditorOrchestratorService {
           if (!this.sessionSvc.isSessionActive(sessionId)) return;
           setTimeout(() => {
             if (!this.sessionSvc.isSessionActive(sessionId)) return;
+            
+            // Reasumimos la simulación
             this.playModeSvc.prepararEscenaParaTest(this.gameContext.cameraView(), true);
             this.cargandoEscena.set(false);
             this.revisarSiEsJugable();
@@ -367,13 +371,14 @@ export class EditorOrchestratorService {
     this.playbackManager.stop();
     this.guardarMapaEnBD(true);
     
+    // 🔥 FASE 2: Entrar al Test Live con LiveLifecycleManagerService
+    this.liveLifecycle.captureEditorState();
+    
     if (!skipIntro) {
-      this.gameState.enterSandbox();
       if (roleUid) {
         this.gameState.setPlayerRole(roleUid);
       }
       this.transitionSvc.beginTestLive(vista);
-      this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
     }
 
     await this.playModeSvc.prepararEscenaParaTest(vista, skipIntro);
@@ -384,43 +389,14 @@ export class EditorOrchestratorService {
     
     this.inputRouter.setSuppressPointerLockEvents(true);
     this.transitionSvc.beginStopTestLive();
-    this.inputOrchestrator.unlockPointer();
 
     this.cargandoEscena.set(true);
     this.cargandoTexto.set('Restaurando Editor...');
 
-    this.runtime.stopTestSession();
-    this.gameState.exitSandbox();
+    // 🔥 FASE 2: Salir del Test Live con rollback en memoria O(1), SIN RELOAD JSON.
+    this.liveLifecycle.endLiveSession();
 
     const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
-
-    if (this.snapshotMemoria) {
-      const currentId = this.editorSvc.escenaIdActiva();
-      const snapId = this.snapshotMemoria.scene?.id || this.snapshotMemoria.id;
-      const currentSessionId = this.sessionSvc.startNewSession();
-
-      if (snapId && currentId !== snapId) {
-        this.snapshotMemoria = JSON.parse(JSON.stringify(this.editorSvc.escenaActualData()));
-      } else {
-        const cambiosEnPlay: any = this.sceneSvc.obtenerDatosParaGuardar(this.editorSvc.escenaActualData(), true); 
-        this.snapshotMemoria = this.snapshotReconciler.mergeSnapshots(this.snapshotMemoria, cambiosEnPlay);
-      }
-
-      this.editorSvc.setEscenaActualData(JSON.parse(JSON.stringify(this.snapshotMemoria)));
-
-      this.entityManager.getAllEntities().forEach(e => e.isPersistent = false);
-      this.entityManager.clear();
-
-      const scene = this.motor3dSvc.getScene();
-      const meshesToDispose = scene.meshes.filter(m => !Tags.MatchesQuery(m, "system_element") && !Tags.MatchesQuery(m, "editor_only"));
-      meshesToDispose.forEach(m => {
-        if (!m.isDisposed()) m.dispose(false, false); 
-      });
-
-      await this.sceneSvc.cargarEscenaDesdeDatos(this.snapshotMemoria);
-      this.snapshotMemoria = null;
-      if (!this.sessionSvc.isSessionActive(currentSessionId)) return;
-    }
 
     this.playModeSvc.restaurarEscenaPostTest(canSelectHidden);
     this.transitionSvc.finishStopTestLive();
@@ -431,9 +407,8 @@ export class EditorOrchestratorService {
 
     setTimeout(() => {
         this.editorSvc.onMapChanged.next();
-        // 🔥 FIX Carga Limpia 2: Restaurar visuales de luces en un frame limpio
         this.toolsSvc.forceResetVisuals();
-    }, 300);
+    }, 100);
   }
 
   public salirDelEditor(): void {

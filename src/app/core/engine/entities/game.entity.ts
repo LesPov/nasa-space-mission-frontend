@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/entities/game.entity.ts
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
@@ -167,6 +168,11 @@ export class GameEntity {
   public orderIndex: number = 0;
   public isPersistent: boolean = false;
   
+  // 🔥 FASE 2: Identificador de ciclo de vida. Si es true, la entidad nació en runtime y muere en runtime. No se guarda.
+  public isRuntimeOnly: boolean = false;
+  // 🔥 FASE 2: Memento Pattern para proteger el estado de autoría frente a mutaciones del runtime.
+  public authoringBackup: any = null;
+  
   public isCulled: boolean = false;
   public runtimeVisibilityTarget: number = 1.0;
   public currentRuntimeVisibility: number = 1.0;
@@ -212,7 +218,6 @@ export class GameEntity {
 
     if (type.startsWith('light_')) {
       this.addComponent('light', new LightComponent());
-      // 🔥 FIX ARQUITECTURA LUZ: Eliminado `this.transformSpace = 'WORLD'` para que hereden LOCAL por defecto y respeten padres.
     }
 
     if (type === 'video_plane' || type === 'image_plane') {
@@ -224,6 +229,34 @@ export class GameEntity {
       this.addComponent('triggerConfig', new TriggerConfigComponent());
       this.addComponent('triggerRuntime', new TriggerRuntimeComponent());
     }
+  }
+
+  // 🔥 FASE 2: MÉTODOS DE BACKUP Y RESTAURACIÓN DE AUTORÍA
+  public createAuthoringBackup(): void {
+    if (this.isRuntimeOnly) return; // Las entidades temporales no tienen estado de autoría
+
+    // Hacemos una copia profunda de los componentes que pueden sufrir alteraciones temporales en el juego
+    this.authoringBackup = {
+      transform: JSON.parse(JSON.stringify(this.transform)),
+      visual: JSON.parse(JSON.stringify(this.visual)),
+      light: this.light ? JSON.parse(JSON.stringify(this.light)) : null,
+      partOverrides: this.partOverrides ? JSON.parse(JSON.stringify(this.partOverrides)) : null
+    };
+  }
+
+  public restoreAuthoringBackup(): void {
+    if (!this.authoringBackup || this.isRuntimeOnly) return;
+
+    this.transform = JSON.parse(JSON.stringify(this.authoringBackup.transform));
+    this.visual = JSON.parse(JSON.stringify(this.authoringBackup.visual));
+    if (this.authoringBackup.light) {
+        this.light = JSON.parse(JSON.stringify(this.authoringBackup.light));
+    }
+    if (this.authoringBackup.partOverrides) {
+        this.partOverrides = JSON.parse(JSON.stringify(this.authoringBackup.partOverrides));
+    }
+
+    this.isDirty = true;
   }
 
   public getVisualCenterLocalToRef(result: Vector3): void {

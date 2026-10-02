@@ -1,9 +1,11 @@
 
+
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh, AnimationGroup } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
+import { auditTime } from 'rxjs/operators';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorStateService } from '../../../../services/editor/editor-state.service';
 import { EditorPreviewService } from '../../../../services/editor/editor-preview.service';
@@ -49,7 +51,7 @@ export class PropAnimation implements OnInit, OnDestroy, OnChanges {
     this.ajustarFilasSegunTipo();
     this.syncData();
     this.subs.push(
-      this.editorSvc.onMapChanged.subscribe(() => {
+      this.editorSvc.onMapChanged.pipe(auditTime(100)).subscribe(() => {
         this.ajustarFilasSegunTipo();
         this.syncData();
       })

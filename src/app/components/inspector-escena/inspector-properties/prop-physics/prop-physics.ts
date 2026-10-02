@@ -4,6 +4,7 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh, Vector3, MeshBuilder, Mesh, Tags } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
+import { auditTime } from 'rxjs/operators';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorStateService } from '../../../../services/editor/editor-state.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
@@ -34,8 +35,8 @@ export class PropPhysics implements OnInit, OnDestroy {
   ngOnInit() {
     this.syncData();
     this.subs.push(
-      this.editorSvc.onGizmoDrag.subscribe(() => this.syncData()),
-      this.editorSvc.onMapChanged.subscribe(() => this.syncData())
+      this.editorSvc.onGizmoDrag.pipe(auditTime(100)).subscribe(() => this.syncData()),
+      this.editorSvc.onMapChanged.pipe(auditTime(100)).subscribe(() => this.syncData())
     );
   }
 

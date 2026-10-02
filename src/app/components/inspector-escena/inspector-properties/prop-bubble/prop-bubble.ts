@@ -1,8 +1,10 @@
 
-import { Component, Input, OnInit, inject } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh } from '@babylonjs/core';
+import { Subscription } from 'rxjs';
+import { auditTime } from 'rxjs/operators';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 
@@ -13,18 +15,34 @@ import { EntityManagerService } from '../../../../core/engine/entities/entity-ma
   templateUrl: './prop-bubble.html',
   styleUrls: ['./prop-bubble.css']
 })
-export class PropBubble implements OnInit {
+export class PropBubble implements OnInit, OnDestroy {
   @Input() objeto!: AbstractMesh;
-  private editorSvc = EditorMapaService;
-  private entityManager = inject(EntityManagerService); 
+  private editorSvc = inject(EditorMapaService);
+  private entityManager = inject(EntityManagerService);
+  private cdr = inject(ChangeDetectorRef);
+  private subs: Subscription[] = [];
 
   respawnTime: number = 8;
 
   ngOnInit() {
+    this.syncData();
+    this.subs.push(
+      this.editorSvc.onMapChanged.pipe(auditTime(100)).subscribe(() => {
+        this.syncData();
+      })
+    );
+  }
+
+  ngOnDestroy() {
+    this.subs.forEach(s => s.unsubscribe());
+  }
+
+  syncData() {
     if (this.objeto) {
       const entity = this.entityManager.getEntityByMesh(this.objeto);
       if (entity && entity.interaction) {
         this.respawnTime = entity.interaction.respawnTime ?? 8;
+        this.cdr.detectChanges();
       }
     }
   }
@@ -37,6 +55,6 @@ export class PropBubble implements OnInit {
       entity.syncToView();
     } 
     
-    this.editorSvc.prototype.onMapChanged.next();
+    this.editorSvc.onMapChanged.next();
   }
 }

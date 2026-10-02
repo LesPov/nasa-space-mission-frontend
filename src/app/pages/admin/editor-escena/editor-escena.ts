@@ -1,4 +1,5 @@
-import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect, untracked } from '@angular/core';
+
+import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect, untracked, NgZone } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -72,6 +73,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public inputSvc = inject(PlayerInputService);
   private liveBuilderSvc = inject(LiveBuilderService);
   private transitionSvc = inject(EditorModeTransitionService);
+  private ngZone = inject(NgZone);
 
   public isInteracting = signal(false);
   private kbSub!: Subscription;
@@ -116,6 +118,10 @@ export class EditorEscena implements OnInit, OnDestroy {
   get listaAssets() { return this.addObjSvc.listaAssets; }
   get archivoSubida() { return this.addObjSvc.archivoSubida; } set archivoSubida(v) { this.addObjSvc.archivoSubida = v; }
   get subiendoAsset() { return this.addObjSvc.subiendoAsset; }
+
+  // Handlers linkeables guardados para poder removerlos al destruirse
+  private onMouseMoveHandler = (e: MouseEvent) => this.onMouseMove(e);
+  private onMouseUpHandler = () => this.onMouseUp();
 
   constructor() {
     effect(() => {
@@ -171,13 +177,26 @@ export class EditorEscena implements OnInit, OnDestroy {
         }, 150);
       }
     });
+
+    // 🔥 FIX FASE 3: Enlazamos los eventos de ratón globales (splitters y drag) 
+    // estrictamente FUERA del ciclo de vida de Angular para no sobrecargar el CD cada pixel movido.
+    this.ngZone.runOutsideAngular(() => {
+        window.addEventListener('mousemove', this.onMouseMoveHandler);
+        window.addEventListener('mouseup', this.onMouseUpHandler);
+    });
   }
 
-  @HostListener('window:mousemove', ['$event'])
-  onMouseMove(event: MouseEvent) { this.layoutUI.onMouseMove(event); }
+  onMouseMove(event: MouseEvent) { 
+    if (this.layoutUI.isResizing() || this.layoutUI.isResizingTimeline()) {
+        this.layoutUI.onMouseMove(event); 
+    }
+  }
 
-  @HostListener('window:mouseup')
-  onMouseUp() { this.layoutUI.onMouseUp(); }
+  onMouseUp() { 
+    if (this.layoutUI.isResizing() || this.layoutUI.isResizingTimeline()) {
+        this.layoutUI.onMouseUp(); 
+    }
+  }
 
   manejarAtajos(event: KeyboardEvent) { 
     if (event.key === 'Escape') {
@@ -355,6 +374,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    window.removeEventListener('mousemove', this.onMouseMoveHandler);
+    window.removeEventListener('mouseup', this.onMouseUpHandler);
     this.keyboard.dispose();
     if (this.kbSub) this.kbSub.unsubscribe();
     if (this.ebSub) this.ebSub.unsubscribe();

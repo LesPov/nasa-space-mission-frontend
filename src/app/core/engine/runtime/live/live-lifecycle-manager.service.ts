@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Camera, AbstractMesh, Tags, Vector3 } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -10,6 +11,11 @@ import { PlayerCameraManagerService } from '../systems/player-camera.service';
 import { GameEntity } from '../../entities/game.entity';
 import { CameraViewMode } from '../../session/game-context.model';
 import { CinematicLogger } from '../cinematics/cinematic-logger';
+import { DynamicLightingSystem } from '../systems/lighting/dynamic-lighting.system';
+import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
+import { GameStateService } from '../state/game-state.service';
+import { SceneNodesService } from '../../../../services/editor/sceneservice/scene-nodes.service';
+import { PlayerTriggerService } from '../systems/player-trigger.service';
 
 export interface EditorSnapshotState {
   cameraTarget: Vector3;
@@ -28,6 +34,11 @@ export class LiveLifecycleManagerService {
   private inputRouter = inject(InputRouterService);
   private gameSession = inject(GameSession);
   private playerCamSvc = inject(PlayerCameraManagerService);
+  private dynLighting = inject(DynamicLightingSystem);
+  private transformMutator = inject(TransformMutatorService);
+  private gameState = inject(GameStateService);
+  private sceneNodesSvc = inject(SceneNodesService);
+  private playerTriggerSvc = inject(PlayerTriggerService);
 
   private isLiveActive = false;
   private savedEditorCameraState: EditorSnapshotState | null = null;
@@ -40,7 +51,8 @@ export class LiveLifecycleManagerService {
   }
 
   /**
-   * Captura el estado exacto de la cámara y herramientas de edición antes de entrar a Test Live.
+   * Captura el estado exacto del Editor (Cámara y Entidades) antes de entrar a Test Live.
+   * 🔥 FASE 2: Memento Pattern para Autoría. No serializa a JSON.
    */
   public captureEditorState(): void {
     const editorCam = this.motor3d.getEditorCamera();
@@ -58,6 +70,12 @@ export class LiveLifecycleManagerService {
     this.preLiveOwner = this.ownership.getOwner();
     this.preLiveCamera = this.ownership.getCamera();
     CinematicLogger.logTestLiveLifecycle('ENTER', this.preLiveOwner, this.preLiveCamera?.name);
+
+    // 🔥 BACKUP EN MEMORIA DE LA AUTORÍA
+    this.gameState.enterSandbox();
+    this.entityManager.getAllEntities().forEach(e => {
+        e.createAuthoringBackup();
+    });
   }
 
   /**
@@ -67,33 +85,25 @@ export class LiveLifecycleManagerService {
     this.isLiveActive = true;
     this.testPlayerEntity = playerEntity;
 
-    // Aseguramos que el contexto se sincronice a TEST_LIVE
     this.gameContext.setEditorSubmode(vista === 'TPS' ? 'PLAYTEST_TPS' : 'PLAYTEST_FPS');
 
-    // Desvincular controles de la cámara de editor
     const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
     const editorCam = this.motor3d.getEditorCamera();
     if (editorCam && canvas) {
       try { editorCam.detachControl(); } catch {}
     }
 
-    // Configuración de visibilidad de herramientas de editor
     this.setEditorElementsVisibility(false);
 
     // Arrancar la sesión de juego
     this.gameSession.start(playerEntity, vista);
 
     // Asignar cámara según la perspectiva elegida
-    const targetCam = vista === 'FPS' 
-      ? this.motor3d.getPlayerCameraFPS() 
-      : this.motor3d.getPlayerCameraTPS();
-
+    const targetCam = vista === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS();
     this.ownership.setCamera(vista === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', targetCam, canvas, true);
 
-    // Aplicar visibilidad correcta para no hacer clipping en FPS
     this.playerCamSvc.updateFirstPersonVisibility(vista === 'FPS');
 
-    // Bloquear puntero si es primera persona
     if (canvas && vista === 'FPS') {
       setTimeout(() => {
         if (this.isLiveActive) {
@@ -104,57 +114,55 @@ export class LiveLifecycleManagerService {
   }
 
   /**
-   * Finaliza la sesión Live, limpiando ÚNICAMENTE los artefactos temporales sin tocar la escena 3D ni los modelos.
+   * Finaliza la sesión Live, limpiando ÚNICAMENTE los artefactos temporales
+   * sin tocar la escena 3D ni reconstruir los materiales.
    */
   public endLiveSession(): void {
     if (!this.isLiveActive) return;
 
-    // 1. Liberar inmediatamente Pointer Lock en el navegador
     this.inputRouter.unlockPointer();
-
-    // 2. Detener la sesión de juego (detiene inputs, cinemáticas y controladores)
     this.gameSession.stop();
 
-    // 3. Restaurar la visibilidad del personaje si estaba en primera persona
     this.playerCamSvc.updateFirstPersonVisibility(false);
     this.playerCamSvc.limpiarPivotTPS();
 
-    // 4. Resetear inercias físicas del player de prueba
-    if (this.testPlayerEntity && this.testPlayerEntity.playerRuntime) {
-      const state = this.testPlayerEntity.playerRuntime.physicsState;
-      state.isMoving = false;
-      state.isRunning = false;
-      state.isJumping = false;
-      state.isFalling = false;
-      state.isHardLanding = false;
-      state.isRecoveringFromFall = false;
-      state.velocidadY = 0;
-
-      this.testPlayerEntity.playerRuntime.intentions = {
-        moveForward: false, moveBackward: false, moveLeft: false,
-        moveRight: false, run: false, jump: false
-      };
-
-      // Si fue una cápsula temporal generada automáticamente, eliminarla
-      if (this.testPlayerEntity.name === 'Jugador_Fallback_Auto' || this.testPlayerEntity.name === 'TempPlayer_Fallback') {
-        this.entityManager.removeEntity(this.testPlayerEntity.uid);
-      } else {
-        // Objeto real del mapa: quitar el flag de persistencia para que pertenezca al editor
-        this.testPlayerEntity.isPersistent = false;
-        if (this.testPlayerEntity.view) {
-          this.testPlayerEntity.view.visibility = 1;
-          this.testPlayerEntity.view.getChildMeshes().forEach(m => m.visibility = 1);
+    // 🔥 RESTAURACIÓN DE LA AUTORÍA EN MEMORIA (FASE 2)
+    const entities = this.entityManager.getAllEntities();
+    
+    // Lo recorremos en reversa para poder eliminar del array con seguridad
+    for (let i = entities.length - 1; i >= 0; i--) {
+        const e = entities[i];
+        
+        // 1. Basura del Runtime: Jugadores clonados, NPCs spawneados, Proyectiles, etc.
+        if (e.isRuntimeOnly) {
+            this.entityManager.removeEntity(e.uid);
+            continue;
         }
-      }
+
+        // 2. Objetos de Autoría: Revertimos sus mutaciones (Transforms, Luces, Colores)
+        e.restoreAuthoringBackup();
+        e.syncToView();
+
+        if (e.type.startsWith('light_')) {
+            this.dynLighting.syncLightImmediate(e);
+        }
+
+        if (e.view && e.visual) {
+            this.transformMutator.aplicarVisuales(e.view, e.visual);
+        }
     }
 
-    // 5. Reactivar visibilidad de elementos del editor
-    this.setEditorElementsVisibility(true);
+    this.gameState.exitSandbox();
+    
+    // Reseteamos el estado interno de los Triggers
+    this.playerTriggerSvc.start();
 
-    // 6. Restaurar la cámara del editor original
+    // Actualizamos el Outliner del Editor
+    this.sceneNodesSvc.actualizarListaNodos();
+
+    this.setEditorElementsVisibility(true);
     this.restoreEditorCamera();
 
-    // 7. Retornar contexto a EDITING
     this.gameContext.setEditorSubmode('EDITING');
     this.gameContext.setSelectedNode(null);
     this.gameContext.setHoveredObject(null);
@@ -217,9 +225,7 @@ export class LiveLifecycleManagerService {
 
     if (canvas) {
       setTimeout(() => {
-        try {
-          editorCam.attachControl(canvas, true);
-        } catch {}
+        try { editorCam.attachControl(canvas, true); } catch {}
       }, 50);
     }
   }

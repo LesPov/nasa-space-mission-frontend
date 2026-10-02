@@ -1,8 +1,10 @@
+
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
+import { auditTime } from 'rxjs/operators';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { CoreSceneMaterialService } from '../../../../core/engine/scene/utils/core-scene-material.service';
 import { WorldSettingsService } from '../../../../core/engine/world/world-settings.service';
@@ -53,8 +55,8 @@ export class PropPart implements OnInit, OnDestroy, OnChanges {
     this.cargarAssets();
     this.syncData();
     this.subs.push(
-      this.mapaSvc.onGizmoDrag.subscribe(() => this.syncData()),
-      this.mapaSvc.onMapChanged.subscribe(() => this.syncData())
+      this.mapaSvc.onGizmoDrag.pipe(auditTime(100)).subscribe(() => this.syncData()),
+      this.mapaSvc.onMapChanged.pipe(auditTime(100)).subscribe(() => this.syncData())
     );
   }
 

@@ -1,8 +1,9 @@
+
 import { Injectable, inject, Injector } from '@angular/core';
 import { GameEntity, CharacterConfigComponent, PlayerRuntimeComponent } from '../../entities/game.entity';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { cloneDefaultPlayerConfig } from '../../models/player-config.model';
-import { Tags, MeshBuilder, Vector3 } from '@babylonjs/core';
+import { Tags, MeshBuilder, Vector3, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { GameStateService } from '../state/game-state.service';
 import { GameContextService } from '../../session/game-context.service';
@@ -66,6 +67,7 @@ export class SpawnManagerService {
                             charEntity.transform.rotation = { ...spawnEntity.transform.rotation };
                         }
 
+                        // 🔥 FASE 2: En modo editor preview no eliminamos el spawn, simplemente lo ocultaremos.
                         if (!isEditorPreview) {
                             this.entityManager.removeEntity(spawnEntity.uid);
                         }
@@ -107,7 +109,7 @@ export class SpawnManagerService {
         );
     }
 
-    // 5. Fallback para editor sin spawn point
+    // 5. Fallback absoluto para editor sin spawn point
     if (!targetEntity && isEditorPreview) {
         const editorCam = this.motor3d.getEditorCamera();
         const targetPos = editorCam && typeof editorCam.getTarget === 'function' ? editorCam.getTarget() : new Vector3(0, 0, 0);
@@ -121,10 +123,26 @@ export class SpawnManagerService {
 
     if (!targetEntity) return null;
 
-    targetEntity.isPersistent = true;
+    // 🔥 FASE 2 FIX: Marcamos la entidad como puramente Runtime si es una preview del Editor.
+    // Esto previene que se guarde en la BD.
+    targetEntity.isRuntimeOnly = isEditorPreview;
+    
+    // Si fue instanciado por el prefab, todos sus hijos también deben ser runtime only
+    if (isEditorPreview && targetEntity.view) {
+        targetEntity.view.getDescendants(false).forEach((child) => {
+            const childEntity = this.entityManager.getEntityByMesh(child as AbstractMesh);
+            if (childEntity) {
+                childEntity.isRuntimeOnly = true;
+            }
+        });
+    }
+
+    // isPersistent solo es válido para la producción (transición entre niveles)
+    targetEntity.isPersistent = !isEditorPreview;
     if (targetEntity.view) {
         Tags.AddTagsTo(targetEntity.view, "persistent_player");
     }
+    
     this.resetPhysicsInertia(targetEntity);
 
     return targetEntity;
@@ -145,7 +163,6 @@ export class SpawnManagerService {
     tempMesh.ellipsoid = new Vector3(0.4, 0.9, 0.4);
     tempMesh.ellipsoidOffset = new Vector3(0, 0.9, 0); 
 
-    // En producción es completamente invisible
     tempMesh.isVisible = isEditorPreview; 
     tempMesh.visibility = isEditorPreview ? 0.4 : 0.0; 
     tempMesh.isPickable = false;
@@ -155,6 +172,9 @@ export class SpawnManagerService {
     playerEntity.addComponent('playerRuntime', new PlayerRuntimeComponent());
     playerEntity.playerConfig = cloneDefaultPlayerConfig();
     playerEntity.bindView(tempMesh);
+    
+    // 🔥 FASE 2: Como nace del código y no de la DB, es 100% temporal
+    playerEntity.isRuntimeOnly = true;
     
     this.entityManager.addEntity(playerEntity);
     return playerEntity;
@@ -203,7 +223,7 @@ export class SpawnManagerService {
 
     this.resetPhysicsInertia(persistentPlayer);
 
-    // Eliminar la malla del marcador de spawn en la plataforma de destino
+    // En producción eliminamos el spawn marker para siempre de este nivel
     if (newSpawn) {
         this.entityManager.removeEntity(newSpawn.uid);
     }

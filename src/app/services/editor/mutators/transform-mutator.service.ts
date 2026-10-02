@@ -8,6 +8,7 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 import { WorldSettingsService } from '../../../core/engine/world/world-settings.service';
 import { CoreSceneMaterialService } from '../../../core/engine/scene/utils/core-scene-material.service';
 import { DynamicLightingSystem } from '../../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
+import { GameContextService } from '../../../core/engine/session/game-context.service';
 
 export interface ProyeccionConfig {
   profundidadProyeccion: number;
@@ -30,7 +31,7 @@ export interface VisualConfig {
   brilloIntensidad: number;
   mostrarBorde?: boolean;
   isSelectable?: boolean;
-  disableCulling?: boolean; // 🔥 FASE CULLING
+  disableCulling?: boolean;
 }
 
 export interface InteraccionConfig {
@@ -50,6 +51,7 @@ export class TransformMutatorService {
   private worldSettingsSvc = inject(WorldSettingsService);
   private materialSvc = inject(CoreSceneMaterialService);
   private dynamicLighting = inject(DynamicLightingSystem);
+  private context = inject(GameContextService);
 
   public aplicarPosicion(objeto: AbstractMesh, localPos: { x: number, y: number, z: number }): void {
     const entity = this.entityManager.getEntityByMesh(objeto);
@@ -59,6 +61,11 @@ export class TransformMutatorService {
         entity.transform.position = { ...localPos };
         entity.isDirty = true;
         entity.syncToView(); 
+
+        // 🔥 FASE 2 FIX: Si la mutación fue manual (Gizmo/UI) durante EDITING_IN_GAME, actualizar el backup autoral.
+        if (this.context.mode() === 'EDITING_IN_GAME' && entity.authoringBackup) {
+            entity.createAuthoringBackup();
+        }
       } else {
         objeto.position.set(localPos.x, localPos.y, localPos.z);
       }
@@ -88,6 +95,10 @@ export class TransformMutatorService {
         }
         entity.isDirty = true;
         entity.syncToView();
+
+        if (this.context.mode() === 'EDITING_IN_GAME' && entity.authoringBackup) {
+            entity.createAuthoringBackup();
+        }
       } else {
         if (objeto.rotationQuaternion) {
             objeto.rotationQuaternion = Quaternion.FromEulerAngles(rx, ry, rz);
@@ -115,6 +126,10 @@ export class TransformMutatorService {
          entity.transform.scale = { x: localEscReal.x, y: localEscReal.y, z: localEscReal.z };
          entity.isDirty = true;
          entity.syncToView();
+
+         if (this.context.mode() === 'EDITING_IN_GAME' && entity.authoringBackup) {
+             entity.createAuthoringBackup();
+         }
       } else {
          objeto.scaling.set(localEscReal.x, localEscReal.y, localEscReal.z);
       }
@@ -142,6 +157,10 @@ export class TransformMutatorService {
     entity.isDirty = true;
     entity.syncToView();
 
+    if (this.context.mode() === 'EDITING_IN_GAME' && entity.authoringBackup) {
+        entity.createAuthoringBackup();
+    }
+
     if (entity.type === 'image_plane') {
        this.projectionSvc.actualizarProyeccion(objeto as Mesh);
     }
@@ -160,7 +179,6 @@ export class TransformMutatorService {
     entity.visual.esEmisivo = config.esEmisivo;
     entity.visual.brilloIntensidad = this.clampBrightness(config.brilloIntensidad);
     
-    // 🔥 FASE CULLING
     if (config.disableCulling !== undefined) {
        entity.visual.disableCulling = config.disableCulling;
     }
@@ -177,6 +195,10 @@ export class TransformMutatorService {
 
     entity.isDirty = true;
     entity.syncToView();
+
+    if (this.context.mode() === 'EDITING_IN_GAME' && entity.authoringBackup) {
+        entity.createAuthoringBackup();
+    }
 
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
     const activeColorHex = isBW ? config.colorBW : config.color;
@@ -271,7 +293,6 @@ export class TransformMutatorService {
         entity.light.renderIntensity = (config.brilloIntensidad !== undefined) ? (this.clampBrightness(config.brilloIntensidad) * 5) : (entity.light.intensity || 5);
         entity.light.intensity = entity.light.renderIntensity;
 
-        // 🔥 Notificar inmediatamente al runtime de iluminación
         this.dynamicLighting.syncLightImmediate(entity);
     }
 
@@ -293,6 +314,11 @@ export class TransformMutatorService {
     
     entity.isDirty = true;
     entity.syncToView();
+
+    if (this.context.mode() === 'EDITING_IN_GAME' && entity.authoringBackup) {
+        entity.createAuthoringBackup();
+    }
+
     this.mapaSvc.onMapChanged.next();
   }
 

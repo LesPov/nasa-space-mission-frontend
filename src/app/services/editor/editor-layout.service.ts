@@ -1,6 +1,5 @@
 
 
-
 import { Injectable, inject, signal } from '@angular/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { EditorStateService } from './editor-state.service';
@@ -22,6 +21,8 @@ export class EditorLayoutService {
   
   public isResizing = signal<boolean>(false);
   public isResizingTimeline = signal<boolean>(false);
+  
+  private lastResizeTime = 0;
 
   public toggleInspector(): void {
     this.showInspector.set(!this.showInspector());
@@ -50,12 +51,13 @@ export class EditorLayoutService {
   }
 
   public onMouseMove(event: MouseEvent): void {
+    let changed = false;
+    
     if (this.isResizing()) {
       const newWidth = window.innerWidth - event.clientX;
-      // Límites de la barra lateral (Inspector)
       if (newWidth > 250 && newWidth < window.innerWidth * 0.6) {
         this.inspectorWidth.set(newWidth);
-        this.motor3dSvc.forceResize();
+        changed = true;
       }
     }
     
@@ -64,12 +66,20 @@ export class EditorLayoutService {
       const bottomY = window.innerHeight - event.clientY;
       let newHeight = (bottomY / containerHeight) * 100;
       
-      // Límites del timeline (Porcentaje)
       if (newHeight < 5) newHeight = 5;
       if (newHeight > 70) newHeight = 70;
       
       this.timelineHeight.set(newHeight);
-      this.motor3dSvc.forceResize();
+      changed = true;
+    }
+    
+    // Throttle resize event to avoid Engine crash and CPU burn
+    if (changed) {
+        const now = performance.now();
+        if (now - this.lastResizeTime > 16) {
+            this.motor3dSvc.forceResize();
+            this.lastResizeTime = now;
+        }
     }
   }
 

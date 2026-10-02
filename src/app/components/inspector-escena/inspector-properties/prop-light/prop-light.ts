@@ -1,10 +1,12 @@
 
+
 // file: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.ts
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh, TransformNode } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
+import { auditTime } from 'rxjs/operators';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorStateService } from '../../../../services/editor/editor-state.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
@@ -88,13 +90,13 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   ngOnInit() {
     this.syncData();
     this.subs.push(
-      this.editorSvc.onGizmoDrag.subscribe(() => this.syncData()),
-      this.editorSvc.onMapChanged.subscribe(() => this.syncData())
+      this.editorSvc.onGizmoDrag.pipe(auditTime(100)).subscribe(() => this.syncData()),
+      this.editorSvc.onMapChanged.pipe(auditTime(100)).subscribe(() => this.syncData())
     );
 
     this.telemetryInterval = setInterval(() => {
       this.updateTelemetry();
-    }, 100);
+    }, 250);
   }
 
   ngOnChanges(changes: SimpleChanges) {

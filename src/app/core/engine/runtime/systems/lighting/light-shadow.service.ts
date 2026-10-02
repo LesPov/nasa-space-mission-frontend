@@ -17,7 +17,6 @@ export class LightShadowService {
   private shadowQualitySvc = inject(ShadowQualityService);
   private interactRules = inject(InteractableRulesService);
 
-  // Caché optimizada para no iterar por toda la escena al buscar casters locales
   private castersCache: AbstractMesh[] = [];
 
   public clearCache(): void {
@@ -33,8 +32,10 @@ export class LightShadowService {
       if (this.isEligibleShadowCaster(e) && e.view && !e.view.isDisposed()) {
         const processMesh = (m: AbstractMesh) => {
            if (m.isDisposed()) return;
-           const isManuallyHidden = !e.isCulled && (!m.isVisible || !m.isEnabled());
-           if (!isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
+           
+           // 🔥 FIX CRÍTICO: Removida la exclusión por `m.isVisible` para evitar desincronizaciones 
+           // con objetos que apenas se están revelando en el nivel mediante Fade.
+           if (!e.isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
               if (m.getClassName() === "InstancedMesh" && (m as InstancedMesh).sourceMesh) {
                   this.castersCache.push(m);
               } else if (m.getClassName() === "Mesh" && (m as Mesh).getTotalVertices() > 0) {
@@ -50,6 +51,8 @@ export class LightShadowService {
 
   private isEligibleShadowCaster(e: GameEntity): boolean {
     if (!e.view) return false;
+    if (e.isManuallyHidden) return false;
+
     if (e.type === 'image_plane' || e.type === 'bubble' || e.type === 'trigger' || e.type === 'trigger_compuesto') return false;
     if (e.type.startsWith('light_') && !e.visual?.assetId && !e.visual?.path) return false;
     if (e.characterConfig || e.rol === 'player' || e.rol === 'npc') return true;
@@ -57,8 +60,13 @@ export class LightShadowService {
     const renderableTypes = ['model', 'cube', 'sphere', 'cylinder', 'plane'];
     if (renderableTypes.includes(e.type) || !!e.visual?.assetId || !!e.visual?.path) {
         if (this.interactRules.isInteractable(e)) return true;
-        const radius = e.view.getBoundingInfo().boundingSphere.radiusWorld;
-        if ((radius * 2) < 0.6) return false;
+
+        e.view.computeWorldMatrix(true);
+        const bounds = e.view.getHierarchyBoundingVectors(true);
+        const diag = Vector3.Distance(bounds.min, bounds.max);
+        
+        // Reducido a 10cm de diámetro global jerárquico.
+        if (diag < 0.1) return false;
         return true;
     }
     return false;
@@ -69,16 +77,14 @@ export class LightShadowService {
         const config = slot.type === 'spot' ? this.shadowQualitySvc.getSpotConfig() : this.shadowQualitySvc.getPointConfig();
         slot.sg = new ShadowGenerator(config.resolution, slot.light);
         
-        // Setup centralizado de calidad
         slot.sg.usePercentageCloserFiltering = true;
         slot.sg.filteringQuality = config.filteringQuality;
         slot.sg.bias = 0.001;
         slot.sg.normalBias = 0.01;
         if (slot.type === 'point') {
-           slot.sg.useContactHardeningShadow = false; // PCF es más estable para cubemaps
+           slot.sg.useContactHardeningShadow = false; 
         }
     } else {
-        // En caso de que haya cambiado la calidad global al vuelo, actualizamos el filtro (la resolución requiere recrear el mapa, lo evitamos por performance)
         const config = slot.type === 'spot' ? this.shadowQualitySvc.getSpotConfig() : this.shadowQualitySvc.getPointConfig();
         slot.sg.filteringQuality = config.filteringQuality;
     }
@@ -89,13 +95,34 @@ export class LightShadowService {
     renderList.length = 0;
     slot.hasDynamicCasters = false;
     
+    // 🔥 PADRE CON LUZ HIJA: Detectamos al padre para resolver la jerarquía y el modo de contención.
+    const ownerEnt = this.entityManager.getEntityByUid(entityUid);
+    const containmentMode = ownerEnt?.light?.containmentMode || 'GLOBAL';
+    
+    const parentUid = ownerEnt?.parentId;
+    let parentView: AbstractMesh | null = null;
+    if (parentUid) {
+        const parentEnt = this.entityManager.getEntityByUid(parentUid);
+        if (parentEnt) parentView = parentEnt.view;
+    }
+    
     const rangeSq = range * range;
     for (let i = 0; i < this.castersCache.length; i++) {
         const m = this.castersCache[i];
-        if (m.isDisposed() || !m.isVisible) continue;
+        if (m.isDisposed()) continue; 
 
-        // Omitimos a la propia luz como caster para que no se sombree a sí misma
-        if ((m as any).metadata?.entityUid === entityUid) continue;
+        const meshEntityUid = (m as any).metadata?.entityUid;
+
+        // Omitimos a la propia luz visual
+        if (meshEntityUid === entityUid) continue;
+
+        // 🔥 FIX PADRE-HIJO: Evitamos que el mesh del padre bloquee a la luz interior (Auto-Shadowing preventivo).
+        // SÓLO APLICA EN MODO INTERIOR. En GLOBAL o EXTERIOR, el padre (Ej: Poste de luz) DEBE poder proyectar sombra.
+        if (containmentMode === 'INTERIOR') {
+            if (parentView && (m === parentView || m.isDescendantOf(parentView))) {
+                continue;
+            }
+        }
 
         const distSq = Vector3.DistanceSquared(m.getAbsolutePosition(), lightPos);
         if (distSq <= rangeSq) {
@@ -107,7 +134,6 @@ export class LightShadowService {
         }
     }
 
-    const ownerEnt = this.entityManager.getEntityByUid(entityUid);
     slot.isStaticLight = ownerEnt ? (!ownerEnt.autoAnim?.enabled && ownerEnt.movementAuthority === 'GAMEPLAY' && !ownerEnt.characterConfig) : true;
 
     this.shadowCache.recordRebuild();
@@ -123,7 +149,6 @@ export class LightShadowService {
           !slot.isStaticLight
       );
 
-      // En el editor forzamos actualización constante para ver cambios con gizmos
       slot.sg.getShadowMap()!.refreshRate = isEditor ? 1 : rate;
   }
 

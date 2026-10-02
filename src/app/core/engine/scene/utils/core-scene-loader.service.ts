@@ -19,6 +19,7 @@ import { SceneLoadPayload, SceneObjectDto, TriggerDto } from '../../models/api-d
 import { DynamicLightingSystem } from '../../runtime/systems/lighting/dynamic-lighting.system'; 
 import { ShadowOrchestratorService } from '../../runtime/shadows/shadow-orchestrator.service';
 import { EngineSessionService } from '../../session/engine-session.service';
+import { LocalRenderingSystem } from '../../runtime/systems/local-rendering.system';
   
 @Injectable({ providedIn: 'root' })
 export class CoreSceneLoaderService {
@@ -39,6 +40,7 @@ export class CoreSceneLoaderService {
   private triggerSvc = inject(PlayerTriggerService);
   private dynamicLighting = inject(DynamicLightingSystem); 
   private sessionSvc = inject(EngineSessionService);
+  private localRendering = inject(LocalRenderingSystem);
 
   public createInvisibleFloor(scene: any): void {
     const old = scene.getMeshByName('sueloInvisible');
@@ -186,14 +188,16 @@ export class CoreSceneLoaderService {
       });
     }, 150);
 
-    // 🔥 RECONCILIACIÓN CENTRALIZADA (Reemplaza prepareAllLights y asignarObjetos)
     this.dynamicLighting.reconcileSceneLights(); 
     this.shadowOrchestrator.reconcileShadows();
 
+    // 🔥 FASE: WARM-UP EXHAUSTIVO (Pre-Compilación de Shaders)
     await new Promise<void>((resolve) => {
       if (!this.sessionSvc.isSessionActive(sessionId)) return resolve();
+      
       scene.executeWhenReady(() => {
         if (!this.sessionSvc.isSessionActive(sessionId)) return resolve();
+        
         const actCam = scene.activeCamera;
         let originalPos = Vector3.Zero();
         let originalTarget = Vector3.Zero();
@@ -213,8 +217,45 @@ export class CoreSceneLoaderService {
             }
         }
 
+        const warmupPos = actCam ? actCam.globalPosition : Vector3.Zero();
+
+        // 1. FORZAR COMPILACIÓN GLOBAL (Activamos todo para calentar la VRAM y compilar Shaders)
+        const originalStates: {mesh: AbstractMesh, vis: boolean, en: boolean, always: boolean}[] = [];
+        
+        scene.meshes.forEach(m => {
+            originalStates.push({mesh: m, vis: m.isVisible, en: m.isEnabled(), always: m.alwaysSelectAsActiveMesh});
+            m.setEnabled(true);
+            m.isVisible = true;
+            m.alwaysSelectAsActiveMesh = true;
+        });
+
+        // Iniciar sistemas base de iluminación para que se registren los generadores de sombra
         this.dynamicLighting.start(); 
         this.shadowOrchestrator.start(); 
+
+        // Forzar asignación masiva de luces sin culling espacial
+        this.dynamicLighting.forceWarmup(warmupPos);
+
+        // Renderizar 2 frames pesados ocultos para compilar todo el material (Mesh, Textures, Shaders, Shadows)
+        scene.render();
+        scene.render();
+
+        // Restaurar estado original de optimización de las mallas
+        originalStates.forEach(s => {
+            s.mesh.setEnabled(s.en);
+            s.mesh.isVisible = s.vis;
+            s.mesh.alwaysSelectAsActiveMesh = s.always;
+        });
+
+        // 2. Aplicar Culling Local Definitivo en base a la cámara inicial real
+        this.localRendering.reconcileAllEntitiesImmediate(warmupPos);
+
+        // 3. Re-evaluar distancias de luces y sombras habiendo aplicado el culling
+        this.dynamicLighting.forceWarmup(warmupPos);
+
+        // 4. Renderizar 2 frames de asentamiento visual para estabilizar el Pipeline
+        scene.render();
+        scene.render();
 
         if (actCam) {
             actCam.position.copyFrom(originalPos);

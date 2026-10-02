@@ -1,3 +1,4 @@
+
 import { LightingDistanceThresholds, LightingPolicy, ReferenceResolutionStrategy } from '../lighting-policy.interface';
 
 /**
@@ -22,8 +23,6 @@ export class EditorLightingPolicy implements LightingPolicy {
         const deactDist = Math.max(actDist + 10, baseDeactivation ?? 75);
         const dynamicDeactDist = deactDist; // Sin inercia predictiva en Editor
         const prepareDist = dynamicDeactDist + 20;
-        const fadeStartDist = actDist * 0.7;
-        const fadeEndDist = dynamicDeactDist;
 
         // Reglas de Sombras para Editor
         const shadowAct = Math.max(25, baseShadowActivation ?? 30);
@@ -34,10 +33,9 @@ export class EditorLightingPolicy implements LightingPolicy {
             deactivation: deactDist,
             dynamicDeactivation: dynamicDeactDist,
             prepare: prepareDist,
-            fadeStart: fadeStartDist,
-            fadeEnd: fadeEndDist,
             shadowActivation: shadowAct,
             shadowDeactivation: shadowDeact
         };
     }
 }
+  

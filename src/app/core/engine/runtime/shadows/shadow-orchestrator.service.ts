@@ -10,6 +10,7 @@ import { GameContextService } from '../../session/game-context.service';
 import { GameEntity } from '../../entities/game.entity';
 import { InteractableRulesService } from '../rules/interactable-rules.service';
 import { ShadowQualityService } from './shadow-quality.service';
+import { GameEventBusService } from '../../events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })
 export class ShadowOrchestratorService implements IUpdatable {
@@ -20,7 +21,8 @@ export class ShadowOrchestratorService implements IUpdatable {
   private worldSettings = inject(WorldSettingsService);
   private context = inject(GameContextService); 
   private interactRules = inject(InteractableRulesService); 
-  private shadowQualitySvc = inject(ShadowQualityService); // 🔥 INYECTAMOS LA CALIDAD CENTRALIZADA
+  private shadowQualitySvc = inject(ShadowQualityService);
+  private eventBus = inject(GameEventBusService);
 
   private mainSun: DirectionalLight | null = null;
   private shadowGenerator: CascadedShadowGenerator | null = null;
@@ -29,6 +31,16 @@ export class ShadowOrchestratorService implements IUpdatable {
   private _tempOffset = Vector3.Zero();
 
   public profilerDisableShadows = false;
+  private forceRebuild = false;
+
+  constructor() {
+    this.eventBus.events$.subscribe(e => {
+        // 🔥 FIX SOMBRAS: Revalida la lista de sombras del CSM si el Culling restituyó objetos visibles
+        if (e.type === 'RuntimeVisibilityBatchChanged') {
+            this.forceRebuild = true;
+        }
+    });
+  }
 
   public getProfilerMetrics() {
     let casters = 0;
@@ -60,8 +72,7 @@ export class ShadowOrchestratorService implements IUpdatable {
 
   private isEligibleShadowCaster(e: GameEntity): boolean {
       if (!e.view) return false;
-      const isManuallyHidden = !e.isCulled && (!e.view.isVisible || !e.view.isEnabled());
-      if (isManuallyHidden) return false;
+      if (e.isManuallyHidden) return false;
 
       if (e.type === 'image_plane' || e.type === 'bubble' || e.type === 'trigger' || e.type === 'trigger_compuesto') return false;
       if (e.type.startsWith('light_') && !e.visual?.assetId && !e.visual?.path) return false;
@@ -69,12 +80,13 @@ export class ShadowOrchestratorService implements IUpdatable {
 
       const renderableTypes = ['model', 'cube', 'sphere', 'cylinder', 'plane'];
       if (renderableTypes.includes(e.type) || !!e.visual?.assetId || !!e.visual?.path) {
-          const isInteractable = this.interactRules.isInteractable(e);
-          if (isInteractable) return true; 
+          if (this.interactRules.isInteractable(e)) return true; 
 
-          const radius = e.view.getBoundingInfo().boundingSphere.radiusWorld;
-          const diag = radius * 2;
-          if (diag < 0.6) return false;
+          e.view.computeWorldMatrix(true);
+          const bounds = e.view.getHierarchyBoundingVectors(true);
+          const diag = Vector3.Distance(bounds.min, bounds.max);
+          
+          if (diag < 0.1) return false;
           return true;
       }
       return false;
@@ -98,6 +110,11 @@ export class ShadowOrchestratorService implements IUpdatable {
   public update(dtMs: number): void {
      const scene = this.motor3d.getScene();
      if (!scene || !this.mainSun) return;
+
+     if (this.forceRebuild) {
+         this.asignarObjetosASombrasDeLuces();
+         this.forceRebuild = false;
+     }
 
      const refPos = this.getReferencePosition();
      if (Vector3.DistanceSquared(this.mainSun.position, refPos) > 25) {
@@ -139,19 +156,18 @@ export class ShadowOrchestratorService implements IUpdatable {
     }
 
     if (!this.shadowGenerator) {
-       // 🔥 INTEGRAMOS LA CONFIGURACIÓN CENTRAL DE CALIDAD
        const config = this.shadowQualitySvc.getDirectionalConfig();
 
        this.shadowGenerator = new CascadedShadowGenerator(config.resolution, this.mainSun);
        this.shadowGenerator.numCascades = config.cascades ?? 3;
-       this.shadowGenerator.shadowMaxZ = 45; // Expandido levemente para mayor cobertura en exteriores
+       this.shadowGenerator.shadowMaxZ = 45; 
        
        this.shadowGenerator.cascadeBlendPercentage = 0.1; 
        this.shadowGenerator.lambda = 0.65; 
        this.shadowGenerator.usePercentageCloserFiltering = true;
        this.shadowGenerator.filteringQuality = config.filteringQuality;
-       this.shadowGenerator.bias = 0.001;       // Ajuste optimizado
-       this.shadowGenerator.normalBias = 0.01; // Ajuste optimizado para evitar Peter-Panning sin causar Acne
+       this.shadowGenerator.bias = 0.001;       
+       this.shadowGenerator.normalBias = 0.01; 
        this.shadowGenerator.setDarkness(0.35);
        this.shadowGenerator.autoCalcDepthBounds = false; 
        this.shadowGenerator.stabilizeCascades = true; 
@@ -172,8 +188,8 @@ export class ShadowOrchestratorService implements IUpdatable {
            if (this.isEligibleShadowCaster(e) && e.view) {
                const processMeshForShadows = (m: AbstractMesh) => {
                    if (m.isDisposed()) return;
-                   const isManuallyHidden = !e.isCulled && (!m.isVisible || !m.isEnabled());
-                   if (!isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
+                   
+                   if (!e.isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
                        let isValidCaster = false;
                        if (m.getClassName() === "InstancedMesh") {
                            const source = (m as InstancedMesh).sourceMesh;

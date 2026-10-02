@@ -29,8 +29,11 @@ export class LightDistanceService {
       for (let i = 0; i < activeVirtuals.length; i++) {
           const vl = activeVirtuals[i];
           const lightComp = vl.entity.light;
+          
           if (!lightComp || !vl.entity.view || !lightComp.enabled) {
-              vl.isLightInRange = false; vl.isShadowInRange = false; vl.targetMultiplier = 0;
+              vl.isLightInRange = false; 
+              vl.isShadowInRange = false; 
+              vl.targetMultiplier = 0;
               vl._isInPrepareRange = false;
               continue;
           }
@@ -56,19 +59,28 @@ export class LightDistanceService {
               speed
           );
 
+          // 🔥 El rango de preparación asigna slot pero NO ENCIENDE LA LUZ (Multiplier 0)
           vl._isInPrepareRange = dist <= thresholds.prepare;
 
           if (lightComp.distanceControlEnabled) {
-              if (dist > thresholds.dynamicDeactivation) { 
-                  vl.isLightInRange = false; 
-                  vl.targetMultiplier = 0; 
+              // 🔥 LÓGICA DE HISTÉRESIS ESTRICTA: Previene completamente la activación prematura
+              if (wasInRange) {
+                  // Si ya estaba encendida, usamos la distancia de desactivación (con inercia)
+                  if (dist > thresholds.dynamicDeactivation) { 
+                      vl.isLightInRange = false; 
+                      vl.targetMultiplier = 0; 
+                  } else {
+                      vl.isLightInRange = true;
+                      vl.targetMultiplier = 1.0;
+                  }
               } else {
-                  vl.isLightInRange = true;
-                  if (dist <= thresholds.fadeStart) vl.targetMultiplier = 1.0;
-                  else {
-                      let t = 1.0 - ((dist - thresholds.fadeStart) / (thresholds.fadeEnd - thresholds.fadeStart));
-                      t = Math.max(0, Math.min(1, t));
-                      vl.targetMultiplier = (t * t * (3.0 - 2.0 * t));
+                  // Si estaba apagada, solo se enciende si cruza la distancia de activación pura
+                  if (dist <= thresholds.activation) {
+                      vl.isLightInRange = true;
+                      vl.targetMultiplier = 1.0;
+                  } else {
+                      vl.isLightInRange = false;
+                      vl.targetMultiplier = 0;
                   }
               }
           } else {
@@ -77,12 +89,20 @@ export class LightDistanceService {
               vl.targetMultiplier = 1.0;
           }
 
+          // Lógica de Sombras (Mantiene la histéresis correcta de forma independiente)
           if (vl.isLightInRange && lightComp.castShadows) {
               if (lightComp.distanceShadowsEnabled) {
-                  if (vl.isShadowInRange) { if (dist > thresholds.shadowDeactivation) vl.isShadowInRange = false; } 
-                  else { if (dist <= thresholds.shadowActivation) vl.isShadowInRange = true; }
-              } else { vl.isShadowInRange = true; }
-          } else { vl.isShadowInRange = false; }
+                  if (vl.isShadowInRange) { 
+                      if (dist > thresholds.shadowDeactivation) vl.isShadowInRange = false; 
+                  } else { 
+                      if (dist <= thresholds.shadowActivation) vl.isShadowInRange = true; 
+                  }
+              } else { 
+                  vl.isShadowInRange = true; 
+              }
+          } else { 
+              vl.isShadowInRange = false; 
+          }
 
           if (isEditorPure && this.context.authorityProfile().canViewDebug && wasInRange !== vl.isLightInRange) {
               console.log(`[EDITOR LIGHT] ${vl.isLightInRange ? '🟢 ON' : '🔴 OFF'} | ${vl.entity.name} | Dist: ${dist.toFixed(1)}m`);

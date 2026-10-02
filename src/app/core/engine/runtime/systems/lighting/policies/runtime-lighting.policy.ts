@@ -1,3 +1,4 @@
+
 import { LightingDistanceThresholds, LightingPolicy, ReferenceResolutionStrategy } from '../lighting-policy.interface';
 
 /**
@@ -17,20 +18,18 @@ export class RuntimeLightingPolicy implements LightingPolicy {
         speed: number
     ): LightingDistanceThresholds {
         
-        // Reglas estrictas extraídas exactamente de DynamicLightingSystem (Runtime Policy)
+        // Reglas estrictas configuradas por la entidad
         const actDist = Math.max(0.1, baseActivation ?? 65);
         const deactDist = Math.max(actDist + 0.1, baseDeactivation ?? (actDist + 10));
         
         let dynamicDeactDist = deactDist;
         
-        // Inercia Predictiva de Movimiento
+        // Inercia Predictiva de Movimiento (Expande exclusivamente la desactivación y preparación)
         if (speed > 2.0) {
             dynamicDeactDist += speed * 1.5; 
         }
         
         const prepareDist = dynamicDeactDist + 30;
-        const fadeStartDist = actDist * 0.6;
-        const fadeEndDist = dynamicDeactDist;
 
         // Reglas de Sombras para Runtime
         const sActDist = Math.max(0.1, baseShadowActivation ?? 30);
@@ -50,8 +49,6 @@ export class RuntimeLightingPolicy implements LightingPolicy {
             deactivation: deactDist,
             dynamicDeactivation: dynamicDeactDist,
             prepare: prepareDist,
-            fadeStart: fadeStartDist,
-            fadeEnd: fadeEndDist,
             shadowActivation: dynSAct,
             shadowDeactivation: dynSDeact
         };

@@ -1,7 +1,6 @@
-// src/app/services/editor/editor-play-mode.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { Mesh, Tags, Vector3, Observer, Scene, ArcRotateCamera } from '@babylonjs/core';
+import { Mesh, Tags, Vector3, Observer, Scene, ArcRotateCamera, AbstractMesh } from '@babylonjs/core';
 
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { EditorStateService } from './editor-state.service';
@@ -18,6 +17,7 @@ import { DynamicLightingSystem } from '../../core/engine/runtime/systems/lightin
 import { ShadowOrchestratorService } from '../../core/engine/runtime/shadows/shadow-orchestrator.service';
 import { CinematicLogger } from '../../core/engine/runtime/cinematics/cinematic-logger';
 import { ToolsHighlightService } from './toolsservice/tools-highlight.service';
+import { LocalRenderingSystem } from '../../core/engine/runtime/systems/local-rendering.system';
 
 export interface EditorCameraSnapshot {
   target: Vector3;
@@ -42,6 +42,7 @@ export class EditorPlayModeService {
   private dynamicLighting = inject(DynamicLightingSystem);
   private shadowOrchestrator = inject(ShadowOrchestratorService);
   private highlightSvc = inject(ToolsHighlightService);
+  private localRendering = inject(LocalRenderingSystem);
 
   private editorSnapshot: EditorCameraSnapshot | null = null;
 
@@ -113,15 +114,63 @@ export class EditorPlayModeService {
       targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
     }
 
-    // Reconciliación atómica de luces y sombras sin fugas
     this.dynamicLighting.reconcileSceneLights();
     this.shadowOrchestrator.reconcileShadows();
 
+    // 🔥 FASE: WARM-UP EXHAUSTIVO (Test Live)
     await new Promise<void>((resolve) => {
       this.motor3d.getScene().executeWhenReady(() => {
+        
+        // Colocamos temporalmente la cámara del editor en el destino exacto para priorizar renderizado
+        const originalPos = editorCam.globalPosition.clone();
+        const originalTarget = editorCam.getTarget().clone();
+        
+        editorCam.position.copyFrom(targetPos);
+        editorCam.setTarget(targetLookAt);
+
+        // 1. FORZAR COMPILACIÓN GLOBAL
+        const originalStates: {mesh: AbstractMesh, vis: boolean, en: boolean, always: boolean}[] = [];
+        this.motor3d.getScene().meshes.forEach(m => {
+            originalStates.push({mesh: m, vis: m.isVisible, en: m.isEnabled(), always: m.alwaysSelectAsActiveMesh});
+            m.setEnabled(true);
+            m.isVisible = true;
+            m.alwaysSelectAsActiveMesh = true;
+        });
+
+        // 2. Systems Start
         this.dynamicLighting.start();
         this.shadowOrchestrator.start();
-        for (let i = 0; i < 5; i++) { this.motor3d.getScene().render(); }
+
+        // 3. Forzamos Warmup masivo sin culling espacial inicial
+        this.dynamicLighting.forceWarmup(targetPos);
+
+        // 4. Render oculto para compilar shaders completos en VRAM
+        for (let i = 0; i < 2; i++) {
+            this.motor3d.getScene().render();
+        }
+
+        // 5. Restaurar estado de render original 
+        originalStates.forEach(s => {
+            s.mesh.setEnabled(s.en);
+            s.mesh.isVisible = s.vis;
+            s.mesh.alwaysSelectAsActiveMesh = s.always;
+        });
+
+        // 6. Local Rendering Real basado en la cámara de destino
+        this.localRendering.reconcileAllEntitiesImmediate(targetPos);
+
+        // 7. Re-evaluar luces para ajustar los shadow casters a los visibles
+        this.dynamicLighting.forceWarmup(targetPos);
+
+        // 8. Render final de asentamiento
+        for (let i = 0; i < 2; i++) {
+            this.motor3d.getScene().render();
+        }
+
+        // Devolvemos cámara a su origen antes del vuelo
+        editorCam.position.copyFrom(originalPos);
+        editorCam.setTarget(originalTarget);
+
         this.motor3d.getScene().executeWhenReady(() => resolve());
       });
     });

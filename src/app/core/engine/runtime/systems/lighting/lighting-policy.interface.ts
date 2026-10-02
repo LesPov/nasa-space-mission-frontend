@@ -1,10 +1,9 @@
+
 export interface LightingDistanceThresholds {
     activation: number;
     deactivation: number;
     dynamicDeactivation: number;
     prepare: number;
-    fadeStart: number;
-    fadeEnd: number;
     shadowActivation: number;
     shadowDeactivation: number;
 }

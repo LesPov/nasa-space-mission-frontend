@@ -1,3 +1,4 @@
+
 // src/app/core/engine/runtime/systems/player-interaction.service.ts
 
 import { Injectable, inject } from '@angular/core';
@@ -39,16 +40,17 @@ export class PlayerInteractionService implements IUpdatable {
   
   private isEnabled: boolean = false;
 
+  // 🔥 ZERO-ALLOCATIONS VARIABLES PARA EL LOOP
   private _centerRay = new Ray(Vector3.Zero(), new Vector3(0, 0, 1), 10000);
   private _probePoint = Vector3.Zero();
   private _forwardDir = new Vector3(0, 0, 1);
+  private _tempClosestPoint = Vector3.Zero();
   private _interactTimer = 0;
 
   public enable(): void { this.isEnabled = true; }
   
   public disable(): void { 
     this.isEnabled = false; 
-    // 🔥 FIX: Limpiar siempre si hay un target interactivo O una malla hovoreada (como una pared en modo Admin)
     if (this.currentTarget !== null || this.currentHoveredMesh !== null) {
       this.currentTarget = null;
       this.canInteract = false;
@@ -126,20 +128,6 @@ export class PlayerInteractionService implements IUpdatable {
     return proxies.find(p => p.parent === rootMesh) ?? null;
   }
 
-  private getClosestPointOnMeshBounds(mesh: AbstractMesh, point: Vector3): Vector3 | null {
-    try {
-      mesh.computeWorldMatrix(true);
-      const bounds = mesh.getBoundingInfo().boundingBox;
-      return new Vector3(
-        this.clamp(point.x, bounds.minimumWorld.x, bounds.maximumWorld.x),
-        this.clamp(point.y, bounds.minimumWorld.y, bounds.maximumWorld.y),
-        this.clamp(point.z, bounds.minimumWorld.z, bounds.maximumWorld.z)
-      );
-    } catch {
-      return null;
-    }
-  }
-
   private updateInteractionProbePoint(view: 'FPS' | 'TPS', jugador: Mesh, activeCamera: any, entity: GameEntity): void {
     if (view === 'FPS') {
       if (activeCamera?.position) {
@@ -160,8 +148,20 @@ export class PlayerInteractionService implements IUpdatable {
   private getInteractionDistanceToTarget(targetMesh: AbstractMesh, probePoint: Vector3): number {
     if (!targetMesh) return Number.POSITIVE_INFINITY;
     const shapeMesh = this.getRootProxyCollider(targetMesh) ?? targetMesh;
-    const closest = this.getClosestPointOnMeshBounds(shapeMesh, probePoint);
-    return closest ? Vector3.Distance(probePoint, closest) : Vector3.Distance(probePoint, targetMesh.getAbsolutePosition());
+    
+    // 🔥 ZERO-ALLOCATION MATH
+    try {
+      shapeMesh.computeWorldMatrix(true);
+      const bounds = shapeMesh.getBoundingInfo().boundingBox;
+      this._tempClosestPoint.set(
+        this.clamp(probePoint.x, bounds.minimumWorld.x, bounds.maximumWorld.x),
+        this.clamp(probePoint.y, bounds.minimumWorld.y, bounds.maximumWorld.y),
+        this.clamp(probePoint.z, bounds.minimumWorld.z, bounds.maximumWorld.z)
+      );
+      return Vector3.Distance(probePoint, this._tempClosestPoint);
+    } catch {
+      return Vector3.Distance(probePoint, targetMesh.getAbsolutePosition());
+    }
   }
 
   public canActivateInteraction(targetEntity: GameEntity, view: 'FPS' | 'TPS'): boolean {
@@ -217,9 +217,8 @@ export class PlayerInteractionService implements IUpdatable {
         }
         
         if (rootEntity && rootEntity.view) {
-            // 🔥 SOLUCIÓN DEL BUG: Se elimina el early return que dejaba atascado el estado
             if (rootEntity.type === 'trigger' || rootEntity.type === 'trigger_compuesto') {
-                // Ignoramos triggers silenciosamente para que la limpieza final de la función se ejecute correctamente.
+                // Ignoramos
             } else {
                 const selectionDistance = this.getInteractionDistanceToTarget(rootEntity.view, this._probePoint);
                 this.lastInteractDistance = selectionDistance;

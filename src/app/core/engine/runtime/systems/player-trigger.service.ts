@@ -30,6 +30,9 @@ export class PlayerTriggerService implements IUpdatable {
   private teleportCooldown: number = 0;
   private isTransitioning = false;
 
+  // 🔥 PREVENCIÓN DE ALLOCATIONS
+  private _probePoint = Vector3.Zero();
+
   public start(): void {
     this.resetTransitionState();
     const isDebugMode = this.context.isDebugMode();
@@ -91,7 +94,8 @@ export class PlayerTriggerService implements IUpdatable {
   public verificarTriggers(entity: GameEntity | null, silent: boolean = false, isCinematic: boolean = false): void {
     if (this.isTransitioning) return;
 
-    let probePoint = Vector3.Zero();
+    const probePoint = this._probePoint;
+    probePoint.setAll(0);
     
     if (isCinematic) {
         const cam = this.ownership.getCamera();
@@ -172,8 +176,6 @@ export class PlayerTriggerService implements IUpdatable {
           const targetId = triggerEntity.trigger.targetSceneId;
           if (targetId) {
               this.isTransitioning = true;
-              
-              // Detener inmediatamente cinemáticas o audios de la plataforma que se abandona
               this.cinematicDirector.stop();
               this.triggerAudioSvc.stop();
 

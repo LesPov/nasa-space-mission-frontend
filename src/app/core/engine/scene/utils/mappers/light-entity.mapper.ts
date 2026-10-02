@@ -1,4 +1,4 @@
-// file: src/app/core/engine/scene/utils/mappers/light-entity.mapper.ts
+
 import { Injectable } from '@angular/core';
 import { BaseEntityMapper } from './base-entity.mapper';
 import { GameEntity, LightContainmentMode, LightDistanceReferenceMode } from '../../../entities/game.entity';
@@ -56,7 +56,11 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.enabled = props.isEnabled ?? true;
       entity.light.castShadows = (props as any).castShadows ?? true;
 
-      entity.light.containmentMode = (props.containmentMode as LightContainmentMode) || 'GLOBAL';
+      // 🔥 FIX LUZ INTERIOR: Si la luz es hija de un modelo (tiene parentId), por defecto se confina
+      // al INTERIOR del modelo para evitar filtraciones de luz hacia el exterior, a menos que el usuario indique lo contrario explícitamente.
+      const defaultContainment = obj.parentId ? 'INTERIOR' : 'GLOBAL';
+      entity.light.containmentMode = (props.containmentMode as LightContainmentMode) || defaultContainment;
+      
       entity.light.containerEntityUid = props.containerEntityUid || '';
       entity.light.affectDescendantsOnly = props.affectDescendantsOnly ?? true;
       entity.light.shadowDarkness = props.shadowDarkness ?? 0.0;

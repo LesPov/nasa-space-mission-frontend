@@ -1,6 +1,4 @@
 
-// src/app/core/engine/runtime/systems/trigger-audio.service.ts
-
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameContextService } from '../../session/game-context.service';
@@ -28,6 +26,7 @@ export class TriggerAudioService implements IUpdatable {
   private entityManager = inject(EntityManagerService);
   
   private activeAudios = new Map<string, AudioPlaybackState>();
+  private _tempClosestPoint = Vector3.Zero();
 
   public start(): void {
       this.stopAll();
@@ -45,7 +44,6 @@ export class TriggerAudioService implements IUpdatable {
       this.activeAudios.clear();
   }
 
-  // Llamado explícitamente desde PlayerTriggerService cuando se ejecuta un evento
   public playTriggerEvent(entity: GameEntity, eventType: string): void {
       let soundUrl = '';
       let loop = false;
@@ -249,7 +247,7 @@ export class TriggerAudioService implements IUpdatable {
       const clampY = Math.max(bounds.minimumWorld.y, Math.min(bounds.maximumWorld.y, playerPos.y));
       const clampZ = Math.max(bounds.minimumWorld.z, Math.min(bounds.maximumWorld.z, playerPos.z));
       
-      const closestPoint = new Vector3(clampX, clampY, clampZ);
-      return Vector3.Distance(playerPos, closestPoint);
+      this._tempClosestPoint.set(clampX, clampY, clampZ);
+      return Vector3.Distance(playerPos, this._tempClosestPoint);
   }
 }

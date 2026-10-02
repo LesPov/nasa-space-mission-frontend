@@ -1,7 +1,7 @@
+
 // src/app/core/engine/runtime/systems/player-input.service.ts
 
 import { Injectable, inject } from '@angular/core';
-import { KeyboardInfo, KeyboardEventTypes } from '@babylonjs/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameContextService } from '../../session/game-context.service';
 import { GameEventBusService } from '../../events/game-event-bus.service';
@@ -48,13 +48,14 @@ export class PlayerInputService implements IUpdatable {
       this.inputSub = null;
     }
 
-    // Consume input de gameplay exclusivamente en los contextos activos de juego
-    this.inputSub = this.inputRouter.getKeyboardStream([
+    // 🔥 FIX WASD REGRESIÓN: Usamos el stream GLOBAL de la ventana.
+    // Esto puentea el problema de pérdida de Focus del Canvas de BabylonJS al usar botones UI
+    this.inputSub = this.inputRouter.getGlobalKeyboardStream([
       'GAMEPLAY',
       'ADMIN_PREVIEW',
       'EDITOR_PLAYTEST'
-    ]).subscribe(kbInfo => {
-      this.handleKeyboardEvent(kbInfo);
+    ]).subscribe(event => {
+      this.handleKeyboardEvent(event);
     });
   }
 
@@ -125,13 +126,13 @@ export class PlayerInputService implements IUpdatable {
     this.inspectPressedThisFrame = false;
   }
   
-  private handleKeyboardEvent(kbInfo: KeyboardInfo): void {
-    const keyStr = kbInfo.event.key ? kbInfo.event.key.toLowerCase() : '';
-    const codeStr = kbInfo.event.code ? kbInfo.event.code.toLowerCase() : '';
-
+  private handleKeyboardEvent(event: KeyboardEvent): void {
     if (!this.isEnabled) return;
 
-    if (kbInfo.type === KeyboardEventTypes.KEYDOWN) {
+    const keyStr = event.key ? event.key.toLowerCase() : '';
+    const codeStr = event.code ? event.code.toLowerCase() : '';
+
+    if (event.type === 'keydown') {
       this.inputMap[keyStr] = true;
       this.inputMap[codeStr] = true;
 
@@ -142,7 +143,7 @@ export class PlayerInputService implements IUpdatable {
         this.inputMap['v_handled'] = true;
         this.eventBus.emit({ type: 'ToggleCameraRequested' });
       }
-    } else if (kbInfo.type === KeyboardEventTypes.KEYUP) {
+    } else if (event.type === 'keyup') {
       this.inputMap[keyStr] = false;
       this.inputMap[codeStr] = false;
 
@@ -160,11 +161,5 @@ export class PlayerInputService implements IUpdatable {
     this.inputMap = {};
     this.actionPressedThisFrame = false;
     this.inspectPressedThisFrame = false;
-    
-    // 🔥 CORRECCIÓN: El menú radial NO debe resetearse aquí. 
-    // Su ciclo de vida depende exclusivamente del evento RadialMenuToggled,
-    // de lo contrario, al perder el foco (GamePaused), el juego "olvidaba"
-    // que fue pausado por la tecla Q y abría accidentalmente la Misión.
-    // this.isRadialMenuOpen = false;
   }
 }

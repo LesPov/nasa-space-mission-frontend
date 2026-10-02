@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { DirectionalLight, Vector3, CascadedShadowGenerator, ShadowGenerator, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -9,6 +10,7 @@ import { GameContextService } from '../../session/game-context.service';
 import { ShadowLODManager } from './shadow-lod-manager.service';
 import { ShadowLOD, ShadowProfile } from './shadow.model';
 import { GameEntity } from '../../entities/game.entity';
+import { InteractableRulesService } from '../rules/interactable-rules.service';
 
 @Injectable({ providedIn: 'root' })
 export class ShadowOrchestratorService implements IUpdatable {
@@ -19,9 +21,13 @@ export class ShadowOrchestratorService implements IUpdatable {
   private worldSettings = inject(WorldSettingsService);
   private context = inject(GameContextService); 
   private shadowLOD = inject(ShadowLODManager);
+  private interactRules = inject(InteractableRulesService); 
 
   private mainSun: DirectionalLight | null = null;
   private shadowGenerator: CascadedShadowGenerator | null = null;
+  
+  private static _fallbackPos = Vector3.Zero();
+  private _tempOffset = Vector3.Zero();
 
   private getReferencePosition(): Vector3 {
       const playerEntity = this.context.activePlayerEntity();
@@ -29,26 +35,35 @@ export class ShadowOrchestratorService implements IUpdatable {
           return playerEntity.view.getAbsolutePosition();
       }
       const camera = this.ownership.getCamera() || this.motor3d.getEditorCamera();
-      return camera ? camera.globalPosition : Vector3.Zero();
+      if (camera) return camera.globalPosition;
+      return ShadowOrchestratorService._fallbackPos;
   }
 
   private isEligibleShadowCaster(e: GameEntity): boolean {
-      if (!e.view || !e.view.isVisible || !e.view.isEnabled()) return false;
+      if (!e.view) return false;
+      // 🔥 CORE FIX: Ignora objetos escondidos MANUALMENTE por el usuario, pero PERMITE objetos
+      // temporalmente ocultos por el sistema de Culling, garantizando que el caché de sombras nunca se pierda.
+      const isManuallyHidden = !e.isCulled && (!e.view.isVisible || !e.view.isEnabled());
+      if (isManuallyHidden) return false;
 
-      if (e.type === 'image_plane' || e.type === 'bubble' || e.type === 'trigger' || e.type === 'trigger_compuesto') {
-          return false;
-      }
-
-      if (e.type.startsWith('light_') && !e.visual?.assetId && !e.visual?.path) {
-          return false;
-      }
-
-      if (e.characterConfig || e.rol === 'player' || e.rol === 'npc') {
-          return true;
-      }
+      if (e.type === 'image_plane' || e.type === 'bubble' || e.type === 'trigger' || e.type === 'trigger_compuesto') return false;
+      if (e.type.startsWith('light_') && !e.visual?.assetId && !e.visual?.path) return false;
+      if (e.characterConfig || e.rol === 'player' || e.rol === 'npc') return true;
 
       const renderableTypes = ['model', 'cube', 'sphere', 'cylinder', 'plane'];
       if (renderableTypes.includes(e.type) || !!e.visual?.assetId || !!e.visual?.path) {
+          
+          const isInteractable = this.interactRules.isInteractable(e);
+          if (isInteractable) return true; 
+
+          e.view.computeWorldMatrix(true);
+          const bounds = e.view.getHierarchyBoundingVectors(true);
+          const diag = bounds.max.subtract(bounds.min).length();
+          
+          if (diag < 0.6) {
+              return false;
+          }
+
           return true;
       }
 
@@ -56,9 +71,6 @@ export class ShadowOrchestratorService implements IUpdatable {
   }
 
   public start(): void {
-      // 🔥 FIX DE RENDIMIENTO CRÍTICO: La lista de sombras solares se compila
-      // de forma global exclusivamente al arrancar o al hacer Spawn de un nuevo objeto.
-      // Delegamos el Culling nativo de sombras al Frustum del CascadedShadowGenerator de BabylonJS.
       this.asignarObjetosASombrasDeLuces();
   }
 
@@ -77,12 +89,29 @@ export class ShadowOrchestratorService implements IUpdatable {
      const scene = this.motor3d.getScene();
      if (!scene || !this.mainSun) return;
 
-     // La única responsabilidad por Frame de la orquestación solar es acompañar al player/cámara
      const refPos = this.getReferencePosition();
      if (Vector3.DistanceSquared(this.mainSun.position, refPos) > 25) {
          this.mainSun.position.copyFrom(refPos);
-         this.mainSun.position.subtractInPlace(this.mainSun.direction.scale(100));
+         this.mainSun.direction.scaleToRef(100, this._tempOffset);
+         this.mainSun.position.subtractInPlace(this._tempOffset);
      }
+  }
+
+  private updateRenderListIfChanged(currentList: AbstractMesh[], newList: AbstractMesh[]): void {
+      if (currentList.length === newList.length) {
+          let isSame = true;
+          for (let i = 0; i < newList.length; i++) {
+              if (currentList[i] !== newList[i]) {
+                  isSame = false;
+                  break;
+              }
+          }
+          if (isSame) return;
+      }
+      currentList.length = 0;
+      for (let i = 0; i < newList.length; i++) {
+          currentList.push(newList[i]);
+      }
   }
 
   public asignarObjetosASombrasDeLuces(): void {
@@ -119,17 +148,17 @@ export class ShadowOrchestratorService implements IUpdatable {
 
     const renderList = this.shadowGenerator.getShadowMap()?.renderList;
     if (renderList) {
-        renderList.length = 0;
-        
+        const newRenderList: AbstractMesh[] = [];
         const entities = this.entityManager.getAllEntities();
 
         for (let i = 0; i < entities.length; i++) {
            const e = entities[i];
            if (this.isEligibleShadowCaster(e) && e.view) {
                const processMeshForShadows = (m: AbstractMesh) => {
-                   if (!Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
+                   const isManuallyHidden = !e.isCulled && (!m.isVisible || !m.isEnabled());
+                   if (!isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
                        if (m instanceof Mesh && m.getTotalVertices() > 0) {
-                           renderList.push(m);
+                           newRenderList.push(m);
                        }
                        m.receiveShadows = true;
                    }
@@ -148,6 +177,8 @@ export class ShadowOrchestratorService implements IUpdatable {
                }
            }
         }
+        
+        this.updateRenderListIfChanged(renderList, newRenderList);
     }
   }
 }

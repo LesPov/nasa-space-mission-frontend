@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
@@ -36,9 +37,11 @@ export class CharacterKinematicsService implements IUpdatable {
   private _forwardDir = new Vector3(0, 0, 1);
   private _upDir = new Vector3(0, 1, 0);
   private _rightDir = new Vector3(1, 0, 0);
+  
+  private static _upVector = Vector3.Up();
 
   public physicsUpdate(dtMs: number): void {
-    if (dtMs <= 0) return; // Si la simulación está en pausa (0x), salimos de inmediato
+    if (dtMs <= 0) return; 
 
     const scene = this.motor3d.getScene();
     const mode = this.context.mode();
@@ -133,7 +136,6 @@ export class CharacterKinematicsService implements IUpdatable {
           
           const estadoFisico = entity.playerRuntime.physicsState;
 
-          // Interpolación Suave y Perfecta Visual (Separada de Físicas)
           Vector3.LerpToRef(estadoFisico.previousPosition, estadoFisico.currentPosition, safeAlpha, mesh.position);
       }
   }
@@ -153,8 +155,6 @@ export class CharacterKinematicsService implements IUpdatable {
     const playerState = entity.playerRuntime;
     const estadoFisico = playerState.physicsState;
 
-    // 🔥 Restablecer la malla a la posición física exacta calculada en el frame anterior
-    // Esto previene que el motor de físicas herede un estado interpolado visualmente y se desvíe.
     mesh.position.copyFrom(estadoFisico.currentPosition);
     estadoFisico.previousPosition.copyFrom(estadoFisico.currentPosition);
 
@@ -217,7 +217,6 @@ export class CharacterKinematicsService implements IUpdatable {
       );
     }
     
-    // 🔥 Guardar el estado físico real, inmutable para la interpolación posterior
     estadoFisico.currentPosition.copyFrom(mesh.position);
 
     entity.syncTransformFromView();
@@ -270,7 +269,7 @@ export class CharacterKinematicsService implements IUpdatable {
 
     if (estadoFisico.isGrounded && hitInfo && hitInfo.hit) {
       const normal = hitInfo.getNormal(true);
-      estadoFisico.groundNormal = normal || Vector3.Up();
+      estadoFisico.groundNormal = normal || CharacterKinematicsService._upVector;
     } else {
       estadoFisico.groundNormal = null;
     }

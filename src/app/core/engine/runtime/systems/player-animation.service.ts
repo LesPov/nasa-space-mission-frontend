@@ -34,6 +34,8 @@ export class PlayerAnimationService implements IUpdatable {
   private states = new Map<string, AnimState>();
   private entityManager = inject(EntityManagerService);
 
+  private _fallbackConfig = cloneDefaultPlayerConfig();
+
   public animationUpdate(dtMs: number): void {
     const entities = this.entityManager.getAllEntities();
     let scene: Scene | null = null;
@@ -89,7 +91,7 @@ export class PlayerAnimationService implements IUpdatable {
   public sincronizarAnimaciones(scene: Scene, entity: GameEntity): void {
     const state = this.getState(entity.uid);
     const obj = entity.view as Mesh;
-    const config = entity.playerConfig || cloneDefaultPlayerConfig();
+    const config = entity.playerConfig || this._fallbackConfig;
 
     if (!obj) return;
     
@@ -118,7 +120,6 @@ export class PlayerAnimationService implements IUpdatable {
       state.animacionesJugador = scene.animationGroups.filter(isTargetingObj);
     }
 
-    // Normalizar speedRatio en todas las animaciones de la entidad
     state.animacionesJugador.forEach(ag => {
       ag.speedRatio = 1.0;
     });
@@ -245,7 +246,7 @@ export class PlayerAnimationService implements IUpdatable {
 
   public gestionarAnimaciones(entity: GameEntity, estadoFisico: EstadoFisico, seqRuntime: SeqRuntime | null): void {
     const state = this.getState(entity.uid);
-    const config = entity.playerConfig || cloneDefaultPlayerConfig();
+    const config = entity.playerConfig || this._fallbackConfig;
     
     if (entity.movementAuthority === 'CINEMATIC_FULL') {
         let targetAnim: AnimationGroup | null = null;

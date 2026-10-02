@@ -1,3 +1,4 @@
+
 import { Injectable } from '@angular/core';
 import { Color3, Texture, RawTexture, Scene, AbstractMesh } from '@babylonjs/core';
 
@@ -102,6 +103,7 @@ export class CoreSceneMaterialService {
     const isCustomTint = colorHex && colorHex.toLowerCase() !== '#ffffff';
 
     if (material.getClassName().includes('PBR')) {
+      material.allowShaderHotSwapping = true; // 🔥 PREVIENE POPPING
       material.ambientColor = c3Amb;
       
       if (material.usePhysicalLightFalloff !== false) material.usePhysicalLightFalloff = false;
@@ -150,6 +152,7 @@ export class CoreSceneMaterialService {
       }
 
     } else if (material.getClassName().includes('Standard')) {
+      material.allowShaderHotSwapping = true; // 🔥 PREVIENE POPPING
       material.ambientColor = c3Amb;
       
       if (!material.metadata) material.metadata = {};

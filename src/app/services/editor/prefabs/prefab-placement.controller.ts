@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { 
   Scene, Vector3, Matrix, AbstractMesh, Ray, 
@@ -26,7 +25,6 @@ export class PrefabPlacementController {
   private currentAsset: any = null;
   private scene: Scene | null = null;
   private camera: any = null;
-  
   private onCancel: () => void = () => {};
   private isModalOpenFn: () => boolean = () => false;
   private activePlayerFn: () => GameEntity | null = () => null;
@@ -40,7 +38,7 @@ export class PrefabPlacementController {
   private isFPressed = false;
   private isShiftPressed = false; 
   private buildDistance = 15;
-
+  
   private activeNudgeAxis: 'X' | 'Y' | 'Z' | null = null;
   private manualOffset = Vector3.Zero();
   private ghostConnIndex = -1; 
@@ -48,18 +46,14 @@ export class PrefabPlacementController {
   private targetPosition = Vector3.Zero();
   private baseRotation = Vector3.Zero();
   private targetRotation = Vector3.Zero();
-  
   private targetScale = Vector3.One(); 
   private ghostScale = Vector3.One();  
-  
   private targetParent: AbstractMesh | null = null;
   private currentColor: 'green' | 'yellow' | 'blue' | 'red' = 'green';
 
-  // 🔥 Controles de Navegación Free Fly
   private keys = { w: false, a: false, s: false, d: false, space: false, c: false };
   private preventContextMenu = (e: Event) => e.preventDefault();
 
-  // 🔥 Variables para inyección temporal FPS sobre ArcRotateCamera
   private originalRadius: number = 10;
   private flyYaw = 0;
   private flyPitch = 0;
@@ -78,6 +72,7 @@ export class PrefabPlacementController {
     this.baseRotation = Vector3.Zero();
     this.targetRotation = Vector3.Zero();
     this.targetParent = null;
+
     this.isAltPressed = false;
     this.isGPressed = false;
     this.isFPressed = false;
@@ -85,21 +80,17 @@ export class PrefabPlacementController {
     this.activeNudgeAxis = null;
     this.manualOffset.setAll(0);
     this.buildDistance = 15;
-    this.ghostConnIndex = -1; 
-    
+    this.ghostConnIndex = -1;      
     this.keys = { w: false, a: false, s: false, d: false, space: false, c: false };
     
-    // 🔥 Setup de la cámara para que actúe como una Free Fly (FPS) pura
     if (this.camera && this.camera.getClassName() === 'ArcRotateCamera') {
         const arcCam = this.camera as ArcRotateCamera;
         this.originalRadius = arcCam.radius;
         
-        // Inicializamos nuestro pitch/yaw basados en la dirección actual
         const forward = arcCam.getDirection(Vector3.Forward());
         this.flyPitch = Math.asin(forward.y); 
-        this.flyYaw = Math.atan2(forward.z, forward.x); 
+        this.flyYaw = Math.atan2(forward.z, forward.x);
         
-        // Acercamos el target a la nariz de la cámara (convirtiéndola virtualmente en un First Person View)
         arcCam.setTarget(arcCam.position.add(forward.scale(0.05)));
     }
 
@@ -113,6 +104,7 @@ export class PrefabPlacementController {
     } else if (asset.scale) {
       sx = asset.scale.x; sy = asset.scale.y; sz = asset.scale.z;
     }
+    
     this.targetScale = new Vector3(sx, sy, sz);
 
     const internalScale = rootItem.properties?.internalScale;
@@ -123,6 +115,7 @@ export class PrefabPlacementController {
     }
 
     await this.ghostRenderer.createGhost(asset, scene);
+    
     if (!this.isBuilding) return; 
 
     this.ghostRenderer.setTransform(this.targetPosition, this.targetRotation, this.ghostScale);
@@ -190,7 +183,6 @@ export class PrefabPlacementController {
       }
       
       if (pi.type === PointerEventTypes.POINTERMOVE) {
-        // 🔥 FREE FLY MOUSE LOOK EXACTO Y PRECISO
         if (this.gameContext.isPointerLocked() && this.camera && this.camera.getClassName() === 'ArcRotateCamera') {
            const arcCam = this.camera as ArcRotateCamera;
            const sens = 0.003;
@@ -200,7 +192,6 @@ export class PrefabPlacementController {
            this.flyYaw -= moveX * sens;
            this.flyPitch -= moveY * sens;
            
-           // Limitar el cabeceo para que no gire el cuello al revés
            const halfPi = Math.PI / 2 - 0.01;
            if (this.flyPitch < -halfPi) this.flyPitch = -halfPi;
            if (this.flyPitch > halfPi) this.flyPitch = halfPi;
@@ -212,7 +203,6 @@ export class PrefabPlacementController {
               r * Math.sin(this.flyYaw)
            );
            
-           // Rotar manteniendo el pivot firmemente pegado a la cámara actual
            const currentPos = arcCam.position.clone();
            arcCam.setTarget(currentPos.add(dir.scale(0.05)));
         }
@@ -220,7 +210,7 @@ export class PrefabPlacementController {
 
       if (pi.type === PointerEventTypes.POINTERWHEEL) {
         const event = pi.event as WheelEvent;
-        const dir = Math.sign(event.deltaY) * -1; 
+        const dir = Math.sign(event.deltaY) * -1;
         
         if (this.activeNudgeAxis) {
             event.preventDefault();
@@ -251,7 +241,7 @@ export class PrefabPlacementController {
   private updateHUD() {
     let msg = '';
     if (this.activeNudgeAxis) {
-        msg = `⚙️ EJE [${this.activeNudgeAxis}] ACTIVO | Offset: (${this.manualOffset.x.toFixed(2)}, ${this.manualOffset.y.toFixed(2)}, ${this.manualOffset.z.toFixed(2)}) | [Wheel] Ajustar | [Shift] Fino | [C] Reset Offset | [X/Y/Z] Salir`;
+        msg = `[EJE ${this.activeNudgeAxis} ACTIVO] | Offset: (${this.manualOffset.x.toFixed(2)}, ${this.manualOffset.y.toFixed(2)}, ${this.manualOffset.z.toFixed(2)}) | [Wheel] Ajustar | [Shift] Fino | [C] Reset Offset | [X/Y/Z] Salir`;
     } else {
         msg = `[Click] Instanciar | [Click Der / ESC] Cancelar | [Mouse] Mirar | [WASD] Volar | [Espacio/C] Subir/Bajar | [F] Suelo | [ALT] Unir | [X/Y/Z] Offset | [R] Rotar`;
     }
@@ -268,11 +258,11 @@ export class PrefabPlacementController {
     const engine = this.scene!.getEngine();
     
     let dt = engine.getDeltaTime() / 1000;
-    if (dt > 0.1) dt = 0.1; // Clamp de estabilidad
+    if (dt > 0.1) dt = 0.1; 
     
     const speed = this.isShiftPressed ? 30 * dt : 12 * dt;
-
     const moveVector = Vector3.Zero();
+
     const forward = arcCam.getDirection(Vector3.Forward());
     const right = arcCam.getDirection(Vector3.Right());
 
@@ -285,15 +275,7 @@ export class PrefabPlacementController {
 
     if (moveVector.lengthSquared() > 0) {
       moveVector.normalize().scaleInPlace(speed);
-      
-      // 🔥 FREE FLY REAL: Trasladar el objetivo (target) mutando directamente el Vector.
-      // Al NO usar el método setTarget(), BabylonJS no recalcula el Alpha ni el Beta.
-      // Como resultado, en el siguiente refresco de la matriz, la cámara entera 
-      // (posición incluida) se trasladará rígidamente conservando la misma orientación.
       arcCam.getTarget().addInPlace(moveVector);
-      
-      // Forzamos actualización de matriz para que los rayos (placement) y el ghost 
-      // utilicen la nueva posición inmediatamente en este mismo frame.
       arcCam.getViewMatrix();
     }
   }
@@ -334,20 +316,20 @@ export class PrefabPlacementController {
 
     this.ghostRenderer.setColor(this.currentColor);
     this.ghostRenderer.setTransform(this.targetPosition, this.targetRotation, this.ghostScale);
-    
     this.ghostRenderer.updateDebugVisuals(this.isAltPressed, result.debugTargetPos, result.debugGhostPos);
   }
 
   private buildPrefab() {
     if (!this.currentAsset || !this.scene) return;
-
+    
     const asset = this.currentAsset;
     const pos = this.targetPosition.clone();
-    const rot = this.targetRotation.clone(); 
+    const rot = this.targetRotation.clone();
     const parent = asset.targetParent !== undefined ? asset.targetParent : this.targetParent;
 
     if (asset.properties?.prefabHierarchy) {
-      this.editorScene.instanciarPrefabFull(asset, pos, rot, this.targetScale, parent || undefined);
+      // AQUÍ ESTÁ EL ARREGLO: Pasamos this.targetScale.clone() en lugar de Vector3.One()
+      this.editorScene.instanciarPrefabFull(asset, pos, rot, this.targetScale.clone(), parent || undefined);
     } else {
       const colorHex = asset.properties?.color || '#ffffff';
       const finalName = asset.exactName ? asset.name : `${asset.name}_${Math.floor(Math.random()*1000)}`;
@@ -366,7 +348,6 @@ export class PrefabPlacementController {
         this.eventBus.emit({ type: 'MessageRequested', payload: null });
     }
     
-    // Restaurar la cámara al orbit mode para el editor normal
     if (this.camera && this.camera.getClassName() === 'ArcRotateCamera') {
         const arcCam = this.camera as ArcRotateCamera;
         const forward = arcCam.getDirection(Vector3.Forward());
@@ -374,17 +355,18 @@ export class PrefabPlacementController {
     }
     
     window.removeEventListener('contextmenu', this.preventContextMenu);
-
     this.isBuilding = false;
     this.ghostRenderer.destroyGhost();
     this.currentAsset = null;
 
     if (this.kbSub) { this.kbSub.unsubscribe(); this.kbSub = null; }
     if (this.ptrSub) { this.ptrSub.unsubscribe(); this.ptrSub = null; }
+    
     if (scene && this.observerRender) {
       scene.onBeforeRenderObservable.remove(this.observerRender);
       this.observerRender = null;
     }
+    
     this.targetParent = null;
   }
 }

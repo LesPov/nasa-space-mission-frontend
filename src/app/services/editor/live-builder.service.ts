@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { GameEventBusService } from '../../core/engine/events/game-event-bus.service';
@@ -18,30 +17,19 @@ export class LiveBuilderService {
   private ownership = inject(CameraOwnershipService);
   private state = inject(EditorStateService);
   private inputOrchestrator = inject(InputOrchestratorService);
-
   private sub: Subscription | null = null;
 
   public initialize(): void {
     if (this.sub) return;
-
     this.sub = this.eventBus.events$.subscribe(e => {
       if (e.type === 'AssetSelectedForBuild') {
         if (e.payload) {
             const scene = this.motor3d.getScene();
             const camera = this.ownership.getCamera();
             
-            // Forzar escala real extraída del Prefab
-            if (e.payload.properties?.prefabHierarchy?.[0]?.scale) {
-                const s = e.payload.properties.prefabHierarchy[0].scale;
-                e.payload.scale = { ...s };
-                e.payload.scaling = { ...s };
-            }
-
             if (scene && camera) {
-                // 🔥 MODO EDITOR: Congelar la cámara del editor normal
                 this.detachEditorCamera();
                 
-                // 🔥 TRANSFERENCIA DE CONTROL ABSOLUTA (UI -> ESCENA 3D)
                 const canvas = this.motor3d.getEngine().getRenderingCanvas();
                 if (canvas) {
                     canvas.focus();
@@ -53,10 +41,9 @@ export class LiveBuilderService {
                     scene, 
                     camera, 
                     () => {
-                        // OnCancel / OnStop
                         this.eventBus.emit({ type: 'RadialMenuToggled', payload: false });
                         this.restoreEditorCamera(); 
-                        this.inputOrchestrator.unlockPointer(); // Liberar ratón
+                        this.inputOrchestrator.unlockPointer();
                     },
                     () => this.state.showAddObjectModal(),
                     () => this.context.activePlayerEntity()
@@ -94,9 +81,6 @@ export class LiveBuilderService {
     }
   }
 
-  // ==============================================================
-  // UTILIDADES PARA CONGELAR/DESCONGELAR LA CÁMARA DEL EDITOR
-  // ==============================================================
   private detachEditorCamera(): void {
     if (this.state.playState() === 'EDITOR' || this.state.playState() === 'EDITING_IN_GAME') {
         const editorCam = this.motor3d.getEditorCamera();
@@ -111,7 +95,6 @@ export class LiveBuilderService {
         const editorCam = this.motor3d.getEditorCamera();
         const canvas = this.motor3d.getEngine().getRenderingCanvas();
         if (editorCam && canvas) {
-            // Leve delay para que el Clic Derecho de cancelar no mueva la cámara de golpe
             setTimeout(() => {
                try { editorCam.attachControl(canvas, true); } catch(e) {}
             }, 50);

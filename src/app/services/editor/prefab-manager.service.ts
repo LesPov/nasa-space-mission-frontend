@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Tags } from '@babylonjs/core';
 import { EpisodiosService } from '../api/episodios';
@@ -21,30 +20,36 @@ export class PrefabManagerService {
       }
 
       const hierarchyData: any[] = [];
+      const serializedEntities = new Set<string>();
 
       const traverseAndSerialize = (mesh: AbstractMesh, parentUid: string | null) => {
         const entity = this.entityManager.getEntityByMesh(mesh);
+        let currentParentUid = parentUid;
         
         if (entity && !Tags.MatchesQuery(mesh, "system_element")) {
-          entity.syncTransformFromView();
-          
-          const dtos = this.persistenceMapper.extractToDtos(entity);
-          dtos.forEach(dto => {
-             hierarchyData.push({
-                originalUid: dto.uid, 
-                parentOriginalUid: parentUid,
-                type: dto.type || 'model',
-                name: dto.name,
-                assetId: dto.assetId || null,
-                position: dto.position,
-                rotation: dto.rotation,
-                scale: dto.scale,
-                properties: dto.properties
-             });
-          });
-
-          mesh.getChildMeshes(true).forEach(child => traverseAndSerialize(child, entity.uid));
+          if (!serializedEntities.has(entity.uid)) {
+            serializedEntities.add(entity.uid);
+            entity.syncTransformFromView();
+            
+            const dtos = this.persistenceMapper.extractToDtos(entity);
+            dtos.forEach(dto => {
+               hierarchyData.push({
+                  originalUid: dto.uid,
+                  parentOriginalUid: parentUid,
+                  type: dto.type || 'model',
+                  name: dto.name,
+                  assetId: dto.assetId || null,
+                  position: dto.position,
+                  rotation: dto.rotation,
+                  scale: dto.scale,
+                  properties: dto.properties
+               });
+            });
+            currentParentUid = entity.uid;
+          }
         }
+
+        mesh.getChildMeshes(true).forEach(child => traverseAndSerialize(child, currentParentUid));
       };
 
       traverseAndSerialize(rootMesh, null);

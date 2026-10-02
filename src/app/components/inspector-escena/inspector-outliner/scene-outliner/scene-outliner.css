@@ -1,3 +1,4 @@
+
 :host {
   display: flex;
   flex-direction: column;
@@ -139,7 +140,8 @@
 }
 
 .action-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
-.action-btn.off { opacity: 0.3; }
+.action-btn.off { opacity: 0.3; color: #ef4444; }
+.action-btn.culled { opacity: 0.6; color: #facc15; }
 .action-btn.locked { color: #facc15; }
 
 /* ========================================================

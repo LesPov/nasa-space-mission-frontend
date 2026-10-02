@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
@@ -6,6 +7,7 @@ import { EditorMapaService } from '../../editor-mapa.service';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
 import { DynamicLightingSystem } from '../../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 import { ShadowOrchestratorService } from '../../../core/engine/runtime/shadows/shadow-orchestrator.service';
+import { OutlinerStateService } from '../../../components/inspector-escena/inspector-outliner/outliner-state.service';
 
 @Injectable({ providedIn: 'root' })
 export class SceneNodesService {
@@ -15,6 +17,7 @@ export class SceneNodesService {
   private entityManager = inject(EntityManagerService); 
   private dynamicLighting = inject(DynamicLightingSystem);
   private shadowOrchestrator = inject(ShadowOrchestratorService);
+  private outlinerState = inject(OutlinerStateService);
 
   public actualizarListaNodos(): void {
     if (!this.motor3d.getScene()) return;
@@ -24,7 +27,6 @@ export class SceneNodesService {
       !c.name.includes('proxy') && !c.name.includes('mock') && !c.name.includes('admin')
     );
 
-    // Mantenemos solo los nodos raíz verdaderos en la colección principal del Outliner
     this.state.setNodosEscena([
       ...camarasValidas,
       ...scene.meshes.filter(m =>
@@ -32,6 +34,9 @@ export class SceneNodesService {
         m.parent === null 
       )
     ]);
+
+    // 🔥 Invalida la caché del Outliner asegurando que siempre refleje la estructura tras una recarga
+    this.outlinerState.notifyStructureChanged();
   }
 
   public eliminarSeleccionado(): void {
@@ -58,8 +63,8 @@ export class SceneNodesService {
       });
 
       setTimeout(() => {
-        this.dynamicLighting.prepareAllLights();
-        this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
+        this.dynamicLighting.reconcileSceneLights();
+        this.shadowOrchestrator.reconcileShadows();
 
         this.actualizarListaNodos();
         this.mapaSvc.onMapChanged.next();

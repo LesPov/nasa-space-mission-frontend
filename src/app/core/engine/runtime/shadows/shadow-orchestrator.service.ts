@@ -41,6 +41,12 @@ export class ShadowOrchestratorService implements IUpdatable {
     };
   }
 
+  // 🔥 NUEVO: Operación atómica de reconciliación para evitar acumulación tras Reload/Exit Live.
+  public reconcileShadows(): void {
+      this.stop();
+      this.start();
+  }
+
   private getReferencePosition(): Vector3 {
       const playerEntity = this.context.activePlayerEntity();
       if (playerEntity && playerEntity.view) {
@@ -167,9 +173,9 @@ export class ShadowOrchestratorService implements IUpdatable {
            const e = entities[i];
            if (this.isEligibleShadowCaster(e) && e.view) {
                const processMeshForShadows = (m: AbstractMesh) => {
+                   if (m.isDisposed()) return; // 🔥 FIX: Prevención contra fugas
                    const isManuallyHidden = !e.isCulled && (!m.isVisible || !m.isEnabled());
                    if (!isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
-                       // 🔥 FASE 7 FIX: Casteo seguro con `getClassName` para aplicar propiedades a InstancedMesh
                        let isValidCaster = false;
                        if (m.getClassName() === "InstancedMesh") {
                            const source = (m as InstancedMesh).sourceMesh;
@@ -192,10 +198,11 @@ export class ShadowOrchestratorService implements IUpdatable {
                processMeshForShadows(e.view);
                e.view.getChildMeshes(false).forEach(processMeshForShadows);
            } else if (e.view) {
-               // Objetos invisibles o pequeños siguen recibiendo sombras
+               if (e.view.isDisposed()) continue; // 🔥 FIX: Prevención contra fugas
                if (!Tags.MatchesQuery(e.view, "light_visual || debug_element || proxy_collider")) {
                    if (e.view.getClassName() === "Mesh") e.view.receiveShadows = true;
                    e.view.getChildMeshes(false).forEach(cm => {
+                       if (cm.isDisposed()) return;
                        if (!Tags.MatchesQuery(cm, "light_visual || debug_element || proxy_collider")) {
                            if (cm.getClassName() === "InstancedMesh" && (cm as InstancedMesh).sourceMesh) {
                                (cm as InstancedMesh).sourceMesh.receiveShadows = true;

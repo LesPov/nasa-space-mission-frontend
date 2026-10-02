@@ -1,6 +1,7 @@
 
-import { Injectable, signal } from '@angular/core';
+import { Injectable, signal, inject } from '@angular/core';
 import { Node } from '@babylonjs/core';
+import { GameEventBusService } from '../../../core/engine/events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })
 export class OutlinerStateService {
@@ -14,7 +15,28 @@ export class OutlinerStateService {
 
   public expandedNodes = new Set<string>();
 
-  toggleExpand(id: string) {
+  // 🔥 Mecanismos de invalidación reactiva granulada (0 detectChanges masivos por frame)
+  public structureRevision = signal<number>(0);
+  public visibilityRevision = signal<number>(0);
+
+  constructor() {
+     const eventBus = inject(GameEventBusService);
+     eventBus.events$.subscribe(e => {
+        if (e.type === 'RuntimeVisibilityBatchChanged') {
+            this.notifyVisibilityChanged();
+        }
+     });
+  }
+
+  public notifyStructureChanged(): void { 
+    this.structureRevision.update(v => v + 1); 
+  }
+  
+  public notifyVisibilityChanged(): void { 
+    this.visibilityRevision.update(v => v + 1); 
+  }
+
+  public toggleExpand(id: string): void {
     if (this.expandedNodes.has(id)) {
       this.expandedNodes.delete(id);
     } else {
@@ -22,15 +44,15 @@ export class OutlinerStateService {
     }
   }
 
-  isExpanded(id: string): boolean { 
+  public isExpanded(id: string): boolean { 
     return this.expandedNodes.has(id); 
   }
 
-  expand(id: string): void {
+  public expand(id: string): void {
     this.expandedNodes.add(id);
   }
 
-  clear(): void {
+  public clear(): void {
     this.expandedNodes.clear();
     this.contextMenuOpen.set(false);
     this.draggedNode.set(null);

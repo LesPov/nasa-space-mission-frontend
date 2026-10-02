@@ -22,7 +22,8 @@ export type GameEvent =
   | { type: 'CinematicSeeked', payload: { timeMs: number } }
   | { type: 'DialogueRequested', payload: { actor?: string, text?: string, durationMs: number } }
   | { type: 'RadialMenuToggled', payload: boolean }
-  | { type: 'AssetSelectedForBuild', payload: any | null };
+  | { type: 'AssetSelectedForBuild', payload: any | null }
+  | { type: 'RuntimeVisibilityBatchChanged' }; // 🔥 Evento para notificar cambios de Culling masivos sin ahogar Angular
 
 @Injectable({ providedIn: 'root' })
 export class GameEventBusService {

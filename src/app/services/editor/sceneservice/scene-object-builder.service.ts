@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, MeshBuilder, Tags, Vector3 } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -63,8 +64,6 @@ export class SceneObjectBuilderService {
       resolvedParentUid = parentEntity ? parentEntity.uid : (parentNode.metadata?.entityUid || parentNode.metadata?.uid || null);
     }
 
-    // 🔥 FIX ESTRICTO: Solo cargamos el AssetContainer si existe una ruta real a un archivo (.glb).
-    // Si la luz no tiene un archivo asignado, entrará al Primitive Loader como corresponde, sin generar cubos de error.
     const hasValidAssetPath = !!((asset as any)?.path || (asset as any)?.asset?.path || (asset as any)?.properties?.path);
 
     const mockDbObject: SceneObjectDto & { isNewCreation?: boolean } = {
@@ -100,7 +99,6 @@ export class SceneObjectBuilderService {
     const isModel = tipo === 'model';
     const mallasCreadas = new Map<string, Mesh>();
 
-    // 🔥 Flujo resuelto: Modelos importados van al modelo, primitivas y luces vacías van a primitiva.
     if (isModel || (isLight && hasValidAssetPath)) {
       await this.modelLoader.cargarModeloAsync(mockDbObject, mallasCreadas);
     } else {
@@ -135,8 +133,9 @@ export class SceneObjectBuilderService {
           ent.isDirty = true;
       }
       
-      this.dynamicLighting.prepareAllLights();
-      this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
+      // 🔥 RECONCILIACIÓN CENTRALIZADA: Actualizamos pools
+      this.dynamicLighting.reconcileSceneLights();
+      this.shadowOrchestrator.reconcileShadows();
       
       this.nodesSvc.actualizarListaNodos();
       this.historialSvc.registrarAccionCrear(newMesh);

@@ -1,5 +1,5 @@
 
-import { Component, Input, OnInit, ViewChild, ElementRef, inject, DoCheck } from '@angular/core';
+import { Component, Input, OnInit, ViewChild, ElementRef, inject, DoCheck, effect, untracked, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Node, AbstractMesh, Camera, Light, Mesh, TransformNode, Tags } from '@babylonjs/core';
@@ -26,6 +26,7 @@ export class OutlinerNodeItemComponent implements OnInit, DoCheck {
   private stateSvc = inject(EditorStateService);
   private mapaSvc = inject(EditorMapaService);
   private outlinerState = inject(OutlinerStateService);
+  private cdr = inject(ChangeDetectorRef);
 
   public entity: GameEntity | null = null;
   public children: Node[] = [];
@@ -41,19 +42,48 @@ export class OutlinerNodeItemComponent implements OnInit, DoCheck {
   public meetsFilter = true;
   public highlightedName = '';
 
+  constructor() {
+    effect(() => {
+       this.outlinerState.visibilityRevision();
+       untracked(() => this.cdr.markForCheck());
+    });
+  }
+
   // Getters Evaluados
   get isSelected(): boolean { return this.stateSvc.objetoSeleccionado() === this.node; }
   get isExpanded(): boolean { return this.outlinerState.isExpanded(this.getUid()); }
   get paddingLeft(): number { return 10 + (this.depth * 15); }
   get isSelectable(): boolean { return this.entity?.visual?.isSelectable ?? true; }
-  get isVisible(): boolean { return (this.node as AbstractMesh).isVisible && (this.node as AbstractMesh).isEnabled(); }
+  
+  get isManuallyHidden(): boolean {
+     return this.entity?.isManuallyHidden ?? !( (this.node as AbstractMesh).isVisible && (this.node as AbstractMesh).isEnabled() );
+  }
+
+  get isRuntimeCulled(): boolean {
+     return this.entity?.isCulled ?? false;
+  }
+
+  get isEffectivelyVisible(): boolean {
+     return !this.isManuallyHidden && !this.isRuntimeCulled;
+  }
+
+  get visibilityIcon(): string {
+     if (this.isManuallyHidden) return '🚫';
+     if (this.isRuntimeCulled) return '🌫️';
+     return '👁';
+  }
+
+  get visibilityTitle(): string {
+     if (this.isManuallyHidden) return 'Oculto manualmente (Clic para mostrar)';
+     if (this.isRuntimeCulled) return 'Oculto por lejanía (Culling)';
+     return 'Visible (Clic para ocultar)';
+  }
 
   ngOnInit() {
     this.refreshData();
   }
 
   ngDoCheck() {
-    // Reaccionar a cambios en la búsqueda
     if (this.lastSearchTerm !== this.outlinerState.searchTerm()) {
       this.lastSearchTerm = this.outlinerState.searchTerm();
       this.evaluateSearch();
@@ -68,7 +98,6 @@ export class OutlinerNodeItemComponent implements OnInit, DoCheck {
     this.entity = this.node instanceof AbstractMesh ? (this.entityManager.getEntityByMesh(this.node) || null) : null;
     this.setupIcon();
     
-    // Filtrar Hijos Reales Espaciales
     this.children = this.node.getChildren().filter(child => {
       if (!(child instanceof Mesh) && !(child instanceof Light) && !(child instanceof TransformNode)) return false;
       return this.isValidOutlinerNode(child);
@@ -107,7 +136,7 @@ export class OutlinerNodeItemComponent implements OnInit, DoCheck {
         if (this.entity.characterConfig.characterType === 'militar') { this.icon = '🪖'; return; }
         this.icon = '🤖'; return;
       }
-      if (this.entity.visual?.assetId) { this.icon = '📦'; return; } // Prefab/Model
+      if (this.entity.visual?.assetId) { this.icon = '📦'; return; } 
       if (this.entity.type === 'cube' || this.node.name.toLowerCase().includes('cubo')) { this.icon = '🧊'; return; }
       if (this.entity.type === 'sphere' || this.node.name.toLowerCase().includes('esfera')) { this.icon = '⚽'; return; }
       if (this.entity.type === 'cylinder') { this.icon = '🛢️'; return; }
@@ -126,7 +155,6 @@ export class OutlinerNodeItemComponent implements OnInit, DoCheck {
       return;
     }
 
-    // Comprobar si cumple él o alguno de sus hijos
     const matchesMe = this.node.name.toLowerCase().includes(term);
     const matchesChild = this.checkChildMatch(this.node, term);
 
@@ -154,8 +182,6 @@ export class OutlinerNodeItemComponent implements OnInit, DoCheck {
     return false;
   }
 
-  // --- ACTIONS ---
-
   public toggleExpand(event: Event) {
     event.stopPropagation();
     this.outlinerState.toggleExpand(this.getUid());
@@ -163,7 +189,7 @@ export class OutlinerNodeItemComponent implements OnInit, DoCheck {
 
   public selectNode(event: MouseEvent) {
     event.stopPropagation();
-    if (this.node instanceof Camera || (this.node instanceof Light && !this.entity)) return; // Locked base items
+    if (this.node instanceof Camera || (this.node instanceof Light && !this.entity)) return;
     
     if (this.isSelected) {
       this.stateSvc.seleccionarObjeto(null);
@@ -208,9 +234,16 @@ export class OutlinerNodeItemComponent implements OnInit, DoCheck {
     event.stopPropagation();
     const mesh = this.node as AbstractMesh;
     if (mesh) {
-      const isVis = mesh.isVisible && mesh.isEnabled();
-      mesh.setEnabled(!isVis);
-      mesh.isVisible = !isVis;
+      const isCurrentlyHidden = this.isManuallyHidden;
+      if (this.entity) {
+          this.entity.isManuallyHidden = !isCurrentlyHidden;
+          this.entity.isDirty = true;
+      }
+      mesh.setEnabled(isCurrentlyHidden);
+      mesh.isVisible = isCurrentlyHidden;
+      
+      this.outlinerState.notifyVisibilityChanged();
+      this.mapaSvc.onMapChanged.next();
     }
   }
 
@@ -232,8 +265,6 @@ export class OutlinerNodeItemComponent implements OnInit, DoCheck {
     this.outlinerState.contextMenuPosition.set({ x: event.clientX, y: event.clientY });
     this.outlinerState.contextMenuOpen.set(true);
   }
-
-  // --- DRAG AND DROP ---
 
   public trackByUid(index: number, node: Node): string {
     return node.uniqueId.toString();
@@ -339,9 +370,6 @@ export class OutlinerNodeItemComponent implements OnInit, DoCheck {
           draggedEntity.syncTransformFromView();
           draggedEntity.isDirty = true;
       }
-      
-      // Order index recalculation should ideally happen in the orchestrator, 
-      // but doing it lazily is fine since Babylon preserves visual order correctly.
     }
 
     this.mapaSvc.onMapChanged.next();

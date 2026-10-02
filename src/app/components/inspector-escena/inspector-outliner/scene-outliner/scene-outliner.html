@@ -1,3 +1,4 @@
+
 <ul [class.tree-items]="depth === 0">
   <li *ngFor="let node of filteredNodes; trackBy: trackById">
     
@@ -21,7 +22,7 @@
       <span class="icon">{{ getIcon(node) }}</span>
       
       <!-- Display Name o Input -->
-      <span class="name-text" *ngIf="editingNodeId !== node.uniqueId.toString()" [title]="getDisplayName(node)" [class.hidden]="!isNodeVisible(node)">
+      <span class="name-text" *ngIf="editingNodeId !== node.uniqueId.toString()" [title]="getDisplayName(node)" [class.hidden]="!isNodeEffectivelyVisible(node)">
           {{ getDisplayName(node) }}
       </span>
       
@@ -36,8 +37,12 @@
              
       <!-- Controles Secundarios a la derecha (Ojo y Candado) -->
       <div class="node-actions" (click)="$event.stopPropagation()">
-          <button class="action-btn" [class.off]="!isNodeVisible(node)" (click)="toggleVisibility(node, $event)" [title]="isNodeVisible(node) ? 'Ocultar' : 'Mostrar'">
-              👁
+          <button class="action-btn" 
+                  [class.off]="isNodeManuallyHidden(node)" 
+                  [class.culled]="isNodeRuntimeCulled(node)"
+                  (click)="toggleVisibility(node, $event)" 
+                  [title]="getVisibilityTitle(node)">
+              {{ getVisibilityIcon(node) }}
           </button>
           <button class="action-btn" [class.locked]="isNodeLocked(node)" (click)="toggleLock(node, $event)" [title]="isNodeLocked(node) ? 'Desbloquear' : 'Bloquear'">
               {{ isNodeLocked(node) ? '🔒' : '🔓' }}

@@ -125,20 +125,16 @@ export class CoreSceneLoaderService {
 
     if (!this.sessionSvc.isSessionActive(sessionId)) return;
 
-    // 🔥 FASE 6: RECONSTRUCCIÓN PERFECTA DE JERARQUÍAS (LOCAL VS WORLD)
     mallasCreadas.forEach((mesh, uid) => {
       const entity = this.entityManager.getEntityByUid(uid);
       if (entity && entity.parentId) {
         const parentNode = mallasCreadas.get(entity.parentId) || scene.getMeshByName(entity.parentId);
         
         if (parentNode) {
-            // Backup exacto de la base de datos
             const dbPos = entity.transform.position;
             const dbRot = entity.transform.rotation;
             
             if (entity.transformSpace === 'WORLD' || entity.isLegacyLocalTransform) {
-                // Las coordenadas de la BD son Mundiales. 
-                // Restauramos a mundo y usamos setParent para calcular el local matemático sin que salte.
                 mesh.position.set(dbPos.x, dbPos.y, dbPos.z);
                 if (entity.transform.rotationQuaternion) {
                     mesh.rotationQuaternion = new Quaternion(entity.transform.rotationQuaternion.x, entity.transform.rotationQuaternion.y, entity.transform.rotationQuaternion.z, entity.transform.rotationQuaternion.w);
@@ -148,13 +144,11 @@ export class CoreSceneLoaderService {
                 
                 mesh.setParent(parentNode);
                 
-                // Actualizamos estado a LOCAL absoluto para los siguientes guardados
                 entity.transformSpace = 'LOCAL';
                 entity.isLegacyLocalTransform = false;
                 entity.syncTransformFromView();
                 entity.isDirty = true;
             } else if (entity.transformSpace === 'LOCAL') {
-                // La BD ya guarda el transform local puro, asignación directa sin recálculos.
                 mesh.parent = parentNode;
                 mesh.position.set(dbPos.x, dbPos.y, dbPos.z);
                 if (entity.transform.rotationQuaternion) {
@@ -192,8 +186,9 @@ export class CoreSceneLoaderService {
       });
     }, 150);
 
-    this.dynamicLighting.prepareAllLights(); 
-    this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
+    // 🔥 RECONCILIACIÓN CENTRALIZADA (Reemplaza prepareAllLights y asignarObjetos)
+    this.dynamicLighting.reconcileSceneLights(); 
+    this.shadowOrchestrator.reconcileShadows();
 
     await new Promise<void>((resolve) => {
       if (!this.sessionSvc.isSessionActive(sessionId)) return resolve();
@@ -296,7 +291,6 @@ export class CoreSceneLoaderService {
     await Promise.all(promesasCarga);
     if (!this.sessionSvc.isSessionActive(sessionId)) return mallasCreadas;
 
-    // 🔥 FASE 6: Parenting también seguro y local para los Prefabs construidos
     mallasCreadas.forEach((mesh, uid) => {
         const entity = this.entityManager.getEntityByUid(uid);
         if (entity && entity.parentId) {
@@ -311,8 +305,8 @@ export class CoreSceneLoaderService {
         }
     });
 
-    this.dynamicLighting.prepareAllLights(); 
-    this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
+    this.dynamicLighting.reconcileSceneLights(); 
+    this.shadowOrchestrator.reconcileShadows();
     return mallasCreadas;
   }
 }

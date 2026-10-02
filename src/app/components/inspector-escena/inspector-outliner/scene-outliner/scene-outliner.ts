@@ -1,5 +1,5 @@
 
-import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
+import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, effect, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Node, AbstractMesh, Tags, Mesh, Camera, Light } from '@babylonjs/core';
@@ -32,26 +32,34 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
   public editingNodeId: string | null = null;
   public editingName: string = '';
 
-  private sub: Subscription | null = null;
-
-  // 🔥 SOLUCIÓN NG0100: Caché estricto para estabilizar las referencias de los arrays en Angular
   private filteredNodesCache: Node[] | null = null;
   private childrenCache = new Map<number, Node[]>();
   private lastSearchTermCache: string | null = null;
 
-  ngOnInit() {
-    this.sub = this.mapaSvc.onMapChanged.subscribe(() => {
-      this.clearCaches();
-      this.cdr.markForCheck();
-      this.cdr.detectChanges();
+  constructor() {
+    // 🔥 Reacción a Cambios Estructurales
+    effect(() => {
+       this.outlinerState.structureRevision();
+       untracked(() => {
+          this.clearCaches();
+          this.cdr.markForCheck();
+       });
+    });
+
+    // 🔥 Reacción Ligera a Cambios de Visibilidad (Sin romper Caches)
+    effect(() => {
+       this.outlinerState.visibilityRevision();
+       untracked(() => {
+          this.cdr.markForCheck();
+       });
     });
   }
 
+  ngOnInit() {
+    // Las suscripciones destructivas a onMapChanged fueron eliminadas para salvar el rendimiento.
+  }
+
   ngOnDestroy() {
-    if (this.sub) {
-      this.sub.unsubscribe();
-      this.sub = null;
-    }
     this.childrenCache.clear();
   }
 
@@ -75,13 +83,11 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
   get filteredNodes(): Node[] {
     const currentTerm = this.searchTerm;
     
-    // Si el término de búsqueda cambió, invalidamos el caché
     if (this.lastSearchTermCache !== currentTerm) {
        this.clearCaches();
        this.lastSearchTermCache = currentTerm;
     }
 
-    // 🔥 Retorna la misma referencia en memoria para evitar el NG0100
     if (this.filteredNodesCache) {
        return this.filteredNodesCache;
     }
@@ -139,7 +145,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
   }
 
   getUsefulChildren(node: Node): Node[] {
-    // 🔥 SOLUCIÓN NG0100: Retornar caché para mantener la estabilidad del Virtual DOM
     if (this.childrenCache.has(node.uniqueId)) {
        return this.childrenCache.get(node.uniqueId)!;
     }
@@ -179,7 +184,7 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
       if (child.name.includes('proxycol') || child.name.startsWith('decal_')) continue;
 
       if (this.isTechnicalWrapper(child)) {
-        result.push(...this.getUsefulChildren(child)); // Recursividad segura gracias al caché
+        result.push(...this.getUsefulChildren(child)); 
       } else {
         result.push(child);
       }
@@ -225,17 +230,13 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     }
 
     const entity = this.entityManager.getEntityByMesh(node);
-    if (entity) {
-      return entity.name;
-    }
+    if (entity) return entity.name;
 
     const rootMesh = this.stateSvc.encontrarRaiz(node as AbstractMesh) as AbstractMesh;
     if (!rootMesh) return node.name;
     
     const rootEntity = this.entityManager.getEntityByMesh(rootMesh);
-    if (node === rootMesh && rootEntity) {
-        return rootEntity.name;
-    }
+    if (node === rootMesh && rootEntity) return rootEntity.name;
 
     if (!rootEntity || !rootEntity.partOverrides) return node.name;
 
@@ -349,19 +350,58 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     return false;
   }
 
-  isNodeVisible(node: Node): boolean {
+  // ===============================================
+  // 🔥 LÓGICA SEMÁNTICA DE VISIBILIDAD DE CAPAS
+  // ===============================================
+
+  isNodeManuallyHidden(node: Node): boolean {
     if (node instanceof AbstractMesh) {
-      return node.isVisible && node.isEnabled();
+       const entity = this.entityManager.getEntityByMesh(node);
+       if (entity) return entity.isManuallyHidden;
     }
-    return true;
+    return !((node as AbstractMesh).isVisible && (node as AbstractMesh).isEnabled());
+  }
+
+  isNodeRuntimeCulled(node: Node): boolean {
+    if (node instanceof AbstractMesh) {
+       const entity = this.entityManager.getEntityByMesh(node);
+       if (entity) return entity.isCulled;
+    }
+    return false;
+  }
+
+  isNodeEffectivelyVisible(node: Node): boolean {
+    return !this.isNodeManuallyHidden(node) && !this.isNodeRuntimeCulled(node);
+  }
+
+  getVisibilityIcon(node: Node): string {
+     if (this.isNodeManuallyHidden(node)) return '🚫';
+     if (this.isNodeRuntimeCulled(node)) return '🌫️';
+     return '👁';
+  }
+
+  getVisibilityTitle(node: Node): string {
+     if (this.isNodeManuallyHidden(node)) return 'Oculto manualmente (Clic para mostrar)';
+     if (this.isNodeRuntimeCulled(node)) return 'Oculto por lejanía (Culling)';
+     return 'Visible (Clic para ocultar)';
   }
 
   toggleVisibility(node: Node, event: Event) {
     event.stopPropagation();
     if (node instanceof AbstractMesh) {
-      const isVis = node.isVisible && node.isEnabled();
-      node.setEnabled(!isVis);
-      node.isVisible = !isVis;
+      const isCurrentlyHidden = this.isNodeManuallyHidden(node);
+      const entity = this.entityManager.getEntityByMesh(node);
+      
+      if (entity) {
+         entity.isManuallyHidden = !isCurrentlyHidden;
+         entity.isDirty = true;
+      }
+      
+      node.setEnabled(isCurrentlyHidden);
+      node.isVisible = isCurrentlyHidden;
+
+      this.outlinerState.notifyVisibilityChanged();
+      this.mapaSvc.onMapChanged.next();
     }
   }
 

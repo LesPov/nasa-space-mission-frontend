@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Tags, Vector3, Observer, Scene, ArcRotateCamera } from '@babylonjs/core';
 
@@ -111,8 +112,9 @@ export class EditorPlayModeService {
       targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
     }
 
-    this.dynamicLighting.prepareAllLights();
-    this.shadowOrchestrator.asignarObjetosASombrasDeLuces();
+    // 🔥 RECONCILIACIÓN CENTRALIZADA EN LUGAR DEL VIEJO PREPARE
+    this.dynamicLighting.reconcileSceneLights();
+    this.shadowOrchestrator.reconcileShadows();
 
     await new Promise<void>((resolve) => {
       this.motor3d.getScene().executeWhenReady(() => {
@@ -166,7 +168,7 @@ export class EditorPlayModeService {
     else this.cameraSvc.volarHaciaCamaraJuego(centroEpiral, targetPos, targetLookAt, playerForward, vista === 'FPS', () => finishSetup());
   }
 
-  public restaurarEscenaPostTest(isDebugMode: boolean): void {
+  public restaurarEscenaPostTest(canSelectHidden: boolean): void {
     const scene = this.motor3d.getScene();
     const canvas = this.motor3d.getEngine().getRenderingCanvas();
     const editorCam = this.motor3d.getEditorCamera();
@@ -177,7 +179,6 @@ export class EditorPlayModeService {
     try { this.motor3d.getPlayerCameraTPS()?.detachControl(); } catch {}
 
     scene.meshes.forEach(m => {
-      // 🔥 CORE FIX: Ignoramos los visuales de luces completamente. El HighlightSvc los maneja.
       if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) {
         return; 
       }
@@ -189,11 +190,10 @@ export class EditorPlayModeService {
 
       const entity = this.entityManager.getEntityByMesh(m);
       if (entity) {
-        // Los marcadores lógicos invisibles
-        if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = isDebugMode;
+        if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = true;
         if (entity.type === 'bubble') m.isVisible = true;
-        if (entity.type === 'image_plane') m.isVisible = isDebugMode; 
-        if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') m.isVisible = isDebugMode;
+        if (entity.type === 'image_plane') m.isVisible = true; 
+        if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') m.isVisible = true;
         if (entity.rol === 'spawn_point') { 
           m.setEnabled(true); 
           m.isVisible = true; 
@@ -226,7 +226,6 @@ export class EditorPlayModeService {
     CinematicLogger.logTestLiveLifecycle('EXIT', 'EDITOR', editorCam?.name);
     this.editorSnapshot = null;
     
-    // 🔥 Aseguramos que la escena quede limpia reseteando el Highlight Service
     this.highlightSvc.forceResetLightVisuals();
   }
 }

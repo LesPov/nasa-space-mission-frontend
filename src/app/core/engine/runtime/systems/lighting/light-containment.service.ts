@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, PointLight, SpotLight, Scene, Vector3, Tags, Mesh, InstancedMesh, Node, MultiMaterial, Material } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
@@ -33,8 +34,13 @@ export class LightContainmentService {
 
   public markDirty(containerOrLightUid?: string): void {
     if (containerOrLightUid) {
+      // 🔥 FIX: Buscar coincidencias parciales ya que la clave es compuesta
+      for (const key of this.strictInteriorReceiversCache.keys()) {
+        if (key.includes(containerOrLightUid)) {
+          this.strictInteriorReceiversCache.delete(key);
+        }
+      }
       this.containerRenderablesCache.delete(containerOrLightUid);
-      this.strictInteriorReceiversCache.delete(containerOrLightUid);
     } else {
       this.clearAllCache();
     }
@@ -53,20 +59,15 @@ export class LightContainmentService {
     return this.lastAuditReport;
   }
 
-  /**
-   * Resuelve la entidad contenedora (modelo padre) a la cual está asociada la luz.
-   */
   public resolveContainerEntity(lightEntity: GameEntity, scene: Scene): GameEntity | null {
     const lightComp = lightEntity.light;
     if (!lightComp) return null;
 
-    // 1. Contenedor explícito asignado por UI/Inspector
     if (lightComp.containerEntityUid) {
       const explicit = this.entityManager.getEntityByUid(lightComp.containerEntityUid);
       if (explicit && explicit.view) return explicit;
     }
 
-    // 2. Padre jerárquico directo en ECS
     if (lightEntity.parentId) {
       const parentEnt = this.entityManager.getEntityByUid(lightEntity.parentId);
       if (parentEnt && parentEnt.view) {
@@ -74,7 +75,6 @@ export class LightContainmentService {
       }
     }
 
-    // 3. Padre físico en el grafo de escena de Babylon
     if (lightEntity.view && lightEntity.view.parent) {
       let currentParent: Node | null = lightEntity.view.parent;
       while (currentParent) {
@@ -86,7 +86,6 @@ export class LightContainmentService {
       }
     }
 
-    // 4. Fallback por detección de volumen espacial (Bounding Box)
     const lightPos = lightEntity.view
       ? lightEntity.view.getAbsolutePosition()
       : new Vector3(
@@ -138,11 +137,6 @@ export class LightContainmentService {
     return closestContainer;
   }
 
-  /**
-   * RECORRIDO RECURSIVO PURO DE TODO EL ÁRBOL DEL MODELO.
-   * Encuentra TODOS los AbstractMesh renderizables que pertenezcan al modelo padre,
-   * sin importar TransformNodes intermedios, profundidad de anidación o partOverrides.
-   */
   public getAllRenderableMeshesFromModel(rootNode: Node): {
     renderables: AbstractMesh[];
     totalDescendantsCount: number;
@@ -164,7 +158,6 @@ export class LightContainmentService {
         return;
       }
 
-      // Si es un nodo de sistema, auxiliar o visual de luz, se excluye legítimamente
       if (
         Tags.MatchesQuery(
           node,
@@ -187,14 +180,12 @@ export class LightContainmentService {
           }
         } else if (className === 'Mesh') {
           const mesh = node as Mesh;
-          // Un mesh es renderizable si tiene geometría o si contiene subMeshes con vértices
           if (mesh.getTotalVertices() > 0) {
             renderables.push(mesh);
           } else {
             rejected.push({ meshName: node.name, reason: 'Mesh sin vértices (contenedor transformational puro)' });
           }
         } else {
-          // Otros subtipos de AbstractMesh (Ground, Ribbon, etc.)
           if (node.getTotalVertices && node.getTotalVertices() > 0) {
             renderables.push(node);
           } else {
@@ -209,21 +200,25 @@ export class LightContainmentService {
       }
     };
 
-    // Iniciar traversal en la raíz y en todos sus descendientes
     traverse(rootNode);
 
     return { renderables, totalDescendantsCount, rejected };
   }
 
-  /**
-   * Obtiene la lista completa de mallas receptoras para una PointLight en modo INTERIOR.
-   */
   public getInteriorMeshesStrict(lightEntity: GameEntity, scene: Scene): AbstractMesh[] {
     const cacheKey = `${lightEntity.uid}_${lightEntity.light?.containerEntityUid || 'auto'}`;
 
     if (this.strictInteriorReceiversCache.has(cacheKey)) {
-      this.metrics.cacheHits++;
-      return this.strictInteriorReceiversCache.get(cacheKey)!;
+      const cached = this.strictInteriorReceiversCache.get(cacheKey)!;
+      // 🔥 FIX: Validar que ninguna malla en caché haya sido destruida
+      const allValid = cached.every(m => m && !m.isDisposed() && m.getScene() === scene);
+      
+      if (allValid) {
+        this.metrics.cacheHits++;
+        return cached;
+      } else {
+        this.strictInteriorReceiversCache.delete(cacheKey);
+      }
     }
 
     this.metrics.cacheMisses++;
@@ -248,10 +243,7 @@ export class LightContainmentService {
       return [];
     }
 
-    // 1. Recolección exhaustiva de todos los renderables del modelo contenedor
     const { renderables, totalDescendantsCount, rejected } = this.getAllRenderableMeshesFromModel(container.view);
-
-    // 2. Comprobación y ajuste de capacidad de iluminación en los materiales
     const materialsSummary: LightContainmentAuditReport['materialsSummary'] = [];
     const finalReceiversSet = new Set<AbstractMesh>();
 
@@ -259,7 +251,6 @@ export class LightContainmentService {
       const mesh = renderables[i];
       finalReceiversSet.add(mesh);
 
-      // Auditar y garantizar que el material soporte la luz
       const mat = mesh.material;
       if (mat) {
         if (mat.getClassName() === 'MultiMaterial') {
@@ -304,7 +295,6 @@ export class LightContainmentService {
       }
     }
 
-    // 3. Incorporar otros objetos que residan espacialmente dentro del volumen del modelo
     const containerBounds = container.view.getHierarchyBoundingVectors(true);
     const cMin = containerBounds.min;
     const cMax = containerBounds.max;
@@ -333,7 +323,6 @@ export class LightContainmentService {
     const finalReceivers = Array.from(finalReceiversSet);
     this.strictInteriorReceiversCache.set(cacheKey, finalReceivers);
 
-    // Registro de diagnóstico completo
     this.lastAuditReport = {
       lightUid: lightEntity.uid,
       containerUid: container.uid,
@@ -351,13 +340,9 @@ export class LightContainmentService {
     return finalReceivers;
   }
 
-  /**
-   * Aplica la contención a la PointLight/SpotLight física de Babylon.js.
-   */
   public applyContainment(light: PointLight | SpotLight, entity: GameEntity, scene: Scene): void {
     const mode: LightContainmentMode = entity.light?.containmentMode || 'GLOBAL';
 
-    // Fast-path: Evitar re-evaluaciones innecesarias si nada relevante cambió
     const cacheStamp = `${mode}_${entity.light?.containerEntityUid || ''}_${entity.uid}`;
     if ((light as any)._containmentAppliedStamp === cacheStamp && !entity.isDirty) {
       return;
@@ -377,7 +362,6 @@ export class LightContainmentService {
       light.includedOnlyMeshes = [];
       light.excludedMeshes = [...receivers];
     } else {
-      // GLOBAL
       light.includedOnlyMeshes = [];
       light.excludedMeshes = [];
     }

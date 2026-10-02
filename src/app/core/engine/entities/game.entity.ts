@@ -168,12 +168,12 @@ export class GameEntity {
   public orderIndex: number = 0;
   public isPersistent: boolean = false;
   
-  // 🔥 FASE 2: Identificador de ciclo de vida. Si es true, la entidad nació en runtime y muere en runtime. No se guarda.
   public isRuntimeOnly: boolean = false;
-  // 🔥 FASE 2: Memento Pattern para proteger el estado de autoría frente a mutaciones del runtime.
   public authoringBackup: any = null;
   
-  public isCulled: boolean = false;
+  // 🔥 ESTADOS DE VISIBILIDAD UNIFICADA
+  public isManuallyHidden: boolean = false; // Decisión manual del usuario
+  public isCulled: boolean = false;         // Decisión del LocalRenderingSystem (Distancia)
   public runtimeVisibilityTarget: number = 1.0;
   public currentRuntimeVisibility: number = 1.0;
 
@@ -231,11 +231,9 @@ export class GameEntity {
     }
   }
 
-  // 🔥 FASE 2: MÉTODOS DE BACKUP Y RESTAURACIÓN DE AUTORÍA
   public createAuthoringBackup(): void {
-    if (this.isRuntimeOnly) return; // Las entidades temporales no tienen estado de autoría
+    if (this.isRuntimeOnly) return; 
 
-    // Hacemos una copia profunda de los componentes que pueden sufrir alteraciones temporales en el juego
     this.authoringBackup = {
       transform: JSON.parse(JSON.stringify(this.transform)),
       visual: JSON.parse(JSON.stringify(this.visual)),

@@ -12,7 +12,7 @@
        (contextmenu)="openContextMenu($event)"
        [class.selected]="isSelected"
        [class.locked]="!isSelectable"
-       [class.hidden]="!isVisible"
+       [class.hidden]="!isEffectivelyVisible"
        [style.padding-left.px]="paddingLeft">
     
     <div class="node-left">
@@ -37,8 +37,12 @@
     </div>
 
     <div class="node-right">
-      <span class="action-btn" [class.active]="isVisible" (click)="toggleVisibility($event)" [title]="isVisible ? 'Ocultar' : 'Mostrar'">
-        {{ isVisible ? '👁' : '🚫' }}
+      <span class="action-btn" 
+            [class.off]="isManuallyHidden" 
+            [class.culled]="isRuntimeCulled"
+            (click)="toggleVisibility($event)" 
+            [title]="visibilityTitle">
+        {{ visibilityIcon }}
       </span>
       <span class="action-btn" [class.active]="!isSelectable" (click)="toggleLock($event)" [title]="isSelectable ? 'Bloquear' : 'Desbloquear'">
         {{ isSelectable ? '🔓' : '🔒' }}

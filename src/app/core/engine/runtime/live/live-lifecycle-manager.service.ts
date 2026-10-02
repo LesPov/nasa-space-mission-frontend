@@ -16,6 +16,7 @@ import { TransformMutatorService } from '../../../../services/editor/mutators/tr
 import { GameStateService } from '../state/game-state.service';
 import { SceneNodesService } from '../../../../services/editor/sceneservice/scene-nodes.service';
 import { PlayerTriggerService } from '../systems/player-trigger.service';
+import { ShadowOrchestratorService } from '../shadows/shadow-orchestrator.service';
 
 export interface EditorSnapshotState {
   cameraTarget: Vector3;
@@ -39,6 +40,7 @@ export class LiveLifecycleManagerService {
   private gameState = inject(GameStateService);
   private sceneNodesSvc = inject(SceneNodesService);
   private playerTriggerSvc = inject(PlayerTriggerService);
+  private shadowOrchestrator = inject(ShadowOrchestratorService);
 
   private isLiveActive = false;
   private savedEditorCameraState: EditorSnapshotState | null = null;
@@ -50,10 +52,6 @@ export class LiveLifecycleManagerService {
     return this.isLiveActive;
   }
 
-  /**
-   * Captura el estado exacto del Editor (Cámara y Entidades) antes de entrar a Test Live.
-   * 🔥 FASE 2: Memento Pattern para Autoría. No serializa a JSON.
-   */
   public captureEditorState(): void {
     const editorCam = this.motor3d.getEditorCamera();
     if (editorCam) {
@@ -71,16 +69,12 @@ export class LiveLifecycleManagerService {
     this.preLiveCamera = this.ownership.getCamera();
     CinematicLogger.logTestLiveLifecycle('ENTER', this.preLiveOwner, this.preLiveCamera?.name);
 
-    // 🔥 BACKUP EN MEMORIA DE LA AUTORÍA
     this.gameState.enterSandbox();
     this.entityManager.getAllEntities().forEach(e => {
         e.createAuthoringBackup();
     });
   }
 
-  /**
-   * Inicializa la sesión Live de forma aislada y controlada.
-   */
   public startLiveSession(playerEntity: GameEntity, vista: CameraViewMode): void {
     this.isLiveActive = true;
     this.testPlayerEntity = playerEntity;
@@ -95,10 +89,8 @@ export class LiveLifecycleManagerService {
 
     this.setEditorElementsVisibility(false);
 
-    // Arrancar la sesión de juego
     this.gameSession.start(playerEntity, vista);
 
-    // Asignar cámara según la perspectiva elegida
     const targetCam = vista === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS();
     this.ownership.setCamera(vista === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', targetCam, canvas, true);
 
@@ -113,10 +105,6 @@ export class LiveLifecycleManagerService {
     }
   }
 
-  /**
-   * Finaliza la sesión Live, limpiando ÚNICAMENTE los artefactos temporales
-   * sin tocar la escena 3D ni reconstruir los materiales.
-   */
   public endLiveSession(): void {
     if (!this.isLiveActive) return;
 
@@ -126,38 +114,30 @@ export class LiveLifecycleManagerService {
     this.playerCamSvc.updateFirstPersonVisibility(false);
     this.playerCamSvc.limpiarPivotTPS();
 
-    // 🔥 RESTAURACIÓN DE LA AUTORÍA EN MEMORIA (FASE 2)
     const entities = this.entityManager.getAllEntities();
     
-    // Lo recorremos en reversa para poder eliminar del array con seguridad
     for (let i = entities.length - 1; i >= 0; i--) {
         const e = entities[i];
         
-        // 1. Basura del Runtime: Jugadores clonados, NPCs spawneados, Proyectiles, etc.
         if (e.isRuntimeOnly) {
             this.entityManager.removeEntity(e.uid);
             continue;
         }
 
-        // 2. Objetos de Autoría: Revertimos sus mutaciones (Transforms, Luces, Colores)
         e.restoreAuthoringBackup();
         e.syncToView();
-
-        if (e.type.startsWith('light_')) {
-            this.dynLighting.syncLightImmediate(e);
-        }
 
         if (e.view && e.visual) {
             this.transformMutator.aplicarVisuales(e.view, e.visual);
         }
     }
 
-    this.gameState.exitSandbox();
-    
-    // Reseteamos el estado interno de los Triggers
-    this.playerTriggerSvc.start();
+    // 🔥 RECONCILIACIÓN CENTRALIZADA: Reconstruye todo el pipeline de iluminación puramente
+    this.dynLighting.reconcileSceneLights();
+    this.shadowOrchestrator.reconcileShadows();
 
-    // Actualizamos el Outliner del Editor
+    this.gameState.exitSandbox();
+    this.playerTriggerSvc.start();
     this.sceneNodesSvc.actualizarListaNodos();
 
     this.setEditorElementsVisibility(true);

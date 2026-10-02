@@ -1,8 +1,8 @@
-
-import { Component, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, NgZone, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { EngineProfilerService, ProfilerMetrics } from '../../core/engine/telemetry/engine-profiler.service';
 import { ProfilerTogglesService } from '../../core/engine/telemetry/profiler-toggles.service';
+import { PerformanceIncidentService, PerformanceIncident } from '../../core/engine/telemetry/performance-incident.service';
 
 @Component({
   selector: 'app-ui-profiler',
@@ -14,28 +14,40 @@ import { ProfilerTogglesService } from '../../core/engine/telemetry/profiler-tog
 export class UiProfilerComponent implements OnInit, OnDestroy {
   public profiler = inject(EngineProfilerService);
   public toggles = inject(ProfilerTogglesService);
-  private cdr = inject(ChangeDetectorRef);
+  public incidentSvc = inject(PerformanceIncidentService);
+  private ngZone = inject(NgZone);
 
-  public metrics: ProfilerMetrics = this.getEmptyMetrics();
+  // 🔥 SOLUCIÓN NG0100: Arquitectura puramente reactiva Zoneless con Signals
+  public metrics = signal<ProfilerMetrics>(this.getEmptyMetrics());
+  public incidents = signal<PerformanceIncident[]>([]);
+  public incidentsCount = computed(() => this.incidents().length);
+  
+  // 🔥 OPTIMIZACIÓN UI: Evitamos ejecutar Object.keys() 60 veces por segundo en el HTML
+  public cpuPhasesKeys = computed(() => Object.keys(this.metrics().cpuPhases || {}));
+  public cpuSystemsKeys = computed(() => Object.keys(this.metrics().cpuSystems || {}));
+
+  public tab = signal<'metrics' | 'incidents'>('metrics');
+
   private intervalId: any;
 
   ngOnInit() {
-    // Para no afectar el profiling con el propio Change Detection de Angular, 
-    // actualizamos la UI de forma controlada a 4 Hz (250ms).
-    this.intervalId = setInterval(() => {
-      if (this.profiler.isProfilingEnabled) {
-        this.metrics = this.profiler.getSnapshot();
-        this.cdr.detectChanges();
-      }
-    }, 250);
+    // El timer corre fuera de Angular para no disparar detecciones globales,
+    // y solo actualiza las señales, lo cual es ultra-eficiente en Zoneless.
+    this.ngZone.runOutsideAngular(() => {
+      this.intervalId = setInterval(() => {
+        if (this.profiler.isProfilingEnabled) {
+          this.metrics.set(this.profiler.getSnapshot());
+          
+          // Actualización superficial para triggerear reactividad solo si cambió la longitud o hay updates
+          const currentIncidents = this.incidentSvc.getIncidents();
+          this.incidents.set([...currentIncidents]);
+        }
+      }, 250);
+    });
   }
 
   ngOnDestroy() {
     if (this.intervalId) clearInterval(this.intervalId);
-  }
-
-  public objectKeys(obj: any): string[] {
-    return Object.keys(obj || {});
   }
 
   public printToConsole() {

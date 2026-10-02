@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
 import { PointLight, SpotLight, DirectionalLight, Vector3, Color3, Tags, ShadowGenerator, AbstractMesh, Mesh, StandardMaterial } from '@babylonjs/core';
@@ -35,6 +36,7 @@ interface PoolSlot {
     assignedEntityUid: string | null;
     currentIntensity: number;
     lastShadowRebuildPos?: Vector3; 
+    _isNewAssignment?: boolean; // 🔥 FASE 1 FIX: Prevención de Frame Oscuro
 }
 
 @Injectable({ providedIn: 'root' })
@@ -174,21 +176,25 @@ export class DynamicLightingSystem implements IUpdatable {
       return false;
   }
 
+  // 🔥 FASE 1 FIX: Ahora `prepareAllLights` es puramente idempotente con el Pool.
   public prepareAllLights(): void {
       const scene = this.motor3d.getScene();
       if (!scene) return;
 
-      const cleanPool = (pool: PoolSlot[]) => {
-          pool.forEach(p => { 
-            this.containmentSvc.clearContainment(p.light as any);
-            p.light.dispose(); 
-            p.sg?.dispose(); 
-          });
-      };
-      cleanPool(this.pointPool);
-      cleanPool(this.spotPool);
-      cleanPool(this.dirPool);
+      if (!this.isInitialized) {
+          this.initializePool(scene);
+      }
 
+      this.refreshShadowCastersCache();
+      this.refreshVirtualLightsRegistry();
+
+      this.spatialScheduler.forceNextEvaluation(); 
+      this.evaluateDistanceAndHysteresis();
+      this.allocatePoolSlots();
+  }
+
+ 
+  private initializePool(scene: any): void {
       this.pointPool = [];
       this.spotPool = [];
       this.dirPool = [];
@@ -196,42 +202,16 @@ export class DynamicLightingSystem implements IUpdatable {
       this.shadowCastersCache = [];
       this.containmentSvc.clearAllCache();
 
-      const gl = this.motor3d.getEngine()._gl;
-      let maxUbo = 12; 
-      if (gl && gl.getParameter) maxUbo = gl.getParameter(0x8A2B) || 12; 
+      // 🔥 FASE 1 FIX (WEBGL/WEBGPU ROBUSTEZ): 
+      // Se utiliza la API agnóstica getCaps() para obtener el hardware bounds real
+      // en lugar del _gl interno que rompe si el motor corre en WebGPU.
+      const engine = this.motor3d.getEngine();
+    const maxUbo = (engine.getCaps() as { maxUniformBufferBindings?: number }).maxUniformBufferBindings || 12; 
       
       const BASE_UBOS = 6;
       const availableUBOsForShadows = Math.max(0, maxUbo - BASE_UBOS);
       this.MAX_SHADOW_LIGHTS = Math.min(3, availableUBOsForShadows);
       this.MAX_LOCAL_SHADER_LIGHTS = 3;
-
-      this.entityManager.getAllEntities().forEach(e => {
-          if (this.isEligibleShadowCaster(e) && e.view) {
-              const addMesh = (m: AbstractMesh) => {
-                  const isManuallyHidden = !e.isCulled && (!m.isVisible || !m.isEnabled());
-                  if (!isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
-                      if (m instanceof Mesh && m.getTotalVertices() > 0) {
-                          this.shadowCastersCache.push(m);
-                      }
-                      m.receiveShadows = true;
-                  }
-              };
-              addMesh(e.view);
-              e.view.getChildMeshes(false).forEach(addMesh);
-          } else if (e.view) {
-              if (!Tags.MatchesQuery(e.view, "light_visual || debug_element || proxy_collider")) {
-                  e.view.receiveShadows = true;
-                  e.view.getChildMeshes(false).forEach(cm => {
-                      if (!Tags.MatchesQuery(cm, "light_visual || debug_element || proxy_collider")) cm.receiveShadows = true;
-                  });
-              }
-          }
-      });
-
-      const lightEntities = this.entityManager.getAllEntities().filter(e => e.type.startsWith('light_'));
-      for (const e of lightEntities) {
-          this.registerOrUpdateVirtualLight(e);
-      }
 
       for(let i = 0; i < this.MAX_LOCAL_SHADER_LIGHTS; i++) {
           const hasShadows = i < this.MAX_SHADOW_LIGHTS;
@@ -278,11 +258,41 @@ export class DynamicLightingSystem implements IUpdatable {
       }
 
       this.isInitialized = true;
-      this.isFirstFrame = true;
-      this.spatialScheduler.forceNextEvaluation(); 
+  }
+  private refreshShadowCastersCache(): void {
+      this.shadowCastersCache = [];
+      this.entityManager.getAllEntities().forEach(e => {
+          if (this.isEligibleShadowCaster(e) && e.view) {
+              const addMesh = (m: AbstractMesh) => {
+                  const isManuallyHidden = !e.isCulled && (!m.isVisible || !m.isEnabled());
+                  if (!isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
+                      if (m instanceof Mesh && m.getTotalVertices() > 0) {
+                          this.shadowCastersCache.push(m);
+                      }
+                      m.receiveShadows = true;
+                  }
+              };
+              addMesh(e.view);
+              e.view.getChildMeshes(false).forEach(addMesh);
+          } else if (e.view) {
+              if (!Tags.MatchesQuery(e.view, "light_visual || debug_element || proxy_collider")) {
+                  e.view.receiveShadows = true;
+                  e.view.getChildMeshes(false).forEach(cm => {
+                      if (!Tags.MatchesQuery(cm, "light_visual || debug_element || proxy_collider")) cm.receiveShadows = true;
+                  });
+              }
+          }
+      });
+  }
 
-      this.evaluateDistanceAndHysteresis();
-      this.allocatePoolSlots();
+  private refreshVirtualLightsRegistry(): void {
+      const lightEntities = this.entityManager.getAllEntities().filter(e => e.type.startsWith('light_'));
+      // Remove dead lights
+      this.virtualLights = this.virtualLights.filter(vl => lightEntities.some(e => e.uid === vl.entity.uid));
+      // Update or Add existing
+      for (const e of lightEntities) {
+          this.registerOrUpdateVirtualLight(e);
+      }
   }
 
   public registerOrUpdateVirtualLight(e: GameEntity): VirtualLight {
@@ -529,6 +539,8 @@ export class DynamicLightingSystem implements IUpdatable {
               if (freeSlot) {
                   freeSlot.assignedEntityUid = vl.entity.uid;
                   freeSlot.currentIntensity = 0; freeSlot.light.intensity = 0; 
+                  // 🔥 FIX FASE 1: Se levanta bandera para salto inmediato de intensidad
+                  freeSlot._isNewAssignment = true; 
                   existingSlot = freeSlot;
               }
           }
@@ -702,12 +714,19 @@ export class DynamicLightingSystem implements IUpdatable {
           const lightComp = vl.entity.light;
           if (!lightComp || !vl.entity.view || !lightComp.enabled || !vl.isLightInRange) vl.targetMultiplier = 0;
 
-          const multDiff = Math.abs(vl.targetMultiplier - vl.currentMultiplier);
-          if (multDiff > 0.001 || isEditor) {
-              vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
-              if (vl.currentMultiplier < this.LIGHT_DISABLE_THRESHOLD) vl.currentMultiplier = 0;
-          } else {
+          // 🔥 FIX FASE 1: Si es una asignación nueva a slot, salta la interpolación (Elimina el Frame Oscuro visual al nacer o entrar rápido a un cuarto)
+          const matchedSlot = [...this.pointPool, ...this.spotPool, ...this.dirPool].find(s => s.assignedEntityUid === vl.entity.uid);
+          if (matchedSlot && matchedSlot._isNewAssignment) {
               vl.currentMultiplier = vl.targetMultiplier;
+              matchedSlot._isNewAssignment = false;
+          } else {
+              const multDiff = Math.abs(vl.targetMultiplier - vl.currentMultiplier);
+              if (multDiff > 0.001 || isEditor) {
+                  vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
+                  if (vl.currentMultiplier < this.LIGHT_DISABLE_THRESHOLD) vl.currentMultiplier = 0;
+              } else {
+                  vl.currentMultiplier = vl.targetMultiplier;
+              }
           }
 
           const renderDiff = Math.abs(vl.currentMultiplier - (vl._lastRenderedMultiplier ?? -1));

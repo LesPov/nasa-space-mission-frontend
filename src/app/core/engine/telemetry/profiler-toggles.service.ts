@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene/scene-access.token';
 import { DynamicLightingSystem } from '../runtime/systems/lighting/dynamic-lighting.system';
@@ -27,7 +28,7 @@ export class ProfilerTogglesService {
 
   public setGlow(disable: boolean) {
     this.state.glowOff = disable;
-    const motor = this.motor3d as any; // Casteo para acceder a motor.glowLayer si no expuesto interfaz
+    const motor = this.motor3d as any; 
     if (motor.glowLayer) {
       motor.glowLayer.intensity = disable ? 0 : 0.6;
     }

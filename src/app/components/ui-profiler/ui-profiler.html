@@ -1,54 +1,88 @@
 <div class="profiler-overlay" *ngIf="profiler.isProfilingEnabled">
-  <h3>
-    <span>PROFILER (FASE 0)</span>
-    <span class="metric-val">{{ metrics.fps }} FPS</span>
-  </h3>
-
-  <div class="metric-row"><span>Frame Time (Avg):</span> <span class="metric-val">{{ metrics.frameTimeAvg | number:'1.2-2' }} ms</span></div>
-  <div class="metric-row indent"><span>p50:</span> <span>{{ metrics.frameTimeP50 | number:'1.2-2' }} ms</span></div>
-  <div class="metric-row indent"><span>p95:</span> <span>{{ metrics.frameTimeP95 | number:'1.2-2' }} ms</span></div>
-  <div class="metric-row indent"><span>p99:</span> <span style="color:#ef4444">{{ metrics.frameTimeP99 | number:'1.2-2' }} ms</span></div>
-
-  <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>CPU PHASES</strong></div>
-  <div class="metric-row indent" *ngFor="let phase of objectKeys(metrics.cpuPhases)">
-    <span>{{ phase }}:</span> <span>{{ metrics.cpuPhases[phase] | number:'1.2-2' }} ms</span>
+  
+  <div class="tabs">
+    <button (click)="tab.set('metrics')" [class.active]="tab() === 'metrics'">Metrics</button>
+    <button (click)="tab.set('incidents')" [class.active]="tab() === 'incidents'">
+       Incidents <span class="badge" *ngIf="incidentsCount() > 0">{{ incidentsCount() }}</span>
+    </button>
   </div>
 
-  <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>CPU SYSTEMS (Top)</strong></div>
-  <div class="metric-row indent" *ngFor="let sys of objectKeys(metrics.cpuSystems)">
-    <span *ngIf="metrics.cpuSystems[sys] > 0.1">{{ sys | slice:0:15 }}:</span> 
-    <span *ngIf="metrics.cpuSystems[sys] > 0.1">{{ metrics.cpuSystems[sys] | number:'1.2-2' }} ms</span>
+  <div *ngIf="tab() === 'metrics'">
+      <h3>
+        <span>PROFILER (FASE 1)</span>
+        <span class="metric-val" [style.color]="metrics().fps < 45 ? '#ef4444' : '#4ade80'">{{ metrics().fps | number:'1.0-1' }} FPS</span>
+      </h3>
+
+      <div class="metric-row"><span>Frame Time (Avg):</span> <span class="metric-val">{{ metrics().frameTimeAvg | number:'1.2-2' }} ms</span></div>
+      <div class="metric-row indent"><span>p50:</span> <span>{{ metrics().frameTimeP50 | number:'1.2-2' }} ms</span></div>
+      <div class="metric-row indent"><span>p95:</span> <span>{{ metrics().frameTimeP95 | number:'1.2-2' }} ms</span></div>
+      <div class="metric-row indent"><span>p99:</span> <span [style.color]="metrics().frameTimeP99 > 22.2 ? '#ef4444' : '#cbd5e1'">{{ metrics().frameTimeP99 | number:'1.2-2' }} ms</span></div>
+
+      <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>CPU PHASES</strong></div>
+      <div class="metric-row indent" *ngFor="let phase of cpuPhasesKeys()">
+        <span>{{ phase }}:</span> <span>{{ metrics().cpuPhases[phase] | number:'1.2-2' }} ms</span>
+      </div>
+
+      <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>CPU SYSTEMS (Top)</strong></div>
+      <div class="metric-row indent" *ngFor="let sys of cpuSystemsKeys()">
+        <span *ngIf="metrics().cpuSystems[sys] > 0.1">{{ sys | slice:0:15 }}:</span> 
+        <span *ngIf="metrics().cpuSystems[sys] > 0.1">{{ metrics().cpuSystems[sys] | number:'1.2-2' }} ms</span>
+      </div>
+
+      <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>GPU & SCENE</strong></div>
+      <div class="metric-row indent"><span>Draw Calls:</span> <span>{{ metrics().gpu.drawCalls }}</span></div>
+      <div class="metric-row indent"><span>Active Meshes:</span> <span>{{ metrics().gpu.activeMeshes }}</span></div>
+      <div class="metric-row indent"><span>GPU Time:</span> <span>{{ metrics().gpu.gpuFrameTime > 0 ? (metrics().gpu.gpuFrameTime | number:'1.2-2') + ' ms' : 'N/A' }}</span></div>
+
+      <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>LIGHTS</strong></div>
+      <div class="metric-row indent"><span>Virtual/Active:</span> <span>{{ metrics().lights.totalVirtual }} / {{ metrics().lights.activePool }}</span></div>
+      <div class="metric-row indent"><span>Shadowed Slots:</span> <span>{{ metrics().lights.shadowedPool }}</span></div>
+
+      <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>SHADOWS (CSM)</strong></div>
+      <div class="metric-row indent"><span>Casters (RenderList):</span> <span>{{ metrics().shadows.totalCasters }}</span></div>
+      <div class="metric-row indent"><span>ShadowMaxZ:</span> <span>{{ metrics().shadows.csmMaxZ | number:'1.1-1' }}</span></div>
+
+      <div class="toggles-grid">
+        <button class="toggle-btn" [class.active]="toggles.state.glowOff" (click)="toggles.setGlow(!toggles.state.glowOff)">Glow OFF</button>
+        <button class="toggle-btn" [class.active]="toggles.state.fxaaOff" (click)="toggles.setFxaa(!toggles.state.fxaaOff)">FXAA OFF</button>
+        <button class="toggle-btn" [class.active]="toggles.state.fogOff" (click)="toggles.setFog(!toggles.state.fogOff)">Fog OFF</button>
+        <button class="toggle-btn" [class.active]="toggles.state.hwScaleHalf" (click)="toggles.setHwScaling(!toggles.state.hwScaleHalf)">Scale 0.5x</button>
+        <button class="toggle-btn" [class.active]="toggles.state.shadowsOff" (click)="toggles.setShadows(!toggles.state.shadowsOff)">Shadows OFF</button>
+        <button class="toggle-btn" [class.active]="toggles.state.localLightsOff" (click)="toggles.setLocalLights(!toggles.state.localLightsOff)">Local L. OFF</button>
+        <button class="toggle-btn" [class.active]="toggles.state.postProcessOff" (click)="toggles.setPostProcess(!toggles.state.postProcessOff)" style="grid-column: span 2">PostProcess OFF</button>
+      </div>
+
+      <button class="btn-print" (click)="printToConsole()">📷 Imprimir Snapshot a Consola</button>
   </div>
 
-  <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>GPU & SCENE</strong></div>
-  <div class="metric-row indent"><span>Draw Calls:</span> <span>{{ metrics.gpu.drawCalls }}</span></div>
-  <div class="metric-row indent"><span>Active Meshes:</span> <span>{{ metrics.gpu.activeMeshes }}</span></div>
-  <div class="metric-row indent"><span>GPU Time:</span> <span>{{ metrics.gpu.gpuFrameTime > 0 ? (metrics.gpu.gpuFrameTime | number:'1.2-2') + ' ms' : 'N/A' }}</span></div>
+  <div *ngIf="tab() === 'incidents'" class="incidents-view">
+    <button class="btn-primary" (click)="incidentSvc.simulateIncident()" style="width: 100%; margin-bottom: 10px;">⚡ Simular Incidente</button>
+    
+    <div class="empty-state" *ngIf="incidentsCount() === 0">
+       No se han detectado caídas por debajo de 45 FPS en la sesión actual.
+    </div>
 
-  <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>LIGHTS</strong></div>
-  <div class="metric-row indent"><span>Virtual/Active:</span> <span>{{ metrics.lights.totalVirtual }} / {{ metrics.lights.activePool }}</span></div>
-  <div class="metric-row indent"><span>Shadowed Slots:</span> <span>{{ metrics.lights.shadowedPool }}</span></div>
+    <div class="incident-card" *ngFor="let inc of incidents()">
+       <div class="inc-header">
+           <strong>{{ inc.timestamp }}</strong> 
+           <span [style.color]="inc.status === 'RECOVERED' ? '#4ade80' : '#ef4444'" style="font-weight: bold;">
+             {{ inc.status === 'RECOVERED' ? 'RESCATADO' : 'ACTIVO' }}
+           </span>
+       </div>
+       <div class="metric-row indent" style="padding-left:0;"><span>Mínimo Registrado:</span> <strong style="color: #ef4444;">{{ inc.minFps | number:'1.0-0' }} FPS</strong></div>
+       <div class="metric-row indent" style="padding-left:0; margin-bottom: 6px;"><span>Duración Lag:</span> <strong style="color: #cbd5e1;">{{ inc.durationMs | number:'1.0-0' }} ms</strong></div>
 
-  <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>SHADOWS (CSM)</strong></div>
-  <div class="metric-row indent"><span>Casters (RenderList):</span> <span>{{ metrics.shadows.totalCasters }}</span></div>
-  <div class="metric-row indent"><span>ShadowMaxZ:</span> <span>{{ metrics.shadows.csmMaxZ | number:'1.1-1' }}</span></div>
-
-  <div class="toggles-grid">
-    <button class="toggle-btn" [class.active]="toggles.state.glowOff" (click)="toggles.setGlow(!toggles.state.glowOff)">Glow OFF</button>
-    <button class="toggle-btn" [class.active]="toggles.state.fxaaOff" (click)="toggles.setFxaa(!toggles.state.fxaaOff)">FXAA OFF</button>
-    <button class="toggle-btn" [class.active]="toggles.state.fogOff" (click)="toggles.setFog(!toggles.state.fogOff)">Fog OFF</button>
-    <button class="toggle-btn" [class.active]="toggles.state.hwScaleHalf" (click)="toggles.setHwScaling(!toggles.state.hwScaleHalf)">Scale 0.5x</button>
-    <button class="toggle-btn" [class.active]="toggles.state.shadowsOff" (click)="toggles.setShadows(!toggles.state.shadowsOff)">Shadows OFF</button>
-    <button class="toggle-btn" [class.active]="toggles.state.localLightsOff" (click)="toggles.setLocalLights(!toggles.state.localLightsOff)">Local L. OFF</button>
-    <button class="toggle-btn" [class.active]="toggles.state.postProcessOff" (click)="toggles.setPostProcess(!toggles.state.postProcessOff)" style="grid-column: span 2">PostProcess OFF</button>
+       <div class="suspect" style="padding-top: 4px; border-top: 1px solid #334155;">
+         Causa/Correlación: <br/><strong style="color: #fbbf24; font-size: 11px;">{{ inc.diagnosis }}</strong>
+       </div>
+       
+       <img *ngIf="inc.imageUrl" [src]="inc.imageUrl" style="width: 100%; border-radius: 4px; margin-top: 8px; border: 1px solid #334155; filter: contrast(1.1);">
+    </div>
   </div>
-
-  <button class="btn-print" (click)="printToConsole()">📷 Imprimir Snapshot a Consola</button>
 </div>
 
-<!-- Botón flotante miniatura para activar Profiler si está oculto -->
 <button *ngIf="!profiler.isProfilingEnabled" 
-        style="position: fixed; bottom: 10px; right: 10px; z-index: 9999; background: #333; color: white; border: 1px solid #555; padding: 5px; border-radius: 4px; cursor: pointer; font-size: 10px;"
+        style="position: fixed; bottom: 10px; right: 10px; z-index: 9999; background: #1e293b; color: white; border: 1px solid #334155; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 11px; font-weight: bold; box-shadow: 0 4px 10px rgba(0,0,0,0.5);"
         (click)="toggles.toggleProfiling()">
-  📊 Enable Profiler
+  📊 PROFILER
 </button>

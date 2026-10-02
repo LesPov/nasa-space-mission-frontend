@@ -33,8 +33,14 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
 
   private sub: Subscription | null = null;
 
+  // 🔥 SOLUCIÓN NG0100: Caché estricto para estabilizar las referencias de los arrays en Angular
+  private filteredNodesCache: Node[] | null = null;
+  private childrenCache = new Map<number, Node[]>();
+  private lastSearchTermCache: string | null = null;
+
   ngOnInit() {
     this.sub = this.mapaSvc.onMapChanged.subscribe(() => {
+      this.clearCaches();
       this.cdr.markForCheck();
       this.cdr.detectChanges();
     });
@@ -45,6 +51,12 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
       this.sub.unsubscribe();
       this.sub = null;
     }
+    this.childrenCache.clear();
+  }
+
+  private clearCaches(): void {
+    this.filteredNodesCache = null;
+    this.childrenCache.clear();
   }
 
   get searchTerm(): string {
@@ -60,6 +72,19 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
   }
 
   get filteredNodes(): Node[] {
+    const currentTerm = this.searchTerm;
+    
+    // Si el término de búsqueda cambió, invalidamos el caché
+    if (this.lastSearchTermCache !== currentTerm) {
+       this.clearCaches();
+       this.lastSearchTermCache = currentTerm;
+    }
+
+    // 🔥 Retorna la misma referencia en memoria para evitar el NG0100
+    if (this.filteredNodesCache) {
+       return this.filteredNodesCache;
+    }
+
     let list = this.depth === 0 ? this.stateSvc.nodosEscena() : this.nodes;
     
     if (this.depth > 0) {
@@ -89,12 +114,12 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
        });
     }
 
-    const term = this.searchTerm;
-    if (term) {
-      list = list.filter(n => this.nodeOrChildMatches(n, term));
+    if (currentTerm) {
+      list = list.filter(n => this.nodeOrChildMatches(n, currentTerm));
     }
     
-    return list.sort((a, b) => this.getOrderIndex(a) - this.getOrderIndex(b));
+    this.filteredNodesCache = list.sort((a, b) => this.getOrderIndex(a) - this.getOrderIndex(b));
+    return this.filteredNodesCache;
   }
 
   private nodeOrChildMatches(node: Node, term: string): boolean {
@@ -113,6 +138,11 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
   }
 
   getUsefulChildren(node: Node): Node[] {
+    // 🔥 SOLUCIÓN NG0100: Retornar caché para mantener la estabilidad del Virtual DOM
+    if (this.childrenCache.has(node.uniqueId)) {
+       return this.childrenCache.get(node.uniqueId)!;
+    }
+
     const result: Node[] = [];
     const children = node.getChildren();
     
@@ -148,13 +178,16 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
       if (child.name.includes('proxycol') || child.name.startsWith('decal_')) continue;
 
       if (this.isTechnicalWrapper(child)) {
-        result.push(...this.getUsefulChildren(child));
+        result.push(...this.getUsefulChildren(child)); // Recursividad segura gracias al caché
       } else {
         result.push(child);
       }
     }
     
-    return result.sort((a, b) => this.getOrderIndex(a) - this.getOrderIndex(b));
+    const sortedResult = result.sort((a, b) => this.getOrderIndex(a) - this.getOrderIndex(b));
+    this.childrenCache.set(node.uniqueId, sortedResult);
+    
+    return sortedResult;
   }
 
   isTechnicalWrapper(node: Node): boolean {
@@ -418,7 +451,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
 
     this.clearDragVisuals();
 
-    // 🔥 FIX: Permite soltar fuera, encima, o dentro del nodo
     if (y < rect.height * 0.25) {
       this.outlinerState.dropAction.set('above');
       targetEl.classList.add('drag-over-top');
@@ -459,7 +491,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
 
     const newParentNode = action === 'inside' ? node : node.parent;
 
-    // 🔥 FIX DRAG & DROP PARENTING
     if (draggedNode.parent !== newParentNode) {
         const draggedEntity = this.entityManager.getEntityByMesh(draggedNode as AbstractMesh);
         const newParentEntity = newParentNode ? this.entityManager.getEntityByMesh(newParentNode as AbstractMesh) : null;
@@ -467,7 +498,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
         if (draggedEntity) {
             draggedEntity.parentId = newParentEntity ? newParentEntity.uid : null;
             
-            // setParent mantiene la posición, rotación y escala visual global en el mundo
             if (typeof (draggedNode as any).setParent === 'function') {
                 (draggedNode as any).setParent(newParentNode);
             } else {

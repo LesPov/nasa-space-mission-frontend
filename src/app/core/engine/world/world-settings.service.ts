@@ -1,3 +1,4 @@
+
 import { Injectable, signal } from '@angular/core';
 import { Color3, Color4, HemisphericLight, Scene, Vector3 } from '@babylonjs/core';
 import { 
@@ -80,7 +81,6 @@ export class WorldSettingsService {
         requisitos: Array.isArray(uiData.requisitos) ? uiData.requisitos : []
       });
     } else {
-        // Restaurar defaults si la plataforma no tiene UI settings guardadas
         this.uiSettings.set({ ...DEFAULT_MISSION_UI_SETTINGS });
     }
   }
@@ -170,7 +170,8 @@ export class WorldSettingsService {
     
     const oldGlobal = scene.lights.find(l => l.name === 'globalLight');
     if (oldGlobal) oldGlobal.dispose();
-    const oldSun = scene.lights.find(l => l.name === 'sunLight');
-    if (oldSun) oldSun.dispose();
+    
+    // 🔥 FASE 1 FIX: Eliminada la destrucción de 'sunLight'. El ShadowOrchestratorService 
+    // es ahora el único dueño del ciclo de vida del sol para no romper el CSM.
   }
 }

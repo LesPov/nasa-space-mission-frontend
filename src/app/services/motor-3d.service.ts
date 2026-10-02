@@ -13,6 +13,7 @@ import { PlayerTriggerService } from '../core/engine/runtime/systems/player-trig
 import { PlayerAnimationService } from '../core/engine/runtime/systems/player-animation.service';
 import { CoreSceneMaterialService } from '../core/engine/scene/utils/core-scene-material.service';
 import { EngineProfilerService } from '../core/engine/telemetry/engine-profiler.service';
+import { PerformanceIncidentService } from '../core/engine/telemetry/performance-incident.service';
 
 @Injectable({
   providedIn: 'root'
@@ -31,7 +32,6 @@ export class Motor3dService implements ISceneAccess {
   public glowLayer!: GlowLayer; 
   public currentFps: number = 0;
   
-  // Instrumentación
   private sceneInstrumentation: SceneInstrumentation | null = null;
   private engineInstrumentation: EngineInstrumentation | null = null;
 
@@ -86,7 +86,6 @@ export class Motor3dService implements ISceneAccess {
 
     this.scene = new Scene(this.engine);
     this.scene.clearColor = new Color4(0.05, 0.05, 0.05, 1);
-    
     this.scene.ambientColor = new Color3(1, 1, 1);
 
     this.scene.autoClear = false;
@@ -95,7 +94,6 @@ export class Motor3dService implements ISceneAccess {
     this.scene.gravity = new Vector3(0, -0.25, 0);
     this.scene.skipPointerMovePicking = true;
 
-    // Inicializar Instrumentación para Fase 0
     this.sceneInstrumentation = new SceneInstrumentation(this.scene);
     this.sceneInstrumentation.captureActiveMeshesEvaluationTime = true;
     this.sceneInstrumentation.captureRenderTargetsRenderTime = true;
@@ -104,6 +102,9 @@ export class Motor3dService implements ISceneAccess {
     this.engineInstrumentation.captureGPUFrameTime = true;
 
     this.loopManager.initialize(this.scene);
+    
+    // Inyectamos de forma diferida para prevenir dependencias circulares con el motor
+    const incidentSvc = this.injector.get(PerformanceIncidentService);
     
     const cinematicDirector = this.injector.get(CinematicDirectorService);
     this.loopManager.registerSystem(cinematicDirector);
@@ -128,7 +129,6 @@ export class Motor3dService implements ISceneAccess {
     this.loopManager.registerSystem(trigSvc);
     trigSvc.start();
 
-    // Vincular Profiler
     this.profiler.attachInstruments(this.sceneInstrumentation, this.engineInstrumentation, dynamicLighting, shadowOrch);
 
     this.cameraFactory.initializeCameras(this.scene, canvas);
@@ -158,9 +158,16 @@ export class Motor3dService implements ISceneAccess {
       this.currentFps = this.engine.getFps();
       
       const frameEnd = performance.now();
+      const frameTime = frameEnd - frameStart;
+      
       this.profiler.setFps(this.currentFps);
-      this.profiler.recordFrameTime(frameEnd - frameStart);
+      this.profiler.recordFrameTime(frameTime);
       this.profiler.endFrame();
+
+      // 🔥 AUTO PERFORMANCE INCIDENT CHECK
+      if (this.currentFps > 0) { 
+         incidentSvc.checkFrame(frameTime, this.currentFps);
+      }
     });
 
     window.removeEventListener('resize', this.resizeListener);
@@ -170,11 +177,9 @@ export class Motor3dService implements ISceneAccess {
   setVisualMode(mode: 'normal' | 'bw'): void {
     if (!this.renderingPipeline || !this.scene) return;
     const isBw = mode === 'bw';
-
     this.renderingPipeline.imageProcessing.colorCurvesEnabled = false;
     this.renderingPipeline.imageProcessing.exposure = isBw ? 0.98 : 1.0;
     this.renderingPipeline.imageProcessing.contrast = isBw ? 1.15 : 1.0; 
-
     this.scene.imageProcessingConfiguration.colorCurvesEnabled = false;
     this.scene.imageProcessingConfiguration.exposure = isBw ? 0.98 : 1.0;
     this.scene.imageProcessingConfiguration.contrast = isBw ? 1.15 : 1.0;

@@ -1,3 +1,4 @@
+
 import { Injectable } from '@angular/core';
 
 export interface ProfilerMetrics {
@@ -12,7 +13,7 @@ export interface ProfilerMetrics {
     drawCalls: number;
     activeMeshes: number;
     activeIndices: number;
-    gpuFrameTime: number; // Solo si soportado
+    gpuFrameTime: number; 
   };
   lights: {
     totalVirtual: number;
@@ -30,21 +31,17 @@ export interface ProfilerMetrics {
 export class EngineProfilerService {
   public isProfilingEnabled = false;
 
-  // Buffer circular para Frame Times (ultimos 300 frames = 5 seg a 60fps)
   private readonly BUFFER_SIZE = 300;
   private frameTimeBuffer = new Float32Array(this.BUFFER_SIZE);
   private bufferIndex = 0;
   private bufferCount = 0;
 
-  // Tiempos acumulados en el frame actual
   private currentPhases: Record<string, number> = {};
   private currentSystems: Record<string, number> = {};
 
-  // Tiempos promediados para la UI
   private avgPhases: Record<string, number> = {};
   private avgSystems: Record<string, number> = {};
 
-  // Referencias a Babylon Injectadas externamente
   private sceneInstr: any = null;
   private engineInstr: any = null;
   private lightSys: any = null;
@@ -81,7 +78,6 @@ export class EngineProfilerService {
 
   public endFrame() {
     if (!this.isProfilingEnabled) return;
-    // Suavizado exponencial simple (EMA) para que la UI no salte salvajemente
     const alpha = 0.1;
     for (const key in this.currentPhases) {
       this.avgPhases[key] = (this.avgPhases[key] || 0) * (1 - alpha) + this.currentPhases[key] * alpha;
@@ -112,7 +108,7 @@ export class EngineProfilerService {
 
     const gpuTime = this.engineInstr?.gpuFrameTimeCounter?.current || 0;
     const drawCalls = this.sceneInstr?.drawCallsCounter?.current || 0;
-    const activeMeshes = this.sceneInstr?.activeMeshesEvaluationTimeCounter?.current || 0; // Usado referencialmente
+    const activeMeshes = this.sceneInstr?.activeMeshesEvaluationTimeCounter?.current || 0; 
 
     let lightMetrics = { totalVirtual: 0, activePool: 0, shadowedPool: 0 };
     if (this.lightSys && typeof this.lightSys.getProfilerMetrics === 'function') {
@@ -136,7 +132,7 @@ export class EngineProfilerService {
         drawCalls,
         activeMeshes: this.sceneInstr?.scene?.getActiveMeshes()?.length || 0,
         activeIndices: this.sceneInstr?.scene?.getActiveIndices() || 0,
-        gpuFrameTime: gpuTime * 0.000001 // nano a ms
+        gpuFrameTime: gpuTime * 0.000001 
       },
       lights: lightMetrics,
       shadows: shadowMetrics

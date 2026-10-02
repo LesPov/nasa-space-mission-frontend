@@ -200,11 +200,7 @@ export class FogRendererService {
       }
     }
 
-    scene.lights.forEach(light => {
-      const sg: any = light.getShadowGenerator();
-      if (sg && sg instanceof CascadedShadowGenerator) {
-        sg.shadowMaxZ += (shadowLimit - sg.shadowMaxZ) * lerpSpeed;
-      }
-    });
+    // 🔥 FASE 1 FIX: Eliminada la mutación intrusiva de `shadowMaxZ` desde la niebla. 
+    // Ahora es responsabilidad única y exclusiva del ShadowOrchestratorService.
   }
 }

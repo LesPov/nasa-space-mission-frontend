@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
@@ -9,6 +8,12 @@ import { GameMode } from '../../session/game-mode.model';
 import { WorldSettingsService } from '../../world/world-settings.service';
 import { ISceneAccess, SCENE_ACCESS_TOKEN } from '../../scene/scene-access.token';
 import { GameEntity } from '../../entities/game.entity';
+
+// 🔥 FIX B: Caché de Volumen. Almacenamos el centro y radio real, ignorando dónde está el pivote.
+interface VolumeCache {
+    center: Vector3;
+    radius: number;
+}
 
 @Injectable({ providedIn: 'root' })
 export class LocalRenderingSystem implements IUpdatable {
@@ -22,6 +27,8 @@ export class LocalRenderingSystem implements IUpdatable {
   private frameCounter = 0;
   private distanceCheckTimer = 0;
   private meshCache = new Map<string, AbstractMesh[]>();
+  private volumeCache = new Map<string, VolumeCache>();
+  
   private static _fallbackPos = Vector3.Zero();
 
   private getReferencePosition(): Vector3 {
@@ -40,8 +47,6 @@ export class LocalRenderingSystem implements IUpdatable {
           cached = [rootMesh];
           const children = rootMesh.getChildMeshes(false);
           for (let c = 0; c < children.length; c++) {
-              // 🔥 CORE FIX: Añadimos 'light_visual' a la lista de tags excluidos de la iteración de visibilidad de Culling
-              // Evita que la Helper Sphere de la luz se vuelva visible durante las partidas tras recuperarse de la niebla.
               if (!Tags.MatchesQuery(children[c], "proxy_collider || debug_element || editor_only || light_visual")) {
                   cached.push(children[c]);
               }
@@ -49,6 +54,27 @@ export class LocalRenderingSystem implements IUpdatable {
           this.meshCache.set(entity.uid, cached);
       }
       return cached;
+  }
+
+  private getVolume(entity: GameEntity, rootMesh: AbstractMesh): VolumeCache {
+      let vol = this.volumeCache.get(entity.uid);
+      
+      // Si el objeto fue alterado o no tiene caché, se calcula el volumen real
+      if (!vol || entity.isDirty) {
+          // getHierarchyBoundingVectors calcula min y max iterando todos los hijos reales.
+          // Le pasamos `false` para que incluya hijos que están actualmente invisibles por culling.
+          const bounds = rootMesh.getHierarchyBoundingVectors(false, (m) => {
+              // Excluir esferas de luz, cajas verdes de físicas y gizmos del tamaño
+              return !Tags.MatchesQuery(m, "system_element || editor_only || proxy_collider || light_visual");
+          });
+          
+          const center = bounds.min.add(bounds.max).scale(0.5);
+          const radius = bounds.max.subtract(center).length(); // Radio envolvente perfecto
+          
+          vol = { center, radius };
+          this.volumeCache.set(entity.uid, vol);
+      }
+      return vol;
   }
 
   public stop(): void {
@@ -76,6 +102,7 @@ export class LocalRenderingSystem implements IUpdatable {
           }
       }
       this.meshCache.clear();
+      this.volumeCache.clear();
   }
 
   public update(dtMs: number): void {
@@ -104,7 +131,7 @@ export class LocalRenderingSystem implements IUpdatable {
 
       const CULL_SQ = cullDist * cullDist;
       const FADE_SQ = fadeStartDist * fadeStartDist;
-      const BROADPHASE_DIST = cullDist + 30;
+      const BROADPHASE_DIST = cullDist + 100; // Extendemos la broadphase por culpa de los radios gigantes posibles
 
       const lerpSpeed = Math.min(1.0, (dtMs / 16.66) * 0.15);
 
@@ -126,17 +153,23 @@ export class LocalRenderingSystem implements IUpdatable {
               e.isCulled = false;
               e.runtimeVisibilityTarget = 1.0;
           } else if (shouldCheckDistance) {
-              const meshPos = mesh.getAbsolutePosition();
+              // 🔥 FIX B: Obtención del Bounding Sphere real
+              const volume = this.getVolume(e, mesh);
               
-              const dx = Math.abs(refPos.x - meshPos.x);
-              const dy = Math.abs(refPos.y - meshPos.y);
-              const dz = Math.abs(refPos.z - meshPos.z);
+              // Broadphase usando el centro real
+              const dx = Math.abs(refPos.x - volume.center.x);
+              const dy = Math.abs(refPos.y - volume.center.y);
+              const dz = Math.abs(refPos.z - volume.center.z);
 
-              if (dx > BROADPHASE_DIST || dy > BROADPHASE_DIST || dz > BROADPHASE_DIST) {
+              // Si el centro + el radio del objeto está más allá de la broadphase, ocultar
+              if (dx - volume.radius > BROADPHASE_DIST || dy - volume.radius > BROADPHASE_DIST || dz - volume.radius > BROADPHASE_DIST) {
                   e.isCulled = true;
                   e.runtimeVisibilityTarget = 0.0001;
               } else {
-                  const distSq = dx*dx + dy*dy + dz*dz;
+                  // Narrowphase: Distancia a la superficie de la Bounding Sphere
+                  const distToCenter = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                  const effectiveDist = Math.max(0, distToCenter - volume.radius);
+                  const distSq = effectiveDist * effectiveDist;
 
                   if (distSq > CULL_SQ) {
                       e.isCulled = true;
@@ -146,8 +179,7 @@ export class LocalRenderingSystem implements IUpdatable {
                       e.runtimeVisibilityTarget = 1.0;
                   } else {
                       e.isCulled = false;
-                      const dist = Math.sqrt(distSq);
-                      let t = 1.0 - ((dist - fadeStartDist) / fadeMargin);
+                      let t = 1.0 - ((effectiveDist - fadeStartDist) / fadeMargin);
                       t = t * t * (3 - 2 * t); 
                       e.runtimeVisibilityTarget = Math.max(0.0001, Math.min(1.0, t));
                   }

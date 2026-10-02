@@ -1,3 +1,4 @@
+
 import { Injectable, inject, effect } from '@angular/core';
 import {
   KeyboardEventTypes, Matrix, Mesh, PointerEventTypes,
@@ -17,7 +18,6 @@ import { GameEventBusService } from '../../core/engine/events/game-event-bus.ser
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
 import { LiveBuilderService } from './live-builder.service';
 import { EditorMapaService } from '../editor-mapa.service';
-import { DynamicLightingSystem } from '../../core/engine/runtime/systems/lighting/dynamic-lighting.system'; 
 import { GizmoAdapterRegistryService } from './toolsservice/adapters/gizmo-adapter-registry.service';
 import { GameContextService } from '../../core/engine/session/game-context.service';
 import { InputRouterService } from '../../core/engine/session/input-router.service';
@@ -45,7 +45,6 @@ export class EditorToolsService {
   private clipboardSvc = inject(ToolsClipboardService);
   private gizmoSvc = inject(ToolsGizmoService);
   private liveBuilder = inject(LiveBuilderService);
-  private dynamicLighting = inject(DynamicLightingSystem); 
   private registry = inject(GizmoAdapterRegistryService);
   
   private selectionSvc = inject(ToolsSelectionService);
@@ -237,9 +236,9 @@ export class EditorToolsService {
       }
     });
 
+    // 🔥 FASE 1 FIX: Eliminada la llamada redundante a this.dynamicLighting.update(). 
+    // DynamicLightingSystem ya se actualiza a través del LoopManager.
     this.renderObserver = scene.onBeforeRenderObservable.add(() => {
-      this.dynamicLighting.update(this.motor3d.getEngine().getDeltaTime()); 
-
       const obj = this.state.objetoSeleccionado() as Mesh;
       this.gizmoSvc.updateCenterDragMeshRenderState(obj, this.state.subObjetoSeleccionado());
 
@@ -247,7 +246,6 @@ export class EditorToolsService {
         this.debugSvc.syncBreathAnimations(obj);
       }
 
-      // 🔥 COMPENSACIÓN CONTINUA: Mantiene las esferas de luz siempre en tamaño de 0.4m
       scene.meshes.forEach(m => {
         if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) {
           this.baseGizmoAdapter.compensarEscalaVisual(m.parent as AbstractMesh || m);

@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { DirectionalLight, Vector3, CascadedShadowGenerator, ShadowGenerator, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -128,7 +129,8 @@ export class ShadowOrchestratorService implements IUpdatable {
     const scene = this.motor3d.getScene();
     if (!scene) return;
 
-    if (!this.mainSun) {
+    // 🔥 FASE 1 FIX: Identidad absoluta y protección del sol. Evitamos la pérdida o recreación si ya existe.
+    if (!this.mainSun || this.mainSun.isDisposed()) {
        const w = this.worldSettings.settings();
        this.mainSun = new DirectionalLight('sunLight', new Vector3(w.ambientDirX, w.ambientDirY, w.ambientDirZ).normalize(), scene);
        this.mainSun.intensity = 0.8;

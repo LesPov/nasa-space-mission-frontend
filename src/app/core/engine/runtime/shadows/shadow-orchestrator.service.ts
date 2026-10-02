@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { DirectionalLight, Vector3, CascadedShadowGenerator, ShadowGenerator, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -41,8 +40,6 @@ export class ShadowOrchestratorService implements IUpdatable {
 
   private isEligibleShadowCaster(e: GameEntity): boolean {
       if (!e.view) return false;
-      // 🔥 CORE FIX: Ignora objetos escondidos MANUALMENTE por el usuario, pero PERMITE objetos
-      // temporalmente ocultos por el sistema de Culling, garantizando que el caché de sombras nunca se pierda.
       const isManuallyHidden = !e.isCulled && (!e.view.isVisible || !e.view.isEnabled());
       if (isManuallyHidden) return false;
 
@@ -56,13 +53,11 @@ export class ShadowOrchestratorService implements IUpdatable {
           const isInteractable = this.interactRules.isInteractable(e);
           if (isInteractable) return true; 
 
-          e.view.computeWorldMatrix(true);
-          const bounds = e.view.getHierarchyBoundingVectors(true);
-          const diag = bounds.max.subtract(bounds.min).length();
+          // Lectura O(1)
+          const radius = e.view.getBoundingInfo().boundingSphere.radiusWorld;
+          const diag = radius * 2;
           
-          if (diag < 0.6) {
-              return false;
-          }
+          if (diag < 0.6) return false;
 
           return true;
       }

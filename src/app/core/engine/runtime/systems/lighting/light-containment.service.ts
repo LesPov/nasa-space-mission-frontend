@@ -9,7 +9,6 @@ export class LightContainmentService {
   private entityManager = inject(EntityManagerService);
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
 
-  // Caché de mallas interiores por UID de entidad lumínica (O(1) por frame)
   private interiorMeshesCache = new Map<string, AbstractMesh[]>();
 
   public markDirty(lightUid: string): void {
@@ -20,20 +19,15 @@ export class LightContainmentService {
     this.interiorMeshesCache.clear();
   }
 
-  /**
-   * Resuelve la entidad que actúa como contenedor físico/arquitectónico de la luz interior.
-   */
   public resolveContainerEntity(lightEntity: GameEntity, scene: Scene): GameEntity | null {
     const lightComp = lightEntity.light;
     if (!lightComp) return null;
 
-    // 1. Contenedor explícitamente configurado por el usuario en el Inspector
     if (lightComp.containerEntityUid) {
       const explicit = this.entityManager.getEntityByUid(lightComp.containerEntityUid);
       if (explicit && explicit.view) return explicit;
     }
 
-    // 2. Si la luz está emparentada lógicamente a un modelo
     if (lightEntity.parentId) {
       const parentEnt = this.entityManager.getEntityByUid(lightEntity.parentId);
       if (parentEnt && parentEnt.view && (parentEnt.type === 'model' || parentEnt.type === 'cube')) {
@@ -41,7 +35,6 @@ export class LightContainmentService {
       }
     }
 
-    // 3. Detección automática por envolvente espacial (Bounding Box)
     const lightPos = lightEntity.view ? lightEntity.view.getAbsolutePosition() : new Vector3(
       lightEntity.transform.position.x,
       lightEntity.transform.position.y,
@@ -61,12 +54,10 @@ export class LightContainmentService {
       const cand = candidates[i];
       if (!cand.view) continue;
 
-      cand.view.computeWorldMatrix(true);
-      const bounds = cand.view.getHierarchyBoundingVectors(true);
-      const min = bounds.min;
-      const max = bounds.max;
+      const bounds = cand.view.getBoundingInfo().boundingBox;
+      const min = bounds.minimumWorld;
+      const max = bounds.maximumWorld;
 
-      // Tolerancia ligera para luces en esquinas
       const margin = 0.2;
       const inside = (
         lightPos.x >= min.x - margin && lightPos.x <= max.x + margin &&
@@ -87,9 +78,6 @@ export class LightContainmentService {
     return closestContainer;
   }
 
-  /**
-   * Resuelve y memoriza la lista de mallas interiores que pueden recibir luz de esta fuente.
-   */
   public getInteriorMeshes(lightEntity: GameEntity, scene: Scene): AbstractMesh[] {
     if (this.interiorMeshesCache.has(lightEntity.uid)) {
       return this.interiorMeshesCache.get(lightEntity.uid)!;
@@ -97,21 +85,18 @@ export class LightContainmentService {
 
     const container = this.resolveContainerEntity(lightEntity, scene);
     if (!container || !container.view) {
-      // Si no hay contenedor delimitado, no confinar
       return [];
     }
 
     const result = new Set<AbstractMesh>();
     const lightComp = lightEntity.light;
 
-    // 1. Mallas estructurales del modelo contenedor (paredes, techos, piso interior)
     const addContainerMesh = (m: AbstractMesh) => {
       if (!m || m.isDisposed()) return;
       if (Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || proxy_collider || invisible_floor || light_visual")) {
         return;
       }
 
-      // Si está configurada la exclusión de fachadas exteriores
       if (lightComp?.excludeExteriorMeshes) {
         const nameLower = m.name.toLowerCase();
         if (nameLower.includes('exterior') || nameLower.includes('facade') || nameLower.includes('outer') || nameLower.includes('roof_top')) {
@@ -127,12 +112,10 @@ export class LightContainmentService {
     addContainerMesh(container.view);
     container.view.getChildMeshes(false).forEach(addContainerMesh);
 
-    // 2. Props, personajes y objetos dentro del volumen del contenedor
     if (!lightComp?.affectDescendantsOnly) {
-      container.view.computeWorldMatrix(true);
-      const bounds = container.view.getHierarchyBoundingVectors(true);
-      const min = bounds.min;
-      const max = bounds.max;
+      const bounds = container.view.getBoundingInfo().boundingBox;
+      const min = bounds.minimumWorld;
+      const max = bounds.maximumWorld;
       const margin = 0.2;
 
       const allEntities = this.entityManager.getAllEntities();
@@ -166,48 +149,36 @@ export class LightContainmentService {
     return finalArray;
   }
 
-  /**
-   * Aplica la configuración de contención directamente sobre la luz activa de BabylonJS.
-   * 🔥 FIX DE RENDIMIENTO CRÍTICO: Previene la recompilación masiva de Shaders comprobando el Caché de estado.
-   */
   public applyContainment(light: PointLight | SpotLight, entity: GameEntity, scene: Scene): void {
     const mode: LightContainmentMode = entity.light?.containmentMode || 'GLOBAL';
 
-    // 🔥 Anti-Shader-Recompile Hysteresis Check
-    // Evita asignar un array a includedOnlyMeshes si la luz ya está confinada correctamente.
-    // Esto erradica el popping de meshes provocado por el shader re-evaluating lighting.
-    if ((light as any)._currentContainmentMode === mode && (light as any)._currentContainerUid === entity.light?.containerEntityUid) {
-        if (mode === 'GLOBAL') return;
-        if (this.interiorMeshesCache.has(entity.uid) && (light as any)._containmentAppliedForUid === entity.uid) {
-            return; 
-        }
-    }
-
+    // Validación por referencia en lugar de por contenido para evitar recompilaciones de shader
     if (mode === 'INTERIOR') {
       const interiorMeshes = this.getInteriorMeshes(entity, scene);
       if (interiorMeshes.length > 0) {
-        light.includedOnlyMeshes = interiorMeshes;
-        light.excludedMeshes = [];
+        if (light.includedOnlyMeshes !== interiorMeshes) {
+            light.includedOnlyMeshes = interiorMeshes;
+            light.excludedMeshes = [];
+        }
       } else {
-        light.includedOnlyMeshes = [];
-        light.excludedMeshes = [];
+        if (light.includedOnlyMeshes?.length !== 0) {
+            light.includedOnlyMeshes = [];
+            light.excludedMeshes = [];
+        }
       }
     } else {
-      light.includedOnlyMeshes = [];
-      light.excludedMeshes = [];
+      if (light.includedOnlyMeshes?.length !== 0) {
+          light.includedOnlyMeshes = [];
+          light.excludedMeshes = [];
+      }
     }
     
-    // Guardar metadata local para el Hysteresis en frames posteriores
     (light as any)._currentContainmentMode = mode;
     (light as any)._currentContainerUid = entity.light?.containerEntityUid;
     (light as any)._containmentAppliedForUid = entity.uid;
   }
 
-  /**
-   * Limpia las colecciones de contención de la luz para evitar residuos en slots reasignados.
-   */
   public clearContainment(light: PointLight | SpotLight): void {
-    // Si ya era Global, no asignamos Arrays vacíos de nuevo para evitar marcar Shaders como sucios
     if ((light as any)._currentContainmentMode !== 'GLOBAL') {
         light.includedOnlyMeshes = [];
         light.excludedMeshes = [];

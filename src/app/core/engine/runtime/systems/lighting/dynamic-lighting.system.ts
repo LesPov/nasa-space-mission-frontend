@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
 import { PointLight, SpotLight, DirectionalLight, Vector3, Color3, Tags, ShadowGenerator, AbstractMesh, Mesh, StandardMaterial } from '@babylonjs/core';
@@ -111,17 +110,16 @@ export class DynamicLightingSystem implements IUpdatable {
           return;
       }
 
-      entity.view.computeWorldMatrix(true);
       let targetNode: any = entity.view;
 
       if (entity.light?.attachedNodeName) {
           const boneNode = entity.view.getDescendants(false).find(n => n.name === entity.light!.attachedNodeName);
           if (boneNode) {
               targetNode = boneNode;
-              targetNode.computeWorldMatrix(true);
           }
       }
 
+      // Lectura segura en caché, no fuerza recálculo del grafo
       outPos.copyFrom(targetNode.getAbsolutePosition());
       
       if (targetNode.getDirectionToRef) {
@@ -145,21 +143,15 @@ export class DynamicLightingSystem implements IUpdatable {
 
       const renderableTypes = ['model', 'cube', 'sphere', 'cylinder', 'plane'];
       if (renderableTypes.includes(e.type) || !!e.visual?.assetId || !!e.visual?.path) {
-          
           const isInteractable = this.interactRules.isInteractable(e);
           if (isInteractable) return true; 
 
-          e.view.computeWorldMatrix(true);
-          const bounds = e.view.getHierarchyBoundingVectors(true);
-          const diag = bounds.max.subtract(bounds.min).length();
+          const radius = e.view.getBoundingInfo().boundingSphere.radiusWorld;
+          const diag = radius * 2;
           
-          if (diag < 0.6) {
-              return false;
-          }
-
+          if (diag < 0.6) return false;
           return true;
       }
-
       return false;
   }
 
@@ -231,7 +223,6 @@ export class DynamicLightingSystem implements IUpdatable {
 
           let pSg: ShadowGenerator | null = null;
           if (hasShadows) {
-              // 🔥 FIX RENDIMIENTO DE SOMBRAS (De 1024 a 512, reduce 6x el ancho de banda para GPU)
               pSg = new ShadowGenerator(512, pLight);
               pSg.usePercentageCloserFiltering = true; 
               pSg.filteringQuality = ShadowGenerator.QUALITY_LOW;
@@ -254,7 +245,6 @@ export class DynamicLightingSystem implements IUpdatable {
 
       for(let i = 0; i < 2; i++) { 
           const hasShadows = i < 1; 
-
           const dLight = new DirectionalLight(`pool_dir_${i}`, new Vector3(0, -1, 0), scene);
           dLight.intensity = 0; dLight.diffuse = Color3.Black(); dLight.shadowEnabled = hasShadows; 
           Tags.AddTagsTo(dLight, "system_element");
@@ -465,13 +455,18 @@ export class DynamicLightingSystem implements IUpdatable {
         }
       }
 
+      const assignedSet = new Set<string>();
+      this.pointPool.forEach(s => s.assignedEntityUid && assignedSet.add(s.assignedEntityUid));
+      this.spotPool.forEach(s => s.assignedEntityUid && assignedSet.add(s.assignedEntityUid));
+      this.dirPool.forEach(s => s.assignedEntityUid && assignedSet.add(s.assignedEntityUid));
+
       activeVirtuals.sort((a, b) => {
           if (selectedUid) {
               if (a.entity.uid === selectedUid) return -1;
               if (b.entity.uid === selectedUid) return 1;
           }
-          const isA_Assigned = this.pointPool.some(s => s.assignedEntityUid === a.entity.uid) || this.spotPool.some(s => s.assignedEntityUid === a.entity.uid) || this.dirPool.some(s => s.assignedEntityUid === a.entity.uid);
-          const isB_Assigned = this.pointPool.some(s => s.assignedEntityUid === b.entity.uid) || this.spotPool.some(s => s.assignedEntityUid === b.entity.uid) || this.dirPool.some(s => s.assignedEntityUid === b.entity.uid);
+          const isA_Assigned = assignedSet.has(a.entity.uid);
+          const isB_Assigned = assignedSet.has(b.entity.uid);
           let distA = a.distSq; let distB = b.distSq;
           if (isA_Assigned) distA *= 0.8; 
           if (isB_Assigned) distB *= 0.8; 
@@ -640,7 +635,6 @@ export class DynamicLightingSystem implements IUpdatable {
           }
 
           if (slot.type !== 'directional') {
-              // 🔥 FIX RENDIMIENTO: Aquí SÍ marcamos dirty porque fue el usuario en el Editor quien cambió los parámetros
               this.containmentSvc.markDirty(entity.uid);
               this.containmentSvc.applyContainment(slot.light as any, entity, scene);
           }
@@ -792,8 +786,6 @@ export class DynamicLightingSystem implements IUpdatable {
           }
 
           if (slot.type !== 'directional') {
-              // 🔥 FIX RENDIMIENTO: Se ha eliminado `this.containmentSvc.markDirty(...)` en este loop.
-              // Ahora respetamos estrictamente el caché. Babylon ya no recompilará Shaders por frame.
               this.containmentSvc.applyContainment(slot.light as any, vl.entity, scene);
           }
       }

@@ -7,7 +7,7 @@
   },
   "include": [
     "src/**/*.ts"
-  ],
+, "culling.service.ts"  ],
   "exclude": [
     "src/**/*.spec.ts"
   ]

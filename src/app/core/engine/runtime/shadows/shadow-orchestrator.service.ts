@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { DirectionalLight, Vector3, CascadedShadowGenerator, ShadowGenerator, AbstractMesh, Mesh, Tags } from '@babylonjs/core';
+import { DirectionalLight, Vector3, CascadedShadowGenerator, ShadowGenerator, AbstractMesh, Mesh, InstancedMesh, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -95,7 +95,6 @@ export class ShadowOrchestratorService implements IUpdatable {
      const scene = this.motor3d.getScene();
      if (!scene || !this.mainSun) return;
 
-     // Optimización: El sol solo se re-posiciona si el jugador/cámara se aleja significativamente
      const refPos = this.getReferencePosition();
      if (Vector3.DistanceSquared(this.mainSun.position, refPos) > 25) {
          this.mainSun.position.copyFrom(refPos);
@@ -140,9 +139,6 @@ export class ShadowOrchestratorService implements IUpdatable {
        const shadowRes = isEditor ? 1024 : 2048; 
 
        this.shadowGenerator = new CascadedShadowGenerator(shadowRes, this.mainSun);
-       
-       // 🔥 FASE 5: Optimización GPU estricta. 
-       // Se reduce a 2 Cascadas cubriendo 35m estables, previniendo sobrecarga de draw calls.
        this.shadowGenerator.numCascades = 2;
        this.shadowGenerator.shadowMaxZ = 35; 
        
@@ -173,22 +169,39 @@ export class ShadowOrchestratorService implements IUpdatable {
                const processMeshForShadows = (m: AbstractMesh) => {
                    const isManuallyHidden = !e.isCulled && (!m.isVisible || !m.isEnabled());
                    if (!isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
-                       // 🔥 FASE 5: Control estricto anti-drawcalls inútiles (Ignorar nodos sin vértices)
-                       if (m instanceof Mesh && m.getTotalVertices() > 0) {
+                       // 🔥 FASE 7 FIX: Casteo seguro con `getClassName` para aplicar propiedades a InstancedMesh
+                       let isValidCaster = false;
+                       if (m.getClassName() === "InstancedMesh") {
+                           const source = (m as InstancedMesh).sourceMesh;
+                           if (source && source.getTotalVertices() > 0) {
+                               isValidCaster = true;
+                               if (!source.receiveShadows) source.receiveShadows = true;
+                           }
+                       } else if (m.getClassName() === "Mesh") {
+                           if ((m as Mesh).getTotalVertices() > 0) {
+                               isValidCaster = true;
+                               m.receiveShadows = true;
+                           }
+                       }
+                       if (isValidCaster) {
                            newRenderList.push(m);
                        }
-                       m.receiveShadows = true;
                    }
                };
 
                processMeshForShadows(e.view);
                e.view.getChildMeshes(false).forEach(processMeshForShadows);
            } else if (e.view) {
+               // Objetos invisibles o pequeños siguen recibiendo sombras
                if (!Tags.MatchesQuery(e.view, "light_visual || debug_element || proxy_collider")) {
-                   e.view.receiveShadows = true;
+                   if (e.view.getClassName() === "Mesh") e.view.receiveShadows = true;
                    e.view.getChildMeshes(false).forEach(cm => {
                        if (!Tags.MatchesQuery(cm, "light_visual || debug_element || proxy_collider")) {
-                           cm.receiveShadows = true;
+                           if (cm.getClassName() === "InstancedMesh" && (cm as InstancedMesh).sourceMesh) {
+                               (cm as InstancedMesh).sourceMesh.receiveShadows = true;
+                           } else if (cm.getClassName() === "Mesh") {
+                               cm.receiveShadows = true;
+                           }
                        }
                    });
                }

@@ -18,14 +18,13 @@ export class LightEntityMapper extends BaseEntityMapper {
     super.applyDbToEntity(obj, entity);
     const props = obj.properties || {} as SceneObjectPropertiesDto;
 
-    // 🔥 FIX LUZ LOCAL: Permitimos que las luces respeten a sus padres si los tienen.
-    // Solo forzamos la corrección posicional (isLegacyLocalTransform) si antes eran WORLD pero tenían un ParentID.
+    // 🔥 FASE 6 FIX: Lógica Robusta de Transform Space
     if (!props.transformSpace) {
         if (props.attachedNodeName) {
             entity.transformSpace = 'ATTACHED';
         } else if (obj.parentId) {
             entity.transformSpace = 'LOCAL';
-            entity.isLegacyLocalTransform = true; // Notificamos al cargador que convierta las coordenadas de WORLD a LOCAL.
+            entity.isLegacyLocalTransform = true; // Notificamos al cargador que preserve las coords globales
         } else {
             entity.transformSpace = 'WORLD';
         }
@@ -56,13 +55,11 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.enabled = props.isEnabled ?? true;
       entity.light.castShadows = (props as any).castShadows ?? true;
 
-      // 🔥 FIX LUZ INTERIOR: Si la luz es hija de un modelo (tiene parentId), por defecto se confina
-      // al INTERIOR del modelo para evitar filtraciones de luz hacia el exterior, a menos que el usuario indique lo contrario explícitamente.
       const defaultContainment = obj.parentId ? 'INTERIOR' : 'GLOBAL';
       entity.light.containmentMode = (props.containmentMode as LightContainmentMode) || defaultContainment;
       
       entity.light.containerEntityUid = props.containerEntityUid || '';
-      entity.light.affectDescendantsOnly = props.affectDescendantsOnly ?? true;
+      entity.light.affectDescendantsOnly = props.affectDescendantsOnly ?? false; // 🔥 Default realistic spill
       entity.light.shadowDarkness = props.shadowDarkness ?? 0.0;
       entity.light.shadowBias = props.shadowBias ?? 0.0005;
       entity.light.shadowNormalBias = props.shadowNormalBias ?? 0.01;

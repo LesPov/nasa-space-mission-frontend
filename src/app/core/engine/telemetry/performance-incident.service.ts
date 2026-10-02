@@ -62,11 +62,17 @@ export class PerformanceIncidentService {
       return;
     }
 
-    if (fps < this.FPS_THRESHOLD || frameTimeMs > this.FRAMETIME_THRESHOLD) {
+    const mode = this.context.mode();
+    const isEditor = mode === 'EDITOR' || mode === 'EDITING_IN_GAME';
+    const toleranceFactor = isEditor ? 1.5 : 1.0; 
+
+    if (fps < (this.FPS_THRESHOLD / toleranceFactor) || frameTimeMs > (this.FRAMETIME_THRESHOLD * toleranceFactor)) {
       this.consecutiveBadFrames++;
       this.consecutiveGoodFrames = 0;
 
-      if (this.state === 'NORMAL' && this.consecutiveBadFrames > 15) {
+      const triggerLimit = isEditor ? 30 : 15;
+
+      if (this.state === 'NORMAL' && this.consecutiveBadFrames > triggerLimit) {
          this.triggerIncident(fps, frameTimeMs);
       } else if (this.state === 'ACTIVE' && this.activeIncident) {
          if (fps < this.activeIncident.minFps) this.activeIncident.minFps = fps;
@@ -92,6 +98,8 @@ export class PerformanceIncidentService {
       if (this.context.isTransitioning()) return 'SCENE_LOADING_OR_TRANSITION';
       if (this.context.isInteracting()) return 'EDITOR_INTERACTION';
       if (this.context.isPlaying()) return 'TEST_LIVE_PLAY';
+      if (this.context.mode() === 'EDITOR') return 'EDITOR_IDLE';
+      if (this.context.mode() === 'EDITING_IN_GAME') return 'EDITING_IN_GAME';
       return 'IDLE_OR_UNKNOWN';
   }
 
@@ -148,7 +156,6 @@ export class PerformanceIncidentService {
         return 'Shader Compilation / Scene Load (Spike Esperado)';
     }
     
-    // 🔥 FASE 4: Extendido para capturar los deltas exactos del incidente de Draw Calls
     if (prev) {
         const gpuDiff = m.gpu.gpuFrameTime - prev.gpu.gpuFrameTime;
         const drawDiff = m.gpu.drawCalls - prev.gpu.drawCalls;

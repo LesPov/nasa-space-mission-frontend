@@ -1,4 +1,3 @@
-// src/app/services/editor/toolsservice/tools-clipboard.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh } from '@babylonjs/core';
@@ -38,6 +37,12 @@ export class ToolsClipboardService {
         event.preventDefault();
         event.stopPropagation();
         this.deshacerAccion();
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+        this.copiarObjeto();
+      }
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+        this.pegarObjeto();
       }
     });
   }
@@ -81,6 +86,8 @@ export class ToolsClipboardService {
       clon = objOriginal.clone(nuevoNombre, null) as AbstractMesh;
     }
 
+    clon.parent = objOriginal.parent; // 🔥 FIX 9: Jerarquía persistente en Babylon
+
     clon.position = objOriginal.position.clone();
     clon.position.x += 1;
     clon.position.z += 1;
@@ -91,6 +98,9 @@ export class ToolsClipboardService {
     clon.scaling = objOriginal.scaling.clone();
     
     const newEntity = new GameEntity(window.crypto.randomUUID(), nuevoNombre, entityOriginal.type, entityOriginal.rol);
+    
+    newEntity.parentId = entityOriginal.parentId; // 🔥 FIX 9: Jerarquía persistente en BD
+
     newEntity.transform = JSON.parse(JSON.stringify(entityOriginal.transform));
     newEntity.visual = JSON.parse(JSON.stringify(entityOriginal.visual));
     newEntity.collider = JSON.parse(JSON.stringify(entityOriginal.collider));

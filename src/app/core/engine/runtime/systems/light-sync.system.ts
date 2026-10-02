@@ -1,12 +1,10 @@
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
-import { DynamicLightingSystem } from './lighting/dynamic-lighting.system';
 
 @Injectable({ providedIn: 'root' })
 export class LightSyncSystem implements IUpdatable {
   public id = 'LightSyncSystem';
-  private dynamicLighting = inject(DynamicLightingSystem);
 
   public update(dtMs: number): void {
       // 🔥 REFACTORIZACIÓN ARQUITECTÓNICA TRIPLE A: 

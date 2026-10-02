@@ -1,15 +1,19 @@
-import { Injectable } from '@angular/core';
-import { Scene, Mesh, MeshBuilder, StandardMaterial, Color3, AbstractMesh, Tags, Engine } from '@babylonjs/core';
+
+import { Injectable, inject } from '@angular/core';
+import { Scene, Mesh, MeshBuilder, StandardMaterial, Color3, AbstractMesh, Tags, Engine, Vector3 } from '@babylonjs/core';
 import { GameEntity } from '../../../core/engine/entities/game.entity';
+import { LightContainmentService } from '../../../core/engine/runtime/systems/lighting/light-containment.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsDebugLightRangeService {
   public debugRangeSphere: Mesh | null = null;
+  public debugContainerBox: Mesh | null = null;
+  
   private attachedMesh: AbstractMesh | null = null;
   private currentEntity: GameEntity | null = null;
+  private containmentSvc = inject(LightContainmentService);
 
   public update(scene: Scene, mesh: AbstractMesh, entity: GameEntity, subSelected: string | null): void {
-    // Solo mostramos el Helper de Rango para luces puntuales y focos. Si hay subselección (gizmos internos) lo ocultamos.
     if ((entity.type !== 'light_point' && entity.type !== 'light_spot') || subSelected !== null) {
       this.dispose();
       return;
@@ -19,8 +23,6 @@ export class ToolsDebugLightRangeService {
     this.currentEntity = entity;
 
     if (!this.debugRangeSphere) {
-      // Un diámetro de 2 significa que el radio base es 1.
-      // Al escalar el Mesh por el valor de "Range", el radio final coincidirá matemáticamente con el Range de BabylonJS.
       this.debugRangeSphere = MeshBuilder.CreateSphere('debugLightRangeSphere', { diameter: 2, segments: 32 }, scene);
       
       const mat = new StandardMaterial('debugLightRangeMat', scene);
@@ -32,11 +34,29 @@ export class ToolsDebugLightRangeService {
       mat.disableLighting = true;
       
       this.debugRangeSphere.material = mat;
-      this.debugRangeSphere.isPickable = false; // Transparente a los clics del usuario
+      this.debugRangeSphere.isPickable = false;
       this.debugRangeSphere.receiveShadows = false;
       
-      // Etiquetas vitales para evitar polución en el Outliner y Raycasts
       Tags.AddTagsTo(this.debugRangeSphere, "system_element editor_only debug_element ignore_raycast");
+    }
+
+    // 🔥 FASE 6 FIX: Caja visual de contención interior si el modo es INTERIOR
+    if (this.currentEntity.light?.containmentMode === 'INTERIOR') {
+       if (!this.debugContainerBox) {
+           this.debugContainerBox = MeshBuilder.CreateBox('debugContainerBox', { size: 1 }, scene);
+           const cMat = new StandardMaterial('cmat', scene);
+           cMat.wireframe = true; 
+           cMat.emissiveColor = new Color3(0, 1, 1); // Cyan para diferenciar de la luz (Amarilla)
+           cMat.disableLighting = true;
+           
+           this.debugContainerBox.material = cMat;
+           this.debugContainerBox.isPickable = false;
+           this.debugContainerBox.receiveShadows = false;
+           Tags.AddTagsTo(this.debugContainerBox, "system_element editor_only debug_element ignore_raycast");
+       }
+    } else if (this.debugContainerBox) {
+       this.debugContainerBox.dispose();
+       this.debugContainerBox = null;
     }
 
     this.sync();
@@ -48,7 +68,6 @@ export class ToolsDebugLightRangeService {
       
       let origin = this.attachedMesh.getAbsolutePosition();
       
-      // Si el usuario seleccionó la luz y tiene un helper visual (el bombillito), lo centramos exactamente ahí
       if (this.currentEntity.type.startsWith('light_') && !this.currentEntity.visual.assetId) {
          const visual = this.attachedMesh.getChildMeshes().find(m => Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual);
          if (visual) {
@@ -59,16 +78,29 @@ export class ToolsDebugLightRangeService {
 
       this.debugRangeSphere.position.copyFrom(origin);
       
-      // Sincronizamos la escala visual con el Rango real de la luz
       const range = this.currentEntity.light?.range ?? 50;
       this.debugRangeSphere.scaling.setAll(range);
       
-      // Sincronizamos el color del wireframe con el color de la luz para mejor UX
       const hex = this.currentEntity.light?.lightColor || '#ffffff';
       if (this.debugRangeSphere.material) {
           const c3 = Color3.FromHexString(hex);
           (this.debugRangeSphere.material as StandardMaterial).emissiveColor = c3;
           (this.debugRangeSphere.material as StandardMaterial).diffuseColor = c3;
+      }
+      
+      if (this.debugContainerBox && this.currentEntity.light?.containmentMode === 'INTERIOR') {
+          const containerEnt = this.containmentSvc.resolveContainerEntity(this.currentEntity, this.attachedMesh.getScene());
+          if (containerEnt && containerEnt.view) {
+              containerEnt.view.computeWorldMatrix(true);
+              const bounds = containerEnt.view.getHierarchyBoundingVectors(true);
+              const center = bounds.max.add(bounds.min).scale(0.5);
+              const size = bounds.max.subtract(bounds.min);
+              this.debugContainerBox.position.copyFrom(center);
+              this.debugContainerBox.scaling.copyFrom(size);
+              this.debugContainerBox.isVisible = true;
+          } else {
+              this.debugContainerBox.isVisible = false;
+          }
       }
     }
   }
@@ -77,6 +109,10 @@ export class ToolsDebugLightRangeService {
     if (this.debugRangeSphere) {
       this.debugRangeSphere.dispose();
       this.debugRangeSphere = null;
+    }
+    if (this.debugContainerBox) {
+      this.debugContainerBox.dispose();
+      this.debugContainerBox = null;
     }
     this.attachedMesh = null;
     this.currentEntity = null;

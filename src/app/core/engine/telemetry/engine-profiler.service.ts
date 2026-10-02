@@ -1,7 +1,8 @@
 
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, Injector } from '@angular/core';
 import { AdaptiveQualitySystem, QualityTier } from '../runtime/systems/adaptive-quality.system';
 import { ShadowCache } from '../runtime/shadows/shadow-cache.service';
+import { LightContainmentService } from '../runtime/systems/lighting/light-containment.service';
  
 export interface ProfilerMetrics {
   fps: number;
@@ -35,6 +36,11 @@ export interface ProfilerMetrics {
     staticCastersFrozen: number;
     dynamicCastersActive: number;
   };
+  spaces: {
+    containmentRebuilds: number;
+    cacheHits: number;
+    cacheMisses: number;
+  }; 
 }
 
 @Injectable({ providedIn: 'root' })
@@ -43,6 +49,15 @@ export class EngineProfilerService {
 
   private adaptiveQuality: AdaptiveQualitySystem | null = null;
   private shadowCache = inject(ShadowCache);
+  private injector = inject(Injector);
+
+  private _containmentSvc: LightContainmentService | null = null;
+  private get containmentSvc(): LightContainmentService {
+    if (!this._containmentSvc) {
+      this._containmentSvc = this.injector.get(LightContainmentService);
+    }
+    return this._containmentSvc;
+  }
 
   private readonly BUFFER_SIZE = 300;
   private frameTimeBuffer = new Float32Array(this.BUFFER_SIZE);
@@ -107,7 +122,6 @@ export class EngineProfilerService {
       this.currentSystems[key] = 0;
     }
     
-    // Limpieza cíclica de los contadores de incidentes para que no crezcan infinitamente
     if (this.bufferIndex % 60 === 0) {
       this.shadowCache.clearMetrics();
     }
@@ -180,6 +194,11 @@ export class EngineProfilerService {
         renderListRebuilds: this.shadowCache.metrics.renderListRebuilds,
         staticCastersFrozen: this.shadowCache.metrics.staticLights,
         dynamicCastersActive: this.shadowCache.metrics.dynamicLights
+      },
+      spaces: {
+        containmentRebuilds: this.containmentSvc.metrics.containmentRebuilds,
+        cacheHits: this.containmentSvc.metrics.cacheHits,
+        cacheMisses: this.containmentSvc.metrics.cacheMisses
       }
     };
   }

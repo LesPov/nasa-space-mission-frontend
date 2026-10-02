@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
@@ -9,7 +10,6 @@ import { WorldSettingsService } from '../../world/world-settings.service';
 import { ISceneAccess, SCENE_ACCESS_TOKEN } from '../../scene/scene-access.token';
 import { GameEntity } from '../../entities/game.entity';
 
-// 🔥 FIX B: Caché de Volumen. Almacenamos el centro y radio real, ignorando dónde está el pivote.
 interface VolumeCache {
     center: Vector3;
     radius: number;
@@ -59,17 +59,13 @@ export class LocalRenderingSystem implements IUpdatable {
   private getVolume(entity: GameEntity, rootMesh: AbstractMesh): VolumeCache {
       let vol = this.volumeCache.get(entity.uid);
       
-      // Si el objeto fue alterado o no tiene caché, se calcula el volumen real
       if (!vol || entity.isDirty) {
-          // getHierarchyBoundingVectors calcula min y max iterando todos los hijos reales.
-          // Le pasamos `false` para que incluya hijos que están actualmente invisibles por culling.
           const bounds = rootMesh.getHierarchyBoundingVectors(false, (m) => {
-              // Excluir esferas de luz, cajas verdes de físicas y gizmos del tamaño
               return !Tags.MatchesQuery(m, "system_element || editor_only || proxy_collider || light_visual");
           });
           
           const center = bounds.min.add(bounds.max).scale(0.5);
-          const radius = bounds.max.subtract(center).length(); // Radio envolvente perfecto
+          const radius = bounds.max.subtract(center).length(); 
           
           vol = { center, radius };
           this.volumeCache.set(entity.uid, vol);
@@ -87,7 +83,7 @@ export class LocalRenderingSystem implements IUpdatable {
           
           const mesh = e.view as AbstractMesh;
           if (mesh && !mesh.isDisposed()) {
-              if (!mesh.isEnabled()) mesh.setEnabled(true);
+              if (!mesh.isVisible) mesh.isVisible = true;
               
               const meshesToRestore = this.meshCache.has(e.uid) 
                   ? this.meshCache.get(e.uid)! 
@@ -96,6 +92,7 @@ export class LocalRenderingSystem implements IUpdatable {
               for (let m = 0; m < meshesToRestore.length; m++) {
                   const c = meshesToRestore[m];
                   if (!Tags.MatchesQuery(c, "proxy_collider || debug_element || editor_only || light_visual")) {
+                      c.isVisible = true;
                       c.visibility = 1.0;
                   }
               }
@@ -115,6 +112,7 @@ export class LocalRenderingSystem implements IUpdatable {
       }
       
       const mode = this.context.mode();
+      // 🔥 FIX 2: Excepción total de Culling agresivo si estamos en el Editor
       const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
       const isTransitioning = this.context.isTransitioning();
       
@@ -131,7 +129,7 @@ export class LocalRenderingSystem implements IUpdatable {
 
       const CULL_SQ = cullDist * cullDist;
       const FADE_SQ = fadeStartDist * fadeStartDist;
-      const BROADPHASE_DIST = cullDist + 100; // Extendemos la broadphase por culpa de los radios gigantes posibles
+      const BROADPHASE_DIST = cullDist + 100; 
 
       const lerpSpeed = Math.min(1.0, (dtMs / 16.66) * 0.15);
 
@@ -144,29 +142,20 @@ export class LocalRenderingSystem implements IUpdatable {
           if (e.type === 'trigger' || e.type === 'trigger_compuesto' || e.type.startsWith('light_')) continue;
           if (e.type === 'image_plane' || e.type === 'video_plane' || e.type === 'bubble') continue; 
           
-          if (e.visual?.disableCulling) {
-              if (e.isCulled || e.runtimeVisibilityTarget !== 1.0) {
-                   e.isCulled = false;
-                   e.runtimeVisibilityTarget = 1.0;
-              }
-          } else if (isEditor || !isCullingEnabled || isTransitioning) {
+          if (e.visual?.disableCulling || isEditor || !isCullingEnabled || isTransitioning) {
               e.isCulled = false;
               e.runtimeVisibilityTarget = 1.0;
           } else if (shouldCheckDistance) {
-              // 🔥 FIX B: Obtención del Bounding Sphere real
               const volume = this.getVolume(e, mesh);
               
-              // Broadphase usando el centro real
               const dx = Math.abs(refPos.x - volume.center.x);
               const dy = Math.abs(refPos.y - volume.center.y);
               const dz = Math.abs(refPos.z - volume.center.z);
 
-              // Si el centro + el radio del objeto está más allá de la broadphase, ocultar
               if (dx - volume.radius > BROADPHASE_DIST || dy - volume.radius > BROADPHASE_DIST || dz - volume.radius > BROADPHASE_DIST) {
                   e.isCulled = true;
                   e.runtimeVisibilityTarget = 0.0001;
               } else {
-                  // Narrowphase: Distancia a la superficie de la Bounding Sphere
                   const distToCenter = Math.sqrt(dx*dx + dy*dy + dz*dz);
                   const effectiveDist = Math.max(0, distToCenter - volume.radius);
                   const distSq = effectiveDist * effectiveDist;
@@ -191,8 +180,9 @@ export class LocalRenderingSystem implements IUpdatable {
           }
 
           if (Math.abs(e.currentRuntimeVisibility - e.runtimeVisibilityTarget) < 0.005 && e.currentRuntimeVisibility === e.runtimeVisibilityTarget) {
-              if (e.runtimeVisibilityTarget === 1.0 && !mesh.isEnabled()) {
-                  mesh.setEnabled(true);
+              // 🔥 FIX 3: Solo ajustamos el bool isVisible. Babylon no tiene que recalcular las matrices de escena.
+              if (e.runtimeVisibilityTarget === 1.0 && !mesh.isVisible) {
+                  mesh.isVisible = true;
               }
               continue; 
           }
@@ -207,22 +197,21 @@ export class LocalRenderingSystem implements IUpdatable {
           const cachedMeshes = this.getCachedMeshes(e, mesh);
 
           if (activeVis > 0.001) {
-              if (!mesh.isEnabled()) {
-                  for (let c = 0; c < cachedMeshes.length; c++) {
-                      cachedMeshes[c].visibility = 0.0001;
-                  }
-                  mesh.setEnabled(true);
+              if (!mesh.isVisible) {
+                  mesh.isVisible = true;
+                  for (let c = 0; c < cachedMeshes.length; c++) cachedMeshes[c].isVisible = true;
               }
 
               for (let c = 0; c < cachedMeshes.length; c++) {
                   cachedMeshes[c].visibility = activeVis;
               }
           } else {
-              if (mesh.isEnabled()) {
+              if (mesh.isVisible) {
                   for (let c = 0; c < cachedMeshes.length; c++) {
                       cachedMeshes[c].visibility = 0.0001;
+                      cachedMeshes[c].isVisible = false;
                   }
-                  mesh.setEnabled(false); 
+                  mesh.isVisible = false; 
               }
           }
       }

@@ -60,7 +60,8 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
       cpuPhases: {}, cpuSystems: {},
       gpu: { drawCalls: 0, activeMeshes: 0, activeIndices: 0, gpuFrameTime: 0, hardwareScaling: 1.0, qualityTier: 'HIGH', transparentMeshes: 0 },
       lights: { totalVirtual: 0, activePool: 0, shadowedPool: 0 },
-      shadows: { activeGenerators: 0, totalCasters: 0, csmMaxZ: 0, csmCascades: 0, invalidations: 0, renderListRebuilds: 0, staticCastersFrozen: 0, dynamicCastersActive: 0 }
+      shadows: { activeGenerators: 0, totalCasters: 0, csmMaxZ: 0, csmCascades: 0, invalidations: 0, renderListRebuilds: 0, staticCastersFrozen: 0, dynamicCastersActive: 0 },
+      spaces: { containmentRebuilds: 0, cacheHits: 0, cacheMisses: 0 }
     };
   }
 }

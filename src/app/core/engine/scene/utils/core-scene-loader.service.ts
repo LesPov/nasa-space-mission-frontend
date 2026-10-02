@@ -1,5 +1,4 @@
 
-// file: src/app/core/engine/scene/utils/core-scene-loader.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, MeshBuilder, Tags, AbstractMesh, Quaternion } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
@@ -126,19 +125,49 @@ export class CoreSceneLoaderService {
 
     if (!this.sessionSvc.isSessionActive(sessionId)) return;
 
+    // 🔥 FASE 6: RECONSTRUCCIÓN PERFECTA DE JERARQUÍAS (LOCAL VS WORLD)
     mallasCreadas.forEach((mesh, uid) => {
       const entity = this.entityManager.getEntityByUid(uid);
       if (entity && entity.parentId) {
         const parentNode = mallasCreadas.get(entity.parentId) || scene.getMeshByName(entity.parentId);
         
-        // 🔥 ARQUITECTURA CORRECTA DE PARENTING LOCAL
-        // Usamos asiganción directa a `mesh.parent` en lugar de `mesh.setParent()`.
-        // Esto le indica a Babylon que respete absolutamente la posición, rotación y escala local
-        // que cargamos de la base de datos sin aplicar cálculos inversos que rompían la posición.
         if (parentNode) {
-            mesh.parent = parentNode;
-            mesh.computeWorldMatrix(true);
-            entity.syncTransformFromView();
+            // Backup exacto de la base de datos
+            const dbPos = entity.transform.position;
+            const dbRot = entity.transform.rotation;
+            
+            if (entity.transformSpace === 'WORLD' || entity.isLegacyLocalTransform) {
+                // Las coordenadas de la BD son Mundiales. 
+                // Restauramos a mundo y usamos setParent para calcular el local matemático sin que salte.
+                mesh.position.set(dbPos.x, dbPos.y, dbPos.z);
+                if (entity.transform.rotationQuaternion) {
+                    mesh.rotationQuaternion = new Quaternion(entity.transform.rotationQuaternion.x, entity.transform.rotationQuaternion.y, entity.transform.rotationQuaternion.z, entity.transform.rotationQuaternion.w);
+                } else {
+                    mesh.rotation.set(dbRot.x, dbRot.y, dbRot.z);
+                }
+                
+                mesh.setParent(parentNode);
+                
+                // Actualizamos estado a LOCAL absoluto para los siguientes guardados
+                entity.transformSpace = 'LOCAL';
+                entity.isLegacyLocalTransform = false;
+                entity.syncTransformFromView();
+                entity.isDirty = true;
+            } else if (entity.transformSpace === 'LOCAL') {
+                // La BD ya guarda el transform local puro, asignación directa sin recálculos.
+                mesh.parent = parentNode;
+                mesh.position.set(dbPos.x, dbPos.y, dbPos.z);
+                if (entity.transform.rotationQuaternion) {
+                    mesh.rotationQuaternion = new Quaternion(entity.transform.rotationQuaternion.x, entity.transform.rotationQuaternion.y, entity.transform.rotationQuaternion.z, entity.transform.rotationQuaternion.w);
+                } else {
+                    mesh.rotation.set(dbRot.x, dbRot.y, dbRot.z);
+                }
+                mesh.computeWorldMatrix(true);
+                entity.syncTransformFromView();
+            } else if (entity.transformSpace === 'ATTACHED') {
+                mesh.parent = parentNode;
+                mesh.position.set(dbPos.x, dbPos.y, dbPos.z);
+            }
         }
       }
     });
@@ -267,15 +296,16 @@ export class CoreSceneLoaderService {
     await Promise.all(promesasCarga);
     if (!this.sessionSvc.isSessionActive(sessionId)) return mallasCreadas;
 
+    // 🔥 FASE 6: Parenting también seguro y local para los Prefabs construidos
     mallasCreadas.forEach((mesh, uid) => {
         const entity = this.entityManager.getEntityByUid(uid);
         if (entity && entity.parentId) {
             const parentMesh = mallasCreadas.get(entity.parentId) || this.motor3d.getScene().getMeshByName(entity.parentId);
             
-            // 🔥 ARQUITECTURA CORRECTA DE PARENTING LOCAL (Prefabs)
             if (parentMesh) {
                 mesh.parent = parentMesh;
                 mesh.computeWorldMatrix(true);
+                entity.transformSpace = 'LOCAL';
                 entity.syncTransformFromView();
             }
         }

@@ -1,8 +1,7 @@
-
 import { Injectable, inject } from '@angular/core';
 import { 
     AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, 
-    SceneLoader, StandardMaterial, PBRMaterial, TransformNode, Vector3, 
+    StandardMaterial, PBRMaterial, TransformNode, Vector3, 
     Tags, Quaternion, InstancedMesh 
 } from '@babylonjs/core';
 import '@babylonjs/loaders';
@@ -28,11 +27,12 @@ export class CoreModelLoaderService {
   private assetCache = inject(SceneAssetCacheService);
   private sessionSvc = inject(EngineSessionService);
 
-  // 🔥 FASE 4: Caché de Mallas Maestras para Instancing
   private masterMeshesCache = new Map<string, Mesh>();
 
   public clearMasterCache(): void {
-    this.masterMeshesCache.forEach(m => m.dispose());
+    this.masterMeshesCache.forEach(m => {
+      if (m && !m.isDisposed()) m.dispose();
+    });
     this.masterMeshesCache.clear();
   }
 
@@ -68,111 +68,38 @@ export class CoreModelLoaderService {
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, entityType, rolSaved);
     this.persistenceMapper.applyDbToEntity(obj, entity);
 
-    const isCharacter = entity.type === 'character' || entity.rol === 'player';
-    const hasOverrides = entity.partOverrides && Object.keys(entity.partOverrides.overrides).length > 0;
-    const hasAutoAnim = !!entity.autoAnim?.enabled;
-    const isInteractable = !!entity.interaction?.mensaje || !!entity.interaction?.interactSequenceIdFPS;
-
-    // 🔥 FASE 4 (INSTANCING): Decidimos si usamos Hardware Instancing o Clonación
-    // Solo permitimos instancing para props estáticos, sin overrides de partes y sin interactividad compleja.
-    const canUseInstancing = !isCharacter && !hasOverrides && !hasAutoAnim && !isLight && entity.rol === 'prop';
-
     try {
-      let wrapperMesh: Mesh;
-      let allMeshes: AbstractMesh[] = [];
-
-      if (canUseInstancing) {
-          // ==============================
-          // RUTA OPTIMIZADA: INSTANCING
-          // ==============================
-          let masterRoot = this.masterMeshesCache.get(fullPath);
-          
-          if (!masterRoot || masterRoot.isDisposed()) {
-              const container = await this.getCachedAssetContainer(fullPath, scene);
-              if (!this.sessionSvc.isSessionActive(sessionId) || scene.isDisposed) { container.dispose(); return; }
-              
-              masterRoot = new Mesh(`masterRoot_${path}`, scene);
-              masterRoot.isVisible = false;
-              Tags.AddTagsTo(masterRoot, "system_element editor_only ignore_raycast");
-
-              const instances = container.instantiateModelsToScene(name => `master_${name}`, false, { doNotInstantiate: true });
-              instances.rootNodes.forEach(node => {
-                  node.parent = masterRoot as Mesh;
-                  node.getChildMeshes(false).forEach(m => m.isVisible = false); // Ocultamos el master
-              });
-              
-              // Ajustamos los materiales del master una sola vez
-              await this.procesarMaterialesMaster(masterRoot, entity);
-              this.masterMeshesCache.set(fullPath, masterRoot);
-          }
-
-          if (!this.sessionSvc.isSessionActive(sessionId) || scene.isDisposed) return;
-
-          wrapperMesh = new Mesh(obj.name, scene);
-          
-          // Crear instancias (InstancedMesh) de cada sub-malla del master
-          const createInstancesFromMaster = (masterNode: TransformNode, parentNode: TransformNode) => {
-              masterNode.getChildren().forEach(child => {
-                  // 🔥 TYPE GUARD: Solo copiamos posiciones si el hijo hereda de TransformNode
-                  if (child instanceof TransformNode) {
-                      let newChild: TransformNode;
-                      
-                      if (child instanceof Mesh && child.getTotalVertices() > 0) {
-                          newChild = child.createInstance(`${obj.uid}_${child.name}`);
-                          allMeshes.push(newChild as AbstractMesh);
-                      } else {
-                          newChild = new TransformNode(`${obj.uid}_${child.name}`, scene);
-                      }
-                      
-                      newChild.parent = parentNode;
-                      newChild.position.copyFrom(child.position);
-                      
-                      if (child.rotationQuaternion) {
-                          newChild.rotationQuaternion = child.rotationQuaternion.clone();
-                      } else {
-                          newChild.rotation.copyFrom(child.rotation);
-                      }
-                      
-                      newChild.scaling.copyFrom(child.scaling);
-                      
-                      createInstancesFromMaster(child, newChild);
-                  }
-              });
-          };
-
-          createInstancesFromMaster(masterRoot, wrapperMesh);
-
-      } else {
-          // ==============================
-          // RUTA TRADICIONAL: CLONACIÓN
-          // ==============================
-          const container = await this.getCachedAssetContainer(fullPath, scene);
-          if (!this.sessionSvc.isSessionActive(sessionId) || scene.isDisposed) { container.dispose(); return; }
-
-          const instances = container.instantiateModelsToScene(name => name ? `${obj.uid}_${name}` : obj.uid, false, { doNotInstantiate: true });
-          
-          wrapperMesh = new Mesh(obj.name, scene);
-          instances.rootNodes.forEach(node => {
-            node.parent = wrapperMesh;
-          });
-          
-          allMeshes = instances.rootNodes as AbstractMesh[];
-          instances.animationGroups.forEach(ag => {
-            ag.stop();
-            ag.speedRatio = 1.0;
-          });
-          entity.animationNames = instances.animationGroups.map(a => a.name);
+      const container = await this.getCachedAssetContainer(fullPath, scene);
+      if (!this.sessionSvc.isSessionActive(sessionId) || scene.isDisposed) { 
+        container.dispose(); 
+        return; 
       }
+
+      // Siempre clonar jerarquía completa real para garantizar receivers y self-shadowing limpios en WebGL
+      const instances = container.instantiateModelsToScene(
+        name => (name ? `${obj.uid}_${name}` : `${obj.uid}_mesh`), 
+        false, 
+        { doNotInstantiate: true }
+      );
+      
+      const wrapperMesh = new Mesh(obj.name, scene);
+      instances.rootNodes.forEach(node => {
+        node.parent = wrapperMesh;
+      });
+      
+      instances.animationGroups.forEach(ag => {
+        ag.stop();
+        ag.speedRatio = 1.0;
+      });
+      entity.animationNames = instances.animationGroups.map(a => a.name);
 
       wrapperMesh.computeWorldMatrix(true);
 
       if (obj.properties?.internalScale !== undefined && obj.properties?.internalScale !== null) {
         const compensacion = obj.properties.internalScale;
         wrapperMesh.getChildren().forEach(node => {
-          if (node instanceof TransformNode) {
-            if (node.scaling) {
-              node.scaling.scaleInPlace(compensacion);
-            }
+          if (node instanceof TransformNode && node.scaling) {
+            node.scaling.scaleInPlace(compensacion);
           }
         });
         wrapperMesh.computeWorldMatrix(true);
@@ -180,38 +107,11 @@ export class CoreModelLoaderService {
       
       if (obj.isNewCreation) delete obj.isNewCreation;
       
-      await this.aplicarTransformacionesYEntidad(wrapperMesh, entity, obj, mallasCreadas, canUseInstancing);
+      await this.aplicarTransformacionesYEntidad(wrapperMesh, entity, obj, mallasCreadas);
     } catch (e) {
-      console.error(`[CoreModelLoader] Error cargando GLB ${path}`, e);
+      console.error(`[CoreModelLoader] Error cargando GLB ${path}:`, e);
       if (this.sessionSvc.isSessionActive(sessionId) && !scene.isDisposed) {
         await this.crearMallaError(obj, scene, mallasCreadas);
-      }
-    }
-  }
-
-  private async procesarMaterialesMaster(masterRoot: Mesh, referenceEntity: GameEntity): Promise<void> {
-    const scene = this.motor3d.getScene();
-    const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
-    const activeAmbient = isBW ? referenceEntity.visual.ambientColorBW : referenceEntity.visual.ambientColor;
-    
-    // Para los master, no usamos el color del override (porque lo arruinaría para todas las instancias)
-    // Usamos el color nativo del GLB o blanco
-    const subMeshes = masterRoot.getChildMeshes(false);
-    
-    for (const m of subMeshes) {
-      if (m.material) {
-        this.materialSvc.asegurarMaterialUnico(m, 'master');
-        
-        // 🔥 TYPE GUARD Y FASE 4 OPTIMIZACIÓN: Reducir luces simultáneas para props estáticos
-        if (m.material instanceof StandardMaterial || m.material instanceof PBRMaterial) {
-            if (m.material.maxSimultaneousLights !== 4) {
-                m.material.maxSimultaneousLights = 4; // Ahorra iteraciones en el shader de fragmentos
-            }
-        }
-
-        await this.materialSvc.ajustarMaterialGLB(
-          m.material, isBW, scene, activeAmbient, '#ffffff', false, 1.0
-        );
       }
     }
   }
@@ -226,10 +126,15 @@ export class CoreModelLoaderService {
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, 'model', 'prop');
     this.persistenceMapper.applyDbToEntity(obj, entity);
     
-    await this.aplicarTransformacionesYEntidad(fallbackMesh, entity, obj, mallasCreadas, false);
+    await this.aplicarTransformacionesYEntidad(fallbackMesh, entity, obj, mallasCreadas);
   }
 
-  private async aplicarTransformacionesYEntidad(rootNode: Mesh, entity: GameEntity, objRaw: any, mallasCreadas: Map<string, Mesh>, isInstanced: boolean): Promise<void> {
+  private async aplicarTransformacionesYEntidad(
+    rootNode: Mesh, 
+    entity: GameEntity, 
+    objRaw: any, 
+    mallasCreadas: Map<string, Mesh>
+  ): Promise<void> {
     const scene = this.motor3d.getScene();
     const isLight = entity.type.startsWith('light_');
     const isCharacter = entity.type === 'character' || entity.rol === 'player';
@@ -242,7 +147,7 @@ export class CoreModelLoaderService {
     rootNode.isPickable = true;
 
     rootNode.computeWorldMatrix(true);
-    const updatedBounds = rootNode.getHierarchyBoundingVectors();
+    const updatedBounds = rootNode.getHierarchyBoundingVectors(true);
     const finalRealSize = updatedBounds.max.subtract(updatedBounds.min);
     
     const finalSizeX = (entity.collider.sizeX === 1) ? Math.max(0.1, (finalRealSize.x / 2) / scaleX) : entity.collider.sizeX!;
@@ -258,16 +163,21 @@ export class CoreModelLoaderService {
     entity.collider.sizeZ = finalSizeZ;
 
     rootNode.ellipsoid = new Vector3(finalSizeX * scaleX, finalSizeY * scaleY, finalSizeZ * scaleZ);
-    rootNode.ellipsoidOffset = new Vector3((entity.collider.offsetX ?? 0) * scaleX, (entity.collider.offsetY ?? 0) * scaleY, (entity.collider.offsetZ ?? 0) * scaleZ);
+    rootNode.ellipsoidOffset = new Vector3(
+      (entity.collider.offsetX ?? 0) * scaleX, 
+      (entity.collider.offsetY ?? 0) * scaleY, 
+      (entity.collider.offsetZ ?? 0) * scaleZ
+    );
 
     const subMeshes = rootNode.getChildMeshes(false);
     
-    const isEditor = this.gameContext.mode() === GameMode.EDITOR || this.gameContext.mode() === GameMode.EDITING_IN_GAME || this.gameContext.mode() === GameMode.TEST_LIVE;
+    const isEditor = this.gameContext.mode() === GameMode.EDITOR || 
+                     this.gameContext.mode() === GameMode.EDITING_IN_GAME || 
+                     this.gameContext.mode() === GameMode.TEST_LIVE;
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
 
     const activeAmbient = isBW ? entity.visual.ambientColorBW : entity.visual.ambientColor;
     const activeColorHex = isBW ? entity.visual.colorBW : entity.visual.color;
-
     const partOverrides = entity.partOverrides?.overrides || {};
 
     for (const m of subMeshes) {
@@ -284,7 +194,9 @@ export class CoreModelLoaderService {
       }
       
       m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
-      m.receiveShadows = true; // El ShadowOrchestrator decidirá si de verdad genera sombra
+      
+      // Todas las piezas del modelo reciben y proyectan sombras
+      m.receiveShadows = true; 
       
       if (!m.metadata) m.metadata = {};
       if (!m.metadata.originalTransform) {
@@ -296,8 +208,7 @@ export class CoreModelLoaderService {
         };
       }
 
-      // Si es instanciado, no aplicamos overrides físicos
-      const override = !isInstanced ? partOverrides[m.name] : null;
+      const override = partOverrides[m.name] || null;
       if (override) {
         if (override.position) m.position.set(override.position.x, override.position.y, override.position.z);
         if (override.rotation) {
@@ -313,8 +224,12 @@ export class CoreModelLoaderService {
         m.freezeWorldMatrix();
       }
       
-      // Procesamiento de materiales SOLO si NO es instanciado (los instanciados usan el material del master)
-      if (!isInstanced && m.material) {
+      if (m.material) {
+        // Garantizar soporte de 8 luces simultáneas para evitar que la luz interior sea descartada
+        if (m.material.getClassName() === "StandardMaterial" || m.material.getClassName() === "PBRMaterial") {
+          (m.material as any).maxSimultaneousLights = 8;
+        }
+
         if (override) {
           this.materialSvc.asegurarMaterialUnicoParaParte(m, entity.uid, m.name);
           const activeColorOverride = isBW ? (override.colorBW || override.color) : override.color;
@@ -329,20 +244,10 @@ export class CoreModelLoaderService {
           );
         } else {
           this.materialSvc.asegurarMaterialUnico(m, entity.uid);
-          
-          // 🔥 TYPE GUARD
-          if (m.material instanceof StandardMaterial || m.material instanceof PBRMaterial) {
-              if (isCharacter) {
-                 if (m.material.maxSimultaneousLights !== 8) m.material.maxSimultaneousLights = 8;
-              } else {
-                 if (m.material.maxSimultaneousLights !== 4) m.material.maxSimultaneousLights = 4;
-              }
-          }
-
-          await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbient, activeColorHex, entity.visual.esEmisivo, entity.visual.brilloIntensidad);
+          await this.materialSvc.ajustarMaterialGLB(
+            m.material, isBW, scene, activeAmbient, activeColorHex, entity.visual.esEmisivo, entity.visual.brilloIntensidad
+          );
         }
-      } else if (isInstanced && m instanceof InstancedMesh) {
-          // Si es instanciado y tiene un color global distinto al blanco, usamos setInstancedBuffer 
       }
     }
 
@@ -385,7 +290,6 @@ export class CoreModelLoaderService {
       visualSphere.checkCollisions = false;
       visualSphere.receiveShadows = false;
       visualSphere.renderingGroupId = 1;
-
       visualSphere.scaling.set(0.4, 0.4, 0.4);
 
       const lightColorHex = objRaw.properties?.lightColor || '#facc15';

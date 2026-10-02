@@ -1,4 +1,5 @@
-import { Injectable, inject } from '@angular/core';
+
+import { Injectable, inject, Injector } from '@angular/core';
 import { Scene, Observer } from '@babylonjs/core';
 import { TransformTelemetryService } from '../../telemetry/transform-telemetry.service';
 import { SimulationClockService } from '../../runtime/time/simulation-clock.service';
@@ -36,7 +37,15 @@ export class LoopManagerService {
 
   private frameCount = 0;
   private clock = inject(SimulationClockService);
-  private profiler = inject(EngineProfilerService);
+  private injector = inject(Injector);
+
+  private _profiler: EngineProfilerService | null = null;
+  private get profiler(): EngineProfilerService {
+    if (!this._profiler) {
+      this._profiler = this.injector.get(EngineProfilerService);
+    }
+    return this._profiler;
+  }
 
   constructor(private telemetry: TransformTelemetryService) {
     Object.values(GamePhase).forEach(phase => {

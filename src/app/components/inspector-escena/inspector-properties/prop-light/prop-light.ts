@@ -1,6 +1,4 @@
 
-
-// file: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.ts
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -37,7 +35,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
   private editorSvc = inject(EditorMapaService);
   private stateSvc = inject(EditorStateService);
-  private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private entityManager = inject(EntityManagerService);
   private containmentSvc = inject(LightContainmentService);
   private dynamicLighting = inject(DynamicLightingSystem);
@@ -218,7 +216,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.enabled = entity.light.enabled ?? true;
     this.castShadows = entity.light.castShadows ?? true;
 
-    // --- CONTAINMENT SYNC ---
     this.containmentMode = entity.light.containmentMode ?? 'GLOBAL';
     this.containerEntityUid = entity.light.containerEntityUid ?? '';
     this.affectDescendantsOnly = entity.light.affectDescendantsOnly ?? true;
@@ -227,7 +224,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.shadowNormalBias = entity.light.shadowNormalBias ?? 0.01;
     this.excludeExteriorMeshes = entity.light.excludeExteriorMeshes ?? true;
 
-    // --- DISTANCE & HYSTERESIS SYNC ---
     this.distanceControlEnabled = entity.light.distanceControlEnabled ?? true;
     this.activationDistance = entity.light.activationDistance ?? 65;
     this.deactivationDistance = entity.light.deactivationDistance ?? 75;
@@ -288,7 +284,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (entity && entity.light) {
       if (targetNode && targetNode instanceof AbstractMesh) {
-         // 🔥 FIX PARENTING SEGURO: Evita el error de dependencia circular impidiendo que se intente hacer hijo de sí mismo
          if (this.objeto.parent !== targetNode && !targetNode.isDescendantOf(this.objeto)) {
              this.objeto.setParent(targetNode);
              entity.syncTransformFromView();
@@ -339,11 +334,14 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.syncToView(); 
 
       this.containmentSvc.markDirty(entity.uid);
-      this.dynamicLighting.syncLightImmediate(entity);
+      
+      // 🔥 FIX 8: Obligamos a que la luz calcule y fuerce la compilación al mismo instante
+      this.dynamicLighting.syncLightImmediate(entity, true);
       this.updateTelemetry();
     }
 
     this.editorSvc.onMapChanged.next();
-    this.animStatus = '💡 Parámetros de iluminación y distancia actualizados';
+    this.animStatus = '💡 Parámetros de iluminación actualizados';
+    setTimeout(() => this.animStatus = '', 2000);
   }
 }

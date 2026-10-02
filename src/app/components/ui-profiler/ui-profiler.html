@@ -1,3 +1,4 @@
+
 <div class="profiler-overlay" *ngIf="profiler.isProfilingEnabled">
   
   <div class="tabs">
@@ -9,7 +10,7 @@
 
   <div *ngIf="tab() === 'metrics'">
       <h3>
-        <span>PROFILER (FASE 5)</span>
+        <span>PROFILER (FASE 6)</span>
         <span class="metric-val" [style.color]="metrics().fps < 45 ? '#ef4444' : '#4ade80'">{{ metrics().fps | number:'1.0-1' }} FPS</span>
       </h3>
 
@@ -29,14 +30,13 @@
       <div class="metric-row indent"><span>Active Meshes:</span> <span>{{ metrics().gpu.activeMeshes }}</span></div>
       <div class="metric-row indent"><span>GPU Time:</span> <span>{{ metrics().gpu.gpuFrameTime > 0 ? (metrics().gpu.gpuFrameTime | number:'1.2-2') + ' ms' : 'N/A' }}</span></div>
 
-      <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>SHADOW OPTIMIZATION</strong></div>
+      <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>LIGHT SPACES & SHADOWS</strong></div>
+      <div class="metric-row indent"><span>Containment Cache:</span> <span style="color: #60a5fa;">{{ metrics().spaces.cacheHits }} Hits / {{ metrics().spaces.cacheMisses }} Miss</span></div>
+      <div class="metric-row indent"><span>Containment Rebuilds:</span> <span [style.color]="metrics().spaces.containmentRebuilds > 5 ? '#ef4444' : '#cbd5e1'">{{ metrics().spaces.containmentRebuilds }}</span></div>
+      <div class="metric-row indent"><span>Shadow RenderList Rebuilds:</span> <span>{{ metrics().shadows.renderListRebuilds }}</span></div>
       <div class="metric-row indent"><span>Local Virtual/Active:</span> <span>{{ metrics().lights.totalVirtual }} / {{ metrics().lights.activePool }}</span></div>
-      <div class="metric-row indent"><span>Frozen (0 Hz):</span> <span style="color: #60a5fa;">{{ metrics().shadows.staticCastersFrozen }} Slots</span></div>
-      <div class="metric-row indent"><span>Dynamic (LOD):</span> <span style="color: #facc15;">{{ metrics().shadows.dynamicCastersActive }} Slots</span></div>
-      <div class="metric-row indent"><span>Invalidations:</span> <span [style.color]="metrics().shadows.invalidations > 0 ? '#ef4444' : '#cbd5e1'">{{ metrics().shadows.invalidations }}</span></div>
-      <div class="metric-row indent"><span>Rebuilds:</span> <span>{{ metrics().shadows.renderListRebuilds }}</span></div>
-      <div class="metric-row indent"><span>CSM Cascades/MaxZ:</span> <span>{{ metrics().shadows.csmCascades }} / {{ metrics().shadows.csmMaxZ | number:'1.0-0' }}m</span></div>
-
+      <div class="metric-row indent"><span>Static Frozen / Dyn LOD:</span> <span style="color: #facc15;">{{ metrics().shadows.staticCastersFrozen }} / {{ metrics().shadows.dynamicCastersActive }} Slots</span></div>
+      
       <div class="toggles-grid">
         <button class="toggle-btn" [class.active]="toggles.state.glowOff" (click)="toggles.setGlow(!toggles.state.glowOff)">Glow OFF</button>
         <button class="toggle-btn" [class.active]="toggles.state.fxaaOff" (click)="toggles.setFxaa(!toggles.state.fxaaOff)">FXAA OFF</button>

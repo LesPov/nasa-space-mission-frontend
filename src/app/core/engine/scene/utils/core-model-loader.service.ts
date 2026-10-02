@@ -105,21 +105,16 @@ export class CoreModelLoaderService {
     const isLight = obj.type?.startsWith('light_');
     const rolSaved = obj.properties?.rol || obj.rol || (isLight ? 'light' : 'prop');
 
-    const entityType = isLight ? 'model' : obj.type;
+    // 🔥 FIX: Mantenemos la identidad atómica de la Entidad de Luz
+    const entityType = obj.type; 
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, entityType, rolSaved);
     this.persistenceMapper.applyDbToEntity(obj, entity);
-    
-    if (isLight) {
-      entity.type = 'model';
-    }
 
     const isCharacter = entity.type === 'character' || entity.rol === 'player';
 
     const scaleX = entity.transform.scale.x;
     const scaleY = entity.transform.scale.y;
     const scaleZ = entity.transform.scale.z;
-
-    entity.bindView(rootNode); 
 
     rootNode.checkCollisions = false; 
     rootNode.isPickable = true;
@@ -189,8 +184,6 @@ export class CoreModelLoaderService {
         if (override.scale) m.scaling.set(override.scale.x, override.scale.y, override.scale.z);
       }
       
-      // 🔥 FREEZE WORLD MATRIX DE MANERA SEGURA:
-      // Nunca congelamos objetos interactivos que pudieran encender/apagar TVs, o cambiar visuales en runtime
       const isInteractable = !!entity.interaction?.mensaje || !!entity.interaction?.interactSequenceIdFPS;
       if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled && !override && !isInteractable) {
         m.computeWorldMatrix(true);
@@ -255,50 +248,10 @@ export class CoreModelLoaderService {
     });
     entity.animationNames = anims.map(a => a.name);
 
-    this.entityManager.addEntity(entity);
-    mallasCreadas.set(entity.uid, rootNode);
-
+    // 🔥 FIX: Añadir helpers visuales al modelo en caso de que sea una Luz
     if (isLight) {
-      const lightType = obj.type; 
-      const lightUid = `${entity.uid}_light`;
-      const lightName = `Luz ${entity.name}`;
-
-      const lightNode = new Mesh(lightName, scene);
-      lightNode.isPickable = false;
-      lightNode.isVisible = false;
-      
-      const lightEntity = new GameEntity(lightUid, lightName, lightType, 'light');
-      lightEntity.parentId = entity.uid;
-      lightEntity.transformSpace = 'WORLD';
-      
-      const localPos = new Vector3(
-        obj.position?.x ?? 0, 
-        obj.position?.y ?? (finalSizeY > 0 ? finalSizeY : 1.5), 
-        obj.position?.z ?? 0
-      );
-      
-      rootNode.computeWorldMatrix(true);
-      const worldPos = Vector3.TransformCoordinates(localPos, rootNode.getWorldMatrix());
-      
-      lightNode.position.copyFrom(worldPos);
-      lightEntity.transform.position = { x: worldPos.x, y: worldPos.y, z: worldPos.z };
-
-      const localRotX = obj.rotation?.x ?? 0;
-      const localRotY = obj.rotation?.y ?? 0;
-      const localRotZ = obj.rotation?.z ?? 0;
-
-      const localQuat = Quaternion.FromEulerAngles(localRotX, localRotY, localRotZ);
-      const parentQuat = Quaternion.FromRotationMatrix(rootNode.getWorldMatrix().getRotationMatrix());
-      const worldQuat = parentQuat.multiply(localQuat);
-      const finalEuler = worldQuat.toEulerAngles();
-
-      lightNode.rotation.copyFrom(finalEuler);
-      lightEntity.transform.rotation = { x: finalEuler.x, y: finalEuler.y, z: finalEuler.z };
-
-      Tags.AddTagsTo(lightNode, "light_entity");
-
-      const visualSphere = MeshBuilder.CreateSphere(`visual_${lightName}`, { diameter: 1.0, segments: 16 }, scene);
-      visualSphere.parent = lightNode;
+      const visualSphere = MeshBuilder.CreateSphere(`visual_${entity.name}`, { diameter: 1.0, segments: 16 }, scene);
+      visualSphere.parent = rootNode;
       visualSphere.isPickable = false;
       visualSphere.checkCollisions = false;
       visualSphere.receiveShadows = false;
@@ -307,7 +260,7 @@ export class CoreModelLoaderService {
       visualSphere.scaling.set(0.4, 0.4, 0.4);
 
       const lightColorHex = obj.properties?.lightColor || '#facc15';
-      const lightVisualMat = new StandardMaterial(`mat_visual_${lightName}`, scene);
+      const lightVisualMat = new StandardMaterial(`mat_visual_${entity.name}`, scene);
       const c3 = Color3.FromHexString(lightColorHex);
       lightVisualMat.emissiveColor = c3.clone();
       lightVisualMat.diffuseColor = c3.clone();
@@ -317,11 +270,11 @@ export class CoreModelLoaderService {
       visualSphere.material = lightVisualMat;
 
       Tags.AddTagsTo(visualSphere, "light_visual"); 
-      visualSphere.metadata = { entityUid: lightUid, isLightVisual: true };
-      lightNode.metadata = { entityUid: lightUid, isLightRoot: true };
+      visualSphere.metadata = { entityUid: entity.uid, isLightVisual: true };
+      rootNode.metadata = { entityUid: entity.uid, isLightRoot: true };
 
-      if (lightType === 'light_spot' || lightType === 'light_directional') {
-        const cone = MeshBuilder.CreateCylinder(`dir_${lightName}`, { diameterTop: 0, diameterBottom: 0.15, height: 0.4 }, scene);
+      if (obj.type === 'light_spot' || obj.type === 'light_directional') {
+        const cone = MeshBuilder.CreateCylinder(`dir_${entity.name}`, { diameterTop: 0, diameterBottom: 0.15, height: 0.4 }, scene);
         cone.parent = visualSphere;
         cone.rotation.x = Math.PI / 2;
         cone.position.z = 0.25;
@@ -332,32 +285,12 @@ export class CoreModelLoaderService {
         Tags.AddTagsTo(cone, "light_visual ignore_raycast");
       }
 
-      // Nace estrictamente oculto por defecto
       visualSphere.isVisible = false;
       visualSphere.setEnabled(true);
-
-      lightEntity.light = new LightComponent();
-      lightEntity.light.lightColor = lightColorHex;
-      lightEntity.light.lightColorBW = obj.properties?.lightColorBW || lightColorHex;
-      lightEntity.light.intensity = obj.properties?.intensity ?? 5.0;
-      lightEntity.light.range = obj.properties?.range ?? 50;
-      lightEntity.light.angle = obj.properties?.angle ?? 45;
-      lightEntity.light.enabled = obj.properties?.isEnabled ?? true;
-      lightEntity.light.castShadows = (obj.properties as any)?.castShadows ?? true;
-      
-      if (obj.properties?.attachedNodeName) {
-        const boneNode = rootNode.getDescendants(false).find(n => n.name === obj.properties!.attachedNodeName);
-        if (boneNode) {
-          lightNode.setParent(boneNode as AbstractMesh);
-          lightEntity.transformSpace = 'ATTACHED';
-          lightEntity.light.attachedNodeName = obj.properties.attachedNodeName;
-          lightEntity.light.attachedNodePath = obj.properties.attachedNodePath || '';
-        }
-      }
-
-      lightEntity.bindView(lightNode);
-      this.entityManager.addEntity(lightEntity);
-      mallasCreadas.set(lightUid, lightNode);
     }
+
+    entity.bindView(rootNode);
+    this.entityManager.addEntity(entity);
+    mallasCreadas.set(entity.uid, rootNode);
   }
 }

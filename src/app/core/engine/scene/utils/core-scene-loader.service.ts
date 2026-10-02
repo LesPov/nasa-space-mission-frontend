@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/scene/utils/core-scene-loader.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, MeshBuilder, Tags, AbstractMesh, Quaternion } from '@babylonjs/core';
@@ -130,42 +131,14 @@ export class CoreSceneLoaderService {
       if (entity && entity.parentId) {
         const parentNode = mallasCreadas.get(entity.parentId) || scene.getMeshByName(entity.parentId);
         
-        // 🔥 FIX: Se procesa isLegacyLocalTransform independiente de si el espacio final es WORLD o LOCAL.
-        if (parentNode && entity.isLegacyLocalTransform) {
-           const localPos = new Vector3(entity.transform.position.x, entity.transform.position.y, entity.transform.position.z);
-           parentNode.computeWorldMatrix(true);
-           const worldPos = Vector3.TransformCoordinates(localPos, parentNode.getWorldMatrix());
-           
-           let worldRotEuler = new Vector3(entity.transform.rotation.x, entity.transform.rotation.y, entity.transform.rotation.z);
-           if (entity.transform.rotationQuaternion) {
-               worldRotEuler = new Quaternion(entity.transform.rotationQuaternion.x, entity.transform.rotationQuaternion.y, entity.transform.rotationQuaternion.z, entity.transform.rotationQuaternion.w).toEulerAngles();
-           }
-           const localQuat = Quaternion.FromEulerAngles(worldRotEuler.x, worldRotEuler.y, worldRotEuler.z);
-           const parentQuat = Quaternion.FromRotationMatrix(parentNode.getWorldMatrix().getRotationMatrix());
-           const worldQuat = parentQuat.multiply(localQuat);
-           const finalEuler = worldQuat.toEulerAngles();
-
-           mesh.position.copyFrom(worldPos);
-           entity.transform.position = { x: worldPos.x, y: worldPos.y, z: worldPos.z };
-           
-           if (mesh.rotationQuaternion) {
-               mesh.rotationQuaternion.copyFrom(worldQuat);
-               entity.transform.rotationQuaternion = { x: worldQuat.x, y: worldQuat.y, z: worldQuat.z, w: worldQuat.w };
-           } else {
-               mesh.rotation.copyFrom(finalEuler);
-               entity.transform.rotation = { x: finalEuler.x, y: finalEuler.y, z: finalEuler.z };
-           }
-           
-           entity.isLegacyLocalTransform = false;
-           entity.transformSpace = 'LOCAL'; // 🔥 Consolidamos a LOCAL tras convertir
-           entity.syncToView(); 
-        }
-
-        if (entity.transformSpace !== 'WORLD') {
-           if (parentNode) {
-               mesh.setParent(parentNode);
-               entity.syncTransformFromView();
-           }
+        // 🔥 ARQUITECTURA CORRECTA DE PARENTING LOCAL
+        // Usamos asiganción directa a `mesh.parent` en lugar de `mesh.setParent()`.
+        // Esto le indica a Babylon que respete absolutamente la posición, rotación y escala local
+        // que cargamos de la base de datos sin aplicar cálculos inversos que rompían la posición.
+        if (parentNode) {
+            mesh.parent = parentNode;
+            mesh.computeWorldMatrix(true);
+            entity.syncTransformFromView();
         }
       }
     });
@@ -299,42 +272,11 @@ export class CoreSceneLoaderService {
         if (entity && entity.parentId) {
             const parentMesh = mallasCreadas.get(entity.parentId) || this.motor3d.getScene().getMeshByName(entity.parentId);
             
-            // 🔥 Mismo fix de IsLegacyLocalTransform para prefabs
-            if (parentMesh && entity.isLegacyLocalTransform) {
-               const localPos = new Vector3(entity.transform.position.x, entity.transform.position.y, entity.transform.position.z);
-               parentMesh.computeWorldMatrix(true);
-               const worldPos = Vector3.TransformCoordinates(localPos, parentMesh.getWorldMatrix());
-               
-               let worldRotEuler = new Vector3(entity.transform.rotation.x, entity.transform.rotation.y, entity.transform.rotation.z);
-               if (entity.transform.rotationQuaternion) {
-                   worldRotEuler = new Quaternion(entity.transform.rotationQuaternion.x, entity.transform.rotationQuaternion.y, entity.transform.rotationQuaternion.z, entity.transform.rotationQuaternion.w).toEulerAngles();
-               }
-               const localQuat = Quaternion.FromEulerAngles(worldRotEuler.x, worldRotEuler.y, worldRotEuler.z);
-               const parentQuat = Quaternion.FromRotationMatrix(parentMesh.getWorldMatrix().getRotationMatrix());
-               const worldQuat = parentQuat.multiply(localQuat);
-               const finalEuler = worldQuat.toEulerAngles();
-
-               mesh.position.copyFrom(worldPos);
-               entity.transform.position = { x: worldPos.x, y: worldPos.y, z: worldPos.z };
-               
-               if (mesh.rotationQuaternion) {
-                   mesh.rotationQuaternion.copyFrom(worldQuat);
-                   entity.transform.rotationQuaternion = { x: worldQuat.x, y: worldQuat.y, z: worldQuat.z, w: worldQuat.w };
-               } else {
-                   mesh.rotation.copyFrom(finalEuler);
-                   entity.transform.rotation = { x: finalEuler.x, y: finalEuler.y, z: finalEuler.z };
-               }
-               
-               entity.isLegacyLocalTransform = false;
-               entity.transformSpace = 'LOCAL';
-               entity.syncToView(); 
-            }
-
-            if (entity.transformSpace !== 'WORLD') {
-               if (parentMesh) {
-                   mesh.setParent(parentMesh);
-                   entity.syncTransformFromView();
-               }
+            // 🔥 ARQUITECTURA CORRECTA DE PARENTING LOCAL (Prefabs)
+            if (parentMesh) {
+                mesh.parent = parentMesh;
+                mesh.computeWorldMatrix(true);
+                entity.syncTransformFromView();
             }
         }
     });

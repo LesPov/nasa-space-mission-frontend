@@ -1,3 +1,4 @@
+
 // file: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.ts
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -91,7 +92,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       this.editorSvc.onMapChanged.subscribe(() => this.syncData())
     );
 
-    // Actualizador de telemetría a 10 Hz para depuración en tiempo real en el inspector
     this.telemetryInterval = setInterval(() => {
       this.updateTelemetry();
     }, 100);
@@ -286,7 +286,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (entity && entity.light) {
       if (targetNode && targetNode instanceof AbstractMesh) {
-         if (this.objeto.parent !== targetNode) {
+         // 🔥 FIX PARENTING SEGURO: Evita el error de dependencia circular impidiendo que se intente hacer hijo de sí mismo
+         if (this.objeto.parent !== targetNode && !targetNode.isDescendantOf(this.objeto)) {
              this.objeto.setParent(targetNode);
              entity.syncTransformFromView();
          }
@@ -298,7 +299,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
          }
       }
 
-      // Validar coherencia de histéresis: deactivation debe ser >= activation
       if (this.deactivationDistance < this.activationDistance) {
         this.deactivationDistance = this.activationDistance + 5;
       }

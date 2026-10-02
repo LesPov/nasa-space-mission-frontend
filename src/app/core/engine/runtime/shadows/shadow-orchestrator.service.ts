@@ -9,6 +9,7 @@ import { WorldSettingsService } from '../../world/world-settings.service';
 import { GameContextService } from '../../session/game-context.service';
 import { GameEntity } from '../../entities/game.entity';
 import { InteractableRulesService } from '../rules/interactable-rules.service';
+import { ShadowQualityService } from './shadow-quality.service';
 
 @Injectable({ providedIn: 'root' })
 export class ShadowOrchestratorService implements IUpdatable {
@@ -19,6 +20,7 @@ export class ShadowOrchestratorService implements IUpdatable {
   private worldSettings = inject(WorldSettingsService);
   private context = inject(GameContextService); 
   private interactRules = inject(InteractableRulesService); 
+  private shadowQualitySvc = inject(ShadowQualityService); // 🔥 INYECTAMOS LA CALIDAD CENTRALIZADA
 
   private mainSun: DirectionalLight | null = null;
   private shadowGenerator: CascadedShadowGenerator | null = null;
@@ -41,7 +43,6 @@ export class ShadowOrchestratorService implements IUpdatable {
     };
   }
 
-  // 🔥 NUEVO: Operación atómica de reconciliación para evitar acumulación tras Reload/Exit Live.
   public reconcileShadows(): void {
       this.stop();
       this.start();
@@ -73,12 +74,9 @@ export class ShadowOrchestratorService implements IUpdatable {
 
           const radius = e.view.getBoundingInfo().boundingSphere.radiusWorld;
           const diag = radius * 2;
-          
           if (diag < 0.6) return false;
-
           return true;
       }
-
       return false;
   }
 
@@ -141,19 +139,19 @@ export class ShadowOrchestratorService implements IUpdatable {
     }
 
     if (!this.shadowGenerator) {
-       const isEditor = this.context.mode() === 'EDITOR';
-       const shadowRes = isEditor ? 1024 : 2048; 
+       // 🔥 INTEGRAMOS LA CONFIGURACIÓN CENTRAL DE CALIDAD
+       const config = this.shadowQualitySvc.getDirectionalConfig();
 
-       this.shadowGenerator = new CascadedShadowGenerator(shadowRes, this.mainSun);
-       this.shadowGenerator.numCascades = 2;
-       this.shadowGenerator.shadowMaxZ = 35; 
+       this.shadowGenerator = new CascadedShadowGenerator(config.resolution, this.mainSun);
+       this.shadowGenerator.numCascades = config.cascades ?? 3;
+       this.shadowGenerator.shadowMaxZ = 45; // Expandido levemente para mayor cobertura en exteriores
        
        this.shadowGenerator.cascadeBlendPercentage = 0.1; 
        this.shadowGenerator.lambda = 0.65; 
        this.shadowGenerator.usePercentageCloserFiltering = true;
-       this.shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-       this.shadowGenerator.bias = 0.0012;
-       this.shadowGenerator.normalBias = 0.012;
+       this.shadowGenerator.filteringQuality = config.filteringQuality;
+       this.shadowGenerator.bias = 0.001;       // Ajuste optimizado
+       this.shadowGenerator.normalBias = 0.01; // Ajuste optimizado para evitar Peter-Panning sin causar Acne
        this.shadowGenerator.setDarkness(0.35);
        this.shadowGenerator.autoCalcDepthBounds = false; 
        this.shadowGenerator.stabilizeCascades = true; 
@@ -173,7 +171,7 @@ export class ShadowOrchestratorService implements IUpdatable {
            const e = entities[i];
            if (this.isEligibleShadowCaster(e) && e.view) {
                const processMeshForShadows = (m: AbstractMesh) => {
-                   if (m.isDisposed()) return; // 🔥 FIX: Prevención contra fugas
+                   if (m.isDisposed()) return;
                    const isManuallyHidden = !e.isCulled && (!m.isVisible || !m.isEnabled());
                    if (!isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
                        let isValidCaster = false;
@@ -198,7 +196,7 @@ export class ShadowOrchestratorService implements IUpdatable {
                processMeshForShadows(e.view);
                e.view.getChildMeshes(false).forEach(processMeshForShadows);
            } else if (e.view) {
-               if (e.view.isDisposed()) continue; // 🔥 FIX: Prevención contra fugas
+               if (e.view.isDisposed()) continue;
                if (!Tags.MatchesQuery(e.view, "light_visual || debug_element || proxy_collider")) {
                    if (e.view.getClassName() === "Mesh") e.view.receiveShadows = true;
                    e.view.getChildMeshes(false).forEach(cm => {

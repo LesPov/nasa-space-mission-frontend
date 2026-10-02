@@ -28,7 +28,9 @@ export class PerformanceIncidentService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private context = inject(GameContextService);
 
+  // Array limitado para no consumir memoria (Ring buffer simulado con unshift/pop)
   private incidents: PerformanceIncident[] = [];
+  private readonly MAX_INCIDENTS = 15;
   
   private consecutiveBadFrames = 0;
   private consecutiveGoodFrames = 0;
@@ -38,7 +40,9 @@ export class PerformanceIncidentService {
   private activeIncident: PerformanceIncident | null = null;
   private incidentStartTime = 0;
 
+  // Ring buffer ligero de snapshots históricos para comparativas
   private metricsHistory: ProfilerMetrics[] = [];
+  private readonly MAX_HISTORY = 10;
   private historyTimer = 0;
 
   private readonly FPS_THRESHOLD = 45;
@@ -50,7 +54,7 @@ export class PerformanceIncidentService {
     if (this.historyTimer >= 1000) { 
       this.historyTimer = 0;
       this.metricsHistory.push(this.profiler.getSnapshot());
-      if (this.metricsHistory.length > 5) this.metricsHistory.shift();
+      if (this.metricsHistory.length > this.MAX_HISTORY) this.metricsHistory.shift();
     }
   }
 
@@ -131,7 +135,7 @@ export class PerformanceIncidentService {
     this.activeIncident = incident;
     this.incidents.unshift(incident);
     
-    if (this.incidents.length > 15) this.incidents.pop();
+    if (this.incidents.length > this.MAX_INCIDENTS) this.incidents.pop();
 
     console.warn(`🚨 [PerformanceIncident] [${contextStage}] ${diagnosis} | FPS: ${fps.toFixed(1)}`);
 

@@ -1,3 +1,31 @@
+
+/* Estilo del Badge / Píldora cuando está minimizado */
+.profiler-minimized {
+  position: fixed;
+  bottom: 15px;
+  right: 15px;
+  background: rgba(15, 23, 42, 0.95);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border: 1px solid #3b82f6;
+  border-radius: 20px;
+  color: #38bdf8;
+  font-family: monospace;
+  font-weight: bold;
+  font-size: 12px;
+  padding: 8px 16px;
+  z-index: 10000;
+  cursor: pointer;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.6);
+  transition: all 0.2s;
+  pointer-events: auto;
+  user-select: none;
+}
+.profiler-minimized:hover {
+  background: #1e293b;
+  transform: scale(1.05);
+}
+
 .profiler-overlay {
   position: fixed;
   top: 10px;
@@ -16,7 +44,22 @@
   box-shadow: 0 10px 30px rgba(0,0,0,0.8);
   pointer-events: auto;
   user-select: none;
+  animation: slideIn 0.2s ease-out;
 }
+
+@keyframes slideIn {
+  from { transform: translateX(20px); opacity: 0; }
+  to { transform: translateX(0); opacity: 1; }
+}
+
+.scrollable-view {
+  max-height: 450px; 
+  overflow-y: auto; 
+  padding-right: 6px; 
+}
+.scrollable-view::-webkit-scrollbar { width: 6px; }
+.scrollable-view::-webkit-scrollbar-track { background: #0f172a; }
+.scrollable-view::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
 
 .tabs {
   display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 4px;
@@ -109,14 +152,19 @@
 }
 .btn-primary:hover { background: #059669; }
 
-.incidents-view { max-height: 450px; overflow-y: auto; padding-right: 6px; }
-.incidents-view::-webkit-scrollbar { width: 6px; }
-.incidents-view::-webkit-scrollbar-track { background: #0f172a; }
-.incidents-view::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+.btn-ghost {
+  background: transparent; color: #94a3b8; border: none; cursor: pointer; transition: 0.2s; font-family: inherit; font-size: 11px; font-weight: bold;
+}
+.btn-ghost:hover { color: white; }
 
 .incident-card {
   background: #020617; border: 1px solid #334155; padding: 10px; border-radius: 8px; margin-bottom: 10px;
   box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+.incident-card:hover {
+  border-color: #38bdf8;
 }
 .inc-header { display: flex; justify-content: space-between; margin-bottom: 6px; border-bottom: 1px solid #1e293b; padding-bottom: 4px;}
 .suspect { color: #94a3b8; font-size: 10px; line-height: 1.4; }

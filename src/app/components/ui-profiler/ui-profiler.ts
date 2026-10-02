@@ -25,7 +25,10 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
   public cpuPhasesKeys = computed(() => Object.keys(this.metrics().cpuPhases || {}));
   public cpuSystemsKeys = computed(() => Object.keys(this.metrics().cpuSystems || {}));
 
+  // 🔥 Estados UI del Profiler
+  public isMinimized = signal<boolean>(false);
   public tab = signal<'metrics' | 'incidents'>('metrics');
+  public selectedIncident = signal<PerformanceIncident | null>(null);
 
   private intervalId: any;
 
@@ -33,6 +36,7 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
     this.ngZone.runOutsideAngular(() => {
       this.intervalId = setInterval(() => {
         if (this.profiler.isProfilingEnabled) {
+          // Extrae snapshot periódicamente (muy rápido, es 0-allocations excepto la copia literal del object)
           this.metrics.set(this.profiler.getSnapshot());
           
           const currentIncidents = this.incidentSvc.getIncidents();
@@ -50,6 +54,18 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
     if (this.intervalId) clearInterval(this.intervalId);
   }
 
+  public toggleMinimize() {
+    this.isMinimized.set(!this.isMinimized());
+  }
+
+  public viewIncident(inc: PerformanceIncident) {
+    this.selectedIncident.set(inc);
+  }
+
+  public backToList() {
+    this.selectedIncident.set(null);
+  }
+
   public printToConsole() {
     this.profiler.printSnapshotToConsole();
   }
@@ -60,7 +76,7 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
       cpuPhases: {}, cpuSystems: {},
       gpu: { drawCalls: 0, activeMeshes: 0, activeIndices: 0, gpuFrameTime: 0, hardwareScaling: 1.0, qualityTier: 'HIGH', transparentMeshes: 0 },
       lights: { totalVirtual: 0, activePool: 0, shadowedPool: 0 },
-      shadows: { activeGenerators: 0, totalCasters: 0, csmMaxZ: 0, csmCascades: 0, invalidations: 0, renderListRebuilds: 0, staticCastersFrozen: 0, dynamicCastersActive: 0 },
+      shadows: { shadowQualityLevel: 'MEDIUM', activeGenerators: 0, totalCasters: 0, csmMaxZ: 0, csmCascades: 0, invalidations: 0, renderListRebuilds: 0, staticCastersFrozen: 0, dynamicCastersActive: 0 },
       spaces: { containmentRebuilds: 0, cacheHits: 0, cacheMisses: 0 }
     };
   }

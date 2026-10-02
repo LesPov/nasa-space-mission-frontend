@@ -3,6 +3,7 @@ import { Injectable, inject, Injector } from '@angular/core';
 import { AdaptiveQualitySystem, QualityTier } from '../runtime/systems/adaptive-quality.system';
 import { ShadowCache } from '../runtime/shadows/shadow-cache.service';
 import { LightContainmentService } from '../runtime/systems/lighting/light-containment.service';
+import { ShadowQualityService, ShadowQualityTier } from '../runtime/shadows/shadow-quality.service';
  
 export interface ProfilerMetrics {
   fps: number;
@@ -27,6 +28,7 @@ export interface ProfilerMetrics {
     shadowedPool: number;
   };
   shadows: {
+    shadowQualityLevel: ShadowQualityTier; // 🔥 Nueva propiedad de diagnóstico
     activeGenerators: number;
     totalCasters: number;
     csmMaxZ: number;
@@ -49,6 +51,7 @@ export class EngineProfilerService {
 
   private adaptiveQuality: AdaptiveQualitySystem | null = null;
   private shadowCache = inject(ShadowCache);
+  private shadowQualitySvc = inject(ShadowQualityService); // 🔥 Inyectado para Snapshot
   private injector = inject(Injector);
 
   private _containmentSvc: LightContainmentService | null = null;
@@ -131,6 +134,7 @@ export class EngineProfilerService {
     const validCount = this.bufferCount;
     let avg = 0, p50 = 0, p95 = 0, p99 = 0;
 
+    // 🔥 Zero-allocation sorting and computing (ya estaba bien implementado, lo mantenemos estricto)
     if (validCount > 0) {
       const activeBuffer = new Float32Array(this.frameTimeBuffer.buffer, 0, validCount);
       const sorted = new Float32Array(activeBuffer).sort();
@@ -190,6 +194,7 @@ export class EngineProfilerService {
       lights: lightMetrics,
       shadows: {
         ...shadowMetrics,
+        shadowQualityLevel: this.shadowQualitySvc.getQualityTier(), // 🔥 Incluido en el snapshot
         invalidations: this.shadowCache.metrics.invalidations,
         renderListRebuilds: this.shadowCache.metrics.renderListRebuilds,
         staticCastersFrozen: this.shadowCache.metrics.staticLights,

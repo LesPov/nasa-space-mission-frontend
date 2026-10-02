@@ -1,5 +1,5 @@
 import { Injectable, inject, Injector } from '@angular/core';
-import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4, UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera } from '@babylonjs/core';
+import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4, UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera, SceneInstrumentation, EngineInstrumentation } from '@babylonjs/core';
 import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
 import { CameraFactoryService } from '../core/engine/runtime/cameras/camera-factory.service';
 import { CameraOwnershipService } from '../core/engine/runtime/cameras/camera-ownership.service';
@@ -12,6 +12,7 @@ import { PlayerSequenceService } from '../core/engine/runtime/systems/player-seq
 import { PlayerTriggerService } from '../core/engine/runtime/systems/player-trigger.service';
 import { PlayerAnimationService } from '../core/engine/runtime/systems/player-animation.service';
 import { CoreSceneMaterialService } from '../core/engine/scene/utils/core-scene-material.service';
+import { EngineProfilerService } from '../core/engine/telemetry/engine-profiler.service';
 
 @Injectable({
   providedIn: 'root'
@@ -24,10 +25,15 @@ export class Motor3dService implements ISceneAccess {
   private loopManager = inject(LoopManagerService);
   private ownership = inject(CameraOwnershipService);
   private injector = inject(Injector);
+  private profiler = inject(EngineProfilerService);
 
   public renderingPipeline!: DefaultRenderingPipeline;
   public glowLayer!: GlowLayer; 
   public currentFps: number = 0;
+  
+  // Instrumentación
+  private sceneInstrumentation: SceneInstrumentation | null = null;
+  private engineInstrumentation: EngineInstrumentation | null = null;
 
   private resizeListener = () => this.forceResize();
 
@@ -89,6 +95,14 @@ export class Motor3dService implements ISceneAccess {
     this.scene.gravity = new Vector3(0, -0.25, 0);
     this.scene.skipPointerMovePicking = true;
 
+    // Inicializar Instrumentación para Fase 0
+    this.sceneInstrumentation = new SceneInstrumentation(this.scene);
+    this.sceneInstrumentation.captureActiveMeshesEvaluationTime = true;
+    this.sceneInstrumentation.captureRenderTargetsRenderTime = true;
+
+    this.engineInstrumentation = new EngineInstrumentation(this.engine);
+    this.engineInstrumentation.captureGPUFrameTime = true;
+
     this.loopManager.initialize(this.scene);
     
     const cinematicDirector = this.injector.get(CinematicDirectorService);
@@ -114,6 +128,9 @@ export class Motor3dService implements ISceneAccess {
     this.loopManager.registerSystem(trigSvc);
     trigSvc.start();
 
+    // Vincular Profiler
+    this.profiler.attachInstruments(this.sceneInstrumentation, this.engineInstrumentation, dynamicLighting, shadowOrch);
+
     this.cameraFactory.initializeCameras(this.scene, canvas);
 
     this.renderingPipeline = new DefaultRenderingPipeline('defaultPipeline', false, this.scene, this.scene.cameras);
@@ -135,8 +152,15 @@ export class Motor3dService implements ISceneAccess {
     ambientLight.groundColor = new Color3(0.2, 0.2, 0.2);
 
     this.engine.runRenderLoop(() => {
+      const frameStart = performance.now();
+      
       this.scene.render();
       this.currentFps = this.engine.getFps();
+      
+      const frameEnd = performance.now();
+      this.profiler.setFps(this.currentFps);
+      this.profiler.recordFrameTime(frameEnd - frameStart);
+      this.profiler.endFrame();
     });
 
     window.removeEventListener('resize', this.resizeListener);
@@ -171,6 +195,9 @@ export class Motor3dService implements ISceneAccess {
     this.injector.get(PlayerAnimationService).limpiarEstados();
     this.injector.get(CinematicDirectorService).dispose();
     this.injector.get(DynamicLightingSystem).stop();
+
+    if (this.sceneInstrumentation) { this.sceneInstrumentation.dispose(); this.sceneInstrumentation = null; }
+    if (this.engineInstrumentation) { this.engineInstrumentation.dispose(); this.engineInstrumentation = null; }
 
     if (this.engine) {
       this.ownership.resetWatcher(); 

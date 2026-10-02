@@ -1,0 +1,54 @@
+<div class="profiler-overlay" *ngIf="profiler.isProfilingEnabled">
+  <h3>
+    <span>PROFILER (FASE 0)</span>
+    <span class="metric-val">{{ metrics.fps }} FPS</span>
+  </h3>
+
+  <div class="metric-row"><span>Frame Time (Avg):</span> <span class="metric-val">{{ metrics.frameTimeAvg | number:'1.2-2' }} ms</span></div>
+  <div class="metric-row indent"><span>p50:</span> <span>{{ metrics.frameTimeP50 | number:'1.2-2' }} ms</span></div>
+  <div class="metric-row indent"><span>p95:</span> <span>{{ metrics.frameTimeP95 | number:'1.2-2' }} ms</span></div>
+  <div class="metric-row indent"><span>p99:</span> <span style="color:#ef4444">{{ metrics.frameTimeP99 | number:'1.2-2' }} ms</span></div>
+
+  <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>CPU PHASES</strong></div>
+  <div class="metric-row indent" *ngFor="let phase of objectKeys(metrics.cpuPhases)">
+    <span>{{ phase }}:</span> <span>{{ metrics.cpuPhases[phase] | number:'1.2-2' }} ms</span>
+  </div>
+
+  <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>CPU SYSTEMS (Top)</strong></div>
+  <div class="metric-row indent" *ngFor="let sys of objectKeys(metrics.cpuSystems)">
+    <span *ngIf="metrics.cpuSystems[sys] > 0.1">{{ sys | slice:0:15 }}:</span> 
+    <span *ngIf="metrics.cpuSystems[sys] > 0.1">{{ metrics.cpuSystems[sys] | number:'1.2-2' }} ms</span>
+  </div>
+
+  <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>GPU & SCENE</strong></div>
+  <div class="metric-row indent"><span>Draw Calls:</span> <span>{{ metrics.gpu.drawCalls }}</span></div>
+  <div class="metric-row indent"><span>Active Meshes:</span> <span>{{ metrics.gpu.activeMeshes }}</span></div>
+  <div class="metric-row indent"><span>GPU Time:</span> <span>{{ metrics.gpu.gpuFrameTime > 0 ? (metrics.gpu.gpuFrameTime | number:'1.2-2') + ' ms' : 'N/A' }}</span></div>
+
+  <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>LIGHTS</strong></div>
+  <div class="metric-row indent"><span>Virtual/Active:</span> <span>{{ metrics.lights.totalVirtual }} / {{ metrics.lights.activePool }}</span></div>
+  <div class="metric-row indent"><span>Shadowed Slots:</span> <span>{{ metrics.lights.shadowedPool }}</span></div>
+
+  <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>SHADOWS (CSM)</strong></div>
+  <div class="metric-row indent"><span>Casters (RenderList):</span> <span>{{ metrics.shadows.totalCasters }}</span></div>
+  <div class="metric-row indent"><span>ShadowMaxZ:</span> <span>{{ metrics.shadows.csmMaxZ | number:'1.1-1' }}</span></div>
+
+  <div class="toggles-grid">
+    <button class="toggle-btn" [class.active]="toggles.state.glowOff" (click)="toggles.setGlow(!toggles.state.glowOff)">Glow OFF</button>
+    <button class="toggle-btn" [class.active]="toggles.state.fxaaOff" (click)="toggles.setFxaa(!toggles.state.fxaaOff)">FXAA OFF</button>
+    <button class="toggle-btn" [class.active]="toggles.state.fogOff" (click)="toggles.setFog(!toggles.state.fogOff)">Fog OFF</button>
+    <button class="toggle-btn" [class.active]="toggles.state.hwScaleHalf" (click)="toggles.setHwScaling(!toggles.state.hwScaleHalf)">Scale 0.5x</button>
+    <button class="toggle-btn" [class.active]="toggles.state.shadowsOff" (click)="toggles.setShadows(!toggles.state.shadowsOff)">Shadows OFF</button>
+    <button class="toggle-btn" [class.active]="toggles.state.localLightsOff" (click)="toggles.setLocalLights(!toggles.state.localLightsOff)">Local L. OFF</button>
+    <button class="toggle-btn" [class.active]="toggles.state.postProcessOff" (click)="toggles.setPostProcess(!toggles.state.postProcessOff)" style="grid-column: span 2">PostProcess OFF</button>
+  </div>
+
+  <button class="btn-print" (click)="printToConsole()">📷 Imprimir Snapshot a Consola</button>
+</div>
+
+<!-- Botón flotante miniatura para activar Profiler si está oculto -->
+<button *ngIf="!profiler.isProfilingEnabled" 
+        style="position: fixed; bottom: 10px; right: 10px; z-index: 9999; background: #333; color: white; border: 1px solid #555; padding: 5px; border-radius: 4px; cursor: pointer; font-size: 10px;"
+        (click)="toggles.toggleProfiling()">
+  📊 Enable Profiler
+</button>

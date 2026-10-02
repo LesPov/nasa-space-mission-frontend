@@ -2,6 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { Scene, Observer } from '@babylonjs/core';
 import { TransformTelemetryService } from '../../telemetry/transform-telemetry.service';
 import { SimulationClockService } from '../../runtime/time/simulation-clock.service';
+import { EngineProfilerService } from '../../telemetry/engine-profiler.service';
  
 export enum GamePhase {
   PRE_UPDATE = 0,
@@ -35,6 +36,7 @@ export class LoopManagerService {
 
   private frameCount = 0;
   private clock = inject(SimulationClockService);
+  private profiler = inject(EngineProfilerService);
 
   constructor(private telemetry: TransformTelemetryService) {
     Object.values(GamePhase).forEach(phase => {
@@ -111,10 +113,8 @@ export class LoopManagerService {
     const renderDt = clock.renderDeltaTimeMs;
     const simSteps = clock.substeps;
 
-    // 1. PRE_UPDATE siempre en tiempo real (Render Dt)
     this.executePhase(GamePhase.PRE_UPDATE, renderDt);
 
-    // 2. FÍSICAS y LÓGICA: Ejecutadas por substep de simulación controlado
     if (clock.timeScale > 0 && simSteps.length > 0) {
       for (let s = 0; s < simSteps.length; s++) {
         const stepDt = simSteps[s];
@@ -122,30 +122,32 @@ export class LoopManagerService {
         this.executePhase(GamePhase.LOGIC, stepDt);
       }
     } else if (clock.timeScale === 0) {
-      // 0x PAUSA: Las físicas y la lógica no avanzan (0 dt)
       this.executePhase(GamePhase.PHYSICS, 0);
       this.executePhase(GamePhase.LOGIC, 0);
     }
 
-    // 3. ANIMACIONES: En tiempo de simulación si está activo, o frame delta
     const animDt = clock.timeScale === 0 ? 0 : renderDt;
     this.executePhase(GamePhase.ANIMATION, animDt);
 
-    // 4. CÁMARA y POST_UPDATE: Siempre en tiempo de render para fluidez absoluta del usuario
     this.executePhase(GamePhase.CAMERA, renderDt);
     this.executePhase(GamePhase.POST_UPDATE, renderDt);
   }
 
   private executePhase(phase: GamePhase, dtMs: number): void {
-    this.telemetry.setPhase(GamePhase[phase]);
+    const phaseName = GamePhase[phase];
+    this.telemetry.setPhase(phaseName);
     
+    const phaseStart = performance.now();
+
     const phaseMap = this.phases.get(phase);
     if (phaseMap) {
       for (const [id, callback] of phaseMap.entries()) {
         try {
+          const start = performance.now();
           callback(dtMs);
+          this.profiler.recordSystemTime(id, performance.now() - start);
         } catch (error) {
-          console.error(`[LoopManager] Error ejecutando callback '${id}' en fase ${GamePhase[phase]}:`, error);
+          console.error(`[LoopManager] Error ejecutando callback '${id}' en fase ${phaseName}:`, error);
         }
       }
     }
@@ -153,15 +155,19 @@ export class LoopManagerService {
     for (let i = 0; i < this.updatablesList.length; i++) {
       const sys = this.updatablesList[i];
       try {
+        const sysStart = performance.now();
         if (phase === GamePhase.PRE_UPDATE && sys.preUpdate) sys.preUpdate(dtMs);
         if (phase === GamePhase.PHYSICS && sys.physicsUpdate) sys.physicsUpdate(dtMs);
         if (phase === GamePhase.LOGIC && sys.update) sys.update(dtMs);
         if (phase === GamePhase.ANIMATION && sys.animationUpdate) sys.animationUpdate(dtMs);
         if (phase === GamePhase.CAMERA && sys.cameraUpdate) sys.cameraUpdate(dtMs);
         if (phase === GamePhase.POST_UPDATE && sys.postUpdate) sys.postUpdate(dtMs);
+        this.profiler.recordSystemTime(sys.id, performance.now() - sysStart);
       } catch (error) {
-        console.error(`[LoopManager] Error ejecutando sistema '${sys.id}' en fase ${GamePhase[phase]}:`, error);
+        console.error(`[LoopManager] Error ejecutando sistema '${sys.id}' en fase ${phaseName}:`, error);
       }
     }
+
+    this.profiler.recordPhaseTime(phaseName, performance.now() - phaseStart);
   }
 }

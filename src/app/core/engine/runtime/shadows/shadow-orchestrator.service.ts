@@ -28,6 +28,21 @@ export class ShadowOrchestratorService implements IUpdatable {
   private static _fallbackPos = Vector3.Zero();
   private _tempOffset = Vector3.Zero();
 
+  // PROFILING TOGGLES
+  public profilerDisableShadows = false;
+
+  public getProfilerMetrics() {
+    let casters = 0;
+    if (this.shadowGenerator && this.shadowGenerator.getShadowMap() && this.shadowGenerator.getShadowMap()?.renderList) {
+        casters = this.shadowGenerator.getShadowMap()!.renderList!.length;
+    }
+    return {
+        activeGenerators: this.shadowGenerator ? 1 : 0,
+        totalCasters: casters,
+        csmMaxZ: this.shadowGenerator?.shadowMaxZ || 0
+    };
+  }
+
   private getReferencePosition(): Vector3 {
       const playerEntity = this.context.activePlayerEntity();
       if (playerEntity && playerEntity.view) {
@@ -143,6 +158,11 @@ export class ShadowOrchestratorService implements IUpdatable {
 
     const renderList = this.shadowGenerator.getShadowMap()?.renderList;
     if (renderList) {
+        if (this.profilerDisableShadows) {
+            renderList.length = 0;
+            return;
+        }
+
         const newRenderList: AbstractMesh[] = [];
         const entities = this.entityManager.getAllEntities();
 

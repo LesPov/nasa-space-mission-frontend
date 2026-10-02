@@ -69,6 +69,26 @@ export class DynamicLightingSystem implements IUpdatable {
   private _tempPos = Vector3.Zero();
   private _tempDir = Vector3.Zero();
 
+  // PROFILING TOGGLES
+  public profilerDisableLocalLights = false;
+
+  public getProfilerMetrics() {
+    let activeSlots = 0;
+    let shadowedSlots = 0;
+    [...this.pointPool, ...this.spotPool, ...this.dirPool].forEach(s => {
+      if (s.assignedEntityUid) {
+        activeSlots++;
+        if (s.light.shadowEnabled) shadowedSlots++;
+      }
+    });
+
+    return {
+      totalVirtual: this.virtualLights.length,
+      activePool: activeSlots,
+      shadowedPool: shadowedSlots
+    };
+  }
+
   public getVirtualLightByUid(uid: string): VirtualLight | undefined {
     return this.virtualLights.find(v => v.entity.uid === uid);
   }
@@ -119,7 +139,6 @@ export class DynamicLightingSystem implements IUpdatable {
           }
       }
 
-      // Lectura segura en caché, no fuerza recálculo del grafo
       outPos.copyFrom(targetNode.getAbsolutePosition());
       
       if (targetNode.getDirectionToRef) {
@@ -603,7 +622,10 @@ export class DynamicLightingSystem implements IUpdatable {
           }
           slot.light.diffuse.copyFrom(baseColor);
 
-          const finalIntensity = (lightComp.enabled && vl.isLightInRange) ? (lightComp.intensity ?? 1.0) * vl.targetMultiplier : 0;
+          // 🔥 PROFILER INJECTION (A/B Test)
+          let finalIntensity = (lightComp.enabled && vl.isLightInRange) ? (lightComp.intensity ?? 1.0) * vl.targetMultiplier : 0;
+          if (this.profilerDisableLocalLights) finalIntensity = 0;
+
           slot.currentIntensity = finalIntensity; slot.light.intensity = finalIntensity;
 
           const isEnabled = lightComp.enabled && vl.isLightInRange && finalIntensity > this.LIGHT_DISABLE_THRESHOLD;
@@ -647,7 +669,9 @@ export class DynamicLightingSystem implements IUpdatable {
               visual.material.diffuseColor.copyFrom(baseColor);
           }
 
-          const emissiveScale = (lightComp.intensity / 5) * (vl.isLightInRange ? vl.targetMultiplier : 0.1);
+          let emissiveScale = (lightComp.intensity / 5) * (vl.isLightInRange ? vl.targetMultiplier : 0.1);
+          if (this.profilerDisableLocalLights) emissiveScale = 0;
+
           const r = baseColor.r * emissiveScale; const g = baseColor.g * emissiveScale; const b = baseColor.b * emissiveScale;
 
           for (let j = 0; j < vl.materials.length; j++) {
@@ -695,7 +719,8 @@ export class DynamicLightingSystem implements IUpdatable {
               vl.baseColor = Color3.FromHexString(hexColor || '#ffffff');
               
               const animatedIntensity = lightComp?.renderIntensity ?? lightComp?.intensity ?? 1.0;
-              const emissiveScale = (animatedIntensity / 5) * vl.currentMultiplier; 
+              let emissiveScale = (animatedIntensity / 5) * vl.currentMultiplier; 
+              if (this.profilerDisableLocalLights) emissiveScale = 0;
               
               const r = vl.baseColor.r * emissiveScale; const g = vl.baseColor.g * emissiveScale; const b = vl.baseColor.b * emissiveScale;
               for(let j = 0; j < vl.materials.length; j++) {
@@ -753,6 +778,7 @@ export class DynamicLightingSystem implements IUpdatable {
           const animatedIntensity = vl.entity.light.renderIntensity ?? vl.entity.light.intensity ?? 1.0;
           let finalIntensity = animatedIntensity * vl.currentMultiplier;
           if (!vl.entity.light.enabled) finalIntensity = 0;
+          if (this.profilerDisableLocalLights) finalIntensity = 0;
 
           if (Math.abs(slot.currentIntensity - finalIntensity) > 0.001 || this.isFirstFrame) {
               slot.currentIntensity = finalIntensity; 
@@ -768,6 +794,8 @@ export class DynamicLightingSystem implements IUpdatable {
           }
 
           const wantsShadow = vl.isShadowInRange;
+          slot.light.shadowEnabled = wantsShadow;
+
           if (slot.sg) {
               if (wantsShadow) {
                   const hasCasters = (slot.sg.getShadowMap()?.renderList?.length ?? 0) > 0;

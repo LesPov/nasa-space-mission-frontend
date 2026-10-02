@@ -128,6 +128,12 @@ export class GameSession {
         }
     });
 
+    if (playerEntity && playerEntity.view) {
+      this.localRendering.reconcileAllEntitiesImmediate(playerEntity.view.getAbsolutePosition());
+    } else {
+      this.localRendering.reconcileAllEntitiesImmediate();
+    }
+
     const mode = this.context.mode();
     if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
       this.layoutSvc.mostrarMenu();

@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Camera, AbstractMesh, Tags, Vector3 } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -17,6 +16,7 @@ import { GameStateService } from '../state/game-state.service';
 import { SceneNodesService } from '../../../../services/editor/sceneservice/scene-nodes.service';
 import { PlayerTriggerService } from '../systems/player-trigger.service';
 import { ShadowOrchestratorService } from '../shadows/shadow-orchestrator.service';
+import { LocalRenderingSystem } from '../systems/local-rendering.system';
 
 export interface EditorSnapshotState {
   cameraTarget: Vector3;
@@ -41,6 +41,7 @@ export class LiveLifecycleManagerService {
   private sceneNodesSvc = inject(SceneNodesService);
   private playerTriggerSvc = inject(PlayerTriggerService);
   private shadowOrchestrator = inject(ShadowOrchestratorService);
+  private localRendering = inject(LocalRenderingSystem);
 
   private isLiveActive = false;
   private savedEditorCameraState: EditorSnapshotState | null = null;
@@ -91,6 +92,12 @@ export class LiveLifecycleManagerService {
 
     this.gameSession.start(playerEntity, vista);
 
+    if (playerEntity && playerEntity.view) {
+      this.localRendering.reconcileAllEntitiesImmediate(playerEntity.view.getAbsolutePosition());
+    } else {
+      this.localRendering.reconcileAllEntitiesImmediate();
+    }
+
     const targetCam = vista === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS();
     this.ownership.setCamera(vista === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', targetCam, canvas, true);
 
@@ -110,6 +117,7 @@ export class LiveLifecycleManagerService {
 
     this.inputRouter.unlockPointer();
     this.gameSession.stop();
+    this.localRendering.stop();
 
     this.playerCamSvc.updateFirstPersonVisibility(false);
     this.playerCamSvc.limpiarPivotTPS();
@@ -132,7 +140,6 @@ export class LiveLifecycleManagerService {
         }
     }
 
-    // 🔥 RECONCILIACIÓN CENTRALIZADA: Reconstruye todo el pipeline de iluminación puramente
     this.dynLighting.reconcileSceneLights();
     this.shadowOrchestrator.reconcileShadows();
 
@@ -165,6 +172,12 @@ export class LiveLifecycleManagerService {
 
       const entity = this.entityManager.getEntityByMesh(m);
       if (entity) {
+        if (entity.isManuallyHidden) {
+          m.setEnabled(false);
+          m.isVisible = false;
+          return;
+        }
+
         if (entity.type.startsWith('light_') && !entity.visual.assetId) {
           m.isVisible = visible;
         }

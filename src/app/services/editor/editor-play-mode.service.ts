@@ -1,3 +1,4 @@
+// src/app/services/editor/editor-play-mode.service.ts
 
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Tags, Vector3, Observer, Scene, ArcRotateCamera } from '@babylonjs/core';
@@ -112,7 +113,7 @@ export class EditorPlayModeService {
       targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
     }
 
-    // 🔥 RECONCILIACIÓN CENTRALIZADA EN LUGAR DEL VIEJO PREPARE
+    // Reconciliación atómica de luces y sombras sin fugas
     this.dynamicLighting.reconcileSceneLights();
     this.shadowOrchestrator.reconcileShadows();
 
@@ -183,12 +184,18 @@ export class EditorPlayModeService {
         return; 
       }
 
+      const entity = this.entityManager.getEntityByMesh(m);
+      if (entity && entity.isManuallyHidden) {
+        m.isVisible = false;
+        m.setEnabled(false);
+        return;
+      }
+
       if (Tags.MatchesQuery(m, 'editor_only')) {
         m.setEnabled(true);
         m.isVisible = true;
       }
 
-      const entity = this.entityManager.getEntityByMesh(m);
       if (entity) {
         if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = true;
         if (entity.type === 'bubble') m.isVisible = true;

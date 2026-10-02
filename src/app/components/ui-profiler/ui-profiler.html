@@ -9,19 +9,13 @@
 
   <div *ngIf="tab() === 'metrics'">
       <h3>
-        <span>PROFILER (FASE 1)</span>
+        <span>PROFILER (FASE 5)</span>
         <span class="metric-val" [style.color]="metrics().fps < 45 ? '#ef4444' : '#4ade80'">{{ metrics().fps | number:'1.0-1' }} FPS</span>
       </h3>
 
       <div class="metric-row"><span>Frame Time (Avg):</span> <span class="metric-val">{{ metrics().frameTimeAvg | number:'1.2-2' }} ms</span></div>
-      <div class="metric-row indent"><span>p50:</span> <span>{{ metrics().frameTimeP50 | number:'1.2-2' }} ms</span></div>
       <div class="metric-row indent"><span>p95:</span> <span>{{ metrics().frameTimeP95 | number:'1.2-2' }} ms</span></div>
       <div class="metric-row indent"><span>p99:</span> <span [style.color]="metrics().frameTimeP99 > 22.2 ? '#ef4444' : '#cbd5e1'">{{ metrics().frameTimeP99 | number:'1.2-2' }} ms</span></div>
-
-      <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>CPU PHASES</strong></div>
-      <div class="metric-row indent" *ngFor="let phase of cpuPhasesKeys()">
-        <span>{{ phase }}:</span> <span>{{ metrics().cpuPhases[phase] | number:'1.2-2' }} ms</span>
-      </div>
 
       <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>CPU SYSTEMS (Top)</strong></div>
       <div class="metric-row indent" *ngFor="let sys of cpuSystemsKeys()">
@@ -29,27 +23,25 @@
         <span *ngIf="metrics().cpuSystems[sys] > 0.1">{{ metrics().cpuSystems[sys] | number:'1.2-2' }} ms</span>
       </div>
 
-      <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>GPU & SCENE</strong></div>
-      <div class="metric-row indent"><span>Draw Calls:</span> <span>{{ metrics().gpu.drawCalls }}</span></div>
+      <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>GPU & RENDER</strong></div>
+      <div class="metric-row indent"><span>Quality Tier:</span> <span [style.color]="metrics().gpu.qualityTier === 'HIGH' ? '#4ade80' : (metrics().gpu.qualityTier === 'MEDIUM' ? '#fbbf24' : '#ef4444')">{{ metrics().gpu.qualityTier }}</span></div>
+      <div class="metric-row indent"><span>Draw Calls:</span> <span [style.color]="metrics().gpu.drawCalls > 250 ? '#ef4444' : '#cbd5e1'">{{ metrics().gpu.drawCalls }}</span></div>
       <div class="metric-row indent"><span>Active Meshes:</span> <span>{{ metrics().gpu.activeMeshes }}</span></div>
       <div class="metric-row indent"><span>GPU Time:</span> <span>{{ metrics().gpu.gpuFrameTime > 0 ? (metrics().gpu.gpuFrameTime | number:'1.2-2') + ' ms' : 'N/A' }}</span></div>
 
-      <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>LIGHTS</strong></div>
-      <div class="metric-row indent"><span>Virtual/Active:</span> <span>{{ metrics().lights.totalVirtual }} / {{ metrics().lights.activePool }}</span></div>
-      <div class="metric-row indent"><span>Shadowed Slots:</span> <span>{{ metrics().lights.shadowedPool }}</span></div>
-
-      <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>SHADOWS (CSM)</strong></div>
-      <div class="metric-row indent"><span>Casters (RenderList):</span> <span>{{ metrics().shadows.totalCasters }}</span></div>
-      <div class="metric-row indent"><span>ShadowMaxZ:</span> <span>{{ metrics().shadows.csmMaxZ | number:'1.1-1' }}</span></div>
+      <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>SHADOW OPTIMIZATION</strong></div>
+      <div class="metric-row indent"><span>Local Virtual/Active:</span> <span>{{ metrics().lights.totalVirtual }} / {{ metrics().lights.activePool }}</span></div>
+      <div class="metric-row indent"><span>Frozen (0 Hz):</span> <span style="color: #60a5fa;">{{ metrics().shadows.staticCastersFrozen }} Slots</span></div>
+      <div class="metric-row indent"><span>Dynamic (LOD):</span> <span style="color: #facc15;">{{ metrics().shadows.dynamicCastersActive }} Slots</span></div>
+      <div class="metric-row indent"><span>Invalidations:</span> <span [style.color]="metrics().shadows.invalidations > 0 ? '#ef4444' : '#cbd5e1'">{{ metrics().shadows.invalidations }}</span></div>
+      <div class="metric-row indent"><span>Rebuilds:</span> <span>{{ metrics().shadows.renderListRebuilds }}</span></div>
+      <div class="metric-row indent"><span>CSM Cascades/MaxZ:</span> <span>{{ metrics().shadows.csmCascades }} / {{ metrics().shadows.csmMaxZ | number:'1.0-0' }}m</span></div>
 
       <div class="toggles-grid">
         <button class="toggle-btn" [class.active]="toggles.state.glowOff" (click)="toggles.setGlow(!toggles.state.glowOff)">Glow OFF</button>
         <button class="toggle-btn" [class.active]="toggles.state.fxaaOff" (click)="toggles.setFxaa(!toggles.state.fxaaOff)">FXAA OFF</button>
         <button class="toggle-btn" [class.active]="toggles.state.fogOff" (click)="toggles.setFog(!toggles.state.fogOff)">Fog OFF</button>
-        <button class="toggle-btn" [class.active]="toggles.state.hwScaleHalf" (click)="toggles.setHwScaling(!toggles.state.hwScaleHalf)">Scale 0.5x</button>
         <button class="toggle-btn" [class.active]="toggles.state.shadowsOff" (click)="toggles.setShadows(!toggles.state.shadowsOff)">Shadows OFF</button>
-        <button class="toggle-btn" [class.active]="toggles.state.localLightsOff" (click)="toggles.setLocalLights(!toggles.state.localLightsOff)">Local L. OFF</button>
-        <button class="toggle-btn" [class.active]="toggles.state.postProcessOff" (click)="toggles.setPostProcess(!toggles.state.postProcessOff)" style="grid-column: span 2">PostProcess OFF</button>
       </div>
 
       <button class="btn-print" (click)="printToConsole()">📷 Imprimir Snapshot a Consola</button>
@@ -57,11 +49,7 @@
 
   <div *ngIf="tab() === 'incidents'" class="incidents-view">
     <button class="btn-primary" (click)="incidentSvc.simulateIncident()" style="width: 100%; margin-bottom: 10px;">⚡ Simular Incidente</button>
-    
-    <div class="empty-state" *ngIf="incidentsCount() === 0">
-       No se han detectado caídas por debajo de 45 FPS en la sesión actual.
-    </div>
-
+    <div class="empty-state" *ngIf="incidentsCount() === 0">No hay caídas de FPS.</div>
     <div class="incident-card" *ngFor="let inc of incidents()">
        <div class="inc-header">
            <strong>{{ inc.timestamp }}</strong> 
@@ -69,14 +57,8 @@
              {{ inc.status === 'RECOVERED' ? 'RESCATADO' : 'ACTIVO' }}
            </span>
        </div>
-       <div class="metric-row indent" style="padding-left:0;"><span>Mínimo Registrado:</span> <strong style="color: #ef4444;">{{ inc.minFps | number:'1.0-0' }} FPS</strong></div>
-       <div class="metric-row indent" style="padding-left:0; margin-bottom: 6px;"><span>Duración Lag:</span> <strong style="color: #cbd5e1;">{{ inc.durationMs | number:'1.0-0' }} ms</strong></div>
-
-       <div class="suspect" style="padding-top: 4px; border-top: 1px solid #334155;">
-         Causa/Correlación: <br/><strong style="color: #fbbf24; font-size: 11px;">{{ inc.diagnosis }}</strong>
-       </div>
-       
-       <img *ngIf="inc.imageUrl" [src]="inc.imageUrl" style="width: 100%; border-radius: 4px; margin-top: 8px; border: 1px solid #334155; filter: contrast(1.1);">
+       <div class="metric-row indent" style="padding-left:0;"><span>Mínimo:</span> <strong style="color: #ef4444;">{{ inc.minFps | number:'1.0-0' }} FPS</strong></div>
+       <div class="suspect" style="padding-top: 4px; border-top: 1px solid #334155;">{{ inc.diagnosis }}</div>
     </div>
   </div>
 </div>

@@ -7,8 +7,6 @@ import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
 import { GameContextService } from '../../session/game-context.service';
-import { ShadowLODManager } from './shadow-lod-manager.service';
-import { ShadowLOD, ShadowProfile } from './shadow.model';
 import { GameEntity } from '../../entities/game.entity';
 import { InteractableRulesService } from '../rules/interactable-rules.service';
 
@@ -20,7 +18,6 @@ export class ShadowOrchestratorService implements IUpdatable {
   private ownership = inject(CameraOwnershipService);
   private worldSettings = inject(WorldSettingsService);
   private context = inject(GameContextService); 
-  private shadowLOD = inject(ShadowLODManager);
   private interactRules = inject(InteractableRulesService); 
 
   private mainSun: DirectionalLight | null = null;
@@ -29,7 +26,6 @@ export class ShadowOrchestratorService implements IUpdatable {
   private static _fallbackPos = Vector3.Zero();
   private _tempOffset = Vector3.Zero();
 
-  // PROFILING TOGGLES
   public profilerDisableShadows = false;
 
   public getProfilerMetrics() {
@@ -40,7 +36,8 @@ export class ShadowOrchestratorService implements IUpdatable {
     return {
         activeGenerators: this.shadowGenerator ? 1 : 0,
         totalCasters: casters,
-        csmMaxZ: this.shadowGenerator?.shadowMaxZ || 0
+        csmMaxZ: this.shadowGenerator?.shadowMaxZ || 0,
+        csmCascades: this.shadowGenerator?.numCascades || 0
     };
   }
 
@@ -65,11 +62,9 @@ export class ShadowOrchestratorService implements IUpdatable {
 
       const renderableTypes = ['model', 'cube', 'sphere', 'cylinder', 'plane'];
       if (renderableTypes.includes(e.type) || !!e.visual?.assetId || !!e.visual?.path) {
-          
           const isInteractable = this.interactRules.isInteractable(e);
           if (isInteractable) return true; 
 
-          // Lectura O(1)
           const radius = e.view.getBoundingInfo().boundingSphere.radiusWorld;
           const diag = radius * 2;
           
@@ -100,6 +95,7 @@ export class ShadowOrchestratorService implements IUpdatable {
      const scene = this.motor3d.getScene();
      if (!scene || !this.mainSun) return;
 
+     // Optimización: El sol solo se re-posiciona si el jugador/cámara se aleja significativamente
      const refPos = this.getReferencePosition();
      if (Vector3.DistanceSquared(this.mainSun.position, refPos) > 25) {
          this.mainSun.position.copyFrom(refPos);
@@ -129,7 +125,6 @@ export class ShadowOrchestratorService implements IUpdatable {
     const scene = this.motor3d.getScene();
     if (!scene) return;
 
-    // 🔥 FASE 1 FIX: Identidad absoluta y protección del sol. Evitamos la pérdida o recreación si ya existe.
     if (!this.mainSun || this.mainSun.isDisposed()) {
        const w = this.worldSettings.settings();
        this.mainSun = new DirectionalLight('sunLight', new Vector3(w.ambientDirX, w.ambientDirY, w.ambientDirZ).normalize(), scene);
@@ -146,13 +141,17 @@ export class ShadowOrchestratorService implements IUpdatable {
 
        this.shadowGenerator = new CascadedShadowGenerator(shadowRes, this.mainSun);
        
+       // 🔥 FASE 5: Optimización GPU estricta. 
+       // Se reduce a 2 Cascadas cubriendo 35m estables, previniendo sobrecarga de draw calls.
+       this.shadowGenerator.numCascades = 2;
+       this.shadowGenerator.shadowMaxZ = 35; 
+       
        this.shadowGenerator.cascadeBlendPercentage = 0.1; 
        this.shadowGenerator.lambda = 0.65; 
        this.shadowGenerator.usePercentageCloserFiltering = true;
        this.shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
        this.shadowGenerator.bias = 0.0012;
        this.shadowGenerator.normalBias = 0.012;
-       this.shadowGenerator.shadowMaxZ = 35; 
        this.shadowGenerator.setDarkness(0.35);
        this.shadowGenerator.autoCalcDepthBounds = false; 
        this.shadowGenerator.stabilizeCascades = true; 
@@ -174,6 +173,7 @@ export class ShadowOrchestratorService implements IUpdatable {
                const processMeshForShadows = (m: AbstractMesh) => {
                    const isManuallyHidden = !e.isCulled && (!m.isVisible || !m.isEnabled());
                    if (!isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
+                       // 🔥 FASE 5: Control estricto anti-drawcalls inútiles (Ignorar nodos sin vértices)
                        if (m instanceof Mesh && m.getTotalVertices() > 0) {
                            newRenderList.push(m);
                        }

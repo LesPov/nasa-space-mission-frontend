@@ -1,11 +1,15 @@
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, SceneLoader, StandardMaterial, TransformNode, Vector3, Tags, Quaternion } from '@babylonjs/core';
+import { 
+    AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, 
+    SceneLoader, StandardMaterial, PBRMaterial, TransformNode, Vector3, 
+    Tags, Quaternion, InstancedMesh 
+} from '@babylonjs/core';
 import '@babylonjs/loaders';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { CoreSceneMaterialService } from '../utils/core-scene-material.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
-import { GameEntity, LightComponent } from '../../entities/game.entity';
+import { GameEntity } from '../../entities/game.entity';
 import { EntityPersistenceMapperService } from './entity-persistence-mapper.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
 import { GameContextService } from '../../session/game-context.service';
@@ -23,6 +27,14 @@ export class CoreModelLoaderService {
   private gameContext = inject(GameContextService);
   private assetCache = inject(SceneAssetCacheService);
   private sessionSvc = inject(EngineSessionService);
+
+  // 🔥 FASE 4: Caché de Mallas Maestras para Instancing
+  private masterMeshesCache = new Map<string, Mesh>();
+
+  public clearMasterCache(): void {
+    this.masterMeshesCache.forEach(m => m.dispose());
+    this.masterMeshesCache.clear();
+  }
 
   public async getCachedAssetContainer(fullPath: string, scene: any): Promise<AssetContainer> {
     const extension = fullPath.substring(fullPath.lastIndexOf('.'));
@@ -49,44 +61,157 @@ export class CoreModelLoaderService {
     }
 
     const fullPath = 'http://localhost:4000' + path;
+    const isLight = obj.type?.startsWith('light_');
+    const rolSaved = obj.properties?.rol || obj.rol || (isLight ? 'light' : 'prop');
+    
+    const entityType = obj.type; 
+    const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, entityType, rolSaved);
+    this.persistenceMapper.applyDbToEntity(obj, entity);
+
+    const isCharacter = entity.type === 'character' || entity.rol === 'player';
+    const hasOverrides = entity.partOverrides && Object.keys(entity.partOverrides.overrides).length > 0;
+    const hasAutoAnim = !!entity.autoAnim?.enabled;
+    const isInteractable = !!entity.interaction?.mensaje || !!entity.interaction?.interactSequenceIdFPS;
+
+    // 🔥 FASE 4 (INSTANCING): Decidimos si usamos Hardware Instancing o Clonación
+    // Solo permitimos instancing para props estáticos, sin overrides de partes y sin interactividad compleja.
+    const canUseInstancing = !isCharacter && !hasOverrides && !hasAutoAnim && !isLight && entity.rol === 'prop';
 
     try {
-      const container = await this.getCachedAssetContainer(fullPath, scene);
-      
-      if (!this.sessionSvc.isSessionActive(sessionId) || scene.isDisposed) {
-        container.dispose();
-        return;
-      }
+      let wrapperMesh: Mesh;
+      let allMeshes: AbstractMesh[] = [];
 
-      const instances = container.instantiateModelsToScene(name => name ? `${obj.uid}_${name}` : obj.uid, false, { doNotInstantiate: true });
-      
-      const wrapperMesh = new Mesh(obj.name, scene);
-      instances.rootNodes.forEach(node => {
-        node.parent = wrapperMesh;
-      });
+      if (canUseInstancing) {
+          // ==============================
+          // RUTA OPTIMIZADA: INSTANCING
+          // ==============================
+          let masterRoot = this.masterMeshesCache.get(fullPath);
+          
+          if (!masterRoot || masterRoot.isDisposed()) {
+              const container = await this.getCachedAssetContainer(fullPath, scene);
+              if (!this.sessionSvc.isSessionActive(sessionId) || scene.isDisposed) { container.dispose(); return; }
+              
+              masterRoot = new Mesh(`masterRoot_${path}`, scene);
+              masterRoot.isVisible = false;
+              Tags.AddTagsTo(masterRoot, "system_element editor_only ignore_raycast");
+
+              const instances = container.instantiateModelsToScene(name => `master_${name}`, false, { doNotInstantiate: true });
+              instances.rootNodes.forEach(node => {
+                  node.parent = masterRoot as Mesh;
+                  node.getChildMeshes(false).forEach(m => m.isVisible = false); // Ocultamos el master
+              });
+              
+              // Ajustamos los materiales del master una sola vez
+              await this.procesarMaterialesMaster(masterRoot, entity);
+              this.masterMeshesCache.set(fullPath, masterRoot);
+          }
+
+          if (!this.sessionSvc.isSessionActive(sessionId) || scene.isDisposed) return;
+
+          wrapperMesh = new Mesh(obj.name, scene);
+          
+          // Crear instancias (InstancedMesh) de cada sub-malla del master
+          const createInstancesFromMaster = (masterNode: TransformNode, parentNode: TransformNode) => {
+              masterNode.getChildren().forEach(child => {
+                  // 🔥 TYPE GUARD: Solo copiamos posiciones si el hijo hereda de TransformNode
+                  if (child instanceof TransformNode) {
+                      let newChild: TransformNode;
+                      
+                      if (child instanceof Mesh && child.getTotalVertices() > 0) {
+                          newChild = child.createInstance(`${obj.uid}_${child.name}`);
+                          allMeshes.push(newChild as AbstractMesh);
+                      } else {
+                          newChild = new TransformNode(`${obj.uid}_${child.name}`, scene);
+                      }
+                      
+                      newChild.parent = parentNode;
+                      newChild.position.copyFrom(child.position);
+                      
+                      if (child.rotationQuaternion) {
+                          newChild.rotationQuaternion = child.rotationQuaternion.clone();
+                      } else {
+                          newChild.rotation.copyFrom(child.rotation);
+                      }
+                      
+                      newChild.scaling.copyFrom(child.scaling);
+                      
+                      createInstancesFromMaster(child, newChild);
+                  }
+              });
+          };
+
+          createInstancesFromMaster(masterRoot, wrapperMesh);
+
+      } else {
+          // ==============================
+          // RUTA TRADICIONAL: CLONACIÓN
+          // ==============================
+          const container = await this.getCachedAssetContainer(fullPath, scene);
+          if (!this.sessionSvc.isSessionActive(sessionId) || scene.isDisposed) { container.dispose(); return; }
+
+          const instances = container.instantiateModelsToScene(name => name ? `${obj.uid}_${name}` : obj.uid, false, { doNotInstantiate: true });
+          
+          wrapperMesh = new Mesh(obj.name, scene);
+          instances.rootNodes.forEach(node => {
+            node.parent = wrapperMesh;
+          });
+          
+          allMeshes = instances.rootNodes as AbstractMesh[];
+          instances.animationGroups.forEach(ag => {
+            ag.stop();
+            ag.speedRatio = 1.0;
+          });
+          entity.animationNames = instances.animationGroups.map(a => a.name);
+      }
 
       wrapperMesh.computeWorldMatrix(true);
 
       if (obj.properties?.internalScale !== undefined && obj.properties?.internalScale !== null) {
         const compensacion = obj.properties.internalScale;
-        instances.rootNodes.forEach(node => {
-          const tNode = node as TransformNode;
-          if (tNode.scaling) {
-            tNode.scaling.scaleInPlace(compensacion);
+        wrapperMesh.getChildren().forEach(node => {
+          if (node instanceof TransformNode) {
+            if (node.scaling) {
+              node.scaling.scaleInPlace(compensacion);
+            }
           }
         });
         wrapperMesh.computeWorldMatrix(true);
       }
       
-      if (obj.isNewCreation) {
-        delete obj.isNewCreation;
-      }
+      if (obj.isNewCreation) delete obj.isNewCreation;
       
-      await this.aplicarTransformacionesYEntidad(wrapperMesh, obj, mallasCreadas, instances.rootNodes as AbstractMesh[], instances.animationGroups);
+      await this.aplicarTransformacionesYEntidad(wrapperMesh, entity, obj, mallasCreadas, canUseInstancing);
     } catch (e) {
       console.error(`[CoreModelLoader] Error cargando GLB ${path}`, e);
       if (this.sessionSvc.isSessionActive(sessionId) && !scene.isDisposed) {
         await this.crearMallaError(obj, scene, mallasCreadas);
+      }
+    }
+  }
+
+  private async procesarMaterialesMaster(masterRoot: Mesh, referenceEntity: GameEntity): Promise<void> {
+    const scene = this.motor3d.getScene();
+    const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
+    const activeAmbient = isBW ? referenceEntity.visual.ambientColorBW : referenceEntity.visual.ambientColor;
+    
+    // Para los master, no usamos el color del override (porque lo arruinaría para todas las instancias)
+    // Usamos el color nativo del GLB o blanco
+    const subMeshes = masterRoot.getChildMeshes(false);
+    
+    for (const m of subMeshes) {
+      if (m.material) {
+        this.materialSvc.asegurarMaterialUnico(m, 'master');
+        
+        // 🔥 TYPE GUARD Y FASE 4 OPTIMIZACIÓN: Reducir luces simultáneas para props estáticos
+        if (m.material instanceof StandardMaterial || m.material instanceof PBRMaterial) {
+            if (m.material.maxSimultaneousLights !== 4) {
+                m.material.maxSimultaneousLights = 4; // Ahorra iteraciones en el shader de fragmentos
+            }
+        }
+
+        await this.materialSvc.ajustarMaterialGLB(
+          m.material, isBW, scene, activeAmbient, '#ffffff', false, 1.0
+        );
       }
     }
   }
@@ -97,19 +222,16 @@ export class CoreModelLoaderService {
     fallbackMat.wireframe = true;
     fallbackMat.emissiveColor = new Color3(1, 0, 0); 
     fallbackMesh.material = fallbackMat;
-    await this.aplicarTransformacionesYEntidad(fallbackMesh, obj, mallasCreadas, [fallbackMesh]);
+    
+    const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, 'model', 'prop');
+    this.persistenceMapper.applyDbToEntity(obj, entity);
+    
+    await this.aplicarTransformacionesYEntidad(fallbackMesh, entity, obj, mallasCreadas, false);
   }
 
-  private async aplicarTransformacionesYEntidad(rootNode: Mesh, obj: any, mallasCreadas: Map<string, Mesh>, allMeshes: AbstractMesh[] = [], anims: any[] = []): Promise<void> {
+  private async aplicarTransformacionesYEntidad(rootNode: Mesh, entity: GameEntity, objRaw: any, mallasCreadas: Map<string, Mesh>, isInstanced: boolean): Promise<void> {
     const scene = this.motor3d.getScene();
-    const isLight = obj.type?.startsWith('light_');
-    const rolSaved = obj.properties?.rol || obj.rol || (isLight ? 'light' : 'prop');
-
-    // 🔥 FIX: Mantenemos la identidad atómica de la Entidad de Luz
-    const entityType = obj.type; 
-    const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, entityType, rolSaved);
-    this.persistenceMapper.applyDbToEntity(obj, entity);
-
+    const isLight = entity.type.startsWith('light_');
     const isCharacter = entity.type === 'character' || entity.rol === 'player';
 
     const scaleX = entity.transform.scale.x;
@@ -162,7 +284,7 @@ export class CoreModelLoaderService {
       }
       
       m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
-      m.receiveShadows = true;
+      m.receiveShadows = true; // El ShadowOrchestrator decidirá si de verdad genera sombra
       
       if (!m.metadata) m.metadata = {};
       if (!m.metadata.originalTransform) {
@@ -174,7 +296,8 @@ export class CoreModelLoaderService {
         };
       }
 
-      const override = partOverrides[m.name];
+      // Si es instanciado, no aplicamos overrides físicos
+      const override = !isInstanced ? partOverrides[m.name] : null;
       if (override) {
         if (override.position) m.position.set(override.position.x, override.position.y, override.position.z);
         if (override.rotation) {
@@ -190,7 +313,8 @@ export class CoreModelLoaderService {
         m.freezeWorldMatrix();
       }
       
-      if (m.material) {
+      // Procesamiento de materiales SOLO si NO es instanciado (los instanciados usan el material del master)
+      if (!isInstanced && m.material) {
         if (override) {
           this.materialSvc.asegurarMaterialUnicoParaParte(m, entity.uid, m.name);
           const activeColorOverride = isBW ? (override.colorBW || override.color) : override.color;
@@ -205,8 +329,20 @@ export class CoreModelLoaderService {
           );
         } else {
           this.materialSvc.asegurarMaterialUnico(m, entity.uid);
+          
+          // 🔥 TYPE GUARD
+          if (m.material instanceof StandardMaterial || m.material instanceof PBRMaterial) {
+              if (isCharacter) {
+                 if (m.material.maxSimultaneousLights !== 8) m.material.maxSimultaneousLights = 8;
+              } else {
+                 if (m.material.maxSimultaneousLights !== 4) m.material.maxSimultaneousLights = 4;
+              }
+          }
+
           await this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbient, activeColorHex, entity.visual.esEmisivo, entity.visual.brilloIntensidad);
         }
+      } else if (isInstanced && m instanceof InstancedMesh) {
+          // Si es instanciado y tiene un color global distinto al blanco, usamos setInstancedBuffer 
       }
     }
 
@@ -219,12 +355,12 @@ export class CoreModelLoaderService {
     if (entity.visual.isSolid && !isCharacter && entity.collider.type !== 'mesh') {
       let colMesh: Mesh;
       if (entity.collider.type === 'sphere') {
-        colMesh = MeshBuilder.CreateSphere(`col_${obj.uid}`, { diameterX: finalSizeX * 2, diameterY: finalSizeY * 2, diameterZ: finalSizeZ * 2 }, scene);
+        colMesh = MeshBuilder.CreateSphere(`col_${objRaw.uid}`, { diameterX: finalSizeX * 2, diameterY: finalSizeY * 2, diameterZ: finalSizeZ * 2 }, scene);
       } else if (entity.collider.type === 'capsule') {
         const r = Math.max(finalSizeX, finalSizeZ); 
-        colMesh = MeshBuilder.CreateCapsule(`col_${obj.uid}`, { radius: r, height: finalSizeY * 2 }, scene);
+        colMesh = MeshBuilder.CreateCapsule(`col_${objRaw.uid}`, { radius: r, height: finalSizeY * 2 }, scene);
       } else {
-        colMesh = MeshBuilder.CreateBox(`col_${obj.uid}`, { width: finalSizeX * 2, height: finalSizeY * 2, depth: finalSizeZ * 2 }, scene);
+        colMesh = MeshBuilder.CreateBox(`col_${objRaw.uid}`, { width: finalSizeX * 2, height: finalSizeY * 2, depth: finalSizeZ * 2 }, scene);
       }
 
       colMesh.parent = rootNode;
@@ -242,13 +378,6 @@ export class CoreModelLoaderService {
     };
     setFog(rootNode);
 
-    anims.forEach(ag => {
-      ag.stop();
-      ag.speedRatio = 1.0;
-    });
-    entity.animationNames = anims.map(a => a.name);
-
-    // 🔥 FIX: Añadir helpers visuales al modelo en caso de que sea una Luz
     if (isLight) {
       const visualSphere = MeshBuilder.CreateSphere(`visual_${entity.name}`, { diameter: 1.0, segments: 16 }, scene);
       visualSphere.parent = rootNode;
@@ -259,7 +388,7 @@ export class CoreModelLoaderService {
 
       visualSphere.scaling.set(0.4, 0.4, 0.4);
 
-      const lightColorHex = obj.properties?.lightColor || '#facc15';
+      const lightColorHex = objRaw.properties?.lightColor || '#facc15';
       const lightVisualMat = new StandardMaterial(`mat_visual_${entity.name}`, scene);
       const c3 = Color3.FromHexString(lightColorHex);
       lightVisualMat.emissiveColor = c3.clone();
@@ -273,7 +402,7 @@ export class CoreModelLoaderService {
       visualSphere.metadata = { entityUid: entity.uid, isLightVisual: true };
       rootNode.metadata = { entityUid: entity.uid, isLightRoot: true };
 
-      if (obj.type === 'light_spot' || obj.type === 'light_directional') {
+      if (objRaw.type === 'light_spot' || objRaw.type === 'light_directional') {
         const cone = MeshBuilder.CreateCylinder(`dir_${entity.name}`, { diameterTop: 0, diameterBottom: 0.15, height: 0.4 }, scene);
         cone.parent = visualSphere;
         cone.rotation.x = Math.PI / 2;

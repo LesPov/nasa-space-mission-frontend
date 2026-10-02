@@ -1,49 +1,30 @@
 
 import { Injectable } from '@angular/core';
-import { Light, AbstractMesh } from '@babylonjs/core';
 
 @Injectable({ providedIn: 'root' })
 export class ShadowCache {
-  private staticHashes = new Map<string, string>();
-  private lightHashes = new Map<string, string>();
+  public metrics = {
+    invalidations: 0,
+    renderListRebuilds: 0,
+    staticLights: 0,
+    dynamicLights: 0
+  };
 
-  public getMeshHash(mesh: AbstractMesh): string {
-    const pos = mesh.getAbsolutePosition();
-    const rot = mesh.rotationQuaternion || mesh.rotation;
-    const scl = mesh.scaling;
-    return `${pos.x.toFixed(2)},${pos.y.toFixed(2)},${pos.z.toFixed(2)}|${rot.x.toFixed(2)},${rot.y.toFixed(2)},${rot.z.toFixed(2)}|${scl.x.toFixed(2)},${scl.y.toFixed(2)},${scl.z.toFixed(2)}`;
+  public recordInvalidation() {
+    this.metrics.invalidations++;
   }
 
-  public getLightHash(light: Light): string {
-    const pos = (light as any).position ? (light as any).position : (light as any).direction;
-    return pos ? `${pos.x.toFixed(2)},${pos.y.toFixed(2)},${pos.z.toFixed(2)}` : 'static';
+  public recordRebuild() {
+    this.metrics.renderListRebuilds++;
   }
 
-  public hasMeshChanged(meshId: string, currentHash: string): boolean {
-    const oldHash = this.staticHashes.get(meshId);
-    if (oldHash !== currentHash) {
-      this.staticHashes.set(meshId, currentHash);
-      return true;
-    }
-    return false;
+  public setLightDistribution(staticCount: number, dynamicCount: number) {
+    this.metrics.staticLights = staticCount;
+    this.metrics.dynamicLights = dynamicCount;
   }
 
-  public hasLightChanged(lightId: string, currentHash: string): boolean {
-    const oldHash = this.lightHashes.get(lightId);
-    if (oldHash !== currentHash) {
-      this.lightHashes.set(lightId, currentHash);
-      return true;
-    }
-    return false;
+  public clearMetrics() {
+    this.metrics.invalidations = 0;
+    this.metrics.renderListRebuilds = 0;
   }
-
-  public invalidate(id: string): void {
-    this.staticHashes.delete(id);
-    this.lightHashes.delete(id);
-  }
-
-  public clear(): void {
-    this.staticHashes.clear();
-    this.lightHashes.clear();
-  }
-}
+} 

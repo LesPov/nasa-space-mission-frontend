@@ -15,7 +15,10 @@ import { AdminFreeCameraService } from './cameras/admin-free-camera.service';
 import { SpawnManagerService } from './systems/spawn-manager.service';
 import { ISceneAccess, SCENE_ACCESS_TOKEN } from '../scene/scene-access.token';
 import { PlatformLifecycleService } from './systems/platform-lifecycle.service';
-   
+import { LoopManagerService } from '../behaviors/services/loop-manager.service';
+ import { EngineProfilerService } from '../telemetry/engine-profiler.service';
+import { AdaptiveQualitySystem } from './systems/adaptive-quality.system';
+ 
 @Injectable({ providedIn: 'root' })
 export class RuntimeEngineService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
@@ -30,13 +33,24 @@ export class RuntimeEngineService {
   private adminFreeCam = inject(AdminFreeCameraService);
   private spawnManager = inject(SpawnManagerService); 
   private platformLifecycle = inject(PlatformLifecycleService);
+  private loopManager = inject(LoopManagerService);
+  private adaptiveQuality = inject(AdaptiveQualitySystem);
+  private profiler = inject(EngineProfilerService);
 
   private _prodClickFn: (() => void) | null = null;
+  private adaptiveRegistered = false;
 
   public async bootProductionGame(episodeData: any, skipIntro: boolean = false): Promise<GameEntity> {
     this.motor3d.forceResize();
     this.loaderSvc.createInvisibleFloor(this.motor3d.getScene());
     
+    // 🔥 FASE 4: Registrar sistema de calidad adaptativa
+    if (!this.adaptiveRegistered) {
+      this.loopManager.registerSystem(this.adaptiveQuality);
+      this.profiler.setAdaptiveSystem(this.adaptiveQuality);
+      this.adaptiveRegistered = true;
+    }
+
     await this.loaderSvc.loadSceneFromData(episodeData);
 
     return new Promise((resolve, reject) => {
@@ -59,7 +73,6 @@ export class RuntimeEngineService {
                 }
             });
 
-            // Preservar la perspectiva exacta configurada en el contexto
             const activeView = this.gameContext.cameraView();
 
             this.playerCamSvc.inicializarCamaras(spawnEntity, activeView);
@@ -103,6 +116,12 @@ export class RuntimeEngineService {
     this.inputOrchestrator.unlockPointer();
     this.platformLifecycle.cleanCurrentPlatform();
 
+    if (this.adaptiveRegistered) {
+      this.loopManager.unregisterSystem(this.adaptiveQuality.id);
+      this.adaptiveQuality.forceTier('HIGH'); // Reseteamos al detener
+      this.adaptiveRegistered = false;
+    }
+
     const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
     if (canvas && this._prodClickFn) {
        canvas.removeEventListener('click', this._prodClickFn);
@@ -111,6 +130,12 @@ export class RuntimeEngineService {
   }
 
   public startTestSession(playerEntity: GameEntity, view: CameraViewMode): void {
+    if (!this.adaptiveRegistered) {
+      this.loopManager.registerSystem(this.adaptiveQuality);
+      this.profiler.setAdaptiveSystem(this.adaptiveQuality);
+      this.adaptiveRegistered = true;
+    }
+
     this.resetVideos();
     this.spawnManager.resetPhysicsInertia(playerEntity);
     this.playerCamSvc.inicializarCamaras(playerEntity, view);
@@ -125,6 +150,12 @@ export class RuntimeEngineService {
   }
 
   public stopTestSession(): void {
+    if (this.adaptiveRegistered) {
+      this.loopManager.unregisterSystem(this.adaptiveQuality.id);
+      this.adaptiveQuality.forceTier('HIGH'); // Restaura resolución en el Editor
+      this.adaptiveRegistered = false;
+    }
+
     this.playerCamSvc.updateFirstPersonVisibility(false);
     this.gameSession.stop();
     this.playerCamSvc.limpiarPivotTPS();

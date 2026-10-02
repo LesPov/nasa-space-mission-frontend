@@ -1,3 +1,4 @@
+
 import { Injectable, inject, Injector } from '@angular/core';
 import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4, UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera, SceneInstrumentation, EngineInstrumentation } from '@babylonjs/core';
 import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
@@ -129,7 +130,8 @@ export class Motor3dService implements ISceneAccess {
     this.loopManager.registerSystem(trigSvc);
     trigSvc.start();
 
-    this.profiler.attachInstruments(this.sceneInstrumentation, this.engineInstrumentation, dynamicLighting, shadowOrch);
+    // 🔥 FIX NG0200: Pasamos la referencia de This.engine al profiler para romper la dependencia circular.
+    this.profiler.attachInstruments(this.sceneInstrumentation, this.engineInstrumentation, dynamicLighting, shadowOrch, this.engine);
 
     this.cameraFactory.initializeCameras(this.scene, canvas);
 

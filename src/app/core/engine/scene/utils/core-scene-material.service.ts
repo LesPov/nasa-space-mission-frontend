@@ -19,6 +19,7 @@ export class CoreSceneMaterialService {
   public asegurarMaterialUnico(mesh: AbstractMesh, uid: string): void {
       if (!mesh.material) return;
       
+      // Evitar re-clonar si ya fue independizado
       if (!mesh.material.name.includes(uid)) {
           try {
               if (mesh.material.getClassName() === 'MultiMaterial') {
@@ -42,7 +43,6 @@ export class CoreSceneMaterialService {
       }
   }
 
-  // Aísla el material específicamente para una parte modificada por el usuario
   public asegurarMaterialUnicoParaParte(mesh: AbstractMesh, uid: string, partName: string): void {
       if (!mesh.material) return;
       
@@ -90,10 +90,9 @@ export class CoreSceneMaterialService {
       return;
     }
     
-    // Asignar presupuesto de 8 luces concurrentes para soportar el sol direccional + pool de luces dinámicas con sombras
-    const SAFE_LIGHT_BUDGET = 8;
-    if (material.maxSimultaneousLights !== SAFE_LIGHT_BUDGET) {
-        material.maxSimultaneousLights = SAFE_LIGHT_BUDGET;
+    // 🔥 FASE 4: Presupuesto Dinámico de Luces (Default 4 para Props, se ajusta externamente para Characters a 8)
+    if (material.maxSimultaneousLights === undefined || material.maxSimultaneousLights > 8) {
+        material.maxSimultaneousLights = 4;
     }
 
     const c3Amb = ambientColorHex ? Color3.FromHexString(ambientColorHex) : new Color3(1, 1, 1);
@@ -103,7 +102,7 @@ export class CoreSceneMaterialService {
     const isCustomTint = colorHex && colorHex.toLowerCase() !== '#ffffff';
 
     if (material.getClassName().includes('PBR')) {
-      material.allowShaderHotSwapping = true; // 🔥 PREVIENE POPPING
+      material.allowShaderHotSwapping = true; 
       material.ambientColor = c3Amb;
       
       if (material.usePhysicalLightFalloff !== false) material.usePhysicalLightFalloff = false;
@@ -152,7 +151,7 @@ export class CoreSceneMaterialService {
       }
 
     } else if (material.getClassName().includes('Standard')) {
-      material.allowShaderHotSwapping = true; // 🔥 PREVIENE POPPING
+      material.allowShaderHotSwapping = true; 
       material.ambientColor = c3Amb;
       
       if (!material.metadata) material.metadata = {};

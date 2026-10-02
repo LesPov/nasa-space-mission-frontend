@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
-import { PointLight, SpotLight, DirectionalLight, Vector3, Color3, Tags, ShadowGenerator, AbstractMesh, Mesh, StandardMaterial } from '@babylonjs/core';
+import { PointLight, SpotLight, DirectionalLight, Vector3, Color3, Tags, ShadowGenerator, AbstractMesh, Mesh, StandardMaterial, RenderTargetTexture } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 import { CameraOwnershipService } from '../../cameras/camera-ownership.service';
@@ -12,8 +12,8 @@ import { LightContainmentService } from './light-containment.service';
 import { GameMode } from '../../../session/game-mode.model';
 import { SpatialSchedulerService } from '../spatial-scheduler.service';
 import { InteractableRulesService } from '../../rules/interactable-rules.service';
-
-export type LightVisualState = 'PRELOADED' | 'ACTIVE';
+import { ShadowLODManager } from '../../shadows/shadow-lod-manager.service';
+import { ShadowCache } from '../../shadows/shadow-cache.service';
 
 export interface VirtualLight {
     entity: GameEntity;
@@ -36,7 +36,10 @@ interface PoolSlot {
     assignedEntityUid: string | null;
     currentIntensity: number;
     lastShadowRebuildPos?: Vector3; 
-    _isNewAssignment?: boolean; // 🔥 FASE 1 FIX: Prevención de Frame Oscuro
+    _isNewAssignment?: boolean; 
+    
+    hasDynamicCasters?: boolean;
+    isStaticLight?: boolean;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -50,6 +53,8 @@ export class DynamicLightingSystem implements IUpdatable {
   private containmentSvc = inject(LightContainmentService);
   private spatialScheduler = inject(SpatialSchedulerService); 
   private interactRules = inject(InteractableRulesService); 
+  private shadowLOD = inject(ShadowLODManager);
+  private shadowCache = inject(ShadowCache);
 
   private virtualLights: VirtualLight[] = [];
   private pointPool: PoolSlot[] = [];
@@ -71,7 +76,6 @@ export class DynamicLightingSystem implements IUpdatable {
   private _tempPos = Vector3.Zero();
   private _tempDir = Vector3.Zero();
 
-  // PROFILING TOGGLES
   public profilerDisableLocalLights = false;
 
   public getProfilerMetrics() {
@@ -153,6 +157,20 @@ export class DynamicLightingSystem implements IUpdatable {
       outDir.normalize();
   }
 
+  private isDynamicLight(entity: GameEntity): boolean {
+      if (entity.light?.attachedNodeName) return true;
+      if (entity.autoAnim?.enabled) return true;
+      if (entity.movementAuthority.startsWith('CINEMATIC')) return true;
+      return false;
+  }
+
+  private isDynamicCaster(entity: GameEntity): boolean {
+      if (entity.rol === 'player' || entity.rol === 'npc' || entity.characterConfig) return true;
+      if (entity.autoAnim?.enabled) return true;
+      if (entity.movementAuthority.startsWith('CINEMATIC')) return true;
+      return false;
+  }
+
   private isEligibleShadowCaster(e: GameEntity): boolean {
       if (!e.view) return false;
       const isManuallyHidden = !e.isCulled && (!e.view.isVisible || !e.view.isEnabled());
@@ -176,7 +194,6 @@ export class DynamicLightingSystem implements IUpdatable {
       return false;
   }
 
-  // 🔥 FASE 1 FIX: Ahora `prepareAllLights` es puramente idempotente con el Pool.
   public prepareAllLights(): void {
       const scene = this.motor3d.getScene();
       if (!scene) return;
@@ -193,7 +210,6 @@ export class DynamicLightingSystem implements IUpdatable {
       this.allocatePoolSlots();
   }
 
- 
   private initializePool(scene: any): void {
       this.pointPool = [];
       this.spotPool = [];
@@ -202,11 +218,8 @@ export class DynamicLightingSystem implements IUpdatable {
       this.shadowCastersCache = [];
       this.containmentSvc.clearAllCache();
 
-      // 🔥 FASE 1 FIX (WEBGL/WEBGPU ROBUSTEZ): 
-      // Se utiliza la API agnóstica getCaps() para obtener el hardware bounds real
-      // en lugar del _gl interno que rompe si el motor corre en WebGPU.
       const engine = this.motor3d.getEngine();
-    const maxUbo = (engine.getCaps() as { maxUniformBufferBindings?: number }).maxUniformBufferBindings || 12; 
+      const maxUbo = (engine.getCaps() as { maxUniformBufferBindings?: number }).maxUniformBufferBindings || 12; 
       
       const BASE_UBOS = 6;
       const availableUBOsForShadows = Math.max(0, maxUbo - BASE_UBOS);
@@ -259,6 +272,7 @@ export class DynamicLightingSystem implements IUpdatable {
 
       this.isInitialized = true;
   }
+
   private refreshShadowCastersCache(): void {
       this.shadowCastersCache = [];
       this.entityManager.getAllEntities().forEach(e => {
@@ -287,9 +301,7 @@ export class DynamicLightingSystem implements IUpdatable {
 
   private refreshVirtualLightsRegistry(): void {
       const lightEntities = this.entityManager.getAllEntities().filter(e => e.type.startsWith('light_'));
-      // Remove dead lights
       this.virtualLights = this.virtualLights.filter(vl => lightEntities.some(e => e.uid === vl.entity.uid));
-      // Update or Add existing
       for (const e of lightEntities) {
           this.registerOrUpdateVirtualLight(e);
       }
@@ -354,6 +366,7 @@ export class DynamicLightingSystem implements IUpdatable {
       this.pointPool = []; this.spotPool = []; this.dirPool = [];
       this.virtualLights = []; this.shadowCastersCache = [];
       this.containmentSvc.clearAllCache();
+      this.shadowCache.clearMetrics();
       this.spatialScheduler.reset();
       this.isInitialized = false;
   }
@@ -380,6 +393,8 @@ export class DynamicLightingSystem implements IUpdatable {
       const rList = slot.sg.getShadowMap()?.renderList;
       if (!rList) return;
       
+      this.shadowCache.recordRebuild();
+
       const lightEntity = this.entityManager.getEntityByUid(entityToExcludeUid);
       const lightMesh = lightEntity?.view;
       
@@ -388,6 +403,7 @@ export class DynamicLightingSystem implements IUpdatable {
       const maxDistSq = lightRange * lightRange;
 
       const newRenderList: AbstractMesh[] = [];
+      let hasDynamic = false;
 
       for (let i = 0; i < this.shadowCastersCache.length; i++) {
           const m = this.shadowCastersCache[i];
@@ -403,10 +419,34 @@ export class DynamicLightingSystem implements IUpdatable {
               if (effectiveDist * effectiveDist > maxDistSq) continue;
           }
           
+          const casterEnt = this.entityManager.getEntityByMesh(m);
+          if (casterEnt && this.isDynamicCaster(casterEnt)) {
+              hasDynamic = true;
+          }
+          
           newRenderList.push(m);
       }
       
+      slot.hasDynamicCasters = hasDynamic;
+      slot.isStaticLight = lightEntity ? !this.isDynamicLight(lightEntity) : true;
+      
       this.updateRenderListIfChanged(rList, newRenderList);
+  }
+
+  // 🔥 FASE 5: Actualización inteligente del Refresh Rate
+  private applyShadowLOD(slot: PoolSlot, isEditor: boolean): void {
+      if (!slot.sg) return;
+      const shadowMap = slot.sg.getShadowMap();
+      if (!shadowMap) return;
+
+      // En el editor queremos respuesta instantánea de las sombras para comodidad autoral.
+      if (isEditor) {
+          shadowMap.refreshRate = 1;
+          return;
+      }
+
+      const dist = Vector3.Distance(this.getReferencePosition(), slot.light.getAbsolutePosition());
+      shadowMap.refreshRate = this.shadowLOD.getRefreshRate(dist, slot.hasDynamicCasters ?? false, !slot.isStaticLight);
   }
 
   private evaluateDistanceAndHysteresis(): void {
@@ -508,8 +548,10 @@ export class DynamicLightingSystem implements IUpdatable {
       const releaseSlot = (slot: PoolSlot) => {
           if (slot.assignedEntityUid && !topUids.has(slot.assignedEntityUid)) {
               slot.assignedEntityUid = null;
+              // 🔥 FASE 5: Vaciar la renderList desactiva completamente el trabajo de CPU/GPU de sombras para el slot inactivo.
               if (slot.sg && slot.sg.getShadowMap()?.renderList) slot.sg.getShadowMap()!.renderList!.length = 0; 
               slot.currentIntensity = 0; slot.light.intensity = 0; 
+              slot.light.shadowEnabled = false; 
               if (slot.type !== 'directional') {
                   (slot.light as any).position.set(0, -99999, 0); 
               }
@@ -539,7 +581,6 @@ export class DynamicLightingSystem implements IUpdatable {
               if (freeSlot) {
                   freeSlot.assignedEntityUid = vl.entity.uid;
                   freeSlot.currentIntensity = 0; freeSlot.light.intensity = 0; 
-                  // 🔥 FIX FASE 1: Se levanta bandera para salto inmediato de intensidad
                   freeSlot._isNewAssignment = true; 
                   existingSlot = freeSlot;
               }
@@ -634,7 +675,6 @@ export class DynamicLightingSystem implements IUpdatable {
           }
           slot.light.diffuse.copyFrom(baseColor);
 
-          // 🔥 PROFILER INJECTION (A/B Test)
           let finalIntensity = (lightComp.enabled && vl.isLightInRange) ? (lightComp.intensity ?? 1.0) * vl.targetMultiplier : 0;
           if (this.profilerDisableLocalLights) finalIntensity = 0;
 
@@ -714,7 +754,6 @@ export class DynamicLightingSystem implements IUpdatable {
           const lightComp = vl.entity.light;
           if (!lightComp || !vl.entity.view || !lightComp.enabled || !vl.isLightInRange) vl.targetMultiplier = 0;
 
-          // 🔥 FIX FASE 1: Si es una asignación nueva a slot, salta la interpolación (Elimina el Frame Oscuro visual al nacer o entrar rápido a un cuarto)
           const matchedSlot = [...this.pointPool, ...this.spotPool, ...this.dirPool].find(s => s.assignedEntityUid === vl.entity.uid);
           if (matchedSlot && matchedSlot._isNewAssignment) {
               vl.currentMultiplier = vl.targetMultiplier;
@@ -748,6 +787,9 @@ export class DynamicLightingSystem implements IUpdatable {
           }
       }
 
+      let statics = 0;
+      let dynamics = 0;
+
       const syncSlot = (slot: PoolSlot) => {
           if (!slot.assignedEntityUid) {
               if (Math.abs(slot.currentIntensity) > 0.0001) {
@@ -763,6 +805,7 @@ export class DynamicLightingSystem implements IUpdatable {
           if (!vl || !vl.entity.light || !vl.isLightInRange) {
               slot.assignedEntityUid = null; 
               slot.currentIntensity = 0; slot.light.intensity = 0; 
+              slot.light.shadowEnabled = false;
               if (slot.type !== 'directional') {
                   (slot.light as any).position.set(0, -99999, 0);
               }
@@ -817,14 +860,49 @@ export class DynamicLightingSystem implements IUpdatable {
 
           if (slot.sg) {
               if (wantsShadow) {
-                  const hasCasters = (slot.sg.getShadowMap()?.renderList?.length ?? 0) > 0;
+                  // 🔥 FASE 5: Evaluación RENDER ONCE vs DYNAMIC REFRESH
+                  let listRebuilt = false;
+
+                  // 1. Verificar si la luz se movió drásticamente para reconstruir la lista de casters.
                   const distMovedSq = slot.lastShadowRebuildPos ? Vector3.DistanceSquared(slot.lastShadowRebuildPos, slot.light.position) : 9999;
-                  
-                  if (!hasCasters || distMovedSq > 4.0) {
+                  if (!slot.sg.getShadowMap()?.renderList?.length || distMovedSq > 4.0 || this.isFirstFrame) {
                       this.rebuildShadowRenderList(slot, vl.entity.uid);
                       if (!slot.lastShadowRebuildPos) slot.lastShadowRebuildPos = Vector3.Zero();
                       slot.lastShadowRebuildPos.copyFrom(slot.light.position);
+                      listRebuilt = true;
                   }
+
+                  this.applyShadowLOD(slot, isEditor);
+
+                  let triggerOneShot = listRebuilt; // Si la lista se regeneró, es mandatorio recalcular la sombra
+                  
+                  // 2. Si la sombra está congelada (RENDER ONCE), verificamos flags de suciedad para pedir un solo frame de re-renderizado
+                  if (!triggerOneShot && slot.sg.getShadowMap()?.refreshRate === RenderTargetTexture.REFRESHRATE_RENDER_ONCE) {
+                      if (vl.entity.isDirty || this.isFirstFrame) {
+                          triggerOneShot = true;
+                      }
+                      
+                      // Escaneamos solo los casters asignados a ESTA sombra
+                      if (!triggerOneShot && slot.sg.getShadowMap()?.renderList) {
+                          const rList = slot.sg.getShadowMap()!.renderList!;
+                          for (let mIdx = 0; mIdx < rList.length; mIdx++) {
+                              const e = this.entityManager.getEntityByMesh(rList[mIdx]);
+                              if (e && e.isDirty) {
+                                  triggerOneShot = true;
+                                  break;
+                              }
+                          }
+                      }
+                  }
+
+                  if (triggerOneShot) {
+                      slot.sg.getShadowMap()?.resetRefreshCounter();
+                      this.shadowCache.recordInvalidation();
+                  }
+
+                  if (slot.isStaticLight && !slot.hasDynamicCasters) statics++;
+                  else dynamics++;
+
               } else {
                   if ((slot.sg.getShadowMap()?.renderList?.length ?? 0) > 0) {
                       slot.sg.getShadowMap()!.renderList!.length = 0;
@@ -835,11 +913,13 @@ export class DynamicLightingSystem implements IUpdatable {
           if (slot.type !== 'directional') {
               this.containmentSvc.applyContainment(slot.light as any, vl.entity, scene);
           }
-      }
+      };
 
       this.pointPool.forEach(syncSlot);
       this.spotPool.forEach(syncSlot);
       this.dirPool.forEach(syncSlot);
+
+      this.shadowCache.setLightDistribution(statics, dynamics);
 
       this.isFirstFrame = false;
   }

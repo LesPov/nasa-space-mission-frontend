@@ -1,21 +1,23 @@
 
-import { Injectable } from '@angular/core';
-import { AbstractMesh, CascadedShadowGenerator, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Tags } from '@babylonjs/core';
+import { Injectable, inject } from '@angular/core';
+import { AbstractMesh, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Tags } from '@babylonjs/core';
 import { FogLevel } from '../../models/player-config.model';
-
+import { AdaptiveQualitySystem } from './adaptive-quality.system';
+ 
 class FogWallState { 
   dist = 500; height = 10; alpha = 0; thickness = 10; offsetY = 0; r = 0; g = 0; b = 0;
 }
 
 @Injectable({ providedIn: 'root' })
 export class FogRendererService {
+  private adaptiveQuality = inject(AdaptiveQualitySystem);
+
   private fogWalls: TransformNode[] = []; 
   private fogMats: StandardMaterial[][] = []; 
   private wallStates: FogWallState[] = []; 
   private gradTex: DynamicTexture | null = null;
   private currentScene: Scene | null = null;
 
-  // 🔥 OPTIMIZACIÓN: Prevención de GC instanciando colores en memoria estática.
   private tColorCache = new Color3(0, 0, 0);
 
   constructor() { 
@@ -92,6 +94,10 @@ export class FogRendererService {
         this.fogMats = [];
     }
 
+    // 🔥 FASE 4: Determinar el número de capas a dibujar según el Quality Tier
+    const tier = this.adaptiveQuality.currentQualityTier;
+    const maxDrawLayers = tier === 'HIGH' ? 12 : (tier === 'MEDIUM' ? 6 : 3);
+
     const anchorX = targetPlayer ? targetPlayer.position.x : 0;
     const anchorY = targetPlayer ? targetPlayer.position.y : 0;
     const anchorZ = targetPlayer ? targetPlayer.position.z : 0;
@@ -112,6 +118,7 @@ export class FogRendererService {
             this.fogMats[i][j] = mat; 
 
             const shell = MeshBuilder.CreateCylinder(`sharedFogShell_${i}_${j}`, { 
+                // En calidades bajas podríamos bajar la teselación también, pero la recarga costaría.
                 diameter: 1, height: 1, sideOrientation: Mesh.DOUBLESIDE, cap: Mesh.NO_CAP, tessellation: 24 
             }, scene);
             
@@ -167,13 +174,16 @@ export class FogRendererService {
       wallGroup.position.set(anchorX, anchorY + (state.height / 2) + state.offsetY, anchorZ);
       
       const isVisible = state.alpha > 0.001 && !isFogDisabledTemp;
-      const thickOffsets = Array.from({length: 12}, (_, k) => -1 + (k * (2 / 11)));
       const curDist = Math.max(0.1, state.dist);
       const halfThick = state.thickness / 2;
       const meshes = wallGroup.getChildMeshes();
 
+      // Ajustamos el step según cuántas capas permitimos dibujar
+      const step = 12 / maxDrawLayers;
+
       let currentLayers = [5, 10, 20, 40, 60, 100, 100, 60, 40, 20, 10, 5]; 
       let currentHeights = [100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100, 100]; 
+      
       if (activeLevels && activeLevels[i]) {
           if (activeLevels[i].layerOpacities && activeLevels[i].layerOpacities!.length === 12) currentLayers = activeLevels[i].layerOpacities!;
           if (activeLevels[i].layerHeights && activeLevels[i].layerHeights!.length === 12) currentHeights = activeLevels[i].layerHeights!;
@@ -183,7 +193,15 @@ export class FogRendererService {
           const shell = meshes.find(m => m.name === `sharedFogShell_${i}_${j}`);
           if (!shell) continue;
 
-          const targetRadius = curDist + (thickOffsets[j] * halfThick);
+          // 🔥 Si la capa no coincide con el step del tier, la apagamos (Overdraw Reduction)
+          if (j % step !== 0) {
+              shell.isVisible = false;
+              continue;
+          }
+
+          // Distribuimos el grosor uniformemente pero usando el índice original
+          const offsetNormalized = -1 + (j * (2 / 11));
+          const targetRadius = curDist + (offsetNormalized * halfThick);
           const localScaleX = targetRadius / curDist;
           
           const heightRatio = (currentHeights[j] ?? 100) / 100.0;
@@ -193,14 +211,14 @@ export class FogRendererService {
           const mat = this.fogMats[i][j];
           mat.emissiveColor.set(state.r, state.g, state.b);
           
-          const opacityRatio = (currentLayers[j] ?? 0) / 100.0;
-          mat.alpha = state.alpha * opacityRatio; 
+          // Compensamos la opacidad si estamos saltando capas para mantener el volumen visual
+          const opacityCompensator = step; 
+          const opacityRatio = ((currentLayers[j] ?? 0) / 100.0) * opacityCompensator;
+          
+          mat.alpha = state.alpha * Math.min(1.0, opacityRatio); 
 
           shell.isVisible = isVisible && mat.alpha > 0.005;
       }
     }
-
-    // 🔥 FASE 1 FIX: Eliminada la mutación intrusiva de `shadowMaxZ` desde la niebla. 
-    // Ahora es responsabilidad única y exclusiva del ShadowOrchestratorService.
   }
 }

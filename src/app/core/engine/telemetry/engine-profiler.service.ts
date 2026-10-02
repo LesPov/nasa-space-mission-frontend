@@ -1,6 +1,8 @@
 
-import { Injectable } from '@angular/core';
-
+import { Injectable, inject } from '@angular/core';
+import { AdaptiveQualitySystem, QualityTier } from '../runtime/systems/adaptive-quality.system';
+import { ShadowCache } from '../runtime/shadows/shadow-cache.service';
+ 
 export interface ProfilerMetrics {
   fps: number;
   frameTimeAvg: number;
@@ -14,6 +16,9 @@ export interface ProfilerMetrics {
     activeMeshes: number;
     activeIndices: number;
     gpuFrameTime: number; 
+    hardwareScaling: number;
+    qualityTier: QualityTier;
+    transparentMeshes: number;
   };
   lights: {
     totalVirtual: number;
@@ -24,12 +29,20 @@ export interface ProfilerMetrics {
     activeGenerators: number;
     totalCasters: number;
     csmMaxZ: number;
+    csmCascades: number;
+    invalidations: number;
+    renderListRebuilds: number;
+    staticCastersFrozen: number;
+    dynamicCastersActive: number;
   };
 }
 
 @Injectable({ providedIn: 'root' })
 export class EngineProfilerService {
   public isProfilingEnabled = false;
+
+  private adaptiveQuality: AdaptiveQualitySystem | null = null;
+  private shadowCache = inject(ShadowCache);
 
   private readonly BUFFER_SIZE = 300;
   private frameTimeBuffer = new Float32Array(this.BUFFER_SIZE);
@@ -46,13 +59,19 @@ export class EngineProfilerService {
   private engineInstr: any = null;
   private lightSys: any = null;
   private shadowSys: any = null;
+  private engine: any = null;
   private currentFps = 0;
 
-  public attachInstruments(sceneInstr: any, engineInstr: any, lightSys: any, shadowSys: any) {
+  public attachInstruments(sceneInstr: any, engineInstr: any, lightSys: any, shadowSys: any, engine: any) {
     this.sceneInstr = sceneInstr;
     this.engineInstr = engineInstr;
     this.lightSys = lightSys;
     this.shadowSys = shadowSys;
+    this.engine = engine;
+  }
+
+  public setAdaptiveSystem(system: AdaptiveQualitySystem) {
+    this.adaptiveQuality = system;
   }
 
   public setFps(fps: number) {
@@ -87,6 +106,11 @@ export class EngineProfilerService {
       this.avgSystems[key] = (this.avgSystems[key] || 0) * (1 - alpha) + this.currentSystems[key] * alpha;
       this.currentSystems[key] = 0;
     }
+    
+    // Limpieza cíclica de los contadores de incidentes para que no crezcan infinitamente
+    if (this.bufferIndex % 60 === 0) {
+      this.shadowCache.clearMetrics();
+    }
   }
 
   public getSnapshot(): ProfilerMetrics {
@@ -108,17 +132,29 @@ export class EngineProfilerService {
 
     const gpuTime = this.engineInstr?.gpuFrameTimeCounter?.current || 0;
     const drawCalls = this.sceneInstr?.drawCallsCounter?.current || 0;
-    const activeMeshes = this.sceneInstr?.activeMeshesEvaluationTimeCounter?.current || 0; 
+    const activeMeshes = this.sceneInstr?.scene?.getActiveMeshes()?.length || 0; 
+    
+    let transparentMeshes = 0;
+    if (this.sceneInstr?.scene) {
+        const am = this.sceneInstr.scene.getActiveMeshes();
+        for(let i=0; i<am.length; i++) {
+            if (am.data[i].material && am.data[i].material.needAlphaBlending()) {
+                transparentMeshes++;
+            }
+        }
+    }
 
     let lightMetrics = { totalVirtual: 0, activePool: 0, shadowedPool: 0 };
     if (this.lightSys && typeof this.lightSys.getProfilerMetrics === 'function') {
       lightMetrics = this.lightSys.getProfilerMetrics();
     }
 
-    let shadowMetrics = { activeGenerators: 0, totalCasters: 0, csmMaxZ: 0 };
+    let shadowMetrics = { activeGenerators: 0, totalCasters: 0, csmMaxZ: 0, csmCascades: 0 };
     if (this.shadowSys && typeof this.shadowSys.getProfilerMetrics === 'function') {
       shadowMetrics = this.shadowSys.getProfilerMetrics();
     }
+
+    const engine = this.engine;
 
     return {
       fps: this.currentFps,
@@ -130,12 +166,21 @@ export class EngineProfilerService {
       cpuSystems: { ...this.avgSystems },
       gpu: {
         drawCalls,
-        activeMeshes: this.sceneInstr?.scene?.getActiveMeshes()?.length || 0,
+        activeMeshes,
         activeIndices: this.sceneInstr?.scene?.getActiveIndices() || 0,
-        gpuFrameTime: gpuTime * 0.000001 
+        gpuFrameTime: gpuTime * 0.000001,
+        hardwareScaling: engine ? engine.getHardwareScalingLevel() : 1.0,
+        qualityTier: this.adaptiveQuality ? this.adaptiveQuality.currentQualityTier : 'HIGH',
+        transparentMeshes
       },
       lights: lightMetrics,
-      shadows: shadowMetrics
+      shadows: {
+        ...shadowMetrics,
+        invalidations: this.shadowCache.metrics.invalidations,
+        renderListRebuilds: this.shadowCache.metrics.renderListRebuilds,
+        staticCastersFrozen: this.shadowCache.metrics.staticLights,
+        dynamicCastersActive: this.shadowCache.metrics.dynamicLights
+      }
     };
   }
 

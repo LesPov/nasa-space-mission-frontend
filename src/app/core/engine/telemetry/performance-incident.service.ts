@@ -38,7 +38,6 @@ export class PerformanceIncidentService {
   private activeIncident: PerformanceIncident | null = null;
   private incidentStartTime = 0;
 
-  // History buffer para saber "qué pasaba antes"
   private metricsHistory: ProfilerMetrics[] = [];
   private historyTimer = 0;
 
@@ -67,7 +66,6 @@ export class PerformanceIncidentService {
       this.consecutiveBadFrames++;
       this.consecutiveGoodFrames = 0;
 
-      // Requiere 15 frames malos seguidos para ignorar micro-stutters GC (Garbage Collection)
       if (this.state === 'NORMAL' && this.consecutiveBadFrames > 15) {
          this.triggerIncident(fps, frameTimeMs);
       } else if (this.state === 'ACTIVE' && this.activeIncident) {
@@ -125,7 +123,6 @@ export class PerformanceIncidentService {
     this.activeIncident = incident;
     this.incidents.unshift(incident);
     
-    // Evitamos fugar RAM en memoria manteniendo máximo los 15 últimos incidentes de la sesión
     if (this.incidents.length > 15) this.incidents.pop();
 
     console.warn(`🚨 [PerformanceIncident] [${contextStage}] ${diagnosis} | FPS: ${fps.toFixed(1)}`);
@@ -147,29 +144,30 @@ export class PerformanceIncidentService {
   private analyzeCausality(m: ProfilerMetrics, prev?: ProfilerMetrics, contextStage?: string): string {
     let text = '';
     
-    // Si estamos en transición o carga, el spike es completamente esperado por la compilación WebGL
     if (contextStage === 'SCENE_LOADING_OR_TRANSITION') {
         return 'Shader Compilation / Scene Load (Spike Esperado)';
     }
     
-    // Comparación Diferencial vs. Buffer Histórico
+    // 🔥 FASE 4: Extendido para capturar los deltas exactos del incidente de Draw Calls
     if (prev) {
         const gpuDiff = m.gpu.gpuFrameTime - prev.gpu.gpuFrameTime;
         const drawDiff = m.gpu.drawCalls - prev.gpu.drawCalls;
         const meshDiff = m.gpu.activeMeshes - prev.gpu.activeMeshes;
+        const transDiff = m.gpu.transparentMeshes - prev.gpu.transparentMeshes;
         const lightDiff = m.lights.activePool - prev.lights.activePool;
         const shadowDiff = m.lights.shadowedPool - prev.lights.shadowedPool;
 
         if (gpuDiff > 5) text += `[GPU Spike +${gpuDiff.toFixed(1)}ms] `;
-        if (drawDiff > 50) text += `[DrawCalls +${drawDiff}] `;
-        if (meshDiff > 30) text += `[ActiveMeshes +${meshDiff}] `;
+        if (drawDiff > 30) text += `[DrawCalls +${drawDiff}] `;
+        if (meshDiff > 20) text += `[ActiveMeshes +${meshDiff}] `;
+        if (transDiff > 10) text += `[Transparent +${transDiff}] `;
         if (lightDiff > 0) text += `[Lights +${lightDiff}] `;
         if (shadowDiff > 0) text += `[Shadows +${shadowDiff}] `;
         
         if (text) text += ' ➔ ';
     }
 
-    // Heurísticas Absolutas
+    if (m.gpu.transparentMeshes > 60) return text + 'Fill-Rate / Overdraw Saturado (Mucha Niebla/Cristales)';
     if (m.gpu.gpuFrameTime > 18.0) return text + 'Límite GPU Alcanzado (GPU Bound)';
     if (m.cpuSystems['DynamicLightingSystem'] > 3.0) return text + 'Cuello de Botella: DynamicLightingSystem';
     if (m.cpuSystems['ShadowOrchestratorSystem'] > 3.0) return text + 'Cuello de Botella: ShadowOrchestrator';
@@ -178,7 +176,7 @@ export class PerformanceIncidentService {
     if (m.gpu.activeMeshes > 200) return text + 'Demasiados Meshes Activos (Falta Culling)';
     if (m.cpuPhases['PHYSICS'] > 8.0) return text + 'Saturación en Motor Físico';
     
-    return text ? text + 'Causa Compleja' : 'Pérdida de rendimiento no identificada (Micro-Stutter)';
+    return text ? text + 'Carga excesiva de geometría o materiales' : 'Pérdida de rendimiento no identificada (Micro-Stutter)';
   }
 
   private captureVisual(incident: PerformanceIncident) {
@@ -186,7 +184,6 @@ export class PerformanceIncidentService {
     const engine = this.motor3d.getEngine();
     const camera = scene?.activeCamera;
     
-    // Toma asíncrona inyectando un Framebuffer secundario para no detener el hilo principal
     if (engine && camera) {
       Tools.CreateScreenshotUsingRenderTarget(engine, camera, { width: 640, height: 360 }, (dataUrl) => {
          incident.imageUrl = dataUrl;

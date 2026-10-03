@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
 import { Color3, Vector3, AbstractMesh, RenderTargetTexture, SpotLight, DirectionalLight } from '@babylonjs/core';
@@ -270,7 +269,6 @@ export class DynamicLightingSystem implements IUpdatable {
       const mode = this.context.mode();
       const isEditorPure = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
       
-      // 🔥 FIX FASE 2: Lerp speed ajustado a 0.012 para una respuesta más elástica y orgánica a la curva.
       const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, dtMs * 0.012);
       
       const refPos = this.getReferencePosition('AUTO');
@@ -326,10 +324,8 @@ export class DynamicLightingSystem implements IUpdatable {
           const matchedSlot = this.lightPool.findSlotByUid(vl.entity.uid);
           
           if (matchedSlot && matchedSlot._isNewAssignment) {
-              // Asignación nueva: empezamos desde donde manda la curva de golpe (sin lerp)
               vl.currentMultiplier = vl.targetMultiplier;
           } else {
-              // Interpolación continua (Smooth Fading) hacia el Target Multiplier de la Curva (Fase 2)
               const multDiff = Math.abs(vl.targetMultiplier - vl.currentMultiplier);
               if (multDiff > 0.001) {
                   vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
@@ -410,7 +406,6 @@ export class DynamicLightingSystem implements IUpdatable {
       
       slot.light.diffuse.copyFrom(vl.baseColor);
 
-      // Multiplicador aplicado en base a intensidad animada * el fade-out espacial de Fase 2
       const animatedIntensity = lightComp.renderIntensity ?? lightComp.intensity ?? 1.0;
       let finalIntensity = animatedIntensity * vl.currentMultiplier;
       if (!lightComp.enabled || this.profilerDisableLocalLights) finalIntensity = 0;

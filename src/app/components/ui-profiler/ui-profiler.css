@@ -1,5 +1,4 @@
 
-/* Estilo del Badge / Píldora cuando está minimizado */
 .profiler-minimized {
   position: fixed;
   bottom: 15px;
@@ -30,7 +29,7 @@
   position: fixed;
   top: 10px;
   right: 10px;
-  width: 320px;
+  width: 360px;
   background: rgba(15, 23, 42, 0.95);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -53,7 +52,7 @@
 }
 
 .scrollable-view {
-  max-height: 450px; 
+  max-height: 480px; 
   overflow-y: auto; 
   padding-right: 6px; 
 }
@@ -65,13 +64,13 @@
   display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 4px;
 }
 .tabs button {
-  flex: 1; background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 6px; font-weight: bold; font-family: inherit; font-size: 11px; border-radius: 4px 4px 0 0; transition: 0.2s;
+  flex: 1; background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 6px 2px; font-weight: bold; font-family: inherit; font-size: 10px; border-radius: 4px 4px 0 0; transition: 0.2s;
 }
 .tabs button:hover { background: rgba(255,255,255,0.05); color: white;}
 .tabs button.active {
   color: #38bdf8; border-bottom: 2px solid #38bdf8; background: rgba(56, 189, 248, 0.1);
 }
-.badge { background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 9px; margin-left: 5px; box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);}
+.badge { background: #ef4444; color: white; border-radius: 10px; padding: 2px 6px; font-size: 9px; margin-left: 2px; box-shadow: 0 0 5px rgba(239, 68, 68, 0.5);}
 
 .profiler-overlay h3 {
   margin: 0 0 12px 0;
@@ -133,7 +132,7 @@
   border: none;
   padding: 8px;
   border-radius: 6px;
-  margin-top: 12px;
+  margin-top: 6px;
   cursor: pointer;
   font-weight: bold;
   transition: 0.2s;
@@ -149,6 +148,7 @@
   cursor: pointer;
   font-weight: bold;
   transition: 0.2s;
+  width: 100%;
 }
 .btn-primary:hover { background: #059669; }
 

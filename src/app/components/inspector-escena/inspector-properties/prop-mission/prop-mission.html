@@ -12,6 +12,10 @@
   <button class="btn-ghost" [class.active-sub]="seccionActiva === 'aerospace'" (click)="seccionActiva = 'aerospace'" [style.color]="seccionActiva === 'aerospace' ? '#fbbf24' : ''">
     <span class="icon">🚀</span> Aero
   </button>
+  <!-- 🔥 FASE 6: Nueva pestaña de Diagnóstico Forense y Rendimiento -->
+  <button class="btn-ghost" [class.active-sub]="seccionActiva === 'profiler'" (click)="seccionActiva = 'profiler'" [style.color]="seccionActiva === 'profiler' ? '#38bdf8' : ''">
+    <span class="icon">📊</span> Profiler
+  </button>
 </div>
 
 <!-- ========================================================================= -->
@@ -363,5 +367,28 @@
       💾 Guardar Ficha Aeroespacial
     </button>
     <div class="status-line" *ngIf="statusMensaje">{{ statusMensaje }}</div>
+  </div>
+</ng-container>
+
+<!-- ========================================================================= -->
+<!-- 4. SECCIÓN PROFILER & DIAGNÓSTICO FORENSE                                -->
+<!-- ========================================================================= -->
+<ng-container *ngIf="seccionActiva === 'profiler'">
+  <div class="section-card">
+    <div class="section-head">
+      <h4 style="color: #38bdf8;">Diagnóstico Forense y Rendimiento</h4>
+      <span class="status-pill" [style.color]="profiler.isProfilingEnabled ? '#4ade80' : '#94a3b8'">
+        {{ profiler.isProfilingEnabled ? 'ACTIVO' : 'PAUSADO' }}
+      </span>
+    </div>
+    <div class="accordion-content">
+       <button class="btn-primary full" style="margin-bottom: 12px;" (click)="profiler.isProfilingEnabled = !profiler.isProfilingEnabled">
+         {{ profiler.isProfilingEnabled ? '⏹️ Detener Profiler' : '▶️ Iniciar Profiler' }}
+       </button>
+       <button class="btn-secondary full" style="margin-bottom: 12px;" (click)="profiler.printSnapshotToConsole()">
+         📷 Volcar Snapshot Completo a Consola
+       </button>
+       <p class="help-text">El profiler recopila métricas de rendimiento y detecta picos de lag de forma no intrusiva. Actívelo para auditar luces, sombras y culling.</p>
+    </div>
   </div>
 </ng-container>

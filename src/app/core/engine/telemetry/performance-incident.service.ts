@@ -17,6 +17,7 @@ export interface PerformanceIncident {
   diagnosis: string;
   metrics: ProfilerMetrics;
   previousMetrics?: ProfilerMetrics;
+  recentHistory?: Array<{ frameId: number; fps: number; frameTime: number; drawCalls: number; activeMeshes: number }>;
   imageUrl?: string;
   status: 'ACTIVE' | 'RECOVERED';
   durationMs: number;
@@ -28,7 +29,6 @@ export class PerformanceIncidentService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private context = inject(GameContextService);
 
-  // Array limitado para no consumir memoria (Ring buffer simulado con unshift/pop)
   private incidents: PerformanceIncident[] = [];
   private readonly MAX_INCIDENTS = 15;
   
@@ -40,27 +40,11 @@ export class PerformanceIncidentService {
   private activeIncident: PerformanceIncident | null = null;
   private incidentStartTime = 0;
 
-  // Ring buffer ligero de snapshots históricos para comparativas
-  private metricsHistory: ProfilerMetrics[] = [];
-  private readonly MAX_HISTORY = 10;
-  private historyTimer = 0;
-
-  private readonly FPS_THRESHOLD = 45;
-  private readonly FRAMETIME_THRESHOLD = 22.22; 
-  private readonly COOLDOWN_MS = 10000; 
-
-  public updateHistory(dtMs: number) {
-    this.historyTimer += dtMs;
-    if (this.historyTimer >= 1000) { 
-      this.historyTimer = 0;
-      this.metricsHistory.push(this.profiler.getSnapshot());
-      if (this.metricsHistory.length > this.MAX_HISTORY) this.metricsHistory.shift();
-    }
-  }
+  private readonly FPS_THRESHOLD = 42;
+  private readonly FRAMETIME_THRESHOLD = 23.8; 
+  private readonly COOLDOWN_MS = 8000; 
 
   public checkFrame(frameTimeMs: number, fps: number) {
-    this.updateHistory(frameTimeMs);
-
     if (this.cooldownTimer > 0 && this.state === 'NORMAL') {
       this.cooldownTimer -= frameTimeMs;
       return;
@@ -68,13 +52,13 @@ export class PerformanceIncidentService {
 
     const mode = this.context.mode();
     const isEditor = mode === 'EDITOR' || mode === 'EDITING_IN_GAME';
-    const toleranceFactor = isEditor ? 1.5 : 1.0; 
+    const toleranceFactor = isEditor ? 1.4 : 1.0; 
 
     if (fps < (this.FPS_THRESHOLD / toleranceFactor) || frameTimeMs > (this.FRAMETIME_THRESHOLD * toleranceFactor)) {
       this.consecutiveBadFrames++;
       this.consecutiveGoodFrames = 0;
 
-      const triggerLimit = isEditor ? 30 : 15;
+      const triggerLimit = isEditor ? 25 : 12;
 
       if (this.state === 'NORMAL' && this.consecutiveBadFrames > triggerLimit) {
          this.triggerIncident(fps, frameTimeMs);
@@ -87,14 +71,14 @@ export class PerformanceIncidentService {
       this.consecutiveBadFrames = 0;
       this.consecutiveGoodFrames++;
 
-      if (this.state === 'ACTIVE' && this.consecutiveGoodFrames > 60) {
+      if (this.state === 'ACTIVE' && this.consecutiveGoodFrames > 45) {
          this.recoverIncident();
       }
     }
   }
 
   public simulateIncident() {
-    this.triggerIncident(30, 33.3);
+    this.triggerIncident(32, 31.2);
     setTimeout(() => this.recoverIncident(), 2500);
   }
   
@@ -110,11 +94,14 @@ export class PerformanceIncidentService {
   private triggerIncident(fps: number, frameTime: number) {
     this.state = 'ACTIVE';
     this.incidentStartTime = performance.now();
-    const snap = this.profiler.getSnapshot();
-    const prevSnap = this.metricsHistory.length > 0 ? this.metricsHistory[0] : undefined;
+    
+    // Captura profunda (incluye luces detalladas bajo demanda)
+    const snap = this.profiler.getSnapshot(true);
+    const recentHistory = [...this.profiler.getRecentHistory()];
+    const prevSnap = recentHistory.length > 0 ? recentHistory[recentHistory.length - 1] as any : undefined;
     
     const contextStage = this.determineContextStage();
-    const diagnosis = this.analyzeCausality(snap, prevSnap, contextStage);
+    const diagnosis = this.analyzeCausality(snap, contextStage);
     
     const incident: PerformanceIncident = {
       id: 'inc_' + Date.now(),
@@ -127,7 +114,7 @@ export class PerformanceIncidentService {
       maxFrameTime: frameTime,
       diagnosis,
       metrics: snap,
-      previousMetrics: prevSnap,
+      recentHistory: recentHistory,
       status: 'ACTIVE',
       durationMs: 0
     };
@@ -153,41 +140,23 @@ export class PerformanceIncidentService {
     this.cooldownTimer = this.COOLDOWN_MS;
   }
 
-  private analyzeCausality(m: ProfilerMetrics, prev?: ProfilerMetrics, contextStage?: string): string {
+  private analyzeCausality(m: ProfilerMetrics, contextStage?: string): string {
     let text = '';
     
     if (contextStage === 'SCENE_LOADING_OR_TRANSITION') {
         return 'Shader Compilation / Scene Load (Spike Esperado)';
     }
-    
-    if (prev) {
-        const gpuDiff = m.gpu.gpuFrameTime - prev.gpu.gpuFrameTime;
-        const drawDiff = m.gpu.drawCalls - prev.gpu.drawCalls;
-        const meshDiff = m.gpu.activeMeshes - prev.gpu.activeMeshes;
-        const transDiff = m.gpu.transparentMeshes - prev.gpu.transparentMeshes;
-        const lightDiff = m.lights.activePool - prev.lights.activePool;
-        const shadowDiff = m.lights.shadowedPool - prev.lights.shadowedPool;
 
-        if (gpuDiff > 5) text += `[GPU Spike +${gpuDiff.toFixed(1)}ms] `;
-        if (drawDiff > 30) text += `[DrawCalls +${drawDiff}] `;
-        if (meshDiff > 20) text += `[ActiveMeshes +${meshDiff}] `;
-        if (transDiff > 10) text += `[Transparent +${transDiff}] `;
-        if (lightDiff > 0) text += `[Lights +${lightDiff}] `;
-        if (shadowDiff > 0) text += `[Shadows +${shadowDiff}] `;
-        
-        if (text) text += ' ➔ ';
-    }
-
-    if (m.gpu.transparentMeshes > 60) return text + 'Fill-Rate / Overdraw Saturado (Mucha Niebla/Cristales)';
-    if (m.gpu.gpuFrameTime > 18.0) return text + 'Límite GPU Alcanzado (GPU Bound)';
-    if (m.cpuSystems['DynamicLightingSystem'] > 3.0) return text + 'Cuello de Botella: DynamicLightingSystem';
-    if (m.cpuSystems['ShadowOrchestratorSystem'] > 3.0) return text + 'Cuello de Botella: ShadowOrchestrator';
-    if (m.cpuSystems['CharacterKinematicsSystem'] > 5.0) return text + 'Sobrecarga en Físicas de Personajes';
-    if (m.gpu.drawCalls > 300) return text + 'Exceso Absoluto de Draw Calls';
-    if (m.gpu.activeMeshes > 200) return text + 'Demasiados Meshes Activos (Falta Culling)';
-    if (m.cpuPhases['PHYSICS'] > 8.0) return text + 'Saturación en Motor Físico';
+    if (m.gpu.transparentMeshes > 60) text += '[High Overdraw / Transparencias] ';
+    if (m.gpu.gpuFrameTime > 18.0) text += '[GPU Bound] ';
+    if (m.cpuSystems['DynamicLightingSystem'] > 3.0) text += '[DynamicLightingSystem Overload] ';
+    if (m.cpuSystems['ShadowOrchestratorSystem'] > 3.0) text += '[ShadowOrchestrator Overload] ';
+    if (m.shadows.renderListRebuilds > 0) text += '[Shadow RenderList Rebuild] ';
+    if (m.gpu.drawCalls > 300) text += '[Excessive Draw Calls] ';
+    if (m.gpu.activeMeshes > 200) text += '[High Active Meshes] ';
+    if (m.cpuPhases['PHYSICS'] > 8.0) text += '[Physics Saturation] ';
     
-    return text ? text + 'Carga excesiva de geometría o materiales' : 'Pérdida de rendimiento no identificada (Micro-Stutter)';
+    return text ? text + '➔ Saturación simultánea de recursos' : 'Pérdida de rendimiento no identificada (Micro-Stutter)';
   }
 
   private captureVisual(incident: PerformanceIncident) {

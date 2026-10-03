@@ -1,4 +1,3 @@
-
 import { Injectable, inject, Injector } from '@angular/core';
 import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4, UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera, SceneInstrumentation, EngineInstrumentation } from '@babylonjs/core';
 import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
@@ -37,6 +36,8 @@ export class Motor3dService implements ISceneAccess {
   private engineInstrumentation: EngineInstrumentation | null = null;
 
   private resizeListener = () => this.forceResize();
+
+  private lastFrameStartTime = 0;
 
   getScene(): Scene { return this.scene; }
   getEngine(): Engine { return this.engine; }
@@ -104,7 +105,6 @@ export class Motor3dService implements ISceneAccess {
 
     this.loopManager.initialize(this.scene);
     
-    // Inyectamos de forma diferida para prevenir dependencias circulares con el motor
     const incidentSvc = this.injector.get(PerformanceIncidentService);
     
     const cinematicDirector = this.injector.get(CinematicDirectorService);
@@ -130,7 +130,6 @@ export class Motor3dService implements ISceneAccess {
     this.loopManager.registerSystem(trigSvc);
     trigSvc.start();
 
-    // 🔥 FIX NG0200: Pasamos la referencia de This.engine al profiler para romper la dependencia circular.
     this.profiler.attachInstruments(this.sceneInstrumentation, this.engineInstrumentation, dynamicLighting, shadowOrch, this.engine);
 
     this.cameraFactory.initializeCameras(this.scene, canvas);
@@ -153,22 +152,23 @@ export class Motor3dService implements ISceneAccess {
     ambientLight.diffuse = new Color3(1, 1, 1);
     ambientLight.groundColor = new Color3(0.2, 0.2, 0.2);
 
+    this.lastFrameStartTime = performance.now();
+
     this.engine.runRenderLoop(() => {
-      const frameStart = performance.now();
-      
+      const now = performance.now();
+      // Medir el tiempo transcurrido total entre cuadros para unificar frameTime con FPS
+      const totalFrameDelta = now - this.lastFrameStartTime;
+      this.lastFrameStartTime = now;
+
       this.scene.render();
       this.currentFps = this.engine.getFps();
       
-      const frameEnd = performance.now();
-      const frameTime = frameEnd - frameStart;
-      
       this.profiler.setFps(this.currentFps);
-      this.profiler.recordFrameTime(frameTime);
+      this.profiler.recordFrameTime(totalFrameDelta > 0 ? totalFrameDelta : 16.67);
       this.profiler.endFrame();
 
-      // 🔥 AUTO PERFORMANCE INCIDENT CHECK
       if (this.currentFps > 0) { 
-         incidentSvc.checkFrame(frameTime, this.currentFps);
+         incidentSvc.checkFrame(totalFrameDelta, this.currentFps);
       }
     });
 

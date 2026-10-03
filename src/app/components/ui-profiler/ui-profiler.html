@@ -1,5 +1,4 @@
-
-<!-- Píldora Minimizada (No bloquea la ejecución del profiler en background) -->
+<!-- Píldora Minimizada -->
 <div class="profiler-minimized" *ngIf="profiler.isProfilingEnabled && isMinimized()" (click)="toggleMinimize()">
   📊 {{ metrics().fps | number:'1.0-0' }} FPS | ⚠️ {{ incidentsCount() }} INC
 </div>
@@ -13,15 +12,18 @@
      <button class="btn-ghost small" style="color: #ef4444;" (click)="toggles.toggleProfiling()">✕ Cerrar</button>
   </div>
 
-  <!-- ESTADO NORMAL: TABS DE MÉTRICAS E INCIDENTES -->
+  <!-- ESTADO NORMAL: TABS DE MÉTRICAS, LUCES, SOMBRAS E INCIDENTES -->
   <ng-container *ngIf="!selectedIncident()">
       <div class="tabs">
-        <button (click)="tab.set('metrics')" [class.active]="tab() === 'metrics'">Metrics</button>
+        <button (click)="tab.set('metrics')" [class.active]="tab() === 'metrics'">Overview</button>
+        <button (click)="tab.set('lights')" [class.active]="tab() === 'lights'">Lights</button>
+        <button (click)="tab.set('shadows')" [class.active]="tab() === 'shadows'">Shadows</button>
         <button (click)="tab.set('incidents')" [class.active]="tab() === 'incidents'">
            Incidents <span class="badge" *ngIf="incidentsCount() > 0">{{ incidentsCount() }}</span>
         </button>
       </div>
 
+      <!-- TAB 1: OVERVIEW & METRICS -->
       <div *ngIf="tab() === 'metrics'" class="scrollable-view">
           <h3>
             <span>PROFILER ENGINE</span>
@@ -41,16 +43,17 @@
           <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>GPU & RENDER</strong></div>
           <div class="metric-row indent"><span>Quality Tier:</span> <span [style.color]="metrics().gpu.qualityTier === 'HIGH' ? '#4ade80' : (metrics().gpu.qualityTier === 'MEDIUM' ? '#fbbf24' : '#ef4444')">{{ metrics().gpu.qualityTier }}</span></div>
           <div class="metric-row indent"><span>Draw Calls:</span> <span [style.color]="metrics().gpu.drawCalls > 250 ? '#ef4444' : '#cbd5e1'">{{ metrics().gpu.drawCalls }}</span></div>
-          <div class="metric-row indent"><span>Active Meshes:</span> <span>{{ metrics().gpu.activeMeshes }}</span></div>
+          <div class="metric-row indent"><span>Active / Total Meshes:</span> <span>{{ metrics().gpu.activeMeshes }} / {{ metrics().gpu.totalMeshes }}</span></div>
           <div class="metric-row indent"><span>GPU Time:</span> <span>{{ metrics().gpu.gpuFrameTime > 0 ? (metrics().gpu.gpuFrameTime | number:'1.2-2') + ' ms' : 'N/A' }}</span></div>
 
-          <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>LIGHT SPACES & SHADOWS</strong></div>
-          <div class="metric-row indent"><span>Shadow Quality:</span> <strong style="color: #c084fc;">{{ metrics().shadows.shadowQualityLevel }}</strong></div>
-          <div class="metric-row indent"><span>Containment Cache:</span> <span style="color: #60a5fa;">{{ metrics().spaces.cacheHits }} Hits / {{ metrics().spaces.cacheMisses }} Miss</span></div>
+          <div style="margin-top: 8px; border-top: 1px solid #334155; padding-top: 4px;"><strong>CULLING & SPACES</strong></div>
+          <div class="metric-row indent"><span>Visible Objects:</span> <span style="color: #4ade80;">{{ metrics().culling.visibleObjects }}</span></div>
+          <div class="metric-row indent"><span>Fading Out:</span> <span style="color: #facc15;">{{ metrics().culling.fadingObjects }}</span></div>
+          <div class="metric-row indent"><span>Restoring:</span> <span style="color: #38bdf8;">{{ metrics().culling.restoringObjects }}</span></div>
+          <div class="metric-row indent"><span>Hard Culled:</span> <span style="color: #ef4444;">{{ metrics().culling.hardCulledObjects }}</span></div>
+          <div class="metric-row indent"><span>Shadow Protected:</span> <span style="color: #c084fc;">{{ metrics().culling.shadowProtectedObjects }}</span></div>
+          <div class="metric-row indent"><span>Containment Hits/Miss:</span> <span style="color: #60a5fa;">{{ metrics().spaces.cacheHits }} / {{ metrics().spaces.cacheMisses }}</span></div>
           <div class="metric-row indent"><span>Containment Rebuilds:</span> <span [style.color]="metrics().spaces.containmentRebuilds > 5 ? '#ef4444' : '#cbd5e1'">{{ metrics().spaces.containmentRebuilds }}</span></div>
-          <div class="metric-row indent"><span>Shadow RenderList Rebuilds:</span> <span>{{ metrics().shadows.renderListRebuilds }}</span></div>
-          <div class="metric-row indent"><span>Local Virtual/Active:</span> <span>{{ metrics().lights.totalVirtual }} / {{ metrics().lights.activePool }}</span></div>
-          <div class="metric-row indent"><span>Static Frozen / Dyn LOD:</span> <span style="color: #facc15;">{{ metrics().shadows.staticCastersFrozen }} / {{ metrics().shadows.dynamicCastersActive }} Slots</span></div>
           
           <div class="toggles-grid">
             <button class="toggle-btn" [class.active]="toggles.state.glowOff" (click)="toggles.setGlow(!toggles.state.glowOff)">Glow OFF</button>
@@ -59,9 +62,48 @@
             <button class="toggle-btn" [class.active]="toggles.state.shadowsOff" (click)="toggles.setShadows(!toggles.state.shadowsOff)">Shadows OFF</button>
           </div>
 
-          <button class="btn-print" (click)="printToConsole()">📷 Imprimir Snapshot a Consola</button>
+          <div style="display: flex; gap: 6px; margin-top: 10px;">
+             <button class="btn-print" style="flex: 1; margin: 0;" (click)="printToConsole()">📷 Consola</button>
+             <button class="btn-print" style="flex: 1; margin: 0; background: #10b981;" (click)="copyJson()">📋 Copiar JSON</button>
+          </div>
       </div>
 
+      <!-- TAB 2: LIGHTS FORENSICS -->
+      <div *ngIf="tab() === 'lights'" class="scrollable-view">
+          <h3><span>LIGHTS POOL RADIOGRAPHY</span><span class="metric-val" style="color: #60a5fa;">{{ metrics().lights.activePool }} / {{ metrics().lights.totalVirtual }} Active</span></h3>
+          
+          <div style="font-size: 10px; color: #94a3b8; margin-bottom: 8px;">
+            Shadowed Pool Slots: <strong style="color: #facc15;">{{ metrics().lights.shadowedPool }}</strong>
+          </div>
+
+          <div class="incident-card" *ngFor="let l of metrics().lights.details" style="padding: 8px; margin-bottom: 6px;">
+             <div class="inc-header">
+                <strong>{{ l.name }}</strong>
+                <span [style.color]="l.isLightInRange ? '#4ade80' : '#ef4444'">{{ l.isLightInRange ? 'IN RANGE' : 'OUT' }}</span>
+             </div>
+             <div class="metric-row indent" style="padding-left:0;"><span>Tipo:</span> <span>{{ l.type }}</span></div>
+             <div class="metric-row indent" style="padding-left:0;"><span>Distancia:</span> <span>{{ l.distance }}m</span></div>
+             <div class="metric-row indent" style="padding-left:0;"><span>Multiplicador:</span> <strong style="color: #38bdf8;">{{ l.currentMultiplier | percent }}</strong></div>
+             <div class="metric-row indent" style="padding-left:0;"><span>Shadow Map:</span> <span [style.color]="l.hasShadowGenerator ? '#4ade80' : '#94a3b8'">{{ l.hasShadowGenerator ? 'Sí (' + l.renderListSize + ' casters)' : 'No' }}</span></div>
+          </div>
+          <div class="empty-state" *ngIf="metrics().lights.details.length === 0">No hay luces registradas en la escena.</div>
+      </div>
+
+      <!-- TAB 3: SHADOWS FORENSICS -->
+      <div *ngIf="tab() === 'shadows'" class="scrollable-view">
+          <h3><span>SHADOW ORCHESTRATOR</span><span class="metric-val" style="color: #c084fc;">{{ metrics().shadows.shadowQualityLevel }}</span></h3>
+
+          <div class="metric-row"><span>Active Generators:</span> <strong>{{ metrics().shadows.activeGenerators }}</strong></div>
+          <div class="metric-row"><span>Total Casters in Cache:</span> <strong>{{ metrics().shadows.totalCasters }}</strong></div>
+          <div class="metric-row"><span>CSM Cascades (Sol):</span> <strong>{{ metrics().shadows.csmCascades }}</strong></div>
+          <div class="metric-row"><span>CSM MaxZ (Sol):</span> <strong>{{ metrics().shadows.csmMaxZ }}m</strong></div>
+          <div class="metric-row"><span>Static Casters Frozen:</span> <strong style="color: #4ade80;">{{ metrics().shadows.staticCastersFrozen }}</strong></div>
+          <div class="metric-row"><span>Dynamic Casters Active:</span> <strong style="color: #fbbf24;">{{ metrics().shadows.dynamicCastersActive }}</strong></div>
+          <div class="metric-row"><span>RenderList Rebuilds:</span> <span [style.color]="metrics().shadows.renderListRebuilds > 10 ? '#ef4444' : '#cbd5e1'">{{ metrics().shadows.renderListRebuilds }}</span></div>
+          <div class="metric-row"><span>Cache Invalidations:</span> <span>{{ metrics().shadows.invalidations }}</span></div>
+      </div>
+
+      <!-- TAB 4: INCIDENTS -->
       <div *ngIf="tab() === 'incidents'" class="scrollable-view">
         <button class="btn-primary" (click)="incidentSvc.simulateIncident()" style="width: 100%; margin-bottom: 10px;">⚡ Simular Incidente</button>
         <div class="empty-state" *ngIf="incidentsCount() === 0">No hay caídas de FPS detectadas.</div>
@@ -79,7 +121,7 @@
       </div>
   </ng-container>
 
-  <!-- ESTADO DETALLE DE INCIDENTE -->
+  <!-- ESTADO DETALLE DE INCIDENTE (FORENSIC VIEW) -->
   <ng-container *ngIf="selectedIncident() as inc">
      <button class="btn-ghost small" style="margin-bottom: 10px; width: 100%; text-align: left;" (click)="backToList()">← Volver a la Lista</button>
      
@@ -91,7 +133,7 @@
          <div class="metric-row"><span>Hora:</span> <span>{{ inc.timestamp }}</span></div>
          
          <div class="suspect" style="background: rgba(239, 68, 68, 0.1); border: 1px solid #ef4444; padding: 8px; margin: 10px 0; border-radius: 4px; color: #fca5a5;">
-            <strong>Diagnóstico:</strong><br/>{{ inc.diagnosis }}
+            <strong>Diagnóstico Forense:</strong><br/>{{ inc.diagnosis }}
          </div>
 
          <div style="margin-top: 12px; border-top: 1px solid #334155; padding-top: 8px;"><strong>Métricas durante el pico</strong></div>
@@ -104,11 +146,17 @@
          <div class="metric-row indent"><span>Shadow Quality:</span> <strong style="color: #c084fc;">{{ inc.metrics.shadows.shadowQualityLevel }}</strong></div>
          <div class="metric-row indent"><span>Active Lights (Pool):</span> <strong>{{ inc.metrics.lights.activePool }}</strong></div>
          <div class="metric-row indent"><span>Active Shadows (Pool):</span> <strong>{{ inc.metrics.lights.shadowedPool }}</strong></div>
-         <div class="metric-row indent"><span>CSM Cascades (Sol):</span> <strong>{{ inc.metrics.shadows.csmCascades }}</strong></div>
-         <div class="metric-row indent"><span>Static Shadows Frozen:</span> <strong style="color: #4ade80;">{{ inc.metrics.shadows.staticCastersFrozen }}</strong></div>
-         <div class="metric-row indent"><span>Dynamic Shadows Active:</span> <strong style="color: #fbbf24;">{{ inc.metrics.shadows.dynamicCastersActive }}</strong></div>
+         
+         <!-- LÍNEA TEMPORAL PREVIA AL INCIDENTE -->
+         <div style="margin-top: 12px; border-top: 1px solid #334155; padding-top: 8px;"><strong>Historial Inmediato (Pre-Lag)</strong></div>
+         <div class="metric-row indent" *ngFor="let h of inc.recentHistory | slice:-6">
+            <span>Frame {{ h.frameId }}:</span> <span>{{ h.fps | number:'1.0-0' }} FPS | {{ h.frameTime | number:'1.1-1' }}ms | DC: {{ h.drawCalls }}</span>
+         </div>
 
-         <button class="btn-print" style="margin-top: 15px;" (click)="printToConsole()">📷 Volcar Snapshot Completo a Consola</button>
+         <div style="display: flex; gap: 6px; margin-top: 15px;">
+            <button class="btn-print" style="flex: 1; margin: 0;" (click)="copySummary(inc)">📋 Resumen</button>
+            <button class="btn-print" style="flex: 1; margin: 0; background: #10b981;" (click)="copyJson(inc)">📋 JSON</button>
+         </div>
      </div>
   </ng-container>
 </div>

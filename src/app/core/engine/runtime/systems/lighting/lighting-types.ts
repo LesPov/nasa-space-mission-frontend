@@ -1,3 +1,4 @@
+
 import { Color3, PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3 } from '@babylonjs/core';
 import { GameEntity } from '../../../entities/game.entity';
  
@@ -14,6 +15,8 @@ export interface VirtualLight {
     _lastRenderedMultiplier?: number;
     _isInPrepareRange?: boolean;
     _sortScore?: number;
+    closestActorName?: string;
+    poolRank?: number;
 }
 
 export interface PoolSlot {

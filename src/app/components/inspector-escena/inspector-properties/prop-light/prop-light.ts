@@ -63,19 +63,24 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   shadowNormalBias: number = 0.01;
   excludeExteriorMeshes: boolean = true;
 
-  // --- DISTANCE & HYSTERESIS PROPERTIES ---
+  // --- DISTANCE & FADE PROPERTIES ---
   distanceControlEnabled: boolean = true;
-  activationDistance: number = 65;
-  deactivationDistance: number = 75;
+  activationDistance: number = 52;
+  deactivationDistance: number = 56;
   distanceShadowsEnabled: boolean = true;
-  shadowActivationDistance: number = 30;
-  shadowDeactivationDistance: number = 36;
+  shadowActivationDistance: number = 52;
+  shadowDeactivationDistance: number = 56;
   distanceReferenceMode: LightDistanceReferenceMode = 'AUTO';
 
-  // --- TELEMETRÍA EN VIVO ---
+  // --- TELEMETRÍA EN VIVO Y DIAGNÓSTICO BASADO EN ACTORES ---
   currentDistance: number = 0;
+  currentMultiplier: number = 1.0;
+  currentEffectiveIntensity: number = 0.0;
   isLightActiveStatus: boolean = false;
   isShadowActiveStatus: boolean = false;
+  closestActorName: string = 'N/A';
+  poolRankText: string = '-';
+  referenceModeDisplay: string = 'ACTOR (Player/NPC)';
 
   public childNodes: AttachedNodeOption[] = [];
   public containerOptions: ContainerOption[] = [];
@@ -92,9 +97,10 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       this.editorSvc.onMapChanged.pipe(auditTime(100)).subscribe(() => this.syncData())
     );
 
+    // Muestreo fluido de telemetría sin saturar la UI
     this.telemetryInterval = setInterval(() => {
       this.updateTelemetry();
-    }, 250);
+    }, 100);
   }
 
   ngOnChanges(changes: SimpleChanges) {
@@ -119,8 +125,15 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     const vl = this.dynamicLighting.getVirtualLightByUid(entity.uid);
     if (vl) {
       this.currentDistance = parseFloat(vl.lastEvaluatedDistance.toFixed(2));
-      this.isLightActiveStatus = vl.isLightInRange && (entity.light?.enabled ?? true);
+      this.currentMultiplier = vl.currentMultiplier;
+      this.currentEffectiveIntensity = (entity.light?.intensity ?? 1.0) * vl.currentMultiplier;
+      this.isLightActiveStatus = vl.isLightInRange && (entity.light?.enabled ?? true) && vl.currentMultiplier > 0.001;
       this.isShadowActiveStatus = vl.isShadowInRange && (entity.light?.castShadows ?? true);
+      this.closestActorName = vl.closestActorName || 'Actor';
+      this.poolRankText = vl.poolRank && vl.poolRank > 0 ? `${vl.poolRank} / 3 (ACTIVA)` : 'Fuera de Pool (INACTIVA)';
+      this.referenceModeDisplay = this.distanceReferenceMode === 'AUTO' 
+        ? 'ACTOR (Player/NPC)' 
+        : this.distanceReferenceMode;
       this.cdr.detectChanges();
     }
   }
@@ -225,11 +238,11 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.excludeExteriorMeshes = entity.light.excludeExteriorMeshes ?? true;
 
     this.distanceControlEnabled = entity.light.distanceControlEnabled ?? true;
-    this.activationDistance = entity.light.activationDistance ?? 65;
-    this.deactivationDistance = entity.light.deactivationDistance ?? 75;
+    this.activationDistance = entity.light.activationDistance ?? 52;
+    this.deactivationDistance = entity.light.deactivationDistance ?? 56;
     this.distanceShadowsEnabled = entity.light.distanceShadowsEnabled ?? true;
-    this.shadowActivationDistance = entity.light.shadowActivationDistance ?? 30;
-    this.shadowDeactivationDistance = entity.light.shadowDeactivationDistance ?? 36;
+    this.shadowActivationDistance = entity.light.shadowActivationDistance ?? 52;
+    this.shadowDeactivationDistance = entity.light.shadowDeactivationDistance ?? 56;
     this.distanceReferenceMode = entity.light.distanceReferenceMode ?? 'AUTO';
 
     this.attachedNodePath = entity.light.attachedNodePath || '';
@@ -296,17 +309,17 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
          }
       }
 
-      if (this.deactivationDistance < this.activationDistance) {
-        this.deactivationDistance = this.activationDistance + 5;
+      if (this.deactivationDistance <= this.activationDistance) {
+        this.deactivationDistance = this.activationDistance + 2;
       }
-      if (this.shadowDeactivationDistance < this.shadowActivationDistance) {
-        this.shadowDeactivationDistance = this.shadowActivationDistance + 4;
+      if (this.shadowDeactivationDistance <= this.shadowActivationDistance) {
+        this.shadowDeactivationDistance = this.shadowActivationDistance + 2;
       }
 
       entity.light.lightColor = this.lightColor;
       entity.light.lightColorBW = this.lightColorBW;
+      // Inmutable: baseIntensity se conserva intacta
       entity.light.intensity = this.intensity;
-      entity.light.renderIntensity = this.intensity;
       entity.light.range = this.range;
       entity.light.angle = this.angle;
       entity.light.enabled = this.enabled;
@@ -335,7 +348,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
       this.containmentSvc.markDirty(entity.uid);
       
-      // 🔥 FIX 8: Obligamos a que la luz calcule y fuerce la compilación al mismo instante
       this.dynamicLighting.syncLightImmediate(entity, true);
       this.updateTelemetry();
     }

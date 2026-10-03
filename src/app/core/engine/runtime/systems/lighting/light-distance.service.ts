@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core';
 import { Vector3 } from '@babylonjs/core';
 import { GameContextService } from '../../../session/game-context.service';
@@ -36,20 +35,36 @@ export class LightDistanceService {
               vl.isShadowInRange = false; 
               vl.targetMultiplier = 0;
               vl._isInPrepareRange = false;
+              vl.closestActorName = 'Inactiva';
               continue;
           }
 
           const wasInRange = vl.isLightInRange;
           
-          let refPos = baseRefPos;
-          if (policy.referenceStrategy === 'RUNTIME_CONFIG' && lightComp.distanceReferenceMode !== 'AUTO') {
-              refPos = this.referenceSvc.getReferencePosition(lightComp.distanceReferenceMode);
-          }
-          
           this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
-          
-          vl.distSq = Vector3.DistanceSquared(refPos, this._tempPos);
-          const dist = Math.sqrt(vl.distSq);
+
+          let dist: number;
+
+          if (isEditorPure) {
+              const closest = this.referenceSvc.getClosestActorForLight(this._tempPos);
+              dist = closest.distance;
+              vl.closestActorName = closest.actor ? closest.actor.name : 'NO_ACTOR';
+          } else {
+              let refPos = baseRefPos;
+              if (lightComp.distanceReferenceMode === 'CAMERA') {
+                  refPos = this.referenceSvc.getReferencePosition('CAMERA');
+                  vl.closestActorName = 'Cámara de Juego';
+                  dist = Vector3.Distance(refPos, this._tempPos);
+              } else {
+                  const closest = this.referenceSvc.getClosestActorForLight(this._tempPos);
+                  refPos = closest.actorPosition;
+                  vl.closestActorName = closest.actor ? closest.actor.name : 'NO_ACTOR';
+                  // Si no hay actor en auto mode, forzamos distancia infinita para apagar luces locales
+                  dist = closest.actor ? Vector3.Distance(refPos, this._tempPos) : Number.MAX_VALUE;
+              }
+          }
+
+          vl.distSq = dist * dist;
           vl.lastEvaluatedDistance = dist;
 
           const thresholds = policy.calculateThresholds(
@@ -60,31 +75,20 @@ export class LightDistanceService {
               speed
           );
 
-          // 🔥 El rango de preparación asigna slot pero NO ENCIENDE LA LUZ (Multiplier 0)
+          // Rango de preparación para asignar slot en el pool
           vl._isInPrepareRange = dist <= thresholds.prepare;
 
           if (lightComp.distanceControlEnabled) {
-              if (isEditorPure) {
-                  // 🔥 MODO EDITOR: Comportamiento Binario + Histéresis clásica para facilitar la edición
-                  if (wasInRange) {
-                      vl.isLightInRange = dist <= thresholds.dynamicDeactivation;
-                  } else {
-                      vl.isLightInRange = dist <= thresholds.activation;
-                  }
-                  vl.targetMultiplier = vl.isLightInRange ? 1.0 : 0.0;
-              } else {
-                  // 🔥 MODO RUNTIME (FASE 2): Curva de Atenuación Matemática en Tiempo Real
-                  vl.targetMultiplier = LightAttenuationCurve.calculate(dist, thresholds.activation, thresholds.dynamicDeactivation);
-                  
-                  // Tolerancia de Memoria (Slot Hysteresis): La luz mantiene su slot 2 metros más allá 
-                  // de apagarse por completo visualmente para evitar el "Slot Churning".
-                  const logicalDeactivation = thresholds.dynamicDeactivation + 2.0;
+              // Curva matemática suave de fade tanto en Editor como en Runtime calculada contra el actor
+              vl.targetMultiplier = LightAttenuationCurve.calculate(dist, thresholds.activation, thresholds.dynamicDeactivation);
 
-                  if (wasInRange) {
-                      vl.isLightInRange = dist <= logicalDeactivation;
-                  } else {
-                      vl.isLightInRange = dist <= thresholds.dynamicDeactivation;
-                  }
+              // Tolerancia de ranura lógica para evitar alternancias bruscas en la frontera
+              const logicalDeactivation = thresholds.dynamicDeactivation + 2.0;
+
+              if (wasInRange) {
+                  vl.isLightInRange = dist <= logicalDeactivation;
+              } else {
+                  vl.isLightInRange = dist <= thresholds.dynamicDeactivation;
               }
           } else {
               vl._isInPrepareRange = true;
@@ -92,7 +96,7 @@ export class LightDistanceService {
               vl.targetMultiplier = 1.0;
           }
 
-          // Lógica de Sombras (Mantiene la histéresis correcta de forma independiente)
+          // Lógica de Sombras por Distancia
           if (vl.isLightInRange && lightComp.castShadows) {
               if (lightComp.distanceShadowsEnabled) {
                   if (vl.isShadowInRange) { 
@@ -105,10 +109,6 @@ export class LightDistanceService {
               }
           } else { 
               vl.isShadowInRange = false; 
-          }
-
-          if (isEditorPure && this.context.authorityProfile().canViewDebug && wasInRange !== vl.isLightInRange) {
-              console.log(`[EDITOR LIGHT] ${vl.isLightInRange ? '🟢 ON' : '🔴 OFF'} | ${vl.entity.name} | Dist: ${dist.toFixed(1)}m`);
           }
       }
   }

@@ -48,7 +48,7 @@ export class DynamicLightingSystem implements IUpdatable {
   private lightAllocation = inject(LightAllocationService);
 
   private isFirstFrame = true;
-  private readonly LIGHT_DISABLE_THRESHOLD = 0.00001;
+  private readonly LIGHT_DISABLE_THRESHOLD = 0.0001;
   
   private lastRefPos = Vector3.Zero();
   private playerVelocity = Vector3.Zero();
@@ -239,7 +239,7 @@ export class DynamicLightingSystem implements IUpdatable {
       this.lightDistance.evaluateDistanceAndHysteresis([vl], this.getReferencePosition('AUTO'), 0);
 
       const isEditorPure = this.context.mode() === GameMode.EDITOR || this.context.mode() === GameMode.EDITING_IN_GAME;
-      if (isEditorPure && forceUpdate) {
+      if (forceUpdate) {
           vl.currentMultiplier = vl.targetMultiplier;
       }
 
@@ -270,38 +270,54 @@ export class DynamicLightingSystem implements IUpdatable {
       const mode = this.context.mode();
       const isEditorPure = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
       
-      const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, dtMs * 0.012);
-      
-      const refPos = this.getReferencePosition('AUTO');
-      if (dtMs > 0 && !this.isFirstFrame) {
-          this.playerVelocity.copyFrom(refPos).subtractInPlace(this.lastRefPos).scaleInPlace(1000 / dtMs);
-      } else {
-          this.playerVelocity.setAll(0);
-      }
-      this.lastRefPos.copyFrom(refPos);
-
+      const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, (dtMs / 16.66) * 0.15);
       const activeVirtuals = this.lightRegistry.getVirtualLights();
 
-      // En el editor reducimos la frecuencia de swapping innecesario
-      const spatialEval = this.isFirstFrame || this.spatialScheduler.shouldEvaluate(refPos, dtMs);
+      // REGLA CRÍTICA: En el Editor evaluamos SOLO si algún actor se movió o si las luces cambiaron (dirty).
+      // El movimiento de la cámara del editor tiene 0 influencia y no dispara reevaluaciones.
+      let spatialEval = false;
+
+      if (this.isFirstFrame || this.forceShadowRebuild) {
+          spatialEval = true;
+      } else if (isEditorPure) {
+          const actorsMoved = this.lightReference.hasActorsMoved(0.05);
+          const anyLightDirty = activeVirtuals.some(v => v.entity.isDirty);
+          spatialEval = actorsMoved || anyLightDirty;
+      } else {
+          const refPos = this.getReferencePosition('AUTO');
+          if (dtMs > 0) {
+              this.playerVelocity.copyFrom(refPos).subtractInPlace(this.lastRefPos).scaleInPlace(1000 / dtMs);
+          } else {
+              this.playerVelocity.setAll(0);
+          }
+          this.lastRefPos.copyFrom(refPos);
+
+          spatialEval = this.spatialScheduler.shouldEvaluate(refPos, dtMs);
+      }
+
       const shouldRebuildShadows = this.forceShadowRebuild || (spatialEval && !isEditorPure);
       this.forceShadowRebuild = false;
 
       if (spatialEval) {
-          let speed = this.playerVelocity.length();
-          let moveDir = this.playerVelocity.clone();
-          
-          if (speed > 0.1) {
-              moveDir.normalize();
-          } else {
-              const cam = isEditorPure ? this.motor3d.getEditorCamera() : (this.ownership.getCamera() || this.motor3d.getEditorCamera());
-              if (cam) {
-                  moveDir = cam.getDirection(Vector3.Forward());
-                  moveDir.y = 0;
+          let speed = 0;
+          let moveDir = Vector3.Zero();
+
+          if (!isEditorPure) {
+              speed = this.playerVelocity.length();
+              moveDir = this.playerVelocity.clone();
+              if (speed > 0.1) {
                   moveDir.normalize();
+              } else {
+                  const cam = this.ownership.getCamera() || this.motor3d.getEditorCamera();
+                  if (cam) {
+                      moveDir = cam.getDirection(Vector3.Forward());
+                      moveDir.y = 0;
+                      moveDir.normalize();
+                  }
               }
           }
 
+          const refPos = this.getReferencePosition('AUTO');
           this.lightDistance.evaluateDistanceAndHysteresis(activeVirtuals, refPos, speed);
           
           const selectedMesh = this.context.selectedNode() as AbstractMesh;
@@ -314,35 +330,38 @@ export class DynamicLightingSystem implements IUpdatable {
             }
           }
 
-          // En Editor, mantener asignadas las luces útiles de forma estable
-          const prepareRangeVirtuals = activeVirtuals.filter(vl => vl.entity.light?.enabled !== false && (vl._isInPrepareRange || vl.currentMultiplier > 0.001));
+          const prepareRangeVirtuals = activeVirtuals.filter(vl => 
+            vl.entity.light?.enabled !== false && 
+            (vl._isInPrepareRange || vl.currentMultiplier > 0.001 || vl.targetMultiplier > 0.001)
+          );
+          
           this.lightAllocation.allocatePoolSlots(prepareRangeVirtuals, refPos, moveDir, speed, selectedUid);
       }
 
       for (let i = 0; i < activeVirtuals.length; i++) {
           const vl = activeVirtuals[i];
           const lightComp = vl.entity.light;
-          if (!lightComp || !vl.entity.view || !lightComp.enabled || (!vl.isLightInRange && vl.targetMultiplier === 0)) vl.targetMultiplier = 0;
+          if (!lightComp || !vl.entity.view || vl.entity.view.isDisposed() || !lightComp.enabled) {
+              vl.targetMultiplier = 0;
+          }
 
           const matchedSlot = this.lightPool.findSlotByUid(vl.entity.uid);
           
-          if (matchedSlot && matchedSlot._isNewAssignment) {
-              vl.currentMultiplier = vl.targetMultiplier;
-          } else if (isEditorPure) {
-              // En editor se actualiza de forma instantánea sin arrastre de fading para no generar stutter
-              vl.currentMultiplier = vl.targetMultiplier;
+          if (!matchedSlot) {
+              vl.targetMultiplier = 0;
+          }
+
+          // Interpolación suave y orgánica de intensidad (fade in / fade out)
+          const multDiff = Math.abs(vl.targetMultiplier - vl.currentMultiplier);
+          if (multDiff > 0.001) {
+              vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
+              if (vl.currentMultiplier < this.LIGHT_DISABLE_THRESHOLD) vl.currentMultiplier = 0;
           } else {
-              const multDiff = Math.abs(vl.targetMultiplier - vl.currentMultiplier);
-              if (multDiff > 0.001) {
-                  vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
-                  if (vl.currentMultiplier < this.LIGHT_DISABLE_THRESHOLD) vl.currentMultiplier = 0;
-              } else {
-                  vl.currentMultiplier = vl.targetMultiplier;
-              }
+              vl.currentMultiplier = vl.targetMultiplier;
           }
 
           const renderDiff = Math.abs(vl.currentMultiplier - (vl._lastRenderedMultiplier ?? -1));
-          if (renderDiff > 0.005 || this.isFirstFrame) {
+          if (renderDiff > 0.003 || this.isFirstFrame) {
               vl._lastRenderedMultiplier = vl.currentMultiplier;
               const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
               const hexColor = lightComp ? (isBW ? lightComp.lightColorBW : lightComp.lightColor) : '#ffffff';
@@ -390,7 +409,7 @@ export class DynamicLightingSystem implements IUpdatable {
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
           
       if (slot.type !== 'directional') {
-          if (Vector3.DistanceSquared(slot.light.position, this._tempPos) > 0.001) {
+          if (Vector3.DistanceSquared(slot.light.position, this._tempPos) > 0.0001) {
               slot.light.position.copyFrom(this._tempPos);
           }
       }
@@ -412,11 +431,13 @@ export class DynamicLightingSystem implements IUpdatable {
       
       slot.light.diffuse.copyFrom(vl.baseColor);
 
-      const animatedIntensity = lightComp.renderIntensity ?? lightComp.intensity ?? 1.0;
-      let finalIntensity = animatedIntensity * vl.currentMultiplier;
+      const baseIntensity = lightComp.intensity ?? 1.0;
+      let finalIntensity = baseIntensity * vl.currentMultiplier;
+      lightComp.renderIntensity = finalIntensity;
+
       if (!lightComp.enabled || this.profilerDisableLocalLights) finalIntensity = 0;
 
-      if (Math.abs(slot.currentIntensity - finalIntensity) > 0.001 || this.isFirstFrame) {
+      if (Math.abs(slot.currentIntensity - finalIntensity) > 0.0005 || this.isFirstFrame) {
           slot.currentIntensity = finalIntensity; 
           slot.light.intensity = finalIntensity;
           
@@ -425,7 +446,7 @@ export class DynamicLightingSystem implements IUpdatable {
           }
       }
 
-      const wantsShadow = vl.isShadowInRange;
+      const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > 0.05;
 
       if (slot._isNewAssignment || vl.entity.isDirty || this.isFirstFrame) {
           if (slot.type !== 'directional') {
@@ -453,17 +474,6 @@ export class DynamicLightingSystem implements IUpdatable {
               if (!triggerOneShot && slot.sg.getShadowMap()?.refreshRate === RenderTargetTexture.REFRESHRATE_RENDER_ONCE) {
                   if (vl.entity.isDirty || this.isFirstFrame || forceRebuildShadows) {
                       triggerOneShot = true;
-                  }
-                  
-                  if (!triggerOneShot && slot.sg.getShadowMap()?.renderList) {
-                      const rList = slot.sg.getShadowMap()!.renderList!;
-                      for (let mIdx = 0; mIdx < rList.length; mIdx++) {
-                          const e = this.entityManager.getEntityByMesh(rList[mIdx]);
-                          if (e && e.isDirty) {
-                              triggerOneShot = true;
-                              break;
-                          }
-                      }
                   }
               }
 

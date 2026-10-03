@@ -80,7 +80,14 @@ export class LightAllocationService {
       this.lightPool.getSpotPool().forEach(s => this.lightPool.releaseSlot(s, topUids));
       this.lightPool.getDirPool().forEach(s => this.lightPool.releaseSlot(s, topUids));
 
-      topVirtuals.forEach(vl => {
+      // Actualizar los rankings visuales de las luces virtuales (Top 3)
+      activeVirtuals.forEach(vl => {
+          vl.poolRank = 0;
+      });
+
+      topVirtuals.forEach((vl, rankIndex) => {
+          vl.poolRank = rankIndex + 1;
+
           const pool = this.lightPool.getPoolByType(vl.entity.type);
           const wantsShadow = vl.isShadowInRange;
 

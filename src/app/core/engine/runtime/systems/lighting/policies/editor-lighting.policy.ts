@@ -2,9 +2,10 @@
 import { LightingDistanceThresholds, LightingPolicy, ReferenceResolutionStrategy } from '../lighting-policy.interface';
 
 /**
- * Política de iluminación exclusiva para el modo EDITOR y EDITING_IN_GAME.
- * Mantiene todas las luces de la zona de trabajo iluminando y proyectando sombras
- * de forma completamente estable para eliminar oscilaciones y recompilaciones en caliente.
+ * Política de iluminación para los modos EDITOR y EDITING_IN_GAME.
+ * Respeta rigurosamente las distancias configuradas por el usuario en cada luz
+ * y proporciona los rangos para la atenuación continua (Fade) y la selección del Top 3
+ * calculados respecto a los Actores (Player/NPC).
  */
 export class EditorLightingPolicy implements LightingPolicy {
     
@@ -17,16 +18,17 @@ export class EditorLightingPolicy implements LightingPolicy {
         baseShadowDeactivation: number | undefined,
         speed: number
     ): LightingDistanceThresholds {
-        // En el editor se utilizan distancias amplias con tolerancia extendida (300m)
-        // para que mover la cámara nunca desactive luces intempestivamente
-        const actDist = Math.max(150, baseActivation ?? 150);
-        const deactDist = Math.max(actDist + 50, baseDeactivation ?? (actDist + 50));
+        // Respetar fielmente los valores configurados por el usuario
+        const actDist = Math.max(1.0, baseActivation ?? 52.0);
+        // Asegurar que deactivation sea estrictamente mayor que activation para crear la zona de fade
+        const deactDist = Math.max(actDist + 2.0, baseDeactivation ?? (actDist + 8.0));
         const dynamicDeactDist = deactDist;
-        const prepareDist = dynamicDeactDist + 50;
+        // Rango de preparación para asignar slot en el pool antes de encender el brillo
+        const prepareDist = dynamicDeactDist + 15.0;
 
-        // Sombras con rango generoso para mantener coherencia compositiva
-        const shadowAct = Math.max(100, baseShadowActivation ?? 100);
-        const shadowDeact = Math.max(shadowAct + 30, baseShadowDeactivation ?? (shadowAct + 30));
+        // Sombras con su propio rango e histéresis
+        const shadowAct = Math.max(1.0, baseShadowActivation ?? Math.min(actDist, 40.0));
+        const shadowDeact = Math.max(shadowAct + 2.0, baseShadowDeactivation ?? (shadowAct + 6.0));
 
         return {
             activation: actDist,

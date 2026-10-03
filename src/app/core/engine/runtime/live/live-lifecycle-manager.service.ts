@@ -1,6 +1,5 @@
-
 import { Injectable, inject } from '@angular/core';
-import { Camera, AbstractMesh, Tags, Vector3 } from '@babylonjs/core';
+import { Camera, AbstractMesh, Tags, Vector3, Node } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameContextService } from '../../session/game-context.service';
@@ -48,6 +47,7 @@ export class LiveLifecycleManagerService {
   private savedEditorCameraState: EditorSnapshotState | null = null;
   private preLiveOwner: CameraOwner = 'NONE';
   private preLiveCamera: Camera | null = null;
+  private savedSelection: Node | null = null;
 
   public get isRunning(): boolean {
     return this.isLiveActive;
@@ -68,6 +68,8 @@ export class LiveLifecycleManagerService {
 
     this.preLiveOwner = this.ownership.getOwner();
     this.preLiveCamera = this.ownership.getCamera();
+    this.savedSelection = this.gameContext.selectedNode(); // 🔥 FIX BUG 2: Respaldo la selección del usuario.
+
     CinematicLogger.logTestLiveLifecycle('ENTER', this.preLiveOwner, this.preLiveCamera?.name);
 
     this.gameState.enterSandbox();
@@ -114,7 +116,14 @@ export class LiveLifecycleManagerService {
     this.sceneNodesSvc.actualizarListaNodos();
 
     this.gameContext.setEditorSubmode('EDITING');
-    this.gameContext.setSelectedNode(null);
+    
+    // 🔥 FIX BUG 2: Restauramos al jugador su selección editorial intacta en lugar de destruirla
+    if (this.savedSelection && !this.savedSelection.isDisposed()) {
+        this.gameContext.setSelectedNode(this.savedSelection);
+    } else {
+        this.gameContext.setSelectedNode(null);
+    }
+    
     this.gameContext.setHoveredObject(null);
 
     this.isLiveActive = false;

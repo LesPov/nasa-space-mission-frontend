@@ -61,11 +61,25 @@ export class ShadowOrchestratorService implements IUpdatable {
   }
 
   private getReferencePosition(): Vector3 {
+      const mode = this.context.mode();
+      const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
+
       const playerEntity = this.context.activePlayerEntity();
-      if (playerEntity && playerEntity.view) {
+      if (playerEntity && playerEntity.view && !playerEntity.view.isDisposed()) {
           return playerEntity.view.getAbsolutePosition();
       }
-      const camera = this.ownership.getCamera() || this.motor3d.getEditorCamera();
+
+      // En el editor, centrar el cálculo en el Actor principal (Player/Spawn Point), NUNCA en la cámara del editor
+      if (isEditor) {
+          const actors = this.entityManager.getAllEntities();
+          const primaryActor = actors.find(e => e.rol === 'player' || e.rol === 'spawn_point' || e.hasComponent('characterConfig'));
+          if (primaryActor && primaryActor.view && !primaryActor.view.isDisposed()) {
+              return primaryActor.view.getAbsolutePosition();
+          }
+          return ShadowOrchestratorService._fallbackPos;
+      }
+
+      const camera = this.ownership.getCamera();
       if (camera) return camera.globalPosition;
       return ShadowOrchestratorService._fallbackPos;
   }
@@ -124,7 +138,6 @@ export class ShadowOrchestratorService implements IUpdatable {
      const mode = this.context.mode();
      const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
-     // En el editor el umbral de movimiento del sol es amplio (100m² = 10m) para evitar recalculos en cada rotación
      const moveThresholdSq = isEditor ? 100 : 25;
 
      const refPos = this.getReferencePosition();

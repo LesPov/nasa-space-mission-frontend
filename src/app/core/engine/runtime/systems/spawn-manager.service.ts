@@ -1,4 +1,3 @@
-
 import { Injectable, inject, Injector } from '@angular/core';
 import { GameEntity, CharacterConfigComponent, PlayerRuntimeComponent } from '../../entities/game.entity';
 import { EntityManagerService } from '../../entities/entity-manager.service';
@@ -26,6 +25,7 @@ export class SpawnManagerService {
     }
 
     let targetEntity = preferredEntity;
+    let isDynamicallySpawned = false; // 🔥 MARCADOR DE PROCEDENCIA
 
     // 2. Resolución de Rol Narrativo (Prefab de Character + Spawn Point)
     if (!targetEntity) {
@@ -46,6 +46,7 @@ export class SpawnManagerService {
                     );
                     const rootMesh = Array.from(mallas.values())[0];
                     charEntity = this.entityManager.getEntityByMesh(rootMesh) || null;
+                    isDynamicallySpawned = true; // Fue creado al vuelo para Test Live
                 } 
                 
                 let spawnEntity = roleDef.spawnSceneObjectUid ? this.entityManager.getEntityByUid(roleDef.spawnSceneObjectUid) : null;
@@ -67,7 +68,6 @@ export class SpawnManagerService {
                             charEntity.transform.rotation = { ...spawnEntity.transform.rotation };
                         }
 
-                        // 🔥 FASE 2: En modo editor preview no eliminamos el spawn, simplemente lo ocultaremos.
                         if (!isEditorPreview) {
                             this.entityManager.removeEntity(spawnEntity.uid);
                         }
@@ -87,6 +87,7 @@ export class SpawnManagerService {
     if (!targetEntity || (!targetEntity.hasComponent('characterConfig') && targetEntity.rol !== 'spawn_point')) {
        const characters = this.entityManager.getEntitiesWithComponent('characterConfig');
        targetEntity = characters.find(c => c.rol === 'player') || characters.find(c => c.characterConfig?.isPlayable) || null;
+       // Aquí NO ES dinámico, la entidad ya pertenecía a la memoria del Editor.
     }
 
     if (!targetEntity) {
@@ -107,6 +108,7 @@ export class SpawnManagerService {
             spawnTransform.rotationQuaternion,
             isEditorPreview
         );
+        isDynamicallySpawned = true; // Fue creado al vuelo
     }
 
     // 5. Fallback absoluto para editor sin spawn point
@@ -119,22 +121,24 @@ export class SpawnManagerService {
             null,
             true
         );
+        isDynamicallySpawned = true; // Fue creado al vuelo
     }
 
     if (!targetEntity) return null;
 
-    // 🔥 FASE 2 FIX: Marcamos la entidad como puramente Runtime si es una preview del Editor.
-    // Esto previene que se guarde en la BD.
-    targetEntity.isRuntimeOnly = isEditorPreview;
-    
-    // Si fue instanciado por el prefab, todos sus hijos también deben ser runtime only
-    if (isEditorPreview && targetEntity.view) {
-        targetEntity.view.getDescendants(false).forEach((child) => {
-            const childEntity = this.entityManager.getEntityByMesh(child as AbstractMesh);
-            if (childEntity) {
-                childEntity.isRuntimeOnly = true;
-            }
-        });
+    // 🔥 FIX BUG 2: SOLO ES RUNTIME_ONLY (se descarta y destruye al salir) SI FUE INSTANCIADO DINÁMICAMENTE.
+    // Si era un objeto del editor, debe conservarse intacto.
+    if (isDynamicallySpawned && isEditorPreview) {
+        targetEntity.isRuntimeOnly = true;
+        
+        if (targetEntity.view) {
+            targetEntity.view.getDescendants(false).forEach((child) => {
+                const childEntity = this.entityManager.getEntityByMesh(child as AbstractMesh);
+                if (childEntity) {
+                    childEntity.isRuntimeOnly = true;
+                }
+            });
+        }
     }
 
     // isPersistent solo es válido para la producción (transición entre niveles)
@@ -173,7 +177,7 @@ export class SpawnManagerService {
     playerEntity.playerConfig = cloneDefaultPlayerConfig();
     playerEntity.bindView(tempMesh);
     
-    // 🔥 FASE 2: Como nace del código y no de la DB, es 100% temporal
+    // Al ser generado por el código, su naturaleza es estrictamente volátil
     playerEntity.isRuntimeOnly = true;
     
     this.entityManager.addEntity(playerEntity);

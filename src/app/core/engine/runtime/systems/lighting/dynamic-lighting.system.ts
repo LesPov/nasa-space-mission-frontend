@@ -1,3 +1,5 @@
+// RUTA: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
+// ACCIÓN: MODIFICAR
 
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
@@ -234,7 +236,31 @@ export class DynamicLightingSystem implements IUpdatable {
 
       const vl = this.lightRegistry.registerOrUpdateVirtualLight(entity);
       vl.baseColor = baseColor;
-      
+
+      // 1. Si la luz fue desactivada desde el Inspector, apagarla en vivo de forma sincrónica
+      if (!lightComp.enabled) {
+          vl.targetMultiplier = 0.0;
+          vl.currentMultiplier = 0.0;
+          vl.isLightInRange = false;
+          vl.isShadowInRange = false;
+          vl._lastRenderedMultiplier = 0.0;
+
+          // Apagar inmediatamente el resplandor de las mallas
+          this.lightVisual.updateVisualGlow(vl, lightComp, baseColor, true);
+
+          const slot = this.lightPool.findSlotByUid(entity.uid);
+          if (slot) {
+              slot.currentIntensity = 0;
+              slot.light.intensity = 0;
+              if (slot.sg && slot.sg.getShadowMap()?.renderList) {
+                  slot.sg.getShadowMap()!.renderList!.length = 0;
+              }
+              this.lightPool.releaseSlot(slot, new Set());
+          }
+          return;
+      }
+
+      // 2. Si la luz fue activada o editada, reevaluar distancias y elegibilidad
       this.spatialScheduler.forceNextEvaluation();
       this.lightDistance.evaluateDistanceAndHysteresis([vl], this.getReferencePosition('AUTO'), 0);
 
@@ -245,20 +271,16 @@ export class DynamicLightingSystem implements IUpdatable {
 
       this.lightVisual.updateVisualGlow(vl, lightComp, baseColor, this.profilerDisableLocalLights);
 
-      let slot = this.lightPool.findSlotByUid(entity.uid);
-      if (!slot && vl.isLightInRange) {
-          this.lightAllocation.allocatePoolSlots(this.lightRegistry.getVirtualLights(), this.getReferencePosition('AUTO'), Vector3.Zero(), 0, null);
-          slot = this.lightPool.findSlotByUid(entity.uid);
-      }
+      // Re-asignar slot del pool si es elegible
+      this.lightAllocation.allocatePoolSlots(this.lightRegistry.getVirtualLights(), this.getReferencePosition('AUTO'), Vector3.Zero(), 0, entity.uid);
+      const slot = this.lightPool.findSlotByUid(entity.uid);
 
       if (slot) {
           this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, forceUpdate);
           if (forceUpdate && slot.sg && vl.isShadowInRange) {
             const range = slot.type === 'directional' ? 50 : lightComp.range;
             this.lightShadows.rebuildShadowRenderList(slot, entity.uid, slot.light.position, range || 50);
-            if (slot.sg.getShadowMap()?.refreshRate === RenderTargetTexture.REFRESHRATE_RENDER_ONCE) {
-                slot.sg.getShadowMap()?.resetRefreshCounter();
-            }
+            slot.sg.getShadowMap()?.resetRefreshCounter();
           }
       }
   }
@@ -273,8 +295,6 @@ export class DynamicLightingSystem implements IUpdatable {
       const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, (dtMs / 16.66) * 0.15);
       const activeVirtuals = this.lightRegistry.getVirtualLights();
 
-      // REGLA CRÍTICA: En el Editor evaluamos SOLO si algún actor se movió o si las luces cambiaron (dirty).
-      // El movimiento de la cámara del editor tiene 0 influencia y no dispara reevaluaciones.
       let spatialEval = false;
 
       if (this.isFirstFrame || this.forceShadowRebuild) {
@@ -351,7 +371,7 @@ export class DynamicLightingSystem implements IUpdatable {
               vl.targetMultiplier = 0;
           }
 
-          // Interpolación suave y orgánica de intensidad (fade in / fade out)
+          // Interpolación suave de intensidad
           const multDiff = Math.abs(vl.targetMultiplier - vl.currentMultiplier);
           if (multDiff > 0.001) {
               vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
@@ -387,7 +407,7 @@ export class DynamicLightingSystem implements IUpdatable {
           }
 
           const vl = this.lightRegistry.getVirtualLightByUid(slot.assignedEntityUid);
-          if (!vl || !vl.entity.light) {
+          if (!vl || !vl.entity.light || !vl.entity.light.enabled) {
               this.lightPool.releaseSlot(slot, new Set());
               continue;
           }
@@ -426,7 +446,10 @@ export class DynamicLightingSystem implements IUpdatable {
       if (slot.type !== 'directional') {
           const lightRange = lightComp.range || 50;
           (slot.light as any).range = lightRange;
-          slot.light.shadowMaxZ = lightRange;
+          // OPTIMIZACIÓN CLAVE: Limitamos el frustum de sombra al alcance real de la abertura (máximo 28m)
+          // para cuadruplicar la resolución efectiva de texels y evitar pixelado a distancia.
+          slot.light.shadowMinZ = 0.1;
+          slot.light.shadowMaxZ = Math.min(lightRange, 28.0);
       }
       
       slot.light.diffuse.copyFrom(vl.baseColor);
@@ -446,7 +469,7 @@ export class DynamicLightingSystem implements IUpdatable {
           }
       }
 
-      const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > 0.05;
+      const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > 0.05 && lightComp.enabled;
 
       if (slot._isNewAssignment || vl.entity.isDirty || this.isFirstFrame) {
           if (slot.type !== 'directional') {

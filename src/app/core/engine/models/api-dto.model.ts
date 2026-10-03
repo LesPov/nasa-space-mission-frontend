@@ -49,11 +49,13 @@ export interface SceneObjectPropertiesDto {
   lightColor?: string; lightColorBW?: string; intensity?: number; renderIntensity?: number; range?: number; angle?: number;
   attachedNodePath?: string; attachedNodeName?: string;
   
-  // 🔥 NUEVO FASE CULLING: Exclusión per-objeto
   disableCulling?: boolean;
 
   // --- LIGHT CONTAINMENT PROPERTIES ---
   containmentMode?: 'GLOBAL' | 'INTERIOR' | 'EXTERIOR';
+  interiorActivationMode?: 'VOLUME' | 'DISTANCE' | 'BOTH';
+  preEntryEnabled?: boolean;
+  preEntryDistance?: number;
   containerEntityUid?: string;
   interiorVolumeId?: string;
   affectDescendantsOnly?: boolean;

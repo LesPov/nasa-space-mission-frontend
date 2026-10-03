@@ -1,3 +1,5 @@
+// RUTA: src/app/core/engine/runtime/systems/lighting/light-pool.service.ts
+// ACCIÓN: MODIFICAR
 
 import { Injectable, inject } from '@angular/core';
 import { PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, Color3, Tags, Scene } from '@babylonjs/core';
@@ -18,8 +20,6 @@ export class LightPoolService {
   private currentScene: Scene | null = null;
 
   public initializePool(scene: Scene): void {
-      // 🔥 FIX FASE 1: Idempotencia. Si el pool ya existe para esta escena, lo reutilizamos intacto.
-      // Evita la recompilación masiva de Shaders de profundidad.
       if (this.isInitialized && this.currentScene === scene) {
           return; 
       }
@@ -27,59 +27,65 @@ export class LightPoolService {
       this.disposePools(); 
       this.currentScene = scene;
 
-      const engine = this.motor3d.getEngine();
-      const maxUbo = (engine.getCaps() as { maxUniformBufferBindings?: number }).maxUniformBufferBindings || 12; 
-      
-      const BASE_UBOS = 6;
-      const availableUBOsForShadows = Math.max(0, maxUbo - BASE_UBOS);
-      const MAX_SHADOW_LIGHTS = Math.min(3, availableUBOsForShadows);
+      // El pool físico contiene hasta 3 de cada tipo para admitir cualquier combinación del Top 3
+      // (ej. 3 points, o 3 spots, o 2 points + 1 spot), pero la autoridad de asignación limita el total activo a <= 3.
       const MAX_LOCAL_SHADER_LIGHTS = 3;
 
-      for(let i = 0; i < MAX_LOCAL_SHADER_LIGHTS; i++) {
-          const hasShadows = i < MAX_SHADOW_LIGHTS;
-
+      for (let i = 0; i < MAX_LOCAL_SHADER_LIGHTS; i++) {
+          // --- POINT LIGHTS (1024x1024 Cubemap, PCF HIGH) ---
           const pLight = new PointLight(`pool_point_${i}`, new Vector3(0, -99999, 0), scene);
-          pLight.intensity = 0; pLight.diffuse = Color3.Black(); 
-          pLight.shadowEnabled = hasShadows; 
-          pLight.shadowMinZ = 0.05;
+          pLight.intensity = 0; 
+          pLight.diffuse = Color3.Black(); 
+          pLight.shadowEnabled = true; 
+          pLight.shadowMinZ = 0.1;
+          pLight.shadowMaxZ = 28.0; // Frustum compacto para máxima densidad de texels en aberturas
           Tags.AddTagsTo(pLight, "system_element");
 
-          let pSg: ShadowGenerator | null = null;
-          if (hasShadows) {
-              pSg = new ShadowGenerator(512, pLight);
-              pSg.usePercentageCloserFiltering = true; 
-              pSg.filteringQuality = ShadowGenerator.QUALITY_LOW;
-              pSg.setDarkness(0.0); pSg.bias = 0.005; pSg.normalBias = 0.02; pSg.forceBackFacesOnly = false;
-          }
+          const pSg = new ShadowGenerator(1024, pLight);
+          pSg.usePercentageCloserFiltering = true; 
+          pSg.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+          pSg.setDarkness(0.0); 
+          pSg.bias = 0.0008; 
+          pSg.normalBias = 0.004; 
+          pSg.forceBackFacesOnly = false;
           this.pointPool.push({ index: i, type: 'point', light: pLight, sg: pSg, assignedEntityUid: null, currentIntensity: 0 });
 
+          // --- SPOT LIGHTS (2048x2048 2D Map, PCF HIGH) ---
           const sLight = new SpotLight(`pool_spot_${i}`, new Vector3(0, -99999, 0), new Vector3(0, -1, 0), Math.PI/3, 2, scene);
-          sLight.intensity = 0; sLight.diffuse = Color3.Black(); 
-          sLight.shadowEnabled = hasShadows; 
+          sLight.intensity = 0; 
+          sLight.diffuse = Color3.Black(); 
+          sLight.shadowEnabled = true; 
           sLight.shadowMinZ = 0.1;
+          sLight.shadowMaxZ = 30.0;
           Tags.AddTagsTo(sLight, "system_element");
 
-          let sSg: ShadowGenerator | null = null;
-          if (hasShadows) { 
-              sSg = new ShadowGenerator(1024, sLight);
-              sSg.usePercentageCloserFiltering = true; sSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-              sSg.setDarkness(0.0); sSg.bias = 0.001; sSg.normalBias = 0.015; sSg.forceBackFacesOnly = false;
-          }
+          const sSg = new ShadowGenerator(2048, sLight);
+          sSg.usePercentageCloserFiltering = true; 
+          sSg.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+          sSg.setDarkness(0.0); 
+          sSg.bias = 0.0008; 
+          sSg.normalBias = 0.004; 
+          sSg.forceBackFacesOnly = false;
           this.spotPool.push({ index: i, type: 'spot', light: sLight, sg: sSg, assignedEntityUid: null, currentIntensity: 0 });
       }
 
-      for(let i = 0; i < 2; i++) { 
-          const hasShadows = i < 1; 
+      // --- DIRECTIONAL POOL (Sol Local) ---
+      for (let i = 0; i < 2; i++) { 
           const dLight = new DirectionalLight(`pool_dir_${i}`, new Vector3(0, -1, 0), scene);
-          dLight.intensity = 0; dLight.diffuse = Color3.Black(); 
-          dLight.shadowEnabled = hasShadows; 
+          dLight.intensity = 0; 
+          dLight.diffuse = Color3.Black(); 
+          dLight.shadowEnabled = i < 1; 
           Tags.AddTagsTo(dLight, "system_element");
 
           let dSg: ShadowGenerator | null = null;
-          if (hasShadows) { 
-              dSg = new ShadowGenerator(1024, dLight);
-              dSg.usePercentageCloserFiltering = true; dSg.filteringQuality = ShadowGenerator.QUALITY_HIGH;
-              dSg.setDarkness(0.0); dSg.bias = 0.001; dSg.normalBias = 0.015; dSg.forceBackFacesOnly = false;
+          if (i < 1) { 
+              dSg = new ShadowGenerator(2048, dLight);
+              dSg.usePercentageCloserFiltering = true; 
+              dSg.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+              dSg.setDarkness(0.0); 
+              dSg.bias = 0.001; 
+              dSg.normalBias = 0.01; 
+              dSg.forceBackFacesOnly = false;
           }
           this.dirPool.push({ index: i, type: 'directional', light: dLight, sg: dSg, assignedEntityUid: null, currentIntensity: 0 });
       }
@@ -87,9 +93,8 @@ export class LightPoolService {
       this.isInitialized = true;
   }
 
-  // 🔥 FIX FASE 1: Reseteo Suave para Runtime (Libera lógica, no WebGL)
   public resetPools(): void {
-      const topUids = new Set<string>(); // Set vacío fuerza la liberación total
+      const topUids = new Set<string>();
       this.getAllSlots().forEach(slot => {
           this.releaseSlot(slot, topUids);
       });
@@ -127,7 +132,6 @@ export class LightPoolService {
       }
   }
 
-  // 🔥 FIX FASE 1: Reseteo Duro (Destruye WebGL). Renombrado de clearPools a disposePools.
   public disposePools(): void {
       const cleanPool = (pool: PoolSlot[]) => {
           pool.forEach(p => { 

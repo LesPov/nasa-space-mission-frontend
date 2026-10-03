@@ -1,3 +1,6 @@
+// RUTA: src/app/core/engine/runtime/systems/lighting/light-shadow.service.ts
+// ACCIÓN: MODIFICAR
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, ShadowGenerator, Vector3, Tags, InstancedMesh, Mesh, RenderTargetTexture } from '@babylonjs/core';
 import { PoolSlot } from './lighting-types';
@@ -112,6 +115,12 @@ export class LightShadowService {
     return false;
   }
 
+  /**
+   * Reconstruye la lista de casters para la luz.
+   * CORRECCIÓN FUNDAMENTAL: Para luces de interior, las mallas del contenedor
+   * (paredes, techo, piso) DEBEN pertenecer a la renderList para bloquear físicamente la luz.
+   * Solo por las aberturas geométricas (donde no haya polígonos) la luz escapará al exterior.
+   */
   public rebuildShadowRenderList(slot: PoolSlot, entityUid: string, lightPos: Vector3, range: number): void {
     if (!slot.sg) {
       const config = slot.type === 'spot' ? this.shadowQualitySvc.getSpotConfig() : this.shadowQualitySvc.getPointConfig();
@@ -119,7 +128,7 @@ export class LightShadowService {
 
       slot.sg.usePercentageCloserFiltering = true;
       slot.sg.filteringQuality = config.filteringQuality;
-      slot.sg.bias = 0.001;
+      slot.sg.bias = 0.0005;
       slot.sg.normalBias = 0.01;
       if (slot.type === 'point') {
         slot.sg.useContactHardeningShadow = false;
@@ -141,15 +150,6 @@ export class LightShadowService {
     slot.hasDynamicCasters = false;
 
     const ownerEnt = this.entityManager.getEntityByUid(entityUid);
-    const containmentMode = ownerEnt?.light?.containmentMode || 'GLOBAL';
-
-    const parentUid = ownerEnt?.parentId;
-    let parentView: AbstractMesh | null = null;
-    if (parentUid) {
-      const parentEnt = this.entityManager.getEntityByUid(parentUid);
-      if (parentEnt) parentView = parentEnt.view;
-    }
-
     const rangeSq = range * range;
     const addedUids = new Set<string>();
 
@@ -157,15 +157,11 @@ export class LightShadowService {
       const m = this.castersCache[i];
       if (m.isDisposed()) continue;
 
+      // No permitir que la representación física de la bombilla se ocluya a sí misma
       const meshEntityUid = (m as any).metadata?.entityUid;
       if (meshEntityUid === entityUid) continue;
 
-      if (containmentMode === 'INTERIOR') {
-        if (parentView && (m === parentView || m.isDescendantOf(parentView))) {
-          continue;
-        }
-      }
-
+      // En luces interiores, el pasillo entero proyecta sombra bloqueando paredes y dejando escapar luz por puertas
       const distSq = Vector3.DistanceSquared(m.getAbsolutePosition(), lightPos);
       if (distSq <= rangeSq) {
         renderList.push(m);

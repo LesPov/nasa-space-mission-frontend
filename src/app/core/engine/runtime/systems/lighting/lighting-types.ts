@@ -1,6 +1,6 @@
 
 import { Color3, PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3 } from '@babylonjs/core';
-import { GameEntity } from '../../../entities/game.entity';
+import { GameEntity, LightInteriorActivationMode } from '../../../entities/game.entity';
  
 export interface VirtualLight {
     entity: GameEntity;
@@ -17,6 +17,13 @@ export interface VirtualLight {
     _sortScore?: number;
     closestActorName?: string;
     poolRank?: number;
+    
+    // Metadatos de contexto espacial interior
+    isInterior: boolean;
+    interiorActivationMode?: LightInteriorActivationMode;
+    insideVolume: boolean;
+    inPreEntryZone: boolean;
+    containerName?: string;
 }
 
 export interface PoolSlot {

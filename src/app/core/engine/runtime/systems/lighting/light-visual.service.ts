@@ -1,9 +1,18 @@
+
 import { Injectable } from '@angular/core';
-import { Color3, StandardMaterial, Tags, AbstractMesh } from '@babylonjs/core';
+import { Color3, Tags, AbstractMesh } from '@babylonjs/core';
 import { VirtualLight } from './lighting-types';
 
 @Injectable({ providedIn: 'root' })
 export class LightVisualService {
+
+  private isMaterialDisposed(mat: any): boolean {
+    if (!mat) return true;
+    if (typeof mat.isDisposed === 'function') {
+      return mat.isDisposed();
+    }
+    return mat.isDisposed === true || mat._isDisposed === true;
+  }
 
   /**
    * Actualiza el resplandor visual (emissive materials) de las mallas 3D asociadas a una luz virtual,
@@ -13,9 +22,10 @@ export class LightVisualService {
       if (!vl.entity.view) return;
       
       const visual = vl.entity.view.getChildMeshes(false).find((m: AbstractMesh) => Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual);
-      if (visual && visual.material && visual.material instanceof StandardMaterial) {
-          visual.material.emissiveColor.copyFrom(baseColor);
-          visual.material.diffuseColor.copyFrom(baseColor);
+      if (visual && visual.material && !this.isMaterialDisposed(visual.material)) {
+          const vMat = visual.material as any;
+          if (vMat.emissiveColor?.copyFrom) vMat.emissiveColor.copyFrom(baseColor);
+          if (vMat.diffuseColor?.copyFrom) vMat.diffuseColor.copyFrom(baseColor);
       }
 
       let emissiveScale = (lightComp.intensity / 5) * vl.currentMultiplier;
@@ -25,11 +35,24 @@ export class LightVisualService {
       const g = baseColor.g * emissiveScale; 
       const b = baseColor.b * emissiveScale;
 
-      for (let j = 0; j < vl.materials.length; j++) {
-          const mat = vl.materials[j];
-          if (mat && !mat.isDisposed()) {
-              if (mat.emissiveColor) mat.emissiveColor.set(r, g, b);
+      const applyEmissive = (mat: any) => {
+        if (!mat || this.isMaterialDisposed(mat)) return;
+
+        // Soporte recursivo para MultiMaterial
+        if (mat.subMaterials && Array.isArray(mat.subMaterials)) {
+          for (let k = 0; k < mat.subMaterials.length; k++) {
+            applyEmissive(mat.subMaterials[k]);
           }
+          return;
+        }
+
+        if (mat.emissiveColor && typeof mat.emissiveColor.set === 'function') {
+          mat.emissiveColor.set(r, g, b);
+        }
+      };
+
+      for (let j = 0; j < vl.materials.length; j++) {
+        applyEmissive(vl.materials[j]);
       }
   }
 }

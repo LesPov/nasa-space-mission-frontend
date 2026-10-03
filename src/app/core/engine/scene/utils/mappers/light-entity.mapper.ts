@@ -1,7 +1,7 @@
 
 import { Injectable } from '@angular/core';
 import { BaseEntityMapper } from './base-entity.mapper';
-import { GameEntity, LightContainmentMode, LightDistanceReferenceMode } from '../../../entities/game.entity';
+import { GameEntity, LightContainmentMode, LightDistanceReferenceMode, LightInteriorActivationMode } from '../../../entities/game.entity';
 import { SceneObjectDto, TriggerDto, SceneObjectPropertiesDto } from '../../../models/api-dto.model';
 
 @Injectable({ providedIn: 'root' })
@@ -18,13 +18,12 @@ export class LightEntityMapper extends BaseEntityMapper {
     super.applyDbToEntity(obj, entity);
     const props = obj.properties || {} as SceneObjectPropertiesDto;
 
-    // 🔥 FASE 6 FIX: Lógica Robusta de Transform Space
     if (!props.transformSpace) {
         if (props.attachedNodeName) {
             entity.transformSpace = 'ATTACHED';
         } else if (obj.parentId) {
             entity.transformSpace = 'LOCAL';
-            entity.isLegacyLocalTransform = true; // Notificamos al cargador que preserve las coords globales
+            entity.isLegacyLocalTransform = true;
         } else {
             entity.transformSpace = 'WORLD';
         }
@@ -57,9 +56,12 @@ export class LightEntityMapper extends BaseEntityMapper {
 
       const defaultContainment = obj.parentId ? 'INTERIOR' : 'GLOBAL';
       entity.light.containmentMode = (props.containmentMode as LightContainmentMode) || defaultContainment;
+      entity.light.interiorActivationMode = (props.interiorActivationMode as LightInteriorActivationMode) || 'VOLUME';
+      entity.light.preEntryEnabled = props.preEntryEnabled ?? true;
+      entity.light.preEntryDistance = props.preEntryDistance ?? 3.0;
       
       entity.light.containerEntityUid = props.containerEntityUid || '';
-      entity.light.affectDescendantsOnly = props.affectDescendantsOnly ?? false; // 🔥 Default realistic spill
+      entity.light.affectDescendantsOnly = props.affectDescendantsOnly ?? false;
       entity.light.shadowDarkness = props.shadowDarkness ?? 0.0;
       entity.light.shadowBias = props.shadowBias ?? 0.0005;
       entity.light.shadowNormalBias = props.shadowNormalBias ?? 0.01;
@@ -96,6 +98,9 @@ export class LightEntityMapper extends BaseEntityMapper {
         isEnabled: entity.light.enabled,
         castShadows: entity.light.castShadows,
         containmentMode: entity.light.containmentMode,
+        interiorActivationMode: entity.light.interiorActivationMode,
+        preEntryEnabled: entity.light.preEntryEnabled,
+        preEntryDistance: entity.light.preEntryDistance,
         containerEntityUid: entity.light.containerEntityUid,
         affectDescendantsOnly: entity.light.affectDescendantsOnly,
         shadowDarkness: entity.light.shadowDarkness,

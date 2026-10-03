@@ -61,6 +61,7 @@ export class InteractionComponent {
 }
 
 export type LightContainmentMode = 'GLOBAL' | 'INTERIOR' | 'EXTERIOR';
+export type LightInteriorActivationMode = 'VOLUME' | 'DISTANCE' | 'BOTH';
 export type LightDistanceReferenceMode = 'AUTO' | 'CAMERA' | 'PLAYER';
 
 export class LightComponent {
@@ -76,18 +77,21 @@ export class LightComponent {
     public enabled: boolean = true,
     public castShadows: boolean = true,
     public containmentMode: LightContainmentMode = 'GLOBAL',
+    public interiorActivationMode: LightInteriorActivationMode = 'VOLUME',
+    public preEntryEnabled: boolean = true,
+    public preEntryDistance: number = 3.0,
     public containerEntityUid: string = '',
-    public affectDescendantsOnly: boolean = true,
+    public affectDescendantsOnly: boolean = false,
     public shadowDarkness: number = 0.0,
     public shadowBias: number = 0.0005,
     public shadowNormalBias: number = 0.01,
     public excludeExteriorMeshes: boolean = true,
     public distanceControlEnabled: boolean = true,
-    public activationDistance: number = 65,
-    public deactivationDistance: number = 75,
+    public activationDistance: number = 52,
+    public deactivationDistance: number = 56,
     public distanceShadowsEnabled: boolean = true,
-    public shadowActivationDistance: number = 30,
-    public shadowDeactivationDistance: number = 36,
+    public shadowActivationDistance: number = 52,
+    public shadowDeactivationDistance: number = 56,
     public distanceReferenceMode: LightDistanceReferenceMode = 'AUTO'
   ) {}
 }
@@ -171,9 +175,8 @@ export class GameEntity {
   public isRuntimeOnly: boolean = false;
   public authoringBackup: any = null;
   
-  // 🔥 ESTADOS DE VISIBILIDAD UNIFICADA
-  public isManuallyHidden: boolean = false; // Decisión manual del usuario
-  public isCulled: boolean = false;         // Decisión del LocalRenderingSystem (Distancia)
+  public isManuallyHidden: boolean = false; 
+  public isCulled: boolean = false;         
   public runtimeVisibilityTarget: number = 1.0;
   public currentRuntimeVisibility: number = 1.0;
 

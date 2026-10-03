@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { Vector3, SpotLight, DirectionalLight } from '@babylonjs/core';
-import { VirtualLight } from './lighting-types';
+import { VirtualLight, PoolSlot } from './lighting-types';
 import { LightPoolService } from './light-pool.service';
 import { LightTransformService } from './light-transform.service';
 
@@ -28,6 +28,7 @@ export class LightAllocationService {
           if (s.assignedEntityUid) assignedSet.add(s.assignedEntityUid);
       });
 
+      // 1. Ponderación y ordenación de candidatos
       activeVirtuals.forEach(vl => {
           this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
           const vecToLight = this._tempPos.subtract(refPos);
@@ -36,55 +37,57 @@ export class LightAllocationService {
           
           let score = (distSq * 0.4) + (predictedDistSq * 0.6);
 
+          // Bonificación contextual para luces interiores activas donde está el actor
+          if (vl.isInterior && vl.insideVolume) {
+              score *= 0.25; // Prioridad alta: ilumina el espacio actual del jugador
+          } else if (vl.isInterior && vl.inPreEntryZone) {
+              score *= 0.50; // Pre-entrada relevante
+          }
+
           if (speed > 0.5) {
               vecToLight.normalize();
               const dot = Vector3.Dot(moveDir, vecToLight);
               if (dot > 0) {
-                  score *= (1.0 - (dot * 0.4)); 
+                  score *= (1.0 - (dot * 0.3)); 
               } else {
-                  score *= (1.0 + (Math.abs(dot) * 0.4)); 
+                  score *= (1.0 + (Math.abs(dot) * 0.3)); 
               }
           }
 
           const isAssigned = assignedSet.has(vl.entity.uid);
           if (isAssigned) {
-              score *= 0.3; 
+              score *= 0.4; 
               if (vl.currentMultiplier > 0.8) {
-                  score *= 0.2; 
-              } else if (vl.currentMultiplier > 0.1) {
-                  score *= 0.5;
+                  score *= 0.3; 
               }
           }
           
           if (selectedUid === vl.entity.uid) {
-              score = -1; 
+              score = -1; // Máxima prioridad si el usuario la tiene seleccionada en el editor
           }
 
           vl._sortScore = score;
       });
 
+      // 2. Ranking global unificado (Sin segregación de tipos)
       activeVirtuals.sort((a, b) => (a._sortScore ?? 0) - (b._sortScore ?? 0));
 
-      const pointVirtuals = activeVirtuals.filter(vl => vl.entity.type === 'light_point');
-      const spotVirtuals = activeVirtuals.filter(vl => vl.entity.type === 'light_spot');
-      const dirVirtuals = activeVirtuals.filter(vl => vl.entity.type === 'light_directional');
-
-      const topPoint = pointVirtuals.slice(0, this.lightPool.getPointPool().length);
-      const topSpot = spotVirtuals.slice(0, this.lightPool.getSpotPool().length);
-      const topDir = dirVirtuals.slice(0, this.lightPool.getDirPool().length);
-
-      const topVirtuals = [...topPoint, ...topSpot, ...topDir];
+      // REGLA ABSOLUTA: Un único corte global de MÁXIMO 3 luces dinámicas locales
+      const MAX_ACTIVE_LOCAL_LIGHTS = 3;
+      const topVirtuals = activeVirtuals.slice(0, MAX_ACTIVE_LOCAL_LIGHTS);
       const topUids = new Set(topVirtuals.map(x => x.entity.uid));
 
-      this.lightPool.getPointPool().forEach(s => this.lightPool.releaseSlot(s, topUids));
-      this.lightPool.getSpotPool().forEach(s => this.lightPool.releaseSlot(s, topUids));
-      this.lightPool.getDirPool().forEach(s => this.lightPool.releaseSlot(s, topUids));
-
-      // Actualizar los rankings visuales de las luces virtuales (Top 3)
+      // Resetear rankings de todas las luces virtuales
       activeVirtuals.forEach(vl => {
           vl.poolRank = 0;
       });
 
+      // Liberar cualquier slot que ya no esté en el Top 3
+      this.lightPool.getAllSlots().forEach(s => {
+          this.lightPool.releaseSlot(s, topUids);
+      });
+
+      // 3. Asignación atómica de slots para el Top 3
       topVirtuals.forEach((vl, rankIndex) => {
           vl.poolRank = rankIndex + 1;
 
@@ -94,14 +97,19 @@ export class LightAllocationService {
           let existingSlot = pool.find(s => s.assignedEntityUid === vl.entity.uid);
 
           if (!existingSlot) {
-              let freeSlot = null;
-              if (wantsShadow) freeSlot = pool.find(s => s.sg !== null && s.assignedEntityUid === null);
-              if (!freeSlot) freeSlot = pool.find(s => s.sg === null && s.assignedEntityUid === null);
-              if (!freeSlot) freeSlot = pool.find(s => s.assignedEntityUid === null);
+              // Buscar primero slot con shadow generator si se requieren sombras
+              let freeSlot: PoolSlot | null = null;
+              if (wantsShadow) {
+                  freeSlot = pool.find(s => s.sg !== null && s.assignedEntityUid === null) || null;
+              }
+              if (!freeSlot) {
+                  freeSlot = pool.find(s => s.assignedEntityUid === null) || null;
+              }
 
               if (freeSlot) {
                   freeSlot.assignedEntityUid = vl.entity.uid;
-                  freeSlot.currentIntensity = 0; freeSlot.light.intensity = 0; 
+                  freeSlot.currentIntensity = 0; 
+                  freeSlot.light.intensity = 0; 
                   freeSlot._isNewAssignment = true; 
                   existingSlot = freeSlot;
               }

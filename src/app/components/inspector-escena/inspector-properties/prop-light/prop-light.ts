@@ -1,3 +1,5 @@
+// RUTA: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.ts
+// ACCIÓN: MODIFICAR
 
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -9,7 +11,7 @@ import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorStateService } from '../../../../services/editor/editor-state.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
-import { LightContainmentMode, LightDistanceReferenceMode } from '../../../../core/engine/entities/game.entity';
+import { LightContainmentMode, LightDistanceReferenceMode, LightInteriorActivationMode } from '../../../../core/engine/entities/game.entity';
 import { LightContainmentService } from '../../../../core/engine/runtime/systems/lighting/light-containment.service';
 import { DynamicLightingSystem } from '../../../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 
@@ -56,8 +58,12 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
   // --- CONTAINMENT PROPERTIES ---
   containmentMode: LightContainmentMode = 'GLOBAL';
+  interiorActivationMode: LightInteriorActivationMode = 'VOLUME';
+  preEntryEnabled: boolean = true;
+  preEntryDistance: number = 3.0;
+
   containerEntityUid: string = '';
-  affectDescendantsOnly: boolean = true;
+  affectDescendantsOnly: boolean = false;
   shadowDarkness: number = 0.0;
   shadowBias: number = 0.0005;
   shadowNormalBias: number = 0.01;
@@ -82,6 +88,11 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   poolRankText: string = '-';
   referenceModeDisplay: string = 'ACTOR (Player/NPC)';
 
+  isInteriorLight: boolean = false;
+  isInsideVolume: boolean = false;
+  isInPreEntry: boolean = false;
+  spatialContextText: string = 'GLOBAL';
+
   public childNodes: AttachedNodeOption[] = [];
   public containerOptions: ContainerOption[] = [];
   public attachedNodePath: string = '';
@@ -97,7 +108,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       this.editorSvc.onMapChanged.pipe(auditTime(100)).subscribe(() => this.syncData())
     );
 
-    // Muestreo fluido de telemetría sin saturar la UI
     this.telemetryInterval = setInterval(() => {
       this.updateTelemetry();
     }, 100);
@@ -134,6 +144,23 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       this.referenceModeDisplay = this.distanceReferenceMode === 'AUTO' 
         ? 'ACTOR (Player/NPC)' 
         : this.distanceReferenceMode;
+
+      this.isInteriorLight = vl.isInterior;
+      this.isInsideVolume = vl.insideVolume;
+      this.isInPreEntry = vl.inPreEntryZone;
+
+      if (vl.isInterior) {
+        if (vl.insideVolume) {
+          this.spatialContextText = `INTERIOR (${vl.containerName || 'Dentro'}) - DENTRO`;
+        } else if (vl.inPreEntryZone) {
+          this.spatialContextText = `PRE-ENTRADA (${vl.containerName || 'Puerta'}) - FADE IN`;
+        } else {
+          this.spatialContextText = `FUERA DEL VOLUMEN (${vl.containerName || 'Exterior'}) - APAGADA`;
+        }
+      } else {
+        this.spatialContextText = 'EXTERIOR / PROXIMAL';
+      }
+
       this.cdr.detectChanges();
     }
   }
@@ -229,9 +256,13 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.enabled = entity.light.enabled ?? true;
     this.castShadows = entity.light.castShadows ?? true;
 
-    this.containmentMode = entity.light.containmentMode ?? 'GLOBAL';
+    this.containmentMode = entity.light.containmentMode ?? (entity.parentId ? 'INTERIOR' : 'GLOBAL');
+    this.interiorActivationMode = entity.light.interiorActivationMode || 'VOLUME';
+    this.preEntryEnabled = entity.light.preEntryEnabled ?? true;
+    this.preEntryDistance = entity.light.preEntryDistance ?? 3.0;
+
     this.containerEntityUid = entity.light.containerEntityUid ?? '';
-    this.affectDescendantsOnly = entity.light.affectDescendantsOnly ?? true;
+    this.affectDescendantsOnly = entity.light.affectDescendantsOnly ?? false;
     this.shadowDarkness = entity.light.shadowDarkness ?? 0.0;
     this.shadowBias = entity.light.shadowBias ?? 0.0005;
     this.shadowNormalBias = entity.light.shadowNormalBias ?? 0.01;
@@ -275,7 +306,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       .filter(e => e.uid !== entity.uid && (e.type === 'model' || e.type === 'cube'))
       .map(e => ({ label: e.name, uid: e.uid }));
 
-    this.dynamicLighting.syncLightImmediate(entity);
     this.updateTelemetry();
     this.cdr.detectChanges();
   }
@@ -318,7 +348,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
       entity.light.lightColor = this.lightColor;
       entity.light.lightColorBW = this.lightColorBW;
-      // Inmutable: baseIntensity se conserva intacta
       entity.light.intensity = this.intensity;
       entity.light.range = this.range;
       entity.light.angle = this.angle;
@@ -328,6 +357,10 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.light.attachedNodePath = this.attachedNodePath;
 
       entity.light.containmentMode = this.containmentMode;
+      entity.light.interiorActivationMode = this.interiorActivationMode;
+      entity.light.preEntryEnabled = this.preEntryEnabled;
+      entity.light.preEntryDistance = this.preEntryDistance;
+
       entity.light.containerEntityUid = this.containerEntityUid;
       entity.light.affectDescendantsOnly = this.affectDescendantsOnly;
       entity.light.shadowDarkness = this.shadowDarkness;
@@ -346,8 +379,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.isDirty = true;
       entity.syncToView(); 
 
+      // 🔥 PROPAGACIÓN INSTANTÁNEA EN VIVO
       this.containmentSvc.markDirty(entity.uid);
-      
       this.dynamicLighting.syncLightImmediate(entity, true);
       this.updateTelemetry();
     }

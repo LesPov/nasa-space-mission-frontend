@@ -1,6 +1,8 @@
+// RUTA: src/app/core/engine/runtime/systems/lighting/light-containment.service.ts
+// ACCIÓN: MODIFICAR
 
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, PointLight, SpotLight, Scene, Vector3, Tags, Mesh, InstancedMesh, Node, MultiMaterial, Material } from '@babylonjs/core';
+import { AbstractMesh, PointLight, SpotLight, Scene, Vector3, Tags, Mesh, InstancedMesh, Node, MultiMaterial, Material, Matrix } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { GameEntity, LightContainmentMode } from '../../../entities/game.entity';
 
@@ -18,6 +20,12 @@ export interface LightContainmentAuditReport {
   materialsSummary: Array<{ meshName: string; materialType: string; isMulti: boolean; subMaterialsCount: number; maxLights: number }>;
 }
 
+export interface ContainerVolumeEvaluationResult {
+  inside: boolean;
+  inPreEntry: boolean;
+  distToBox: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class LightContainmentService {
   private entityManager = inject(EntityManagerService);
@@ -25,6 +33,10 @@ export class LightContainmentService {
   private containerRenderablesCache = new Map<string, AbstractMesh[]>();
   private strictInteriorReceiversCache = new Map<string, AbstractMesh[]>();
   private lastAuditReport: LightContainmentAuditReport | null = null;
+
+  // Zero-allocation matrices y vectores para pruebas espaciales de OBB
+  private static readonly _tempInvMat = new Matrix();
+  private static readonly _tempLocalActorPos = new Vector3();
 
   public metrics = {
     containmentRebuilds: 0,
@@ -58,6 +70,11 @@ export class LightContainmentService {
     return this.lastAuditReport;
   }
 
+  /**
+   * Resuelve el modelo contenedor de una luz interior.
+   * Si está emparentada (ej: pasillo -> luz), el contenedor es el padre.
+   * Si no, busca la entidad configurada explícitamente o el modelo espacial más cercano.
+   */
   public resolveContainerEntity(lightEntity: GameEntity, scene: Scene): GameEntity | null {
     const lightComp = lightEntity.light;
     if (!lightComp) return null;
@@ -104,36 +121,100 @@ export class LightContainmentService {
       );
 
     let closestContainer: GameEntity | null = null;
-    let smallestVolume = Number.MAX_VALUE;
+    let smallestDist = Number.MAX_VALUE;
 
     for (let i = 0; i < candidates.length; i++) {
       const cand = candidates[i];
       if (!cand.view) continue;
 
-      cand.view.computeWorldMatrix(true);
-      const bounds = cand.view.getHierarchyBoundingVectors(true);
-      const min = bounds.min;
-      const max = bounds.max;
-
-      const inside =
-        lightPos.x >= min.x &&
-        lightPos.x <= max.x &&
-        lightPos.y >= min.y &&
-        lightPos.y <= max.y &&
-        lightPos.z >= min.z &&
-        lightPos.z <= max.z;
-
-      if (inside) {
-        const size = max.subtract(min);
-        const volume = Math.abs(size.x * size.y * size.z);
-        if (volume < smallestVolume) {
-          smallestVolume = volume;
-          closestContainer = cand;
-        }
+      const dist = Vector3.Distance(cand.view.getAbsolutePosition(), lightPos);
+      if (dist < smallestDist) {
+        smallestDist = dist;
+        closestContainer = cand;
       }
     }
 
     return closestContainer;
+  }
+
+  /**
+   * EVALUACIÓN REAL DE VOLUMEN ORIENTADO (OBB / COLLIDERS)
+   * En lugar de comparar contra un AABB mundial que engloba diagonales vacías,
+   * se evalúa contra las mallas de colisión o el espacio local exacto de los segmentos del modelo.
+   */
+  public evaluateActorInsideContainer(
+    actorWorldPos: Vector3,
+    container: GameEntity,
+    preEntryDistance: number = 3.0,
+    wasInRange: boolean = false
+  ): ContainerVolumeEvaluationResult {
+    if (!container.view || container.view.isDisposed()) {
+      return { inside: false, inPreEntry: false, distToBox: Number.MAX_VALUE };
+    }
+
+    const targetMeshes: AbstractMesh[] = [];
+
+    const proxies = container.view.getChildMeshes(false).filter(m => Tags.MatchesQuery(m, 'proxy_collider'));
+    if (proxies.length > 0) {
+      targetMeshes.push(...proxies);
+    } else {
+      if (container.view instanceof Mesh && container.view.getTotalVertices() > 0) {
+        targetMeshes.push(container.view);
+      }
+      container.view.getChildMeshes(false).forEach(m => {
+        if (!Tags.MatchesQuery(m, 'system_element || editor_only || fog_element || light_visual || ignore_raycast')) {
+          if (m instanceof Mesh && m.getTotalVertices() > 0) targetMeshes.push(m);
+          else if (m instanceof InstancedMesh && m.sourceMesh && m.sourceMesh.getTotalVertices() > 0) targetMeshes.push(m);
+        }
+      });
+    }
+
+    if (targetMeshes.length === 0) {
+      return { inside: false, inPreEntry: false, distToBox: Number.MAX_VALUE };
+    }
+
+    let minDistanceToAnySegment = Number.MAX_VALUE;
+    let isInsideAnySegment = false;
+    const exitHysteresis = wasInRange ? 1.0 : 0.0;
+
+    for (let i = 0; i < targetMeshes.length; i++) {
+      const mesh = targetMeshes[i];
+      if (mesh.isDisposed()) continue;
+
+      mesh.computeWorldMatrix(true);
+      mesh.getWorldMatrix().invertToRef(LightContainmentService._tempInvMat);
+      Vector3.TransformCoordinatesToRef(actorWorldPos, LightContainmentService._tempInvMat, LightContainmentService._tempLocalActorPos);
+
+      const b = mesh.getBoundingInfo().boundingBox;
+      const min = b.minimum;
+      const max = b.maximum;
+      const p = LightContainmentService._tempLocalActorPos;
+
+      const dx = Math.max(0, (min.x - exitHysteresis) - p.x, p.x - (max.x + exitHysteresis));
+      const dy = Math.max(0, (min.y - 0.5 - exitHysteresis) - p.y, p.y - (max.y + 0.5 + exitHysteresis));
+      const dz = Math.max(0, (min.z - exitHysteresis) - p.z, p.z - (max.z + exitHysteresis));
+
+      const localDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      const meshScale = (Math.abs(mesh.scaling.x) + Math.abs(mesh.scaling.y) + Math.abs(mesh.scaling.z)) / 3.0;
+      const worldDist = localDist * (meshScale > 0.001 ? meshScale : 1.0);
+
+      if (worldDist < minDistanceToAnySegment) {
+        minDistanceToAnySegment = worldDist;
+      }
+
+      if (dx === 0 && dy === 0 && dz === 0) {
+        isInsideAnySegment = true;
+        break;
+      }
+    }
+
+    const inPreEntry = !isInsideAnySegment && (minDistanceToAnySegment <= preEntryDistance);
+
+    return {
+      inside: isInsideAnySegment,
+      inPreEntry: inPreEntry,
+      distToBox: minDistanceToAnySegment
+    };
   }
 
   public getAllRenderableMeshesFromModel(rootNode: Node): {
@@ -153,7 +234,7 @@ export class LightContainmentService {
       totalDescendantsCount++;
 
       if (node.isDisposed()) {
-        rejected.push({ meshName: node.name, reason: 'Nodo descartado (disposed)' });
+        rejected.push({ meshName: node.name, reason: 'Nodo descartado' });
         return;
       }
 
@@ -163,7 +244,7 @@ export class LightContainmentService {
           'editor_only || fog_element || debug_element || proxy_collider || invisible_floor || light_visual || ignore_raycast'
         )
       ) {
-        rejected.push({ meshName: node.name, reason: 'Etiqueta de sistema/colisionador (Tags exclude)' });
+        rejected.push({ meshName: node.name, reason: 'Etiqueta de sistema/colisionador' });
         return;
       }
 
@@ -225,19 +306,6 @@ export class LightContainmentService {
     const container = this.resolveContainerEntity(lightEntity, scene);
     if (!container || !container.view) {
       this.strictInteriorReceiversCache.set(cacheKey, []);
-      this.lastAuditReport = {
-        lightUid: lightEntity.uid,
-        containerUid: lightEntity.light?.containerEntityUid || 'none',
-        containerFound: false,
-        containerName: 'NOT_FOUND',
-        runtimeRootName: 'NONE',
-        totalDescendants: 0,
-        totalRenderableMeshes: 0,
-        totalReceivers: 0,
-        rejectedCount: 0,
-        rejectedDetails: [],
-        materialsSummary: []
-      };
       return [];
     }
 
@@ -282,39 +350,6 @@ export class LightContainmentService {
             maxLights: (mat as any).maxSimultaneousLights ?? 4
           });
         }
-      } else {
-        materialsSummary.push({
-          meshName: mesh.name,
-          materialType: 'NO_MATERIAL',
-          isMulti: false,
-          subMaterialsCount: 0,
-          maxLights: 0
-        });
-      }
-    }
-
-    const containerBounds = container.view.getHierarchyBoundingVectors(true);
-    const cMin = containerBounds.min;
-    const cMax = containerBounds.max;
-
-    const allEntities = this.entityManager.getAllEntities();
-    for (let i = 0; i < allEntities.length; i++) {
-      const e = allEntities[i];
-      if (e === container || e === lightEntity || !e.view) continue;
-      if (e.type.startsWith('light_') || e.type === 'trigger' || e.type === 'trigger_compuesto') continue;
-
-      const ePos = e.view.getAbsolutePosition();
-      const isInside =
-        ePos.x >= cMin.x &&
-        ePos.x <= cMax.x &&
-        ePos.y >= cMin.y &&
-        ePos.y <= cMax.y &&
-        ePos.z >= cMin.z &&
-        ePos.z <= cMax.z;
-
-      if (isInside) {
-        const extra = this.getAllRenderableMeshesFromModel(e.view);
-        extra.renderables.forEach(m => finalReceiversSet.add(m));
       }
     }
 
@@ -341,25 +376,17 @@ export class LightContainmentService {
   public applyContainment(light: PointLight | SpotLight, entity: GameEntity, scene: Scene): void {
     const mode: LightContainmentMode = entity.light?.containmentMode || 'GLOBAL';
 
-    const cacheStamp = `${mode}_${entity.light?.containerEntityUid || ''}_${entity.uid}`;
+    const cacheStamp = `${mode}_${entity.light?.containerEntityUid || ''}_${entity.uid}_${entity.light?.affectDescendantsOnly}`;
     if ((light as any)._containmentAppliedStamp === cacheStamp && !entity.isDirty) {
       return;
     }
 
-    if (mode === 'INTERIOR') {
+    if (mode === 'INTERIOR' && entity.light?.affectDescendantsOnly) {
       const receivers = this.getInteriorMeshesStrict(entity, scene);
-      if (receivers.length > 0) {
-        light.includedOnlyMeshes = [...receivers];
-        light.excludedMeshes = [];
-      } else {
-        light.includedOnlyMeshes = [];
-        light.excludedMeshes = [];
-      }
-    } else if (mode === 'EXTERIOR') {
-      const receivers = this.getInteriorMeshesStrict(entity, scene);
-      light.includedOnlyMeshes = [];
-      light.excludedMeshes = [...receivers];
+      light.includedOnlyMeshes = receivers.length > 0 ? [...receivers] : [];
+      light.excludedMeshes = [];
     } else {
+      // Propagación física real: ilumina todo a su alcance visual; las paredes sólidas en la renderList ocluyen el paso
       light.includedOnlyMeshes = [];
       light.excludedMeshes = [];
     }

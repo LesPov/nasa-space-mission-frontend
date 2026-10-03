@@ -29,7 +29,7 @@
       </div>
 
       <div class="field wide" *ngIf="isPoint || isSpot">
-        <label>Rango Óptico (Distancia m)</label>
+        <label>Rango Óptico (Distancia de Luz m)</label>
         <input type="number" step="1" min="0" [(ngModel)]="range" (ngModelChange)="aplicarLuz()" />
       </div>
 
@@ -42,7 +42,82 @@
 </div>
 
 <!-- ======================================================================== -->
-<!-- SISTEMA DE CONTROL DE PROXIMIDAD Y FADE SUAVE (BASADO EN ACTORES)        -->
+<!-- SISTEMA DE CONTENCIÓN DE LUZ (LIGHT CONTAINMENT / INTERIOR LIGHTING)      -->
+<!-- ======================================================================== -->
+<div class="section-card">
+  <div class="section-head">
+    <h4 style="color: #38bdf8;">Confinamiento de Iluminación & Modo Interior</h4>
+  </div>
+  <div style="padding: 12px;">
+    <div class="field wide" style="margin-bottom: 12px;">
+      <label>Modo de Contención Espacial</label>
+      <select [(ngModel)]="containmentMode" (ngModelChange)="aplicarLuz()" style="border-color: #38bdf8;">
+        <option value="GLOBAL">🌐 GLOBAL / EXTERIOR (Activación por proximidad radial)</option>
+        <option value="INTERIOR">🏠 INTERIOR (Espacio delimitado por volumen)</option>
+      </select>
+    </div>
+
+    <ng-container *ngIf="containmentMode === 'INTERIOR'">
+      
+      <!-- MÉTODO DE ACTIVACIÓN INTERIOR -->
+      <div class="field wide" style="margin-bottom: 12px;">
+        <label style="color: #facc15; font-weight: bold;">Método de Activación Interior</label>
+        <select [(ngModel)]="interiorActivationMode" (ngModelChange)="aplicarLuz()" style="border-color: #facc15;">
+          <option value="VOLUME">🚪 ENTRADA AL VOLUMEN (Por defecto - Requiere estar dentro)</option>
+          <option value="DISTANCE">📡 DISTANCIA (Radial al foco - Ignora volumen)</option>
+          <option value="BOTH">🔒 VOLUMEN + DISTANCIA (Dentro del pasillo Y cerca de la luz)</option>
+        </select>
+        <p class="help-text">
+          {{ interiorActivationMode === 'VOLUME' ? 'La luz solo enciende si el Player/NPC entra al cuerpo de colisión del pasillo.' : '' }}
+          {{ interiorActivationMode === 'DISTANCE' ? 'La luz se enciende por radio esférico aunque el jugador esté fuera de las paredes.' : '' }}
+          {{ interiorActivationMode === 'BOTH' ? 'Debe estar dentro del pasillo Y a menos de la distancia configurada.' : '' }}
+        </p>
+      </div>
+
+      <!-- PRE-ENTRADA OPCIONAL -->
+      <div style="background: rgba(15, 23, 42, 0.6); padding: 10px; border: 1px solid #334155; border-radius: 6px; margin-bottom: 12px;" *ngIf="interiorActivationMode !== 'DISTANCE'">
+        <div class="checkbox-modern" style="margin-bottom: 8px;">
+          <input type="checkbox" id="chkPreEntry" [(ngModel)]="preEntryEnabled" (ngModelChange)="aplicarLuz()">
+          <label for="chkPreEntry" style="color: #60a5fa;">🚶 Activar Pre-Entrada (Fade-in hacia la puerta)</label>
+        </div>
+        <div class="field" *ngIf="preEntryEnabled">
+          <label>Distancia de Pre-Entrada exterior (m)</label>
+          <input type="number" step="0.5" min="0.5" max="20" [(ngModel)]="preEntryDistance" (ngModelChange)="aplicarLuz()" />
+          <p class="help-text">Margen exterior a las aberturas donde la luz comienza a encenderse suavemente.</p>
+        </div>
+      </div>
+
+      <div class="field wide" style="background: rgba(56, 189, 248, 0.05); padding: 10px; border: 1px solid #334155; border-radius: 6px; margin-bottom: 12px;">
+        <label style="color: #38bdf8;">Modelo / Espacio Contenedor:</label>
+        <select [(ngModel)]="containerEntityUid" (ngModelChange)="aplicarLuz()" style="margin-top: 6px;">
+          <option value="">-- Detección Automática (Padre o Envolvente) --</option>
+          <option *ngFor="let opt of containerOptions" [value]="opt.uid">📦 {{ opt.label }}</option>
+        </select>
+        <p class="help-text">El Player/NPC debe entrar a este cuerpo de colisión para que la luz sea elegible.</p>
+      </div>
+
+      <div class="checkbox-modern" style="margin-bottom: 8px;">
+        <input type="checkbox" id="chkDescOnly" [(ngModel)]="affectDescendantsOnly" (ngModelChange)="aplicarLuz()">
+        <label for="chkDescOnly">Restringir físicamente a mallas del modelo (Desactivar para permitir salida de luz por puertas)</label>
+      </div>
+
+      <!-- Calibración Anti-Leaking de Sombras -->
+      <div class="grid-2" style="margin-top: 10px; border-top: 1px dashed #334155; padding-top: 10px;">
+        <div class="field">
+          <label>Bloqueo de Pared (Darkness)</label>
+          <input type="number" step="0.1" min="0" max="1" [(ngModel)]="shadowDarkness" (ngModelChange)="aplicarLuz()" title="0 = 100% Bloqueo negro detrás de paredes" />
+        </div>
+        <div class="field">
+          <label>Normal Bias (Anti-Acne)</label>
+          <input type="number" step="0.005" min="0" max="0.1" [(ngModel)]="shadowNormalBias" (ngModelChange)="aplicarLuz()" />
+        </div>
+      </div>
+    </ng-container>
+  </div>
+</div>
+
+<!-- ======================================================================== -->
+<!-- SISTEMA DE CONTROL DE PROXIMIDAD Y FADE SUAVE                            -->
 <!-- ======================================================================== -->
 <div class="section-card">
   <div class="section-head">
@@ -97,12 +172,20 @@
     <!-- TELEMETRÍA EN VIVO Y DIAGNÓSTICO EN TIEMPO REAL -->
     <div class="distance-telemetry-box" style="margin-top: 14px;">
       <div class="telemetry-row">
-        <span>Referencia Espacial:</span>
-        <strong style="color: #60a5fa;">{{ referenceModeDisplay }}</strong>
+        <span>Contexto Espacial:</span>
+        <strong [style.color]="isInteriorLight ? '#c084fc' : '#38bdf8'">{{ spatialContextText }}</strong>
       </div>
       <div class="telemetry-row">
-        <span>Actor más cercano:</span>
+        <span>Actor de Referencia:</span>
         <strong style="color: #4ade80;">{{ closestActorName }}</strong>
+      </div>
+      <div class="telemetry-row">
+        <span>Dentro del Volumen:</span>
+        <strong [style.color]="isInsideVolume ? '#4ade80' : '#ef4444'">{{ isInsideVolume ? 'SÍ' : 'NO' }}</strong>
+      </div>
+      <div class="telemetry-row" *ngIf="isInteriorLight">
+        <span>Pre-Entrada:</span>
+        <strong [style.color]="isInPreEntry ? '#facc15' : '#94a3b8'">{{ isInPreEntry ? 'SÍ (Fade In)' : 'NO' }}</strong>
       </div>
       <div class="telemetry-row">
         <span>Distancia al Actor:</span>
@@ -117,7 +200,7 @@
         <strong style="color: #4ade80;">{{ currentEffectiveIntensity | number:'1.2-2' }} (Base: {{ intensity | number:'1.1-1' }})</strong>
       </div>
       <div class="telemetry-row">
-        <span>Ranking en Pool:</span>
+        <span>Ranking en Pool (Top 3):</span>
         <strong [style.color]="isLightActiveStatus ? '#4ade80' : '#ef4444'">{{ poolRankText }}</strong>
       </div>
       <div class="telemetry-row">
@@ -128,58 +211,6 @@
       </div>
     </div>
 
-  </div>
-</div>
-
-<!-- ======================================================================== -->
-<!-- SISTEMA DE CONTENCIÓN DE LUZ (LIGHT CONTAINMENT / INTERIOR LIGHTING)      -->
-<!-- ======================================================================== -->
-<div class="section-card">
-  <div class="section-head">
-    <h4 style="color: #38bdf8;">Confinamiento de Iluminación</h4>
-  </div>
-  <div style="padding: 12px;">
-    <div class="field wide" style="margin-bottom: 12px;">
-      <label>Modo de Contención Espacial</label>
-      <select [(ngModel)]="containmentMode" (ngModelChange)="aplicarLuz()" style="border-color: #38bdf8;">
-        <option value="GLOBAL">🌐 GLOBAL (Toda la escena)</option>
-        <option value="INTERIOR">🏠 INTERIOR (Confinada al Modelo/Espacio)</option>
-        <option value="EXTERIOR">🌳 EXTERIOR (Excluye Interiores)</option>
-      </select>
-    </div>
-
-    <ng-container *ngIf="containmentMode === 'INTERIOR'">
-      <div class="field wide" style="background: rgba(56, 189, 248, 0.05); padding: 10px; border: 1px solid #334155; border-radius: 6px; margin-bottom: 12px;">
-        <label style="color: #38bdf8;">Modelo / Espacio Contenedor:</label>
-        <select [(ngModel)]="containerEntityUid" (ngModelChange)="aplicarLuz()" style="margin-top: 6px;">
-          <option value="">-- Detección Automática (Padre o Envolvente) --</option>
-          <option *ngFor="let opt of containerOptions" [value]="opt.uid">📦 {{ opt.label }}</option>
-        </select>
-        <p class="help-text">La luz se restringirá para no escapar del volumen de este modelo.</p>
-      </div>
-
-      <div class="checkbox-modern" style="margin-bottom: 8px;">
-        <input type="checkbox" id="chkDescOnly" [(ngModel)]="affectDescendantsOnly" (ngModelChange)="aplicarLuz()">
-        <label for="chkDescOnly">Confinar solo a mallas del modelo y props interiores</label>
-      </div>
-
-      <div class="checkbox-modern" style="margin-bottom: 8px;">
-        <input type="checkbox" id="chkExcludeExt" [(ngModel)]="excludeExteriorMeshes" (ngModelChange)="aplicarLuz()">
-        <label for="chkExcludeExt">Excluir caras y paredes exteriores del modelo</label>
-      </div>
-
-      <!-- Calibración Anti-Leaking de Sombras -->
-      <div class="grid-2" style="margin-top: 10px; border-top: 1px dashed #334155; padding-top: 10px;">
-        <div class="field">
-          <label>Bloqueo de Pared (Darkness)</label>
-          <input type="number" step="0.1" min="0" max="1" [(ngModel)]="shadowDarkness" (ngModelChange)="aplicarLuz()" title="0 = 100% Bloqueo negro detrás de paredes" />
-        </div>
-        <div class="field">
-          <label>Normal Bias (Anti-Acne)</label>
-          <input type="number" step="0.005" min="0" max="0.1" [(ngModel)]="shadowNormalBias" (ngModelChange)="aplicarLuz()" />
-        </div>
-      </div>
-    </ng-container>
   </div>
 </div>
 

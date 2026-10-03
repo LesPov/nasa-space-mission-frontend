@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Vector3 } from '@babylonjs/core';
 import { GameContextService } from '../../../session/game-context.service';
@@ -8,12 +9,16 @@ import { EditorLightingPolicy } from './policies/editor-lighting.policy';
 import { RuntimeLightingPolicy } from './policies/runtime-lighting.policy';
 import { LightReferenceService } from './light-reference.service';
 import { LightAttenuationCurve } from './light-attenuation-curve';
+import { LightContainmentService } from './light-containment.service';
+import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 
 @Injectable({ providedIn: 'root' })
 export class LightDistanceService {
   private context = inject(GameContextService);
   private lightTransform = inject(LightTransformService);
   private referenceSvc = inject(LightReferenceService);
+  private containmentSvc = inject(LightContainmentService);
+  private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
 
   private editorPolicy = new EditorLightingPolicy();
   private runtimePolicy = new RuntimeLightingPolicy();
@@ -25,6 +30,7 @@ export class LightDistanceService {
       const mode = this.context.mode();
       const isEditorPure = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
       const policy = isEditorPure ? this.editorPolicy : this.runtimePolicy;
+      const scene = this.motor3d.getScene();
 
       for (let i = 0; i < activeVirtuals.length; i++) {
           const vl = activeVirtuals[i];
@@ -36,32 +42,47 @@ export class LightDistanceService {
               vl.targetMultiplier = 0;
               vl._isInPrepareRange = false;
               vl.closestActorName = 'Inactiva';
+              vl.isInterior = false;
+              vl.insideVolume = false;
+              vl.inPreEntryZone = false;
               continue;
           }
 
           const wasInRange = vl.isLightInRange;
-          
           this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
 
           let dist: number;
+          let actorWorldPos: Vector3;
 
           if (isEditorPure) {
               const closest = this.referenceSvc.getClosestActorForLight(this._tempPos);
               dist = closest.distance;
+              actorWorldPos = closest.actorPosition;
               vl.closestActorName = closest.actor ? closest.actor.name : 'NO_ACTOR';
           } else {
-              let refPos = baseRefPos;
               if (lightComp.distanceReferenceMode === 'CAMERA') {
-                  refPos = this.referenceSvc.getReferencePosition('CAMERA');
+                  actorWorldPos = this.referenceSvc.getReferencePosition('CAMERA');
                   vl.closestActorName = 'Cámara de Juego';
-                  dist = Vector3.Distance(refPos, this._tempPos);
+                  dist = Vector3.Distance(actorWorldPos, this._tempPos);
               } else {
                   const closest = this.referenceSvc.getClosestActorForLight(this._tempPos);
-                  refPos = closest.actorPosition;
+                  actorWorldPos = closest.actorPosition;
                   vl.closestActorName = closest.actor ? closest.actor.name : 'NO_ACTOR';
-                  // Si no hay actor en auto mode, forzamos distancia infinita para apagar luces locales
-                  dist = closest.actor ? Vector3.Distance(refPos, this._tempPos) : Number.MAX_VALUE;
+                  dist = closest.actor ? Vector3.Distance(actorWorldPos, this._tempPos) : Number.MAX_VALUE;
               }
+          }
+
+          // Si no hay actores en la escena (o distancia infinita), las luces de proximidad quedan estrictamente apagadas
+          if (dist === Number.MAX_VALUE || !vl.closestActorName || vl.closestActorName === 'NO_ACTOR') {
+              vl.isLightInRange = false;
+              vl.isShadowInRange = false;
+              vl.targetMultiplier = 0;
+              vl._isInPrepareRange = false;
+              vl.lastEvaluatedDistance = 99999;
+              vl.isInterior = lightComp.containmentMode === 'INTERIOR';
+              vl.insideVolume = false;
+              vl.inPreEntryZone = false;
+              continue;
           }
 
           vl.distSq = dist * dist;
@@ -75,28 +96,75 @@ export class LightDistanceService {
               speed
           );
 
-          // Rango de preparación para asignar slot en el pool
-          vl._isInPrepareRange = dist <= thresholds.prepare;
+          const isInterior = lightComp.containmentMode === 'INTERIOR';
+          vl.isInterior = isInterior;
+          vl.interiorActivationMode = lightComp.interiorActivationMode || 'VOLUME';
 
-          if (lightComp.distanceControlEnabled) {
-              // Curva matemática suave de fade tanto en Editor como en Runtime calculada contra el actor
-              vl.targetMultiplier = LightAttenuationCurve.calculate(dist, thresholds.activation, thresholds.dynamicDeactivation);
+          if (isInterior && scene) {
+              const container = this.containmentSvc.resolveContainerEntity(vl.entity, scene);
+              vl.containerName = container ? container.name : 'Auto/Sin Asignar';
 
-              // Tolerancia de ranura lógica para evitar alternancias bruscas en la frontera
-              const logicalDeactivation = thresholds.dynamicDeactivation + 2.0;
+              if (container && container.view && !container.view.isDisposed()) {
+                  const preEntryDist = lightComp.preEntryEnabled ? (lightComp.preEntryDistance ?? 3.0) : 0.0;
+                  const evalVol = this.containmentSvc.evaluateActorInsideContainer(actorWorldPos, container, preEntryDist, wasInRange);
+                  
+                  vl.insideVolume = evalVol.inside;
+                  vl.inPreEntryZone = evalVol.inPreEntry;
 
-              if (wasInRange) {
-                  vl.isLightInRange = dist <= logicalDeactivation;
+                  const activationMode = lightComp.interiorActivationMode || 'VOLUME';
+
+                  if (activationMode === 'VOLUME') {
+                      // Modo por defecto: Activación basada en entrada al volumen
+                      if (vl.insideVolume) {
+                          // Dentro: elegible con factor completo (o atenuado suavemente si distanceControl está habilitado)
+                          if (lightComp.distanceControlEnabled) {
+                              vl.targetMultiplier = LightAttenuationCurve.calculate(dist, thresholds.activation, thresholds.dynamicDeactivation);
+                          } else {
+                              vl.targetMultiplier = 1.0;
+                          }
+                          vl.isLightInRange = true;
+                          vl._isInPrepareRange = true;
+                      } else if (vl.inPreEntryZone) {
+                          // Zona de pre-entrada: fade proporcional hacia la puerta
+                          const ratio = Math.max(0.0, Math.min(1.0, 1.0 - (evalVol.distToBox / Math.max(0.1, preEntryDist))));
+                          vl.targetMultiplier = ratio * 0.75;
+                          vl.isLightInRange = ratio > 0.05;
+                          vl._isInPrepareRange = true;
+                      } else {
+                          // Fuera del volumen del pasillo: apagada
+                          vl.targetMultiplier = 0.0;
+                          vl.isLightInRange = false;
+                          vl._isInPrepareRange = false;
+                      }
+                  } else if (activationMode === 'DISTANCE') {
+                      // Modo por distancia: ignora el volumen y funciona por proximidad radial
+                      this.applyStandardProximity(vl, lightComp, dist, thresholds, wasInRange);
+                  } else if (activationMode === 'BOTH') {
+                      // Modo combinado: Debe estar dentro del volumen O en pre-entrada Y ADEMÁS dentro del rango de distancia
+                      if (vl.insideVolume || vl.inPreEntryZone) {
+                          this.applyStandardProximity(vl, lightComp, dist, thresholds, wasInRange);
+                          if (!vl.isLightInRange) {
+                              vl.targetMultiplier = 0.0;
+                          }
+                      } else {
+                          vl.targetMultiplier = 0.0;
+                          vl.isLightInRange = false;
+                          vl._isInPrepareRange = false;
+                      }
+                  }
               } else {
-                  vl.isLightInRange = dist <= thresholds.dynamicDeactivation;
+                  // Fallback si no tiene contenedor asignado: proximidad radial estándar
+                  this.applyStandardProximity(vl, lightComp, dist, thresholds, wasInRange);
               }
           } else {
-              vl._isInPrepareRange = true;
-              vl.isLightInRange = true; 
-              vl.targetMultiplier = 1.0;
+              // Luz exterior/global: comportamiento proximal estándar
+              vl.insideVolume = false;
+              vl.inPreEntryZone = false;
+              vl.containerName = undefined;
+              this.applyStandardProximity(vl, lightComp, dist, thresholds, wasInRange);
           }
 
-          // Lógica de Sombras por Distancia
+          // Evaluación de Sombras por Distancia
           if (vl.isLightInRange && lightComp.castShadows) {
               if (lightComp.distanceShadowsEnabled) {
                   if (vl.isShadowInRange) { 
@@ -110,6 +178,25 @@ export class LightDistanceService {
           } else { 
               vl.isShadowInRange = false; 
           }
+      }
+  }
+
+  private applyStandardProximity(vl: VirtualLight, lightComp: any, dist: number, thresholds: any, wasInRange: boolean): void {
+      vl._isInPrepareRange = dist <= thresholds.prepare;
+
+      if (lightComp.distanceControlEnabled) {
+          vl.targetMultiplier = LightAttenuationCurve.calculate(dist, thresholds.activation, thresholds.dynamicDeactivation);
+          const logicalDeactivation = thresholds.dynamicDeactivation + 2.0;
+
+          if (wasInRange) {
+              vl.isLightInRange = dist <= logicalDeactivation;
+          } else {
+              vl.isLightInRange = dist <= thresholds.dynamicDeactivation;
+          }
+      } else {
+          vl._isInPrepareRange = true;
+          vl.isLightInRange = true; 
+          vl.targetMultiplier = 1.0;
       }
   }
 }

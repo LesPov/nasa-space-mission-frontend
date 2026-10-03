@@ -1,4 +1,5 @@
 
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, Color4, Mesh, AbstractMesh, Tags, HighlightLayer, Node, Scene } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
@@ -30,7 +31,6 @@ export class ToolsHighlightService {
   private highlightLayer: HighlightLayer | null = null;
   private currentScene: Scene | null = null;
 
-  // 🔥 FASE 4 FIX: Estado Diferencial (Diffing)
   private activeHighlights = new Map<AbstractMesh, HighlightState>();
   private activeTriggers = new Map<AbstractMesh, 'hover' | 'selected'>();
 
@@ -298,7 +298,6 @@ export class ToolsHighlightService {
     const desiredHighlights = new Map<AbstractMesh, HighlightState>();
     const desiredTriggers = new Map<AbstractMesh, 'hover' | 'selected'>();
 
-    // Computar Estado Deseado Total
     if (hovered && hovered !== selected) {
       this.computeDesiredState(hovered, colorHover, 'hover', desiredHighlights, desiredTriggers);
     }
@@ -306,7 +305,6 @@ export class ToolsHighlightService {
       this.computeDesiredState(selected, colorSelected, 'selected', desiredHighlights, desiredTriggers);
     }
 
-    // 🔥 Algoritmo Diferencial para Triggers
     for (const [mesh, oldState] of this.activeTriggers.entries()) {
         if (!desiredTriggers.has(mesh)) {
             this.triggerVisualizer.setHighlight(mesh, 'none');
@@ -323,7 +321,6 @@ export class ToolsHighlightService {
         }
     }
 
-    // 🔥 Algoritmo Diferencial para Oultines (El Salvavidas de FPS)
     for (const [mesh, oldState] of this.activeHighlights.entries()) {
         const newState = desiredHighlights.get(mesh);
         if (!newState) {

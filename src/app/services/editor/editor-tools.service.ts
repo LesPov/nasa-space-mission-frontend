@@ -116,7 +116,6 @@ export class EditorToolsService {
     });
   }
 
-  // 🔥 CORE FIX: Delegación expuesta para limpiar las luces tras cargar la escena o salir del Test
   public forceResetVisuals(): void {
     this.highlightSvc.forceResetLightVisuals();
   }
@@ -236,8 +235,6 @@ export class EditorToolsService {
       }
     });
 
-    // 🔥 FASE 1 FIX: Eliminada la llamada redundante a this.dynamicLighting.update(). 
-    // DynamicLightingSystem ya se actualiza a través del LoopManager.
     this.renderObserver = scene.onBeforeRenderObservable.add(() => {
       const obj = this.state.objetoSeleccionado() as Mesh;
       this.gizmoSvc.updateCenterDragMeshRenderState(obj, this.state.subObjetoSeleccionado());

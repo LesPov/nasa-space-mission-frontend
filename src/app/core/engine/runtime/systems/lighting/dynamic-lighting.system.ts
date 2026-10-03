@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
 import { Color3, Vector3, AbstractMesh, RenderTargetTexture, SpotLight, DirectionalLight } from '@babylonjs/core';
@@ -281,8 +282,9 @@ export class DynamicLightingSystem implements IUpdatable {
 
       const activeVirtuals = this.lightRegistry.getVirtualLights();
 
+      // En el editor reducimos la frecuencia de swapping innecesario
       const spatialEval = this.isFirstFrame || this.spatialScheduler.shouldEvaluate(refPos, dtMs);
-      const shouldRebuildShadows = this.forceShadowRebuild || spatialEval;
+      const shouldRebuildShadows = this.forceShadowRebuild || (spatialEval && !isEditorPure);
       this.forceShadowRebuild = false;
 
       if (spatialEval) {
@@ -312,11 +314,12 @@ export class DynamicLightingSystem implements IUpdatable {
             }
           }
 
+          // En Editor, mantener asignadas las luces útiles de forma estable
           const prepareRangeVirtuals = activeVirtuals.filter(vl => vl.entity.light?.enabled !== false && (vl._isInPrepareRange || vl.currentMultiplier > 0.001));
           this.lightAllocation.allocatePoolSlots(prepareRangeVirtuals, refPos, moveDir, speed, selectedUid);
       }
 
-      for(let i = 0; i < activeVirtuals.length; i++) {
+      for (let i = 0; i < activeVirtuals.length; i++) {
           const vl = activeVirtuals[i];
           const lightComp = vl.entity.light;
           if (!lightComp || !vl.entity.view || !lightComp.enabled || (!vl.isLightInRange && vl.targetMultiplier === 0)) vl.targetMultiplier = 0;
@@ -324,6 +327,9 @@ export class DynamicLightingSystem implements IUpdatable {
           const matchedSlot = this.lightPool.findSlotByUid(vl.entity.uid);
           
           if (matchedSlot && matchedSlot._isNewAssignment) {
+              vl.currentMultiplier = vl.targetMultiplier;
+          } else if (isEditorPure) {
+              // En editor se actualiza de forma instantánea sin arrastre de fading para no generar stutter
               vl.currentMultiplier = vl.targetMultiplier;
           } else {
               const multDiff = Math.abs(vl.targetMultiplier - vl.currentMultiplier);

@@ -11,6 +11,7 @@ import { GameEntity } from '../../entities/game.entity';
 import { InteractableRulesService } from '../rules/interactable-rules.service';
 import { ShadowQualityService } from './shadow-quality.service';
 import { GameEventBusService } from '../../events/game-event-bus.service';
+import { GameMode } from '../../session/game-mode.model';
 
 @Injectable({ providedIn: 'root' })
 export class ShadowOrchestratorService implements IUpdatable {
@@ -96,9 +97,7 @@ export class ShadowOrchestratorService implements IUpdatable {
   }
 
   public stop(): void {
-      // 🔥 FIX FASE 1: Se remueve la destrucción total (`.dispose()`) del Sol y del ShadowGenerator
-      // en el lifecycle normal. Ahora son persistentes a nivel de escena. 
-      // Esto evita la recompilación masiva (y congelamiento) de shaders al entrar/salir de Test Live.
+      // Persistente por escena para evitar recompilación de shaders
   }
 
   public dispose(): void {
@@ -122,8 +121,14 @@ export class ShadowOrchestratorService implements IUpdatable {
          this.forceRebuild = false;
      }
 
+     const mode = this.context.mode();
+     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
+
+     // En el editor el umbral de movimiento del sol es amplio (100m² = 10m) para evitar recalculos en cada rotación
+     const moveThresholdSq = isEditor ? 100 : 25;
+
      const refPos = this.getReferencePosition();
-     if (Vector3.DistanceSquared(this.mainSun.position, refPos) > 25) {
+     if (Vector3.DistanceSquared(this.mainSun.position, refPos) > moveThresholdSq) {
          this.mainSun.position.copyFrom(refPos);
          this.mainSun.direction.scaleToRef(100, this._tempOffset);
          this.mainSun.position.subtractInPlace(this._tempOffset);
@@ -171,7 +176,7 @@ export class ShadowOrchestratorService implements IUpdatable {
 
        this.shadowGenerator = new CascadedShadowGenerator(config.resolution, this.mainSun);
        this.shadowGenerator.numCascades = config.cascades ?? 3;
-       this.shadowGenerator.shadowMaxZ = 45; 
+       this.shadowGenerator.shadowMaxZ = 65; 
        
        this.shadowGenerator.cascadeBlendPercentage = 0.1; 
        this.shadowGenerator.lambda = 0.65; 

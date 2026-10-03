@@ -1,3 +1,5 @@
+// RUTA: src/app/core/engine/runtime/cameras/camera-factory.service.ts
+// ACCIÓN: MODIFICAR
 
 import { Injectable, inject, Injector } from '@angular/core';
 import { ArcRotateCamera, UniversalCamera, Vector3, Scene, Camera, Matrix } from '@babylonjs/core';
@@ -6,12 +8,14 @@ import { CAMERA_PROFILES, CameraType } from './camera-profile.model';
 import { DynamicCameraBehavior } from '../../behaviors/dynamic-camera.behavior';
 import { LoopManagerService } from '../../behaviors/services/loop-manager.service';
 import { CameraOwnershipService, CameraOwner } from './camera-ownership.service';
+import { EditorCameraSettingsService } from '../../../../services/editor/editor-camera-settings.service';
 
 @Injectable({ providedIn: 'root' })
 export class CameraFactoryService {
   private context = inject(GameContextService);
   private loopManager = inject(LoopManagerService);
   private injector = inject(Injector);
+  private editorCamSettingsSvc = inject(EditorCameraSettingsService);
 
   private _cameras = new Map<string, Camera>();
   private mockCamera: any;
@@ -62,11 +66,11 @@ export class CameraFactoryService {
         const cam = new ArcRotateCamera(`editorCamera`, Math.PI / 4, Math.PI / 3, 25, Vector3.Zero(), scene);
         cam.minZ = 0.1; 
         cam.maxZ = 500000; 
-        cam.inertia = 0.8;
-        cam.panningInertia = 0.8;
-        cam._panningMouseButton = 2;
+        cam.inertia = 0.72;
+        cam.panningInertia = 0.72;
+        cam._panningMouseButton = 2; // Click derecho para Pan
         cam.allowUpsideDown = false;
-        cam.addBehavior(new DynamicCameraBehavior(this.loopManager)); 
+        cam.addBehavior(new DynamicCameraBehavior(this.loopManager, this.editorCamSettingsSvc)); 
         this._cameras.set(cameraKey, cam);
       }
       const cam = this._cameras.get(cameraKey) as ArcRotateCamera;
@@ -112,8 +116,6 @@ export class CameraFactoryService {
       return cam;
     }
 
-    // 🔥 MANTENEMOS LA CÁMARA MAESTRA FÍSICA CINEMÁTICA
-    // Ésta adoptará las propiedades de las "CinematicCameraDefinition" registradas al reproducir.
     if (type === 'CINEMATIC') {
       if (!this._cameras.has(cameraKey)) {
         const cam = new UniversalCamera(`cinematicCam`, Vector3.Zero(), scene);

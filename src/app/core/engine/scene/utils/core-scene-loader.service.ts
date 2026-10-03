@@ -20,6 +20,7 @@ import { DynamicLightingSystem } from '../../runtime/systems/lighting/dynamic-li
 import { ShadowOrchestratorService } from '../../runtime/shadows/shadow-orchestrator.service';
 import { EngineSessionService } from '../../session/engine-session.service';
 import { LocalRenderingSystem } from '../../runtime/systems/local-rendering.system';
+import { GameMode } from '../../session/game-mode.model';
   
 @Injectable({ providedIn: 'root' })
 export class CoreSceneLoaderService {
@@ -61,6 +62,7 @@ export class CoreSceneLoaderService {
 
     const scene = this.motor3d.getScene();
     const isPlaying = this.gameContext.isPlaying();
+    const isEditor = this.gameContext.mode() === GameMode.EDITOR || this.gameContext.mode() === GameMode.EDITING_IN_GAME;
     const persistentPlayer = this.entityManager.getAllEntities().find(e => e.isPersistent);
 
     let envSettings: any = dataBD.scene?.environmentSettings || dataBD.environmentSettings || {};
@@ -191,7 +193,7 @@ export class CoreSceneLoaderService {
     this.dynamicLighting.reconcileSceneLights(); 
     this.shadowOrchestrator.reconcileShadows();
 
-    // 🔥 FASE: WARM-UP EXHAUSTIVO (Pre-Compilación de Shaders)
+    // WARM-UP EXHAUSTIVO Y PRE-COMPILACIÓN SÍNCRONA
     await new Promise<void>((resolve) => {
       if (!this.sessionSvc.isSessionActive(sessionId)) return resolve();
       
@@ -219,42 +221,33 @@ export class CoreSceneLoaderService {
 
         const warmupPos = actCam ? actCam.globalPosition : Vector3.Zero();
 
-        // 1. FORZAR COMPILACIÓN GLOBAL (Activamos todo para calentar la VRAM y compilar Shaders)
-        const originalStates: {mesh: AbstractMesh, vis: boolean, en: boolean, always: boolean}[] = [];
-        
+        // 1. Asegurar visibilidad total durante la preparación del motor
         scene.meshes.forEach(m => {
-            originalStates.push({mesh: m, vis: m.isVisible, en: m.isEnabled(), always: m.alwaysSelectAsActiveMesh});
-            m.setEnabled(true);
-            m.isVisible = true;
-            m.alwaysSelectAsActiveMesh = true;
+            if (!Tags.MatchesQuery(m, "system_element || editor_only || invisible_floor")) {
+                m.setEnabled(true);
+                m.isVisible = true;
+            }
         });
 
-        // Iniciar sistemas base de iluminación para que se registren los generadores de sombra
+        // 2. Iniciar y precargar sistemas de luces y sombras
         this.dynamicLighting.start(); 
         this.shadowOrchestrator.start(); 
-
-        // Forzar asignación masiva de luces sin culling espacial
         this.dynamicLighting.forceWarmup(warmupPos);
 
-        // Renderizar 2 frames pesados ocultos para compilar todo el material (Mesh, Textures, Shaders, Shadows)
+        // 3. Compilar shaders en VRAM
         scene.render();
         scene.render();
 
-        // Restaurar estado original de optimización de las mallas
-        originalStates.forEach(s => {
-            s.mesh.setEnabled(s.en);
-            s.mesh.isVisible = s.vis;
-            s.mesh.alwaysSelectAsActiveMesh = s.always;
-        });
+        if (isEditor) {
+            // En el editor dejamos todas las entidades listas y habilitadas para frustum culling nativo
+            this.localRendering.reconcileAllEntitiesImmediate(warmupPos);
+        } else {
+            // En gameplay runtime se aplica el culling progresivo por distancia
+            this.localRendering.reconcileAllEntitiesImmediate(warmupPos);
+        }
 
-        // 2. Aplicar Culling Local Definitivo en base a la cámara inicial real
-        this.localRendering.reconcileAllEntitiesImmediate(warmupPos);
-
-        // 3. Re-evaluar distancias de luces y sombras habiendo aplicado el culling
+        // 4. Segundo pase de estabilización
         this.dynamicLighting.forceWarmup(warmupPos);
-
-        // 4. Renderizar 2 frames de asentamiento visual para estabilizar el Pipeline
-        scene.render();
         scene.render();
 
         if (actCam) {

@@ -1,3 +1,5 @@
+// RUTA: src/app/core/engine/world/world-settings.service.ts
+// ACCIÓN: MODIFICAR
 
 import { Injectable, signal } from '@angular/core';
 import { Color3, Color4, HemisphericLight, Scene, Vector3 } from '@babylonjs/core';
@@ -8,7 +10,8 @@ import {
   DEFAULT_MISSION_UI_SETTINGS, 
   VisualMode,
   GravityPreset,
-  GRAVITY_PRESETS 
+  GRAVITY_PRESETS,
+  DEFAULT_EDITOR_CAMERA_SETTINGS 
 } from './world-settings.model';
 
 @Injectable({ providedIn: 'root' })
@@ -43,6 +46,10 @@ export class WorldSettingsService {
 
       const babylonY = (magnitude / 9.81) * -0.25;
 
+      const loadedCamSettings = worldData.editorCameraSettings
+        ? { ...DEFAULT_EDITOR_CAMERA_SETTINGS, ...worldData.editorCameraSettings }
+        : { ...DEFAULT_EDITOR_CAMERA_SETTINGS };
+
       this.settings.set({
         visualMode: worldData.visualMode === 'bw' ? 'bw' : 'normal',
         clearColor: clearHex,
@@ -57,8 +64,14 @@ export class WorldSettingsService {
         ambientDirX: Number.isFinite(Number(worldData.ambientDirX)) ? Number(worldData.ambientDirX) : DEFAULT_WORLD_SETTINGS.ambientDirX,
         ambientDirY: Number.isFinite(Number(worldData.ambientDirY)) ? Number(worldData.ambientDirY) : DEFAULT_WORLD_SETTINGS.ambientDirY,
         ambientDirZ: Number.isFinite(Number(worldData.ambientDirZ)) ? Number(worldData.ambientDirZ) : DEFAULT_WORLD_SETTINGS.ambientDirZ,
-        logicSettings: worldData.logicSettings || {}
+        logicSettings: worldData.logicSettings || {},
+        editorCameraSettings: loadedCamSettings
       });
+    } else {
+      this.settings.update(s => ({
+        ...s,
+        editorCameraSettings: { ...DEFAULT_EDITOR_CAMERA_SETTINGS }
+      }));
     }
 
     if (uiData) {
@@ -138,7 +151,8 @@ export class WorldSettingsService {
       gravityMagnitude: w.gravityMagnitude,
       gravityVector: w.gravityVector,
       uiSettings: ui,
-      logicSettings: w.logicSettings || {}
+      logicSettings: w.logicSettings || {},
+      editorCameraSettings: w.editorCameraSettings || { ...DEFAULT_EDITOR_CAMERA_SETTINGS }
     };
 
     scene.ambientColor = new Color3(1, 1, 1); 
@@ -170,8 +184,5 @@ export class WorldSettingsService {
     
     const oldGlobal = scene.lights.find(l => l.name === 'globalLight');
     if (oldGlobal) oldGlobal.dispose();
-    
-    // 🔥 FASE 1 FIX: Eliminada la destrucción de 'sunLight'. El ShadowOrchestratorService 
-    // es ahora el único dueño del ciclo de vida del sol para no romper el CSM.
   }
 }

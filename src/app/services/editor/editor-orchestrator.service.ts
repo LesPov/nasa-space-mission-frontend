@@ -199,7 +199,7 @@ export class EditorOrchestratorService {
 
         this.editorSvc.setEscenaActualData(res);
         
-        this.cargandoTexto.set('Preparando modelos, texturas y físicas 3D...');
+        this.cargandoTexto.set('Preparando modelos, jerarquías, luces y sombras...');
         
         this.motor3dSvc.forceResize(); 
         this.toolsSvc.activarEventosEditor();
@@ -292,7 +292,6 @@ export class EditorOrchestratorService {
             } catch(e) {
                 console.error(e);
             }
-            // 🔥 La pantalla de carga se mantiene hasta el estabilizador final
             await this.playModeSvc.estabilizarEntornoVisual(this.gameContext.cameraView());
             await this.playModeSvc.finalizarEntradaTestLive(this.gameContext.cameraView(), true);
             
@@ -377,7 +376,6 @@ export class EditorOrchestratorService {
     this.playbackManager.stop();
     this.guardarMapaEnBD(true);
     
-    // 1. Mostrar pantalla de carga firmemente
     this.cargandoEscena.set(true);
     this.cargandoTexto.set('Iniciando Simulación...');
     
@@ -391,26 +389,21 @@ export class EditorOrchestratorService {
     }
 
     try {
-        // 2. Preparación Exhaustiva
         await this.playModeSvc.prepararEscenaParaTest(vista, (msg) => this.cargandoTexto.set(msg));
 
         if (skipIntro) {
             await this.playModeSvc.estabilizarEntornoVisual(vista);
             await this.playModeSvc.finalizarEntradaTestLive(vista, true);
         } else {
-            // 3. Vuelo de Cámara (LA PANTALLA DE CARGA SIGUE ACTIVA)
             this.cargandoTexto.set('Desplazando cámara a posición inicial...');
             await this.playModeSvc.iniciarVueloCamara(vista);
             
-            // 4. Estabilización Visual y Validación en la Posición Final
             this.cargandoTexto.set('Estabilizando iluminación y sombras...');
             await this.playModeSvc.estabilizarEntornoVisual(vista);
 
-            // 5. Devolver controles y concluir
             await this.playModeSvc.finalizarEntradaTestLive(vista, false);
         }
 
-        // 6. READY -> Recién aquí se quita la pantalla de carga.
         this.cargandoEscena.set(false);
         this.revisarSiEsJugable();
 

@@ -1,3 +1,6 @@
+// RUTA: src/app/components/inspector-escena/inspector-properties/inspector-properties.ts
+// ACCIÓN: MODIFICAR
+
 import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, effect, Input, Output, EventEmitter, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -31,6 +34,7 @@ import { PropMission } from './prop-mission/prop-mission';
 import { CinematicInspector } from '../../global-timeline/tabs/timeline-director-tab/cinematic-inspector/cinematic-inspector/cinematic-inspector';
 import { PropPlatform } from './prop-platform/prop-platform';
 import { PropPart } from './prop-part/prop-part';
+import { PropEditorCamera } from './prop-editor-camera/prop-editor-camera';
 import { TimelinePrefabsTab } from '../../global-timeline/tabs/timeline-prefabs-tab/timeline-prefabs-tab';
  
 @Component({
@@ -38,7 +42,7 @@ import { TimelinePrefabsTab } from '../../global-timeline/tabs/timeline-prefabs-
   standalone: true,
   imports: [
     CommonModule, FormsModule, PropTransform, PropTrigger, PropPlayer, PropSequences, 
-    PropAnimation, PropPhysics, PropWorld, PropPlatform, PropLight, PropBubble, PropVideo, PropMission, CinematicInspector, PropPart, TimelinePrefabsTab
+    PropAnimation, PropPhysics, PropWorld, PropPlatform, PropEditorCamera, PropLight, PropBubble, PropVideo, PropMission, CinematicInspector, PropPart, TimelinePrefabsTab
   ],
   templateUrl: './inspector-properties.html',
   styleUrl: './inspector-properties.css'
@@ -140,7 +144,6 @@ export class InspectorProperties implements OnInit, OnDestroy {
         const entity = this.entityManager.getEntityByMesh(obj);
         const type = entity?.type || 'unknown';
 
-        // Si es una entidad de luz (incluso si está emparentada a un modelo), se maneja como entidad de luz autónoma
         const esEntidadLuz = type.startsWith('light_') || (obj as any).metadata?.isLightVisual;
 
         const rootNode = this.stateSvc.encontrarRaiz(obj);
@@ -162,7 +165,6 @@ export class InspectorProperties implements OnInit, OnDestroy {
            
            if (this.esLuz) {
              this.familiaResumen = this.esLuzConModelo ? 'Luz con Modelo 3D' : 'Fuente de Luz';
-             // Cambiar automáticamente a la pestaña de luz para conveniencia del usuario
              if (this.pestanaActiva !== 'light' && this.pestanaActiva !== 'transform') {
                this.cambiarPestana('light');
              }
@@ -198,7 +200,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
         this.esVideo = false;
         this.familiaResumen = 'Sin selección';
         
-        if (this.pestanaActiva !== 'world' && this.pestanaActiva !== 'platform' && this.pestanaActiva !== 'mission' && this.pestanaActiva !== 'cinematic' && this.pestanaActiva !== 'prefabs') {
+        if (this.pestanaActiva !== 'world' && this.pestanaActiva !== 'platform' && this.pestanaActiva !== 'editorCam' && this.pestanaActiva !== 'mission' && this.pestanaActiva !== 'cinematic' && this.pestanaActiva !== 'prefabs') {
           if (this.stateSvc.activeBottomTab() === 'director') {
               this.cambiarPestana('cinematic');
           } else {

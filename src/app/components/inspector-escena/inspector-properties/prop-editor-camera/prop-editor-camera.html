@@ -1,0 +1,108 @@
+<!-- RUTA: src/app/components/inspector-escena/inspector-properties/prop-editor-camera/prop-editor-camera.html -->
+<!-- ACCIÓN: MODIFICAR -->
+
+<div class="section-card">
+  <div class="section-head">
+    <h4 style="color: #60a5fa;">Sensibilidades de Navegación 3D</h4>
+    <span class="status-pill">EDITOR</span>
+  </div>
+
+  <div style="padding: 14px; display: flex; flex-direction: column; gap: 14px;">
+    
+    <!-- ZOOM -->
+    <div class="field wide">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <label style="color: #38bdf8; font-weight: 700;">🔍 Sensibilidad de Zoom (Rueda)</label>
+        <span class="value-badge">{{ settings.zoomSensitivity | number:'1.2-2' }}x</span>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center; margin-top: 4px;">
+        <input type="range" [min]="sliderMin" [max]="sliderMax" [step]="sliderStep" 
+               [(ngModel)]="settings.zoomSensitivity" 
+               (ngModelChange)="onLiveChange()" class="slider-modern" />
+        <input type="number" [min]="sliderMin" [max]="sliderMax" [step]="sliderStep" 
+               [(ngModel)]="settings.zoomSensitivity" 
+               (ngModelChange)="onLiveChange()" class="number-input" />
+      </div>
+      <p class="help-text">Aumenta la velocidad de acercamiento y alejamiento con el scroll.</p>
+    </div>
+
+    <!-- PAN -->
+    <div class="field wide">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <label style="color: #4ade80; font-weight: 700;">☩ Sensibilidad de Desplazamiento (Click Derecho)</label>
+        <span class="value-badge">{{ settings.panSensitivity | number:'1.2-2' }}x</span>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center; margin-top: 4px;">
+        <input type="range" [min]="sliderMin" [max]="sliderMax" [step]="sliderStep" 
+               [(ngModel)]="settings.panSensitivity" 
+               (ngModelChange)="onLiveChange()" class="slider-modern" />
+        <input type="number" [min]="sliderMin" [max]="sliderMax" [step]="sliderStep" 
+               [(ngModel)]="settings.panSensitivity" 
+               (ngModelChange)="onLiveChange()" class="number-input" />
+      </div>
+      <p class="help-text">Controla la agilidad del paneo lateral y vertical con el botón derecho.</p>
+    </div>
+
+    <!-- ORBIT -->
+    <div class="field wide">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <label style="color: #facc15; font-weight: 700;">↻ Sensibilidad de Órbita (Click Izquierdo)</label>
+        <span class="value-badge">{{ settings.orbitSensitivity | number:'1.2-2' }}x</span>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center; margin-top: 4px;">
+        <input type="range" [min]="sliderMin" [max]="sliderMax" [step]="sliderStep" 
+               [(ngModel)]="settings.orbitSensitivity" 
+               (ngModelChange)="onLiveChange()" class="slider-modern" />
+        <input type="number" [min]="sliderMin" [max]="sliderMax" [step]="sliderStep" 
+               [(ngModel)]="settings.orbitSensitivity" 
+               (ngModelChange)="onLiveChange()" class="number-input" />
+      </div>
+      <p class="help-text">Velocidad de giro alrededor del punto de enfoque (1.0 = Valor actual).</p>
+    </div>
+
+  </div>
+</div>
+
+<div class="section-card">
+  <div class="section-head">
+    <h4>Rango de Distancias y Física de Cámara</h4>
+  </div>
+
+  <div style="padding: 14px; display: flex; flex-direction: column; gap: 12px;">
+    
+    <div class="grid-2">
+      <div class="field">
+        <label>Distancia Mínima (m)</label>
+        <input type="number" min="0.1" max="50" step="0.2" 
+               [(ngModel)]="settings.minDistance" 
+               (ngModelChange)="onLiveChange()" class="number-input" />
+      </div>
+      <div class="field">
+        <label>Distancia Máxima (m)</label>
+        <input type="number" min="50" max="50000" step="50" 
+               [(ngModel)]="settings.maxDistance" 
+               (ngModelChange)="onLiveChange()" class="number-input" />
+      </div>
+    </div>
+
+    <div class="field wide" style="margin-top: 6px;">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <label style="color: #cbd5e1;">Inercia / Amortiguación de Parada</label>
+        <span class="value-badge">{{ settings.inertia | number:'1.2-2' }}</span>
+      </div>
+      <div style="display: flex; gap: 10px; align-items: center; margin-top: 4px;">
+        <input type="range" min="0.0" max="0.9" step="0.02" 
+               [(ngModel)]="settings.inertia" 
+               (ngModelChange)="onLiveChange()" class="slider-modern" />
+        <input type="number" min="0.0" max="0.9" step="0.02" 
+               [(ngModel)]="settings.inertia" 
+               (ngModelChange)="onLiveChange()" class="number-input" />
+      </div>
+      <p class="help-text">Valores más bajos detienen la cámara al instante sin deslizamiento.</p>
+    </div>
+
+    <button class="btn-reset full" (click)="resetDefaults()">
+      🔄 Restablecer Valores Predeterminados
+    </button>
+  </div>
+</div>

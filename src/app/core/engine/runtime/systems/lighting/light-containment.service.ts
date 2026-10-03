@@ -34,7 +34,6 @@ export class LightContainmentService {
 
   public markDirty(containerOrLightUid?: string): void {
     if (containerOrLightUid) {
-      // 🔥 FIX: Buscar coincidencias parciales ya que la clave es compuesta
       for (const key of this.strictInteriorReceiversCache.keys()) {
         if (key.includes(containerOrLightUid)) {
           this.strictInteriorReceiversCache.delete(key);
@@ -183,7 +182,7 @@ export class LightContainmentService {
           if (mesh.getTotalVertices() > 0) {
             renderables.push(mesh);
           } else {
-            rejected.push({ meshName: node.name, reason: 'Mesh sin vértices (contenedor transformational puro)' });
+            rejected.push({ meshName: node.name, reason: 'Mesh sin vértices' });
           }
         } else {
           if (node.getTotalVertices && node.getTotalVertices() > 0) {
@@ -210,7 +209,6 @@ export class LightContainmentService {
 
     if (this.strictInteriorReceiversCache.has(cacheKey)) {
       const cached = this.strictInteriorReceiversCache.get(cacheKey)!;
-      // 🔥 FIX: Validar que ninguna malla en caché haya sido destruida
       const allValid = cached.every(m => m && !m.isDisposed() && m.getScene() === scene);
       
       if (allValid) {

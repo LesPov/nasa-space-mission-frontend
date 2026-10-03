@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
@@ -52,7 +53,6 @@ export class LocalRenderingSystem implements IUpdatable {
   private static _fallbackPos = Vector3.Zero();
   private lastRefPos = Vector3.Zero();
 
-  // Métricas acumuladas en tiempo real sin escaneos globales
   private _visibleCount = 0;
   private _fadingCount = 0;
   private _hardCulledCount = 0;
@@ -204,7 +204,7 @@ export class LocalRenderingSystem implements IUpdatable {
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
-    // REGLA CRÍTICA: En el Editor no se aplica culling de gameplay
+    // EN EL MODO EDITOR EL CULLING MANUAL DESTRUCTIVO ESTÁ 100% PROHIBIDO
     if (isEditor) {
       this.ensureAllEntitiesVisibleForEditor();
       return;
@@ -256,13 +256,11 @@ export class LocalRenderingSystem implements IUpdatable {
       const cachedMeshes = this.getCachedMeshes(e, mesh);
 
       if (effectiveDist > cullDistance) {
-        // SHADOW-AWARE EVALUATION: Verificar si es requerido para sombras activas
         const isNeededForShadow = this.shadowService.isEntityRequiredForActiveShadows(e.uid);
 
         if (isNeededForShadow) {
-          // El objeto está visualmente oculto pero debe proyectar sombra
           e.isCulled = true;
-          mesh.setEnabled(true); // Mantener habilitado en Babylon para que su sombra se procese
+          mesh.setEnabled(true);
           mesh.isVisible = false;
           this.applyVisibilityToMeshes(cachedMeshes, 0.0);
           this.renderStates.set(e.uid, { state: 'HARD_CULLED', visibility: 0.0, targetVisibility: 0.0, isShadowProtected: true });
@@ -325,7 +323,7 @@ export class LocalRenderingSystem implements IUpdatable {
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
-    // SEPARACIÓN ESTRICTA: El Editor NO utiliza gameplay culling.
+    // SEPARACIÓN ESTRICTA: El Editor utiliza Frustum Culling Nativo de BabylonJS a 60 FPS sin apagar objetos.
     if (isEditor) {
       if (this.frameCounter === 0) {
         this.ensureAllEntitiesVisibleForEditor();
@@ -388,7 +386,6 @@ export class LocalRenderingSystem implements IUpdatable {
     const lerpSpeed = Math.min(1.0, (dtMs / 16.66) * 0.18);
     let visibilityChangedInBatch = false;
 
-    // Reset de contadores para este frame
     let vCount = 0, fCount = 0, hCount = 0, rCount = 0, sCount = 0;
 
     for (let i = 0; i < entities.length; i++) {
@@ -458,7 +455,6 @@ export class LocalRenderingSystem implements IUpdatable {
               renderState.targetVisibility = Math.max(0.00001, Math.min(1.0, easeAlpha));
             }
 
-            // Notificación puntual a las sombras de que este caster volvió al espacio visible
             this.shadowService.notifyCasterRestored(e.uid);
           }
         } else {
@@ -528,13 +524,12 @@ export class LocalRenderingSystem implements IUpdatable {
             renderState.state = 'HARD_CULLED';
             e.isCulled = true;
 
-            // SHADOW-AWARE CULLING: Decisión de no apagar si es requerido por una sombra activa
             const isNeededForShadow = this.shadowService.isEntityRequiredForActiveShadows(e.uid);
             renderState.isShadowProtected = isNeededForShadow;
 
             if (isNeededForShadow) {
-              mesh.setEnabled(true); // Se conserva en el grafo para que el ShadowGenerator la dibuje
-              mesh.isVisible = false; // No se dibuja en la cámara principal
+              mesh.setEnabled(true);
+              mesh.isVisible = false;
               this.applyVisibilityToMeshes(cachedMeshes, 0.0);
               sCount++;
             } else {

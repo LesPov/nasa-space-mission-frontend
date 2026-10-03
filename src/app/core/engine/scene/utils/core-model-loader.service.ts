@@ -1,3 +1,5 @@
+
+
 import { Injectable, inject } from '@angular/core';
 import { 
     AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, 
@@ -75,7 +77,6 @@ export class CoreModelLoaderService {
         return; 
       }
 
-      // Siempre clonar jerarquía completa real para garantizar receivers y self-shadowing limpios en WebGL
       const instances = container.instantiateModelsToScene(
         name => (name ? `${obj.uid}_${name}` : `${obj.uid}_mesh`), 
         false, 
@@ -146,6 +147,10 @@ export class CoreModelLoaderService {
     rootNode.checkCollisions = false; 
     rootNode.isPickable = true;
 
+    // Asegurar que el contenedor raíz no descarte a los hijos si su geometría es virtual
+    rootNode.alwaysSelectAsActiveMesh = false;
+    rootNode.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_STANDARD;
+
     rootNode.computeWorldMatrix(true);
     const updatedBounds = rootNode.getHierarchyBoundingVectors(true);
     const finalRealSize = updatedBounds.max.subtract(updatedBounds.min);
@@ -193,9 +198,8 @@ export class CoreModelLoaderService {
         m.checkCollisions = false;
       }
       
-      m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
-      
-      // Todas las piezas del modelo reciben y proyectan sombras
+      // Frustum culling estándar de BabylonJS sin pop-in por proximidad
+      m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_STANDARD;
       m.receiveShadows = true; 
       
       if (!m.metadata) m.metadata = {};
@@ -218,6 +222,7 @@ export class CoreModelLoaderService {
         if (override.scale) m.scaling.set(override.scale.x, override.scale.y, override.scale.z);
       }
       
+      // En modo Editor nunca congelamos matrices para mantener los Bounding Boxes interactivos
       const isInteractable = !!entity.interaction?.mensaje || !!entity.interaction?.interactSequenceIdFPS;
       if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled && !override && !isInteractable) {
         m.computeWorldMatrix(true);
@@ -225,7 +230,6 @@ export class CoreModelLoaderService {
       }
       
       if (m.material) {
-        // Garantizar soporte de 8 luces simultáneas para evitar que la luz interior sea descartada
         if (m.material.getClassName() === "StandardMaterial" || m.material.getClassName() === "PBRMaterial") {
           (m.material as any).maxSimultaneousLights = 8;
         }

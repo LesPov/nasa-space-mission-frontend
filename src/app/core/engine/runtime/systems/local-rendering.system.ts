@@ -1,6 +1,4 @@
-
-// src/app/core/engine/runtime/systems/local-rendering.system.ts
-
+// file: src/app/core/engine/runtime/systems/local-rendering.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';

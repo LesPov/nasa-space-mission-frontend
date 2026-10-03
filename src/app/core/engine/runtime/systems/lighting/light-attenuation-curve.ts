@@ -1,28 +1,28 @@
-
+// file: src/app/core/engine/runtime/systems/lighting/light-attenuation-curve.ts
 export class LightAttenuationCurve {
     /**
-     * Calcula un multiplicador continuo y suavizado (0.0 a 1.0) basado en la distancia.
-     * Cero Allocations. Función matemática pura.
+     * Calcula una transición hiper-suave (0.0001 -> 1.0) sin escalones lineales ni saltos.
+     * Cero allocations en el render loop.
      * 
-     * @param distance Distancia actual entre el jugador/cámara y la luz.
-     * @param rFull Radio interno (activationDistance). Distancias menores o iguales devuelven 1.0 (100% luz).
-     * @param rZero Radio externo (deactivationDistance). Distancias mayores o iguales devuelven 0.0 (0% luz).
+     * @param distance Distancia euclidiana al actor.
+     * @param rFull Radio interior donde la luz alcanza el 100% de intensidad.
+     * @param rZero Radio exterior donde la luz se apaga por completo.
      */
     public static calculate(distance: number, rFull: number, rZero: number): number {
-        // Fallback de seguridad por si el usuario configura mal los rangos en el inspector
         if (rZero <= rFull) {
             return distance <= rFull ? 1.0 : 0.0;
         }
 
-        // Fuera de límites
         if (distance <= rFull) return 1.0;
         if (distance >= rZero) return 0.0;
 
-        // Normalización lineal invertida (1.0 en rFull, 0.0 en rZero)
-        const t = 1.0 - ((distance - rFull) / (rZero - rFull));
+        // Normalización invertida: 1.0 en rFull, 0.0 en rZero
+        const x = 1.0 - ((distance - rFull) / (rZero - rFull));
 
-        // Aplicación de Smoothstep (Hermite interpolation) para desvanecimiento orgánico
-        // f(t) = t^2 * (3 - 2t)
-        return t * t * (3.0 - 2.0 * t);
+        // Curva sigmoide de quinto grado (Smootherstep de Ken Perlin): 6x^5 - 15x^4 + 10x^3
+        // Proporciona primera y segunda derivada iguales a 0 en ambos extremos,
+        // garantizando aceleración continua sin tirones perceptibles en la retina.
+        const factor = x * x * x * (x * (x * 6.0 - 15.0) + 10.0);
+        return Math.max(0.0, Math.min(1.0, factor));
     }
 }

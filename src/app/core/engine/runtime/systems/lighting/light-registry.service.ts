@@ -1,6 +1,6 @@
-
+// file: src/app/core/engine/runtime/systems/lighting/light-registry.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Color3, AbstractMesh, Tags, Vector3, StandardMaterial } from '@babylonjs/core';
+import { Color3, AbstractMesh, Tags, Vector3 } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { GameEntity } from '../../../entities/game.entity';
 import { WorldSettingsService } from '../../../world/world-settings.service';
@@ -37,14 +37,12 @@ export class LightRegistryService {
     const mats: any[] = [];
 
     if (e.view) {
-      // 1. Material propio si la entidad tiene su propio mesh de lámpara
       const isVisualMesh = Tags.MatchesQuery(e.view, 'light_visual') || (e.view as any).metadata?.isLightVisual;
       if (e.view.material && !isVisualMesh) {
         this.ensureUniqueMaterial(e.view, e.uid);
         mats.push(e.view.material);
       }
 
-      // 2. Resolver posición de esta luz para asociar ÚNICAMENTE las ampolletas/mallas pertenecientes a este foco
       e.view.computeWorldMatrix(true);
       const lightWorldPos = e.view.getAbsolutePosition();
 
@@ -58,7 +56,6 @@ export class LightRegistryService {
         searchRoot = e.view.parent;
       }
 
-      // Si tiene nodo anclado explícito, enlazamos exclusivamente a ese nodo
       if (e.light?.attachedNodeName) {
         const attachedNode = searchRoot.getDescendants(false).find((n: any) => n.name === e.light!.attachedNodeName);
         if (attachedNode && (attachedNode as AbstractMesh).material) {
@@ -67,8 +64,6 @@ export class LightRegistryService {
           if (!mats.includes(m.material)) mats.push(m.material);
         }
       } else {
-        // Enlazar solo mallas que estén físicamente próximas a esta luz (<= 3.5m)
-        // Esto evita que todas las luces del pasillo se peleen por todas las ampolletas del pasillo
         searchRoot.getChildMeshes(false).forEach((m: AbstractMesh) => {
           if (Tags.MatchesQuery(m, 'light_visual') || (m as any).metadata?.isLightVisual) return;
           if (!m.material) return;
@@ -87,8 +82,6 @@ export class LightRegistryService {
           if (isLampMesh) {
             m.computeWorldMatrix(true);
             const distToMesh = Vector3.Distance(m.getAbsolutePosition(), lightWorldPos);
-            
-            // Umbral estricto: solo mallas correspondientes a este foco individual
             if (distToMesh <= 3.5) {
               this.ensureUniqueMaterial(m, e.uid);
               if (!mats.includes(m.material)) {
@@ -117,6 +110,8 @@ export class LightRegistryService {
         _lastRenderedMultiplier: -1,
         _isInPrepareRange: false,
         _sortScore: 0,
+        lifecycleStage: 'IDLE',
+        isWarmedUp: false,
         isInterior: isInteriorMode,
         interiorActivationMode: e.light?.interiorActivationMode || 'VOLUME',
         insideVolume: false,

@@ -1,4 +1,4 @@
-
+// file: src/app/core/engine/runtime/systems/lighting/light-distance.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Vector3 } from '@babylonjs/core';
 import { GameContextService } from '../../../session/game-context.service';
@@ -41,6 +41,7 @@ export class LightDistanceService {
               vl.isShadowInRange = false; 
               vl.targetMultiplier = 0;
               vl._isInPrepareRange = false;
+              vl.lifecycleStage = 'IDLE';
               vl.closestActorName = 'Inactiva';
               vl.isInterior = false;
               vl.insideVolume = false;
@@ -72,12 +73,12 @@ export class LightDistanceService {
               }
           }
 
-          // Si no hay actores en la escena (o distancia infinita), las luces de proximidad quedan estrictamente apagadas
           if (dist === Number.MAX_VALUE || !vl.closestActorName || vl.closestActorName === 'NO_ACTOR') {
               vl.isLightInRange = false;
               vl.isShadowInRange = false;
               vl.targetMultiplier = 0;
               vl._isInPrepareRange = false;
+              vl.lifecycleStage = 'IDLE';
               vl.lastEvaluatedDistance = 99999;
               vl.isInterior = lightComp.containmentMode === 'INTERIOR';
               vl.insideVolume = false;
@@ -114,9 +115,7 @@ export class LightDistanceService {
                   const activationMode = lightComp.interiorActivationMode || 'VOLUME';
 
                   if (activationMode === 'VOLUME') {
-                      // Modo por defecto: Activación basada en entrada al volumen
                       if (vl.insideVolume) {
-                          // Dentro: elegible con factor completo (o atenuado suavemente si distanceControl está habilitado)
                           if (lightComp.distanceControlEnabled) {
                               vl.targetMultiplier = LightAttenuationCurve.calculate(dist, thresholds.activation, thresholds.dynamicDeactivation);
                           } else {
@@ -125,22 +124,18 @@ export class LightDistanceService {
                           vl.isLightInRange = true;
                           vl._isInPrepareRange = true;
                       } else if (vl.inPreEntryZone) {
-                          // Zona de pre-entrada: fade proporcional hacia la puerta
                           const ratio = Math.max(0.0, Math.min(1.0, 1.0 - (evalVol.distToBox / Math.max(0.1, preEntryDist))));
                           vl.targetMultiplier = ratio * 0.75;
                           vl.isLightInRange = ratio > 0.05;
                           vl._isInPrepareRange = true;
                       } else {
-                          // Fuera del volumen del pasillo: apagada
                           vl.targetMultiplier = 0.0;
                           vl.isLightInRange = false;
-                          vl._isInPrepareRange = false;
+                          vl._isInPrepareRange = evalVol.distToBox <= (preEntryDist + 15.0);
                       }
                   } else if (activationMode === 'DISTANCE') {
-                      // Modo por distancia: ignora el volumen y funciona por proximidad radial
                       this.applyStandardProximity(vl, lightComp, dist, thresholds, wasInRange);
                   } else if (activationMode === 'BOTH') {
-                      // Modo combinado: Debe estar dentro del volumen O en pre-entrada Y ADEMÁS dentro del rango de distancia
                       if (vl.insideVolume || vl.inPreEntryZone) {
                           this.applyStandardProximity(vl, lightComp, dist, thresholds, wasInRange);
                           if (!vl.isLightInRange) {
@@ -149,22 +144,32 @@ export class LightDistanceService {
                       } else {
                           vl.targetMultiplier = 0.0;
                           vl.isLightInRange = false;
-                          vl._isInPrepareRange = false;
+                          vl._isInPrepareRange = evalVol.distToBox <= (preEntryDist + 15.0);
                       }
                   }
               } else {
-                  // Fallback si no tiene contenedor asignado: proximidad radial estándar
                   this.applyStandardProximity(vl, lightComp, dist, thresholds, wasInRange);
               }
           } else {
-              // Luz exterior/global: comportamiento proximal estándar
               vl.insideVolume = false;
               vl.inPreEntryZone = false;
               vl.containerName = undefined;
               this.applyStandardProximity(vl, lightComp, dist, thresholds, wasInRange);
           }
 
-          // Evaluación de Sombras por Distancia
+          // Definir etapas del ciclo de vida (PRELOAD -> PREACTIVE -> ACTIVE)
+          if (vl.isLightInRange && vl.targetMultiplier > 0.05) {
+              vl.lifecycleStage = 'ACTIVE';
+          } else if (vl._isInPrepareRange || (vl.isLightInRange && vl.targetMultiplier <= 0.05)) {
+              vl.lifecycleStage = 'PREACTIVE';
+          } else if (dist <= (thresholds.prepare + 20.0)) {
+              vl.lifecycleStage = 'PRELOAD';
+          } else {
+              vl.lifecycleStage = 'IDLE';
+              vl.isWarmedUp = false;
+          }
+
+          // Evaluación de sombras por histéresis
           if (vl.isLightInRange && lightComp.castShadows) {
               if (lightComp.distanceShadowsEnabled) {
                   if (vl.isShadowInRange) { 

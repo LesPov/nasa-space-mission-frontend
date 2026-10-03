@@ -1,7 +1,9 @@
-
+// file: src/app/core/engine/runtime/systems/lighting/lighting-types.ts
 import { Color3, PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3 } from '@babylonjs/core';
 import { GameEntity, LightInteriorActivationMode } from '../../../entities/game.entity';
- 
+
+export type LightLifecycleStage = 'IDLE' | 'PRELOAD' | 'PREACTIVE' | 'ACTIVE';
+
 export interface VirtualLight {
     entity: GameEntity;
     materials: any[];
@@ -18,6 +20,10 @@ export interface VirtualLight {
     closestActorName?: string;
     poolRank?: number;
     
+    // Estados del ciclo de vida para warmup progresivo sin hitches
+    lifecycleStage: LightLifecycleStage;
+    isWarmedUp: boolean;
+
     // Metadatos de contexto espacial interior
     isInterior: boolean;
     interiorActivationMode?: LightInteriorActivationMode;
@@ -37,4 +43,5 @@ export interface PoolSlot {
     _isNewAssignment?: boolean; 
     hasDynamicCasters?: boolean;
     isStaticLight?: boolean;
+    isWarmedUp?: boolean;
 }

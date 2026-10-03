@@ -1,6 +1,4 @@
-
-// src/app/services/editor/editor-play-mode.service.ts
-
+// file: src/app/services/editor/editor-play-mode.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Tags, Vector3, Scene, ArcRotateCamera, AbstractMesh } from '@babylonjs/core';
 
@@ -136,7 +134,7 @@ export class EditorPlayModeService {
     if (onProgress) onProgress('Compilando Shaders críticos de forma asíncrona...');
     this.gameContext.setRuntimeReadyStage('COMPILING_SHADERS');
 
-    // 🔥 PRE-COMPILACIÓN ASÍNCRONA DE SHADERS (Cero Hitches en GPU)
+    // Pre-compilación asíncrona
     await new Promise<void>((resolve) => {
       const timeoutFallback = setTimeout(() => {
         console.warn('⚠️ [RuntimeReady] Fallback de tiempo activado para compilación de shaders.');
@@ -203,7 +201,6 @@ export class EditorPlayModeService {
           this.dynamicLighting.forceWarmup(targetPos);
           this.shadowOrchestrator.reconcileShadows();
 
-          // Espera asíncrona no invasiva de 2 frames
           requestAnimationFrame(() => {
             scene.render();
             requestAnimationFrame(() => {

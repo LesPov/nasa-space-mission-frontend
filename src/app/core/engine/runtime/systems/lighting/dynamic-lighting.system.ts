@@ -1,4 +1,4 @@
-
+// file: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
 import { Color3, Vector3, AbstractMesh, RenderTargetTexture, SpotLight, DirectionalLight } from '@babylonjs/core';
@@ -241,6 +241,7 @@ export class DynamicLightingSystem implements IUpdatable {
           vl.isLightInRange = false;
           vl.isShadowInRange = false;
           vl._lastRenderedMultiplier = 0.0;
+          vl.lifecycleStage = 'IDLE';
 
           this.lightVisual.updateVisualGlow(vl, lightComp, baseColor, true);
 
@@ -450,16 +451,22 @@ export class DynamicLightingSystem implements IUpdatable {
 
       if (!lightComp.enabled || this.profilerDisableLocalLights) finalIntensity = 0;
 
+      // PRE-WARMUP: si está en etapa PREACTIVE pero su intensidad aún no superó el umbral,
+      // mantenemos una intensidad microscópica (0.0002) para que los shaders permanezcan compilados.
+      if (vl.lifecycleStage === 'PREACTIVE' && finalIntensity <= this.LIGHT_DISABLE_THRESHOLD) {
+          finalIntensity = 0.0002;
+      }
+
       if (Math.abs(slot.currentIntensity - finalIntensity) > 0.0005 || this.isFirstFrame) {
           slot.currentIntensity = finalIntensity; 
           slot.light.intensity = finalIntensity;
           
-          if (!lightComp.enabled || finalIntensity <= this.LIGHT_DISABLE_THRESHOLD) {
+          if (!lightComp.enabled || (finalIntensity <= this.LIGHT_DISABLE_THRESHOLD && vl.lifecycleStage !== 'PREACTIVE')) {
               slot.light.intensity = 0;
           }
       }
 
-      const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > 0.05 && lightComp.enabled;
+      const wantsShadow = vl.isShadowInRange && (vl.currentMultiplier > 0.02 || vl.lifecycleStage === 'PREACTIVE') && lightComp.enabled;
 
       if (slot._isNewAssignment || vl.entity.isDirty || this.isFirstFrame) {
           if (slot.type !== 'directional') {

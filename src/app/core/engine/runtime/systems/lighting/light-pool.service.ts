@@ -1,5 +1,3 @@
-// RUTA: src/app/core/engine/runtime/systems/lighting/light-pool.service.ts
-// ACCIÓN: MODIFICAR
 
 import { Injectable, inject } from '@angular/core';
 import { PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, Color3, Tags, Scene } from '@babylonjs/core';
@@ -27,44 +25,42 @@ export class LightPoolService {
       this.disposePools(); 
       this.currentScene = scene;
 
-      // El pool físico contiene hasta 3 de cada tipo para admitir cualquier combinación del Top 3
-      // (ej. 3 points, o 3 spots, o 2 points + 1 spot), pero la autoridad de asignación limita el total activo a <= 3.
       const MAX_LOCAL_SHADER_LIGHTS = 3;
 
       for (let i = 0; i < MAX_LOCAL_SHADER_LIGHTS; i++) {
-          // --- POINT LIGHTS (1024x1024 Cubemap, PCF HIGH) ---
+          // --- POINT LIGHTS (Calibradas a 512x512 cubemap, PCF QUALITY_MEDIUM: Definición nítida con 60% menos coste) ---
           const pLight = new PointLight(`pool_point_${i}`, new Vector3(0, -99999, 0), scene);
           pLight.intensity = 0; 
           pLight.diffuse = Color3.Black(); 
           pLight.shadowEnabled = true; 
-          pLight.shadowMinZ = 0.1;
-          pLight.shadowMaxZ = 28.0; // Frustum compacto para máxima densidad de texels en aberturas
+          pLight.shadowMinZ = 0.05;
+          pLight.shadowMaxZ = 50.0;
           Tags.AddTagsTo(pLight, "system_element");
 
-          const pSg = new ShadowGenerator(1024, pLight);
+          const pSg = new ShadowGenerator(512, pLight);
           pSg.usePercentageCloserFiltering = true; 
-          pSg.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+          pSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
           pSg.setDarkness(0.0); 
-          pSg.bias = 0.0008; 
-          pSg.normalBias = 0.004; 
+          pSg.bias = 0.0003; 
+          pSg.normalBias = 0.0008; 
           pSg.forceBackFacesOnly = false;
           this.pointPool.push({ index: i, type: 'point', light: pLight, sg: pSg, assignedEntityUid: null, currentIntensity: 0 });
 
-          // --- SPOT LIGHTS (2048x2048 2D Map, PCF HIGH) ---
+          // --- SPOT LIGHTS (Calibradas a 1024x1024, PCF QUALITY_MEDIUM: Bordes definidos con ahorro masivo de fillrate) ---
           const sLight = new SpotLight(`pool_spot_${i}`, new Vector3(0, -99999, 0), new Vector3(0, -1, 0), Math.PI/3, 2, scene);
           sLight.intensity = 0; 
           sLight.diffuse = Color3.Black(); 
           sLight.shadowEnabled = true; 
-          sLight.shadowMinZ = 0.1;
-          sLight.shadowMaxZ = 30.0;
+          sLight.shadowMinZ = 0.05;
+          sLight.shadowMaxZ = 50.0;
           Tags.AddTagsTo(sLight, "system_element");
 
-          const sSg = new ShadowGenerator(2048, sLight);
+          const sSg = new ShadowGenerator(1024, sLight);
           sSg.usePercentageCloserFiltering = true; 
-          sSg.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+          sSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
           sSg.setDarkness(0.0); 
-          sSg.bias = 0.0008; 
-          sSg.normalBias = 0.004; 
+          sSg.bias = 0.0003; 
+          sSg.normalBias = 0.001; 
           sSg.forceBackFacesOnly = false;
           this.spotPool.push({ index: i, type: 'spot', light: sLight, sg: sSg, assignedEntityUid: null, currentIntensity: 0 });
       }
@@ -79,12 +75,12 @@ export class LightPoolService {
 
           let dSg: ShadowGenerator | null = null;
           if (i < 1) { 
-              dSg = new ShadowGenerator(2048, dLight);
+              dSg = new ShadowGenerator(1024, dLight);
               dSg.usePercentageCloserFiltering = true; 
-              dSg.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+              dSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
               dSg.setDarkness(0.0); 
-              dSg.bias = 0.001; 
-              dSg.normalBias = 0.01; 
+              dSg.bias = 0.0008; 
+              dSg.normalBias = 0.005; 
               dSg.forceBackFacesOnly = false;
           }
           this.dirPool.push({ index: i, type: 'directional', light: dLight, sg: dSg, assignedEntityUid: null, currentIntensity: 0 });

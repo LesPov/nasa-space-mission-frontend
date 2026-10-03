@@ -134,7 +134,8 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
       session: {
         mode: 'EDITOR',
         cameraView: 'FPS',
-        timestamp: ''
+        timestamp: '',
+        runtimeReadyStage: ''
       }
     };
   }

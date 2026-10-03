@@ -1,5 +1,3 @@
-// RUTA: src/app/core/engine/runtime/systems/lighting/light-shadow.service.ts
-// ACCIÓN: MODIFICAR
 
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, ShadowGenerator, Vector3, Tags, InstancedMesh, Mesh, RenderTargetTexture } from '@babylonjs/core';
@@ -20,8 +18,6 @@ export class LightShadowService {
   private interactRules = inject(InteractableRulesService);
 
   private castersCache: AbstractMesh[] = [];
-
-  // Mapeo inverso O(1): entidad UID -> lista de PoolSlots donde participa como caster
   private entityToActiveSlotsMap = new Map<string, Set<PoolSlot>>();
 
   public getCastersCacheSize(): number {
@@ -33,10 +29,6 @@ export class LightShadowService {
     this.entityToActiveSlotsMap.clear();
   }
 
-  /**
-   * Determina si una entidad está registrada activamente en la renderList de alguna luz
-   * cuyo generador de sombra esté encendido.
-   */
   public isEntityRequiredForActiveShadows(entityUid: string): boolean {
     const slots = this.entityToActiveSlotsMap.get(entityUid);
     if (!slots || slots.size === 0) return false;
@@ -49,11 +41,6 @@ export class LightShadowService {
     return false;
   }
 
-  /**
-   * Notifica que una entidad pasó de CULLED a RESTORING/VISIBLE.
-   * Dispara el refresco puntual de la sombra SOLO en los slots que la contienen,
-   * sin requerir un rebuild global.
-   */
   public notifyCasterRestored(entityUid: string): void {
     const slots = this.entityToActiveSlotsMap.get(entityUid);
     if (!slots) return;
@@ -115,12 +102,6 @@ export class LightShadowService {
     return false;
   }
 
-  /**
-   * Reconstruye la lista de casters para la luz.
-   * CORRECCIÓN FUNDAMENTAL: Para luces de interior, las mallas del contenedor
-   * (paredes, techo, piso) DEBEN pertenecer a la renderList para bloquear físicamente la luz.
-   * Solo por las aberturas geométricas (donde no haya polígonos) la luz escapará al exterior.
-   */
   public rebuildShadowRenderList(slot: PoolSlot, entityUid: string, lightPos: Vector3, range: number): void {
     if (!slot.sg) {
       const config = slot.type === 'spot' ? this.shadowQualitySvc.getSpotConfig() : this.shadowQualitySvc.getPointConfig();
@@ -128,20 +109,23 @@ export class LightShadowService {
 
       slot.sg.usePercentageCloserFiltering = true;
       slot.sg.filteringQuality = config.filteringQuality;
-      slot.sg.bias = 0.0005;
-      slot.sg.normalBias = 0.01;
+      slot.sg.bias = 0.0003;
+      slot.sg.normalBias = slot.type === 'spot' ? 0.001 : 0.0008;
+      slot.sg.setDarkness(0.0);
       if (slot.type === 'point') {
         slot.sg.useContactHardeningShadow = false;
       }
     } else {
       const config = slot.type === 'spot' ? this.shadowQualitySvc.getSpotConfig() : this.shadowQualitySvc.getPointConfig();
       slot.sg.filteringQuality = config.filteringQuality;
+      slot.sg.bias = 0.0003;
+      slot.sg.normalBias = slot.type === 'spot' ? 0.001 : 0.0008;
+      slot.sg.setDarkness(0.0);
     }
 
     const renderList = slot.sg.getShadowMap()?.renderList;
     if (!renderList) return;
 
-    // Limpiar asociaciones inversas anteriores de este slot
     for (const [, slotsSet] of this.entityToActiveSlotsMap.entries()) {
       slotsSet.delete(slot);
     }
@@ -151,23 +135,35 @@ export class LightShadowService {
 
     const ownerEnt = this.entityManager.getEntityByUid(entityUid);
     const rangeSq = range * range;
-    const addedUids = new Set<string>();
 
     for (let i = 0; i < this.castersCache.length; i++) {
       const m = this.castersCache[i];
       if (m.isDisposed()) continue;
 
-      // No permitir que la representación física de la bombilla se ocluya a sí misma
       const meshEntityUid = (m as any).metadata?.entityUid;
       if (meshEntityUid === entityUid) continue;
 
-      // En luces interiores, el pasillo entero proyecta sombra bloqueando paredes y dejando escapar luz por puertas
-      const distSq = Vector3.DistanceSquared(m.getAbsolutePosition(), lightPos);
-      if (distSq <= rangeSq) {
+      m.computeWorldMatrix(true);
+      const bInfo = m.getBoundingInfo();
+      const bBox = bInfo.boundingBox;
+
+      const cX = Math.max(bBox.minimumWorld.x, Math.min(lightPos.x, bBox.maximumWorld.x));
+      const cY = Math.max(bBox.minimumWorld.y, Math.min(lightPos.y, bBox.maximumWorld.y));
+      const cZ = Math.max(bBox.minimumWorld.z, Math.min(lightPos.z, bBox.maximumWorld.z));
+
+      const dx = lightPos.x - cX;
+      const dy = lightPos.y - cY;
+      const dz = lightPos.z - cZ;
+      const distToBoxSq = dx * dx + dy * dy + dz * dz;
+
+      if (distToBoxSq <= rangeSq) {
         renderList.push(m);
 
+        if (m.receiveShadows !== true) {
+          m.receiveShadows = true;
+        }
+
         if (meshEntityUid) {
-          addedUids.add(meshEntityUid);
           let slotSet = this.entityToActiveSlotsMap.get(meshEntityUid);
           if (!slotSet) {
             slotSet = new Set<PoolSlot>();
@@ -197,7 +193,8 @@ export class LightShadowService {
       !slot.isStaticLight
     );
 
-    slot.sg.getShadowMap()!.refreshRate = isEditor ? 1 : rate;
+    // En editor, si no hay casters dinámicos, RENDER_ONCE (0) congela el cálculo inmediatamente
+    slot.sg.getShadowMap()!.refreshRate = rate;
   }
 
   private isDynamicCaster(e: GameEntity): boolean {

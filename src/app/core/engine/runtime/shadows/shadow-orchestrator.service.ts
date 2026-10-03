@@ -1,6 +1,8 @@
 
+// src/app/core/engine/runtime/shadows/shadow-orchestrator.service.ts
+
 import { Injectable, inject } from '@angular/core';
-import { DirectionalLight, Vector3, CascadedShadowGenerator, Scene, AbstractMesh, Mesh, InstancedMesh, Tags } from '@babylonjs/core';
+import { DirectionalLight, Vector3, CascadedShadowGenerator, Scene, AbstractMesh, Mesh, InstancedMesh, Tags, RenderTargetTexture } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -31,9 +33,12 @@ export class ShadowOrchestratorService implements IUpdatable {
   
   private static _fallbackPos = Vector3.Zero();
   private _tempOffset = Vector3.Zero();
+  private lastSunAnchorPos = new Vector3(-99999, -99999, -99999);
+  private lastSunDir = Vector3.Zero();
 
   public profilerDisableShadows = false;
   private forceRebuild = false;
+  private isEditorShadowsFrozen = false;
 
   constructor() {
     this.eventBus.events$.subscribe(e => {
@@ -58,6 +63,17 @@ export class ShadowOrchestratorService implements IUpdatable {
 
   public reconcileShadows(): void {
       this.asignarObjetosASombrasDeLuces();
+      this.invalidateShadowMap();
+  }
+
+  public invalidateShadowMap(): void {
+      if (this.shadowGenerator) {
+          const sm = this.shadowGenerator.getShadowMap();
+          if (sm) {
+              sm.resetRefreshCounter();
+              this.isEditorShadowsFrozen = false;
+          }
+      }
   }
 
   private getReferencePosition(): Vector3 {
@@ -69,7 +85,6 @@ export class ShadowOrchestratorService implements IUpdatable {
           return playerEntity.view.getAbsolutePosition();
       }
 
-      // En el editor, centrar el cálculo en el Actor principal (Player/Spawn Point), NUNCA en la cámara del editor
       if (isEditor) {
           const actors = this.entityManager.getAllEntities();
           const primaryActor = actors.find(e => e.rol === 'player' || e.rol === 'spawn_point' || e.hasComponent('characterConfig'));
@@ -111,7 +126,7 @@ export class ShadowOrchestratorService implements IUpdatable {
   }
 
   public stop(): void {
-      // Persistente por escena para evitar recompilación de shaders
+      // Persistente por escena
   }
 
   public dispose(): void {
@@ -124,11 +139,13 @@ export class ShadowOrchestratorService implements IUpdatable {
           this.shadowGenerator = null;
       }
       this.currentScene = null;
+      this.lastSunAnchorPos.set(-99999, -99999, -99999);
+      this.isEditorShadowsFrozen = false;
   }
 
   public update(dtMs: number): void {
      const scene = this.motor3d.getScene();
-     if (!scene || !this.mainSun) return;
+     if (!scene || !this.mainSun || !this.shadowGenerator) return;
 
      if (this.forceRebuild) {
          this.asignarObjetosASombrasDeLuces();
@@ -138,13 +155,33 @@ export class ShadowOrchestratorService implements IUpdatable {
      const mode = this.context.mode();
      const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
-     const moveThresholdSq = isEditor ? 100 : 25;
-
+     const moveThresholdSq = isEditor ? 100 : 25; // 10 m en editor
      const refPos = this.getReferencePosition();
-     if (Vector3.DistanceSquared(this.mainSun.position, refPos) > moveThresholdSq) {
+     
+     const hasMovedSignificantly = Vector3.DistanceSquared(this.lastSunAnchorPos, refPos) > moveThresholdSq;
+
+     if (hasMovedSignificantly) {
          this.mainSun.position.copyFrom(refPos);
          this.mainSun.direction.scaleToRef(100, this._tempOffset);
          this.mainSun.position.subtractInPlace(this._tempOffset);
+         this.lastSunAnchorPos.copyFrom(refPos);
+         this.invalidateShadowMap();
+     }
+
+     const shadowMap = this.shadowGenerator.getShadowMap();
+     if (shadowMap) {
+         if (isEditor) {
+             // En el editor, congelamos el render del CSM si ya se horneó una vez y no hubo movimiento
+             if (!this.isEditorShadowsFrozen) {
+                 shadowMap.refreshRate = 1;
+                 this.isEditorShadowsFrozen = true;
+             } else {
+                 shadowMap.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+             }
+         } else {
+             this.isEditorShadowsFrozen = false;
+             shadowMap.refreshRate = 1;
+         }
      }
   }
 
@@ -163,6 +200,7 @@ export class ShadowOrchestratorService implements IUpdatable {
       for (let i = 0; i < newList.length; i++) {
           currentList.push(newList[i]);
       }
+      this.invalidateShadowMap();
   }
 
   public asignarObjetosASombrasDeLuces(): void {
@@ -174,31 +212,37 @@ export class ShadowOrchestratorService implements IUpdatable {
         this.currentScene = scene;
     }
 
+    const w = this.worldSettings.settings();
+    const newDir = new Vector3(w.ambientDirX, w.ambientDirY, w.ambientDirZ).normalize();
+
     if (!this.mainSun || this.mainSun.isDisposed()) {
-       const w = this.worldSettings.settings();
-       this.mainSun = new DirectionalLight('sunLight', new Vector3(w.ambientDirX, w.ambientDirY, w.ambientDirZ).normalize(), scene);
+       this.mainSun = new DirectionalLight('sunLight', newDir, scene);
        this.mainSun.intensity = 0.8;
        this.mainSun.position = new Vector3(0, 100, 0);
+       this.lastSunDir.copyFrom(newDir);
     } else {
-       const w = this.worldSettings.settings();
-       this.mainSun.direction.copyFromFloats(w.ambientDirX, w.ambientDirY, w.ambientDirZ).normalize();
+       if (Vector3.DistanceSquared(this.lastSunDir, newDir) > 0.0001) {
+           this.mainSun.direction.copyFrom(newDir);
+           this.lastSunDir.copyFrom(newDir);
+           this.invalidateShadowMap();
+       }
     }
 
     if (!this.shadowGenerator) {
        const config = this.shadowQualitySvc.getDirectionalConfig();
 
        this.shadowGenerator = new CascadedShadowGenerator(config.resolution, this.mainSun);
-       this.shadowGenerator.numCascades = config.cascades ?? 3;
-       this.shadowGenerator.shadowMaxZ = 65; 
+       this.shadowGenerator.numCascades = Math.min(3, config.cascades ?? 3);
+       this.shadowGenerator.shadowMaxZ = 45; 
        
        this.shadowGenerator.cascadeBlendPercentage = 0.1; 
        this.shadowGenerator.lambda = 0.65; 
        this.shadowGenerator.usePercentageCloserFiltering = true;
        this.shadowGenerator.filteringQuality = config.filteringQuality;
        this.shadowGenerator.bias = 0.001;       
-       this.shadowGenerator.normalBias = 0.01; 
+       this.shadowGenerator.normalBias = 0.008; 
        this.shadowGenerator.setDarkness(0.35);
-       this.shadowGenerator.autoCalcDepthBounds = false; 
+       this.shadowGenerator.autoCalcDepthBounds = true;
        this.shadowGenerator.stabilizeCascades = true; 
     }
 

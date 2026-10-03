@@ -1,5 +1,3 @@
-// RUTA: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
-// ACCIÓN: MODIFICAR
 
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
@@ -237,7 +235,6 @@ export class DynamicLightingSystem implements IUpdatable {
       const vl = this.lightRegistry.registerOrUpdateVirtualLight(entity);
       vl.baseColor = baseColor;
 
-      // 1. Si la luz fue desactivada desde el Inspector, apagarla en vivo de forma sincrónica
       if (!lightComp.enabled) {
           vl.targetMultiplier = 0.0;
           vl.currentMultiplier = 0.0;
@@ -245,7 +242,6 @@ export class DynamicLightingSystem implements IUpdatable {
           vl.isShadowInRange = false;
           vl._lastRenderedMultiplier = 0.0;
 
-          // Apagar inmediatamente el resplandor de las mallas
           this.lightVisual.updateVisualGlow(vl, lightComp, baseColor, true);
 
           const slot = this.lightPool.findSlotByUid(entity.uid);
@@ -260,7 +256,6 @@ export class DynamicLightingSystem implements IUpdatable {
           return;
       }
 
-      // 2. Si la luz fue activada o editada, reevaluar distancias y elegibilidad
       this.spatialScheduler.forceNextEvaluation();
       this.lightDistance.evaluateDistanceAndHysteresis([vl], this.getReferencePosition('AUTO'), 0);
 
@@ -271,15 +266,14 @@ export class DynamicLightingSystem implements IUpdatable {
 
       this.lightVisual.updateVisualGlow(vl, lightComp, baseColor, this.profilerDisableLocalLights);
 
-      // Re-asignar slot del pool si es elegible
       this.lightAllocation.allocatePoolSlots(this.lightRegistry.getVirtualLights(), this.getReferencePosition('AUTO'), Vector3.Zero(), 0, entity.uid);
       const slot = this.lightPool.findSlotByUid(entity.uid);
 
       if (slot) {
           this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, forceUpdate);
           if (forceUpdate && slot.sg && vl.isShadowInRange) {
-            const range = slot.type === 'directional' ? 50 : lightComp.range;
-            this.lightShadows.rebuildShadowRenderList(slot, entity.uid, slot.light.position, range || 50);
+            const range = slot.type === 'directional' ? 50 : (lightComp.range || 50);
+            this.lightShadows.rebuildShadowRenderList(slot, entity.uid, slot.light.position, range);
             slot.sg.getShadowMap()?.resetRefreshCounter();
           }
       }
@@ -300,7 +294,7 @@ export class DynamicLightingSystem implements IUpdatable {
       if (this.isFirstFrame || this.forceShadowRebuild) {
           spatialEval = true;
       } else if (isEditorPure) {
-          const actorsMoved = this.lightReference.hasActorsMoved(0.05);
+          const actorsMoved = this.lightReference.hasActorsMoved(0.1);
           const anyLightDirty = activeVirtuals.some(v => v.entity.isDirty);
           spatialEval = actorsMoved || anyLightDirty;
       } else {
@@ -366,12 +360,10 @@ export class DynamicLightingSystem implements IUpdatable {
           }
 
           const matchedSlot = this.lightPool.findSlotByUid(vl.entity.uid);
-          
           if (!matchedSlot) {
               vl.targetMultiplier = 0;
           }
 
-          // Interpolación suave de intensidad
           const multDiff = Math.abs(vl.targetMultiplier - vl.currentMultiplier);
           if (multDiff > 0.001) {
               vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
@@ -446,10 +438,8 @@ export class DynamicLightingSystem implements IUpdatable {
       if (slot.type !== 'directional') {
           const lightRange = lightComp.range || 50;
           (slot.light as any).range = lightRange;
-          // OPTIMIZACIÓN CLAVE: Limitamos el frustum de sombra al alcance real de la abertura (máximo 28m)
-          // para cuadruplicar la resolución efectiva de texels y evitar pixelado a distancia.
-          slot.light.shadowMinZ = 0.1;
-          slot.light.shadowMaxZ = Math.min(lightRange, 28.0);
+          slot.light.shadowMinZ = 0.05;
+          slot.light.shadowMaxZ = lightRange;
       }
       
       slot.light.diffuse.copyFrom(vl.baseColor);

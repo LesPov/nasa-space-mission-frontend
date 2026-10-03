@@ -1,3 +1,4 @@
+
 // src/app/core/engine/session/game-context.model.ts
 
 import { AuthorityProfile } from './authority-profile.model';
@@ -12,9 +13,15 @@ export type EditorSubmode = 'EDITING' | 'PLAYTEST_FPS' | 'PLAYTEST_TPS' | 'EDITI
 export type AppMode = 'EDITOR' | 'PLAYER';
 export type EngineState = 'STOPPED' | 'PLAYING' | 'PAUSED' | 'TRANSITIONING';
 
-/**
- * Contextos de Input exclusivos de la Fase 2
- */
+export type RuntimeReadyStage = 
+  | 'IDLE' 
+  | 'PREPARING_RESOURCES' 
+  | 'COMPILING_SHADERS' 
+  | 'WARMING_UP_SHADOWS' 
+  | 'CHECKING_STABILITY' 
+  | 'READY' 
+  | 'FAILED_FALLBACK';
+
 export type InputContext = 
   | 'UI'
   | 'GAMEPLAY'
@@ -32,4 +39,5 @@ export interface GameContextState {
   authorityProfile: AuthorityProfile;
   cameraView: CameraViewMode;
   isPointerLocked: boolean;
+  runtimeReadyStage: RuntimeReadyStage;
 }

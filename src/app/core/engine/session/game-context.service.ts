@@ -5,7 +5,7 @@ import { Injectable, signal, computed } from '@angular/core';
 import { GameMode } from './game-mode.model';
 import { 
   CameraViewMode, ToolModeContext, AppMode, EngineState, InputContext, 
-  ExecutionContext, EditorSubmode 
+  ExecutionContext, EditorSubmode, RuntimeReadyStage 
 } from './game-context.model';
 import { AuthorityProfile, PROFILES } from './authority-profile.model';
 import { GameEntity } from '../entities/game.entity';
@@ -13,59 +13,42 @@ import { Node, AbstractMesh } from '@babylonjs/core';
 
 @Injectable({ providedIn: 'root' })
 export class GameContextService {
-  // ==========================================
-  // ESTADO PRIVADO (SINGLE SOURCE OF TRUTH)
-  // ==========================================
-  
-  // Dimensiones de Ejecución y Submodo
   readonly #executionContext = signal<ExecutionContext>('EDITOR');
   readonly #editorSubmode = signal<EditorSubmode | null>('EDITING');
 
-  // Estado del Motor y Permisos
   readonly #mode = signal<GameMode>(GameMode.EDITOR);
   readonly #appMode = signal<AppMode>('EDITOR');
   readonly #engineState = signal<EngineState>('STOPPED');
   readonly #inputContext = signal<InputContext>('EDITOR_EDITING');
   readonly #authorityProfile = signal<AuthorityProfile>(PROFILES.ADMIN_EDITING);
+  readonly #runtimeReadyStage = signal<RuntimeReadyStage>('IDLE');
 
-  // Transiciones y Diálogos
   readonly #isTransitioning = signal<boolean>(false);
   readonly #isInteracting = signal<boolean>(false);
 
-  // Runtime Session
   readonly #cameraView = signal<CameraViewMode>('FPS');
   readonly #activePlayerEntity = signal<GameEntity | null>(null);
   readonly #isPointerLocked = signal<boolean>(false);
 
-  // Selection & Interaction
   readonly #selectedNode = signal<Node | null>(null);
   readonly #subSelectedObject = signal<'collider' | 'camera' | 'light' | 'fog' | null>(null);
   readonly #hoveredObject = signal<AbstractMesh | null>(null);
   readonly #interactedObject = signal<Node | null>(null);
 
-  // Editor UI State
   readonly #currentTool = signal<ToolModeContext>('translate');
   readonly #isAddObjectModalOpen = signal<boolean>(false);
   readonly #isFogDisabled = signal<boolean>(false);
   readonly #isPreviewMissionModalOpen = signal<boolean>(false);
 
-  // Map & Scene Data
   readonly #sceneNodes = signal<Node[]>([]);
   readonly #activeEpisode = signal<any>(null);
   readonly #activePlatformId = signal<number | null>(null);
   readonly #activePlatformData = signal<any>(null);
   readonly #platforms = signal<any[]>([]);
 
-  // ==========================================
-  // ESTADO NEUTRAL CINEMÁTICO (Alta Frecuencia)
-  // ==========================================
   private _isCinematicPlaying = false;
   private _activeCinematicId: string | null = null;
   private _cinematicTimeMs = 0;
-
-  // ==========================================
-  // ESTADO PÚBLICO INMUTABLE (COMPUTED)
-  // ==========================================
 
   public readonly executionContext = computed(() => this.#executionContext());
   public readonly editorSubmode = computed(() => this.#editorSubmode());
@@ -75,6 +58,7 @@ export class GameContextService {
   public readonly engineState = computed(() => this.#engineState());
   public readonly inputContext = computed(() => this.#inputContext());
   public readonly authorityProfile = computed(() => this.#authorityProfile());
+  public readonly runtimeReadyStage = computed(() => this.#runtimeReadyStage());
 
   public readonly isTransitioning = computed(() => this.#isTransitioning());
   public readonly isInteracting = computed(() => this.#isInteracting());
@@ -99,13 +83,19 @@ export class GameContextService {
   public readonly activePlatformData = computed(() => this.#activePlatformData());
   public readonly platforms = computed(() => this.#platforms());
 
-  // Lógica Derivada Reactiva
-  public readonly isPlaying = computed(() => 
-    this.#engineState() === 'PLAYING' ||
-    this.#mode() === GameMode.TEST_LIVE || 
-    this.#mode() === GameMode.PREVIEW_ADMIN || 
-    this.#mode() === GameMode.FINAL_USER
-  );
+  // 🔥 FIX ARQUITECTÓNICO: isPlaying es ESTRICTAMENTE falso si el modo es EDITOR o EDITING_IN_GAME
+  public readonly isPlaying = computed(() => {
+    const currentMode = this.#mode();
+    if (currentMode === GameMode.EDITOR || currentMode === GameMode.EDITING_IN_GAME) {
+      return false;
+    }
+    return (
+      (currentMode === GameMode.TEST_LIVE || 
+       currentMode === GameMode.PREVIEW_ADMIN || 
+       currentMode === GameMode.FINAL_USER) &&
+      this.#engineState() === 'PLAYING'
+    );
+  });
   
   public readonly isDebugMode = computed(() => 
     this.#authorityProfile().canViewDebug
@@ -115,19 +105,18 @@ export class GameContextService {
   public readonly isPlayerPreview = computed(() => this.#executionContext() === 'PLAYER_PREVIEW');
   public readonly isAdminPreview = computed(() => this.#executionContext() === 'ADMIN_PREVIEW');
 
-  // LECTURAS DE ALTA FRECUENCIA CINEMÁTICA (Mantiene GC bajo)
   public isCinematicPlaying(): boolean { return this._isCinematicPlaying; }
   public activeCinematicId(): string | null { return this._activeCinematicId; }
   public cinematicTimeMs(): number { return this._cinematicTimeMs; }
-
-  // ==========================================
-  // CONFIGURACIÓN DE CONTEXTO Y AUTORIDAD (FASE 1 & 2)
-  // ==========================================
 
   public setCinematicState(isPlaying: boolean, activeId: string | null, timeMs: number): void {
     this._isCinematicPlaying = isPlaying;
     this._activeCinematicId = activeId;
     this._cinematicTimeMs = timeMs;
+  }
+
+  public setRuntimeReadyStage(stage: RuntimeReadyStage): void {
+    this.#runtimeReadyStage.set(stage);
   }
 
   public setupContext(
@@ -235,7 +224,18 @@ export class GameContextService {
 
   public setTransitioning(val: boolean): void { 
     this.#isTransitioning.set(val); 
-    if (val) this.#engineState.set('TRANSITIONING');
+    if (val) {
+      this.#engineState.set('TRANSITIONING');
+    } else {
+      const currentMode = this.#mode();
+      if (currentMode === GameMode.TEST_LIVE || currentMode === GameMode.PREVIEW_ADMIN || currentMode === GameMode.FINAL_USER) {
+        this.#engineState.set('PLAYING');
+      } else if (currentMode === GameMode.EDITING_IN_GAME) {
+        this.#engineState.set('PAUSED');
+      } else {
+        this.#engineState.set('STOPPED');
+      }
+    }
   }
 
   public setInteracting(val: boolean): void { 
@@ -301,13 +301,18 @@ export class GameContextService {
   public startGameSession(player: GameEntity, view: CameraViewMode): void {
     this.setActivePlayer(player);
     this.setCameraView(view);
-    
-    // 🔥 Sincronizar el pointerlock con la realidad del DOM
+    this.#engineState.set('PLAYING');
     this.setPointerLocked(!!document.pointerLockElement);
   }
 
   public stopGameSession(): void {
     this.setActivePlayer(null);
     this.setPointerLocked(false);
+    const m = this.#mode();
+    if (m === GameMode.EDITOR) {
+      this.#engineState.set('STOPPED');
+    } else if (m === GameMode.EDITING_IN_GAME) {
+      this.#engineState.set('PAUSED');
+    }
   }
 }

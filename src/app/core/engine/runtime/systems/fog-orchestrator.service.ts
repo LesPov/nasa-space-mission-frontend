@@ -1,4 +1,6 @@
 
+// src/app/core/engine/runtime/systems/fog-orchestrator.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { Scene, Color3, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -64,6 +66,13 @@ export class FogOrchestratorService implements IUpdatable {
     const mode = this.context.mode();
     const isPlaying = this.context.isPlaying();
     const isFogDisabledTemp = this.context.isFogDisabled();
+
+    // 🔥 OPTIMIZACIÓN EN EDITOR: Si estamos en Editor puro y no hay playtest, apagar cálculos de niebla
+    if (mode === GameMode.EDITOR) {
+      scene.fogMode = Scene.FOGMODE_NONE;
+      this.fogRenderer.hideAll();
+      return;
+    }
 
     const wSettings = this.worldSettingsSvc.settings();
     const isBW = wSettings.visualMode === 'bw';

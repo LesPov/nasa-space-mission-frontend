@@ -1,3 +1,6 @@
+
+// src/app/core/engine/telemetry/engine-profiler.service.ts
+
 import { Injectable, inject, Injector } from '@angular/core';
 import { AdaptiveQualitySystem, QualityTier } from '../runtime/systems/adaptive-quality.system';
 import { ShadowCache } from '../runtime/shadows/shadow-cache.service';
@@ -78,6 +81,7 @@ export interface ProfilerMetrics {
     mode: string;
     cameraView: string;
     timestamp: string;
+    runtimeReadyStage: string;
   };
 }
 
@@ -123,7 +127,7 @@ export class EngineProfilerService {
     return this._localRendering;
   }
 
-  private readonly BUFFER_SIZE = 120; // 2 segundos a 60 FPS para máxima frescura en tiempo real
+  private readonly BUFFER_SIZE = 120;
   private frameTimeBuffer = new Float32Array(this.BUFFER_SIZE);
   private bufferIndex = 0;
   private bufferCount = 0;
@@ -145,7 +149,7 @@ export class EngineProfilerService {
   private engine: any = null;
   private currentFps = 0;
 
-  public attachInstruments(sceneInstr: any, engineInstr: any, lightSys: any, shadowSys: any, engine: any) {
+  public attachInstruments(sceneInstr: any, engineInstr: any, lightSys: any, shadowSys: any, engine: any): void {
     this.sceneInstr = sceneInstr;
     this.engineInstr = engineInstr;
     this.lightSys = lightSys;
@@ -153,15 +157,15 @@ export class EngineProfilerService {
     this.engine = engine;
   }
 
-  public setAdaptiveSystem(system: AdaptiveQualitySystem) {
+  public setAdaptiveSystem(system: AdaptiveQualitySystem): void {
     this.adaptiveQuality = system;
   }
 
-  public setFps(fps: number) {
+  public setFps(fps: number): void {
     this.currentFps = fps;
   }
 
-  public recordFrameTime(timeMs: number) {
+  public recordFrameTime(timeMs: number): void {
     if (!this.isProfilingEnabled) return;
     this.frameCounter++;
     this.frameTimeBuffer[this.bufferIndex] = timeMs;
@@ -188,17 +192,17 @@ export class EngineProfilerService {
     return this.historyBuffer;
   }
 
-  public recordPhaseTime(phaseName: string, timeMs: number) {
+  public recordPhaseTime(phaseName: string, timeMs: number): void {
     if (!this.isProfilingEnabled) return;
     this.currentPhases[phaseName] = (this.currentPhases[phaseName] || 0) + timeMs;
   }
 
-  public recordSystemTime(systemName: string, timeMs: number) {
+  public recordSystemTime(systemName: string, timeMs: number): void {
     if (!this.isProfilingEnabled) return;
     this.currentSystems[systemName] = (this.currentSystems[systemName] || 0) + timeMs;
   }
 
-  public endFrame() {
+  public endFrame(): void {
     if (!this.isProfilingEnabled) return;
     const alpha = 0.1;
     for (const key in this.currentPhases) {
@@ -290,7 +294,7 @@ export class EngineProfilerService {
           });
         }
       } catch (e) {
-        // Fallback defensivo ante instanciaciones tempranas
+        // Fallback defensivo
       }
     }
 
@@ -344,12 +348,13 @@ export class EngineProfilerService {
       session: {
         mode: this.gameContext.mode(),
         cameraView: this.gameContext.cameraView(),
-        timestamp: new Date().toLocaleTimeString()
+        timestamp: new Date().toLocaleTimeString(),
+        runtimeReadyStage: this.gameContext.runtimeReadyStage()
       }
     };
   }
 
-  public printSnapshotToConsole() {
+  public printSnapshotToConsole(): void {
     const snap = this.getSnapshot(true);
     console.log("===== PROFILING FORENSIC SNAPSHOT =====");
     console.log(JSON.stringify(snap, null, 2));

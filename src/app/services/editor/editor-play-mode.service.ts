@@ -1,4 +1,6 @@
 
+// src/app/services/editor/editor-play-mode.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Tags, Vector3, Scene, ArcRotateCamera, AbstractMesh } from '@babylonjs/core';
 
@@ -53,6 +55,8 @@ export class EditorPlayModeService {
   public async prepararEscenaParaTest(vista: CameraViewMode, onProgress?: (msg: string) => void): Promise<void> {
     const scene = this.motor3d.getScene();
     const editorCam = this.motor3d.getEditorCamera();
+
+    this.gameContext.setRuntimeReadyStage('PREPARING_RESOURCES');
 
     if (editorCam) {
       editorCam.computeWorldMatrix();
@@ -125,57 +129,32 @@ export class EditorPlayModeService {
     }
 
     if (onProgress) onProgress('Preparando Iluminación y Sombras...');
+    this.gameContext.setRuntimeReadyStage('WARMING_UP_SHADOWS');
     this.dynamicLighting.reconcileSceneLights();
     this.shadowOrchestrator.reconcileShadows();
 
-    if (onProgress) onProgress('Compilando Shaders y calentando VRAM...');
+    if (onProgress) onProgress('Compilando Shaders críticos de forma asíncrona...');
+    this.gameContext.setRuntimeReadyStage('COMPILING_SHADERS');
 
-    // 🔥 WARMUP INICIAL BÁSICO
+    // 🔥 PRE-COMPILACIÓN ASÍNCRONA DE SHADERS (Cero Hitches en GPU)
     await new Promise<void>((resolve) => {
-        scene.executeWhenReady(() => {
-            const originalPos = editorCam.globalPosition.clone();
-            const originalTarget = editorCam.getTarget().clone();
-            
-            editorCam.position.copyFrom(targetPos);
-            editorCam.setTarget(targetLookAt);
+      const timeoutFallback = setTimeout(() => {
+        console.warn('⚠️ [RuntimeReady] Fallback de tiempo activado para compilación de shaders.');
+        resolve();
+      }, 2500);
 
-            const originalStates: {mesh: AbstractMesh, vis: boolean, en: boolean, always: boolean}[] = [];
-            scene.meshes.forEach(m => {
-                originalStates.push({mesh: m, vis: m.isVisible, en: m.isEnabled(), always: m.alwaysSelectAsActiveMesh});
-                m.setEnabled(true);
-                m.isVisible = true;
-                m.alwaysSelectAsActiveMesh = true;
-            });
-
-            this.dynamicLighting.start();
-            this.shadowOrchestrator.start();
-            this.dynamicLighting.forceWarmup(targetPos);
-
-            scene.render();
-            
-            originalStates.forEach(s => {
-                s.mesh.setEnabled(s.en);
-                s.mesh.isVisible = s.vis;
-                s.mesh.alwaysSelectAsActiveMesh = s.always;
-            });
-
-            this.localRendering.reconcileAllEntitiesImmediate(targetPos);
-            this.dynamicLighting.forceWarmup(targetPos);
-
-            scene.render();
-            scene.render();
-
-            editorCam.position.copyFrom(originalPos);
-            editorCam.setTarget(originalTarget);
-
-            scene.executeWhenReady(() => resolve());
-        });
+      scene.whenReadyAsync().then(() => {
+        clearTimeout(timeoutFallback);
+        resolve();
+      }).catch(() => {
+        clearTimeout(timeoutFallback);
+        resolve();
+      });
     });
 
     this.pendingFlightParams = {
         centroEpiral, targetPos, targetLookAt, playerForward, vista, playerEntity, objMesh
     };
-
   }
 
   public async iniciarVueloCamara(vista: CameraViewMode): Promise<void> {
@@ -213,26 +192,25 @@ export class EditorPlayModeService {
   }
 
   public async estabilizarEntornoVisual(vista: CameraViewMode): Promise<void> {
+      this.gameContext.setRuntimeReadyStage('CHECKING_STABILITY');
       return new Promise<void>((resolve) => {
           const scene = this.motor3d.getScene();
-          scene.executeWhenReady(() => {
-              if (!this.pendingFlightParams) return resolve();
-              const { targetPos } = this.pendingFlightParams;
+          if (!this.pendingFlightParams) return resolve();
+          const { targetPos } = this.pendingFlightParams;
 
-              // 🔥 1. SNAP DE LA NIEBLA PARA GARANTIZAR OPACIDAD AL 100% INMEDIATA
-              this.fogOrchestrator.forceSnapNextFrame();
+          this.fogOrchestrator.forceSnapNextFrame();
+          this.localRendering.reconcileAllEntitiesImmediate(targetPos);
+          this.dynamicLighting.forceWarmup(targetPos);
+          this.shadowOrchestrator.reconcileShadows();
 
-              // 🔥 2. RECONCILIACIÓN EXACTA DE CULLING Y LUCES EN LA POSICIÓN 1ª PERSONA
-              this.localRendering.reconcileAllEntitiesImmediate(targetPos);
-              this.dynamicLighting.forceWarmup(targetPos);
-              this.shadowOrchestrator.reconcileShadows();
-
-              // 🔥 3. FRAMES DE ESTABILIZACIÓN OCULTOS
-              for (let i = 0; i < 5; i++) {
-                  scene.render();
-              }
-
-              scene.executeWhenReady(() => resolve());
+          // Espera asíncrona no invasiva de 2 frames
+          requestAnimationFrame(() => {
+            scene.render();
+            requestAnimationFrame(() => {
+              scene.render();
+              this.gameContext.setRuntimeReadyStage('READY');
+              resolve();
+            });
           });
       });
   }
@@ -252,7 +230,6 @@ export class EditorPlayModeService {
 
       this.runtimeEngine.startTestSession(playerEntity, vista);
 
-      // Le damos el control al jugador asíncronamente
       return new Promise<void>((resolve) => {
           setTimeout(() => {
             const canvas = this.motor3d.getEngine().getRenderingCanvas();
@@ -270,6 +247,7 @@ export class EditorPlayModeService {
               }
             }
             this.pendingFlightParams = null;
+            this.gameContext.setRuntimeReadyStage('IDLE');
             resolve();
           }, 50);
       });
@@ -280,6 +258,7 @@ export class EditorPlayModeService {
     const canvas = this.motor3d.getEngine().getRenderingCanvas();
     const editorCam = this.motor3d.getEditorCamera();
 
+    this.gameContext.setRuntimeReadyStage('IDLE');
     this.ownership.releaseGameplayOwnership();
 
     try { this.motor3d.getPlayerCameraFPS()?.detachControl(); } catch {}

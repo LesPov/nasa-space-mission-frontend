@@ -1,4 +1,6 @@
 
+// src/app/services/editor/toolsservice/adapters/base-entity-gizmo.adapter.ts
+
 import { IGizmoTargetAdapter } from './gizmo-target-adapter.interface';
 import { AbstractMesh, Vector3, Quaternion, Matrix, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../../../core/engine/entities/game.entity';
@@ -137,33 +139,26 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
     });
   }
 
-  /**
-   * Garantiza que el multiplicador del tamaño visual (0.4m) sea perfecto y sin deformaciones.
-   * Ahora sólo recomputa la matriz si la escala es genuinamente divergente.
-   */
   public compensarEscalaVisual(mesh: AbstractMesh): void {
-    if (!mesh) return;
+    if (!mesh || mesh.isDisposed()) return;
     const visual = mesh.getChildMeshes().find(m => Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual);
     
-    if (visual) {
+    if (visual && !visual.isDisposed()) {
       mesh.computeWorldMatrix(true);
-      const absScale = new Vector3();
-      mesh.getWorldMatrix().decompose(absScale);
-      
-      const safeX = Math.max(0.0001, Math.abs(absScale.x));
-      const safeY = Math.max(0.0001, Math.abs(absScale.y));
-      const safeZ = Math.max(0.0001, Math.abs(absScale.z));
+      const absScale = mesh.getWorldMatrix().getRow(0); // Vector3 rápido sin descomposición completa
+      const sx = Math.max(0.0001, Math.abs(mesh.scaling.x));
+      const sy = Math.max(0.0001, Math.abs(mesh.scaling.y));
+      const sz = Math.max(0.0001, Math.abs(mesh.scaling.z));
 
-      const targetX = 0.4 / safeX;
-      const targetY = 0.4 / safeY;
-      const targetZ = 0.4 / safeZ;
+      const targetX = 0.4 / sx;
+      const targetY = 0.4 / sy;
+      const targetZ = 0.4 / sz;
 
-      if (Math.abs(visual.scaling.x - targetX) > 0.001 ||
-          Math.abs(visual.scaling.y - targetY) > 0.001 ||
-          Math.abs(visual.scaling.z - targetZ) > 0.001) {
+      if (Math.abs(visual.scaling.x - targetX) > 0.005 ||
+          Math.abs(visual.scaling.y - targetY) > 0.005 ||
+          Math.abs(visual.scaling.z - targetZ) > 0.005) {
           
           visual.scaling.set(targetX, targetY, targetZ);
-          visual.computeWorldMatrix(true); 
           visual.renderingGroupId = 1;
       }
     }
@@ -173,5 +168,4 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
     entity.syncTransformFromView();
     entity.syncToView();
     this.compensarEscalaVisual(mesh);
-  }
-}
+  }}

@@ -1,4 +1,6 @@
 
+// src/app/core/engine/runtime/systems/fog-renderer.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Tags } from '@babylonjs/core';
 import { FogLevel } from '../../models/player-config.model';
@@ -61,6 +63,18 @@ export class FogRendererService {
     return tex;
   }
 
+  public hideAll(): void {
+    for (let i = 0; i < this.fogWalls.length; i++) {
+      const w = this.fogWalls[i];
+      if (w && !w.isDisposed()) {
+        const meshes = w.getChildMeshes();
+        for (let j = 0; j < meshes.length; j++) {
+          if (meshes[j].isVisible) meshes[j].isVisible = false;
+        }
+      }
+    }
+  }
+
   public dispose(): void {
     this.fogWalls.forEach(w => { if (w && !w.isDisposed()) w.dispose(); });
     this.fogWalls = [];
@@ -83,8 +97,8 @@ export class FogRendererService {
     shadowLimit: number,
     hideCompletely: boolean = false
   ): void {
-    if (hideCompletely) {
-      this.fogWalls.forEach(w => w?.getChildMeshes().forEach(m => m.isVisible = false));
+    if (hideCompletely || !useFog || isFogDisabledTemp) {
+      this.hideAll();
       return;
     }
 
@@ -94,7 +108,6 @@ export class FogRendererService {
         this.fogMats = [];
     }
 
-    // 🔥 FASE 4: Determinar el número de capas a dibujar según el Quality Tier
     const tier = this.adaptiveQuality.currentQualityTier;
     const maxDrawLayers = tier === 'HIGH' ? 12 : (tier === 'MEDIUM' ? 6 : 3);
 
@@ -118,8 +131,7 @@ export class FogRendererService {
             this.fogMats[i][j] = mat; 
 
             const shell = MeshBuilder.CreateCylinder(`sharedFogShell_${i}_${j}`, { 
-                // En calidades bajas podríamos bajar la teselación también, pero la recarga costaría.
-                diameter: 1, height: 1, sideOrientation: Mesh.DOUBLESIDE, cap: Mesh.NO_CAP, tessellation: 24 
+                diameter: 1, height: 1, sideOrientation: Mesh.DOUBLESIDE, cap: Mesh.NO_CAP, tessellation: 20 
             }, scene);
             
             shell.parent = this.fogWalls[i];
@@ -178,7 +190,6 @@ export class FogRendererService {
       const halfThick = state.thickness / 2;
       const meshes = wallGroup.getChildMeshes();
 
-      // Ajustamos el step según cuántas capas permitimos dibujar
       const step = 12 / maxDrawLayers;
 
       let currentLayers = [5, 10, 20, 40, 60, 100, 100, 60, 40, 20, 10, 5]; 
@@ -193,13 +204,11 @@ export class FogRendererService {
           const shell = meshes.find(m => m.name === `sharedFogShell_${i}_${j}`);
           if (!shell) continue;
 
-          // 🔥 Si la capa no coincide con el step del tier, la apagamos (Overdraw Reduction)
           if (j % step !== 0) {
-              shell.isVisible = false;
+              if (shell.isVisible) shell.isVisible = false;
               continue;
           }
 
-          // Distribuimos el grosor uniformemente pero usando el índice original
           const offsetNormalized = -1 + (j * (2 / 11));
           const targetRadius = curDist + (offsetNormalized * halfThick);
           const localScaleX = targetRadius / curDist;
@@ -211,7 +220,6 @@ export class FogRendererService {
           const mat = this.fogMats[i][j];
           mat.emissiveColor.set(state.r, state.g, state.b);
           
-          // Compensamos la opacidad si estamos saltando capas para mantener el volumen visual
           const opacityCompensator = step; 
           const opacityRatio = ((currentLayers[j] ?? 0) / 100.0) * opacityCompensator;
           

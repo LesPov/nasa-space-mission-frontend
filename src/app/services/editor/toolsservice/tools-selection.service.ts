@@ -1,3 +1,6 @@
+
+// src/app/services/editor/toolsservice/tools-selection.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Ray, Vector3, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
@@ -13,6 +16,11 @@ export class ToolsSelectionService {
   private entityManager = inject(EntityManagerService);
   private ownership = inject(CameraOwnershipService);
   private gameContext = inject(GameContextService);
+
+  private lastRayOrigin = new Vector3(-99999, -99999, -99999);
+  private lastRayDirection = new Vector3(-99999, -99999, -99999);
+  private cachedPickedRoot: AbstractMesh | null = null;
+  private lastPickTimestamp = 0;
 
   public normalizarNumero(valor: any, fallback: number): number {
     const n = Number(valor);
@@ -87,7 +95,6 @@ export class ToolsSelectionService {
   private puedeTomarseParaSeleccion(mesh: AbstractMesh): boolean {
     if (!mesh) return false;
     
-    // El cuerpo visual de luz solo puede tomarse si está visible
     if (Tags.MatchesQuery(mesh, "light_visual") || (mesh as any).metadata?.isLightVisual) {
       return mesh.isVisible === true;
     }
@@ -102,6 +109,19 @@ export class ToolsSelectionService {
   }
 
   public resolverRootDesdeRay(ray: Ray, centerDragMesh: AbstractMesh): AbstractMesh | null {
+    const now = performance.now();
+    
+    // Caché de picking a 20 Hz durante movimiento suave del ratón si el rayo no difiere
+    if (now - this.lastPickTimestamp < 32 &&
+        Vector3.DistanceSquared(ray.origin, this.lastRayOrigin) < 0.0001 &&
+        Vector3.DistanceSquared(ray.direction, this.lastRayDirection) < 0.0001) {
+        return this.cachedPickedRoot;
+    }
+
+    this.lastPickTimestamp = now;
+    this.lastRayOrigin.copyFrom(ray.origin);
+    this.lastRayDirection.copyFrom(ray.direction);
+
     const scene = this.motor3d.getScene();
     const playSt = this.state.playState();
     const jugador = this.state.jugadorActivo;
@@ -109,7 +129,6 @@ export class ToolsSelectionService {
     const profile = this.gameContext.authorityProfile();
 
     const hit = scene.pickWithRay(ray, (m) => {
-      // Las mallas visuales de luz solo participan en el raycast si ya están visibles
       const isLightVis = Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual;
       if (isLightVis) {
         return m.isVisible === true && m.isPickable === true;
@@ -139,44 +158,70 @@ export class ToolsSelectionService {
       return true;
     });
 
-    if (!hit || !hit.hit || !hit.pickedMesh) return null;
+    if (!hit || !hit.hit || !hit.pickedMesh) {
+      this.cachedPickedRoot = null;
+      return null;
+    }
 
     const picked = hit.pickedMesh as AbstractMesh;
 
-    // 1. Cinemáticas
     if (Tags.MatchesQuery(picked, "cinematic_proxy")) {
-      return (picked.parent as AbstractMesh) || picked;
+      this.cachedPickedRoot = (picked.parent as AbstractMesh) || picked;
+      return this.cachedPickedRoot;
     }
 
-    // 2. Luz Visual -> Devuelve el nodo representativo de la luz registrado en EntityManager
     if (Tags.MatchesQuery(picked, "light_visual") || (picked as any).metadata?.isLightVisual) {
-      if (!picked.isVisible) return null;
+      if (!picked.isVisible) {
+        this.cachedPickedRoot = null;
+        return null;
+      }
       const entityUid = (picked as any).metadata?.entityUid;
       if (entityUid) {
         const ent = this.entityManager.getEntityByUid(entityUid);
-        if (ent && ent.view) return ent.view as AbstractMesh;
+        if (ent && ent.view) {
+          this.cachedPickedRoot = ent.view as AbstractMesh;
+          return this.cachedPickedRoot;
+        }
       }
-      return picked.parent instanceof AbstractMesh ? picked.parent : picked;
+      this.cachedPickedRoot = picked.parent instanceof AbstractMesh ? picked.parent : picked;
+      return this.cachedPickedRoot;
     }
 
-    if (this.state.esMeshIgnorable(picked)) return null;
+    if (this.state.esMeshIgnorable(picked)) {
+      this.cachedPickedRoot = null;
+      return null;
+    }
 
     const rootNode = this.state.encontrarRaiz(picked);
-    if (!(rootNode instanceof AbstractMesh)) return null;
-    if (this.esTriggerMesh(rootNode) && !profile.canSeeTriggers) return null;
+    if (!(rootNode instanceof AbstractMesh)) {
+      this.cachedPickedRoot = null;
+      return null;
+    }
+
+    if (this.esTriggerMesh(rootNode) && !profile.canSeeTriggers) {
+      this.cachedPickedRoot = null;
+      return null;
+    }
 
     if (playSt === 'PLAYING') {
-      if (!profile.canSelect) return null;
-      if (!this.canSelectByDistance(ray, rootNode, hit)) return null;
+      if (!profile.canSelect || !this.canSelectByDistance(ray, rootNode, hit)) {
+        this.cachedPickedRoot = null;
+        return null;
+      }
+      this.cachedPickedRoot = rootNode;
       return rootNode;
     }
 
     if (playSt === 'EDITOR' || playSt === 'EDITING_IN_GAME') {
-      if (!profile.canSelect) return null;
-      if (!this.puedeTomarseParaSeleccion(rootNode)) return null;
+      if (!profile.canSelect || !this.puedeTomarseParaSeleccion(rootNode)) {
+        this.cachedPickedRoot = null;
+        return null;
+      }
+      this.cachedPickedRoot = rootNode;
       return rootNode;
     }
     
+    this.cachedPickedRoot = null;
     return null;
   }
 }

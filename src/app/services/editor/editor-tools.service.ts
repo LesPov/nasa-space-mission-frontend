@@ -1,4 +1,6 @@
 
+// src/app/services/editor/editor-tools.service.ts
+
 import { Injectable, inject, effect } from '@angular/core';
 import {
   KeyboardEventTypes, Matrix, Mesh, PointerEventTypes,
@@ -235,6 +237,8 @@ export class EditorToolsService {
       }
     });
 
+    // 🔥 FIX DE RENDIMIENTO: Se removió el bucle pesado `scene.meshes.forEach` en cada frame.
+    // La compensación de escala visual ahora se ejecuta puntualmente durante eventos de gizmo o selección.
     this.renderObserver = scene.onBeforeRenderObservable.add(() => {
       const obj = this.state.objetoSeleccionado() as Mesh;
       this.gizmoSvc.updateCenterDragMeshRenderState(obj, this.state.subObjetoSeleccionado());
@@ -242,12 +246,6 @@ export class EditorToolsService {
       if (obj && !this.gizmoSvc.isDraggingGizmo) {
         this.debugSvc.syncBreathAnimations(obj);
       }
-
-      scene.meshes.forEach(m => {
-        if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) {
-          this.baseGizmoAdapter.compensarEscalaVisual(m.parent as AbstractMesh || m);
-        }
-      });
     });
 
     this.motor3d.getEditorCamera().attachControl(this.motor3d.getEngine().getRenderingCanvas(), true);

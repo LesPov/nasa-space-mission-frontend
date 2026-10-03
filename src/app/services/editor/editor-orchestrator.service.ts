@@ -1,4 +1,6 @@
 
+// src/app/services/editor/editor-orchestrator.service.ts
+
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AbstractMesh, Tags } from '@babylonjs/core';
@@ -377,7 +379,7 @@ export class EditorOrchestratorService {
     this.guardarMapaEnBD(true);
     
     this.cargandoEscena.set(true);
-    this.cargandoTexto.set('Iniciando Simulación...');
+    this.cargandoTexto.set('Iniciando Runtime Ready...');
     
     this.liveLifecycle.captureEditorState();
     

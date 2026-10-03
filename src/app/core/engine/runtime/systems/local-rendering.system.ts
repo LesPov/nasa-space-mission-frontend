@@ -1,4 +1,6 @@
 
+// src/app/core/engine/runtime/systems/local-rendering.system.ts
+
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
@@ -204,7 +206,6 @@ export class LocalRenderingSystem implements IUpdatable {
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
-    // EN EL MODO EDITOR EL CULLING MANUAL DESTRUCTIVO ESTÁ 100% PROHIBIDO
     if (isEditor) {
       this.ensureAllEntitiesVisibleForEditor();
       return;
@@ -323,7 +324,6 @@ export class LocalRenderingSystem implements IUpdatable {
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
-    // SEPARACIÓN ESTRICTA: El Editor utiliza Frustum Culling Nativo de BabylonJS a 60 FPS sin apagar objetos.
     if (isEditor) {
       if (this.frameCounter === 0) {
         this.ensureAllEntitiesVisibleForEditor();

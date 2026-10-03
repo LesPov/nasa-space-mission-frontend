@@ -1,4 +1,6 @@
 
+// src/app/pages/admin/ubicacion-3d/ubicacion3d.ts
+
 import { Component, ElementRef, OnInit, OnDestroy, ViewChild, inject, signal, NgZone } from '@angular/core';
 import { Vector3, Observer, Scene, ArcRotateCamera, Camera, Animation, CubicEase, EasingFunction } from '@babylonjs/core';
 import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
@@ -35,31 +37,36 @@ export class Ubicacion3D implements OnInit, OnDestroy {
   private observer: Observer<Scene> | null = null;
   private cleanupEvents: Array<() => void> = [];
 
-  // Estado Reactivo Angular
   public isOrtho = signal<boolean>(false);
   public widgetSize = signal<'normal' | 'large'>('normal');
+
+  private lastAlpha = -9999;
+  private lastBeta = -9999;
+  private lastRadius = -9999;
   
   private axes: AxisObj[] = [
     { id: 'XPos', vec: new Vector3(1,0,0), color: '#ef4444', label: 'X', targetAlpha: 0, targetBeta: Math.PI / 2 },
     { id: 'XNeg', vec: new Vector3(-1,0,0), color: '#ef4444', label: '-X', targetAlpha: Math.PI, targetBeta: Math.PI / 2 },
-    { id: 'YPos', vec: new Vector3(0,1,0), color: '#4ade80', label: 'Y', targetAlpha: undefined, targetBeta: 0.01 }, // Top
-    { id: 'YNeg', vec: new Vector3(0,-1,0), color: '#4ade80', label: '-Y', targetAlpha: undefined, targetBeta: Math.PI - 0.01 }, // Bottom
-    { id: 'ZPos', vec: new Vector3(0,0,1), color: '#3b82f6', label: 'Z', targetAlpha: Math.PI / 2, targetBeta: Math.PI / 2 }, // Front
-    { id: 'ZNeg', vec: new Vector3(0,0,-1), color: '#3b82f6', label: '-Z', targetAlpha: -Math.PI / 2, targetBeta: Math.PI / 2 } // Back
+    { id: 'YPos', vec: new Vector3(0,1,0), color: '#4ade80', label: 'Y', targetAlpha: undefined, targetBeta: 0.01 },
+    { id: 'YNeg', vec: new Vector3(0,-1,0), color: '#4ade80', label: '-Y', targetAlpha: undefined, targetBeta: Math.PI - 0.01 },
+    { id: 'ZPos', vec: new Vector3(0,0,1), color: '#3b82f6', label: 'Z', targetAlpha: Math.PI / 2, targetBeta: Math.PI / 2 },
+    { id: 'ZNeg', vec: new Vector3(0,0,-1), color: '#3b82f6', label: '-Z', targetAlpha: -Math.PI / 2, targetBeta: Math.PI / 2 }
   ];
 
   ngOnInit() {
     this.initializeSVG();
     const scene = this.motor3d.getScene();
     if (scene) {
-      this.observer = scene.onBeforeRenderObservable.add(() => this.updateOrientation());
+      // Registrar fuera de la zona de Angular para no activar detección de cambios por frame
+      this.ngZone.runOutsideAngular(() => {
+        this.observer = scene.onBeforeRenderObservable.add(() => this.updateOrientation());
+      });
     }
   }
 
   private initializeSVG() {
     const NS = 'http://www.w3.org/2000/svg';
     this.axes.forEach(axis => {
-      // 1. Línea Visual
       const line = document.createElementNS(NS, 'line');
       line.setAttribute('stroke', axis.color);
       line.setAttribute('stroke-width', '3');
@@ -67,10 +74,8 @@ export class Ubicacion3D implements OnInit, OnDestroy {
       line.setAttribute('marker-end', `url(#arrow-${axis.id})`);
       line.setAttribute('x1', '60');
       line.setAttribute('y1', '60');
-      line.style.transition = 'all 0.1s ease-out';
       axis.lineEl = line;
 
-      // 2. Zona de Impacto (Hit Area invisible)
       const hitLine = document.createElementNS(NS, 'line');
       hitLine.setAttribute('stroke', 'transparent');
       hitLine.setAttribute('stroke-width', '16'); 
@@ -82,7 +87,6 @@ export class Ubicacion3D implements OnInit, OnDestroy {
       axis.hitEl = hitLine;
       this.hitGroup.nativeElement.appendChild(hitLine);
 
-      // 3. Etiqueta de Texto
       const text = document.createElementNS(NS, 'text');
       text.setAttribute('fill', axis.color);
       text.textContent = axis.label;
@@ -93,11 +97,13 @@ export class Ubicacion3D implements OnInit, OnDestroy {
       text.style.strokeLinejoin = 'round';
       text.style.cursor = 'pointer';
       text.style.pointerEvents = 'all';
-      text.style.transition = 'all 0.1s ease-out';
       axis.textEl = text;
       this.labelsGroup.nativeElement.appendChild(text);
 
-      // 4. Lógica de Interacción (Hover y Click)
+      // Pre-adjuntar las líneas al DOM para evitar appendChild por cuadro
+      this.frontLines.nativeElement.appendChild(line);
+      axis.currentGroup = 'front';
+
       const onEnter = () => {
           axis.lineEl!.setAttribute('stroke-width', '5');
           axis.lineEl!.style.filter = 'brightness(1.4)';
@@ -118,7 +124,6 @@ export class Ubicacion3D implements OnInit, OnDestroy {
           this.goToAxis(axis);
       };
 
-      // Adjuntar escuchadores
       hitLine.addEventListener('mouseenter', onEnter);
       hitLine.addEventListener('mouseleave', onLeave);
       hitLine.addEventListener('click', onClick);
@@ -127,7 +132,6 @@ export class Ubicacion3D implements OnInit, OnDestroy {
       text.addEventListener('mouseleave', onLeave);
       text.addEventListener('click', onClick);
 
-      // Registrar para limpieza
       this.cleanupEvents.push(() => {
          hitLine.removeEventListener('mouseenter', onEnter);
          hitLine.removeEventListener('mouseleave', onLeave);
@@ -143,7 +147,6 @@ export class Ubicacion3D implements OnInit, OnDestroy {
     const cam = this.ownership.getCamera() || this.motor3d.getEditorCamera();
     if (!cam) return;
 
-    // Actualiza Dinámicamente Configuración de la Cámara
     if (cam.getClassName() === 'ArcRotateCamera') {
        const arcCam = cam as ArcRotateCamera;
        const orthoState = arcCam.mode === Camera.ORTHOGRAPHIC_CAMERA;
@@ -152,7 +155,6 @@ export class Ubicacion3D implements OnInit, OnDestroy {
            this.ngZone.run(() => this.isOrtho.set(orthoState));
        }
 
-       // Si está en 2D, el zoom de la rueda modifica el radio; esto lo refleja en el marco ortográfico
        if (orthoState) {
            const engine = this.motor3d.getEngine();
            const ratio = engine.getRenderWidth() / engine.getRenderHeight();
@@ -162,47 +164,56 @@ export class Ubicacion3D implements OnInit, OnDestroy {
            arcCam.orthoLeft = -halfHeight * ratio;
            arcCam.orthoRight = halfHeight * ratio;
        }
+
+       // Throttling: Si los ángulos de la cámara casi no cambiaron, no tocar el DOM SVG
+       if (Math.abs(arcCam.alpha - this.lastAlpha) < 0.002 &&
+           Math.abs(arcCam.beta - this.lastBeta) < 0.002 &&
+           Math.abs(arcCam.radius - this.lastRadius) < 0.02) {
+           return;
+       }
+       this.lastAlpha = arcCam.alpha;
+       this.lastBeta = arcCam.beta;
+       this.lastRadius = arcCam.radius;
     }
 
-    // Actualiza Renderizado 3D del Widget
     const viewMatrix = cam.getViewMatrix().getRotationMatrix();
     const center = 60;
     const length = 40;
     const textOffset = 18;
 
-    this.axes.forEach(axis => {
+    for (let i = 0; i < this.axes.length; i++) {
+      const axis = this.axes[i];
       const transformed = Vector3.TransformCoordinates(axis.vec, viewMatrix);
       
       const endX = center + transformed.x * length;
       const endY = center - transformed.y * length; 
       
-      axis.lineEl!.setAttribute('x2', endX.toString());
-      axis.lineEl!.setAttribute('y2', endY.toString());
+      axis.lineEl!.setAttribute('x2', endX.toFixed(1));
+      axis.lineEl!.setAttribute('y2', endY.toFixed(1));
       
-      axis.hitEl!.setAttribute('x2', endX.toString());
-      axis.hitEl!.setAttribute('y2', endY.toString());
+      axis.hitEl!.setAttribute('x2', endX.toFixed(1));
+      axis.hitEl!.setAttribute('y2', endY.toFixed(1));
 
       const labelX = center + transformed.x * (length + textOffset);
       const labelY = center - transformed.y * (length + textOffset);
-      axis.textEl!.setAttribute('x', labelX.toString());
-      axis.textEl!.setAttribute('y', (labelY + 4).toString());
+      axis.textEl!.setAttribute('x', labelX.toFixed(1));
+      axis.textEl!.setAttribute('y', (labelY + 4).toFixed(1));
 
+      // No mover nodos en el árbol DOM (elimina layout thrashing), usar opacidades CSS directas
       if (transformed.z > 0) {
-         if (axis.currentGroup !== 'back') {
-             axis.lineEl!.setAttribute('opacity', '0.35');
-             this.backLines.nativeElement.appendChild(axis.lineEl!);
-             axis.textEl!.setAttribute('opacity', '0.6');
-             axis.currentGroup = 'back';
-         }
+        if (axis.currentGroup !== 'back') {
+          axis.lineEl!.style.opacity = '0.35';
+          axis.textEl!.style.opacity = '0.45';
+          axis.currentGroup = 'back';
+        }
       } else {
-         if (axis.currentGroup !== 'front') {
-             axis.lineEl!.setAttribute('opacity', '1.0');
-             this.frontLines.nativeElement.appendChild(axis.lineEl!);
-             axis.textEl!.setAttribute('opacity', '1.0');
-             axis.currentGroup = 'front';
-         }
+        if (axis.currentGroup !== 'front') {
+          axis.lineEl!.style.opacity = '1.0';
+          axis.textEl!.style.opacity = '1.0';
+          axis.currentGroup = 'front';
+        }
       }
-    });
+    }
   }
 
   private getShortestAngle(current: number, target: number): number {
@@ -219,7 +230,6 @@ export class Ubicacion3D implements OnInit, OnDestroy {
 
   private goToAxis(axis: AxisObj) {
     const cam = this.ownership.getCamera();
-    // Previene interferir con el juego en Live Test
     if (!cam || this.ownership.getOwner() !== 'EDITOR') return;
     if (cam.getClassName() !== 'ArcRotateCamera') return;
 
@@ -236,7 +246,7 @@ export class Ubicacion3D implements OnInit, OnDestroy {
     ease.setEasingMode(EasingFunction.EASINGMODE_EASEINOUT);
 
     const fps = 60;
-    const frames = 30; // 0.5 segundos
+    const frames = 25;
 
     const animAlpha = new Animation("camAlpha", "alpha", fps, Animation.ANIMATIONTYPE_FLOAT, Animation.ANIMATIONLOOPMODE_CONSTANT);
     animAlpha.setKeys([{ frame: 0, value: currentAlpha }, { frame: frames, value: finalAlpha }]);

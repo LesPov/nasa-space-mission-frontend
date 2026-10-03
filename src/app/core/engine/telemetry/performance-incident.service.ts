@@ -1,8 +1,11 @@
 
+// src/app/core/engine/telemetry/performance-incident.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { EngineProfilerService, ProfilerMetrics } from './engine-profiler.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene/scene-access.token';
 import { GameContextService } from '../session/game-context.service';
+import { GameMode } from '../session/game-mode.model';
 import { Tools } from '@babylonjs/core';
 
 export interface PerformanceIncident {
@@ -44,21 +47,26 @@ export class PerformanceIncidentService {
   private readonly FRAMETIME_THRESHOLD = 23.8; 
   private readonly COOLDOWN_MS = 8000; 
 
-  public checkFrame(frameTimeMs: number, fps: number) {
+  public checkFrame(frameTimeMs: number, fps: number): void {
     if (this.cooldownTimer > 0 && this.state === 'NORMAL') {
       this.cooldownTimer -= frameTimeMs;
       return;
     }
 
+    // No generar incidentes si el motor está en medio de una transición o carga controlada
+    if (this.context.isTransitioning()) {
+      return;
+    }
+
     const mode = this.context.mode();
-    const isEditor = mode === 'EDITOR' || mode === 'EDITING_IN_GAME';
-    const toleranceFactor = isEditor ? 1.4 : 1.0; 
+    const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
+    const toleranceFactor = isEditor ? 1.6 : 1.0; 
 
     if (fps < (this.FPS_THRESHOLD / toleranceFactor) || frameTimeMs > (this.FRAMETIME_THRESHOLD * toleranceFactor)) {
       this.consecutiveBadFrames++;
       this.consecutiveGoodFrames = 0;
 
-      const triggerLimit = isEditor ? 25 : 12;
+      const triggerLimit = isEditor ? 30 : 15;
 
       if (this.state === 'NORMAL' && this.consecutiveBadFrames > triggerLimit) {
          this.triggerIncident(fps, frameTimeMs);
@@ -77,28 +85,33 @@ export class PerformanceIncidentService {
     }
   }
 
-  public simulateIncident() {
+  public simulateIncident(): void {
     this.triggerIncident(32, 31.2);
     setTimeout(() => this.recoverIncident(), 2500);
   }
   
+  // 🔥 FIX ARQUITECTÓNICO: Jerarquía de contexto estrictamente coherente
   private determineContextStage(): string {
-      if (this.context.isTransitioning()) return 'SCENE_LOADING_OR_TRANSITION';
-      if (this.context.isInteracting()) return 'EDITOR_INTERACTION';
-      if (this.context.isPlaying()) return 'TEST_LIVE_PLAY';
-      if (this.context.mode() === 'EDITOR') return 'EDITOR_IDLE';
-      if (this.context.mode() === 'EDITING_IN_GAME') return 'EDITING_IN_GAME';
-      return 'IDLE_OR_UNKNOWN';
+    const mode = this.context.mode();
+    
+    if (this.context.isTransitioning()) return 'SCENE_LOADING_OR_TRANSITION';
+    if (this.context.isInteracting()) return 'EDITOR_INTERACTION';
+
+    if (mode === GameMode.EDITOR) return 'EDITOR_IDLE';
+    if (mode === GameMode.EDITING_IN_GAME) return 'EDITING_IN_GAME';
+    if (mode === GameMode.TEST_LIVE) return 'TEST_LIVE_PLAY';
+    if (mode === GameMode.PREVIEW_ADMIN) return 'ADMIN_PREVIEW_PLAY';
+    if (mode === GameMode.FINAL_USER) return 'FINAL_USER_PLAY';
+
+    return 'IDLE_OR_UNKNOWN';
   }
 
-  private triggerIncident(fps: number, frameTime: number) {
+  private triggerIncident(fps: number, frameTime: number): void {
     this.state = 'ACTIVE';
     this.incidentStartTime = performance.now();
     
-    // Captura profunda (incluye luces detalladas bajo demanda)
     const snap = this.profiler.getSnapshot(true);
     const recentHistory = [...this.profiler.getRecentHistory()];
-    const prevSnap = recentHistory.length > 0 ? recentHistory[recentHistory.length - 1] as any : undefined;
     
     const contextStage = this.determineContextStage();
     const diagnosis = this.analyzeCausality(snap, contextStage);
@@ -124,12 +137,12 @@ export class PerformanceIncidentService {
     
     if (this.incidents.length > this.MAX_INCIDENTS) this.incidents.pop();
 
-    console.warn(`🚨 [PerformanceIncident] [${contextStage}] ${diagnosis} | FPS: ${fps.toFixed(1)}`);
+    console.warn(`🚨 [PerformanceIncident] [${contextStage}] [Mode: ${this.context.mode()}] ${diagnosis} | FPS: ${fps.toFixed(1)}`);
 
     this.captureVisual(incident);
   }
 
-  private recoverIncident() {
+  private recoverIncident(): void {
     if (this.activeIncident) {
         this.activeIncident.status = 'RECOVERED';
         this.activeIncident.durationMs = performance.now() - this.incidentStartTime;
@@ -152,14 +165,14 @@ export class PerformanceIncidentService {
     if (m.cpuSystems['DynamicLightingSystem'] > 3.0) text += '[DynamicLightingSystem Overload] ';
     if (m.cpuSystems['ShadowOrchestratorSystem'] > 3.0) text += '[ShadowOrchestrator Overload] ';
     if (m.shadows.renderListRebuilds > 0) text += '[Shadow RenderList Rebuild] ';
-    if (m.gpu.drawCalls > 300) text += '[Excessive Draw Calls] ';
-    if (m.gpu.activeMeshes > 200) text += '[High Active Meshes] ';
+    if (m.gpu.drawCalls > 250) text += '[Excessive Draw Calls] ';
+    if (m.gpu.activeMeshes > 150) text += '[High Active Meshes] ';
     if (m.cpuPhases['PHYSICS'] > 8.0) text += '[Physics Saturation] ';
     
     return text ? text + '➔ Saturación simultánea de recursos' : 'Pérdida de rendimiento no identificada (Micro-Stutter)';
   }
 
-  private captureVisual(incident: PerformanceIncident) {
+  private captureVisual(incident: PerformanceIncident): void {
     const scene = this.motor3d.getScene();
     const engine = this.motor3d.getEngine();
     const camera = scene?.activeCamera;

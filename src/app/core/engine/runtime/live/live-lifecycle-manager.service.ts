@@ -1,3 +1,4 @@
+// file: src/app/core/engine/runtime/live/live-lifecycle-manager.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Camera, AbstractMesh, Tags, Vector3, Node } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -68,13 +69,22 @@ export class LiveLifecycleManagerService {
 
     this.preLiveOwner = this.ownership.getOwner();
     this.preLiveCamera = this.ownership.getCamera();
-    this.savedSelection = this.gameContext.selectedNode(); // 🔥 FIX BUG 2: Respaldo la selección del usuario.
+    this.savedSelection = this.gameContext.selectedNode();
 
     CinematicLogger.logTestLiveLifecycle('ENTER', this.preLiveOwner, this.preLiveCamera?.name);
 
     this.gameState.enterSandbox();
     this.entityManager.getAllEntities().forEach(e => {
-        e.createAuthoringBackup();
+      e.createAuthoringBackup();
+      // Asegurar que ninguna entidad mantenga un bloqueo cinematográfico previo al entrar a Test Live
+      if (e.characterConfig || e.rol === 'player') {
+        e.movementAuthority = 'GAMEPLAY';
+        if (e.playerRuntime) {
+          e.playerRuntime.cinematicAnimation = null;
+          e.playerRuntime.cinematicClipOverride = null;
+          e.playerRuntime.seqRuntime = null;
+        }
+      }
     });
     
     this.isLiveActive = true;
@@ -93,19 +103,25 @@ export class LiveLifecycleManagerService {
     const entities = this.entityManager.getAllEntities();
     
     for (let i = entities.length - 1; i >= 0; i--) {
-        const e = entities[i];
-        
-        if (e.isRuntimeOnly) {
-            this.entityManager.removeEntity(e.uid);
-            continue;
-        }
+      const e = entities[i];
+      
+      if (e.isRuntimeOnly) {
+        this.entityManager.removeEntity(e.uid);
+        continue;
+      }
 
-        e.restoreAuthoringBackup();
-        e.syncToView();
+      e.restoreAuthoringBackup();
+      e.movementAuthority = 'GAMEPLAY';
+      if (e.playerRuntime) {
+        e.playerRuntime.cinematicAnimation = null;
+        e.playerRuntime.cinematicClipOverride = null;
+        e.playerRuntime.seqRuntime = null;
+      }
+      e.syncToView();
 
-        if (e.view && e.visual) {
-            this.transformMutator.aplicarVisuales(e.view, e.visual);
-        }
+      if (e.view && e.visual) {
+        this.transformMutator.aplicarVisuales(e.view, e.visual);
+      }
     }
 
     this.dynLighting.reconcileSceneLights();
@@ -117,15 +133,13 @@ export class LiveLifecycleManagerService {
 
     this.gameContext.setEditorSubmode('EDITING');
     
-    // 🔥 FIX BUG 2: Restauramos al jugador su selección editorial intacta en lugar de destruirla
     if (this.savedSelection && !this.savedSelection.isDisposed()) {
-        this.gameContext.setSelectedNode(this.savedSelection);
+      this.gameContext.setSelectedNode(this.savedSelection);
     } else {
-        this.gameContext.setSelectedNode(null);
+      this.gameContext.setSelectedNode(null);
     }
     
     this.gameContext.setHoveredObject(null);
-
     this.isLiveActive = false;
 
     CinematicLogger.logTestLiveLifecycle('EXIT', 'EDITOR', this.motor3d.getEditorCamera()?.name);

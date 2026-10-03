@@ -1,4 +1,4 @@
-
+// file: src/app/core/engine/runtime/systems/player-sequence.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Vector3, Quaternion } from '@babylonjs/core';
 import { PlayerClipSequence, PlayerSequenceStep, cloneDefaultPlayerConfig } from '../../models/player-config.model';
@@ -9,6 +9,7 @@ import { EntityManagerService } from '../../entities/entity-manager.service';
 import { Subscription } from 'rxjs';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameContextService } from '../../session/game-context.service';
+import { DynamicLightingSystem } from './lighting/dynamic-lighting.system';
 
 export interface SeqRuntime {
   step: PlayerSequenceStep | null;
@@ -22,150 +23,147 @@ export interface SeqRuntime {
   running: boolean;
   freezeOrientation: boolean;
   rootMotion: Vector3;
-  absoluteTimeMs?: number; // 🔥 NUEVO: Soporte determinista
+  absoluteTimeMs?: number;
 }
 
 interface SequenceActionHandler {
-    execute(step: PlayerSequenceStep, entity: GameEntity, entityManager: EntityManagerService, dtMs: number, dtFraction: number, runtime: SeqRuntime): void;
+  execute(step: PlayerSequenceStep, entity: GameEntity, entityManager: EntityManagerService, dtMs: number, dtFraction: number, runtime: SeqRuntime): void;
 }
 
 const ActionHandlers: Record<string, SequenceActionHandler> = {
-    procMove: {
-        execute: (step, entity, em, dtMs, dtFraction) => {
-            // Movimiento relativo por frame, no atado a Cinematic Absolute Time
-            const dx = (step.procX || 0) * dtFraction;
-            const dy = (step.procY || 0) * dtFraction;
-            const dz = (step.procZ || 0) * dtFraction;
-            entity.transform.position.x += dx;
-            entity.transform.position.y += dy;
-            entity.transform.position.z += dz;
-            entity.isDirty = true;
-        }
-    },
-    procRotate: {
-        execute: (step, entity, em, dtMs, dtFraction) => {
-            const rx = (step.procX || 0) * (Math.PI / 180) * dtFraction;
-            const ry = (step.procY || 0) * (Math.PI / 180) * dtFraction;
-            const rz = (step.procZ || 0) * (Math.PI / 180) * dtFraction;
-            
-            let currentQuat: Quaternion;
-            if (entity.transform.rotationQuaternion) {
-                currentQuat = new Quaternion(
-                    entity.transform.rotationQuaternion.x, 
-                    entity.transform.rotationQuaternion.y, 
-                    entity.transform.rotationQuaternion.z, 
-                    entity.transform.rotationQuaternion.w
-                );
-            } else {
-                currentQuat = Quaternion.FromEulerAngles(entity.transform.rotation.x, entity.transform.rotation.y, entity.transform.rotation.z);
-            }
-            
-            const deltaQuat = Quaternion.FromEulerAngles(rx, ry, rz);
-            currentQuat.multiplyInPlace(deltaQuat);
-            
-            if (entity.transform.rotationQuaternion) {
-                entity.transform.rotationQuaternion.x = currentQuat.x;
-                entity.transform.rotationQuaternion.y = currentQuat.y;
-                entity.transform.rotationQuaternion.z = currentQuat.z;
-                entity.transform.rotationQuaternion.w = currentQuat.w;
-            } else {
-                const newEuler = currentQuat.toEulerAngles();
-                entity.transform.rotation.x = newEuler.x;
-                entity.transform.rotation.y = newEuler.y;
-                entity.transform.rotation.z = newEuler.z;
-            }
-            entity.isDirty = true;
-        }
-    },
-    stopBaked: {
-        execute: (step, entity) => {
-            if (entity.playerRuntime) entity.playerRuntime.stopBakedRequested = true;
-            entity.isDirty = true;
-        }
-    },
-    playVideo: {
-        execute: (step, entity, em) => {
-            const videoName = step.clipOverride; 
-            if (!videoName) return;
-            const allEntities = em.getAllEntities();
-            for(let i=0; i<allEntities.length; i++) {
-                if (allEntities[i].name === videoName && allEntities[i].mediaRuntime) {
-                    allEntities[i].mediaRuntime!.videoCommand = 'play';
-                    allEntities[i].isDirty = true;
-                    break;
-                }
-            }
-        }
-    },
-    pauseVideo: {
-        execute: (step, entity, em) => {
-            const videoName = step.clipOverride; 
-            if (!videoName) return;
-            const allEntities = em.getAllEntities();
-            for(let i=0; i<allEntities.length; i++) {
-                if (allEntities[i].name === videoName && allEntities[i].mediaRuntime) {
-                    allEntities[i].mediaRuntime!.videoCommand = 'pause';
-                    allEntities[i].isDirty = true;
-                    break;
-                }
-            }
-        }
-    },
-    stopVideo: {
-        execute: (step, entity, em) => {
-            const videoName = step.clipOverride; 
-            if (!videoName) return;
-            const allEntities = em.getAllEntities();
-            for(let i=0; i<allEntities.length; i++) {
-                if (allEntities[i].name === videoName && allEntities[i].mediaRuntime) {
-                    allEntities[i].mediaRuntime!.videoCommand = 'stop';
-                    allEntities[i].isDirty = true;
-                    break;
-                }
-            }
-        }
-    },
-    lightOn: {
-        execute: (step, entity) => {
-            if (!entity.light) return;
-            if (entity.playerConfig?.animationEnabled?.lightOn === false) return;
-            entity.light.renderIntensity = entity.light.intensity > 0 ? entity.light.intensity : 1.0;
-            entity.isDirty = true;
-        }
-    },
-    lightOff: {
-        execute: (step, entity) => {
-            if (!entity.light) return;
-            if (entity.playerConfig?.animationEnabled?.lightOff === false) return;
-            entity.light.renderIntensity = 0;
-            entity.isDirty = true;
-        }
-    },
-    lightPulse: {
-        execute: (step, entity, em, dtMs, dtFraction, runtime) => {
-            if (!entity.light) return;
-            if (entity.playerConfig?.animationEnabled?.lightPulse === false) return;
-            const freq = step.speedRatio || 1;
-            // 🔥 DETERMINISMO ABSOLUTO PARA CINEMATICAS: Si existe un tiempo global, sincronizamos.
-            const timeSec = runtime.absoluteTimeMs !== undefined ? (runtime.absoluteTimeMs / 1000) : (performance.now() / 1000);
-            entity.light.renderIntensity = entity.light.intensity * (0.5 + 0.5 * Math.sin(timeSec * Math.PI * 2 * freq));
-            entity.isDirty = true;
-        }
-    },
-    lightFlicker: {
-        execute: (step, entity, em, dtMs, dtFraction, runtime) => {
-            if (!entity.light) return;
-            if (entity.playerConfig?.animationEnabled?.lightFlicker === false) return;
-            const freq = step.speedRatio || 1;
-            const timeSec = runtime.absoluteTimeMs !== undefined ? (runtime.absoluteTimeMs / 1000) : (performance.now() / 1000);
-            // Matemáticas predecibles en base al tiempo
-            const rand = Math.abs(Math.sin(timeSec * 12.9898 + 78.233)) * 100;
-            if ((rand % 1) < (0.1 * freq)) {
-                entity.light.renderIntensity = ((rand % 2) > 1) ? entity.light.intensity : 0;
-                entity.isDirty = true;
-            }
-        }
+  procMove: {
+    execute: (step, entity, em, dtMs, dtFraction) => {
+      const dx = (step.procX || 0) * dtFraction;
+      const dy = (step.procY || 0) * dtFraction;
+      const dz = (step.procZ || 0) * dtFraction;
+      entity.transform.position.x += dx;
+      entity.transform.position.y += dy;
+      entity.transform.position.z += dz;
+      entity.isDirty = true;
     }
+  },
+  procRotate: {
+    execute: (step, entity, em, dtMs, dtFraction) => {
+      const rx = (step.procX || 0) * (Math.PI / 180) * dtFraction;
+      const ry = (step.procY || 0) * (Math.PI / 180) * dtFraction;
+      const rz = (step.procZ || 0) * (Math.PI / 180) * dtFraction;
+      
+      let currentQuat: Quaternion;
+      if (entity.transform.rotationQuaternion) {
+        currentQuat = new Quaternion(
+          entity.transform.rotationQuaternion.x, 
+          entity.transform.rotationQuaternion.y, 
+          entity.transform.rotationQuaternion.z, 
+          entity.transform.rotationQuaternion.w
+        );
+      } else {
+        currentQuat = Quaternion.FromEulerAngles(entity.transform.rotation.x, entity.transform.rotation.y, entity.transform.rotation.z);
+      }
+      
+      const deltaQuat = Quaternion.FromEulerAngles(rx, ry, rz);
+      currentQuat.multiplyInPlace(deltaQuat);
+      
+      if (entity.transform.rotationQuaternion) {
+        entity.transform.rotationQuaternion.x = currentQuat.x;
+        entity.transform.rotationQuaternion.y = currentQuat.y;
+        entity.transform.rotationQuaternion.z = currentQuat.z;
+        entity.transform.rotationQuaternion.w = currentQuat.w;
+      } else {
+        const newEuler = currentQuat.toEulerAngles();
+        entity.transform.rotation.x = newEuler.x;
+        entity.transform.rotation.y = newEuler.y;
+        entity.transform.rotation.z = newEuler.z;
+      }
+      entity.isDirty = true;
+    }
+  },
+  stopBaked: {
+    execute: (step, entity) => {
+      if (entity.playerRuntime) entity.playerRuntime.stopBakedRequested = true;
+      entity.isDirty = true;
+    }
+  },
+  playVideo: {
+    execute: (step, entity, em) => {
+      const videoName = step.clipOverride; 
+      if (!videoName) return;
+      const allEntities = em.getAllEntities();
+      for(let i=0; i<allEntities.length; i++) {
+        if (allEntities[i].name === videoName && allEntities[i].mediaRuntime) {
+          allEntities[i].mediaRuntime!.videoCommand = 'play';
+          allEntities[i].isDirty = true;
+          break;
+        }
+      }
+    }
+  },
+  pauseVideo: {
+    execute: (step, entity, em) => {
+      const videoName = step.clipOverride; 
+      if (!videoName) return;
+      const allEntities = em.getAllEntities();
+      for(let i=0; i<allEntities.length; i++) {
+        if (allEntities[i].name === videoName && allEntities[i].mediaRuntime) {
+          allEntities[i].mediaRuntime!.videoCommand = 'pause';
+          allEntities[i].isDirty = true;
+          break;
+        }
+      }
+    }
+  },
+  stopVideo: {
+    execute: (step, entity, em) => {
+      const videoName = step.clipOverride; 
+      if (!videoName) return;
+      const allEntities = em.getAllEntities();
+      for(let i=0; i<allEntities.length; i++) {
+        if (allEntities[i].name === videoName && allEntities[i].mediaRuntime) {
+          allEntities[i].mediaRuntime!.videoCommand = 'stop';
+          allEntities[i].isDirty = true;
+          break;
+        }
+      }
+    }
+  },
+  lightOn: {
+    execute: (step, entity) => {
+      if (!entity.light) return;
+      if (entity.playerConfig?.animationEnabled?.lightOn === false) return;
+      entity.light.renderIntensity = entity.light.intensity > 0 ? entity.light.intensity : 1.0;
+      entity.isDirty = true;
+    }
+  },
+  lightOff: {
+    execute: (step, entity) => {
+      if (!entity.light) return;
+      if (entity.playerConfig?.animationEnabled?.lightOff === false) return;
+      entity.light.renderIntensity = 0.0001;
+      entity.isDirty = true;
+    }
+  },
+  lightPulse: {
+    execute: (step, entity, em, dtMs, dtFraction, runtime) => {
+      if (!entity.light) return;
+      if (entity.playerConfig?.animationEnabled?.lightPulse === false) return;
+      const freq = step.speedRatio || 1;
+      const timeSec = runtime.absoluteTimeMs !== undefined ? (runtime.absoluteTimeMs / 1000) : (performance.now() / 1000);
+      entity.light.renderIntensity = entity.light.intensity * (0.5 + 0.5 * Math.sin(timeSec * Math.PI * 2 * freq));
+      entity.isDirty = true;
+    }
+  },
+  lightFlicker: {
+    execute: (step, entity, em, dtMs, dtFraction, runtime) => {
+      if (!entity.light) return;
+      if (entity.playerConfig?.animationEnabled?.lightFlicker === false) return;
+      const freq = step.speedRatio || 1;
+      const timeSec = runtime.absoluteTimeMs !== undefined ? (runtime.absoluteTimeMs / 1000) : (performance.now() / 1000);
+      const rand = Math.abs(Math.sin(timeSec * 12.9898 + 78.233)) * 100;
+      if ((rand % 1) < (0.15 * freq)) {
+        entity.light.renderIntensity = ((rand % 2) > 1) ? entity.light.intensity : 0.0001;
+        entity.isDirty = true;
+      }
+    }
+  }
 };
 
 @Injectable({ providedIn: 'root' })
@@ -175,6 +173,7 @@ export class PlayerSequenceService implements IUpdatable {
   private eventBus = inject(GameEventBusService);
   private entityManager = inject(EntityManagerService);
   private context = inject(GameContextService);
+  private dynamicLighting = inject(DynamicLightingSystem);
 
   private eventSub!: Subscription;
 
@@ -186,7 +185,7 @@ export class PlayerSequenceService implements IUpdatable {
     jumpTriggered: boolean;
     orientationLocked: boolean;
     rotation: { x: number, y: number, z: number, w?: number } | null;
-    cinematicTied: boolean; // Identifica si pertenece a una cinemática en curso
+    cinematicTied: boolean;
   }>();
 
   constructor() {
@@ -205,98 +204,107 @@ export class PlayerSequenceService implements IUpdatable {
     });
   }
 
-  // 🔥 FASE 2: Nuevo Punto de Entrada exclusivo para la evaluación del Director Cinematográfico
+  public getActiveSequencesCount(): number {
+    return this.activeSequences.size;
+  }
+
   public evaluateCinematicAction(entity: GameEntity, step: PlayerSequenceStep, dtMs: number, absoluteTimeMs: number): void {
-      const defaultRuntime = this.getDefaultRuntime(entity);
-      const runtime: SeqRuntime = { ...defaultRuntime, step, running: true, absoluteTimeMs };
-      
-      const config = entity.playerConfig || cloneDefaultPlayerConfig();
+    const defaultRuntime = this.getDefaultRuntime(entity);
+    const runtime: SeqRuntime = { ...defaultRuntime, step, running: true, absoluteTimeMs };
+    const config = entity.playerConfig || cloneDefaultPlayerConfig();
 
-      runtime.loop = !!step.loop;
-      runtime.allowMovement = step.allowMovement !== false;
-      runtime.lockInput = !!step.lockInput;
-      runtime.blend = typeof step.blend === 'number' ? step.blend : config.blend.defaultBlend;
-      
-      const lowerAction = step.action;
-      runtime.forceForwardWalk = runtime.allowMovement && lowerAction === 'walk';
-      runtime.forceForwardRun = runtime.allowMovement && lowerAction === 'run';
-      runtime.forceJump = lowerAction === 'jumpStart';
+    runtime.loop = !!step.loop;
+    runtime.allowMovement = step.allowMovement !== false;
+    runtime.lockInput = !!step.lockInput;
+    runtime.blend = typeof step.blend === 'number' ? step.blend : config.blend.defaultBlend;
+    
+    const lowerAction = step.action;
+    runtime.forceForwardWalk = runtime.allowMovement && lowerAction === 'walk';
+    runtime.forceForwardRun = runtime.allowMovement && lowerAction === 'run';
+    runtime.forceJump = lowerAction === 'jumpStart';
 
-      const handler = ActionHandlers[step.action];
-      if (handler) {
-          const durMs = Math.max(1, step.durationMs || 1000);
-          handler.execute(step, entity, this.entityManager, dtMs, dtMs / durMs, runtime);
+    const handler = ActionHandlers[step.action];
+    if (handler) {
+      const durMs = Math.max(1, step.durationMs || 1000);
+      handler.execute(step, entity, this.entityManager, dtMs, dtMs / durMs, runtime);
+      if (entity.type.startsWith('light_')) {
+        this.dynamicLighting.syncLightImmediate(entity);
       }
+    }
 
-      const soY = step.offsetY || 0;
-      const soF = step.offsetForward || 0;
-      if (soY !== 0 || soF !== 0) {
-          const durSec = Math.max(0.001, step.durationMs / 1000);
-          const dtSec = dtMs / 1000;
-          runtime.rootMotion.y = (soY / durSec) * dtSec;
-          runtime.rootMotion.z = (soF / durSec) * dtSec;
-      }
+    const soY = step.offsetY || 0;
+    const soF = step.offsetForward || 0;
+    if (soY !== 0 || soF !== 0) {
+      const durSec = Math.max(0.001, step.durationMs / 1000);
+      const dtSec = dtMs / 1000;
+      runtime.rootMotion.y = (soY / durSec) * dtSec;
+      runtime.rootMotion.z = (soF / durSec) * dtSec;
+    }
 
-      if (entity.playerRuntime) {
-          entity.playerRuntime.seqRuntime = runtime;
-      }
+    if (entity.playerRuntime) {
+      entity.playerRuntime.seqRuntime = runtime;
+    }
   }
 
   public startAllAutoPlaySequences(): void {
     const allEntities = this.entityManager.getAllEntities();
     for (let i = 0; i < allEntities.length; i++) {
-        const entity = allEntities[i];
-        if (entity.playerConfig && entity.playerConfig.sequences) {
-            const autoSeq = entity.playerConfig.sequences.find((s: any) => s.autoPlay);
-            if (autoSeq) {
-                this.iniciarSecuenciaEnJuego(autoSeq.id, entity);
-                const state = this.getSeqState(entity.uid);
-                state.cinematicTied = true;
-            }
+      const entity = allEntities[i];
+      if (entity.playerConfig && entity.playerConfig.sequences) {
+        const autoSeq = entity.playerConfig.sequences.find((s: any) => s.autoPlay);
+        if (autoSeq) {
+          this.iniciarSecuenciaEnJuego(autoSeq.id, entity);
+          const state = this.getSeqState(entity.uid);
+          state.cinematicTied = true;
         }
+      }
     }
   }
 
   public syncAllAutoPlaySequences(elapsedMs: number): void {
     const allEntities = this.entityManager.getAllEntities();
     for (let i = 0; i < allEntities.length; i++) {
-        const entity = allEntities[i];
-        if (entity.playerConfig && entity.playerConfig.sequences) {
-            const autoSeq = entity.playerConfig.sequences.find((s: any) => s.autoPlay);
-            if (autoSeq) {
-                this.evaluateSequenceAbsolute(entity, autoSeq, elapsedMs);
-            }
+      const entity = allEntities[i];
+      if (entity.playerConfig && entity.playerConfig.sequences) {
+        const autoSeq = entity.playerConfig.sequences.find((s: any) => s.autoPlay);
+        if (autoSeq) {
+          this.evaluateSequenceAbsolute(entity, autoSeq, elapsedMs);
         }
+      }
     }
   }
 
   public physicsUpdate(dtMs: number): void {
+    // Si no hay secuencias activas en memoria, salir de inmediato sin iterar
+    if (this.activeSequences.size === 0) return;
+
     let effectiveDt = dtMs;
 
     if (this.context.engineState() === 'PAUSED' && !this.context.isCinematicPlaying()) {
-       effectiveDt = 0;
+      effectiveDt = 0;
     }
     if (this.context.activeCinematicId() && !this.context.isCinematicPlaying()) {
-       effectiveDt = 0;
+      effectiveDt = 0;
     }
 
-    const entities = this.entityManager.getAllEntities();
-    for (let i = 0; i < entities.length; i++) {
-        const entity = entities[i];
+    // Iterar únicamente sobre las entidades que tienen secuencia activa registrada
+    for (const [entityUid] of this.activeSequences.entries()) {
+      const entity = this.entityManager.getEntityByUid(entityUid);
+      if (!entity) {
+        this.activeSequences.delete(entityUid);
+        continue;
+      }
 
-        // 🔥 FASE 1 & 2: SI ESTÁ BAJO CONTROL DEL DIRECTOR Y EJECUTANDO LOCOMOCIÓN, SALTAMOS ESTA EVALUACIÓN SECUENCIAL NORMAL
-        if (entity.movementAuthority === 'CINEMATIC_LOCOMOTION' || entity.movementAuthority === 'CINEMATIC_FULL') {
-             continue;
-        }
+      if (entity.movementAuthority === 'CINEMATIC_LOCOMOTION' || entity.movementAuthority === 'CINEMATIC_FULL') {
+        continue;
+      }
 
-        if (entity.playerConfig?.sequences && entity.playerConfig.sequences.length > 0) {
-            const runtime = this.actualizarSecuencia(effectiveDt, entity);
-            if (entity.playerRuntime) {
-                entity.playerRuntime.seqRuntime = runtime;
-            }
-        } else if (entity.playerRuntime && !entity.playerRuntime.seqRuntime) {
-            entity.playerRuntime.seqRuntime = this.getDefaultRuntime(entity);
+      if (entity.playerConfig?.sequences && entity.playerConfig.sequences.length > 0) {
+        const runtime = this.actualizarSecuencia(effectiveDt, entity);
+        if (entity.playerRuntime) {
+          entity.playerRuntime.seqRuntime = runtime;
         }
+      }
     }
   }
 
@@ -309,21 +317,21 @@ export class PlayerSequenceService implements IUpdatable {
   }
 
   private clearCinematicTiedSequences(): void {
-      for (const [uid, state] of this.activeSequences.entries()) {
-          if (state.cinematicTied) {
-              this.activeSequences.delete(uid);
-              
-              if (this.context.isPlaying()) {
-                  const entity = this.entityManager.getEntityByUid(uid);
-                  if (entity && entity.playerConfig && entity.playerConfig.sequences) {
-                      const autoSeq = entity.playerConfig.sequences.find(s => s.autoPlay);
-                      if (autoSeq) {
-                          this.iniciarSecuenciaEnJuego(autoSeq.id, entity);
-                      }
-                  }
-              }
+    for (const [uid, state] of this.activeSequences.entries()) {
+      if (state.cinematicTied) {
+        this.activeSequences.delete(uid);
+        
+        if (this.context.isPlaying()) {
+          const entity = this.entityManager.getEntityByUid(uid);
+          if (entity && entity.playerConfig && entity.playerConfig.sequences) {
+            const autoSeq = entity.playerConfig.sequences.find(s => s.autoPlay);
+            if (autoSeq) {
+              this.iniciarSecuenciaEnJuego(autoSeq.id, entity);
+            }
           }
+        }
       }
+    }
   }
 
   private getSeqState(entityUid: string) {
@@ -343,9 +351,9 @@ export class PlayerSequenceService implements IUpdatable {
 
   private captureSequenceOrientationState(entity: GameEntity, state: any): void {
     if (entity.transform.rotationQuaternion) {
-        state.rotation = { ...entity.transform.rotationQuaternion };
+      state.rotation = { ...entity.transform.rotationQuaternion };
     } else {
-        state.rotation = { ...entity.transform.rotation };
+      state.rotation = { ...entity.transform.rotation };
     }
     state.orientationLocked = true;
   }
@@ -370,7 +378,7 @@ export class PlayerSequenceService implements IUpdatable {
     
     if (seqToRun) {
       if (!this.gameState.evaluateAllConditions(seqToRun.conditions)) {
-          return;
+        return;
       }
 
       const state = this.getSeqState(entity.uid);
@@ -390,71 +398,86 @@ export class PlayerSequenceService implements IUpdatable {
   public syncSequenceToTime(sequenceId: string, elapsedMs: number): void {
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
-        if (entity.playerConfig && entity.playerConfig.sequences) {
-            const seq = entity.playerConfig.sequences.find((s: any) => s.id === sequenceId);
-            if (seq) {
-                this.evaluateSequenceAbsolute(entity, seq, elapsedMs);
-            }
+      if (entity.playerConfig && entity.playerConfig.sequences) {
+        const seq = entity.playerConfig.sequences.find((s: any) => s.id === sequenceId);
+        if (seq) {
+          this.evaluateSequenceAbsolute(entity, seq, elapsedMs);
         }
+      }
     }
   }
 
-  private evaluateSequenceAbsolute(entity: GameEntity, seq: PlayerClipSequence, elapsedMs: number): void {
-      if (!seq.steps || seq.steps.length === 0) return;
+  public evaluateSequenceAbsolute(entity: GameEntity, seq: PlayerClipSequence, elapsedMs: number): SeqRuntime {
+    const defaultRuntime = this.getDefaultRuntime(entity);
+    if (!seq.steps || seq.steps.length === 0) return defaultRuntime;
 
-      let totalSeqTime = seq.steps.reduce((sum, s) => sum + Math.max(1, s.durationMs || 1000), 0);
-      let timeRemaining = elapsedMs;
+    let totalSeqTime = seq.steps.reduce((sum, s) => sum + Math.max(1, s.durationMs || 1000), 0);
+    let timeRemaining = elapsedMs;
 
-      if (totalSeqTime > 0 && seq.repeat) {
-          timeRemaining = timeRemaining % totalSeqTime;
-      } else if (timeRemaining >= totalSeqTime) {
-          timeRemaining = totalSeqTime;
-          const lastStep = seq.steps[seq.steps.length - 1];
-          const r: SeqRuntime = { ...this.getDefaultRuntime(entity), step: lastStep, absoluteTimeMs: elapsedMs };
-          ActionHandlers[lastStep.action]?.execute(lastStep, entity, this.entityManager, 0, 1.0, r);
-          
-          const stateEnd = this.getSeqState(entity.uid);
-          stateEnd.id = seq.id;
-          stateEnd.index = seq.steps.length - 1;
-          stateEnd.elapsedMs = lastStep.durationMs || 1000;
-          stateEnd.stepEntered = false;
-          stateEnd.cinematicTied = true;
-          return;
+    if (totalSeqTime > 0 && seq.repeat) {
+      timeRemaining = timeRemaining % totalSeqTime;
+    } else if (timeRemaining >= totalSeqTime) {
+      timeRemaining = totalSeqTime;
+      const lastStep = seq.steps[seq.steps.length - 1];
+      const r: SeqRuntime = { ...defaultRuntime, step: lastStep, absoluteTimeMs: elapsedMs, running: false };
+      
+      const handler = ActionHandlers[lastStep.action];
+      if (handler) {
+        handler.execute(lastStep, entity, this.entityManager, 0, 1.0, r);
+        if (entity.type.startsWith('light_')) {
+          this.dynamicLighting.syncLightImmediate(entity);
+        }
       }
+      
+      const stateEnd = this.getSeqState(entity.uid);
+      stateEnd.id = seq.id;
+      stateEnd.index = seq.steps.length - 1;
+      stateEnd.elapsedMs = lastStep.durationMs || 1000;
+      stateEnd.stepEntered = false;
+      return r;
+    }
 
-      let targetStep = seq.steps[0];
-      let stepElapsed = 0;
-      let stepIndex = 0;
+    let targetStep = seq.steps[0];
+    let stepElapsed = 0;
+    let stepIndex = 0;
 
-      for (let i = 0; i < seq.steps.length; i++) {
-          const step = seq.steps[i];
-          const dur = Math.max(1, step.durationMs || 1000);
-          if (timeRemaining < dur) { 
-              targetStep = step;
-              stepElapsed = timeRemaining;
-              stepIndex = i;
-              break;
-          }
-          timeRemaining -= dur;
+    for (let i = 0; i < seq.steps.length; i++) {
+      const step = seq.steps[i];
+      const dur = Math.max(1, step.durationMs || 1000);
+      if (timeRemaining < dur) { 
+        targetStep = step;
+        stepElapsed = timeRemaining;
+        stepIndex = i;
+        break;
       }
+      timeRemaining -= dur;
+    }
 
-      const state = this.getSeqState(entity.uid);
-      state.id = seq.id;
-      state.index = stepIndex;
-      state.elapsedMs = stepElapsed;
-      state.stepEntered = false; 
-      state.cinematicTied = true; 
+    const state = this.getSeqState(entity.uid);
+    state.id = seq.id;
+    state.index = stepIndex;
+    state.elapsedMs = stepElapsed;
+    state.stepEntered = false; 
 
-      const runtime: SeqRuntime = { ...this.getDefaultRuntime(entity), step: targetStep, absoluteTimeMs: elapsedMs };
-      ActionHandlers[targetStep.action]?.execute(targetStep, entity, this.entityManager, 0, stepElapsed / Math.max(1, targetStep.durationMs || 1000), runtime);
+    const runtime: SeqRuntime = { ...defaultRuntime, step: targetStep, absoluteTimeMs: elapsedMs, running: true };
+    const durStep = Math.max(1, targetStep.durationMs || 1000);
+    const handler = ActionHandlers[targetStep.action];
+    if (handler) {
+      handler.execute(targetStep, entity, this.entityManager, 0, stepElapsed / durStep, runtime);
+      if (entity.type.startsWith('light_')) {
+        this.dynamicLighting.syncLightImmediate(entity);
+      }
+    }
+
+    return runtime;
   }
   
   private getDefaultRuntime(entity: GameEntity): SeqRuntime {
     const config = entity.playerConfig || cloneDefaultPlayerConfig();
     return { 
-        step: null, lockInput: false, allowMovement: true, forceForwardWalk: false, 
-        forceForwardRun: false, forceJump: false, blend: config.blend.defaultBlend, 
-        loop: true, running: false, freezeOrientation: false, rootMotion: Vector3.Zero() 
+      step: null, lockInput: false, allowMovement: true, forceForwardWalk: false, 
+      forceForwardRun: false, forceJump: false, blend: config.blend.defaultBlend, 
+      loop: true, running: false, freezeOrientation: false, rootMotion: Vector3.Zero() 
     };
   }
 
@@ -473,6 +496,7 @@ export class PlayerSequenceService implements IUpdatable {
 
     if (!sequence || !sequence.steps || sequence.steps.length === 0) {
       state.id = '';
+      this.activeSequences.delete(entity.uid);
       return defaultRuntime;
     }
 
@@ -488,23 +512,25 @@ export class PlayerSequenceService implements IUpdatable {
 
     let loopSafeguard = 0;
     while (step && !this.gameState.evaluateAllConditions(step.conditions)) {
-        state.index++;
-        if (state.index >= sequence.steps.length) {
-            if (sequence.repeat && loopSafeguard < sequence.steps.length) {
-                state.index = 0;
-                loopSafeguard++;
-            } else {
-                state.id = '';
-                return defaultRuntime;
-            }
+      state.index++;
+      if (state.index >= sequence.steps.length) {
+        if (sequence.repeat && loopSafeguard < sequence.steps.length) {
+          state.index = 0;
+          loopSafeguard++;
+        } else {
+          state.id = '';
+          this.activeSequences.delete(entity.uid);
+          return defaultRuntime;
         }
-        step = sequence.steps[state.index] || null;
-        state.stepEntered = true;
-        state.elapsedMs = 0;
+      }
+      step = sequence.steps[state.index] || null;
+      state.stepEntered = true;
+      state.elapsedMs = 0;
     }
 
     if (!step) {
       state.orientationLocked = false;
+      this.activeSequences.delete(entity.uid);
       return defaultRuntime;
     }
 
@@ -521,10 +547,10 @@ export class PlayerSequenceService implements IUpdatable {
       if (step.action === 'jumpStart') state.jumpTriggered = true;
       
       if (step.stateMutations) {
-          this.gameState.applyMutations(step.stateMutations);
+        this.gameState.applyMutations(step.stateMutations);
       }
       if (step.action === 'setState' && step.stateKey) {
-          this.gameState.setVar(step.stateKey, step.stateValue);
+        this.gameState.setVar(step.stateKey, step.stateValue);
       }
 
       state.stepEntered = false;
@@ -533,33 +559,36 @@ export class PlayerSequenceService implements IUpdatable {
     }
 
     if (step.clipOverride === 'none') {
-        ActionHandlers['stopBaked']?.execute(step, entity, this.entityManager, dtMs, 0, runtime);
+      ActionHandlers['stopBaked']?.execute(step, entity, this.entityManager, dtMs, 0, runtime);
     }
     
     if (state.cinematicTied) runtime.absoluteTimeMs = this.context.cinematicTimeMs();
 
     const handler = ActionHandlers[step.action];
     if (handler) {
-        const durMs = Math.max(1, step.durationMs || 1000);
-        handler.execute(step, entity, this.entityManager, dtMs, dtMs / durMs, runtime);
+      const durMs = Math.max(1, step.durationMs || 1000);
+      handler.execute(step, entity, this.entityManager, dtMs, dtMs / durMs, runtime);
+      if (entity.type.startsWith('light_')) {
+        this.dynamicLighting.syncLightImmediate(entity);
+      }
     }
     
     const soY = step.offsetY || 0;
     const soF = step.offsetForward || 0;
     if (soY !== 0 || soF !== 0) {
-        const durSec = Math.max(0.001, step.durationMs / 1000);
-        const dtSec = dtMs / 1000;
-        runtime.rootMotion.y = (soY / durSec) * dtSec;
-        runtime.rootMotion.z = (soF / durSec) * dtSec;
+      const durSec = Math.max(0.001, step.durationMs / 1000);
+      const dtSec = dtMs / 1000;
+      runtime.rootMotion.y = (soY / durSec) * dtSec;
+      runtime.rootMotion.z = (soF / durSec) * dtSec;
     }
 
     if (state.orientationLocked && state.rotation) {
-        if (state.rotation.w !== undefined) {
-           entity.transform.rotationQuaternion = { ...state.rotation } as any;
-        } else {
-           entity.transform.rotation = { ...state.rotation } as any;
-        }
-        entity.isDirty = true;
+      if (state.rotation.w !== undefined) {
+        entity.transform.rotationQuaternion = { ...state.rotation } as any;
+      } else {
+        entity.transform.rotation = { ...state.rotation } as any;
+      }
+      entity.isDirty = true;
     }
 
     runtime.blend = typeof step.blend === 'number' ? step.blend : config.blend.defaultBlend;
@@ -580,14 +609,15 @@ export class PlayerSequenceService implements IUpdatable {
       state.index++;
       if (state.index >= sequence.steps.length) {
         if (sequence.repeat) { 
-            state.index = 0; 
-            state.stepEntered = true; 
+          state.index = 0; 
+          state.stepEntered = true; 
         } else { 
-            state.id = ''; 
-            runtime.running = false; 
+          state.id = ''; 
+          runtime.running = false; 
+          this.activeSequences.delete(entity.uid);
         }
       } else {
-          state.stepEntered = true;
+        state.stepEntered = true;
       }
     }
 

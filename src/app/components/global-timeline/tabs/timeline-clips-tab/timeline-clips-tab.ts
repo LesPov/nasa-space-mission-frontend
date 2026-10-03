@@ -1,5 +1,5 @@
-
-import { Component, ChangeDetectorRef, inject, effect } from '@angular/core';
+// file: src/app/components/global-timeline/tabs/timeline-clips-tab/timeline-clips-tab.ts
+import { Component, ChangeDetectorRef, inject, effect, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { EditorStateService } from '../../../../services/editor/editor-state.service';
@@ -24,10 +24,10 @@ const ACTION_ROWS_PROP = [
 ];
 const ACTION_ROWS_LIGHT = [
   ...ACTION_ROWS_PROP,
-  { key: 'lightOn', label: '💡 Encender Luz al 100%' }, 
-  { key: 'lightOff', label: '🔌 Apagar Luz' }, 
-  { key: 'lightPulse', label: '💓 Parpadeo Suave (Pulso)' }, 
-  { key: 'lightFlicker', label: '⚡ Estroboscópico (Roto)' }
+  { key: 'lightOn', label: '💡 Encender Luz (100%)' }, 
+  { key: 'lightOff', label: '🔌 Apagar Luz (0%)' }, 
+  { key: 'lightPulse', label: '💓 Parpadeo Suave (Pulso Senoidal)' }, 
+  { key: 'lightFlicker', label: '⚡ Estroboscópico (Flicker/Roto)' }
 ];
 
 @Component({
@@ -37,10 +37,10 @@ const ACTION_ROWS_LIGHT = [
   templateUrl: './timeline-clips-tab.html',
   styleUrls: ['./timeline-clips-tab.css']
 })
-export class TimelineClipsTab {
+export class TimelineClipsTab implements OnDestroy {
   public stateSvc = inject(EditorStateService);
   public mapaSvc = inject(EditorMapaService);
-  private previewSvc = inject(EditorPreviewService);
+  public previewSvc = inject(EditorPreviewService);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
 
@@ -54,6 +54,9 @@ export class TimelineClipsTab {
   public esLuz = false;
   public esTrigger = false;
 
+  public currentTimeMs = 0;
+  public totalDurationMs = 0;
+
   constructor() {
     effect(() => {
       const obj = this.stateSvc.objetoSeleccionado() as any;
@@ -61,19 +64,33 @@ export class TimelineClipsTab {
       const objId = entity ? entity.uid : null;
       
       if (this.currentObjectId !== objId) {
-          this.currentObjectId = objId;
-          this.cargarClipsDelObjeto();
+        this.currentObjectId = objId;
+        this.cargarClipsDelObjeto();
+      }
+    });
+
+    effect(() => {
+      const time = this.previewSvc.currentPreviewTimeMs();
+      if (this.previewSvc.isPlayingPreview()) {
+        this.currentTimeMs = time;
+        this.cdr.detectChanges();
       }
     });
   }
 
+  ngOnDestroy(): void {
+    this.previewSvc.detenerPreviewSecuencia();
+  }
+
   cargarClipsDelObjeto() {
+    this.previewSvc.detenerPreviewSecuencia();
     const obj = this.stateSvc.objetoSeleccionado() as any;
     const entity = this.entityManager.getEntityByMesh(obj);
 
     if (!entity) {
       this.sequences = [];
       this.selectedSequenceId = null;
+      this.totalDurationMs = 0;
       return;
     }
     
@@ -96,11 +113,13 @@ export class TimelineClipsTab {
       this.selectedStepIndex = -1;
     }
 
+    this.recalcularDuracionTotal();
+
     const rawClips: string[] = [];
     if (entity.animationNames && Array.isArray(entity.animationNames)) rawClips.push(...entity.animationNames);
 
     this.entityManager.getAllEntities().forEach(testEnt => {
-        if (testEnt && testEnt.type === 'video_plane') rawClips.push(testEnt.name);
+      if (testEnt && testEnt.type === 'video_plane') rawClips.push(testEnt.name);
     });
 
     this.availableClips = [...new Set(rawClips)];
@@ -110,9 +129,20 @@ export class TimelineClipsTab {
   get currentSequence() { return this.sequences.find(s => s.id === this.selectedSequenceId) || null; }
   get currentStep() { return this.currentSequence?.steps[this.selectedStepIndex] || null; }
 
+  recalcularDuracionTotal() {
+    if (this.currentSequence && this.currentSequence.steps) {
+      this.totalDurationMs = this.currentSequence.steps.reduce((acc, step) => acc + (step.durationMs || 1000), 0);
+    } else {
+      this.totalDurationMs = 0;
+    }
+  }
+
   seleccionarSecuencia(id: string) {
+    this.previewSvc.detenerPreviewSecuencia();
     this.selectedSequenceId = id;
     this.selectedStepIndex = 0;
+    this.currentTimeMs = 0;
+    this.recalcularDuracionTotal();
   }
 
   persist() {
@@ -120,18 +150,22 @@ export class TimelineClipsTab {
     if (!obj) return;
     const entity = this.entityManager.getEntityByMesh(obj);
     if (entity) {
-        if (!entity.playerConfig) entity.playerConfig = cloneDefaultPlayerConfig();
-        entity.playerConfig.sequences = JSON.parse(JSON.stringify(this.sequences));
-        entity.syncToView();
-        this.mapaSvc.onMapChanged.next();
+      if (!entity.playerConfig) entity.playerConfig = cloneDefaultPlayerConfig();
+      entity.playerConfig.sequences = JSON.parse(JSON.stringify(this.sequences));
+      entity.syncToView();
+      this.recalcularDuracionTotal();
+      this.mapaSvc.onMapChanged.next();
     }
   }
 
   nuevaSecuencia() {
-    const seq = createPlayerSequence(`Clip Cinemático ${this.sequences.length + 1}`);
-    if (!this.esPersonaje && seq.steps.length > 0) {
-        seq.steps[0].action = 'idle';
-        seq.steps[0].loop = true;
+    const seq = createPlayerSequence(`Clip ${this.sequences.length + 1}`);
+    if (this.esLuz && seq.steps.length > 0) {
+      seq.steps[0].action = 'lightPulse';
+      seq.steps[0].durationMs = 1500;
+    } else if (!this.esPersonaje && seq.steps.length > 0) {
+      seq.steps[0].action = 'idle';
+      seq.steps[0].loop = true;
     }
     this.sequences.push(seq);
     this.selectedSequenceId = seq.id;
@@ -140,6 +174,7 @@ export class TimelineClipsTab {
   }
 
   eliminarSecuencia(id: string) {
+    this.previewSvc.detenerPreviewSecuencia();
     this.sequences = this.sequences.filter(s => s.id !== id);
     this.selectedSequenceId = this.sequences.length > 0 ? this.sequences[0].id : null;
     this.selectedStepIndex = this.sequences.length > 0 ? 0 : -1;
@@ -147,10 +182,11 @@ export class TimelineClipsTab {
   }
 
   agregarPaso(seq: PlayerClipSequence) { 
-    const step = createSequenceStep(this.esPersonaje ? 'walk' : 'idle');
+    const defaultAction = this.esLuz ? 'lightPulse' : (this.esPersonaje ? 'walk' : 'idle');
+    const step = createSequenceStep(defaultAction);
     if (!this.esPersonaje) {
-        step.loop = true; 
-        if (this.availableClips.length > 0) step.clipOverride = this.availableClips[0];
+      step.loop = true; 
+      if (this.availableClips.length > 0) step.clipOverride = this.availableClips[0];
     }
     seq.steps.push(step); 
     this.selectedStepIndex = seq.steps.length - 1;
@@ -163,12 +199,30 @@ export class TimelineClipsTab {
     this.persist(); 
   }
 
-  probarSecuencia(seq: PlayerClipSequence) {
-    this.persist();
+  togglePlayPreview(seq: PlayerClipSequence) {
+    if (this.previewSvc.isPlayingPreview()) {
+      this.previewSvc.pausarPreview();
+    } else {
+      this.persist();
+      const obj = this.stateSvc.objetoSeleccionado() as any;
+      const entity = this.entityManager.getEntityByMesh(obj);
+      if (entity && entity.type !== 'trigger' && entity.type !== 'trigger_compuesto') {
+        this.previewSvc.iniciarPreviewSecuencia(entity, seq.id);
+      }
+    }
+  }
+
+  stopPreview() {
+    this.previewSvc.detenerPreviewSecuencia();
+    this.currentTimeMs = 0;
+  }
+
+  onScrubTime(newTime: number) {
+    this.currentTimeMs = Math.max(0, Math.min(newTime, this.totalDurationMs));
     const obj = this.stateSvc.objetoSeleccionado() as any;
     const entity = this.entityManager.getEntityByMesh(obj);
-    if (entity && entity.type !== 'trigger' && entity.type !== 'trigger_compuesto') {
-        this.previewSvc.iniciarPreviewSecuencia(entity, seq.id);
+    if (entity && this.currentSequence) {
+      this.previewSvc.seekPreview(entity, this.currentSequence.id, this.currentTimeMs);
     }
   }
 

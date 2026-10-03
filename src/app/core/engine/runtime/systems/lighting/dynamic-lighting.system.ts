@@ -12,8 +12,7 @@ import { LightContainmentService } from './light-containment.service';
 import { GameMode } from '../../../session/game-mode.model';
 import { SpatialSchedulerService } from '../spatial-scheduler.service';
 import { ShadowCache } from '../../shadows/shadow-cache.service';
-import { GameEventBusService } from '../../../events/game-event-bus.service';
-
+ 
 import { LightRegistryService } from './light-registry.service';
 import { LightTransformService } from './light-transform.service';
 import { LightVisualService } from './light-visual.service';
@@ -23,6 +22,7 @@ import { LightPoolService } from './light-pool.service';
 import { LightDistanceService } from './light-distance.service';
 import { LightAllocationService } from './light-allocation.service';
 import { PoolSlot, VirtualLight } from './lighting-types';
+import { GameEventBusService } from '../../../events/game-event-bus.service';
 
 @Injectable({ providedIn: 'root' })
 export class DynamicLightingSystem implements IUpdatable {
@@ -374,7 +374,7 @@ export class DynamicLightingSystem implements IUpdatable {
           }
 
           const renderDiff = Math.abs(vl.currentMultiplier - (vl._lastRenderedMultiplier ?? -1));
-          if (renderDiff > 0.003 || this.isFirstFrame) {
+          if (renderDiff > 0.003 || this.isFirstFrame || vl.entity.isDirty) {
               vl._lastRenderedMultiplier = vl.currentMultiplier;
               const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
               const hexColor = lightComp ? (isBW ? lightComp.lightColorBW : lightComp.lightColor) : '#ffffff';
@@ -445,9 +445,12 @@ export class DynamicLightingSystem implements IUpdatable {
       
       slot.light.diffuse.copyFrom(vl.baseColor);
 
-      const baseIntensity = lightComp.intensity ?? 1.0;
-      let finalIntensity = baseIntensity * vl.currentMultiplier;
-      lightComp.renderIntensity = finalIntensity;
+      // 🔥 FIX DETERMINISMO SECUENCIAS: Respetar renderIntensity cuando una secuencia lo anima
+      const effectiveBase = (lightComp.renderIntensity !== undefined && lightComp.renderIntensity !== null)
+          ? lightComp.renderIntensity
+          : (lightComp.intensity ?? 1.0);
+
+      let finalIntensity = effectiveBase * vl.currentMultiplier;
 
       if (!lightComp.enabled || this.profilerDisableLocalLights) finalIntensity = 0;
 
@@ -457,7 +460,7 @@ export class DynamicLightingSystem implements IUpdatable {
           finalIntensity = 0.0002;
       }
 
-      if (Math.abs(slot.currentIntensity - finalIntensity) > 0.0005 || this.isFirstFrame) {
+      if (Math.abs(slot.currentIntensity - finalIntensity) > 0.0005 || this.isFirstFrame || vl.entity.isDirty) {
           slot.currentIntensity = finalIntensity; 
           slot.light.intensity = finalIntensity;
           

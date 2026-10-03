@@ -19,6 +19,7 @@ import { CinematicLogger } from '../../core/engine/runtime/cinematics/cinematic-
 import { ToolsHighlightService } from './toolsservice/tools-highlight.service';
 import { LocalRenderingSystem } from '../../core/engine/runtime/systems/local-rendering.system';
 import { FogOrchestratorService } from '../../core/engine/runtime/systems/fog-orchestrator.service';
+import { PlayerInputService } from '../../core/engine/runtime/systems/player-input.service';
 
 export interface EditorCameraSnapshot {
   target: Vector3;
@@ -45,6 +46,7 @@ export class EditorPlayModeService {
   private highlightSvc = inject(ToolsHighlightService);
   private localRendering = inject(LocalRenderingSystem);
   private fogOrchestrator = inject(FogOrchestratorService);
+  private inputSvc = inject(PlayerInputService);
 
   private editorSnapshot: EditorCameraSnapshot | null = null;
   private pendingFlightParams: any = null;
@@ -77,6 +79,26 @@ export class EditorPlayModeService {
 
     if (!playerEntity || !playerEntity.view) throw new Error("Player not resolved");
     objMesh = playerEntity.view as Mesh;
+
+    // 🔥 Desbloquear autoridad y runtime de movimiento del jugador
+    playerEntity.movementAuthority = 'GAMEPLAY';
+    if (playerEntity.playerRuntime) {
+      playerEntity.playerRuntime.cinematicAnimation = null;
+      playerEntity.playerRuntime.cinematicClipOverride = null;
+      playerEntity.playerRuntime.seqRuntime = {
+        step: null,
+        lockInput: false,
+        allowMovement: true,
+        forceForwardWalk: false,
+        forceForwardRun: false,
+        forceJump: false,
+        blend: 0.1,
+        loop: true,
+        running: false,
+        freezeOrientation: false,
+        rootMotion: Vector3.Zero()
+      };
+    }
 
     this.gameContext.setCameraView(vista);
     this.state.seleccionarObjeto(null);
@@ -134,10 +156,8 @@ export class EditorPlayModeService {
     if (onProgress) onProgress('Compilando Shaders críticos de forma asíncrona...');
     this.gameContext.setRuntimeReadyStage('COMPILING_SHADERS');
 
-    // Pre-compilación asíncrona
     await new Promise<void>((resolve) => {
       const timeoutFallback = setTimeout(() => {
-        console.warn('⚠️ [RuntimeReady] Fallback de tiempo activado para compilación de shaders.');
         resolve();
       }, 2500);
 
@@ -151,103 +171,113 @@ export class EditorPlayModeService {
     });
 
     this.pendingFlightParams = {
-        centroEpiral, targetPos, targetLookAt, playerForward, vista, playerEntity, objMesh
+      centroEpiral, targetPos, targetLookAt, playerForward, vista, playerEntity, objMesh
     };
   }
 
   public async iniciarVueloCamara(vista: CameraViewMode): Promise<void> {
-      return new Promise<void>((resolve) => {
-          if (!this.pendingFlightParams) {
-              resolve();
-              return;
-          }
-          
-          const { centroEpiral, targetPos, targetLookAt, playerForward, objMesh } = this.pendingFlightParams;
+    return new Promise<void>((resolve) => {
+      if (!this.pendingFlightParams) {
+        resolve();
+        return;
+      }
+      
+      const { centroEpiral, targetPos, targetLookAt, playerForward, objMesh } = this.pendingFlightParams;
 
-          if (vista === 'FPS') {
-              this.flightObserver = this.motor3d.getScene().onBeforeRenderObservable.add(() => {
-                const cam = this.ownership.getCamera();
-                if (cam && this.ownership.getOwner() === 'TRANSITION_PROXY') {
-                  const dist = Vector3.Distance(cam.globalPosition, targetPos);
-                  if (dist < 3.5) {
-                    let alpha = Math.max(0.0001, (dist - 0.5) / 3.0);
-                    alpha = alpha * alpha; 
-                    objMesh.visibility = alpha;
-                    objMesh.getChildMeshes().forEach((m: any) => m.visibility = alpha);
-                  }
-                }
-              });
+      if (vista === 'FPS') {
+        this.flightObserver = this.motor3d.getScene().onBeforeRenderObservable.add(() => {
+          const cam = this.ownership.getCamera();
+          if (cam && this.ownership.getOwner() === 'TRANSITION_PROXY') {
+            const dist = Vector3.Distance(cam.globalPosition, targetPos);
+            if (dist < 3.5) {
+              let alpha = Math.max(0.0001, (dist - 0.5) / 3.0);
+              alpha = alpha * alpha; 
+              objMesh.visibility = alpha;
+              objMesh.getChildMeshes().forEach((m: any) => m.visibility = alpha);
+            }
           }
+        });
+      }
 
-          this.cameraSvc.volarHaciaCamaraJuego(centroEpiral, targetPos, targetLookAt, playerForward, vista === 'FPS', () => {
-              if (this.flightObserver) {
-                  this.motor3d.getScene().onBeforeRenderObservable.remove(this.flightObserver);
-                  this.flightObserver = null;
-              }
-              resolve();
-          });
+      this.cameraSvc.volarHaciaCamaraJuego(centroEpiral, targetPos, targetLookAt, playerForward, vista === 'FPS', () => {
+        if (this.flightObserver) {
+          this.motor3d.getScene().onBeforeRenderObservable.remove(this.flightObserver);
+          this.flightObserver = null;
+        }
+        resolve();
       });
+    });
   }
 
   public async estabilizarEntornoVisual(vista: CameraViewMode): Promise<void> {
-      this.gameContext.setRuntimeReadyStage('CHECKING_STABILITY');
-      return new Promise<void>((resolve) => {
-          const scene = this.motor3d.getScene();
-          if (!this.pendingFlightParams) return resolve();
-          const { targetPos } = this.pendingFlightParams;
+    this.gameContext.setRuntimeReadyStage('CHECKING_STABILITY');
+    return new Promise<void>((resolve) => {
+      const scene = this.motor3d.getScene();
+      if (!this.pendingFlightParams) return resolve();
+      const { targetPos } = this.pendingFlightParams;
 
-          this.fogOrchestrator.forceSnapNextFrame();
-          this.localRendering.reconcileAllEntitiesImmediate(targetPos);
-          this.dynamicLighting.forceWarmup(targetPos);
-          this.shadowOrchestrator.reconcileShadows();
+      this.fogOrchestrator.forceSnapNextFrame();
+      this.localRendering.reconcileAllEntitiesImmediate(targetPos);
+      this.dynamicLighting.forceWarmup(targetPos);
+      this.shadowOrchestrator.reconcileShadows();
 
-          requestAnimationFrame(() => {
-            scene.render();
-            requestAnimationFrame(() => {
-              scene.render();
-              this.gameContext.setRuntimeReadyStage('READY');
-              resolve();
-            });
-          });
+      requestAnimationFrame(() => {
+        scene.render();
+        requestAnimationFrame(() => {
+          scene.render();
+          this.gameContext.setRuntimeReadyStage('READY');
+          resolve();
+        });
       });
+    });
   }
 
   public async finalizarEntradaTestLive(vista: CameraViewMode, skippedIntro: boolean): Promise<void> {
-      if (!this.pendingFlightParams) return;
-      const { playerEntity, objMesh } = this.pendingFlightParams;
+    if (!this.pendingFlightParams) return;
+    const { playerEntity, objMesh } = this.pendingFlightParams;
 
-      if (this.flightObserver) {
-          this.motor3d.getScene().onBeforeRenderObservable.remove(this.flightObserver);
-          this.flightObserver = null;
-      }
+    if (this.flightObserver) {
+      this.motor3d.getScene().onBeforeRenderObservable.remove(this.flightObserver);
+      this.flightObserver = null;
+    }
 
-      if (!skippedIntro) {
-          this.transitionSvc.finishTestLiveTransition();
-      }
+    if (!skippedIntro) {
+      this.transitionSvc.finishTestLiveTransition();
+    }
 
-      this.runtimeEngine.startTestSession(playerEntity, vista);
+    // Arrancar el motor de runtime con el jugador libre
+    playerEntity.movementAuthority = 'GAMEPLAY';
+    this.runtimeEngine.startTestSession(playerEntity, vista);
 
-      return new Promise<void>((resolve) => {
-          setTimeout(() => {
-            const canvas = this.motor3d.getEngine().getRenderingCanvas();
-            if (canvas) {
-              const activeCam = this.ownership.getCamera();
-              if (activeCam) {
-                this.motor3d.getEditorCamera()?.detachControl();
-                this.motor3d.getPlayerCameraFPS()?.detachControl();
-                this.motor3d.getPlayerCameraTPS()?.detachControl();
-                activeCam.attachControl(canvas, true);
-                if (vista === 'FPS') {
-                  objMesh.visibility = 1;
-                  objMesh.getChildMeshes().forEach((m: any) => m.visibility = 1);
-                }
-              }
+    return new Promise<void>((resolve) => {
+      setTimeout(() => {
+        const canvas = this.motor3d.getEngine().getRenderingCanvas();
+        if (canvas) {
+          const activeCam = this.ownership.getCamera();
+          if (activeCam) {
+            this.motor3d.getEditorCamera()?.detachControl();
+            this.motor3d.getPlayerCameraFPS()?.detachControl();
+            this.motor3d.getPlayerCameraTPS()?.detachControl();
+            activeCam.attachControl(canvas, true);
+            
+            if (vista === 'FPS') {
+              objMesh.visibility = 1;
+              objMesh.getChildMeshes().forEach((m: any) => m.visibility = 1);
             }
-            this.pendingFlightParams = null;
-            this.gameContext.setRuntimeReadyStage('IDLE');
-            resolve();
-          }, 50);
-      });
+          }
+          canvas.focus();
+        }
+
+        // Forzar activación del sistema de inputs y reseteo de teclas
+        this.inputSvc.start();
+        this.inputSvc.enable();
+        this.inputSvc.resetearInputs();
+
+        this.pendingFlightParams = null;
+        this.gameContext.setRuntimeReadyStage('IDLE');
+        resolve();
+      }, 50);
+    });
   }
 
   public restaurarEscenaPostTest(canSelectHidden: boolean): void {

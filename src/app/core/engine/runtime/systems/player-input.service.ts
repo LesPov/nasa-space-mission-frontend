@@ -1,12 +1,11 @@
-
-// src/app/core/engine/runtime/systems/player-input.service.ts
-
+// file: src/app/core/engine/runtime/systems/player-input.service.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameContextService } from '../../session/game-context.service';
 import { GameEventBusService } from '../../events/game-event-bus.service';
 import { InputRouterService } from '../../session/input-router.service';
 import { Subscription } from 'rxjs';
+import { GameMode } from '../../session/game-mode.model';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInputService implements IUpdatable {
@@ -48,15 +47,17 @@ export class PlayerInputService implements IUpdatable {
       this.inputSub = null;
     }
 
-    // 🔥 FIX WASD REGRESIÓN: Usamos el stream GLOBAL de la ventana.
-    // Esto puentea el problema de pérdida de Focus del Canvas de BabylonJS al usar botones UI
+    // Escucha teclado global en GAMEPLAY, ADMIN_PREVIEW, EDITOR_PLAYTEST y EDITOR_EDITING
     this.inputSub = this.inputRouter.getGlobalKeyboardStream([
       'GAMEPLAY',
       'ADMIN_PREVIEW',
-      'EDITOR_PLAYTEST'
+      'EDITOR_PLAYTEST',
+      'EDITOR_EDITING'
     ]).subscribe(event => {
       this.handleKeyboardEvent(event);
     });
+
+    this.enable();
   }
 
   public stop(): void {
@@ -92,32 +93,44 @@ export class PlayerInputService implements IUpdatable {
     const playerEntity = this.context.activePlayerEntity();
     if (!playerEntity || !playerEntity.playerRuntime) return;
 
+    const mode = this.context.mode();
+    const isPlayingMode = mode === GameMode.TEST_LIVE || mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN;
+
+    // En Test Live, si no hay menú radial abierto ni ventana de diálogo modal, procesamos el input siempre
+    if (!isPlayingMode || this.isRadialMenuOpen) {
+      playerEntity.playerRuntime.intentions.moveForward = false;
+      playerEntity.playerRuntime.intentions.moveBackward = false;
+      playerEntity.playerRuntime.intentions.moveLeft = false;
+      playerEntity.playerRuntime.intentions.moveRight = false;
+      playerEntity.playerRuntime.intentions.run = false;
+      playerEntity.playerRuntime.intentions.jump = false;
+      return;
+    }
+
     const seqRuntime = playerEntity.playerRuntime.seqRuntime;
-    
-    const canReceiveInput = this.context.isPointerLocked() && 
-      (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation)) && 
-      !this.isRadialMenuOpen;
+    const isInputLockedBySequence = !!(seqRuntime && seqRuntime.running && seqRuntime.lockInput);
+
+    if (isInputLockedBySequence) {
+      playerEntity.playerRuntime.intentions.moveForward = false;
+      playerEntity.playerRuntime.intentions.moveBackward = false;
+      playerEntity.playerRuntime.intentions.moveLeft = false;
+      playerEntity.playerRuntime.intentions.moveRight = false;
+      playerEntity.playerRuntime.intentions.run = false;
+      playerEntity.playerRuntime.intentions.jump = false;
+      return;
+    }
 
     const stateComp = playerEntity.playerRuntime;
-    if (canReceiveInput) {
-      stateComp.intentions.moveForward = !!this.inputMap['w'];
-      stateComp.intentions.moveBackward = !!this.inputMap['s'];
-      stateComp.intentions.moveLeft = !!this.inputMap['a'];
-      stateComp.intentions.moveRight = !!this.inputMap['d'];
-      stateComp.intentions.run = !!this.inputMap['shiftleft'] || !!this.inputMap['shiftright'] || !!this.inputMap['shift'];
-      stateComp.intentions.jump = !!this.inputMap[' '] || !!this.inputMap['space'];
-      
-      if (stateComp.intentions.jump) {
-        this.inputMap[' '] = false;
-        this.inputMap['space'] = false;
-      }
-    } else {
-      stateComp.intentions.moveForward = false;
-      stateComp.intentions.moveBackward = false;
-      stateComp.intentions.moveLeft = false;
-      stateComp.intentions.moveRight = false;
-      stateComp.intentions.run = false;
-      stateComp.intentions.jump = false;
+    stateComp.intentions.moveForward = !!(this.inputMap['w'] || this.inputMap['arrowup']);
+    stateComp.intentions.moveBackward = !!(this.inputMap['s'] || this.inputMap['arrowdown']);
+    stateComp.intentions.moveLeft = !!(this.inputMap['a'] || this.inputMap['arrowleft']);
+    stateComp.intentions.moveRight = !!(this.inputMap['d'] || this.inputMap['arrowright']);
+    stateComp.intentions.run = !!(this.inputMap['shiftleft'] || this.inputMap['shiftright'] || this.inputMap['shift']);
+    stateComp.intentions.jump = !!(this.inputMap[' '] || this.inputMap['space']);
+    
+    if (stateComp.intentions.jump) {
+      this.inputMap[' '] = false;
+      this.inputMap['space'] = false;
     }
   }
 

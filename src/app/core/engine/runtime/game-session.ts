@@ -1,4 +1,6 @@
+// file: src/app/core/engine/runtime/game-session.ts
 import { Injectable, inject, computed } from '@angular/core';
+import { Vector3 } from '@babylonjs/core';
 import { GameEntity } from '../entities/game.entity';
 import { EntityManagerService } from '../entities/entity-manager.service';
 import { ObjectAnimationService } from './systems/object-animation.service';
@@ -61,19 +63,19 @@ export class GameSession {
         const owner = this.ownership.getOwner();
         
         if (owner !== 'ADMIN_FREE' && owner !== 'CINEMATIC_DIRECTOR') {
-            this.inputSvc.enable();
-            this.interactionSvc.enable();
+          this.inputSvc.enable();
+          this.interactionSvc.enable();
         }
 
         const mode = this.context.mode();
         if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
-             this.layoutSvc.ocultarMenu(); 
+          this.layoutSvc.ocultarMenu(); 
         }
 
         const cam = this.ownership.getCamera();
         const canvas = this.motor3dSvc.getEngine()?.getRenderingCanvas();
         if (cam && canvas) {
-            try { cam.attachControl(canvas, true); } catch {}
+          try { cam.attachControl(canvas, true); } catch {}
         }
 
       } else if (event.type === 'GamePaused') {
@@ -83,12 +85,12 @@ export class GameSession {
 
         const cam = this.ownership.getCamera();
         if (cam && (this.ownership.getOwner() === 'PLAYER_FPS' || this.ownership.getOwner() === 'PLAYER_TPS')) {
-            try { cam.detachControl(); } catch {}
+          try { cam.detachControl(); } catch {}
         }
 
         const mode = this.context.mode();
         if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
-             this.layoutSvc.mostrarMenu(); 
+          this.layoutSvc.mostrarMenu(); 
         }
       } else if (event.type === 'ToggleCameraRequested') {
         this.toggleCameraUser();
@@ -99,6 +101,28 @@ export class GameSession {
   public start(playerEntity: GameEntity, view: CameraViewMode): void {
     this.context.startGameSession(playerEntity, view);
     
+    // Asegurar que el jugador comience con movimiento 100% libre
+    playerEntity.movementAuthority = 'GAMEPLAY';
+    if (playerEntity.playerRuntime) {
+      playerEntity.playerRuntime.intentions = { 
+        moveForward: false, moveBackward: false, moveLeft: false, 
+        moveRight: false, run: false, jump: false 
+      };
+      playerEntity.playerRuntime.seqRuntime = {
+        step: null,
+        lockInput: false,
+        allowMovement: true,
+        forceForwardWalk: false,
+        forceForwardRun: false,
+        forceJump: false,
+        blend: 0.1,
+        loop: true,
+        running: false,
+        freezeOrientation: false,
+        rootMotion: Vector3.Zero()
+      };
+    }
+
     this.eventBus.emit({ type: 'ObjectFocused', payload: { entity: null, mesh: null, canInteract: false, canInspect: false } });
     this.eventBus.emit({ type: 'MessageRequested', payload: null });
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
@@ -122,10 +146,10 @@ export class GameSession {
     ];
 
     this.systems.forEach(system => {
-        this.loopManager.registerSystem(system);
-        if (typeof (system as any).start === 'function') {
-          (system as any).start();
-        }
+      this.loopManager.registerSystem(system);
+      if (typeof (system as any).start === 'function') {
+        (system as any).start();
+      }
     });
 
     if (playerEntity && playerEntity.view) {
@@ -140,22 +164,33 @@ export class GameSession {
       this.inputSvc.disable();
       this.interactionSvc.disable();
     } else {
+      // Habilitar controles de inmediato en Test Live
+      this.inputSvc.start();
       this.inputSvc.enable();
       this.interactionSvc.enable();
     }
 
     this.cameraSvc.resetearTransiciones();
+    
+    // Iniciar secuencias con autoPlay (ej: luces que parpadean) SIN bloquear al jugador
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
       if (entity.characterConfig) {
         this.playerAnimationSvc.sincronizarAnimaciones(this.motor3dSvc.getScene(), entity);
-        const autoSeq = entity.playerConfig?.sequences.find((s: any) => s.autoPlay);
-        if (autoSeq) {
-          this.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, entity);
+        
+        // Solo autoiniciar secuencia en personajes si NO es el jugador activo
+        if (entity.uid !== playerEntity.uid) {
+          const autoSeq = entity.playerConfig?.sequences.find((s: any) => s.autoPlay);
+          if (autoSeq) {
+            this.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, entity);
+          } else {
+            this.playerAnimationSvc.reproducirIdle(entity);
+          }
         } else {
           this.playerAnimationSvc.reproducirIdle(entity);
         }
       } else if (entity.playerConfig?.sequences) {
+        // Objetos estáticos, luces y pantallas arrancan sus secuencias normalmente
         const autoSeq = entity.playerConfig.sequences.find((s: any) => s.autoPlay);
         if (autoSeq) {
           this.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, entity);
@@ -166,9 +201,9 @@ export class GameSession {
 
   public stop(isTeleport: boolean = false): void {
     if (!isTeleport) {
-       this.context.stopGameSession();
+      this.context.stopGameSession();
     } else {
-       this.context.setPointerLocked(false);
+      this.context.setPointerLocked(false);
     }
     
     this.inputSvc.disable();
@@ -176,10 +211,10 @@ export class GameSession {
     this.sequenceSvc.resetearSecuencias();
 
     this.systems.forEach(system => {
-        this.loopManager.unregisterSystem(system.id);
-        if (typeof (system as any).stop === 'function') {
-          (system as any).stop();
-        }
+      this.loopManager.unregisterSystem(system.id);
+      if (typeof (system as any).stop === 'function') {
+        (system as any).stop();
+      }
     });
     this.systems = [];
 

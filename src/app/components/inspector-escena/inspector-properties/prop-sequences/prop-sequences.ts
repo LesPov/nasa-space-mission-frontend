@@ -1,5 +1,5 @@
-
-import { Component, Input, OnInit, OnChanges, SimpleChanges, inject } from '@angular/core';
+// file: src/app/components/inspector-escena/inspector-properties/prop-sequences/prop-sequences.ts
+import { Component, Input, OnInit, OnChanges, SimpleChanges, inject, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh, AnimationGroup } from '@babylonjs/core';
@@ -15,7 +15,13 @@ const ACTION_ROWS_PROP = [
   { key: 'procMove', label: '↕️ Mover Objeto' }, { key: 'procRotate', label: '🔄 Rotar Objeto' },
   { key: 'playVideo', label: '▶️ Reproducir Video' }, { key: 'pauseVideo', label: '⏸️ Pausar Video' }, { key: 'stopVideo', label: '⏹️ Detener Video' }
 ];
-const ACTION_ROWS_LIGHT = [...ACTION_ROWS_PROP, { key: 'lightOn', label: '💡 Forzar Encender Luz' }, { key: 'lightOff', label: '🔌 Forzar Apagar Luz' }, { key: 'lightPulse', label: '💓 Parpadeo Suave' }, { key: 'lightFlicker', label: '⚡ Parpadeo Roto' }];
+const ACTION_ROWS_LIGHT = [
+  ...ACTION_ROWS_PROP, 
+  { key: 'lightOn', label: '💡 Forzar Encender Luz (100%)' }, 
+  { key: 'lightOff', label: '🔌 Forzar Apagar Luz (0%)' }, 
+  { key: 'lightPulse', label: '💓 Parpadeo Suave (Pulso Senoidal)' }, 
+  { key: 'lightFlicker', label: '⚡ Parpadeo Roto (Flicker)' }
+];
  
 @Component({
   selector: 'app-prop-sequences',
@@ -24,10 +30,10 @@ const ACTION_ROWS_LIGHT = [...ACTION_ROWS_PROP, { key: 'lightOn', label: '💡 F
   templateUrl: './prop-sequences.html',
   styleUrls: ['./prop-sequences.css']
 }) 
-export class PropSequences implements OnInit, OnChanges {
+export class PropSequences implements OnInit, OnChanges, OnDestroy {
   @Input() objeto!: AbstractMesh;
   
-  private previewSvc = inject(EditorPreviewService);
+  public previewSvc = inject(EditorPreviewService);
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN); 
   private sequenceMutator = inject(SequenceMutatorService);
   private entityManager = inject(EntityManagerService);
@@ -44,8 +50,10 @@ export class PropSequences implements OnInit, OnChanges {
 
   ngOnInit() { this.cargarDatos(); }
   ngOnChanges(changes: SimpleChanges) { if (changes['objeto']) this.cargarDatos(); }
+  ngOnDestroy() { this.previewSvc.detenerPreviewSecuencia(); }
 
   cargarDatos() {
+    this.previewSvc.detenerPreviewSecuencia();
     if (!this.objeto) return;
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (!entity) return;
@@ -60,7 +68,9 @@ export class PropSequences implements OnInit, OnChanges {
     
     const config = mergePlayerConfig(entity.playerConfig || null);
     this.sequences = Array.isArray(config.sequences) ? JSON.parse(JSON.stringify(config.sequences)) : [];
-    if (this.sequences.length > 0) this.selectedSequenceId = this.sequences[0].id;
+    if (this.sequences.length > 0 && !this.selectedSequenceId) {
+      this.selectedSequenceId = this.sequences[0].id;
+    }
 
     const validTargets = new Set();
     validTargets.add(this.objeto);
@@ -68,14 +78,14 @@ export class PropSequences implements OnInit, OnChanges {
 
     const rawClips: string[] = [];
     this.motor3dSvc.getScene().animationGroups.forEach((ag: AnimationGroup) => {
-        if (ag.targetedAnimations?.some((ta: any) => validTargets.has(ta.target))) {
-            rawClips.push(ag.name);
-        }
+      if (ag.targetedAnimations?.some((ta: any) => validTargets.has(ta.target))) {
+        rawClips.push(ag.name);
+      }
     });
 
     this.motor3dSvc.getScene().meshes.forEach(m => {
-        const checkEnt = this.entityManager.getEntityByMesh(m);
-        if (checkEnt && checkEnt.type === 'video_plane') rawClips.push(m.name);
+      const checkEnt = this.entityManager.getEntityByMesh(m);
+      if (checkEnt && checkEnt.type === 'video_plane') rawClips.push(m.name);
     });
     this.availableClips = [...new Set(rawClips)];
   }
@@ -92,6 +102,7 @@ export class PropSequences implements OnInit, OnChanges {
   }
 
   eliminarSecuencia(id: string) {
+    this.previewSvc.detenerPreviewSecuencia();
     this.selectedSequenceId = this.sequenceMutator.eliminarSecuencia(this.objeto, this.sequences, id);
   }
 
@@ -108,11 +119,17 @@ export class PropSequences implements OnInit, OnChanges {
   }
 
   probarSecuencia(seq: PlayerClipSequence) {
+    if (this.previewSvc.isPlayingPreview()) {
+      this.previewSvc.detenerPreviewSecuencia();
+      this.animStatus = '⏹️ Previsualización detenida';
+      return;
+    }
+
     this.persist();
     const entity = this.entityManager.getEntityByMesh(this.objeto);
-    if(entity && entity.type !== 'trigger'){
-        this.previewSvc.iniciarPreviewSecuencia(entity, seq.id);
-        this.animStatus = `Visualizando: ${seq.name}...`;
+    if (entity && entity.type !== 'trigger') {
+      this.previewSvc.iniciarPreviewSecuencia(entity, seq.id);
+      this.animStatus = `▶️ Previsualizando en vivo: ${seq.name}...`;
     }
   }
 

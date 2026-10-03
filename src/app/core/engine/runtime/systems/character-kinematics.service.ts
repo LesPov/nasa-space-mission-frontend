@@ -1,4 +1,4 @@
-
+// file: src/app/core/engine/runtime/systems/character-kinematics.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../entities/game.entity';
@@ -45,7 +45,6 @@ export class CharacterKinematicsService implements IUpdatable {
 
     const scene = this.motor3d.getScene();
     const mode = this.context.mode();
-    
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
     const activeCamera = this.ownership.getCamera();
@@ -55,56 +54,73 @@ export class CharacterKinematicsService implements IUpdatable {
     const cameraView = this.context.cameraView();
     const owner = this.ownership.getOwner();
     
-    const playerProfile = getMovementProfileForOwner(owner);
     const entities = this.entityManager.getAllEntities();
 
     for (let i = 0; i < entities.length; i++) {
       const entity = entities[i];
       if (!entity.hasComponent('characterConfig')) continue;
 
-      if (isEditor && entity.movementAuthority === 'GAMEPLAY') {
-          continue; 
+      const isPlayer = !!(activePlayer && entity.uid === activePlayer.uid);
+
+      // En el editor puro no movemos con física a menos que estemos en Test Live
+      if (isEditor && !isPlayer && entity.movementAuthority === 'GAMEPLAY') {
+        continue; 
+      }
+
+      // Si es el jugador en Test Live, FORZAR autoridad a GAMEPLAY para no bloquear WASD
+      if (isPlayer && !isEditor && entity.movementAuthority !== 'GAMEPLAY') {
+        entity.movementAuthority = 'GAMEPLAY';
       }
 
       if (entity.movementAuthority === 'CINEMATIC_FULL') {
-         if (entity.playerRuntime) {
-            entity.playerRuntime.intentions.moveForward = false;
-            entity.playerRuntime.intentions.moveBackward = false;
-            entity.playerRuntime.intentions.moveLeft = false;
-            entity.playerRuntime.intentions.moveRight = false;
-            entity.playerRuntime.intentions.run = false;
-            entity.playerRuntime.intentions.jump = false;
-            const estadoFisico = entity.playerRuntime.physicsState;
-            estadoFisico.velocidadY = 0;
-            estadoFisico.isGrounded = true;
-            if (entity.view) {
-                estadoFisico.highestY = entity.view.position.y;
-            }
-         }
-         continue; 
+        if (entity.playerRuntime) {
+          entity.playerRuntime.intentions.moveForward = false;
+          entity.playerRuntime.intentions.moveBackward = false;
+          entity.playerRuntime.intentions.moveLeft = false;
+          entity.playerRuntime.intentions.moveRight = false;
+          entity.playerRuntime.intentions.run = false;
+          entity.playerRuntime.intentions.jump = false;
+          const estadoFisico = entity.playerRuntime.physicsState;
+          estadoFisico.velocidadY = 0;
+          estadoFisico.isGrounded = true;
+          if (entity.view) {
+            estadoFisico.highestY = entity.view.position.y;
+          }
+        }
+        continue; 
       }
 
-      const isPlayer = activePlayer && entity.uid === activePlayer.uid;
       const vista = isPlayer ? cameraView : 'FPS'; 
-      const activeProfile = isPlayer ? playerProfile : getMovementProfileForOwner('PLAYER_FPS');
-
-      if (isPlayer && activeProfile.type === 'EDITOR_FREE') {
-         if (entity.playerRuntime) {
-             entity.playerRuntime.intentions.moveForward = false;
-             entity.playerRuntime.intentions.moveBackward = false;
-             entity.playerRuntime.intentions.moveLeft = false;
-             entity.playerRuntime.intentions.moveRight = false;
-             entity.playerRuntime.intentions.run = false;
-             entity.playerRuntime.intentions.jump = false;
-         }
-      }
+      // Si es el jugador en Test Live o modo juego, asignar siempre perfil físico para habilitar WASD
+      const activeProfile: MovementProfile = isPlayer
+        ? (mode === GameMode.TEST_LIVE || mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN
+            ? { type: 'PLAYER_PHYSICAL', physicsEnabled: true, gravityEnabled: true, collisionsEnabled: true, jumpEnabled: true, customInputEnabled: true }
+            : getMovementProfileForOwner(owner))
+        : getMovementProfileForOwner('PLAYER_FPS');
 
       const cameraToUseForDirection = (isPlayer && activeProfile.type === 'EDITOR_FREE') 
-          ? (vista === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS()) 
-          : (activeCamera || this.motor3d.getEditorCamera());
+        ? (vista === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS()) 
+        : (activeCamera || this.motor3d.getEditorCamera());
 
-      const seqRuntime = entity.playerRuntime?.seqRuntime;
-      if (!seqRuntime) continue; 
+      let seqRuntime = entity.playerRuntime?.seqRuntime;
+      if (!seqRuntime) {
+        seqRuntime = {
+          step: null,
+          lockInput: false,
+          allowMovement: true,
+          forceForwardWalk: false,
+          forceForwardRun: false,
+          forceJump: false,
+          blend: 0.1,
+          loop: true,
+          running: false,
+          freezeOrientation: false,
+          rootMotion: Vector3.Zero()
+        };
+        if (entity.playerRuntime) {
+          entity.playerRuntime.seqRuntime = seqRuntime;
+        }
+      }
 
       this.updateKinematics(
         scene, 
@@ -119,25 +135,24 @@ export class CharacterKinematicsService implements IUpdatable {
   }
 
   public animationUpdate(dtMs: number): void {
-      const mode = this.context.mode();
-      if (mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME) return;
+    const mode = this.context.mode();
+    if (mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME) return;
 
-      const alpha = this.clock.accumulatedSimTimeMs / this.clock.fixedSubstepMs;
-      const safeAlpha = Math.max(0, Math.min(1, alpha));
+    const alpha = this.clock.accumulatedSimTimeMs / this.clock.fixedSubstepMs;
+    const safeAlpha = Math.max(0, Math.min(1, alpha));
+    
+    const entities = this.entityManager.getAllEntities();
+    for (let i = 0; i < entities.length; i++) {
+      const entity = entities[i];
+      if (!entity.hasComponent('characterConfig')) continue;
+      if (entity.movementAuthority === 'CINEMATIC_FULL') continue;
+
+      const mesh = entity.view as Mesh;
+      if (!mesh) continue;
       
-      const entities = this.entityManager.getAllEntities();
-      for (let i = 0; i < entities.length; i++) {
-          const entity = entities[i];
-          if (!entity.hasComponent('characterConfig')) continue;
-          if (entity.movementAuthority === 'CINEMATIC_FULL') continue;
-
-          const mesh = entity.view as Mesh;
-          if (!mesh) continue;
-          
-          const estadoFisico = entity.playerRuntime.physicsState;
-
-          Vector3.LerpToRef(estadoFisico.previousPosition, estadoFisico.currentPosition, safeAlpha, mesh.position);
-      }
+      const estadoFisico = entity.playerRuntime.physicsState;
+      Vector3.LerpToRef(estadoFisico.previousPosition, estadoFisico.currentPosition, safeAlpha, mesh.position);
+    }
   }
   
   public updateKinematics(
@@ -165,7 +180,11 @@ export class CharacterKinematicsService implements IUpdatable {
     const scaleY = entity.transform.scale.y || 1;
     const playerHalfHeight = (colMeta.sizeY || 0.9) * scaleY;
     const scaleFactor = isNaN(playerHalfHeight) ? 1 : playerHalfHeight / 0.9;
-    const config = entity.playerConfig!;
+    const config = entity.playerConfig || {
+      movement: { walkSpeed: 0.045, runSpeed: 0.09, acceleration: 0.1, rotationSpeed: 0.2 },
+      jump: { force: 0.16, gravity: 0.018, maxFallSpeed: 0.8 },
+      physics: { hardLandingThreshold: 2.5, landingRecoveryFrames: 60 }
+    } as any;
     
     this._move.set(0, 0, 0);
     let isCinematicSequence = false;
@@ -195,14 +214,14 @@ export class CharacterKinematicsService implements IUpdatable {
     const isZeroG = currentWorld.gravityPreset === 'zero_g' || envGravityMag === 0;
 
     if (seqRuntime && seqRuntime.running && seqRuntime.forceJump && profile.jumpEnabled && !estadoFisico.isJumping && !estadoFisico.isFalling) {
-      estadoFisico.velocidadY = (config.jump.force || 0.16) * scaleFactor;
+      estadoFisico.velocidadY = (config.jump?.force || 0.16) * scaleFactor;
       estadoFisico.isJumping = true;
     }
 
     if (profile.gravityEnabled && !isZeroG) {
       this.detectGround(scene, playerHalfHeight, scaleY, collFn, estadoFisico);
     } else {
-      estadoFisico.isGrounded = isZeroG ? false : true;
+      estadoFisico.isGrounded = !isZeroG;
       estadoFisico.velocidadY = 0;
       estadoFisico.isFalling = false;
       estadoFisico.isJumping = false;
@@ -224,6 +243,12 @@ export class CharacterKinematicsService implements IUpdatable {
   }
 
   private updateCameraDirections(referenceCamera: any): void {
+    if (!referenceCamera) {
+      this._forward.set(0, 0, 1);
+      this._right.set(1, 0, 0);
+      return;
+    }
+
     if (referenceCamera.getDirectionToRef) {
       referenceCamera.getDirectionToRef(this._forwardDir, this._forward);
       this._forward.y = 0;
@@ -281,9 +306,9 @@ export class CharacterKinematicsService implements IUpdatable {
     mesh.checkCollisions = false;
     
     if (mesh.getDirectionToRef) {
-        mesh.getDirectionToRef(this._forwardDir, this._pForward);
+      mesh.getDirectionToRef(this._forwardDir, this._pForward);
     } else {
-        this._pForward.copyFrom(mesh.getDirection(this._forwardDir));
+      this._pForward.copyFrom(mesh.getDirection(this._forwardDir));
     }
     
     this._pForward.y = 0;
@@ -318,8 +343,6 @@ export class CharacterKinematicsService implements IUpdatable {
     gravityFactor: number,
     isZeroG: boolean
   ): void {
-    const telemetry = TransformTelemetryService.instance;
-
     const TARGET_FRAME_TIME = 1000 / 60;
     const timeRatio = dtMs / TARGET_FRAME_TIME;
 
@@ -334,6 +357,7 @@ export class CharacterKinematicsService implements IUpdatable {
 
     this.calculateLandingRecovery(estadoFisico, config);
 
+    // Sumar intenciones WASD directas si no hay un bloqueo duro por aterrizaje
     if (!estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
       if (intentions.moveForward) this._move.addInPlace(this._forward);
       if (intentions.moveBackward) this._move.subtractInPlace(this._forward);
@@ -343,26 +367,14 @@ export class CharacterKinematicsService implements IUpdatable {
 
     if (seqRuntime && seqRuntime.running && seqRuntime.allowMovement) {
       let forwardSource = this._forward;
-      
-      if (entity.movementAuthority === 'CINEMATIC_LOCOMOTION') {
-          if (mesh.getDirectionToRef) {
-              mesh.getDirectionToRef(this._forwardDir, this._pForward);
-          } else {
-              this._pForward.copyFrom(mesh.getDirection(this._forwardDir));
-          }
-          this._pForward.y = 0;
-          if (this._pForward.lengthSquared() < 0.0001) this._pForward.set(0, 0, 1);
-          this._pForward.normalize();
-          forwardSource = this._pForward;
-      }
 
       if (seqRuntime.forceForwardRun) {
-         forwardSource.scaleToRef((config.movement.runSpeed || 0.09) * scaleFactor * timeRatio, this._pForward);
-         this._move.addInPlace(this._pForward);
+        forwardSource.scaleToRef((config.movement?.runSpeed || 0.09) * scaleFactor * timeRatio, this._pForward);
+        this._move.addInPlace(this._pForward);
       }
       if (seqRuntime.forceForwardWalk) {
-         forwardSource.scaleToRef((config.movement.walkSpeed || 0.045) * scaleFactor * timeRatio, this._pForward);
-         this._move.addInPlace(this._pForward);
+        forwardSource.scaleToRef((config.movement?.walkSpeed || 0.045) * scaleFactor * timeRatio, this._pForward);
+        this._move.addInPlace(this._pForward);
       }
     }
 
@@ -370,15 +382,14 @@ export class CharacterKinematicsService implements IUpdatable {
     estadoFisico.isRunning = intentions.run || (seqRuntime ? seqRuntime.forceForwardRun : false);
 
     if (estadoFisico.isMoving && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
-      const modSpeed = (estadoFisico.isRunning ? (config.movement.runSpeed || 0.09) : (config.movement.walkSpeed || 0.045)) * scaleFactor;
+      const walkSpd = config.movement?.walkSpeed || 0.045;
+      const runSpd = config.movement?.runSpeed || 0.09;
+      const modSpeed = (estadoFisico.isRunning ? runSpd : walkSpd) * scaleFactor;
       
-      if (!seqRuntime || !seqRuntime.running || !seqRuntime.allowMovement) {
-        this._move.normalize().scaleInPlace(modSpeed * timeRatio);
-      }
+      this._move.normalize().scaleInPlace(modSpeed * timeRatio);
     }
 
-    const qBeforeRot = mesh.rotationQuaternion ? mesh.rotationQuaternion.clone() : null;
-
+    // Orientación del personaje
     if (!seqRuntime || (!seqRuntime.lockInput && !seqRuntime.freezeOrientation)) {
       if (vista === 'TPS' && estadoFisico.isMoving) {
         const targetAngle = Math.atan2(this._move.x, this._move.z);
@@ -386,9 +397,7 @@ export class CharacterKinematicsService implements IUpdatable {
           if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
           Quaternion.FromEulerAnglesToRef(0, targetAngle, 0, this._targetQuat);
           
-          let baseRotSpeed = config.movement.rotationSpeed || 0.2;
-          if (baseRotSpeed === 0.1) baseRotSpeed = 0.2;
-
+          let baseRotSpeed = config.movement?.rotationSpeed || 0.2;
           const slerpFactor = 1 - Math.pow(1 - baseRotSpeed, timeRatio);
           Quaternion.SlerpToRef(mesh.rotationQuaternion, this._targetQuat, slerpFactor, mesh.rotationQuaternion);
         }
@@ -401,51 +410,34 @@ export class CharacterKinematicsService implements IUpdatable {
       }
     }
 
-    if (telemetry && telemetry.enabled && mesh.rotationQuaternion) {
-        telemetry.logEvent(
-          entity.uid, entity.rol, 'CharacterKinematics', 'rotationQuaternion', 'WRITE',
-          qBeforeRot, mesh.rotationQuaternion, telemetry.calculateQuaternionError(qBeforeRot, mesh.rotationQuaternion)
-        );
-    }
-
-    const posBeforeGrav = mesh.position.clone();
-
     this.calculateGravityAndJump(mesh, estadoFisico, config, intentions, seqRuntime, scaleFactor, scaleY, profile, gravityFactor, isZeroG);
 
     if (isNaN(this._move.x)) this._move.x = 0;
     if (isNaN(this._move.y)) this._move.y = 0;
     if (isNaN(this._move.z)) this._move.z = 0;
-    
-    if (telemetry && telemetry.enabled) {
-        telemetry.logEvent(entity.uid, entity.rol, 'CharacterKinematics', 'velocidadY', 'WRITE', null, estadoFisico.velocidadY);
-    }
 
     if (profile.collisionsEnabled) {
       if (this._move.lengthSquared() > 0.000001) {
-         mesh.moveWithCollisions(this._move);
+        mesh.moveWithCollisions(this._move);
       }
     } else {
       if (this._move.lengthSquared() > 0.000001) {
-         mesh.position.addInPlace(this._move);
+        mesh.position.addInPlace(this._move);
       }
-    }
-
-    if (telemetry && telemetry.enabled) {
-        telemetry.logEvent(entity.uid, entity.rol, 'CharacterKinematics', 'position', 'WRITE', posBeforeGrav, mesh.position);
     }
   }
 
   private calculateLandingRecovery(estadoFisico: any, config: any): void {
     if (estadoFisico.isHardLanding) {
       estadoFisico.landingFrame++;
-      if (estadoFisico.landingFrame > (config.physics.landingRecoveryFrames || 60)) {
+      if (estadoFisico.landingFrame > (config.physics?.landingRecoveryFrames || 60)) {
         estadoFisico.isHardLanding = false;
         estadoFisico.isRecoveringFromFall = true;
         estadoFisico.recoveryFrame = 0;
       }
     } else if (estadoFisico.isRecoveringFromFall) {
       estadoFisico.recoveryFrame++;
-      if (estadoFisico.recoveryFrame > (config.physics.landingRecoveryFrames || 60)) {
+      if (estadoFisico.recoveryFrame > (config.physics?.landingRecoveryFrames || 60)) {
         estadoFisico.isRecoveringFromFall = false;
       }
     }
@@ -458,24 +450,27 @@ export class CharacterKinematicsService implements IUpdatable {
     intentions: any, 
     seqRuntime: SeqRuntime | null, 
     scaleFactor: number, 
-    scaleY: number,
-    profile: MovementProfile,
-    gravityFactor: number,
+    scaleY: number, 
+    profile: MovementProfile, 
+    gravityFactor: number, 
     isZeroG: boolean
   ): void {
     if (!profile.gravityEnabled || isZeroG) {
-       estadoFisico.isGrounded = isZeroG ? false : true;
-       estadoFisico.velocidadY = 0;
-       estadoFisico.isFalling = false;
-       estadoFisico.isJumping = false;
-       this._move.y = 0;
-       return;
+      estadoFisico.isGrounded = !isZeroG;
+      estadoFisico.velocidadY = 0;
+      estadoFisico.isFalling = false;
+      estadoFisico.isJumping = false;
+      this._move.y = 0;
+      return;
     }
+
+    const jumpForce = config.jump?.force || 0.16;
+    const baseGrav = config.jump?.gravity || 0.018;
 
     if (estadoFisico.isGrounded) {
       if (estadoFisico.isFalling || estadoFisico.isJumping) {
         const fallDistance = estadoFisico.highestY - mesh.position.y;
-        if (fallDistance > (config.physics.hardLandingThreshold || 2.5) * scaleY) {
+        if (fallDistance > (config.physics?.hardLandingThreshold || 2.5) * scaleY) {
           estadoFisico.isHardLanding = true;
           estadoFisico.landingFrame = 0;
           this._move.set(0, 0, 0);
@@ -490,27 +485,27 @@ export class CharacterKinematicsService implements IUpdatable {
       const wantsToJump = profile.jumpEnabled && (intentions.jump || (seqRuntime ? seqRuntime.forceJump : false));
 
       if (!estadoFisico.isMoving && !wantsToJump) {
-         estadoFisico.velocidadY = 0;
+        estadoFisico.velocidadY = 0;
       } else if (wantsToJump && !estadoFisico.isHardLanding && !estadoFisico.isRecoveringFromFall) {
-         estadoFisico.velocidadY = (config.jump.force || 0.16) * scaleFactor;
-         estadoFisico.isJumping = true;
-         estadoFisico.isGrounded = false;
-         intentions.jump = false; 
+        estadoFisico.velocidadY = jumpForce * scaleFactor;
+        estadoFisico.isJumping = true;
+        estadoFisico.isGrounded = false;
+        intentions.jump = false; 
       } else {
-         if (estadoFisico.groundNormal && estadoFisico.groundNormal.y > 0.999) {
-             estadoFisico.velocidadY = 0;
-         } else {
-             estadoFisico.velocidadY = -Math.abs((config.jump.gravity || 0.018) * scaleFactor * gravityFactor);
-         }
+        if (estadoFisico.groundNormal && estadoFisico.groundNormal.y > 0.999) {
+          estadoFisico.velocidadY = 0;
+        } else {
+          estadoFisico.velocidadY = -Math.abs(baseGrav * scaleFactor * gravityFactor);
+        }
       }
     } else {
       if (mesh.position.y > estadoFisico.highestY) estadoFisico.highestY = mesh.position.y;
 
-      const gravityMul = estadoFisico.isJumping ? 0.55 : (config.jump.jumpFallMultiplier || 1.0);
-      const effectiveGrav = (config.jump.gravity || 0.018) * scaleFactor * gravityMul * gravityFactor;
+      const gravityMul = estadoFisico.isJumping ? 0.55 : (config.jump?.jumpFallMultiplier || 1.0);
+      const effectiveGrav = baseGrav * scaleFactor * gravityMul * gravityFactor;
       estadoFisico.velocidadY -= effectiveGrav;
       
-      const maxFallSpeed = (config.jump.maxFallSpeed || 0.8) * Math.sqrt(Math.max(0.1, gravityFactor));
+      const maxFallSpeed = (config.jump?.maxFallSpeed || 0.8) * Math.sqrt(Math.max(0.1, gravityFactor));
 
       if (estadoFisico.velocidadY < -maxFallSpeed * scaleFactor) {
         estadoFisico.velocidadY = -maxFallSpeed * scaleFactor;

@@ -3,8 +3,8 @@ import { LightingDistanceThresholds, LightingPolicy, ReferenceResolutionStrategy
 
 /**
  * Política de iluminación exclusiva para el modo TEST_LIVE y FINAL_USER.
- * Aplica inercia predictiva, ahorro de recursos y obedece estrictamente 
- * los parámetros de distancia configurados en las entidades.
+ * Aplica inercia predictiva para la asignación de memoria, pero respeta
+ * estrictamente los umbrales estáticos para la curva visual.
  */
 export class RuntimeLightingPolicy implements LightingPolicy {
     
@@ -18,39 +18,31 @@ export class RuntimeLightingPolicy implements LightingPolicy {
         speed: number
     ): LightingDistanceThresholds {
         
-        // Reglas estrictas configuradas por la entidad
+        // Umbrales visuales estrictos (R_FULL y R_ZERO)
         const actDist = Math.max(0.1, baseActivation ?? 65);
         const deactDist = Math.max(actDist + 0.1, baseDeactivation ?? (actDist + 10));
         
-        let dynamicDeactDist = deactDist;
+        // 🔥 FIX FASE 2: La desactivación visual (R_ZERO) ya NO se infla con la velocidad.
+        // Esto garantiza que el Fade Out progrese incluso mientras el jugador corre.
+        const dynamicDeactDist = deactDist;
         
-        // Inercia Predictiva de Movimiento (Expande exclusivamente la desactivación y preparación)
+        // Inercia Predictiva de Movimiento exclusiva para PRE-ASIGNAR slots de memoria (Preparación)
+        let prepareDist = dynamicDeactDist + 30;
         if (speed > 2.0) {
-            dynamicDeactDist += speed * 1.5; 
+            prepareDist += speed * 1.5; 
         }
-        
-        const prepareDist = dynamicDeactDist + 30;
 
         // Reglas de Sombras para Runtime
         const sActDist = Math.max(0.1, baseShadowActivation ?? 30);
         const sDeactDist = Math.max(sActDist + 0.1, baseShadowDeactivation ?? (sActDist + 6));
         
-        let dynSAct = sActDist;
-        let dynSDeact = sDeactDist;
-        
-        // Inercia Predictiva de Sombras
-        if (speed > 2.0) {
-            dynSAct += speed * 1.5;
-            dynSDeact += speed * 1.5;
-        }
-
         return {
             activation: actDist,
             deactivation: deactDist,
             dynamicDeactivation: dynamicDeactDist,
             prepare: prepareDist,
-            shadowActivation: dynSAct,
-            shadowDeactivation: dynSDeact
+            shadowActivation: sActDist,
+            shadowDeactivation: sDeactDist
         };
     }
 }

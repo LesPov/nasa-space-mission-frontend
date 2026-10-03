@@ -15,9 +15,17 @@ export class LightPoolService {
   private dirPool: PoolSlot[] = []; 
   
   public isInitialized = false;
+  private currentScene: Scene | null = null;
 
   public initializePool(scene: Scene): void {
-      this.clearPools();
+      // 🔥 FIX FASE 1: Idempotencia. Si el pool ya existe para esta escena, lo reutilizamos intacto.
+      // Evita la recompilación masiva de Shaders de profundidad.
+      if (this.isInitialized && this.currentScene === scene) {
+          return; 
+      }
+
+      this.disposePools(); 
+      this.currentScene = scene;
 
       const engine = this.motor3d.getEngine();
       const maxUbo = (engine.getCaps() as { maxUniformBufferBindings?: number }).maxUniformBufferBindings || 12; 
@@ -79,6 +87,14 @@ export class LightPoolService {
       this.isInitialized = true;
   }
 
+  // 🔥 FIX FASE 1: Reseteo Suave para Runtime (Libera lógica, no WebGL)
+  public resetPools(): void {
+      const topUids = new Set<string>(); // Set vacío fuerza la liberación total
+      this.getAllSlots().forEach(slot => {
+          this.releaseSlot(slot, topUids);
+      });
+  }
+
   public getPointPool(): PoolSlot[] { return this.pointPool; }
   public getSpotPool(): PoolSlot[] { return this.spotPool; }
   public getDirPool(): PoolSlot[] { return this.dirPool; }
@@ -104,12 +120,15 @@ export class LightPoolService {
           if (slot.sg && slot.sg.getShadowMap()?.renderList) {
               slot.sg.getShadowMap()!.renderList!.length = 0; 
           }
-          slot.currentIntensity = 0; slot.light.intensity = 0; 
+          slot.currentIntensity = 0; 
+          slot.light.intensity = 0; 
+          if (slot.type !== 'directional') (slot.light as any).position.set(0, -99999, 0);
           this.containmentSvc.clearContainment(slot.light as any);
       }
   }
 
-  public clearPools(): void {
+  // 🔥 FIX FASE 1: Reseteo Duro (Destruye WebGL). Renombrado de clearPools a disposePools.
+  public disposePools(): void {
       const cleanPool = (pool: PoolSlot[]) => {
           pool.forEach(p => { 
             this.containmentSvc.clearContainment(p.light as any);
@@ -123,5 +142,6 @@ export class LightPoolService {
       
       this.pointPool = []; this.spotPool = []; this.dirPool = [];
       this.isInitialized = false;
+      this.currentScene = null;
   }
 }

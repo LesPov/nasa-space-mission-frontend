@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { DirectionalLight, Vector3, CascadedShadowGenerator, ShadowGenerator, AbstractMesh, Mesh, InstancedMesh, Tags } from '@babylonjs/core';
+import { DirectionalLight, Vector3, CascadedShadowGenerator, Scene, AbstractMesh, Mesh, InstancedMesh, Tags } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -26,6 +26,7 @@ export class ShadowOrchestratorService implements IUpdatable {
 
   private mainSun: DirectionalLight | null = null;
   private shadowGenerator: CascadedShadowGenerator | null = null;
+  private currentScene: Scene | null = null;
   
   private static _fallbackPos = Vector3.Zero();
   private _tempOffset = Vector3.Zero();
@@ -35,7 +36,6 @@ export class ShadowOrchestratorService implements IUpdatable {
 
   constructor() {
     this.eventBus.events$.subscribe(e => {
-        // 🔥 FIX SOMBRAS: Revalida la lista de sombras del CSM si el Culling restituyó objetos visibles
         if (e.type === 'RuntimeVisibilityBatchChanged') {
             this.forceRebuild = true;
         }
@@ -56,8 +56,7 @@ export class ShadowOrchestratorService implements IUpdatable {
   }
 
   public reconcileShadows(): void {
-      this.stop();
-      this.start();
+      this.asignarObjetosASombrasDeLuces();
   }
 
   private getReferencePosition(): Vector3 {
@@ -97,6 +96,12 @@ export class ShadowOrchestratorService implements IUpdatable {
   }
 
   public stop(): void {
+      // 🔥 FIX FASE 1: Se remueve la destrucción total (`.dispose()`) del Sol y del ShadowGenerator
+      // en el lifecycle normal. Ahora son persistentes a nivel de escena. 
+      // Esto evita la recompilación masiva (y congelamiento) de shaders al entrar/salir de Test Live.
+  }
+
+  public dispose(): void {
       if (this.mainSun) {
           this.mainSun.dispose();
           this.mainSun = null;
@@ -105,6 +110,7 @@ export class ShadowOrchestratorService implements IUpdatable {
           this.shadowGenerator.dispose();
           this.shadowGenerator = null;
       }
+      this.currentScene = null;
   }
 
   public update(dtMs: number): void {
@@ -144,6 +150,11 @@ export class ShadowOrchestratorService implements IUpdatable {
   public asignarObjetosASombrasDeLuces(): void {
     const scene = this.motor3d.getScene();
     if (!scene) return;
+
+    if (this.currentScene !== scene) {
+        this.dispose();
+        this.currentScene = scene;
+    }
 
     if (!this.mainSun || this.mainSun.isDisposed()) {
        const w = this.worldSettings.settings();

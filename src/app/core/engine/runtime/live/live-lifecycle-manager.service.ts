@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Camera, AbstractMesh, Tags, Vector3 } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -47,7 +48,6 @@ export class LiveLifecycleManagerService {
   private savedEditorCameraState: EditorSnapshotState | null = null;
   private preLiveOwner: CameraOwner = 'NONE';
   private preLiveCamera: Camera | null = null;
-  private testPlayerEntity: GameEntity | null = null;
 
   public get isRunning(): boolean {
     return this.isLiveActive;
@@ -74,42 +74,8 @@ export class LiveLifecycleManagerService {
     this.entityManager.getAllEntities().forEach(e => {
         e.createAuthoringBackup();
     });
-  }
-
-  public startLiveSession(playerEntity: GameEntity, vista: CameraViewMode): void {
+    
     this.isLiveActive = true;
-    this.testPlayerEntity = playerEntity;
-
-    this.gameContext.setEditorSubmode(vista === 'TPS' ? 'PLAYTEST_TPS' : 'PLAYTEST_FPS');
-
-    const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
-    const editorCam = this.motor3d.getEditorCamera();
-    if (editorCam && canvas) {
-      try { editorCam.detachControl(); } catch {}
-    }
-
-    this.setEditorElementsVisibility(false);
-
-    this.gameSession.start(playerEntity, vista);
-
-    if (playerEntity && playerEntity.view) {
-      this.localRendering.reconcileAllEntitiesImmediate(playerEntity.view.getAbsolutePosition());
-    } else {
-      this.localRendering.reconcileAllEntitiesImmediate();
-    }
-
-    const targetCam = vista === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS();
-    this.ownership.setCamera(vista === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', targetCam, canvas, true);
-
-    this.playerCamSvc.updateFirstPersonVisibility(vista === 'FPS');
-
-    if (canvas && vista === 'FPS') {
-      setTimeout(() => {
-        if (this.isLiveActive) {
-          this.inputRouter.lockPointer();
-        }
-      }, 100);
-    }
   }
 
   public endLiveSession(): void {
@@ -147,79 +113,12 @@ export class LiveLifecycleManagerService {
     this.playerTriggerSvc.start();
     this.sceneNodesSvc.actualizarListaNodos();
 
-    this.setEditorElementsVisibility(true);
-    this.restoreEditorCamera();
-
     this.gameContext.setEditorSubmode('EDITING');
     this.gameContext.setSelectedNode(null);
     this.gameContext.setHoveredObject(null);
 
-    this.testPlayerEntity = null;
     this.isLiveActive = false;
 
     CinematicLogger.logTestLiveLifecycle('EXIT', 'EDITOR', this.motor3d.getEditorCamera()?.name);
-  }
-
-  private setEditorElementsVisibility(visible: boolean): void {
-    const scene = this.motor3d.getScene();
-    if (!scene) return;
-
-    scene.meshes.forEach(m => {
-      if (Tags.MatchesQuery(m, 'editor_only')) {
-        m.setEnabled(visible);
-        m.isVisible = visible;
-      }
-
-      const entity = this.entityManager.getEntityByMesh(m);
-      if (entity) {
-        if (entity.isManuallyHidden) {
-          m.setEnabled(false);
-          m.isVisible = false;
-          return;
-        }
-
-        if (entity.type.startsWith('light_') && !entity.visual.assetId) {
-          m.isVisible = visible;
-        }
-        if (entity.type === 'image_plane') {
-          m.isVisible = visible;
-        }
-        if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') {
-          m.isVisible = visible;
-        }
-        if (entity.rol === 'spawn_point') {
-          m.setEnabled(visible);
-          m.isVisible = visible;
-        }
-      }
-    });
-  }
-
-  private restoreEditorCamera(): void {
-    const editorCam = this.motor3d.getEditorCamera();
-    const canvas = this.motor3d.getEngine()?.getRenderingCanvas();
-
-    if (!editorCam) return;
-
-    if (this.savedEditorCameraState) {
-      editorCam.setTarget(this.savedEditorCameraState.cameraTarget.clone());
-      editorCam.radius = this.savedEditorCameraState.cameraRadius;
-      editorCam.alpha = this.savedEditorCameraState.cameraAlpha;
-      editorCam.beta = this.savedEditorCameraState.cameraBeta;
-
-      editorCam.inertialAlphaOffset = 0;
-      editorCam.inertialBetaOffset = 0;
-      editorCam.inertialRadiusOffset = 0;
-      editorCam.inertialPanningX = 0;
-      editorCam.inertialPanningY = 0;
-    }
-
-    this.ownership.setCamera('EDITOR', editorCam, canvas, true);
-
-    if (canvas) {
-      setTimeout(() => {
-        try { editorCam.attachControl(canvas, true); } catch {}
-      }, 50);
-    }
   }
 }

@@ -1,7 +1,7 @@
 
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
-import { Color3, Vector3, AbstractMesh, RenderTargetTexture } from '@babylonjs/core';
+import { Color3, Vector3, AbstractMesh, RenderTargetTexture, SpotLight, DirectionalLight } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 import { WorldSettingsService } from '../../../world/world-settings.service';
@@ -60,8 +60,6 @@ export class DynamicLightingSystem implements IUpdatable {
 
   constructor() {
     this.eventBus.events$.subscribe(e => {
-        // 🔥 FIX SOMBRAS: Escucha cuando el LocalRenderingSystem restaura un objeto visible 
-        // para invalidar y re-renderizar las sombras de las luces que lo cubran.
         if (e.type === 'RuntimeVisibilityBatchChanged') {
             this.forceShadowRebuild = true;
         }
@@ -71,17 +69,27 @@ export class DynamicLightingSystem implements IUpdatable {
   public getProfilerMetrics() {
     let activeSlots = 0;
     let shadowedSlots = 0;
+    const slotsInfo: { id: string, assigned: boolean, hasSg: boolean, renderListSize: number }[] = [];
+    
     this.lightPool.getAllSlots().forEach(s => {
       if (s.assignedEntityUid) {
         activeSlots++;
         if (s.sg) shadowedSlots++;
       }
+      slotsInfo.push({
+        id: `${s.type}_${s.index}`,
+        assigned: !!s.assignedEntityUid,
+        hasSg: !!s.sg,
+        renderListSize: s.sg ? (s.sg.getShadowMap()?.renderList?.length || 0) : 0
+      });
     });
 
     return {
       totalVirtual: this.lightRegistry.getVirtualLights().length,
       activePool: activeSlots,
-      shadowedPool: shadowedSlots
+      shadowedPool: shadowedSlots,
+      slots: slotsInfo,
+      castersCacheSize: this.lightShadows.getCastersCacheSize()
     };
   }
 
@@ -106,12 +114,12 @@ export class DynamicLightingSystem implements IUpdatable {
       const scene = this.motor3d.getScene();
       if (!scene) return;
 
-      if (!this.lightPool.isInitialized) {
-          this.lightPool.initializePool(scene);
-          this.lightRegistry.clear();
-          this.lightShadows.clearCache();
-          this.containmentSvc.clearAllCache();
-      }
+      this.lightPool.initializePool(scene);
+      this.lightPool.resetPools(); 
+
+      this.lightRegistry.clear();
+      this.lightShadows.clearCache();
+      this.containmentSvc.clearAllCache();
 
       this.lightShadows.refreshShadowCastersCache();
       this.lightRegistry.refreshVirtualLightsRegistry();
@@ -126,11 +134,19 @@ export class DynamicLightingSystem implements IUpdatable {
       this.lastRefPos.copyFrom(this.getReferencePosition('AUTO'));
       this.playerVelocity.setAll(0);
       this.spatialScheduler.reset();
-      this.spatialScheduler.forceNextEvaluation();
+      
+      const scene = this.motor3d.getScene();
+      if (scene) {
+          this.lightPool.initializePool(scene);
+          this.lightPool.resetPools(); 
+          this.lightShadows.refreshShadowCastersCache(); 
+          this.lightRegistry.refreshVirtualLightsRegistry(); 
+          this.spatialScheduler.forceNextEvaluation();
+      }
   }
 
   public stop(): void {
-      this.lightPool.clearPools();
+      this.lightPool.resetPools(); 
       this.lightRegistry.clear();
       this.lightShadows.clearCache();
       this.containmentSvc.clearAllCache();
@@ -139,9 +155,17 @@ export class DynamicLightingSystem implements IUpdatable {
   }
 
   public forceWarmup(refPos: Vector3): void {
-      if (!this.lightPool.isInitialized) this.prepareAllLights();
       const scene = this.motor3d.getScene();
       if (!scene) return;
+      
+      this.lightPool.initializePool(scene);
+      
+      if (this.lightRegistry.getVirtualLights().length === 0) {
+          this.lightRegistry.refreshVirtualLightsRegistry();
+      }
+      if (this.lightShadows.getCastersCacheSize() === 0) {
+          this.lightShadows.refreshShadowCastersCache();
+      }
 
       const isEditorPure = this.context.mode() === GameMode.EDITOR || this.context.mode() === GameMode.EDITING_IN_GAME;
       const activeVirtuals = this.lightRegistry.getVirtualLights();
@@ -198,10 +222,11 @@ export class DynamicLightingSystem implements IUpdatable {
   }
 
   public syncLightImmediate(entity: GameEntity, forceUpdate: boolean = false): void {
-      if (!this.lightPool.isInitialized) this.prepareAllLights();
       const scene = this.motor3d.getScene();
       const lightComp = entity.light;
       if (!lightComp || !scene) return;
+      
+      this.lightPool.initializePool(scene);
 
       const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
       const hexColor = isBW ? lightComp.lightColorBW : lightComp.lightColor;
@@ -244,7 +269,9 @@ export class DynamicLightingSystem implements IUpdatable {
 
       const mode = this.context.mode();
       const isEditorPure = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
-      const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, dtMs * 0.005);
+      
+      // 🔥 FIX FASE 2: Lerp speed ajustado a 0.012 para una respuesta más elástica y orgánica a la curva.
+      const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, dtMs * 0.012);
       
       const refPos = this.getReferencePosition('AUTO');
       if (dtMs > 0 && !this.isFirstFrame) {
@@ -294,12 +321,15 @@ export class DynamicLightingSystem implements IUpdatable {
       for(let i = 0; i < activeVirtuals.length; i++) {
           const vl = activeVirtuals[i];
           const lightComp = vl.entity.light;
-          if (!lightComp || !vl.entity.view || !lightComp.enabled || !vl.isLightInRange) vl.targetMultiplier = 0;
+          if (!lightComp || !vl.entity.view || !lightComp.enabled || (!vl.isLightInRange && vl.targetMultiplier === 0)) vl.targetMultiplier = 0;
 
           const matchedSlot = this.lightPool.findSlotByUid(vl.entity.uid);
+          
           if (matchedSlot && matchedSlot._isNewAssignment) {
+              // Asignación nueva: empezamos desde donde manda la curva de golpe (sin lerp)
               vl.currentMultiplier = vl.targetMultiplier;
           } else {
+              // Interpolación continua (Smooth Fading) hacia el Target Multiplier de la Curva (Fase 2)
               const multDiff = Math.abs(vl.targetMultiplier - vl.currentMultiplier);
               if (multDiff > 0.001) {
                   vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
@@ -364,10 +394,12 @@ export class DynamicLightingSystem implements IUpdatable {
       }
       
       if (slot.type === 'spot') {
-          (slot.light as any).direction.copyFrom(this._tempDir);
-          (slot.light as any).angle = (lightComp.angle || 60) * (Math.PI / 180);
+          const spot = slot.light as SpotLight;
+          spot.direction.copyFrom(this._tempDir);
+          spot.angle = (vl.entity.light?.angle || 60) * (Math.PI / 180);
       } else if (slot.type === 'directional') {
-          (slot.light as any).direction.copyFrom(this._tempDir);
+          const dirL = slot.light as DirectionalLight;
+          dirL.direction.copyFrom(this._tempDir);
       }
 
       if (slot.type !== 'directional') {
@@ -378,6 +410,7 @@ export class DynamicLightingSystem implements IUpdatable {
       
       slot.light.diffuse.copyFrom(vl.baseColor);
 
+      // Multiplicador aplicado en base a intensidad animada * el fade-out espacial de Fase 2
       const animatedIntensity = lightComp.renderIntensity ?? lightComp.intensity ?? 1.0;
       let finalIntensity = animatedIntensity * vl.currentMultiplier;
       if (!lightComp.enabled || this.profilerDisableLocalLights) finalIntensity = 0;

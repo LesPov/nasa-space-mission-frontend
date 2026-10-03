@@ -26,8 +26,11 @@ export class FogOrchestratorService implements IUpdatable {
   private curR = 0; private curG = 0; private curB = 0;
   private curStart = 500000; private curEnd = 500000;
 
-  // 🔥 OPTIMIZACIÓN: Prevención masiva del Garbage Collector.
   private targetColorObj = new Color3(0, 0, 0);
+
+  public forceSnapNextFrame(): void {
+    this.firstFrame = true;
+  }
 
   private hexToColor3(hex: string, result: Color3): void {
     const cleanHex = hex.replace('#', '');
@@ -75,7 +78,6 @@ export class FogOrchestratorService implements IUpdatable {
 
     let targetEntity = this.context.activePlayerEntity();
 
-    // Si estamos en Editor, buscamos a quién pegarle la niebla de previsualización
     if (!isPlaying && !targetEntity) {
         const entities = this.entityManager.getAllEntities();
         for (let i = 0; i < entities.length; i++) {
@@ -96,7 +98,6 @@ export class FogOrchestratorService implements IUpdatable {
     let useFog = false;
     let activeLevels: FogLevel[] = [];
 
-    // Lógica condicional de activación según el estado del Editor/Juego
     if (targetEntity?.playerConfig?.fog?.enabled) {
         if (isPlaying || (mode === GameMode.EDITING_IN_GAME && !isFogDisabledTemp)) {
             useFog = true;
@@ -115,9 +116,6 @@ export class FogOrchestratorService implements IUpdatable {
         const renderDistance = isBW ? (isFPS ? fog.renderDistanceFpsBW : fog.renderDistanceTpsBW) : (isFPS ? fog.renderDistanceFPS : fog.renderDistanceTPS);
         activeLevels = isBW ? (isFPS ? fog.levelsFpsBW : fog.levelsTpsBW) : (isFPS ? fog.levelsFPS : fog.levelsTPS);
 
-        // 🔥 FIX RENDIMIENTO: Ya NO tocamos la maxZ de la cámara. 
-        // BabylonJS sufre caídas de FPS al recalcular el Frustum dinámicamente si maxZ cambia en cada frame.
-        // La cámara renderiza siempre a la lejanía máxima, pero la niebla lo oculta visualmente.
         if (this.firstFrame) {
             this.motor3d.getPlayerCameraFPS().maxZ = 500000;
             this.motor3d.getPlayerCameraTPS().maxZ = 500000;
@@ -127,7 +125,6 @@ export class FogOrchestratorService implements IUpdatable {
         const renderMaxZ = (Number(renderDistance) || 150);
         shadowLimit = renderMaxZ;
         
-        // Mantenemos la niebla nativa de BabylonJS pero sin afectar la cámara
         this.curStart = isPlaying ? (renderMaxZ * 0.3) : (renderMaxZ * 0.8);
         this.curEnd = renderMaxZ;
     } else {

@@ -1,6 +1,6 @@
 
 import { Injectable, inject } from '@angular/core';
-import { Mesh, Tags, Vector3, Observer, Scene, ArcRotateCamera, AbstractMesh } from '@babylonjs/core';
+import { Mesh, Tags, Vector3, Scene, ArcRotateCamera, AbstractMesh } from '@babylonjs/core';
 
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { EditorStateService } from './editor-state.service';
@@ -18,6 +18,7 @@ import { ShadowOrchestratorService } from '../../core/engine/runtime/shadows/sha
 import { CinematicLogger } from '../../core/engine/runtime/cinematics/cinematic-logger';
 import { ToolsHighlightService } from './toolsservice/tools-highlight.service';
 import { LocalRenderingSystem } from '../../core/engine/runtime/systems/local-rendering.system';
+import { FogOrchestratorService } from '../../core/engine/runtime/systems/fog-orchestrator.service';
 
 export interface EditorCameraSnapshot {
   target: Vector3;
@@ -43,11 +44,16 @@ export class EditorPlayModeService {
   private shadowOrchestrator = inject(ShadowOrchestratorService);
   private highlightSvc = inject(ToolsHighlightService);
   private localRendering = inject(LocalRenderingSystem);
+  private fogOrchestrator = inject(FogOrchestratorService);
 
   private editorSnapshot: EditorCameraSnapshot | null = null;
+  private pendingFlightParams: any = null;
+  private flightObserver: any = null;
 
-  public async prepararEscenaParaTest(vista: CameraViewMode, skipIntro: boolean = false): Promise<void> {
+  public async prepararEscenaParaTest(vista: CameraViewMode, onProgress?: (msg: string) => void): Promise<void> {
+    const scene = this.motor3d.getScene();
     const editorCam = this.motor3d.getEditorCamera();
+
     if (editorCam) {
       editorCam.computeWorldMatrix();
       this.editorSnapshot = {
@@ -61,16 +67,20 @@ export class EditorPlayModeService {
     this.cameraSvc.guardarEstadoCamaraLibre();
     CinematicLogger.logTestLiveLifecycle('ENTER', 'EDITOR', editorCam?.name);
 
+    if (onProgress) onProgress('Resolviendo jugador y punto de aparición...');
+
     let objMesh = this.state.objetoSeleccionado() as Mesh;
     let preferredEntity = objMesh ? this.entityManager.getEntityByMesh(objMesh) : null;
     const playerEntity = await this.spawnManager.resolvePlayerForSession(preferredEntity, true);
 
-    if (!playerEntity || !playerEntity.view) return;
+    if (!playerEntity || !playerEntity.view) throw new Error("Player not resolved");
     objMesh = playerEntity.view as Mesh;
 
     this.gameContext.setCameraView(vista);
     this.state.seleccionarObjeto(null);
     this.gameContext.setActivePlayer(playerEntity);
+
+    if (onProgress) onProgress('Configurando visibilidad inicial...');
 
     this.motor3d.getScene().meshes.forEach(m => {
       if (Tags.MatchesQuery(m, 'editor_only')) {
@@ -114,108 +124,155 @@ export class EditorPlayModeService {
       targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
     }
 
+    if (onProgress) onProgress('Preparando Iluminación y Sombras...');
     this.dynamicLighting.reconcileSceneLights();
     this.shadowOrchestrator.reconcileShadows();
 
-    // 🔥 FASE: WARM-UP EXHAUSTIVO (Test Live)
+    if (onProgress) onProgress('Compilando Shaders y calentando VRAM...');
+
+    // 🔥 WARMUP INICIAL BÁSICO
     await new Promise<void>((resolve) => {
-      this.motor3d.getScene().executeWhenReady(() => {
-        
-        // Colocamos temporalmente la cámara del editor en el destino exacto para priorizar renderizado
-        const originalPos = editorCam.globalPosition.clone();
-        const originalTarget = editorCam.getTarget().clone();
-        
-        editorCam.position.copyFrom(targetPos);
-        editorCam.setTarget(targetLookAt);
+        scene.executeWhenReady(() => {
+            const originalPos = editorCam.globalPosition.clone();
+            const originalTarget = editorCam.getTarget().clone();
+            
+            editorCam.position.copyFrom(targetPos);
+            editorCam.setTarget(targetLookAt);
 
-        // 1. FORZAR COMPILACIÓN GLOBAL
-        const originalStates: {mesh: AbstractMesh, vis: boolean, en: boolean, always: boolean}[] = [];
-        this.motor3d.getScene().meshes.forEach(m => {
-            originalStates.push({mesh: m, vis: m.isVisible, en: m.isEnabled(), always: m.alwaysSelectAsActiveMesh});
-            m.setEnabled(true);
-            m.isVisible = true;
-            m.alwaysSelectAsActiveMesh = true;
+            const originalStates: {mesh: AbstractMesh, vis: boolean, en: boolean, always: boolean}[] = [];
+            scene.meshes.forEach(m => {
+                originalStates.push({mesh: m, vis: m.isVisible, en: m.isEnabled(), always: m.alwaysSelectAsActiveMesh});
+                m.setEnabled(true);
+                m.isVisible = true;
+                m.alwaysSelectAsActiveMesh = true;
+            });
+
+            this.dynamicLighting.start();
+            this.shadowOrchestrator.start();
+            this.dynamicLighting.forceWarmup(targetPos);
+
+            scene.render();
+            
+            originalStates.forEach(s => {
+                s.mesh.setEnabled(s.en);
+                s.mesh.isVisible = s.vis;
+                s.mesh.alwaysSelectAsActiveMesh = s.always;
+            });
+
+            this.localRendering.reconcileAllEntitiesImmediate(targetPos);
+            this.dynamicLighting.forceWarmup(targetPos);
+
+            scene.render();
+            scene.render();
+
+            editorCam.position.copyFrom(originalPos);
+            editorCam.setTarget(originalTarget);
+
+            scene.executeWhenReady(() => resolve());
         });
-
-        // 2. Systems Start
-        this.dynamicLighting.start();
-        this.shadowOrchestrator.start();
-
-        // 3. Forzamos Warmup masivo sin culling espacial inicial
-        this.dynamicLighting.forceWarmup(targetPos);
-
-        // 4. Render oculto para compilar shaders completos en VRAM
-        for (let i = 0; i < 2; i++) {
-            this.motor3d.getScene().render();
-        }
-
-        // 5. Restaurar estado de render original 
-        originalStates.forEach(s => {
-            s.mesh.setEnabled(s.en);
-            s.mesh.isVisible = s.vis;
-            s.mesh.alwaysSelectAsActiveMesh = s.always;
-        });
-
-        // 6. Local Rendering Real basado en la cámara de destino
-        this.localRendering.reconcileAllEntitiesImmediate(targetPos);
-
-        // 7. Re-evaluar luces para ajustar los shadow casters a los visibles
-        this.dynamicLighting.forceWarmup(targetPos);
-
-        // 8. Render final de asentamiento
-        for (let i = 0; i < 2; i++) {
-            this.motor3d.getScene().render();
-        }
-
-        // Devolvemos cámara a su origen antes del vuelo
-        editorCam.position.copyFrom(originalPos);
-        editorCam.setTarget(originalTarget);
-
-        this.motor3d.getScene().executeWhenReady(() => resolve());
-      });
     });
 
-    let hideObserver: Observer<Scene> | null = null;
-    if (vista === 'FPS' && !skipIntro) {
-      hideObserver = this.motor3d.getScene().onBeforeRenderObservable.add(() => {
-        const cam = this.ownership.getCamera();
-        if (cam && this.ownership.getOwner() === 'TRANSITION_PROXY') {
-          const dist = Vector3.Distance(cam.globalPosition, targetPos);
-          if (dist < 3.5) {
-            let alpha = Math.max(0.0001, (dist - 0.5) / 3.0);
-            alpha = alpha * alpha; 
-            objMesh.visibility = alpha;
-            objMesh.getChildMeshes().forEach(m => m.visibility = alpha);
-          }
-        }
-      });
-    }
-
-    const finishSetup = () => {
-      if (hideObserver) this.motor3d.getScene().onBeforeRenderObservable.remove(hideObserver);
-      if (!skipIntro) this.transitionSvc.finishTestLiveTransition();
-      this.runtimeEngine.startTestSession(playerEntity!, vista);
-
-      setTimeout(() => {
-        const canvas = this.motor3d.getEngine().getRenderingCanvas();
-        if (canvas) {
-          const activeCam = this.ownership.getCamera();
-          if (activeCam) {
-            this.motor3d.getEditorCamera()?.detachControl();
-            this.motor3d.getPlayerCameraFPS()?.detachControl();
-            this.motor3d.getPlayerCameraTPS()?.detachControl();
-            activeCam.attachControl(canvas, true);
-            if (vista === 'FPS') {
-              objMesh.visibility = 1;
-              objMesh.getChildMeshes().forEach(m => m.visibility = 1);
-            }
-          }
-        }
-      }, 100);
+    this.pendingFlightParams = {
+        centroEpiral, targetPos, targetLookAt, playerForward, vista, playerEntity, objMesh
     };
 
-    if (skipIntro) finishSetup();
-    else this.cameraSvc.volarHaciaCamaraJuego(centroEpiral, targetPos, targetLookAt, playerForward, vista === 'FPS', () => finishSetup());
+  }
+
+  public async iniciarVueloCamara(vista: CameraViewMode): Promise<void> {
+      return new Promise<void>((resolve) => {
+          if (!this.pendingFlightParams) {
+              resolve();
+              return;
+          }
+          
+          const { centroEpiral, targetPos, targetLookAt, playerForward, objMesh } = this.pendingFlightParams;
+
+          if (vista === 'FPS') {
+              this.flightObserver = this.motor3d.getScene().onBeforeRenderObservable.add(() => {
+                const cam = this.ownership.getCamera();
+                if (cam && this.ownership.getOwner() === 'TRANSITION_PROXY') {
+                  const dist = Vector3.Distance(cam.globalPosition, targetPos);
+                  if (dist < 3.5) {
+                    let alpha = Math.max(0.0001, (dist - 0.5) / 3.0);
+                    alpha = alpha * alpha; 
+                    objMesh.visibility = alpha;
+                    objMesh.getChildMeshes().forEach((m: any) => m.visibility = alpha);
+                  }
+                }
+              });
+          }
+
+          this.cameraSvc.volarHaciaCamaraJuego(centroEpiral, targetPos, targetLookAt, playerForward, vista === 'FPS', () => {
+              if (this.flightObserver) {
+                  this.motor3d.getScene().onBeforeRenderObservable.remove(this.flightObserver);
+                  this.flightObserver = null;
+              }
+              resolve();
+          });
+      });
+  }
+
+  public async estabilizarEntornoVisual(vista: CameraViewMode): Promise<void> {
+      return new Promise<void>((resolve) => {
+          const scene = this.motor3d.getScene();
+          scene.executeWhenReady(() => {
+              if (!this.pendingFlightParams) return resolve();
+              const { targetPos } = this.pendingFlightParams;
+
+              // 🔥 1. SNAP DE LA NIEBLA PARA GARANTIZAR OPACIDAD AL 100% INMEDIATA
+              this.fogOrchestrator.forceSnapNextFrame();
+
+              // 🔥 2. RECONCILIACIÓN EXACTA DE CULLING Y LUCES EN LA POSICIÓN 1ª PERSONA
+              this.localRendering.reconcileAllEntitiesImmediate(targetPos);
+              this.dynamicLighting.forceWarmup(targetPos);
+              this.shadowOrchestrator.reconcileShadows();
+
+              // 🔥 3. FRAMES DE ESTABILIZACIÓN OCULTOS
+              for (let i = 0; i < 5; i++) {
+                  scene.render();
+              }
+
+              scene.executeWhenReady(() => resolve());
+          });
+      });
+  }
+
+  public async finalizarEntradaTestLive(vista: CameraViewMode, skippedIntro: boolean): Promise<void> {
+      if (!this.pendingFlightParams) return;
+      const { playerEntity, objMesh } = this.pendingFlightParams;
+
+      if (this.flightObserver) {
+          this.motor3d.getScene().onBeforeRenderObservable.remove(this.flightObserver);
+          this.flightObserver = null;
+      }
+
+      if (!skippedIntro) {
+          this.transitionSvc.finishTestLiveTransition();
+      }
+
+      this.runtimeEngine.startTestSession(playerEntity, vista);
+
+      // Le damos el control al jugador asíncronamente
+      return new Promise<void>((resolve) => {
+          setTimeout(() => {
+            const canvas = this.motor3d.getEngine().getRenderingCanvas();
+            if (canvas) {
+              const activeCam = this.ownership.getCamera();
+              if (activeCam) {
+                this.motor3d.getEditorCamera()?.detachControl();
+                this.motor3d.getPlayerCameraFPS()?.detachControl();
+                this.motor3d.getPlayerCameraTPS()?.detachControl();
+                activeCam.attachControl(canvas, true);
+                if (vista === 'FPS') {
+                  objMesh.visibility = 1;
+                  objMesh.getChildMeshes().forEach((m: any) => m.visibility = 1);
+                }
+              }
+            }
+            this.pendingFlightParams = null;
+            resolve();
+          }, 50);
+      });
   }
 
   public restaurarEscenaPostTest(canSelectHidden: boolean): void {
@@ -281,6 +338,7 @@ export class EditorPlayModeService {
 
     CinematicLogger.logTestLiveLifecycle('EXIT', 'EDITOR', editorCam?.name);
     this.editorSnapshot = null;
+    this.pendingFlightParams = null;
     
     this.highlightSvc.forceResetLightVisuals();
   }

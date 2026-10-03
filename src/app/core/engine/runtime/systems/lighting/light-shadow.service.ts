@@ -19,6 +19,10 @@ export class LightShadowService {
 
   private castersCache: AbstractMesh[] = [];
 
+  public getCastersCacheSize(): number {
+    return this.castersCache.length;
+  }
+
   public clearCache(): void {
     this.castersCache.length = 0;
   }

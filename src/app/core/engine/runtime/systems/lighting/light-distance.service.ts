@@ -8,6 +8,7 @@ import { LightTransformService } from './light-transform.service';
 import { EditorLightingPolicy } from './policies/editor-lighting.policy';
 import { RuntimeLightingPolicy } from './policies/runtime-lighting.policy';
 import { LightReferenceService } from './light-reference.service';
+import { LightAttenuationCurve } from './light-attenuation-curve';
 
 @Injectable({ providedIn: 'root' })
 export class LightDistanceService {
@@ -63,24 +64,26 @@ export class LightDistanceService {
           vl._isInPrepareRange = dist <= thresholds.prepare;
 
           if (lightComp.distanceControlEnabled) {
-              // 🔥 LÓGICA DE HISTÉRESIS ESTRICTA: Previene completamente la activación prematura
-              if (wasInRange) {
-                  // Si ya estaba encendida, usamos la distancia de desactivación (con inercia)
-                  if (dist > thresholds.dynamicDeactivation) { 
-                      vl.isLightInRange = false; 
-                      vl.targetMultiplier = 0; 
+              if (isEditorPure) {
+                  // 🔥 MODO EDITOR: Comportamiento Binario + Histéresis clásica para facilitar la edición
+                  if (wasInRange) {
+                      vl.isLightInRange = dist <= thresholds.dynamicDeactivation;
                   } else {
-                      vl.isLightInRange = true;
-                      vl.targetMultiplier = 1.0;
+                      vl.isLightInRange = dist <= thresholds.activation;
                   }
+                  vl.targetMultiplier = vl.isLightInRange ? 1.0 : 0.0;
               } else {
-                  // Si estaba apagada, solo se enciende si cruza la distancia de activación pura
-                  if (dist <= thresholds.activation) {
-                      vl.isLightInRange = true;
-                      vl.targetMultiplier = 1.0;
+                  // 🔥 MODO RUNTIME (FASE 2): Curva de Atenuación Matemática en Tiempo Real
+                  vl.targetMultiplier = LightAttenuationCurve.calculate(dist, thresholds.activation, thresholds.dynamicDeactivation);
+                  
+                  // Tolerancia de Memoria (Slot Hysteresis): La luz mantiene su slot 2 metros más allá 
+                  // de apagarse por completo visualmente para evitar el "Slot Churning".
+                  const logicalDeactivation = thresholds.dynamicDeactivation + 2.0;
+
+                  if (wasInRange) {
+                      vl.isLightInRange = dist <= logicalDeactivation;
                   } else {
-                      vl.isLightInRange = false;
-                      vl.targetMultiplier = 0;
+                      vl.isLightInRange = dist <= thresholds.dynamicDeactivation;
                   }
               }
           } else {

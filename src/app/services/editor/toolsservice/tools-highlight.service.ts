@@ -1,3 +1,4 @@
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, Color4, Mesh, AbstractMesh, Tags, HighlightLayer, Node, Scene } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
@@ -6,6 +7,12 @@ import { EntityManagerService } from '../../../core/engine/entities/entity-manag
 import { TriggerVisualizerService } from '../../../core/engine/scene/utils/trigger-visualizer.service';
 import { GameContextService } from '../../../core/engine/session/game-context.service';
 import { LightVisualVisibilityService } from '../../../core/engine/scene/utils/light-visual-visibility.service';
+
+interface HighlightState {
+  color: string;
+  forceEdges: boolean;
+  state: 'hover' | 'selected';
+}
 
 @Injectable({ providedIn: 'root' })
 export class ToolsHighlightService {
@@ -22,8 +29,10 @@ export class ToolsHighlightService {
 
   private highlightLayer: HighlightLayer | null = null;
   private currentScene: Scene | null = null;
-  private meshesConEdges: AbstractMesh[] = [];
-  private highlightedTriggers: AbstractMesh[] = [];
+
+  // 🔥 FASE 4 FIX: Estado Diferencial (Diffing)
+  private activeHighlights = new Map<AbstractMesh, HighlightState>();
+  private activeTriggers = new Map<AbstractMesh, 'hover' | 'selected'>();
 
   public initHighlights(): void {
     const scene = this.motor3d.getScene();
@@ -51,17 +60,14 @@ export class ToolsHighlightService {
       this.highlightLayer = null;
     }
     this.currentScene = null;
-    this.meshesConEdges = [];
-    this.highlightedTriggers = [];
+    this.activeHighlights.clear();
+    this.activeTriggers.clear();
     this.lastHoveredMeshId = null;
     this.lastSelectedMeshId = null;
     this.lastMode = null;
     this.lightVisualSvc.hideAll();
   }
 
-  /**
-   * Resetea forzosamente el estado visual de las luces.
-   */
   public forceResetLightVisuals(): void {
     this.lightVisualSvc.syncAllLightVisuals(this.state.objetoSeleccionado());
     this.limpiarTodosLosEdges();
@@ -144,29 +150,22 @@ export class ToolsHighlightService {
       this.highlightLayer.removeAllMeshes();
     }
     
-    this.meshesConEdges.forEach(m => {
-      if (m && !m.isDisposed()) {
-        try { 
-          m.disableEdgesRendering(); 
-          m.showBoundingBox = false; 
-          if ((m as any)._wasZeroVisibility) {
-            m.visibility = 0;
-            delete (m as any)._wasZeroVisibility;
-          }
-        } catch {}
-      }
-    });
-    this.meshesConEdges = [];
+    for (const [mesh, oldState] of this.activeHighlights.entries()) {
+        if (!mesh.isDisposed()) {
+            this.removerOutline(mesh, oldState.forceEdges);
+        }
+    }
+    this.activeHighlights.clear();
 
-    this.highlightedTriggers.forEach(m => {
-      if (m && !m.isDisposed()) {
-        this.triggerVisualizer.setHighlight(m, 'none');
+    for (const [mesh, _] of this.activeTriggers.entries()) {
+      if (!mesh.isDisposed()) {
+        this.triggerVisualizer.setHighlight(mesh, 'none');
       }
-    });
-    this.highlightedTriggers = [];
+    }
+    this.activeTriggers.clear();
   }
 
-  private aplicarOutline(mesh: AbstractMesh, colorHex: string, forceEdges: boolean = false): void {
+  private aplicarOutline(mesh: AbstractMesh, colorHex: string, forceEdges: boolean): void {
     if (!mesh || mesh.isDisposed()) return;
 
     try {
@@ -183,7 +182,6 @@ export class ToolsHighlightService {
         const c3 = Color3.FromHexString(colorHex);
         mesh.edgesColor = new Color4(c3.r, c3.g, c3.b, 1.0);
         mesh.showBoundingBox = true;
-        this.meshesConEdges.push(mesh);
       } else {
         if (this.highlightLayer) {
           this.highlightLayer.addMesh(mesh as Mesh, Color3.FromHexString(colorHex));
@@ -194,13 +192,37 @@ export class ToolsHighlightService {
     }
   }
 
-  private procesarMesh(pickedMesh: AbstractMesh, colorHex: string, state: 'hover' | 'selected'): void {
-    if (!pickedMesh || pickedMesh.isDisposed()) return;
+  private removerOutline(mesh: AbstractMesh, wasForcedEdges: boolean): void {
+      if (mesh.isDisposed()) return;
+      
+      const isLightVisual = Tags.MatchesQuery(mesh, "light_visual") || (mesh as any).metadata?.isLightVisual;
+      const isMaterialTransparent = mesh.material && (mesh.material.alpha === 0);
+
+      if (!isLightVisual && (wasForcedEdges || !mesh.material || mesh.visibility < 0.01 || isMaterialTransparent)) {
+          mesh.disableEdgesRendering();
+          mesh.showBoundingBox = false;
+          if ((mesh as any)._wasZeroVisibility) {
+              mesh.visibility = 0;
+              delete (mesh as any)._wasZeroVisibility;
+          }
+      } else {
+          if (this.highlightLayer) {
+              this.highlightLayer.removeMesh(mesh as Mesh);
+          }
+      }
+  }
+
+  private computeDesiredState(
+    pickedMesh: AbstractMesh, colorHex: string, state: 'hover' | 'selected',
+    desiredHighlights: Map<AbstractMesh, HighlightState>,
+    desiredTriggers: Map<AbstractMesh, 'hover' | 'selected'>
+  ): void {
+    if (pickedMesh.isDisposed()) return;
     if (this.esMeshExcluida(pickedMesh)) return;
 
     if (Tags.MatchesQuery(pickedMesh, "light_visual") || (pickedMesh as any).metadata?.isLightVisual) {
       if (pickedMesh.isVisible) {
-        this.aplicarOutline(pickedMesh, colorHex, false);
+        desiredHighlights.set(pickedMesh, { color: colorHex, forceEdges: false, state });
       }
       return;
     }
@@ -209,8 +231,7 @@ export class ToolsHighlightService {
     const isTrigger = entity?.type === 'trigger' || entity?.type === 'trigger_compuesto';
     
     if (isTrigger) {
-      this.triggerVisualizer.setHighlight(pickedMesh, state);
-      this.highlightedTriggers.push(pickedMesh);
+      desiredTriggers.set(pickedMesh, state);
       return; 
     }
 
@@ -228,10 +249,12 @@ export class ToolsHighlightService {
     
     if (meshesVisuales.length === 0) {
       if (this.esRenderizable(pickedMesh)) {
-        this.aplicarOutline(pickedMesh, colorHex, forceEdges);
+        desiredHighlights.set(pickedMesh, { color: colorHex, forceEdges, state });
       }
     } else {
-      meshesVisuales.forEach(m => this.aplicarOutline(m, colorHex, forceEdges));
+      meshesVisuales.forEach(m => {
+          desiredHighlights.set(m, { color: colorHex, forceEdges, state });
+      });
     }
   }
 
@@ -246,32 +269,78 @@ export class ToolsHighlightService {
       return;
     }
 
+    if (this.lastSelectedMeshId !== selectId) {
+        this.lightVisualSvc.syncAllLightVisuals(selected);
+    }
+
     this.lastHoveredMeshId = hoverId;
     this.lastSelectedMeshId = selectId;
     this.lastMode = mode; 
-
-    // Sincronizar visibilidad de luces estrictamente según la selección directa
-    this.lightVisualSvc.syncAllLightVisuals(selected);
-    this.limpiarTodosLosEdges();
 
     const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;
     const isFPS = this.state.modoVistaPrueba === 'FPS';
     const isPlayingMode = mode === 'PLAYING';
 
-    if (isPlayingMode && isFPS && !canSelectHidden) return; 
+    if (isPlayingMode && isFPS && !canSelectHidden) {
+        this.limpiarTodosLosEdges();
+        return;
+    }
 
-    const puedeResaltar = mode === 'EDITOR' || mode === 'EDITING_IN_GAME' || (mode === 'PLAYING' && canSelectHidden);
-    if (!puedeResaltar) return;
+    const puedeResaltar = mode === 'EDITOR' || mode === 'EDITING_IN_GAME' || (isPlayingMode && canSelectHidden);
+    if (!puedeResaltar) {
+        this.limpiarTodosLosEdges();
+        return;
+    }
 
     const colorHover = '#3b82f6';   
     const colorSelected = '#facc15'; 
 
+    const desiredHighlights = new Map<AbstractMesh, HighlightState>();
+    const desiredTriggers = new Map<AbstractMesh, 'hover' | 'selected'>();
+
+    // Computar Estado Deseado Total
     if (hovered && hovered !== selected) {
-      this.procesarMesh(hovered, colorHover, 'hover');
+      this.computeDesiredState(hovered, colorHover, 'hover', desiredHighlights, desiredTriggers);
+    }
+    if (selected && !this.state.subObjetoSeleccionado()) {
+      this.computeDesiredState(selected, colorSelected, 'selected', desiredHighlights, desiredTriggers);
     }
 
-    if (selected && !this.state.subObjetoSeleccionado()) {
-      this.procesarMesh(selected, colorSelected, 'selected');
+    // 🔥 Algoritmo Diferencial para Triggers
+    for (const [mesh, oldState] of this.activeTriggers.entries()) {
+        if (!desiredTriggers.has(mesh)) {
+            this.triggerVisualizer.setHighlight(mesh, 'none');
+            this.activeTriggers.delete(mesh);
+        } else if (desiredTriggers.get(mesh) !== oldState) {
+            this.triggerVisualizer.setHighlight(mesh, desiredTriggers.get(mesh)!);
+            this.activeTriggers.set(mesh, desiredTriggers.get(mesh)!);
+        }
+    }
+    for (const [mesh, newState] of desiredTriggers.entries()) {
+        if (!this.activeTriggers.has(mesh)) {
+            this.triggerVisualizer.setHighlight(mesh, newState);
+            this.activeTriggers.set(mesh, newState);
+        }
+    }
+
+    // 🔥 Algoritmo Diferencial para Oultines (El Salvavidas de FPS)
+    for (const [mesh, oldState] of this.activeHighlights.entries()) {
+        const newState = desiredHighlights.get(mesh);
+        if (!newState) {
+            this.removerOutline(mesh, oldState.forceEdges);
+            this.activeHighlights.delete(mesh);
+        } else if (newState.color !== oldState.color || newState.forceEdges !== oldState.forceEdges) {
+            this.removerOutline(mesh, oldState.forceEdges);
+            this.aplicarOutline(mesh, newState.color, newState.forceEdges);
+            this.activeHighlights.set(mesh, newState);
+        }
+    }
+
+    for (const [mesh, newState] of desiredHighlights.entries()) {
+        if (!this.activeHighlights.has(mesh)) {
+            this.aplicarOutline(mesh, newState.color, newState.forceEdges);
+            this.activeHighlights.set(mesh, newState);
+        }
     }
   }
 }

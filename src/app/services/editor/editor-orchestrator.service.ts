@@ -31,6 +31,7 @@ import { CinematicPlaybackManagerService } from '../../core/engine/runtime/cinem
 import { InputRouterService } from '../../core/engine/session/input-router.service';
 import { EngineSessionService } from '../../core/engine/session/engine-session.service';
 import { LiveLifecycleManagerService } from '../../core/engine/runtime/live/live-lifecycle-manager.service';
+import { NarrativeRoleDto } from '../../core/engine/models/api-dto.model';
 
 @Injectable({ providedIn: 'root' })
 export class EditorOrchestratorService {
@@ -79,7 +80,6 @@ export class EditorOrchestratorService {
 
   public initialize(): void {
     this.cargarEpisodios();
-
     this.liveBuilderSvc.initialize();
 
     this.reqPlatformSub = this.editorSvc.onRequestPlatformChange.subscribe(id => {
@@ -105,7 +105,6 @@ export class EditorOrchestratorService {
     ).subscribe(() => {
       try {
         const state = this.stateSvc.playState();
-        // 🔥 Solo guardamos automáticamente en BD si las modificaciones sucedieron como creador (Autoría legítima)
         if (this.gameContext.authorityProfile().canEdit && this.editando() && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
           this.guardarMapaEnBD(true); 
         }
@@ -285,11 +284,18 @@ export class EditorOrchestratorService {
 
         this.motor3dSvc.getScene().executeWhenReady(() => {
           if (!this.sessionSvc.isSessionActive(sessionId)) return;
-          setTimeout(() => {
+          setTimeout(async () => {
             if (!this.sessionSvc.isSessionActive(sessionId)) return;
             
-            // Reasumimos la simulación
-            this.playModeSvc.prepararEscenaParaTest(this.gameContext.cameraView(), true);
+            try {
+                await this.playModeSvc.prepararEscenaParaTest(this.gameContext.cameraView(), (msg) => this.cargandoTexto.set(msg));
+            } catch(e) {
+                console.error(e);
+            }
+            // 🔥 La pantalla de carga se mantiene hasta el estabilizador final
+            await this.playModeSvc.estabilizarEntornoVisual(this.gameContext.cameraView());
+            await this.playModeSvc.finalizarEntradaTestLive(this.gameContext.cameraView(), true);
+            
             this.cargandoEscena.set(false);
             this.revisarSiEsJugable();
           }, 100);
@@ -371,7 +377,10 @@ export class EditorOrchestratorService {
     this.playbackManager.stop();
     this.guardarMapaEnBD(true);
     
-    // 🔥 FASE 2: Entrar al Test Live con LiveLifecycleManagerService
+    // 1. Mostrar pantalla de carga firmemente
+    this.cargandoEscena.set(true);
+    this.cargandoTexto.set('Iniciando Simulación...');
+    
     this.liveLifecycle.captureEditorState();
     
     if (!skipIntro) {
@@ -381,7 +390,35 @@ export class EditorOrchestratorService {
       this.transitionSvc.beginTestLive(vista);
     }
 
-    await this.playModeSvc.prepararEscenaParaTest(vista, skipIntro);
+    try {
+        // 2. Preparación Exhaustiva
+        await this.playModeSvc.prepararEscenaParaTest(vista, (msg) => this.cargandoTexto.set(msg));
+
+        if (skipIntro) {
+            await this.playModeSvc.estabilizarEntornoVisual(vista);
+            await this.playModeSvc.finalizarEntradaTestLive(vista, true);
+        } else {
+            // 3. Vuelo de Cámara (LA PANTALLA DE CARGA SIGUE ACTIVA)
+            this.cargandoTexto.set('Desplazando cámara a posición inicial...');
+            await this.playModeSvc.iniciarVueloCamara(vista);
+            
+            // 4. Estabilización Visual y Validación en la Posición Final
+            this.cargandoTexto.set('Estabilizando iluminación y sombras...');
+            await this.playModeSvc.estabilizarEntornoVisual(vista);
+
+            // 5. Devolver controles y concluir
+            await this.playModeSvc.finalizarEntradaTestLive(vista, false);
+        }
+
+        // 6. READY -> Recién aquí se quita la pantalla de carga.
+        this.cargandoEscena.set(false);
+        this.revisarSiEsJugable();
+
+    } catch(e) {
+        console.error(e);
+        this.cargandoEscena.set(false);
+        this.detenerModoPrueba();
+    }
   }
 
   public async detenerModoPrueba(): Promise<void> {
@@ -393,7 +430,6 @@ export class EditorOrchestratorService {
     this.cargandoEscena.set(true);
     this.cargandoTexto.set('Restaurando Editor...');
 
-    // 🔥 FASE 2: Salir del Test Live con rollback en memoria O(1), SIN RELOAD JSON.
     this.liveLifecycle.endLiveSession();
 
     const canSelectHidden = this.gameContext.authorityProfile().canSelectHidden;

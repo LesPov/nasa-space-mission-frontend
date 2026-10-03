@@ -1,3 +1,4 @@
+
 import { IGizmoTargetAdapter } from './gizmo-target-adapter.interface';
 import { AbstractMesh, Vector3, Quaternion, Matrix, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../../../core/engine/entities/game.entity';
@@ -138,6 +139,7 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
 
   /**
    * Garantiza que el multiplicador del tamaño visual (0.4m) sea perfecto y sin deformaciones.
+   * Ahora sólo recomputa la matriz si la escala es genuinamente divergente.
    */
   public compensarEscalaVisual(mesh: AbstractMesh): void {
     if (!mesh) return;
@@ -152,9 +154,18 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
       const safeY = Math.max(0.0001, Math.abs(absScale.y));
       const safeZ = Math.max(0.0001, Math.abs(absScale.z));
 
-      visual.scaling.set(0.4 / safeX, 0.4 / safeY, 0.4 / safeZ);
-      visual.computeWorldMatrix(true); // 🔥 FIX: Obligamos a recalcular la matriz antes del siguiente frame
-      visual.renderingGroupId = 1;
+      const targetX = 0.4 / safeX;
+      const targetY = 0.4 / safeY;
+      const targetZ = 0.4 / safeZ;
+
+      if (Math.abs(visual.scaling.x - targetX) > 0.001 ||
+          Math.abs(visual.scaling.y - targetY) > 0.001 ||
+          Math.abs(visual.scaling.z - targetZ) > 0.001) {
+          
+          visual.scaling.set(targetX, targetY, targetZ);
+          visual.computeWorldMatrix(true); 
+          visual.renderingGroupId = 1;
+      }
     }
   }
 

@@ -1,18 +1,32 @@
-// file: src/app/components/ui-profiler/ui-profiler.ts
+
+// file: src/app/components/inspector-escena/inspector-properties/prop-profiler/prop-profiler.ts
 import { Component, OnInit, OnDestroy, inject, NgZone, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { EngineProfilerService, ProfilerMetrics } from '../../core/engine/telemetry/engine-profiler.service';
-import { ProfilerTogglesService } from '../../core/engine/telemetry/profiler-toggles.service';
-import { PerformanceIncidentService, PerformanceIncident } from '../../core/engine/telemetry/performance-incident.service';
+import { EngineProfilerService, ProfilerMetrics } from '../../../../core/engine/telemetry/engine-profiler.service';
+import { ProfilerTogglesService } from '../../../../core/engine/telemetry/profiler-toggles.service';
+import { PerformanceIncidentService, PerformanceIncident } from '../../../../core/engine/telemetry/performance-incident.service';
+
+export type ProfilerSection = 
+  | 'overview' 
+  | 'cpu' 
+  | 'gpu' 
+  | 'hub'
+  | 'lights' 
+  | 'shadows' 
+  | 'shaders' 
+  | 'culling' 
+  | 'sequences' 
+  | 'context' 
+  | 'incidents';
 
 @Component({
-  selector: 'app-ui-profiler',
+  selector: 'app-prop-profiler',
   standalone: true,
   imports: [CommonModule],
-  templateUrl: './ui-profiler.html',
-  styleUrls: ['./ui-profiler.css']
+  templateUrl: './prop-profiler.html',
+  styleUrls: ['./prop-profiler.css']
 })
-export class UiProfilerComponent implements OnInit, OnDestroy {
+export class PropProfilerComponent implements OnInit, OnDestroy {
   public profiler = inject(EngineProfilerService);
   public toggles = inject(ProfilerTogglesService);
   public incidentSvc = inject(PerformanceIncidentService);
@@ -21,64 +35,112 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
   public metrics = signal<ProfilerMetrics>(this.getEmptyMetrics());
   public incidents = signal<PerformanceIncident[]>([]);
   public incidentsCount = computed(() => this.incidents().length);
-  
-  public cpuPhasesKeys = computed(() => Object.keys(this.metrics().cpuPhases || {}));
-  public cpuSystemsKeys = computed(() => Object.keys(this.metrics().cpuSystems || {}));
-  public distanceSystemsKeys = computed(() => Object.keys(this.metrics().distances.evaluationsBySystem || {}));
 
-  public isMinimized = signal<boolean>(false);
-  public tab = signal<'metrics' | 'incidents' | 'lights' | 'shadows' | 'shaders' | 'culling' | 'transition'>('metrics');
+  public activeSection = signal<ProfilerSection>('overview');
   public selectedIncident = signal<PerformanceIncident | null>(null);
 
-  private intervalId: any;
+  // Estados de acordeón para el detalle del incidente
+  public expandedLightUids = signal<Set<string>>(new Set());
+  public expandedIncidentSections = signal<Set<string>>(new Set([
+    'summary', 'location', 'performance', 'changes', 'timeline'
+  ]));
 
-  ngOnInit() {
+  public cpuPhasesKeys = computed(() => Object.keys(this.metrics().cpuPhases || {}));
+  public cpuSystemsList = computed(() => {
+    const sys = this.metrics().cpuSystems || {};
+    return Object.keys(sys)
+      .map(name => ({ name, time: sys[name] }))
+      .filter(item => item.time > 0.05)
+      .sort((a, b) => b.time - a.time);
+  });
+  public distanceSystemsKeys = computed(() => Object.keys(this.metrics().distances.evaluationsBySystem || {}));
+
+  public systemHealthStatus = computed<'NORMAL' | 'WARNING' | 'CRITICAL'>(() => {
+    const inc = this.incidentSvc.getIncidents().find(i => i.status === 'ACTIVE');
+    if (inc) return 'CRITICAL';
+    const m = this.metrics();
+    if (m.fps < 45 || m.frameTimeP95 > 22.0 || m.shaders.compilingCount > 0) return 'WARNING';
+    return 'NORMAL';
+  });
+
+  private intervalId: any = null;
+
+  ngOnInit(): void {
+    this.profiler.isProfilingEnabled = true;
+
     this.ngZone.runOutsideAngular(() => {
       this.intervalId = setInterval(() => {
+        if (this.selectedIncident() !== null) {
+          return;
+        }
+
         if (this.profiler.isProfilingEnabled) {
-          const deepLights = this.tab() === 'lights' || this.selectedIncident() !== null;
-          this.metrics.set(this.profiler.getSnapshot(deepLights));
-          
+          const deepLights = this.activeSection() === 'lights';
+          const fresh = this.profiler.getSnapshot(deepLights);
           const currentIncidents = this.incidentSvc.getIncidents();
-          if (this.incidents().length !== currentIncidents.length || 
+
+          this.metrics.set(fresh);
+
+          if (this.incidents().length !== currentIncidents.length ||
               (currentIncidents.length > 0 && this.incidents()[0]?.id !== currentIncidents[0]?.id) ||
               (currentIncidents.length > 0 && this.incidents()[0]?.status !== currentIncidents[0]?.status)) {
-              this.incidents.set([...currentIncidents]);
+            this.incidents.set([...currentIncidents]);
           }
         }
-      }, 250);
+      }, 350);
     });
   }
 
-  ngOnDestroy() {
-    if (this.intervalId) clearInterval(this.intervalId);
+  ngOnDestroy(): void {
+    if (this.intervalId) {
+      clearInterval(this.intervalId);
+      this.intervalId = null;
+    }
   }
 
-  public toggleMinimize() {
-    this.isMinimized.set(!this.isMinimized());
+  public setSection(sec: ProfilerSection): void {
+    this.activeSection.set(sec);
   }
 
-  public viewIncident(inc: PerformanceIncident) {
+  public selectIncident(inc: PerformanceIncident): void {
     this.selectedIncident.set(inc);
   }
 
-  public backToList() {
+  public exitIncidentView(): void {
     this.selectedIncident.set(null);
   }
 
-  public printToConsole() {
-    this.profiler.printSnapshotToConsole();
+  public toggleLightExpand(uid: string): void {
+    const current = new Set(this.expandedLightUids());
+    if (current.has(uid)) current.delete(uid);
+    else current.add(uid);
+    this.expandedLightUids.set(current);
+  }
+
+  public isLightExpanded(uid: string): boolean {
+    return this.expandedLightUids().has(uid);
+  }
+
+  public toggleIncidentSection(key: string): void {
+    const current = new Set(this.expandedIncidentSections());
+    if (current.has(key)) current.delete(key);
+    else current.add(key);
+    this.expandedIncidentSections.set(current);
+  }
+
+  public isIncidentSectionExpanded(key: string): boolean {
+    return this.expandedIncidentSections().has(key);
   }
 
   public formatCoords(pos: { x: number; y: number; z: number } | null | undefined, fallback = 'N/A'): string {
     if (!pos) return fallback;
-    return `(${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)})`;
+    return `X: ${pos.x.toFixed(1)} | Y: ${pos.y.toFixed(1)} | Z: ${pos.z.toFixed(1)}`;
   }
 
-  public copySummary(inc?: PerformanceIncident) {
+  public copySummary(inc?: PerformanceIncident): void {
     const snap = inc ? inc.metrics : this.metrics();
-    const summary = `=== FORENSIC SNAPSHOT ===\n` +
-      `Mode: ${snap.session.mode} | View: ${snap.session.cameraView} | Scene: ${snap.session.sceneName} (ID: ${snap.session.sceneId})\n` +
+    const summary = `=== MOTOR 3D FORENSIC TELEMETRY ===\n` +
+      `Mode: ${snap.session.mode} | View: ${snap.session.cameraView} | Platform: ${snap.session.sceneName} (ID: ${snap.session.sceneId})\n` +
       `CamPos: (${snap.session.cameraPosition.x}, ${snap.session.cameraPosition.y}, ${snap.session.cameraPosition.z}) | FOV: ${snap.session.cameraFov}\n` +
       `PlayerPos: ${snap.session.playerPosition ? `(${snap.session.playerPosition.x}, ${snap.session.playerPosition.y}, ${snap.session.playerPosition.z})` : 'N/A'}\n` +
       `Dist Cam-Player: ${snap.session.distanceCameraToPlayer}m\n` +
@@ -91,19 +153,19 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
       `Shadows: Quality ${snap.shadows.shadowQualityLevel} | Casters: ${snap.shadows.totalCasters} | Rebuilds: ${snap.shadows.renderListRebuilds} | Invalidations: ${snap.shadows.invalidations}\n` +
       `Shaders: ${snap.shaders.compilingCount} compiling | MaxLights: ${snap.shaders.maxLightsObserved}\n` +
       `Culling: Evaluated: ${snap.culling.evaluatedEntities} | Changed: ${snap.culling.modifiedEntities} | HardCulled: ${snap.culling.hardCulledObjects} | ShadowProtected: ${snap.culling.shadowProtectedObjects}\n` +
-      `Transition to Live Duration: ${snap.transition.lastTransitionTotalMs}ms`;
+      `Transition to Live: ${snap.transition.lastTransitionTotalMs}ms`;
 
     navigator.clipboard.writeText(summary);
-    alert('📋 Resumen forense copiado al portapapeles');
+    alert('📋 Resumen técnico copiado al portapapeles');
   }
 
-  public copyJson(inc?: PerformanceIncident) {
-    const snap = inc ? inc : this.profiler.getSnapshot(true);
-    navigator.clipboard.writeText(JSON.stringify(snap, null, 2));
+  public copyJson(inc?: PerformanceIncident): void {
+    const data = inc ? inc : this.profiler.getSnapshot(true);
+    navigator.clipboard.writeText(JSON.stringify(data, null, 2));
     alert('📋 JSON forense completo copiado al portapapeles');
   }
 
-  public downloadJson(inc?: PerformanceIncident) {
+  public downloadJson(inc?: PerformanceIncident): void {
     const data = inc ? inc : this.profiler.getSnapshot(true);
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -127,10 +189,6 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
       cpuSystems: {},
       dominantSystem: 'None',
       telemetryCpuTimeMs: 0,
-      sequences: {
-        activeCount: 0,
-        details: []
-      },
       gpu: {
         drawCalls: 0,
         activeMeshes: 0,
@@ -148,12 +206,7 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
         jsHeapSizeLimitMb: 'unavailable',
         heapDeltaMb: 0
       },
-      lights: {
-        totalVirtual: 0,
-        activePool: 0,
-        shadowedPool: 0,
-        details: []
-      },
+      lights: { totalVirtual: 0, activePool: 0, shadowedPool: 0, details: [] },
       shadows: {
         shadowQualityLevel: 'MEDIUM',
         activeGenerators: 0,
@@ -165,11 +218,7 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
         staticCastersFrozen: 0,
         dynamicCastersActive: 0
       },
-      spaces: {
-        containmentRebuilds: 0,
-        cacheHits: 0,
-        cacheMisses: 0
-      },
+      spaces: { containmentRebuilds: 0, cacheHits: 0, cacheMisses: 0 },
       culling: {
         evaluatedEntities: 0,
         modifiedEntities: 0,
@@ -188,13 +237,9 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
         totalCompilationsDetected: 0,
         maxLightsObserved: 0
       },
-      distances: {
-        evaluationsBySystem: {}
-      },
-      transition: {
-        lastTransitionTotalMs: 0,
-        milestones: []
-      },
+      sequences: { activeCount: 0, details: [] },
+      distances: { evaluationsBySystem: {} },
+      transition: { lastTransitionTotalMs: 0, milestones: [] },
       session: {
         mode: 'EDITOR',
         cameraView: 'FPS',

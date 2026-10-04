@@ -13,7 +13,8 @@ import { LightAttenuationCurve } from './light-attenuation-curve';
 import { LightContainmentService } from './light-containment.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 import { EngineProfilerService } from '../../../telemetry/engine-profiler.service';
-
+import { SpatialRelevanceHubService } from '../../../spatial/spatial-relevance-hub.service';
+ 
 @Injectable({ providedIn: 'root' })
 export class LightDistanceService {
   private context = inject(GameContextService);
@@ -22,6 +23,7 @@ export class LightDistanceService {
   private containmentSvc = inject(LightContainmentService);
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private profiler = inject(EngineProfilerService);
+  private spatialHub = inject(SpatialRelevanceHubService);
 
   private editorPolicy = new EditorLightingPolicy();
   private runtimePolicy = new RuntimeLightingPolicy();
@@ -37,6 +39,8 @@ export class LightDistanceService {
 
       // Telemetría forense
       this.profiler.recordDistanceEvaluation('LightDistanceService', activeVirtuals.length);
+
+      const validActors = this.referenceSvc.getValidActorEntities();
 
       for (let i = 0; i < activeVirtuals.length; i++) {
           const vl = activeVirtuals[i];
@@ -62,7 +66,8 @@ export class LightDistanceService {
           let actorWorldPos: Vector3;
 
           if (isEditorPure) {
-              const closest = this.referenceSvc.getClosestActorForLight(this._tempPos);
+              // 🔥 INTEGRACIÓN SPATIAL HUB: Resuelve el actor más cercano usando el Hub O(1)
+              const closest = this.spatialHub.getClosestActorForPosition(this._tempPos, validActors);
               dist = closest.distance;
               actorWorldPos = closest.actorPosition;
               vl.closestActorName = closest.actor ? closest.actor.name : 'NO_ACTOR';
@@ -70,12 +75,12 @@ export class LightDistanceService {
               if (lightComp.distanceReferenceMode === 'CAMERA') {
                   actorWorldPos = this.referenceSvc.getReferencePosition('CAMERA');
                   vl.closestActorName = 'Cámara de Juego';
-                  dist = Vector3.Distance(actorWorldPos, this._tempPos);
+                  dist = this.spatialHub.getDistanceToCamera(vl.entity.uid);
               } else {
-                  const closest = this.referenceSvc.getClosestActorForLight(this._tempPos);
+                  const closest = this.spatialHub.getClosestActorForPosition(this._tempPos, validActors);
                   actorWorldPos = closest.actorPosition;
                   vl.closestActorName = closest.actor ? closest.actor.name : 'NO_ACTOR';
-                  dist = closest.actor ? Vector3.Distance(actorWorldPos, this._tempPos) : Number.MAX_VALUE;
+                  dist = closest.actor ? closest.distance : Number.MAX_VALUE;
               }
           }
 

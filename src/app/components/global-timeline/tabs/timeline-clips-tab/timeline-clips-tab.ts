@@ -1,3 +1,4 @@
+
 // file: src/app/components/global-timeline/tabs/timeline-clips-tab/timeline-clips-tab.ts
 import { Component, ChangeDetectorRef, inject, effect, OnDestroy } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -57,6 +58,10 @@ export class TimelineClipsTab implements OnDestroy {
   public currentTimeMs = 0;
   public totalDurationMs = 0;
 
+  // Manejo de rAF para throttling de scrubbing
+  private pendingScrubRaf: number | null = null;
+  private pendingScrubTimeMs: number | null = null;
+
   constructor() {
     effect(() => {
       const obj = this.stateSvc.objetoSeleccionado() as any;
@@ -79,10 +84,14 @@ export class TimelineClipsTab implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    if (this.pendingScrubRaf !== null) {
+      cancelAnimationFrame(this.pendingScrubRaf);
+      this.pendingScrubRaf = null;
+    }
     this.previewSvc.detenerPreviewSecuencia();
   }
 
-  cargarClipsDelObjeto() {
+  cargarClipsDelObjeto(): void {
     this.previewSvc.detenerPreviewSecuencia();
     const obj = this.stateSvc.objetoSeleccionado() as any;
     const entity = this.entityManager.getEntityByMesh(obj);
@@ -129,7 +138,7 @@ export class TimelineClipsTab implements OnDestroy {
   get currentSequence() { return this.sequences.find(s => s.id === this.selectedSequenceId) || null; }
   get currentStep() { return this.currentSequence?.steps[this.selectedStepIndex] || null; }
 
-  recalcularDuracionTotal() {
+  recalcularDuracionTotal(): void {
     if (this.currentSequence && this.currentSequence.steps) {
       this.totalDurationMs = this.currentSequence.steps.reduce((acc, step) => acc + (step.durationMs || 1000), 0);
     } else {
@@ -137,7 +146,7 @@ export class TimelineClipsTab implements OnDestroy {
     }
   }
 
-  seleccionarSecuencia(id: string) {
+  seleccionarSecuencia(id: string): void {
     this.previewSvc.detenerPreviewSecuencia();
     this.selectedSequenceId = id;
     this.selectedStepIndex = 0;
@@ -145,7 +154,7 @@ export class TimelineClipsTab implements OnDestroy {
     this.recalcularDuracionTotal();
   }
 
-  persist() {
+  persist(): void {
     const obj = this.stateSvc.objetoSeleccionado() as any;
     if (!obj) return;
     const entity = this.entityManager.getEntityByMesh(obj);
@@ -158,7 +167,7 @@ export class TimelineClipsTab implements OnDestroy {
     }
   }
 
-  nuevaSecuencia() {
+  nuevaSecuencia(): void {
     const seq = createPlayerSequence(`Clip ${this.sequences.length + 1}`);
     if (this.esLuz && seq.steps.length > 0) {
       seq.steps[0].action = 'lightPulse';
@@ -173,7 +182,7 @@ export class TimelineClipsTab implements OnDestroy {
     this.persist();
   }
 
-  eliminarSecuencia(id: string) {
+  eliminarSecuencia(id: string): void {
     this.previewSvc.detenerPreviewSecuencia();
     this.sequences = this.sequences.filter(s => s.id !== id);
     this.selectedSequenceId = this.sequences.length > 0 ? this.sequences[0].id : null;
@@ -181,7 +190,7 @@ export class TimelineClipsTab implements OnDestroy {
     this.persist();
   }
 
-  agregarPaso(seq: PlayerClipSequence) { 
+  agregarPaso(seq: PlayerClipSequence): void { 
     const defaultAction = this.esLuz ? 'lightPulse' : (this.esPersonaje ? 'walk' : 'idle');
     const step = createSequenceStep(defaultAction);
     if (!this.esPersonaje) {
@@ -193,13 +202,13 @@ export class TimelineClipsTab implements OnDestroy {
     this.persist(); 
   }
   
-  quitarPaso(seq: PlayerClipSequence, i: number) { 
+  quitarPaso(seq: PlayerClipSequence, i: number): void { 
     seq.steps.splice(i, 1); 
     if (this.selectedStepIndex >= seq.steps.length) this.selectedStepIndex = Math.max(0, seq.steps.length - 1);
     this.persist(); 
   }
 
-  togglePlayPreview(seq: PlayerClipSequence) {
+  togglePlayPreview(seq: PlayerClipSequence): void {
     if (this.previewSvc.isPlayingPreview()) {
       this.previewSvc.pausarPreview();
     } else {
@@ -212,17 +221,30 @@ export class TimelineClipsTab implements OnDestroy {
     }
   }
 
-  stopPreview() {
+  stopPreview(): void {
     this.previewSvc.detenerPreviewSecuencia();
     this.currentTimeMs = 0;
   }
 
-  onScrubTime(newTime: number) {
+  /**
+   * Scrubbing throttled con requestAnimationFrame para evitar saturar el render loop
+   */
+  onScrubTime(newTime: number): void {
     this.currentTimeMs = Math.max(0, Math.min(newTime, this.totalDurationMs));
-    const obj = this.stateSvc.objetoSeleccionado() as any;
-    const entity = this.entityManager.getEntityByMesh(obj);
-    if (entity && this.currentSequence) {
-      this.previewSvc.seekPreview(entity, this.currentSequence.id, this.currentTimeMs);
+    this.pendingScrubTimeMs = this.currentTimeMs;
+
+    if (this.pendingScrubRaf === null) {
+      this.pendingScrubRaf = requestAnimationFrame(() => {
+        this.pendingScrubRaf = null;
+        if (this.pendingScrubTimeMs !== null) {
+          const obj = this.stateSvc.objetoSeleccionado() as any;
+          const entity = this.entityManager.getEntityByMesh(obj);
+          if (entity && this.currentSequence) {
+            this.previewSvc.seekPreview(entity, this.currentSequence.id, this.pendingScrubTimeMs);
+          }
+          this.pendingScrubTimeMs = null;
+        }
+      });
     }
   }
 

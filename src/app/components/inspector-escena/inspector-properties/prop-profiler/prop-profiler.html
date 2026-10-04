@@ -1,0 +1,662 @@
+<div class="profiler-container">
+
+  <!-- ======================================================================= -->
+  <!-- 1. VISTA EN VIVO (LIVE VIEW)                                            -->
+  <!-- ======================================================================= -->
+  <ng-container *ngIf="!selectedIncident()">
+    
+    <!-- BARRA SUPERIOR DE ESTADO LIVE -->
+    <div class="live-status-bar">
+      <div class="status-indicator">
+        <span class="pulse-dot"></span>
+        <span class="live-label">LIVE</span>
+      </div>
+      <div class="health-badge" 
+           [class.normal]="systemHealthStatus() === 'NORMAL'" 
+           [class.warning]="systemHealthStatus() === 'WARNING'" 
+           [class.critical]="systemHealthStatus() === 'CRITICAL'">
+        {{ systemHealthStatus() }}
+      </div>
+      <div class="quick-meta" [title]="metrics().session.sceneName">
+        {{ metrics().session.mode }} • {{ metrics().session.sceneName }}
+      </div>
+    </div>
+
+    <!-- NAVEGACIÓN EN CUADRÍCULA LIMPIA -->
+    <nav class="profiler-nav">
+      <button class="nav-tab" [class.active]="activeSection() === 'overview'" (click)="setSection('overview')">
+        <span class="nav-icon">📊</span>
+        <span class="nav-text">General</span>
+      </button>
+      <button class="nav-tab" [class.active]="activeSection() === 'cpu'" (click)="setSection('cpu')">
+        <span class="nav-icon">⚡</span>
+        <span class="nav-text">CPU</span>
+      </button>
+      <button class="nav-tab" [class.active]="activeSection() === 'gpu'" (click)="setSection('gpu')">
+        <span class="nav-icon">🖥️</span>
+        <span class="nav-text">GPU</span>
+      </button>
+      <button class="nav-tab" [class.active]="activeSection() === 'hub'" (click)="setSection('hub')">
+        <span class="nav-icon">🌐</span>
+        <span class="nav-text">Hub 3D</span>
+      </button>
+      <button class="nav-tab" [class.active]="activeSection() === 'lights'" (click)="setSection('lights')">
+        <span class="nav-icon">💡</span>
+        <span class="nav-text">Luces</span>
+      </button>
+      <button class="nav-tab" [class.active]="activeSection() === 'shadows'" (click)="setSection('shadows')">
+        <span class="nav-icon">🌑</span>
+        <span class="nav-text">Sombras</span>
+      </button>
+      <button class="nav-tab" [class.active]="activeSection() === 'shaders'" (click)="setSection('shaders')">
+        <span class="nav-icon">🎨</span>
+        <span class="nav-text">Shaders</span>
+      </button>
+      <button class="nav-tab" [class.active]="activeSection() === 'culling'" (click)="setSection('culling')">
+        <span class="nav-icon">👁️</span>
+        <span class="nav-text">Culling</span>
+      </button>
+      <button class="nav-tab" [class.active]="activeSection() === 'sequences'" (click)="setSection('sequences')">
+        <span class="nav-icon">🎞️</span>
+        <span class="nav-text">Secuencias</span>
+      </button>
+      <button class="nav-tab" [class.active]="activeSection() === 'context'" (click)="setSection('context')">
+        <span class="nav-icon">📍</span>
+        <span class="nav-text">Contexto</span>
+      </button>
+      <button class="nav-tab incident-tab" [class.active]="activeSection() === 'incidents'" (click)="setSection('incidents')">
+        <span class="nav-icon">⚠️</span>
+        <span class="nav-text">Incidentes</span>
+        <span class="inc-count" *ngIf="incidentsCount() > 0">{{ incidentsCount() }}</span>
+      </button>
+    </nav>
+
+    <!-- FLUJO VERTICAL NATURAL SCROLLEABLE -->
+    <div class="profiler-body-flow">
+      
+      <!-- TAB 1: OVERVIEW -->
+      <section *ngIf="activeSection() === 'overview'" class="tab-pane">
+        
+        <div class="metrics-grid-2">
+          <div class="card-metric-primary">
+            <span class="c-label">FPS EN VIVO</span>
+            <span class="c-value" [style.color]="metrics().fps < 45 ? '#ef4444' : '#4ade80'">{{ metrics().fps | number:'1.0-1' }}</span>
+            <span class="c-sub">Avg: {{ metrics().frameTimeAvg | number:'1.1-1' }}ms • Min: {{ metrics().frameTimeMin | number:'1.1-1' }}ms</span>
+          </div>
+          <div class="card-metric-primary">
+            <span class="c-label">LATENCIA P99</span>
+            <span class="c-value" [style.color]="metrics().frameTimeP99 > 22.2 ? '#ef4444' : '#38bdf8'">
+              {{ metrics().frameTimeP99 | number:'1.1-1' }}<small>ms</small>
+            </span>
+            <span class="c-sub">p50: {{ metrics().frameTimeP50 | number:'1.1-1' }}ms • p95: {{ metrics().frameTimeP95 | number:'1.1-1' }}ms</span>
+          </div>
+        </div>
+
+        <div class="metrics-grid-2">
+          <div class="card-metric-sub">
+            <span class="c-sub-label">SISTEMA DOMINANTE</span>
+            <span class="c-sub-val" [title]="metrics().dominantSystem">{{ metrics().dominantSystem }}</span>
+          </div>
+          <div class="card-metric-sub">
+            <span class="c-sub-label">DRAW CALLS</span>
+            <span class="c-sub-val" [style.color]="metrics().gpu.drawCalls > 250 ? '#facc15' : '#f8fafc'">{{ metrics().gpu.drawCalls }}</span>
+          </div>
+          <div class="card-metric-sub">
+            <span class="c-sub-label">MALLAS ACTIVAS</span>
+            <span class="c-sub-val">{{ metrics().gpu.activeMeshes }} / {{ metrics().gpu.totalMeshes }}</span>
+          </div>
+          <div class="card-metric-sub">
+            <span class="c-sub-label">TELEMETRY OVERHEAD</span>
+            <span class="c-sub-val" style="color: #4ade80;">{{ metrics().telemetryCpuTimeMs | number:'1.3-3' }} ms</span>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-header">
+            <h4>Estado del Pipeline de Renderizado</h4>
+          </div>
+          <div class="key-value-list">
+            <div class="kv-item">
+              <span class="kv-key">Pool de Luces Locales</span>
+              <span class="kv-val"><strong style="color: #38bdf8;">{{ metrics().lights.activePool }}</strong> / {{ metrics().lights.totalVirtual }} ({{ metrics().lights.shadowedPool }} con sombras)</span>
+            </div>
+            <div class="kv-item">
+              <span class="kv-key">Sombras CSM (Sol)</span>
+              <span class="kv-val">{{ metrics().shadows.csmCascades }} cascadas • {{ metrics().shadows.csmMaxZ }}m</span>
+            </div>
+            <div class="kv-item">
+              <span class="kv-key">Compilación Shaders VRAM</span>
+              <span class="kv-val" [style.color]="metrics().shaders.compilingCount > 0 ? '#ef4444' : '#4ade80'">
+                {{ metrics().shaders.compilingCount > 0 ? metrics().shaders.compilingCount + ' pendientes' : '0 (Listos)' }}
+              </span>
+            </div>
+            <div class="kv-item">
+              <span class="kv-key">Culling Activo</span>
+              <span class="kv-val">{{ metrics().culling.visibleObjects }} visibles • {{ metrics().culling.hardCulledObjects }} culled</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-header">
+            <h4>Aislamiento de Carga (Toggles de Depuración)</h4>
+          </div>
+          <div class="toggle-buttons-grid">
+            <button class="audit-btn" [class.active]="toggles.state.glowOff" (click)="toggles.setGlow(!toggles.state.glowOff)">Glow OFF</button>
+            <button class="audit-btn" [class.active]="toggles.state.fxaaOff" (click)="toggles.setFxaa(!toggles.state.fxaaOff)">FXAA OFF</button>
+            <button class="audit-btn" [class.active]="toggles.state.fogOff" (click)="toggles.setFog(!toggles.state.fogOff)">Niebla OFF</button>
+            <button class="audit-btn" [class.active]="toggles.state.shadowsOff" (click)="toggles.setShadows(!toggles.state.shadowsOff)">Sombras OFF</button>
+          </div>
+        </div>
+
+        <div class="action-buttons-row">
+          <button class="btn-action-primary" (click)="profiler.printSnapshotToConsole()">📷 Consola</button>
+          <button class="btn-action-secondary" (click)="copySummary()">📋 Copiar Resumen</button>
+          <button class="btn-action-secondary" (click)="copyJson()">💾 Copiar JSON</button>
+        </div>
+
+      </section>
+
+      <!-- TAB 2: CPU -->
+      <section *ngIf="activeSection() === 'cpu'" class="tab-pane">
+        <div class="section-card">
+          <div class="section-header">
+            <h4>Fases del Loop del Motor (ms)</h4>
+          </div>
+          <div class="key-value-list">
+            <div class="kv-item" *ngFor="let phase of cpuPhasesKeys()">
+              <span class="kv-key">{{ phase }}</span>
+              <span class="kv-val">{{ metrics().cpuPhases[phase] | number:'1.2-2' }} ms</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-header">
+            <h4>Sistemas de CPU Más Costosos</h4>
+          </div>
+          <div class="key-value-list">
+            <div class="kv-item" *ngFor="let sys of cpuSystemsList()">
+              <span class="kv-key ellipsis" [title]="sys.name">{{ sys.name }}</span>
+              <span class="kv-val"><strong style="color: #facc15;">{{ sys.time | number:'1.2-2' }} ms</strong></span>
+            </div>
+            <div *ngIf="cpuSystemsList().length === 0" class="empty-hint">Sin actividad cuantificable (>0.05ms) en sistemas.</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 3: GPU -->
+      <section *ngIf="activeSection() === 'gpu'" class="tab-pane">
+        <div class="section-card">
+          <div class="section-header">
+            <h4>Pipeline de Renderizado & Hardware</h4>
+          </div>
+          <div class="key-value-list">
+            <div class="kv-item">
+              <span class="kv-key">GPU Frame Time</span>
+              <span class="kv-val">{{ metrics().gpu.gpuFrameTime === 'unavailable' ? 'N/A' : (metrics().gpu.gpuFrameTime | number:'1.2-2') + ' ms' }}</span>
+            </div>
+            <div class="kv-item">
+              <span class="kv-key">Draw Calls</span>
+              <span class="kv-val"><strong [style.color]="metrics().gpu.drawCalls > 250 ? '#ef4444' : '#4ade80'">{{ metrics().gpu.drawCalls }}</strong></span>
+            </div>
+            <div class="kv-item">
+              <span class="kv-key">Mallas Activas en Frustum</span>
+              <span class="kv-val">{{ metrics().gpu.activeMeshes }} / {{ metrics().gpu.totalMeshes }}</span>
+            </div>
+            <div class="kv-item">
+              <span class="kv-key">Mallas Visibles Reales</span>
+              <span class="kv-val">{{ metrics().gpu.visibleMeshes }}</span>
+            </div>
+            <div class="kv-item">
+              <span class="kv-key">Mallas con Transparencia</span>
+              <span class="kv-val" [style.color]="metrics().gpu.transparentMeshes > 30 ? '#facc15' : '#f8fafc'">{{ metrics().gpu.transparentMeshes }}</span>
+            </div>
+            <div class="kv-item">
+              <span class="kv-key">Índices Geométricos</span>
+              <span class="kv-val">{{ metrics().gpu.activeIndices | number }}</span>
+            </div>
+            <div class="kv-item">
+              <span class="kv-key">Tier de Calidad Adaptativa</span>
+              <span class="kv-val"><strong [style.color]="metrics().gpu.qualityTier === 'HIGH' ? '#4ade80' : '#facc15'">{{ metrics().gpu.qualityTier }} (Escala: {{ metrics().gpu.hardwareScaling }})</strong></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 4: HUB 3D -->
+      <section *ngIf="activeSection() === 'hub'" class="tab-pane">
+        <div class="section-card">
+          <div class="section-header">
+            <h4>Spatial Relevance Hub (Métricas)</h4>
+          </div>
+          <div class="key-value-list">
+            <div class="kv-item"><span class="kv-key">Tiempo de Actualización Hub</span> <span class="kv-val"><strong style="color: #4ade80;">{{ metrics().distances.evaluationsBySystem['HubUpdateTimeMs'] || 0 | number:'1.3-3' }} ms</strong></span></div>
+            <div class="kv-item"><span class="kv-key">Entidades Registradas</span> <span class="kv-val"><strong>{{ metrics().distances.evaluationsBySystem['HubRegisteredEntities'] || 0 }}</strong></span></div>
+            <div class="kv-item"><span class="kv-key">Evaluaciones en Cuadro</span> <span class="kv-val">{{ metrics().distances.evaluationsBySystem['HubEvaluationsThisFrame'] || 0 }}</span></div>
+            <div class="kv-item"><span class="kv-key">Distancias Cuadráticas (distSq)</span> <span class="kv-val" style="color: #38bdf8;">{{ metrics().distances.evaluationsBySystem['HubSquaredDistCalls'] || 0 }}</span></div>
+            <div class="kv-item"><span class="kv-key">Distancias Exactas (sqrt)</span> <span class="kv-val" style="color: #facc15;">{{ metrics().distances.evaluationsBySystem['HubExactDistCalls'] || 0 }}</span></div>
+            <div class="kv-item"><span class="kv-key">Cache Hits (Consultas Compartidas)</span> <span class="kv-val" style="color: #4ade80;">{{ metrics().distances.evaluationsBySystem['HubCacheHits'] || 0 }}</span></div>
+          </div>
+        </div>
+
+        <div class="section-card">
+          <div class="section-header">
+            <h4>Consumo Espacial por Subsistema</h4>
+          </div>
+          <div class="key-value-list">
+            <div class="kv-item" *ngFor="let sys of distanceSystemsKeys()">
+              <span class="kv-key" *ngIf="!sys.startsWith('Hub')">{{ sys }}</span>
+              <span class="kv-val" *ngIf="!sys.startsWith('Hub')"><strong>{{ metrics().distances.evaluationsBySystem[sys] }}</strong></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 5: LUCES -->
+      <section *ngIf="activeSection() === 'lights'" class="tab-pane">
+        <div class="summary-banner">
+          <div><strong>{{ metrics().lights.activePool }}</strong> / {{ metrics().lights.totalVirtual }} Luces en Pool</div>
+          <div><strong style="color: #facc15;">{{ metrics().lights.shadowedPool }}</strong> con Sombras</div>
+        </div>
+
+        <div class="cards-stack">
+          <div class="item-card" *ngFor="let l of metrics().lights.details" [class.expanded]="isLightExpanded(l.uid)">
+            <div class="item-card-header" (click)="toggleLightExpand(l.uid)">
+              <div class="card-title-group">
+                <span class="light-type-badge">{{ l.type.replace('light_', '') }}</span>
+                <span class="card-item-title ellipsis" [title]="l.name">{{ l.name }}</span>
+              </div>
+              <div class="card-right-status">
+                <span class="status-pill" [class.on]="l.isLightInRange" [class.off]="!l.isLightInRange">
+                  {{ l.isLightInRange ? 'Slot ' + (l.assignedSlot !== null ? l.assignedSlot : '-') : 'Inactiva' }}
+                </span>
+                <span class="chevron-icon">{{ isLightExpanded(l.uid) ? '▼' : '▶' }}</span>
+              </div>
+            </div>
+
+            <div class="item-card-preview-row">
+              <span>Dist: <strong>{{ l.distance }}m</strong></span>
+              <span>Int: <strong style="color: #38bdf8;">{{ l.finalIntensity | number:'1.2-2' }}</strong></span>
+              <span>Fade: <strong>{{ l.currentMultiplier * 100 | number:'1.0-0' }}%</strong></span>
+            </div>
+
+            <div class="item-card-expanded-content" *ngIf="isLightExpanded(l.uid)">
+              <div class="kv-item"><span class="kv-key">UID:</span> <span class="kv-val ellipsis" [title]="l.uid">{{ l.uid }}</span></div>
+              <div class="kv-item"><span class="kv-key">Posición:</span> <span class="kv-val">({{ l.position.x }}, {{ l.position.y }}, {{ l.position.z }})</span></div>
+              <div class="kv-item"><span class="kv-key">Contención:</span> <span class="kv-val">{{ l.containmentMode }}</span></div>
+              <div class="kv-item"><span class="kv-key">Estado Interior:</span> <span class="kv-val" [style.color]="l.insideVolume ? '#4ade80' : (l.inPreEntryZone ? '#facc15' : '#94a3b8')">{{ l.insideVolume ? 'DENTRO DE VOLUMEN' : (l.inPreEntryZone ? 'PRE-ENTRADA' : 'EXTERIOR') }}</span></div>
+              <div class="kv-item"><span class="kv-key">Sombra:</span> <span class="kv-val">{{ l.hasShadowGenerator ? 'SÍ (' + l.renderListSize + ' casters)' : 'NO' }}</span></div>
+              <div class="kv-item"><span class="kv-key">Paredes Filtradas:</span> <span class="kv-val">{{ l.includedMeshesCount }} mallas</span></div>
+              <div class="kv-item"><span class="kv-key">Puntaje Score:</span> <span class="kv-val">{{ l.priorityScore }}</span></div>
+            </div>
+          </div>
+          <div *ngIf="metrics().lights.details.length === 0" class="empty-hint">No hay luces registradas en la escena activa.</div>
+        </div>
+      </section>
+
+      <!-- TAB 6: SOMBRAS -->
+      <section *ngIf="activeSection() === 'shadows'" class="tab-pane">
+        <div class="section-card">
+          <div class="section-header">
+            <h4>Orquestador de Sombras</h4>
+          </div>
+          <div class="key-value-list">
+            <div class="kv-item"><span class="kv-key">Generadores Activos</span> <span class="kv-val"><strong>{{ metrics().shadows.activeGenerators }}</strong></span></div>
+            <div class="kv-item"><span class="kv-key">Calidad de Filtrado</span> <span class="kv-val"><strong style="color: #c084fc;">{{ metrics().shadows.shadowQualityLevel }}</strong></span></div>
+            <div class="kv-item"><span class="kv-key">Casters en Caché</span> <span class="kv-val">{{ metrics().shadows.totalCasters }}</span></div>
+            <div class="kv-item"><span class="kv-key">Cascadas CSM (Sol)</span> <span class="kv-val">{{ metrics().shadows.csmCascades }} (MaxZ: {{ metrics().shadows.csmMaxZ }}m)</span></div>
+            <div class="kv-item"><span class="kv-key">Casters Congelados (RENDER_ONCE)</span> <span class="kv-val" style="color: #4ade80;">{{ metrics().shadows.staticCastersFrozen }}</span></div>
+            <div class="kv-item"><span class="kv-key">Casters Dinámicos Activos</span> <span class="kv-val" style="color: #facc15;">{{ metrics().shadows.dynamicCastersActive }}</span></div>
+            <div class="kv-item"><span class="kv-key">RenderList Rebuilds</span> <span class="kv-val" [style.color]="metrics().shadows.renderListRebuilds > 3 ? '#ef4444' : '#f8fafc'">{{ metrics().shadows.renderListRebuilds }}</span></div>
+            <div class="kv-item"><span class="kv-key">Invalidaciones de ShadowMap</span> <span class="kv-val">{{ metrics().shadows.invalidations }}</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 7: SHADERS -->
+      <section *ngIf="activeSection() === 'shaders'" class="tab-pane">
+        <div class="section-card">
+          <div class="section-header">
+            <h4>Materiales & Compilación en VRAM</h4>
+          </div>
+          <div class="key-value-list">
+            <div class="kv-item"><span class="kv-key">Materiales Totales</span> <span class="kv-val"><strong>{{ metrics().shaders.totalMaterials }}</strong></span></div>
+            <div class="kv-item"><span class="kv-key">Standard Materials</span> <span class="kv-val">{{ metrics().shaders.standardMaterials }}</span></div>
+            <div class="kv-item"><span class="kv-key">PBR Materials</span> <span class="kv-val">{{ metrics().shaders.pbrMaterials }}</span></div>
+            <div class="kv-item"><span class="kv-key">Multi-Materials</span> <span class="kv-val">{{ metrics().shaders.multiMaterials }}</span></div>
+            <div class="kv-item"><span class="kv-key">Compilando / No Listos</span> <span class="kv-val"><strong [style.color]="metrics().shaders.compilingCount > 0 ? '#ef4444' : '#4ade80'">{{ metrics().shaders.compilingCount }}</strong></span></div>
+            <div class="kv-item"><span class="kv-key">Límite Luces por Shader</span> <span class="kv-val">{{ metrics().shaders.maxLightsObserved }} luces</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 8: CULLING -->
+      <section *ngIf="activeSection() === 'culling'" class="tab-pane">
+        <div class="section-card">
+          <div class="section-header">
+            <h4>Culling Espacial Progresivo</h4>
+          </div>
+          <div class="key-value-list">
+            <div class="kv-item"><span class="kv-key">Entidades Evaluadas</span> <span class="kv-val"><strong>{{ metrics().culling.evaluatedEntities }}</strong></span></div>
+            <div class="kv-item"><span class="kv-key">Entidades Modificadas</span> <span class="kv-val"><strong style="color: #facc15;">{{ metrics().culling.modifiedEntities }}</strong></span></div>
+            <div class="kv-item"><span class="kv-key">Visibles al 100%</span> <span class="kv-val" style="color: #4ade80;">{{ metrics().culling.visibleObjects }}</span></div>
+            <div class="kv-item"><span class="kv-key">En Transición Fade Out</span> <span class="kv-val" style="color: #facc15;">{{ metrics().culling.fadingObjects }}</span></div>
+            <div class="kv-item"><span class="kv-key">En Transición Restoring</span> <span class="kv-val" style="color: #38bdf8;">{{ metrics().culling.restoringObjects }}</span></div>
+            <div class="kv-item"><span class="kv-key">Hard Culled (Deshabilitadas)</span> <span class="kv-val" style="color: #ef4444;">{{ metrics().culling.hardCulledObjects }}</span></div>
+            <div class="kv-item"><span class="kv-key">Protegidas por Proyección Sombras</span> <span class="kv-val" style="color: #c084fc;">{{ metrics().culling.shadowProtectedObjects }}</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 9: SECUENCIAS -->
+      <section *ngIf="activeSection() === 'sequences'" class="tab-pane">
+        <div class="summary-banner">
+          <div><strong>{{ metrics().sequences.activeCount }}</strong> Secuencias Evaluadas en Paralelo</div>
+        </div>
+        <div class="cards-stack">
+          <div class="item-card" *ngFor="let s of metrics().sequences.details">
+            <div class="item-card-header">
+              <span class="card-item-title ellipsis" [title]="s.entityName">{{ s.entityName }}</span>
+              <span class="status-pill on">{{ s.action }}</span>
+            </div>
+            <div class="item-card-preview-row">
+              <span>Paso: <strong>#{{ s.stepIndex + 1 }}</strong></span>
+              <span>Transcurrido: <strong>{{ s.elapsedMs }}ms</strong></span>
+            </div>
+          </div>
+          <div *ngIf="metrics().sequences.details.length === 0" class="empty-hint">No hay secuencias activas en este momento.</div>
+        </div>
+      </section>
+
+      <!-- TAB 10: CONTEXTO -->
+      <section *ngIf="activeSection() === 'context'" class="tab-pane">
+        <div class="section-card">
+          <div class="section-header">
+            <h4>Ubicación & Cámara</h4>
+          </div>
+          <div class="key-value-list">
+            <div class="kv-item"><span class="kv-key">Modo de Ejecución</span> <span class="kv-val"><strong style="color: #38bdf8;">{{ metrics().session.mode }}</strong></span></div>
+            <div class="kv-item"><span class="kv-key">Perspectiva</span> <span class="kv-val">{{ metrics().session.cameraView }}</span></div>
+            <div class="kv-item"><span class="kv-key">Plataforma / Zona</span> <span class="kv-val ellipsis" [title]="metrics().session.sceneName">{{ metrics().session.sceneName }} (ID: {{ metrics().session.sceneId }})</span></div>
+            <div class="kv-item"><span class="kv-key">Posición Cámara</span> <span class="kv-val">({{ metrics().session.cameraPosition.x }}, {{ metrics().session.cameraPosition.y }}, {{ metrics().session.cameraPosition.z }})</span></div>
+            <div class="kv-item"><span class="kv-key">Rotación Cámara</span> <span class="kv-val">({{ metrics().session.cameraRotation.x }}, {{ metrics().session.cameraRotation.y }}, {{ metrics().session.cameraRotation.z }})</span></div>
+            <div class="kv-item"><span class="kv-key">Dirección Vista (Fwd)</span> <span class="kv-val">({{ metrics().session.cameraDirection.x }}, {{ metrics().session.cameraDirection.y }}, {{ metrics().session.cameraDirection.z }})</span></div>
+            <div class="kv-item"><span class="kv-key">FOV</span> <span class="kv-val">{{ metrics().session.cameraFov }} rad</span></div>
+            <div class="kv-item"><span class="kv-key">Posición Jugador</span> <span class="kv-val">{{ formatCoords(metrics().session.playerPosition, 'Sin Jugador Activo') }}</span></div>
+            <div class="kv-item"><span class="kv-key">Distancia Cámara-Actor</span> <span class="kv-val">{{ metrics().session.distanceCameraToPlayer }} m</span></div>
+            <div class="kv-item"><span class="kv-key">Objeto Seleccionado</span> <span class="kv-val ellipsis" [title]="metrics().session.selectedObjectName || 'Ninguno'">{{ metrics().session.selectedObjectName || 'Ninguno' }}</span></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- TAB 11: LISTA DE INCIDENTES -->
+      <section *ngIf="activeSection() === 'incidents'" class="tab-pane">
+        <div class="incident-top-actions">
+          <button class="btn-action-primary" (click)="incidentSvc.simulateIncident()">⚡ Simular Incidente de Caída</button>
+        </div>
+        
+        <div class="cards-stack">
+          <div class="incident-card" *ngFor="let inc of incidents()" (click)="selectIncident(inc)" [class.recovered]="inc.status === 'RECOVERED'">
+            
+            <div class="inc-card-header">
+              <span class="inc-badge" [class.recovered]="inc.status === 'RECOVERED'">
+                {{ inc.status === 'RECOVERED' ? 'RESCATADO' : 'ACTIVO' }}
+              </span>
+              <span class="inc-timestamp">{{ inc.timestamp }}</span>
+            </div>
+
+            <div class="inc-main-stat">
+              <span class="inc-fps-val">{{ inc.minFps | number:'1.0-0' }} <small>FPS</small></span>
+              <span class="inc-category-pill" [title]="inc.category">[{{ inc.category }}]</span>
+            </div>
+
+            <div class="inc-meta-row">
+              <span>{{ inc.spatialContext.mode }} • {{ inc.spatialContext.sceneName }}</span>
+              <span>Frame #{{ inc.frameNumber }}</span>
+            </div>
+
+            <div class="inc-suspect-box">
+              <span class="inc-suspect-label">Sospecha:</span>
+              <span class="inc-suspect-text">{{ inc.primarySuspect }}</span>
+            </div>
+
+            <div class="inc-footer-action">
+              <span>Inspeccionar Caja Negra</span>
+              <span class="arrow-indicator">→</span>
+            </div>
+
+          </div>
+
+          <div *ngIf="incidentsCount() === 0" class="empty-hint">
+            No se han registrado caídas de rendimiento o incidentes en esta sesión.
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </ng-container>
+
+  <!-- ======================================================================= -->
+  <!-- 2. VISTA DEDICADA DE INCIDENTE CONGELADO                                -->
+  <!-- ======================================================================= -->
+  <ng-container *ngIf="selectedIncident() as inc">
+    
+    <!-- BARRA CONGELADA DE REGRESO (STICKY) -->
+    <div class="incident-frozen-bar">
+      <button class="btn-return-live" (click)="exitIncidentView()">← VOLVER A LIVE</button>
+      <div class="frozen-title">
+        <span class="incident-id-tag ellipsis" [title]="inc.id">{{ inc.id }}</span>
+        <span class="frozen-state-badge" [class.active-spike]="inc.status === 'ACTIVE'">
+          {{ inc.status === 'RECOVERED' ? 'RESCATADO' : 'ACTIVO' }}
+        </span>
+      </div>
+    </div>
+
+    <!-- ÁREA COMPLETA CON SCROLL VERTICAL FLUIDO -->
+    <div class="profiler-body-flow">
+      
+      <!-- SCREENSHOT CAPTURADO -->
+      <div class="incident-screenshot-box">
+        <img *ngIf="inc.imageUrl" [src]="inc.imageUrl" alt="Screenshot del Incidente" class="incident-img" />
+        <div *ngIf="!inc.imageUrl" class="no-img-placeholder">📸 CAPTURA NO DISPONIBLE EN ESTE FRAME</div>
+        <div class="img-caption">Frame #{{ inc.frameNumber }} • {{ inc.timestamp }} • Captura en momento exacto de caída</div>
+      </div>
+
+      <!-- BANNER DE DIAGNÓSTICO -->
+      <div class="diagnosis-banner">
+        <div class="diag-header">
+          <span class="diag-title">CAUSA PRINCIPAL DETECTADA</span>
+          <span class="diag-badge-confidence">Confianza: {{ inc.confidence }}</span>
+        </div>
+        <div class="diag-primary">{{ inc.primarySuspect }}</div>
+        <div class="diag-desc">{{ inc.diagnosis }}</div>
+        <div class="diag-secondary" *ngIf="inc.secondarySuspects && inc.secondarySuspects.length > 0">
+          <strong>Factores contribuyentes:</strong> {{ inc.secondarySuspects.join(', ') }}
+        </div>
+      </div>
+
+      <!-- 1. RESUMEN -->
+      <div class="section-card" [class.expanded]="isIncidentSectionExpanded('summary')">
+        <div class="section-header" (click)="toggleIncidentSection('summary')">
+          <h4>📊 1. Resumen del Incidente</h4>
+          <span class="chevron-icon">{{ isIncidentSectionExpanded('summary') ? '▼' : '▶' }}</span>
+        </div>
+        <div class="key-value-list" *ngIf="isIncidentSectionExpanded('summary')">
+          <div class="kv-item"><span class="kv-key">Mínimo FPS</span> <span class="kv-val"><strong style="color: #ef4444;">{{ inc.minFps | number:'1.0-1' }} FPS</strong></span></div>
+          <div class="kv-item"><span class="kv-key">Peor Frame Time</span> <span class="kv-val"><strong style="color: #ef4444;">{{ inc.maxFrameTime | number:'1.1-1' }} ms</strong></span></div>
+          <div class="kv-item"><span class="kv-key">Duración del Spike</span> <span class="kv-val">{{ inc.durationMs | number:'1.0-0' }} ms</span></div>
+          <div class="kv-item"><span class="kv-key">Cuadro / Frame</span> <span class="kv-val">#{{ inc.frameNumber }}</span></div>
+          <div class="kv-item"><span class="kv-key">Timestamp</span> <span class="kv-val">{{ inc.timestamp }}</span></div>
+        </div>
+      </div>
+
+      <!-- 2. CONTEXTO & UBICACIÓN -->
+      <div class="section-card" [class.expanded]="isIncidentSectionExpanded('location')">
+        <div class="section-header" (click)="toggleIncidentSection('location')">
+          <h4>📍 2. Contexto & Ubicación Espacial</h4>
+          <span class="chevron-icon">{{ isIncidentSectionExpanded('location') ? '▼' : '▶' }}</span>
+        </div>
+        <div class="key-value-list" *ngIf="isIncidentSectionExpanded('location')">
+          <div class="kv-item"><span class="kv-key">Plataforma / Zona</span> <span class="kv-val ellipsis" [title]="inc.spatialContext.sceneName">{{ inc.spatialContext.sceneName }} (ID: {{ inc.spatialContext.sceneId }})</span></div>
+          <div class="kv-item"><span class="kv-key">Modo / Stage</span> <span class="kv-val">{{ inc.spatialContext.mode }} ({{ inc.spatialContext.stage }})</span></div>
+          <div class="kv-item"><span class="kv-key">Posición Cámara</span> <span class="kv-val">({{ inc.spatialContext.cameraCoordinates.x }}, {{ inc.spatialContext.cameraCoordinates.y }}, {{ inc.spatialContext.cameraCoordinates.z }})</span></div>
+          <div class="kv-item"><span class="kv-key">Rotación Cámara</span> <span class="kv-val">({{ inc.spatialContext.cameraRotation.x }}, {{ inc.spatialContext.cameraRotation.y }}, {{ inc.spatialContext.cameraRotation.z }})</span></div>
+          <div class="kv-item"><span class="kv-key">Dirección Cámara</span> <span class="kv-val">({{ inc.spatialContext.cameraDirection.x }}, {{ inc.spatialContext.cameraDirection.y }}, {{ inc.spatialContext.cameraDirection.z }})</span></div>
+          <div class="kv-item"><span class="kv-key">FOV</span> <span class="kv-val">{{ inc.spatialContext.cameraFov }} rad</span></div>
+          <div class="kv-item"><span class="kv-key">Posición Jugador</span> <span class="kv-val">{{ formatCoords(inc.spatialContext.playerCoordinates, 'N/A') }}</span></div>
+          <div class="kv-item"><span class="kv-key">Distancia Cámara-Actor</span> <span class="kv-val">{{ inc.spatialContext.distanceCameraToPlayer }} m</span></div>
+          <div class="kv-item"><span class="kv-key">Objeto Seleccionado</span> <span class="kv-val ellipsis" [title]="inc.spatialContext.selectedObject || 'Ninguno'">{{ inc.spatialContext.selectedObject || 'Ninguno' }}</span></div>
+        </div>
+      </div>
+
+      <!-- 3. RENDIMIENTO & RENDER GPU -->
+      <div class="section-card" [class.expanded]="isIncidentSectionExpanded('performance')">
+        <div class="section-header" (click)="toggleIncidentSection('performance')">
+          <h4>⚡ 3. Rendimiento & Render GPU</h4>
+          <span class="chevron-icon">{{ isIncidentSectionExpanded('performance') ? '▼' : '▶' }}</span>
+        </div>
+        <div class="key-value-list" *ngIf="isIncidentSectionExpanded('performance')">
+          <div class="kv-item"><span class="kv-key">Draw Calls</span> <span class="kv-val">{{ inc.metrics.gpu.drawCalls }}</span></div>
+          <div class="kv-item"><span class="kv-key">Mallas Activas / Totales</span> <span class="kv-val">{{ inc.metrics.gpu.activeMeshes }} / {{ inc.metrics.gpu.totalMeshes }}</span></div>
+          <div class="kv-item"><span class="kv-key">Mallas Transparentes</span> <span class="kv-val">{{ inc.metrics.gpu.transparentMeshes }}</span></div>
+          <div class="kv-item"><span class="kv-key">GPU Frame Time</span> <span class="kv-val">{{ inc.metrics.gpu.gpuFrameTime !== 'unavailable' ? inc.metrics.gpu.gpuFrameTime + ' ms' : 'N/A' }}</span></div>
+          <div class="kv-item"><span class="kv-key">Sistema Dominante CPU</span> <span class="kv-val" style="color: #facc15;">{{ inc.metrics.dominantSystem }}</span></div>
+          <div class="kv-item"><span class="kv-key">JS Heap Usado</span> <span class="kv-val">{{ inc.metrics.memory.usedJSHeapSizeMb }} MB</span></div>
+        </div>
+      </div>
+
+      <!-- 4. LUCES EN CUADRO -->
+      <div class="section-card" [class.expanded]="isIncidentSectionExpanded('incident_lights')">
+        <div class="section-header" (click)="toggleIncidentSection('incident_lights')">
+          <h4>💡 4. Luces en Cuadro ({{ inc.metrics.lights.details.length }})</h4>
+          <span class="chevron-icon">{{ isIncidentSectionExpanded('incident_lights') ? '▼' : '▶' }}</span>
+        </div>
+        <div class="cards-stack" *ngIf="isIncidentSectionExpanded('incident_lights')">
+          <div class="item-card" *ngFor="let l of inc.metrics.lights.details">
+            <div class="item-card-header">
+              <span class="card-item-title ellipsis" [title]="l.name">{{ l.name }}</span>
+              <span class="status-pill" [class.on]="l.isLightInRange">{{ l.isLightInRange ? 'Slot ' + l.assignedSlot : 'Inactiva' }}</span>
+            </div>
+            <div class="item-card-preview-row">
+              <span>Dist: <strong>{{ l.distance }}m</strong></span>
+              <span>Int: <strong>{{ l.finalIntensity | number:'1.2-2' }}</strong></span>
+              <span>Sombra: <strong>{{ l.hasShadowGenerator ? 'SÍ (' + l.renderListSize + ')' : 'NO' }}</strong></span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. SOMBRAS EN CUADRO -->
+      <div class="section-card" [class.expanded]="isIncidentSectionExpanded('incident_shadows')">
+        <div class="section-header" (click)="toggleIncidentSection('incident_shadows')">
+          <h4>🌑 5. Sombras en Cuadro</h4>
+          <span class="chevron-icon">{{ isIncidentSectionExpanded('incident_shadows') ? '▼' : '▶' }}</span>
+        </div>
+        <div class="key-value-list" *ngIf="isIncidentSectionExpanded('incident_shadows')">
+          <div class="kv-item"><span class="kv-key">Generadores Activos</span> <span class="kv-val">{{ inc.metrics.shadows.activeGenerators }}</span></div>
+          <div class="kv-item"><span class="kv-key">Rebuilds RenderList</span> <span class="kv-val">{{ inc.metrics.shadows.renderListRebuilds }}</span></div>
+          <div class="kv-item"><span class="kv-key">Invalidaciones</span> <span class="kv-val">{{ inc.metrics.shadows.invalidations }}</span></div>
+          <div class="kv-item"><span class="kv-key">Casters Congelados</span> <span class="kv-val">{{ inc.metrics.shadows.staticCastersFrozen }}</span></div>
+        </div>
+      </div>
+
+      <!-- 6. SHADERS EN CUADRO -->
+      <div class="section-card" [class.expanded]="isIncidentSectionExpanded('incident_shaders')">
+        <div class="section-header" (click)="toggleIncidentSection('incident_shaders')">
+          <h4>🎨 6. Shaders en Cuadro</h4>
+          <span class="chevron-icon">{{ isIncidentSectionExpanded('incident_shaders') ? '▼' : '▶' }}</span>
+        </div>
+        <div class="key-value-list" *ngIf="isIncidentSectionExpanded('incident_shaders')">
+          <div class="kv-item"><span class="kv-key">Materiales Totales</span> <span class="kv-val">{{ inc.metrics.shaders.totalMaterials }}</span></div>
+          <div class="kv-item"><span class="kv-key">Compilando en VRAM</span> <span class="kv-val"><strong style="color: #ef4444;">{{ inc.metrics.shaders.compilingCount }}</strong></span></div>
+          <div class="kv-item"><span class="kv-key">Máx Luces por Shader</span> <span class="kv-val">{{ inc.metrics.shaders.maxLightsObserved }}</span></div>
+        </div>
+      </div>
+
+      <!-- 7. CULLING EN CUADRO -->
+      <div class="section-card" [class.expanded]="isIncidentSectionExpanded('incident_culling')">
+        <div class="section-header" (click)="toggleIncidentSection('incident_culling')">
+          <h4>👁️ 7. Culling en Cuadro</h4>
+          <span class="chevron-icon">{{ isIncidentSectionExpanded('incident_culling') ? '▼' : '▶' }}</span>
+        </div>
+        <div class="key-value-list" *ngIf="isIncidentSectionExpanded('incident_culling')">
+          <div class="kv-item"><span class="kv-key">Evaluadas / Modificadas</span> <span class="kv-val">{{ inc.metrics.culling.evaluatedEntities }} / {{ inc.metrics.culling.modifiedEntities }}</span></div>
+          <div class="kv-item"><span class="kv-key">Visibles 100%</span> <span class="kv-val">{{ inc.metrics.culling.visibleObjects }}</span></div>
+          <div class="kv-item"><span class="kv-key">Hard Culled</span> <span class="kv-val">{{ inc.metrics.culling.hardCulledObjects }}</span></div>
+          <div class="kv-item"><span class="kv-key">Shadow Protected</span> <span class="kv-val">{{ inc.metrics.culling.shadowProtectedObjects }}</span></div>
+        </div>
+      </div>
+
+      <!-- 8. SECUENCIAS EN CUADRO -->
+      <div class="section-card" [class.expanded]="isIncidentSectionExpanded('incident_sequences')">
+        <div class="section-header" (click)="toggleIncidentSection('incident_sequences')">
+          <h4>🎞️ 8. Secuencias en Cuadro ({{ inc.metrics.sequences.activeCount }})</h4>
+          <span class="chevron-icon">{{ isIncidentSectionExpanded('incident_sequences') ? '▼' : '▶' }}</span>
+        </div>
+        <div class="cards-stack" *ngIf="isIncidentSectionExpanded('incident_sequences')">
+          <div class="item-card" *ngFor="let s of inc.metrics.sequences.details">
+            <div class="item-card-header">
+              <span class="card-item-title ellipsis">{{ s.entityName }}</span>
+              <span class="status-pill on">{{ s.action }}</span>
+            </div>
+            <div class="item-card-preview-row">
+              <span>Paso: #{{ s.stepIndex + 1 }}</span>
+              <span>Tiempo: {{ s.elapsedMs }}ms</span>
+            </div>
+          </div>
+          <div *ngIf="inc.metrics.sequences.details.length === 0" class="empty-hint">Sin secuencias en ejecución.</div>
+        </div>
+      </div>
+
+      <!-- 9. LÍNEA DE TIEMPO PRE-SPIKE -->
+      <div class="section-card" [class.expanded]="isIncidentSectionExpanded('timeline')">
+        <div class="section-header" (click)="toggleIncidentSection('timeline')">
+          <h4>⏱️ 9. Línea de Tiempo Pre-Spike (Últimos Cuadros)</h4>
+          <span class="chevron-icon">{{ isIncidentSectionExpanded('timeline') ? '▼' : '▶' }}</span>
+        </div>
+        <div class="timeline-vertical" *ngIf="isIncidentSectionExpanded('timeline')">
+          <div class="timeline-row" *ngFor="let sample of inc.recentHistory.slice(-8); let last = last" [class.spike-row]="last">
+            <div class="t-badge">F{{ sample.frameId }}</div>
+            <div class="t-stats">
+              <span class="t-fps" [style.color]="sample.fps < 45 ? '#ef4444' : '#4ade80'">{{ sample.fps | number:'1.0-0' }} FPS</span>
+              <span class="t-time">{{ sample.frameTime | number:'1.1-1' }}ms</span>
+              <span class="t-dc">DC: {{ sample.drawCalls }}</span>
+              <span class="t-lights">L: {{ sample.activeLights }}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 10. DELTAS / VARIACIONES -->
+      <div class="section-card" [class.expanded]="isIncidentSectionExpanded('changes')">
+        <div class="section-header" (click)="toggleIncidentSection('changes')">
+          <h4>Δ 10. Variaciones Frente al Frame Estable</h4>
+          <span class="chevron-icon">{{ isIncidentSectionExpanded('changes') ? '▼' : '▶' }}</span>
+        </div>
+        <div class="key-value-list" *ngIf="isIncidentSectionExpanded('changes')">
+          <div class="kv-item"><span class="kv-key">Caída de FPS</span> <span class="kv-val"><strong style="color: #ef4444;">{{ inc.delta.fpsDelta }} FPS</strong></span></div>
+          <div class="kv-item"><span class="kv-key">Incremento Frame Time</span> <span class="kv-val"><strong style="color: #ef4444;">+{{ inc.delta.frameTimeDeltaMs }} ms</strong></span></div>
+          <div class="kv-item"><span class="kv-key">Nuevas Luces Asignadas</span> <span class="kv-val" [style.color]="inc.delta.activeLightsDelta > 0 ? '#ef4444' : '#4ade80'">+{{ inc.delta.activeLightsDelta }}</span></div>
+          <div class="kv-item"><span class="kv-key">Nombres Luces Nuevas</span> <span class="kv-val ellipsis" [title]="inc.delta.newLightsDetected.join(', ') || 'Ninguna'">{{ inc.delta.newLightsDetected.join(', ') || 'Ninguna' }}</span></div>
+          <div class="kv-item"><span class="kv-key">Sombras Reconstruidas</span> <span class="kv-val" [style.color]="inc.delta.shadowRebuildsDelta > 0 ? '#ef4444' : '#4ade80'">+{{ inc.delta.shadowRebuildsDelta }}</span></div>
+          <div class="kv-item"><span class="kv-key">Draw Calls Delta</span> <span class="kv-val">+{{ inc.delta.drawCallsDelta }}</span></div>
+          <div class="kv-item"><span class="kv-key">Active Meshes Delta</span> <span class="kv-val">+{{ inc.delta.activeMeshesDelta }}</span></div>
+          <div class="kv-item"><span class="kv-key">Variación JS Heap</span> <span class="kv-val">+{{ inc.delta.heapDeltaMb }} MB</span></div>
+        </div>
+      </div>
+
+      <!-- BOTONES DE EXPORTACIÓN Y SALIDA -->
+      <div class="action-buttons-row">
+        <button class="btn-action-primary" (click)="copySummary(inc)">📋 Copiar Resumen</button>
+        <button class="btn-action-secondary" (click)="copyJson(inc)">📋 Copiar JSON</button>
+        <button class="btn-action-secondary" (click)="downloadJson(inc)">💾 Descargar</button>
+      </div>
+
+      <button class="btn-return-live full" (click)="exitIncidentView()">← VOLVER A LIVE VIEW</button>
+
+    </div>
+
+  </ng-container>
+
+</div>

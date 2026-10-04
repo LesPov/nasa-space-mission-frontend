@@ -1,6 +1,5 @@
 
-// src/app/core/engine/runtime/systems/player-interaction.service.ts
-
+// file: src/app/core/engine/runtime/systems/player-interaction.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Ray } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -15,6 +14,7 @@ import { PlayerSequenceService } from './player-sequence.service';
 import { PlayerInputService } from './player-input.service';
 import { PlayerBubbleService } from './player-bubble.service';
 import { CameraOwnershipService } from '../cameras/camera-ownership.service';
+import { SpatialRelevanceHubService } from '../../spatial/spatial-relevance-hub.service';
 
 @Injectable({ providedIn: 'root' })
 export class PlayerInteractionService implements IUpdatable {
@@ -26,6 +26,7 @@ export class PlayerInteractionService implements IUpdatable {
   private interactRules = inject(InteractableRulesService);
   private context = inject(GameContextService);
   private ownership = inject(CameraOwnershipService);
+  private spatialHub = inject(SpatialRelevanceHubService);
 
   private sequenceSvc = inject(PlayerSequenceService);
   private inputSvc = inject(PlayerInputService);
@@ -40,7 +41,7 @@ export class PlayerInteractionService implements IUpdatable {
   
   private isEnabled: boolean = false;
 
-  // 🔥 ZERO-ALLOCATIONS VARIABLES PARA EL LOOP
+  // Zero-allocations variables para el loop
   private _centerRay = new Ray(Vector3.Zero(), new Vector3(0, 0, 1), 10000);
   private _probePoint = Vector3.Zero();
   private _forwardDir = new Vector3(0, 0, 1);
@@ -149,7 +150,6 @@ export class PlayerInteractionService implements IUpdatable {
     if (!targetMesh) return Number.POSITIVE_INFINITY;
     const shapeMesh = this.getRootProxyCollider(targetMesh) ?? targetMesh;
     
-    // 🔥 ZERO-ALLOCATION MATH
     try {
       shapeMesh.computeWorldMatrix(true);
       const bounds = shapeMesh.getBoundingInfo().boundingBox;
@@ -218,7 +218,7 @@ export class PlayerInteractionService implements IUpdatable {
         
         if (rootEntity && rootEntity.view) {
             if (rootEntity.type === 'trigger' || rootEntity.type === 'trigger_compuesto') {
-                // Ignoramos
+                // Ignorar
             } else {
                 const selectionDistance = this.getInteractionDistanceToTarget(rootEntity.view, this._probePoint);
                 this.lastInteractDistance = selectionDistance;
@@ -246,6 +246,7 @@ export class PlayerInteractionService implements IUpdatable {
         }
       }
     } else {
+      // MODO TPS
       let closestEntity: GameEntity | null = null;
       let closestDist = Number.POSITIVE_INFINITY;
       
@@ -260,10 +261,21 @@ export class PlayerInteractionService implements IUpdatable {
         const mesh = e.view as AbstractMesh;
         if (this.interactRules.isMeshIgnorable(mesh, jugador)) continue;
 
+        const interactMax = e.interaction.interactDistanceTPS ?? 5.0;
+
+        // 🔥 PREFILTRO SPATIAL HUB: Descarte instantáneo por radio esférico sin calcular OBB
+        const rec = this.spatialHub.getRecord(e.uid);
+        const radius = rec ? rec.boundingRadius : 2.0;
+        const maxThreshold = interactMax + radius;
+        const maxThresholdSq = maxThreshold * maxThreshold;
+
+        if (this.spatialHub.getDistanceSquaredToPlayer(e.uid) > maxThresholdSq) {
+          continue; // descartado a costo cero
+        }
+
         const selectionDistance = this.getInteractionDistanceToTarget(mesh, this._probePoint);
 
         if (e.type !== 'bubble') {
-            const interactMax = e.interaction.interactDistanceTPS ?? 5.0;
             if (selectionDistance <= interactMax && selectionDistance < closestDist) {
               closestDist = selectionDistance;
               closestEntity = e;
@@ -332,5 +344,4 @@ export class PlayerInteractionService implements IUpdatable {
   public cerrarMensajeInteractivo(): void {
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
     this.inputOrchestrator.lockPointer();
-  }
-}
+  }}

@@ -26,6 +26,15 @@ export interface SeqRuntime {
   absoluteTimeMs?: number;
 }
 
+export interface ActiveSequenceDetail {
+  sequenceId: string;
+  entityUid: string;
+  entityName: string;
+  stepIndex: number;
+  action: string;
+  elapsedMs: number;
+}
+
 interface SequenceActionHandler {
   execute(step: PlayerSequenceStep, entity: GameEntity, entityManager: EntityManagerService, dtMs: number, dtFraction: number, runtime: SeqRuntime): void;
 }
@@ -88,7 +97,7 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
       const videoName = step.clipOverride; 
       if (!videoName) return;
       const allEntities = em.getAllEntities();
-      for(let i=0; i<allEntities.length; i++) {
+      for (let i = 0; i < allEntities.length; i++) {
         if (allEntities[i].name === videoName && allEntities[i].mediaRuntime) {
           allEntities[i].mediaRuntime!.videoCommand = 'play';
           allEntities[i].isDirty = true;
@@ -102,7 +111,7 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
       const videoName = step.clipOverride; 
       if (!videoName) return;
       const allEntities = em.getAllEntities();
-      for(let i=0; i<allEntities.length; i++) {
+      for (let i = 0; i < allEntities.length; i++) {
         if (allEntities[i].name === videoName && allEntities[i].mediaRuntime) {
           allEntities[i].mediaRuntime!.videoCommand = 'pause';
           allEntities[i].isDirty = true;
@@ -116,7 +125,7 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
       const videoName = step.clipOverride; 
       if (!videoName) return;
       const allEntities = em.getAllEntities();
-      for(let i=0; i<allEntities.length; i++) {
+      for (let i = 0; i < allEntities.length; i++) {
         if (allEntities[i].name === videoName && allEntities[i].mediaRuntime) {
           allEntities[i].mediaRuntime!.videoCommand = 'stop';
           allEntities[i].isDirty = true;
@@ -208,6 +217,24 @@ export class PlayerSequenceService implements IUpdatable {
     return this.activeSequences.size;
   }
 
+  public getActiveSequencesDetails(): ActiveSequenceDetail[] {
+    const details: ActiveSequenceDetail[] = [];
+    for (const [entityUid, state] of this.activeSequences.entries()) {
+      const entity = this.entityManager.getEntityByUid(entityUid);
+      const seq = entity?.playerConfig?.sequences?.find(s => s.id === state.id);
+      const step = seq?.steps?.[state.index];
+      details.push({
+        sequenceId: state.id,
+        entityUid,
+        entityName: entity?.name || entityUid,
+        stepIndex: state.index,
+        action: step?.action || 'idle',
+        elapsedMs: Math.round(state.elapsedMs)
+      });
+    }
+    return details;
+  }
+
   public evaluateCinematicAction(entity: GameEntity, step: PlayerSequenceStep, dtMs: number, absoluteTimeMs: number): void {
     const defaultRuntime = this.getDefaultRuntime(entity);
     const runtime: SeqRuntime = { ...defaultRuntime, step, running: true, absoluteTimeMs };
@@ -275,7 +302,6 @@ export class PlayerSequenceService implements IUpdatable {
   }
 
   public physicsUpdate(dtMs: number): void {
-    // Si no hay secuencias activas en memoria, salir de inmediato sin iterar
     if (this.activeSequences.size === 0) return;
 
     let effectiveDt = dtMs;
@@ -287,7 +313,6 @@ export class PlayerSequenceService implements IUpdatable {
       effectiveDt = 0;
     }
 
-    // Iterar únicamente sobre las entidades que tienen secuencia activa registrada
     for (const [entityUid] of this.activeSequences.entries()) {
       const entity = this.entityManager.getEntityByUid(entityUid);
       if (!entity) {

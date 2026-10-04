@@ -1,8 +1,7 @@
 
-// src/app/pages/admin/ubicacion-3d/ubicacion3d.ts
-
+// file: src/app/pages/admin/ubicacion-3d/ubicacion3d.ts
 import { Component, ElementRef, OnInit, OnDestroy, ViewChild, inject, signal, NgZone } from '@angular/core';
-import { Vector3, Observer, Scene, ArcRotateCamera, Camera, Animation, CubicEase, EasingFunction } from '@babylonjs/core';
+import { Vector3, Observer, Scene, ArcRotateCamera, Camera, Animation, CubicEase, EasingFunction, Matrix } from '@babylonjs/core';
 import { CameraOwnershipService } from '../../../core/engine/runtime/cameras/camera-ownership.service';
 import { ISceneAccess, SCENE_ACCESS_TOKEN } from '../../../core/engine/scene/scene-access.token';
 
@@ -43,6 +42,10 @@ export class Ubicacion3D implements OnInit, OnDestroy {
   private lastAlpha = -9999;
   private lastBeta = -9999;
   private lastRadius = -9999;
+  private lastCameraMode: number | null = null;
+
+  private _transformedVec = Vector3.Zero();
+  private _cachedRotMatrix = Matrix.Identity();
   
   private axes: AxisObj[] = [
     { id: 'XPos', vec: new Vector3(1,0,0), color: '#ef4444', label: 'X', targetAlpha: 0, targetBeta: Math.PI / 2 },
@@ -53,18 +56,18 @@ export class Ubicacion3D implements OnInit, OnDestroy {
     { id: 'ZNeg', vec: new Vector3(0,0,-1), color: '#3b82f6', label: '-Z', targetAlpha: -Math.PI / 2, targetBeta: Math.PI / 2 }
   ];
 
-  ngOnInit() {
+  ngOnInit(): void {
     this.initializeSVG();
     const scene = this.motor3d.getScene();
     if (scene) {
-      // Registrar fuera de la zona de Angular para no activar detección de cambios por frame
+      // Ejecución estricta fuera de Angular Zone sin disparar Change Detection por frame
       this.ngZone.runOutsideAngular(() => {
         this.observer = scene.onBeforeRenderObservable.add(() => this.updateOrientation());
       });
     }
   }
 
-  private initializeSVG() {
+  private initializeSVG(): void {
     const NS = 'http://www.w3.org/2000/svg';
     this.axes.forEach(axis => {
       const line = document.createElementNS(NS, 'line');
@@ -100,28 +103,27 @@ export class Ubicacion3D implements OnInit, OnDestroy {
       axis.textEl = text;
       this.labelsGroup.nativeElement.appendChild(text);
 
-      // Pre-adjuntar las líneas al DOM para evitar appendChild por cuadro
       this.frontLines.nativeElement.appendChild(line);
       axis.currentGroup = 'front';
 
       const onEnter = () => {
-          axis.lineEl!.setAttribute('stroke-width', '5');
-          axis.lineEl!.style.filter = 'brightness(1.4)';
-          axis.textEl!.style.filter = 'brightness(1.5)';
-          axis.textEl!.setAttribute('font-size', '13');
+        axis.lineEl!.setAttribute('stroke-width', '5');
+        axis.lineEl!.style.filter = 'brightness(1.4)';
+        axis.textEl!.style.filter = 'brightness(1.5)';
+        axis.textEl!.setAttribute('font-size', '13');
       };
       
       const onLeave = () => {
-          axis.lineEl!.setAttribute('stroke-width', '3');
-          axis.lineEl!.style.filter = 'none';
-          axis.textEl!.style.filter = 'none';
-          axis.textEl!.setAttribute('font-size', '11');
+        axis.lineEl!.setAttribute('stroke-width', '3');
+        axis.lineEl!.style.filter = 'none';
+        axis.textEl!.style.filter = 'none';
+        axis.textEl!.setAttribute('font-size', '11');
       };
 
       const onClick = (e: MouseEvent) => {
-          e.stopPropagation();
-          e.preventDefault();
-          this.goToAxis(axis);
+        e.stopPropagation();
+        e.preventDefault();
+        this.goToAxis(axis);
       };
 
       hitLine.addEventListener('mouseenter', onEnter);
@@ -133,60 +135,61 @@ export class Ubicacion3D implements OnInit, OnDestroy {
       text.addEventListener('click', onClick);
 
       this.cleanupEvents.push(() => {
-         hitLine.removeEventListener('mouseenter', onEnter);
-         hitLine.removeEventListener('mouseleave', onLeave);
-         hitLine.removeEventListener('click', onClick);
-         text.removeEventListener('mouseenter', onEnter);
-         text.removeEventListener('mouseleave', onLeave);
-         text.removeEventListener('click', onClick);
+        hitLine.removeEventListener('mouseenter', onEnter);
+        hitLine.removeEventListener('mouseleave', onLeave);
+        hitLine.removeEventListener('click', onClick);
+        text.removeEventListener('mouseenter', onEnter);
+        text.removeEventListener('mouseleave', onLeave);
+        text.removeEventListener('click', onClick);
       });
     });
   }
 
-  private updateOrientation() {
+  private updateOrientation(): void {
     const cam = this.ownership.getCamera() || this.motor3d.getEditorCamera();
     if (!cam) return;
 
     if (cam.getClassName() === 'ArcRotateCamera') {
-       const arcCam = cam as ArcRotateCamera;
-       const orthoState = arcCam.mode === Camera.ORTHOGRAPHIC_CAMERA;
+      const arcCam = cam as ArcRotateCamera;
+      const orthoState = arcCam.mode === Camera.ORTHOGRAPHIC_CAMERA;
        
-       if (this.isOrtho() !== orthoState) {
-           this.ngZone.run(() => this.isOrtho.set(orthoState));
-       }
+      if (this.lastCameraMode !== arcCam.mode) {
+        this.lastCameraMode = arcCam.mode;
+        this.ngZone.run(() => this.isOrtho.set(orthoState));
+      }
 
-       if (orthoState) {
-           const engine = this.motor3d.getEngine();
-           const ratio = engine.getRenderWidth() / engine.getRenderHeight();
-           const halfHeight = arcCam.radius * Math.tan(arcCam.fov / 2);
-           arcCam.orthoTop = halfHeight;
-           arcCam.orthoBottom = -halfHeight;
-           arcCam.orthoLeft = -halfHeight * ratio;
-           arcCam.orthoRight = halfHeight * ratio;
-       }
+      if (orthoState) {
+        const engine = this.motor3d.getEngine();
+        const ratio = engine.getRenderWidth() / engine.getRenderHeight();
+        const halfHeight = arcCam.radius * Math.tan(arcCam.fov / 2);
+        arcCam.orthoTop = halfHeight;
+        arcCam.orthoBottom = -halfHeight;
+        arcCam.orthoLeft = -halfHeight * ratio;
+        arcCam.orthoRight = halfHeight * ratio;
+      }
 
-       // Throttling: Si los ángulos de la cámara casi no cambiaron, no tocar el DOM SVG
-       if (Math.abs(arcCam.alpha - this.lastAlpha) < 0.002 &&
-           Math.abs(arcCam.beta - this.lastBeta) < 0.002 &&
-           Math.abs(arcCam.radius - this.lastRadius) < 0.02) {
-           return;
-       }
-       this.lastAlpha = arcCam.alpha;
-       this.lastBeta = arcCam.beta;
-       this.lastRadius = arcCam.radius;
+      // Evita recalcular y re-renderizar nodos SVG si el ángulo de la cámara es prácticamente idéntico
+      if (Math.abs(arcCam.alpha - this.lastAlpha) < 0.002 &&
+          Math.abs(arcCam.beta - this.lastBeta) < 0.002 &&
+          Math.abs(arcCam.radius - this.lastRadius) < 0.02) {
+        return;
+      }
+      this.lastAlpha = arcCam.alpha;
+      this.lastBeta = arcCam.beta;
+      this.lastRadius = arcCam.radius;
     }
 
-    const viewMatrix = cam.getViewMatrix().getRotationMatrix();
+    cam.getViewMatrix().getRotationMatrixToRef(this._cachedRotMatrix);
     const center = 60;
     const length = 40;
     const textOffset = 18;
 
     for (let i = 0; i < this.axes.length; i++) {
       const axis = this.axes[i];
-      const transformed = Vector3.TransformCoordinates(axis.vec, viewMatrix);
+      Vector3.TransformCoordinatesToRef(axis.vec, this._cachedRotMatrix, this._transformedVec);
       
-      const endX = center + transformed.x * length;
-      const endY = center - transformed.y * length; 
+      const endX = center + this._transformedVec.x * length;
+      const endY = center - this._transformedVec.y * length; 
       
       axis.lineEl!.setAttribute('x2', endX.toFixed(1));
       axis.lineEl!.setAttribute('y2', endY.toFixed(1));
@@ -194,13 +197,12 @@ export class Ubicacion3D implements OnInit, OnDestroy {
       axis.hitEl!.setAttribute('x2', endX.toFixed(1));
       axis.hitEl!.setAttribute('y2', endY.toFixed(1));
 
-      const labelX = center + transformed.x * (length + textOffset);
-      const labelY = center - transformed.y * (length + textOffset);
+      const labelX = center + this._transformedVec.x * (length + textOffset);
+      const labelY = center - this._transformedVec.y * (length + textOffset);
       axis.textEl!.setAttribute('x', labelX.toFixed(1));
       axis.textEl!.setAttribute('y', (labelY + 4).toFixed(1));
 
-      // No mover nodos en el árbol DOM (elimina layout thrashing), usar opacidades CSS directas
-      if (transformed.z > 0) {
+      if (this._transformedVec.z > 0) {
         if (axis.currentGroup !== 'back') {
           axis.lineEl!.style.opacity = '0.35';
           axis.textEl!.style.opacity = '0.45';
@@ -228,7 +230,7 @@ export class Ubicacion3D implements OnInit, OnDestroy {
     return diff;
   }
 
-  private goToAxis(axis: AxisObj) {
+  private goToAxis(axis: AxisObj): void {
     const cam = this.ownership.getCamera();
     if (!cam || this.ownership.getOwner() !== 'EDITOR') return;
     if (cam.getClassName() !== 'ArcRotateCamera') return;
@@ -256,28 +258,28 @@ export class Ubicacion3D implements OnInit, OnDestroy {
     animBeta.setKeys([{ frame: 0, value: arcCam.beta }, { frame: frames, value: targetBeta }]);
     animBeta.setEasingFunction(ease);
 
-    this.motor3d.getScene()?.beginDirectAnimation(arcCam, [animAlpha, animBeta], 0, frames, false);
+    this.motor3d.getScene()?.beginDirectAnimation(arcCam, [animAlpha, animBeta], 0, frames, false, 1.0);
   }
 
-  public on2DClick() {
+  public on2DClick(): void {
     const cam = this.ownership.getCamera();
     if (!cam || this.ownership.getOwner() !== 'EDITOR') return;
     cam.mode = Camera.ORTHOGRAPHIC_CAMERA;
     this.isOrtho.set(true);
   }
 
-  public on3DClick() {
+  public on3DClick(): void {
     const cam = this.ownership.getCamera();
     if (!cam || this.ownership.getOwner() !== 'EDITOR') return;
     cam.mode = Camera.PERSPECTIVE_CAMERA;
     this.isOrtho.set(false);
   }
 
-  public onSizeClick() {
+  public onSizeClick(): void {
     this.widgetSize.set(this.widgetSize() === 'normal' ? 'large' : 'normal');
   }
 
-  ngOnDestroy() {
+  ngOnDestroy(): void {
     const scene = this.motor3d.getScene();
     if (scene && this.observer) {
       scene.onBeforeRenderObservable.remove(this.observer);

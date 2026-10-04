@@ -1,11 +1,10 @@
-
 // file: src/app/core/engine/telemetry/performance-incident.service.ts
 import { Injectable, inject } from '@angular/core';
 import { EngineProfilerService, ProfilerMetrics, FrameSample } from './engine-profiler.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene/scene-access.token';
 import { GameContextService } from '../session/game-context.service';
 import { GameMode } from '../session/game-mode.model';
-import { Tools, Vector3 } from '@babylonjs/core';
+import { Tools } from '@babylonjs/core';
 
 export type IncidentCategory = 
   | 'FRAME_TIME_SPIKE'
@@ -15,6 +14,7 @@ export type IncidentCategory =
   | 'SHADOW_REBUILD_SPIKE'
   | 'LIGHT_SURGE_SPIKE'
   | 'CULLING_STORM_SPIKE'
+  | 'SEQUENCE_SPIKE'
   | 'MEMORY_GC_SPIKE'
   | 'TRANSITION_HITCH'
   | 'UNKNOWN';
@@ -27,6 +27,7 @@ export interface IncidentDelta {
   activeLightsDelta: number;
   shadowedLightsDelta: number;
   shadowRebuildsDelta: number;
+  activeSequencesDelta: number;
   heapDeltaMb: number;
   newLightsDetected: string[];
 }
@@ -42,13 +43,11 @@ export interface PerformanceIncident {
   secondarySuspects: string[];
   confidence: 'HIGH' | 'MEDIUM' | 'LOW';
   
-  // Rendimiento
   fps: number;
   minFps: number;
   frameTime: number;
   maxFrameTime: number;
   
-  // Contexto Espacial Exacto
   spatialContext: {
     sceneId: number | null;
     sceneName: string;
@@ -56,23 +55,21 @@ export interface PerformanceIncident {
     stage: string;
     playerCoordinates: { x: number; y: number; z: number } | null;
     cameraCoordinates: { x: number; y: number; z: number };
+    cameraRotation: { x: number; y: number; z: number };
     cameraDirection: { x: number; y: number; z: number };
     cameraFov: number;
     distanceCameraToPlayer: number;
     selectedObject: string | null;
   };
 
-  // Deltas forenses
   delta: IncidentDelta;
 
-  // Diagnóstico
   diagnosis: string;
   metrics: ProfilerMetrics;
   previousStableMetrics?: FrameSample;
   recentHistory: FrameSample[];
   postIncidentHistory?: FrameSample[];
 
-  // Captura Visual
   imageUrl?: string;
 }
 
@@ -111,7 +108,6 @@ export class PerformanceIncidentService {
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
     const toleranceFactor = isEditor ? 1.6 : 1.0; 
-
     const triggerLimit = isEditor ? 25 : 12;
 
     if (fps < (this.FPS_THRESHOLD / toleranceFactor) || frameTimeMs > (this.FRAMETIME_THRESHOLD * toleranceFactor)) {
@@ -195,6 +191,7 @@ export class PerformanceIncidentService {
         stage: contextStage,
         playerCoordinates: snap.session.playerPosition,
         cameraCoordinates: snap.session.cameraPosition,
+        cameraRotation: snap.session.cameraRotation,
         cameraDirection: snap.session.cameraDirection,
         cameraFov: snap.session.cameraFov,
         distanceCameraToPlayer: snap.session.distanceCameraToPlayer,
@@ -227,6 +224,7 @@ export class PerformanceIncidentService {
         activeLightsDelta: 0,
         shadowedLightsDelta: 0,
         shadowRebuildsDelta: 0,
+        activeSequencesDelta: 0,
         heapDeltaMb: 0,
         newLightsDetected: []
       };
@@ -241,6 +239,7 @@ export class PerformanceIncidentService {
       activeLightsDelta: curr.lights.activePool - prev.activeLights,
       shadowedLightsDelta: curr.lights.shadowedPool - prev.shadowedLights,
       shadowRebuildsDelta: curr.shadows.renderListRebuilds - prev.shadowRebuilds,
+      activeSequencesDelta: curr.sequences.activeCount - (prev.activeSequences || 0),
       heapDeltaMb: parseFloat((curHeap - prev.usedHeapMb).toFixed(2)),
       newLightsDetected: curr.lights.details.filter(l => l.isLightInRange && l.targetMultiplier > 0.05).map(l => l.name)
     };
@@ -294,6 +293,16 @@ export class PerformanceIncidentService {
         secondarySuspects: d.newLightsDetected,
         confidence: 'MEDIUM',
         diagnosis: `Las luces [${d.newLightsDetected.join(', ')}] superaron el umbral al unísono`
+      };
+    }
+
+    if (d.activeSequencesDelta > 2 && m.sequences.activeCount > 3) {
+      return {
+        category: 'SEQUENCE_SPIKE',
+        primarySuspect: `Sobrecarga de Secuencias (+${d.activeSequencesDelta} concurrentes)`,
+        secondarySuspects: m.sequences.details.map(s => `${s.entityName}:${s.action}`),
+        confidence: 'HIGH',
+        diagnosis: `Activación masiva de ${m.sequences.activeCount} secuencias evaluadas simultáneamente`
       };
     }
 

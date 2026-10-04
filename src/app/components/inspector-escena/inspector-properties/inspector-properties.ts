@@ -36,13 +36,15 @@ import { PropPlatform } from './prop-platform/prop-platform';
 import { PropPart } from './prop-part/prop-part';
 import { PropEditorCamera } from './prop-editor-camera/prop-editor-camera';
 import { TimelinePrefabsTab } from '../../global-timeline/tabs/timeline-prefabs-tab/timeline-prefabs-tab';
- 
+import { PropProfilerComponent } from './prop-profiler/prop-profiler';
+  
 @Component({
   selector: 'app-inspector-properties',
   standalone: true,
   imports: [
     CommonModule, FormsModule, PropTransform, PropTrigger, PropPlayer, PropSequences, 
-    PropAnimation, PropPhysics, PropWorld, PropPlatform, PropEditorCamera, PropLight, PropBubble, PropVideo, PropMission, CinematicInspector, PropPart, TimelinePrefabsTab
+    PropAnimation, PropPhysics, PropWorld, PropPlatform, PropEditorCamera, PropLight, PropBubble, PropVideo, PropMission, 
+    CinematicInspector, PropPart, TimelinePrefabsTab, PropProfilerComponent
   ],
   templateUrl: './inspector-properties.html',
   styleUrl: './inspector-properties.css'
@@ -152,7 +154,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
         if (this.esParte) {
            this.familiaResumen = 'Parte Interna 3D';
            this.rootEntityForPart = this.entityManager.getEntityByMesh(rootNode as AbstractMesh) || null;
-           if (this.pestanaActiva !== 'part') this.cambiarPestana('part');
+           if (this.pestanaActiva !== 'part' && this.pestanaActiva !== 'profiler') this.cambiarPestana('part');
         } else {
            this.rootEntityForPart = null;
 
@@ -165,7 +167,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
            
            if (this.esLuz) {
              this.familiaResumen = this.esLuzConModelo ? 'Luz con Modelo 3D' : 'Fuente de Luz';
-             if (this.pestanaActiva !== 'light' && this.pestanaActiva !== 'transform') {
+             if (this.pestanaActiva !== 'light' && this.pestanaActiva !== 'transform' && this.pestanaActiva !== 'profiler') {
                this.cambiarPestana('light');
              }
            } else if (this.esPersonaje) {
@@ -180,14 +182,16 @@ export class InspectorProperties implements OnInit, OnDestroy {
              this.familiaResumen = 'Objeto normal';
            }
            
-           if (this.pestanaActiva === 'part') this.cambiarPestana('transform');
-           if (this.pestanaActiva === 'player' && (!this.esPersonaje || this.esTrigger)) this.cambiarPestana('transform');
-           if (this.pestanaActiva === 'animation' && (!this.esPersonaje && !this.esLuzConModelo)) this.cambiarPestana('transform');
-           if (this.pestanaActiva === 'sequences' && !this.esPersonaje && !this.esTrigger && !this.esLuz && !this.esBurbuja) this.cambiarPestana('transform');
-           if (this.pestanaActiva === 'light' && !this.esLuz) this.cambiarPestana('transform');
-           if (this.pestanaActiva === 'physics' && ((this.esLuz && !this.esLuzConModelo) || this.esBurbuja)) this.cambiarPestana('transform');
-           if (this.pestanaActiva === 'bubble' && !this.esBurbuja) this.cambiarPestana('transform');
-           if (this.pestanaActiva === 'video' && !this.esVideo) this.cambiarPestana('transform');
+           if (this.pestanaActiva !== 'profiler') {
+             if (this.pestanaActiva === 'part') this.cambiarPestana('transform');
+             if (this.pestanaActiva === 'player' && (!this.esPersonaje || this.esTrigger)) this.cambiarPestana('transform');
+             if (this.pestanaActiva === 'animation' && (!this.esPersonaje && !this.esLuzConModelo)) this.cambiarPestana('transform');
+             if (this.pestanaActiva === 'sequences' && !this.esPersonaje && !this.esTrigger && !this.esLuz && !this.esBurbuja) this.cambiarPestana('transform');
+             if (this.pestanaActiva === 'light' && !this.esLuz) this.cambiarPestana('transform');
+             if (this.pestanaActiva === 'physics' && ((this.esLuz && !this.esLuzConModelo) || this.esBurbuja)) this.cambiarPestana('transform');
+             if (this.pestanaActiva === 'bubble' && !this.esBurbuja) this.cambiarPestana('transform');
+             if (this.pestanaActiva === 'video' && !this.esVideo) this.cambiarPestana('transform');
+           }
         }
       } else {
         this.esParte = false;
@@ -200,7 +204,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
         this.esVideo = false;
         this.familiaResumen = 'Sin selección';
         
-        if (this.pestanaActiva !== 'world' && this.pestanaActiva !== 'platform' && this.pestanaActiva !== 'editorCam' && this.pestanaActiva !== 'mission' && this.pestanaActiva !== 'cinematic' && this.pestanaActiva !== 'prefabs') {
+        if (this.pestanaActiva !== 'world' && this.pestanaActiva !== 'platform' && this.pestanaActiva !== 'editorCam' && this.pestanaActiva !== 'mission' && this.pestanaActiva !== 'cinematic' && this.pestanaActiva !== 'prefabs' && this.pestanaActiva !== 'profiler') {
           if (this.stateSvc.activeBottomTab() === 'director') {
               this.cambiarPestana('cinematic');
           } else {
@@ -214,7 +218,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
     effect(() => {
       const bottomTab = this.stateSvc.activeBottomTab();
       if (bottomTab === 'director') {
-        if (this.pestanaActiva !== 'cinematic') {
+        if (this.pestanaActiva !== 'cinematic' && this.pestanaActiva !== 'profiler') {
            this.cambiarPestana('cinematic');
         }
       } else if (this.pestanaActiva === 'cinematic') {

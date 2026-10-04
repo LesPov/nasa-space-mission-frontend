@@ -12,11 +12,7 @@ import { GameEntity } from '../../entities/game.entity';
 import { GameEventBusService } from '../../events/game-event-bus.service';
 import { LightShadowService } from './lighting/light-shadow.service';
 import { EngineProfilerService } from '../../telemetry/engine-profiler.service';
-
-interface VolumeCache {
-  center: Vector3;
-  radius: number;
-}
+import { SpatialRelevanceHubService } from '../../spatial/spatial-relevance-hub.service';
 
 export type CullState = 'VISIBLE' | 'FADING_OUT' | 'HARD_CULLED' | 'RESTORING';
 
@@ -46,15 +42,12 @@ export class LocalRenderingSystem implements IUpdatable {
   private eventBus = inject(GameEventBusService);
   private shadowService = inject(LightShadowService);
   private profiler = inject(EngineProfilerService);
+  private spatialHub = inject(SpatialRelevanceHubService);
 
   private frameCounter = 0;
   private distanceCheckTimer = 0;
   private meshCache = new Map<string, AbstractMesh[]>();
-  private volumeCache = new Map<string, VolumeCache>();
   private renderStates = new Map<string, RenderState>();
-
-  private static _fallbackPos = Vector3.Zero();
-  private lastRefPos = Vector3.Zero();
 
   private _visibleCount = 0;
   private _fadingCount = 0;
@@ -70,23 +63,6 @@ export class LocalRenderingSystem implements IUpdatable {
       restoringObjects: this._restoringCount,
       shadowProtectedObjects: this._shadowProtectedCount
     };
-  }
-
-  public getReferencePosition(preferPlayer = true): Vector3 {
-    if (preferPlayer) {
-      const playerEntity = this.context.activePlayerEntity();
-      if (playerEntity && playerEntity.view && !playerEntity.view.isDisposed()) {
-        return playerEntity.view.getAbsolutePosition();
-      }
-    }
-
-    const scene = this.motor3d.getScene();
-    const camera = this.ownership.getCamera() || scene?.activeCamera || this.motor3d.getEditorCamera();
-    if (camera) {
-      return camera.globalPosition;
-    }
-
-    return LocalRenderingSystem._fallbackPos;
   }
 
   private getCachedMeshes(entity: GameEntity, rootMesh: AbstractMesh): AbstractMesh[] {
@@ -127,26 +103,6 @@ export class LocalRenderingSystem implements IUpdatable {
     return cached;
   }
 
-  private getVolume(entity: GameEntity, rootMesh: AbstractMesh): VolumeCache {
-    let vol = this.volumeCache.get(entity.uid);
-
-    if (!vol || entity.isDirty) {
-      rootMesh.computeWorldMatrix(true);
-
-      const bounds = rootMesh.getHierarchyBoundingVectors(true, (m: AbstractMesh) => {
-        return !Tags.MatchesQuery(m, 'system_element || editor_only || proxy_collider || light_visual || debug_element');
-      });
-
-      const center = bounds.min.add(bounds.max).scale(0.5);
-      const diagonal = bounds.max.subtract(center);
-      const radius = Math.max(0.5, diagonal.length());
-
-      vol = { center, radius };
-      this.volumeCache.set(entity.uid, vol);
-    }
-    return vol;
-  }
-
   private isEligibleForHardCull(e: GameEntity): boolean {
     if (e.isPersistent || e.rol === 'player' || e.rol === 'npc' || e.characterConfig || e.rol === 'spawn_point') return false;
     if (e.autoAnim?.enabled) return false;
@@ -160,9 +116,7 @@ export class LocalRenderingSystem implements IUpdatable {
 
   public start(): void {
     this.meshCache.clear();
-    this.volumeCache.clear();
     this.renderStates.clear();
-    this.lastRefPos.set(0, 0, 0);
     this.frameCounter = 0;
     this.distanceCheckTimer = 9999;
     this.resetCounters();
@@ -212,7 +166,6 @@ export class LocalRenderingSystem implements IUpdatable {
       return;
     }
 
-    const refPos = explicitOrigin || this.getReferencePosition(true);
     const entities = this.entityManager.getAllEntities();
     let playerEntity = this.context.activePlayerEntity();
     if (!playerEntity) {
@@ -252,9 +205,10 @@ export class LocalRenderingSystem implements IUpdatable {
         continue;
       }
 
-      const volume = this.getVolume(e, mesh);
-      const distToCenter = Vector3.Distance(refPos, volume.center);
-      const effectiveDist = Math.max(0, distToCenter - volume.radius);
+      const distToCenter = this.spatialHub.getDistanceToPlayer(e.uid);
+      const rec = this.spatialHub.getRecord(e.uid);
+      const radius = rec ? rec.boundingRadius : 1.0;
+      const effectiveDist = Math.max(0, distToCenter - radius);
       const cachedMeshes = this.getCachedMeshes(e, mesh);
 
       if (effectiveDist > cullDistance) {
@@ -296,7 +250,6 @@ export class LocalRenderingSystem implements IUpdatable {
       }
     }
 
-    this.lastRefPos.copyFrom(refPos);
     this.eventBus.emit({ type: 'RuntimeVisibilityBatchChanged' });
   }
 
@@ -342,21 +295,6 @@ export class LocalRenderingSystem implements IUpdatable {
     }
 
     const isTransitioning = this.context.isTransitioning();
-    const refPos = this.getReferencePosition(true);
-    let velocityOffset = Vector3.Zero();
-    let speed = 0;
-
-    if (dtMs > 0 && this.frameCounter > 1) {
-      const vel = refPos.subtract(this.lastRefPos).scale(1000 / dtMs);
-      speed = vel.length();
-      if (speed > 2.0) {
-        velocityOffset = vel.normalize().scale(Math.min(speed * 0.75, 40));
-      }
-    }
-    this.lastRefPos.copyFrom(refPos);
-
-    const effectiveRefPos = refPos.add(velocityOffset);
-
     const entities = this.entityManager.getAllEntities();
     let playerEntity = this.context.activePlayerEntity();
     if (!playerEntity) {
@@ -368,17 +306,12 @@ export class LocalRenderingSystem implements IUpdatable {
       return;
     }
 
-    let dynamicCullDist = Math.max(10, Number(cullingConfig.cullDistance) || 100);
-    if (speed > 2.0) {
-      dynamicCullDist += speed * 1.0;
-    }
-
+    const dynamicCullDist = Math.max(10, Number(cullingConfig.cullDistance) || 100);
     const fadeMargin = Math.min(dynamicCullDist - 1, Math.max(1, Number(cullingConfig.fadeMargin) || 50));
     const fadeStartDist = Math.max(0, dynamicCullDist - fadeMargin);
 
     const CULL_SQ = dynamicCullDist * dynamicCullDist;
     const FADE_SQ = fadeStartDist * fadeStartDist;
-    const BROADPHASE_DIST = dynamicCullDist + 80;
 
     const hysteresisMargin = Math.min(10, Math.max(3, fadeMargin * 0.2));
     const cullInDistance = Math.max(0, dynamicCullDist - hysteresisMargin);
@@ -422,24 +355,16 @@ export class LocalRenderingSystem implements IUpdatable {
         vCount++;
       } else if (shouldCheckDistance) {
         evaluatedCount++;
-        const volume = this.getVolume(e, mesh);
 
-        const dx = Math.abs(effectiveRefPos.x - volume.center.x);
-        const dy = Math.abs(effectiveRefPos.y - volume.center.y);
-        const dz = Math.abs(effectiveRefPos.z - volume.center.z);
+        // 🔥 INTEGRACIÓN SPATIAL HUB: Reutiliza distSqToPlayer precalculado
+        const distSqToCenter = this.spatialHub.getDistanceSquaredToPlayer(e.uid);
+        const rec = this.spatialHub.getRecord(e.uid);
+        const radius = rec ? rec.boundingRadius : 1.0;
 
+        // Comprobación rápida por esferas envolventes
+        const effectiveDist = Math.max(0, Math.sqrt(distSqToCenter) - radius);
+        const distSq = effectiveDist * effectiveDist;
         const wasCulled = e.isCulled;
-        let distSq = 0;
-        let effectiveDist = 0;
-
-        if (dx - volume.radius > BROADPHASE_DIST || dy - volume.radius > BROADPHASE_DIST || dz - volume.radius > BROADPHASE_DIST) {
-          effectiveDist = BROADPHASE_DIST + 10;
-          distSq = effectiveDist * effectiveDist;
-        } else {
-          const distToCenter = Math.sqrt(dx * dx + dy * dy + dz * dz);
-          effectiveDist = Math.max(0, distToCenter - volume.radius);
-          distSq = effectiveDist * effectiveDist;
-        }
 
         if (renderState.state === 'HARD_CULLED') {
           if (distSq < CULL_IN_SQ) {

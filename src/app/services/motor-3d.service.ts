@@ -1,6 +1,7 @@
+// file: src/app/services/motor-3d.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4, UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera, SceneInstrumentation, EngineInstrumentation } from '@babylonjs/core';
-import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
+import { LoopManagerService, GamePhase } from '../core/engine/behaviors/services/loop-manager.service';
 import { CameraFactoryService } from '../core/engine/runtime/cameras/camera-factory.service';
 import { CameraOwnershipService } from '../core/engine/runtime/cameras/camera-ownership.service';
 import { CinematicDirectorService } from '../core/engine/runtime/systems/cinematic-director.service';
@@ -14,6 +15,7 @@ import { PlayerAnimationService } from '../core/engine/runtime/systems/player-an
 import { CoreSceneMaterialService } from '../core/engine/scene/utils/core-scene-material.service';
 import { EngineProfilerService } from '../core/engine/telemetry/engine-profiler.service';
 import { PerformanceIncidentService } from '../core/engine/telemetry/performance-incident.service';
+import { SpatialRelevanceHubService } from '../core/engine/spatial/spatial-relevance-hub.service';
 
 @Injectable({
   providedIn: 'root'
@@ -27,6 +29,14 @@ export class Motor3dService implements ISceneAccess {
   private ownership = inject(CameraOwnershipService);
   private injector = inject(Injector);
   private profiler = inject(EngineProfilerService);
+
+  private _spatialHub: SpatialRelevanceHubService | null = null;
+  private get spatialHub(): SpatialRelevanceHubService {
+    if (!this._spatialHub) {
+      this._spatialHub = this.injector.get(SpatialRelevanceHubService);
+    }
+    return this._spatialHub;
+  }
 
   public renderingPipeline!: DefaultRenderingPipeline;
   public glowLayer!: GlowLayer; 
@@ -105,6 +115,10 @@ export class Motor3dService implements ISceneAccess {
 
     this.loopManager.initialize(this.scene);
     
+    // Registro del Spatial Relevance Hub al inicio del loop (PRE_UPDATE)
+    this.loopManager.registerSystem(this.spatialHub);
+    this.spatialHub.start();
+
     const incidentSvc = this.injector.get(PerformanceIncidentService);
     
     const cinematicDirector = this.injector.get(CinematicDirectorService);
@@ -156,7 +170,6 @@ export class Motor3dService implements ISceneAccess {
 
     this.engine.runRenderLoop(() => {
       const now = performance.now();
-      // Medir el tiempo transcurrido total entre cuadros para unificar frameTime con FPS
       const totalFrameDelta = now - this.lastFrameStartTime;
       this.lastFrameStartTime = now;
 
@@ -202,6 +215,7 @@ export class Motor3dService implements ISceneAccess {
     this.injector.get(PlayerAnimationService).limpiarEstados();
     this.injector.get(CinematicDirectorService).dispose();
     this.injector.get(DynamicLightingSystem).stop();
+    this.spatialHub.stop();
 
     if (this.sceneInstrumentation) { this.sceneInstrumentation.dispose(); this.sceneInstrumentation = null; }
     if (this.engineInstrumentation) { this.engineInstrumentation.dispose(); this.engineInstrumentation = null; }

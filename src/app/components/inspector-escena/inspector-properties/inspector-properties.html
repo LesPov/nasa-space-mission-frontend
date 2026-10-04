@@ -1,5 +1,3 @@
-<!-- RUTA: src/app/components/inspector-escena/inspector-properties/inspector-properties.html -->
-<!-- ACCIÓN: MODIFICAR -->
 
 <div class="properties-shell">
   <div class="prop-tabs">
@@ -21,10 +19,12 @@
     <button class="tab-btn" [class.active]="pestanaActiva === 'mission'" (click)="cambiarPestana('mission')" title="UI & Misión">📝</button>
     <button class="tab-btn" [class.active]="pestanaActiva === 'prefabs'" (click)="cambiarPestana('prefabs')" title="Catálogo de Prefabs">📦</button>
     <button class="tab-btn" *ngIf="stateSvc.activeBottomTab() === 'director'" [class.active]="pestanaActiva === 'cinematic'" (click)="cambiarPestana('cinematic')" title="Cinemática">🎥</button>
+    <!-- TAB PROFILER FORENSE INTEGRADO AL INSPECTOR -->
+    <button class="tab-btn" [class.active]="pestanaActiva === 'profiler'" (click)="cambiarPestana('profiler')" title="Profiler y Telemetría Forense">📊</button>
   </div>
 
   <div class="prop-content-scroll">
-    <div class="panel-header" *ngIf="pestanaActiva !== 'world' && pestanaActiva !== 'platform' && pestanaActiva !== 'editorCam' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic' && pestanaActiva !== 'prefabs'">
+    <div class="panel-header" *ngIf="pestanaActiva !== 'world' && pestanaActiva !== 'platform' && pestanaActiva !== 'editorCam' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic' && pestanaActiva !== 'prefabs' && pestanaActiva !== 'profiler'">
       <span>
         {{ pestanaActiva === 'transform' ? 'Transformación Básica' : '' }}
         {{ pestanaActiva === 'part' ? 'Propiedades de la Parte' : '' }}
@@ -54,7 +54,7 @@
       </div>
     </ng-container>
 
-    <!-- NUEVA PESTAÑA: AJUSTES DE CÁMARA DEL EDITOR -->
+    <!-- PESTAÑA: AJUSTES DE CÁMARA DEL EDITOR -->
     <ng-container *ngIf="pestanaActiva === 'editorCam'">
       <div class="panel-header"><span style="color: #38bdf8;">Cámara del Editor (Navegación)</span><span class="status-pill">Ajustes</span></div>
       <div class="prop-body">
@@ -95,7 +95,16 @@
       </div>
     </ng-container>
 
-    <div class="prop-body" *ngIf="objetoActual && pestanaActiva !== 'world' && pestanaActiva !== 'platform' && pestanaActiva !== 'editorCam' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic' && pestanaActiva !== 'prefabs'">
+    <!-- PESTAÑA: PROFILER FORENSE INTEGRADO -->
+    <ng-container *ngIf="pestanaActiva === 'profiler'">
+      <div class="panel-header">
+        <span style="color: #38bdf8;">Profiler & Diagnóstico Forense</span>
+        <span class="status-pill" style="color: #4ade80; border-color: rgba(74, 222, 128, 0.3);">MOTOR 3D</span>
+      </div>
+      <app-prop-profiler></app-prop-profiler>
+    </ng-container>
+
+    <div class="prop-body" *ngIf="objetoActual && pestanaActiva !== 'world' && pestanaActiva !== 'platform' && pestanaActiva !== 'editorCam' && pestanaActiva !== 'mission' && pestanaActiva !== 'cinematic' && pestanaActiva !== 'prefabs' && pestanaActiva !== 'profiler'">
       
       <!-- ROOT NAME RENAMING -->
       <div class="obj-title-bar" *ngIf="!esParte">

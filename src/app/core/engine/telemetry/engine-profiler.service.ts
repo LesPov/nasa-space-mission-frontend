@@ -8,8 +8,10 @@ import { ShadowQualityService, ShadowQualityTier } from '../runtime/shadows/shad
 import { LightRegistryService } from '../runtime/systems/lighting/light-registry.service';
 import { LightPoolService } from '../runtime/systems/lighting/light-pool.service';
 import { LocalRenderingSystem } from '../runtime/systems/local-rendering.system';
+import { PlayerSequenceService, ActiveSequenceDetail } from '../runtime/systems/player-sequence.service';
 import { GameContextService } from '../session/game-context.service';
 import { CameraOwnershipService } from '../runtime/cameras/camera-ownership.service';
+import { SpatialRelevanceHubService } from '../spatial/spatial-relevance-hub.service';
 import { Vector3, Material } from '@babylonjs/core';
 
 export interface LightForensicRecord {
@@ -29,9 +31,11 @@ export interface LightForensicRecord {
   renderListSize: number;
   isStatic: boolean;
   assignedSlot: number | null;
+  priorityScore: number;
   lightOnTimestamp?: number;
   shadowReadyTimestamp?: number;
   includedMeshesCount: number;
+  excludedMeshesCount: number;
   insideVolume: boolean;
   inPreEntryZone: boolean;
 }
@@ -44,6 +48,11 @@ export interface ShaderForensicMetrics {
   compilingCount: number;
   totalCompilationsDetected: number;
   maxLightsObserved: number;
+}
+
+export interface SequenceForensicMetrics {
+  activeCount: number;
+  details: ActiveSequenceDetail[];
 }
 
 export interface TransitionMilestone {
@@ -64,6 +73,7 @@ export interface FrameSample {
   shadowRebuilds: number;
   cullingEvaluated: number;
   cullingChanged: number;
+  activeSequences: number;
   usedHeapMb: number;
 }
 
@@ -78,6 +88,7 @@ export interface ProfilerMetrics {
   cpuPhases: Record<string, number>;
   cpuSystems: Record<string, number>;
   dominantSystem: string;
+  telemetryCpuTimeMs: number;
   gpu: {
     drawCalls: number;
     activeMeshes: number;
@@ -127,6 +138,7 @@ export interface ProfilerMetrics {
     shadowProtectedObjects: number;
   };
   shaders: ShaderForensicMetrics;
+  sequences: SequenceForensicMetrics;
   distances: {
     evaluationsBySystem: Record<string, number>;
   };
@@ -143,6 +155,7 @@ export interface ProfilerMetrics {
     sceneName: string;
     playerPosition: { x: number; y: number; z: number } | null;
     cameraPosition: { x: number; y: number; z: number };
+    cameraRotation: { x: number; y: number; z: number };
     cameraDirection: { x: number; y: number; z: number };
     cameraFov: number;
     distanceCameraToPlayer: number;
@@ -152,7 +165,7 @@ export interface ProfilerMetrics {
 
 @Injectable({ providedIn: 'root' })
 export class EngineProfilerService {
-  public isProfilingEnabled = false;
+  public isProfilingEnabled = true;
 
   private adaptiveQuality: AdaptiveQualitySystem | null = null;
   private shadowCache = inject(ShadowCache);
@@ -163,37 +176,40 @@ export class EngineProfilerService {
 
   private _lightRegistry: LightRegistryService | null = null;
   private get lightRegistry(): LightRegistryService {
-    if (!this._lightRegistry) {
-      this._lightRegistry = this.injector.get(LightRegistryService);
-    }
+    if (!this._lightRegistry) this._lightRegistry = this.injector.get(LightRegistryService);
     return this._lightRegistry;
   }
 
   private _lightPool: LightPoolService | null = null;
   private get lightPool(): LightPoolService {
-    if (!this._lightPool) {
-      this._lightPool = this.injector.get(LightPoolService);
-    }
+    if (!this._lightPool) this._lightPool = this.injector.get(LightPoolService);
     return this._lightPool;
   }
 
   private _containmentSvc: LightContainmentService | null = null;
   private get containmentSvc(): LightContainmentService {
-    if (!this._containmentSvc) {
-      this._containmentSvc = this.injector.get(LightContainmentService);
-    }
+    if (!this._containmentSvc) this._containmentSvc = this.injector.get(LightContainmentService);
     return this._containmentSvc;
   }
 
   private _localRendering: LocalRenderingSystem | null = null;
   private get localRendering(): LocalRenderingSystem {
-    if (!this._localRendering) {
-      this._localRendering = this.injector.get(LocalRenderingSystem);
-    }
+    if (!this._localRendering) this._localRendering = this.injector.get(LocalRenderingSystem);
     return this._localRendering;
   }
 
-  // --- Buffers circulares eficientes (Zero-Allocation) ---
+  private _sequenceSvc: PlayerSequenceService | null = null;
+  private get sequenceSvc(): PlayerSequenceService {
+    if (!this._sequenceSvc) this._sequenceSvc = this.injector.get(PlayerSequenceService);
+    return this._sequenceSvc;
+  }
+
+  private _spatialHub: SpatialRelevanceHubService | null = null;
+  private get spatialHub(): SpatialRelevanceHubService {
+    if (!this._spatialHub) this._spatialHub = this.injector.get(SpatialRelevanceHubService);
+    return this._spatialHub;
+  }
+
   private readonly BUFFER_SIZE = 120;
   private frameTimeBuffer = new Float32Array(this.BUFFER_SIZE);
   private bufferIndex = 0;
@@ -204,19 +220,18 @@ export class EngineProfilerService {
   private historyIndex = 0;
   private frameCounter = 0;
 
-  // --- Medición continua CPU ---
   private currentPhases: Record<string, number> = {};
   private currentSystems: Record<string, number> = {};
   private avgPhases: Record<string, number> = {};
   private avgSystems: Record<string, number> = {};
   private dominantSystemName = 'None';
+  private telemetryCpuAccumulator = 0;
+  private avgTelemetryCpuTime = 0;
 
-  // --- Contadores de distancia y culling por frame ---
   public distanceEvaluationsCounter: Record<string, number> = {};
   public cullingEvaluatedCount = 0;
   public cullingChangedCount = 0;
 
-  // --- Instrumentos Babylon ---
   private sceneInstr: any = null;
   private engineInstr: any = null;
   private lightSys: any = null;
@@ -224,10 +239,15 @@ export class EngineProfilerService {
   private engine: any = null;
   private currentFps = 0;
 
-  // --- Memoria Heap ---
+  private cachedMemoryMetrics = {
+    usedJSHeapSizeMb: 'unavailable' as number | 'unavailable',
+    totalJSHeapSizeMb: 'unavailable' as number | 'unavailable',
+    jsHeapSizeLimitMb: 'unavailable' as number | 'unavailable',
+    heapDeltaMb: 0
+  };
   private lastHeapMb = 0;
+  private memoryCheckTimer = 0;
 
-  // --- Transiciones ---
   private transitionMilestones: TransitionMilestone[] = [];
   private transitionStartTime = 0;
   private lastTransitionDuration = 0;
@@ -246,6 +266,7 @@ export class EngineProfilerService {
         shadowRebuilds: 0,
         cullingEvaluated: 0,
         cullingChanged: 0,
+        activeSequences: 0,
         usedHeapMb: 0
       });
     }
@@ -304,15 +325,16 @@ export class EngineProfilerService {
 
   public recordFrameTime(timeMs: number): void {
     if (!this.isProfilingEnabled) return;
+    const tStart = performance.now();
+
     this.frameCounter++;
     this.frameTimeBuffer[this.bufferIndex] = timeMs;
     this.bufferIndex = (this.bufferIndex + 1) % this.BUFFER_SIZE;
     if (this.bufferCount < this.BUFFER_SIZE) this.bufferCount++;
 
-    // Muestra en buffer circular reutilizable
     const sample = this.historyCircularBuffer[this.historyIndex];
     sample.frameId = this.frameCounter;
-    sample.timestamp = performance.now();
+    sample.timestamp = tStart;
     sample.fps = this.currentFps;
     sample.frameTime = timeMs;
     sample.drawCalls = this.sceneInstr?.drawCallsCounter?.current || 0;
@@ -330,11 +352,19 @@ export class EngineProfilerService {
     sample.shadowRebuilds = this.shadowCache.metrics.renderListRebuilds;
     sample.cullingEvaluated = this.cullingEvaluatedCount;
     sample.cullingChanged = this.cullingChangedCount;
+    sample.activeSequences = this.sequenceSvc.getActiveSequencesCount();
 
-    const mem = this.getMemoryMetrics();
-    sample.usedHeapMb = typeof mem.usedJSHeapSizeMb === 'number' ? mem.usedJSHeapSizeMb : 0;
+    this.memoryCheckTimer++;
+    if (this.memoryCheckTimer >= 30) {
+      this.updateMemoryMetricsThrottled();
+      this.memoryCheckTimer = 0;
+    }
+    sample.usedHeapMb = typeof this.cachedMemoryMetrics.usedJSHeapSizeMb === 'number' 
+      ? this.cachedMemoryMetrics.usedJSHeapSizeMb 
+      : 0;
 
     this.historyIndex = (this.historyIndex + 1) % this.HISTORY_CAPACITY;
+    this.telemetryCpuAccumulator += (performance.now() - tStart);
   }
 
   public getRecentHistory(): FrameSample[] {
@@ -361,6 +391,7 @@ export class EngineProfilerService {
 
   public endFrame(): void {
     if (!this.isProfilingEnabled) return;
+    const tStart = performance.now();
     const alpha = 0.15;
     let maxSysTime = -1;
     let dominantSys = 'None';
@@ -386,9 +417,13 @@ export class EngineProfilerService {
     if (this.bufferIndex % 60 === 0) {
       this.shadowCache.clearMetrics();
     }
+
+    this.telemetryCpuAccumulator += (performance.now() - tStart);
+    this.avgTelemetryCpuTime = (this.avgTelemetryCpuTime * 0.9) + (this.telemetryCpuAccumulator * 0.1);
+    this.telemetryCpuAccumulator = 0;
   }
 
-  private getMemoryMetrics() {
+  private updateMemoryMetricsThrottled(): void {
     const perf = (performance as any);
     if (perf && perf.memory) {
       const used = perf.memory.usedJSHeapSize / (1024 * 1024);
@@ -396,41 +431,25 @@ export class EngineProfilerService {
       const limit = perf.memory.jsHeapSizeLimit / (1024 * 1024);
       const delta = this.lastHeapMb > 0 ? used - this.lastHeapMb : 0;
       this.lastHeapMb = used;
-      return {
+      this.cachedMemoryMetrics = {
         usedJSHeapSizeMb: parseFloat(used.toFixed(2)),
         totalJSHeapSizeMb: parseFloat(total.toFixed(2)),
         jsHeapSizeLimitMb: parseFloat(limit.toFixed(2)),
         heapDeltaMb: parseFloat(delta.toFixed(2))
       };
     }
-    return {
-      usedJSHeapSizeMb: 'unavailable' as const,
-      totalJSHeapSizeMb: 'unavailable' as const,
-      jsHeapSizeLimitMb: 'unavailable' as const,
-      heapDeltaMb: 0
-    };
   }
 
   private getShaderMetrics(): ShaderForensicMetrics {
     const scene = this.sceneInstr?.scene;
     if (!scene) {
       return {
-        totalMaterials: 0,
-        standardMaterials: 0,
-        pbrMaterials: 0,
-        multiMaterials: 0,
-        compilingCount: 0,
-        totalCompilationsDetected: 0,
-        maxLightsObserved: 0
+        totalMaterials: 0, standardMaterials: 0, pbrMaterials: 0, multiMaterials: 0,
+        compilingCount: 0, totalCompilationsDetected: 0, maxLightsObserved: 0
       };
     }
 
-    let stdCount = 0;
-    let pbrCount = 0;
-    let multiCount = 0;
-    let compiling = 0;
-    let maxLights = 0;
-
+    let stdCount = 0, pbrCount = 0, multiCount = 0, compiling = 0, maxLights = 0;
     const materials = scene.materials as Material[];
     const total = materials ? materials.length : 0;
 
@@ -445,10 +464,7 @@ export class EngineProfilerService {
       if (typeof lightLimit === 'number' && lightLimit > maxLights) {
         maxLights = lightLimit;
       }
-
-      if (!m.isReady()) {
-        compiling++;
-      }
+      if (!m.isReady()) compiling++;
     }
 
     return {
@@ -485,10 +501,9 @@ export class EngineProfilerService {
       min = 0;
     }
 
-    // Comprobar si GPU time está realmente disponible en Babylon
     let gpuMetric: number | 'unavailable' = 'unavailable';
     if (this.engineInstr?.gpuFrameTimeCounter && this.engineInstr.gpuFrameTimeCounter.current > 0) {
-      gpuMetric = this.engineInstr.gpuFrameTimeCounter.current * 0.000001; // ns a ms
+      gpuMetric = this.engineInstr.gpuFrameTimeCounter.current * 0.000001;
     }
 
     const drawCalls = this.sceneInstr?.drawCallsCounter?.current || 0;
@@ -527,7 +542,9 @@ export class EngineProfilerService {
           const vl = virtuals[i];
           const slot = slots.find(s => s.assignedEntityUid === vl.entity.uid);
           const lightComp = vl.entity.light;
-          const pos = vl.entity.view ? vl.entity.view.getAbsolutePosition() : { x: vl.entity.transform.position.x, y: vl.entity.transform.position.y, z: vl.entity.transform.position.z };
+          const pos = vl.entity.view 
+            ? vl.entity.view.getAbsolutePosition() 
+            : { x: vl.entity.transform.position.x, y: vl.entity.transform.position.y, z: vl.entity.transform.position.z };
 
           lightDetails.push({
             uid: vl.entity.uid,
@@ -546,7 +563,11 @@ export class EngineProfilerService {
             renderListSize: slot?.sg ? (slot.sg.getShadowMap()?.renderList?.length || 0) : 0,
             isStatic: slot?.isStaticLight ?? true,
             assignedSlot: slot ? slot.index : null,
+            priorityScore: parseFloat((vl._sortScore ?? 0).toFixed(2)),
+            lightOnTimestamp: slot?._lightOnTimestamp,
+            shadowReadyTimestamp: slot?._shadowReadyTimestamp,
             includedMeshesCount: slot?.light ? (slot.light.includedOnlyMeshes?.length || 0) : 0,
+            excludedMeshesCount: slot?.light ? (slot.light.excludedMeshes?.length || 0) : 0,
             insideVolume: vl.insideVolume,
             inPreEntryZone: vl.inPreEntryZone
           });
@@ -557,14 +578,10 @@ export class EngineProfilerService {
     }
 
     const cullingMetrics = this.localRendering ? this.localRendering.getMetrics() : {
-      visibleObjects: visibleMeshesCount,
-      fadingObjects: 0,
-      hardCulledObjects: 0,
-      restoringObjects: 0,
-      shadowProtectedObjects: 0
+      visibleObjects: visibleMeshesCount, fadingObjects: 0, hardCulledObjects: 0, restoringObjects: 0, shadowProtectedObjects: 0
     };
 
-    // --- CONTEXTO ESPACIAL COMPLETO ---
+    const seqDetails = this.sequenceSvc ? this.sequenceSvc.getActiveSequencesDetails() : [];
     const activePlayer = this.gameContext.activePlayerEntity();
     let playerPos: { x: number; y: number; z: number } | null = null;
     if (activePlayer && activePlayer.view && !activePlayer.view.isDisposed()) {
@@ -574,6 +591,7 @@ export class EngineProfilerService {
 
     const cam = this.ownership.getCamera() || this.sceneInstr?.scene?.activeCamera;
     let camPos = { x: 0, y: 0, z: 0 };
+    let camRot = { x: 0, y: 0, z: 0 };
     let camDir = { x: 0, y: 0, z: 1 };
     let camFov = 0.8;
     let distCamPlayer = 0;
@@ -586,21 +604,41 @@ export class EngineProfilerService {
       camDir = { x: parseFloat(cd.x.toFixed(3)), y: parseFloat(cd.y.toFixed(3)), z: parseFloat(cd.z.toFixed(3)) };
       camFov = cam.fov || 0.8;
 
+      if ((cam as any).rotation) {
+        const cr = (cam as any).rotation;
+        camRot = { x: parseFloat(cr.x.toFixed(2)), y: parseFloat(cr.y.toFixed(2)), z: parseFloat(cr.z.toFixed(2)) };
+      } else if ((cam as any).rotationQuaternion) {
+        const e = (cam as any).rotationQuaternion.toEulerAngles();
+        camRot = { x: parseFloat(e.x.toFixed(2)), y: parseFloat(e.y.toFixed(2)), z: parseFloat(e.z.toFixed(2)) };
+      }
+
       if (playerPos) {
         distCamPlayer = parseFloat(Vector3.Distance(cp, new Vector3(playerPos.x, playerPos.y, playerPos.z)).toFixed(2));
       }
     }
 
     const selectedNode = this.gameContext.selectedNode();
-    const selectedName = selectedNode ? selectedNode.name : null;
-
     const epData = this.gameContext.activePlatformData();
     const sceneId = this.gameContext.activePlatformId();
     const sceneName = epData?.scene?.name || 'Zona Principal';
 
-    const memoryMetrics = this.getMemoryMetrics();
     const shaderMetrics = this.getShaderMetrics();
     const engine = this.engine;
+
+    // 🔥 METRICAS COMBINADAS CON EL SPATIAL HUB
+    const hubMetrics = this.spatialHub ? this.spatialHub.getMetrics() : {
+      evaluations: 0, exactDistanceCalculations: 0, squaredDistanceCalculations: 0, cacheHits: 0, registeredEntities: 0, updateTimeMs: 0
+    };
+
+    const combinedDistances: Record<string, number> = {
+      ...this.distanceEvaluationsCounter,
+      HubUpdateTimeMs: hubMetrics.updateTimeMs,
+      HubRegisteredEntities: hubMetrics.registeredEntities,
+      HubEvaluationsThisFrame: hubMetrics.evaluations,
+      HubSquaredDistCalls: hubMetrics.squaredDistanceCalculations,
+      HubExactDistCalls: hubMetrics.exactDistanceCalculations,
+      HubCacheHits: hubMetrics.cacheHits
+    };
 
     return {
       fps: parseFloat(this.currentFps.toFixed(1)),
@@ -613,6 +651,7 @@ export class EngineProfilerService {
       cpuPhases: { ...this.avgPhases },
       cpuSystems: { ...this.avgSystems },
       dominantSystem: this.dominantSystemName,
+      telemetryCpuTimeMs: parseFloat(this.avgTelemetryCpuTime.toFixed(3)),
       gpu: {
         drawCalls,
         activeMeshes,
@@ -624,11 +663,8 @@ export class EngineProfilerService {
         totalMeshes,
         visibleMeshes: visibleMeshesCount
       },
-      memory: memoryMetrics,
-      lights: {
-        ...lightMetrics,
-        details: lightDetails
-      },
+      memory: { ...this.cachedMemoryMetrics },
+      lights: { ...lightMetrics, details: lightDetails },
       shadows: {
         ...shadowMetrics,
         shadowQualityLevel: this.shadowQualitySvc.getQualityTier(),
@@ -648,9 +684,8 @@ export class EngineProfilerService {
         ...cullingMetrics
       },
       shaders: shaderMetrics,
-      distances: {
-        evaluationsBySystem: { ...this.distanceEvaluationsCounter }
-      },
+      sequences: { activeCount: seqDetails.length, details: seqDetails },
+      distances: { evaluationsBySystem: combinedDistances },
       transition: {
         lastTransitionTotalMs: parseFloat(this.lastTransitionDuration.toFixed(1)),
         milestones: [...this.transitionMilestones]
@@ -664,10 +699,11 @@ export class EngineProfilerService {
         sceneName,
         playerPosition: playerPos,
         cameraPosition: camPos,
+        cameraRotation: camRot,
         cameraDirection: camDir,
         cameraFov: parseFloat(camFov.toFixed(2)),
         distanceCameraToPlayer: distCamPlayer,
-        selectedObjectName: selectedName
+        selectedObjectName: selectedNode ? selectedNode.name : null
       }
     };
   }

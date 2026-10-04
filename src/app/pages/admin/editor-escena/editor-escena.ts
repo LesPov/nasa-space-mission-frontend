@@ -1,4 +1,3 @@
-
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect, untracked, NgZone } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -128,9 +127,7 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.stateSvc.playState();
     });
 
-    // 🔥 EFECTO REACTIVO 2: Mantiene el Dropdown del Viewport en Sincronía
-    // Escucha silenciosamente el cambio de plataforma (orquestado habitualmente por el Outliner)
-    // para reflejarlo en la vista, previniendo incoherencias visuales.
+    // Mantiene el Dropdown del Viewport en Sincronía
     effect(() => {
        const activeId = this.editorSvc.escenaIdActiva();
        untracked(() => {
@@ -145,9 +142,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   ngOnInit() {
     this.gameContext.setupContext('EDITOR', { submode: 'EDITING', cameraView: 'FPS' }); 
     this.addObjSvc.cargarAssets();
-    if (this.esAdmin) {
-      this.orchestrator.initialize();
-    }
+    this.orchestrator.initialize();
     
     this.keyboard.init();
     this.kbSub = this.inputRouter.getGlobalKeyboardStream(['UI', 'EDITOR_EDITING', 'EDITOR_PLAYTEST']).subscribe(e => {
@@ -157,7 +152,6 @@ export class EditorEscena implements OnInit, OnDestroy {
     this.ebSub = this.eventBus.events$.subscribe(event => {
       if (event.type === 'GamePaused') {
         setTimeout(() => {
-          // Solo abrir el modal si el estado actual es genuinamente PLAYING y no estamos saliendo al Editor
           if (
             this.misionIniciada && 
             !this.cerrandoModalMision && 
@@ -178,8 +172,6 @@ export class EditorEscena implements OnInit, OnDestroy {
       }
     });
 
-    // 🔥 FIX FASE 3: Enlazamos los eventos de ratón globales (splitters y drag) 
-    // estrictamente FUERA del ciclo de vida de Angular para no sobrecargar el CD cada pixel movido.
     this.ngZone.runOutsideAngular(() => {
         window.addEventListener('mousemove', this.onMouseMoveHandler);
         window.addEventListener('mouseup', this.onMouseUpHandler);

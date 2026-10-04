@@ -163,6 +163,33 @@ export class PlayerRuntimeComponent {
 
 export type MovementAuthority = 'GAMEPLAY' | 'CINEMATIC_FULL' | 'CINEMATIC_LOCOMOTION';
 
+export interface AuthoringBackupData {
+  transform: {
+    position: { x: number; y: number; z: number };
+    rotation: { x: number; y: number; z: number };
+    scale: { x: number; y: number; z: number };
+    rotationQuaternion: { x: number; y: number; z: number; w: number } | null;
+  };
+  visual: {
+    color: string;
+    colorBW: string;
+    isSolid: boolean;
+    isSelectable: boolean;
+    ignoraNiebla: boolean;
+    esEmisivo: boolean;
+    brilloIntensidad: number;
+    assetId: number | null | undefined;
+    path: string | undefined;
+    mostrarBorde: boolean;
+    internalScale: number | undefined;
+    ambientColor: string;
+    ambientColorBW: string;
+    disableCulling: boolean;
+  };
+  light: LightComponent | null;
+  partOverrides: Record<string, PartOverride> | null;
+}
+
 export class GameEntity {
   public uid: string;
   public name: string;
@@ -173,7 +200,7 @@ export class GameEntity {
   public isPersistent: boolean = false;
   
   public isRuntimeOnly: boolean = false;
-  public authoringBackup: any = null;
+  public authoringBackup: AuthoringBackupData | null = null;
   
   public isManuallyHidden: boolean = false; 
   public isCulled: boolean = false;         
@@ -234,27 +261,129 @@ export class GameEntity {
     }
   }
 
+  /**
+   * Clonación profunda directa en memoria de alta velocidad sin utilizar JSON.parse/stringify.
+   */
   public createAuthoringBackup(): void {
     if (this.isRuntimeOnly) return; 
 
+    const t = this.transform;
+    const v = this.visual;
+    const l = this.light;
+    const po = this.partOverrides?.overrides;
+
+    let clonedOverrides: Record<string, PartOverride> | null = null;
+    if (po) {
+      clonedOverrides = {};
+      const keys = Object.keys(po);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        const o = po[k];
+        clonedOverrides[k] = {
+          position: o.position ? { ...o.position } : undefined,
+          rotation: o.rotation ? { ...o.rotation } : undefined,
+          scale: o.scale ? { ...o.scale } : undefined,
+          color: o.color,
+          colorBW: o.colorBW,
+          esEmisivo: o.esEmisivo,
+          brilloIntensidad: o.brilloIntensidad,
+          texturePath: o.texturePath,
+          textureSource: o.textureSource,
+          displayName: o.displayName
+        };
+      }
+    }
+
+    let clonedLight: LightComponent | null = null;
+    if (l) {
+      clonedLight = new LightComponent(
+        l.lightColor, l.lightColorBW, l.intensity, l.range, l.angle,
+        l.attachedNodePath, l.attachedNodeName, l.renderIntensity, l.enabled,
+        l.castShadows, l.containmentMode, l.interiorActivationMode, l.preEntryEnabled,
+        l.preEntryDistance, l.containerEntityUid, l.affectDescendantsOnly, l.shadowDarkness,
+        l.shadowBias, l.shadowNormalBias, l.excludeExteriorMeshes, l.distanceControlEnabled,
+        l.activationDistance, l.deactivationDistance, l.distanceShadowsEnabled,
+        l.shadowActivationDistance, l.shadowDeactivationDistance, l.distanceReferenceMode
+      );
+    }
+
     this.authoringBackup = {
-      transform: JSON.parse(JSON.stringify(this.transform)),
-      visual: JSON.parse(JSON.stringify(this.visual)),
-      light: this.light ? JSON.parse(JSON.stringify(this.light)) : null,
-      partOverrides: this.partOverrides ? JSON.parse(JSON.stringify(this.partOverrides)) : null
+      transform: {
+        position: { x: t.position.x, y: t.position.y, z: t.position.z },
+        rotation: { x: t.rotation.x, y: t.rotation.y, z: t.rotation.z },
+        scale: { x: t.scale.x, y: t.scale.y, z: t.scale.z },
+        rotationQuaternion: t.rotationQuaternion ? { ...t.rotationQuaternion } : null
+      },
+      visual: {
+        color: v.color,
+        colorBW: v.colorBW,
+        isSolid: v.isSolid,
+        isSelectable: v.isSelectable,
+        ignoraNiebla: v.ignoraNiebla,
+        esEmisivo: v.esEmisivo,
+        brilloIntensidad: v.brilloIntensidad,
+        assetId: v.assetId,
+        path: v.path,
+        mostrarBorde: v.mostrarBorde,
+        internalScale: v.internalScale,
+        ambientColor: v.ambientColor,
+        ambientColorBW: v.ambientColorBW,
+        disableCulling: v.disableCulling
+      },
+      light: clonedLight,
+      partOverrides: clonedOverrides
     };
   }
 
+  /**
+   * Restauración rápida sin deserializaciones de texto.
+   */
   public restoreAuthoringBackup(): void {
     if (!this.authoringBackup || this.isRuntimeOnly) return;
 
-    this.transform = JSON.parse(JSON.stringify(this.authoringBackup.transform));
-    this.visual = JSON.parse(JSON.stringify(this.authoringBackup.visual));
-    if (this.authoringBackup.light) {
-        this.light = JSON.parse(JSON.stringify(this.authoringBackup.light));
+    const b = this.authoringBackup;
+    const t = this.transform;
+    t.position.x = b.transform.position.x;
+    t.position.y = b.transform.position.y;
+    t.position.z = b.transform.position.z;
+
+    t.rotation.x = b.transform.rotation.x;
+    t.rotation.y = b.transform.rotation.y;
+    t.rotation.z = b.transform.rotation.z;
+
+    t.scale.x = b.transform.scale.x;
+    t.scale.y = b.transform.scale.y;
+    t.scale.z = b.transform.scale.z;
+
+    t.rotationQuaternion = b.transform.rotationQuaternion ? { ...b.transform.rotationQuaternion } : null;
+
+    const v = this.visual;
+    v.color = b.visual.color;
+    v.colorBW = b.visual.colorBW;
+    v.isSolid = b.visual.isSolid;
+    v.isSelectable = b.visual.isSelectable;
+    v.ignoraNiebla = b.visual.ignoraNiebla;
+    v.esEmisivo = b.visual.esEmisivo;
+    v.brilloIntensidad = b.visual.brilloIntensidad;
+    v.assetId = b.visual.assetId;
+    v.path = b.visual.path;
+    v.mostrarBorde = b.visual.mostrarBorde;
+    v.internalScale = b.visual.internalScale;
+    v.ambientColor = b.visual.ambientColor;
+    v.ambientColorBW = b.visual.ambientColorBW;
+    v.disableCulling = b.visual.disableCulling;
+
+    if (b.light && this.light) {
+      Object.assign(this.light, b.light);
     }
-    if (this.authoringBackup.partOverrides) {
-        this.partOverrides = JSON.parse(JSON.stringify(this.authoringBackup.partOverrides));
+
+    if (b.partOverrides && this.partOverrides) {
+      this.partOverrides.overrides = {};
+      const keys = Object.keys(b.partOverrides);
+      for (let i = 0; i < keys.length; i++) {
+        const k = keys[i];
+        this.partOverrides.overrides[k] = { ...b.partOverrides[k] };
+      }
     }
 
     this.isDirty = true;

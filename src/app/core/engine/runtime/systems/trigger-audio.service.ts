@@ -1,10 +1,12 @@
 
+// file: src/app/core/engine/runtime/systems/trigger-audio.service.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameContextService } from '../../session/game-context.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameEntity } from '../../entities/game.entity';
 import { AbstractMesh, Vector3 } from '@babylonjs/core';
+import { SpatialRelevanceHubService } from '../../spatial/spatial-relevance-hub.service';
 
 export interface AudioPlaybackState {
   audio: HTMLAudioElement;
@@ -24,6 +26,7 @@ export class TriggerAudioService implements IUpdatable {
   public id = 'TriggerAudioSystem';
   private context = inject(GameContextService);
   private entityManager = inject(EntityManagerService);
+  private spatialHub = inject(SpatialRelevanceHubService);
   
   private activeAudios = new Map<string, AudioPlaybackState>();
   private _tempClosestPoint = Vector3.Zero();
@@ -140,16 +143,29 @@ export class TriggerAudioService implements IUpdatable {
           const mesh = e.view as AbstractMesh;
           if (!mesh) continue;
 
+          // 🔥 PREFILTRO SPATIAL HUB: si la distancia cuadrática al actor excede el rango máximo más radio, omitir
+          const rec = this.spatialHub.getRecord(e.uid);
+          const radius = rec ? rec.boundingRadius : 2.0;
+
           if (!e.trigger.isComposite && e.trigger.audioProximityNorm && e.trigger.soundUrl) {
-              this.evaluateProximity(e, 'norm', playerPos, mesh, e.trigger.soundUrl, e.trigger.audioLoopNorm, e.trigger.audioVolumeNorm, e.trigger.audioMaxDistNorm, e.trigger.audioFadeInNorm, e.trigger.audioSpatialNorm);
+              const maxD = (e.trigger.audioMaxDistNorm || 50) + radius;
+              if (this.spatialHub.getDistanceSquaredToPlayer(e.uid) <= maxD * maxD) {
+                this.evaluateProximity(e, 'norm', playerPos, mesh, e.trigger.soundUrl, e.trigger.audioLoopNorm, e.trigger.audioVolumeNorm, e.trigger.audioMaxDistNorm, e.trigger.audioFadeInNorm, e.trigger.audioSpatialNorm);
+              }
           }
           
           if (e.trigger.isComposite && e.trigger.audioProximityEntrada && e.trigger.soundUrlEntrada) {
-              this.evaluateProximity(e, 'on_enter', playerPos, mesh, e.trigger.soundUrlEntrada, e.trigger.audioLoopEntrada, e.trigger.audioVolumeEntrada, e.trigger.audioMaxDistEntrada, e.trigger.audioFadeInEntrada, e.trigger.audioSpatialEntrada);
+              const maxD = (e.trigger.audioMaxDistEntrada || 50) + radius;
+              if (this.spatialHub.getDistanceSquaredToPlayer(e.uid) <= maxD * maxD) {
+                this.evaluateProximity(e, 'on_enter', playerPos, mesh, e.trigger.soundUrlEntrada, e.trigger.audioLoopEntrada, e.trigger.audioVolumeEntrada, e.trigger.audioMaxDistEntrada, e.trigger.audioFadeInEntrada, e.trigger.audioSpatialEntrada);
+              }
           }
 
           if (e.trigger.isComposite && e.trigger.audioProximitySalida && e.trigger.soundUrlSalida) {
-              this.evaluateProximity(e, 'on_exit', playerPos, mesh, e.trigger.soundUrlSalida, e.trigger.audioLoopSalida, e.trigger.audioVolumeSalida, e.trigger.audioMaxDistSalida, e.trigger.audioFadeInSalida, e.trigger.audioSpatialSalida);
+              const maxD = (e.trigger.audioMaxDistSalida || 50) + radius;
+              if (this.spatialHub.getDistanceSquaredToPlayer(e.uid) <= maxD * maxD) {
+                this.evaluateProximity(e, 'on_exit', playerPos, mesh, e.trigger.soundUrlSalida, e.trigger.audioLoopSalida, e.trigger.audioVolumeSalida, e.trigger.audioMaxDistSalida, e.trigger.audioFadeInSalida, e.trigger.audioSpatialSalida);
+              }
           }
       }
   }

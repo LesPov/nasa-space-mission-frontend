@@ -1,4 +1,3 @@
-
 // src/app/services/editor/editor-orchestrator.service.ts
 
 import { Injectable, inject, signal } from '@angular/core';
@@ -131,7 +130,10 @@ export class EditorOrchestratorService {
 
   public cargarEpisodios(): void {
     this.epiApiSvc.obtenerEpisodios().subscribe({
-      next: (res) => { this.listaEpisodios.set(res); },
+      next: (res: any) => { 
+        const list = Array.isArray(res) ? res : (res?.data || res?.episodes || []);
+        this.listaEpisodios.set(list); 
+      },
       error: (err) => console.error('Error al cargar episodios', err)
     });
   }

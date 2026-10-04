@@ -1,8 +1,8 @@
-
 import { Injectable } from '@angular/core';
 import { BaseEntityMapper } from './base-entity.mapper';
 import { GameEntity, LightContainmentMode, LightDistanceReferenceMode, LightInteriorActivationMode } from '../../../entities/game.entity';
 import { SceneObjectDto, TriggerDto, SceneObjectPropertiesDto } from '../../../models/api-dto.model';
+import { TransformNormalizer } from '../transform-normalizer';
 
 @Injectable({ providedIn: 'root' })
 export class LightEntityMapper extends BaseEntityMapper {
@@ -18,12 +18,19 @@ export class LightEntityMapper extends BaseEntityMapper {
     super.applyDbToEntity(obj, entity);
     const props = obj.properties || {} as SceneObjectPropertiesDto;
 
+    const isPureLight = !entity.visual?.assetId && !entity.visual?.path;
+    if (isPureLight) {
+      entity.transform.scale = { x: 1, y: 1, z: 1 };
+    } else {
+      entity.transform.scale = TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
+    }
+
     if (!props.transformSpace) {
         if (props.attachedNodeName) {
             entity.transformSpace = 'ATTACHED';
         } else if (obj.parentId) {
             entity.transformSpace = 'LOCAL';
-            entity.isLegacyLocalTransform = true;
+            entity.isLegacyLocalTransform = false;
         } else {
             entity.transformSpace = 'WORLD';
         }
@@ -39,12 +46,12 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.angle = props.angle ?? 60;
       
       if ((props as any).lightPosX !== undefined) {
-         entity.transform.position.x = (props as any).lightPosX;
-         entity.transform.position.y = (props as any).lightPosY ?? 0;
-         entity.transform.position.z = (props as any).lightPosZ ?? 0;
-         entity.transform.rotation.x = ((props as any).lightRotX ?? 0) * Math.PI / 180;
-         entity.transform.rotation.y = ((props as any).lightRotY ?? 0) * Math.PI / 180;
-         entity.transform.rotation.z = ((props as any).lightRotZ ?? 0) * Math.PI / 180;
+         entity.transform.position.x = TransformNormalizer.sanitizePosition((props as any).lightPosX);
+         entity.transform.position.y = TransformNormalizer.sanitizePosition((props as any).lightPosY);
+         entity.transform.position.z = TransformNormalizer.sanitizePosition((props as any).lightPosZ);
+         entity.transform.rotation.x = TransformNormalizer.sanitizeRotation(((props as any).lightRotX ?? 0) * Math.PI / 180);
+         entity.transform.rotation.y = TransformNormalizer.sanitizeRotation(((props as any).lightRotY ?? 0) * Math.PI / 180);
+         entity.transform.rotation.z = TransformNormalizer.sanitizeRotation(((props as any).lightRotZ ?? 0) * Math.PI / 180);
          entity.transform.rotationQuaternion = null;
       }
 
@@ -116,5 +123,20 @@ export class LightEntityMapper extends BaseEntityMapper {
         distanceReferenceMode: entity.light.distanceReferenceMode
       } : {})
     };
+  }
+
+  override extractToDtos(entity: GameEntity): any[] {
+    const dtos = super.extractToDtos(entity);
+    const isPureLight = !entity.visual?.assetId && !entity.visual?.path;
+    if (isPureLight) {
+      dtos.forEach(d => {
+        d.scale = { x: 1, y: 1, z: 1 };
+        if (d.properties) {
+          d.properties.scale = { x: 1, y: 1, z: 1 };
+          d.properties.size = { x: 1, y: 1, z: 1 };
+        }
+      });
+    }
+    return dtos;
   }
 }

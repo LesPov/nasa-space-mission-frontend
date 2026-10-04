@@ -1,4 +1,4 @@
-
+// file: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
 import { Color3, Vector3, AbstractMesh, RenderTargetTexture, SpotLight, DirectionalLight } from '@babylonjs/core';
@@ -11,6 +11,7 @@ import { GameEntity } from '../../../entities/game.entity';
 import { LightContainmentService } from './light-containment.service';
 import { GameMode } from '../../../session/game-mode.model';
 import { ShadowCache } from '../../shadows/shadow-cache.service';
+import { CoreSceneMaterialService } from '../../../scene/utils/core-scene-material.service';
 
 import { LightRegistryService } from './light-registry.service';
 import { LightTransformService } from './light-transform.service';
@@ -35,6 +36,7 @@ export class DynamicLightingSystem implements IUpdatable {
   private entityManager = inject(EntityManagerService);
   private shadowCache = inject(ShadowCache);
   private eventBus = inject(GameEventBusService);
+  private materialSvc = inject(CoreSceneMaterialService);
 
   private lightRegistry = inject(LightRegistryService);
   private lightTransform = inject(LightTransformService);
@@ -55,7 +57,10 @@ export class DynamicLightingSystem implements IUpdatable {
   private forceShadowRebuild = false;
   private shadowRebuildCooldownTimer = 0;
 
-  // Watchdog de estados bloqueados
+  // Throttling en modo Editor para suprimir el 84% de CPU en IDLE
+  private editorEvalTimer = 0;
+  private lastSelectedUid: string | null = null;
+
   public staleDistanceWarnings = 0;
   public staleStateWarnings = 0;
 
@@ -135,6 +140,8 @@ export class DynamicLightingSystem implements IUpdatable {
     this.lastRefPos.copyFrom(this.getReferencePosition('PLAYER'));
     this.playerVelocity.setAll(0);
     this.shadowRebuildCooldownTimer = 0;
+    this.editorEvalTimer = 9999;
+    this.lastSelectedUid = null;
     this.staleDistanceWarnings = 0;
     this.staleStateWarnings = 0;
 
@@ -158,7 +165,7 @@ export class DynamicLightingSystem implements IUpdatable {
     this.shadowCache.clearMetrics();
   }
 
-  public forceWarmup(refPos: Vector3): void {
+  public async forceWarmup(refPos: Vector3): Promise<void> {
     const scene = this.motor3d.getScene();
     if (!scene) return;
 
@@ -223,6 +230,8 @@ export class DynamicLightingSystem implements IUpdatable {
         }
       }
     }
+
+    await this.materialSvc.prewarmMaterials(scene);
   }
 
   public syncLightImmediate(entity: GameEntity, forceUpdate: boolean = false): void {
@@ -307,9 +316,28 @@ export class DynamicLightingSystem implements IUpdatable {
     }
     this.lastRefPos.copyFrom(refPos);
 
-    const shouldReevaluateProximity = this.isFirstFrame || playerDelta > 0.015 || isEditorPure;
+    const selectedMesh = this.context.selectedNode() as AbstractMesh;
+    let selectedUid: string | null = null;
+    if (selectedMesh) {
+      if ((selectedMesh as any).metadata?.entityUid) selectedUid = (selectedMesh as any).metadata.entityUid;
+      else {
+        const ent = this.entityManager.getEntityByMesh(selectedMesh);
+        if (ent) selectedUid = ent.uid;
+      }
+    }
+    const selectionChanged = selectedUid !== this.lastSelectedUid;
+    this.lastSelectedUid = selectedUid;
+
+    const anyEntityDirty = activeVirtuals.some(v => v.entity.isDirty);
+
+    this.editorEvalTimer += dtMs;
+    const editorNeedsEval = isEditorPure && (this.editorEvalTimer >= 200 || selectionChanged || anyEntityDirty || playerDelta > 0.05);
+    const gameplayNeedsEval = !isEditorPure && (playerDelta > 0.015 || this.editorEvalTimer >= 80);
+
+    const shouldReevaluateProximity = this.isFirstFrame || editorNeedsEval || gameplayNeedsEval;
 
     if (shouldReevaluateProximity) {
+      this.editorEvalTimer = 0;
       const speed = this.playerVelocity.length();
       let moveDir = this.playerVelocity.clone();
       if (speed > 0.1) {
@@ -324,16 +352,6 @@ export class DynamicLightingSystem implements IUpdatable {
       }
 
       this.lightDistance.evaluateDistanceAndHysteresis(activeVirtuals, refPos, speed);
-
-      const selectedMesh = this.context.selectedNode() as AbstractMesh;
-      let selectedUid: string | null = null;
-      if (selectedMesh) {
-        if ((selectedMesh as any).metadata?.entityUid) selectedUid = (selectedMesh as any).metadata.entityUid;
-        else {
-          const ent = this.entityManager.getEntityByMesh(selectedMesh);
-          if (ent) selectedUid = ent.uid;
-        }
-      }
 
       const candidates = activeVirtuals.filter(vl => vl.entity.light?.enabled !== false);
       this.lightAllocation.allocatePoolSlots(candidates, refPos, moveDir, speed, selectedUid);
@@ -390,6 +408,7 @@ export class DynamicLightingSystem implements IUpdatable {
           slot.currentIntensity = 0;
           slot.light.intensity = 0;
           slot.light.diffuse.set(0, 0, 0);
+          slot.light.specular.set(0, 0, 0);
           if (slot.type !== 'directional') (slot.light as any).position.set(0, -99999, 0);
         }
         continue;
@@ -431,21 +450,32 @@ export class DynamicLightingSystem implements IUpdatable {
 
     if (slot.type === 'spot') {
       const spot = slot.light as SpotLight;
-      spot.direction.copyFrom(this._tempDir);
-      spot.angle = (vl.entity.light?.angle || 60) * (Math.PI / 180);
+      if (Vector3.DistanceSquared(spot.direction, this._tempDir) > 0.0001) {
+        spot.direction.copyFrom(this._tempDir);
+      }
+      const targetAngle = (vl.entity.light?.angle || 60) * (Math.PI / 180);
+      if (Math.abs(spot.angle - targetAngle) > 0.001) {
+        spot.angle = targetAngle;
+      }
     } else if (slot.type === 'directional') {
       const dirL = slot.light as DirectionalLight;
-      dirL.direction.copyFrom(this._tempDir);
+      if (Vector3.DistanceSquared(dirL.direction, this._tempDir) > 0.0001) {
+        dirL.direction.copyFrom(this._tempDir);
+      }
     }
 
     if (slot.type !== 'directional') {
       const lightRange = lightComp.range || 50;
-      (slot.light as any).range = lightRange;
-      slot.light.shadowMinZ = 0.05;
-      slot.light.shadowMaxZ = lightRange;
+      if ((slot.light as any).range !== lightRange) {
+        (slot.light as any).range = lightRange;
+        slot.light.shadowMinZ = 0.05;
+        slot.light.shadowMaxZ = lightRange;
+      }
     }
 
-    slot.light.diffuse.copyFrom(vl.baseColor);
+    if (!slot.light.diffuse.equals(vl.baseColor)) {
+      slot.light.diffuse.copyFrom(vl.baseColor);
+    }
 
     const effectiveBase = (lightComp.renderIntensity !== undefined && lightComp.renderIntensity !== null)
       ? lightComp.renderIntensity
@@ -465,7 +495,15 @@ export class DynamicLightingSystem implements IUpdatable {
 
     if (slot._isNewAssignment || vl.entity.isDirty || this.isFirstFrame) {
       if (slot.type !== 'directional') {
-        this.containmentSvc.applyContainment(slot.light as any, vl.entity, scene);
+        const curLight = slot.light as any;
+        const targetMode = vl.entity.light?.containmentMode || 'GLOBAL';
+        const targetContainerUid = vl.entity.light?.containerEntityUid || '';
+        const targetDescOnly = vl.entity.light?.affectDescendantsOnly ?? false;
+        const targetStamp = `${targetMode}_${targetContainerUid}_${vl.entity.uid}_${targetDescOnly}`;
+
+        if (curLight._containmentAppliedStamp !== targetStamp || vl.entity.isDirty || this.isFirstFrame) {
+          this.containmentSvc.applyContainment(slot.light as any, vl.entity, scene);
+        }
       }
     }
 

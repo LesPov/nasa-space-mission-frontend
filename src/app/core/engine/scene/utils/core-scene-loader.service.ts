@@ -1,7 +1,6 @@
-
 // file: src/app/core/engine/scene/utils/core-scene-loader.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Mesh, Vector3, MeshBuilder, Tags, AbstractMesh, Quaternion } from '@babylonjs/core';
+import { Mesh, Vector3, MeshBuilder, Tags, AbstractMesh, Quaternion, Matrix } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
 import { CoreSceneUtilsService } from './core-scene-utils.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
@@ -23,6 +22,7 @@ import { EngineSessionService } from '../../session/engine-session.service';
 import { LocalRenderingSystem } from '../../runtime/systems/local-rendering.system';
 import { SpatialRelevanceHubService } from '../../spatial/spatial-relevance-hub.service';
 import { GameMode } from '../../session/game-mode.model';
+import { TransformNormalizer } from './transform-normalizer';
   
 @Injectable({ providedIn: 'root' })
 export class CoreSceneLoaderService {
@@ -139,40 +139,61 @@ export class CoreSceneLoaderService {
         if (parentNode) {
             const dbPos = entity.transform.position;
             const dbRot = entity.transform.rotation;
+            const isPureLight = entity.type.startsWith('light_') && !entity.visual?.assetId && !entity.visual?.path;
             
-            if (entity.transformSpace === 'WORLD' || entity.isLegacyLocalTransform) {
-                mesh.position.set(dbPos.x, dbPos.y, dbPos.z);
+            const sanitizedScale = isPureLight 
+              ? { x: 1, y: 1, z: 1 } 
+              : TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
+
+            entity.transform.scale = { ...sanitizedScale };
+
+            if (entity.transformSpace === 'WORLD') {
+                parentNode.computeWorldMatrix(true);
+                const invParent = Matrix.Invert(parentNode.getWorldMatrix());
+                const worldPos = new Vector3(dbPos.x, dbPos.y, dbPos.z);
+                
+                mesh.parent = parentNode;
+                mesh.position = Vector3.TransformCoordinates(worldPos, invParent);
+                
                 if (entity.transform.rotationQuaternion) {
-                    mesh.rotationQuaternion = new Quaternion(entity.transform.rotationQuaternion.x, entity.transform.rotationQuaternion.y, entity.transform.rotationQuaternion.z, entity.transform.rotationQuaternion.w);
+                    const worldQuat = new Quaternion(
+                        entity.transform.rotationQuaternion.x, 
+                        entity.transform.rotationQuaternion.y, 
+                        entity.transform.rotationQuaternion.z, 
+                        entity.transform.rotationQuaternion.w
+                    );
+                    const parentRotMat = parentNode.getWorldMatrix().getRotationMatrix();
+                    const parentQuat = Quaternion.FromRotationMatrix(parentRotMat).invertInPlace();
+                    mesh.rotationQuaternion = parentQuat.multiply(worldQuat);
                 } else {
                     mesh.rotation.set(dbRot.x, dbRot.y, dbRot.z);
                 }
                 
-                mesh.setParent(parentNode);
-                
+                mesh.scaling.set(sanitizedScale.x, sanitizedScale.y, sanitizedScale.z);
                 entity.transformSpace = 'LOCAL';
-                entity.isLegacyLocalTransform = false;
                 entity.syncTransformFromView();
                 entity.isDirty = true;
-            } else if (entity.transformSpace === 'LOCAL') {
+            } else {
                 mesh.parent = parentNode;
                 mesh.position.set(dbPos.x, dbPos.y, dbPos.z);
                 if (entity.transform.rotationQuaternion) {
-                    mesh.rotationQuaternion = new Quaternion(entity.transform.rotationQuaternion.x, entity.transform.rotationQuaternion.y, entity.transform.rotationQuaternion.z, entity.transform.rotationQuaternion.w);
+                    mesh.rotationQuaternion = new Quaternion(
+                        entity.transform.rotationQuaternion.x, 
+                        entity.transform.rotationQuaternion.y, 
+                        entity.transform.rotationQuaternion.z, 
+                        entity.transform.rotationQuaternion.w
+                    );
                 } else {
                     mesh.rotation.set(dbRot.x, dbRot.y, dbRot.z);
                 }
+                mesh.scaling.set(sanitizedScale.x, sanitizedScale.y, sanitizedScale.z);
                 mesh.computeWorldMatrix(true);
                 entity.syncTransformFromView();
-            } else if (entity.transformSpace === 'ATTACHED') {
-                mesh.parent = parentNode;
-                mesh.position.set(dbPos.x, dbPos.y, dbPos.z);
             }
         }
       }
     });
 
-    // REGISTRO TOTAL E INMEDIATO DEL SPATIAL RELEVANCE HUB
     this.spatialHub.rebuildRegistry();
 
     if (isPlaying) {

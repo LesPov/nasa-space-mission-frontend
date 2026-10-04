@@ -1,4 +1,3 @@
-
 import { Injectable, inject } from '@angular/core'; 
 import { Quaternion } from '@babylonjs/core';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
@@ -7,6 +6,7 @@ import { EntityPersistenceMapperService } from '../../../core/engine/scene/utils
 import { EditorCinematicService } from '../editor-cinematic.service';
 import { CinematicCameraRegistryService } from '../../../core/engine/runtime/cameras/cinematic-camera-registry.service';
 import { SceneSavePayload, SceneObjectDto, TriggerDto, CinematicDto } from '../../../core/engine/models/api-dto.model';
+import { TransformNormalizer } from '../../../core/engine/scene/utils/transform-normalizer';
 
 @Injectable({ providedIn: 'root' }) 
 export class SceneSaverService { 
@@ -35,14 +35,23 @@ export class SceneSaverService {
     allEntities.forEach(entity => {
       entity.syncTransformFromView();
 
+      const isPureLight = entity.type.startsWith('light_') && !entity.visual?.assetId && !entity.visual?.path;
+      const sanitizedScale = isPureLight 
+        ? { x: 1, y: 1, z: 1 } 
+        : TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
+      const sanitizedPos = TransformNormalizer.sanitizePositionVector(entity.transform.position);
+
+      entity.transform.position = { ...sanitizedPos };
+      entity.transform.scale = { ...sanitizedScale };
+
       if (entity.rol === 'spawn_point') {
-        spawnPoint = { ...entity.transform.position };
+        spawnPoint = { ...sanitizedPos };
       }
 
       const dtos = this.persistenceMapper.extractToDtos(entity);
       
       dtos.forEach(dto => {
-          dto.position = { x: entity.transform.position.x, y: entity.transform.position.y, z: entity.transform.position.z };
+          dto.position = { ...sanitizedPos };
           
           let rot = entity.transform.rotation;
           if (entity.transform.rotationQuaternion) {
@@ -55,10 +64,14 @@ export class SceneSaverService {
              const euler = q.toEulerAngles();
              rot = { x: euler.x, y: euler.y, z: euler.z };
           }
-          dto.rotation = { x: rot.x, y: rot.y, z: rot.z };
+          dto.rotation = TransformNormalizer.sanitizeRotationVector(rot);
           
-          dto.scale = { x: entity.transform.scale.x, y: entity.transform.scale.y, z: entity.transform.scale.z };
-          dto.size = { x: entity.transform.scale.x, y: entity.transform.scale.y, z: entity.transform.scale.z };
+          dto.scale = { ...sanitizedScale };
+          dto.size = { ...sanitizedScale };
+          if (dto.properties) {
+            dto.properties.scale = { ...sanitizedScale };
+            dto.properties.size = { ...sanitizedScale };
+          }
 
           if (dto.type === 'trigger' || dto.type === 'trigger_compuesto') {
               triggersDelta.push(dto as TriggerDto);

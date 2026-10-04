@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/scene/utils/core-model-loader.service.ts
 import { Injectable, inject } from '@angular/core';
 import { 
@@ -17,6 +16,7 @@ import { GameContextService } from '../../session/game-context.service';
 import { GameMode } from '../../session/game-mode.model';
 import { SceneAssetCacheService } from './scene-asset-cache.service';
 import { EngineSessionService } from '../../session/engine-session.service';
+import { TransformNormalizer } from './transform-normalizer';
 
 @Injectable({ providedIn: 'root' })
 export class CoreModelLoaderService {
@@ -69,6 +69,7 @@ export class CoreModelLoaderService {
     const entityType = obj.type; 
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, entityType, rolSaved);
     this.persistenceMapper.applyDbToEntity(obj, entity);
+    entity.transform.scale = TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
 
     try {
       const container = await this.getCachedAssetContainer(fullPath, scene);
@@ -97,7 +98,7 @@ export class CoreModelLoaderService {
       wrapperMesh.computeWorldMatrix(true);
 
       if (obj.properties?.internalScale !== undefined && obj.properties?.internalScale !== null) {
-        const compensacion = obj.properties.internalScale;
+        const compensacion = TransformNormalizer.sanitizeScale(obj.properties.internalScale, 'internalScale', entity.name);
         wrapperMesh.getChildren().forEach(node => {
           if (node instanceof TransformNode && node.scaling) {
             node.scaling.scaleInPlace(compensacion);
@@ -126,6 +127,7 @@ export class CoreModelLoaderService {
     
     const entity = new GameEntity(obj.uid || window.crypto.randomUUID(), obj.name, 'model', 'prop');
     this.persistenceMapper.applyDbToEntity(obj, entity);
+    entity.transform.scale = TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
     
     await this.aplicarTransformacionesYEntidad(fallbackMesh, entity, obj, mallasCreadas);
   }
@@ -140,9 +142,10 @@ export class CoreModelLoaderService {
     const isLight = entity.type.startsWith('light_');
     const isCharacter = entity.type === 'character' || entity.rol === 'player';
 
-    const scaleX = entity.transform.scale.x;
-    const scaleY = entity.transform.scale.y;
-    const scaleZ = entity.transform.scale.z;
+    const scaleX = TransformNormalizer.sanitizeScale(entity.transform.scale.x, 'scale.x', entity.name);
+    const scaleY = TransformNormalizer.sanitizeScale(entity.transform.scale.y, 'scale.y', entity.name);
+    const scaleZ = TransformNormalizer.sanitizeScale(entity.transform.scale.z, 'scale.z', entity.name);
+    entity.transform.scale = { x: scaleX, y: scaleY, z: scaleZ };
 
     rootNode.checkCollisions = false; 
     rootNode.isPickable = true;
@@ -216,7 +219,10 @@ export class CoreModelLoaderService {
           if (m.rotationQuaternion) m.rotationQuaternion = Quaternion.FromEulerAngles(override.rotation.x, override.rotation.y, override.rotation.z);
           else m.rotation.set(override.rotation.x, override.rotation.y, override.rotation.z);
         }
-        if (override.scale) m.scaling.set(override.scale.x, override.scale.y, override.scale.z);
+        if (override.scale) {
+          const sScale = TransformNormalizer.sanitizeScaleVector(override.scale, `${entity.name}.${m.name}`);
+          m.scaling.set(sScale.x, sScale.y, sScale.z);
+        }
       }
       
       const isInteractable = !!entity.interaction?.mensaje || !!entity.interaction?.interactSequenceIdFPS;
@@ -226,7 +232,6 @@ export class CoreModelLoaderService {
       }
       
       if (m.material) {
-        // Fijamos de forma estricta maxSimultaneousLights en 4 para alinearse con los 3 slots del pool + 1 sol global
         if (m.material.getClassName() === "StandardMaterial" || m.material.getClassName() === "PBRMaterial") {
           (m.material as any).maxSimultaneousLights = 4;
         }
@@ -285,13 +290,13 @@ export class CoreModelLoaderService {
     setFog(rootNode);
 
     if (isLight) {
-      const visualSphere = MeshBuilder.CreateSphere(`visual_${entity.name}`, { diameter: 1.0, segments: 16 }, scene);
+      const visualSphere = MeshBuilder.CreateSphere(`visual_${entity.name}`, { diameter: 0.4, segments: 16 }, scene);
       visualSphere.parent = rootNode;
       visualSphere.isPickable = false;
       visualSphere.checkCollisions = false;
       visualSphere.receiveShadows = false;
       visualSphere.renderingGroupId = 1;
-      visualSphere.scaling.set(0.4, 0.4, 0.4);
+      visualSphere.scaling.set(1.0, 1.0, 1.0);
 
       const lightColorHex = objRaw.properties?.lightColor || '#facc15';
       const lightVisualMat = new StandardMaterial(`mat_visual_${entity.name}`, scene);

@@ -1,11 +1,11 @@
-
-
+// file: src/app/core/engine/scene/utils/mappers/base-entity.mapper.ts
 import { inject } from '@angular/core';
 import { GameEntity, PartOverridesComponent } from '../../../entities/game.entity';
 import { SceneObjectDto, TriggerDto, SceneObjectPropertiesDto } from '../../../models/api-dto.model';
 import { CoreSceneUtilsService } from '../core-scene-utils.service';
 import { EntityMapperStrategy } from './entity-mapper-strategy.interface';
 import { Quaternion } from '@babylonjs/core';
+import { TransformNormalizer } from '../transform-normalizer';
 
 export abstract class BaseEntityMapper implements EntityMapperStrategy {
   protected utilsSvc = inject(CoreSceneUtilsService);
@@ -15,13 +15,9 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
   applyDbToEntity(obj: SceneObjectDto | TriggerDto, entity: GameEntity): void {
     const props = obj.properties || {} as SceneObjectPropertiesDto;
 
-    entity.transform.position = { x: obj.position?.x ?? 0, y: obj.position?.y ?? 0, z: obj.position?.z ?? 0 };
-    entity.transform.rotation = { x: obj.rotation?.x ?? 0, y: obj.rotation?.y ?? 0, z: obj.rotation?.z ?? 0 };
-    
-    const scaleX = (obj.scale?.x !== undefined && obj.scale?.x !== null && !isNaN(Number(obj.scale?.x))) ? Number(obj.scale.x) : 1;
-    const scaleY = (obj.scale?.y !== undefined && obj.scale?.y !== null && !isNaN(Number(obj.scale?.y))) ? Number(obj.scale.y) : 1;
-    const scaleZ = (obj.scale?.z !== undefined && obj.scale?.z !== null && !isNaN(Number(obj.scale?.z))) ? Number(obj.scale.z) : 1;
-    entity.transform.scale = { x: scaleX !== 0 ? scaleX : 1, y: scaleY !== 0 ? scaleY : 1, z: scaleZ !== 0 ? scaleZ : 1 };
+    entity.transform.position = TransformNormalizer.sanitizePositionVector(obj.position);
+    entity.transform.rotation = TransformNormalizer.sanitizeRotationVector(obj.rotation);
+    entity.transform.scale = TransformNormalizer.sanitizeScaleVector(obj.scale || (obj as any).size, obj.name || entity.name);
 
     entity.parentId = obj.parentId || null;
     entity.transformSpace = props.transformSpace || 'LOCAL';
@@ -39,7 +35,6 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
     entity.visual.brilloIntensidad = this.utilsSvc.normalizarNumero(props.brilloIntensidad, 1.0);
     entity.visual.mostrarBorde = props.mostrarBorde ?? (entity.type !== 'plane'); 
     
-    // 🔥 NUEVO FASE CULLING
     entity.visual.disableCulling = props.disableCulling ?? false;
 
     entity.visual.path = props.path || obj.asset?.path || (obj as any).path || props.videoUrl || props.imageUrl || '';
@@ -97,7 +92,7 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
       esEmisivo: entity.visual.esEmisivo,
       mostrarBorde: entity.visual.mostrarBorde,
       brilloIntensidad: entity.visual.brilloIntensidad,
-      disableCulling: entity.visual.disableCulling, // 🔥 FASE CULLING
+      disableCulling: entity.visual.disableCulling,
       internalScale: entity.visual.internalScale,
       partOverrides: entity.partOverrides?.overrides, 
       mensaje: entity.interaction.mensaje,
@@ -113,7 +108,7 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
       playerConfig: entity.playerConfig,
       animationNames: entity.animationNames,
       autoAnim: entity.autoAnim || undefined, 
-      path: entity.visual.path 
+      path: entity.visual.path
     };
   }
 
@@ -132,14 +127,20 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
         rot = { x: euler.x, y: euler.y, z: euler.z };
     }
 
+    const sanitizedPos = TransformNormalizer.sanitizePositionVector(entity.transform.position);
+    const sanitizedRot = TransformNormalizer.sanitizeRotationVector(rot);
+    const isPureLight = entity.type.startsWith('light_') && !entity.visual?.assetId && !entity.visual?.path;
+    const sanitizedScale = isPureLight ? { x: 1, y: 1, z: 1 } : TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
+
     return [{
       uid: entity.uid,
       name: entity.name,
       type: entity.type,
       parentId: entity.parentId,
-      position: entity.transform.position,
-      rotation: rot,
-      scale: entity.transform.scale,
+      position: sanitizedPos,
+      rotation: sanitizedRot,
+      scale: sanitizedScale,
+      size: sanitizedScale,
       assetId: entity.visual.assetId || null,
       properties: props
     }];

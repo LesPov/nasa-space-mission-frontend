@@ -1,4 +1,3 @@
-
 // src/app/services/editor/toolsservice/adapters/base-entity-gizmo.adapter.ts
 
 import { IGizmoTargetAdapter } from './gizmo-target-adapter.interface';
@@ -7,6 +6,7 @@ import { GameEntity } from '../../../../core/engine/entities/game.entity';
 import { ToolsDebugService } from '../tools-debug.service';
 import { EditorStateService } from '../../editor-state.service';
 import { ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
+import { TransformNormalizer } from '../../../../core/engine/scene/utils/transform-normalizer';
 
 export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
   private static _tempLocal = Vector3.Zero();
@@ -106,7 +106,9 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
       }
     }
     
-    mesh.scaling.copyFrom(pivotNode.scaling);
+    const safeScale = TransformNormalizer.sanitizeScaleVector(pivotNode.scaling, entity.name);
+    mesh.scaling.set(safeScale.x, safeScale.y, safeScale.z);
+    pivotNode.scaling.set(safeScale.x, safeScale.y, safeScale.z);
 
     entity.getVisualCenterLocalToRef(BaseEntityGizmoAdapter._tempLocal);
     BaseEntityGizmoAdapter._tempLocal.x *= mesh.scaling.x;
@@ -145,14 +147,14 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
     
     if (visual && !visual.isDisposed()) {
       mesh.computeWorldMatrix(true);
-      const absScale = mesh.getWorldMatrix().getRow(0); // Vector3 rápido sin descomposición completa
-      const sx = Math.max(0.0001, Math.abs(mesh.scaling.x));
-      const sy = Math.max(0.0001, Math.abs(mesh.scaling.y));
-      const sz = Math.max(0.0001, Math.abs(mesh.scaling.z));
+      const sx = TransformNormalizer.sanitizeScale(mesh.scaling.x, 'scaling.x');
+      const sy = TransformNormalizer.sanitizeScale(mesh.scaling.y, 'scaling.y');
+      const sz = TransformNormalizer.sanitizeScale(mesh.scaling.z, 'scaling.z');
 
-      const targetX = 0.4 / sx;
-      const targetY = 0.4 / sy;
-      const targetZ = 0.4 / sz;
+      // Escala visual acotada [0.1, 2.0] que previene la corrupción de bounding boxes
+      const targetX = Math.max(0.1, Math.min(2.0, 0.4 / sx));
+      const targetY = Math.max(0.1, Math.min(2.0, 0.4 / sy));
+      const targetZ = Math.max(0.1, Math.min(2.0, 0.4 / sz));
 
       if (Math.abs(visual.scaling.x - targetX) > 0.005 ||
           Math.abs(visual.scaling.y - targetY) > 0.005 ||
@@ -166,6 +168,11 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
 
   syncEntity(mesh: AbstractMesh, entity: GameEntity, debugSvc: ToolsDebugService, state: EditorStateService, motor3d: ISceneAccess): void {
     entity.syncTransformFromView();
+    const isPureLight = entity.type.startsWith('light_') && !entity.visual?.assetId && !entity.visual?.path;
+    const sanitizedScale = isPureLight ? { x: 1, y: 1, z: 1 } : TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
+    entity.transform.scale = sanitizedScale;
+    mesh.scaling.set(sanitizedScale.x, sanitizedScale.y, sanitizedScale.z);
     entity.syncToView();
     this.compensarEscalaVisual(mesh);
-  }}
+  }
+}

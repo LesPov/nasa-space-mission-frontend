@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/telemetry/engine-profiler.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { AdaptiveQualitySystem, QualityTier } from '../runtime/systems/adaptive-quality.system';
@@ -12,6 +11,7 @@ import { PlayerSequenceService, ActiveSequenceDetail } from '../runtime/systems/
 import { GameContextService } from '../session/game-context.service';
 import { CameraOwnershipService } from '../runtime/cameras/camera-ownership.service';
 import { SpatialRelevanceHubService } from '../spatial/spatial-relevance-hub.service';
+import { LightReferenceService } from '../runtime/systems/lighting/light-reference.service';
 import { Vector3, Material } from '@babylonjs/core';
 
 export interface LightForensicRecord {
@@ -19,7 +19,20 @@ export interface LightForensicRecord {
   name: string;
   type: string;
   position: { x: number; y: number; z: number };
+  
+  // Distancias físicas desglosadas
   distance: number;
+  centerDistance: number;
+  boundsDistance: number;
+  effectiveDistance: number;
+
+  // Umbrales de configuración individual
+  configActivationDistance: number;
+  configDeactivationDistance: number;
+  configFadeStartDistance: number;
+  configFadeEndDistance: number;
+  configShadowDistance: number;
+
   isLightInRange: boolean;
   isShadowInRange: boolean;
   baseIntensity: number;
@@ -32,6 +45,14 @@ export interface LightForensicRecord {
   isStatic: boolean;
   assignedSlot: number | null;
   priorityScore: number;
+
+  // Máquina de estados
+  state: string;
+  decisionText: string;
+  rejectionReason?: string;
+  lastStateChangeTimestamp?: string;
+  lastDistanceUpdateTimestamp?: string;
+
   lightOnTimestamp?: number;
   shadowReadyTimestamp?: number;
   includedMeshesCount: number;
@@ -77,14 +98,26 @@ export interface FrameSample {
   usedHeapMb: number;
 }
 
+export interface LatencyBuckets {
+  framesAbove33ms: number;
+  framesAbove50ms: number;
+  framesAbove100ms: number;
+  framesAbove250ms: number;
+  framesAbove500ms: number;
+  framesAbove1000ms: number;
+}
+
 export interface ProfilerMetrics {
   fps: number;
   frameTimeAvg: number;
   frameTimeMin: number;
   frameTimeMax: number;
   frameTimeP50: number;
+  frameTimeP90: number;
   frameTimeP95: number;
   frameTimeP99: number;
+  worstFrameTime: number;
+  latencyBuckets: LatencyBuckets;
   cpuPhases: Record<string, number>;
   cpuSystems: Record<string, number>;
   dominantSystem: string;
@@ -110,6 +143,9 @@ export interface ProfilerMetrics {
     totalVirtual: number;
     activePool: number;
     shadowedPool: number;
+    fadingInCount: number;
+    fadingOutCount: number;
+    inactiveCount: number;
     details: LightForensicRecord[];
   };
   shadows: {
@@ -172,6 +208,7 @@ export class EngineProfilerService {
   private shadowQualitySvc = inject(ShadowQualityService);
   private gameContext = inject(GameContextService);
   private ownership = inject(CameraOwnershipService);
+  private lightRef = inject(LightReferenceService);
   private injector = inject(Injector);
 
   private _lightRegistry: LightRegistryService | null = null;
@@ -219,6 +256,16 @@ export class EngineProfilerService {
   private historyCircularBuffer: FrameSample[] = [];
   private historyIndex = 0;
   private frameCounter = 0;
+
+  private latencyBuckets: LatencyBuckets = {
+    framesAbove33ms: 0,
+    framesAbove50ms: 0,
+    framesAbove100ms: 0,
+    framesAbove250ms: 0,
+    framesAbove500ms: 0,
+    framesAbove1000ms: 0
+  };
+  private worstFrameEver = 0;
 
   private currentPhases: Record<string, number> = {};
   private currentSystems: Record<string, number> = {};
@@ -327,6 +374,17 @@ export class EngineProfilerService {
     if (!this.isProfilingEnabled) return;
     const tStart = performance.now();
 
+    if (timeMs > this.worstFrameEver) {
+      this.worstFrameEver = timeMs;
+    }
+
+    if (timeMs > 1000) this.latencyBuckets.framesAbove1000ms++;
+    if (timeMs > 500) this.latencyBuckets.framesAbove500ms++;
+    if (timeMs > 250) this.latencyBuckets.framesAbove250ms++;
+    if (timeMs > 100) this.latencyBuckets.framesAbove100ms++;
+    if (timeMs > 50) this.latencyBuckets.framesAbove50ms++;
+    if (timeMs > 33.3) this.latencyBuckets.framesAbove33ms++;
+
     this.frameCounter++;
     this.frameTimeBuffer[this.bufferIndex] = timeMs;
     this.bufferIndex = (this.bufferIndex + 1) % this.BUFFER_SIZE;
@@ -413,6 +471,7 @@ export class EngineProfilerService {
     this.dominantSystemName = dominantSys;
     this.cullingEvaluatedCount = 0;
     this.cullingChangedCount = 0;
+    this.distanceEvaluationsCounter = {};
 
     if (this.bufferIndex % 60 === 0) {
       this.shadowCache.clearMetrics();
@@ -480,7 +539,7 @@ export class EngineProfilerService {
 
   public getSnapshot(includeDeepLights: boolean = false): ProfilerMetrics {
     const validCount = this.bufferCount;
-    let avg = 0, p50 = 0, p95 = 0, p99 = 0;
+    let avg = 0, p50 = 0, p90 = 0, p95 = 0, p99 = 0;
     let min = 99999, max = 0;
 
     if (validCount > 0) {
@@ -495,6 +554,7 @@ export class EngineProfilerService {
       avg = sum / validCount;
 
       p50 = sorted[Math.floor(validCount * 0.50)];
+      p90 = sorted[Math.floor(validCount * 0.90)];
       p95 = sorted[Math.floor(validCount * 0.95)];
       p99 = sorted[Math.floor(validCount * 0.99)];
     } else {
@@ -533,59 +593,86 @@ export class EngineProfilerService {
     }
 
     const lightDetails: LightForensicRecord[] = [];
-    if (includeDeepLights) {
-      try {
-        const virtuals = this.lightRegistry.getVirtualLights();
-        const slots = this.lightPool.getAllSlots();
+    let fadingInCount = 0;
+    let fadingOutCount = 0;
+    let inactiveCount = 0;
 
-        for (let i = 0; i < virtuals.length; i++) {
-          const vl = virtuals[i];
-          const slot = slots.find(s => s.assignedEntityUid === vl.entity.uid);
-          const lightComp = vl.entity.light;
-          const pos = vl.entity.view 
-            ? vl.entity.view.getAbsolutePosition() 
-            : { x: vl.entity.transform.position.x, y: vl.entity.transform.position.y, z: vl.entity.transform.position.z };
+    try {
+      const virtuals = this.lightRegistry.getVirtualLights();
+      const slots = this.lightPool.getAllSlots();
 
-          lightDetails.push({
-            uid: vl.entity.uid,
-            name: vl.entity.name,
-            type: vl.entity.type,
-            position: { x: parseFloat(pos.x.toFixed(2)), y: parseFloat(pos.y.toFixed(2)), z: parseFloat(pos.z.toFixed(2)) },
-            distance: parseFloat(vl.lastEvaluatedDistance.toFixed(2)),
-            isLightInRange: vl.isLightInRange,
-            isShadowInRange: vl.isShadowInRange,
-            baseIntensity: lightComp?.intensity || 1.0,
-            targetMultiplier: parseFloat(vl.targetMultiplier.toFixed(2)),
-            currentMultiplier: parseFloat(vl.currentMultiplier.toFixed(2)),
-            finalIntensity: parseFloat(((lightComp?.renderIntensity !== undefined ? lightComp.renderIntensity : (lightComp?.intensity || 1.0)) * vl.currentMultiplier).toFixed(2)),
-            containmentMode: lightComp?.containmentMode || 'GLOBAL',
-            hasShadowGenerator: !!slot?.sg,
-            renderListSize: slot?.sg ? (slot.sg.getShadowMap()?.renderList?.length || 0) : 0,
-            isStatic: slot?.isStaticLight ?? true,
-            assignedSlot: slot ? slot.index : null,
-            priorityScore: parseFloat((vl._sortScore ?? 0).toFixed(2)),
-            lightOnTimestamp: slot?._lightOnTimestamp,
-            shadowReadyTimestamp: slot?._shadowReadyTimestamp,
-            includedMeshesCount: slot?.light ? (slot.light.includedOnlyMeshes?.length || 0) : 0,
-            excludedMeshesCount: slot?.light ? (slot.light.excludedMeshes?.length || 0) : 0,
-            insideVolume: vl.insideVolume,
-            inPreEntryZone: vl.inPreEntryZone
-          });
-        }
-      } catch (e) {
-        // Fallback defensivo
+      for (let i = 0; i < virtuals.length; i++) {
+        const vl = virtuals[i];
+        const slot = slots.find(s => s.assignedEntityUid === vl.entity.uid);
+        const lightComp = vl.entity.light;
+        const pos = vl.entity.view 
+          ? vl.entity.view.getAbsolutePosition() 
+          : { x: vl.entity.transform.position.x, y: vl.entity.transform.position.y, z: vl.entity.transform.position.z };
+
+        if (vl.lifecycleStage === 'FADING_IN') fadingInCount++;
+        else if (vl.lifecycleStage === 'FADING_OUT') fadingOutCount++;
+        else if (vl.lifecycleStage === 'INACTIVE' || vl.lifecycleStage === 'OUTSIDE') inactiveCount++;
+
+        const actDist = lightComp?.activationDistance ?? 50.0;
+        const deactDist = lightComp?.deactivationDistance ?? 55.0;
+        const shadowAct = lightComp?.shadowActivationDistance ?? 24.0;
+
+        lightDetails.push({
+          uid: vl.entity.uid,
+          name: vl.entity.name,
+          type: vl.entity.type,
+          position: { x: parseFloat(pos.x.toFixed(2)), y: parseFloat(pos.y.toFixed(2)), z: parseFloat(pos.z.toFixed(2)) },
+          
+          distance: parseFloat(vl.lastEvaluatedDistance.toFixed(2)),
+          centerDistance: parseFloat(vl.centerDistance.toFixed(2)),
+          boundsDistance: parseFloat(vl.boundsDistance.toFixed(2)),
+          effectiveDistance: parseFloat(vl.effectiveDistance.toFixed(2)),
+
+          configActivationDistance: actDist,
+          configDeactivationDistance: deactDist,
+          configFadeStartDistance: parseFloat((actDist * 0.7).toFixed(1)),
+          configFadeEndDistance: deactDist,
+          configShadowDistance: shadowAct,
+
+          isLightInRange: vl.isLightInRange,
+          isShadowInRange: vl.isShadowInRange,
+          baseIntensity: lightComp?.intensity || 1.0,
+          targetMultiplier: parseFloat(vl.targetMultiplier.toFixed(2)),
+          currentMultiplier: parseFloat(vl.currentMultiplier.toFixed(2)),
+          finalIntensity: parseFloat(((lightComp?.renderIntensity !== undefined ? lightComp.renderIntensity : (lightComp?.intensity || 1.0)) * vl.currentMultiplier).toFixed(2)),
+          containmentMode: lightComp?.containmentMode || 'GLOBAL',
+          hasShadowGenerator: !!slot?.sg,
+          renderListSize: slot?.sg ? (slot.sg.getShadowMap()?.renderList?.length || 0) : 0,
+          isStatic: slot?.isStaticLight ?? true,
+          assignedSlot: slot ? slot.index : null,
+          priorityScore: parseFloat((vl._sortScore ?? 0).toFixed(2)),
+
+          state: vl.lifecycleStage,
+          decisionText: vl.decisionText || 'EVALUATING',
+          rejectionReason: vl.rejectionReason,
+          lastStateChangeTimestamp: vl.lastStateChangeTimestamp || 'Initial',
+          lastDistanceUpdateTimestamp: vl.lastDistanceUpdateTimestamp || 'Initial',
+
+          lightOnTimestamp: slot?._lightOnTimestamp,
+          shadowReadyTimestamp: slot?._shadowReadyTimestamp,
+          includedMeshesCount: slot?.light ? (slot.light.includedOnlyMeshes?.length || 0) : 0,
+          excludedMeshesCount: slot?.light ? (slot.light.excludedMeshes?.length || 0) : 0,
+          insideVolume: vl.insideVolume,
+          inPreEntryZone: vl.inPreEntryZone
+        });
       }
-    }
+    } catch (e) {}
 
     const cullingMetrics = this.localRendering ? this.localRendering.getMetrics() : {
       visibleObjects: visibleMeshesCount, fadingObjects: 0, hardCulledObjects: 0, restoringObjects: 0, shadowProtectedObjects: 0
     };
 
     const seqDetails = this.sequenceSvc ? this.sequenceSvc.getActiveSequencesDetails() : [];
-    const activePlayer = this.gameContext.activePlayerEntity();
+
+    const validActors = this.lightRef.getValidActorEntities();
     let playerPos: { x: number; y: number; z: number } | null = null;
-    if (activePlayer && activePlayer.view && !activePlayer.view.isDisposed()) {
-      const p = activePlayer.view.getAbsolutePosition();
+    if (validActors.length > 0 && validActors[0].view && !validActors[0].view.isDisposed()) {
+      const p = validActors[0].view.getAbsolutePosition();
       playerPos = { x: parseFloat(p.x.toFixed(2)), y: parseFloat(p.y.toFixed(2)), z: parseFloat(p.z.toFixed(2)) };
     }
 
@@ -625,7 +712,6 @@ export class EngineProfilerService {
     const shaderMetrics = this.getShaderMetrics();
     const engine = this.engine;
 
-    // 🔥 METRICAS COMBINADAS CON EL SPATIAL HUB
     const hubMetrics = this.spatialHub ? this.spatialHub.getMetrics() : {
       evaluations: 0, exactDistanceCalculations: 0, squaredDistanceCalculations: 0, cacheHits: 0, registeredEntities: 0, updateTimeMs: 0
     };
@@ -646,8 +732,11 @@ export class EngineProfilerService {
       frameTimeMin: parseFloat(min.toFixed(2)),
       frameTimeMax: parseFloat(max.toFixed(2)),
       frameTimeP50: parseFloat(p50.toFixed(2)),
+      frameTimeP90: parseFloat(p90.toFixed(2)),
       frameTimeP95: parseFloat(p95.toFixed(2)),
       frameTimeP99: parseFloat(p99.toFixed(2)),
+      worstFrameTime: parseFloat(this.worstFrameEver.toFixed(2)),
+      latencyBuckets: { ...this.latencyBuckets },
       cpuPhases: { ...this.avgPhases },
       cpuSystems: { ...this.avgSystems },
       dominantSystem: this.dominantSystemName,
@@ -664,7 +753,13 @@ export class EngineProfilerService {
         visibleMeshes: visibleMeshesCount
       },
       memory: { ...this.cachedMemoryMetrics },
-      lights: { ...lightMetrics, details: lightDetails },
+      lights: { 
+        ...lightMetrics, 
+        fadingInCount,
+        fadingOutCount,
+        inactiveCount,
+        details: lightDetails 
+      },
       shadows: {
         ...shadowMetrics,
         shadowQualityLevel: this.shadowQualitySvc.getQualityTier(),
@@ -710,8 +805,8 @@ export class EngineProfilerService {
 
   public printSnapshotToConsole(): void {
     const snap = this.getSnapshot(true);
-    console.log("===== PROFILING FORENSIC SNAPSHOT =====");
+    console.log('===== PROFILING FORENSIC SNAPSHOT =====');
     console.log(JSON.stringify(snap, null, 2));
-    console.log("=======================================");
+    console.log('=======================================');
   }
 }

@@ -121,16 +121,22 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
       frameTimeMin: 0,
       frameTimeMax: 0,
       frameTimeP50: 0,
+      frameTimeP90: 0,
       frameTimeP95: 0,
       frameTimeP99: 0,
+      worstFrameTime: 0,
+      latencyBuckets: {
+        framesAbove33ms: 0,
+        framesAbove50ms: 0,
+        framesAbove100ms: 0,
+        framesAbove250ms: 0,
+        framesAbove500ms: 0,
+        framesAbove1000ms: 0
+      },
       cpuPhases: {},
       cpuSystems: {},
       dominantSystem: 'None',
       telemetryCpuTimeMs: 0,
-      sequences: {
-        activeCount: 0,
-        details: []
-      },
       gpu: {
         drawCalls: 0,
         activeMeshes: 0,
@@ -152,6 +158,9 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
         totalVirtual: 0,
         activePool: 0,
         shadowedPool: 0,
+        fadingInCount: 0,
+        fadingOutCount: 0,
+        inactiveCount: 0,
         details: []
       },
       shadows: {
@@ -187,6 +196,10 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
         compilingCount: 0,
         totalCompilationsDetected: 0,
         maxLightsObserved: 0
+      },
+      sequences: {
+        activeCount: 0,
+        details: []
       },
       distances: {
         evaluationsBySystem: {}

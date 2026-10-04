@@ -1,42 +1,32 @@
-
+// file: src/app/core/engine/runtime/systems/lighting/policies/editor-lighting.policy.ts
 import { LightingDistanceThresholds, LightingPolicy, ReferenceResolutionStrategy } from '../lighting-policy.interface';
+import { LIGHT_SPATIAL_CONSTANTS } from '../lighting-types';
 
-/**
- * Política de iluminación para los modos EDITOR y EDITING_IN_GAME.
- * Respeta rigurosamente las distancias configuradas por el usuario en cada luz
- * y proporciona los rangos para la atenuación continua (Fade) y la selección del Top 3
- * calculados respecto a los Actores (Player/NPC).
- */
 export class EditorLightingPolicy implements LightingPolicy {
-    
-    public readonly referenceStrategy: ReferenceResolutionStrategy = 'EDITOR_ONLY';
+  public readonly referenceStrategy: ReferenceResolutionStrategy = 'EDITOR_ONLY';
 
-    public calculateThresholds(
-        baseActivation: number | undefined,
-        baseDeactivation: number | undefined,
-        baseShadowActivation: number | undefined,
-        baseShadowDeactivation: number | undefined,
-        speed: number
-    ): LightingDistanceThresholds {
-        // Respetar fielmente los valores configurados por el usuario
-        const actDist = Math.max(1.0, baseActivation ?? 52.0);
-        // Asegurar que deactivation sea estrictamente mayor que activation para crear la zona de fade
-        const deactDist = Math.max(actDist + 2.0, baseDeactivation ?? (actDist + 8.0));
-        const dynamicDeactDist = deactDist;
-        // Rango de preparación para asignar slot en el pool antes de encender el brillo
-        const prepareDist = dynamicDeactDist + 15.0;
+  public calculateThresholds(
+    baseActivation: number | undefined,
+    baseDeactivation: number | undefined,
+    baseShadowActivation: number | undefined,
+    baseShadowDeactivation: number | undefined,
+    speed: number
+  ): LightingDistanceThresholds {
+    const actDist = Math.max(1.0, baseActivation ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_ACTIVATION_RADIUS);
+    const deactDist = Math.max(actDist + 2.0, baseDeactivation ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_DEACTIVATION_RADIUS);
+    const dynamicDeactDist = deactDist;
+    const prepareDist = LIGHT_SPATIAL_CONSTANTS.PREPARE_RADIUS;
 
-        // Sombras con su propio rango e histéresis
-        const shadowAct = Math.max(1.0, baseShadowActivation ?? Math.min(actDist, 40.0));
-        const shadowDeact = Math.max(shadowAct + 2.0, baseShadowDeactivation ?? (shadowAct + 6.0));
+    const shadowAct = Math.max(1.0, baseShadowActivation ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_SHADOW_ACTIVATION_RADIUS);
+    const shadowDeact = Math.max(shadowAct + 2.0, baseShadowDeactivation ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_SHADOW_DEACTIVATION_RADIUS);
 
-        return {
-            activation: actDist,
-            deactivation: deactDist,
-            dynamicDeactivation: dynamicDeactDist,
-            prepare: prepareDist,
-            shadowActivation: shadowAct,
-            shadowDeactivation: shadowDeact
-        };
-    }
+    return {
+      activation: actDist,
+      deactivation: deactDist,
+      dynamicDeactivation: dynamicDeactDist,
+      prepare: prepareDist,
+      shadowActivation: shadowAct,
+      shadowDeactivation: shadowDeact
+    };
+  }
 }

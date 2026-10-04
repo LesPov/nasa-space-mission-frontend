@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/telemetry/performance-incident.service.ts
 import { Injectable, inject } from '@angular/core';
 import { EngineProfilerService, ProfilerMetrics, FrameSample } from './engine-profiler.service';
@@ -63,7 +64,6 @@ export interface PerformanceIncident {
   };
 
   delta: IncidentDelta;
-
   diagnosis: string;
   metrics: ProfilerMetrics;
   previousStableMetrics?: FrameSample;
@@ -93,7 +93,7 @@ export class PerformanceIncidentService {
 
   private readonly FPS_THRESHOLD = 42;
   private readonly FRAMETIME_THRESHOLD = 23.8; 
-  private readonly COOLDOWN_MS = 6000;
+  private readonly COOLDOWN_MS = 4000;
 
   public checkFrame(frameTimeMs: number, fps: number): void {
     if (this.cooldownTimer > 0 && this.state === 'NORMAL') {
@@ -107,33 +107,33 @@ export class PerformanceIncidentService {
 
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
-    const toleranceFactor = isEditor ? 1.6 : 1.0; 
-    const triggerLimit = isEditor ? 25 : 12;
+    const toleranceFactor = isEditor ? 1.5 : 1.0; 
+    const triggerLimit = isEditor ? 20 : 8;
 
     if (fps < (this.FPS_THRESHOLD / toleranceFactor) || frameTimeMs > (this.FRAMETIME_THRESHOLD * toleranceFactor)) {
       this.consecutiveBadFrames++;
       this.consecutiveGoodFrames = 0;
 
       if (this.state === 'NORMAL' && this.consecutiveBadFrames >= triggerLimit) {
-         this.triggerIncident(fps, frameTimeMs);
+        this.triggerIncident(fps, frameTimeMs);
       } else if (this.state === 'ACTIVE' && this.activeIncident) {
-         if (fps < this.activeIncident.minFps) this.activeIncident.minFps = fps;
-         if (frameTimeMs > this.activeIncident.maxFrameTime) this.activeIncident.maxFrameTime = frameTimeMs;
-         this.activeIncident.durationMs = performance.now() - this.incidentStartTime;
+        if (fps < this.activeIncident.minFps) this.activeIncident.minFps = fps;
+        if (frameTimeMs > this.activeIncident.maxFrameTime) this.activeIncident.maxFrameTime = frameTimeMs;
+        this.activeIncident.durationMs = performance.now() - this.incidentStartTime;
       }
     } else {
       this.consecutiveBadFrames = 0;
       this.consecutiveGoodFrames++;
 
       if (this.state === 'ACTIVE' && this.activeIncident) {
-         this.postCaptureCounter++;
-         if (this.postCaptureCounter === 30) {
-            this.activeIncident.postIncidentHistory = this.profiler.getRecentHistory().slice(-30);
-         }
+        this.postCaptureCounter++;
+        if (this.postCaptureCounter === 30) {
+          this.activeIncident.postIncidentHistory = this.profiler.getRecentHistory().slice(-30);
+        }
 
-         if (this.consecutiveGoodFrames > 40) {
-            this.recoverIncident();
-         }
+        if (this.consecutiveGoodFrames > 35) {
+          this.recoverIncident();
+        }
       }
     }
   }
@@ -209,8 +209,7 @@ export class PerformanceIncidentService {
     
     if (this.incidents.length > this.MAX_INCIDENTS) this.incidents.pop();
 
-    console.warn(`🚨 [PerformanceIncident] [${classification.category}] [Confidence: ${classification.confidence}] ${classification.diagnosis} | FPS: ${fps.toFixed(1)} | Pos: (${snap.session.cameraPosition.x}, ${snap.session.cameraPosition.y}, ${snap.session.cameraPosition.z})`);
-
+    console.warn(`🚨 [PerformanceIncident] [${classification.category}] [Confidence: ${classification.confidence}] ${classification.diagnosis} | FPS: ${fps.toFixed(1)}`);
     this.captureVisual(incident);
   }
 

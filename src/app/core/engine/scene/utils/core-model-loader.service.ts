@@ -1,10 +1,10 @@
 
-
+// file: src/app/core/engine/scene/utils/core-model-loader.service.ts
 import { Injectable, inject } from '@angular/core';
 import { 
-    AbstractMesh, AssetContainer, Color3, Matrix, Mesh, MeshBuilder, 
-    StandardMaterial, PBRMaterial, TransformNode, Vector3, 
-    Tags, Quaternion, InstancedMesh 
+    AbstractMesh, AssetContainer, Color3, Mesh, MeshBuilder, 
+    StandardMaterial, TransformNode, Vector3, 
+    Tags, Quaternion 
 } from '@babylonjs/core';
 import '@babylonjs/loaders';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
@@ -146,8 +146,6 @@ export class CoreModelLoaderService {
 
     rootNode.checkCollisions = false; 
     rootNode.isPickable = true;
-
-    // Asegurar que el contenedor raíz no descarte a los hijos si su geometría es virtual
     rootNode.alwaysSelectAsActiveMesh = false;
     rootNode.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_STANDARD;
 
@@ -198,7 +196,6 @@ export class CoreModelLoaderService {
         m.checkCollisions = false;
       }
       
-      // Frustum culling estándar de BabylonJS sin pop-in por proximidad
       m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_STANDARD;
       m.receiveShadows = true; 
       
@@ -222,7 +219,6 @@ export class CoreModelLoaderService {
         if (override.scale) m.scaling.set(override.scale.x, override.scale.y, override.scale.z);
       }
       
-      // En modo Editor nunca congelamos matrices para mantener los Bounding Boxes interactivos
       const isInteractable = !!entity.interaction?.mensaje || !!entity.interaction?.interactSequenceIdFPS;
       if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled && !override && !isInteractable) {
         m.computeWorldMatrix(true);
@@ -230,8 +226,9 @@ export class CoreModelLoaderService {
       }
       
       if (m.material) {
+        // Fijamos de forma estricta maxSimultaneousLights en 4 para alinearse con los 3 slots del pool + 1 sol global
         if (m.material.getClassName() === "StandardMaterial" || m.material.getClassName() === "PBRMaterial") {
-          (m.material as any).maxSimultaneousLights = 8;
+          (m.material as any).maxSimultaneousLights = 4;
         }
 
         if (override) {

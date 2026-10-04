@@ -1,6 +1,4 @@
-// RUTA: src/app/core/engine/runtime/systems/lighting/light-containment.service.ts
-// ACCIÓN: MODIFICAR
-
+// file: src/app/core/engine/runtime/systems/lighting/light-containment.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, PointLight, SpotLight, Scene, Vector3, Tags, Mesh, InstancedMesh, Node, MultiMaterial, Material, Matrix } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
@@ -34,7 +32,6 @@ export class LightContainmentService {
   private strictInteriorReceiversCache = new Map<string, AbstractMesh[]>();
   private lastAuditReport: LightContainmentAuditReport | null = null;
 
-  // Zero-allocation matrices y vectores para pruebas espaciales de OBB
   private static readonly _tempInvMat = new Matrix();
   private static readonly _tempLocalActorPos = new Vector3();
 
@@ -70,11 +67,6 @@ export class LightContainmentService {
     return this.lastAuditReport;
   }
 
-  /**
-   * Resuelve el modelo contenedor de una luz interior.
-   * Si está emparentada (ej: pasillo -> luz), el contenedor es el padre.
-   * Si no, busca la entidad configurada explícitamente o el modelo espacial más cercano.
-   */
   public resolveContainerEntity(lightEntity: GameEntity, scene: Scene): GameEntity | null {
     const lightComp = lightEntity.light;
     if (!lightComp) return null;
@@ -127,7 +119,11 @@ export class LightContainmentService {
       const cand = candidates[i];
       if (!cand.view) continue;
 
-      const dist = Vector3.Distance(cand.view.getAbsolutePosition(), lightPos);
+      cand.view.computeWorldMatrix(true);
+      const bounds = cand.view.getHierarchyBoundingVectors(true);
+      const center = bounds.min.add(bounds.max).scale(0.5);
+      const dist = Vector3.Distance(center, lightPos);
+
       if (dist < smallestDist) {
         smallestDist = dist;
         closestContainer = cand;
@@ -137,11 +133,6 @@ export class LightContainmentService {
     return closestContainer;
   }
 
-  /**
-   * EVALUACIÓN REAL DE VOLUMEN ORIENTADO (OBB / COLLIDERS)
-   * En lugar de comparar contra un AABB mundial que engloba diagonales vacías,
-   * se evalúa contra las mallas de colisión o el espacio local exacto de los segmentos del modelo.
-   */
   public evaluateActorInsideContainer(
     actorWorldPos: Vector3,
     container: GameEntity,
@@ -153,7 +144,6 @@ export class LightContainmentService {
     }
 
     const targetMeshes: AbstractMesh[] = [];
-
     const proxies = container.view.getChildMeshes(false).filter(m => Tags.MatchesQuery(m, 'proxy_collider'));
     if (proxies.length > 0) {
       targetMeshes.push(...proxies);
@@ -225,7 +215,6 @@ export class LightContainmentService {
     const renderables: AbstractMesh[] = [];
     const rejected: Array<{ meshName: string; reason: string }> = [];
     let totalDescendantsCount = 0;
-
     const visitedNodes = new Set<Node>();
 
     const traverse = (node: Node) => {
@@ -265,12 +254,6 @@ export class LightContainmentService {
           } else {
             rejected.push({ meshName: node.name, reason: 'Mesh sin vértices' });
           }
-        } else {
-          if (node.getTotalVertices && node.getTotalVertices() > 0) {
-            renderables.push(node);
-          } else {
-            rejected.push({ meshName: node.name, reason: `Clase ${className} sin vértices geométricos` });
-          }
         }
       }
 
@@ -281,7 +264,6 @@ export class LightContainmentService {
     };
 
     traverse(rootNode);
-
     return { renderables, totalDescendantsCount, rejected };
   }
 
@@ -322,26 +304,14 @@ export class LightContainmentService {
         if (mat.getClassName() === 'MultiMaterial') {
           const multi = mat as MultiMaterial;
           const subMats = multi.subMaterials || [];
-          subMats.forEach((sub: Material | null) => {
-            if (sub && (sub as any).maxSimultaneousLights !== undefined) {
-              if ((sub as any).maxSimultaneousLights < 8) {
-                (sub as any).maxSimultaneousLights = 8;
-              }
-            }
-          });
           materialsSummary.push({
             meshName: mesh.name,
             materialType: 'MultiMaterial',
             isMulti: true,
             subMaterialsCount: subMats.length,
-            maxLights: 8
+            maxLights: 4
           });
         } else {
-          if ((mat as any).maxSimultaneousLights !== undefined) {
-            if ((mat as any).maxSimultaneousLights < 8) {
-              (mat as any).maxSimultaneousLights = 8;
-            }
-          }
           materialsSummary.push({
             meshName: mesh.name,
             materialType: mat.getClassName(),
@@ -375,18 +345,23 @@ export class LightContainmentService {
 
   public applyContainment(light: PointLight | SpotLight, entity: GameEntity, scene: Scene): void {
     const mode: LightContainmentMode = entity.light?.containmentMode || 'GLOBAL';
+    const affectDescendantsOnly = entity.light?.affectDescendantsOnly ?? false;
 
-    const cacheStamp = `${mode}_${entity.light?.containerEntityUid || ''}_${entity.uid}_${entity.light?.affectDescendantsOnly}`;
+    const cacheStamp = `${mode}_${entity.light?.containerEntityUid || ''}_${entity.uid}_${affectDescendantsOnly}`;
     if ((light as any)._containmentAppliedStamp === cacheStamp && !entity.isDirty) {
       return;
     }
 
-    if (mode === 'INTERIOR' && entity.light?.affectDescendantsOnly) {
+    if (mode === 'INTERIOR' && affectDescendantsOnly) {
       const receivers = this.getInteriorMeshesStrict(entity, scene);
-      light.includedOnlyMeshes = receivers.length > 0 ? [...receivers] : [];
-      light.excludedMeshes = [];
+      if (receivers.length > 0) {
+        light.includedOnlyMeshes = [...receivers];
+        light.excludedMeshes = [];
+      } else {
+        light.includedOnlyMeshes = [];
+        light.excludedMeshes = [];
+      }
     } else {
-      // Propagación física real: ilumina todo a su alcance visual; las paredes sólidas en la renderList ocluyen el paso
       light.includedOnlyMeshes = [];
       light.excludedMeshes = [];
     }
@@ -395,8 +370,7 @@ export class LightContainmentService {
   }
 
   public clearContainment(light: PointLight | SpotLight): void {
-    light.includedOnlyMeshes = [];
-    light.excludedMeshes = [];
+    // No vaciar includedOnlyMeshes al soltar un slot inactivo para no forzar recompilaciones en Babylon
     (light as any)._containmentAppliedStamp = undefined;
   }
 }

@@ -1,4 +1,5 @@
 
+// file: src/app/core/engine/scene/utils/core-scene-loader.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Vector3, MeshBuilder, Tags, AbstractMesh, Quaternion } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene-access.token';
@@ -20,6 +21,7 @@ import { DynamicLightingSystem } from '../../runtime/systems/lighting/dynamic-li
 import { ShadowOrchestratorService } from '../../runtime/shadows/shadow-orchestrator.service';
 import { EngineSessionService } from '../../session/engine-session.service';
 import { LocalRenderingSystem } from '../../runtime/systems/local-rendering.system';
+import { SpatialRelevanceHubService } from '../../spatial/spatial-relevance-hub.service';
 import { GameMode } from '../../session/game-mode.model';
   
 @Injectable({ providedIn: 'root' })
@@ -42,6 +44,7 @@ export class CoreSceneLoaderService {
   private dynamicLighting = inject(DynamicLightingSystem); 
   private sessionSvc = inject(EngineSessionService);
   private localRendering = inject(LocalRenderingSystem);
+  private spatialHub = inject(SpatialRelevanceHubService);
 
   public createInvisibleFloor(scene: any): void {
     const old = scene.getMeshByName('sueloInvisible');
@@ -91,7 +94,6 @@ export class CoreSceneLoaderService {
     objetosBD = objetosBD.filter(obj => obj.name !== 'Jugador_Prueba' && obj.name !== 'TempPlayer_Fallback');
     
     const triggersBD: TriggerDto[] = dataBD.triggers || dataBD.triggersDelta || [];
-
     const mallasCreadas = new Map<string, Mesh>();
 
     for (let i = 0; i < objetosBD.length; i += 5) {
@@ -170,6 +172,9 @@ export class CoreSceneLoaderService {
       }
     });
 
+    // REGISTRO TOTAL E INMEDIATO DEL SPATIAL RELEVANCE HUB
+    this.spatialHub.rebuildRegistry();
+
     if (isPlaying) {
         const resolvedPlayer = await this.spawnManager.resolvePlayerForSession(null, false);
         if (persistentPlayer && resolvedPlayer && resolvedPlayer.uid === persistentPlayer.uid) {
@@ -193,7 +198,6 @@ export class CoreSceneLoaderService {
     this.dynamicLighting.reconcileSceneLights(); 
     this.shadowOrchestrator.reconcileShadows();
 
-    // WARM-UP EXHAUSTIVO Y PRE-COMPILACIÓN SÍNCRONA
     await new Promise<void>((resolve) => {
       if (!this.sessionSvc.isSessionActive(sessionId)) return resolve();
       
@@ -221,7 +225,6 @@ export class CoreSceneLoaderService {
 
         const warmupPos = actCam ? actCam.globalPosition : Vector3.Zero();
 
-        // 1. Asegurar visibilidad total durante la preparación del motor
         scene.meshes.forEach(m => {
             if (!Tags.MatchesQuery(m, "system_element || editor_only || invisible_floor")) {
                 m.setEnabled(true);
@@ -229,24 +232,19 @@ export class CoreSceneLoaderService {
             }
         });
 
-        // 2. Iniciar y precargar sistemas de luces y sombras
         this.dynamicLighting.start(); 
         this.shadowOrchestrator.start(); 
         this.dynamicLighting.forceWarmup(warmupPos);
 
-        // 3. Compilar shaders en VRAM
         scene.render();
         scene.render();
 
         if (isEditor) {
-            // En el editor dejamos todas las entidades listas y habilitadas para frustum culling nativo
             this.localRendering.reconcileAllEntitiesImmediate(warmupPos);
         } else {
-            // En gameplay runtime se aplica el culling progresivo por distancia
             this.localRendering.reconcileAllEntitiesImmediate(warmupPos);
         }
 
-        // 4. Segundo pase de estabilización
         this.dynamicLighting.forceWarmup(warmupPos);
         scene.render();
 
@@ -339,6 +337,7 @@ export class CoreSceneLoaderService {
         }
     });
 
+    this.spatialHub.rebuildRegistry();
     this.dynamicLighting.reconcileSceneLights(); 
     this.shadowOrchestrator.reconcileShadows();
     return mallasCreadas;

@@ -1,4 +1,3 @@
-
 // file: src/app/components/inspector-escena/inspector-properties/prop-profiler/prop-profiler.ts
 import { Component, OnInit, OnDestroy, inject, NgZone, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -183,8 +182,18 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
       frameTimeMin: 0,
       frameTimeMax: 0,
       frameTimeP50: 0,
+      frameTimeP90: 0,
       frameTimeP95: 0,
       frameTimeP99: 0,
+      worstFrameTime: 0,
+      latencyBuckets: {
+        framesAbove33ms: 0,
+        framesAbove50ms: 0,
+        framesAbove100ms: 0,
+        framesAbove250ms: 0,
+        framesAbove500ms: 0,
+        framesAbove1000ms: 0
+      },
       cpuPhases: {},
       cpuSystems: {},
       dominantSystem: 'None',
@@ -206,7 +215,15 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
         jsHeapSizeLimitMb: 'unavailable',
         heapDeltaMb: 0
       },
-      lights: { totalVirtual: 0, activePool: 0, shadowedPool: 0, details: [] },
+      lights: {
+        totalVirtual: 0,
+        activePool: 0,
+        shadowedPool: 0,
+        fadingInCount: 0,
+        fadingOutCount: 0,
+        inactiveCount: 0,
+        details: []
+      },
       shadows: {
         shadowQualityLevel: 'MEDIUM',
         activeGenerators: 0,

@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/player-sequence.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Vector3, Quaternion } from '@babylonjs/core';
@@ -39,6 +40,7 @@ interface SequenceActionHandler {
   execute(step: PlayerSequenceStep, entity: GameEntity, entityManager: EntityManagerService, dtMs: number, dtFraction: number, runtime: SeqRuntime): void;
 }
 
+// Handlers optimizados: no marcan entity.isDirty = true innecesariamente si solo cambia intensidad
 const ActionHandlers: Record<string, SequenceActionHandler> = {
   procMove: {
     execute: (step, entity, em, dtMs, dtFraction) => {
@@ -139,7 +141,6 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
       if (!entity.light) return;
       if (entity.playerConfig?.animationEnabled?.lightOn === false) return;
       entity.light.renderIntensity = entity.light.intensity > 0 ? entity.light.intensity : 1.0;
-      entity.isDirty = true;
     }
   },
   lightOff: {
@@ -147,7 +148,6 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
       if (!entity.light) return;
       if (entity.playerConfig?.animationEnabled?.lightOff === false) return;
       entity.light.renderIntensity = 0.0001;
-      entity.isDirty = true;
     }
   },
   lightPulse: {
@@ -157,7 +157,6 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
       const freq = step.speedRatio || 1;
       const timeSec = runtime.absoluteTimeMs !== undefined ? (runtime.absoluteTimeMs / 1000) : (performance.now() / 1000);
       entity.light.renderIntensity = entity.light.intensity * (0.5 + 0.5 * Math.sin(timeSec * Math.PI * 2 * freq));
-      entity.isDirty = true;
     }
   },
   lightFlicker: {
@@ -169,7 +168,6 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
       const rand = Math.abs(Math.sin(timeSec * 12.9898 + 78.233)) * 100;
       if ((rand % 1) < (0.15 * freq)) {
         entity.light.renderIntensity = ((rand % 2) > 1) ? entity.light.intensity : 0.0001;
-        entity.isDirty = true;
       }
     }
   }

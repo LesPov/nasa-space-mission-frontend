@@ -1,7 +1,11 @@
 // file: src/app/services/motor-3d.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
-import { Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4, UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera, SceneInstrumentation, EngineInstrumentation } from '@babylonjs/core';
-import { LoopManagerService, GamePhase } from '../core/engine/behaviors/services/loop-manager.service';
+import { 
+  Engine, Scene, ArcRotateCamera, Vector3, HemisphericLight, Color4, 
+  UniversalCamera, DefaultRenderingPipeline, Color3, GlowLayer, Camera, 
+  SceneInstrumentation, EngineInstrumentation 
+} from '@babylonjs/core';
+import { LoopManagerService } from '../core/engine/behaviors/services/loop-manager.service';
 import { CameraFactoryService } from '../core/engine/runtime/cameras/camera-factory.service';
 import { CameraOwnershipService } from '../core/engine/runtime/cameras/camera-ownership.service';
 import { CinematicDirectorService } from '../core/engine/runtime/systems/cinematic-director.service';
@@ -28,7 +32,14 @@ export class Motor3dService implements ISceneAccess {
   private loopManager = inject(LoopManagerService);
   private ownership = inject(CameraOwnershipService);
   private injector = inject(Injector);
-  private profiler = inject(EngineProfilerService);
+
+  private _profiler: EngineProfilerService | null = null;
+  private get profiler(): EngineProfilerService {
+    if (!this._profiler) {
+      this._profiler = this.injector.get(EngineProfilerService);
+    }
+    return this._profiler;
+  }
 
   private _spatialHub: SpatialRelevanceHubService | null = null;
   private get spatialHub(): SpatialRelevanceHubService {
@@ -46,7 +57,6 @@ export class Motor3dService implements ISceneAccess {
   private engineInstrumentation: EngineInstrumentation | null = null;
 
   private resizeListener = () => this.forceResize();
-
   private lastFrameStartTime = 0;
 
   getScene(): Scene { return this.scene; }
@@ -115,7 +125,6 @@ export class Motor3dService implements ISceneAccess {
 
     this.loopManager.initialize(this.scene);
     
-    // Registro del Spatial Relevance Hub al inicio del loop (PRE_UPDATE)
     this.loopManager.registerSystem(this.spatialHub);
     this.spatialHub.start();
 
@@ -232,7 +241,7 @@ export class Motor3dService implements ISceneAccess {
       this.cameraFactory.dispose();
       
       this.engine.stopRenderLoop();
-      if(this.scene) {
+      if (this.scene) {
         this.scene.dispose();
       }
       this.engine.dispose();

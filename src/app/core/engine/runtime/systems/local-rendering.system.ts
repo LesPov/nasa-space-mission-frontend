@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/local-rendering.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -10,6 +11,7 @@ import { ISceneAccess, SCENE_ACCESS_TOKEN } from '../../scene/scene-access.token
 import { GameEntity } from '../../entities/game.entity';
 import { GameEventBusService } from '../../events/game-event-bus.service';
 import { LightShadowService } from './lighting/light-shadow.service';
+import { EngineProfilerService } from '../../telemetry/engine-profiler.service';
 
 interface VolumeCache {
   center: Vector3;
@@ -43,6 +45,7 @@ export class LocalRenderingSystem implements IUpdatable {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private eventBus = inject(GameEventBusService);
   private shadowService = inject(LightShadowService);
+  private profiler = inject(EngineProfilerService);
 
   private frameCounter = 0;
   private distanceCheckTimer = 0;
@@ -385,6 +388,8 @@ export class LocalRenderingSystem implements IUpdatable {
     let visibilityChangedInBatch = false;
 
     let vCount = 0, fCount = 0, hCount = 0, rCount = 0, sCount = 0;
+    let evaluatedCount = 0;
+    let changedCount = 0;
 
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
@@ -408,6 +413,7 @@ export class LocalRenderingSystem implements IUpdatable {
         if (e.isCulled) {
           e.isCulled = false;
           visibilityChangedInBatch = true;
+          changedCount++;
         }
         renderState.targetVisibility = 1.0;
         if (renderState.state === 'HARD_CULLED' || renderState.state === 'FADING_OUT') {
@@ -415,6 +421,7 @@ export class LocalRenderingSystem implements IUpdatable {
         }
         vCount++;
       } else if (shouldCheckDistance) {
+        evaluatedCount++;
         const volume = this.getVolume(e, mesh);
 
         const dx = Math.abs(effectiveRefPos.x - volume.center.x);
@@ -484,6 +491,7 @@ export class LocalRenderingSystem implements IUpdatable {
 
         if (wasCulled !== e.isCulled) {
           visibilityChangedInBatch = true;
+          changedCount++;
         }
       }
 
@@ -537,6 +545,7 @@ export class LocalRenderingSystem implements IUpdatable {
             }
 
             visibilityChangedInBatch = true;
+            changedCount++;
           }
           break;
 
@@ -581,6 +590,11 @@ export class LocalRenderingSystem implements IUpdatable {
     this._hardCulledCount = hCount;
     this._restoringCount = rCount;
     this._shadowProtectedCount = sCount;
+
+    // Reporte al profiler
+    this.profiler.cullingEvaluatedCount = evaluatedCount;
+    this.profiler.cullingChangedCount = changedCount;
+    this.profiler.recordDistanceEvaluation('LocalRenderingSystem', evaluatedCount);
 
     if (visibilityChangedInBatch) {
       this.eventBus.emit({ type: 'RuntimeVisibilityBatchChanged' });

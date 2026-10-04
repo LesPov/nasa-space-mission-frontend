@@ -1,3 +1,4 @@
+// file: src/app/components/ui-profiler/ui-profiler.ts
 import { Component, OnInit, OnDestroy, inject, NgZone, signal, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { EngineProfilerService, ProfilerMetrics } from '../../core/engine/telemetry/engine-profiler.service';
@@ -23,9 +24,10 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
   
   public cpuPhasesKeys = computed(() => Object.keys(this.metrics().cpuPhases || {}));
   public cpuSystemsKeys = computed(() => Object.keys(this.metrics().cpuSystems || {}));
+  public distanceSystemsKeys = computed(() => Object.keys(this.metrics().distances.evaluationsBySystem || {}));
 
   public isMinimized = signal<boolean>(false);
-  public tab = signal<'metrics' | 'incidents' | 'lights' | 'shadows'>('metrics');
+  public tab = signal<'metrics' | 'incidents' | 'lights' | 'shadows' | 'shaders' | 'culling' | 'transition'>('metrics');
   public selectedIncident = signal<PerformanceIncident | null>(null);
 
   private intervalId: any;
@@ -34,7 +36,6 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
     this.ngZone.runOutsideAngular(() => {
       this.intervalId = setInterval(() => {
         if (this.profiler.isProfilingEnabled) {
-          // Captura completa incluyendo luces en profundidad cuando el tab de luces está activo
           const deepLights = this.tab() === 'lights' || this.selectedIncident() !== null;
           this.metrics.set(this.profiler.getSnapshot(deepLights));
           
@@ -45,7 +46,7 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
               this.incidents.set([...currentIncidents]);
           }
         }
-      }, 300);
+      }, 250);
     });
   }
 
@@ -69,38 +70,78 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
     this.profiler.printSnapshotToConsole();
   }
 
+  public formatCoords(pos: { x: number; y: number; z: number } | null | undefined, fallback = 'N/A'): string {
+    if (!pos) return fallback;
+    return `(${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)})`;
+  }
+
   public copySummary(inc?: PerformanceIncident) {
     const snap = inc ? inc.metrics : this.metrics();
-    const summary = `INCIDENT / SNAPSHOT SUMMARY\nMode: ${snap.session.mode}\nFPS: ${snap.fps.toFixed(1)} | Frame: ${snap.frameTimeAvg.toFixed(2)}ms\nGPU DrawCalls: ${snap.gpu.drawCalls} | Active Meshes: ${snap.gpu.activeMeshes}\nLights Pool: ${snap.lights.activePool} active / ${snap.lights.shadowedPool} shadowed\nShadow Rebuilds: ${snap.shadows.renderListRebuilds} | Quality: ${snap.gpu.qualityTier}\nCulling: Visible: ${snap.culling.visibleObjects} | Fading: ${snap.culling.fadingObjects} | Culled: ${snap.culling.hardCulledObjects} | Restoring: ${snap.culling.restoringObjects} | ShadowProtected: ${snap.culling.shadowProtectedObjects}`;
+    const summary = `=== FORENSIC SNAPSHOT ===\n` +
+      `Mode: ${snap.session.mode} | View: ${snap.session.cameraView} | Scene: ${snap.session.sceneName} (ID: ${snap.session.sceneId})\n` +
+      `CamPos: (${snap.session.cameraPosition.x}, ${snap.session.cameraPosition.y}, ${snap.session.cameraPosition.z}) | FOV: ${snap.session.cameraFov}\n` +
+      `PlayerPos: ${snap.session.playerPosition ? `(${snap.session.playerPosition.x}, ${snap.session.playerPosition.y}, ${snap.session.playerPosition.z})` : 'N/A'}\n` +
+      `Dist Cam-Player: ${snap.session.distanceCameraToPlayer}m\n` +
+      `FPS: ${snap.fps} (Min: ${snap.frameTimeMin}ms, Max: ${snap.frameTimeMax}ms, Avg: ${snap.frameTimeAvg}ms, p99: ${snap.frameTimeP99}ms)\n` +
+      `Dominant System: ${snap.dominantSystem}\n` +
+      `DrawCalls: ${snap.gpu.drawCalls} | Active Meshes: ${snap.gpu.activeMeshes}/${snap.gpu.totalMeshes} | Transparent: ${snap.gpu.transparentMeshes}\n` +
+      `GPU FrameTime: ${snap.gpu.gpuFrameTime}\n` +
+      `Heap: ${typeof snap.memory.usedJSHeapSizeMb === 'number' ? snap.memory.usedJSHeapSizeMb + ' MB' : 'unavailable'} (Delta: ${snap.memory.heapDeltaMb} MB)\n` +
+      `Lights: ${snap.lights.activePool}/${snap.lights.totalVirtual} active | Shadowed: ${snap.lights.shadowedPool}\n` +
+      `Shadows: Quality ${snap.shadows.shadowQualityLevel} | Casters: ${snap.shadows.totalCasters} | Rebuilds: ${snap.shadows.renderListRebuilds} | Invalidations: ${snap.shadows.invalidations}\n` +
+      `Shaders: ${snap.shaders.compilingCount} compiling | MaxLights: ${snap.shaders.maxLightsObserved}\n` +
+      `Culling: Evaluated: ${snap.culling.evaluatedEntities} | Changed: ${snap.culling.modifiedEntities} | HardCulled: ${snap.culling.hardCulledObjects} | ShadowProtected: ${snap.culling.shadowProtectedObjects}\n` +
+      `Transition to Live Duration: ${snap.transition.lastTransitionTotalMs}ms`;
+
     navigator.clipboard.writeText(summary);
-    alert('📋 Resumen copiado al portapapeles');
+    alert('📋 Resumen forense copiado al portapapeles');
   }
 
   public copyJson(inc?: PerformanceIncident) {
-    const snap = inc ? inc.metrics : this.profiler.getSnapshot(true);
+    const snap = inc ? inc : this.profiler.getSnapshot(true);
     navigator.clipboard.writeText(JSON.stringify(snap, null, 2));
     alert('📋 JSON forense completo copiado al portapapeles');
+  }
+
+  public downloadJson(inc?: PerformanceIncident) {
+    const data = inc ? inc : this.profiler.getSnapshot(true);
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `incident_forensic_${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   private getEmptyMetrics(): ProfilerMetrics {
     return {
       fps: 0,
       frameTimeAvg: 0,
+      frameTimeMin: 0,
+      frameTimeMax: 0,
       frameTimeP50: 0,
       frameTimeP95: 0,
       frameTimeP99: 0,
       cpuPhases: {},
       cpuSystems: {},
+      dominantSystem: 'None',
       gpu: {
         drawCalls: 0,
         activeMeshes: 0,
         activeIndices: 0,
-        gpuFrameTime: 0,
+        gpuFrameTime: 'unavailable',
         hardwareScaling: 1.0,
         qualityTier: 'HIGH',
         transparentMeshes: 0,
         totalMeshes: 0,
         visibleMeshes: 0
+      },
+      memory: {
+        usedJSHeapSizeMb: 'unavailable',
+        totalJSHeapSizeMb: 'unavailable',
+        jsHeapSizeLimitMb: 'unavailable',
+        heapDeltaMb: 0
       },
       lights: {
         totalVirtual: 0,
@@ -125,17 +166,43 @@ export class UiProfilerComponent implements OnInit, OnDestroy {
         cacheMisses: 0
       },
       culling: {
+        evaluatedEntities: 0,
+        modifiedEntities: 0,
         visibleObjects: 0,
         fadingObjects: 0,
         hardCulledObjects: 0,
         restoringObjects: 0,
         shadowProtectedObjects: 0
       },
+      shaders: {
+        totalMaterials: 0,
+        standardMaterials: 0,
+        pbrMaterials: 0,
+        multiMaterials: 0,
+        compilingCount: 0,
+        totalCompilationsDetected: 0,
+        maxLightsObserved: 0
+      },
+      distances: {
+        evaluationsBySystem: {}
+      },
+      transition: {
+        lastTransitionTotalMs: 0,
+        milestones: []
+      },
       session: {
         mode: 'EDITOR',
         cameraView: 'FPS',
         timestamp: '',
-        runtimeReadyStage: ''
+        runtimeReadyStage: '',
+        sceneId: null,
+        sceneName: '',
+        playerPosition: null,
+        cameraPosition: { x: 0, y: 0, z: 0 },
+        cameraDirection: { x: 0, y: 0, z: 1 },
+        cameraFov: 0.8,
+        distanceCameraToPlayer: 0,
+        selectedObjectName: null
       }
     };
   }

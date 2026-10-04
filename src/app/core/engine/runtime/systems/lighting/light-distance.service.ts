@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/light-distance.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Vector3 } from '@babylonjs/core';
@@ -11,6 +12,7 @@ import { LightReferenceService } from './light-reference.service';
 import { LightAttenuationCurve } from './light-attenuation-curve';
 import { LightContainmentService } from './light-containment.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
+import { EngineProfilerService } from '../../../telemetry/engine-profiler.service';
 
 @Injectable({ providedIn: 'root' })
 export class LightDistanceService {
@@ -19,6 +21,7 @@ export class LightDistanceService {
   private referenceSvc = inject(LightReferenceService);
   private containmentSvc = inject(LightContainmentService);
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
+  private profiler = inject(EngineProfilerService);
 
   private editorPolicy = new EditorLightingPolicy();
   private runtimePolicy = new RuntimeLightingPolicy();
@@ -31,6 +34,9 @@ export class LightDistanceService {
       const isEditorPure = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
       const policy = isEditorPure ? this.editorPolicy : this.runtimePolicy;
       const scene = this.motor3d.getScene();
+
+      // Telemetría forense
+      this.profiler.recordDistanceEvaluation('LightDistanceService', activeVirtuals.length);
 
       for (let i = 0; i < activeVirtuals.length; i++) {
           const vl = activeVirtuals[i];
@@ -157,7 +163,6 @@ export class LightDistanceService {
               this.applyStandardProximity(vl, lightComp, dist, thresholds, wasInRange);
           }
 
-          // Definir etapas del ciclo de vida (PRELOAD -> PREACTIVE -> ACTIVE)
           if (vl.isLightInRange && vl.targetMultiplier > 0.05) {
               vl.lifecycleStage = 'ACTIVE';
           } else if (vl._isInPrepareRange || (vl.isLightInRange && vl.targetMultiplier <= 0.05)) {
@@ -169,7 +174,6 @@ export class LightDistanceService {
               vl.isWarmedUp = false;
           }
 
-          // Evaluación de sombras por histéresis
           if (vl.isLightInRange && lightComp.castShadows) {
               if (lightComp.distanceShadowsEnabled) {
                   if (vl.isShadowInRange) { 

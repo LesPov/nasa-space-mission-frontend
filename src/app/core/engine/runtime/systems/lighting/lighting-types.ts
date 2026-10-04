@@ -44,4 +44,6 @@ export interface PoolSlot {
     hasDynamicCasters?: boolean;
     isStaticLight?: boolean;
     isWarmedUp?: boolean;
+    _lightOnTimestamp?: number;
+    _shadowReadyTimestamp?: number;
 }

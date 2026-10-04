@@ -1,3 +1,4 @@
+
 // file: src/app/services/editor/editor-play-mode.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Mesh, Tags, Vector3, Scene, ArcRotateCamera, AbstractMesh } from '@babylonjs/core';
@@ -20,6 +21,7 @@ import { ToolsHighlightService } from './toolsservice/tools-highlight.service';
 import { LocalRenderingSystem } from '../../core/engine/runtime/systems/local-rendering.system';
 import { FogOrchestratorService } from '../../core/engine/runtime/systems/fog-orchestrator.service';
 import { PlayerInputService } from '../../core/engine/runtime/systems/player-input.service';
+import { EngineProfilerService } from '../../core/engine/telemetry/engine-profiler.service';
 
 export interface EditorCameraSnapshot {
   target: Vector3;
@@ -47,6 +49,7 @@ export class EditorPlayModeService {
   private localRendering = inject(LocalRenderingSystem);
   private fogOrchestrator = inject(FogOrchestratorService);
   private inputSvc = inject(PlayerInputService);
+  private profiler = inject(EngineProfilerService);
 
   private editorSnapshot: EditorCameraSnapshot | null = null;
   private pendingFlightParams: any = null;
@@ -56,6 +59,7 @@ export class EditorPlayModeService {
     const scene = this.motor3d.getScene();
     const editorCam = this.motor3d.getEditorCamera();
 
+    this.profiler.beginTransitionTracking('CAPTURE_EDITOR_STATE');
     this.gameContext.setRuntimeReadyStage('PREPARING_RESOURCES');
 
     if (editorCam) {
@@ -71,6 +75,7 @@ export class EditorPlayModeService {
     this.cameraSvc.guardarEstadoCamaraLibre();
     CinematicLogger.logTestLiveLifecycle('ENTER', 'EDITOR', editorCam?.name);
 
+    this.profiler.recordTransitionMilestone('PLAYER_RESOLVE');
     if (onProgress) onProgress('Resolviendo jugador y punto de aparición...');
 
     let objMesh = this.state.objetoSeleccionado() as Mesh;
@@ -80,7 +85,7 @@ export class EditorPlayModeService {
     if (!playerEntity || !playerEntity.view) throw new Error("Player not resolved");
     objMesh = playerEntity.view as Mesh;
 
-    // 🔥 Desbloquear autoridad y runtime de movimiento del jugador
+    // Desbloquear autoridad y runtime de movimiento del jugador
     playerEntity.movementAuthority = 'GAMEPLAY';
     if (playerEntity.playerRuntime) {
       playerEntity.playerRuntime.cinematicAnimation = null;
@@ -104,6 +109,7 @@ export class EditorPlayModeService {
     this.state.seleccionarObjeto(null);
     this.gameContext.setActivePlayer(playerEntity);
 
+    this.profiler.recordTransitionMilestone('VISIBILITY_SETUP');
     if (onProgress) onProgress('Configurando visibilidad inicial...');
 
     this.motor3d.getScene().meshes.forEach(m => {
@@ -148,11 +154,13 @@ export class EditorPlayModeService {
       targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
     }
 
+    this.profiler.recordTransitionMilestone('WARMING_UP_SHADOWS_LIGHTS');
     if (onProgress) onProgress('Preparando Iluminación y Sombras...');
     this.gameContext.setRuntimeReadyStage('WARMING_UP_SHADOWS');
     this.dynamicLighting.reconcileSceneLights();
     this.shadowOrchestrator.reconcileShadows();
 
+    this.profiler.recordTransitionMilestone('COMPILING_SHADERS');
     if (onProgress) onProgress('Compilando Shaders críticos de forma asíncrona...');
     this.gameContext.setRuntimeReadyStage('COMPILING_SHADERS');
 
@@ -182,6 +190,7 @@ export class EditorPlayModeService {
         return;
       }
       
+      this.profiler.recordTransitionMilestone('CAMERA_FLIGHT');
       const { centroEpiral, targetPos, targetLookAt, playerForward, objMesh } = this.pendingFlightParams;
 
       if (vista === 'FPS') {
@@ -210,6 +219,7 @@ export class EditorPlayModeService {
   }
 
   public async estabilizarEntornoVisual(vista: CameraViewMode): Promise<void> {
+    this.profiler.recordTransitionMilestone('CHECKING_STABILITY');
     this.gameContext.setRuntimeReadyStage('CHECKING_STABILITY');
     return new Promise<void>((resolve) => {
       const scene = this.motor3d.getScene();
@@ -268,13 +278,13 @@ export class EditorPlayModeService {
           canvas.focus();
         }
 
-        // Forzar activación del sistema de inputs y reseteo de teclas
         this.inputSvc.start();
         this.inputSvc.enable();
         this.inputSvc.resetearInputs();
 
         this.pendingFlightParams = null;
         this.gameContext.setRuntimeReadyStage('IDLE');
+        this.profiler.endTransitionTracking();
         resolve();
       }, 50);
     });

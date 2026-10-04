@@ -1,4 +1,5 @@
 
+/* file: src/app/components/ui-profiler/ui-profiler.css */
 .profiler-minimized {
   position: fixed;
   bottom: 15px;
@@ -29,7 +30,7 @@
   position: fixed;
   top: 10px;
   right: 10px;
-  width: 360px;
+  width: 390px;
   background: rgba(15, 23, 42, 0.95);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -52,7 +53,7 @@
 }
 
 .scrollable-view {
-  max-height: 480px; 
+  max-height: 520px; 
   overflow-y: auto; 
   padding-right: 6px; 
 }
@@ -61,10 +62,10 @@
 .scrollable-view::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
 
 .tabs {
-  display: flex; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 4px;
+  display: flex; gap: 3px; margin-bottom: 12px; border-bottom: 1px solid #334155; padding-bottom: 4px; overflow-x: auto;
 }
 .tabs button {
-  flex: 1; background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 6px 2px; font-weight: bold; font-family: inherit; font-size: 10px; border-radius: 4px 4px 0 0; transition: 0.2s;
+  flex: 1; background: transparent; border: none; color: #94a3b8; cursor: pointer; padding: 6px 4px; font-weight: bold; font-family: inherit; font-size: 10px; border-radius: 4px 4px 0 0; transition: 0.2s; white-space: nowrap;
 }
 .tabs button:hover { background: rgba(255,255,255,0.05); color: white;}
 .tabs button.active {
@@ -135,6 +136,7 @@
   margin-top: 6px;
   cursor: pointer;
   font-weight: bold;
+  font-size: 10px;
   transition: 0.2s;
 }
 .btn-print:hover { background: #1d4ed8; }

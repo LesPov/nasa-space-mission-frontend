@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
@@ -445,7 +446,6 @@ export class DynamicLightingSystem implements IUpdatable {
       
       slot.light.diffuse.copyFrom(vl.baseColor);
 
-      // 🔥 FIX DETERMINISMO SECUENCIAS: Respetar renderIntensity cuando una secuencia lo anima
       const effectiveBase = (lightComp.renderIntensity !== undefined && lightComp.renderIntensity !== null)
           ? lightComp.renderIntensity
           : (lightComp.intensity ?? 1.0);
@@ -454,8 +454,6 @@ export class DynamicLightingSystem implements IUpdatable {
 
       if (!lightComp.enabled || this.profilerDisableLocalLights) finalIntensity = 0;
 
-      // PRE-WARMUP: si está en etapa PREACTIVE pero su intensidad aún no superó el umbral,
-      // mantenemos una intensidad microscópica (0.0002) para que los shaders permanezcan compilados.
       if (vl.lifecycleStage === 'PREACTIVE' && finalIntensity <= this.LIGHT_DISABLE_THRESHOLD) {
           finalIntensity = 0.0002;
       }
@@ -467,6 +465,13 @@ export class DynamicLightingSystem implements IUpdatable {
           if (!lightComp.enabled || (finalIntensity <= this.LIGHT_DISABLE_THRESHOLD && vl.lifecycleStage !== 'PREACTIVE')) {
               slot.light.intensity = 0;
           }
+      }
+
+      // Estampa temporal para telemetría forense
+      if (finalIntensity > 0.05 && !slot._lightOnTimestamp) {
+        slot._lightOnTimestamp = performance.now();
+      } else if (finalIntensity <= 0.05) {
+        slot._lightOnTimestamp = undefined;
       }
 
       const wantsShadow = vl.isShadowInRange && (vl.currentMultiplier > 0.02 || vl.lifecycleStage === 'PREACTIVE') && lightComp.enabled;
@@ -503,10 +508,12 @@ export class DynamicLightingSystem implements IUpdatable {
               if (triggerOneShot) {
                   slot.sg.getShadowMap()?.resetRefreshCounter();
                   this.shadowCache.recordInvalidation();
+                  slot._shadowReadyTimestamp = performance.now();
               }
           } else {
               if ((slot.sg.getShadowMap()?.renderList?.length ?? 0) > 0) {
                   slot.sg.getShadowMap()!.renderList!.length = 0;
+                  slot._shadowReadyTimestamp = undefined;
               }
           }
       }

@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/shadows/shadow-orchestrator.service.ts
 import { Injectable, inject } from '@angular/core';
 import { DirectionalLight, Vector3, CascadedShadowGenerator, Scene, AbstractMesh, Mesh, InstancedMesh, Tags, RenderTargetTexture } from '@babylonjs/core';
@@ -173,10 +174,11 @@ export class ShadowOrchestratorService implements IUpdatable {
     const shadowMap = this.shadowGenerator.getShadowMap();
     if (shadowMap) {
       if (isEditor) {
-        if (!this.isEditorShadowsFrozen) {
+        // 🔥 FIX BUG 4: Nunca congelar las sombras si la RenderList está vacía (puede que no haya cargado la geometría)
+        if (!this.isEditorShadowsFrozen && shadowMap.renderList && shadowMap.renderList.length > 0) {
           shadowMap.refreshRate = 1;
           this.isEditorShadowsFrozen = true;
-        } else {
+        } else if (this.isEditorShadowsFrozen) {
           shadowMap.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
         }
       } else {

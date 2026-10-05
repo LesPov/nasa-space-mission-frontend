@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/light-distance.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Vector3 } from '@babylonjs/core';
@@ -71,10 +72,13 @@ export class LightDistanceService {
         vl.closestActorName = 'Referencia Base';
       }
 
+      // Consumo de distancias desde el Hub O(1)
       const hubDist = this.spatialHub.getDistanceToPlayer(vl.entity.uid);
       const hubDistSq = this.spatialHub.getDistanceSquaredToPlayer(vl.entity.uid);
 
+      // Si el Hub no estaba inicializado (HubDist == MaxValue), usar distancia Euclidiana estricta para el warmup
       const centerDist = hubDist !== Number.MAX_VALUE ? hubDist : Vector3.Distance(actorWorldPos, this._tempPos);
+      
       vl.centerDistance = parseFloat(centerDist.toFixed(2));
       vl.boundsDistance = parseFloat(centerDist.toFixed(2));
       vl.effectiveDistance = parseFloat(centerDist.toFixed(2));
@@ -255,7 +259,12 @@ export class LightDistanceService {
         this.transitionState(vl, 'FADING_OUT', timestamp, undefined, 'FADING OUT CONTINUO');
       } else {
         vl.isLightInRange = false;
-        this.transitionState(vl, dist > rDeactivation ? 'OUTSIDE' : 'INACTIVE', timestamp, 'OUT_OF_EFFECTIVE_RANGE', 'Fuera de rango');
+        
+        // Evitamos marcar como error una luz que simplemente está lejos legalmente
+        let rejectionR = undefined;
+        if (dist > rDeactivation) rejectionR = 'OUT_OF_EFFECTIVE_RANGE';
+        
+        this.transitionState(vl, dist > rDeactivation ? 'OUTSIDE' : 'INACTIVE', timestamp, rejectionR, 'Fuera de rango radial');
       }
     }
   }

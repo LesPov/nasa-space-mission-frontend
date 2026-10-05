@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
@@ -140,6 +141,8 @@ export class DynamicLightingSystem implements IUpdatable {
     this.lastRefPos.copyFrom(refPos);
 
     const virtuals = this.lightRegistry.getVirtualLights();
+    
+    // 🔥 FORZAMOS EVALUACIÓN DE DISTANCIA INICIAL
     this.lightDistance.evaluateDistanceAndHysteresis(virtuals, refPos, 0);
 
     const candidates = virtuals.filter(vl => vl.entity.light?.enabled !== false);
@@ -151,6 +154,7 @@ export class DynamicLightingSystem implements IUpdatable {
     for (let i = 0; i < virtuals.length; i++) {
       const vl = virtuals[i];
       if (vl.isLightInRange) {
+        // 🔥 FIX BUGS DE FUNDIDO TARDÍO: Las luces iniciales arracan al 100% de intensidad
         vl.targetMultiplier = 1.0;
         vl.currentMultiplier = 1.0;
         vl._lastRenderedMultiplier = 1.0;
@@ -261,6 +265,7 @@ export class DynamicLightingSystem implements IUpdatable {
     for (let i = 0; i < activeVirtuals.length; i++) {
       const vl = activeVirtuals[i];
       if (vl.isLightInRange) {
+        // 🔥 FIX BUGS DE FUNDIDO TARDÍO: Las luces precalentadas arrancan en su intensidad máxima si están en rango
         vl.targetMultiplier = 1.0;
         vl.currentMultiplier = 1.0;
       } else {
@@ -283,7 +288,7 @@ export class DynamicLightingSystem implements IUpdatable {
         const vl = this.lightRegistry.getVirtualLightByUid(slot.assignedEntityUid);
         if (vl) {
           const tempFirstFrame = this.isFirstFrame;
-          this.isFirstFrame = true;
+          this.isFirstFrame = true; // Fuerza la aplicación instantánea sin interpolar posiciones
           this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, true);
           this.isFirstFrame = tempFirstFrame;
 

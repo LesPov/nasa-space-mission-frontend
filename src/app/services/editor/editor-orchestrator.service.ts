@@ -1,3 +1,4 @@
+
 // file: src/app/services/editor/editor-orchestrator.service.ts
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
@@ -35,6 +36,8 @@ import { NarrativeRoleDto } from '../../core/engine/models/api-dto.model';
 import { DynamicLightingSystem } from '../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 import { ShadowOrchestratorService } from '../../core/engine/runtime/shadows/shadow-orchestrator.service';
 import { LocalRenderingSystem } from '../../core/engine/runtime/systems/local-rendering.system';
+import { SpatialRelevanceHubService } from '../../core/engine/spatial/spatial-relevance-hub.service';
+import { LightShadowService } from '../../core/engine/runtime/systems/lighting/light-shadow.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorOrchestratorService {
@@ -66,6 +69,8 @@ export class EditorOrchestratorService {
   private dynLighting = inject(DynamicLightingSystem);
   private shadowOrchestrator = inject(ShadowOrchestratorService);
   private localRendering = inject(LocalRenderingSystem);
+  private spatialHub = inject(SpatialRelevanceHubService);
+  private lightShadows = inject(LightShadowService);
 
   public readonly editando = signal(false);
   public readonly isPlayable = signal(false);
@@ -207,7 +212,7 @@ export class EditorOrchestratorService {
         }
 
         this.editorSvc.setEscenaActualData(res);
-        this.cargandoTexto.set('Preparando modelos, jerarquías, luces y sombras...');
+        this.cargandoTexto.set('Preparando modelos y jerarquías...');
         
         this.motor3dSvc.forceResize(); 
         this.toolsSvc.activarEventosEditor();
@@ -225,7 +230,7 @@ export class EditorOrchestratorService {
           
           this.cargandoTexto.set('Estabilizando sombreadores e iluminación del editor...');
           
-          // Asegurar que las matrices de transformación del Player estén completamente calculadas
+          // 🔥 FASE B: Asegurar que las matrices de transformación estén completamente calculadas
           const allEntities = this.entityManager.getAllEntities();
           allEntities.forEach(e => {
             if (e.view && !e.view.isDisposed()) {
@@ -233,23 +238,35 @@ export class EditorOrchestratorService {
             }
           });
 
-          // Obtener la posición de referencia real del Player/Actor
-          const realPlayerRefPos = this.dynLighting.getReferencePosition('AUTO');
-
-          this.dynLighting.start();
-          this.dynLighting.prepareAllLights();
-          this.shadowOrchestrator.reconcileShadows();
+          // Asegurar que la cámara del editor esté al día
+          const editorCam = this.motor3dSvc.getEditorCamera();
+          editorCam.computeWorldMatrix();
           
-          // Precalentar con la posición del Player para que las luces próximas enciendan de inmediato
-          await this.dynLighting.forceWarmup(realPlayerRefPos);
+          // 🔥 FASE C: Obtener la posición de referencia y FORZAR AL HUB ESPACIAL A CALCULAR DISTANCIAS
+          const realPlayerRefPos = this.dynLighting.getReferencePosition('AUTO');
+          const camFwd = editorCam.getDirection(Vector3.Forward());
+          camFwd.y = 0;
+          camFwd.normalize();
+
+          // Sembramos el SpatialHub con las coordenadas precisas para que las distancias sean matemáticas y no `Number.MAX_VALUE`
+          this.spatialHub.forceUpdatePositions(realPlayerRefPos, editorCam.globalPosition, camFwd);
+
+          // Forzar a Culling a mostrar todas las entidades para que ShadowMaps las atrape en su primer paso
           this.localRendering.ensureAllEntitiesVisibleForEditor();
 
-          // Ejecutar un tick completo inicial de iluminación con la posición real
-          this.dynLighting.update(16.66);
+          // Refrescar caché de casters de sombras ANTES del warmup
+          this.lightShadows.refreshShadowCastersCache();
 
+          // 🔥 FASE D/E/F: Warmup determinista (ahora las distancias de las luces no son Infinity)
+          this.dynLighting.start();
+          this.shadowOrchestrator.start();
+          await this.dynLighting.forceWarmup(realPlayerRefPos);
+
+          // Renderizar 2 frames asíncronos para llenar buffers de GPU y procesar frustums
           scene.render();
           scene.render();
 
+          // 🔥 FASE H: Listo. Entregamos el editor limpio.
           this.cargandoEscena.set(false);
           this.revisarSiEsJugable(); 
           this.toolsSvc.forceResetVisuals();

@@ -129,7 +129,10 @@ export class LightReferenceService {
     // 3. Fallback en editor: la cámara del visor (NO el objeto seleccionado)
     const camera = this.ownership.getCamera();
     if (camera) {
-      camera.computeWorldMatrix();
+      // 🔥 FIX 3: Solo computamos si el mesh/cámara ya están en el pipeline de renderizado
+      if (camera.getScene() && !camera.getScene().isDisposed) {
+        camera.computeWorldMatrix();
+      }
       return camera.globalPosition.clone();
     }
 

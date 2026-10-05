@@ -190,6 +190,57 @@ export class SpatialRelevanceHubService implements IUpdatable {
     return this.referenceSvc.getReferencePosition('PLAYER');
   }
 
+  /**
+   * Forzado explícito y síncrono para calcular la relevancia espacial de todos
+   * los registros utilizando una posición inyectada. Es vital para la Fase de Warmup.
+   */
+  public forceUpdatePositions(refPos: Vector3, camPos: Vector3, camFwd: Vector3): void {
+    this.currentRefPos.copyFrom(refPos);
+    this.currentCamPos.copyFrom(camPos);
+    SpatialRelevanceHubService._tempCamFwd.copyFrom(camFwd);
+    this.lastRefPos.copyFrom(refPos);
+
+    for (const record of this.registry.values()) {
+        this.computeDistancesForRecord(record);
+    }
+  }
+
+  private computeDistancesForRecord(record: SpatialEntityRecord): void {
+    if (!record.entity.view || record.entity.view.isDisposed()) return;
+    
+    if (record.entity.isDirty) {
+      this.computeEntityBounds(record);
+    }
+
+    const cx = Math.max(record.minWorld.x, Math.min(this.currentRefPos.x, record.maxWorld.x));
+    const cy = Math.max(record.minWorld.y, Math.min(this.currentRefPos.y, record.maxWorld.y));
+    const cz = Math.max(record.minWorld.z, Math.min(this.currentRefPos.z, record.maxWorld.z));
+    
+    const dx = this.currentRefPos.x - cx;
+    const dy = this.currentRefPos.y - cy;
+    const dz = this.currentRefPos.z - cz;
+    
+    record.distSqToPlayer = dx * dx + dy * dy + dz * dz;
+    record.distToPlayer = null; // Invalidate for lazy evaluation
+
+    const cdx = this.currentCamPos.x - record.centerWorld.x;
+    const cdy = this.currentCamPos.y - record.centerWorld.y;
+    const cdz = this.currentCamPos.z - record.centerWorld.z;
+    record.distSqToCamera = cdx * cdx + cdy * cdy + cdz * cdz;
+    record.distToCamera = null;
+
+    if (record.distSqToCamera > 0.01) {
+      const invDist = 1.0 / Math.sqrt(record.distSqToCamera);
+      const dirX = (record.centerWorld.x - this.currentCamPos.x) * invDist;
+      const dirZ = (record.centerWorld.z - this.currentCamPos.z) * invDist;
+      record.dotWithCameraForward = (dirX * SpatialRelevanceHubService._tempCamFwd.x) + (dirZ * SpatialRelevanceHubService._tempCamFwd.z);
+    } else {
+      record.dotWithCameraForward = 1.0;
+    }
+
+    record.lastUpdatedFrame = this.frameCount;
+  }
+
   public preUpdate(dtMs: number): void {
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
@@ -233,46 +284,10 @@ export class SpatialRelevanceHubService implements IUpdatable {
       let evals = 0;
       let sqCalls = 0;
 
-      for (const [, record] of this.registry.entries()) {
-        const entity = record.entity;
-        if (!entity.view || entity.view.isDisposed()) {
-          continue;
-        }
-
-        if (entity.isDirty) {
-          this.computeEntityBounds(record);
-        }
-
-        const cx = Math.max(record.minWorld.x, Math.min(this.currentRefPos.x, record.maxWorld.x));
-        const cy = Math.max(record.minWorld.y, Math.min(this.currentRefPos.y, record.maxWorld.y));
-        const cz = Math.max(record.minWorld.z, Math.min(this.currentRefPos.z, record.maxWorld.z));
-        
-        const dx = this.currentRefPos.x - cx;
-        const dy = this.currentRefPos.y - cy;
-        const dz = this.currentRefPos.z - cz;
-        
-        record.distSqToPlayer = dx * dx + dy * dy + dz * dz;
-        record.distToPlayer = null;
-        sqCalls++;
-
-        const cdx = this.currentCamPos.x - record.centerWorld.x;
-        const cdy = this.currentCamPos.y - record.centerWorld.y;
-        const cdz = this.currentCamPos.z - record.centerWorld.z;
-        record.distSqToCamera = cdx * cdx + cdy * cdy + cdz * cdz;
-        record.distToCamera = null;
-        sqCalls++;
-
-        if (record.distSqToCamera > 0.01) {
-          const invDist = 1.0 / Math.sqrt(record.distSqToCamera);
-          const dirX = (record.centerWorld.x - this.currentCamPos.x) * invDist;
-          const dirZ = (record.centerWorld.z - this.currentCamPos.z) * invDist;
-          record.dotWithCameraForward = (dirX * SpatialRelevanceHubService._tempCamFwd.x) + (dirZ * SpatialRelevanceHubService._tempCamFwd.z);
-        } else {
-          record.dotWithCameraForward = 1.0;
-        }
-
-        record.lastUpdatedFrame = this.frameCount;
+      for (const record of this.registry.values()) {
+        this.computeDistancesForRecord(record);
         evals++;
+        sqCalls += 2;
       }
 
       this._evaluations = evals;
@@ -295,15 +310,7 @@ export class SpatialRelevanceHubService implements IUpdatable {
       const newRec = this.registerEntity(entity);
       if (newRec) {
         // Evaluación inmediata bajo demanda
-        const cx = Math.max(newRec.minWorld.x, Math.min(this.currentRefPos.x, newRec.maxWorld.x));
-        const cy = Math.max(newRec.minWorld.y, Math.min(this.currentRefPos.y, newRec.maxWorld.y));
-        const cz = Math.max(newRec.minWorld.z, Math.min(this.currentRefPos.z, newRec.maxWorld.z));
-        const dx = this.currentRefPos.x - cx;
-        const dy = this.currentRefPos.y - cy;
-        const dz = this.currentRefPos.z - cz;
-        newRec.distSqToPlayer = dx * dx + dy * dy + dz * dz;
-        newRec.distToPlayer = null;
-        newRec.lastUpdatedFrame = this.frameCount;
+        this.computeDistancesForRecord(newRec);
         return newRec;
       }
     }
@@ -320,6 +327,7 @@ export class SpatialRelevanceHubService implements IUpdatable {
     if (!record) return Number.MAX_VALUE;
 
     if (record.distToPlayer === null) {
+      // Lazy evaluation de la raíz cuadrada
       record.distToPlayer = Math.sqrt(record.distSqToPlayer);
       this._exactDistanceCalculations++;
     }

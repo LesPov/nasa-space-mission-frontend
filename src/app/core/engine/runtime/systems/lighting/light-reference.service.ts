@@ -5,6 +5,7 @@ import { GameContextService } from '../../../session/game-context.service';
 import { CameraOwnershipService } from '../../cameras/camera-ownership.service';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { GameEntity } from '../../../entities/game.entity';
+import { GameMode } from '../../../session/game-mode.model';
 
 export interface ClosestActorResult {
   actor: GameEntity | null;
@@ -26,19 +27,10 @@ export class LightReferenceService {
       return [activePlayer];
     }
 
-    // En modo Editor, si el creador tiene seleccionado activamente un Actor o Player,
-    // ese objeto seleccionado es la máxima prioridad de referencia inmediata.
     const selectedNode = this.context.selectedNode() as AbstractMesh;
     if (selectedNode) {
       const selectedEntity = this.entityManager.getEntityByMesh(selectedNode);
-      if (selectedEntity && !selectedEntity.isManuallyHidden && (
-        selectedEntity.rol === 'player' ||
-        selectedEntity.hasComponent('characterConfig') ||
-        selectedEntity.rol === 'npc' ||
-        selectedEntity.rol === 'politico' ||
-        selectedEntity.rol === 'militar' ||
-        selectedEntity.rol === 'spawn_point'
-      )) {
+      if (selectedEntity && !selectedEntity.isManuallyHidden) {
         return [selectedEntity];
       }
     }
@@ -61,7 +53,6 @@ export class LightReferenceService {
       }
     }
 
-    // Asegurar que el Player principal esté siempre en el índice 0
     const primaryActor = actors.find(e => e.rol === 'player' || e.hasComponent('characterConfig'));
     if (primaryActor) {
       const idx = actors.indexOf(primaryActor);
@@ -126,16 +117,29 @@ export class LightReferenceService {
     };
   }
 
-  /**
-   * Resuelve la posición del jugador en coordenadas mundiales reales.
-   * En Editor Libre y Test Live, evalúa consistentemente contra el Player Runtime o el actor seleccionado.
-   */
   public getReferencePosition(customMode?: 'AUTO' | 'CAMERA' | 'PLAYER'): Vector3 {
     const playerEntity = this.context.activePlayerEntity();
     if (playerEntity && playerEntity.view && !playerEntity.view.isDisposed()) {
       const pos = new Vector3();
       this.getActorWorldPosition(playerEntity, pos);
       return pos;
+    }
+
+    const mode = this.context.mode();
+    const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
+
+    // En el Editor, si hay un objeto seleccionado (sea luz o modelo), usamos su posición como ancla
+    if (isEditor) {
+      const selectedNode = this.context.selectedNode() as AbstractMesh;
+      if (selectedNode && !selectedNode.isDisposed()) {
+        const ent = this.entityManager.getEntityByMesh(selectedNode);
+        if (ent) {
+          const pos = new Vector3();
+          this.getActorWorldPosition(ent, pos);
+          return pos;
+        }
+        return selectedNode.getAbsolutePosition().clone();
+      }
     }
 
     const actors = this.getValidActorEntities();
@@ -145,12 +149,10 @@ export class LightReferenceService {
       return pos;
     }
 
-    if (customMode === 'CAMERA') {
-      const camera = this.ownership.getCamera();
-      if (camera) {
-        camera.computeWorldMatrix();
-        return camera.globalPosition.clone();
-      }
+    const camera = this.ownership.getCamera();
+    if (camera) {
+      camera.computeWorldMatrix();
+      return camera.globalPosition.clone();
     }
 
     return LightReferenceService._fallbackPos.clone();

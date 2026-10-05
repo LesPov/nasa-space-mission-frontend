@@ -50,7 +50,7 @@ export class LightAllocationService {
     const preparedGroups = this.spatialGroups.getPreparedGroupIds();
     const preactivatingGroups = this.spatialGroups.getPreactivatingGroupIds();
 
-    // 1. Filtrado de candidatos válidos con protección estricta de continuidad de fade
+    // 1. Filtrar candidatos válidos
     const validCandidates = activeVirtuals.filter(vl => {
       if (!vl.entity.light || !vl.entity.light.enabled) {
         vl.rejectionReason = 'DISABLED';
@@ -59,7 +59,7 @@ export class LightAllocationService {
 
       if (vl.entity.uid === selectedUid) return true;
 
-      // Inmunidad de desvanecimiento: si la luz todavía tiene brillo visible, DEBE completar su fade suave
+      // Inmunidad de desvanecimiento
       if (assignedSet.has(vl.entity.uid) && vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
         return true;
       }
@@ -94,7 +94,7 @@ export class LightAllocationService {
       return false;
     });
 
-    // 2. Cálculo determinista de prioridad y Score con retención continua de fade
+    // 2. Cálculo determinista de Score espacial con bonificación de adherencia
     validCandidates.forEach(vl => {
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
       const isInteriorVolumeMode = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
@@ -118,9 +118,6 @@ export class LightAllocationService {
       } else {
         const dist = vl.effectiveDistance;
         const distSq = dist * dist;
-        
-        // Si el jugador se aleja corriendo pero la luz está terminando su fade out, 
-        // no proyectar predictedDistSq negativamente para evitar que salte de golpe
         const isFadingOut = assignedSet.has(vl.entity.uid) && vl.targetMultiplier === 0 && vl.currentMultiplier > 0.01;
         const predictedDistSq = isFadingOut ? distSq : Vector3.DistanceSquared(predictedPos, this._tempPos);
 
@@ -138,19 +135,15 @@ export class LightAllocationService {
       }
 
       if (group) {
-        if (group.id === activeGroupId) {
-          score *= 0.1;
-        } else if (preactivatingGroups.has(group.id) || group.isPredictedTarget) {
-          score *= 0.2;
-        } else if (preparedGroups.has(group.id)) {
-          score *= 0.4;
-        }
+        if (group.id === activeGroupId) score *= 0.1;
+        else if (preactivatingGroups.has(group.id) || group.isPredictedTarget) score *= 0.2;
+        else if (preparedGroups.has(group.id)) score *= 0.4;
       }
 
-      // Estabilidad: la luz que ya posee slot y sigue en rango o atenuándose mantiene ventaja de retención
+      // Adherencia de slot (Slot Stickiness): reduce la probabilidad de saltos innecesarios
       if (assignedSet.has(vl.entity.uid)) {
         if (vl.isLightInRange || vl._isInPrepareRange || vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
-          score *= 0.5;
+          score *= 0.75;
         }
       }
 
@@ -161,10 +154,10 @@ export class LightAllocationService {
       vl._sortScore = parseFloat(score.toFixed(2));
     });
 
-    // 3. Ordenar por score ascendente
+    // 3. Ordenar candidatos por prioridad
     validCandidates.sort((a, b) => (a._sortScore ?? 0) - (b._sortScore ?? 0));
 
-    // 4. Seleccionar el Top 3 estricto
+    // 4. Seleccionar el Top de luces
     const topVirtuals = validCandidates.slice(0, LIGHT_SPATIAL_CONSTANTS.MAX_LOCAL_LIGHTS);
     const topUids = new Set(topVirtuals.map(x => x.entity.uid));
 
@@ -185,34 +178,33 @@ export class LightAllocationService {
       }
     });
 
-    // 5. Liberar únicamente slots que salieron del Top 3 Y cuya luz haya finalizado su fade visual (intensidad ~ 0)
+    // 5. Liberar únicamente slots que salieron del Top y completaron su fade out
     this.lightPool.getAllSlots().forEach(s => {
       this.lightPool.releaseSlot(s, topUids);
     });
 
-    // 6. Asignar o mantener slots de forma continua y estable
+    // 6. ASIGNACIÓN ESTABLE DE SLOTS (Invarianza de slot físico para evitar recompilaciones de shaders)
+    const tiers: ShadowTier[] = ['HIGH', 'MEDIUM', 'LOW'];
+
     topVirtuals.forEach((vl, rankIndex) => {
       vl.poolRank = rankIndex + 1;
       vl.rejectionReason = undefined;
 
-      const tier: ShadowTier = rankIndex === 0 ? 'HIGH' : (rankIndex === 1 ? 'MEDIUM' : 'LOW');
+      const tier: ShadowTier = tiers[rankIndex];
       vl.shadowRank = rankIndex + 1;
       vl.shadowTier = tier;
 
       const pool = this.lightPool.getPoolByType(vl.entity.type);
+      if (pool.length === 0) return;
+
+      // REGLA CRÍTICA DE ESTABILIDAD: Si la luz ya tiene un slot en el pool, NO reasignar ni hacer swap.
+      // Solo actualizamos su nivel de calidad (shadowTier). Moverla de slot físico altera las macros
+      // LIGHT0/LIGHT1 en los shaders de Babylon.js y obliga a recompilar pipelines.
       let existingSlot = pool.find(s => s.assignedEntityUid === vl.entity.uid);
 
       if (!existingSlot) {
-        let freeSlot: PoolSlot | null = null;
-        
-        if (vl.isShadowInRange && pool[0] && pool[0].assignedEntityUid === null) {
-          freeSlot = pool[0];
-        }
-        
-        if (!freeSlot) {
-          freeSlot = pool.find(s => s.assignedEntityUid === null) || null;
-        }
-
+        // Buscar un slot disponible
+        const freeSlot = pool.find(s => s.assignedEntityUid === null);
         if (freeSlot) {
           freeSlot.assignedEntityUid = vl.entity.uid;
           freeSlot.currentIntensity = 0;
@@ -221,6 +213,19 @@ export class LightAllocationService {
           freeSlot.isWarmedUp = false;
           freeSlot.shadowTier = tier;
           existingSlot = freeSlot;
+        } else {
+          // Si todos los slots de este tipo están ocupados, tomar el slot de menor rango que no pertenezca al top actual
+          const replaceable = pool.find(s => !topUids.has(s.assignedEntityUid || ''));
+          if (replaceable) {
+            this.lightPool.forceHardRelease(replaceable);
+            replaceable.assignedEntityUid = vl.entity.uid;
+            replaceable.currentIntensity = 0;
+            replaceable.light.intensity = 0;
+            replaceable._isNewAssignment = true;
+            replaceable.isWarmedUp = false;
+            replaceable.shadowTier = tier;
+            existingSlot = replaceable;
+          }
         }
       }
 

@@ -277,7 +277,6 @@ export class LightContainmentService {
       }
     }
 
-    // Si no hay mallas renderizables hijas, usar el propio root
     if (renderables.length === 0) {
       const b = rootMesh.getBoundingInfo().boundingBox;
       minWorld = b.minimumWorld.clone();
@@ -293,7 +292,6 @@ export class LightContainmentService {
     const centerWorld = minWorld.add(maxWorld).scale(0.5);
     const sizeWorld = maxWorld.subtract(minWorld);
 
-    // Calcular aberturas reales en las caras extremas del pasillo en World Space
     if (entryPoints.length === 0) {
       if (sizeWorld.x > sizeWorld.z) {
         entryPoints.push(new Vector3(minWorld.x, centerWorld.y, centerWorld.z));
@@ -352,7 +350,6 @@ export class LightContainmentService {
     const exitHysteresis = wasInRange ? 2.0 : 0.0;
     const broadMargin = preEntryDistance + exitHysteresis + 2.0;
 
-    // Descarte rápido en World Space por margen exterior amplio
     const dxBroad = Math.max(0, (min.x - broadMargin) - actorWorldPos.x, actorWorldPos.x - (max.x + broadMargin));
     const dyBroad = Math.max(0, (min.y - 2.0 - broadMargin) - actorWorldPos.y, actorWorldPos.y - (max.y + 2.0 + broadMargin));
     const dzBroad = Math.max(0, (min.z - broadMargin) - actorWorldPos.z, actorWorldPos.z - (max.z + broadMargin));
@@ -372,13 +369,11 @@ export class LightContainmentService {
 
     this.metrics.preciseEvaluations++;
 
-    // 1. Transformar posición del Player al espacio local del modelo
     Vector3.TransformCoordinatesToRef(actorWorldPos, geoData.invWorldMatrix, this._tempLocalActorPos);
     const locPos = this._tempLocalActorPos;
     const locMin = geoData.minLocal;
     const locMax = geoData.maxLocal;
 
-    // Margen de tolerancia vertical y horizontal para compensar el espesor del suelo y las paredes del GLB
     const tolY = 1.8;
     const tolXZ = wasInRange ? 0.8 : 0.2;
 
@@ -387,7 +382,6 @@ export class LightContainmentService {
       locPos.y >= locMin.y - tolY && locPos.y <= locMax.y + tolY &&
       locPos.z >= locMin.z - tolXZ && locPos.z <= locMax.z + tolXZ;
 
-    // 2. Calcular la distancia más cercana a una abertura (entry points)
     let minDistanceToEntry = Number.MAX_VALUE;
     let closestEntryPoint = geoData.entryPoints[0];
 
@@ -400,13 +394,11 @@ export class LightContainmentService {
       }
     }
 
-    // 3. Evaluar distancia a la caja orientada en el plano local
     const dxLoc = Math.max(0, locMin.x - locPos.x, locPos.x - locMax.x);
     const dyLoc = Math.max(0, locMin.y - locPos.y, locPos.y - locMax.y);
     const dzLoc = Math.max(0, locMin.z - locPos.z, locPos.z - locMax.z);
     const distToLocalBox = Math.sqrt(dxLoc * dxLoc + dyLoc * dyLoc + dzLoc * dzLoc);
 
-    // Si está dentro del volumen local real del pasillo
     if (isInsideLocalVolume) {
       const isNearExitOpening = minDistanceToEntry <= (wasInRange ? 3.0 : 2.0);
       return {
@@ -421,7 +413,6 @@ export class LightContainmentService {
       };
     }
 
-    // Zona de salida (el jugador estaba dentro y acaba de salir del vano)
     const exitThreshold = preEntryDistance + exitHysteresis;
     if (wasInRange && (minDistanceToEntry <= exitThreshold || distToLocalBox <= 2.0)) {
       return {
@@ -436,7 +427,6 @@ export class LightContainmentService {
       };
     }
 
-    // Zona de entrada (acercándose a la puerta)
     if (minDistanceToEntry <= preEntryDistance) {
       return {
         inside: false,
@@ -621,6 +611,7 @@ export class LightContainmentService {
       return;
     }
 
+    // CORRECCIÓN CLAVE: No aislar la luz excluyendo el resto de la escena salvo que se pida explícitamente
     if (mode === 'INTERIOR' && affectDescendantsOnly) {
       const receivers = this.getInteriorMeshesStrict(entity, scene);
       if (receivers.length > 0) {
@@ -640,5 +631,7 @@ export class LightContainmentService {
 
   public clearContainment(light: PointLight | SpotLight): void {
     (light as any)._containmentAppliedStamp = undefined;
+    light.includedOnlyMeshes = [];
+    light.excludedMeshes = [];
   }
 }

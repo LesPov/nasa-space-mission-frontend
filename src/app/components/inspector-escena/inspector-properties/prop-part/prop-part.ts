@@ -1,4 +1,4 @@
-
+// file: src/app/components/inspector-escena/inspector-properties/prop-part/prop-part.ts
 import { Component, Input, OnInit, OnDestroy, OnChanges, SimpleChanges, inject, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -81,7 +81,7 @@ export class PropPart implements OnInit, OnDestroy, OnChanges {
   cargarAssets() {
     this.epiApiSvc.obtenerAssets().subscribe({
       next: (res) => {
-        this.listaAssets = res.filter((a:any) => 
+        this.listaAssets = res.filter((a: any) => 
           a.type === 'texture_png' || a.type === 'texture_jpg' || 
           a.path.endsWith('.png') || a.path.endsWith('.jpg') || a.path.endsWith('.jpeg')
         );
@@ -149,6 +149,7 @@ export class PropPart implements OnInit, OnDestroy, OnChanges {
       const override = this.getOrCreateOverride();
       override.position = { x: this.localPosX, y: this.localPosY, z: this.localPosZ };
       this.objeto.position.set(this.localPosX, this.localPosY, this.localPosZ);
+      this.entity.isDirty = true;
       this.mapaSvc.onMapChanged.next();
   }
 
@@ -165,12 +166,13 @@ export class PropPart implements OnInit, OnDestroy, OnChanges {
           q.set(0,0,0,1);
           q.x = Math.sin(rx/2)*Math.cos(ry/2)*Math.cos(rz/2) - Math.cos(rx/2)*Math.sin(ry/2)*Math.sin(rz/2);
           q.y = Math.cos(rx/2)*Math.sin(ry/2)*Math.cos(rz/2) + Math.sin(rx/2)*Math.cos(ry/2)*Math.sin(rz/2);
-          q.z = Math.cos(rx/2)*Math.cos(ry/2)*Math.sin(rz/2) - Math.sin(rx/2)*Math.sin(ry/2)*Math.cos(rz/2);
+          q.z = Math.cos(rx/2)*Math.cos(ry/2)*Math.sin(rz/2) - Math.sin(rx/2)*Math.cos(ry/2)*Math.cos(rz/2);
           q.w = Math.cos(rx/2)*Math.cos(ry/2)*Math.cos(rz/2) + Math.sin(rx/2)*Math.sin(ry/2)*Math.sin(rz/2);
           this.objeto.rotation.set(0, 0, 0);
       } else {
           this.objeto.rotation.set(rx, ry, rz);
       }
+      this.entity.isDirty = true;
       this.mapaSvc.onMapChanged.next();
   }
 
@@ -178,6 +180,7 @@ export class PropPart implements OnInit, OnDestroy, OnChanges {
       const override = this.getOrCreateOverride();
       override.scale = { x: this.localEscX, y: this.localEscY, z: this.localEscZ };
       this.objeto.scaling.set(this.localEscX, this.localEscY, this.localEscZ);
+      this.entity.isDirty = true;
       this.mapaSvc.onMapChanged.next();
   }
 
@@ -191,6 +194,7 @@ export class PropPart implements OnInit, OnDestroy, OnChanges {
       override.texturePath = this.texturePath;
 
       this.actualizarMaterialEnMotor(override);
+      this.entity.isDirty = true;
       this.mapaSvc.onMapChanged.next();
   }
 
@@ -206,6 +210,7 @@ export class PropPart implements OnInit, OnDestroy, OnChanges {
       override.texturePath = this.texturePath;
       
       this.actualizarMaterialEnMotor(override);
+      this.entity.isDirty = true;
       this.mapaSvc.onMapChanged.next();
   }
 
@@ -219,6 +224,7 @@ export class PropPart implements OnInit, OnDestroy, OnChanges {
       override.texturePath = '';
 
       this.actualizarMaterialEnMotor(override);
+      this.entity.isDirty = true;
       this.mapaSvc.onMapChanged.next();
   }
 
@@ -228,7 +234,10 @@ export class PropPart implements OnInit, OnDestroy, OnChanges {
       const activeAmbient = isBW ? this.entity.visual.ambientColorBW : this.entity.visual.ambientColor;
 
       if (this.objeto.material) {
-         this.materialSvc.asegurarMaterialUnico(this.objeto, this.entity.uid);
+         // Clonar aislando específicamente para ESTA parte
+         this.materialSvc.asegurarMaterialUnicoParaParte(this.objeto, this.entity.uid, this.objeto.name);
+         
+         // Se pasa isExplicitOverride = true para que el color NO sea descartado
          this.materialSvc.ajustarMaterialGLB(
              this.objeto.material, isBW, this.objeto.getScene(), 
              activeAmbient, 
@@ -236,7 +245,8 @@ export class PropPart implements OnInit, OnDestroy, OnChanges {
              override.esEmisivo ?? this.entity.visual.esEmisivo, 
              override.brilloIntensidad ?? this.entity.visual.brilloIntensidad,
              override.texturePath,
-             override.textureSource
+             override.textureSource,
+             true // isExplicitOverride: APLICA EL CAMBIO EN VIVO
          );
       }
   }

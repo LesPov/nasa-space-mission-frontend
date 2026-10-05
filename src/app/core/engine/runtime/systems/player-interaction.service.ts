@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/player-interaction.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Ray } from '@babylonjs/core';
@@ -41,7 +40,6 @@ export class PlayerInteractionService implements IUpdatable {
   
   private isEnabled: boolean = false;
 
-  // Zero-allocations variables para el loop
   private _centerRay = new Ray(Vector3.Zero(), new Vector3(0, 0, 1), 10000);
   private _probePoint = Vector3.Zero();
   private _forwardDir = new Vector3(0, 0, 1);
@@ -246,7 +244,7 @@ export class PlayerInteractionService implements IUpdatable {
         }
       }
     } else {
-      // MODO TPS
+      // MODO TPS: Optimización mediante prefiltro espacial O(1) con SpatialRelevanceHubService
       let closestEntity: GameEntity | null = null;
       let closestDist = Number.POSITIVE_INFINITY;
       
@@ -255,6 +253,7 @@ export class PlayerInteractionService implements IUpdatable {
         const e = entities[i];
         if (e.uid === entity.uid) continue;
         
+        // 1. Descarte semántico inmediato
         const isInteractable = this.interactRules.isInteractable(e);
         if (!isInteractable) continue;
         
@@ -263,16 +262,17 @@ export class PlayerInteractionService implements IUpdatable {
 
         const interactMax = e.interaction.interactDistanceTPS ?? 5.0;
 
-        // 🔥 PREFILTRO SPATIAL HUB: Descarte instantáneo por radio esférico sin calcular OBB
+        // 2. Prefiltro espacial O(1) de bajo coste: radio esférico amplio antes de matrices OBB
         const rec = this.spatialHub.getRecord(e.uid);
         const radius = rec ? rec.boundingRadius : 2.0;
         const maxThreshold = interactMax + radius;
         const maxThresholdSq = maxThreshold * maxThreshold;
 
         if (this.spatialHub.getDistanceSquaredToPlayer(e.uid) > maxThresholdSq) {
-          continue; // descartado a costo cero
+          continue; // Descartado a coste computacional cero sin invocar getInteractionDistanceToTarget
         }
 
+        // 3. Cálculo geométrico preciso únicamente para entidades candidatas dentro del radio
         const selectionDistance = this.getInteractionDistanceToTarget(mesh, this._probePoint);
 
         if (e.type !== 'bubble') {
@@ -344,4 +344,5 @@ export class PlayerInteractionService implements IUpdatable {
   public cerrarMensajeInteractivo(): void {
     this.eventBus.emit({ type: 'InteractionStateChanged', payload: false });
     this.inputOrchestrator.lockPointer();
-  }}
+  }
+}

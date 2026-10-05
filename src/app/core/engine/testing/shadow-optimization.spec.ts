@@ -13,8 +13,9 @@ import { MeshBuilder, NullEngine, Scene, Vector3 } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN } from '../scene/scene-access.token';
 import { ShadowLODManager } from '../runtime/shadows/shadow-lod-manager.service';
 import { GameContextService } from '../session/game-context.service';
+import { SpatialRelevanceHubService } from '../spatial/spatial-relevance-hub.service';
 
-describe('FASE C y FASE 6 & 7 — Verificación Definitiva de Fade a Alta Velocidad y Ciclo de Vida', () => {
+describe('FASE C y FASE D — Verificación Definitiva de Contención de Luces y Hub Espacial Centralizado', () => {
   let lightingSystem: DynamicLightingSystem;
   let orchestrator: ShadowOrchestratorService;
   let entityManager: EntityManagerService;
@@ -23,6 +24,7 @@ describe('FASE C y FASE 6 & 7 — Verificación Definitiva de Fade a Alta Veloci
   let distanceService: LightDistanceService;
   let containmentSvc: LightContainmentService;
   let gameContext: GameContextService;
+  let spatialHub: SpatialRelevanceHubService;
   let scene: Scene;
 
   beforeEach(() => {
@@ -38,6 +40,7 @@ describe('FASE C y FASE 6 & 7 — Verificación Definitiva de Fade a Alta Veloci
         LightAllocationService,
         LightDistanceService,
         LightContainmentService,
+        SpatialRelevanceHubService,
         GameContextService,
         {
           provide: SCENE_ACCESS_TOKEN,
@@ -54,6 +57,7 @@ describe('FASE C y FASE 6 & 7 — Verificación Definitiva de Fade a Alta Veloci
     distanceService = TestBed.inject(LightDistanceService);
     containmentSvc = TestBed.inject(LightContainmentService);
     gameContext = TestBed.inject(GameContextService);
+    spatialHub = TestBed.inject(SpatialRelevanceHubService);
   });
 
   it('TEST A: El Player alejándose CORRIENDO mantiene la transición continua de fade sin saltar a cero bruscamente', () => {
@@ -68,11 +72,13 @@ describe('FASE C y FASE 6 & 7 — Verificación Definitiva de Fade a Alta Veloci
     lightEnt.bindView(lMesh);
     entityManager.addEntity(lightEnt);
 
+    spatialHub.start();
     lightingSystem.prepareAllLights();
     const vl = lightingSystem.registerOrUpdateVirtualLight(lightEnt);
 
     // 1. Jugador inicialmente cerca (10m) -> 100% de intensidad
     const pPosNear = new Vector3(0, 1, 10);
+    spatialHub.preUpdate(16.66);
     distanceService.evaluateDistanceAndHysteresis([vl], pPosNear, 0);
     allocationService.allocatePoolSlots([vl], pPosNear, Vector3.Zero(), 0, null);
     lightingSystem.update(16.66);
@@ -86,6 +92,7 @@ describe('FASE C y FASE 6 & 7 — Verificación Definitiva de Fade a Alta Veloci
     const runDir = new Vector3(0, 0, 1);
     const runSpeed = 14.0;
 
+    spatialHub.preUpdate(16.66);
     distanceService.evaluateDistanceAndHysteresis([vl], pPosRun, runSpeed);
 
     // La luz debe entrar en FADING_OUT, conservando su retención en el pool y no saltando a 0
@@ -94,12 +101,10 @@ describe('FASE C y FASE 6 & 7 — Verificación Definitiva de Fade a Alta Veloci
 
     allocationService.allocatePoolSlots([vl], pPosRun, runDir, runSpeed, null);
 
-    // El slot del pool NO debe ser revocado a 0 instantáneamente
     const poolSlots = lightingSystem.getProfilerMetrics().slots;
     const assignedSlot = poolSlots.find(s => s.assigned);
     expect(assignedSlot).toBeDefined();
 
-    // Simular el siguiente frame de renderizado: el multiplicador decae suavemente sin llegar a 0 de golpe
     lightingSystem.update(16.66);
     expect(vl.currentMultiplier).toBeGreaterThan(0.0);
     expect(vl.currentMultiplier).toBeLessThan(1.0);
@@ -123,6 +128,7 @@ describe('FASE C y FASE 6 & 7 — Verificación Definitiva de Fade a Alta Veloci
     lightEnt.bindView(lightMesh);
     entityManager.addEntity(lightEnt);
 
+    spatialHub.start();
     lightingSystem.prepareAllLights();
     const vl = lightingSystem.registerOrUpdateVirtualLight(lightEnt);
 
@@ -136,5 +142,25 @@ describe('FASE C y FASE 6 & 7 — Verificación Definitiva de Fade a Alta Veloci
     expect(vl.poolRank).toBe(0);
     const assignedSlot = lightingSystem.getProfilerMetrics().slots.find(s => s.assigned);
     expect(assignedSlot).toBeUndefined();
+  });
+
+  it('TEST C (FASE D): SpatialRelevanceHub centraliza las distancias y responde en O(1) con auto-registro bajo demanda', () => {
+    spatialHub.start();
+
+    const entTest = new GameEntity('ent_test_hub', 'Entidad_Test', 'model');
+    const meshTest = MeshBuilder.CreateBox('mesh_test_hub', { size: 2 }, scene);
+    meshTest.position.set(0, 1, 20);
+    entTest.bindView(meshTest);
+    entityManager.addEntity(entTest);
+
+    // Consulta de una entidad recién creada sin rebuild explícito (debe auto-registrarse sin undefined)
+    const distSq = spatialHub.getDistanceSquaredToPlayer('ent_test_hub');
+    expect(Number.isFinite(distSq)).toBe(true);
+
+    // Consulta subsecuente debe ser un Cache Hit garantizado
+    const initialHits = spatialHub.getMetrics().cacheHits;
+    const distExact = spatialHub.getDistanceToPlayer('ent_test_hub');
+    expect(distExact).toBeCloseTo(20.0, 0);
+    expect(spatialHub.getMetrics().cacheHits).toBeGreaterThan(initialHits);
   });
 });

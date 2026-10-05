@@ -1,7 +1,8 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/light-shadow.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, ShadowGenerator, Vector3, Tags, InstancedMesh, Mesh, RenderTargetTexture, Node } from '@babylonjs/core';
-import { PoolSlot, ShadowTier } from './lighting-types';
+import { PoolSlot } from './lighting-types';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { ShadowCache } from '../../shadows/shadow-cache.service';
 import { ShadowQualityService } from '../../shadows/shadow-quality.service';
@@ -20,6 +21,8 @@ export class LightShadowService {
   private castersCache: AbstractMesh[] = [];
   private entityToActiveSlotsMap = new Map<string, Set<PoolSlot>>();
   private actorRenderableMeshesCache = new Map<string, AbstractMesh[]>();
+  
+  private slotStaticRenderListCache = new Map<string, { meshes: AbstractMesh[]; lightPos: Vector3; range: number }>();
 
   public getCastersCacheSize(): number {
     return this.castersCache.length;
@@ -29,6 +32,7 @@ export class LightShadowService {
     this.castersCache.length = 0;
     this.entityToActiveSlotsMap.clear();
     this.actorRenderableMeshesCache.clear();
+    this.slotStaticRenderListCache.clear();
   }
 
   public isEntityRequiredForActiveShadows(entityUid: string): boolean {
@@ -108,6 +112,7 @@ export class LightShadowService {
   public refreshShadowCastersCache(): void {
     this.castersCache.length = 0;
     this.actorRenderableMeshesCache.clear();
+    this.slotStaticRenderListCache.clear();
     const entities = this.entityManager.getAllEntities();
 
     for (let i = 0; i < entities.length; i++) {
@@ -163,16 +168,17 @@ export class LightShadowService {
     if (!slot.sg) {
       const config = slot.type === 'spot' ? this.shadowQualitySvc.getSpotConfig() : this.shadowQualitySvc.getPointConfig();
       slot.sg = new ShadowGenerator(config.resolution, slot.light);
-
-      slot.sg.usePercentageCloserFiltering = true;
-      // Inmutable: Se fija QUALITY_MEDIUM de forma determinista para todo el pool
-      slot.sg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-      slot.sg.bias = 0.0003;
-      slot.sg.normalBias = slot.type === 'spot' ? 0.001 : 0.0008;
-      slot.sg.setDarkness(0.0);
-      if (slot.type === 'point') {
-        slot.sg.useContactHardeningShadow = false;
+      if (slot.type === 'spot') {
+        slot.sg.usePercentageCloserFiltering = true;
+        slot.sg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
+        slot.sg.bias = 0.0005;
+        slot.sg.normalBias = 0.002;
+      } else {
+        slot.sg.usePoissonSampling = true;
+        slot.sg.bias = 0.002;
+        slot.sg.normalBias = 0.005;
       }
+      slot.sg.setDarkness(0.0);
     }
 
     const renderList = slot.sg.getShadowMap()?.renderList;
@@ -190,7 +196,22 @@ export class LightShadowService {
     slot.dynamicCastersRegistered.clear();
 
     const ownerEnt = this.entityManager.getEntityByUid(entityUid);
+    const cacheKey = `${entityUid}_${slot.type}_${slot.index}`;
+    const cachedEntry = this.slotStaticRenderListCache.get(cacheKey);
+
+    if (cachedEntry && Vector3.DistanceSquared(cachedEntry.lightPos, lightPos) < 0.25 && cachedEntry.range === range) {
+      for (let i = 0; i < cachedEntry.meshes.length; i++) {
+        const m = cachedEntry.meshes[i];
+        if (!m.isDisposed()) {
+          renderList.push(m);
+        }
+      }
+      slot.isStaticLight = ownerEnt ? (!ownerEnt.autoAnim?.enabled && ownerEnt.movementAuthority === 'GAMEPLAY' && !ownerEnt.characterConfig) : true;
+      return;
+    }
+
     const rangeSq = range * range;
+    const staticMeshesFound: AbstractMesh[] = [];
 
     for (let i = 0; i < this.castersCache.length; i++) {
       const m = this.castersCache[i];
@@ -198,6 +219,12 @@ export class LightShadowService {
 
       const parentEnt = this.resolveEntityForMesh(m);
       if (parentEnt && parentEnt.uid === entityUid) continue;
+
+      // El Player se administra de manera independiente mediante syncDynamicActorInSlot
+      if (parentEnt && (parentEnt.rol === 'player' || parentEnt.characterConfig)) continue;
+
+      const meshNameL = m.name ? m.name.toLowerCase() : '';
+      const isFloorSurface = meshNameL.includes('piso') || meshNameL.includes('floor') || meshNameL.includes('suelo') || meshNameL.includes('ground');
 
       m.computeWorldMatrix(true);
       const bInfo = m.getBoundingInfo();
@@ -213,11 +240,16 @@ export class LightShadowService {
       const distToBoxSq = dx * dx + dy * dy + dz * dz;
 
       if (distToBoxSq <= rangeSq) {
-        renderList.push(m);
-
         if (m.receiveShadows !== true) {
           m.receiveShadows = true;
         }
+
+        if (isFloorSurface && slot.type === 'point') {
+          continue;
+        }
+
+        renderList.push(m);
+        staticMeshesFound.push(m);
 
         if (parentEnt) {
           let slotSet = this.entityToActiveSlotsMap.get(parentEnt.uid);
@@ -234,6 +266,12 @@ export class LightShadowService {
         }
       }
     }
+
+    this.slotStaticRenderListCache.set(cacheKey, {
+      meshes: staticMeshesFound,
+      lightPos: lightPos.clone(),
+      range
+    });
 
     slot.isStaticLight = ownerEnt ? (!ownerEnt.autoAnim?.enabled && ownerEnt.movementAuthority === 'GAMEPLAY' && !ownerEnt.characterConfig) : true;
     this.shadowCache.recordRebuild();
@@ -263,7 +301,6 @@ export class LightShadowService {
       let anyAdded = false;
       for (let i = 0; i < actorMeshes.length; i++) {
         const m = actorMeshes[i];
-        m.computeWorldMatrix(true);
         if (!renderList.includes(m)) {
           renderList.push(m);
           anyAdded = true;
@@ -335,7 +372,13 @@ export class LightShadowService {
       slot.shadowTier || 'HIGH'
     );
 
+    const prevRate = slot.sg.getShadowMap()!.refreshRate;
     slot.sg.getShadowMap()!.refreshRate = rate;
     slot.currentRefreshRate = rate;
+
+    // Solo forzar refresco manual si se transiciona desde RENDER_ONCE (congelado) hacia dinámico
+    if (prevRate === RenderTargetTexture.REFRESHRATE_RENDER_ONCE && rate !== RenderTargetTexture.REFRESHRATE_RENDER_ONCE) {
+      slot.sg.getShadowMap()!.resetRefreshCounter();
+    }
   }
 }

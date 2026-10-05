@@ -1,4 +1,4 @@
-
+// file: src/app/services/editor/mutators/transform-mutator.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
@@ -62,7 +62,6 @@ export class TransformMutatorService {
         entity.isDirty = true;
         entity.syncToView(); 
 
-        // 🔥 FASE 2 FIX: Si la mutación fue manual (Gizmo/UI) durante EDITING_IN_GAME, actualizar el backup autoral.
         if (this.context.mode() === 'EDITING_IN_GAME' && entity.authoringBackup) {
             entity.createAuthoringBackup();
         }
@@ -75,7 +74,7 @@ export class TransformMutatorService {
        this.projectionSvc.actualizarProyeccion(objeto as Mesh);
     }
     if (entity && entity.type.startsWith('light_')) {
-       this.dynamicLighting.syncLightImmediate(entity);
+       this.dynamicLighting.syncLightImmediate(entity, true);
     }
     this.mapaSvc.onMapChanged.next();
   }
@@ -113,7 +112,7 @@ export class TransformMutatorService {
        this.projectionSvc.actualizarProyeccion(objeto as Mesh);
     }
     if (entity && entity.type.startsWith('light_')) {
-       this.dynamicLighting.syncLightImmediate(entity);
+       this.dynamicLighting.syncLightImmediate(entity, true);
     }
     this.mapaSvc.onMapChanged.next();
   }
@@ -221,11 +220,15 @@ export class TransformMutatorService {
                         override.esEmisivo ?? config.esEmisivo, 
                         override.brilloIntensidad ?? config.brilloIntensidad,
                         override.texturePath,
-                        override.textureSource || (override.texturePath ? 'asset' : 'original') 
+                        override.textureSource || (override.texturePath ? 'asset' : 'original'),
+                        true
                     );
                 } else {
                     this.materialSvc.asegurarMaterialUnico(m, entity.uid);
-                    this.materialSvc.ajustarMaterialGLB(m.material, isBW, scene, activeAmbientHex, activeColorHex, config.esEmisivo, config.brilloIntensidad);
+                    this.materialSvc.ajustarMaterialGLB(
+                      m.material, isBW, scene, activeAmbientHex, activeColorHex, config.esEmisivo, config.brilloIntensidad,
+                      undefined, 'original', true
+                    );
                 }
             }
         });
@@ -293,7 +296,7 @@ export class TransformMutatorService {
         entity.light.renderIntensity = (config.brilloIntensidad !== undefined) ? (this.clampBrightness(config.brilloIntensidad) * 5) : (entity.light.intensity || 5);
         entity.light.intensity = entity.light.renderIntensity;
 
-        this.dynamicLighting.syncLightImmediate(entity);
+        this.dynamicLighting.syncLightImmediate(entity, true);
     }
 
     objeto.applyFog = !config.ignoraNiebla;

@@ -143,7 +143,7 @@ export class TriggerAudioService implements IUpdatable {
           const mesh = e.view as AbstractMesh;
           if (!mesh) continue;
 
-          // 🔥 PREFILTRO SPATIAL HUB: si la distancia cuadrática al actor excede el rango máximo más radio, omitir
+          // Prefiltro O(1) de baja sobrecarga usando SpatialRelevanceHubService
           const rec = this.spatialHub.getRecord(e.uid);
           const radius = rec ? rec.boundingRadius : 2.0;
 

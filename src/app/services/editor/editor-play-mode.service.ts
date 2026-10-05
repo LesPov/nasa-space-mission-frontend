@@ -212,8 +212,6 @@ export class EditorPlayModeService {
 
     this.fogOrchestrator.forceSnapNextFrame();
     this.localRendering.reconcileAllEntitiesImmediate(spawnPos);
-    await this.dynamicLighting.forceWarmup(spawnPos);
-    this.shadowOrchestrator.reconcileShadows();
 
     await this.readinessBarrier.waitForTrueStability(scene, spawnPos, 60.0, 6, 12.0, (msg, pct) => {
       if (onProgress) onProgress(msg, 75 + Math.round(pct * 0.25));

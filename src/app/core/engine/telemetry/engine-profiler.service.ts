@@ -696,7 +696,6 @@ export class EngineProfilerService {
     const materials = scene.materials as Material[];
     const total = materials ? materials.length : 0;
 
-    // Solo inspeccionar materiales que están en mallas activas de la escena para evitar falsos positivos
     const activeMaterialsSet = new Set<Material>();
     const meshes = scene.meshes;
     for (let i = 0; i < meshes.length; i++) {
@@ -722,7 +721,6 @@ export class EngineProfilerService {
         maxLights = lightLimit;
       }
 
-      // Solo evaluamos readiness si el material pertenece a una malla en la escena activa
       if (activeMaterialsSet.has(m)) {
         if (typeof (m as any).getEffect === 'function') {
           const effect = (m as any).getEffect();
@@ -956,7 +954,7 @@ export class EngineProfilerService {
     const engine = this.engine;
 
     const hubMetrics = this.spatialHub ? this.spatialHub.getMetrics() : {
-      evaluations: 0, exactDistanceCalculations: 0, squaredDistanceCalculations: 0, cacheHits: 0, registeredEntities: 0, updateTimeMs: 0
+      evaluations: 0, exactDistanceCalculations: 0, squaredDistanceCalculations: 0, cacheHits: 0, cacheMisses: 0, registeredEntities: 0, updateTimeMs: 0
     };
 
     const combinedDistances: Record<string, number> = {
@@ -966,7 +964,8 @@ export class EngineProfilerService {
       HubEvaluationsThisFrame: hubMetrics.evaluations,
       HubSquaredDistCalls: hubMetrics.squaredDistanceCalculations,
       HubExactDistCalls: hubMetrics.exactDistanceCalculations,
-      HubCacheHits: hubMetrics.cacheHits
+      HubCacheHits: hubMetrics.cacheHits,
+      HubCacheMisses: hubMetrics.cacheMisses
     };
 
     const fogAnchor = this.fogRenderer.lastAnchorPosition;

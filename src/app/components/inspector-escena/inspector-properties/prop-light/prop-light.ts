@@ -1,4 +1,3 @@
-
 // file: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.ts
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -55,7 +54,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   enabled = true;
   castShadows = true;
 
-  // --- CONTAINMENT PROPERTIES (FASE C) ---
   containmentMode: LightContainmentMode = 'GLOBAL';
   interiorActivationMode: LightInteriorActivationMode = 'VOLUME';
   preEntryEnabled: boolean = true;
@@ -70,7 +68,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   shadowNormalBias: number = 0.01;
   excludeExteriorMeshes: boolean = true;
 
-  // --- DISTANCE & FADE PROPERTIES (RADIAL) ---
   distanceControlEnabled: boolean = true;
   activationDistance: number = 52;
   deactivationDistance: number = 56;
@@ -79,7 +76,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   shadowDeactivationDistance: number = 56;
   distanceReferenceMode: LightDistanceReferenceMode = 'AUTO';
 
-  // --- TELEMETRÍA EN VIVO Y DIAGNÓSTICO BASADO EN ACTORES ---
   currentDistance: number = 0;
   currentMultiplier: number = 1.0;
   currentEffectiveIntensity: number = 0.0;
@@ -425,6 +421,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       if (this.containerEntityUid) {
         this.containmentSvc.markDirty(this.containerEntityUid);
       }
+      
+      // Sincronización física instantánea en el viewport de BabylonJS
       this.dynamicLighting.syncLightImmediate(entity, true);
       this.updateTelemetry();
     }

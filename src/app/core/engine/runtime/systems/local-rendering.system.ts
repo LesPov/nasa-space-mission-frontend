@@ -49,6 +49,10 @@ export class LocalRenderingSystem implements IUpdatable {
   private spatialGroups = inject(SpatialStreamingGroupService);
   private incidentSvc = inject(PerformanceIncidentService);
 
+  private readonly PERCEPTIBLE_FLAP_MIN_VISIBILITY = 0.20;
+  private readonly PERCEPTIBLE_FLAP_MAX_VISIBILITY = 0.80;
+  private readonly MAX_PERCEPTIBLE_FLAP_DISTANCE = 80.0;
+
   private frameCounter = 0;
   private distanceCheckTimer = 0;
   private meshCache = new Map<string, AbstractMesh[]>();
@@ -244,7 +248,6 @@ export class LocalRenderingSystem implements IUpdatable {
         continue;
       }
 
-      // Distancia coherente unitaria si pertenece a un grupo espacial
       let effectiveDist = this.spatialHub.getDistanceToPlayer(e.uid);
       const group = this.spatialGroups.getGroupForEntity(e.uid);
       if (group) {
@@ -374,7 +377,8 @@ export class LocalRenderingSystem implements IUpdatable {
       const rawSpeed = this.playerVelocity.length();
       this.smoothedSpeed = (this.smoothedSpeed * 0.88) + (rawSpeed * 0.12);
 
-      if (rawSpeed > 14.5) {
+      const currentFps = this.profiler.getSnapshot(false).fps;
+      if (rawSpeed > 14.5 && currentFps < 45) {
         this.incidentSvc.recordFastMove(rawSpeed, currPos);
       }
     }
@@ -388,7 +392,6 @@ export class LocalRenderingSystem implements IUpdatable {
     const fadeMargin = Math.min(baseCullDist - 1, Math.max(1, Number(cullingConfig.fadeMargin) || 50));
     const fadeStartDist = Math.max(0, baseCullDist - fadeMargin);
 
-    // Suavizado temporal continuo para el fade out
     const lerpSpeed = Math.min(1.0, (dtMs / 16.66) * 0.18);
     let discreteStateChanged = false;
 
@@ -450,7 +453,6 @@ export class LocalRenderingSystem implements IUpdatable {
 
         let effectiveDist = this.spatialHub.getDistanceToPlayer(e.uid);
         
-        // Fase 6 Corrección: Coherencia unitaria de grupos espaciales
         const group = this.spatialGroups.getGroupForEntity(e.uid);
         if (group) {
           effectiveDist = Math.min(effectiveDist, group.distanceToBox);
@@ -470,10 +472,15 @@ export class LocalRenderingSystem implements IUpdatable {
         );
 
         if (prevState !== renderState.state) {
-          if (now - renderState.lastStateChangeTime < 2800) {
+          const isPerceptibleFlap = 
+            effectiveDist <= this.MAX_PERCEPTIBLE_FLAP_DISTANCE &&
+            renderState.visibility >= this.PERCEPTIBLE_FLAP_MIN_VISIBILITY &&
+            renderState.visibility <= this.PERCEPTIBLE_FLAP_MAX_VISIBILITY;
+
+          if (isPerceptibleFlap && (now - renderState.lastStateChangeTime < 2800)) {
             renderState.flapCounter++;
             if (renderState.flapCounter >= 4) {
-              this.incidentSvc.recordCullingFlap(e.uid, e.name, effectiveDist, this.smoothedSpeed);
+              this.incidentSvc.recordCullingFlap(e.uid, e.name, effectiveDist, this.smoothedSpeed, renderState.visibility);
               renderState.flapCounter = 0;
             }
           } else {
@@ -599,11 +606,9 @@ export class LocalRenderingSystem implements IUpdatable {
     fadeStartDist: number,
     isGroupPreactivated: boolean
   ): void {
-    // Bonificación continua que previene oscilaciones escalonadas
     const groupBonus = isGroupPreactivated ? 20.0 : 0.0;
     const effectiveCull = baseCullDist + dynamicLookAheadBonus + groupBonus;
     const effectiveFadeStart = fadeStartDist + dynamicLookAheadBonus + groupBonus;
-    // Histéresis de re-adquisición ampliada de 8m a 14m para estabilizar transiciones a alta velocidad
     const REACQUIRE_MARGIN = 14.0;
 
     if (renderState.state === 'HARD_CULLED') {

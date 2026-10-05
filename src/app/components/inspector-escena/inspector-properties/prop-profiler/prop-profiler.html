@@ -304,7 +304,7 @@
       <section *ngIf="activeSection() === 'hub'" class="tab-pane">
         <div class="section-card">
           <div class="section-header">
-            <h4>Spatial Relevance Hub (Métricas)</h4>
+            <h4>Spatial Relevance Hub (Métricas de Centralización)</h4>
           </div>
           <div class="key-value-list">
             <div class="kv-item"><span class="kv-key">Tiempo de Actualización Hub</span> <span class="kv-val"><strong style="color: #4ade80;">{{ metrics().distances.evaluationsBySystem['HubUpdateTimeMs'] || 0 | number:'1.3-3' }} ms</strong></span></div>
@@ -313,6 +313,7 @@
             <div class="kv-item"><span class="kv-key">Distancias Cuadráticas (distSq)</span> <span class="kv-val" style="color: #38bdf8;">{{ metrics().distances.evaluationsBySystem['HubSquaredDistCalls'] || 0 }}</span></div>
             <div class="kv-item"><span class="kv-key">Distancias Exactas (sqrt)</span> <span class="kv-val" style="color: #facc15;">{{ metrics().distances.evaluationsBySystem['HubExactDistCalls'] || 0 }}</span></div>
             <div class="kv-item"><span class="kv-key">Cache Hits (Consultas Compartidas)</span> <span class="kv-val" style="color: #4ade80;">{{ metrics().distances.evaluationsBySystem['HubCacheHits'] || 0 }}</span></div>
+            <div class="kv-item"><span class="kv-key">Cache Misses (Entidades Bajo Demanda)</span> <span class="kv-val" style="color: #ef4444;">{{ metrics().distances.evaluationsBySystem['HubCacheMisses'] || 0 }}</span></div>
           </div>
         </div>
 
@@ -519,7 +520,6 @@
               <span class="inc-fps-val">{{ inc.minFps | number:'1.0-0' }} <small>FPS</small></span>
               <span class="inc-category-pill" [title]="inc.category">[{{ inc.category }}]</span>
               
-              <!-- Mini badge del estado de snapshot -->
               <span class="inc-category-pill" style="color: #38bdf8; border-color: rgba(56, 189, 248, 0.3);">
                 📷 {{ inc.snapshotStatus || 'SKIPPED' }}
               </span>

@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/spatial/spatial-relevance-hub.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { Vector3, AbstractMesh, Tags } from '@babylonjs/core';
@@ -32,6 +33,7 @@ export interface HubMetrics {
   exactDistanceCalculations: number;
   squaredDistanceCalculations: number;
   cacheHits: number;
+  cacheMisses: number;
   registeredEntities: number;
   updateTimeMs: number;
 }
@@ -69,6 +71,7 @@ export class SpatialRelevanceHubService implements IUpdatable {
   private _exactDistanceCalculations = 0;
   private _squaredDistanceCalculations = 0;
   private _cacheHits = 0;
+  private _cacheMisses = 0;
   private _updateTimeMs = 0;
 
   public getMetrics(): HubMetrics {
@@ -77,6 +80,7 @@ export class SpatialRelevanceHubService implements IUpdatable {
       exactDistanceCalculations: this._exactDistanceCalculations,
       squaredDistanceCalculations: this._squaredDistanceCalculations,
       cacheHits: this._cacheHits,
+      cacheMisses: this._cacheMisses,
       registeredEntities: this.registry.size,
       updateTimeMs: this._updateTimeMs
     };
@@ -98,6 +102,7 @@ export class SpatialRelevanceHubService implements IUpdatable {
     this._exactDistanceCalculations = 0;
     this._squaredDistanceCalculations = 0;
     this._cacheHits = 0;
+    this._cacheMisses = 0;
     this._updateTimeMs = 0;
   }
 
@@ -215,7 +220,6 @@ export class SpatialRelevanceHubService implements IUpdatable {
 
     const refMovedSq = Vector3.DistanceSquared(this.lastRefPos, this.currentRefPos);
 
-    // En el Editor en reposo no computar O(N) por frame si la posición de referencia no se mueve
     if (isEditor && refMovedSq < 0.001 && this.frameCount > 10) {
       this._updateTimeMs = performance.now() - tStart;
       return;
@@ -285,9 +289,23 @@ export class SpatialRelevanceHubService implements IUpdatable {
       return record;
     }
 
+    this._cacheMisses++;
     const entity = this.entityManager.getEntityByUid(uid);
     if (entity) {
-      return this.registerEntity(entity);
+      const newRec = this.registerEntity(entity);
+      if (newRec) {
+        // Evaluación inmediata bajo demanda
+        const cx = Math.max(newRec.minWorld.x, Math.min(this.currentRefPos.x, newRec.maxWorld.x));
+        const cy = Math.max(newRec.minWorld.y, Math.min(this.currentRefPos.y, newRec.maxWorld.y));
+        const cz = Math.max(newRec.minWorld.z, Math.min(this.currentRefPos.z, newRec.maxWorld.z));
+        const dx = this.currentRefPos.x - cx;
+        const dy = this.currentRefPos.y - cy;
+        const dz = this.currentRefPos.z - cz;
+        newRec.distSqToPlayer = dx * dx + dy * dy + dz * dz;
+        newRec.distToPlayer = null;
+        newRec.lastUpdatedFrame = this.frameCount;
+        return newRec;
+      }
     }
     return null;
   }

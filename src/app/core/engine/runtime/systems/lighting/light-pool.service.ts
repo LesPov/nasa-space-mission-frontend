@@ -1,7 +1,8 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/light-pool.service.ts
 import { Injectable, inject } from '@angular/core';
 import { PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, Color3, Tags, Scene } from '@babylonjs/core';
-import { PoolSlot, LIGHT_SPATIAL_CONSTANTS } from './lighting-types';
+import { PoolSlot, LIGHT_SPATIAL_CONSTANTS, ShadowTier } from './lighting-types';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 import { LightContainmentService } from './light-containment.service';
 import { LightRegistryService } from './light-registry.service';
@@ -29,27 +30,32 @@ export class LightPoolService {
 
     const MAX_LOCAL_SHADER_LIGHTS = LIGHT_SPATIAL_CONSTANTS.MAX_LOCAL_LIGHTS; // 3 slots
 
+    // CALIBRACIÓN DE RESOLUCIÓN DE SOMBRAS:
+    // Los PointLights utilizan mapas de cubos (6 caras por frame). Una resolución de 512x512
+    // combinada con Poisson Sampling entrega un sombreado suave y continuo, reduciendo
+    // a 1/4 el ancho de banda y fill rate de memoria de video respecto a un mapa de 1024x1024.
+    const pointResolutions = [512, 512, 256];
+    const spotResolutions = [1024, 1024, 512];
+    const tiers: ShadowTier[] = ['HIGH', 'MEDIUM', 'LOW'];
+
     for (let i = 0; i < MAX_LOCAL_SHADER_LIGHTS; i++) {
+      // 1. POINT LIGHTS (Omnidireccionales / Cubemaps)
       const pLight = new PointLight(`pool_point_${i}`, new Vector3(0, -99999, 0), scene);
       pLight.intensity = 0; 
       pLight.diffuse = Color3.Black();
       pLight.specular = Color3.Black();
-      const hasPointShadow = (i === 0);
-      pLight.shadowEnabled = hasPointShadow; 
-      pLight.shadowMinZ = 0.05;
+      pLight.shadowEnabled = true; 
+      pLight.shadowMinZ = 0.1;
       pLight.shadowMaxZ = 50.0;
       Tags.AddTagsTo(pLight, "system_element");
 
-      let pSg: ShadowGenerator | null = null;
-      if (hasPointShadow) {
-        pSg = new ShadowGenerator(512, pLight);
-        pSg.usePercentageCloserFiltering = true; 
-        pSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-        pSg.setDarkness(0.0); 
-        pSg.bias = 0.0003; 
-        pSg.normalBias = 0.0008; 
-        pSg.forceBackFacesOnly = false;
-      }
+      const pSg = new ShadowGenerator(pointResolutions[i], pLight);
+      pSg.usePoissonSampling = true;
+      pSg.setDarkness(0.0); 
+      pSg.bias = 0.002; 
+      pSg.normalBias = 0.005; 
+      pSg.forceBackFacesOnly = false;
+      pSg.useContactHardeningShadow = false;
 
       this.pointPool.push({ 
         index: i, 
@@ -59,29 +65,27 @@ export class LightPoolService {
         assignedEntityUid: null, 
         currentIntensity: 0,
         isStaticLight: true,
-        hasDynamicCasters: false
+        hasDynamicCasters: false,
+        shadowTier: tiers[i]
       });
 
+      // 2. SPOT LIGHTS (Focales / Proyecciones 2D)
       const sLight = new SpotLight(`pool_spot_${i}`, new Vector3(0, -99999, 0), new Vector3(0, -1, 0), Math.PI/3, 2, scene);
       sLight.intensity = 0; 
       sLight.diffuse = Color3.Black(); 
       sLight.specular = Color3.Black();
-      const hasSpotShadow = (i === 0);
-      sLight.shadowEnabled = hasSpotShadow; 
-      sLight.shadowMinZ = 0.05;
+      sLight.shadowEnabled = true; 
+      sLight.shadowMinZ = 0.1;
       sLight.shadowMaxZ = 50.0;
       Tags.AddTagsTo(sLight, "system_element");
 
-      let sSg: ShadowGenerator | null = null;
-      if (hasSpotShadow) {
-        sSg = new ShadowGenerator(1024, sLight);
-        sSg.usePercentageCloserFiltering = true; 
-        sSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-        sSg.setDarkness(0.0); 
-        sSg.bias = 0.0003; 
-        sSg.normalBias = 0.001; 
-        sSg.forceBackFacesOnly = false;
-      }
+      const sSg = new ShadowGenerator(spotResolutions[i], sLight);
+      sSg.usePercentageCloserFiltering = true; 
+      sSg.filteringQuality = i === 0 ? ShadowGenerator.QUALITY_HIGH : (i === 1 ? ShadowGenerator.QUALITY_MEDIUM : ShadowGenerator.QUALITY_LOW);
+      sSg.setDarkness(0.0); 
+      sSg.bias = 0.0005; 
+      sSg.normalBias = 0.002; 
+      sSg.forceBackFacesOnly = false;
 
       this.spotPool.push({ 
         index: i, 
@@ -91,10 +95,12 @@ export class LightPoolService {
         assignedEntityUid: null, 
         currentIntensity: 0,
         isStaticLight: true,
-        hasDynamicCasters: false
+        hasDynamicCasters: false,
+        shadowTier: tiers[i]
       });
     }
 
+    // 3. DIRECTIONAL LIGHT (Sol Global)
     const dLight = new DirectionalLight(`pool_dir_0`, new Vector3(0, -1, 0), scene);
     dLight.intensity = 0; 
     dLight.diffuse = Color3.Black(); 
@@ -109,6 +115,7 @@ export class LightPoolService {
     dSg.bias = 0.0008; 
     dSg.normalBias = 0.005; 
     dSg.forceBackFacesOnly = false;
+    
     this.dirPool.push({ 
       index: 0, 
       type: 'directional', 
@@ -117,14 +124,14 @@ export class LightPoolService {
       assignedEntityUid: null, 
       currentIntensity: 0,
       isStaticLight: true,
-      hasDynamicCasters: false
+      hasDynamicCasters: false,
+      shadowTier: 'HIGH'
     });
 
     this.isInitialized = true;
   }
 
   public resetPools(): void {
-    const topUids = new Set<string>();
     this.getAllSlots().forEach(slot => {
       this.forceHardRelease(slot);
     });
@@ -152,8 +159,6 @@ export class LightPoolService {
   public releaseSlot(slot: PoolSlot, topUids: Set<string>): void {
     if (!slot.assignedEntityUid || topUids.has(slot.assignedEntityUid)) return;
 
-    // Regla Clave Anti-Bug Fade: Si la luz virtual aún tiene intensidad perceptible (> 0.0001),
-    // NO destruirla de golpe; permitir que DynamicLightingSystem complete el fade-out temporal.
     const vl = this.lightRegistry.getVirtualLightByUid(slot.assignedEntityUid);
     if (vl && vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
       return; 
@@ -175,7 +180,6 @@ export class LightPoolService {
     slot._shadowReadyTimestamp = undefined;
     slot._isNewAssignment = false;
     slot.isWarmedUp = false;
-    slot.shadowTier = undefined;
 
     if (slot.type !== 'directional') {
       (slot.light as any).position.set(0, -99999, 0);

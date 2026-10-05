@@ -11,6 +11,7 @@ import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.to
 import { EngineProfilerService } from '../../../telemetry/engine-profiler.service';
 import { GameMode } from '../../../session/game-mode.model';
 import { SpatialStreamingGroupService } from '../../../spatial/spatial-streaming-group.service';
+import { SpatialRelevanceHubService } from '../../../spatial/spatial-relevance-hub.service';
 
 @Injectable({ providedIn: 'root' })
 export class LightDistanceService {
@@ -21,6 +22,7 @@ export class LightDistanceService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private profiler = inject(EngineProfilerService);
   private spatialGroups = inject(SpatialStreamingGroupService);
+  private spatialHub = inject(SpatialRelevanceHubService);
 
   private _tempPos = Vector3.Zero();
   private _tempDir = Vector3.Zero();
@@ -69,12 +71,16 @@ export class LightDistanceService {
         vl.closestActorName = 'Referencia Base';
       }
 
-      const centerDist = Vector3.Distance(actorWorldPos, this._tempPos);
+      // Reutilización centralizada desde SpatialRelevanceHubService
+      const hubDist = this.spatialHub.getDistanceToPlayer(vl.entity.uid);
+      const hubDistSq = this.spatialHub.getDistanceSquaredToPlayer(vl.entity.uid);
+
+      const centerDist = hubDist !== Number.MAX_VALUE ? hubDist : Vector3.Distance(actorWorldPos, this._tempPos);
       vl.centerDistance = parseFloat(centerDist.toFixed(2));
       vl.boundsDistance = parseFloat(centerDist.toFixed(2));
       vl.effectiveDistance = parseFloat(centerDist.toFixed(2));
       vl.lastEvaluatedDistance = vl.effectiveDistance;
-      vl.distSq = centerDist * centerDist;
+      vl.distSq = hubDistSq !== Number.MAX_VALUE ? hubDistSq : (centerDist * centerDist);
       vl.lastDistanceUpdateTimestamp = nowTimeStr;
 
       const isInterior = lightComp.containmentMode === 'INTERIOR';
@@ -148,7 +154,6 @@ export class LightDistanceService {
           this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, exitThreshold, nowTimeStr, `PRE-SALIDA (${contResult.source})`);
         } else {
           vl.targetMultiplier = 0.0;
-          // Retención durante desvanecimiento continuo aunque se corra a máxima velocidad
           if (vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
             vl.isLightInRange = true;
             this.transitionState(vl, 'FADING_OUT', nowTimeStr, undefined, `FADING OUT RETENTION (${contResult.source})`);
@@ -162,6 +167,7 @@ export class LightDistanceService {
           const syncShadow = lightComp.linkShadowPreEntryToLightPreEntry !== false;
           const shadowPreDist = syncShadow ? preDist : Math.max(0.5, lightComp.shadowPreEntryDistance ?? preDist);
           
+          // La sombra permanece activa mientras el Player esté dentro o transitando las aberturas del pasillo
           const inShadowZone = Boolean(
             contResult.spatialState === 'INSIDE' || 
             contResult.spatialState === 'PRE_EXIT' || 
@@ -223,7 +229,6 @@ export class LightDistanceService {
       vl.isLightInRange = true;
       this.evaluateStateAndDecision(vl, dist, rActivation, rDeactivation, timestamp, 'PROXIMIDAD RADIAL');
     } else {
-      // Si la luz aún conserva brillo visible, se retiene en FADING_OUT hasta converger suavemente a 0
       if (vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
         vl.isLightInRange = true;
         this.transitionState(vl, 'FADING_OUT', timestamp, undefined, 'FADING OUT CONTINUO');

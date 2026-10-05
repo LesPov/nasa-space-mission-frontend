@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/telemetry/performance-incident.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Subject } from 'rxjs';
@@ -118,19 +119,24 @@ export class PerformanceIncidentService {
   private incidentStartTime = 0;
   private postCaptureCounter = 0;
   private framesSinceTransitionEnd = 0;
+  private sessionFrameCounter = 0;
 
   private lastSpecificIncidentTime = new Map<string, number>();
 
   private readonly FPS_THRESHOLD = 42;
   private readonly FRAMETIME_THRESHOLD = 23.8; 
   private readonly COOLDOWN_MS = 3000;
+  private readonly EDITOR_STARTUP_GRACE_FRAMES = 120;
+  private readonly TEST_LIVE_STARTUP_GRACE_FRAMES = 25;
 
   public notifyTransitionEnded(): void {
     this.framesSinceTransitionEnd = 0;
+    this.sessionFrameCounter = 0;
   }
 
   public checkFrame(frameTimeMs: number, fps: number): void {
     this.framesSinceTransitionEnd++;
+    this.sessionFrameCounter++;
 
     if (this.cooldownTimer > 0 && this.state === 'NORMAL') {
       this.cooldownTimer -= frameTimeMs;
@@ -143,8 +149,19 @@ export class PerformanceIncidentService {
 
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
+
+    const isEditorWarmup = isEditor && this.sessionFrameCounter <= this.EDITOR_STARTUP_GRACE_FRAMES;
+    if (isEditorWarmup && frameTimeMs < 100.0) {
+      return;
+    }
+
+    const isTestLiveImmediateStartup = !isEditor && this.framesSinceTransitionEnd <= this.TEST_LIVE_STARTUP_GRACE_FRAMES;
+    if (isTestLiveImmediateStartup && frameTimeMs < 60.0) {
+      return;
+    }
+
     const toleranceFactor = isEditor ? 1.7 : 1.0; 
-    const triggerLimit = isEditor ? 30 : 8;
+    const triggerLimit = isEditor ? 30 : 10;
 
     if (fps < (this.FPS_THRESHOLD / toleranceFactor) || frameTimeMs > (this.FRAMETIME_THRESHOLD * toleranceFactor)) {
       this.consecutiveBadFrames++;
@@ -202,10 +219,19 @@ export class PerformanceIncidentService {
     ], distance < 40.0 ? 'HIGH' : 'LOW');
   }
 
-  public recordCullingFlap(uid: string, name: string, distance: number, playerSpeed: number): void {
-    this.profiler.recordTimelineEvent('CULLING', 'CULLING_FLAP', { uid, name, distance, playerSpeed });
+  public recordCullingFlap(uid: string, name: string, distance: number, playerSpeed: number, currentVisibility?: number): void {
+    if (distance >= 80.0) {
+      return;
+    }
+
+    if (currentVisibility !== undefined && currentVisibility <= 0.15) {
+      return;
+    }
+
+    this.profiler.recordTimelineEvent('CULLING', 'CULLING_FLAP', { uid, name, distance, playerSpeed, currentVisibility });
     this.recordSpecificIncident('CULLING_FLAP', `Oscilación rápida de visibilidad (Culling Flap) en "${name}" a ${distance.toFixed(1)}m`, [
       `Velocidad jugador: ${playerSpeed.toFixed(1)} m/s`,
+      `Visibilidad en flap: ${currentVisibility !== undefined ? (currentVisibility * 100).toFixed(0) + '%' : 'N/A'}`,
       `Cambió de estado visible/culled reiteradamente en < 2.5s`
     ], 'HIGH');
   }
@@ -218,7 +244,7 @@ export class PerformanceIncidentService {
   }
 
   public recordFastMove(speed: number, pos: Vector3): void {
-    if (this.framesSinceTransitionEnd <= 30 || this.context.isTransitioning()) {
+    if (this.framesSinceTransitionEnd <= 45 || this.context.isTransitioning()) {
       return;
     }
 

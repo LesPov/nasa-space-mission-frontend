@@ -1,4 +1,4 @@
-
+// file: src/app/core/engine/scene/utils/core-model-loader.service.ts
 import { Injectable, inject } from '@angular/core';
 import { 
     AbstractMesh, AssetContainer, Color3, Mesh, MeshBuilder, 
@@ -183,7 +183,6 @@ export class CoreModelLoaderService {
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
 
     const activeAmbient = isBW ? entity.visual.ambientColorBW : entity.visual.ambientColor;
-    const activeColorHex = isBW ? entity.visual.colorBW : entity.visual.color;
     const partOverrides = entity.partOverrides?.overrides || {};
 
     for (const m of subMeshes) {
@@ -232,7 +231,6 @@ export class CoreModelLoaderService {
       }
       
       if (m.material) {
-        // 🔥 FASE C FIX: Usar el valor global unificado para proteger contra tormenta de compilación
         if (m.material.getClassName() === "StandardMaterial" || m.material.getClassName() === "PBRMaterial") {
           (m.material as any).maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
         }
@@ -243,16 +241,36 @@ export class CoreModelLoaderService {
           await this.materialSvc.ajustarMaterialGLB(
             m.material, isBW, scene, 
             activeAmbient, 
-            activeColorOverride || activeColorHex, 
+            activeColorOverride, 
             override.esEmisivo ?? entity.visual.esEmisivo, 
             override.brilloIntensidad ?? entity.visual.brilloIntensidad,
             override.texturePath,
-            override.textureSource || (override.texturePath ? 'asset' : 'original') 
+            override.textureSource || (override.texturePath ? 'asset' : 'original'),
+            true
           );
         } else {
-          this.materialSvc.asegurarMaterialUnico(m, entity.uid);
+          // Si la entidad no tiene personalizaciones únicas (emisión, B&N, o brillo forzado),
+          // reutiliza el material original compartido del contenedor sin clonar
+          const needsUniqueClone = entity.visual.esEmisivo || 
+                                   entity.visual.ignoraNiebla || 
+                                   isBW || 
+                                   entity.visual.brilloIntensidad !== 1.0;
+
+          if (needsUniqueClone) {
+            this.materialSvc.asegurarMaterialUnico(m, entity.uid);
+          }
+
+          // Se pasa colorHex como undefined y isExplicitOverride como false para respetar
+          // intacto el material PBR original del GLB sin sobreescrituras destructivas
           await this.materialSvc.ajustarMaterialGLB(
-            m.material, isBW, scene, activeAmbient, activeColorHex, entity.visual.esEmisivo, entity.visual.brilloIntensidad
+            m.material, isBW, scene, 
+            activeAmbient, 
+            undefined, 
+            entity.visual.esEmisivo, 
+            entity.visual.brilloIntensidad,
+            undefined,
+            'original',
+            false
           );
         }
       }

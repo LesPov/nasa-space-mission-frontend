@@ -12,6 +12,7 @@ import { WorldSettingsService } from '../../world/world-settings.service';
 import { CameraOwnershipService } from '../../runtime/cameras/camera-ownership.service';
 import { GameContextService } from '../../session/game-context.service';
 import { GameMode } from '../../session/game-mode.model';
+import { CoreSceneMaterialService } from './core-scene-material.service';
  
 @Injectable({ providedIn: 'root' })
 export class CorePrimitiveLoaderService {
@@ -69,6 +70,7 @@ export class CorePrimitiveLoaderService {
       lightVisualMat.specularColor = Color3.Black();
       lightVisualMat.disableLighting = true;
       lightVisualMat.fogEnabled = false;
+      lightVisualMat.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
 
       visualSphere.material = lightVisualMat;
 
@@ -90,7 +92,6 @@ export class CorePrimitiveLoaderService {
         Tags.AddTagsTo(cone, "light_visual ignore_raycast");
       }
 
-      // Por defecto nace estrictamente oculto. LightVisualVisibilityService lo mostrará solo si se selecciona
       visualSphere.isVisible = false;
       visualSphere.setEnabled(true);
 
@@ -126,6 +127,7 @@ export class CorePrimitiveLoaderService {
         mat.diffuseColor = new Color3(0, 0, 0);
         mat.alpha = 0.6;
         mat.disableLighting = true;
+        mat.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
         mesh.material = mat;
         mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
       } 
@@ -135,6 +137,7 @@ export class CorePrimitiveLoaderService {
         const mat = new StandardMaterial('mat_' + obj.name, scene);
         mat.emissiveColor = new Color3(0, 0, 0);
         mat.disableLighting = true;
+        mat.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
         if (entity.visual.path) {
           const videoTexture = new VideoTexture('vidTex_' + obj.name, 'http://localhost:4000' + entity.visual.path, scene, false, true, undefined, { autoPlay: false });
           mat.diffuseTexture = videoTexture;
@@ -145,6 +148,7 @@ export class CorePrimitiveLoaderService {
       } 
       else if (obj.type === 'image_plane' && entity.media && entity.mediaRuntime) {
         const mat = new StandardMaterial('decalMat_' + obj.name, scene);
+        mat.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
         const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
         const activeColorAUsar = isBW ? entity.visual.colorBW : entity.visual.color;
         const tex = entity.visual.path ? new Texture('http://localhost:4000' + entity.visual.path, scene) : null;
@@ -176,7 +180,8 @@ export class CorePrimitiveLoaderService {
           mat.disableLighting = false;
         }
 
-        mat.maxSimultaneousLights = 8; 
+        // 🔥 UNIFICACIÓN DEFINITIVA A 10 LUCES SIMULTÁNEAS
+        mat.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS; 
         mat.fogEnabled = !entity.visual.ignoraNiebla;
         mesh.material = mat;
       }

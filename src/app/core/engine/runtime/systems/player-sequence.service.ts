@@ -38,7 +38,16 @@ export interface ActiveSequenceDetail {
 }
 
 interface SequenceActionHandler {
-  execute(step: PlayerSequenceStep, entity: GameEntity, entityManager: EntityManagerService, dtMs: number, dtFraction: number, runtime: SeqRuntime, profiler?: EngineProfilerService): void;
+  execute(
+    step: PlayerSequenceStep, 
+    entity: GameEntity, 
+    entityManager: EntityManagerService, 
+    dtMs: number, 
+    dtFraction: number, 
+    runtime: SeqRuntime, 
+    dynamicLighting: DynamicLightingSystem,
+    profiler?: EngineProfilerService
+  ): void;
 }
 
 const ActionHandlers: Record<string, SequenceActionHandler> = {
@@ -137,54 +146,69 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
     }
   },
   lightOn: {
-    execute: (step, entity, em, dtMs, dtFraction, runtime, profiler) => {
+    execute: (step, entity, em, dtMs, dtFraction, runtime, dynLighting, profiler) => {
       if (!entity.light) return;
       if (entity.playerConfig?.animationEnabled?.lightOn === false) return;
       const prev = entity.light.renderIntensity;
-      entity.light.renderIntensity = entity.light.intensity > 0 ? entity.light.intensity : 1.0;
-      if (profiler && prev !== entity.light.renderIntensity) {
-        profiler.recordTimelineEvent('SEQUENCE', 'SEQ_ACTION_LIGHT_ON', {
-          lightUid: entity.uid,
-          previousIntensity: prev,
-          newIntensity: entity.light.renderIntensity
-        });
+      const targetIntensity = entity.light.intensity > 0 ? entity.light.intensity : 1.0;
+      
+      if (Math.abs((prev ?? 0) - targetIntensity) > 0.001) {
+        entity.light.renderIntensity = targetIntensity;
+        dynLighting.updateAssignedLightIntensity(entity.uid, targetIntensity);
+        if (profiler) {
+          profiler.recordTimelineEvent('SEQUENCE', 'SEQ_ACTION_LIGHT_ON', {
+            lightUid: entity.uid,
+            previousIntensity: prev,
+            newIntensity: targetIntensity
+          });
+        }
       }
     }
   },
   lightOff: {
-    execute: (step, entity, em, dtMs, dtFraction, runtime, profiler) => {
+    execute: (step, entity, em, dtMs, dtFraction, runtime, dynLighting, profiler) => {
       if (!entity.light) return;
       if (entity.playerConfig?.animationEnabled?.lightOff === false) return;
       const prev = entity.light.renderIntensity;
-      entity.light.renderIntensity = 0.0001;
-      if (profiler && prev !== entity.light.renderIntensity) {
-        profiler.recordTimelineEvent('SEQUENCE', 'SEQ_ACTION_LIGHT_OFF', {
-          lightUid: entity.uid,
-          previousIntensity: prev,
-          newIntensity: entity.light.renderIntensity
-        });
+      const targetIntensity = 0.0001;
+
+      if (Math.abs((prev ?? 0) - targetIntensity) > 0.0001) {
+        entity.light.renderIntensity = targetIntensity;
+        dynLighting.updateAssignedLightIntensity(entity.uid, targetIntensity);
+        if (profiler) {
+          profiler.recordTimelineEvent('SEQUENCE', 'SEQ_ACTION_LIGHT_OFF', {
+            lightUid: entity.uid,
+            previousIntensity: prev,
+            newIntensity: targetIntensity
+          });
+        }
       }
     }
   },
   lightPulse: {
-    execute: (step, entity, em, dtMs, dtFraction, runtime, profiler) => {
+    execute: (step, entity, em, dtMs, dtFraction, runtime, dynLighting) => {
       if (!entity.light) return;
       if (entity.playerConfig?.animationEnabled?.lightPulse === false) return;
       const freq = step.speedRatio || 1;
       const timeSec = runtime.absoluteTimeMs !== undefined ? (runtime.absoluteTimeMs / 1000) : (performance.now() / 1000);
-      entity.light.renderIntensity = entity.light.intensity * (0.5 + 0.5 * Math.sin(timeSec * Math.PI * 2 * freq));
+      const newIntensity = entity.light.intensity * (0.5 + 0.5 * Math.sin(timeSec * Math.PI * 2 * freq));
+      entity.light.renderIntensity = newIntensity;
+      dynLighting.updateAssignedLightIntensity(entity.uid, newIntensity);
     }
   },
   lightFlicker: {
-    execute: (step, entity, em, dtMs, dtFraction, runtime, profiler) => {
+    execute: (step, entity, em, dtMs, dtFraction, runtime, dynLighting) => {
       if (!entity.light) return;
       if (entity.playerConfig?.animationEnabled?.lightFlicker === false) return;
       const freq = step.speedRatio || 1;
       const timeSec = runtime.absoluteTimeMs !== undefined ? (runtime.absoluteTimeMs / 1000) : (performance.now() / 1000);
       const rand = Math.abs(Math.sin(timeSec * 12.9898 + 78.233)) * 100;
+      let targetIntensity = entity.light.intensity;
       if ((rand % 1) < (0.15 * freq)) {
-        entity.light.renderIntensity = ((rand % 2) > 1) ? entity.light.intensity : 0.0001;
+        targetIntensity = ((rand % 2) > 1) ? entity.light.intensity : 0.0001;
       }
+      entity.light.renderIntensity = targetIntensity;
+      dynLighting.updateAssignedLightIntensity(entity.uid, targetIntensity);
     }
   }
 };
@@ -200,6 +224,7 @@ export class PlayerSequenceService implements IUpdatable {
   private profiler = inject(EngineProfilerService);
 
   private eventSub!: Subscription;
+  private isExecutionPaused = false;
 
   private activeSequences = new Map<string, {
     id: string;
@@ -226,6 +251,14 @@ export class PlayerSequenceService implements IUpdatable {
         this.syncAllAutoPlaySequences(event.payload.timeMs);
       }
     });
+  }
+
+  public pauseExecution(): void {
+    this.isExecutionPaused = true;
+  }
+
+  public resumeExecution(): void {
+    this.isExecutionPaused = false;
   }
 
   public getActiveSequencesCount(): number {
@@ -268,10 +301,7 @@ export class PlayerSequenceService implements IUpdatable {
     const handler = ActionHandlers[step.action];
     if (handler) {
       const durMs = Math.max(1, step.durationMs || 1000);
-      handler.execute(step, entity, this.entityManager, dtMs, dtMs / durMs, runtime, this.profiler);
-      if (entity.type.startsWith('light_')) {
-        this.dynamicLighting.syncLightImmediate(entity);
-      }
+      handler.execute(step, entity, this.entityManager, dtMs, dtMs / durMs, runtime, this.dynamicLighting, this.profiler);
     }
 
     const soY = step.offsetY || 0;
@@ -303,6 +333,30 @@ export class PlayerSequenceService implements IUpdatable {
     }
   }
 
+  public queueAutoPlaySequencesStaggered(): void {
+    const allEntities = this.entityManager.getAllEntities();
+    let delayMs = 0;
+
+    for (let i = 0; i < allEntities.length; i++) {
+      const entity = allEntities[i];
+      if (entity.playerConfig && entity.playerConfig.sequences) {
+        const autoSeq = entity.playerConfig.sequences.find((s: any) => s.autoPlay);
+        if (autoSeq) {
+          const targetEntity = entity;
+          const targetSeqId = autoSeq.id;
+          
+          setTimeout(() => {
+            if (this.context.isPlaying()) {
+              this.iniciarSecuenciaEnJuego(targetSeqId, targetEntity);
+            }
+          }, delayMs);
+
+          delayMs += 80; // Escalonamiento de 80ms entre inicios de secuencia
+        }
+      }
+    }
+  }
+
   public syncAllAutoPlaySequences(elapsedMs: number): void {
     const allEntities = this.entityManager.getAllEntities();
     for (let i = 0; i < allEntities.length; i++) {
@@ -317,7 +371,7 @@ export class PlayerSequenceService implements IUpdatable {
   }
 
   public physicsUpdate(dtMs: number): void {
-    if (this.activeSequences.size === 0) return;
+    if (this.isExecutionPaused || this.activeSequences.size === 0) return;
 
     let effectiveDt = dtMs;
 
@@ -350,6 +404,7 @@ export class PlayerSequenceService implements IUpdatable {
 
   public resetearSecuencias(): void {
     this.activeSequences.clear();
+    this.isExecutionPaused = false;
   }
 
   public detenerSecuencia(entityUid: string): void {
@@ -470,10 +525,7 @@ export class PlayerSequenceService implements IUpdatable {
       
       const handler = ActionHandlers[lastStep.action];
       if (handler) {
-        handler.execute(lastStep, entity, this.entityManager, 0, 1.0, r, this.profiler);
-        if (entity.type.startsWith('light_')) {
-          this.dynamicLighting.syncLightImmediate(entity);
-        }
+        handler.execute(lastStep, entity, this.entityManager, 0, 1.0, r, this.dynamicLighting, this.profiler);
       }
       
       const stateEnd = this.getSeqState(entity.uid);
@@ -510,10 +562,7 @@ export class PlayerSequenceService implements IUpdatable {
     const durStep = Math.max(1, targetStep.durationMs || 1000);
     const handler = ActionHandlers[targetStep.action];
     if (handler) {
-      handler.execute(targetStep, entity, this.entityManager, 0, stepElapsed / durStep, runtime, this.profiler);
-      if (entity.type.startsWith('light_')) {
-        this.dynamicLighting.syncLightImmediate(entity);
-      }
+      handler.execute(targetStep, entity, this.entityManager, 0, stepElapsed / durStep, runtime, this.dynamicLighting, this.profiler);
     }
 
     return runtime;
@@ -613,7 +662,7 @@ export class PlayerSequenceService implements IUpdatable {
     }
 
     if (step.clipOverride === 'none') {
-      ActionHandlers['stopBaked']?.execute(step, entity, this.entityManager, dtMs, 0, runtime, this.profiler);
+      ActionHandlers['stopBaked']?.execute(step, entity, this.entityManager, dtMs, 0, runtime, this.dynamicLighting, this.profiler);
     }
     
     if (state.cinematicTied) runtime.absoluteTimeMs = this.context.cinematicTimeMs();
@@ -621,10 +670,7 @@ export class PlayerSequenceService implements IUpdatable {
     const handler = ActionHandlers[step.action];
     if (handler) {
       const durMs = Math.max(1, step.durationMs || 1000);
-      handler.execute(step, entity, this.entityManager, dtMs, dtMs / durMs, runtime, this.profiler);
-      if (entity.type.startsWith('light_')) {
-        this.dynamicLighting.syncLightImmediate(entity);
-      }
+      handler.execute(step, entity, this.entityManager, dtMs, dtMs / durMs, runtime, this.dynamicLighting, this.profiler);
     }
     
     const soY = step.offsetY || 0;
@@ -680,4 +726,5 @@ export class PlayerSequenceService implements IUpdatable {
     }
 
     return runtime;
-  }}
+  }
+}

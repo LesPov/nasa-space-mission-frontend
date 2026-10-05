@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/game-session.ts
 import { Injectable, inject, computed } from '@angular/core';
 import { Vector3 } from '@babylonjs/core';
@@ -168,23 +169,14 @@ export class GameSession {
     for (const entity of allEntities) {
       if (entity.characterConfig) {
         this.playerAnimationSvc.sincronizarAnimaciones(this.motor3dSvc.getScene(), entity);
-        
-        if (entity.uid !== playerEntity.uid) {
-          const autoSeq = entity.playerConfig?.sequences.find((s: any) => s.autoPlay);
-          if (autoSeq) {
-            this.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, entity);
-          } else {
-            this.playerAnimationSvc.reproducirIdle(entity);
-          }
-        } else {
-          this.playerAnimationSvc.reproducirIdle(entity);
-        }
-      } else if (entity.playerConfig?.sequences) {
-        const autoSeq = entity.playerConfig.sequences.find((s: any) => s.autoPlay);
-        if (autoSeq) {
-          this.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, entity);
-        }
+        this.playerAnimationSvc.reproducirIdle(entity);
       }
+    }
+
+    // En modo juego final, las secuencias autoPlay se escalonan tras iniciar sesión
+    if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
+      this.sequenceSvc.resumeExecution();
+      this.sequenceSvc.queueAutoPlaySequencesStaggered();
     }
   }
 

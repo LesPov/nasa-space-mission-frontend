@@ -6,7 +6,7 @@ import { EngineProfilerService, ProfilerMetrics, FrameSample, TimelineEvent } fr
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene/scene-access.token';
 import { GameContextService } from '../session/game-context.service';
 import { GameMode } from '../session/game-mode.model';
-import { Tools, Vector3 } from '@babylonjs/core';
+import { Vector3 } from '@babylonjs/core';
 
 export type IncidentCategory = 
   | 'FRAME_TIME_SPIKE'
@@ -118,15 +118,21 @@ export class PerformanceIncidentService {
   private activeIncident: PerformanceIncident | null = null;
   private incidentStartTime = 0;
   private postCaptureCounter = 0;
+  private framesSinceTransitionEnd = 0;
 
   private lastSpecificIncidentTime = new Map<string, number>();
 
   private readonly FPS_THRESHOLD = 42;
   private readonly FRAMETIME_THRESHOLD = 23.8; 
   private readonly COOLDOWN_MS = 3000;
-  private readonly SNAPSHOT_TIMEOUT_MS = 1500;
+
+  public notifyTransitionEnded(): void {
+    this.framesSinceTransitionEnd = 0;
+  }
 
   public checkFrame(frameTimeMs: number, fps: number): void {
+    this.framesSinceTransitionEnd++;
+
     if (this.cooldownTimer > 0 && this.state === 'NORMAL') {
       this.cooldownTimer -= frameTimeMs;
       return;
@@ -138,8 +144,8 @@ export class PerformanceIncidentService {
 
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
-    const toleranceFactor = isEditor ? 1.5 : 1.0; 
-    const triggerLimit = isEditor ? 20 : 8;
+    const toleranceFactor = isEditor ? 1.7 : 1.0; 
+    const triggerLimit = isEditor ? 30 : 8;
 
     if (fps < (this.FPS_THRESHOLD / toleranceFactor) || frameTimeMs > (this.FRAMETIME_THRESHOLD * toleranceFactor)) {
       this.consecutiveBadFrames++;
@@ -201,7 +207,7 @@ export class PerformanceIncidentService {
     this.profiler.recordTimelineEvent('CULLING', 'CULLING_FLAP', { uid, name, distance, playerSpeed });
     this.recordSpecificIncident('CULLING_FLAP', `Oscilación rápida de visibilidad (Culling Flap) en "${name}" a ${distance.toFixed(1)}m`, [
       `Velocidad jugador: ${playerSpeed.toFixed(1)} m/s`,
-      `Cambió de estado visible/culled reiteradamente en < 2s`
+      `Cambió de estado visible/culled reiteradamente en < 2.5s`
     ], 'HIGH');
   }
 
@@ -213,28 +219,13 @@ export class PerformanceIncidentService {
   }
 
   public recordFastMove(speed: number, pos: Vector3): void {
+    if (this.framesSinceTransitionEnd <= 30 || this.context.isTransitioning()) {
+      return;
+    }
+
     this.recordSpecificIncident('FAST_PLAYER_MOVE', `Movimiento veloz del jugador a ${speed.toFixed(1)} m/s`, [
       `Posición: (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)})`
     ], 'MEDIUM');
-  }
-
-  private shouldCaptureSnapshot(category: IncidentCategory): boolean {
-    switch (category) {
-      case 'FRAME_TIME_SPIKE':
-      case 'SHADER_COMPILATION_SPIKE':
-      case 'SHADOW_REBUILD_SPIKE':
-      case 'SHADOW_POP_IN':
-      case 'LIGHT_ACTIVE_SHADOW_MISSING':
-      case 'LIGHT_SURGE_SPIKE':
-      case 'OBJECT_POP_IN':
-      case 'OBJECT_POP_OUT':
-      case 'CULLING_FLAP':
-      case 'CULLING_STORM_SPIKE':
-      case 'GPU_BOUND_SPIKE':
-        return true;
-      default:
-        return false;
-    }
   }
 
   private recordSpecificIncident(
@@ -304,10 +295,6 @@ export class PerformanceIncidentService {
     });
 
     this.onIncidentUpdated.next(incident);
-
-    if (this.shouldCaptureSnapshot(category)) {
-      this.captureVisual(incident);
-    }
   }
 
   public simulateIncident(): void {
@@ -378,7 +365,7 @@ export class PerformanceIncidentService {
       previousStableMetrics: stableSample,
       recentHistory: recentHistory.slice(-60),
       preIncidentEvents: this.profiler.getTimelineEvents().slice(-30),
-      snapshotStatus: 'PENDING'
+      snapshotStatus: 'SKIPPED'
     };
 
     this.activeIncident = incident;
@@ -397,7 +384,9 @@ export class PerformanceIncidentService {
     console.warn(`🚨 [PerformanceIncident] [${classification.category}] [Confidence: ${classification.confidence}] ${classification.diagnosis} | FPS: ${fps.toFixed(1)}`);
     
     this.onIncidentUpdated.next(incident);
-    this.captureVisual(incident);
+
+    // Captura completamente asíncrona desde el framebuffer existente sin RTT stall
+    this.captureSafeCanvasSnapshot(incident);
   }
 
   private calculateDelta(curr: ProfilerMetrics, prev?: FrameSample): IncidentDelta {
@@ -450,7 +439,9 @@ export class PerformanceIncidentService {
       };
     }
 
-    if (m.shaders.compilingCount > 0) {
+    const recentShaderEvents = (m.timelineEvents || []).slice(-10).filter(e => e.category === 'SHADER' && e.name === 'NEW_SHADER_VARIANT_DETECTED');
+
+    if (m.shaders.compilingCount > 0 && recentShaderEvents.length > 0) {
       if (d.activeLightsDelta > 0) secondaries.push(`+${d.activeLightsDelta} Luces asignadas`);
       return {
         category: 'SHADER_COMPILATION_SPIKE',
@@ -472,6 +463,18 @@ export class PerformanceIncidentService {
       };
     }
 
+    if (typeof m.gpu.gpuFrameTime === 'number' && m.gpu.gpuFrameTime > 14.5) {
+      if (m.gpu.drawCalls > 180) secondaries.push(`Alta cantidad de Draw Calls (${m.gpu.drawCalls})`);
+      if (m.shadows.activeGenerators > 0) secondaries.push(`${m.shadows.activeGenerators} generadores de sombra procesados`);
+      return {
+        category: 'GPU_BOUND_SPIKE',
+        primarySuspect: `Saturación de GPU por Renderizado y Sombras (${m.gpu.gpuFrameTime.toFixed(1)} ms GPU)`,
+        secondarySuspects: secondaries,
+        confidence: 'HIGH',
+        diagnosis: `La GPU tardó ${m.gpu.gpuFrameTime.toFixed(1)}ms en resolver el framebuffer con ${m.gpu.drawCalls} draw calls`
+      };
+    }
+
     if (d.activeLightsDelta > 1) {
       return {
         category: 'LIGHT_SURGE_SPIKE',
@@ -489,17 +492,6 @@ export class PerformanceIncidentService {
         secondarySuspects: m.sequences.details.map(s => `${s.entityName}:${s.action}`),
         confidence: 'HIGH',
         diagnosis: `Activación masiva de ${m.sequences.activeCount} secuencias evaluadas simultáneamente`
-      };
-    }
-
-    if (typeof m.gpu.gpuFrameTime === 'number' && m.gpu.gpuFrameTime > 20.0) {
-      if (m.gpu.transparentMeshes > 40) secondaries.push(`Overdraw por ${m.gpu.transparentMeshes} mallas con transparencia`);
-      return {
-        category: 'GPU_BOUND_SPIKE',
-        primarySuspect: `Saturación de rasterización / Fragment Shader (${m.gpu.gpuFrameTime.toFixed(1)} ms GPU)`,
-        secondarySuspects: secondaries,
-        confidence: 'HIGH',
-        diagnosis: 'La GPU tardó más de un ciclo completo en resolver el framebuffer'
       };
     }
 
@@ -558,16 +550,21 @@ export class PerformanceIncidentService {
     this.cooldownTimer = this.COOLDOWN_MS;
   }
 
-  private captureVisual(incident: PerformanceIncident): void {
-    const scene = this.motor3d.getScene();
+  /**
+   * Captura asíncrona segura: Lee directamente del canvas visible mediante toBlob()
+   * al final del cuadro sin renderizar pases RTT adicionales ni provocar bloqueo del hilo de JavaScript.
+   */
+  private captureSafeCanvasSnapshot(incident: PerformanceIncident): void {
     const engine = this.motor3d.getEngine();
-    const camera = scene?.activeCamera;
+    const canvas = engine?.getRenderingCanvas();
 
-    const targetWidth = 480;
-    const targetHeight = 270;
+    if (!canvas || !engine) {
+      incident.snapshotStatus = 'SKIPPED';
+      return;
+    }
+
     const reqId = 'snapreq_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
     const reqMs = performance.now();
-    const targetIncidentId = incident.id;
 
     incident.snapshotStatus = 'PENDING';
     incident.snapshotInfo = {
@@ -575,142 +572,41 @@ export class PerformanceIncidentService {
       status: 'PENDING',
       requestedAtFrame: incident.frameNumber,
       requestedAtMs: reqMs,
-      width: targetWidth,
-      height: targetHeight
+      width: 480,
+      height: 270
     };
 
-    this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_REQUESTED', {
-      incidentId: targetIncidentId,
-      requestId: reqId,
-      canvasExists: !!engine?.getRenderingCanvas(),
-      cameraName: camera?.name || 'none'
-    });
-
-    if (!engine || !scene || scene.isDisposed || engine.isDisposed || !camera || !engine.getRenderingCanvas()) {
-      incident.snapshotStatus = 'FAILED';
-      if (incident.snapshotInfo) {
-        incident.snapshotInfo.status = 'FAILED';
-        incident.snapshotInfo.error = 'Canvas, Engine o Cámara no disponibles';
-      }
-      this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_SKIPPED', {
-        incidentId: targetIncidentId,
-        requestId: reqId,
-        reason: 'ENGINE_OR_CAMERA_UNAVAILABLE'
-      });
-      this.onIncidentUpdated.next(incident);
-      return;
-    }
-
-    let isCompleted = false;
-
-    const timeoutHandle = setTimeout(() => {
-      if (isCompleted) return;
-      isCompleted = true;
-
-      const inc = this.incidents.find(i => i.id === targetIncidentId);
-      if (inc && inc.snapshotStatus === 'PENDING') {
-        inc.snapshotStatus = 'TIMEOUT';
-        if (inc.snapshotInfo) {
-          inc.snapshotInfo.status = 'TIMEOUT';
-          inc.snapshotInfo.error = `Excedido límite de espera (${this.SNAPSHOT_TIMEOUT_MS}ms)`;
-        }
-        this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_TIMEOUT', {
-          incidentId: targetIncidentId,
-          requestId: reqId
-        });
-        this.onIncidentUpdated.next(inc);
-      }
-    }, this.SNAPSHOT_TIMEOUT_MS);
-
-    try {
-      this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_START', {
-        incidentId: targetIncidentId,
-        requestId: reqId
-      });
-
-      Tools.CreateScreenshotUsingRenderTarget(
-        engine,
-        camera,
-        { width: targetWidth, height: targetHeight },
-        (dataUrl: string) => {
-          if (isCompleted) return;
-          isCompleted = true;
-          clearTimeout(timeoutHandle);
-
-          const capturedMs = performance.now();
-          const latencyMs = parseFloat((capturedMs - reqMs).toFixed(2));
-          const currentRecent = this.profiler.getRecentHistory();
-          const capturedFrame = currentRecent.length > 0 ? currentRecent[currentRecent.length - 1].frameId : incident.frameNumber;
-
-          const inc = this.incidents.find(i => i.id === targetIncidentId);
-          if (!inc) {
-            this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_ORPHAN_CALLBACK', {
-              incidentId: targetIncidentId,
-              requestId: reqId
-            });
+    // Usar el bitmap del canvas de forma no intrusiva tras el renderizado nativo
+    requestAnimationFrame(() => {
+      try {
+        canvas.toBlob((blob) => {
+          if (!blob) {
+            incident.snapshotStatus = 'SKIPPED';
+            if (incident.snapshotInfo) incident.snapshotInfo.status = 'SKIPPED';
+            this.onIncidentUpdated.next(incident);
             return;
           }
 
-          if (dataUrl && dataUrl.length > 64) {
-            inc.imageUrl = dataUrl;
-            inc.snapshotStatus = 'SUCCESS';
-            inc.snapshotInfo = {
-              requestId: reqId,
-              status: 'SUCCESS',
-              requestedAtFrame: inc.frameNumber,
-              capturedAtFrame: capturedFrame,
-              requestedAtMs: reqMs,
-              capturedAtMs: capturedMs,
-              captureLatencyMs: latencyMs,
-              width: targetWidth,
-              height: targetHeight
-            };
-
-            this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_SUCCESS', {
-              incidentId: targetIncidentId,
-              requestId: reqId,
-              incidentFrame: inc.frameNumber,
-              capturedFrame,
-              latencyMs,
-              imageBytes: dataUrl.length
-            });
-          } else {
-            inc.snapshotStatus = 'FAILED';
-            inc.snapshotInfo = {
-              requestId: reqId,
-              status: 'FAILED',
-              requestedAtFrame: inc.frameNumber,
-              requestedAtMs: reqMs,
-              error: 'DataURL vacío o corrupto'
-            };
-            this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_FAILURE', {
-              incidentId: targetIncidentId,
-              requestId: reqId,
-              reason: 'EMPTY_DATA_URL'
-            });
-          }
-
-          this.onIncidentUpdated.next(inc);
-        }
-      );
-    } catch (e: any) {
-      if (isCompleted) return;
-      isCompleted = true;
-      clearTimeout(timeoutHandle);
-
-      incident.snapshotStatus = 'FAILED';
-      if (incident.snapshotInfo) {
-        incident.snapshotInfo.status = 'FAILED';
-        incident.snapshotInfo.error = e?.message || 'Error desconocido';
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            const dataUrl = reader.result as string;
+            incident.imageUrl = dataUrl;
+            incident.snapshotStatus = 'SUCCESS';
+            if (incident.snapshotInfo) {
+              incident.snapshotInfo.status = 'SUCCESS';
+              incident.snapshotInfo.capturedAtMs = performance.now();
+              incident.snapshotInfo.captureLatencyMs = parseFloat((incident.snapshotInfo.capturedAtMs - reqMs).toFixed(2));
+            }
+            this.onIncidentUpdated.next(incident);
+          };
+          reader.readAsDataURL(blob);
+        }, 'image/jpeg', 0.65);
+      } catch (e) {
+        incident.snapshotStatus = 'SKIPPED';
+        if (incident.snapshotInfo) incident.snapshotInfo.status = 'SKIPPED';
+        this.onIncidentUpdated.next(incident);
       }
-      this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_FAILURE', {
-        incidentId: targetIncidentId,
-        requestId: reqId,
-        error: e?.message || 'exception'
-      });
-      this.onIncidentUpdated.next(incident);
-      console.warn('[PerformanceIncident] Excepción en captura de screenshot:', e);
-    }
+    });
   }
 
   public getIncidents(): PerformanceIncident[] {

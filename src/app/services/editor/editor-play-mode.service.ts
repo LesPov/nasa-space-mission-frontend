@@ -21,8 +21,10 @@ import { FogOrchestratorService } from '../../core/engine/runtime/systems/fog-or
 import { PlayerInputService } from '../../core/engine/runtime/systems/player-input.service';
 import { EngineProfilerService } from '../../core/engine/telemetry/engine-profiler.service';
 import { SpatialStreamingGroupService } from '../../core/engine/spatial/spatial-streaming-group.service';
-import { RuntimeReadinessBarrierService } from '../../core/engine/runtime/live/runtime-readiness-barrier.service';
 import { ShadowQualityService } from '../../core/engine/runtime/shadows/shadow-quality.service';
+import { PlayerSequenceService } from '../../core/engine/runtime/systems/player-sequence.service';
+import { PerformanceIncidentService } from '../../core/engine/telemetry/performance-incident.service';
+import { RuntimeReadinessBarrierService } from '../../core/engine/runtime/live/runtime-readiness-barrier.service';
 
 export interface EditorCameraSnapshot {
   target: Vector3;
@@ -53,6 +55,8 @@ export class EditorPlayModeService {
   private profiler = inject(EngineProfilerService);
   private spatialGroups = inject(SpatialStreamingGroupService);
   private readinessBarrier = inject(RuntimeReadinessBarrierService);
+  private sequenceSvc = inject(PlayerSequenceService);
+  private incidentSvc = inject(PerformanceIncidentService);
 
   private editorSnapshot: EditorCameraSnapshot | null = null;
   private pendingFlightParams: any = null;
@@ -62,8 +66,12 @@ export class EditorPlayModeService {
     const scene = this.motor3d.getScene();
     const editorCam = this.motor3d.getEditorCamera();
 
+    // 1. Congelar secuencias automáticas durante la preparación y warm-up
+    this.sequenceSvc.pauseExecution();
+    this.sequenceSvc.resetearSecuencias();
+
     this.profiler.beginTransitionTracking('CAPTURE_EDITOR_STATE');
-    this.readinessBarrier.startReadiness(10);
+    this.readinessBarrier.startReadiness(8);
 
     if (editorCam) {
       editorCam.computeWorldMatrix();
@@ -78,7 +86,7 @@ export class EditorPlayModeService {
     this.cameraSvc.guardarEstadoCamaraLibre();
     CinematicLogger.logTestLiveLifecycle('ENTER', 'EDITOR', editorCam?.name);
 
-    // 1. RESOLVER JUGADOR Y SPAWN
+    // 2. RESOLVER JUGADOR Y SPAWN
     this.readinessBarrier.setStage('RESOLVING_PLAYER', 'Resolviendo jugador y punto de aparición...');
     if (onProgress) onProgress('Resolviendo jugador y punto de aparición...', 15);
 
@@ -89,7 +97,10 @@ export class EditorPlayModeService {
     if (!playerEntity || !playerEntity.view) throw new Error("Player not resolved");
     objMesh = playerEntity.view as Mesh;
 
+    // Resetear inmediatamente inercia y física del jugador para prevenir picos de velocidad espurios al terminar el vuelo
+    this.spawnManager.resetPhysicsInertia(playerEntity);
     playerEntity.movementAuthority = 'GAMEPLAY';
+
     if (playerEntity.playerRuntime) {
       playerEntity.playerRuntime.cinematicAnimation = null;
       playerEntity.playerRuntime.cinematicClipOverride = null;
@@ -112,19 +123,19 @@ export class EditorPlayModeService {
     this.state.seleccionarObjeto(null);
     this.gameContext.setActivePlayer(playerEntity);
 
-    // 2. CONSTRUIR GRUPOS ESPACIALES Y DEFINIR ZONA CRÍTICA
+    // 3. CONSTRUIR GRUPOS ESPACIALES
     this.readinessBarrier.setStage('BUILDING_SPATIAL_GROUPS', 'Estructurando grupos espaciales...');
     if (onProgress) onProgress('Estructurando grupos espaciales...', 30);
     this.spatialGroups.buildGroups();
 
-    // 3. ACTIVACIÓN INICIAL DE LA BURBUJA CRÍTICA ALREDEDOR DEL JUGADOR
+    // 4. RECONCILIAR CULLING INICIAL EN EL PUNTO DE SPAWN
     this.readinessBarrier.setStage('PREPARING_RESOURCES', 'Inicializando burbuja crítica visual...');
     if (onProgress) onProgress('Inicializando burbuja crítica visual...', 45);
 
-    const spawnPos = playerEntity.view.getAbsolutePosition();
+    objMesh.computeWorldMatrix(true);
+    const spawnPos = objMesh.getAbsolutePosition().clone();
     this.localRendering.reconcileAllEntitiesImmediate(spawnPos);
 
-    objMesh.computeWorldMatrix(true);
     const playerForward = objMesh.forward.clone().normalize();
     if (playerForward.lengthSquared() === 0) playerForward.copyFromFloats(0, 0, 1);
 
@@ -149,19 +160,19 @@ export class EditorPlayModeService {
       targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
     }
 
-    // 4. PREPARACIÓN SUAVE DE ILUMINACIÓN Y SOMBRAS EN LA ZONA CRÍTICA
-    this.readinessBarrier.setStage('PREPARING_LIGHTS', 'Preparando iluminación local...');
-    if (onProgress) onProgress('Preparando iluminación local...', 60);
+    // 5. PREPARACIÓN SUAVE DE ILUMINACIÓN Y SOMBRAS
+    this.readinessBarrier.setStage('PREPARING_LIGHTS', 'Preparando iluminación local en spawn...');
+    if (onProgress) onProgress('Preparando iluminación local en spawn...', 60);
     this.dynamicLighting.reconcileSceneLights();
     this.shadowOrchestrator.reconcileShadows();
 
-    // 5. PRECALENTAMIENTO DE SHADERS SOLO PARA LA POSICIÓN CRÍTICA
+    // 6. PRECALENTAMIENTO DE SHADERS
     this.readinessBarrier.setStage('COMPILING_SHADERS', 'Precalentando sombreadores en VRAM...');
     if (onProgress) onProgress('Precalentando sombreadores en VRAM...', 75);
-    await this.dynamicLighting.forceWarmup(targetPos);
+    await this.dynamicLighting.forceWarmup(spawnPos);
 
     this.pendingFlightParams = {
-      centroEpiral, targetPos, targetLookAt, playerForward, vista, playerEntity, objMesh
+      centroEpiral, targetPos, targetLookAt, playerForward, vista, playerEntity, objMesh, spawnPos
     };
   }
 
@@ -203,14 +214,15 @@ export class EditorPlayModeService {
   public async estabilizarEntornoVisual(vista: CameraViewMode, onProgress?: (msg: string, pct?: number) => void): Promise<void> {
     const scene = this.motor3d.getScene();
     if (!this.pendingFlightParams) return;
-    const { targetPos } = this.pendingFlightParams;
+    const { spawnPos } = this.pendingFlightParams;
 
     this.fogOrchestrator.forceSnapNextFrame();
-    this.localRendering.reconcileAllEntitiesImmediate(targetPos);
-    await this.dynamicLighting.forceWarmup(targetPos);
+    this.localRendering.reconcileAllEntitiesImmediate(spawnPos);
+    await this.dynamicLighting.forceWarmup(spawnPos);
     this.shadowOrchestrator.reconcileShadows();
 
-    await this.readinessBarrier.waitForTrueStability(scene, 25, 26.0, (msg, pct) => {
+    // Verificación de estabilidad adaptativa con umbral basado en varianza (sin bloqueos artificiales de 5-7s)
+    await this.readinessBarrier.waitForTrueStability(scene, spawnPos, 60.0, 6, 12.0, (msg, pct) => {
       if (onProgress) onProgress(msg, 75 + Math.round(pct * 0.25));
     });
   }
@@ -228,44 +240,53 @@ export class EditorPlayModeService {
       this.transitionSvc.finishTestLiveTransition();
     }
 
+    // Reset de física antes de iniciar la sesión de gameplay
+    this.spawnManager.resetPhysicsInertia(playerEntity);
     playerEntity.movementAuthority = 'GAMEPLAY';
     this.runtimeEngine.startTestSession(playerEntity, vista);
 
-    return new Promise<void>((resolve) => {
-      setTimeout(() => {
-        const canvas = this.motor3d.getEngine().getRenderingCanvas();
-        if (canvas) {
-          const activeCam = this.ownership.getCamera();
-          if (activeCam) {
-            this.motor3d.getEditorCamera()?.detachControl();
-            this.motor3d.getPlayerCameraFPS()?.detachControl();
-            this.motor3d.getPlayerCameraTPS()?.detachControl();
-            activeCam.attachControl(canvas, true);
-            
-            if (vista === 'FPS') {
-              objMesh.visibility = 1;
-              objMesh.getChildMeshes().forEach((m: any) => m.visibility = 1);
-            }
-          }
-          canvas.focus();
+    const canvas = this.motor3d.getEngine().getRenderingCanvas();
+    if (canvas) {
+      const activeCam = this.ownership.getCamera();
+      if (activeCam) {
+        this.motor3d.getEditorCamera()?.detachControl();
+        this.motor3d.getPlayerCameraFPS()?.detachControl();
+        this.motor3d.getPlayerCameraTPS()?.detachControl();
+        activeCam.attachControl(canvas, true);
+        
+        if (vista === 'FPS') {
+          objMesh.visibility = 1;
+          objMesh.getChildMeshes().forEach((m: any) => m.visibility = 1);
         }
+      }
+      canvas.focus();
+    }
 
-        this.inputSvc.start();
-        this.inputSvc.enable();
-        this.inputSvc.resetearInputs();
+    this.inputSvc.start();
+    this.inputSvc.enable();
+    this.inputSvc.resetearInputs();
 
-        this.pendingFlightParams = null;
-        this.readinessBarrier.reset();
-        this.profiler.endTransitionTracking();
-        resolve();
-      }, 50);
-    });
+    // Suprimir falsos positivos del detector de movimiento en el frame de aterrizaje
+    this.incidentSvc.notifyTransitionEnded();
+
+    // Reanudación limpia y escalonada de las secuencias post-ready
+    this.sequenceSvc.resumeExecution();
+    this.sequenceSvc.queueAutoPlaySequencesStaggered();
+
+    this.pendingFlightParams = null;
+    this.readinessBarrier.reset();
+    this.profiler.endTransitionTracking();
   }
 
   public restaurarEscenaPostTest(canSelectHidden: boolean): void {
     const scene = this.motor3d.getScene();
     const canvas = this.motor3d.getEngine().getRenderingCanvas();
     const editorCam = this.motor3d.getEditorCamera();
+
+    this.incidentSvc.notifyTransitionEnded();
+
+    this.sequenceSvc.pauseExecution();
+    this.sequenceSvc.resetearSecuencias();
 
     this.readinessBarrier.reset();
     this.spatialGroups.clear();
@@ -274,7 +295,6 @@ export class EditorPlayModeService {
     try { this.motor3d.getPlayerCameraFPS()?.detachControl(); } catch {}
     try { this.motor3d.getPlayerCameraTPS()?.detachControl(); } catch {}
 
-    // Restaurar resolución y post-procesos en Editor
     const engine = this.motor3d.getEngine();
     if (engine) {
       engine.setHardwareScalingLevel(1.0);
@@ -289,7 +309,6 @@ export class EditorPlayModeService {
     }
     this.shadowQualitySvc.setQualityTier('HIGH');
 
-    // Restaurar visibilidad 100% limpia para todas las entidades en el editor
     scene.meshes.forEach(m => {
       if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) {
         return; 

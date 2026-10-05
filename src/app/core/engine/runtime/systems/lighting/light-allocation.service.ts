@@ -49,7 +49,7 @@ export class LightAllocationService {
     const activeGroupId = this.spatialGroups.getActiveGroupId();
     const preparedGroups = this.spatialGroups.getPreparedGroupIds();
 
-    // 1. Filtrar candidatos válidos
+    // 1. Filtrado de candidatos válidos
     const validCandidates = activeVirtuals.filter(vl => {
       if (!vl.entity.light || !vl.entity.light.enabled) {
         vl.rejectionReason = 'DISABLED';
@@ -58,9 +58,6 @@ export class LightAllocationService {
 
       if (vl.entity.uid === selectedUid) return true;
 
-      // REGLA FUNDAMENTAL DE CONTENCIÓN:
-      // Si la luz es interior por volumen y el Player está fuera del modelo contenedor,
-      // la luz queda excluida del pool.
       const isInteriorVolumeMode = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
       if (isInteriorVolumeMode) {
         if (vl.spatialState === 'OUTSIDE') {
@@ -93,7 +90,6 @@ export class LightAllocationService {
       let score = 0;
 
       if (isInteriorVolumeMode) {
-        // Para luces interiores activas, la prioridad es máxima para iluminar el interior
         const boundaryDist = vl.distanceToBoundary ?? 0;
         if (vl.spatialState === 'INSIDE') {
           score = -50000 + boundaryDist;
@@ -129,9 +125,9 @@ export class LightAllocationService {
         }
       }
 
-      // Histéresis de retención para evitar que luces activas oscilen entre slots
-      if (assignedSet.has(vl.entity.uid) && vl.currentMultiplier > 0.05) {
-        score *= 0.7;
+      // Inmunidad a los valles de pulso/flicker: la luz conserva su slot si está en rango espacial
+      if (assignedSet.has(vl.entity.uid) && vl.isLightInRange) {
+        score *= 0.5; // Fuerte retención de slot
       }
 
       if (selectedUid === vl.entity.uid) {
@@ -170,26 +166,27 @@ export class LightAllocationService {
       this.lightPool.releaseSlot(s, topUids);
     });
 
-    // 6. Asignar slots físicos y escalonar Tiers de sombra
+    // 6. Asignar slots de forma estable evitando intercambios innecesarios entre luces
     topVirtuals.forEach((vl, rankIndex) => {
       vl.poolRank = rankIndex + 1;
       vl.rejectionReason = undefined;
 
-      let tier: ShadowTier = 'HIGH';
-      if (rankIndex === 1) tier = 'MEDIUM';
-      else if (rankIndex >= 2) tier = 'LOW';
-
+      const tier: ShadowTier = rankIndex === 0 ? 'HIGH' : (rankIndex === 1 ? 'MEDIUM' : 'LOW');
       vl.shadowRank = rankIndex + 1;
       vl.shadowTier = tier;
 
       const pool = this.lightPool.getPoolByType(vl.entity.type);
       let existingSlot = pool.find(s => s.assignedEntityUid === vl.entity.uid);
 
+      // Si la luz ya tiene un slot en este pool, MANTENERLA en ese slot (no rotar índices)
       if (!existingSlot) {
         let freeSlot: PoolSlot | null = null;
-        if (vl.isShadowInRange) {
-          freeSlot = pool.find(s => s.sg !== null && s.assignedEntityUid === null) || null;
+        
+        // Si requiere sombras y el slot maestro 0 está libre, tomar el slot 0
+        if (vl.isShadowInRange && pool[0] && pool[0].assignedEntityUid === null) {
+          freeSlot = pool[0];
         }
+        
         if (!freeSlot) {
           freeSlot = pool.find(s => s.assignedEntityUid === null) || null;
         }

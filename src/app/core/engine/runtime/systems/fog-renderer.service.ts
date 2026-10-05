@@ -28,6 +28,12 @@ export class FogRendererService {
   public lastAnchorPosition = { x: 0, y: 0, z: 0 };
   public lastRingDistances: number[] = [15, 45, 90];
 
+  // Caché de estado para evitar llamadas a Babylon en reposo (de 2.4ms a 0.05ms)
+  private prevRenderAnchorX = -99999;
+  private prevRenderAnchorY = -99999;
+  private prevRenderAnchorZ = -99999;
+  private prevTargetColorHex = '';
+
   constructor() { 
     for (let i = 0; i < 3; i++) {
       this.wallStates.push(new FogWallState()); 
@@ -55,7 +61,6 @@ export class FogRendererService {
     tex.hasAlpha = true;
     const ctx = tex.getContext();
 
-    // Gradiente continuo con cobertura total en la base para evitar huecos en el horizonte bajo
     const grad = ctx.createLinearGradient(0, 0, 0, 256);
     grad.addColorStop(0.00, "rgba(255,255,255,0.75)"); 
     grad.addColorStop(0.15, "rgba(255,255,255,0.95)"); 
@@ -109,6 +114,11 @@ export class FogRendererService {
     }
     this.gradTex = null;
     this.currentScene = null;
+
+    this.prevRenderAnchorX = -99999;
+    this.prevRenderAnchorY = -99999;
+    this.prevRenderAnchorZ = -99999;
+    this.prevTargetColorHex = '';
   }
 
   public renderFogWalls(
@@ -133,7 +143,6 @@ export class FogRendererService {
       this.dispose();
     }
 
-    // Centro espacial tomado de coordenadas absolutas en espacio mundial
     let anchorX = 0;
     let anchorY = 0;
     let anchorZ = 0;
@@ -158,6 +167,21 @@ export class FogRendererService {
     this.lastAnchorPosition.y = anchorY;
     this.lastAnchorPosition.z = anchorZ;
 
+    // Filtro de reposo: Evitar trabajo de CPU si la posición no varió más de 2cm y los colores son iguales
+    const dx = Math.abs(anchorX - this.prevRenderAnchorX);
+    const dy = Math.abs(anchorY - this.prevRenderAnchorY);
+    const dz = Math.abs(anchorZ - this.prevRenderAnchorZ);
+    const isStationary = !firstFrame && dx < 0.02 && dy < 0.02 && dz < 0.02 && this.prevTargetColorHex === globalClearHex;
+
+    if (isStationary && this.fogWalls.length === 3) {
+      return;
+    }
+
+    this.prevRenderAnchorX = anchorX;
+    this.prevRenderAnchorY = anchorY;
+    this.prevRenderAnchorZ = anchorZ;
+    this.prevTargetColorHex = globalClearHex;
+
     const capasDeGrosor = 6;
 
     for (let i = 0; i < 3; i++) {
@@ -171,7 +195,7 @@ export class FogRendererService {
           mat.disableLighting = true; 
           mat.alphaMode = Engine.ALPHA_COMBINE;
           mat.disableDepthWrite = true; 
-          mat.backFaceCulling = false; // Permite ver el reverso de los cilindros sin descarte de GPU
+          mat.backFaceCulling = false;
           mat.opacityTexture = this.getGradientTexture(scene); 
           mat.fogEnabled = false; 
           this.fogMats[i][j] = mat; 
@@ -191,9 +215,6 @@ export class FogRendererService {
           shell.checkCollisions = false;
           shell.receiveShadows = false;
           shell.applyFog = false;
-
-          // EVITA LA DESAPARICIÓN AL GIRAR LA CÁMARA:
-          // Inmuniza la malla contra el frustum culling de Babylon.js para que siempre exista alrededor del Player en 360°
           shell.alwaysSelectAsActiveMesh = true;
           shell.doNotSyncBoundingInfo = true; 
           Tags.AddTagsTo(shell, "system_element fog_element ignore_raycast");
@@ -254,7 +275,6 @@ export class FogRendererService {
       const halfThick = state.thickness / 2;
       const shells = this.fogShells[i];
 
-      // Renderizado estable de todas las capas artísticas con acceso directo en O(1)
       for (let j = 0; j < capasDeGrosor; j++) {
         const shell = shells[j];
         if (!shell || shell.isDisposed()) continue;

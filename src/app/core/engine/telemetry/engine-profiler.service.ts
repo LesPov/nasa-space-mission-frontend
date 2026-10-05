@@ -14,7 +14,8 @@ import { CameraOwnershipService } from '../runtime/cameras/camera-ownership.serv
 import { SpatialRelevanceHubService } from '../spatial/spatial-relevance-hub.service';
 import { LightReferenceService } from '../runtime/systems/lighting/light-reference.service';
 import { FogRendererService } from '../runtime/systems/fog-renderer.service';
-import { Vector3, Material } from '@babylonjs/core';
+import { CoreSceneMaterialService } from '../scene/utils/core-scene-material.service';
+import { Vector3, Material, AbstractMesh, MultiMaterial } from '@babylonjs/core';
 
 export interface LightForensicRecord {
   uid: string;
@@ -278,7 +279,12 @@ export class EngineProfilerService {
     return this._spatialHub;
   }
 
-  // Correlación de sesión de alta resolución
+  private _materialSvc: CoreSceneMaterialService | null = null;
+  private get materialSvc(): CoreSceneMaterialService {
+    if (!this._materialSvc) this._materialSvc = this.injector.get(CoreSceneMaterialService);
+    return this._materialSvc;
+  }
+
   private currentSessionId = 'init_session';
   private currentEntryNumber = 0;
   private sessionStartTime = performance.now();
@@ -287,7 +293,6 @@ export class EngineProfilerService {
   private stabilityCheckDuration = 0;
   private readyDuration = 0;
 
-  // Ring Buffer de Métricas de Cuadro (120 cuadros)
   private readonly BUFFER_SIZE = 120;
   private frameTimeBuffer = new Float32Array(this.BUFFER_SIZE);
   private bufferIndex = 0;
@@ -298,16 +303,13 @@ export class EngineProfilerService {
   private historyIndex = 0;
   private frameCounter = 0;
 
-  // Ring Buffer de Eventos Atómicos de la Línea Temporal (256 eventos)
   private readonly EVENT_CAPACITY = 256;
   private timelineEventsBuffer: TimelineEvent[] = [];
   private nextEventId = 1;
 
-  // Comparativas históricas de sesión (Entry 1 vs Entry 2...)
   private sessionComparisons: EntrySummaryComparison[] = [];
   private currentEntrySummary: EntrySummaryComparison | null = null;
 
-  // Seguimiento de variantes de shaders observadas
   private knownShaderEffectKeys = new Set<string>();
 
   private latencyBuckets: LatencyBuckets = {
@@ -576,7 +578,6 @@ export class EngineProfilerService {
 
     this.historyIndex = (this.historyIndex + 1) % this.HISTORY_CAPACITY;
 
-    // Inspección segura de shaders en BabylonJS (sin acceder a internals privados)
     this.inspectShadersNonIntrusive();
 
     this.telemetryCpuAccumulator += (performance.now() - tStart);
@@ -586,7 +587,6 @@ export class EngineProfilerService {
     const scene = this.sceneInstr?.scene;
     if (!scene || !scene.materials) return;
 
-    // Muestreo controlado a baja frecuencia (cada 15 frames)
     if (this.frameCounter % 15 !== 0) return;
 
     const materials = scene.materials as Material[];
@@ -696,6 +696,20 @@ export class EngineProfilerService {
     const materials = scene.materials as Material[];
     const total = materials ? materials.length : 0;
 
+    // Solo inspeccionar materiales que están en mallas activas de la escena para evitar falsos positivos
+    const activeMaterialsSet = new Set<Material>();
+    const meshes = scene.meshes;
+    for (let i = 0; i < meshes.length; i++) {
+      const m = meshes[i];
+      if (m && !m.isDisposed() && m.material) {
+        activeMaterialsSet.add(m.material);
+        if (m.material.getClassName() === 'MultiMaterial') {
+          const multi = m.material as MultiMaterial;
+          (multi.subMaterials || []).forEach(sm => { if (sm) activeMaterialsSet.add(sm); });
+        }
+      }
+    }
+
     for (let i = 0; i < total; i++) {
       const m = materials[i];
       const cls = m.getClassName();
@@ -707,7 +721,16 @@ export class EngineProfilerService {
       if (typeof lightLimit === 'number' && lightLimit > maxLights) {
         maxLights = lightLimit;
       }
-      if (!m.isReady()) compiling++;
+
+      // Solo evaluamos readiness si el material pertenece a una malla en la escena activa
+      if (activeMaterialsSet.has(m)) {
+        if (typeof (m as any).getEffect === 'function') {
+          const effect = (m as any).getEffect();
+          if (effect && !effect.isReady()) {
+            compiling++;
+          }
+        }
+      }
     }
 
     return {

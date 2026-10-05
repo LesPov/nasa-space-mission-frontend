@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/character-kinematics.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Ray, Vector3, Mesh, Scene, Quaternion, Camera, Tags } from '@babylonjs/core';
@@ -10,7 +11,6 @@ import { GameContextService } from '../../session/game-context.service';
 import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 import { GameMode } from '../../session/game-mode.model';
 import { getMovementProfileForOwner, MovementProfile } from '../movement/movement-profile.model';
-import { TransformTelemetryService } from '../../telemetry/transform-telemetry.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
 import { SimulationClockService } from '../time/simulation-clock.service';
 
@@ -62,12 +62,10 @@ export class CharacterKinematicsService implements IUpdatable {
 
       const isPlayer = !!(activePlayer && entity.uid === activePlayer.uid);
 
-      // En el editor puro no movemos con física a menos que estemos en Test Live
       if (isEditor && !isPlayer && entity.movementAuthority === 'GAMEPLAY') {
         continue; 
       }
 
-      // Si es el jugador en Test Live, FORZAR autoridad a GAMEPLAY para no bloquear WASD
       if (isPlayer && !isEditor && entity.movementAuthority !== 'GAMEPLAY') {
         entity.movementAuthority = 'GAMEPLAY';
       }
@@ -91,7 +89,6 @@ export class CharacterKinematicsService implements IUpdatable {
       }
 
       const vista = isPlayer ? cameraView : 'FPS'; 
-      // Si es el jugador en Test Live o modo juego, asignar siempre perfil físico para habilitar WASD
       const activeProfile: MovementProfile = isPlayer
         ? (mode === GameMode.TEST_LIVE || mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN
             ? { type: 'PLAYER_PHYSICAL', physicsEnabled: true, gravityEnabled: true, collisionsEnabled: true, jumpEnabled: true, customInputEnabled: true }
@@ -336,11 +333,11 @@ export class CharacterKinematicsService implements IUpdatable {
     seqRuntime: SeqRuntime | null, 
     vista: 'FPS' | 'TPS', 
     scaleFactor: number, 
-    scaleY: number,
-    profile: MovementProfile,
-    entity: GameEntity,
-    dtMs: number,
-    gravityFactor: number,
+    scaleY: number, 
+    profile: MovementProfile, 
+    entity: GameEntity, 
+    dtMs: number, 
+    gravityFactor: number, 
     isZeroG: boolean
   ): void {
     const TARGET_FRAME_TIME = 1000 / 60;
@@ -410,7 +407,7 @@ export class CharacterKinematicsService implements IUpdatable {
       }
     }
 
-    this.calculateGravityAndJump(mesh, estadoFisico, config, intentions, seqRuntime, scaleFactor, scaleY, profile, gravityFactor, isZeroG);
+    this.calculateGravityAndJump(mesh, estadoFisico, config, intentions, seqRuntime, scaleFactor, scaleY, profile, gravityFactor, isZeroG, dtMs);
 
     if (isNaN(this._move.x)) this._move.x = 0;
     if (isNaN(this._move.y)) this._move.y = 0;
@@ -453,7 +450,8 @@ export class CharacterKinematicsService implements IUpdatable {
     scaleY: number, 
     profile: MovementProfile, 
     gravityFactor: number, 
-    isZeroG: boolean
+    isZeroG: boolean,
+    dtMs: number
   ): void {
     if (!profile.gravityEnabled || isZeroG) {
       estadoFisico.isGrounded = !isZeroG;
@@ -470,7 +468,12 @@ export class CharacterKinematicsService implements IUpdatable {
     if (estadoFisico.isGrounded) {
       if (estadoFisico.isFalling || estadoFisico.isJumping) {
         const fallDistance = estadoFisico.highestY - mesh.position.y;
-        if (fallDistance > (config.physics?.hardLandingThreshold || 2.5) * scaleY) {
+        
+        // Protección anti-spike: Si dtMs fue anómalo (> 50ms) o no cayó realmente de altura, omitir hard landing
+        const isSpikeRecovery = dtMs > 50.0;
+        const realFallThreshold = (config.physics?.hardLandingThreshold || 2.5) * scaleY;
+        
+        if (fallDistance > realFallThreshold && !isSpikeRecovery) {
           estadoFisico.isHardLanding = true;
           estadoFisico.landingFrame = 0;
           this._move.set(0, 0, 0);
@@ -522,4 +525,4 @@ export class CharacterKinematicsService implements IUpdatable {
 
     this._move.y = estadoFisico.velocidadY;
   }
-}
+} 

@@ -114,16 +114,39 @@ export class LocalRenderingSystem implements IUpdatable {
   }
 
   /**
-   * Elementos que forman la estructura base del nivel (pisos, terrenos, límites del mundo).
-   * Estos elementos nunca deben apagarse repentinamente debajo del jugador.
+   * Elementos que forman la estructura base del nivel (pisos, terrenos, límites del mundo y pasillos modulares).
+   * Estos elementos nunca deben apagarse ni oscilar en visibilidad debajo del jugador.
    */
   public isStructuralEntity(e: GameEntity): boolean {
     if (e.visual?.disableCulling) return true;
     const nameL = e.name.toLowerCase();
+    
     if (nameL.includes('sueloinvisible') || Tags.MatchesQuery(e.view, 'invisible_floor')) return true;
-    if (e.type === 'plane' || nameL.includes('piso') || nameL.includes('suelo') || nameL.includes('ground') || nameL.includes('floor')) {
+    if (e.type === 'plane') return true;
+
+    // Reconocimiento arquitectónico ampliado: pasillos, corredores, salas, muros y suelos
+    if (
+      nameL.includes('piso') || 
+      nameL.includes('suelo') || 
+      nameL.includes('ground') || 
+      nameL.includes('floor') ||
+      nameL.includes('pasillo') ||
+      nameL.includes('corridor') ||
+      nameL.includes('hall') ||
+      nameL.includes('tunel') ||
+      nameL.includes('tunnel') ||
+      nameL.includes('wall') ||
+      nameL.includes('pared') ||
+      nameL.includes('muro') ||
+      nameL.includes('techo') ||
+      nameL.includes('ceiling') ||
+      nameL.includes('roof') ||
+      nameL.includes('column') ||
+      nameL.includes('columna')
+    ) {
       return true;
     }
+
     return false;
   }
 
@@ -209,7 +232,7 @@ export class LocalRenderingSystem implements IUpdatable {
     const cullDistance = Math.max(60, Number(cullingConfig.cullDistance) || 160);
     const fadeMargin = Math.min(cullDistance - 1, Math.max(1, Number(cullingConfig.fadeMargin) || 50));
     const fadeStartDist = Math.max(0, cullDistance - fadeMargin);
-    const criticalRadius = 55.0; 
+    const criticalRadius = 60.0;
 
     this.resetCounters();
     const now = performance.now();
@@ -238,7 +261,7 @@ export class LocalRenderingSystem implements IUpdatable {
           visibility: 1.0, 
           targetVisibility: 1.0, 
           isShadowProtected: false, 
-          isStructural, 
+          isStructural: true, 
           lastStateChangeTime: now, 
           flapCounter: 0 
         });
@@ -386,7 +409,7 @@ export class LocalRenderingSystem implements IUpdatable {
     const fadeStartDist = Math.max(0, baseCullDist - fadeMargin);
 
     const lerpSpeed = Math.min(1.0, (dtMs / 16.66) * 0.22);
-    let discreteStateChanged = false; // Solo emite evento si un objeto pasa de activo a hard-culled o viceversa
+    let discreteStateChanged = false;
 
     let vCount = 0, fCount = 0, hCount = 0, rCount = 0, sCount = 0;
     let evaluatedCount = 0;
@@ -448,9 +471,9 @@ export class LocalRenderingSystem implements IUpdatable {
         this.evaluateIndividualCulling(e, renderState, mesh, effectiveDist, baseCullDist, dynamicLookAheadBonus, fadeStartDist, fadeMargin);
 
         if (prevState !== renderState.state) {
-          if (now - renderState.lastStateChangeTime < 2000) {
+          if (now - renderState.lastStateChangeTime < 2500) {
             renderState.flapCounter++;
-            if (renderState.flapCounter >= 3) {
+            if (renderState.flapCounter >= 4) {
               this.incidentSvc.recordCullingFlap(e.uid, e.name, effectiveDist, this.smoothedSpeed);
               renderState.flapCounter = 0;
             }
@@ -562,7 +585,6 @@ export class LocalRenderingSystem implements IUpdatable {
     this.profiler.cullingChangedCount = changedCount;
     this.profiler.recordDistanceEvaluation('LocalRenderingSystem', evaluatedCount);
 
-    // Solo se emite si un objeto entró o salió formalmente del Hard Culling, no en cada frame de fade
     if (discreteStateChanged) {
       this.eventBus.emit({ type: 'RuntimeVisibilityBatchChanged' });
     }
@@ -580,7 +602,8 @@ export class LocalRenderingSystem implements IUpdatable {
   ): void {
     const effectiveCull = baseCullDist + dynamicLookAheadBonus;
     const effectiveFadeStart = fadeStartDist + dynamicLookAheadBonus;
-    const REACQUIRE_MARGIN = 8.0;
+    const REACQUIRE_MARGIN = 10.0;
+    const HYSTERESIS_ENTER_FADE = 6.0; // Banda muerta para evitar que objetos en el borde oscilen
 
     if (renderState.state === 'HARD_CULLED') {
       if (effectiveDist <= (effectiveCull - REACQUIRE_MARGIN)) {
@@ -617,9 +640,14 @@ export class LocalRenderingSystem implements IUpdatable {
         e.isCulled = false;
         renderState.isShadowProtected = false;
       } else {
-        renderState.targetVisibility = this.calculateSmoothVisibility(effectiveDist, effectiveFadeStart, effectiveCull);
-        if (renderState.state === 'VISIBLE') {
-          renderState.state = 'FADING_OUT';
+        // Solo empezar a desvanecer si supera el inicio del fade más el margen de histéresis
+        if (renderState.state === 'VISIBLE' && effectiveDist <= (effectiveFadeStart + HYSTERESIS_ENTER_FADE)) {
+          renderState.targetVisibility = 1.0;
+        } else {
+          renderState.targetVisibility = this.calculateSmoothVisibility(effectiveDist, effectiveFadeStart, effectiveCull);
+          if (renderState.state === 'VISIBLE') {
+            renderState.state = 'FADING_OUT';
+          }
         }
         e.isCulled = false;
         renderState.isShadowProtected = false;

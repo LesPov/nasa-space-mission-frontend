@@ -11,6 +11,7 @@ import { GameContextService } from '../../session/game-context.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameMode } from '../../session/game-mode.model';
 import { ProfilerTogglesService } from '../../telemetry/profiler-toggles.service';
+import { GameEntity } from '../../entities/game.entity';
 
 @Injectable({ providedIn: 'root' })
 export class FogOrchestratorService implements IUpdatable {
@@ -60,7 +61,27 @@ export class FogOrchestratorService implements IUpdatable {
     this.firstFrame = true;
     this.fogRenderer.dispose();
   }
+// En fog-orchestrator.service.ts
+public prepareForTestLive(scene: Scene, targetEntity: GameEntity | null, isBW: boolean): void {
+  this.firstFrame = true;
+  if (!scene) return;
 
+  const fog = targetEntity?.playerConfig?.fog;
+  if (fog && fog.enabled) {
+    const activeColorHex = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
+    this.hexToColor3(activeColorHex, this.targetColorObj);
+    
+    scene.fogColor = this.targetColorObj;
+    scene.fogMode = Scene.FOGMODE_LINEAR;
+    scene.fogEnabled = true;
+
+    const renderMaxZ = Math.max(60.0, Number(fog.renderDistanceFPS) || 150.0);
+    this.curStart = renderMaxZ * 0.35;
+    this.curEnd = renderMaxZ;
+    scene.fogStart = this.curStart;
+    scene.fogEnd = this.curEnd;
+  }
+}
   public postUpdate(dtMs: number): void {
     const scene = this.motor3d.getScene();
     if (!scene) return;

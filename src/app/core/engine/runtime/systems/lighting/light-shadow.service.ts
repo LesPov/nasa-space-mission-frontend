@@ -160,27 +160,18 @@ export class LightShadowService {
   }
 
   public rebuildShadowRenderList(slot: PoolSlot, entityUid: string, lightPos: Vector3, range: number): void {
-    const tier = slot.shadowTier || 'HIGH';
-    
     if (!slot.sg) {
       const config = slot.type === 'spot' ? this.shadowQualitySvc.getSpotConfig() : this.shadowQualitySvc.getPointConfig();
       slot.sg = new ShadowGenerator(config.resolution, slot.light);
 
       slot.sg.usePercentageCloserFiltering = true;
-      slot.sg.filteringQuality = config.filteringQuality;
+      // Inmutable: Se fija QUALITY_MEDIUM de forma determinista para todo el pool
+      slot.sg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
       slot.sg.bias = 0.0003;
       slot.sg.normalBias = slot.type === 'spot' ? 0.001 : 0.0008;
       slot.sg.setDarkness(0.0);
       if (slot.type === 'point') {
         slot.sg.useContactHardeningShadow = false;
-      }
-    } else {
-      if (tier === 'HIGH') {
-        slot.sg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-      } else if (tier === 'MEDIUM') {
-        slot.sg.filteringQuality = ShadowGenerator.QUALITY_LOW;
-      } else {
-        slot.sg.filteringQuality = ShadowGenerator.QUALITY_LOW;
       }
     }
 
@@ -248,11 +239,6 @@ export class LightShadowService {
     this.shadowCache.recordRebuild();
   }
 
-  /**
-   * Sincroniza al Player y actores dinámicos en la renderList del slot de forma inmediata (O(1)).
-   * Si el Player está en rango de proyección, se asegura de que sus mallas estén en renderList.
-   * Si entra por primera vez a este slot, resetea el contador del shadow map para proyectar sin saltar.
-   */
   public syncDynamicActorInSlot(
     slot: PoolSlot,
     actorEntity: GameEntity,
@@ -335,6 +321,12 @@ export class LightShadowService {
   public applyShadowLOD(slot: PoolSlot, isEditor: boolean, refPos: Vector3): void {
     if (!slot.sg || !slot.sg.getShadowMap()) return;
     const distToCam = Vector3.Distance(slot.light.position, refPos);
+
+    if (isEditor && slot.type === 'point' && !slot.hasDynamicCasters && slot.isStaticLight) {
+      slot.sg.getShadowMap()!.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+      slot.currentRefreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+      return;
+    }
 
     const rate = this.lodManager.getRefreshRate(
       distToCam,

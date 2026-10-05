@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
@@ -165,9 +164,31 @@ export class DynamicLightingSystem implements IUpdatable {
     this.previousActiveSlotsHash = '';
   }
 
+  public updateAssignedLightIntensity(uid: string, newIntensity: number): void {
+    const slot = this.lightPool.findSlotByUid(uid);
+    if (!slot) return;
+
+    const vl = this.lightRegistry.getVirtualLightByUid(uid);
+    if (!vl || !vl.entity.light || !vl.entity.light.enabled) return;
+
+    const effective = Math.max(0, newIntensity * vl.currentMultiplier);
+    slot.currentIntensity = effective;
+    slot.light.intensity = effective;
+
+    const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
+    const hexColor = isBW ? vl.entity.light.lightColorBW : vl.entity.light.lightColor;
+    vl.baseColor = Color3.FromHexString(hexColor || '#ffffff');
+    this.lightVisual.updateVisualGlow(vl, vl.entity.light, vl.baseColor, this.profilerDisableLocalLights);
+  }
+
   public async forceWarmup(refPos: Vector3): Promise<void> {
     const scene = this.motor3d.getScene();
     if (!scene) return;
+
+    let actualPos = refPos;
+    if (actualPos.lengthSquared() < 0.001) {
+      actualPos = this.getReferencePosition('PLAYER');
+    }
 
     this.lightPool.initializePool(scene);
 
@@ -181,24 +202,14 @@ export class DynamicLightingSystem implements IUpdatable {
     const isEditorPure = this.context.mode() === GameMode.EDITOR || this.context.mode() === GameMode.EDITING_IN_GAME;
     const activeVirtuals = this.lightRegistry.getVirtualLights();
 
-    this.lightDistance.evaluateDistanceAndHysteresis(activeVirtuals, refPos, 0);
-
-    const selectedMesh = this.context.selectedNode() as AbstractMesh;
-    let selectedUid: string | null = null;
-    if (selectedMesh) {
-      if ((selectedMesh as any).metadata?.entityUid) selectedUid = (selectedMesh as any).metadata.entityUid;
-      else {
-        const ent = this.entityManager.getEntityByMesh(selectedMesh);
-        if (ent) selectedUid = ent.uid;
-      }
-    }
+    this.lightDistance.evaluateDistanceAndHysteresis(activeVirtuals, actualPos, 0);
 
     const candidates = activeVirtuals.filter(vl => vl.entity.light?.enabled !== false);
-    this.lightAllocation.allocatePoolSlots(candidates, refPos, Vector3.Zero(), 0, selectedUid);
+    this.lightAllocation.allocatePoolSlots(candidates, actualPos, Vector3.Zero(), 0, null);
 
     for (let i = 0; i < activeVirtuals.length; i++) {
       const vl = activeVirtuals[i];
-      vl.currentMultiplier = vl.targetMultiplier;
+      vl.currentMultiplier = Math.max(vl.targetMultiplier, 0.5); 
       vl._lastRenderedMultiplier = vl.currentMultiplier;
 
       const lightComp = vl.entity.light;
@@ -221,7 +232,7 @@ export class DynamicLightingSystem implements IUpdatable {
           this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, true);
           this.isFirstFrame = tempFirstFrame;
 
-          if (slot.sg && vl.isShadowInRange) {
+          if (slot.sg) {
             const lightComp = vl.entity.light;
             const lightRange = slot.type === 'directional' ? 50 : (lightComp?.range || 50);
             this.lightShadows.rebuildShadowRenderList(slot, vl.entity.uid, slot.light.position, lightRange);
@@ -231,7 +242,13 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    await this.materialSvc.prewarmMaterials(scene);
+    const warmupReport = await this.materialSvc.prewarmMaterials(scene);
+    this.profiler.recordTimelineEvent('SHADER', 'SHADER_WARMUP_COMPLETED', {
+      durationMs: warmupReport.durationMs,
+      compiledVariants: warmupReport.compiledVariants,
+      totalMaterials: warmupReport.totalMaterials,
+      success: warmupReport.success
+    });
   }
 
   public syncLightImmediate(entity: GameEntity, forceUpdate: boolean = false): void {
@@ -365,7 +382,6 @@ export class DynamicLightingSystem implements IUpdatable {
       const candidates = activeVirtuals.filter(vl => vl.entity.light?.enabled !== false);
       this.lightAllocation.allocatePoolSlots(candidates, refPos, moveDir, speed, selectedUid);
 
-      // Instrumentación de cambio de layout de slots en el pool
       const currentHash = this.lightPool.getAllSlots().map(s => `${s.type}_${s.index}:${s.assignedEntityUid || 'empty'}`).join('|');
       if (currentHash !== this.previousActiveSlotsHash) {
         this.profiler.recordTimelineEvent('LIGHT', 'LIGHT_LAYOUT_CHANGED', {

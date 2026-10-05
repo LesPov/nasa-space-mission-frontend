@@ -32,18 +32,24 @@ export class LightPoolService {
       pLight.intensity = 0; 
       pLight.diffuse = Color3.Black();
       pLight.specular = Color3.Black();
-      pLight.shadowEnabled = true; 
+      // Solo el slot maestro 0 proyecta sombras para evitar permutaciones de shader en WebGL
+      const hasPointShadow = (i === 0);
+      pLight.shadowEnabled = hasPointShadow; 
       pLight.shadowMinZ = 0.05;
       pLight.shadowMaxZ = 50.0;
       Tags.AddTagsTo(pLight, "system_element");
 
-      const pSg = new ShadowGenerator(512, pLight);
-      pSg.usePercentageCloserFiltering = true; 
-      pSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-      pSg.setDarkness(0.0); 
-      pSg.bias = 0.0003; 
-      pSg.normalBias = 0.0008; 
-      pSg.forceBackFacesOnly = false;
+      let pSg: ShadowGenerator | null = null;
+      if (hasPointShadow) {
+        pSg = new ShadowGenerator(512, pLight);
+        pSg.usePercentageCloserFiltering = true; 
+        pSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
+        pSg.setDarkness(0.0); 
+        pSg.bias = 0.0003; 
+        pSg.normalBias = 0.0008; 
+        pSg.forceBackFacesOnly = false;
+      }
+
       this.pointPool.push({ 
         index: i, 
         type: 'point', 
@@ -59,18 +65,24 @@ export class LightPoolService {
       sLight.intensity = 0; 
       sLight.diffuse = Color3.Black(); 
       sLight.specular = Color3.Black();
-      sLight.shadowEnabled = true; 
+      // Solo el slot maestro 0 de spots proyecta sombras
+      const hasSpotShadow = (i === 0);
+      sLight.shadowEnabled = hasSpotShadow; 
       sLight.shadowMinZ = 0.05;
       sLight.shadowMaxZ = 50.0;
       Tags.AddTagsTo(sLight, "system_element");
 
-      const sSg = new ShadowGenerator(1024, sLight);
-      sSg.usePercentageCloserFiltering = true; 
-      sSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-      sSg.setDarkness(0.0); 
-      sSg.bias = 0.0003; 
-      sSg.normalBias = 0.001; 
-      sSg.forceBackFacesOnly = false;
+      let sSg: ShadowGenerator | null = null;
+      if (hasSpotShadow) {
+        sSg = new ShadowGenerator(1024, sLight);
+        sSg.usePercentageCloserFiltering = true; 
+        sSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
+        sSg.setDarkness(0.0); 
+        sSg.bias = 0.0003; 
+        sSg.normalBias = 0.001; 
+        sSg.forceBackFacesOnly = false;
+      }
+
       this.spotPool.push({ 
         index: i, 
         type: 'spot', 

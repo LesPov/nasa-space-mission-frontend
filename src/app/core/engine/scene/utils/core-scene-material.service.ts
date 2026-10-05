@@ -1,12 +1,17 @@
-
-// file: src/app/core/engine/scene/utils/core-scene-material.service.ts
+ 
 import { Injectable } from '@angular/core';
-import { Color3, Texture, RawTexture, Scene, AbstractMesh, Material, MultiMaterial } from '@babylonjs/core';
+import { Color3, Texture, RawTexture, Scene, AbstractMesh, Material, MultiMaterial, Mesh } from '@babylonjs/core';
+
+export interface MaterialWarmupReport {
+  success: boolean;
+  totalMaterials: number;
+  compiledVariants: number;
+  failedCount: number;
+  durationMs: number;
+}
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneMaterialService {
-  // 10 luces simultáneas fijadas para que todos los slots del pool (3 Point + 3 Spot + 1 Dir + Ambiente)
-  // compilen un único variant uniforme en WebGL, eliminando las tormentas de compilación a 60 FPS
   public static readonly MAX_SIMULTANEOUS_LIGHTS = 10;
   
   private bwTextureCache = new Map<string, Texture>();
@@ -18,6 +23,14 @@ export class CoreSceneMaterialService {
       }
     });
     this.bwTextureCache.clear();
+  }
+
+  private isMaterialDisposed(mat: any): boolean {
+    if (!mat) return true;
+    if (typeof mat.isDisposed === 'function') {
+      return mat.isDisposed();
+    }
+    return mat.isDisposed === true || mat._isDisposed === true;
   }
 
   public asegurarMaterialUnico(mesh: AbstractMesh, uid: string): void {
@@ -239,52 +252,124 @@ export class CoreSceneMaterialService {
     }
   }
 
-  public async prewarmMaterials(scene: Scene, customMeshes?: AbstractMesh[]): Promise<void> {
-    if (!scene) return;
+  public isMaterialReadyForMesh(material: Material | null | undefined, mesh?: AbstractMesh | null): boolean {
+    if (!material || this.isMaterialDisposed(material)) return true;
+
+    if (material.getClassName() === 'MultiMaterial') {
+      const multi = material as MultiMaterial;
+      const subs = multi.subMaterials || [];
+      if (subs.length === 0) return true;
+      for (let i = 0; i < subs.length; i++) {
+        const sm = subs[i];
+        if (sm && !this.isMaterialReadyForMesh(sm, mesh)) return false;
+      }
+      return true;
+    }
+
+    if (mesh && !mesh.isDisposed()) {
+      const subMesh = mesh.subMeshes && mesh.subMeshes.length > 0 ? mesh.subMeshes[0] : null;
+      if (subMesh && typeof (material as any).isReadyForSubMesh === 'function') {
+        return (material as any).isReadyForSubMesh(mesh, subMesh, false);
+      }
+      if (typeof material.isReady === 'function') {
+        return material.isReady(mesh, false);
+      }
+    }
+
+    if (typeof (material as any).getEffect === 'function') {
+      const effect = (material as any).getEffect();
+      if (effect) {
+        return effect.isReady();
+      }
+    }
+
+    if (typeof material.isReady === 'function') {
+      return material.isReady(undefined, false);
+    }
+
+    return true;
+  }
+
+  public async prewarmMaterials(scene: Scene, customMeshes?: AbstractMesh[]): Promise<MaterialWarmupReport> {
+    const tStart = performance.now();
+    if (!scene) {
+      return { success: false, totalMaterials: 0, compiledVariants: 0, failedCount: 0, durationMs: 0 };
+    }
+
+    // Asegurar que las macros de niebla existan obligatoriamente durante el warm-up
+    const wasFogEnabled = scene.fogEnabled;
+    const prevFogMode = scene.fogMode;
+    scene.fogEnabled = true;
+    if (scene.fogMode === Scene.FOGMODE_NONE) {
+      scene.fogMode = Scene.FOGMODE_LINEAR;
+    }
 
     const meshes = customMeshes || scene.meshes;
-    const materialsToWarm = new Set<Material>();
+    const compileTasks: Array<{ mat: Material; mesh: AbstractMesh }> = [];
+    const seenPairs = new Set<string>();
+    const uniqueMaterials = new Set<Material>();
 
     for (let i = 0; i < meshes.length; i++) {
       const m = meshes[i];
-      if (!m || m.isDisposed()) continue;
-      if (m.material) {
-        if (m.material.getClassName() === 'MultiMaterial') {
-          const multi = m.material as MultiMaterial;
-          if (multi.subMaterials) {
-            for (let j = 0; j < multi.subMaterials.length; j++) {
-              const sm = multi.subMaterials[j];
-              if (sm) {
-                (sm as any).maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
-                materialsToWarm.add(sm);
-              }
-            }
+      if (!m || m.isDisposed() || !m.material) continue;
+
+      const mat = m.material;
+      const isSkinned = (m instanceof Mesh) && (m.skeleton !== null && m.skeleton !== undefined);
+      const meshKey = `${mat.uniqueId}_${isSkinned ? 'skinned' : 'static'}_${m.receiveShadows ? 'shadows' : 'noshadows'}`;
+
+      if (seenPairs.has(meshKey)) continue;
+      seenPairs.add(meshKey);
+
+      if (mat.getClassName() === 'MultiMaterial') {
+        const multi = mat as MultiMaterial;
+        const subs = multi.subMaterials || [];
+        for (let j = 0; j < subs.length; j++) {
+          const sm = subs[j];
+          if (sm && !this.isMaterialDisposed(sm)) {
+            (sm as any).maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+            uniqueMaterials.add(sm);
+            compileTasks.push({ mat: sm, mesh: m });
           }
-        } else {
-          (m.material as any).maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
-          materialsToWarm.add(m.material);
         }
+      } else {
+        (mat as any).maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+        uniqueMaterials.add(mat);
+        compileTasks.push({ mat, mesh: m });
       }
     }
 
-    const compilePromises: Promise<any>[] = [];
+    let compiledVariants = 0;
+    let failedCount = 0;
+    const MAX_PARALLEL_BATCH = 10;
+    const TASK_TIMEOUT_MS = 2500;
 
-    materialsToWarm.forEach(mat => {
-      const sampleMesh = meshes.find(m => 
-        m.material === mat || 
-        (m.material?.getClassName() === 'MultiMaterial' && (m.material as MultiMaterial).subMaterials?.includes(mat))
-      );
+    for (let i = 0; i < compileTasks.length; i += MAX_PARALLEL_BATCH) {
+      const batch = compileTasks.slice(i, i + MAX_PARALLEL_BATCH);
+      const batchPromises = batch.map(task => {
+        if (typeof (task.mat as any).forceCompilationAsync === 'function') {
+          const compilePromise = (task.mat as any).forceCompilationAsync(task.mesh).then(() => {
+            compiledVariants++;
+          }).catch(() => {
+            failedCount++;
+          });
 
-      if (sampleMesh && typeof (mat as any).forceCompilationAsync === 'function') {
-        compilePromises.push(
-          (mat as any).forceCompilationAsync(sampleMesh).catch(() => {})
-        );
-      }
-    });
+          const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, TASK_TIMEOUT_MS));
+          return Promise.race([compilePromise, timeoutPromise]);
+        }
+        return Promise.resolve();
+      });
 
-    if (compilePromises.length > 0) {
-      await Promise.all(compilePromises);
+      await Promise.all(batchPromises);
     }
+
+    const duration = performance.now() - tStart;
+    return {
+      success: failedCount === 0,
+      totalMaterials: uniqueMaterials.size,
+      compiledVariants,
+      failedCount,
+      durationMs: parseFloat(duration.toFixed(2))
+    };
   }
 
   private async getOrCreateBwTexture(originalTexture: Texture, scene: Scene): Promise<Texture> {

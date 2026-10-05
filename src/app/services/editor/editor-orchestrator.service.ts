@@ -1,5 +1,4 @@
-// src/app/services/editor/editor-orchestrator.service.ts
-
+// file: src/app/services/editor/editor-orchestrator.service.ts
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AbstractMesh, Tags } from '@babylonjs/core';
@@ -202,7 +201,6 @@ export class EditorOrchestratorService {
         }
 
         this.editorSvc.setEscenaActualData(res);
-        
         this.cargandoTexto.set('Preparando modelos, jerarquías, luces y sombras...');
         
         this.motor3dSvc.forceResize(); 
@@ -327,7 +325,6 @@ export class EditorOrchestratorService {
         this.cinematicSvc.deletedCinematics = [];
 
         this.estadoGuardado.set('Guardado automático ✓');
-        
         this.liveSync.broadcastMapData(mapData);
 
         if (!silencioso) alert('Plataforma guardada exitosamente');
@@ -376,15 +373,15 @@ export class EditorOrchestratorService {
 
   public async iniciarModoPrueba(vista: CameraViewMode, skipIntro: boolean = false, roleUid?: string): Promise<void> {
     if (!this.isPlayable()) return;
-    
+
     this.playbackManager.stop();
     this.guardarMapaEnBD(true);
-    
+
     this.cargandoEscena.set(true);
     this.cargandoTexto.set('Iniciando Runtime Ready...');
-    
+
     this.liveLifecycle.captureEditorState();
-    
+
     if (!skipIntro) {
       if (roleUid) {
         this.gameState.setPlayerRole(roleUid);
@@ -393,28 +390,35 @@ export class EditorOrchestratorService {
     }
 
     try {
-        await this.playModeSvc.prepararEscenaParaTest(vista, (msg) => this.cargandoTexto.set(msg));
+      // 1. Preparar jugador, spawn, streaming espacial, luces y shaders relevantes
+      await this.playModeSvc.prepararEscenaParaTest(vista, (msg, pct) => {
+        this.cargandoTexto.set(msg);
+      });
 
-        if (skipIntro) {
-            await this.playModeSvc.estabilizarEntornoVisual(vista);
-            await this.playModeSvc.finalizarEntradaTestLive(vista, true);
-        } else {
-            this.cargandoTexto.set('Desplazando cámara a posición inicial...');
-            await this.playModeSvc.iniciarVueloCamara(vista);
-            
-            this.cargandoTexto.set('Estabilizando iluminación y sombras...');
-            await this.playModeSvc.estabilizarEntornoVisual(vista);
+      if (skipIntro) {
+        await this.playModeSvc.estabilizarEntornoVisual(vista);
+        await this.playModeSvc.finalizarEntradaTestLive(vista, true);
+      } else {
+        this.cargandoTexto.set('Desplazando cámara a posición inicial...');
+        await this.playModeSvc.iniciarVueloCamara(vista);
 
-            await this.playModeSvc.finalizarEntradaTestLive(vista, false);
-        }
+        // 2. Verificación de estabilidad adaptativa (inmediata en 5-6 frames limpios)
+        this.cargandoTexto.set('Estabilizando iluminación y sombras...');
+        await this.playModeSvc.estabilizarEntornoVisual(vista, (msg, pct) => {
+          this.cargandoTexto.set(msg);
+        });
 
-        this.cargandoEscena.set(false);
-        this.revisarSiEsJugable();
+        // 3. Activación de gameplay y entrega instantánea de controles sin demoras
+        await this.playModeSvc.finalizarEntradaTestLive(vista, false);
+      }
 
-    } catch(e) {
-        console.error(e);
-        this.cargandoEscena.set(false);
-        this.detenerModoPrueba();
+      this.cargandoEscena.set(false);
+      this.revisarSiEsJugable();
+
+    } catch (e) {
+      console.error('[EditorOrchestrator] Error en transición:', e);
+      this.cargandoEscena.set(false);
+      this.detenerModoPrueba();
     }
   }
 

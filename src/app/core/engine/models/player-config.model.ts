@@ -1,18 +1,18 @@
-
+// file: src/app/core/engine/models/player-config.model.ts
 export type AnimBinding = string | string[] | null;
 
 export interface GameCondition {
   type: 'var_eq' | 'var_neq' | 'has_item' | 'missing_item' | 'role_eq';
   key: string;
   value?: string | number | boolean;
-  scope?: string; // 🔥 NUEVO FASE 1
+  scope?: string;
 }
 
 export interface GameStateMutation {
   type: 'set_var' | 'add_item' | 'remove_item';
   key: string;
   value?: string | number | boolean;
-  scope?: string; // 🔥 NUEVO FASE 1
+  scope?: string;
 }
 
 export type PlayerActionKey =
@@ -149,7 +149,6 @@ export interface PlayerFogConfig {
   offsetXTPS?: number; offsetYTPS?: number; offsetZTPS?: number;
 }
 
-// 🔥 SEPARACIÓN ARQUITECTÓNICA: Culling Independiente de la Niebla
 export interface PlayerCullingConfig {
   enabled: boolean;
   cullDistance: number;
@@ -167,7 +166,7 @@ export interface PlayerRuntimeConfig {
   sequences: PlayerClipSequence[];
   debug: PlayerDebugConfig;
   fog: PlayerFogConfig;
-  culling: PlayerCullingConfig; // 🔥 Nuevo nodo de configuración
+  culling: PlayerCullingConfig;
 }
 
 export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
@@ -201,7 +200,6 @@ export const DEFAULT_PLAYER_CONFIG: PlayerRuntimeConfig = {
     levelsFpsBW: structuredClone(defaultFogLevels),
     levelsTpsBW: structuredClone(defaultFogLevels)
   },
-  // 🔥 Distancia de render global por defecto
   culling: { enabled: true, cullDistance: 150, fadeMargin: 30 }
 };
 
@@ -228,7 +226,6 @@ export function mergePlayerConfig(partial?: Partial<PlayerRuntimeConfig> | null)
     sequences: Array.isArray(partial.sequences) ? structuredClone(partial.sequences) : [],
     debug: { ...base.debug, ...(partial.debug || {}) },
     fog: { ...base.fog, ...(partial.fog || {}) },
-    // 🔥 Aseguramos la existencia e inmutabilidad del nuevo nodo
     culling: { ...base.culling, ...(partial.culling || {}) }
   };
 }
@@ -244,13 +241,25 @@ function generarIdCorto(): string {
 }
 
 export function createSequenceStep(action: PlayerActionKey = 'idle'): PlayerSequenceStep {
-  const isCinematic = action !== 'idle' && action !== 'walk' && action !== 'run' && action !== 'fall';
+  // Solo se bloquea el input por defecto en acciones de animación física explícita del personaje
+  const isCharacterPhysicalAction = ['climbUp', 'climbFinish', 'vault', 'stepUp', 'recover'].includes(action);
   return {
     id: generarIdCorto(),
-    action, clipOverride: null, durationMs: 1000, speedRatio: 1, blend: 0.08,
-    loop: !isCinematic, allowMovement: !isCinematic, lockInput: isCinematic,
-    offsetY: 0, offsetForward: 0, procX: 0, procY: 0, procZ: 0,
-    conditions: [], stateMutations: []
+    action,
+    clipOverride: null,
+    durationMs: 1000,
+    speedRatio: 1,
+    blend: 0.08,
+    loop: !isCharacterPhysicalAction,
+    allowMovement: !isCharacterPhysicalAction,
+    lockInput: isCharacterPhysicalAction, // Jamás bloquea input en luces ni props
+    offsetY: 0,
+    offsetForward: 0,
+    procX: 0,
+    procY: 0,
+    procZ: 0,
+    conditions: [],
+    stateMutations: []
   };
 }
 

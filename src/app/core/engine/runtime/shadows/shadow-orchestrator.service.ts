@@ -36,6 +36,7 @@ export class ShadowOrchestratorService implements IUpdatable {
 
   public profilerDisableShadows = false;
   private forceRebuild = false;
+  private rebuildCooldownTimer = 0;
   private isEditorShadowsFrozen = false;
 
   constructor() {
@@ -143,15 +144,19 @@ export class ShadowOrchestratorService implements IUpdatable {
     const scene = this.motor3d.getScene();
     if (!scene || !this.mainSun || !this.shadowGenerator) return;
 
-    if (this.forceRebuild) {
+    if (this.rebuildCooldownTimer > 0) {
+      this.rebuildCooldownTimer -= dtMs;
+    }
+
+    if (this.forceRebuild && this.rebuildCooldownTimer <= 0) {
       this.asignarObjetosASombrasDeLuces();
       this.forceRebuild = false;
+      this.rebuildCooldownTimer = 150; // Throttling estricto de 150ms para evitar tormenta de rebuilds
     }
 
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
-    // Umbral de movimiento estricto (10m en editor, 4m en juego) para no mover el sol cada frame
     const moveThresholdSq = isEditor ? 100 : 16;
     const refPos = this.getReferencePosition();
 

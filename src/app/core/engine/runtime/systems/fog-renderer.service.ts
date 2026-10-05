@@ -1,18 +1,21 @@
-
 // file: src/app/core/engine/runtime/systems/fog-renderer.service.ts
-import { Injectable, inject } from '@angular/core';
+import { Injectable } from '@angular/core';
 import { AbstractMesh, Color3, DynamicTexture, Engine, Mesh, MeshBuilder, Scene, StandardMaterial, TransformNode, Tags } from '@babylonjs/core';
 import { FogLevel } from '../../models/player-config.model';
-import { AdaptiveQualitySystem } from './adaptive-quality.system';
- 
+
 class FogWallState { 
-  dist = 500; height = 10; alpha = 0; thickness = 10; offsetY = 0; r = 0; g = 0; b = 0;
+  dist = 150; 
+  height = 25; 
+  alpha = 1.0; 
+  thickness = 30; 
+  offsetY = 0; 
+  r = 0; 
+  g = 0; 
+  b = 0;
 }
 
 @Injectable({ providedIn: 'root' })
 export class FogRendererService {
-  private adaptiveQuality = inject(AdaptiveQualitySystem);
-
   private fogWalls: TransformNode[] = []; 
   private fogMats: StandardMaterial[][] = []; 
   private wallStates: FogWallState[] = []; 
@@ -22,7 +25,7 @@ export class FogRendererService {
   private tColorCache = new Color3(0, 0, 0);
 
   constructor() { 
-    for(let i = 0; i < 3; i++) {
+    for (let i = 0; i < 3; i++) {
       this.wallStates.push(new FogWallState()); 
     }
   }
@@ -39,19 +42,22 @@ export class FogRendererService {
 
   private getGradientTexture(scene: Scene): DynamicTexture { 
     if (this.gradTex && this.currentScene === scene) return this.gradTex;
-    if (this.gradTex) { try { this.gradTex.dispose(); } catch(e){} }
+    if (this.gradTex) { 
+      try { this.gradTex.dispose(); } catch (e) {} 
+    }
     this.currentScene = scene;
 
     const tex = new DynamicTexture("sharedFogGradTex", { width: 2, height: 256 }, scene, false);
     tex.hasAlpha = true;
     const ctx = tex.getContext();
 
+    // Gradiente continuo con cobertura total en la base para evitar huecos en el horizonte bajo
     const grad = ctx.createLinearGradient(0, 0, 0, 256);
-    grad.addColorStop(0.00, "rgba(255,255,255,0.0)"); 
-    grad.addColorStop(0.30, "rgba(255,255,255,0.1)"); 
-    grad.addColorStop(0.60, "rgba(255,255,255,0.6)"); 
-    grad.addColorStop(0.85, "rgba(255,255,255,1.0)"); 
-    grad.addColorStop(0.96, "rgba(255,255,255,1.0)"); 
+    grad.addColorStop(0.00, "rgba(255,255,255,0.75)"); 
+    grad.addColorStop(0.15, "rgba(255,255,255,0.95)"); 
+    grad.addColorStop(0.50, "rgba(255,255,255,1.0)"); 
+    grad.addColorStop(0.85, "rgba(255,255,255,0.85)"); 
+    grad.addColorStop(0.98, "rgba(255,255,255,0.25)"); 
     grad.addColorStop(1.00, "rgba(255,255,255,0.0)"); 
 
     ctx.fillStyle = grad;
@@ -75,10 +81,14 @@ export class FogRendererService {
   }
 
   public dispose(): void {
-    this.fogWalls.forEach(w => { if (w && !w.isDisposed()) w.dispose(); });
+    this.fogWalls.forEach(w => { 
+      if (w && !w.isDisposed()) w.dispose(); 
+    });
     this.fogWalls = [];
     this.fogMats = [];
-    if (this.gradTex) { try { this.gradTex.dispose(); } catch(e){} }
+    if (this.gradTex) { 
+      try { this.gradTex.dispose(); } catch (e) {} 
+    }
     this.gradTex = null;
     this.currentScene = null;
   }
@@ -102,24 +112,37 @@ export class FogRendererService {
     }
 
     if (this.fogWalls[0] && (this.fogWalls[0].getScene() !== scene || this.fogWalls[0].isDisposed() || this.fogWalls[0].getChildMeshes().length === 0)) {
-      this.fogWalls.forEach(w => { if(!w.isDisposed()) w.dispose(); });
+      this.fogWalls.forEach(w => { if (!w.isDisposed()) w.dispose(); });
       this.fogWalls = [];
       this.fogMats = [];
     }
 
-    const tier = this.adaptiveQuality.currentQualityTier;
-    const maxDrawLayers = tier === 'HIGH' ? 6 : (tier === 'MEDIUM' ? 3 : 2); // Reducido drásticamente de 12 para evitar saturación de mezcla alfa
+    // Centro espacial tomado de coordenadas absolutas
+    let anchorX = 0;
+    let anchorY = 0;
+    let anchorZ = 0;
 
-    const anchorX = targetPlayer ? targetPlayer.position.x : 0;
-    const anchorY = targetPlayer ? targetPlayer.position.y : 0;
-    const anchorZ = targetPlayer ? targetPlayer.position.z : 0;
+    if (targetPlayer && !targetPlayer.isDisposed()) {
+      const absPos = targetPlayer.getAbsolutePosition();
+      anchorX = absPos.x;
+      anchorY = absPos.y;
+      anchorZ = absPos.z;
+    } else {
+      const activeCam = scene.activeCamera;
+      if (activeCam) {
+        anchorX = activeCam.globalPosition.x;
+        anchorY = activeCam.globalPosition.y - 1.6;
+        anchorZ = activeCam.globalPosition.z;
+      }
+    }
+
+    const capasDeGrosor = 6;
 
     for (let i = 0; i < 3; i++) {
       if (!this.fogWalls[i]) {
         this.fogWalls[i] = new TransformNode("sharedFogWallGroup_" + i, scene);
         this.fogMats[i] = []; 
         
-        const capasDeGrosor = 6; 
         for (let j = capasDeGrosor - 1; j >= 0; j--) {
           const mat = new StandardMaterial(`sharedFogMat_${i}_${j}`, scene);
           mat.disableLighting = true; 
@@ -130,7 +153,11 @@ export class FogRendererService {
           this.fogMats[i][j] = mat; 
 
           const shell = MeshBuilder.CreateCylinder(`sharedFogShell_${i}_${j}`, { 
-            diameter: 1, height: 1, sideOrientation: Mesh.DOUBLESIDE, cap: Mesh.NO_CAP, tessellation: 20 
+            diameter: 1, 
+            height: 1, 
+            sideOrientation: Mesh.DOUBLESIDE, 
+            cap: Mesh.NO_CAP, 
+            tessellation: 32 
           }, scene);
           
           shell.parent = this.fogWalls[i];
@@ -148,20 +175,19 @@ export class FogRendererService {
       const wallGroup = this.fogWalls[i];
       const state = this.wallStates[i];
 
-      let tDist = 50000;
-      let tHeight = 10;
-      let tAlpha = 0;
-      let tThick = 10;
+      let tDist = 150;
+      let tHeight = 25;
+      let tAlpha = 1.0;
+      let tThick = 30;
       let tOffsetY = 0; 
       
       this.tColorCache.copyFrom(targetColor);
 
       if (useFog && activeLevels && activeLevels[i]) {
-        // Garantizar que ningún anillo de niebla se dibuje a menos de 35 metros del jugador
-        tDist = Math.max(35.0, activeLevels[i].distance);
-        tHeight = Math.max(0.1, activeLevels[i].height);
+        tDist = Math.max(15.0, activeLevels[i].distance);
+        tHeight = Math.max(2.0, activeLevels[i].height);
         tAlpha = Math.max(0, Math.min(100, activeLevels[i].opacity)) / 100;
-        tThick = Math.max(0.1, activeLevels[i].thickness ?? 10);
+        tThick = Math.max(1.0, activeLevels[i].thickness ?? 15);
         tOffsetY = activeLevels[i].offsetY ?? 0;
         if (activeLevels[i].color) {
           this.hexToColor3(activeLevels[i].color!, this.tColorCache);
@@ -169,8 +195,14 @@ export class FogRendererService {
       }
 
       if (firstFrame) {
-        state.dist = tDist; state.height = tHeight; state.alpha = tAlpha; state.thickness = tThick; state.offsetY = tOffsetY;
-        state.r = this.tColorCache.r; state.g = this.tColorCache.g; state.b = this.tColorCache.b;
+        state.dist = tDist; 
+        state.height = tHeight; 
+        state.alpha = tAlpha; 
+        state.thickness = tThick; 
+        state.offsetY = tOffsetY;
+        state.r = this.tColorCache.r; 
+        state.g = this.tColorCache.g; 
+        state.b = this.tColorCache.b;
       } else {
         state.dist += (tDist - state.dist) * lerpSpeed;
         state.height += (tHeight - state.height) * lerpSpeed;
@@ -190,16 +222,12 @@ export class FogRendererService {
       const halfThick = state.thickness / 2;
       const meshes = wallGroup.getChildMeshes();
 
-      for (let j = 0; j < 6; j++) {
+      // Renderizado estable de todas las capas artísticas sin interferencia de adaptabilidad
+      for (let j = 0; j < capasDeGrosor; j++) {
         const shell = meshes.find(m => m.name === `sharedFogShell_${i}_${j}`);
         if (!shell) continue;
 
-        if (j >= maxDrawLayers) {
-          if (shell.isVisible) shell.isVisible = false;
-          continue;
-        }
-
-        const offsetNormalized = -1 + (j * (2 / 5));
+        const offsetNormalized = -1 + (j * (2 / Math.max(1, capasDeGrosor - 1)));
         const targetRadius = curDist + (offsetNormalized * halfThick);
         const localScaleX = targetRadius / curDist;
         
@@ -208,7 +236,7 @@ export class FogRendererService {
 
         const mat = this.fogMats[i][j];
         mat.emissiveColor.set(state.r, state.g, state.b);
-        mat.alpha = state.alpha * 0.35; // Factor suavizado que no produce opacidad gris sólida
+        mat.alpha = state.alpha * 0.45;
 
         shell.isVisible = isVisible && mat.alpha > 0.005;
       }

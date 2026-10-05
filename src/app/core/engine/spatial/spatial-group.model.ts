@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/spatial/spatial-group.model.ts
 import { Vector3 } from '@babylonjs/core';
 
@@ -17,9 +16,9 @@ export interface SpatialGroupConfig {
 }
 
 export const DEFAULT_SPATIAL_GROUP_CONFIG: SpatialGroupConfig = {
-  preloadMargin: 70.0,         // Ampliado para pasillos de 60m
-  activeMargin: 40.0,          // Cubre el volumen completo del modelo antes de llegar al centro
-  retainDistance: 25.0,        // Histéresis contra oscilaciones en umbrales
+  preloadMargin: 150.0,        // Ampliado para cubrir todo el horizonte visible sin pop-in
+  activeMargin: 90.0,          // Mantiene los modelos y pasillos conectados completamente activos a 90m
+  retainDistance: 35.0,        // Histéresis sólida contra oscilaciones en umbrales
   lookAheadMultiplier: 1.8
 };
 

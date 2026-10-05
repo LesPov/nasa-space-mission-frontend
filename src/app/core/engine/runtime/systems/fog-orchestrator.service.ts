@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/fog-orchestrator.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Scene, Color3, AbstractMesh } from '@babylonjs/core';
@@ -26,8 +25,11 @@ export class FogOrchestratorService implements IUpdatable {
 
   private firstFrame = true;
 
-  private curR = 0; private curG = 0; private curB = 0;
-  private curStart = 500000; private curEnd = 500000;
+  private curR = 0; 
+  private curG = 0; 
+  private curB = 0;
+  private curStart = 500000; 
+  private curEnd = 500000;
 
   private targetColorObj = new Color3(0, 0, 0);
 
@@ -87,28 +89,29 @@ export class FogOrchestratorService implements IUpdatable {
 
     let targetEntity = this.context.activePlayerEntity();
 
-    if (!isPlaying && !targetEntity) {
+    if (!targetEntity) {
       const entities = this.entityManager.getAllEntities();
       for (let i = 0; i < entities.length; i++) {
-        if (entities[i].rol === 'spawn_point' || entities[i].rol === 'npc') {
+        if (entities[i].rol === 'player' || entities[i].hasComponent('characterConfig') || entities[i].rol === 'spawn_point') {
           targetEntity = entities[i];
           break;
         }
       }
     }
 
-    const targetPlayer = targetEntity?.view as AbstractMesh || null;
+    const targetPlayer = (targetEntity?.view as AbstractMesh) || null;
     let shadowLimit = 500000;
 
     const isFPS = this.context.cameraView() === 'FPS';
-    const lerpSpeed = isPlaying ? 0.35 : 0.035;
+    const lerpSpeed = isPlaying ? 0.35 : 0.05;
 
     let targetR = 0, targetG = 0, targetB = 0;
     let useFog = false;
     let activeLevels: FogLevel[] = [];
 
+    // Determinación determinista sin importar cuántos objetos haya en la escena
     if (targetEntity?.playerConfig?.fog?.enabled) {
-      if (isPlaying || (mode === GameMode.EDITING_IN_GAME && !isFogDisabledTemp)) {
+      if (isPlaying || mode === GameMode.EDITING_IN_GAME || mode === GameMode.TEST_LIVE) {
         useFog = true;
       }
     }
@@ -126,13 +129,12 @@ export class FogOrchestratorService implements IUpdatable {
         ? (isFPS ? fog.renderDistanceFpsBW : fog.renderDistanceTpsBW) 
         : (isFPS ? fog.renderDistanceFPS : fog.renderDistanceTPS);
 
-      // Normalización defensiva: La niebla nunca ahoga a menos de 50 metros del jugador
-      const renderMaxZ = Math.max(50.0, Number(rawDist) || 150);
+      const renderMaxZ = Math.max(60.0, Number(rawDist) || 150.0);
       shadowLimit = renderMaxZ;
       activeLevels = isBW ? (isFPS ? fog.levelsFpsBW : fog.levelsTpsBW) : (isFPS ? fog.levelsFPS : fog.levelsTPS);
 
-      // La niebla lineal comienza al 60% de la distancia (mínimo 30m de visión 100% nítida)
-      this.curStart = Math.max(30.0, renderMaxZ * 0.6);
+      // Fusión lineal exacta: el shader de niebla cubre los objetos hasta fundirlos completamente al llegar al corte
+      this.curStart = renderMaxZ * 0.35;
       this.curEnd = renderMaxZ;
     } else {
       targetR = this.targetColorObj.r;
@@ -143,7 +145,9 @@ export class FogOrchestratorService implements IUpdatable {
     }
 
     if (this.firstFrame) {
-      this.curR = targetR; this.curG = targetG; this.curB = targetB;
+      this.curR = targetR; 
+      this.curG = targetG; 
+      this.curB = targetB;
     } else {
       this.curR += (targetR - this.curR) * lerpSpeed;
       this.curG += (targetG - this.curG) * lerpSpeed;

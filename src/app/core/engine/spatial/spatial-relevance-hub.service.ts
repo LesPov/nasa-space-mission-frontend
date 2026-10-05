@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/spatial/spatial-relevance-hub.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { Vector3, AbstractMesh, Tags } from '@babylonjs/core';
@@ -162,7 +161,7 @@ export class SpatialRelevanceHubService implements IUpdatable {
 
     mesh.computeWorldMatrix(true);
     const bounds = mesh.getHierarchyBoundingVectors(true, (m: AbstractMesh) => {
-      return !Tags.MatchesQuery(m, 'system_element || editor_only || proxy_collider || light_visual || debug_element');
+      return !Tags.MatchesQuery(m, 'system_element || editor_only || proxy_collider || light_visual || debug_element || invisible_floor');
     });
 
     if (!Number.isFinite(bounds.min.x) || !Number.isFinite(bounds.max.x) || bounds.min.x > bounds.max.x) {
@@ -229,6 +228,7 @@ export class SpatialRelevanceHubService implements IUpdatable {
           this.computeEntityBounds(record);
         }
 
+        // Distancia euclidiana exacta a la superficie del AABB (0 si el player está dentro de la caja)
         const cx = Math.max(record.minWorld.x, Math.min(this.currentRefPos.x, record.maxWorld.x));
         const cy = Math.max(record.minWorld.y, Math.min(this.currentRefPos.y, record.maxWorld.y));
         const cz = Math.max(record.minWorld.z, Math.min(this.currentRefPos.z, record.maxWorld.z));

@@ -101,7 +101,6 @@ export class GameSession {
   public start(playerEntity: GameEntity, view: CameraViewMode): void {
     this.context.startGameSession(playerEntity, view);
     
-    // Asegurar que el jugador comience con movimiento 100% libre
     playerEntity.movementAuthority = 'GAMEPLAY';
     if (playerEntity.playerRuntime) {
       playerEntity.playerRuntime.intentions = { 
@@ -152,19 +151,12 @@ export class GameSession {
       }
     });
 
-    if (playerEntity && playerEntity.view) {
-      this.localRendering.reconcileAllEntitiesImmediate(playerEntity.view.getAbsolutePosition());
-    } else {
-      this.localRendering.reconcileAllEntitiesImmediate();
-    }
-
     const mode = this.context.mode();
     if (mode === GameMode.FINAL_USER || mode === GameMode.PREVIEW_ADMIN) {
       this.layoutSvc.mostrarMenu();
       this.inputSvc.disable();
       this.interactionSvc.disable();
     } else {
-      // Habilitar controles de inmediato en Test Live
       this.inputSvc.start();
       this.inputSvc.enable();
       this.interactionSvc.enable();
@@ -172,13 +164,11 @@ export class GameSession {
 
     this.cameraSvc.resetearTransiciones();
     
-    // Iniciar secuencias con autoPlay (ej: luces que parpadean) SIN bloquear al jugador
     const allEntities = this.entityManager.getAllEntities();
     for (const entity of allEntities) {
       if (entity.characterConfig) {
         this.playerAnimationSvc.sincronizarAnimaciones(this.motor3dSvc.getScene(), entity);
         
-        // Solo autoiniciar secuencia en personajes si NO es el jugador activo
         if (entity.uid !== playerEntity.uid) {
           const autoSeq = entity.playerConfig?.sequences.find((s: any) => s.autoPlay);
           if (autoSeq) {
@@ -190,7 +180,6 @@ export class GameSession {
           this.playerAnimationSvc.reproducirIdle(entity);
         }
       } else if (entity.playerConfig?.sequences) {
-        // Objetos estáticos, luces y pantallas arrancan sus secuencias normalmente
         const autoSeq = entity.playerConfig.sequences.find((s: any) => s.autoPlay);
         if (autoSeq) {
           this.sequenceSvc.iniciarSecuenciaEnJuego(autoSeq.id, entity);

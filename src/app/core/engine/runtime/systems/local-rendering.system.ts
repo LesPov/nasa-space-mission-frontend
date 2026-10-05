@@ -32,6 +32,7 @@ export interface CullingSystemMetrics {
   restoringObjects: number;
   shadowProtectedObjects: number;
   smoothedPlayerSpeed: number;
+  queuedForStreamingCount: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -69,7 +70,8 @@ export class LocalRenderingSystem implements IUpdatable {
       hardCulledObjects: this._hardCulledCount,
       restoringObjects: this._restoringCount,
       shadowProtectedObjects: this._shadowProtectedCount,
-      smoothedPlayerSpeed: parseFloat(this.smoothedSpeed.toFixed(2))
+      smoothedPlayerSpeed: parseFloat(this.smoothedSpeed.toFixed(2)),
+      queuedForStreamingCount: 0
     };
   }
 
@@ -80,7 +82,7 @@ export class LocalRenderingSystem implements IUpdatable {
 
       const collectRenderable = (mesh: AbstractMesh) => {
         if (!mesh || mesh.isDisposed()) return;
-        if (Tags.MatchesQuery(mesh, 'proxy_collider || debug_element || editor_only || light_visual || system_element')) {
+        if (Tags.MatchesQuery(mesh, 'proxy_collider || debug_element || editor_only || light_visual || system_element || fog_element || invisible_floor')) {
           return;
         }
 
@@ -111,37 +113,22 @@ export class LocalRenderingSystem implements IUpdatable {
     return cached;
   }
 
+  /**
+   * Elementos que forman la estructura base del nivel (pisos, terrenos, límites del mundo).
+   * Estos elementos nunca deben apagarse repentinamente debajo del jugador.
+   */
   public isStructuralEntity(e: GameEntity): boolean {
     if (e.visual?.disableCulling) return true;
-    if (e.type === 'plane' || e.name.toLowerCase().includes('piso') || e.name.toLowerCase().includes('suelo')) return true;
-    if (
-      e.type === 'model' &&
-      (e.name.toLowerCase().includes('pasillo') ||
-        e.name.toLowerCase().includes('corridor') ||
-        e.name.toLowerCase().includes('room') ||
-        e.name.toLowerCase().includes('sala') ||
-        e.name.toLowerCase().includes('edificio') ||
-        e.name.toLowerCase().includes('building') ||
-        e.name.toLowerCase().includes('base') ||
-        e.name.toLowerCase().includes('structure') ||
-        e.name.toLowerCase().includes('wall') ||
-        e.name.toLowerCase().includes('pared'))
-    ) {
+    const nameL = e.name.toLowerCase();
+    if (nameL.includes('sueloinvisible') || Tags.MatchesQuery(e.view, 'invisible_floor')) return true;
+    if (e.type === 'plane' || nameL.includes('piso') || nameL.includes('suelo') || nameL.includes('ground') || nameL.includes('floor')) {
       return true;
     }
-
-    const sx = Math.abs(e.transform.scale.x);
-    const sz = Math.abs(e.transform.scale.z);
-    if (sx >= 8.0 || sz >= 8.0) return true;
-
-    const rec = this.spatialHub.getRecord(e.uid);
-    if (rec && rec.boundingRadius > 10.0) return true;
-
     return false;
   }
 
   private isEligibleForHardCull(e: GameEntity): boolean {
-    if (e.isPersistent || e.rol === 'player' || e.rol === 'npc' || e.characterConfig || e.rol === 'spawn_point') return false;
+    if (e.isPersistent || e.rol === 'player' || e.characterConfig || e.rol === 'spawn_point') return false;
     if (e.autoAnim?.enabled) return false;
     if (e.movementAuthority !== 'GAMEPLAY') return false;
     if (e.type === 'trigger' || e.type === 'trigger_compuesto') return false;
@@ -183,7 +170,7 @@ export class LocalRenderingSystem implements IUpdatable {
         const cachedMeshes = this.getCachedMeshes(e, mesh);
         for (let m = 0; m < cachedMeshes.length; m++) {
           const c = cachedMeshes[m];
-          if (!Tags.MatchesQuery(c, 'proxy_collider || debug_element || editor_only || light_visual')) {
+          if (!Tags.MatchesQuery(c, 'proxy_collider || debug_element || editor_only || light_visual || fog_element')) {
             c.isVisible = true;
             c.visibility = 1.0;
           }
@@ -209,20 +196,23 @@ export class LocalRenderingSystem implements IUpdatable {
       playerEntity = entities.find(e => e.rol === 'player' || e.characterConfig) || null;
     }
 
-    const cullingConfig = playerEntity?.playerConfig?.culling || { enabled: true, cullDistance: 160, fadeMargin: 30 };
+    const cullingConfig = playerEntity?.playerConfig?.culling || { enabled: true, cullDistance: 160, fadeMargin: 50 };
     if (!cullingConfig.enabled) {
       this.stop();
       return;
     }
 
     const origin = explicitOrigin || (playerEntity?.view ? playerEntity.view.getAbsolutePosition() : Vector3.Zero());
+    this.lastPlayerPos.copyFrom(origin);
     this.spatialGroups.updateGroups(origin, Vector3.Zero());
 
     const cullDistance = Math.max(60, Number(cullingConfig.cullDistance) || 160);
-    const fadeMargin = Math.min(cullDistance - 1, Math.max(1, Number(cullingConfig.fadeMargin) || 30));
+    const fadeMargin = Math.min(cullDistance - 1, Math.max(1, Number(cullingConfig.fadeMargin) || 50));
     const fadeStartDist = Math.max(0, cullDistance - fadeMargin);
+    const criticalRadius = 55.0; 
 
     this.resetCounters();
+    const now = performance.now();
 
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
@@ -238,69 +228,73 @@ export class LocalRenderingSystem implements IUpdatable {
       const isStructural = this.isStructuralEntity(e);
       const cachedMeshes = this.getCachedMeshes(e, mesh);
 
-      if (isStructural) {
+      if (isStructural || !this.isEligibleForHardCull(e)) {
         e.isCulled = false;
         mesh.setEnabled(true);
         mesh.isVisible = true;
         this.applyVisibilityToMeshes(cachedMeshes, 1.0);
-        this.renderStates.set(e.uid, { state: 'VISIBLE', visibility: 1.0, targetVisibility: 1.0, isShadowProtected: false, isStructural: true, lastStateChangeTime: performance.now(), flapCounter: 0 });
+        this.renderStates.set(e.uid, { 
+          state: 'VISIBLE', 
+          visibility: 1.0, 
+          targetVisibility: 1.0, 
+          isShadowProtected: false, 
+          isStructural, 
+          lastStateChangeTime: now, 
+          flapCounter: 0 
+        });
         this._visibleCount++;
         continue;
       }
 
-      if (!this.isEligibleForHardCull(e)) {
+      const effectiveDist = this.spatialHub.getDistanceToPlayer(e.uid);
+
+      if (effectiveDist <= criticalRadius) {
         e.isCulled = false;
         mesh.setEnabled(true);
         mesh.isVisible = true;
         this.applyVisibilityToMeshes(cachedMeshes, 1.0);
-        this.renderStates.set(e.uid, { state: 'VISIBLE', visibility: 1.0, targetVisibility: 1.0, isShadowProtected: false, isStructural, lastStateChangeTime: performance.now(), flapCounter: 0 });
+        this.renderStates.set(e.uid, { 
+          state: 'VISIBLE', 
+          visibility: 1.0, 
+          targetVisibility: 1.0, 
+          isShadowProtected: false, 
+          isStructural: false, 
+          lastStateChangeTime: now, 
+          flapCounter: 0 
+        });
         this._visibleCount++;
-        continue;
-      }
-
-      const group = this.spatialGroups.getGroupForEntity(e.uid);
-      if (group) {
-        if (group.state === 'ACTIVE' || group.state === 'PREPARED' || group.state === 'RETAINED') {
-          e.isCulled = false;
-          mesh.setEnabled(true);
-          mesh.isVisible = true;
-          this.applyVisibilityToMeshes(cachedMeshes, 1.0);
-          this.renderStates.set(e.uid, { state: 'VISIBLE', visibility: 1.0, targetVisibility: 1.0, isShadowProtected: false, isStructural, lastStateChangeTime: performance.now(), flapCounter: 0 });
-          this._visibleCount++;
-          continue;
-        }
-      }
-
-      const distToCenter = this.spatialHub.getDistanceToPlayer(e.uid);
-      const rec = this.spatialHub.getRecord(e.uid);
-      const radius = rec ? rec.boundingRadius : 1.0;
-      const effectiveDist = Math.max(0, distToCenter - radius);
-
-      if (effectiveDist > cullDistance) {
+      } else if (effectiveDist > cullDistance) {
         const isNeededForShadow = this.shadowService.isEntityRequiredForActiveShadows(e.uid);
         e.isCulled = true;
         mesh.setEnabled(isNeededForShadow);
         mesh.isVisible = false;
         this.applyVisibilityToMeshes(cachedMeshes, 0.0);
-        this.renderStates.set(e.uid, { state: 'HARD_CULLED', visibility: 0.0, targetVisibility: 0.0, isShadowProtected: isNeededForShadow, isStructural: false, lastStateChangeTime: performance.now(), flapCounter: 0 });
+        this.renderStates.set(e.uid, { 
+          state: 'HARD_CULLED', 
+          visibility: 0.0, 
+          targetVisibility: 0.0, 
+          isShadowProtected: isNeededForShadow, 
+          isStructural: false, 
+          lastStateChangeTime: now, 
+          flapCounter: 0 
+        });
         this._hardCulledCount++;
-      } else if (effectiveDist <= fadeStartDist) {
-        e.isCulled = false;
-        mesh.setEnabled(true);
-        mesh.isVisible = true;
-        this.applyVisibilityToMeshes(cachedMeshes, 1.0);
-        this.renderStates.set(e.uid, { state: 'VISIBLE', visibility: 1.0, targetVisibility: 1.0, isShadowProtected: false, isStructural: false, lastStateChangeTime: performance.now(), flapCounter: 0 });
-        this._visibleCount++;
       } else {
         e.isCulled = false;
         mesh.setEnabled(true);
         mesh.isVisible = true;
-        let t = (effectiveDist - fadeStartDist) / fadeMargin;
-        t = Math.max(0, Math.min(1, t));
-        const alpha = Math.max(0.0001, Math.min(1.0, 1.0 - t * t * (3.0 - 2.0 * t)));
+        const alpha = this.calculateSmoothVisibility(effectiveDist, fadeStartDist, cullDistance);
         this.applyVisibilityToMeshes(cachedMeshes, alpha);
-        this.renderStates.set(e.uid, { state: 'FADING_OUT', visibility: alpha, targetVisibility: alpha, isShadowProtected: false, isStructural: false, lastStateChangeTime: performance.now(), flapCounter: 0 });
-        this._fadingCount++;
+        this.renderStates.set(e.uid, { 
+          state: alpha >= 0.98 ? 'VISIBLE' : 'FADING_OUT', 
+          visibility: alpha, 
+          targetVisibility: alpha, 
+          isShadowProtected: false, 
+          isStructural: false, 
+          lastStateChangeTime: now, 
+          flapCounter: 0 
+        });
+        if (alpha >= 0.98) this._visibleCount++; else this._fadingCount++;
       }
     }
 
@@ -310,6 +304,7 @@ export class LocalRenderingSystem implements IUpdatable {
   private ensureAllEntitiesVisibleForEditor(): void {
     const entities = this.entityManager.getAllEntities();
     this.resetCounters();
+    const now = performance.now();
 
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
@@ -323,7 +318,15 @@ export class LocalRenderingSystem implements IUpdatable {
         const cachedMeshes = this.getCachedMeshes(e, mesh);
         this.applyVisibilityToMeshes(cachedMeshes, 1.0);
       }
-      this.renderStates.set(e.uid, { state: 'VISIBLE', visibility: 1.0, targetVisibility: 1.0, isShadowProtected: false, isStructural: true, lastStateChangeTime: performance.now(), flapCounter: 0 });
+      this.renderStates.set(e.uid, { 
+        state: 'VISIBLE', 
+        visibility: 1.0, 
+        targetVisibility: 1.0, 
+        isShadowProtected: false, 
+        isStructural: true, 
+        lastStateChangeTime: now, 
+        flapCounter: 0 
+      });
       this._visibleCount++;
     }
   }
@@ -343,8 +346,7 @@ export class LocalRenderingSystem implements IUpdatable {
     this.frameCounter++;
     this.distanceCheckTimer += dtMs;
 
-    // Frecuencia estable de evaluación: cada 45ms (~22 Hz)
-    const shouldCheckDistance = this.distanceCheckTimer >= 45;
+    const shouldCheckDistance = this.distanceCheckTimer >= 40;
     if (shouldCheckDistance) {
       this.distanceCheckTimer = 0;
     }
@@ -356,7 +358,7 @@ export class LocalRenderingSystem implements IUpdatable {
       playerEntity = entities.find(e => e.rol === 'player' || e.characterConfig) || null;
     }
 
-    const cullingConfig = playerEntity?.playerConfig?.culling || { enabled: true, cullDistance: 160, fadeMargin: 30 };
+    const cullingConfig = playerEntity?.playerConfig?.culling || { enabled: true, cullDistance: 160, fadeMargin: 50 };
     if (!cullingConfig.enabled || isTransitioning) {
       return;
     }
@@ -367,10 +369,9 @@ export class LocalRenderingSystem implements IUpdatable {
       this.lastPlayerPos.copyFrom(currPos);
 
       const rawSpeed = this.playerVelocity.length();
-      // Filtrado exponencial de velocidad para estabilizar el look-ahead y evitar flapping
       this.smoothedSpeed = (this.smoothedSpeed * 0.85) + (rawSpeed * 0.15);
 
-      if (rawSpeed > 10.0) {
+      if (rawSpeed > 14.0) {
         this.incidentSvc.recordFastMove(rawSpeed, currPos);
       }
     }
@@ -381,11 +382,11 @@ export class LocalRenderingSystem implements IUpdatable {
 
     const dynamicLookAheadBonus = Math.min(25.0, this.smoothedSpeed * 1.5);
     const baseCullDist = Math.max(60, Number(cullingConfig.cullDistance) || 160);
-    const fadeMargin = Math.min(baseCullDist - 1, Math.max(1, Number(cullingConfig.fadeMargin) || 30));
+    const fadeMargin = Math.min(baseCullDist - 1, Math.max(1, Number(cullingConfig.fadeMargin) || 50));
     const fadeStartDist = Math.max(0, baseCullDist - fadeMargin);
 
-    const lerpSpeed = Math.min(1.0, (dtMs / 16.66) * 0.25);
-    let visibilityChangedInBatch = false;
+    const lerpSpeed = Math.min(1.0, (dtMs / 16.66) * 0.22);
+    let discreteStateChanged = false; // Solo emite evento si un objeto pasa de activo a hard-culled o viceversa
 
     let vCount = 0, fCount = 0, hCount = 0, rCount = 0, sCount = 0;
     let evaluatedCount = 0;
@@ -420,11 +421,10 @@ export class LocalRenderingSystem implements IUpdatable {
       }
       const renderState = this.renderStates.get(e.uid)!;
 
-      // 1. ESTRUCTURAS, PAREDES, PASILLOS Y PERSONAJES: SIEMPRE 100% OPACOS (SIN ALPHA-BLENDING ROJO/GRIS)
       if (isStructural || !this.isEligibleForHardCull(e)) {
         if (e.isCulled) {
           e.isCulled = false;
-          visibilityChangedInBatch = true;
+          discreteStateChanged = true;
           changedCount++;
         }
         renderState.targetVisibility = 1.0;
@@ -439,33 +439,19 @@ export class LocalRenderingSystem implements IUpdatable {
         continue;
       }
 
-      // 2. OBJETOS GENERALES Y PROPS: EVALUACIÓN DE DISTANCIA CON PREFETCH Y READINESS
       if (shouldCheckDistance) {
         evaluatedCount++;
-        const group = this.spatialGroups.getGroupForEntity(e.uid);
         const wasCulled = e.isCulled;
         const prevState = renderState.state;
 
-        if (group && (group.state === 'ACTIVE' || group.state === 'PREPARED' || group.state === 'RETAINED')) {
-          // Dentro de la zona de prefetch de grupo: RESTAURACIÓN INMEDIATA A OPACIDAD TOTAL
-          renderState.targetVisibility = 1.0;
-          renderState.visibility = 1.0;
-          renderState.state = 'VISIBLE';
-          e.isCulled = false;
-          mesh.setEnabled(true);
-          mesh.isVisible = true;
-          this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), 1.0);
-          this.shadowService.notifyCasterRestored(e.uid);
-        } else {
-          this.evaluateIndividualCulling(e, renderState, mesh, baseCullDist, dynamicLookAheadBonus, fadeStartDist, fadeMargin);
-        }
+        const effectiveDist = this.spatialHub.getDistanceToPlayer(e.uid);
+        this.evaluateIndividualCulling(e, renderState, mesh, effectiveDist, baseCullDist, dynamicLookAheadBonus, fadeStartDist, fadeMargin);
 
         if (prevState !== renderState.state) {
           if (now - renderState.lastStateChangeTime < 2000) {
             renderState.flapCounter++;
             if (renderState.flapCounter >= 3) {
-              const dist = this.spatialHub.getDistanceToPlayer(e.uid);
-              this.incidentSvc.recordCullingFlap(e.uid, e.name, dist, this.smoothedSpeed);
+              this.incidentSvc.recordCullingFlap(e.uid, e.name, effectiveDist, this.smoothedSpeed);
               renderState.flapCounter = 0;
             }
           } else {
@@ -475,14 +461,13 @@ export class LocalRenderingSystem implements IUpdatable {
         }
 
         if (wasCulled !== e.isCulled) {
-          visibilityChangedInBatch = true;
+          discreteStateChanged = true;
           changedCount++;
 
-          const dist = this.spatialHub.getDistanceToPlayer(e.uid);
           if (e.isCulled) {
-            this.incidentSvc.recordObjectPopOut(e.uid, e.name, dist, this.smoothedSpeed);
+            this.incidentSvc.recordObjectPopOut(e.uid, e.name, effectiveDist, this.smoothedSpeed);
           } else {
-            this.incidentSvc.recordObjectPopIn(e.uid, e.name, dist, this.smoothedSpeed);
+            this.incidentSvc.recordObjectPopIn(e.uid, e.name, effectiveDist, this.smoothedSpeed);
           }
         }
       }
@@ -512,8 +497,8 @@ export class LocalRenderingSystem implements IUpdatable {
           renderState.visibility += (renderState.targetVisibility - renderState.visibility) * lerpSpeed;
           this.applyVisibilityToMeshes(cachedMeshes, renderState.visibility);
 
-          if (renderState.visibility <= 0.0005 && renderState.targetVisibility <= 0.0002) {
-            renderState.visibility = 0.0001;
+          if (renderState.visibility <= 0.01 && renderState.targetVisibility <= 0.005) {
+            renderState.visibility = 0.0;
             renderState.state = 'HARD_CULLED';
             e.isCulled = true;
 
@@ -528,10 +513,10 @@ export class LocalRenderingSystem implements IUpdatable {
             } else {
               mesh.setEnabled(false);
               mesh.isVisible = false;
-              this.applyVisibilityToMeshes(cachedMeshes, 0.0001);
+              this.applyVisibilityToMeshes(cachedMeshes, 0.0);
             }
 
-            visibilityChangedInBatch = true;
+            discreteStateChanged = true;
             changedCount++;
           }
           break;
@@ -558,7 +543,7 @@ export class LocalRenderingSystem implements IUpdatable {
           renderState.visibility += (renderState.targetVisibility - renderState.visibility) * (lerpSpeed * 2.0);
           this.applyVisibilityToMeshes(cachedMeshes, renderState.visibility);
 
-          if (renderState.visibility >= 0.995 && renderState.targetVisibility >= 0.995) {
+          if (renderState.visibility >= 0.99 && renderState.targetVisibility >= 0.99) {
             renderState.visibility = 1.0;
             renderState.state = 'VISIBLE';
             this.applyVisibilityToMeshes(cachedMeshes, 1.0);
@@ -577,7 +562,8 @@ export class LocalRenderingSystem implements IUpdatable {
     this.profiler.cullingChangedCount = changedCount;
     this.profiler.recordDistanceEvaluation('LocalRenderingSystem', evaluatedCount);
 
-    if (visibilityChangedInBatch) {
+    // Solo se emite si un objeto entró o salió formalmente del Hard Culling, no en cada frame de fade
+    if (discreteStateChanged) {
       this.eventBus.emit({ type: 'RuntimeVisibilityBatchChanged' });
     }
   }
@@ -586,31 +572,23 @@ export class LocalRenderingSystem implements IUpdatable {
     e: GameEntity,
     renderState: RenderState,
     mesh: AbstractMesh,
+    effectiveDist: number,
     baseCullDist: number,
     dynamicLookAheadBonus: number,
     fadeStartDist: number,
     fadeMargin: number
   ): void {
-    const distSqToCenter = this.spatialHub.getDistanceSquaredToPlayer(e.uid);
-    const rec = this.spatialHub.getRecord(e.uid);
-    const radius = rec ? rec.boundingRadius : 1.0;
-
-    // Distancia matemática al borde exterior de la caja orientada
-    const effectiveDist = Math.max(0, Math.sqrt(distSqToCenter) - radius);
     const effectiveCull = baseCullDist + dynamicLookAheadBonus;
     const effectiveFadeStart = fadeStartDist + dynamicLookAheadBonus;
-
-    // Histéresis robusta para re-adquisición (5m de margen hacia afuera)
-    const reacquireMargin = 5.0;
+    const REACQUIRE_MARGIN = 8.0;
 
     if (renderState.state === 'HARD_CULLED') {
-      if (effectiveDist < effectiveCull + reacquireMargin) {
+      if (effectiveDist <= (effectiveCull - REACQUIRE_MARGIN)) {
         e.isCulled = false;
         mesh.setEnabled(true);
         mesh.isVisible = true;
         renderState.isShadowProtected = false;
 
-        // Si el jugador ya está dentro de la zona nítida, restaurar al 100% de inmediato
         if (effectiveDist <= effectiveFadeStart) {
           renderState.state = 'VISIBLE';
           renderState.visibility = 1.0;
@@ -618,10 +596,8 @@ export class LocalRenderingSystem implements IUpdatable {
           this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), 1.0);
         } else {
           renderState.state = 'RESTORING';
-          let t = (effectiveDist - effectiveFadeStart) / fadeMargin;
-          t = Math.max(0, Math.min(1, t));
-          renderState.targetVisibility = Math.max(0.2, Math.min(1.0, 1.0 - t * t * (3.0 - 2.0 * t)));
-          renderState.visibility = renderState.targetVisibility;
+          renderState.targetVisibility = this.calculateSmoothVisibility(effectiveDist, effectiveFadeStart, effectiveCull);
+          renderState.visibility = Math.max(0.1, renderState.targetVisibility);
           this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), renderState.visibility);
         }
 
@@ -629,7 +605,7 @@ export class LocalRenderingSystem implements IUpdatable {
       }
     } else {
       if (effectiveDist > effectiveCull) {
-        renderState.targetVisibility = 0.0001;
+        renderState.targetVisibility = 0.0;
         if (renderState.state === 'VISIBLE') {
           renderState.state = 'FADING_OUT';
         }
@@ -641,10 +617,7 @@ export class LocalRenderingSystem implements IUpdatable {
         e.isCulled = false;
         renderState.isShadowProtected = false;
       } else {
-        let t = (effectiveDist - effectiveFadeStart) / fadeMargin;
-        t = Math.max(0, Math.min(1, t));
-        renderState.targetVisibility = Math.max(0.0001, Math.min(1.0, 1.0 - t * t * (3.0 - 2.0 * t)));
-
+        renderState.targetVisibility = this.calculateSmoothVisibility(effectiveDist, effectiveFadeStart, effectiveCull);
         if (renderState.state === 'VISIBLE') {
           renderState.state = 'FADING_OUT';
         }
@@ -654,12 +627,22 @@ export class LocalRenderingSystem implements IUpdatable {
     }
   }
 
+  private calculateSmoothVisibility(dist: number, fadeStart: number, cullDist: number): number {
+    if (dist <= fadeStart) return 1.0;
+    if (dist >= cullDist) return 0.0;
+    const t = Math.max(0, Math.min(1, (dist - fadeStart) / (cullDist - fadeStart)));
+    return Math.max(0.0, Math.min(1.0, 1.0 - t * t * (3.0 - 2.0 * t)));
+  }
+
   private applyVisibilityToMeshes(meshes: AbstractMesh[], visibility: number) {
-    const clamped = Math.max(0.0001, Math.min(1.0, visibility));
+    const clamped = Math.max(0.0, Math.min(1.0, visibility));
+    const isFullyVisible = clamped >= 0.999;
+    const isHidden = clamped <= 0.001;
+
     for (let c = 0; c < meshes.length; c++) {
       const m = meshes[c];
-      m.visibility = clamped;
-      m.isVisible = clamped > 0.0005;
+      m.visibility = isFullyVisible ? 1.0 : (isHidden ? 0.0 : clamped);
+      m.isVisible = !isHidden;
     }
   }
 }

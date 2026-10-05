@@ -175,8 +175,8 @@ export class SpatialStreamingGroupService {
   public updateGroups(playerPos: Vector3, playerVelocity: Vector3): void {
     const now = performance.now();
     const speed = playerVelocity.length();
-    // Look-ahead acotado a 35m con velocidad suavizada para evitar saltos
-    const lookAheadBonus = Math.min(35.0, speed * 1.6);
+    // Look-ahead acotado a 40m con velocidad suavizada para evitar saltos
+    const lookAheadBonus = Math.min(40.0, speed * 1.8);
     const moveDir = speed > 0.1 ? playerVelocity.normalizeToNew() : Vector3.Zero();
     const predictedPos = playerPos.add(moveDir.scale(lookAheadBonus));
 
@@ -206,13 +206,13 @@ export class SpatialStreamingGroupService {
       const wasActive = group.state === 'ACTIVE';
       const wasPrepared = group.state === 'PREPARED' || wasActive || group.state === 'RETAINED';
 
-      // 1. ZONA ACTIVA COMPLETA: Permite que varios pasillos conectados convivan en estado ACTIVE
+      // 1. ZONA ACTIVA COMPLETA: Mantiene los modelos y pasillos conectados completamente activos
       if (group.isInsideVolume || effectiveDist <= cfg.activeMargin) {
         this.transitionGroup(group, 'ACTIVE', now);
         this.activeGroupIds.add(group.id);
         this.preparedGroupIds.add(group.id);
       }
-      // 2. ZONA DE PRECARGA PREDICTIVA (PREPARED): Prepara con anticipación suficiente (hasta 70m)
+      // 2. ZONA DE PRECARGA PREDICTIVA (PREPARED): Prepara con amplia anticipación (hasta 150m)
       else if (effectiveDist <= (cfg.preloadMargin + lookAheadBonus)) {
         if (wasActive) {
           this.transitionGroup(group, 'RETAINED', now);

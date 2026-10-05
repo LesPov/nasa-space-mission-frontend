@@ -1,4 +1,4 @@
-
+// file: src/app/core/engine/runtime/systems/adaptive-quality.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -15,17 +15,16 @@ export class AdaptiveQualitySystem implements IUpdatable {
 
   private currentTier: QualityTier = 'HIGH';
   
-  // Histéresis y Cooldown
   private frameTimeAccumulator = 0;
   private frameCount = 0;
   private cooldownTimerMs = 0;
   
-  private readonly EVALUATION_FRAMES = 60; // Evaluar cada 60 frames (aprox 1 segundo)
-  private readonly COOLDOWN_MS = 3000; // 3 segundos de espera tras un cambio de tier
+  // Ventana de evaluación ampliada para no reaccionar ante micro-picos normales de culling
+  private readonly EVALUATION_FRAMES = 120; // 2 segundos completos de medición a 60 FPS
+  private readonly COOLDOWN_MS = 5000;      // 5 segundos de histéresis obligatoria
 
-  // Umbrales de FrameTime (16.67ms = 60fps, 22.22ms = 45fps, 33.33ms = 30fps)
-  private readonly THRESHOLD_DOWNGRADE = 19.0; // Si el frame promedio supera 19ms, bajamos calidad
-  private readonly THRESHOLD_UPGRADE = 14.0;   // Si el frame promedio baja de 14ms, subimos calidad
+  private readonly THRESHOLD_DOWNGRADE = 22.0; // Solo degrada si el promedio supera 22ms (>45 FPS sostenido)
+  private readonly THRESHOLD_UPGRADE = 14.0;
 
   public get currentQualityTier(): QualityTier {
     return this.currentTier;
@@ -37,7 +36,6 @@ export class AdaptiveQualitySystem implements IUpdatable {
       return;
     }
 
-    // Usamos el frame time real desde el motor, no el simulado
     const engine = this.motor3d.getEngine();
     if (!engine) return;
     
@@ -84,33 +82,31 @@ export class AdaptiveQualitySystem implements IUpdatable {
     this.currentTier = tier;
     this.cooldownTimerMs = this.COOLDOWN_MS;
 
-    console.log(`[AdaptiveQuality] Cambiando a Tier: ${tier}`);
+    console.log(`[AdaptiveQuality] Adaptando Tier de hardware: ${tier}`);
 
     switch (tier) {
       case 'HIGH':
-        engine.setHardwareScalingLevel(1.0); // Resolucion Nativa
+        engine.setHardwareScalingLevel(1.0);
         if (pipeline) pipeline.fxaaEnabled = true;
         if (glow) glow.intensity = 0.6;
         break;
       
       case 'MEDIUM':
-        // Reduce el fill-rate renderizando a menor resolución y escalando
-        engine.setHardwareScalingLevel(1.3); 
-        if (pipeline) pipeline.fxaaEnabled = true; // FXAA ayuda a disimular el escalado
-        if (glow) glow.intensity = 0.0; // Desactivar glow elimina un render pass pesado
+        engine.setHardwareScalingLevel(1.2); 
+        if (pipeline) pipeline.fxaaEnabled = true; 
+        if (glow) glow.intensity = 0.5; 
         break;
 
       case 'LOW':
-        engine.setHardwareScalingLevel(1.8); // Resolución muy agresiva
-        if (pipeline) pipeline.fxaaEnabled = false; // Desactivar FXAA ahorra procesamiento de fragmentos
+        engine.setHardwareScalingLevel(1.5); 
+        if (pipeline) pipeline.fxaaEnabled = false; 
         if (glow) glow.intensity = 0.0;
         break;
     }
   }
 
-  // Permite forzar la calidad desde la UI de Debug
   public forceTier(tier: QualityTier): void {
     this.applyTier(tier);
-    this.cooldownTimerMs = 5000; // Bloquear auto-adaptación por 5 segundos si el usuario fuerza
+    this.cooldownTimerMs = 8000;
   }
 }

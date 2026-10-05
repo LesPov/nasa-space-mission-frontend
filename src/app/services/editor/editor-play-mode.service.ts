@@ -63,7 +63,7 @@ export class EditorPlayModeService {
     const editorCam = this.motor3d.getEditorCamera();
 
     this.profiler.beginTransitionTracking('CAPTURE_EDITOR_STATE');
-    this.readinessBarrier.startReadiness(11);
+    this.readinessBarrier.startReadiness(10);
 
     if (editorCam) {
       editorCam.computeWorldMatrix();
@@ -112,31 +112,17 @@ export class EditorPlayModeService {
     this.state.seleccionarObjeto(null);
     this.gameContext.setActivePlayer(playerEntity);
 
-    // 2. CONSTRUIR GRUPOS ESPACIALES JERÁRQUICOS
-    this.readinessBarrier.setStage('BUILDING_SPATIAL_GROUPS', 'Estructurando grupos espaciales y pasillos...');
-    if (onProgress) onProgress('Estructurando grupos espaciales y pasillos...', 30);
+    // 2. CONSTRUIR GRUPOS ESPACIALES Y DEFINIR ZONA CRÍTICA
+    this.readinessBarrier.setStage('BUILDING_SPATIAL_GROUPS', 'Estructurando grupos espaciales...');
+    if (onProgress) onProgress('Estructurando grupos espaciales...', 30);
     this.spatialGroups.buildGroups();
 
-    // 3. CONFIGURAR VISIBILIDAD BASE
-    this.readinessBarrier.setStage('PREPARING_RESOURCES', 'Configurando visibilidad de mallas...');
-    if (onProgress) onProgress('Configurando visibilidad de mallas...', 40);
+    // 3. ACTIVACIÓN INICIAL DE LA BURBUJA CRÍTICA ALREDEDOR DEL JUGADOR
+    this.readinessBarrier.setStage('PREPARING_RESOURCES', 'Inicializando burbuja crítica visual...');
+    if (onProgress) onProgress('Inicializando burbuja crítica visual...', 45);
 
-    this.motor3d.getScene().meshes.forEach(m => {
-      if (Tags.MatchesQuery(m, 'editor_only')) {
-        m.isVisible = false;
-        m.setEnabled(false);
-      }
-
-      const entity = this.entityManager.getEntityByMesh(m);
-      if (entity) {
-        if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = false;
-        if (entity.type === 'image_plane') m.isVisible = false; 
-        if (entity.rol === 'spawn_point' && entity.uid !== playerEntity!.uid) { 
-          m.isVisible = false; 
-          m.setEnabled(false); 
-        }
-      }
-    });
+    const spawnPos = playerEntity.view.getAbsolutePosition();
+    this.localRendering.reconcileAllEntitiesImmediate(spawnPos);
 
     objMesh.computeWorldMatrix(true);
     const playerForward = objMesh.forward.clone().normalize();
@@ -163,16 +149,15 @@ export class EditorPlayModeService {
       targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
     }
 
-    // 4. PREPARAR LUCES, SOMBRAS Y NIEBLA
-    this.readinessBarrier.setStage('PREPARING_LIGHTS', 'Preparando iluminación y sombras...');
-    if (onProgress) onProgress('Preparando iluminación y sombras...', 55);
+    // 4. PREPARACIÓN SUAVE DE ILUMINACIÓN Y SOMBRAS EN LA ZONA CRÍTICA
+    this.readinessBarrier.setStage('PREPARING_LIGHTS', 'Preparando iluminación local...');
+    if (onProgress) onProgress('Preparando iluminación local...', 60);
     this.dynamicLighting.reconcileSceneLights();
     this.shadowOrchestrator.reconcileShadows();
 
-    // 5. PRECALENTAMIENTO DE SOMBREADORES (SHADERS)
+    // 5. PRECALENTAMIENTO DE SHADERS SOLO PARA LA POSICIÓN CRÍTICA
     this.readinessBarrier.setStage('COMPILING_SHADERS', 'Precalentando sombreadores en VRAM...');
-    if (onProgress) onProgress('Precalentando sombreadores en VRAM...', 70);
-
+    if (onProgress) onProgress('Precalentando sombreadores en VRAM...', 75);
     await this.dynamicLighting.forceWarmup(targetPos);
 
     this.pendingFlightParams = {
@@ -225,8 +210,8 @@ export class EditorPlayModeService {
     await this.dynamicLighting.forceWarmup(targetPos);
     this.shadowOrchestrator.reconcileShadows();
 
-    await this.readinessBarrier.waitForTrueStability(scene, 35, 25.0, (msg, pct) => {
-      if (onProgress) onProgress(msg, 70 + Math.round(pct * 0.3));
+    await this.readinessBarrier.waitForTrueStability(scene, 25, 26.0, (msg, pct) => {
+      if (onProgress) onProgress(msg, 75 + Math.round(pct * 0.25));
     });
   }
 
@@ -289,7 +274,7 @@ export class EditorPlayModeService {
     try { this.motor3d.getPlayerCameraFPS()?.detachControl(); } catch {}
     try { this.motor3d.getPlayerCameraTPS()?.detachControl(); } catch {}
 
-    // Restaurar calidad de renderizado completa al Editor
+    // Restaurar resolución y post-procesos en Editor
     const engine = this.motor3d.getEngine();
     if (engine) {
       engine.setHardwareScalingLevel(1.0);
@@ -304,6 +289,7 @@ export class EditorPlayModeService {
     }
     this.shadowQualitySvc.setQualityTier('HIGH');
 
+    // Restaurar visibilidad 100% limpia para todas las entidades en el editor
     scene.meshes.forEach(m => {
       if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) {
         return; 
@@ -322,14 +308,9 @@ export class EditorPlayModeService {
       }
 
       if (entity) {
-        if (entity.type.startsWith('light_') && !entity.visual.assetId) m.isVisible = true;
-        if (entity.type === 'bubble') m.isVisible = true;
-        if (entity.type === 'image_plane') m.isVisible = true; 
-        if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') m.isVisible = true;
-        if (entity.rol === 'spawn_point') { 
-          m.setEnabled(true); 
-          m.isVisible = true; 
-        }
+        m.setEnabled(true);
+        m.isVisible = true;
+        m.visibility = 1.0;
       }
     });
 

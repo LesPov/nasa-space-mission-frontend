@@ -1,5 +1,4 @@
 
-
 import { Component, Input } from '@angular/core';
 import { CommonModule } from '@angular/common';
 
@@ -12,4 +11,6 @@ import { CommonModule } from '@angular/common';
 })
 export class UiLoading {
   @Input() texto = 'Cargando...';
+  @Input() progress?: number;
+  @Input() stageDetail?: string;
 }

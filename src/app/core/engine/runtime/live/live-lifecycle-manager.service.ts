@@ -18,6 +18,8 @@ import { SceneNodesService } from '../../../../services/editor/sceneservice/scen
 import { PlayerTriggerService } from '../systems/player-trigger.service';
 import { ShadowOrchestratorService } from '../shadows/shadow-orchestrator.service';
 import { LocalRenderingSystem } from '../systems/local-rendering.system';
+import { RuntimeEngineService } from '../runtime-engine.service';
+import { ShadowQualityService } from '../shadows/shadow-quality.service';
 
 export interface EditorSnapshotState {
   cameraTarget: Vector3;
@@ -35,6 +37,8 @@ export class LiveLifecycleManagerService {
   private ownership = inject(CameraOwnershipService);
   private inputRouter = inject(InputRouterService);
   private gameSession = inject(GameSession);
+  private runtimeEngine = inject(RuntimeEngineService);
+  private shadowQualitySvc = inject(ShadowQualityService);
   private playerCamSvc = inject(PlayerCameraManagerService);
   private dynLighting = inject(DynamicLightingSystem);
   private transformMutator = inject(TransformMutatorService);
@@ -76,7 +80,6 @@ export class LiveLifecycleManagerService {
     this.gameState.enterSandbox();
     this.entityManager.getAllEntities().forEach(e => {
       e.createAuthoringBackup();
-      // Asegurar que ninguna entidad mantenga un bloqueo cinematográfico previo al entrar a Test Live
       if (e.characterConfig || e.rol === 'player') {
         e.movementAuthority = 'GAMEPLAY';
         if (e.playerRuntime) {
@@ -94,11 +97,29 @@ export class LiveLifecycleManagerService {
     if (!this.isLiveActive) return;
 
     this.inputRouter.unlockPointer();
-    this.gameSession.stop();
+
+    // Detener la sesión a través de RuntimeEngineService para desregistrar AdaptiveQualitySystem
+    // y restaurar forzosamente el tier a 'HIGH'
+    this.runtimeEngine.stopTestSession();
     this.localRendering.stop();
 
     this.playerCamSvc.updateFirstPersonVisibility(false);
     this.playerCamSvc.limpiarPivotTPS();
+
+    // Garantizar que la calidad visual de hardware y post-procesos en Editor sea restaurada
+    const engine = this.motor3d.getEngine();
+    if (engine) {
+      engine.setHardwareScalingLevel(1.0);
+    }
+    const pipeline = this.motor3d.getRenderingPipeline();
+    if (pipeline) {
+      pipeline.fxaaEnabled = true;
+    }
+    const glow = (this.motor3d as any).glowLayer;
+    if (glow) {
+      glow.intensity = 0.6;
+    }
+    this.shadowQualitySvc.setQualityTier('HIGH');
 
     const entities = this.entityManager.getAllEntities();
     

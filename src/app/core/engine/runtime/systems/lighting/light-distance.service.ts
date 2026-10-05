@@ -1,6 +1,6 @@
 // file: src/app/core/engine/runtime/systems/lighting/light-distance.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Vector3, AbstractMesh, Tags } from '@babylonjs/core';
+import { Vector3 } from '@babylonjs/core';
 import { GameContextService } from '../../../session/game-context.service';
 import { VirtualLight, LightLifecycleStage, LIGHT_SPATIAL_CONSTANTS } from './lighting-types';
 import { LightTransformService } from './light-transform.service';
@@ -9,6 +9,7 @@ import { LightAttenuationCurve } from './light-attenuation-curve';
 import { LightContainmentService } from './light-containment.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 import { EngineProfilerService } from '../../../telemetry/engine-profiler.service';
+import { GameMode } from '../../../session/game-mode.model';
 
 @Injectable({ providedIn: 'root' })
 export class LightDistanceService {
@@ -21,10 +22,12 @@ export class LightDistanceService {
 
   private _tempPos = Vector3.Zero();
   private _tempDir = Vector3.Zero();
-  private _tempClosestPoint = Vector3.Zero();
 
   public evaluateDistanceAndHysteresis(activeVirtuals: VirtualLight[], baseRefPos: Vector3, speed: number): void {
     const scene = this.motor3d.getScene();
+    const mode = this.context.mode();
+    const isEditorPure = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
+
     this.profiler.recordDistanceEvaluation('LightDistanceService', activeVirtuals.length);
     const validActors = this.referenceSvc.getValidActorEntities();
     const nowTimeStr = new Date().toLocaleTimeString();
@@ -42,10 +45,13 @@ export class LightDistanceService {
         vl.closestActorName = 'Inactiva';
         vl.insideVolume = false;
         vl.inPreEntryZone = false;
+        vl.inPreExitZone = false;
+        vl.spatialState = 'OUTSIDE';
         vl.lastEvaluatedDistance = 99999;
         vl.centerDistance = 99999;
         vl.boundsDistance = 99999;
         vl.effectiveDistance = 99999;
+        vl.shadowTier = undefined;
         continue;
       }
 
@@ -62,72 +68,117 @@ export class LightDistanceService {
       }
 
       const centerDist = Vector3.Distance(actorWorldPos, this._tempPos);
-      const boundsDist = this.calculateBoundsDistance(vl.entity.view, actorWorldPos, centerDist);
-      const effectiveDist = Math.min(centerDist, boundsDist);
-
       vl.centerDistance = parseFloat(centerDist.toFixed(2));
-      vl.boundsDistance = parseFloat(boundsDist.toFixed(2));
-      vl.effectiveDistance = parseFloat(effectiveDist.toFixed(2));
+      vl.boundsDistance = parseFloat(centerDist.toFixed(2));
+      vl.effectiveDistance = parseFloat(centerDist.toFixed(2));
       vl.lastEvaluatedDistance = vl.effectiveDistance;
-      vl.distSq = effectiveDist * effectiveDist;
+      vl.distSq = centerDist * centerDist;
       vl.lastDistanceUpdateTimestamp = nowTimeStr;
-
-      const configuredActivation = lightComp.activationDistance ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_ACTIVATION_RADIUS;
-      const configuredDeactivation = lightComp.deactivationDistance ?? (configuredActivation + 5.0);
-      
-      const rActivation = Math.max(1.0, configuredActivation);
-      const rDeactivation = Math.max(rActivation + 1.0, configuredDeactivation);
-      const rPrepare = rDeactivation + 10.0;
 
       const isInterior = lightComp.containmentMode === 'INTERIOR';
       vl.isInterior = isInterior;
-      vl.interiorActivationMode = lightComp.interiorActivationMode || 'DISTANCE';
+      vl.interiorActivationMode = lightComp.interiorActivationMode || 'VOLUME';
 
+      const isModelPreEntryMode = isInterior && lightComp.preEntryEnabled && lightComp.interiorActivationMode !== 'DISTANCE';
       const container = (isInterior && scene) ? this.containmentSvc.resolveContainerEntity(vl.entity, scene) : null;
       vl.containerName = container ? container.name : undefined;
 
-      let evalVol = { inside: false, inPreEntry: false, distToBox: Number.MAX_VALUE };
-      if (container && container.view && !container.view.isDisposed()) {
-        const preEntryDist = lightComp.preEntryEnabled ? (lightComp.preEntryDistance ?? 4.0) : 0.0;
-        evalVol = this.containmentSvc.evaluateActorInsideContainer(actorWorldPos, container, preEntryDist, wasInRange);
-      }
-      vl.insideVolume = evalVol.inside;
-      vl.inPreEntryZone = evalVol.inPreEntry;
+      // =========================================================================
+      // MODO INTERIOR + MODEL_PREENTRY (LA GEOMETRÍA DEL MODELO ES LA AUTORIDAD)
+      // =========================================================================
+      if (isModelPreEntryMode) {
+        if (!container || !container.view || container.view.isDisposed()) {
+          vl.spatialState = 'OUTSIDE';
+          vl.insideVolume = false;
+          vl.inPreEntryZone = false;
+          vl.inPreExitZone = false;
+          vl.targetMultiplier = 0.0;
+          vl.isLightInRange = false;
+          vl.isShadowInRange = false;
+          vl._isInPrepareRange = false;
+          vl.containmentSource = 'AABB_FALLBACK';
+          this.transitionState(vl, 'OUTSIDE', nowTimeStr, 'CONTAINER_NOT_FOUND', 'Contenedor no resuelto');
+          continue;
+        }
 
-      if (isInterior && lightComp.interiorActivationMode === 'VOLUME') {
-        if (vl.insideVolume) {
-          vl.targetMultiplier = LightAttenuationCurve.calculate(effectiveDist, rActivation * 0.75, rDeactivation);
-          vl.isLightInRange = effectiveDist <= rDeactivation && vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
+        const preDist = Math.max(0.5, lightComp.preEntryDistance ?? 8.0);
+        const contResult = this.containmentSvc.evaluateModelContainment(actorWorldPos, container, preDist, wasInRange);
+
+        vl.spatialState = contResult.spatialState;
+        vl.insideVolume = contResult.inside;
+        vl.inPreEntryZone = contResult.preEntry;
+        vl.inPreExitZone = contResult.preExit;
+        vl.distanceToBoundary = parseFloat(contResult.distanceToBoundary.toFixed(2));
+        vl.containmentSource = contResult.source;
+
+        if (contResult.inside) {
+          vl.effectiveDistance = 0.0;
+          vl.lastEvaluatedDistance = 0.0;
+        } else {
+          vl.effectiveDistance = contResult.distanceToBoundary;
+          vl.lastEvaluatedDistance = contResult.distanceToBoundary;
+        }
+
+        // EVALUACIÓN ESTRICTA: El estado espacial de contención decide la luz
+        if (contResult.spatialState === 'INSIDE') {
+          vl.targetMultiplier = 1.0;
+          vl.isLightInRange = true;
           vl._isInPrepareRange = true;
-          this.evaluateStateAndDecision(vl, effectiveDist, rActivation, rDeactivation, nowTimeStr, 'INTERIOR DENTRO DE VOLUMEN');
-        } else if (vl.inPreEntryZone) {
-          const ratio = Math.max(0.0, Math.min(1.0, 1.0 - (evalVol.distToBox / Math.max(0.1, lightComp.preEntryDistance ?? 4.0))));
-          vl.targetMultiplier = ratio * 0.8;
-          vl.isLightInRange = ratio > 0.02;
+          this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, preDist, nowTimeStr, `INSIDE (${contResult.source})`);
+        } else if (contResult.spatialState === 'PRE_ENTRY') {
+          vl.targetMultiplier = LightAttenuationCurve.calculate(contResult.distanceToBoundary, 0, preDist);
+          vl.isLightInRange = vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
           vl._isInPrepareRange = true;
-          this.evaluateStateAndDecision(vl, effectiveDist, rActivation, rDeactivation, nowTimeStr, 'PRE-ENTRADA (FADE IN)');
+          this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, preDist, nowTimeStr, `PRE-ENTRADA (${contResult.source})`);
+        } else if (contResult.spatialState === 'PRE_EXIT') {
+          const exitThreshold = preDist + 2.5;
+          vl.targetMultiplier = LightAttenuationCurve.calculate(contResult.distanceToBoundary, 0, exitThreshold);
+          vl.isLightInRange = true;
+          vl._isInPrepareRange = true;
+          this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, exitThreshold, nowTimeStr, `PRE-SALIDA (${contResult.source})`);
         } else {
           vl.targetMultiplier = 0.0;
           vl.isLightInRange = false;
-          vl._isInPrepareRange = evalVol.distToBox <= ((lightComp.preEntryDistance ?? 4.0) + 10.0);
-          this.transitionState(vl, 'OUTSIDE', nowTimeStr, 'OUTSIDE_INTERIOR_VOLUME', 'Fuera de volumen interior');
+          vl._isInPrepareRange = contResult.distanceToBoundary <= (preDist + 15.0);
+          this.transitionState(vl, 'OUTSIDE', nowTimeStr, 'OUTSIDE_INTERIOR_VOLUME', `Fuera de volumen (${contResult.source})`);
         }
-      } else {
-        // En modo DISTANCE o GLOBAL la activación depende estrictamente de la distancia física al player
-        this.applyStandardProximity(vl, effectiveDist, rActivation, rDeactivation, rPrepare, wasInRange, nowTimeStr);
-      }
 
-      if (vl.isLightInRange && lightComp.castShadows) {
-        const shadowAct = lightComp.shadowActivationDistance ?? Math.min(LIGHT_SPATIAL_CONSTANTS.DEFAULT_SHADOW_ACTIVATION_RADIUS, rActivation * 0.6);
-        const shadowDeact = lightComp.shadowDeactivationDistance ?? (shadowAct + 4.0);
-
-        if (vl.isShadowInRange) {
-          if (effectiveDist > shadowDeact) vl.isShadowInRange = false;
+        // REGLA CLAVE: La sombra se prepara con la misma o mayor cobertura que el fade-in de luz
+        if (lightComp.castShadows) {
+          const syncShadow = lightComp.linkShadowPreEntryToLightPreEntry !== false;
+          const shadowPreDist = syncShadow ? preDist : Math.max(0.5, lightComp.shadowPreEntryDistance ?? preDist);
+          vl.isShadowInRange = (contResult.spatialState === 'INSIDE' || contResult.spatialState === 'PRE_EXIT' || (contResult.spatialState === 'PRE_ENTRY' && contResult.distanceToBoundary <= shadowPreDist));
         } else {
-          if (effectiveDist <= shadowAct) vl.isShadowInRange = true;
+          vl.isShadowInRange = false;
         }
+
       } else {
-        vl.isShadowInRange = false;
+        // =========================================================================
+        // MODO RADIAL ESTÁNDAR (LUCES EXTERIORES O INTERIORES POR DISTANCIA PURA)
+        // =========================================================================
+        vl.spatialState = undefined;
+        vl.containmentSource = undefined;
+        vl.inPreExitZone = false;
+
+        const configuredActivation = lightComp.activationDistance ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_ACTIVATION_RADIUS;
+        const configuredDeactivation = lightComp.deactivationDistance ?? (configuredActivation + 6.0);
+        
+        const rActivation = Math.max(1.0, configuredActivation);
+        const rDeactivation = Math.max(rActivation + 2.0, configuredDeactivation);
+        const rPrepare = rDeactivation + 15.0;
+
+        this.applyStandardProximity(vl, centerDist, rActivation, rDeactivation, rPrepare, wasInRange, nowTimeStr);
+
+        // REGLA CLAVE DE SOMBRAS ANTES DE BRILLO MÁXIMO:
+        // Las sombras deben estar activas y preparadas en cuanto la luz comienza a ser perceptible (rDeactivation).
+        // No se restringe artificialmente a radios menores que la activación de luz.
+        if (vl.isLightInRange && lightComp.castShadows && lightComp.distanceShadowsEnabled !== false) {
+          const shadowAct = Math.max(rActivation, lightComp.shadowActivationDistance ?? rActivation);
+          const shadowDeact = Math.max(rDeactivation, lightComp.shadowDeactivationDistance ?? rDeactivation);
+          vl.isShadowInRange = wasInRange ? centerDist <= shadowDeact : centerDist <= shadowAct;
+        } else {
+          vl.isShadowInRange = false;
+        }
       }
     }
   }
@@ -144,14 +195,14 @@ export class LightDistanceService {
     vl._isInPrepareRange = dist <= rPrepare;
     const currentLimit = wasInRange ? rDeactivation : rActivation;
 
-    vl.targetMultiplier = LightAttenuationCurve.calculate(dist, rActivation * 0.7, rDeactivation);
+    vl.targetMultiplier = LightAttenuationCurve.calculate(dist, rActivation * 0.8, rDeactivation);
 
     if (dist <= currentLimit && vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
       vl.isLightInRange = true;
-      this.evaluateStateAndDecision(vl, dist, rActivation, rDeactivation, timestamp, 'PROXIMIDAD RADIAL ESTÁNDAR');
+      this.evaluateStateAndDecision(vl, dist, rActivation, rDeactivation, timestamp, 'PROXIMIDAD RADIAL');
     } else {
       vl.isLightInRange = false;
-      this.transitionState(vl, dist > rDeactivation ? 'OUTSIDE' : 'INACTIVE', timestamp, 'OUT_OF_EFFECTIVE_RANGE', 'Fuera de rango de activación');
+      this.transitionState(vl, dist > rDeactivation ? 'OUTSIDE' : 'INACTIVE', timestamp, 'OUT_OF_EFFECTIVE_RANGE', 'Fuera de rango');
     }
   }
 
@@ -163,16 +214,18 @@ export class LightDistanceService {
     timestamp: string, 
     contextMsg: string
   ): void {
-    if (dist <= (rAct * 0.7)) {
-      this.transitionState(vl, 'ACTIVE', timestamp, undefined, `INSIDE ACTIVATION RANGE (${contextMsg})`);
-    } else if (vl.targetMultiplier > 0.05) {
-      if (vl.currentMultiplier < vl.targetMultiplier) {
-        this.transitionState(vl, 'FADING_IN', timestamp, undefined, `INSIDE FADE RANGE [ENTRADA] (${contextMsg})`);
+    if (vl.targetMultiplier >= 0.98) {
+      this.transitionState(vl, 'ACTIVE', timestamp, undefined, `ACTIVE (${contextMsg})`);
+    } else if (vl.targetMultiplier > 0.01) {
+      if (vl.targetMultiplier > vl.currentMultiplier) {
+        this.transitionState(vl, 'FADING_IN', timestamp, undefined, `FADING IN (${contextMsg})`);
+      } else if (vl.targetMultiplier < vl.currentMultiplier) {
+        this.transitionState(vl, 'FADING_OUT', timestamp, undefined, `FADING OUT (${contextMsg})`);
       } else {
-        this.transitionState(vl, 'FADING_OUT', timestamp, undefined, `INSIDE FADE RANGE [SALIDA] (${contextMsg})`);
+        this.transitionState(vl, 'ACTIVE', timestamp, undefined, `PARTIAL ACTIVE (${contextMsg})`);
       }
     } else {
-      this.transitionState(vl, 'INACTIVE', timestamp, 'INTENSITY_NEAR_ZERO', `NEAR ZERO THRESHOLD (${contextMsg})`);
+      this.transitionState(vl, 'INACTIVE', timestamp, 'INTENSITY_NEAR_ZERO', `NEAR ZERO (${contextMsg})`);
     }
   }
 
@@ -190,34 +243,5 @@ export class LightDistanceService {
     }
     vl.rejectionReason = rejectionReason;
     vl.decisionText = decisionText;
-  }
-
-  private calculateBoundsDistance(rootMesh: AbstractMesh, actorPos: Vector3, fallbackDistance: number): number {
-    try {
-      if (rootMesh.name.includes('light') || Tags.MatchesQuery(rootMesh, 'light_entity')) {
-        return fallbackDistance;
-      }
-
-      rootMesh.computeWorldMatrix(true);
-      const bInfo = rootMesh.getHierarchyBoundingVectors(true, (m: AbstractMesh) => {
-        return !Tags.MatchesQuery(m, 'system_element || editor_only || proxy_collider || light_visual || debug_element');
-      });
-
-      const min = bInfo.min;
-      const max = bInfo.max;
-
-      if (!Number.isFinite(min.x) || !Number.isFinite(max.x) || min.x > max.x) {
-        return fallbackDistance;
-      }
-
-      const cx = Math.max(min.x, Math.min(actorPos.x, max.x));
-      const cy = Math.max(min.y, Math.min(actorPos.y, max.y));
-      const cz = Math.max(min.z, Math.min(actorPos.z, max.z));
-
-      this._tempClosestPoint.set(cx, cy, cz);
-      return Vector3.Distance(actorPos, this._tempClosestPoint);
-    } catch {
-      return fallbackDistance;
-    }
   }
 }

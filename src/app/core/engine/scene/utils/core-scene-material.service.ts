@@ -1,10 +1,13 @@
+
 // file: src/app/core/engine/scene/utils/core-scene-material.service.ts
 import { Injectable } from '@angular/core';
 import { Color3, Texture, RawTexture, Scene, AbstractMesh, Material, MultiMaterial } from '@babylonjs/core';
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneMaterialService {
-  public static readonly MAX_SIMULTANEOUS_LIGHTS = 6;
+  // 10 luces simultáneas fijadas para que todos los slots del pool (3 Point + 3 Spot + 1 Dir + Ambiente)
+  // compilen un único variant uniforme en WebGL, eliminando las tormentas de compilación a 60 FPS
+  public static readonly MAX_SIMULTANEOUS_LIGHTS = 10;
   
   private bwTextureCache = new Map<string, Texture>();
 
@@ -28,14 +31,18 @@ export class CoreSceneMaterialService {
           if (newMultiMat.subMaterials) {
             newMultiMat.subMaterials = multiMat.subMaterials.map((subMat: Material | null) => {
               if (subMat && !subMat.name.includes(uid) && typeof (subMat as any).clone === 'function') {
-                return (subMat as any).clone(subMat.name + "_" + uid);
+                const cloned = (subMat as any).clone(subMat.name + "_" + uid);
+                cloned.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+                return cloned;
               }
               return subMat;
             });
           }
           mesh.material = newMultiMat;
         } else if (typeof (mesh.material as any).clone === 'function') {
-          mesh.material = (mesh.material as any).clone(mesh.material.name + "_" + uid);
+          const cloned = (mesh.material as any).clone(mesh.material.name + "_" + uid);
+          cloned.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+          mesh.material = cloned;
         }
       } catch (e) {
         console.warn("[CoreSceneMaterialService] No se pudo clonar el material para hacerlo único:", e);
@@ -55,14 +62,18 @@ export class CoreSceneMaterialService {
           if (newMultiMat.subMaterials) {
             newMultiMat.subMaterials = multiMat.subMaterials.map((subMat: Material | null) => {
               if (subMat && !subMat.name.includes(uniqueSuffix) && typeof (subMat as any).clone === 'function') {
-                return (subMat as any).clone(subMat.name + "_" + uniqueSuffix);
+                const cloned = (subMat as any).clone(subMat.name + "_" + uniqueSuffix);
+                cloned.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+                return cloned;
               }
               return subMat;
             });
           }
           mesh.material = newMultiMat;
         } else if (typeof (mesh.material as any).clone === 'function') {
-          mesh.material = (mesh.material as any).clone(mesh.material.name + "_" + uniqueSuffix);
+          const cloned = (mesh.material as any).clone(mesh.material.name + "_" + uniqueSuffix);
+          cloned.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+          mesh.material = cloned;
         }
       } catch (e) {
         console.warn("[CoreSceneMaterialService] No se pudo clonar el material para hacerlo único por parte:", e);
@@ -243,10 +254,14 @@ export class CoreSceneMaterialService {
           if (multi.subMaterials) {
             for (let j = 0; j < multi.subMaterials.length; j++) {
               const sm = multi.subMaterials[j];
-              if (sm) materialsToWarm.add(sm);
+              if (sm) {
+                (sm as any).maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+                materialsToWarm.add(sm);
+              }
             }
           }
         } else {
+          (m.material as any).maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
           materialsToWarm.add(m.material);
         }
       }
@@ -255,10 +270,6 @@ export class CoreSceneMaterialService {
     const compilePromises: Promise<any>[] = [];
 
     materialsToWarm.forEach(mat => {
-      if ((mat as any).maxSimultaneousLights !== CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS) {
-        (mat as any).maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
-      }
-
       const sampleMesh = meshes.find(m => 
         m.material === mat || 
         (m.material?.getClassName() === 'MultiMaterial' && (m.material as MultiMaterial).subMaterials?.includes(mat))

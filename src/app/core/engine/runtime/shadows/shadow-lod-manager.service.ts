@@ -1,30 +1,36 @@
 
- 
+// file: src/app/core/engine/runtime/systems/lighting/shadow-lod-manager.service.ts
 import { Injectable } from '@angular/core';
 import { RenderTargetTexture } from '@babylonjs/core';
-
+import { ShadowTier } from '../systems/lighting/lighting-types';
+ 
 @Injectable({ providedIn: 'root' })
 export class ShadowLODManager {
   /**
-   * Calcula el refreshRate de Babylon.
+   * Calcula el refreshRate de Babylon.js considerando el Tier asignado y distancia.
    * 0 = RENDER_ONCE (Sombra congelada en VRAM, coste 0 tras el primer frame).
-   * 1 = Actualiza cada frame (60 FPS).
-   * 2 = Actualiza cada 2 frames (30 FPS).
-   * 3 = Actualiza cada 3 frames (20 FPS).
+   * 1 = Cada frame (60 FPS) para Tier HIGH.
+   * 2 = Cada 2 frames (30 FPS) para Tier MEDIUM.
+   * 3 = Cada 3 frames (20 FPS) para Tier LOW.
    */
-  public getRefreshRate(distToCam: number, hasDynamicCasters: boolean, isDynamicLight: boolean): number {
-    // Si tanto la luz como todos los objetos que proyectan sombra son estáticos, congelamos la sombra.
+  public getRefreshRate(
+    distToCam: number, 
+    hasDynamicCasters: boolean, 
+    isDynamicLight: boolean, 
+    tier: ShadowTier = 'HIGH'
+  ): number {
+    // Si la luz y los objetos son estáticos, congelar
     if (!hasDynamicCasters && !isDynamicLight) {
-      return RenderTargetTexture.REFRESHRATE_RENDER_ONCE; // 0
+      return RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
     }
 
-    // Si tiene elementos dinámicos (Jugador, NPCs o la propia luz se mueve), escalamos por distancia.
-    if (distToCam < 20) {
-      return 1; // Prioridad máxima
-    } else if (distToCam < 45) {
-      return 2; // Media distancia
+    if (tier === 'HIGH') {
+      return distToCam < 25 ? 1 : 2;
+    } else if (tier === 'MEDIUM') {
+      return distToCam < 30 ? 2 : 3;
     } else {
-      return 3; // Lejanía
+      // Tier LOW
+      return 3;
     }
   }
 }

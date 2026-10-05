@@ -1,11 +1,10 @@
-
 // file: src/app/core/engine/telemetry/performance-incident.service.ts
 import { Injectable, inject } from '@angular/core';
 import { EngineProfilerService, ProfilerMetrics, FrameSample } from './engine-profiler.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene/scene-access.token';
 import { GameContextService } from '../session/game-context.service';
 import { GameMode } from '../session/game-mode.model';
-import { Tools } from '@babylonjs/core';
+import { Tools, Vector3 } from '@babylonjs/core';
 
 export type IncidentCategory = 
   | 'FRAME_TIME_SPIKE'
@@ -13,7 +12,14 @@ export type IncidentCategory =
   | 'GPU_BOUND_SPIKE'
   | 'SHADER_COMPILATION_SPIKE'
   | 'SHADOW_REBUILD_SPIKE'
+  | 'SHADOW_POP_IN'
+  | 'LIGHT_ACTIVE_SHADOW_MISSING'
+  | 'SHADOW_RECOVERED_AFTER_TRANSFORM'
   | 'LIGHT_SURGE_SPIKE'
+  | 'OBJECT_POP_IN'
+  | 'OBJECT_POP_OUT'
+  | 'CULLING_FLAP'
+  | 'FAST_PLAYER_MOVE'
   | 'CULLING_STORM_SPIKE'
   | 'SEQUENCE_SPIKE'
   | 'MEMORY_GC_SPIKE'
@@ -91,9 +97,11 @@ export class PerformanceIncidentService {
   private incidentStartTime = 0;
   private postCaptureCounter = 0;
 
+  private lastSpecificIncidentTime = new Map<string, number>();
+
   private readonly FPS_THRESHOLD = 42;
   private readonly FRAMETIME_THRESHOLD = 23.8; 
-  private readonly COOLDOWN_MS = 4000;
+  private readonly COOLDOWN_MS = 3000;
 
   public checkFrame(frameTimeMs: number, fps: number): void {
     if (this.cooldownTimer > 0 && this.state === 'NORMAL') {
@@ -136,6 +144,110 @@ export class PerformanceIncidentService {
         }
       }
     }
+  }
+
+  public recordShadowMissing(lightUid: string, lightName: string, distance: number): void {
+    this.recordSpecificIncident('LIGHT_ACTIVE_SHADOW_MISSING', `Luz activa "${lightName}" sin sombra del Player a ${distance.toFixed(1)}m`, [
+      `Light UID: ${lightUid}`,
+      `Player en rango de luz pero no registrado en renderList`
+    ], 'HIGH');
+  }
+
+  public recordShadowRecovered(lightUid: string, lightName: string): void {
+    this.recordSpecificIncident('SHADOW_RECOVERED_AFTER_TRANSFORM', `Sombra del Player sincronizada tras actualización en "${lightName}"`, [
+      `Light UID: ${lightUid}`
+    ], 'MEDIUM');
+  }
+
+  public recordObjectPopIn(uid: string, name: string, distance: number, playerSpeed: number): void {
+    this.recordSpecificIncident('OBJECT_POP_IN', `Pop-in repentino del objeto "${name}" a ${distance.toFixed(1)}m`, [
+      `Velocidad jugador: ${playerSpeed.toFixed(1)} m/s`,
+      `UID: ${uid}`
+    ], distance < 40.0 ? 'HIGH' : 'LOW');
+  }
+
+  public recordObjectPopOut(uid: string, name: string, distance: number, playerSpeed: number): void {
+    this.recordSpecificIncident('OBJECT_POP_OUT', `Objeto "${name}" desapareció repentinamente a ${distance.toFixed(1)}m`, [
+      `Velocidad jugador: ${playerSpeed.toFixed(1)} m/s`,
+      `UID: ${uid}`
+    ], distance < 40.0 ? 'HIGH' : 'LOW');
+  }
+
+  public recordCullingFlap(uid: string, name: string, distance: number, playerSpeed: number): void {
+    this.recordSpecificIncident('CULLING_FLAP', `Oscilación rápida de visibilidad (Culling Flap) en "${name}" a ${distance.toFixed(1)}m`, [
+      `Velocidad jugador: ${playerSpeed.toFixed(1)} m/s`,
+      `Cambió de estado visible/culled reiteradamente en < 2s`
+    ], 'HIGH');
+  }
+
+  public recordShadowPopIn(lightUid: string, lightName: string, distance: number): void {
+    this.recordSpecificIncident('SHADOW_POP_IN', `Sombra de la luz "${lightName}" demoró en renderizar sus casters a ${distance.toFixed(1)}m`, [
+      `Light UID: ${lightUid}`,
+      `RenderList estaba vacía al encender`
+    ], 'HIGH');
+  }
+
+  public recordFastMove(speed: number, pos: Vector3): void {
+    this.recordSpecificIncident('FAST_PLAYER_MOVE', `Movimiento veloz del jugador a ${speed.toFixed(1)} m/s`, [
+      `Posición: (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)})`
+    ], 'MEDIUM');
+  }
+
+  private recordSpecificIncident(
+    category: IncidentCategory, 
+    diagnosis: string, 
+    secondarySuspects: string[], 
+    confidence: 'HIGH' | 'MEDIUM' | 'LOW'
+  ): void {
+    const now = performance.now();
+    const lastTime = this.lastSpecificIncidentTime.get(category) || 0;
+    if (now - lastTime < 2500) {
+      return;
+    }
+    this.lastSpecificIncidentTime.set(category, now);
+
+    const snap = this.profiler.getSnapshot(false);
+    const recentHistory = this.profiler.getRecentHistory();
+    const stableSample = recentHistory.length > 5 ? recentHistory[recentHistory.length - 5] : recentHistory[0];
+
+    const incident: PerformanceIncident = {
+      id: 'inc_' + Date.now(),
+      timestamp: new Date().toLocaleTimeString(),
+      frameNumber: recentHistory.length > 0 ? recentHistory[recentHistory.length - 1].frameId : 0,
+      durationMs: 16,
+      status: 'RECOVERED',
+      category,
+      primarySuspect: diagnosis,
+      secondarySuspects,
+      confidence,
+      fps: snap.fps,
+      minFps: snap.fps,
+      frameTime: snap.frameTimeAvg,
+      maxFrameTime: snap.frameTimeMax,
+      spatialContext: {
+        sceneId: snap.session.sceneId,
+        sceneName: snap.session.sceneName,
+        mode: snap.session.mode,
+        stage: this.determineContextStage(),
+        playerCoordinates: snap.session.playerPosition,
+        cameraCoordinates: snap.session.cameraPosition,
+        cameraRotation: snap.session.cameraRotation,
+        cameraDirection: snap.session.cameraDirection,
+        cameraFov: snap.session.cameraFov,
+        distanceCameraToPlayer: snap.session.distanceCameraToPlayer,
+        selectedObject: snap.session.selectedObjectName
+      },
+      delta: this.calculateDelta(snap, stableSample),
+      diagnosis,
+      metrics: snap,
+      previousStableMetrics: stableSample,
+      recentHistory: recentHistory.slice(-30)
+    };
+
+    this.incidents.unshift(incident);
+    if (this.incidents.length > this.MAX_INCIDENTS) this.incidents.pop();
+
+    console.warn(`⚠️ [TelemetryIncident] [${category}] ${diagnosis}`);
   }
 
   public simulateIncident(): void {

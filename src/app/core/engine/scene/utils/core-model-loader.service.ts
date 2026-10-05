@@ -1,4 +1,4 @@
-// file: src/app/core/engine/scene/utils/core-model-loader.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { 
     AbstractMesh, AssetContainer, Color3, Mesh, MeshBuilder, 
@@ -232,8 +232,9 @@ export class CoreModelLoaderService {
       }
       
       if (m.material) {
+        // 🔥 FASE C FIX: Usar el valor global unificado para proteger contra tormenta de compilación
         if (m.material.getClassName() === "StandardMaterial" || m.material.getClassName() === "PBRMaterial") {
-          (m.material as any).maxSimultaneousLights = 4;
+          (m.material as any).maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
         }
 
         if (override) {

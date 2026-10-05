@@ -1,21 +1,24 @@
 // file: src/app/core/engine/runtime/systems/lighting/lighting-types.ts
-import { Color3, PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3 } from '@babylonjs/core';
+import { Color3, PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, AbstractMesh } from '@babylonjs/core';
 import { GameEntity, LightInteriorActivationMode } from '../../../entities/game.entity';
 
 export type LightLifecycleStage = 'OUTSIDE' | 'FADING_IN' | 'ACTIVE' | 'FADING_OUT' | 'INACTIVE';
+export type LightSpatialState = 'OUTSIDE' | 'PRE_ENTRY' | 'INSIDE' | 'PRE_EXIT';
+export type ContainmentSource = 'COLLISION_MESH' | 'EXPLICIT_MESH' | 'GEOMETRY' | 'AABB_FALLBACK';
+export type ShadowTier = 'HIGH' | 'MEDIUM' | 'LOW';
 
 export const LIGHT_SPATIAL_CONSTANTS = {
   DEFAULT_ACTIVATION_RADIUS: 50.0,
   DEFAULT_DEACTIVATION_RADIUS: 55.0,
-  DEFAULT_SHADOW_ACTIVATION_RADIUS: 24.0,
-  DEFAULT_SHADOW_DEACTIVATION_RADIUS: 28.0,
+  DEFAULT_SHADOW_ACTIVATION_RADIUS: 30.0,
+  DEFAULT_SHADOW_DEACTIVATION_RADIUS: 35.0,
   RELEVANCE_RADIUS: 50.0,
   DEACTIVATION_RADIUS: 55.0,
   PREPARE_RADIUS: 65.0,
-  SHADOW_ACTIVATION_RADIUS: 24.0,
-  SHADOW_DEACTIVATION_RADIUS: 28.0,
+  SHADOW_ACTIVATION_RADIUS: 30.0,
+  SHADOW_DEACTIVATION_RADIUS: 35.0,
   MAX_LOCAL_LIGHTS: 3,
-  MAX_LOCAL_SHADOWS: 1,
+  MAX_LOCAL_SHADOWS: 3,
   ZERO_INTENSITY_THRESHOLD: 0.0001
 };
 
@@ -39,7 +42,6 @@ export interface VirtualLight {
   isShadowInRange: boolean;
   lastEvaluatedDistance: number;
   
-  // Métricas geométricas detalladas
   centerDistance: number;
   boundsDistance: number;
   effectiveDistance: number;
@@ -50,7 +52,6 @@ export interface VirtualLight {
   closestActorName?: string;
   poolRank?: number;
   
-  // Diagnóstico y máquina de estados
   lifecycleStage: LightLifecycleStage;
   previousLifecycleStage?: LightLifecycleStage;
   lastStateChangeTimestamp?: string;
@@ -65,7 +66,14 @@ export interface VirtualLight {
   interiorActivationMode?: LightInteriorActivationMode;
   insideVolume: boolean;
   inPreEntryZone: boolean;
+  inPreExitZone?: boolean;
+  spatialState?: LightSpatialState;
+  distanceToBoundary?: number;
+  containmentSource?: ContainmentSource;
   containerName?: string;
+
+  shadowTier?: ShadowTier;
+  shadowRank?: number;
 }
 
 export interface PoolSlot {
@@ -82,4 +90,10 @@ export interface PoolSlot {
   isWarmedUp?: boolean;
   _lightOnTimestamp?: number;
   _shadowReadyTimestamp?: number;
+  
+  shadowTier?: ShadowTier;
+  currentRefreshRate?: number;
+
+  // Seguimiento de actores dinámicos actualmente inyectados en la renderList
+  dynamicCastersRegistered?: Set<string>;
 }

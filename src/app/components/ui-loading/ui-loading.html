@@ -1,7 +1,14 @@
 
-
 <div class="loading-overlay">
   <div class="cinematic-spinner"></div>
   <h2>Conectando al Motor 3D</h2>
-  <p>{{ texto }}</p>
+  <p class="loading-status-text">{{ texto }}</p>
+
+  <!-- Barra de progreso real -->
+  <div class="progress-bar-container" *ngIf="progress !== undefined && progress > 0">
+    <div class="progress-bar-fill" [style.width.%]="progress"></div>
+    <span class="progress-bar-label">{{ progress }}%</span>
+  </div>
+  
+  <p class="loading-detail-text" *ngIf="stageDetail">{{ stageDetail }}</p>
 </div>

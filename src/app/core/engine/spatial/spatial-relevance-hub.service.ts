@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/spatial/spatial-relevance-hub.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { Vector3, AbstractMesh, Tags } from '@babylonjs/core';
@@ -14,6 +15,8 @@ export interface SpatialEntityRecord {
   uid: string;
   entity: GameEntity;
   centerWorld: Vector3;
+  minWorld: Vector3;
+  maxWorld: Vector3;
   boundingRadius: number;
   distSqToPlayer: number;
   distToPlayer: number | null;
@@ -115,6 +118,8 @@ export class SpatialRelevanceHubService implements IUpdatable {
         uid: entity.uid,
         entity,
         centerWorld: Vector3.Zero(),
+        minWorld: Vector3.Zero(),
+        maxWorld: Vector3.Zero(),
         boundingRadius: 1.0,
         distSqToPlayer: Number.MAX_VALUE,
         distToPlayer: null,
@@ -140,6 +145,8 @@ export class SpatialRelevanceHubService implements IUpdatable {
   private computeEntityBounds(record: SpatialEntityRecord): void {
     if (record.entity.type.startsWith('light_')) {
       this.lightTransform.getEntityWorldPosition(record.entity, record.centerWorld);
+      record.minWorld.copyFrom(record.centerWorld);
+      record.maxWorld.copyFrom(record.centerWorld);
       record.boundingRadius = record.entity.light?.range || 1.0;
       return;
     }
@@ -147,6 +154,8 @@ export class SpatialRelevanceHubService implements IUpdatable {
     const mesh = record.entity.view as AbstractMesh;
     if (!mesh || mesh.isDisposed()) {
       this.lightTransform.getEntityWorldPosition(record.entity, record.centerWorld);
+      record.minWorld.copyFrom(record.centerWorld);
+      record.maxWorld.copyFrom(record.centerWorld);
       record.boundingRadius = 1.0;
       return;
     }
@@ -158,11 +167,16 @@ export class SpatialRelevanceHubService implements IUpdatable {
 
     if (!Number.isFinite(bounds.min.x) || !Number.isFinite(bounds.max.x) || bounds.min.x > bounds.max.x) {
       this.lightTransform.getEntityWorldPosition(record.entity, record.centerWorld);
+      record.minWorld.copyFrom(record.centerWorld);
+      record.maxWorld.copyFrom(record.centerWorld);
       record.boundingRadius = 1.0;
       return;
     }
 
+    record.minWorld.copyFrom(bounds.min);
+    record.maxWorld.copyFrom(bounds.max);
     record.centerWorld.copyFrom(bounds.min).addInPlace(bounds.max).scaleInPlace(0.5);
+    
     const diagonal = bounds.max.subtract(record.centerWorld);
     record.boundingRadius = Math.max(0.5, diagonal.length());
   }
@@ -215,9 +229,14 @@ export class SpatialRelevanceHubService implements IUpdatable {
           this.computeEntityBounds(record);
         }
 
-        const dx = this.currentRefPos.x - record.centerWorld.x;
-        const dy = this.currentRefPos.y - record.centerWorld.y;
-        const dz = this.currentRefPos.z - record.centerWorld.z;
+        const cx = Math.max(record.minWorld.x, Math.min(this.currentRefPos.x, record.maxWorld.x));
+        const cy = Math.max(record.minWorld.y, Math.min(this.currentRefPos.y, record.maxWorld.y));
+        const cz = Math.max(record.minWorld.z, Math.min(this.currentRefPos.z, record.maxWorld.z));
+        
+        const dx = this.currentRefPos.x - cx;
+        const dy = this.currentRefPos.y - cy;
+        const dz = this.currentRefPos.z - cz;
+        
         record.distSqToPlayer = dx * dx + dy * dy + dz * dz;
         record.distToPlayer = null;
         sqCalls++;

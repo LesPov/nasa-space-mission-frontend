@@ -23,6 +23,7 @@ import { LightDistanceService } from './light-distance.service';
 import { LightAllocationService } from './light-allocation.service';
 import { PoolSlot, VirtualLight, LIGHT_SPATIAL_CONSTANTS } from './lighting-types';
 import { GameEventBusService } from '../../../events/game-event-bus.service';
+import { PerformanceIncidentService } from '../../../telemetry/performance-incident.service';
 
 @Injectable({ providedIn: 'root' })
 export class DynamicLightingSystem implements IUpdatable {
@@ -37,6 +38,7 @@ export class DynamicLightingSystem implements IUpdatable {
   private shadowCache = inject(ShadowCache);
   private eventBus = inject(GameEventBusService);
   private materialSvc = inject(CoreSceneMaterialService);
+  private incidentSvc = inject(PerformanceIncidentService);
 
   private lightRegistry = inject(LightRegistryService);
   private lightTransform = inject(LightTransformService);
@@ -56,13 +58,7 @@ export class DynamicLightingSystem implements IUpdatable {
   public profilerDisableLocalLights = false;
   private forceShadowRebuild = false;
   private shadowRebuildCooldownTimer = 0;
-
-  // Throttling en modo Editor para suprimir el 84% de CPU en IDLE
-  private editorEvalTimer = 0;
   private lastSelectedUid: string | null = null;
-
-  public staleDistanceWarnings = 0;
-  public staleStateWarnings = 0;
 
   constructor() {
     this.eventBus.events$.subscribe(e => {
@@ -75,7 +71,7 @@ export class DynamicLightingSystem implements IUpdatable {
   public getProfilerMetrics() {
     let activeSlots = 0;
     let shadowedSlots = 0;
-    const slotsInfo: { id: string; assigned: boolean; hasSg: boolean; renderListSize: number }[] = [];
+    const slotsInfo: { id: string; assigned: boolean; hasSg: boolean; renderListSize: number; tier?: string }[] = [];
 
     this.lightPool.getAllSlots().forEach(s => {
       if (s.assignedEntityUid) {
@@ -86,7 +82,8 @@ export class DynamicLightingSystem implements IUpdatable {
         id: `${s.type}_${s.index}`,
         assigned: !!s.assignedEntityUid,
         hasSg: !!s.sg,
-        renderListSize: s.sg ? (s.sg.getShadowMap()?.renderList?.length || 0) : 0
+        renderListSize: s.sg ? (s.sg.getShadowMap()?.renderList?.length || 0) : 0,
+        tier: s.shadowTier
       });
     });
 
@@ -140,10 +137,7 @@ export class DynamicLightingSystem implements IUpdatable {
     this.lastRefPos.copyFrom(this.getReferencePosition('PLAYER'));
     this.playerVelocity.setAll(0);
     this.shadowRebuildCooldownTimer = 0;
-    this.editorEvalTimer = 9999;
     this.lastSelectedUid = null;
-    this.staleDistanceWarnings = 0;
-    this.staleStateWarnings = 0;
 
     const scene = this.motor3d.getScene();
     if (scene) {
@@ -255,7 +249,9 @@ export class DynamicLightingSystem implements IUpdatable {
       vl.isShadowInRange = false;
       vl._lastRenderedMultiplier = 0.0;
       vl.lifecycleStage = 'INACTIVE';
+      vl.spatialState = 'OUTSIDE';
       vl.rejectionReason = 'DISABLED';
+      vl.shadowTier = undefined;
 
       this.lightVisual.updateVisualGlow(vl, lightComp, baseColor, true);
 
@@ -303,18 +299,10 @@ export class DynamicLightingSystem implements IUpdatable {
 
     const mode = this.context.mode();
     const isEditorPure = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
-    const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, (dtMs / 16.66) * 0.22);
-    const activeVirtuals = this.lightRegistry.getVirtualLights();
 
     const refPos = this.getReferencePosition('PLAYER');
     const playerDelta = Vector3.Distance(refPos, this.lastRefPos);
-
-    if (dtMs > 0) {
-      this.playerVelocity.copyFrom(refPos).subtractInPlace(this.lastRefPos).scaleInPlace(1000 / dtMs);
-    } else {
-      this.playerVelocity.setAll(0);
-    }
-    this.lastRefPos.copyFrom(refPos);
+    const playerMoved = playerDelta > 0.005;
 
     const selectedMesh = this.context.selectedNode() as AbstractMesh;
     let selectedUid: string | null = null;
@@ -326,18 +314,33 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
     const selectionChanged = selectedUid !== this.lastSelectedUid;
+
+    const selectedEntity = selectedMesh ? this.entityManager.getEntityByMesh(selectedMesh) : null;
+    const isSelectionDirty = selectedEntity ? selectedEntity.isDirty : false;
+    const activeVirtuals = this.lightRegistry.getVirtualLights();
+    const anyLightDirty = activeVirtuals.some(v => v.entity.isDirty);
+    const anyLightFading = activeVirtuals.some(v => Math.abs(v.targetMultiplier - v.currentMultiplier) > 0.001);
+
+    if (isEditorPure && !this.isFirstFrame) {
+      if (!selectionChanged && !playerMoved && !isSelectionDirty && !anyLightDirty && !anyLightFading) {
+        return;
+      }
+    }
+
     this.lastSelectedUid = selectedUid;
 
-    const anyEntityDirty = activeVirtuals.some(v => v.entity.isDirty);
+    const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, (dtMs / 16.66) * (isEditorPure ? 0.45 : 0.22));
 
-    this.editorEvalTimer += dtMs;
-    const editorNeedsEval = isEditorPure && (this.editorEvalTimer >= 200 || selectionChanged || anyEntityDirty || playerDelta > 0.05);
-    const gameplayNeedsEval = !isEditorPure && (playerDelta > 0.015 || this.editorEvalTimer >= 80);
+    if (dtMs > 0) {
+      this.playerVelocity.copyFrom(refPos).subtractInPlace(this.lastRefPos).scaleInPlace(1000 / dtMs);
+    } else {
+      this.playerVelocity.setAll(0);
+    }
+    this.lastRefPos.copyFrom(refPos);
 
-    const shouldReevaluateProximity = this.isFirstFrame || editorNeedsEval || gameplayNeedsEval;
+    const shouldReevaluateProximity = this.isFirstFrame || isEditorPure || playerMoved;
 
     if (shouldReevaluateProximity) {
-      this.editorEvalTimer = 0;
       const speed = this.playerVelocity.length();
       let moveDir = this.playerVelocity.clone();
       if (speed > 0.1) {
@@ -357,7 +360,9 @@ export class DynamicLightingSystem implements IUpdatable {
       this.lightAllocation.allocatePoolSlots(candidates, refPos, moveDir, speed, selectedUid);
     }
 
-    const shouldRebuildShadows = this.forceShadowRebuild || (!isEditorPure && this.shadowRebuildCooldownTimer <= 0 && playerDelta > 0.5);
+    // En lugar de condicionar la reconstrucción al delta del jugador por frame (>0.3),
+    // la renderList estática se refresca si hubo invalidación forzada o si la luz se movió.
+    const shouldRebuildShadows = this.forceShadowRebuild;
     this.forceShadowRebuild = false;
 
     for (let i = 0; i < activeVirtuals.length; i++) {
@@ -409,6 +414,7 @@ export class DynamicLightingSystem implements IUpdatable {
           slot.light.intensity = 0;
           slot.light.diffuse.set(0, 0, 0);
           slot.light.specular.set(0, 0, 0);
+          slot.shadowTier = undefined;
           if (slot.type !== 'directional') (slot.light as any).position.set(0, -99999, 0);
         }
         continue;
@@ -507,33 +513,81 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > 0.02 && lightComp.enabled;
+    const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > 0.001 && lightComp.enabled && lightComp.castShadows;
 
     if (slot.sg) {
       if (wantsShadow) {
         let listRebuilt = false;
+        const renderListEmpty = !slot.sg.getShadowMap()?.renderList?.length;
         const distMovedSq = slot.lastShadowRebuildPos 
           ? Vector3.DistanceSquared(slot.lastShadowRebuildPos, slot.light.position) 
           : 9999;
 
-        if (slot._isNewAssignment || !slot.sg.getShadowMap()?.renderList?.length || distMovedSq > 4.0 || forceRebuildShadows) {
+        // La reconstrucción de casters estáticos solo ocurre cuando la luz entra a un slot,
+        // cuando la luz se mueve en el espacio (> 1m), o si la lista estática estaba completamente vacía.
+        const shouldExecuteRebuild = slot._isNewAssignment || renderListEmpty || distMovedSq > 1.0 || forceRebuildShadows;
+
+        if (shouldExecuteRebuild) {
           const lightRange = slot.type === 'directional' ? 50 : (lightComp.range || 50);
           this.lightShadows.rebuildShadowRenderList(slot, vl.entity.uid, slot.light.position, lightRange);
           if (!slot.lastShadowRebuildPos) slot.lastShadowRebuildPos = Vector3.Zero();
           slot.lastShadowRebuildPos.copyFrom(slot.light.position);
           listRebuilt = true;
-          this.shadowRebuildCooldownTimer = 500;
+          this.shadowRebuildCooldownTimer = 100;
+        }
+
+        // =========================================================================
+        // SINCRONIZACIÓN INMEDIATA DEL PLAYER Y ACTORES DINÁMICOS COMO CASTERS
+        // =========================================================================
+        const actors = this.lightReference.getValidActorEntities();
+        const lightRange = slot.type === 'directional' ? 50 : (lightComp.range || 50);
+        let dynamicCasterChanged = false;
+
+        for (let a = 0; a < actors.length; a++) {
+          const actor = actors[a];
+          const actorPos = this.lightReference.getActorWorldPosition(actor, new Vector3());
+          const distToLight = Vector3.Distance(actorPos, slot.light.position);
+
+          let actorShouldCastShadow = false;
+
+          if (vl.isInterior && vl.interiorActivationMode !== 'DISTANCE') {
+            // En pasillos e interiores: si el actor está INSIDE o PRE_ENTRY, debe proyectar sombra
+            actorShouldCastShadow = (vl.spatialState === 'INSIDE' || vl.spatialState === 'PRE_ENTRY' || vl.spatialState === 'PRE_EXIT') && distToLight <= (lightRange + 4.0);
+          } else {
+            // En exteriores (farola) o interiores por distancia: margen de 3m sobre el rango para no perder sombra
+            actorShouldCastShadow = distToLight <= (lightRange + 3.0);
+          }
+
+          const changed = this.lightShadows.syncDynamicActorInSlot(slot, actor, slot.light.position, lightRange, actorShouldCastShadow);
+          if (changed) {
+            dynamicCasterChanged = true;
+          }
         }
 
         this.lightShadows.applyShadowLOD(slot, isEditorPure, this.getReferencePosition('PLAYER'));
 
-        if (listRebuilt || slot.sg.getShadowMap()?.refreshRate === RenderTargetTexture.REFRESHRATE_RENDER_ONCE) {
+        if (listRebuilt || dynamicCasterChanged || slot.sg.getShadowMap()?.refreshRate === RenderTargetTexture.REFRESHRATE_RENDER_ONCE) {
           slot.sg.getShadowMap()?.resetRefreshCounter();
           this.shadowCache.recordInvalidation();
+        }
+
+        // Telemetría de diagnóstico: verificar si la luz está activa pero el Player no está en la renderList
+        if (actors.length > 0 && actors[0].view && !listRebuilt && !dynamicCasterChanged) {
+          const pActor = actors[0];
+          const pPos = this.lightReference.getActorWorldPosition(pActor, new Vector3());
+          const d = Vector3.Distance(pPos, slot.light.position);
+          const shouldHaveShadow = d <= lightRange && vl.currentMultiplier > 0.1;
+          const isRegistered = slot.dynamicCastersRegistered?.has(pActor.uid);
+
+          if (shouldHaveShadow && !isRegistered) {
+            this.incidentSvc.recordShadowMissing(vl.entity.uid, vl.entity.name, d);
+          }
         }
       } else {
         if ((slot.sg.getShadowMap()?.renderList?.length ?? 0) > 0) {
           slot.sg.getShadowMap()!.renderList!.length = 0;
+          slot.dynamicCastersRegistered?.clear();
+          slot.hasDynamicCasters = false;
         }
       }
     }

@@ -1,6 +1,5 @@
 
-// src/app/core/engine/runtime/systems/fog-orchestrator.service.ts
-
+// file: src/app/core/engine/runtime/systems/fog-orchestrator.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Scene, Color3, AbstractMesh } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
@@ -12,6 +11,7 @@ import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 import { GameContextService } from '../../session/game-context.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameMode } from '../../session/game-mode.model';
+import { ProfilerTogglesService } from '../../telemetry/profiler-toggles.service';
 
 @Injectable({ providedIn: 'root' })
 export class FogOrchestratorService implements IUpdatable {
@@ -22,6 +22,7 @@ export class FogOrchestratorService implements IUpdatable {
   private ownership = inject(CameraOwnershipService);
   private context = inject(GameContextService);
   private entityManager = inject(EntityManagerService);
+  private toggles = inject(ProfilerTogglesService);
 
   private firstFrame = true;
 
@@ -65,10 +66,9 @@ export class FogOrchestratorService implements IUpdatable {
     const isTransitioning = this.context.isTransitioning();
     const mode = this.context.mode();
     const isPlaying = this.context.isPlaying();
-    const isFogDisabledTemp = this.context.isFogDisabled();
+    const isFogDisabledTemp = this.context.isFogDisabled() || this.toggles.state.fogOff;
 
-    // 🔥 OPTIMIZACIÓN EN EDITOR: Si estamos en Editor puro y no hay playtest, apagar cálculos de niebla
-    if (mode === GameMode.EDITOR) {
+    if (mode === GameMode.EDITOR || isFogDisabledTemp) {
       scene.fogMode = Scene.FOGMODE_NONE;
       this.fogRenderer.hideAll();
       return;
@@ -81,20 +81,20 @@ export class FogOrchestratorService implements IUpdatable {
     this.hexToColor3(globalClearHex, this.targetColorObj);
 
     if (isTransitioning) {
-        this.fogRenderer.renderFogWalls(scene, null, false, [], this.targetColorObj, globalClearHex, false, false, 0, 500000, true);
-        return;
+      this.fogRenderer.renderFogWalls(scene, null, false, [], this.targetColorObj, globalClearHex, false, false, 0, 500000, true);
+      return;
     }
 
     let targetEntity = this.context.activePlayerEntity();
 
     if (!isPlaying && !targetEntity) {
-        const entities = this.entityManager.getAllEntities();
-        for (let i = 0; i < entities.length; i++) {
-            if (entities[i].rol === 'spawn_point' || entities[i].rol === 'npc') {
-                targetEntity = entities[i];
-                break;
-            }
+      const entities = this.entityManager.getAllEntities();
+      for (let i = 0; i < entities.length; i++) {
+        if (entities[i].rol === 'spawn_point' || entities[i].rol === 'npc') {
+          targetEntity = entities[i];
+          break;
         }
+      }
     }
 
     const targetPlayer = targetEntity?.view as AbstractMesh || null;
@@ -108,68 +108,59 @@ export class FogOrchestratorService implements IUpdatable {
     let activeLevels: FogLevel[] = [];
 
     if (targetEntity?.playerConfig?.fog?.enabled) {
-        if (isPlaying || (mode === GameMode.EDITING_IN_GAME && !isFogDisabledTemp)) {
-            useFog = true;
-        }
+      if (isPlaying || (mode === GameMode.EDITING_IN_GAME && !isFogDisabledTemp)) {
+        useFog = true;
+      }
     }
 
     if (useFog && targetEntity?.playerConfig?.fog) {
-        const fog = targetEntity.playerConfig.fog;
-        const activeColorHex = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
+      const fog = targetEntity.playerConfig.fog;
+      const activeColorHex = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
 
-        this.hexToColor3(activeColorHex, this.targetColorObj);
-        targetR = this.targetColorObj.r;
-        targetG = this.targetColorObj.g;
-        targetB = this.targetColorObj.b;
+      this.hexToColor3(activeColorHex, this.targetColorObj);
+      targetR = this.targetColorObj.r;
+      targetG = this.targetColorObj.g;
+      targetB = this.targetColorObj.b;
 
-        const renderDistance = isBW ? (isFPS ? fog.renderDistanceFpsBW : fog.renderDistanceTpsBW) : (isFPS ? fog.renderDistanceFPS : fog.renderDistanceTPS);
-        activeLevels = isBW ? (isFPS ? fog.levelsFpsBW : fog.levelsTpsBW) : (isFPS ? fog.levelsFPS : fog.levelsTPS);
+      const rawDist = isBW 
+        ? (isFPS ? fog.renderDistanceFpsBW : fog.renderDistanceTpsBW) 
+        : (isFPS ? fog.renderDistanceFPS : fog.renderDistanceTPS);
 
-        if (this.firstFrame) {
-            this.motor3d.getPlayerCameraFPS().maxZ = 500000;
-            this.motor3d.getPlayerCameraTPS().maxZ = 500000;
-            this.motor3d.getEditorCamera().maxZ = 500000;
-        }
+      // Normalización defensiva: La niebla nunca ahoga a menos de 50 metros del jugador
+      const renderMaxZ = Math.max(50.0, Number(rawDist) || 150);
+      shadowLimit = renderMaxZ;
+      activeLevels = isBW ? (isFPS ? fog.levelsFpsBW : fog.levelsTpsBW) : (isFPS ? fog.levelsFPS : fog.levelsTPS);
 
-        const renderMaxZ = (Number(renderDistance) || 150);
-        shadowLimit = renderMaxZ;
-        
-        this.curStart = isPlaying ? (renderMaxZ * 0.3) : (renderMaxZ * 0.8);
-        this.curEnd = renderMaxZ;
+      // La niebla lineal comienza al 60% de la distancia (mínimo 30m de visión 100% nítida)
+      this.curStart = Math.max(30.0, renderMaxZ * 0.6);
+      this.curEnd = renderMaxZ;
     } else {
-        targetR = this.targetColorObj.r;
-        targetG = this.targetColorObj.g;
-        targetB = this.targetColorObj.b;
-
-        if (this.firstFrame) {
-            this.motor3d.getPlayerCameraFPS().maxZ = 500000;
-            this.motor3d.getPlayerCameraTPS().maxZ = 500000;
-            this.motor3d.getEditorCamera().maxZ = 500000;
-        }
-        
-        this.curStart = 500000;
-        this.curEnd = 500000;
+      targetR = this.targetColorObj.r;
+      targetG = this.targetColorObj.g;
+      targetB = this.targetColorObj.b;
+      this.curStart = 500000;
+      this.curEnd = 500000;
     }
 
     if (this.firstFrame) {
-        this.curR = targetR; this.curG = targetG; this.curB = targetB;
+      this.curR = targetR; this.curG = targetG; this.curB = targetB;
     } else {
-        this.curR += (targetR - this.curR) * lerpSpeed;
-        this.curG += (targetG - this.curG) * lerpSpeed;
-        this.curB += (targetB - this.curB) * lerpSpeed;
+      this.curR += (targetR - this.curR) * lerpSpeed;
+      this.curG += (targetG - this.curG) * lerpSpeed;
+      this.curB += (targetB - this.curB) * lerpSpeed;
     }
 
     scene.fogColor = new Color3(this.curR, this.curG, this.curB);
     scene.fogMode = useFog ? Scene.FOGMODE_LINEAR : Scene.FOGMODE_NONE;
     if (useFog) {
-        scene.fogStart = this.curStart;
-        scene.fogEnd = this.curEnd;
+      scene.fogStart = this.curStart;
+      scene.fogEnd = this.curEnd;
     }
 
     this.fogRenderer.renderFogWalls(
-        scene, targetPlayer, useFog, activeLevels, 
-        this.targetColorObj, globalClearHex, isFogDisabledTemp, 
-        this.firstFrame, lerpSpeed, shadowLimit, false
+      scene, targetPlayer, useFog, activeLevels, 
+      this.targetColorObj, globalClearHex, isFogDisabledTemp, 
+      this.firstFrame, lerpSpeed, shadowLimit, false
     );
 
     this.firstFrame = false;

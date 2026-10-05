@@ -1,11 +1,14 @@
-/* file: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.css */
-/* --- SHARED INSPECTOR SYSTEM --- */
+
 .section-card {
   background: #1e293b;
   border: 1px solid #334155;
   border-radius: 6px;
   margin-bottom: 8px;
   overflow: hidden;
+  transition: border-color 0.2s ease;
+}
+.section-card-locked {
+  border-color: rgba(245, 158, 11, 0.4);
 }
 .section-head {
   padding: 10px 12px;
@@ -18,6 +21,64 @@
 .section-head h4 {
   margin: 0; font-size: 11px; font-weight: 700; color: #e2e8f0; text-transform: uppercase; letter-spacing: 0.5px;
 }
+.locked-pill {
+  background: rgba(245, 158, 11, 0.15) !important;
+  color: #facc15 !important;
+  border: 1px solid rgba(245, 158, 11, 0.4) !important;
+  font-size: 8px;
+  font-weight: 800;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* BANNER DE BLOQUEO DE PRE-ENTRADA */
+.model-preentry-locked-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+}
+.model-preentry-locked-banner .lock-icon {
+  font-size: 16px;
+  line-height: 1;
+  color: #facc15;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+.model-preentry-locked-banner .banner-body {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.model-preentry-locked-banner .banner-title {
+  font-size: 10px;
+  font-weight: 800;
+  color: #facc15;
+  letter-spacing: 0.5px;
+}
+.model-preentry-locked-banner .banner-desc {
+  font-size: 9px;
+  color: #cbd5e1;
+  line-height: 1.35;
+}
+
+.disabled-input {
+  opacity: 0.45 !important;
+  cursor: not-allowed !important;
+}
+.disabled-input input,
+.disabled-input select {
+  cursor: not-allowed !important;
+  pointer-events: none !important;
+  background: #090d16 !important;
+  border-color: #1e293b !important;
+  color: #64748b !important;
+}
+
 .section-mini-head {
   margin: 12px 0 6px 0; display: flex; justify-content: space-between; align-items: center;
 }

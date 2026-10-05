@@ -1,3 +1,5 @@
+
+// file: src/app/core/engine/scene/utils/mappers/light-entity.mapper.ts
 import { Injectable } from '@angular/core';
 import { BaseEntityMapper } from './base-entity.mapper';
 import { GameEntity, LightContainmentMode, LightDistanceReferenceMode, LightInteriorActivationMode } from '../../../entities/game.entity';
@@ -26,16 +28,16 @@ export class LightEntityMapper extends BaseEntityMapper {
     }
 
     if (!props.transformSpace) {
-        if (props.attachedNodeName) {
-            entity.transformSpace = 'ATTACHED';
-        } else if (obj.parentId) {
-            entity.transformSpace = 'LOCAL';
-            entity.isLegacyLocalTransform = false;
-        } else {
-            entity.transformSpace = 'WORLD';
-        }
+      if (props.attachedNodeName) {
+        entity.transformSpace = 'ATTACHED';
+      } else if (obj.parentId) {
+        entity.transformSpace = 'LOCAL';
+        entity.isLegacyLocalTransform = false;
+      } else {
+        entity.transformSpace = 'WORLD';
+      }
     } else {
-        entity.transformSpace = props.transformSpace;
+      entity.transformSpace = props.transformSpace;
     }
 
     if (entity.light) {
@@ -44,16 +46,6 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.intensity = props.intensity ?? 1.0;
       entity.light.range = props.range ?? 50;
       entity.light.angle = props.angle ?? 60;
-      
-      if ((props as any).lightPosX !== undefined) {
-         entity.transform.position.x = TransformNormalizer.sanitizePosition((props as any).lightPosX);
-         entity.transform.position.y = TransformNormalizer.sanitizePosition((props as any).lightPosY);
-         entity.transform.position.z = TransformNormalizer.sanitizePosition((props as any).lightPosZ);
-         entity.transform.rotation.x = TransformNormalizer.sanitizeRotation(((props as any).lightRotX ?? 0) * Math.PI / 180);
-         entity.transform.rotation.y = TransformNormalizer.sanitizeRotation(((props as any).lightRotY ?? 0) * Math.PI / 180);
-         entity.transform.rotation.z = TransformNormalizer.sanitizeRotation(((props as any).lightRotZ ?? 0) * Math.PI / 180);
-         entity.transform.rotationQuaternion = null;
-      }
 
       entity.light.attachedNodePath = props.attachedNodePath || '';
       entity.light.attachedNodeName = props.attachedNodeName || '';
@@ -61,13 +53,18 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.enabled = props.isEnabled ?? true;
       entity.light.castShadows = (props as any).castShadows ?? true;
 
+      // Preservar la contención interior configurada y asegurar VOLUME por defecto en interiores
       const defaultContainment = obj.parentId ? 'INTERIOR' : 'GLOBAL';
       entity.light.containmentMode = (props.containmentMode as LightContainmentMode) || defaultContainment;
-      entity.light.interiorActivationMode = (props.interiorActivationMode as LightInteriorActivationMode) || 'VOLUME';
+      entity.light.interiorActivationMode = (props.interiorActivationMode as LightInteriorActivationMode) || (entity.light.containmentMode === 'INTERIOR' ? 'VOLUME' : 'DISTANCE');
       entity.light.preEntryEnabled = props.preEntryEnabled ?? true;
-      entity.light.preEntryDistance = props.preEntryDistance ?? 3.0;
-      
-      entity.light.containerEntityUid = props.containerEntityUid || '';
+      entity.light.preEntryDistance = props.preEntryDistance ?? 4.5;
+
+      // Fase C: Pre-entrada de sombras independiente con sincronización por defecto
+      entity.light.linkShadowPreEntryToLightPreEntry = props.linkShadowPreEntryToLightPreEntry !== false;
+      entity.light.shadowPreEntryDistance = props.shadowPreEntryDistance ?? entity.light.preEntryDistance;
+
+      entity.light.containerEntityUid = props.containerEntityUid || obj.parentId || '';
       entity.light.affectDescendantsOnly = props.affectDescendantsOnly ?? false;
       entity.light.shadowDarkness = props.shadowDarkness ?? 0.0;
       entity.light.shadowBias = props.shadowBias ?? 0.0005;
@@ -75,16 +72,16 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.excludeExteriorMeshes = props.excludeExteriorMeshes ?? true;
 
       entity.light.distanceControlEnabled = props.distanceControlEnabled ?? true;
-      
-      const defaultAct = Math.max(20, (props.range ?? 50) * 1.3);
+
+      const defaultAct = Math.max(15, (props.range ?? 25) * 0.8);
       entity.light.activationDistance = props.activationDistance ?? defaultAct;
-      entity.light.deactivationDistance = props.deactivationDistance ?? (entity.light.activationDistance + 10);
-      
+      entity.light.deactivationDistance = props.deactivationDistance ?? (entity.light.activationDistance + 6);
+
       entity.light.distanceShadowsEnabled = props.distanceShadowsEnabled ?? true;
-      const defaultShadowAct = Math.max(10, entity.light.activationDistance * 0.5);
+      const defaultShadowAct = Math.max(10, entity.light.activationDistance * 0.7);
       entity.light.shadowActivationDistance = props.shadowActivationDistance ?? defaultShadowAct;
-      entity.light.shadowDeactivationDistance = props.shadowDeactivationDistance ?? (entity.light.shadowActivationDistance + 6);
-      
+      entity.light.shadowDeactivationDistance = props.shadowDeactivationDistance ?? (entity.light.shadowActivationDistance + 4);
+
       entity.light.distanceReferenceMode = (props.distanceReferenceMode as LightDistanceReferenceMode) || 'AUTO';
     }
   }
@@ -108,6 +105,8 @@ export class LightEntityMapper extends BaseEntityMapper {
         interiorActivationMode: entity.light.interiorActivationMode,
         preEntryEnabled: entity.light.preEntryEnabled,
         preEntryDistance: entity.light.preEntryDistance,
+        linkShadowPreEntryToLightPreEntry: entity.light.linkShadowPreEntryToLightPreEntry,
+        shadowPreEntryDistance: entity.light.shadowPreEntryDistance,
         containerEntityUid: entity.light.containerEntityUid,
         affectDescendantsOnly: entity.light.affectDescendantsOnly,
         shadowDarkness: entity.light.shadowDarkness,

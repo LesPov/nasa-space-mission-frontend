@@ -1,6 +1,6 @@
 // file: src/app/core/engine/runtime/systems/lighting/light-reference.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Vector3 } from '@babylonjs/core';
+import { Vector3, AbstractMesh } from '@babylonjs/core';
 import { GameContextService } from '../../../session/game-context.service';
 import { CameraOwnershipService } from '../../cameras/camera-ownership.service';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
@@ -26,6 +26,23 @@ export class LightReferenceService {
       return [activePlayer];
     }
 
+    // En modo Editor, si el creador tiene seleccionado activamente un Actor o Player,
+    // ese objeto seleccionado es la máxima prioridad de referencia inmediata.
+    const selectedNode = this.context.selectedNode() as AbstractMesh;
+    if (selectedNode) {
+      const selectedEntity = this.entityManager.getEntityByMesh(selectedNode);
+      if (selectedEntity && !selectedEntity.isManuallyHidden && (
+        selectedEntity.rol === 'player' ||
+        selectedEntity.hasComponent('characterConfig') ||
+        selectedEntity.rol === 'npc' ||
+        selectedEntity.rol === 'politico' ||
+        selectedEntity.rol === 'militar' ||
+        selectedEntity.rol === 'spawn_point'
+      )) {
+        return [selectedEntity];
+      }
+    }
+
     const all = this.entityManager.getAllEntities();
     const actors: GameEntity[] = [];
 
@@ -41,6 +58,16 @@ export class LightReferenceService {
         e.rol === 'militar'
       ) {
         actors.push(e);
+      }
+    }
+
+    // Asegurar que el Player principal esté siempre en el índice 0
+    const primaryActor = actors.find(e => e.rol === 'player' || e.hasComponent('characterConfig'));
+    if (primaryActor) {
+      const idx = actors.indexOf(primaryActor);
+      if (idx > 0) {
+        actors.splice(idx, 1);
+        actors.unshift(primaryActor);
       }
     }
 
@@ -101,7 +128,7 @@ export class LightReferenceService {
 
   /**
    * Resuelve la posición del jugador en coordenadas mundiales reales.
-   * En Editor Libre y Test Live, evalúa consistentemente contra el Player Runtime.
+   * En Editor Libre y Test Live, evalúa consistentemente contra el Player Runtime o el actor seleccionado.
    */
   public getReferencePosition(customMode?: 'AUTO' | 'CAMERA' | 'PLAYER'): Vector3 {
     const playerEntity = this.context.activePlayerEntity();

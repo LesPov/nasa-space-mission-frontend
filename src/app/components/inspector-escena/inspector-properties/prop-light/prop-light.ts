@@ -1,6 +1,5 @@
-// RUTA: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.ts
-// ACCIÓN: MODIFICAR
 
+// file: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.ts
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -56,11 +55,13 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   enabled = true;
   castShadows = true;
 
-  // --- CONTAINMENT PROPERTIES ---
+  // --- CONTAINMENT PROPERTIES (FASE C) ---
   containmentMode: LightContainmentMode = 'GLOBAL';
   interiorActivationMode: LightInteriorActivationMode = 'VOLUME';
   preEntryEnabled: boolean = true;
-  preEntryDistance: number = 3.0;
+  preEntryDistance: number = 4.5;
+  linkShadowPreEntryToLightPreEntry: boolean = true;
+  shadowPreEntryDistance: number = 4.5;
 
   containerEntityUid: string = '';
   affectDescendantsOnly: boolean = false;
@@ -69,7 +70,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   shadowNormalBias: number = 0.01;
   excludeExteriorMeshes: boolean = true;
 
-  // --- DISTANCE & FADE PROPERTIES ---
+  // --- DISTANCE & FADE PROPERTIES (RADIAL) ---
   distanceControlEnabled: boolean = true;
   activationDistance: number = 52;
   deactivationDistance: number = 56;
@@ -84,6 +85,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   currentEffectiveIntensity: number = 0.0;
   isLightActiveStatus: boolean = false;
   isShadowActiveStatus: boolean = false;
+  shadowTierText: string = 'N/A';
   closestActorName: string = 'N/A';
   poolRankText: string = '-';
   referenceModeDisplay: string = 'ACTOR (Player/NPC)';
@@ -91,7 +93,10 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   isInteriorLight: boolean = false;
   isInsideVolume: boolean = false;
   isInPreEntry: boolean = false;
+  isInPreExit: boolean = false;
   spatialContextText: string = 'GLOBAL';
+  containmentSourceText: string = 'N/A';
+  distanceToBoundaryText: string = 'N/A';
 
   public childNodes: AttachedNodeOption[] = [];
   public containerOptions: ContainerOption[] = [];
@@ -100,6 +105,10 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
   animStatus = '';
   private telemetryInterval: any = null;
+
+  get isModelPreEntryActive(): boolean {
+    return this.containmentMode === 'INTERIOR' && this.preEntryEnabled && this.interiorActivationMode !== 'DISTANCE';
+  }
 
   ngOnInit() {
     this.syncData();
@@ -139,6 +148,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       this.currentEffectiveIntensity = (entity.light?.intensity ?? 1.0) * vl.currentMultiplier;
       this.isLightActiveStatus = vl.isLightInRange && (entity.light?.enabled ?? true) && vl.currentMultiplier > 0.001;
       this.isShadowActiveStatus = vl.isShadowInRange && (entity.light?.castShadows ?? true);
+      this.shadowTierText = vl.shadowTier || 'OFF';
       this.closestActorName = vl.closestActorName || 'Actor';
       this.poolRankText = vl.poolRank && vl.poolRank > 0 ? `${vl.poolRank} / 3 (ACTIVA)` : 'Fuera de Pool (INACTIVA)';
       this.referenceModeDisplay = this.distanceReferenceMode === 'AUTO' 
@@ -148,17 +158,28 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       this.isInteriorLight = vl.isInterior;
       this.isInsideVolume = vl.insideVolume;
       this.isInPreEntry = vl.inPreEntryZone;
+      this.isInPreExit = vl.inPreExitZone ?? false;
+      this.containmentSourceText = vl.containmentSource || 'N/A';
+      this.distanceToBoundaryText = vl.distanceToBoundary !== undefined ? `${vl.distanceToBoundary.toFixed(2)} m` : 'N/A';
 
       if (vl.isInterior) {
-        if (vl.insideVolume) {
-          this.spatialContextText = `INTERIOR (${vl.containerName || 'Dentro'}) - DENTRO`;
-        } else if (vl.inPreEntryZone) {
-          this.spatialContextText = `PRE-ENTRADA (${vl.containerName || 'Puerta'}) - FADE IN`;
+        if (this.isModelPreEntryActive) {
+          if (vl.spatialState === 'INSIDE') {
+            this.spatialContextText = `INTERIOR (${vl.containerName || 'Dentro'}) - INSIDE (100%)`;
+          } else if (vl.spatialState === 'PRE_ENTRY') {
+            this.spatialContextText = `PRE-ENTRADA (${vl.containerName || 'Puerta'}) - FADE IN (${(vl.currentMultiplier * 100).toFixed(0)}%)`;
+          } else if (vl.spatialState === 'PRE_EXIT') {
+            this.spatialContextText = `PRE-SALIDA (${vl.containerName || 'Puerta'}) - FADE OUT (${(vl.currentMultiplier * 100).toFixed(0)}%)`;
+          } else {
+            this.spatialContextText = `FUERA DEL MODELO (${vl.containerName || 'Exterior'}) - APAGADA`;
+          }
         } else {
-          this.spatialContextText = `FUERA DEL VOLUMEN (${vl.containerName || 'Exterior'}) - APAGADA`;
+          this.spatialContextText = vl.insideVolume 
+            ? `INTERIOR (${vl.containerName || 'Dentro'}) - RADIAL` 
+            : `FUERA DEL VOLUMEN (${vl.containerName || 'Exterior'})`;
         }
       } else {
-        this.spatialContextText = 'EXTERIOR / PROXIMAL';
+        this.spatialContextText = 'GLOBAL / EXTERIOR';
       }
 
       this.cdr.detectChanges();
@@ -238,6 +259,20 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     return names;
   }
 
+  public onPreEntryDistanceChange(): void {
+    if (this.linkShadowPreEntryToLightPreEntry) {
+      this.shadowPreEntryDistance = this.preEntryDistance;
+    }
+    this.aplicarLuz();
+  }
+
+  public onSyncShadowToggle(): void {
+    if (this.linkShadowPreEntryToLightPreEntry) {
+      this.shadowPreEntryDistance = this.preEntryDistance;
+    }
+    this.aplicarLuz();
+  }
+
   syncData() {
     if (!this.objeto) return;
     const entity = this.entityManager.getEntityByMesh(this.objeto);
@@ -259,7 +294,10 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.containmentMode = entity.light.containmentMode ?? (entity.parentId ? 'INTERIOR' : 'GLOBAL');
     this.interiorActivationMode = entity.light.interiorActivationMode || 'VOLUME';
     this.preEntryEnabled = entity.light.preEntryEnabled ?? true;
-    this.preEntryDistance = entity.light.preEntryDistance ?? 3.0;
+    this.preEntryDistance = entity.light.preEntryDistance ?? 4.5;
+    
+    this.linkShadowPreEntryToLightPreEntry = entity.light.linkShadowPreEntryToLightPreEntry !== false;
+    this.shadowPreEntryDistance = entity.light.shadowPreEntryDistance ?? this.preEntryDistance;
 
     this.containerEntityUid = entity.light.containerEntityUid ?? '';
     this.affectDescendantsOnly = entity.light.affectDescendantsOnly ?? false;
@@ -360,6 +398,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.light.interiorActivationMode = this.interiorActivationMode;
       entity.light.preEntryEnabled = this.preEntryEnabled;
       entity.light.preEntryDistance = this.preEntryDistance;
+      entity.light.linkShadowPreEntryToLightPreEntry = this.linkShadowPreEntryToLightPreEntry;
+      entity.light.shadowPreEntryDistance = this.linkShadowPreEntryToLightPreEntry ? this.preEntryDistance : this.shadowPreEntryDistance;
 
       entity.light.containerEntityUid = this.containerEntityUid;
       entity.light.affectDescendantsOnly = this.affectDescendantsOnly;
@@ -368,19 +408,23 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.light.shadowNormalBias = this.shadowNormalBias;
       entity.light.excludeExteriorMeshes = this.excludeExteriorMeshes;
 
-      entity.light.distanceControlEnabled = this.distanceControlEnabled;
-      entity.light.activationDistance = this.activationDistance;
-      entity.light.deactivationDistance = this.deactivationDistance;
-      entity.light.distanceShadowsEnabled = this.distanceShadowsEnabled;
-      entity.light.shadowActivationDistance = this.shadowActivationDistance;
-      entity.light.shadowDeactivationDistance = this.shadowDeactivationDistance;
-      entity.light.distanceReferenceMode = this.distanceReferenceMode;
+      if (!this.isModelPreEntryActive) {
+        entity.light.distanceControlEnabled = this.distanceControlEnabled;
+        entity.light.activationDistance = this.activationDistance;
+        entity.light.deactivationDistance = this.deactivationDistance;
+        entity.light.distanceShadowsEnabled = this.distanceShadowsEnabled;
+        entity.light.shadowActivationDistance = this.shadowActivationDistance;
+        entity.light.shadowDeactivationDistance = this.shadowDeactivationDistance;
+        entity.light.distanceReferenceMode = this.distanceReferenceMode;
+      }
       
       entity.isDirty = true;
       entity.syncToView(); 
 
-      // 🔥 PROPAGACIÓN INSTANTÁNEA EN VIVO
       this.containmentSvc.markDirty(entity.uid);
+      if (this.containerEntityUid) {
+        this.containmentSvc.markDirty(this.containerEntityUid);
+      }
       this.dynamicLighting.syncLightImmediate(entity, true);
       this.updateTelemetry();
     }

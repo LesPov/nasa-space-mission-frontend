@@ -1,14 +1,12 @@
-
 // file: src/app/services/editor/editor-play-mode.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Mesh, Tags, Vector3, Scene, ArcRotateCamera, AbstractMesh } from '@babylonjs/core';
+import { Mesh, Tags, Vector3, AbstractMesh } from '@babylonjs/core';
 
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { EditorStateService } from './editor-state.service';
 import { EditorCameraService } from './editor-camera.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.service';
-import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
 import { CameraViewMode } from '../../core/engine/session/game-context.model';
 import { GameContextService } from '../../core/engine/session/game-context.service';
 import { CameraOwnershipService } from '../../core/engine/runtime/cameras/camera-ownership.service';
@@ -22,6 +20,9 @@ import { LocalRenderingSystem } from '../../core/engine/runtime/systems/local-re
 import { FogOrchestratorService } from '../../core/engine/runtime/systems/fog-orchestrator.service';
 import { PlayerInputService } from '../../core/engine/runtime/systems/player-input.service';
 import { EngineProfilerService } from '../../core/engine/telemetry/engine-profiler.service';
+import { SpatialStreamingGroupService } from '../../core/engine/spatial/spatial-streaming-group.service';
+import { RuntimeReadinessBarrierService } from '../../core/engine/runtime/live/runtime-readiness-barrier.service';
+import { ShadowQualityService } from '../../core/engine/runtime/shadows/shadow-quality.service';
 
 export interface EditorCameraSnapshot {
   target: Vector3;
@@ -38,29 +39,31 @@ export class EditorPlayModeService {
   private cameraSvc = inject(EditorCameraService);
   private entityManager = inject(EntityManagerService);
   private runtimeEngine = inject(RuntimeEngineService);
-  private inputOrchestrator = inject(InputOrchestratorService);
   private gameContext = inject(GameContextService);
   private ownership = inject(CameraOwnershipService);
   private transitionSvc = inject(EditorModeTransitionService);
   private spawnManager = inject(SpawnManagerService);
   private dynamicLighting = inject(DynamicLightingSystem);
   private shadowOrchestrator = inject(ShadowOrchestratorService);
+  private shadowQualitySvc = inject(ShadowQualityService);
   private highlightSvc = inject(ToolsHighlightService);
   private localRendering = inject(LocalRenderingSystem);
   private fogOrchestrator = inject(FogOrchestratorService);
   private inputSvc = inject(PlayerInputService);
   private profiler = inject(EngineProfilerService);
+  private spatialGroups = inject(SpatialStreamingGroupService);
+  private readinessBarrier = inject(RuntimeReadinessBarrierService);
 
   private editorSnapshot: EditorCameraSnapshot | null = null;
   private pendingFlightParams: any = null;
   private flightObserver: any = null;
 
-  public async prepararEscenaParaTest(vista: CameraViewMode, onProgress?: (msg: string) => void): Promise<void> {
+  public async prepararEscenaParaTest(vista: CameraViewMode, onProgress?: (msg: string, pct?: number) => void): Promise<void> {
     const scene = this.motor3d.getScene();
     const editorCam = this.motor3d.getEditorCamera();
 
     this.profiler.beginTransitionTracking('CAPTURE_EDITOR_STATE');
-    this.gameContext.setRuntimeReadyStage('PREPARING_RESOURCES');
+    this.readinessBarrier.startReadiness(11);
 
     if (editorCam) {
       editorCam.computeWorldMatrix();
@@ -75,8 +78,9 @@ export class EditorPlayModeService {
     this.cameraSvc.guardarEstadoCamaraLibre();
     CinematicLogger.logTestLiveLifecycle('ENTER', 'EDITOR', editorCam?.name);
 
-    this.profiler.recordTransitionMilestone('PLAYER_RESOLVE');
-    if (onProgress) onProgress('Resolviendo jugador y punto de aparición...');
+    // 1. RESOLVER JUGADOR Y SPAWN
+    this.readinessBarrier.setStage('RESOLVING_PLAYER', 'Resolviendo jugador y punto de aparición...');
+    if (onProgress) onProgress('Resolviendo jugador y punto de aparición...', 15);
 
     let objMesh = this.state.objetoSeleccionado() as Mesh;
     let preferredEntity = objMesh ? this.entityManager.getEntityByMesh(objMesh) : null;
@@ -85,7 +89,6 @@ export class EditorPlayModeService {
     if (!playerEntity || !playerEntity.view) throw new Error("Player not resolved");
     objMesh = playerEntity.view as Mesh;
 
-    // Desbloquear autoridad y runtime de movimiento del jugador
     playerEntity.movementAuthority = 'GAMEPLAY';
     if (playerEntity.playerRuntime) {
       playerEntity.playerRuntime.cinematicAnimation = null;
@@ -109,8 +112,14 @@ export class EditorPlayModeService {
     this.state.seleccionarObjeto(null);
     this.gameContext.setActivePlayer(playerEntity);
 
-    this.profiler.recordTransitionMilestone('VISIBILITY_SETUP');
-    if (onProgress) onProgress('Configurando visibilidad inicial...');
+    // 2. CONSTRUIR GRUPOS ESPACIALES JERÁRQUICOS
+    this.readinessBarrier.setStage('BUILDING_SPATIAL_GROUPS', 'Estructurando grupos espaciales y pasillos...');
+    if (onProgress) onProgress('Estructurando grupos espaciales y pasillos...', 30);
+    this.spatialGroups.buildGroups();
+
+    // 3. CONFIGURAR VISIBILIDAD BASE
+    this.readinessBarrier.setStage('PREPARING_RESOURCES', 'Configurando visibilidad de mallas...');
+    if (onProgress) onProgress('Configurando visibilidad de mallas...', 40);
 
     this.motor3d.getScene().meshes.forEach(m => {
       if (Tags.MatchesQuery(m, 'editor_only')) {
@@ -154,29 +163,17 @@ export class EditorPlayModeService {
       targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
     }
 
-    this.profiler.recordTransitionMilestone('WARMING_UP_SHADOWS_LIGHTS');
-    if (onProgress) onProgress('Preparando Iluminación y Sombras...');
-    this.gameContext.setRuntimeReadyStage('WARMING_UP_SHADOWS');
+    // 4. PREPARAR LUCES, SOMBRAS Y NIEBLA
+    this.readinessBarrier.setStage('PREPARING_LIGHTS', 'Preparando iluminación y sombras...');
+    if (onProgress) onProgress('Preparando iluminación y sombras...', 55);
     this.dynamicLighting.reconcileSceneLights();
     this.shadowOrchestrator.reconcileShadows();
 
-    this.profiler.recordTransitionMilestone('COMPILING_SHADERS');
-    if (onProgress) onProgress('Compilando Shaders críticos de forma asíncrona...');
-    this.gameContext.setRuntimeReadyStage('COMPILING_SHADERS');
+    // 5. PRECALENTAMIENTO DE SOMBREADORES (SHADERS)
+    this.readinessBarrier.setStage('COMPILING_SHADERS', 'Precalentando sombreadores en VRAM...');
+    if (onProgress) onProgress('Precalentando sombreadores en VRAM...', 70);
 
-    await new Promise<void>((resolve) => {
-      const timeoutFallback = setTimeout(() => {
-        resolve();
-      }, 2500);
-
-      scene.whenReadyAsync().then(() => {
-        clearTimeout(timeoutFallback);
-        resolve();
-      }).catch(() => {
-        clearTimeout(timeoutFallback);
-        resolve();
-      });
-    });
+    await this.dynamicLighting.forceWarmup(targetPos);
 
     this.pendingFlightParams = {
       centroEpiral, targetPos, targetLookAt, playerForward, vista, playerEntity, objMesh
@@ -190,7 +187,7 @@ export class EditorPlayModeService {
         return;
       }
       
-      this.profiler.recordTransitionMilestone('CAMERA_FLIGHT');
+      this.readinessBarrier.setStage('WARMING_RENDER', 'Desplazando cámara a posición inicial...');
       const { centroEpiral, targetPos, targetLookAt, playerForward, objMesh } = this.pendingFlightParams;
 
       if (vista === 'FPS') {
@@ -218,27 +215,18 @@ export class EditorPlayModeService {
     });
   }
 
-  public async estabilizarEntornoVisual(vista: CameraViewMode): Promise<void> {
-    this.profiler.recordTransitionMilestone('CHECKING_STABILITY');
-    this.gameContext.setRuntimeReadyStage('CHECKING_STABILITY');
-    return new Promise<void>((resolve) => {
-      const scene = this.motor3d.getScene();
-      if (!this.pendingFlightParams) return resolve();
-      const { targetPos } = this.pendingFlightParams;
+  public async estabilizarEntornoVisual(vista: CameraViewMode, onProgress?: (msg: string, pct?: number) => void): Promise<void> {
+    const scene = this.motor3d.getScene();
+    if (!this.pendingFlightParams) return;
+    const { targetPos } = this.pendingFlightParams;
 
-      this.fogOrchestrator.forceSnapNextFrame();
-      this.localRendering.reconcileAllEntitiesImmediate(targetPos);
-      this.dynamicLighting.forceWarmup(targetPos);
-      this.shadowOrchestrator.reconcileShadows();
+    this.fogOrchestrator.forceSnapNextFrame();
+    this.localRendering.reconcileAllEntitiesImmediate(targetPos);
+    await this.dynamicLighting.forceWarmup(targetPos);
+    this.shadowOrchestrator.reconcileShadows();
 
-      requestAnimationFrame(() => {
-        scene.render();
-        requestAnimationFrame(() => {
-          scene.render();
-          this.gameContext.setRuntimeReadyStage('READY');
-          resolve();
-        });
-      });
+    await this.readinessBarrier.waitForTrueStability(scene, 35, 25.0, (msg, pct) => {
+      if (onProgress) onProgress(msg, 70 + Math.round(pct * 0.3));
     });
   }
 
@@ -255,7 +243,6 @@ export class EditorPlayModeService {
       this.transitionSvc.finishTestLiveTransition();
     }
 
-    // Arrancar el motor de runtime con el jugador libre
     playerEntity.movementAuthority = 'GAMEPLAY';
     this.runtimeEngine.startTestSession(playerEntity, vista);
 
@@ -283,7 +270,7 @@ export class EditorPlayModeService {
         this.inputSvc.resetearInputs();
 
         this.pendingFlightParams = null;
-        this.gameContext.setRuntimeReadyStage('IDLE');
+        this.readinessBarrier.reset();
         this.profiler.endTransitionTracking();
         resolve();
       }, 50);
@@ -295,11 +282,27 @@ export class EditorPlayModeService {
     const canvas = this.motor3d.getEngine().getRenderingCanvas();
     const editorCam = this.motor3d.getEditorCamera();
 
-    this.gameContext.setRuntimeReadyStage('IDLE');
+    this.readinessBarrier.reset();
+    this.spatialGroups.clear();
     this.ownership.releaseGameplayOwnership();
 
     try { this.motor3d.getPlayerCameraFPS()?.detachControl(); } catch {}
     try { this.motor3d.getPlayerCameraTPS()?.detachControl(); } catch {}
+
+    // Restaurar calidad de renderizado completa al Editor
+    const engine = this.motor3d.getEngine();
+    if (engine) {
+      engine.setHardwareScalingLevel(1.0);
+    }
+    const pipeline = this.motor3d.getRenderingPipeline();
+    if (pipeline) {
+      pipeline.fxaaEnabled = true;
+    }
+    const glow = (this.motor3d as any).glowLayer;
+    if (glow) {
+      glow.intensity = 0.6;
+    }
+    this.shadowQualitySvc.setQualityTier('HIGH');
 
     scene.meshes.forEach(m => {
       if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) {

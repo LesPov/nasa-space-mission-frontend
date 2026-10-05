@@ -51,11 +51,13 @@ export interface SceneObjectPropertiesDto {
   
   disableCulling?: boolean;
 
-  // --- LIGHT CONTAINMENT PROPERTIES ---
+  // --- LIGHT CONTAINMENT PROPERTIES (FASE C) ---
   containmentMode?: 'GLOBAL' | 'INTERIOR' | 'EXTERIOR';
   interiorActivationMode?: 'VOLUME' | 'DISTANCE' | 'BOTH';
   preEntryEnabled?: boolean;
   preEntryDistance?: number;
+  linkShadowPreEntryToLightPreEntry?: boolean;
+  shadowPreEntryDistance?: number;
   containerEntityUid?: string;
   interiorVolumeId?: string;
   affectDescendantsOnly?: boolean;
@@ -64,7 +66,7 @@ export interface SceneObjectPropertiesDto {
   shadowNormalBias?: number;
   excludeExteriorMeshes?: boolean;
 
-  // --- LIGHT DISTANCE PROPERTIES ---
+  // --- LIGHT DISTANCE PROPERTIES (RADIAL) ---
   distanceControlEnabled?: boolean;
   activationDistance?: number;
   deactivationDistance?: number;

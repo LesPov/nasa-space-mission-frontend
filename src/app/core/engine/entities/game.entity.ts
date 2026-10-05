@@ -79,7 +79,9 @@ export class LightComponent {
     public containmentMode: LightContainmentMode = 'GLOBAL',
     public interiorActivationMode: LightInteriorActivationMode = 'VOLUME',
     public preEntryEnabled: boolean = true,
-    public preEntryDistance: number = 3.0,
+    public preEntryDistance: number = 4.5,
+    public linkShadowPreEntryToLightPreEntry: boolean = true,
+    public shadowPreEntryDistance: number = 4.5,
     public containerEntityUid: string = '',
     public affectDescendantsOnly: boolean = false,
     public shadowDarkness: number = 0.0,
@@ -261,9 +263,6 @@ export class GameEntity {
     }
   }
 
-  /**
-   * Clonación profunda directa en memoria de alta velocidad sin utilizar JSON.parse/stringify.
-   */
   public createAuthoringBackup(): void {
     if (this.isRuntimeOnly) return; 
 
@@ -300,7 +299,8 @@ export class GameEntity {
         l.lightColor, l.lightColorBW, l.intensity, l.range, l.angle,
         l.attachedNodePath, l.attachedNodeName, l.renderIntensity, l.enabled,
         l.castShadows, l.containmentMode, l.interiorActivationMode, l.preEntryEnabled,
-        l.preEntryDistance, l.containerEntityUid, l.affectDescendantsOnly, l.shadowDarkness,
+        l.preEntryDistance, l.linkShadowPreEntryToLightPreEntry, l.shadowPreEntryDistance,
+        l.containerEntityUid, l.affectDescendantsOnly, l.shadowDarkness,
         l.shadowBias, l.shadowNormalBias, l.excludeExteriorMeshes, l.distanceControlEnabled,
         l.activationDistance, l.deactivationDistance, l.distanceShadowsEnabled,
         l.shadowActivationDistance, l.shadowDeactivationDistance, l.distanceReferenceMode
@@ -335,9 +335,6 @@ export class GameEntity {
     };
   }
 
-  /**
-   * Restauración rápida sin deserializaciones de texto.
-   */
   public restoreAuthoringBackup(): void {
     if (!this.authoringBackup || this.isRuntimeOnly) return;
 
@@ -530,7 +527,6 @@ export class GameEntity {
       }
 
       const dot = Quaternion.Dot(this.view.rotationQuaternion, targetQuat);
-      
       if (Math.abs(dot) < 0.99999) { 
           this.view.rotationQuaternion.copyFrom(targetQuat);
       }

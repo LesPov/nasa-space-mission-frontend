@@ -1,16 +1,18 @@
 // file: src/app/core/engine/runtime/systems/lighting/light-allocation.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Vector3, SpotLight, DirectionalLight } from '@babylonjs/core';
-import { VirtualLight, PoolSlot, LIGHT_SPATIAL_CONSTANTS } from './lighting-types';
+import { VirtualLight, PoolSlot, ShadowTier, LIGHT_SPATIAL_CONSTANTS } from './lighting-types';
 import { LightPoolService } from './light-pool.service';
 import { LightTransformService } from './light-transform.service';
 import { CameraOwnershipService } from '../../cameras/camera-ownership.service';
+import { SpatialStreamingGroupService } from '../../../spatial/spatial-streaming-group.service';
 
 @Injectable({ providedIn: 'root' })
 export class LightAllocationService {
   private lightPool = inject(LightPoolService);
   private lightTransform = inject(LightTransformService);
   private ownership = inject(CameraOwnershipService);
+  private spatialGroups = inject(SpatialStreamingGroupService);
 
   private _tempPos = Vector3.Zero();
   private _tempDir = Vector3.Zero();
@@ -23,7 +25,7 @@ export class LightAllocationService {
     speed: number, 
     selectedUid: string | null
   ): void {
-    const lookAheadTime = Math.min(1.5, Math.max(0.3, speed * 0.15));
+    const lookAheadTime = Math.min(2.0, Math.max(0.5, speed * 0.2));
     const predictedPos = refPos.add(moveDir.scale(speed * lookAheadTime));
 
     const activeCam = this.ownership.getCamera();
@@ -44,52 +46,92 @@ export class LightAllocationService {
       if (s.assignedEntityUid) assignedSet.add(s.assignedEntityUid);
     });
 
-    // 1. Filtrar candidatos según su rango de activación individual real
+    const activeGroupId = this.spatialGroups.getActiveGroupId();
+    const preparedGroups = this.spatialGroups.getPreparedGroupIds();
+
+    // 1. Filtrar candidatos válidos
     const validCandidates = activeVirtuals.filter(vl => {
       if (!vl.entity.light || !vl.entity.light.enabled) {
         vl.rejectionReason = 'DISABLED';
         return false;
       }
+
       if (vl.entity.uid === selectedUid) return true;
+
+      // REGLA FUNDAMENTAL DE CONTENCIÓN:
+      // Si la luz es interior por volumen y el Player está fuera del modelo contenedor,
+      // la luz queda excluida del pool.
+      const isInteriorVolumeMode = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
+      if (isInteriorVolumeMode) {
+        if (vl.spatialState === 'OUTSIDE') {
+          vl.rejectionReason = 'OUTSIDE_INTERIOR_VOLUME';
+          vl.targetMultiplier = 0.0;
+          vl.isLightInRange = false;
+          vl.isShadowInRange = false;
+          return false;
+        }
+      }
+
+      const group = this.spatialGroups.getGroupForEntity(vl.entity.uid);
+      const isGroupActiveOrPrepared = group && (group.id === activeGroupId || preparedGroups.has(group.id));
+
+      if (isGroupActiveOrPrepared) return true;
       if (vl.isLightInRange || vl._isInPrepareRange) return true;
-      
-      const deact = vl.entity.light.deactivationDistance ?? (vl.entity.light.activationDistance ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_ACTIVATION_RADIUS) + 5.0;
+
+      const deact = vl.entity.light.deactivationDistance ?? ((vl.entity.light.activationDistance ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_ACTIVATION_RADIUS) + 6.0);
       if (vl.effectiveDistance <= deact) return true;
 
       vl.rejectionReason = 'OUTSIDE_EFFECTIVE_RANGE';
       return false;
     });
 
-    // 2. Priorización dinámica y predictiva
+    // 2. Cálculo determinista de prioridad y Score
     validCandidates.forEach(vl => {
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
-      const vecToLight = this._tempPos.subtract(refPos);
-      const dist = vl.effectiveDistance;
-      const distSq = dist * dist;
-      const predictedDistSq = Vector3.DistanceSquared(predictedPos, this._tempPos);
+      const isInteriorVolumeMode = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
 
-      let score = (distSq * 0.6) + (predictedDistSq * 0.4);
+      let score = 0;
 
-      if (dist > 0.5) {
-        const dirToLight = vecToLight.normalizeToNew();
-        const viewDot = Vector3.Dot(this._cameraForward, dirToLight);
-        if (viewDot > 0.2) {
-          score *= (1.0 - (viewDot * 0.25));
-        } else if (viewDot < -0.2) {
-          score *= (1.0 + (Math.abs(viewDot) * 0.25));
+      if (isInteriorVolumeMode) {
+        // Para luces interiores activas, la prioridad es máxima para iluminar el interior
+        const boundaryDist = vl.distanceToBoundary ?? 0;
+        if (vl.spatialState === 'INSIDE') {
+          score = -50000 + boundaryDist;
+        } else if (vl.spatialState === 'PRE_ENTRY' || vl.spatialState === 'PRE_EXIT') {
+          score = -10000 + (boundaryDist * 10);
+        } else {
+          score = 999999;
+        }
+      } else {
+        const dist = vl.effectiveDistance;
+        const distSq = dist * dist;
+        const predictedDistSq = Vector3.DistanceSquared(predictedPos, this._tempPos);
+
+        score = (distSq * 0.5) + (predictedDistSq * 0.5);
+
+        if (dist > 0.5) {
+          const dirToLight = this._tempPos.subtract(refPos).normalize();
+          const viewDot = Vector3.Dot(this._cameraForward, dirToLight);
+          if (viewDot > 0.1) {
+            score *= (1.0 - (viewDot * 0.3));
+          } else if (viewDot < -0.1) {
+            score *= (1.0 + (Math.abs(viewDot) * 0.3));
+          }
         }
       }
 
-      if (vl.isInterior && vl.insideVolume) {
-        score *= 0.35;
-      } else if (vl.isInterior && vl.inPreEntryZone) {
-        score *= 0.60;
+      const group = this.spatialGroups.getGroupForEntity(vl.entity.uid);
+      if (group) {
+        if (group.id === activeGroupId) {
+          score *= 0.1;
+        } else if (preparedGroups.has(group.id)) {
+          score *= 0.3;
+        }
       }
 
-      // Histéresis de retención
-      const isAssigned = assignedSet.has(vl.entity.uid);
-      if (isAssigned && vl.currentMultiplier > 0.02) {
-        score *= 0.80;
+      // Histéresis de retención para evitar que luces activas oscilen entre slots
+      if (assignedSet.has(vl.entity.uid) && vl.currentMultiplier > 0.05) {
+        score *= 0.7;
       }
 
       if (selectedUid === vl.entity.uid) {
@@ -99,24 +141,26 @@ export class LightAllocationService {
       vl._sortScore = parseFloat(score.toFixed(2));
     });
 
-    // 3. Ordenamiento por Score ascendente
+    // 3. Ordenar por score ascendente
     validCandidates.sort((a, b) => (a._sortScore ?? 0) - (b._sortScore ?? 0));
 
-    // 4. Selección del TOP 3 de hardware
+    // 4. Seleccionar el Top 3 estricto
     const topVirtuals = validCandidates.slice(0, LIGHT_SPATIAL_CONSTANTS.MAX_LOCAL_LIGHTS);
     const topUids = new Set(topVirtuals.map(x => x.entity.uid));
 
     validCandidates.slice(LIGHT_SPATIAL_CONSTANTS.MAX_LOCAL_LIGHTS).forEach((vl, idx) => {
       vl.rejectionReason = 'LOWER_PRIORITY_RANK';
       vl.poolRank = LIGHT_SPATIAL_CONSTANTS.MAX_LOCAL_LIGHTS + idx + 1;
+      vl.shadowTier = undefined;
+      vl.shadowRank = undefined;
     });
-
-    let shadowsAssignedCount = 0;
 
     activeVirtuals.forEach(vl => {
       if (!topUids.has(vl.entity.uid)) {
         if (!validCandidates.includes(vl)) {
           vl.poolRank = 0;
+          vl.shadowTier = undefined;
+          vl.shadowRank = undefined;
         }
       }
     });
@@ -126,24 +170,24 @@ export class LightAllocationService {
       this.lightPool.releaseSlot(s, topUids);
     });
 
-    // 6. Asignar slots a las luces ganadoras
+    // 6. Asignar slots físicos y escalonar Tiers de sombra
     topVirtuals.forEach((vl, rankIndex) => {
       vl.poolRank = rankIndex + 1;
       vl.rejectionReason = undefined;
 
-      const pool = this.lightPool.getPoolByType(vl.entity.type);
-      const wantsShadow = vl.isShadowInRange && (shadowsAssignedCount < LIGHT_SPATIAL_CONSTANTS.MAX_LOCAL_SHADOWS);
-      if (wantsShadow) {
-        shadowsAssignedCount++;
-      } else {
-        vl.isShadowInRange = false;
-      }
+      let tier: ShadowTier = 'HIGH';
+      if (rankIndex === 1) tier = 'MEDIUM';
+      else if (rankIndex >= 2) tier = 'LOW';
 
+      vl.shadowRank = rankIndex + 1;
+      vl.shadowTier = tier;
+
+      const pool = this.lightPool.getPoolByType(vl.entity.type);
       let existingSlot = pool.find(s => s.assignedEntityUid === vl.entity.uid);
 
       if (!existingSlot) {
         let freeSlot: PoolSlot | null = null;
-        if (wantsShadow) {
+        if (vl.isShadowInRange) {
           freeSlot = pool.find(s => s.sg !== null && s.assignedEntityUid === null) || null;
         }
         if (!freeSlot) {
@@ -156,11 +200,13 @@ export class LightAllocationService {
           freeSlot.light.intensity = 0;
           freeSlot._isNewAssignment = true;
           freeSlot.isWarmedUp = false;
+          freeSlot.shadowTier = tier;
           existingSlot = freeSlot;
         }
       }
 
       if (existingSlot) {
+        existingSlot.shadowTier = tier;
         this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
         existingSlot.light.position.copyFrom(this._tempPos);
 

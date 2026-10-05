@@ -1,7 +1,7 @@
 // file: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
-import { Color3, Vector3, AbstractMesh, SpotLight, DirectionalLight } from '@babylonjs/core';
+import { Color3, Vector3, AbstractMesh, SpotLight, DirectionalLight, PointLight, Light } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 import { WorldSettingsService } from '../../../world/world-settings.service';
@@ -129,7 +129,6 @@ export class DynamicLightingSystem implements IUpdatable {
     this.lightShadows.refreshShadowCastersCache();
     this.lightRegistry.refreshVirtualLightsRegistry();
 
-    // Actualizar matrices del Player y de todas las luces
     const actors = this.lightReference.getValidActorEntities();
     actors.forEach(a => {
       if (a.view && !a.view.isDisposed()) {
@@ -146,7 +145,6 @@ export class DynamicLightingSystem implements IUpdatable {
     const candidates = virtuals.filter(vl => vl.entity.light?.enabled !== false);
     this.lightAllocation.allocatePoolSlots(candidates, refPos, Vector3.Zero(), 0, null);
 
-    // Activación inmediata y sincronización de slots para todas las luces que estén en rango
     const isEditorPure = this.context.mode() === GameMode.EDITOR || this.context.mode() === GameMode.EDITING_IN_GAME;
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
 
@@ -174,7 +172,7 @@ export class DynamicLightingSystem implements IUpdatable {
         if (vl) {
           this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, true);
           if (slot.sg && vl.isShadowInRange) {
-            const range = slot.type === 'directional' ? 50 : (vl.entity.light?.range || 50);
+            const range = slot.type === 'directional' ? 50 : (vl.entity.light?.range || 58);
             this.lightShadows.rebuildShadowRenderList(slot, vl.entity.uid, slot.light.position, range);
             slot.sg.getShadowMap()?.resetRefreshCounter();
             slot.isWarmedUp = true;
@@ -291,7 +289,7 @@ export class DynamicLightingSystem implements IUpdatable {
 
           if (slot.sg && vl.isShadowInRange) {
             const lightComp = vl.entity.light;
-            const lightRange = slot.type === 'directional' ? 50 : (lightComp?.range || 50);
+            const lightRange = slot.type === 'directional' ? 50 : (lightComp?.range || 58);
             this.lightShadows.rebuildShadowRenderList(slot, vl.entity.uid, slot.light.position, lightRange);
             slot.sg.getShadowMap()?.resetRefreshCounter();
             slot.isWarmedUp = true;
@@ -375,7 +373,7 @@ export class DynamicLightingSystem implements IUpdatable {
     if (slot) {
       this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, true);
       if (slot.sg && vl.isShadowInRange) {
-        const range = slot.type === 'directional' ? 50 : (lightComp.range || 50);
+        const range = slot.type === 'directional' ? 50 : (lightComp.range || 58);
         this.lightShadows.rebuildShadowRenderList(slot, entity.uid, slot.light.position, range);
         slot.sg.getShadowMap()?.resetRefreshCounter();
       }
@@ -401,7 +399,6 @@ export class DynamicLightingSystem implements IUpdatable {
     const anyLightDirty = activeVirtuals.some(v => v.entity.isDirty);
     const anyLightFading = activeVirtuals.some(v => Math.abs(v.targetMultiplier - v.currentMultiplier) > 0.001);
 
-    // En el Editor, solo saltear si no es el primer frame, no se movió el player y todas las luces están estables
     if (isEditorPure && !this.isFirstFrame) {
       if (!playerMoved && !anyLightDirty && !anyLightFading) {
         return;
@@ -544,17 +541,25 @@ export class DynamicLightingSystem implements IUpdatable {
       const spot = slot.light as SpotLight;
       spot.direction.copyFrom(this._tempDir);
       spot.angle = (vl.entity.light?.angle || 60) * (Math.PI / 180);
-      spot.exponent = 2.0;
+      spot.exponent = 1.0;
     } else if (slot.type === 'directional') {
       const dirL = slot.light as DirectionalLight;
       dirL.direction.copyFrom(this._tempDir);
     }
 
     if (slot.type !== 'directional') {
-      const lightRange = Math.max(1, lightComp.range || 50);
-      (slot.light as any).range = lightRange;
+      const effectiveRange = Math.max(1, lightComp.range || 58);
+      (slot.light as any).range = effectiveRange;
+
+      // shadowMaxZ debe igualar el rango efectivo para que no existan halos no ocluidos
       slot.light.shadowMinZ = 0.1;
-      slot.light.shadowMaxZ = lightRange;
+      slot.light.shadowMaxZ = effectiveRange;
+
+      if (slot.type === 'point') {
+        const pLight = slot.light as PointLight;
+        pLight.falloffType = PointLight.FALLOFF_STANDARD;
+        pLight.radius = 0.25;
+      }
     }
 
     slot.light.diffuse.copyFrom(vl.baseColor);
@@ -579,9 +584,9 @@ export class DynamicLightingSystem implements IUpdatable {
     const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > 0.001 && lightComp.enabled && lightComp.castShadows;
 
     if (slot.sg) {
-      const sBias = lightComp.shadowBias ?? (slot.type === 'spot' ? 0.0005 : 0.002);
-      const sNormalBias = lightComp.shadowNormalBias ?? (slot.type === 'spot' ? 0.002 : 0.005);
-      const sDarkness = lightComp.shadowDarkness ?? 0.0;
+      const sBias = lightComp.shadowBias ?? 0.0012;
+      const sNormalBias = lightComp.shadowNormalBias ?? 0.0035;
+      const sDarkness = lightComp.shadowDarkness !== undefined ? lightComp.shadowDarkness : 0.00;
 
       if (slot.sg.bias !== sBias) slot.sg.bias = sBias;
       if (slot.sg.normalBias !== sNormalBias) slot.sg.normalBias = sNormalBias;
@@ -597,7 +602,7 @@ export class DynamicLightingSystem implements IUpdatable {
         const shouldExecuteRebuild = (!slot.isWarmedUp && (slot._isNewAssignment || renderListEmpty)) || distMovedSq > 1.0 || forceRebuildShadows;
 
         if (shouldExecuteRebuild) {
-          const lightRange = slot.type === 'directional' ? 50 : (lightComp.range || 50);
+          const lightRange = slot.type === 'directional' ? 50 : (slot.light as any).range || 58;
           this.lightShadows.rebuildShadowRenderList(slot, vl.entity.uid, slot.light.position, lightRange);
           if (!slot.lastShadowRebuildPos) slot.lastShadowRebuildPos = Vector3.Zero();
           slot.lastShadowRebuildPos.copyFrom(slot.light.position);
@@ -607,7 +612,7 @@ export class DynamicLightingSystem implements IUpdatable {
         }
 
         const actors = this.lightReference.getValidActorEntities();
-        const lightRange = slot.type === 'directional' ? 50 : (lightComp.range || 50);
+        const lightRange = slot.type === 'directional' ? 50 : (slot.light as any).range || 58;
         let dynamicCasterChanged = false;
 
         for (let a = 0; a < actors.length; a++) {

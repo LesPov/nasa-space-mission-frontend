@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/scene/utils/mappers/light-entity.mapper.ts
 import { Injectable } from '@angular/core';
 import { BaseEntityMapper } from './base-entity.mapper';
@@ -60,13 +59,15 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.preEntryEnabled = props.preEntryEnabled ?? true;
       entity.light.preEntryDistance = props.preEntryDistance ?? 4.5;
 
-      // Fase C: Pre-entrada de sombras independiente con sincronización por defecto
+      // Pre-entrada de sombras independiente con sincronización por defecto
       entity.light.linkShadowPreEntryToLightPreEntry = props.linkShadowPreEntryToLightPreEntry !== false;
       entity.light.shadowPreEntryDistance = props.shadowPreEntryDistance ?? entity.light.preEntryDistance;
 
       entity.light.containerEntityUid = props.containerEntityUid || obj.parentId || '';
       entity.light.affectDescendantsOnly = props.affectDescendantsOnly ?? false;
-      entity.light.shadowDarkness = props.shadowDarkness ?? 0.0;
+
+      // En interiores, el valor por defecto de darkness es 0.25 para que las sombras conserven penumbra natural
+      entity.light.shadowDarkness = props.shadowDarkness ?? (entity.light.containmentMode === 'INTERIOR' ? 0.25 : 0.0);
       entity.light.shadowBias = props.shadowBias ?? 0.0005;
       entity.light.shadowNormalBias = props.shadowNormalBias ?? 0.01;
       entity.light.excludeExteriorMeshes = props.excludeExteriorMeshes ?? true;

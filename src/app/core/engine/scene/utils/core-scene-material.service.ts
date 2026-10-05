@@ -209,17 +209,31 @@ export class CoreSceneMaterialService {
         material.metadata.originalEmissiveColor = material.emissiveColor ? material.emissiveColor.clone() : Color3.Black();
         material.metadata.originalEmissiveTexture = material.emissiveTexture || null;
         material.metadata.originalEnvironmentIntensity = material.environmentIntensity ?? 1.0;
+        material.metadata.originalDirectIntensity = material.directIntensity ?? 1.0;
       }
 
-      // Evitar que roughness o metallic excesivos apaguen totalmente la luz difusa en interiores
-      if (material.roughness !== undefined && material.roughness > 0.95) {
-        material.roughness = 0.85;
+      // RESPUESTA DIFUSA DE MATERIALES EN INTERIORES CERRADOS:
+      // Si el material exportado de Blender tiene metallic alto (0.8 - 1.0), el término difuso
+      // PBR se anula casi a cero (1 - metallic). Limitamos el metallic efectivo a 0.35 para que
+      // la textura albedo reciba la luz difusa en el interior conservando el brillo especular.
+      const baseMetallic = material.metadata.originalMetallic ?? (material.metallic || 0.0);
+      material.metallic = Math.min(baseMetallic, 0.35);
+
+      // Modular roughness para evitar dispersión hiper-mate que apague el relieve
+      if (material.roughness !== undefined && material.roughness > 0.90) {
+        material.roughness = 0.75;
       }
+
+      // Elevar la respuesta directa para que la luz interna bañe las superficies con energía viva
+      material.directIntensity = 1.35;
+      material.environmentIntensity = Math.max(material.metadata.originalEnvironmentIntensity || 0.6, 0.6);
 
       // MANEJO DE TEXTURAS Y COLOR
       if (isExplicitOverride && textureSource === 'solid') {
         material.albedoTexture = null;
         material.albedoColor = c3Tint.clone();
+        material.metallic = 0.1; // Sólido limpio reflectante
+        material.roughness = 0.6;
       } else if (isExplicitOverride && textureSource === 'asset' && texturePath && scene) {
         let tex: any = new Texture('http://localhost:4000' + texturePath, scene);
         if (isBW) tex = await this.getOrCreateBwTexture(tex, scene);

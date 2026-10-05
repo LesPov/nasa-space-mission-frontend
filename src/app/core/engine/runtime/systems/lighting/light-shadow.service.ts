@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/lighting/light-shadow.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, ShadowGenerator, Vector3, Tags, InstancedMesh, Mesh, RenderTargetTexture, Node } from '@babylonjs/core';
@@ -175,10 +174,10 @@ export class LightShadowService {
         slot.sg.normalBias = 0.002;
       } else {
         slot.sg.usePoissonSampling = true;
-        slot.sg.bias = 0.002;
-        slot.sg.normalBias = 0.005;
+        slot.sg.bias = 0.0012;
+        slot.sg.normalBias = 0.0035;
       }
-      slot.sg.setDarkness(0.0);
+      slot.sg.setDarkness(0.00);
     }
 
     const renderList = slot.sg.getShadowMap()?.renderList;
@@ -196,6 +195,12 @@ export class LightShadowService {
     slot.dynamicCastersRegistered.clear();
 
     const ownerEnt = this.entityManager.getEntityByUid(entityUid);
+    const isInteriorLight = ownerEnt?.light?.containmentMode === 'INTERIOR';
+
+    // forceBackFacesOnly = false garantiza que las caras frontales de las paredes (mirando a la luz)
+    // se escriban en el mapa de profundidad para bloquear la luz hacia el exterior.
+    slot.sg.forceBackFacesOnly = false;
+
     const cacheKey = `${entityUid}_${slot.type}_${slot.index}`;
     const cachedEntry = this.slotStaticRenderListCache.get(cacheKey);
 
@@ -223,9 +228,6 @@ export class LightShadowService {
       // El Player se administra de manera independiente mediante syncDynamicActorInSlot
       if (parentEnt && (parentEnt.rol === 'player' || parentEnt.characterConfig)) continue;
 
-      const meshNameL = m.name ? m.name.toLowerCase() : '';
-      const isFloorSurface = meshNameL.includes('piso') || meshNameL.includes('floor') || meshNameL.includes('suelo') || meshNameL.includes('ground');
-
       m.computeWorldMatrix(true);
       const bInfo = m.getBoundingInfo();
       const bBox = bInfo.boundingBox;
@@ -244,7 +246,13 @@ export class LightShadowService {
           m.receiveShadows = true;
         }
 
-        if (isFloorSurface && slot.type === 'point') {
+        const meshNameL = m.name ? m.name.toLowerCase() : '';
+        const isFloorName = meshNameL.includes('piso') || meshNameL.includes('floor') || meshNameL.includes('suelo') || meshNameL.includes('ground');
+
+        // Solo se excluye el plano del suelo mundial (piso exterior sin contenedor o de tipo plane),
+        // permitiendo que el piso y las paredes de los modelos 3D del pasillo sí bloqueen la luz hacia afuera.
+        const isWorldFloorMesh = (parentEnt?.type === 'plane' || !parentEnt) && isFloorName;
+        if (isWorldFloorMesh && slot.type === 'point') {
           continue;
         }
 
@@ -376,7 +384,6 @@ export class LightShadowService {
     slot.sg.getShadowMap()!.refreshRate = rate;
     slot.currentRefreshRate = rate;
 
-    // Solo forzar refresco manual si se transiciona desde RENDER_ONCE (congelado) hacia dinámico
     if (prevRate === RenderTargetTexture.REFRESHRATE_RENDER_ONCE && rate !== RenderTargetTexture.REFRESHRATE_RENDER_ONCE) {
       slot.sg.getShadowMap()!.resetRefreshCounter();
     }

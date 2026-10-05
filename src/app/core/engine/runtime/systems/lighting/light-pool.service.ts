@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/lighting/light-pool.service.ts
 import { Injectable, inject } from '@angular/core';
 import { PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, Color3, Tags, Scene } from '@babylonjs/core';
@@ -30,30 +29,29 @@ export class LightPoolService {
 
     const MAX_LOCAL_SHADER_LIGHTS = LIGHT_SPATIAL_CONSTANTS.MAX_LOCAL_LIGHTS; // 3 slots
 
-    // CALIBRACIÓN DE RESOLUCIÓN DE SOMBRAS:
-    // Los PointLights utilizan mapas de cubos (6 caras por frame). Una resolución de 512x512
-    // combinada con Poisson Sampling entrega un sombreado suave y continuo, reduciendo
-    // a 1/4 el ancho de banda y fill rate de memoria de video respecto a un mapa de 1024x1024.
-    const pointResolutions = [512, 512, 256];
+    // Slot 0 (Tier HIGH) recibe 1024 para la luz más cercana al Player
+    const pointResolutions = [1024, 512, 256];
     const spotResolutions = [1024, 1024, 512];
     const tiers: ShadowTier[] = ['HIGH', 'MEDIUM', 'LOW'];
 
     for (let i = 0; i < MAX_LOCAL_SHADER_LIGHTS; i++) {
-      // 1. POINT LIGHTS (Omnidireccionales / Cubemaps)
+      // 1. POINT LIGHTS (Omnidireccionales / Cubemaps con atenuación uniforme STANDARD)
       const pLight = new PointLight(`pool_point_${i}`, new Vector3(0, -99999, 0), scene);
       pLight.intensity = 0; 
       pLight.diffuse = Color3.Black();
       pLight.specular = Color3.Black();
       pLight.shadowEnabled = true; 
       pLight.shadowMinZ = 0.1;
-      pLight.shadowMaxZ = 50.0;
+      pLight.shadowMaxZ = 35.0;
+      pLight.falloffType = PointLight.FALLOFF_STANDARD;
+      pLight.radius = 0.25;
       Tags.AddTagsTo(pLight, "system_element");
 
       const pSg = new ShadowGenerator(pointResolutions[i], pLight);
       pSg.usePoissonSampling = true;
-      pSg.setDarkness(0.0); 
-      pSg.bias = 0.002; 
-      pSg.normalBias = 0.005; 
+      pSg.setDarkness(0.30); 
+      pSg.bias = 0.0015; 
+      pSg.normalBias = 0.004; 
       pSg.forceBackFacesOnly = false;
       pSg.useContactHardeningShadow = false;
 
@@ -69,20 +67,20 @@ export class LightPoolService {
         shadowTier: tiers[i]
       });
 
-      // 2. SPOT LIGHTS (Focales / Proyecciones 2D)
-      const sLight = new SpotLight(`pool_spot_${i}`, new Vector3(0, -99999, 0), new Vector3(0, -1, 0), Math.PI/3, 2, scene);
+      // 2. SPOT LIGHTS (Focales / Proyecciones 2D con cono suave)
+      const sLight = new SpotLight(`pool_spot_${i}`, new Vector3(0, -99999, 0), new Vector3(0, -1, 0), Math.PI/3, 1.0, scene);
       sLight.intensity = 0; 
       sLight.diffuse = Color3.Black(); 
       sLight.specular = Color3.Black();
       sLight.shadowEnabled = true; 
       sLight.shadowMinZ = 0.1;
-      sLight.shadowMaxZ = 50.0;
+      sLight.shadowMaxZ = 45.0;
       Tags.AddTagsTo(sLight, "system_element");
 
       const sSg = new ShadowGenerator(spotResolutions[i], sLight);
       sSg.usePercentageCloserFiltering = true; 
       sSg.filteringQuality = i === 0 ? ShadowGenerator.QUALITY_HIGH : (i === 1 ? ShadowGenerator.QUALITY_MEDIUM : ShadowGenerator.QUALITY_LOW);
-      sSg.setDarkness(0.0); 
+      sSg.setDarkness(0.30); 
       sSg.bias = 0.0005; 
       sSg.normalBias = 0.002; 
       sSg.forceBackFacesOnly = false;
@@ -111,7 +109,7 @@ export class LightPoolService {
     const dSg = new ShadowGenerator(1024, dLight);
     dSg.usePercentageCloserFiltering = true; 
     dSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-    dSg.setDarkness(0.0); 
+    dSg.setDarkness(0.35); 
     dSg.bias = 0.0008; 
     dSg.normalBias = 0.005; 
     dSg.forceBackFacesOnly = false;

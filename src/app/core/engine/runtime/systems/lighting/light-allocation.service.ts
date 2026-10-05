@@ -73,7 +73,6 @@ export class LightAllocationService {
 
       const isInteriorVolumeMode = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
       if (isInteriorVolumeMode) {
-        // En modo volumen interior, solo se descalifica si está totalmente fuera de la zona de retención
         if (vl.spatialState === 'OUTSIDE' && !vl._isInPrepareRange && !isGroupPriority && vl.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
           vl.rejectionReason = 'OUTSIDE_INTERIOR_VOLUME';
           vl.targetMultiplier = 0.0;
@@ -108,7 +107,6 @@ export class LightAllocationService {
         } else if (vl.spatialState === 'PRE_ENTRY') {
           score = -20000 + (boundaryDist * 10);
         } else if (vl.spatialState === 'PRE_EXIT') {
-          // Puntuación favorable para pasillo anterior: compite limpiamente dentro de los 3 slots
           score = -15000 + (boundaryDist * 12);
         } else if (group && (preactivatingGroups.has(group.id) || group.isPredictedTarget)) {
           score = -5000 + (boundaryDist * 5);

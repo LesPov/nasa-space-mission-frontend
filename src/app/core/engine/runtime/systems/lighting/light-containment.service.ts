@@ -51,6 +51,7 @@ interface ContainerGeometryCache {
   maxLocal: Vector3;
   centerWorld: Vector3;
   invWorldMatrix: Matrix;
+  boundingDiagonal: number;
   lastAnalyzedTime: number;
 }
 
@@ -184,7 +185,13 @@ export class LightContainmentService {
     return closestContainer;
   }
 
-  private analyzeContainerGeometry(container: GameEntity, scene: Scene): ContainerGeometryCache {
+  public getContainerDiagonal(container: GameEntity): number {
+    const cached = this.containerGeometryCache.get(container.uid);
+    if (cached) return cached.boundingDiagonal;
+    return 30.0;
+  }
+
+  public analyzeContainerGeometry(container: GameEntity, scene: Scene): ContainerGeometryCache {
     const rootMesh = container.view;
     if (!rootMesh || rootMesh.isDisposed()) {
       return {
@@ -201,6 +208,7 @@ export class LightContainmentService {
         maxLocal: Vector3.Zero(),
         centerWorld: Vector3.Zero(),
         invWorldMatrix: Matrix.Identity(),
+        boundingDiagonal: 10.0,
         lastAnalyzedTime: performance.now()
       };
     }
@@ -291,9 +299,19 @@ export class LightContainmentService {
 
     const centerWorld = minWorld.add(maxWorld).scale(0.5);
     const sizeWorld = maxWorld.subtract(minWorld);
+    const boundingDiagonal = sizeWorld.length();
 
+    // Detección multidireccional inteligente de aberturas (Pasillos rectos, curvos y en L)
     if (entryPoints.length === 0) {
-      if (sizeWorld.x > sizeWorld.z) {
+      const isCurvedOrLShaped = Math.abs(sizeWorld.x - sizeWorld.z) < (Math.max(sizeWorld.x, sizeWorld.z) * 0.55);
+
+      if (isCurvedOrLShaped) {
+        // En pasillos curvos o giros, existen aberturas en extremos perpendiculares
+        entryPoints.push(new Vector3(minWorld.x, centerWorld.y, centerWorld.z));
+        entryPoints.push(new Vector3(maxWorld.x, centerWorld.y, centerWorld.z));
+        entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, minWorld.z));
+        entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, maxWorld.z));
+      } else if (sizeWorld.x > sizeWorld.z) {
         entryPoints.push(new Vector3(minWorld.x, centerWorld.y, centerWorld.z));
         entryPoints.push(new Vector3(maxWorld.x, centerWorld.y, centerWorld.z));
       } else {
@@ -317,6 +335,7 @@ export class LightContainmentService {
       maxLocal,
       centerWorld,
       invWorldMatrix,
+      boundingDiagonal,
       lastAnalyzedTime: performance.now()
     };
 
@@ -348,17 +367,16 @@ export class LightContainmentService {
     const min = geoData.minWorld;
     const max = geoData.maxWorld;
 
-    // FASE B: Zona de retención ampliada asimétrica para la salida de pasillos y giros
     const exitHoldMargin = wasInRange ? LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_HOLD_MARGIN : 0.0;
     const maxKeepAliveExitDistance = Math.min(
       LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_MAX_DISTANCE,
-      Math.max(preEntryDistance + 12.0, preEntryDistance * LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER)
+      Math.max(preEntryDistance + 14.0, preEntryDistance * LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER)
     );
 
-    const broadMargin = wasInRange ? maxKeepAliveExitDistance + 4.0 : preEntryDistance + 2.0;
+    const broadMargin = wasInRange ? maxKeepAliveExitDistance + 6.0 : preEntryDistance + 3.0;
 
     const dxBroad = Math.max(0, (min.x - broadMargin) - actorWorldPos.x, actorWorldPos.x - (max.x + broadMargin));
-    const dyBroad = Math.max(0, (min.y - 3.0 - broadMargin) - actorWorldPos.y, actorWorldPos.y - (max.y + 3.0 + broadMargin));
+    const dyBroad = Math.max(0, (min.y - 4.0 - broadMargin) - actorWorldPos.y, actorWorldPos.y - (max.y + 4.0 + broadMargin));
     const dzBroad = Math.max(0, (min.z - broadMargin) - actorWorldPos.z, actorWorldPos.z - (max.z + broadMargin));
 
     if (dxBroad > 0 || dyBroad > 0 || dzBroad > 0) {
@@ -381,8 +399,9 @@ export class LightContainmentService {
     const locMin = geoData.minLocal;
     const locMax = geoData.maxLocal;
 
-    const tolY = 2.2;
-    const tolXZ = wasInRange ? 1.5 : 0.2;
+    // Tolerancia generosa en espacio local para cubrir todo el desarrollo de pasillos curvos
+    const tolY = 2.5;
+    const tolXZ = wasInRange ? 2.5 : 0.8;
 
     const isInsideLocalVolume =
       locPos.x >= locMin.x - tolXZ && locPos.x <= locMax.x + tolXZ &&
@@ -406,22 +425,22 @@ export class LightContainmentService {
     const dzLoc = Math.max(0, locMin.z - locPos.z, locPos.z - locMax.z);
     const distToLocalBox = Math.sqrt(dxLoc * dxLoc + dyLoc * dyLoc + dzLoc * dzLoc);
 
-    // 1. Si el Player está físicamente dentro del volumen del modelo
+    // 1. REGLA INMUTABLE: Si está dentro del volumen del modelo, SIEMPRE es INSIDE (100% luz continua)
+    // Jamás degradar a PRE_EXIT mientras el jugador permanezca dentro de las paredes del pasillo.
     if (isInsideLocalVolume) {
       return {
         inside: true,
         preEntry: false,
         preExit: false,
         spatialState: 'INSIDE',
-        distanceToBoundary: minDistanceToEntry,
+        distanceToBoundary: 0,
         boundaryPoint: closestEntryPoint,
         confidence: 'HIGH',
         source: geoData.source
       };
     }
 
-    // 2. Si venía de estar activo (Player salió del pasillo hacia un giro o zona contigua):
-    // Se otorga la ventana extendida de retención (Keep-Alive)
+    // 2. Jugador saliendo físicamente hacia el exterior o siguiente pasillo: Zona de permanencia extendida
     if (wasInRange && (minDistanceToEntry <= maxKeepAliveExitDistance || distToLocalBox <= (exitHoldMargin + 4.0))) {
       return {
         inside: false,
@@ -435,7 +454,7 @@ export class LightContainmentService {
       };
     }
 
-    // 3. Si se aproxima desde el exterior hacia la entrada del pasillo (Pre-entrada normal)
+    // 3. Jugador aproximándose desde el exterior hacia una entrada
     if (minDistanceToEntry <= preEntryDistance) {
       return {
         inside: false,
@@ -449,7 +468,7 @@ export class LightContainmentService {
       };
     }
 
-    // 4. Fuera del umbral de activación y fuera de la ventana extendida de permanencia
+    // 4. Completamente fuera
     return {
       inside: false,
       preEntry: false,
@@ -621,6 +640,7 @@ export class LightContainmentService {
       return;
     }
 
+    // Permitir propagación de luz natural hacia pasillos contiguos
     if (mode === 'INTERIOR' && affectDescendantsOnly) {
       const receivers = this.getInteriorMeshesStrict(entity, scene);
       if (receivers.length > 0) {

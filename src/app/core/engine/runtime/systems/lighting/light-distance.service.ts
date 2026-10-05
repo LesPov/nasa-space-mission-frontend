@@ -71,7 +71,6 @@ export class LightDistanceService {
         vl.closestActorName = 'Referencia Base';
       }
 
-      // Reutilización centralizada desde SpatialRelevanceHubService
       const hubDist = this.spatialHub.getDistanceToPlayer(vl.entity.uid);
       const hubDistSq = this.spatialHub.getDistanceSquaredToPlayer(vl.entity.uid);
 
@@ -102,7 +101,7 @@ export class LightDistanceService {
       );
 
       // =========================================================================
-      // MODO INTERIOR + MODEL_PREENTRY (LA GEOMETRÍA DEL MODELO ES LA AUTORIDAD)
+      // MODO INTERIOR + MODEL_PREENTRY (UMBRAL DUAL ASIMÉTRICO PARA GIROS Y SALIDAS)
       // =========================================================================
       if (isModelPreEntryMode) {
         if (!container || !container.view || container.view.isDisposed()) {
@@ -137,22 +136,45 @@ export class LightDistanceService {
           vl.lastEvaluatedDistance = contResult.distanceToBoundary;
         }
 
-        vl._isInPrepareRange = Boolean(isGroupPreparedOrBetter || (contResult.distanceToBoundary <= (preDist + 22.0)));
+        const maxKeepAliveExitDistance = Math.min(
+          LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_MAX_DISTANCE,
+          Math.max(preDist + 12.0, preDist * LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER)
+        );
+
+        vl._isInPrepareRange = Boolean(
+          isGroupPreparedOrBetter || (contResult.distanceToBoundary <= (maxKeepAliveExitDistance + 10.0))
+        );
 
         if (contResult.spatialState === 'INSIDE') {
+          // Dentro del volumen: 100% de intensidad garantizada
           vl.targetMultiplier = 1.0;
           vl.isLightInRange = true;
           this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, preDist, nowTimeStr, `INSIDE (${contResult.source})`);
         } else if (contResult.spatialState === 'PRE_ENTRY') {
+          // Aproximación exterior hacia el pasillo (Fade In)
           vl.targetMultiplier = LightAttenuationCurve.calculate(contResult.distanceToBoundary, 0, preDist);
           vl.isLightInRange = vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
           this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, preDist, nowTimeStr, `PRE-ENTRADA (${contResult.source})`);
         } else if (contResult.spatialState === 'PRE_EXIT') {
-          const exitThreshold = preDist + 2.5;
-          vl.targetMultiplier = LightAttenuationCurve.calculate(contResult.distanceToBoundary, 0, exitThreshold);
-          vl.isLightInRange = true;
-          this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, exitThreshold, nowTimeStr, `PRE-SALIDA (${contResult.source})`);
+          // Salida / Giro a pasillo contiguo: Zona de permanencia (Keep-Alive) con umbral dual
+          const holdDistance = preDist + LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_HOLD_MARGIN;
+
+          if (contResult.distanceToBoundary <= holdDistance) {
+            // Mantiene el 100% de presencia mientras se dobla la esquina
+            vl.targetMultiplier = 1.0;
+          } else {
+            // Decaimiento suave entre holdDistance y maxKeepAliveExitDistance
+            vl.targetMultiplier = LightAttenuationCurve.calculate(
+              contResult.distanceToBoundary, 
+              holdDistance, 
+              maxKeepAliveExitDistance
+            );
+          }
+
+          vl.isLightInRange = vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
+          this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, holdDistance, maxKeepAliveExitDistance, nowTimeStr, `PRE-SALIDA / KEEP-ALIVE (${contResult.source})`);
         } else {
+          // Fuera de la zona de permanencia
           vl.targetMultiplier = 0.0;
           if (vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
             vl.isLightInRange = true;
@@ -163,19 +185,23 @@ export class LightDistanceService {
           }
         }
 
+        // --- GESTIÓN DE SOMBRAS EN INTERIORES (CONTROL DE COSTE GPU) ---
         if (lightComp.castShadows) {
           const syncShadow = lightComp.linkShadowPreEntryToLightPreEntry !== false;
           const shadowPreDist = syncShadow ? preDist : Math.max(0.5, lightComp.shadowPreEntryDistance ?? preDist);
+          const shadowExitMargin = shadowPreDist + LIGHT_SPATIAL_CONSTANTS.INTERIOR_SHADOW_EXIT_MARGIN;
           
-          // La sombra permanece activa mientras el Player esté dentro o transitando las aberturas del pasillo
+          // La sombra permanece activa mientras el jugador esté adentro, en pre-entrada,
+          // o dentro del margen cercano de salida. Al alejarse a la zona de fade profundo,
+          // la sombra se optimiza a OFF para ahorrar GPU mientras la luz sigue visible.
           const inShadowZone = Boolean(
             contResult.spatialState === 'INSIDE' || 
-            contResult.spatialState === 'PRE_EXIT' || 
             (contResult.spatialState === 'PRE_ENTRY' && contResult.distanceToBoundary <= shadowPreDist) ||
-            (vl.currentMultiplier > 0.05)
+            (contResult.spatialState === 'PRE_EXIT' && contResult.distanceToBoundary <= shadowExitMargin)
           );
+
           const shouldPrewarmShadow = Boolean(
-            group && group.state === 'PREACTIVATING' && contResult.distanceToBoundary <= (shadowPreDist + 15.0)
+            group && group.state === 'PREACTIVATING' && contResult.distanceToBoundary <= (shadowPreDist + 10.0)
           );
 
           vl.isShadowInRange = inShadowZone || shouldPrewarmShadow;

@@ -4,7 +4,7 @@ import { AbstractMesh, PointLight, SpotLight, Scene, Vector3, Tags, Mesh, Instan
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { GameEntity, LightContainmentMode } from '../../../entities/game.entity';
 import { SpatialRelevanceHubService } from '../../../spatial/spatial-relevance-hub.service';
-import { ContainmentSource, LightSpatialState } from './lighting-types';
+import { ContainmentSource, LightSpatialState, LIGHT_SPATIAL_CONSTANTS } from './lighting-types';
 
 export interface LightContainmentAuditReport {
   lightUid: string;
@@ -347,11 +347,18 @@ export class LightContainmentService {
 
     const min = geoData.minWorld;
     const max = geoData.maxWorld;
-    const exitHysteresis = wasInRange ? 2.0 : 0.0;
-    const broadMargin = preEntryDistance + exitHysteresis + 2.0;
+
+    // FASE B: Zona de retención ampliada asimétrica para la salida de pasillos y giros
+    const exitHoldMargin = wasInRange ? LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_HOLD_MARGIN : 0.0;
+    const maxKeepAliveExitDistance = Math.min(
+      LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_MAX_DISTANCE,
+      Math.max(preEntryDistance + 12.0, preEntryDistance * LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER)
+    );
+
+    const broadMargin = wasInRange ? maxKeepAliveExitDistance + 4.0 : preEntryDistance + 2.0;
 
     const dxBroad = Math.max(0, (min.x - broadMargin) - actorWorldPos.x, actorWorldPos.x - (max.x + broadMargin));
-    const dyBroad = Math.max(0, (min.y - 2.0 - broadMargin) - actorWorldPos.y, actorWorldPos.y - (max.y + 2.0 + broadMargin));
+    const dyBroad = Math.max(0, (min.y - 3.0 - broadMargin) - actorWorldPos.y, actorWorldPos.y - (max.y + 3.0 + broadMargin));
     const dzBroad = Math.max(0, (min.z - broadMargin) - actorWorldPos.z, actorWorldPos.z - (max.z + broadMargin));
 
     if (dxBroad > 0 || dyBroad > 0 || dzBroad > 0) {
@@ -374,8 +381,8 @@ export class LightContainmentService {
     const locMin = geoData.minLocal;
     const locMax = geoData.maxLocal;
 
-    const tolY = 1.8;
-    const tolXZ = wasInRange ? 0.8 : 0.2;
+    const tolY = 2.2;
+    const tolXZ = wasInRange ? 1.5 : 0.2;
 
     const isInsideLocalVolume =
       locPos.x >= locMin.x - tolXZ && locPos.x <= locMax.x + tolXZ &&
@@ -399,13 +406,13 @@ export class LightContainmentService {
     const dzLoc = Math.max(0, locMin.z - locPos.z, locPos.z - locMax.z);
     const distToLocalBox = Math.sqrt(dxLoc * dxLoc + dyLoc * dyLoc + dzLoc * dzLoc);
 
+    // 1. Si el Player está físicamente dentro del volumen del modelo
     if (isInsideLocalVolume) {
-      const isNearExitOpening = minDistanceToEntry <= (wasInRange ? 3.0 : 2.0);
       return {
         inside: true,
         preEntry: false,
-        preExit: isNearExitOpening,
-        spatialState: isNearExitOpening ? 'PRE_EXIT' : 'INSIDE',
+        preExit: false,
+        spatialState: 'INSIDE',
         distanceToBoundary: minDistanceToEntry,
         boundaryPoint: closestEntryPoint,
         confidence: 'HIGH',
@@ -413,8 +420,9 @@ export class LightContainmentService {
       };
     }
 
-    const exitThreshold = preEntryDistance + exitHysteresis;
-    if (wasInRange && (minDistanceToEntry <= exitThreshold || distToLocalBox <= 2.0)) {
+    // 2. Si venía de estar activo (Player salió del pasillo hacia un giro o zona contigua):
+    // Se otorga la ventana extendida de retención (Keep-Alive)
+    if (wasInRange && (minDistanceToEntry <= maxKeepAliveExitDistance || distToLocalBox <= (exitHoldMargin + 4.0))) {
       return {
         inside: false,
         preEntry: false,
@@ -427,6 +435,7 @@ export class LightContainmentService {
       };
     }
 
+    // 3. Si se aproxima desde el exterior hacia la entrada del pasillo (Pre-entrada normal)
     if (minDistanceToEntry <= preEntryDistance) {
       return {
         inside: false,
@@ -440,6 +449,7 @@ export class LightContainmentService {
       };
     }
 
+    // 4. Fuera del umbral de activación y fuera de la ventana extendida de permanencia
     return {
       inside: false,
       preEntry: false,
@@ -611,7 +621,6 @@ export class LightContainmentService {
       return;
     }
 
-    // CORRECCIÓN CLAVE: No aislar la luz excluyendo el resto de la escena salvo que se pida explícitamente
     if (mode === 'INTERIOR' && affectDescendantsOnly) {
       const receivers = this.getInteriorMeshesStrict(entity, scene);
       if (receivers.length > 0) {

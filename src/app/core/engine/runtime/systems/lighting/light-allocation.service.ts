@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/lighting/light-allocation.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Vector3, SpotLight, DirectionalLight } from '@babylonjs/core';
@@ -51,14 +50,14 @@ export class LightAllocationService {
     const preparedGroups = this.spatialGroups.getPreparedGroupIds();
     const preactivatingGroups = this.spatialGroups.getPreactivatingGroupIds();
 
-    // 1. Filtrar candidatos válidos basados ESTRICTAMENTE en posición del Player/Actor
+    // 1. Filtrar candidatos válidos basados ESTRICTAMENTE en posición del Player/Actor y permanencia
     const validCandidates = activeVirtuals.filter(vl => {
       if (!vl.entity.light || !vl.entity.light.enabled) {
         vl.rejectionReason = 'DISABLED';
         return false;
       }
 
-      // Inmunidad de desvanecimiento para luces que ya estaban en el pool
+      // Inmunidad de desvanecimiento para luces que ya estaban en el pool y aún tienen presencia
       if (assignedSet.has(vl.entity.uid) && vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
         return true;
       }
@@ -74,7 +73,8 @@ export class LightAllocationService {
 
       const isInteriorVolumeMode = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
       if (isInteriorVolumeMode) {
-        if (vl.spatialState === 'OUTSIDE' && !vl._isInPrepareRange && !isGroupPriority) {
+        // En modo volumen interior, solo se descalifica si está totalmente fuera de la zona de retención
+        if (vl.spatialState === 'OUTSIDE' && !vl._isInPrepareRange && !isGroupPriority && vl.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
           vl.rejectionReason = 'OUTSIDE_INTERIOR_VOLUME';
           vl.targetMultiplier = 0.0;
           vl.isLightInRange = false;
@@ -93,7 +93,7 @@ export class LightAllocationService {
       return false;
     });
 
-    // 2. Cálculo determinista de Score espacial (sin distorsión por selección de editor)
+    // 2. Cálculo determinista de Score espacial con bonificación de retención (Keep-Alive)
     validCandidates.forEach(vl => {
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
       const isInteriorVolumeMode = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
@@ -105,8 +105,11 @@ export class LightAllocationService {
         const boundaryDist = vl.distanceToBoundary ?? 0;
         if (vl.spatialState === 'INSIDE') {
           score = -50000 + boundaryDist;
-        } else if (vl.spatialState === 'PRE_ENTRY' || vl.spatialState === 'PRE_EXIT') {
-          score = -10000 + (boundaryDist * 10);
+        } else if (vl.spatialState === 'PRE_ENTRY') {
+          score = -20000 + (boundaryDist * 10);
+        } else if (vl.spatialState === 'PRE_EXIT') {
+          // Puntuación favorable para pasillo anterior: compite limpiamente dentro de los 3 slots
+          score = -15000 + (boundaryDist * 12);
         } else if (group && (preactivatingGroups.has(group.id) || group.isPredictedTarget)) {
           score = -5000 + (boundaryDist * 5);
         } else if (vl._isInPrepareRange) {
@@ -139,10 +142,10 @@ export class LightAllocationService {
         else if (preparedGroups.has(group.id)) score *= 0.4;
       }
 
-      // Adherencia de slot (Slot Stickiness): reduce la probabilidad de alternancia innecesaria
+      // Adherencia de slot (Slot Stickiness): reduce la alternancia entre pasillos contiguos
       if (assignedSet.has(vl.entity.uid)) {
         if (vl.isLightInRange || vl._isInPrepareRange || vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
-          score *= 0.75;
+          score *= 0.70;
         }
       }
 
@@ -152,7 +155,7 @@ export class LightAllocationService {
     // 3. Ordenar candidatos por prioridad física real
     validCandidates.sort((a, b) => (a._sortScore ?? 0) - (b._sortScore ?? 0));
 
-    // 4. Seleccionar el Top de luces
+    // 4. Seleccionar el Top de luces para los slots físicos
     const topVirtuals = validCandidates.slice(0, LIGHT_SPATIAL_CONSTANTS.MAX_LOCAL_LIGHTS);
     const topUids = new Set(topVirtuals.map(x => x.entity.uid));
 

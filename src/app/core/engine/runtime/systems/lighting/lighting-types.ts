@@ -19,7 +19,20 @@ export const LIGHT_SPATIAL_CONSTANTS = {
   SHADOW_DEACTIVATION_RADIUS: 35.0,
   MAX_LOCAL_LIGHTS: 3,
   MAX_LOCAL_SHADOWS: 3,
-  ZERO_INTENSITY_THRESHOLD: 0.0001
+  ZERO_INTENSITY_THRESHOLD: 0.0001,
+
+  // --- CALIBRACIÓN DE RETENCIÓN PARA LUCES INTERNAS (PASILLOS Y GIROS) ---
+  /** Margen adicional fuera del vano de la puerta donde la luz interna conserva el 100% antes de iniciar fade out */
+  INTERIOR_KEEP_ALIVE_HOLD_MARGIN: 7.0,
+
+  /** Multiplicador sobre preEntryDistance para calcular la distancia máxima de visibilidad en alejamiento */
+  INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER: 2.8,
+
+  /** Límite superior absoluto de permanencia visual fuera del pasillo (metros) */
+  INTERIOR_KEEP_ALIVE_MAX_DISTANCE: 32.0,
+
+  /** Distancia de seguridad para mantener la sombra activa antes de optimizarla a solo luz difusa en alejamiento */
+  INTERIOR_SHADOW_EXIT_MARGIN: 4.0
 };
 
 export interface LightDistanceBreakdown {

@@ -1,12 +1,17 @@
+
 // file: src/app/components/inspector-escena/inspector-properties/prop-profiler/prop-profiler.ts
-import { Component, OnInit, OnDestroy, inject, NgZone, signal, computed } from '@angular/core';
+import { Component, OnInit, OnDestroy, inject, NgZone, signal, computed, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
-import { EngineProfilerService, ProfilerMetrics } from '../../../../core/engine/telemetry/engine-profiler.service';
+import { FormsModule } from '@angular/forms';
+import { Subscription } from 'rxjs';
+import { EngineProfilerService, ProfilerMetrics, TimelineEvent, EntrySummaryComparison } from '../../../../core/engine/telemetry/engine-profiler.service';
 import { ProfilerTogglesService } from '../../../../core/engine/telemetry/profiler-toggles.service';
 import { PerformanceIncidentService, PerformanceIncident } from '../../../../core/engine/telemetry/performance-incident.service';
 
 export type ProfilerSection = 
   | 'overview' 
+  | 'timeline'
+  | 'compare'
   | 'cpu' 
   | 'gpu' 
   | 'hub'
@@ -21,7 +26,7 @@ export type ProfilerSection =
 @Component({
   selector: 'app-prop-profiler',
   standalone: true,
-  imports: [CommonModule],
+  imports: [CommonModule, FormsModule],
   templateUrl: './prop-profiler.html',
   styleUrls: ['./prop-profiler.css']
 })
@@ -30,6 +35,7 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
   public toggles = inject(ProfilerTogglesService);
   public incidentSvc = inject(PerformanceIncidentService);
   private ngZone = inject(NgZone);
+  private cdr = inject(ChangeDetectorRef);
 
   public metrics = signal<ProfilerMetrics>(this.getEmptyMetrics());
   public incidents = signal<PerformanceIncident[]>([]);
@@ -38,7 +44,9 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
   public activeSection = signal<ProfilerSection>('overview');
   public selectedIncident = signal<PerformanceIncident | null>(null);
 
-  // Estados de acordeón para el detalle del incidente
+  // Filtro de categorías para la pestaña Timeline
+  public timelineFilter = signal<string>('ALL');
+
   public expandedLightUids = signal<Set<string>>(new Set());
   public expandedIncidentSections = signal<Set<string>>(new Set([
     'summary', 'location', 'performance', 'changes', 'timeline'
@@ -54,6 +62,13 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
   });
   public distanceSystemsKeys = computed(() => Object.keys(this.metrics().distances.evaluationsBySystem || {}));
 
+  public filteredTimelineEvents = computed(() => {
+    const events = this.metrics().timelineEvents || [];
+    const filter = this.timelineFilter();
+    if (filter === 'ALL') return events.slice(-60).reverse();
+    return events.filter(e => e.category === filter).slice(-60).reverse();
+  });
+
   public systemHealthStatus = computed<'NORMAL' | 'WARNING' | 'CRITICAL'>(() => {
     const inc = this.incidentSvc.getIncidents().find(i => i.status === 'ACTIVE');
     if (inc) return 'CRITICAL';
@@ -63,9 +78,32 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
   });
 
   private intervalId: any = null;
+  private incidentSub: Subscription | null = null;
 
   ngOnInit(): void {
     this.profiler.isProfilingEnabled = true;
+    this.incidents.set([...this.incidentSvc.getIncidents()]);
+
+    // Suscripción reactiva Zoneless-Safe a actualizaciones de incidentes (incluyendo snapshots)
+    this.incidentSub = this.incidentSvc.onIncidentUpdated.subscribe((updatedInc: PerformanceIncident) => {
+      // 1. Actualizar inmutablemente el array de incidentes
+      this.incidents.update(list => {
+        const idx = list.findIndex(i => i.id === updatedInc.id);
+        if (idx >= 0) {
+          const next = [...list];
+          next[idx] = { ...updatedInc };
+          return next;
+        }
+        return [updatedInc, ...list];
+      });
+
+      // 2. Si el usuario está inspeccionando este incidente específico, refrescar la signal seleccionada
+      if (this.selectedIncident()?.id === updatedInc.id) {
+        this.selectedIncident.set({ ...updatedInc });
+      }
+
+      this.cdr.markForCheck();
+    });
 
     this.ngZone.runOutsideAngular(() => {
       this.intervalId = setInterval(() => {
@@ -85,8 +123,10 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
               (currentIncidents.length > 0 && this.incidents()[0]?.status !== currentIncidents[0]?.status)) {
             this.incidents.set([...currentIncidents]);
           }
+
+          this.cdr.markForCheck();
         }
-      }, 350);
+      }, 300);
     });
   }
 
@@ -95,6 +135,10 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
       clearInterval(this.intervalId);
       this.intervalId = null;
     }
+    if (this.incidentSub) {
+      this.incidentSub.unsubscribe();
+      this.incidentSub = null;
+    }
   }
 
   public setSection(sec: ProfilerSection): void {
@@ -102,11 +146,20 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
   }
 
   public selectIncident(inc: PerformanceIncident): void {
-    this.selectedIncident.set(inc);
+    // Al seleccionar, buscar la instancia más fresca almacenada en el servicio
+    const latest = this.incidentSvc.getIncidents().find(i => i.id === inc.id) || inc;
+    this.selectedIncident.set({ ...latest });
   }
 
   public exitIncidentView(): void {
     this.selectedIncident.set(null);
+  }
+
+  public onFilterChange(event: Event): void {
+    const target = event.target as HTMLSelectElement | null;
+    if (target) {
+      this.timelineFilter.set(target.value);
+    }
   }
 
   public toggleLightExpand(uid: string): void {
@@ -138,7 +191,11 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
 
   public copySummary(inc?: PerformanceIncident): void {
     const snap = inc ? inc.metrics : this.metrics();
+    const snapInfo = inc?.snapshotInfo;
     const summary = `=== MOTOR 3D FORENSIC TELEMETRY ===\n` +
+      `Incident ID: ${inc ? inc.id : 'N/A'} | Snapshot Status: ${snapInfo ? snapInfo.status : 'N/A'}\n` +
+      `Incident Frame: ${inc ? inc.frameNumber : 'N/A'} | Snapshot Frame: ${snapInfo?.capturedAtFrame ?? 'N/A'} (Latency: ${snapInfo?.captureLatencyMs ?? 'N/A'}ms)\n` +
+      `Session ID: ${snap.session.sessionId} | Entry #: ${snap.session.entryNumber}\n` +
       `Mode: ${snap.session.mode} | View: ${snap.session.cameraView} | Platform: ${snap.session.sceneName} (ID: ${snap.session.sceneId})\n` +
       `CamPos: (${snap.session.cameraPosition.x}, ${snap.session.cameraPosition.y}, ${snap.session.cameraPosition.z}) | FOV: ${snap.session.cameraFov}\n` +
       `PlayerPos: ${snap.session.playerPosition ? `(${snap.session.playerPosition.x}, ${snap.session.playerPosition.y}, ${snap.session.playerPosition.z})` : 'N/A'}\n` +
@@ -170,7 +227,7 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `incident_forensic_${Date.now()}.json`;
+    a.download = `incident_forensic_${inc?.id || Date.now()}.json`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -274,8 +331,12 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
         cameraDirection: { x: 0, y: 0, z: 1 },
         cameraFov: 0.8,
         distanceCameraToPlayer: 0,
-        selectedObjectName: null
-      }
+        selectedObjectName: null,
+        sessionId: 'init_session',
+        entryNumber: 0
+      },
+      timelineEvents: [],
+      sessionComparisons: []
     };
   }
 }

@@ -1,6 +1,8 @@
+
 // file: src/app/core/engine/telemetry/performance-incident.service.ts
 import { Injectable, inject } from '@angular/core';
-import { EngineProfilerService, ProfilerMetrics, FrameSample } from './engine-profiler.service';
+import { Subject } from 'rxjs';
+import { EngineProfilerService, ProfilerMetrics, FrameSample, TimelineEvent } from './engine-profiler.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene/scene-access.token';
 import { GameContextService } from '../session/game-context.service';
 import { GameMode } from '../session/game-mode.model';
@@ -39,8 +41,23 @@ export interface IncidentDelta {
   newLightsDetected: string[];
 }
 
+export interface SnapshotMetadata {
+  requestId: string;
+  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'SKIPPED' | 'TIMEOUT';
+  requestedAtFrame: number;
+  capturedAtFrame?: number;
+  requestedAtMs: number;
+  capturedAtMs?: number;
+  captureLatencyMs?: number;
+  width?: number;
+  height?: number;
+  error?: string;
+}
+
 export interface PerformanceIncident {
   id: string;
+  sessionId: string;
+  entryNumber: number;
   timestamp: string;
   frameNumber: number;
   durationMs: number;
@@ -75,8 +92,11 @@ export interface PerformanceIncident {
   previousStableMetrics?: FrameSample;
   recentHistory: FrameSample[];
   postIncidentHistory?: FrameSample[];
+  preIncidentEvents?: TimelineEvent[];
 
   imageUrl?: string;
+  snapshotStatus?: 'PENDING' | 'SUCCESS' | 'FAILED' | 'SKIPPED' | 'TIMEOUT';
+  snapshotInfo?: SnapshotMetadata;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -84,6 +104,8 @@ export class PerformanceIncidentService {
   private profiler = inject(EngineProfilerService);
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private context = inject(GameContextService);
+
+  public readonly onIncidentUpdated = new Subject<PerformanceIncident>();
 
   private incidents: PerformanceIncident[] = [];
   private readonly MAX_INCIDENTS = 15;
@@ -102,6 +124,7 @@ export class PerformanceIncidentService {
   private readonly FPS_THRESHOLD = 42;
   private readonly FRAMETIME_THRESHOLD = 23.8; 
   private readonly COOLDOWN_MS = 3000;
+  private readonly SNAPSHOT_TIMEOUT_MS = 1500;
 
   public checkFrame(frameTimeMs: number, fps: number): void {
     if (this.cooldownTimer > 0 && this.state === 'NORMAL') {
@@ -137,6 +160,7 @@ export class PerformanceIncidentService {
         this.postCaptureCounter++;
         if (this.postCaptureCounter === 30) {
           this.activeIncident.postIncidentHistory = this.profiler.getRecentHistory().slice(-30);
+          this.onIncidentUpdated.next(this.activeIncident);
         }
 
         if (this.consecutiveGoodFrames > 35) {
@@ -174,6 +198,7 @@ export class PerformanceIncidentService {
   }
 
   public recordCullingFlap(uid: string, name: string, distance: number, playerSpeed: number): void {
+    this.profiler.recordTimelineEvent('CULLING', 'CULLING_FLAP', { uid, name, distance, playerSpeed });
     this.recordSpecificIncident('CULLING_FLAP', `Oscilación rápida de visibilidad (Culling Flap) en "${name}" a ${distance.toFixed(1)}m`, [
       `Velocidad jugador: ${playerSpeed.toFixed(1)} m/s`,
       `Cambió de estado visible/culled reiteradamente en < 2s`
@@ -193,6 +218,25 @@ export class PerformanceIncidentService {
     ], 'MEDIUM');
   }
 
+  private shouldCaptureSnapshot(category: IncidentCategory): boolean {
+    switch (category) {
+      case 'FRAME_TIME_SPIKE':
+      case 'SHADER_COMPILATION_SPIKE':
+      case 'SHADOW_REBUILD_SPIKE':
+      case 'SHADOW_POP_IN':
+      case 'LIGHT_ACTIVE_SHADOW_MISSING':
+      case 'LIGHT_SURGE_SPIKE':
+      case 'OBJECT_POP_IN':
+      case 'OBJECT_POP_OUT':
+      case 'CULLING_FLAP':
+      case 'CULLING_STORM_SPIKE':
+      case 'GPU_BOUND_SPIKE':
+        return true;
+      default:
+        return false;
+    }
+  }
+
   private recordSpecificIncident(
     category: IncidentCategory, 
     diagnosis: string, 
@@ -209,11 +253,14 @@ export class PerformanceIncidentService {
     const snap = this.profiler.getSnapshot(false);
     const recentHistory = this.profiler.getRecentHistory();
     const stableSample = recentHistory.length > 5 ? recentHistory[recentHistory.length - 5] : recentHistory[0];
+    const frameNum = recentHistory.length > 0 ? recentHistory[recentHistory.length - 1].frameId : 0;
 
     const incident: PerformanceIncident = {
-      id: 'inc_' + Date.now(),
+      id: 'inc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      sessionId: snap.session.sessionId,
+      entryNumber: snap.session.entryNumber,
       timestamp: new Date().toLocaleTimeString(),
-      frameNumber: recentHistory.length > 0 ? recentHistory[recentHistory.length - 1].frameId : 0,
+      frameNumber: frameNum,
       durationMs: 16,
       status: 'RECOVERED',
       category,
@@ -229,10 +276,10 @@ export class PerformanceIncidentService {
         sceneName: snap.session.sceneName,
         mode: snap.session.mode,
         stage: this.determineContextStage(),
-        playerCoordinates: snap.session.playerPosition,
-        cameraCoordinates: snap.session.cameraPosition,
-        cameraRotation: snap.session.cameraRotation,
-        cameraDirection: snap.session.cameraDirection,
+        playerCoordinates: snap.session.playerPosition ? { ...snap.session.playerPosition } : null,
+        cameraCoordinates: { ...snap.session.cameraPosition },
+        cameraRotation: { ...snap.session.cameraRotation },
+        cameraDirection: { ...snap.session.cameraDirection },
         cameraFov: snap.session.cameraFov,
         distanceCameraToPlayer: snap.session.distanceCameraToPlayer,
         selectedObject: snap.session.selectedObjectName
@@ -241,13 +288,26 @@ export class PerformanceIncidentService {
       diagnosis,
       metrics: snap,
       previousStableMetrics: stableSample,
-      recentHistory: recentHistory.slice(-30)
+      recentHistory: recentHistory.slice(-30),
+      preIncidentEvents: this.profiler.getTimelineEvents().slice(-20),
+      snapshotStatus: 'SKIPPED'
     };
 
     this.incidents.unshift(incident);
     if (this.incidents.length > this.MAX_INCIDENTS) this.incidents.pop();
 
-    console.warn(`⚠️ [TelemetryIncident] [${category}] ${diagnosis}`);
+    this.profiler.recordTimelineEvent('SPIKE', `SPECIFIC_INCIDENT_${category}`, {
+      incidentId: incident.id,
+      diagnosis,
+      fps: snap.fps,
+      confidence
+    });
+
+    this.onIncidentUpdated.next(incident);
+
+    if (this.shouldCaptureSnapshot(category)) {
+      this.captureVisual(incident);
+    }
   }
 
   public simulateIncident(): void {
@@ -277,15 +337,18 @@ export class PerformanceIncidentService {
     const snap = this.profiler.getSnapshot(true);
     const recentHistory = this.profiler.getRecentHistory();
     const stableSample = recentHistory.length > 10 ? recentHistory[recentHistory.length - 10] : recentHistory[0];
+    const frameNum = recentHistory.length > 0 ? recentHistory[recentHistory.length - 1].frameId : 0;
 
     const contextStage = this.determineContextStage();
     const delta = this.calculateDelta(snap, stableSample);
     const classification = this.classifyIncident(snap, delta, contextStage);
     
     const incident: PerformanceIncident = {
-      id: 'inc_' + Date.now(),
+      id: 'inc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
+      sessionId: snap.session.sessionId,
+      entryNumber: snap.session.entryNumber,
       timestamp: new Date().toLocaleTimeString(),
-      frameNumber: recentHistory.length > 0 ? recentHistory[recentHistory.length - 1].frameId : 0,
+      frameNumber: frameNum,
       durationMs: 0,
       status: 'ACTIVE',
       category: classification.category,
@@ -301,10 +364,10 @@ export class PerformanceIncidentService {
         sceneName: snap.session.sceneName,
         mode: snap.session.mode,
         stage: contextStage,
-        playerCoordinates: snap.session.playerPosition,
-        cameraCoordinates: snap.session.cameraPosition,
-        cameraRotation: snap.session.cameraRotation,
-        cameraDirection: snap.session.cameraDirection,
+        playerCoordinates: snap.session.playerPosition ? { ...snap.session.playerPosition } : null,
+        cameraCoordinates: { ...snap.session.cameraPosition },
+        cameraRotation: { ...snap.session.cameraRotation },
+        cameraDirection: { ...snap.session.cameraDirection },
         cameraFov: snap.session.cameraFov,
         distanceCameraToPlayer: snap.session.distanceCameraToPlayer,
         selectedObject: snap.session.selectedObjectName
@@ -313,7 +376,9 @@ export class PerformanceIncidentService {
       diagnosis: classification.diagnosis,
       metrics: snap,
       previousStableMetrics: stableSample,
-      recentHistory: recentHistory.slice(-60)
+      recentHistory: recentHistory.slice(-60),
+      preIncidentEvents: this.profiler.getTimelineEvents().slice(-30),
+      snapshotStatus: 'PENDING'
     };
 
     this.activeIncident = incident;
@@ -321,7 +386,17 @@ export class PerformanceIncidentService {
     
     if (this.incidents.length > this.MAX_INCIDENTS) this.incidents.pop();
 
+    this.profiler.recordTimelineEvent('SPIKE', 'FRAME_SPIKE_BEGIN', {
+      incidentId: incident.id,
+      category: classification.category,
+      fps,
+      frameTime,
+      primarySuspect: classification.primarySuspect
+    });
+
     console.warn(`🚨 [PerformanceIncident] [${classification.category}] [Confidence: ${classification.confidence}] ${classification.diagnosis} | FPS: ${fps.toFixed(1)}`);
+    
+    this.onIncidentUpdated.next(incident);
     this.captureVisual(incident);
   }
 
@@ -471,7 +546,12 @@ export class PerformanceIncidentService {
     if (this.activeIncident) {
       this.activeIncident.status = 'RECOVERED';
       this.activeIncident.durationMs = performance.now() - this.incidentStartTime;
+      this.profiler.recordTimelineEvent('SPIKE', 'FRAME_SPIKE_END', {
+        incidentId: this.activeIncident.id,
+        durationMs: parseFloat(this.activeIncident.durationMs.toFixed(1))
+      });
       console.log(`✅ [PerformanceIncident] Incidente ${this.activeIncident.id} recuperado tras ${this.activeIncident.durationMs.toFixed(0)}ms`);
+      this.onIncidentUpdated.next(this.activeIncident);
     }
     this.state = 'NORMAL';
     this.activeIncident = null;
@@ -482,15 +562,154 @@ export class PerformanceIncidentService {
     const scene = this.motor3d.getScene();
     const engine = this.motor3d.getEngine();
     const camera = scene?.activeCamera;
-    
-    if (engine && camera) {
-      try {
-        Tools.CreateScreenshotUsingRenderTarget(engine, camera, { width: 480, height: 270 }, (dataUrl) => {
-          incident.imageUrl = dataUrl;
-        });
-      } catch (e) {
-        console.warn('[PerformanceIncident] No se pudo capturar screenshot:', e);
+
+    const targetWidth = 480;
+    const targetHeight = 270;
+    const reqId = 'snapreq_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
+    const reqMs = performance.now();
+    const targetIncidentId = incident.id;
+
+    incident.snapshotStatus = 'PENDING';
+    incident.snapshotInfo = {
+      requestId: reqId,
+      status: 'PENDING',
+      requestedAtFrame: incident.frameNumber,
+      requestedAtMs: reqMs,
+      width: targetWidth,
+      height: targetHeight
+    };
+
+    this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_REQUESTED', {
+      incidentId: targetIncidentId,
+      requestId: reqId,
+      canvasExists: !!engine?.getRenderingCanvas(),
+      cameraName: camera?.name || 'none'
+    });
+
+    if (!engine || !scene || scene.isDisposed || engine.isDisposed || !camera || !engine.getRenderingCanvas()) {
+      incident.snapshotStatus = 'FAILED';
+      if (incident.snapshotInfo) {
+        incident.snapshotInfo.status = 'FAILED';
+        incident.snapshotInfo.error = 'Canvas, Engine o Cámara no disponibles';
       }
+      this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_SKIPPED', {
+        incidentId: targetIncidentId,
+        requestId: reqId,
+        reason: 'ENGINE_OR_CAMERA_UNAVAILABLE'
+      });
+      this.onIncidentUpdated.next(incident);
+      return;
+    }
+
+    let isCompleted = false;
+
+    const timeoutHandle = setTimeout(() => {
+      if (isCompleted) return;
+      isCompleted = true;
+
+      const inc = this.incidents.find(i => i.id === targetIncidentId);
+      if (inc && inc.snapshotStatus === 'PENDING') {
+        inc.snapshotStatus = 'TIMEOUT';
+        if (inc.snapshotInfo) {
+          inc.snapshotInfo.status = 'TIMEOUT';
+          inc.snapshotInfo.error = `Excedido límite de espera (${this.SNAPSHOT_TIMEOUT_MS}ms)`;
+        }
+        this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_TIMEOUT', {
+          incidentId: targetIncidentId,
+          requestId: reqId
+        });
+        this.onIncidentUpdated.next(inc);
+      }
+    }, this.SNAPSHOT_TIMEOUT_MS);
+
+    try {
+      this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_START', {
+        incidentId: targetIncidentId,
+        requestId: reqId
+      });
+
+      Tools.CreateScreenshotUsingRenderTarget(
+        engine,
+        camera,
+        { width: targetWidth, height: targetHeight },
+        (dataUrl: string) => {
+          if (isCompleted) return;
+          isCompleted = true;
+          clearTimeout(timeoutHandle);
+
+          const capturedMs = performance.now();
+          const latencyMs = parseFloat((capturedMs - reqMs).toFixed(2));
+          const currentRecent = this.profiler.getRecentHistory();
+          const capturedFrame = currentRecent.length > 0 ? currentRecent[currentRecent.length - 1].frameId : incident.frameNumber;
+
+          const inc = this.incidents.find(i => i.id === targetIncidentId);
+          if (!inc) {
+            this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_ORPHAN_CALLBACK', {
+              incidentId: targetIncidentId,
+              requestId: reqId
+            });
+            return;
+          }
+
+          if (dataUrl && dataUrl.length > 64) {
+            inc.imageUrl = dataUrl;
+            inc.snapshotStatus = 'SUCCESS';
+            inc.snapshotInfo = {
+              requestId: reqId,
+              status: 'SUCCESS',
+              requestedAtFrame: inc.frameNumber,
+              capturedAtFrame: capturedFrame,
+              requestedAtMs: reqMs,
+              capturedAtMs: capturedMs,
+              captureLatencyMs: latencyMs,
+              width: targetWidth,
+              height: targetHeight
+            };
+
+            this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_SUCCESS', {
+              incidentId: targetIncidentId,
+              requestId: reqId,
+              incidentFrame: inc.frameNumber,
+              capturedFrame,
+              latencyMs,
+              imageBytes: dataUrl.length
+            });
+          } else {
+            inc.snapshotStatus = 'FAILED';
+            inc.snapshotInfo = {
+              requestId: reqId,
+              status: 'FAILED',
+              requestedAtFrame: inc.frameNumber,
+              requestedAtMs: reqMs,
+              error: 'DataURL vacío o corrupto'
+            };
+            this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_FAILURE', {
+              incidentId: targetIncidentId,
+              requestId: reqId,
+              reason: 'EMPTY_DATA_URL'
+            });
+          }
+
+          this.onIncidentUpdated.next(inc);
+        }
+      );
+    } catch (e: any) {
+      if (isCompleted) return;
+      isCompleted = true;
+      clearTimeout(timeoutHandle);
+
+      incident.snapshotStatus = 'FAILED';
+      if (incident.snapshotInfo) {
+        incident.snapshotInfo.status = 'FAILED';
+        incident.snapshotInfo.error = e?.message || 'Error desconocido';
+      }
+      this.profiler.recordTimelineEvent('SNAPSHOT', 'SNAPSHOT_FAILURE', {
+        incidentId: targetIncidentId,
+        requestId: reqId,
+        error: e?.message || 'exception'
+      });
+      this.onIncidentUpdated.next(incident);
+      console.warn('[PerformanceIncident] Excepción en captura de screenshot:', e);
     }
   }
 

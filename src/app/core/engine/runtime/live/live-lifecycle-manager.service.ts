@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/live/live-lifecycle-manager.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Camera, AbstractMesh, Tags, Vector3, Node } from '@babylonjs/core';
@@ -20,6 +21,7 @@ import { ShadowOrchestratorService } from '../shadows/shadow-orchestrator.servic
 import { LocalRenderingSystem } from '../systems/local-rendering.system';
 import { RuntimeEngineService } from '../runtime-engine.service';
 import { ShadowQualityService } from '../shadows/shadow-quality.service';
+import { EngineProfilerService } from '../../telemetry/engine-profiler.service';
 
 export interface EditorSnapshotState {
   cameraTarget: Vector3;
@@ -47,6 +49,7 @@ export class LiveLifecycleManagerService {
   private playerTriggerSvc = inject(PlayerTriggerService);
   private shadowOrchestrator = inject(ShadowOrchestratorService);
   private localRendering = inject(LocalRenderingSystem);
+  private profiler = inject(EngineProfilerService);
 
   private isLiveActive = false;
   private savedEditorCameraState: EditorSnapshotState | null = null;
@@ -54,11 +57,17 @@ export class LiveLifecycleManagerService {
   private preLiveCamera: Camera | null = null;
   private savedSelection: Node | null = null;
 
+  private entryCounter = 0;
+
   public get isRunning(): boolean {
     return this.isLiveActive;
   }
 
   public captureEditorState(): void {
+    this.entryCounter++;
+    const sessionId = `tl_${Date.now()}_${this.entryCounter}`;
+    this.profiler.notifySessionEntry(sessionId, this.entryCounter);
+
     const editorCam = this.motor3d.getEditorCamera();
     if (editorCam) {
       editorCam.computeWorldMatrix();
@@ -96,17 +105,18 @@ export class LiveLifecycleManagerService {
   public endLiveSession(): void {
     if (!this.isLiveActive) return;
 
+    this.profiler.recordTimelineEvent('LIFECYCLE', 'END_LIVE_SESSION_START', {
+      entryNumber: this.entryCounter
+    });
+
     this.inputRouter.unlockPointer();
 
-    // Detener la sesión a través de RuntimeEngineService para desregistrar AdaptiveQualitySystem
-    // y restaurar forzosamente el tier a 'HIGH'
     this.runtimeEngine.stopTestSession();
     this.localRendering.stop();
 
     this.playerCamSvc.updateFirstPersonVisibility(false);
     this.playerCamSvc.limpiarPivotTPS();
 
-    // Garantizar que la calidad visual de hardware y post-procesos en Editor sea restaurada
     const engine = this.motor3d.getEngine();
     if (engine) {
       engine.setHardwareScalingLevel(1.0);
@@ -162,6 +172,10 @@ export class LiveLifecycleManagerService {
     
     this.gameContext.setHoveredObject(null);
     this.isLiveActive = false;
+
+    this.profiler.recordTimelineEvent('LIFECYCLE', 'RESTORE_EDITOR_COMPLETE', {
+      entryNumber: this.entryCounter
+    });
 
     CinematicLogger.logTestLiveLifecycle('EXIT', 'EDITOR', this.motor3d.getEditorCamera()?.name);
   }

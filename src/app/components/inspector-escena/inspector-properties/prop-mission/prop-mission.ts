@@ -1,4 +1,3 @@
-
 import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject, effect, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -14,7 +13,6 @@ import {
   MissionStatus
 } from '../../../../core/engine/models/api-dto.model';
 import { EpisodiosService } from '../../../../services/api/episodios';
-import { EngineProfilerService } from '../../../../core/engine/telemetry/engine-profiler.service';
 
 @Component({
   selector: 'app-prop-mission',
@@ -27,13 +25,12 @@ export class PropMission implements OnInit, OnDestroy {
   public editorSvc = inject(EditorMapaService);
   private worldSettingsSvc = inject(WorldSettingsService);
   private epiApiSvc = inject(EpisodiosService);
-  public profiler = inject(EngineProfilerService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
   
   private episodeSaveSubject = new Subject<void>();
 
-  public seccionActiva: 'mission' | 'ui' | 'metadata' | 'aerospace' | 'profiler' = 'mission';
+  public seccionActiva: 'mission' | 'ui' | 'metadata' | 'aerospace' = 'mission';
 
   public missionProfile: MissionProfileDto | null = null;
   public cargandoProfile = false;

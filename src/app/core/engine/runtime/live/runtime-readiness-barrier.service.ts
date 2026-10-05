@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/live/runtime-readiness-barrier.service.ts
 import { Injectable, inject, signal } from '@angular/core';
 import { Scene } from '@babylonjs/core';
@@ -60,11 +61,18 @@ export class RuntimeReadinessBarrierService {
     maxAllowedFrameTimeMs = 28.0,
     onProgress?: (msg: string, pct: number) => void
   ): Promise<boolean> {
+    const stabilityStartTime = performance.now();
     this.setStage('CHECKING_STABILITY', 'Verificando estabilidad de render...', 'Midiendo fluidez de 60 FPS');
+
+    this.profiler.recordTimelineEvent('READINESS', 'WAIT_START', {
+      requiredStableFrames,
+      maxAllowedFrameTimeMs
+    });
 
     return new Promise<boolean>((resolve) => {
       let stableFramesCount = 0;
       let totalElapsedFrames = 0;
+      let lostFramesCount = 0;
       const MAX_WATCHDOG_FRAMES = 120;
       let lastTime = performance.now();
 
@@ -87,7 +95,19 @@ export class RuntimeReadinessBarrierService {
 
         if (isFrameTimeGood && isPipelineClean) {
           stableFramesCount++;
+          this.profiler.recordTimelineEvent('READINESS', 'STABLE_FRAME_ACCEPTED', {
+            frameTime: parseFloat(dt.toFixed(2)),
+            stableCount: stableFramesCount,
+            compilingShaders
+          });
         } else {
+          lostFramesCount++;
+          this.profiler.recordTimelineEvent('READINESS', 'STABLE_FRAME_REJECTED', {
+            frameTime: parseFloat(dt.toFixed(2)),
+            reason: !isFrameTimeGood ? 'FRAME_TIME_EXCEEDED' : 'SHADERS_NOT_READY',
+            compilingShaders,
+            stableCount: stableFramesCount
+          });
           stableFramesCount = Math.max(0, stableFramesCount - 2);
         }
 
@@ -101,13 +121,27 @@ export class RuntimeReadinessBarrierService {
         }
 
         if (stableFramesCount >= requiredStableFrames) {
+          const totalDuration = performance.now() - stabilityStartTime;
           this.setStage('READY', 'Entorno preparado y estable', '60 FPS listos');
+          this.profiler.recordTimelineEvent('READINESS', 'READY', {
+            totalDurationMs: parseFloat(totalDuration.toFixed(2)),
+            totalElapsedFrames,
+            lostFramesCount,
+            stableFramesCount
+          });
           resolve(true);
           return;
         }
 
         if (totalElapsedFrames >= MAX_WATCHDOG_FRAMES) {
+          const totalDuration = performance.now() - stabilityStartTime;
           this.setStage('READY', 'Entorno preparado', 'Iniciando sesión');
+          this.profiler.recordTimelineEvent('READINESS', 'TIMEOUT_WATCHDOG', {
+            totalDurationMs: parseFloat(totalDuration.toFixed(2)),
+            totalElapsedFrames,
+            lostFramesCount,
+            stableFramesCount
+          });
           resolve(true);
           return;
         }

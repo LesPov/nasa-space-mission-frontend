@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/telemetry/engine-profiler.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { AdaptiveQualitySystem, QualityTier } from '../runtime/systems/adaptive-quality.system';
@@ -20,20 +21,15 @@ export interface LightForensicRecord {
   name: string;
   type: string;
   position: { x: number; y: number; z: number };
-  
-  // Distancias físicas desglosadas
   distance: number;
   centerDistance: number;
   boundsDistance: number;
   effectiveDistance: number;
-
-  // Umbrales de configuración individual
   configActivationDistance: number;
   configDeactivationDistance: number;
   configFadeStartDistance: number;
   configFadeEndDistance: number;
   configShadowDistance: number;
-
   isLightInRange: boolean;
   isShadowInRange: boolean;
   baseIntensity: number;
@@ -46,14 +42,11 @@ export interface LightForensicRecord {
   isStatic: boolean;
   assignedSlot: number | null;
   priorityScore: number;
-
-  // Máquina de estados
   state: string;
   decisionText: string;
   rejectionReason?: string;
   lastStateChangeTimestamp?: string;
   lastDistanceUpdateTimestamp?: string;
-
   lightOnTimestamp?: number;
   shadowReadyTimestamp?: number;
   includedMeshesCount: number;
@@ -106,6 +99,34 @@ export interface LatencyBuckets {
   framesAbove250ms: number;
   framesAbove500ms: number;
   framesAbove1000ms: number;
+}
+
+export interface TimelineEvent {
+  id: number;
+  timestamp: number;
+  relativeMs: number;
+  frameNumber: number;
+  sessionId: string;
+  entryNumber: number;
+  category: 'LIFECYCLE' | 'TRANSITION' | 'READINESS' | 'SHADER' | 'LIGHT' | 'SEQUENCE' | 'CULLING' | 'ZONE' | 'SPIKE' | 'SNAPSHOT';
+  name: string;
+  details: Record<string, any>;
+}
+
+export interface EntrySummaryComparison {
+  entryNumber: number;
+  sessionId: string;
+  transitionDurationMs: number;
+  stabilityCheckDurationMs: number;
+  readyDurationMs: number;
+  shaderEventsCount: number;
+  lightChangesCount: number;
+  sequenceEventsCount: number;
+  cullingChangesCount: number;
+  cullingFlapsCount: number;
+  worstFrameTimeMs: number;
+  snapshotStatus: string;
+  timestamp: string;
 }
 
 export interface ProfilerMetrics {
@@ -201,7 +222,11 @@ export interface ProfilerMetrics {
     cameraFov: number;
     distanceCameraToPlayer: number;
     selectedObjectName: string | null;
+    sessionId: string;
+    entryNumber: number;
   };
+  timelineEvents: TimelineEvent[];
+  sessionComparisons: EntrySummaryComparison[];
 }
 
 @Injectable({ providedIn: 'root' })
@@ -253,6 +278,16 @@ export class EngineProfilerService {
     return this._spatialHub;
   }
 
+  // Correlación de sesión de alta resolución
+  private currentSessionId = 'init_session';
+  private currentEntryNumber = 0;
+  private sessionStartTime = performance.now();
+  private transitionStartTime = 0;
+  private lastTransitionDuration = 0;
+  private stabilityCheckDuration = 0;
+  private readyDuration = 0;
+
+  // Ring Buffer de Métricas de Cuadro (120 cuadros)
   private readonly BUFFER_SIZE = 120;
   private frameTimeBuffer = new Float32Array(this.BUFFER_SIZE);
   private bufferIndex = 0;
@@ -262,6 +297,18 @@ export class EngineProfilerService {
   private historyCircularBuffer: FrameSample[] = [];
   private historyIndex = 0;
   private frameCounter = 0;
+
+  // Ring Buffer de Eventos Atómicos de la Línea Temporal (256 eventos)
+  private readonly EVENT_CAPACITY = 256;
+  private timelineEventsBuffer: TimelineEvent[] = [];
+  private nextEventId = 1;
+
+  // Comparativas históricas de sesión (Entry 1 vs Entry 2...)
+  private sessionComparisons: EntrySummaryComparison[] = [];
+  private currentEntrySummary: EntrySummaryComparison | null = null;
+
+  // Seguimiento de variantes de shaders observadas
+  private knownShaderEffectKeys = new Set<string>();
 
   private latencyBuckets: LatencyBuckets = {
     framesAbove33ms: 0,
@@ -302,10 +349,10 @@ export class EngineProfilerService {
   private memoryCheckTimer = 0;
 
   private transitionMilestones: TransitionMilestone[] = [];
-  private transitionStartTime = 0;
-  private lastTransitionDuration = 0;
 
   constructor() {
+    (window as any).HIGH_RES_PERFORMANCE_TELEMETRY = true;
+
     for (let i = 0; i < this.HISTORY_CAPACITY; i++) {
       this.historyCircularBuffer.push({
         frameId: 0,
@@ -323,6 +370,85 @@ export class EngineProfilerService {
         usedHeapMb: 0
       });
     }
+  }
+
+  public isHighResTelemetryEnabled(): boolean {
+    return (window as any).HIGH_RES_PERFORMANCE_TELEMETRY !== false;
+  }
+
+  public notifySessionEntry(sessionId: string, entryNumber: number): void {
+    this.currentSessionId = sessionId;
+    this.currentEntryNumber = entryNumber;
+    this.sessionStartTime = performance.now();
+
+    this.currentEntrySummary = {
+      entryNumber,
+      sessionId,
+      transitionDurationMs: 0,
+      stabilityCheckDurationMs: 0,
+      readyDurationMs: 0,
+      shaderEventsCount: 0,
+      lightChangesCount: 0,
+      sequenceEventsCount: 0,
+      cullingChangesCount: 0,
+      cullingFlapsCount: 0,
+      worstFrameTimeMs: 0,
+      snapshotStatus: 'PENDING',
+      timestamp: new Date().toLocaleTimeString()
+    };
+    this.sessionComparisons.push(this.currentEntrySummary);
+    if (this.sessionComparisons.length > 10) {
+      this.sessionComparisons.shift();
+    }
+
+    this.recordTimelineEvent('LIFECYCLE', 'SESSION_ENTRY_START', {
+      sessionId,
+      entryNumber,
+      mode: this.gameContext.mode()
+    });
+  }
+
+  public recordTimelineEvent(
+    category: TimelineEvent['category'],
+    name: string,
+    details: Record<string, any> = {}
+  ): void {
+    if (!this.isProfilingEnabled || !this.isHighResTelemetryEnabled()) return;
+
+    const now = performance.now();
+    const event: TimelineEvent = {
+      id: this.nextEventId++,
+      timestamp: now,
+      relativeMs: parseFloat((now - this.sessionStartTime).toFixed(2)),
+      frameNumber: this.frameCounter,
+      sessionId: this.currentSessionId,
+      entryNumber: this.currentEntryNumber,
+      category,
+      name,
+      details
+    };
+
+    if (this.timelineEventsBuffer.length >= this.EVENT_CAPACITY) {
+      this.timelineEventsBuffer.shift();
+    }
+    this.timelineEventsBuffer.push(event);
+
+    if (this.currentEntrySummary) {
+      if (category === 'SHADER') this.currentEntrySummary.shaderEventsCount++;
+      if (category === 'LIGHT') this.currentEntrySummary.lightChangesCount++;
+      if (category === 'SEQUENCE') this.currentEntrySummary.sequenceEventsCount++;
+      if (category === 'CULLING') this.currentEntrySummary.cullingChangesCount++;
+      if (name === 'CULLING_FLAP') this.currentEntrySummary.cullingFlapsCount++;
+      if (category === 'SNAPSHOT') this.currentEntrySummary.snapshotStatus = name;
+    }
+  }
+
+  public getTimelineEvents(): TimelineEvent[] {
+    return [...this.timelineEventsBuffer];
+  }
+
+  public getSessionComparisons(): EntrySummaryComparison[] {
+    return [...this.sessionComparisons];
   }
 
   public attachInstruments(sceneInstr: any, engineInstr: any, lightSys: any, shadowSys: any, engine: any): void {
@@ -353,6 +479,7 @@ export class EngineProfilerService {
       durationMs: 0,
       timestamp: performance.now()
     }];
+    this.recordTimelineEvent('TRANSITION', 'TRANSITION_BEGIN', { stage: stageName });
   }
 
   public recordTransitionMilestone(stageName: string): void {
@@ -361,17 +488,34 @@ export class EngineProfilerService {
       ? this.transitionMilestones[this.transitionMilestones.length - 1].timestamp 
       : this.transitionStartTime;
 
+    const duration = now - lastTimestamp;
     this.transitionMilestones.push({
       stage: stageName,
-      durationMs: now - lastTimestamp,
+      durationMs: duration,
       timestamp: now
     });
+
+    if (stageName.includes('STABILITY')) {
+      this.stabilityCheckDuration = duration;
+      if (this.currentEntrySummary) this.currentEntrySummary.stabilityCheckDurationMs = parseFloat(duration.toFixed(1));
+    } else if (stageName.includes('READY')) {
+      this.readyDuration = duration;
+      if (this.currentEntrySummary) this.currentEntrySummary.readyDurationMs = parseFloat(duration.toFixed(1));
+    }
+
+    this.recordTimelineEvent('TRANSITION', `STAGE_${stageName}`, { durationMs: parseFloat(duration.toFixed(2)) });
   }
 
   public endTransitionTracking(): void {
     if (this.transitionStartTime > 0) {
       this.lastTransitionDuration = performance.now() - this.transitionStartTime;
       this.recordTransitionMilestone('COMPLETE');
+      if (this.currentEntrySummary) {
+        this.currentEntrySummary.transitionDurationMs = parseFloat(this.lastTransitionDuration.toFixed(1));
+      }
+      this.recordTimelineEvent('TRANSITION', 'TRANSITION_COMPLETE', {
+        totalDurationMs: parseFloat(this.lastTransitionDuration.toFixed(2))
+      });
       this.transitionStartTime = 0;
     }
   }
@@ -382,6 +526,9 @@ export class EngineProfilerService {
 
     if (timeMs > this.worstFrameEver) {
       this.worstFrameEver = timeMs;
+    }
+    if (this.currentEntrySummary && timeMs > this.currentEntrySummary.worstFrameTimeMs) {
+      this.currentEntrySummary.worstFrameTimeMs = parseFloat(timeMs.toFixed(1));
     }
 
     if (timeMs > 1000) this.latencyBuckets.framesAbove1000ms++;
@@ -428,7 +575,38 @@ export class EngineProfilerService {
       : 0;
 
     this.historyIndex = (this.historyIndex + 1) % this.HISTORY_CAPACITY;
+
+    // Inspección segura de shaders en BabylonJS (sin acceder a internals privados)
+    this.inspectShadersNonIntrusive();
+
     this.telemetryCpuAccumulator += (performance.now() - tStart);
+  }
+
+  private inspectShadersNonIntrusive(): void {
+    const scene = this.sceneInstr?.scene;
+    if (!scene || !scene.materials) return;
+
+    // Muestreo controlado a baja frecuencia (cada 15 frames)
+    if (this.frameCounter % 15 !== 0) return;
+
+    const materials = scene.materials as Material[];
+    for (let i = 0; i < materials.length; i++) {
+      const mat = materials[i];
+      if (mat && typeof mat.getEffect === 'function') {
+        const effect = mat.getEffect();
+        if (effect && effect.key) {
+          if (!this.knownShaderEffectKeys.has(effect.key)) {
+            this.knownShaderEffectKeys.add(effect.key);
+            this.recordTimelineEvent('SHADER', 'NEW_SHADER_VARIANT_DETECTED', {
+              materialName: mat.name,
+              materialType: mat.getClassName(),
+              effectKey: effect.key,
+              isReady: effect.isReady()
+            });
+          }
+        }
+      }
+    }
   }
 
   public getRecentHistory(): FrameSample[] {
@@ -641,18 +819,15 @@ export class EngineProfilerService {
           name: vl.entity.name,
           type: vl.entity.type,
           position: { x: parseFloat(pos.x.toFixed(2)), y: parseFloat(pos.y.toFixed(2)), z: parseFloat(pos.z.toFixed(2)) },
-          
           distance: parseFloat(vl.lastEvaluatedDistance.toFixed(2)),
           centerDistance: parseFloat(vl.centerDistance.toFixed(2)),
           boundsDistance: parseFloat(vl.boundsDistance.toFixed(2)),
           effectiveDistance: parseFloat(vl.effectiveDistance.toFixed(2)),
-
           configActivationDistance: actDist,
           configDeactivationDistance: deactDist,
           configFadeStartDistance: parseFloat((actDist * 0.7).toFixed(1)),
           configFadeEndDistance: deactDist,
           configShadowDistance: shadowAct,
-
           isLightInRange: vl.isLightInRange,
           isShadowInRange: vl.isShadowInRange,
           baseIntensity: lightComp?.intensity || 1.0,
@@ -665,13 +840,11 @@ export class EngineProfilerService {
           isStatic: slot?.isStaticLight ?? true,
           assignedSlot: slot ? slot.index : null,
           priorityScore: parseFloat((vl._sortScore ?? 0).toFixed(2)),
-
           state: vl.lifecycleStage,
           decisionText: vl.decisionText || 'EVALUATING',
           rejectionReason: vl.rejectionReason,
           lastStateChangeTimestamp: vl.lastStateChangeTimestamp || 'Initial',
           lastDistanceUpdateTimestamp: vl.lastDistanceUpdateTimestamp || 'Initial',
-
           lightOnTimestamp: slot?._lightOnTimestamp,
           shadowReadyTimestamp: slot?._shadowReadyTimestamp,
           includedMeshesCount: slot?.light ? (slot.light.includedOnlyMeshes?.length || 0) : 0,
@@ -852,8 +1025,12 @@ export class EngineProfilerService {
         fogRingDistances: fogRings,
         cameraFov: parseFloat(camFov.toFixed(2)),
         distanceCameraToPlayer: distCamPlayer,
-        selectedObjectName: selectedNode ? selectedNode.name : null
-      }
+        selectedObjectName: selectedNode ? selectedNode.name : null,
+        sessionId: this.currentSessionId,
+        entryNumber: this.currentEntryNumber
+      },
+      timelineEvents: this.getTimelineEvents(),
+      sessionComparisons: this.getSessionComparisons()
     };
   }
 

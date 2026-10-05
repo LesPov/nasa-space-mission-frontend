@@ -11,6 +11,7 @@ import { Subscription } from 'rxjs';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { GameContextService } from '../../session/game-context.service';
 import { DynamicLightingSystem } from './lighting/dynamic-lighting.system';
+import { EngineProfilerService } from '../../telemetry/engine-profiler.service';
 
 export interface SeqRuntime {
   step: PlayerSequenceStep | null;
@@ -37,10 +38,9 @@ export interface ActiveSequenceDetail {
 }
 
 interface SequenceActionHandler {
-  execute(step: PlayerSequenceStep, entity: GameEntity, entityManager: EntityManagerService, dtMs: number, dtFraction: number, runtime: SeqRuntime): void;
+  execute(step: PlayerSequenceStep, entity: GameEntity, entityManager: EntityManagerService, dtMs: number, dtFraction: number, runtime: SeqRuntime, profiler?: EngineProfilerService): void;
 }
 
-// Handlers optimizados: no marcan entity.isDirty = true innecesariamente si solo cambia intensidad
 const ActionHandlers: Record<string, SequenceActionHandler> = {
   procMove: {
     execute: (step, entity, em, dtMs, dtFraction) => {
@@ -137,21 +137,37 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
     }
   },
   lightOn: {
-    execute: (step, entity) => {
+    execute: (step, entity, em, dtMs, dtFraction, runtime, profiler) => {
       if (!entity.light) return;
       if (entity.playerConfig?.animationEnabled?.lightOn === false) return;
+      const prev = entity.light.renderIntensity;
       entity.light.renderIntensity = entity.light.intensity > 0 ? entity.light.intensity : 1.0;
+      if (profiler && prev !== entity.light.renderIntensity) {
+        profiler.recordTimelineEvent('SEQUENCE', 'SEQ_ACTION_LIGHT_ON', {
+          lightUid: entity.uid,
+          previousIntensity: prev,
+          newIntensity: entity.light.renderIntensity
+        });
+      }
     }
   },
   lightOff: {
-    execute: (step, entity) => {
+    execute: (step, entity, em, dtMs, dtFraction, runtime, profiler) => {
       if (!entity.light) return;
       if (entity.playerConfig?.animationEnabled?.lightOff === false) return;
+      const prev = entity.light.renderIntensity;
       entity.light.renderIntensity = 0.0001;
+      if (profiler && prev !== entity.light.renderIntensity) {
+        profiler.recordTimelineEvent('SEQUENCE', 'SEQ_ACTION_LIGHT_OFF', {
+          lightUid: entity.uid,
+          previousIntensity: prev,
+          newIntensity: entity.light.renderIntensity
+        });
+      }
     }
   },
   lightPulse: {
-    execute: (step, entity, em, dtMs, dtFraction, runtime) => {
+    execute: (step, entity, em, dtMs, dtFraction, runtime, profiler) => {
       if (!entity.light) return;
       if (entity.playerConfig?.animationEnabled?.lightPulse === false) return;
       const freq = step.speedRatio || 1;
@@ -160,7 +176,7 @@ const ActionHandlers: Record<string, SequenceActionHandler> = {
     }
   },
   lightFlicker: {
-    execute: (step, entity, em, dtMs, dtFraction, runtime) => {
+    execute: (step, entity, em, dtMs, dtFraction, runtime, profiler) => {
       if (!entity.light) return;
       if (entity.playerConfig?.animationEnabled?.lightFlicker === false) return;
       const freq = step.speedRatio || 1;
@@ -181,6 +197,7 @@ export class PlayerSequenceService implements IUpdatable {
   private entityManager = inject(EntityManagerService);
   private context = inject(GameContextService);
   private dynamicLighting = inject(DynamicLightingSystem);
+  private profiler = inject(EngineProfilerService);
 
   private eventSub!: Subscription;
 
@@ -251,7 +268,7 @@ export class PlayerSequenceService implements IUpdatable {
     const handler = ActionHandlers[step.action];
     if (handler) {
       const durMs = Math.max(1, step.durationMs || 1000);
-      handler.execute(step, entity, this.entityManager, dtMs, dtMs / durMs, runtime);
+      handler.execute(step, entity, this.entityManager, dtMs, dtMs / durMs, runtime, this.profiler);
       if (entity.type.startsWith('light_')) {
         this.dynamicLighting.syncLightImmediate(entity);
       }
@@ -414,6 +431,13 @@ export class PlayerSequenceService implements IUpdatable {
       state.jumpTriggered = false;
       state.cinematicTied = this.context.isCinematicPlaying(); 
 
+      this.profiler.recordTimelineEvent('SEQUENCE', 'SEQUENCE_STARTED', {
+        sequenceId,
+        entityUid: entity.uid,
+        entityName: entity.name,
+        stepCount: seqToRun.steps.length
+      });
+
       this.captureSequenceOrientationState(entity, state);
     }
   }
@@ -446,7 +470,7 @@ export class PlayerSequenceService implements IUpdatable {
       
       const handler = ActionHandlers[lastStep.action];
       if (handler) {
-        handler.execute(lastStep, entity, this.entityManager, 0, 1.0, r);
+        handler.execute(lastStep, entity, this.entityManager, 0, 1.0, r, this.profiler);
         if (entity.type.startsWith('light_')) {
           this.dynamicLighting.syncLightImmediate(entity);
         }
@@ -486,7 +510,7 @@ export class PlayerSequenceService implements IUpdatable {
     const durStep = Math.max(1, targetStep.durationMs || 1000);
     const handler = ActionHandlers[targetStep.action];
     if (handler) {
-      handler.execute(targetStep, entity, this.entityManager, 0, stepElapsed / durStep, runtime);
+      handler.execute(targetStep, entity, this.entityManager, 0, stepElapsed / durStep, runtime, this.profiler);
       if (entity.type.startsWith('light_')) {
         this.dynamicLighting.syncLightImmediate(entity);
       }
@@ -576,13 +600,20 @@ export class PlayerSequenceService implements IUpdatable {
         this.gameState.setVar(step.stateKey, step.stateValue);
       }
 
+      this.profiler.recordTimelineEvent('SEQUENCE', 'SEQ_STEP_ENTERED', {
+        sequenceId: sequence.id,
+        entityUid: entity.uid,
+        stepIndex: state.index,
+        action: step.action
+      });
+
       state.stepEntered = false;
     } else {
       state.orientationLocked = this.shouldLockOrientationForSequence(step) || state.orientationLocked;
     }
 
     if (step.clipOverride === 'none') {
-      ActionHandlers['stopBaked']?.execute(step, entity, this.entityManager, dtMs, 0, runtime);
+      ActionHandlers['stopBaked']?.execute(step, entity, this.entityManager, dtMs, 0, runtime, this.profiler);
     }
     
     if (state.cinematicTied) runtime.absoluteTimeMs = this.context.cinematicTimeMs();
@@ -590,7 +621,7 @@ export class PlayerSequenceService implements IUpdatable {
     const handler = ActionHandlers[step.action];
     if (handler) {
       const durMs = Math.max(1, step.durationMs || 1000);
-      handler.execute(step, entity, this.entityManager, dtMs, dtMs / durMs, runtime);
+      handler.execute(step, entity, this.entityManager, dtMs, dtMs / durMs, runtime, this.profiler);
       if (entity.type.startsWith('light_')) {
         this.dynamicLighting.syncLightImmediate(entity);
       }
@@ -638,6 +669,10 @@ export class PlayerSequenceService implements IUpdatable {
           state.id = ''; 
           runtime.running = false; 
           this.activeSequences.delete(entity.uid);
+          this.profiler.recordTimelineEvent('SEQUENCE', 'SEQUENCE_COMPLETED', {
+            sequenceId: sequence.id,
+            entityUid: entity.uid
+          });
         }
       } else {
         state.stepEntered = true;
@@ -645,5 +680,4 @@ export class PlayerSequenceService implements IUpdatable {
     }
 
     return runtime;
-  }
-}
+  }}

@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
@@ -24,6 +25,7 @@ import { LightAllocationService } from './light-allocation.service';
 import { PoolSlot, VirtualLight, LIGHT_SPATIAL_CONSTANTS } from './lighting-types';
 import { GameEventBusService } from '../../../events/game-event-bus.service';
 import { PerformanceIncidentService } from '../../../telemetry/performance-incident.service';
+import { EngineProfilerService } from '../../../telemetry/engine-profiler.service';
 
 @Injectable({ providedIn: 'root' })
 export class DynamicLightingSystem implements IUpdatable {
@@ -39,6 +41,7 @@ export class DynamicLightingSystem implements IUpdatable {
   private eventBus = inject(GameEventBusService);
   private materialSvc = inject(CoreSceneMaterialService);
   private incidentSvc = inject(PerformanceIncidentService);
+  private profiler = inject(EngineProfilerService);
 
   private lightRegistry = inject(LightRegistryService);
   private lightTransform = inject(LightTransformService);
@@ -59,6 +62,7 @@ export class DynamicLightingSystem implements IUpdatable {
   private forceShadowRebuild = false;
   private shadowRebuildCooldownTimer = 0;
   private lastSelectedUid: string | null = null;
+  private previousActiveSlotsHash = '';
 
   constructor() {
     this.eventBus.events$.subscribe(e => {
@@ -138,6 +142,7 @@ export class DynamicLightingSystem implements IUpdatable {
     this.playerVelocity.setAll(0);
     this.shadowRebuildCooldownTimer = 0;
     this.lastSelectedUid = null;
+    this.previousActiveSlotsHash = '';
 
     const scene = this.motor3d.getScene();
     if (scene) {
@@ -157,6 +162,7 @@ export class DynamicLightingSystem implements IUpdatable {
     this.lightShadows.clearCache();
     this.containmentSvc.clearAllCache();
     this.shadowCache.clearMetrics();
+    this.previousActiveSlotsHash = '';
   }
 
   public async forceWarmup(refPos: Vector3): Promise<void> {
@@ -358,10 +364,18 @@ export class DynamicLightingSystem implements IUpdatable {
 
       const candidates = activeVirtuals.filter(vl => vl.entity.light?.enabled !== false);
       this.lightAllocation.allocatePoolSlots(candidates, refPos, moveDir, speed, selectedUid);
+
+      // Instrumentación de cambio de layout de slots en el pool
+      const currentHash = this.lightPool.getAllSlots().map(s => `${s.type}_${s.index}:${s.assignedEntityUid || 'empty'}`).join('|');
+      if (currentHash !== this.previousActiveSlotsHash) {
+        this.profiler.recordTimelineEvent('LIGHT', 'LIGHT_LAYOUT_CHANGED', {
+          previousHash: this.previousActiveSlotsHash,
+          currentHash
+        });
+        this.previousActiveSlotsHash = currentHash;
+      }
     }
 
-    // En lugar de condicionar la reconstrucción al delta del jugador por frame (>0.3),
-    // la renderList estática se refresca si hubo invalidación forzada o si la luz se movió.
     const shouldRebuildShadows = this.forceShadowRebuild;
     this.forceShadowRebuild = false;
 
@@ -523,8 +537,6 @@ export class DynamicLightingSystem implements IUpdatable {
           ? Vector3.DistanceSquared(slot.lastShadowRebuildPos, slot.light.position) 
           : 9999;
 
-        // La reconstrucción de casters estáticos solo ocurre cuando la luz entra a un slot,
-        // cuando la luz se mueve en el espacio (> 1m), o si la lista estática estaba completamente vacía.
         const shouldExecuteRebuild = slot._isNewAssignment || renderListEmpty || distMovedSq > 1.0 || forceRebuildShadows;
 
         if (shouldExecuteRebuild) {
@@ -536,9 +548,6 @@ export class DynamicLightingSystem implements IUpdatable {
           this.shadowRebuildCooldownTimer = 100;
         }
 
-        // =========================================================================
-        // SINCRONIZACIÓN INMEDIATA DEL PLAYER Y ACTORES DINÁMICOS COMO CASTERS
-        // =========================================================================
         const actors = this.lightReference.getValidActorEntities();
         const lightRange = slot.type === 'directional' ? 50 : (lightComp.range || 50);
         let dynamicCasterChanged = false;
@@ -551,10 +560,8 @@ export class DynamicLightingSystem implements IUpdatable {
           let actorShouldCastShadow = false;
 
           if (vl.isInterior && vl.interiorActivationMode !== 'DISTANCE') {
-            // En pasillos e interiores: si el actor está INSIDE o PRE_ENTRY, debe proyectar sombra
             actorShouldCastShadow = (vl.spatialState === 'INSIDE' || vl.spatialState === 'PRE_ENTRY' || vl.spatialState === 'PRE_EXIT') && distToLight <= (lightRange + 4.0);
           } else {
-            // En exteriores (farola) o interiores por distancia: margen de 3m sobre el rango para no perder sombra
             actorShouldCastShadow = distToLight <= (lightRange + 3.0);
           }
 
@@ -571,7 +578,6 @@ export class DynamicLightingSystem implements IUpdatable {
           this.shadowCache.recordInvalidation();
         }
 
-        // Telemetría de diagnóstico: verificar si la luz está activa pero el Player no está en la renderList
         if (actors.length > 0 && actors[0].view && !listRebuilt && !dynamicCasterChanged) {
           const pActor = actors[0];
           const pPos = this.lightReference.getActorWorldPosition(pActor, new Vector3());

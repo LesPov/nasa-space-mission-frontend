@@ -1,3 +1,4 @@
+
 <div class="profiler-container">
 
   <!-- ======================================================================= -->
@@ -18,7 +19,7 @@
         {{ systemHealthStatus() }}
       </div>
       <div class="quick-meta" [title]="metrics().session.sceneName">
-        {{ metrics().session.mode }} • {{ metrics().session.sceneName }}
+        {{ metrics().session.mode }} • {{ metrics().session.sceneName }} • [{{ metrics().session.cardinalDirection }}]
       </div>
     </div>
 
@@ -369,21 +370,54 @@
         </div>
       </section>
 
-      <!-- TAB 10: CONTEXTO -->
+      <!-- TAB 10: CONTEXTO Y TELEMETRÍA ESPACIAL 3D -->
       <section *ngIf="activeSection() === 'context'" class="tab-pane">
+        
+        <!-- DIAGNÓSTICO EN VIVO: NIEBLA Y ESPACIO 360° -->
+        <div class="section-card" style="border-color: #38bdf8;">
+          <div class="section-header" style="background: rgba(56, 189, 248, 0.15);">
+            <h4 style="color: #38bdf8;">☁️ Espacio 3D y Niebla Volumétrica</h4>
+          </div>
+          <div class="key-value-list">
+            <div class="kv-item">
+              <span class="kv-key">Centro de Niebla (Fog Center)</span>
+              <span class="kv-val" style="color: #4ade80;">
+                ({{ metrics().session.fogCenter.x }}, {{ metrics().session.fogCenter.y }}, {{ metrics().session.fogCenter.z }})
+              </span>
+            </div>
+            <div class="kv-item">
+              <span class="kv-key">Orientación Cardinal (Mirando a)</span>
+              <span class="kv-val"><strong style="color: #facc15; font-size: 13px;">{{ metrics().session.cardinalDirection }}</strong></span>
+            </div>
+            <div class="kv-item" *ngFor="let dist of metrics().session.fogRingDistances; let rIdx = index">
+              <span class="kv-key">Anillo {{ rIdx + 1 }} (Radio Espacial)</span>
+              <span class="kv-val">{{ dist }} m</span>
+            </div>
+          </div>
+        </div>
+
         <div class="section-card">
           <div class="section-header">
-            <h4>Ubicación & Cámara</h4>
+            <h4>Ubicación & Orientación 3D</h4>
           </div>
           <div class="key-value-list">
             <div class="kv-item"><span class="kv-key">Modo de Ejecución</span> <span class="kv-val"><strong style="color: #38bdf8;">{{ metrics().session.mode }}</strong></span></div>
             <div class="kv-item"><span class="kv-key">Perspectiva</span> <span class="kv-val">{{ metrics().session.cameraView }}</span></div>
             <div class="kv-item"><span class="kv-key">Plataforma / Zona</span> <span class="kv-val ellipsis" [title]="metrics().session.sceneName">{{ metrics().session.sceneName }} (ID: {{ metrics().session.sceneId }})</span></div>
-            <div class="kv-item"><span class="kv-key">Posición Cámara</span> <span class="kv-val">({{ metrics().session.cameraPosition.x }}, {{ metrics().session.cameraPosition.y }}, {{ metrics().session.cameraPosition.z }})</span></div>
-            <div class="kv-item"><span class="kv-key">Rotación Cámara</span> <span class="kv-val">({{ metrics().session.cameraRotation.x }}, {{ metrics().session.cameraRotation.y }}, {{ metrics().session.cameraRotation.z }})</span></div>
+            
+            <div class="kv-item">
+              <span class="kv-key">Player World Pos (X, Y, Z)</span> 
+              <span class="kv-val" style="color: #4ade80;">{{ formatCoords(metrics().session.playerPosition, 'Sin Jugador Activo') }}</span>
+            </div>
+            <div class="kv-item" *ngIf="metrics().session.playerRotation">
+              <span class="kv-key">Player Rotation (Pitch, Yaw, Roll)</span> 
+              <span class="kv-val">({{ metrics().session.playerRotation?.x }}°, {{ metrics().session.playerRotation?.y }}°, {{ metrics().session.playerRotation?.z }}°)</span>
+            </div>
+
+            <div class="kv-item"><span class="kv-key">Camera Pos (X, Y, Z)</span> <span class="kv-val">({{ metrics().session.cameraPosition.x }}, {{ metrics().session.cameraPosition.y }}, {{ metrics().session.cameraPosition.z }})</span></div>
+            <div class="kv-item"><span class="kv-key">Camera Rotation (Pitch, Yaw, Roll)</span> <span class="kv-val">({{ metrics().session.cameraRotation.x }}°, {{ metrics().session.cameraRotation.y }}°, {{ metrics().session.cameraRotation.z }}°)</span></div>
             <div class="kv-item"><span class="kv-key">Dirección Vista (Fwd)</span> <span class="kv-val">({{ metrics().session.cameraDirection.x }}, {{ metrics().session.cameraDirection.y }}, {{ metrics().session.cameraDirection.z }})</span></div>
             <div class="kv-item"><span class="kv-key">FOV</span> <span class="kv-val">{{ metrics().session.cameraFov }} rad</span></div>
-            <div class="kv-item"><span class="kv-key">Posición Jugador</span> <span class="kv-val">{{ formatCoords(metrics().session.playerPosition, 'Sin Jugador Activo') }}</span></div>
             <div class="kv-item"><span class="kv-key">Distancia Cámara-Actor</span> <span class="kv-val">{{ metrics().session.distanceCameraToPlayer }} m</span></div>
             <div class="kv-item"><span class="kv-key">Objeto Seleccionado</span> <span class="kv-val ellipsis" [title]="metrics().session.selectedObjectName || 'Ninguno'">{{ metrics().session.selectedObjectName || 'Ninguno' }}</span></div>
           </div>

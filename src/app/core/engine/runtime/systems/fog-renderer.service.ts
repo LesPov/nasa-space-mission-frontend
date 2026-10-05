@@ -17,12 +17,16 @@ class FogWallState {
 @Injectable({ providedIn: 'root' })
 export class FogRendererService {
   private fogWalls: TransformNode[] = []; 
+  private fogShells: Mesh[][] = [];
   private fogMats: StandardMaterial[][] = []; 
   private wallStates: FogWallState[] = []; 
   private gradTex: DynamicTexture | null = null;
   private currentScene: Scene | null = null;
 
   private tColorCache = new Color3(0, 0, 0);
+
+  public lastAnchorPosition = { x: 0, y: 0, z: 0 };
+  public lastRingDistances: number[] = [15, 45, 90];
 
   constructor() { 
     for (let i = 0; i < 3; i++) {
@@ -69,23 +73,37 @@ export class FogRendererService {
   }
 
   public hideAll(): void {
-    for (let i = 0; i < this.fogWalls.length; i++) {
-      const w = this.fogWalls[i];
-      if (w && !w.isDisposed()) {
-        const meshes = w.getChildMeshes();
-        for (let j = 0; j < meshes.length; j++) {
-          if (meshes[j].isVisible) meshes[j].isVisible = false;
+    for (let i = 0; i < this.fogShells.length; i++) {
+      const shells = this.fogShells[i];
+      if (shells) {
+        for (let j = 0; j < shells.length; j++) {
+          if (shells[j] && !shells[j].isDisposed() && shells[j].isVisible) {
+            shells[j].isVisible = false;
+          }
         }
       }
     }
   }
 
   public dispose(): void {
+    for (let i = 0; i < this.fogShells.length; i++) {
+      const shells = this.fogShells[i];
+      if (shells) {
+        for (let j = 0; j < shells.length; j++) {
+          if (shells[j] && !shells[j].isDisposed()) {
+            shells[j].dispose(false, true);
+          }
+        }
+      }
+    }
+    this.fogShells = [];
+
     this.fogWalls.forEach(w => { 
       if (w && !w.isDisposed()) w.dispose(); 
     });
     this.fogWalls = [];
     this.fogMats = [];
+
     if (this.gradTex) { 
       try { this.gradTex.dispose(); } catch (e) {} 
     }
@@ -111,18 +129,17 @@ export class FogRendererService {
       return;
     }
 
-    if (this.fogWalls[0] && (this.fogWalls[0].getScene() !== scene || this.fogWalls[0].isDisposed() || this.fogWalls[0].getChildMeshes().length === 0)) {
-      this.fogWalls.forEach(w => { if (!w.isDisposed()) w.dispose(); });
-      this.fogWalls = [];
-      this.fogMats = [];
+    if (this.fogWalls[0] && (this.fogWalls[0].getScene() !== scene || this.fogWalls[0].isDisposed())) {
+      this.dispose();
     }
 
-    // Centro espacial tomado de coordenadas absolutas
+    // Centro espacial tomado de coordenadas absolutas en espacio mundial
     let anchorX = 0;
     let anchorY = 0;
     let anchorZ = 0;
 
     if (targetPlayer && !targetPlayer.isDisposed()) {
+      targetPlayer.computeWorldMatrix(true);
       const absPos = targetPlayer.getAbsolutePosition();
       anchorX = absPos.x;
       anchorY = absPos.y;
@@ -130,24 +147,31 @@ export class FogRendererService {
     } else {
       const activeCam = scene.activeCamera;
       if (activeCam) {
+        activeCam.computeWorldMatrix();
         anchorX = activeCam.globalPosition.x;
         anchorY = activeCam.globalPosition.y - 1.6;
         anchorZ = activeCam.globalPosition.z;
       }
     }
 
+    this.lastAnchorPosition.x = anchorX;
+    this.lastAnchorPosition.y = anchorY;
+    this.lastAnchorPosition.z = anchorZ;
+
     const capasDeGrosor = 6;
 
     for (let i = 0; i < 3; i++) {
-      if (!this.fogWalls[i]) {
+      if (!this.fogWalls[i] || this.fogWalls[i].isDisposed()) {
         this.fogWalls[i] = new TransformNode("sharedFogWallGroup_" + i, scene);
         this.fogMats[i] = []; 
+        this.fogShells[i] = [];
         
         for (let j = capasDeGrosor - 1; j >= 0; j--) {
           const mat = new StandardMaterial(`sharedFogMat_${i}_${j}`, scene);
           mat.disableLighting = true; 
           mat.alphaMode = Engine.ALPHA_COMBINE;
           mat.disableDepthWrite = true; 
+          mat.backFaceCulling = false; // Permite ver el reverso de los cilindros sin descarte de GPU
           mat.opacityTexture = this.getGradientTexture(scene); 
           mat.fogEnabled = false; 
           this.fogMats[i][j] = mat; 
@@ -167,8 +191,14 @@ export class FogRendererService {
           shell.checkCollisions = false;
           shell.receiveShadows = false;
           shell.applyFog = false;
+
+          // EVITA LA DESAPARICIÓN AL GIRAR LA CÁMARA:
+          // Inmuniza la malla contra el frustum culling de Babylon.js para que siempre exista alrededor del Player en 360°
+          shell.alwaysSelectAsActiveMesh = true;
           shell.doNotSyncBoundingInfo = true; 
           Tags.AddTagsTo(shell, "system_element fog_element ignore_raycast");
+
+          this.fogShells[i][j] = shell;
         }
       }
 
@@ -193,6 +223,8 @@ export class FogRendererService {
           this.hexToColor3(activeLevels[i].color!, this.tColorCache);
         }
       }
+
+      this.lastRingDistances[i] = tDist;
 
       if (firstFrame) {
         state.dist = tDist; 
@@ -220,12 +252,12 @@ export class FogRendererService {
       const isVisible = state.alpha > 0.001 && !isFogDisabledTemp;
       const curDist = Math.max(0.1, state.dist);
       const halfThick = state.thickness / 2;
-      const meshes = wallGroup.getChildMeshes();
+      const shells = this.fogShells[i];
 
-      // Renderizado estable de todas las capas artísticas sin interferencia de adaptabilidad
+      // Renderizado estable de todas las capas artísticas con acceso directo en O(1)
       for (let j = 0; j < capasDeGrosor; j++) {
-        const shell = meshes.find(m => m.name === `sharedFogShell_${i}_${j}`);
-        if (!shell) continue;
+        const shell = shells[j];
+        if (!shell || shell.isDisposed()) continue;
 
         const offsetNormalized = -1 + (j * (2 / Math.max(1, capasDeGrosor - 1)));
         const targetRadius = curDist + (offsetNormalized * halfThick);

@@ -109,7 +109,7 @@ export class FogOrchestratorService implements IUpdatable {
     let useFog = false;
     let activeLevels: FogLevel[] = [];
 
-    // Determinación determinista sin importar cuántos objetos haya en la escena
+    // Determinación determinista de niebla
     if (targetEntity?.playerConfig?.fog?.enabled) {
       if (isPlaying || mode === GameMode.EDITING_IN_GAME || mode === GameMode.TEST_LIVE) {
         useFog = true;

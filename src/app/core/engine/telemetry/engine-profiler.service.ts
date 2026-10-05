@@ -12,6 +12,7 @@ import { GameContextService } from '../session/game-context.service';
 import { CameraOwnershipService } from '../runtime/cameras/camera-ownership.service';
 import { SpatialRelevanceHubService } from '../spatial/spatial-relevance-hub.service';
 import { LightReferenceService } from '../runtime/systems/lighting/light-reference.service';
+import { FogRendererService } from '../runtime/systems/fog-renderer.service';
 import { Vector3, Material } from '@babylonjs/core';
 
 export interface LightForensicRecord {
@@ -190,9 +191,13 @@ export interface ProfilerMetrics {
     sceneId: number | null;
     sceneName: string;
     playerPosition: { x: number; y: number; z: number } | null;
+    playerRotation: { x: number; y: number; z: number } | null;
     cameraPosition: { x: number; y: number; z: number };
     cameraRotation: { x: number; y: number; z: number };
     cameraDirection: { x: number; y: number; z: number };
+    cardinalDirection: string;
+    fogCenter: { x: number; y: number; z: number };
+    fogRingDistances: number[];
     cameraFov: number;
     distanceCameraToPlayer: number;
     selectedObjectName: string | null;
@@ -209,6 +214,7 @@ export class EngineProfilerService {
   private gameContext = inject(GameContextService);
   private ownership = inject(CameraOwnershipService);
   private lightRef = inject(LightReferenceService);
+  private fogRenderer = inject(FogRendererService);
   private injector = inject(Injector);
 
   private _lightRegistry: LightRegistryService | null = null;
@@ -537,6 +543,19 @@ export class EngineProfilerService {
     };
   }
 
+  private getCardinalDirection(dirX: number, dirZ: number): string {
+    const angle = Math.atan2(dirX, dirZ) * 180 / Math.PI;
+    const norm = (angle + 360) % 360;
+    if (norm >= 337.5 || norm < 22.5) return 'N (+Z)';
+    if (norm >= 22.5 && norm < 67.5) return 'NE';
+    if (norm >= 67.5 && norm < 112.5) return 'E (+X)';
+    if (norm >= 112.5 && norm < 157.5) return 'SE';
+    if (norm >= 157.5 && norm < 202.5) return 'S (-Z)';
+    if (norm >= 202.5 && norm < 247.5) return 'SW';
+    if (norm >= 247.5 && norm < 292.5) return 'W (-X)';
+    return 'NW';
+  }
+
   public getSnapshot(includeDeepLights: boolean = false): ProfilerMetrics {
     const validCount = this.bufferCount;
     let avg = 0, p50 = 0, p90 = 0, p95 = 0, p99 = 0;
@@ -671,9 +690,27 @@ export class EngineProfilerService {
 
     const validActors = this.lightRef.getValidActorEntities();
     let playerPos: { x: number; y: number; z: number } | null = null;
+    let playerRot: { x: number; y: number; z: number } | null = null;
+
     if (validActors.length > 0 && validActors[0].view && !validActors[0].view.isDisposed()) {
       const p = validActors[0].view.getAbsolutePosition();
       playerPos = { x: parseFloat(p.x.toFixed(2)), y: parseFloat(p.y.toFixed(2)), z: parseFloat(p.z.toFixed(2)) };
+
+      const pv = validActors[0].view;
+      if (pv.rotationQuaternion) {
+        const e = pv.rotationQuaternion.toEulerAngles();
+        playerRot = { 
+          x: parseFloat((e.x * 180 / Math.PI).toFixed(1)), 
+          y: parseFloat((e.y * 180 / Math.PI).toFixed(1)), 
+          z: parseFloat((e.z * 180 / Math.PI).toFixed(1)) 
+        };
+      } else {
+        playerRot = { 
+          x: parseFloat((pv.rotation.x * 180 / Math.PI).toFixed(1)), 
+          y: parseFloat((pv.rotation.y * 180 / Math.PI).toFixed(1)), 
+          z: parseFloat((pv.rotation.z * 180 / Math.PI).toFixed(1)) 
+        };
+      }
     }
 
     const cam = this.ownership.getCamera() || this.sceneInstr?.scene?.activeCamera;
@@ -693,16 +730,26 @@ export class EngineProfilerService {
 
       if ((cam as any).rotation) {
         const cr = (cam as any).rotation;
-        camRot = { x: parseFloat(cr.x.toFixed(2)), y: parseFloat(cr.y.toFixed(2)), z: parseFloat(cr.z.toFixed(2)) };
+        camRot = { 
+          x: parseFloat((cr.x * 180 / Math.PI).toFixed(1)), 
+          y: parseFloat((cr.y * 180 / Math.PI).toFixed(1)), 
+          z: parseFloat((cr.z * 180 / Math.PI).toFixed(1)) 
+        };
       } else if ((cam as any).rotationQuaternion) {
         const e = (cam as any).rotationQuaternion.toEulerAngles();
-        camRot = { x: parseFloat(e.x.toFixed(2)), y: parseFloat(e.y.toFixed(2)), z: parseFloat(e.z.toFixed(2)) };
+        camRot = { 
+          x: parseFloat((e.x * 180 / Math.PI).toFixed(1)), 
+          y: parseFloat((e.y * 180 / Math.PI).toFixed(1)), 
+          z: parseFloat((e.z * 180 / Math.PI).toFixed(1)) 
+        };
       }
 
       if (playerPos) {
         distCamPlayer = parseFloat(Vector3.Distance(cp, new Vector3(playerPos.x, playerPos.y, playerPos.z)).toFixed(2));
       }
     }
+
+    const cardinalDirection = this.getCardinalDirection(camDir.x, camDir.z);
 
     const selectedNode = this.gameContext.selectedNode();
     const epData = this.gameContext.activePlatformData();
@@ -725,6 +772,9 @@ export class EngineProfilerService {
       HubExactDistCalls: hubMetrics.exactDistanceCalculations,
       HubCacheHits: hubMetrics.cacheHits
     };
+
+    const fogAnchor = this.fogRenderer.lastAnchorPosition;
+    const fogRings = [...this.fogRenderer.lastRingDistances];
 
     return {
       fps: parseFloat(this.currentFps.toFixed(1)),
@@ -793,9 +843,13 @@ export class EngineProfilerService {
         sceneId,
         sceneName,
         playerPosition: playerPos,
+        playerRotation: playerRot,
         cameraPosition: camPos,
         cameraRotation: camRot,
         cameraDirection: camDir,
+        cardinalDirection,
+        fogCenter: { x: parseFloat(fogAnchor.x.toFixed(2)), y: parseFloat(fogAnchor.y.toFixed(2)), z: parseFloat(fogAnchor.z.toFixed(2)) },
+        fogRingDistances: fogRings,
         cameraFov: parseFloat(camFov.toFixed(2)),
         distanceCameraToPlayer: distCamPlayer,
         selectedObjectName: selectedNode ? selectedNode.name : null

@@ -40,7 +40,7 @@ export class PlayerInteractionService implements IUpdatable {
   
   private isEnabled: boolean = false;
 
-  private _centerRay = new Ray(Vector3.Zero(), new Vector3(0, 0, 1), 10000);
+  private _centerRay = new Ray(Vector3.Zero(), new Vector3(0, 0, 1), 100);
   private _probePoint = Vector3.Zero();
   private _forwardDir = new Vector3(0, 0, 1);
   private _tempClosestPoint = Vector3.Zero();
@@ -63,10 +63,11 @@ export class PlayerInteractionService implements IUpdatable {
   public update(dtMs: number): void {
     const playerEntity = this.context.activePlayerEntity();
     const activeCamera = this.ownership.getCamera();
-    if (!playerEntity || !activeCamera) {
+    if (!playerEntity || !activeCamera || !this.isEnabled) {
       return;
     }
 
+    // Evaluación a 10 Hz durante gameplay para liberar por completo la CPU de tirones
     this._interactTimer += dtMs;
     if (this._interactTimer >= 100) {
       this.comprobarInteracciones(playerEntity, activeCamera, this.context.cameraView());
@@ -196,7 +197,7 @@ export class PlayerInteractionService implements IUpdatable {
       }
       
       this._centerRay.origin.copyFrom(origin);
-      this._centerRay.length = 10000;
+      this._centerRay.length = 30.0; // Raycast acotado a 30m en vez de infinito
 
       const hitCross = scene.pickWithRay(this._centerRay, (m) => {
         if (!m.isPickable || (!m.isVisible && m.visibility === 0)) return false;
@@ -215,9 +216,7 @@ export class PlayerInteractionService implements IUpdatable {
         }
         
         if (rootEntity && rootEntity.view) {
-            if (rootEntity.type === 'trigger' || rootEntity.type === 'trigger_compuesto') {
-                // Ignorar
-            } else {
+            if (rootEntity.type !== 'trigger' && rootEntity.type !== 'trigger_compuesto') {
                 const selectionDistance = this.getInteractionDistanceToTarget(rootEntity.view, this._probePoint);
                 this.lastInteractDistance = selectionDistance;
 
@@ -244,7 +243,6 @@ export class PlayerInteractionService implements IUpdatable {
         }
       }
     } else {
-      // MODO TPS: Optimización mediante prefiltro espacial O(1) con SpatialRelevanceHubService
       let closestEntity: GameEntity | null = null;
       let closestDist = Number.POSITIVE_INFINITY;
       
@@ -253,7 +251,6 @@ export class PlayerInteractionService implements IUpdatable {
         const e = entities[i];
         if (e.uid === entity.uid) continue;
         
-        // 1. Descarte semántico inmediato
         const isInteractable = this.interactRules.isInteractable(e);
         if (!isInteractable) continue;
         
@@ -262,17 +259,14 @@ export class PlayerInteractionService implements IUpdatable {
 
         const interactMax = e.interaction.interactDistanceTPS ?? 5.0;
 
-        // 2. Prefiltro espacial O(1) de bajo coste: radio esférico amplio antes de matrices OBB
         const rec = this.spatialHub.getRecord(e.uid);
         const radius = rec ? rec.boundingRadius : 2.0;
         const maxThreshold = interactMax + radius;
-        const maxThresholdSq = maxThreshold * maxThreshold;
 
-        if (this.spatialHub.getDistanceSquaredToPlayer(e.uid) > maxThresholdSq) {
-          continue; // Descartado a coste computacional cero sin invocar getInteractionDistanceToTarget
+        if (this.spatialHub.getDistanceSquaredToPlayer(e.uid) > (maxThreshold * maxThreshold)) {
+          continue;
         }
 
-        // 3. Cálculo geométrico preciso únicamente para entidades candidatas dentro del radio
         const selectionDistance = this.getInteractionDistanceToTarget(mesh, this._probePoint);
 
         if (e.type !== 'bubble') {

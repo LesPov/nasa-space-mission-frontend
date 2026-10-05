@@ -307,7 +307,7 @@ export class LocalRenderingSystem implements IUpdatable {
     this.eventBus.emit({ type: 'RuntimeVisibilityBatchChanged' });
   }
 
-  private ensureAllEntitiesVisibleForEditor(): void {
+  public ensureAllEntitiesVisibleForEditor(): void {
     const entities = this.entityManager.getAllEntities();
     this.resetCounters();
     const now = performance.now();
@@ -341,6 +341,7 @@ export class LocalRenderingSystem implements IUpdatable {
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
+    // En Modo Editor: Mantener todas las entidades activas y visibles sin degradación de culling
     if (isEditor) {
       if (this.frameCounter === 0) {
         this.ensureAllEntitiesVisibleForEditor();

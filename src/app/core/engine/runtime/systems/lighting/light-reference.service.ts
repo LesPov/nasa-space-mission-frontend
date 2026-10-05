@@ -1,11 +1,11 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/light-reference.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Vector3, AbstractMesh } from '@babylonjs/core';
+import { Vector3 } from '@babylonjs/core';
 import { GameContextService } from '../../../session/game-context.service';
 import { CameraOwnershipService } from '../../cameras/camera-ownership.service';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { GameEntity } from '../../../entities/game.entity';
-import { GameMode } from '../../../session/game-mode.model';
 
 export interface ClosestActorResult {
   actor: GameEntity | null;
@@ -25,14 +25,6 @@ export class LightReferenceService {
     const activePlayer = this.context.activePlayerEntity();
     if (activePlayer && activePlayer.view && !activePlayer.view.isDisposed()) {
       return [activePlayer];
-    }
-
-    const selectedNode = this.context.selectedNode() as AbstractMesh;
-    if (selectedNode) {
-      const selectedEntity = this.entityManager.getEntityByMesh(selectedNode);
-      if (selectedEntity && !selectedEntity.isManuallyHidden) {
-        return [selectedEntity];
-      }
     }
 
     const all = this.entityManager.getAllEntities();
@@ -118,6 +110,7 @@ export class LightReferenceService {
   }
 
   public getReferencePosition(customMode?: 'AUTO' | 'CAMERA' | 'PLAYER'): Vector3 {
+    // 1. Autoridad absoluta de gameplay: el Player/Actor activo
     const playerEntity = this.context.activePlayerEntity();
     if (playerEntity && playerEntity.view && !playerEntity.view.isDisposed()) {
       const pos = new Vector3();
@@ -125,23 +118,7 @@ export class LightReferenceService {
       return pos;
     }
 
-    const mode = this.context.mode();
-    const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
-
-    // En el Editor, si hay un objeto seleccionado (sea luz o modelo), usamos su posición como ancla
-    if (isEditor) {
-      const selectedNode = this.context.selectedNode() as AbstractMesh;
-      if (selectedNode && !selectedNode.isDisposed()) {
-        const ent = this.entityManager.getEntityByMesh(selectedNode);
-        if (ent) {
-          const pos = new Vector3();
-          this.getActorWorldPosition(ent, pos);
-          return pos;
-        }
-        return selectedNode.getAbsolutePosition().clone();
-      }
-    }
-
+    // 2. Si no hay player activo, buscar los actores/spawns de la escena
     const actors = this.getValidActorEntities();
     if (actors.length > 0) {
       const pos = new Vector3();
@@ -149,6 +126,7 @@ export class LightReferenceService {
       return pos;
     }
 
+    // 3. Fallback en editor: la cámara del visor (NO el objeto seleccionado)
     const camera = this.ownership.getCamera();
     if (camera) {
       camera.computeWorldMatrix();

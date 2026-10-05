@@ -17,6 +17,7 @@ import { EditorPlayModeService } from './editor-play-mode.service';
 import { RuntimeEngineService } from '../../core/engine/runtime/runtime-engine.service';
 import { EntityManagerService } from '../../core/engine/entities/entity-manager.service';
 import { InputOrchestratorService } from '../../core/engine/runtime/systems/input-orchestrator.service';
+import { InputRouterService } from '../../core/engine/session/input-router.service';
 import { GameContextService } from '../../core/engine/session/game-context.service'; 
 import { GameMode } from '../../core/engine/session/game-mode.model'; 
 import { EditorCinematicService } from './editor-cinematic.service';
@@ -28,7 +29,6 @@ import { MissionModalService } from './modals/mission-modal.service';
 import { CameraViewMode } from '../../core/engine/session/game-context.model';
 import { SnapshotReconcilerService } from './utils/snapshot-reconciler.service';
 import { CinematicPlaybackManagerService } from '../../core/engine/runtime/cinematics/cinematic-playback-manager.service';
-import { InputRouterService } from '../../core/engine/session/input-router.service';
 import { EngineSessionService } from '../../core/engine/session/engine-session.service';
 import { LiveLifecycleManagerService } from '../../core/engine/runtime/live/live-lifecycle-manager.service';
 import { NarrativeRoleDto } from '../../core/engine/models/api-dto.model';
@@ -223,19 +223,30 @@ export class EditorOrchestratorService {
         scene.executeWhenReady(async () => {
           if (!this.sessionSvc.isSessionActive(sessionId)) return;
           
-          const editorCam = this.motor3dSvc.getEditorCamera();
-          const warmupPos = editorCam ? editorCam.globalPosition : Vector3.Zero();
-
           this.cargandoTexto.set('Estabilizando sombreadores e iluminación del editor...');
+          
+          // Asegurar que las matrices de transformación del Player estén completamente calculadas
+          const allEntities = this.entityManager.getAllEntities();
+          allEntities.forEach(e => {
+            if (e.view && !e.view.isDisposed()) {
+              e.view.computeWorldMatrix(true);
+            }
+          });
+
+          // Obtener la posición de referencia real del Player/Actor
+          const realPlayerRefPos = this.dynLighting.getReferencePosition('AUTO');
+
           this.dynLighting.start();
           this.dynLighting.prepareAllLights();
           this.shadowOrchestrator.reconcileShadows();
           
-          // Precalentar los shaders de la burbuja visible antes de descartar el cartel
-          await this.dynLighting.forceWarmup(warmupPos);
-          this.localRendering.reconcileAllEntitiesImmediate(warmupPos);
+          // Precalentar con la posición del Player para que las luces próximas enciendan de inmediato
+          await this.dynLighting.forceWarmup(realPlayerRefPos);
+          this.localRendering.ensureAllEntitiesVisibleForEditor();
 
-          // 2 pases de render estabilizadores en el fondo
+          // Ejecutar un tick completo inicial de iluminación con la posición real
+          this.dynLighting.update(16.66);
+
           scene.render();
           scene.render();
 

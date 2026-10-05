@@ -1,6 +1,6 @@
 // file: src/app/core/engine/spatial/spatial-streaming-group.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Vector3 } from '@babylonjs/core';
+import { Vector3, Tags } from '@babylonjs/core';
 import { SpatialGroup, SpatialGroupState, DEFAULT_SPATIAL_GROUP_CONFIG } from './spatial-group.model';
 import { EntityManagerService } from '../entities/entity-manager.service';
 import { SpatialRelevanceHubService } from './spatial-relevance-hub.service';
@@ -23,7 +23,6 @@ export class SpatialStreamingGroupService {
   private currentPrimaryGroupId: string | null = null;
   private predictedTargetGroupId: string | null = null;
 
-  // Filtro de velocidad del jugador (amortiguamiento contra saltos bruscos)
   private smoothedVelocity = Vector3.Zero();
 
   public clear(): void {
@@ -76,13 +75,26 @@ export class SpatialStreamingGroupService {
     return grp.state === 'ACTIVE' || grp.state === 'PREACTIVATING' || grp.state === 'PREPARED';
   }
 
+  private isIgnoredGroupEntity(e: GameEntity): boolean {
+    if (e.isManuallyHidden) return true;
+    if (e.rol === 'player' || e.characterConfig || e.rol === 'spawn_point') return true;
+    if (e.type === 'trigger' || e.type === 'trigger_compuesto') return true;
+
+    const nameL = e.name ? e.name.toLowerCase() : '';
+    if (nameL.includes('piso') || nameL.includes('sueloinvisible') || nameL.includes('ground') || Tags.MatchesQuery(e.view, 'invisible_floor')) {
+      return true;
+    }
+    return false;
+  }
+
   public buildGroups(): void {
     this.clear();
     const entities = this.entityManager.getAllEntities();
 
+    // 1. Identificar únicamente modelos estructurales reales (habitaciones, pasillos)
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
-      if (e.isManuallyHidden) continue;
+      if (this.isIgnoredGroupEntity(e)) continue;
 
       const isContainer = e.type === 'model' || e.type === 'cube' || (e.view && e.view.getChildren().length > 0);
       const isRoot = !e.parentId && isContainer;
@@ -115,9 +127,11 @@ export class SpatialStreamingGroupService {
       }
     }
 
+    // 2. Asociar entidades hijas y luces secundarias
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
       if (this.entityToGroupId.has(e.uid)) continue;
+      if (this.isIgnoredGroupEntity(e)) continue;
 
       let rootUid = e.parentId;
       if (!rootUid && e.light?.containerEntityUid) {
@@ -206,7 +220,7 @@ export class SpatialStreamingGroupService {
 
   private discoverNeighborGroups(): void {
     const groupList = Array.from(this.groups.values());
-    const PROXIMITY_NEIGHBOR_THRESHOLD = 32.0;
+    const PROXIMITY_NEIGHBOR_THRESHOLD = 45.0; // Umbral ampliado para túneles contiguos
 
     for (let i = 0; i < groupList.length; i++) {
       const gA = groupList[i];
@@ -229,13 +243,12 @@ export class SpatialStreamingGroupService {
   public updateGroups(playerPos: Vector3, playerVelocity: Vector3): void {
     const now = performance.now();
 
-    // Filtro IIR de velocidad: suaviza cambios bruscos de dirección sin perder la aceleración real
     Vector3.LerpToRef(this.smoothedVelocity, playerVelocity, 0.25, this.smoothedVelocity);
     const speed = this.smoothedVelocity.length();
 
     const lookAheadDist = Math.min(
       DEFAULT_SPATIAL_GROUP_CONFIG.maxLookAheadDistance,
-      Math.max(6.0, speed * DEFAULT_SPATIAL_GROUP_CONFIG.lookAheadMultiplier)
+      Math.max(10.0, speed * DEFAULT_SPATIAL_GROUP_CONFIG.lookAheadMultiplier)
     );
     const moveDir = speed > 0.15 ? this.smoothedVelocity.normalizeToNew() : Vector3.Zero();
     const predictedPos = playerPos.add(moveDir.scale(lookAheadDist));
@@ -283,7 +296,7 @@ export class SpatialStreamingGroupService {
         }
       }
 
-      if (!group.isInsideVolume && group.directionDot > 0.25) {
+      if (!group.isInsideVolume && group.directionDot > 0.15) {
         if (predDistToBox < minPredictedDist) {
           minPredictedDist = predDistToBox;
           bestPredictedTarget = group;
@@ -321,8 +334,8 @@ export class SpatialStreamingGroupService {
       });
     }
 
-    // Regla Clave Anti-Flapping: Tiempo de gracia de 1.8 segundos antes de des-preactivar una zona
-    const STATE_DEGRADE_GRACE_PERIOD_MS = 1800;
+    // Histéresis de seguridad: 3 segundos de retención para evitar que los pasillos se apaguen al doblar esquinas
+    const STATE_DEGRADE_GRACE_PERIOD_MS = 3000;
 
     for (const group of this.groups.values()) {
       const cfg = group.config;
@@ -333,18 +346,18 @@ export class SpatialStreamingGroupService {
       group.isPredictedTarget = isPredicted;
       const effectiveDist = Math.min(group.distanceToBox, group.predictedDistanceToBox);
 
-      if (isCurrent || group.isInsideVolume || effectiveDist <= cfg.activeMargin) {
+      // Si es el grupo actual, o es un vecino inmediato, o está en el radio de activación (85m) -> ACTIVE
+      if (isCurrent || group.isInsideVolume || isNeighborOfCurrent || effectiveDist <= cfg.activeMargin) {
         this.transitionGroup(group, 'ACTIVE', now);
         this.activeGroupIds.add(group.id);
         this.preparedGroupIds.add(group.id);
       }
-      else if ((isNeighborOfCurrent && group.directionDot > 0.15 && effectiveDist <= cfg.prepareMargin) || (isPredicted && effectiveDist <= cfg.prepareMargin)) {
+      else if ((isPredicted && effectiveDist <= cfg.prepareMargin) || effectiveDist <= cfg.prepareMargin) {
         this.transitionGroup(group, 'PREACTIVATING', now);
         this.preactivatingGroupIds.add(group.id);
         this.preparedGroupIds.add(group.id);
       }
       else if (effectiveDist <= (cfg.preloadMargin + lookAheadDist)) {
-        // Histéresis contra flap: si estaba en PREACTIVATING, retener al menos 1.8s antes de bajar a PREPARED
         const canDegrade = (now - group.lastStateChangeTimestamp) > STATE_DEGRADE_GRACE_PERIOD_MS;
         if (group.state === 'PREACTIVATING' && !canDegrade) {
           this.preactivatingGroupIds.add(group.id);

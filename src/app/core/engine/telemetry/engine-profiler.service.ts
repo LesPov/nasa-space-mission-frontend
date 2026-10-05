@@ -3,7 +3,6 @@
 import { Injectable, inject, Injector } from '@angular/core';
 import { AdaptiveQualitySystem, QualityTier } from '../runtime/systems/adaptive-quality.system';
 import { ShadowCache } from '../runtime/shadows/shadow-cache.service';
-import { LightContainmentService } from '../runtime/systems/lighting/light-containment.service';
 import { ShadowQualityService, ShadowQualityTier } from '../runtime/shadows/shadow-quality.service';
 import { LightRegistryService } from '../runtime/systems/lighting/light-registry.service';
 import { LightPoolService } from '../runtime/systems/lighting/light-pool.service';
@@ -14,7 +13,6 @@ import { CameraOwnershipService } from '../runtime/cameras/camera-ownership.serv
 import { SpatialRelevanceHubService } from '../spatial/spatial-relevance-hub.service';
 import { LightReferenceService } from '../runtime/systems/lighting/light-reference.service';
 import { FogRendererService } from '../runtime/systems/fog-renderer.service';
-import { CoreSceneMaterialService } from '../scene/utils/core-scene-material.service';
 import { Vector3, Material, AbstractMesh, MultiMaterial } from '@babylonjs/core';
 
 export interface LightForensicRecord {
@@ -255,12 +253,6 @@ export class EngineProfilerService {
     return this._lightPool;
   }
 
-  private _containmentSvc: LightContainmentService | null = null;
-  private get containmentSvc(): LightContainmentService {
-    if (!this._containmentSvc) this._containmentSvc = this.injector.get(LightContainmentService);
-    return this._containmentSvc;
-  }
-
   private _localRendering: LocalRenderingSystem | null = null;
   private get localRendering(): LocalRenderingSystem {
     if (!this._localRendering) this._localRendering = this.injector.get(LocalRenderingSystem);
@@ -277,12 +269,6 @@ export class EngineProfilerService {
   private get spatialHub(): SpatialRelevanceHubService {
     if (!this._spatialHub) this._spatialHub = this.injector.get(SpatialRelevanceHubService);
     return this._spatialHub;
-  }
-
-  private _materialSvc: CoreSceneMaterialService | null = null;
-  private get materialSvc(): CoreSceneMaterialService {
-    if (!this._materialSvc) this._materialSvc = this.injector.get(CoreSceneMaterialService);
-    return this._materialSvc;
   }
 
   private currentSessionId = 'init_session';
@@ -568,7 +554,7 @@ export class EngineProfilerService {
     sample.activeSequences = this.sequenceSvc.getActiveSequencesCount();
 
     this.memoryCheckTimer++;
-    if (this.memoryCheckTimer >= 30) {
+    if (this.memoryCheckTimer >= 60) {
       this.updateMemoryMetricsThrottled();
       this.memoryCheckTimer = 0;
     }
@@ -578,7 +564,10 @@ export class EngineProfilerService {
 
     this.historyIndex = (this.historyIndex + 1) % this.HISTORY_CAPACITY;
 
-    this.inspectShadersNonIntrusive();
+    // Solo inspeccionar sombreadores en runtime o test live a baja frecuencia (cada 60 frames)
+    if (this.gameContext.mode() !== 'EDITOR') {
+      this.inspectShadersNonIntrusive();
+    }
 
     this.telemetryCpuAccumulator += (performance.now() - tStart);
   }
@@ -587,7 +576,7 @@ export class EngineProfilerService {
     const scene = this.sceneInstr?.scene;
     if (!scene || !scene.materials) return;
 
-    if (this.frameCounter % 15 !== 0) return;
+    if (this.frameCounter % 60 !== 0) return;
 
     const materials = scene.materials as Material[];
     for (let i = 0; i < materials.length; i++) {
@@ -696,19 +685,6 @@ export class EngineProfilerService {
     const materials = scene.materials as Material[];
     const total = materials ? materials.length : 0;
 
-    const activeMaterialsSet = new Set<Material>();
-    const meshes = scene.meshes;
-    for (let i = 0; i < meshes.length; i++) {
-      const m = meshes[i];
-      if (m && !m.isDisposed() && m.material) {
-        activeMaterialsSet.add(m.material);
-        if (m.material.getClassName() === 'MultiMaterial') {
-          const multi = m.material as MultiMaterial;
-          (multi.subMaterials || []).forEach(sm => { if (sm) activeMaterialsSet.add(sm); });
-        }
-      }
-    }
-
     for (let i = 0; i < total; i++) {
       const m = materials[i];
       const cls = m.getClassName();
@@ -719,15 +695,6 @@ export class EngineProfilerService {
       const lightLimit = (m as any).maxSimultaneousLights;
       if (typeof lightLimit === 'number' && lightLimit > maxLights) {
         maxLights = lightLimit;
-      }
-
-      if (activeMaterialsSet.has(m)) {
-        if (typeof (m as any).getEffect === 'function') {
-          const effect = (m as any).getEffect();
-          if (effect && !effect.isReady()) {
-            compiling++;
-          }
-        }
       }
     }
 
@@ -1014,9 +981,9 @@ export class EngineProfilerService {
         dynamicCastersActive: this.shadowCache.metrics.dynamicLights
       },
       spaces: {
-        containmentRebuilds: this.containmentSvc.metrics.containmentRebuilds,
-        cacheHits: this.containmentSvc.metrics.cacheHits,
-        cacheMisses: this.containmentSvc.metrics.cacheMisses
+        containmentRebuilds: 0,
+        cacheHits: 0,
+        cacheMisses: 0
       },
       culling: {
         evaluatedEntities: this.cullingEvaluatedCount,

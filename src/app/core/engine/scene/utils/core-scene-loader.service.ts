@@ -225,26 +225,15 @@ export class CoreSceneLoaderService {
       scene.executeWhenReady(() => {
         if (!this.sessionSvc.isSessionActive(sessionId)) return resolve();
         
-        const actCam = scene.activeCamera;
-        let originalPos = Vector3.Zero();
-        let originalTarget = Vector3.Zero();
+        // Cómputo previo indispensable de todas las transformaciones de mundo
+        scene.meshes.forEach(m => {
+          if (!m.isDisposed()) {
+            m.computeWorldMatrix(true);
+          }
+        });
 
-        if (actCam) {
-            originalPos.copyFrom(actCam.globalPosition);
-            if ((actCam as any).getTarget) originalTarget.copyFrom((actCam as any).getTarget());
-            
-            const spawnPoint = this.entityManager.getAllEntities().find(e => e.rol === 'spawn_point' || e.rol === 'player');
-            if (spawnPoint && spawnPoint.view) {
-                actCam.position.copyFrom(spawnPoint.view.getAbsolutePosition());
-                actCam.position.y += 1.6;
-                const fwd = spawnPoint.view.forward;
-                if ((actCam as any).setTarget) {
-                    (actCam as any).setTarget(actCam.position.add(fwd.scale(10)));
-                }
-            }
-        }
-
-        const warmupPos = actCam ? actCam.globalPosition : Vector3.Zero();
+        // La posición de warmup es la posición real del Player/Actor o Spawn, NO la cámara del Editor
+        const warmupPos = this.dynamicLighting.getReferencePosition('AUTO');
 
         scene.meshes.forEach(m => {
             if (!Tags.MatchesQuery(m, "system_element || editor_only || invisible_floor")) {
@@ -260,19 +249,13 @@ export class CoreSceneLoaderService {
         scene.render();
         scene.render();
 
-        if (isEditor) {
-            this.localRendering.reconcileAllEntitiesImmediate(warmupPos);
-        } else {
-            this.localRendering.reconcileAllEntitiesImmediate(warmupPos);
-        }
+        this.localRendering.reconcileAllEntitiesImmediate(warmupPos);
 
         this.dynamicLighting.forceWarmup(warmupPos);
-        scene.render();
+        // Ejecución inmediata del update de iluminación para que las luces adquieran sus intensidades reales antes de que la escena sea visible
+        this.dynamicLighting.update(16.66);
 
-        if (actCam) {
-            actCam.position.copyFrom(originalPos);
-            if ((actCam as any).setTarget) (actCam as any).setTarget(originalTarget);
-        }
+        scene.render();
         
         resolve();
       });

@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/light-allocation.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Vector3, SpotLight, DirectionalLight } from '@babylonjs/core';
@@ -50,16 +51,14 @@ export class LightAllocationService {
     const preparedGroups = this.spatialGroups.getPreparedGroupIds();
     const preactivatingGroups = this.spatialGroups.getPreactivatingGroupIds();
 
-    // 1. Filtrar candidatos válidos
+    // 1. Filtrar candidatos válidos basados ESTRICTAMENTE en posición del Player/Actor
     const validCandidates = activeVirtuals.filter(vl => {
       if (!vl.entity.light || !vl.entity.light.enabled) {
         vl.rejectionReason = 'DISABLED';
         return false;
       }
 
-      if (vl.entity.uid === selectedUid) return true;
-
-      // Inmunidad de desvanecimiento
+      // Inmunidad de desvanecimiento para luces que ya estaban en el pool
       if (assignedSet.has(vl.entity.uid) && vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
         return true;
       }
@@ -94,7 +93,7 @@ export class LightAllocationService {
       return false;
     });
 
-    // 2. Cálculo determinista de Score espacial con bonificación de adherencia
+    // 2. Cálculo determinista de Score espacial (sin distorsión por selección de editor)
     validCandidates.forEach(vl => {
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
       const isInteriorVolumeMode = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
@@ -140,21 +139,17 @@ export class LightAllocationService {
         else if (preparedGroups.has(group.id)) score *= 0.4;
       }
 
-      // Adherencia de slot (Slot Stickiness): reduce la probabilidad de saltos innecesarios
+      // Adherencia de slot (Slot Stickiness): reduce la probabilidad de alternancia innecesaria
       if (assignedSet.has(vl.entity.uid)) {
         if (vl.isLightInRange || vl._isInPrepareRange || vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
           score *= 0.75;
         }
       }
 
-      if (selectedUid === vl.entity.uid) {
-        score = -999999;
-      }
-
       vl._sortScore = parseFloat(score.toFixed(2));
     });
 
-    // 3. Ordenar candidatos por prioridad
+    // 3. Ordenar candidatos por prioridad física real
     validCandidates.sort((a, b) => (a._sortScore ?? 0) - (b._sortScore ?? 0));
 
     // 4. Seleccionar el Top de luces
@@ -183,7 +178,7 @@ export class LightAllocationService {
       this.lightPool.releaseSlot(s, topUids);
     });
 
-    // 6. ASIGNACIÓN ESTABLE DE SLOTS (Invarianza de slot físico para evitar recompilaciones de shaders)
+    // 6. Asignación estable de slots
     const tiers: ShadowTier[] = ['HIGH', 'MEDIUM', 'LOW'];
 
     topVirtuals.forEach((vl, rankIndex) => {
@@ -197,13 +192,9 @@ export class LightAllocationService {
       const pool = this.lightPool.getPoolByType(vl.entity.type);
       if (pool.length === 0) return;
 
-      // REGLA CRÍTICA DE ESTABILIDAD: Si la luz ya tiene un slot en el pool, NO reasignar ni hacer swap.
-      // Solo actualizamos su nivel de calidad (shadowTier). Moverla de slot físico altera las macros
-      // LIGHT0/LIGHT1 en los shaders de Babylon.js y obliga a recompilar pipelines.
       let existingSlot = pool.find(s => s.assignedEntityUid === vl.entity.uid);
 
       if (!existingSlot) {
-        // Buscar un slot disponible
         const freeSlot = pool.find(s => s.assignedEntityUid === null);
         if (freeSlot) {
           freeSlot.assignedEntityUid = vl.entity.uid;
@@ -214,7 +205,6 @@ export class LightAllocationService {
           freeSlot.shadowTier = tier;
           existingSlot = freeSlot;
         } else {
-          // Si todos los slots de este tipo están ocupados, tomar el slot de menor rango que no pertenezca al top actual
           const replaceable = pool.find(s => !topUids.has(s.assignedEntityUid || ''));
           if (replaceable) {
             this.lightPool.forceHardRelease(replaceable);

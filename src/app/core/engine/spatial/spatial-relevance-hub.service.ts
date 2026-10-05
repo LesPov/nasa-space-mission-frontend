@@ -9,6 +9,7 @@ import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../scene/scene-access.token';
 import { GameEntity } from '../entities/game.entity';
 import { LightReferenceService } from '../runtime/systems/lighting/light-reference.service';
 import { LightTransformService } from '../runtime/systems/lighting/light-transform.service';
+import { GameMode } from '../session/game-mode.model';
 
 export interface SpatialEntityRecord {
   uid: string;
@@ -185,6 +186,9 @@ export class SpatialRelevanceHubService implements IUpdatable {
   }
 
   public preUpdate(dtMs: number): void {
+    const mode = this.context.mode();
+    const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
+
     const tStart = performance.now();
     this.frameCount++;
 
@@ -210,6 +214,13 @@ export class SpatialRelevanceHubService implements IUpdatable {
     }
 
     const refMovedSq = Vector3.DistanceSquared(this.lastRefPos, this.currentRefPos);
+
+    // En el Editor en reposo no computar O(N) por frame si la posición de referencia no se mueve
+    if (isEditor && refMovedSq < 0.001 && this.frameCount > 10) {
+      this._updateTimeMs = performance.now() - tStart;
+      return;
+    }
+
     const shouldRecomputeAll = refMovedSq > 0.0025 || this.frameCount % 8 === 0;
 
     if (shouldRecomputeAll) {
@@ -228,7 +239,6 @@ export class SpatialRelevanceHubService implements IUpdatable {
           this.computeEntityBounds(record);
         }
 
-        // Distancia euclidiana exacta a la superficie del AABB (0 si el player está dentro de la caja)
         const cx = Math.max(record.minWorld.x, Math.min(this.currentRefPos.x, record.maxWorld.x));
         const cy = Math.max(record.minWorld.y, Math.min(this.currentRefPos.y, record.maxWorld.y));
         const cz = Math.max(record.minWorld.z, Math.min(this.currentRefPos.z, record.maxWorld.z));

@@ -4,11 +4,13 @@ import { PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, Colo
 import { PoolSlot, LIGHT_SPATIAL_CONSTANTS } from './lighting-types';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 import { LightContainmentService } from './light-containment.service';
+import { LightRegistryService } from './light-registry.service';
 
 @Injectable({ providedIn: 'root' })
 export class LightPoolService {
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private containmentSvc = inject(LightContainmentService);
+  private lightRegistry = inject(LightRegistryService);
 
   private pointPool: PoolSlot[] = [];
   private spotPool: PoolSlot[] = [];
@@ -32,7 +34,6 @@ export class LightPoolService {
       pLight.intensity = 0; 
       pLight.diffuse = Color3.Black();
       pLight.specular = Color3.Black();
-      // Solo el slot maestro 0 proyecta sombras para evitar permutaciones de shader en WebGL
       const hasPointShadow = (i === 0);
       pLight.shadowEnabled = hasPointShadow; 
       pLight.shadowMinZ = 0.05;
@@ -65,7 +66,6 @@ export class LightPoolService {
       sLight.intensity = 0; 
       sLight.diffuse = Color3.Black(); 
       sLight.specular = Color3.Black();
-      // Solo el slot maestro 0 de spots proyecta sombras
       const hasSpotShadow = (i === 0);
       sLight.shadowEnabled = hasSpotShadow; 
       sLight.shadowMinZ = 0.05;
@@ -126,7 +126,7 @@ export class LightPoolService {
   public resetPools(): void {
     const topUids = new Set<string>();
     this.getAllSlots().forEach(slot => {
-      this.releaseSlot(slot, topUids);
+      this.forceHardRelease(slot);
     });
   }
 
@@ -150,27 +150,40 @@ export class LightPoolService {
   }
 
   public releaseSlot(slot: PoolSlot, topUids: Set<string>): void {
-    if (slot.assignedEntityUid && !topUids.has(slot.assignedEntityUid)) {
-      slot.assignedEntityUid = null;
-      if (slot.sg && slot.sg.getShadowMap()?.renderList) {
-        slot.sg.getShadowMap()!.renderList!.length = 0; 
-      }
-      slot.currentIntensity = 0; 
-      slot.light.intensity = 0; 
-      slot.light.diffuse.set(0, 0, 0);
-      slot.light.specular.set(0, 0, 0);
-      slot._lightOnTimestamp = undefined;
-      slot._shadowReadyTimestamp = undefined;
-      slot._isNewAssignment = false;
-      slot.isWarmedUp = false;
-      if (slot.type !== 'directional') {
-        (slot.light as any).position.set(0, -99999, 0);
-      }
+    if (!slot.assignedEntityUid || topUids.has(slot.assignedEntityUid)) return;
 
-      const lightAny = slot.light as any;
-      if (lightAny.includedOnlyMeshes && lightAny.includedOnlyMeshes.length > 0) {
-        this.containmentSvc.clearContainment(slot.light as any);
-      }
+    // Regla Clave Anti-Bug Fade: Si la luz virtual aún tiene intensidad perceptible (> 0.0001),
+    // NO destruirla de golpe; permitir que DynamicLightingSystem complete el fade-out temporal.
+    const vl = this.lightRegistry.getVirtualLightByUid(slot.assignedEntityUid);
+    if (vl && vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
+      return; 
+    }
+
+    this.forceHardRelease(slot);
+  }
+
+  public forceHardRelease(slot: PoolSlot): void {
+    slot.assignedEntityUid = null;
+    if (slot.sg && slot.sg.getShadowMap()?.renderList) {
+      slot.sg.getShadowMap()!.renderList!.length = 0; 
+    }
+    slot.currentIntensity = 0; 
+    slot.light.intensity = 0; 
+    slot.light.diffuse.set(0, 0, 0);
+    slot.light.specular.set(0, 0, 0);
+    slot._lightOnTimestamp = undefined;
+    slot._shadowReadyTimestamp = undefined;
+    slot._isNewAssignment = false;
+    slot.isWarmedUp = false;
+    slot.shadowTier = undefined;
+
+    if (slot.type !== 'directional') {
+      (slot.light as any).position.set(0, -99999, 0);
+    }
+
+    const lightAny = slot.light as any;
+    if (lightAny.includedOnlyMeshes && lightAny.includedOnlyMeshes.length > 0) {
+      this.containmentSvc.clearContainment(slot.light as any);
     }
   }
 

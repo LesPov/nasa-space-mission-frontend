@@ -335,7 +335,7 @@ export class PlayerSequenceService implements IUpdatable {
 
   public queueAutoPlaySequencesStaggered(): void {
     const allEntities = this.entityManager.getAllEntities();
-    let delayMs = 0;
+    let delayMs = 100;
 
     for (let i = 0; i < allEntities.length; i++) {
       const entity = allEntities[i];
@@ -351,7 +351,8 @@ export class PlayerSequenceService implements IUpdatable {
             }
           }, delayMs);
 
-          delayMs += 80; // Escalonamiento de 80ms entre inicios de secuencia
+          // Escalonamiento ampliado a 150 ms para amortiguar el impacto sobre el pipeline
+          delayMs += 150;
         }
       }
     }

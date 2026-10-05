@@ -1,4 +1,3 @@
-
 // src/app/services/editor/editor-tools.service.ts
 
 import { Injectable, inject, effect } from '@angular/core';
@@ -54,6 +53,7 @@ export class EditorToolsService {
   private lastHoverCheckTime = 0;
   private isInitialized = false;
   private qPressed = false;
+  private isPointerDown = false;
 
   private pointerSub: Subscription | null = null;
   private keyboardSub: Subscription | null = null;
@@ -146,6 +146,7 @@ export class EditorToolsService {
     this.debugSvc.actualizarDebugMeshes(null);
     this.highlightSvc.dispose();
     this.isInitialized = false; 
+    this.isPointerDown = false;
   }
 
   private manejarFPSAdminSelection(canvas: HTMLCanvasElement | null, isLocked: boolean): void {
@@ -237,8 +238,6 @@ export class EditorToolsService {
       }
     });
 
-    // 🔥 FIX DE RENDIMIENTO: Se removió el bucle pesado `scene.meshes.forEach` en cada frame.
-    // La compensación de escala visual ahora se ejecuta puntualmente durante eventos de gizmo o selección.
     this.renderObserver = scene.onBeforeRenderObservable.add(() => {
       const obj = this.state.objetoSeleccionado() as Mesh;
       this.gizmoSvc.updateCenterDragMeshRenderState(obj, this.state.subObjetoSeleccionado());
@@ -266,6 +265,28 @@ export class EditorToolsService {
     if (playSt === 'TRANSITIONING' || playSt === 'INTERACTING') return;
     if (this.gameContext.inputContext() === 'UI') return;
 
+    if (pi.type === PointerEventTypes.POINTERDOWN) {
+      this.isPointerDown = true;
+      if (pi.event.button === 0) {
+        if (playSt === 'PLAYING') {
+          if (!isLocked) {
+            this.inputRouter.lockPointer();
+            return;
+          }
+          if (profile.canSelect) {
+            this.manejarFPSAdminSelection(canvas, isLocked);
+          }
+          return;
+        }
+      }
+      return;
+    }
+
+    if (pi.type === PointerEventTypes.POINTERUP) {
+      this.isPointerDown = false;
+      return;
+    }
+
     if (pi.type === PointerEventTypes.POINTERDOUBLETAP && pi.event.button === 0) {
       if (profile.canUseAdminFeatures || profile.canEdit) {
         if (playSt === 'EDITOR') {
@@ -287,19 +308,6 @@ export class EditorToolsService {
         }
       }
       return;
-    }
-
-    if (pi.type === PointerEventTypes.POINTERDOWN && pi.event.button === 0) {
-      if (playSt === 'PLAYING') {
-        if (!isLocked) {
-          this.inputRouter.lockPointer();
-          return;
-        }
-        if (profile.canSelect) {
-          this.manejarFPSAdminSelection(canvas, isLocked);
-        }
-        return;
-      }
     }
 
     if (pi.type === PointerEventTypes.POINTERTAP && pi.event.button === 0) {
@@ -331,8 +339,16 @@ export class EditorToolsService {
     }
 
     if (pi.type === PointerEventTypes.POINTERMOVE) {
+      // Si el botón está presionado (navegando u orbitando con la cámara), omitir hover picking para máxima fluidez
+      if (this.isPointerDown) {
+        if (this.state.objetoHovereado()) {
+          this.state.setObjetoHovereado(null);
+        }
+        return;
+      }
+
       const now = performance.now();
-      if (now - this.lastHoverCheckTime < 32) return;
+      if (now - this.lastHoverCheckTime < 45) return;
       this.lastHoverCheckTime = now;
 
       const activeCam = this.ownership.getCamera();

@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/telemetry/performance-incident.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Subject } from 'rxjs';
@@ -384,9 +383,6 @@ export class PerformanceIncidentService {
     console.warn(`🚨 [PerformanceIncident] [${classification.category}] [Confidence: ${classification.confidence}] ${classification.diagnosis} | FPS: ${fps.toFixed(1)}`);
     
     this.onIncidentUpdated.next(incident);
-
-    // Captura completamente asíncrona desde el framebuffer existente sin RTT stall
-    this.captureSafeCanvasSnapshot(incident);
   }
 
   private calculateDelta(curr: ProfilerMetrics, prev?: FrameSample): IncidentDelta {
@@ -548,65 +544,6 @@ export class PerformanceIncidentService {
     this.state = 'NORMAL';
     this.activeIncident = null;
     this.cooldownTimer = this.COOLDOWN_MS;
-  }
-
-  /**
-   * Captura asíncrona segura: Lee directamente del canvas visible mediante toBlob()
-   * al final del cuadro sin renderizar pases RTT adicionales ni provocar bloqueo del hilo de JavaScript.
-   */
-  private captureSafeCanvasSnapshot(incident: PerformanceIncident): void {
-    const engine = this.motor3d.getEngine();
-    const canvas = engine?.getRenderingCanvas();
-
-    if (!canvas || !engine) {
-      incident.snapshotStatus = 'SKIPPED';
-      return;
-    }
-
-    const reqId = 'snapreq_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6);
-    const reqMs = performance.now();
-
-    incident.snapshotStatus = 'PENDING';
-    incident.snapshotInfo = {
-      requestId: reqId,
-      status: 'PENDING',
-      requestedAtFrame: incident.frameNumber,
-      requestedAtMs: reqMs,
-      width: 480,
-      height: 270
-    };
-
-    // Usar el bitmap del canvas de forma no intrusiva tras el renderizado nativo
-    requestAnimationFrame(() => {
-      try {
-        canvas.toBlob((blob) => {
-          if (!blob) {
-            incident.snapshotStatus = 'SKIPPED';
-            if (incident.snapshotInfo) incident.snapshotInfo.status = 'SKIPPED';
-            this.onIncidentUpdated.next(incident);
-            return;
-          }
-
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const dataUrl = reader.result as string;
-            incident.imageUrl = dataUrl;
-            incident.snapshotStatus = 'SUCCESS';
-            if (incident.snapshotInfo) {
-              incident.snapshotInfo.status = 'SUCCESS';
-              incident.snapshotInfo.capturedAtMs = performance.now();
-              incident.snapshotInfo.captureLatencyMs = parseFloat((incident.snapshotInfo.capturedAtMs - reqMs).toFixed(2));
-            }
-            this.onIncidentUpdated.next(incident);
-          };
-          reader.readAsDataURL(blob);
-        }, 'image/jpeg', 0.65);
-      } catch (e) {
-        incident.snapshotStatus = 'SKIPPED';
-        if (incident.snapshotInfo) incident.snapshotInfo.status = 'SKIPPED';
-        this.onIncidentUpdated.next(incident);
-      }
-    });
   }
 
   public getIncidents(): PerformanceIncident[] {

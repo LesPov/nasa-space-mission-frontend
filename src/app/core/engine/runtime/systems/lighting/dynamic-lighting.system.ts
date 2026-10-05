@@ -285,7 +285,7 @@ export class DynamicLightingSystem implements IUpdatable {
         if (slot.sg && slot.sg.getShadowMap()?.renderList) {
           slot.sg.getShadowMap()!.renderList!.length = 0;
         }
-        this.lightPool.releaseSlot(slot, new Set());
+        this.lightPool.forceHardRelease(slot);
       }
       return;
     }
@@ -352,7 +352,10 @@ export class DynamicLightingSystem implements IUpdatable {
 
     this.lastSelectedUid = selectedUid;
 
-    const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, (dtMs / 16.66) * (isEditorPure ? 0.45 : 0.22));
+    // Regla Clave Anti-Bug Fade: Interpolación exponencial continua basada estrictamente en segundos reales
+    // Invariante frente a saltos de velocidad o frametime: ~380ms para fade in y fade out completos
+    const fadeRate = 1.0 - Math.exp(-6.5 * (dtMs / 1000.0));
+    const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, isEditorPure ? Math.max(0.35, fadeRate * 1.5) : fadeRate);
 
     if (dtMs > 0) {
       this.playerVelocity.copyFrom(refPos).subtractInPlace(this.lastRefPos).scaleInPlace(1000 / dtMs);
@@ -403,12 +406,12 @@ export class DynamicLightingSystem implements IUpdatable {
       }
 
       const matchedSlot = this.lightPool.findSlotByUid(vl.entity.uid);
-      if (!matchedSlot) {
+      if (!matchedSlot && !vl.isLightInRange) {
         vl.targetMultiplier = 0;
       }
 
       const multDiff = Math.abs(vl.targetMultiplier - vl.currentMultiplier);
-      if (multDiff > 0.001) {
+      if (multDiff > 0.0005) {
         vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
         if (vl.currentMultiplier < LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
           vl.currentMultiplier = 0;
@@ -417,8 +420,9 @@ export class DynamicLightingSystem implements IUpdatable {
         vl.currentMultiplier = vl.targetMultiplier;
       }
 
+      // Si la luz ya completó su desvanecimiento suave a 0 y no está en rango, liberar el slot ordenadamente
       if (matchedSlot && vl.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD && !vl.isLightInRange) {
-        this.lightPool.releaseSlot(matchedSlot, new Set());
+        this.lightPool.forceHardRelease(matchedSlot);
       }
 
       const renderDiff = Math.abs(vl.currentMultiplier - (vl._lastRenderedMultiplier ?? -1));
@@ -452,7 +456,7 @@ export class DynamicLightingSystem implements IUpdatable {
 
       const vl = this.lightRegistry.getVirtualLightByUid(slot.assignedEntityUid);
       if (!vl || !vl.entity.light || !vl.entity.light.enabled) {
-        this.lightPool.releaseSlot(slot, new Set());
+        this.lightPool.forceHardRelease(slot);
         continue;
       }
 

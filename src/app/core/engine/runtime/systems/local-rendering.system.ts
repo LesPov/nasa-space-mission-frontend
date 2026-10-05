@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/local-rendering.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -113,37 +114,11 @@ export class LocalRenderingSystem implements IUpdatable {
     return cached;
   }
 
-  /**
-   * Elementos que forman la estructura base del nivel (pisos, terrenos, límites del mundo y pasillos modulares).
-   * Estos elementos nunca deben apagarse ni oscilar en visibilidad debajo del jugador.
-   */
   public isStructuralEntity(e: GameEntity): boolean {
-    if (e.visual?.disableCulling) return true;
-    const nameL = e.name.toLowerCase();
+    if (e.visual?.disableCulling === true) return true;
     
-    if (nameL.includes('sueloinvisible') || Tags.MatchesQuery(e.view, 'invisible_floor')) return true;
-    if (e.type === 'plane') return true;
-
-    // Reconocimiento arquitectónico ampliado: pasillos, corredores, salas, muros y suelos
-    if (
-      nameL.includes('piso') || 
-      nameL.includes('suelo') || 
-      nameL.includes('ground') || 
-      nameL.includes('floor') ||
-      nameL.includes('pasillo') ||
-      nameL.includes('corridor') ||
-      nameL.includes('hall') ||
-      nameL.includes('tunel') ||
-      nameL.includes('tunnel') ||
-      nameL.includes('wall') ||
-      nameL.includes('pared') ||
-      nameL.includes('muro') ||
-      nameL.includes('techo') ||
-      nameL.includes('ceiling') ||
-      nameL.includes('roof') ||
-      nameL.includes('column') ||
-      nameL.includes('columna')
-    ) {
+    const nameL = e.name ? e.name.toLowerCase() : '';
+    if (nameL.includes('sueloinvisible') || Tags.MatchesQuery(e.view, 'invisible_floor')) {
       return true;
     }
 
@@ -232,7 +207,7 @@ export class LocalRenderingSystem implements IUpdatable {
     const cullDistance = Math.max(60, Number(cullingConfig.cullDistance) || 160);
     const fadeMargin = Math.min(cullDistance - 1, Math.max(1, Number(cullingConfig.fadeMargin) || 50));
     const fadeStartDist = Math.max(0, cullDistance - fadeMargin);
-    const criticalRadius = 60.0;
+    const criticalRadius = 30.0;
 
     this.resetCounters();
     const now = performance.now();
@@ -269,7 +244,12 @@ export class LocalRenderingSystem implements IUpdatable {
         continue;
       }
 
-      const effectiveDist = this.spatialHub.getDistanceToPlayer(e.uid);
+      // Distancia coherente unitaria si pertenece a un grupo espacial
+      let effectiveDist = this.spatialHub.getDistanceToPlayer(e.uid);
+      const group = this.spatialGroups.getGroupForEntity(e.uid);
+      if (group) {
+        effectiveDist = Math.min(effectiveDist, group.distanceToBox);
+      }
 
       if (effectiveDist <= criticalRadius) {
         e.isCulled = false;
@@ -346,7 +326,7 @@ export class LocalRenderingSystem implements IUpdatable {
         visibility: 1.0, 
         targetVisibility: 1.0, 
         isShadowProtected: false, 
-        isStructural: true, 
+        isStructural: this.isStructuralEntity(e), 
         lastStateChangeTime: now, 
         flapCounter: 0 
       });
@@ -392,9 +372,9 @@ export class LocalRenderingSystem implements IUpdatable {
       this.lastPlayerPos.copyFrom(currPos);
 
       const rawSpeed = this.playerVelocity.length();
-      this.smoothedSpeed = (this.smoothedSpeed * 0.85) + (rawSpeed * 0.15);
+      this.smoothedSpeed = (this.smoothedSpeed * 0.88) + (rawSpeed * 0.12);
 
-      if (rawSpeed > 14.0) {
+      if (rawSpeed > 14.5) {
         this.incidentSvc.recordFastMove(rawSpeed, currPos);
       }
     }
@@ -403,12 +383,13 @@ export class LocalRenderingSystem implements IUpdatable {
       this.spatialGroups.updateGroups(playerEntity.view.getAbsolutePosition(), this.playerVelocity);
     }
 
-    const dynamicLookAheadBonus = Math.min(25.0, this.smoothedSpeed * 1.5);
+    const dynamicLookAheadBonus = Math.min(25.0, this.smoothedSpeed * 1.2);
     const baseCullDist = Math.max(60, Number(cullingConfig.cullDistance) || 160);
     const fadeMargin = Math.min(baseCullDist - 1, Math.max(1, Number(cullingConfig.fadeMargin) || 50));
     const fadeStartDist = Math.max(0, baseCullDist - fadeMargin);
 
-    const lerpSpeed = Math.min(1.0, (dtMs / 16.66) * 0.22);
+    // Suavizado temporal continuo para el fade out
+    const lerpSpeed = Math.min(1.0, (dtMs / 16.66) * 0.18);
     let discreteStateChanged = false;
 
     let vCount = 0, fCount = 0, hCount = 0, rCount = 0, sCount = 0;
@@ -467,11 +448,29 @@ export class LocalRenderingSystem implements IUpdatable {
         const wasCulled = e.isCulled;
         const prevState = renderState.state;
 
-        const effectiveDist = this.spatialHub.getDistanceToPlayer(e.uid);
-        this.evaluateIndividualCulling(e, renderState, mesh, effectiveDist, baseCullDist, dynamicLookAheadBonus, fadeStartDist, fadeMargin);
+        let effectiveDist = this.spatialHub.getDistanceToPlayer(e.uid);
+        
+        // Fase 6 Corrección: Coherencia unitaria de grupos espaciales
+        const group = this.spatialGroups.getGroupForEntity(e.uid);
+        if (group) {
+          effectiveDist = Math.min(effectiveDist, group.distanceToBox);
+        }
+
+        const isGroupPreactivatingOrBetter = Boolean(
+          group && (
+            group.state === 'ACTIVE' || 
+            group.state === 'PREACTIVATING' ||
+            group.isPredictedTarget
+          )
+        );
+
+        this.evaluateIndividualCulling(
+          e, renderState, mesh, effectiveDist, baseCullDist, 
+          dynamicLookAheadBonus, fadeStartDist, isGroupPreactivatingOrBetter
+        );
 
         if (prevState !== renderState.state) {
-          if (now - renderState.lastStateChangeTime < 2500) {
+          if (now - renderState.lastStateChangeTime < 2800) {
             renderState.flapCounter++;
             if (renderState.flapCounter >= 4) {
               this.incidentSvc.recordCullingFlap(e.uid, e.name, effectiveDist, this.smoothedSpeed);
@@ -563,7 +562,7 @@ export class LocalRenderingSystem implements IUpdatable {
           if (!mesh.isEnabled()) mesh.setEnabled(true);
           if (!mesh.isVisible) mesh.isVisible = true;
 
-          renderState.visibility += (renderState.targetVisibility - renderState.visibility) * (lerpSpeed * 2.0);
+          renderState.visibility += (renderState.targetVisibility - renderState.visibility) * (lerpSpeed * 1.5);
           this.applyVisibilityToMeshes(cachedMeshes, renderState.visibility);
 
           if (renderState.visibility >= 0.99 && renderState.targetVisibility >= 0.99) {
@@ -598,12 +597,14 @@ export class LocalRenderingSystem implements IUpdatable {
     baseCullDist: number,
     dynamicLookAheadBonus: number,
     fadeStartDist: number,
-    fadeMargin: number
+    isGroupPreactivated: boolean
   ): void {
-    const effectiveCull = baseCullDist + dynamicLookAheadBonus;
-    const effectiveFadeStart = fadeStartDist + dynamicLookAheadBonus;
-    const REACQUIRE_MARGIN = 10.0;
-    const HYSTERESIS_ENTER_FADE = 6.0; // Banda muerta para evitar que objetos en el borde oscilen
+    // Bonificación continua que previene oscilaciones escalonadas
+    const groupBonus = isGroupPreactivated ? 20.0 : 0.0;
+    const effectiveCull = baseCullDist + dynamicLookAheadBonus + groupBonus;
+    const effectiveFadeStart = fadeStartDist + dynamicLookAheadBonus + groupBonus;
+    // Histéresis de re-adquisición ampliada de 8m a 14m para estabilizar transiciones a alta velocidad
+    const REACQUIRE_MARGIN = 14.0;
 
     if (renderState.state === 'HARD_CULLED') {
       if (effectiveDist <= (effectiveCull - REACQUIRE_MARGIN)) {
@@ -613,23 +614,21 @@ export class LocalRenderingSystem implements IUpdatable {
         renderState.isShadowProtected = false;
 
         if (effectiveDist <= effectiveFadeStart) {
-          renderState.state = 'VISIBLE';
-          renderState.visibility = 1.0;
+          renderState.state = 'RESTORING';
           renderState.targetVisibility = 1.0;
-          this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), 1.0);
         } else {
           renderState.state = 'RESTORING';
           renderState.targetVisibility = this.calculateSmoothVisibility(effectiveDist, effectiveFadeStart, effectiveCull);
-          renderState.visibility = Math.max(0.1, renderState.targetVisibility);
-          this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), renderState.visibility);
         }
+        renderState.visibility = Math.max(0.05, renderState.visibility);
+        this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), renderState.visibility);
 
         this.shadowService.notifyCasterRestored(e.uid);
       }
     } else {
       if (effectiveDist > effectiveCull) {
         renderState.targetVisibility = 0.0;
-        if (renderState.state === 'VISIBLE') {
+        if (renderState.state === 'VISIBLE' || renderState.state === 'RESTORING') {
           renderState.state = 'FADING_OUT';
         }
       } else if (effectiveDist <= effectiveFadeStart) {
@@ -640,14 +639,11 @@ export class LocalRenderingSystem implements IUpdatable {
         e.isCulled = false;
         renderState.isShadowProtected = false;
       } else {
-        // Solo empezar a desvanecer si supera el inicio del fade más el margen de histéresis
-        if (renderState.state === 'VISIBLE' && effectiveDist <= (effectiveFadeStart + HYSTERESIS_ENTER_FADE)) {
-          renderState.targetVisibility = 1.0;
-        } else {
-          renderState.targetVisibility = this.calculateSmoothVisibility(effectiveDist, effectiveFadeStart, effectiveCull);
-          if (renderState.state === 'VISIBLE') {
-            renderState.state = 'FADING_OUT';
-          }
+        renderState.targetVisibility = this.calculateSmoothVisibility(effectiveDist, effectiveFadeStart, effectiveCull);
+        if (renderState.targetVisibility < renderState.visibility) {
+          renderState.state = 'FADING_OUT';
+        } else if (renderState.targetVisibility > renderState.visibility) {
+          renderState.state = 'RESTORING';
         }
         e.isCulled = false;
         renderState.isShadowProtected = false;
@@ -659,13 +655,13 @@ export class LocalRenderingSystem implements IUpdatable {
     if (dist <= fadeStart) return 1.0;
     if (dist >= cullDist) return 0.0;
     const t = Math.max(0, Math.min(1, (dist - fadeStart) / (cullDist - fadeStart)));
-    return Math.max(0.0, Math.min(1.0, 1.0 - t * t * (3.0 - 2.0 * t)));
+    return Math.max(0.0, Math.min(1.0, 1.0 - (t * t * (3.0 - 2.0 * t))));
   }
 
   private applyVisibilityToMeshes(meshes: AbstractMesh[], visibility: number) {
     const clamped = Math.max(0.0, Math.min(1.0, visibility));
-    const isFullyVisible = clamped >= 0.999;
-    const isHidden = clamped <= 0.001;
+    const isFullyVisible = clamped >= 0.995;
+    const isHidden = clamped <= 0.005;
 
     for (let c = 0; c < meshes.length; c++) {
       const m = meshes[c];

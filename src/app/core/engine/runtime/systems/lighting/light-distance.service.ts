@@ -10,6 +10,7 @@ import { LightContainmentService } from './light-containment.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 import { EngineProfilerService } from '../../../telemetry/engine-profiler.service';
 import { GameMode } from '../../../session/game-mode.model';
+import { SpatialStreamingGroupService } from '../../../spatial/spatial-streaming-group.service';
 
 @Injectable({ providedIn: 'root' })
 export class LightDistanceService {
@@ -19,6 +20,7 @@ export class LightDistanceService {
   private containmentSvc = inject(LightContainmentService);
   private motor3d: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private profiler = inject(EngineProfilerService);
+  private spatialGroups = inject(SpatialStreamingGroupService);
 
   private _tempPos = Vector3.Zero();
   private _tempDir = Vector3.Zero();
@@ -83,6 +85,16 @@ export class LightDistanceService {
       const container = (isInterior && scene) ? this.containmentSvc.resolveContainerEntity(vl.entity, scene) : null;
       vl.containerName = container ? container.name : undefined;
 
+      const group = this.spatialGroups.getGroupForEntity(vl.entity.uid);
+      const isGroupPreparedOrBetter = Boolean(
+        group && (
+          group.state === 'ACTIVE' || 
+          group.state === 'PREACTIVATING' || 
+          group.state === 'PREPARED' ||
+          group.isPredictedTarget
+        )
+      );
+
       // =========================================================================
       // MODO INTERIOR + MODEL_PREENTRY (LA GEOMETRÍA DEL MODELO ES LA AUTORIDAD)
       // =========================================================================
@@ -119,35 +131,48 @@ export class LightDistanceService {
           vl.lastEvaluatedDistance = contResult.distanceToBoundary;
         }
 
-        // EVALUACIÓN ESTRICTA: El estado espacial de contención decide la luz
+        vl._isInPrepareRange = Boolean(isGroupPreparedOrBetter || (contResult.distanceToBoundary <= (preDist + 22.0)));
+
         if (contResult.spatialState === 'INSIDE') {
           vl.targetMultiplier = 1.0;
           vl.isLightInRange = true;
-          vl._isInPrepareRange = true;
           this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, preDist, nowTimeStr, `INSIDE (${contResult.source})`);
         } else if (contResult.spatialState === 'PRE_ENTRY') {
           vl.targetMultiplier = LightAttenuationCurve.calculate(contResult.distanceToBoundary, 0, preDist);
           vl.isLightInRange = vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
-          vl._isInPrepareRange = true;
           this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, preDist, nowTimeStr, `PRE-ENTRADA (${contResult.source})`);
         } else if (contResult.spatialState === 'PRE_EXIT') {
           const exitThreshold = preDist + 2.5;
           vl.targetMultiplier = LightAttenuationCurve.calculate(contResult.distanceToBoundary, 0, exitThreshold);
           vl.isLightInRange = true;
-          vl._isInPrepareRange = true;
           this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, exitThreshold, nowTimeStr, `PRE-SALIDA (${contResult.source})`);
         } else {
           vl.targetMultiplier = 0.0;
-          vl.isLightInRange = false;
-          vl._isInPrepareRange = contResult.distanceToBoundary <= (preDist + 15.0);
-          this.transitionState(vl, 'OUTSIDE', nowTimeStr, 'OUTSIDE_INTERIOR_VOLUME', `Fuera de volumen (${contResult.source})`);
+          // Retención durante desvanecimiento continuo aunque se corra a máxima velocidad
+          if (vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
+            vl.isLightInRange = true;
+            this.transitionState(vl, 'FADING_OUT', nowTimeStr, undefined, `FADING OUT RETENTION (${contResult.source})`);
+          } else {
+            vl.isLightInRange = false;
+            this.transitionState(vl, 'OUTSIDE', nowTimeStr, 'OUTSIDE_INTERIOR_VOLUME', `Fuera de volumen (${contResult.source})`);
+          }
         }
 
-        // REGLA CLAVE: La sombra se prepara con la misma o mayor cobertura que el fade-in de luz
         if (lightComp.castShadows) {
           const syncShadow = lightComp.linkShadowPreEntryToLightPreEntry !== false;
           const shadowPreDist = syncShadow ? preDist : Math.max(0.5, lightComp.shadowPreEntryDistance ?? preDist);
-          vl.isShadowInRange = (contResult.spatialState === 'INSIDE' || contResult.spatialState === 'PRE_EXIT' || (contResult.spatialState === 'PRE_ENTRY' && contResult.distanceToBoundary <= shadowPreDist));
+          
+          const inShadowZone = Boolean(
+            contResult.spatialState === 'INSIDE' || 
+            contResult.spatialState === 'PRE_EXIT' || 
+            (contResult.spatialState === 'PRE_ENTRY' && contResult.distanceToBoundary <= shadowPreDist) ||
+            (vl.currentMultiplier > 0.05)
+          );
+          const shouldPrewarmShadow = Boolean(
+            group && group.state === 'PREACTIVATING' && contResult.distanceToBoundary <= (shadowPreDist + 15.0)
+          );
+
+          vl.isShadowInRange = inShadowZone || shouldPrewarmShadow;
         } else {
           vl.isShadowInRange = false;
         }
@@ -165,17 +190,14 @@ export class LightDistanceService {
         
         const rActivation = Math.max(1.0, configuredActivation);
         const rDeactivation = Math.max(rActivation + 2.0, configuredDeactivation);
-        const rPrepare = rDeactivation + 15.0;
+        const rPrepare = isGroupPreparedOrBetter ? (rDeactivation + 35.0) : (rDeactivation + 15.0);
 
         this.applyStandardProximity(vl, centerDist, rActivation, rDeactivation, rPrepare, wasInRange, nowTimeStr);
 
-        // REGLA CLAVE DE SOMBRAS ANTES DE BRILLO MÁXIMO:
-        // Las sombras deben estar activas y preparadas en cuanto la luz comienza a ser perceptible (rDeactivation).
-        // No se restringe artificialmente a radios menores que la activación de luz.
         if (vl.isLightInRange && lightComp.castShadows && lightComp.distanceShadowsEnabled !== false) {
           const shadowAct = Math.max(rActivation, lightComp.shadowActivationDistance ?? rActivation);
           const shadowDeact = Math.max(rDeactivation, lightComp.shadowDeactivationDistance ?? rDeactivation);
-          vl.isShadowInRange = wasInRange ? centerDist <= shadowDeact : centerDist <= shadowAct;
+          vl.isShadowInRange = (wasInRange || vl.currentMultiplier > 0.05) ? centerDist <= shadowDeact : centerDist <= shadowAct;
         } else {
           vl.isShadowInRange = false;
         }
@@ -201,8 +223,14 @@ export class LightDistanceService {
       vl.isLightInRange = true;
       this.evaluateStateAndDecision(vl, dist, rActivation, rDeactivation, timestamp, 'PROXIMIDAD RADIAL');
     } else {
-      vl.isLightInRange = false;
-      this.transitionState(vl, dist > rDeactivation ? 'OUTSIDE' : 'INACTIVE', timestamp, 'OUT_OF_EFFECTIVE_RANGE', 'Fuera de rango');
+      // Si la luz aún conserva brillo visible, se retiene en FADING_OUT hasta converger suavemente a 0
+      if (vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
+        vl.isLightInRange = true;
+        this.transitionState(vl, 'FADING_OUT', timestamp, undefined, 'FADING OUT CONTINUO');
+      } else {
+        vl.isLightInRange = false;
+        this.transitionState(vl, dist > rDeactivation ? 'OUTSIDE' : 'INACTIVE', timestamp, 'OUT_OF_EFFECTIVE_RANGE', 'Fuera de rango');
+      }
     }
   }
 
@@ -225,7 +253,11 @@ export class LightDistanceService {
         this.transitionState(vl, 'ACTIVE', timestamp, undefined, `PARTIAL ACTIVE (${contextMsg})`);
       }
     } else {
-      this.transitionState(vl, 'INACTIVE', timestamp, 'INTENSITY_NEAR_ZERO', `NEAR ZERO (${contextMsg})`);
+      if (vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
+        this.transitionState(vl, 'FADING_OUT', timestamp, undefined, `FADING OUT (${contextMsg})`);
+      } else {
+        this.transitionState(vl, 'INACTIVE', timestamp, 'INTENSITY_NEAR_ZERO', `NEAR ZERO (${contextMsg})`);
+      }
     }
   }
 

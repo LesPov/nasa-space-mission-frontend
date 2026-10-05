@@ -10,7 +10,6 @@ import { InputRouterService } from '../../session/input-router.service';
 import { GameSession } from '../game-session';
 import { PlayerCameraManagerService } from '../systems/player-camera.service';
 import { GameEntity } from '../../entities/game.entity';
-import { CameraViewMode } from '../../session/game-context.model';
 import { CinematicLogger } from '../cinematics/cinematic-logger';
 import { DynamicLightingSystem } from '../systems/lighting/dynamic-lighting.system';
 import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
@@ -22,6 +21,8 @@ import { LocalRenderingSystem } from '../systems/local-rendering.system';
 import { RuntimeEngineService } from '../runtime-engine.service';
 import { ShadowQualityService } from '../shadows/shadow-quality.service';
 import { EngineProfilerService } from '../../telemetry/engine-profiler.service';
+import { SpatialStreamingGroupService } from '../../spatial/spatial-streaming-group.service';
+import { PlayerSequenceService } from '../systems/player-sequence.service';
 
 export interface EditorSnapshotState {
   cameraTarget: Vector3;
@@ -50,6 +51,8 @@ export class LiveLifecycleManagerService {
   private shadowOrchestrator = inject(ShadowOrchestratorService);
   private localRendering = inject(LocalRenderingSystem);
   private profiler = inject(EngineProfilerService);
+  private spatialGroups = inject(SpatialStreamingGroupService);
+  private sequenceSvc = inject(PlayerSequenceService);
 
   private isLiveActive = false;
   private savedEditorCameraState: EditorSnapshotState | null = null;
@@ -111,12 +114,18 @@ export class LiveLifecycleManagerService {
 
     this.inputRouter.unlockPointer();
 
+    // 1. Detener sesiones volátiles de gameplay y secuencias
+    this.sequenceSvc.pauseExecution();
+    this.sequenceSvc.resetearSecuencias();
+
     this.runtimeEngine.stopTestSession();
     this.localRendering.stop();
+    this.spatialGroups.clear();
 
     this.playerCamSvc.updateFirstPersonVisibility(false);
     this.playerCamSvc.limpiarPivotTPS();
 
+    // 2. Normalizar configuraciones globales de hardware conservando sombreadores en VRAM
     const engine = this.motor3d.getEngine();
     if (engine) {
       engine.setHardwareScalingLevel(1.0);
@@ -131,6 +140,7 @@ export class LiveLifecycleManagerService {
     }
     this.shadowQualitySvc.setQualityTier('HIGH');
 
+    // 3. Restauración limpia de entidades: descartar las volátiles y restaurar backups autorales
     const entities = this.entityManager.getAllEntities();
     
     for (let i = entities.length - 1; i >= 0; i--) {
@@ -155,9 +165,11 @@ export class LiveLifecycleManagerService {
       }
     }
 
+    // 4. Reconciliación simétrica del pool de luces y sombras sin purgar materiales útiles
     this.dynLighting.reconcileSceneLights();
     this.shadowOrchestrator.reconcileShadows();
 
+    // 5. Salir del sandbox de variables de juego y reactivar triggers de editor
     this.gameState.exitSandbox();
     this.playerTriggerSvc.start();
     this.sceneNodesSvc.actualizarListaNodos();

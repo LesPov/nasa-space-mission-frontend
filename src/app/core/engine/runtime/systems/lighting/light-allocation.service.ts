@@ -25,7 +25,7 @@ export class LightAllocationService {
     speed: number, 
     selectedUid: string | null
   ): void {
-    const lookAheadTime = Math.min(2.0, Math.max(0.5, speed * 0.2));
+    const lookAheadTime = Math.min(1.5, Math.max(0.4, speed * 0.12));
     const predictedPos = refPos.add(moveDir.scale(speed * lookAheadTime));
 
     const activeCam = this.ownership.getCamera();
@@ -48,8 +48,9 @@ export class LightAllocationService {
 
     const activeGroupId = this.spatialGroups.getActiveGroupId();
     const preparedGroups = this.spatialGroups.getPreparedGroupIds();
+    const preactivatingGroups = this.spatialGroups.getPreactivatingGroupIds();
 
-    // 1. Filtrado de candidatos válidos
+    // 1. Filtrado de candidatos válidos con protección estricta de continuidad de fade
     const validCandidates = activeVirtuals.filter(vl => {
       if (!vl.entity.light || !vl.entity.light.enabled) {
         vl.rejectionReason = 'DISABLED';
@@ -58,9 +59,23 @@ export class LightAllocationService {
 
       if (vl.entity.uid === selectedUid) return true;
 
+      // Inmunidad de desvanecimiento: si la luz todavía tiene brillo visible, DEBE completar su fade suave
+      if (assignedSet.has(vl.entity.uid) && vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
+        return true;
+      }
+
+      const group = this.spatialGroups.getGroupForEntity(vl.entity.uid);
+      const isGroupPriority = Boolean(
+        group && (
+          group.id === activeGroupId || 
+          preactivatingGroups.has(group.id) || 
+          group.isPredictedTarget
+        )
+      );
+
       const isInteriorVolumeMode = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
       if (isInteriorVolumeMode) {
-        if (vl.spatialState === 'OUTSIDE') {
+        if (vl.spatialState === 'OUTSIDE' && !vl._isInPrepareRange && !isGroupPriority) {
           vl.rejectionReason = 'OUTSIDE_INTERIOR_VOLUME';
           vl.targetMultiplier = 0.0;
           vl.isLightInRange = false;
@@ -69,10 +84,7 @@ export class LightAllocationService {
         }
       }
 
-      const group = this.spatialGroups.getGroupForEntity(vl.entity.uid);
-      const isGroupActiveOrPrepared = group && (group.id === activeGroupId || preparedGroups.has(group.id));
-
-      if (isGroupActiveOrPrepared) return true;
+      if (isGroupPriority) return true;
       if (vl.isLightInRange || vl._isInPrepareRange) return true;
 
       const deact = vl.entity.light.deactivationDistance ?? ((vl.entity.light.activationDistance ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_ACTIVATION_RADIUS) + 6.0);
@@ -82,10 +94,11 @@ export class LightAllocationService {
       return false;
     });
 
-    // 2. Cálculo determinista de prioridad y Score
+    // 2. Cálculo determinista de prioridad y Score con retención continua de fade
     validCandidates.forEach(vl => {
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
       const isInteriorVolumeMode = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
+      const group = this.spatialGroups.getGroupForEntity(vl.entity.uid);
 
       let score = 0;
 
@@ -95,39 +108,50 @@ export class LightAllocationService {
           score = -50000 + boundaryDist;
         } else if (vl.spatialState === 'PRE_ENTRY' || vl.spatialState === 'PRE_EXIT') {
           score = -10000 + (boundaryDist * 10);
+        } else if (group && (preactivatingGroups.has(group.id) || group.isPredictedTarget)) {
+          score = -5000 + (boundaryDist * 5);
+        } else if (vl._isInPrepareRange) {
+          score = 500 + (boundaryDist * 2);
         } else {
           score = 999999;
         }
       } else {
         const dist = vl.effectiveDistance;
         const distSq = dist * dist;
-        const predictedDistSq = Vector3.DistanceSquared(predictedPos, this._tempPos);
+        
+        // Si el jugador se aleja corriendo pero la luz está terminando su fade out, 
+        // no proyectar predictedDistSq negativamente para evitar que salte de golpe
+        const isFadingOut = assignedSet.has(vl.entity.uid) && vl.targetMultiplier === 0 && vl.currentMultiplier > 0.01;
+        const predictedDistSq = isFadingOut ? distSq : Vector3.DistanceSquared(predictedPos, this._tempPos);
 
-        score = (distSq * 0.5) + (predictedDistSq * 0.5);
+        score = (distSq * 0.6) + (predictedDistSq * 0.4);
 
         if (dist > 0.5) {
           const dirToLight = this._tempPos.subtract(refPos).normalize();
           const viewDot = Vector3.Dot(this._cameraForward, dirToLight);
           if (viewDot > 0.1) {
-            score *= (1.0 - (viewDot * 0.3));
+            score *= (1.0 - (viewDot * 0.25));
           } else if (viewDot < -0.1) {
-            score *= (1.0 + (Math.abs(viewDot) * 0.3));
+            score *= (1.0 + (Math.abs(viewDot) * 0.25));
           }
         }
       }
 
-      const group = this.spatialGroups.getGroupForEntity(vl.entity.uid);
       if (group) {
         if (group.id === activeGroupId) {
           score *= 0.1;
+        } else if (preactivatingGroups.has(group.id) || group.isPredictedTarget) {
+          score *= 0.2;
         } else if (preparedGroups.has(group.id)) {
-          score *= 0.3;
+          score *= 0.4;
         }
       }
 
-      // Inmunidad a los valles de pulso/flicker: la luz conserva su slot si está en rango espacial
-      if (assignedSet.has(vl.entity.uid) && vl.isLightInRange) {
-        score *= 0.5; // Fuerte retención de slot
+      // Estabilidad: la luz que ya posee slot y sigue en rango o atenuándose mantiene ventaja de retención
+      if (assignedSet.has(vl.entity.uid)) {
+        if (vl.isLightInRange || vl._isInPrepareRange || vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
+          score *= 0.5;
+        }
       }
 
       if (selectedUid === vl.entity.uid) {
@@ -161,12 +185,12 @@ export class LightAllocationService {
       }
     });
 
-    // 5. Liberar slots que salieron del Top 3
+    // 5. Liberar únicamente slots que salieron del Top 3 Y cuya luz haya finalizado su fade visual (intensidad ~ 0)
     this.lightPool.getAllSlots().forEach(s => {
       this.lightPool.releaseSlot(s, topUids);
     });
 
-    // 6. Asignar slots de forma estable evitando intercambios innecesarios entre luces
+    // 6. Asignar o mantener slots de forma continua y estable
     topVirtuals.forEach((vl, rankIndex) => {
       vl.poolRank = rankIndex + 1;
       vl.rejectionReason = undefined;
@@ -178,11 +202,9 @@ export class LightAllocationService {
       const pool = this.lightPool.getPoolByType(vl.entity.type);
       let existingSlot = pool.find(s => s.assignedEntityUid === vl.entity.uid);
 
-      // Si la luz ya tiene un slot en este pool, MANTENERLA en ese slot (no rotar índices)
       if (!existingSlot) {
         let freeSlot: PoolSlot | null = null;
         
-        // Si requiere sombras y el slot maestro 0 está libre, tomar el slot 0
         if (vl.isShadowInRange && pool[0] && pool[0].assignedEntityUid === null) {
           freeSlot = pool[0];
         }

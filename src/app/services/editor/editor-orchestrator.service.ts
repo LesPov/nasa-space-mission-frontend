@@ -1,7 +1,7 @@
 // file: src/app/services/editor/editor-orchestrator.service.ts
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { AbstractMesh, Tags } from '@babylonjs/core';
+import { AbstractMesh, Tags, Vector3 } from '@babylonjs/core';
 import { Subscription } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
@@ -32,6 +32,9 @@ import { InputRouterService } from '../../core/engine/session/input-router.servi
 import { EngineSessionService } from '../../core/engine/session/engine-session.service';
 import { LiveLifecycleManagerService } from '../../core/engine/runtime/live/live-lifecycle-manager.service';
 import { NarrativeRoleDto } from '../../core/engine/models/api-dto.model';
+import { DynamicLightingSystem } from '../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
+import { ShadowOrchestratorService } from '../../core/engine/runtime/shadows/shadow-orchestrator.service';
+import { LocalRenderingSystem } from '../../core/engine/runtime/systems/local-rendering.system';
 
 @Injectable({ providedIn: 'root' })
 export class EditorOrchestratorService {
@@ -60,6 +63,9 @@ export class EditorOrchestratorService {
   private playbackManager = inject(CinematicPlaybackManagerService);
   private sessionSvc = inject(EngineSessionService);
   private liveLifecycle = inject(LiveLifecycleManagerService);
+  private dynLighting = inject(DynamicLightingSystem);
+  private shadowOrchestrator = inject(ShadowOrchestratorService);
+  private localRendering = inject(LocalRenderingSystem);
 
   public readonly editando = signal(false);
   public readonly isPlayable = signal(false);
@@ -213,11 +219,28 @@ export class EditorOrchestratorService {
 
         if (!this.sessionSvc.isSessionActive(sessionId)) return;
 
-        this.motor3dSvc.getScene().executeWhenReady(() => {
+        const scene = this.motor3dSvc.getScene();
+        scene.executeWhenReady(async () => {
           if (!this.sessionSvc.isSessionActive(sessionId)) return;
+          
+          const editorCam = this.motor3dSvc.getEditorCamera();
+          const warmupPos = editorCam ? editorCam.globalPosition : Vector3.Zero();
+
+          this.cargandoTexto.set('Estabilizando sombreadores e iluminación del editor...');
+          this.dynLighting.start();
+          this.dynLighting.prepareAllLights();
+          this.shadowOrchestrator.reconcileShadows();
+          
+          // Precalentar los shaders de la burbuja visible antes de descartar el cartel
+          await this.dynLighting.forceWarmup(warmupPos);
+          this.localRendering.reconcileAllEntitiesImmediate(warmupPos);
+
+          // 2 pases de render estabilizadores en el fondo
+          scene.render();
+          scene.render();
+
           this.cargandoEscena.set(false);
           this.revisarSiEsJugable(); 
-          
           this.toolsSvc.forceResetVisuals();
           
           if (!this.fpsInterval) {
@@ -390,7 +413,6 @@ export class EditorOrchestratorService {
     }
 
     try {
-      // 1. Preparar jugador, spawn, streaming espacial, luces y shaders relevantes
       await this.playModeSvc.prepararEscenaParaTest(vista, (msg, pct) => {
         this.cargandoTexto.set(msg);
       });
@@ -402,13 +424,11 @@ export class EditorOrchestratorService {
         this.cargandoTexto.set('Desplazando cámara a posición inicial...');
         await this.playModeSvc.iniciarVueloCamara(vista);
 
-        // 2. Verificación de estabilidad adaptativa (inmediata en 5-6 frames limpios)
         this.cargandoTexto.set('Estabilizando iluminación y sombras...');
         await this.playModeSvc.estabilizarEntornoVisual(vista, (msg, pct) => {
           this.cargandoTexto.set(msg);
         });
 
-        // 3. Activación de gameplay y entrega instantánea de controles sin demoras
         await this.playModeSvc.finalizarEntradaTestLive(vista, false);
       }
 

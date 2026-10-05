@@ -1,3 +1,4 @@
+
 import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect, untracked, NgZone } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
@@ -62,7 +63,7 @@ export class EditorEscena implements OnInit, OnDestroy {
   public missionSvc = inject(MissionModalService);
   public roleModalSvc = inject(RoleModalService); 
   public authSvc = inject(AuthService);
-  private gameContext = inject(GameContextService); 
+  public gameContext = inject(GameContextService); 
   public cdr = inject(ChangeDetectorRef);
   private router = inject(Router);
   public toolsSvc = inject(EditorToolsService);
@@ -118,7 +119,6 @@ export class EditorEscena implements OnInit, OnDestroy {
   get archivoSubida() { return this.addObjSvc.archivoSubida; } set archivoSubida(v) { this.addObjSvc.archivoSubida = v; }
   get subiendoAsset() { return this.addObjSvc.subiendoAsset; }
 
-  // Handlers linkeables guardados para poder removerlos al destruirse
   private onMouseMoveHandler = (e: MouseEvent) => this.onMouseMove(e);
   private onMouseUpHandler = () => this.onMouseUp();
 
@@ -127,7 +127,6 @@ export class EditorEscena implements OnInit, OnDestroy {
       this.stateSvc.playState();
     });
 
-    // Mantiene el Dropdown del Viewport en Sincronía
     effect(() => {
        const activeId = this.editorSvc.escenaIdActiva();
        untracked(() => {
@@ -215,6 +214,13 @@ export class EditorEscena implements OnInit, OnDestroy {
         }
       }
     }
+  }
+
+  public abrirAjustesNiebla(): void {
+    if (this.stateSvc.playState() === 'PLAYING' && this.gameContext.isPointerLocked()) {
+      this.inputOrchestrator.unlockPointer();
+    }
+    this.layoutUI.requestInspectorTab('fog');
   }
 
   toggleNieblaTemporal() {

@@ -23,6 +23,7 @@ import { ShadowQualityService } from '../shadows/shadow-quality.service';
 import { EngineProfilerService } from '../../telemetry/engine-profiler.service';
 import { SpatialStreamingGroupService } from '../../spatial/spatial-streaming-group.service';
 import { PlayerSequenceService } from '../systems/player-sequence.service';
+import { FogRuntimeService } from '../systems/fog/fog-runtime.service';
 
 export interface EditorSnapshotState {
   cameraTarget: Vector3;
@@ -53,6 +54,7 @@ export class LiveLifecycleManagerService {
   private profiler = inject(EngineProfilerService);
   private spatialGroups = inject(SpatialStreamingGroupService);
   private sequenceSvc = inject(PlayerSequenceService);
+  private fogRuntime = inject(FogRuntimeService);
 
   private isLiveActive = false;
   private savedEditorCameraState: EditorSnapshotState | null = null;
@@ -101,6 +103,9 @@ export class LiveLifecycleManagerService {
         }
       }
     });
+
+    const playerEntity = this.gameContext.activePlayerEntity();
+    this.fogRuntime.initForTestLive(playerEntity);
     
     this.isLiveActive = true;
   }
@@ -114,7 +119,10 @@ export class LiveLifecycleManagerService {
 
     this.inputRouter.unlockPointer();
 
-    // 1. Detener sesiones volátiles de gameplay y secuencias
+    // 1. Limpiar estado de niebla en runtime
+    this.fogRuntime.clear();
+
+    // 2. Detener sesiones volátiles de gameplay y secuencias
     this.sequenceSvc.pauseExecution();
     this.sequenceSvc.resetearSecuencias();
 
@@ -125,7 +133,7 @@ export class LiveLifecycleManagerService {
     this.playerCamSvc.updateFirstPersonVisibility(false);
     this.playerCamSvc.limpiarPivotTPS();
 
-    // 2. Normalizar configuraciones globales de hardware conservando sombreadores en VRAM
+    // 3. Normalizar configuraciones globales de hardware conservando sombreadores en VRAM
     const engine = this.motor3d.getEngine();
     if (engine) {
       engine.setHardwareScalingLevel(1.0);
@@ -140,7 +148,7 @@ export class LiveLifecycleManagerService {
     }
     this.shadowQualitySvc.setQualityTier('HIGH');
 
-    // 3. Restauración limpia de entidades: descartar las volátiles y restaurar backups autorales
+    // 4. Restauración limpia de entidades: descartar las volátiles y restaurar backups autorales
     const entities = this.entityManager.getAllEntities();
     
     for (let i = entities.length - 1; i >= 0; i--) {
@@ -165,11 +173,11 @@ export class LiveLifecycleManagerService {
       }
     }
 
-    // 4. Reconciliación simétrica del pool de luces y sombras sin purgar materiales útiles
+    // 5. Reconciliación simétrica del pool de luces y sombras sin purgar materiales útiles
     this.dynLighting.reconcileSceneLights();
     this.shadowOrchestrator.reconcileShadows();
 
-    // 5. Salir del sandbox de variables de juego y reactivar triggers de editor
+    // 6. Salir del sandbox de variables de juego y reactivar triggers de editor
     this.gameState.exitSandbox();
     this.playerTriggerSvc.start();
     this.sceneNodesSvc.actualizarListaNodos();

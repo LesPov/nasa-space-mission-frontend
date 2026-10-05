@@ -5,13 +5,14 @@ import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
 import { WorldSettingsService } from '../../world/world-settings.service';
 import { FogRendererService } from './fog-renderer.service';
-import { FogLevel } from '../../models/player-config.model';
+import { FogLevel, PlayerFogConfig } from '../../models/player-config.model';
 import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 import { GameContextService } from '../../session/game-context.service';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameMode } from '../../session/game-mode.model';
 import { ProfilerTogglesService } from '../../telemetry/profiler-toggles.service';
 import { GameEntity } from '../../entities/game.entity';
+import { FogRuntimeService } from './fog/fog-runtime.service';
 
 @Injectable({ providedIn: 'root' })
 export class FogOrchestratorService implements IUpdatable {
@@ -23,6 +24,7 @@ export class FogOrchestratorService implements IUpdatable {
   private context = inject(GameContextService);
   private entityManager = inject(EntityManagerService);
   private toggles = inject(ProfilerTogglesService);
+  private fogRuntime = inject(FogRuntimeService);
 
   private firstFrame = true;
 
@@ -61,27 +63,30 @@ export class FogOrchestratorService implements IUpdatable {
     this.firstFrame = true;
     this.fogRenderer.dispose();
   }
-// En fog-orchestrator.service.ts
-public prepareForTestLive(scene: Scene, targetEntity: GameEntity | null, isBW: boolean): void {
-  this.firstFrame = true;
-  if (!scene) return;
 
-  const fog = targetEntity?.playerConfig?.fog;
-  if (fog && fog.enabled) {
-    const activeColorHex = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
-    this.hexToColor3(activeColorHex, this.targetColorObj);
-    
-    scene.fogColor = this.targetColorObj;
-    scene.fogMode = Scene.FOGMODE_LINEAR;
-    scene.fogEnabled = true;
+  public prepareForTestLive(scene: Scene, targetEntity: GameEntity | null, isBW: boolean): void {
+    this.firstFrame = true;
+    if (!scene) return;
 
-    const renderMaxZ = Math.max(60.0, Number(fog.renderDistanceFPS) || 150.0);
-    this.curStart = renderMaxZ * 0.35;
-    this.curEnd = renderMaxZ;
-    scene.fogStart = this.curStart;
-    scene.fogEnd = this.curEnd;
+    const runtimeFog = this.fogRuntime.getRuntimeConfig();
+    const fog = runtimeFog || targetEntity?.playerConfig?.fog;
+
+    if (fog && fog.enabled) {
+      const activeColorHex = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
+      this.hexToColor3(activeColorHex, this.targetColorObj);
+      
+      scene.fogColor = this.targetColorObj;
+      scene.fogMode = Scene.FOGMODE_LINEAR;
+      scene.fogEnabled = true;
+
+      const renderMaxZ = Math.max(60.0, Number(fog.renderDistanceFPS) || 150.0);
+      this.curStart = renderMaxZ * 0.35;
+      this.curEnd = renderMaxZ;
+      scene.fogStart = this.curStart;
+      scene.fogEnd = this.curEnd;
+    }
   }
-}
+
   public postUpdate(dtMs: number): void {
     const scene = this.motor3d.getScene();
     if (!scene) return;
@@ -124,21 +129,25 @@ public prepareForTestLive(scene: Scene, targetEntity: GameEntity | null, isBW: b
     let shadowLimit = 500000;
 
     const isFPS = this.context.cameraView() === 'FPS';
-    const lerpSpeed = isPlaying ? 0.35 : 0.05;
+    const isLiveEditing = this.fogRuntime.isLiveEditing();
+    const lerpSpeed = isLiveEditing ? 1.0 : (isPlaying ? 0.35 : 0.05);
 
     let targetR = 0, targetG = 0, targetB = 0;
     let useFog = false;
     let activeLevels: FogLevel[] = [];
 
-    // Determinación determinista de niebla
-    if (targetEntity?.playerConfig?.fog?.enabled) {
-      if (isPlaying || mode === GameMode.EDITING_IN_GAME || mode === GameMode.TEST_LIVE) {
-        useFog = true;
-      }
+    const isTestLiveOrPlaying = isPlaying || mode === GameMode.EDITING_IN_GAME || mode === GameMode.TEST_LIVE;
+    const runtimeConfig = (isTestLiveOrPlaying && this.fogRuntime.hasActiveConfig()) 
+      ? this.fogRuntime.getRuntimeConfig() 
+      : null;
+
+    const fog: PlayerFogConfig | undefined = runtimeConfig || targetEntity?.playerConfig?.fog;
+
+    if (fog?.enabled && isTestLiveOrPlaying) {
+      useFog = true;
     }
 
-    if (useFog && targetEntity?.playerConfig?.fog) {
-      const fog = targetEntity.playerConfig.fog;
+    if (useFog && fog) {
       const activeColorHex = isBW ? (fog.colorBW || '#888888') : (fog.color || '#0d1729');
 
       this.hexToColor3(activeColorHex, this.targetColorObj);
@@ -150,11 +159,10 @@ public prepareForTestLive(scene: Scene, targetEntity: GameEntity | null, isBW: b
         ? (isFPS ? fog.renderDistanceFpsBW : fog.renderDistanceTpsBW) 
         : (isFPS ? fog.renderDistanceFPS : fog.renderDistanceTPS);
 
-      const renderMaxZ = Math.max(60.0, Number(rawDist) || 150.0);
+      const renderMaxZ = Math.max(30.0, Number(rawDist) || 150.0);
       shadowLimit = renderMaxZ;
       activeLevels = isBW ? (isFPS ? fog.levelsFpsBW : fog.levelsTpsBW) : (isFPS ? fog.levelsFPS : fog.levelsTPS);
 
-      // Fusión lineal exacta: el shader de niebla cubre los objetos hasta fundirlos completamente al llegar al corte
       this.curStart = renderMaxZ * 0.35;
       this.curEnd = renderMaxZ;
     } else {
@@ -165,7 +173,7 @@ public prepareForTestLive(scene: Scene, targetEntity: GameEntity | null, isBW: b
       this.curEnd = 500000;
     }
 
-    if (this.firstFrame) {
+    if (this.firstFrame || isLiveEditing) {
       this.curR = targetR; 
       this.curG = targetG; 
       this.curB = targetB;
@@ -185,7 +193,7 @@ public prepareForTestLive(scene: Scene, targetEntity: GameEntity | null, isBW: b
     this.fogRenderer.renderFogWalls(
       scene, targetPlayer, useFog, activeLevels, 
       this.targetColorObj, globalClearHex, isFogDisabledTemp, 
-      this.firstFrame, lerpSpeed, shadowLimit, false
+      this.firstFrame || isLiveEditing, lerpSpeed, shadowLimit, false
     );
 
     this.firstFrame = false;

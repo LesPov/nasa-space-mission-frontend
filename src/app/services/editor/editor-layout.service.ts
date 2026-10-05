@@ -1,5 +1,4 @@
 
-
 import { Injectable, inject, signal } from '@angular/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { EditorStateService } from './editor-state.service';
@@ -13,16 +12,22 @@ export class EditorLayoutService {
   public showInspector = signal<boolean>(true);
   public showTimeline = signal<boolean>(true);
   
-  // 🔥 FIX: Aumentamos el tamaño inicial del panel derecho (Inspector) para mayor comodidad visual
+  // Solicitud externa de pestaña para el inspector (ej: 'fog', 'transform', etc.)
+  public inspectorRequestedTab = signal<string | null>(null);
+
   public inspectorWidth = signal<number>(450); 
-  
-  // 🔥 FIX: Reducimos un poco el alto del timeline para dejar más espacio al canvas
   public timelineHeight = signal<number>(25); 
   
   public isResizing = signal<boolean>(false);
   public isResizingTimeline = signal<boolean>(false);
   
   private lastResizeTime = 0;
+
+  public requestInspectorTab(tab: string): void {
+    this.showInspector.set(true);
+    this.inspectorRequestedTab.set(tab);
+    this.recalcularMotor();
+  }
 
   public toggleInspector(): void {
     this.showInspector.set(!this.showInspector());
@@ -73,13 +78,12 @@ export class EditorLayoutService {
       changed = true;
     }
     
-    // Throttle resize event to avoid Engine crash and CPU burn
     if (changed) {
-        const now = performance.now();
-        if (now - this.lastResizeTime > 16) {
-            this.motor3dSvc.forceResize();
-            this.lastResizeTime = now;
-        }
+      const now = performance.now();
+      if (now - this.lastResizeTime > 16) {
+        this.motor3dSvc.forceResize();
+        this.lastResizeTime = now;
+      }
     }
   }
 

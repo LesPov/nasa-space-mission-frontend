@@ -1,6 +1,4 @@
-// RUTA: src/app/components/inspector-escena/inspector-properties/inspector-properties.ts
-// ACCIÓN: MODIFICAR
-
+// file: src/app/components/inspector-escena/inspector-properties/inspector-properties.ts
 import { Component, inject, OnInit, OnDestroy, ChangeDetectorRef, effect, Input, Output, EventEmitter, computed } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -19,6 +17,8 @@ import { EditorCinematicToolsService } from '../../../services/editor-cinematic-
 import { EditorCinematicProxyService } from '../../../services/editor-cinematic-proxy.service';
 import { CinematicPlaybackManagerService } from '../../../core/engine/runtime/cinematics/cinematic-playback-manager.service';
 import { GameEntity, PartOverridesComponent } from '../../../core/engine/entities/game.entity';
+import { GameContextService } from '../../../core/engine/session/game-context.service';
+import { GameMode } from '../../../core/engine/session/game-mode.model';
 
 import { PropTransform } from './prop-transform/prop-transform';
 import { PropTrigger } from './prop-trigger/prop-trigger';
@@ -37,14 +37,15 @@ import { PropPart } from './prop-part/prop-part';
 import { PropEditorCamera } from './prop-editor-camera/prop-editor-camera';
 import { TimelinePrefabsTab } from '../../global-timeline/tabs/timeline-prefabs-tab/timeline-prefabs-tab';
 import { PropProfilerComponent } from './prop-profiler/prop-profiler';
-  
+import { PropFogComponent } from './prop-fog/prop-fog';
+   
 @Component({
   selector: 'app-inspector-properties',
   standalone: true,
   imports: [
     CommonModule, FormsModule, PropTransform, PropTrigger, PropPlayer, PropSequences, 
     PropAnimation, PropPhysics, PropWorld, PropPlatform, PropEditorCamera, PropLight, PropBubble, PropVideo, PropMission, 
-    CinematicInspector, PropPart, TimelinePrefabsTab, PropProfilerComponent
+    CinematicInspector, PropPart, TimelinePrefabsTab, PropProfilerComponent, PropFogComponent
   ],
   templateUrl: './inspector-properties.html',
   styleUrl: './inspector-properties.css'
@@ -62,6 +63,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
   private playbackManager = inject(CinematicPlaybackManagerService);
   private cdr = inject(ChangeDetectorRef);
   private editorMapa = inject(EditorMapaService);
+  public gameContext = inject(GameContextService);
 
   private _pestanaActiva: string = 'transform';
   @Input() set pestanaActiva(val: string) { 
@@ -86,6 +88,11 @@ export class InspectorProperties implements OnInit, OnDestroy {
 
   public sceneEntities = computed(() => this.entityManager.getAllEntities().map(e => ({uid: e.uid, name: e.name})).sort((a,b)=>a.name.localeCompare(b.name)));
 
+  get isTestLiveMode(): boolean {
+    const mode = this.gameContext.mode();
+    return mode === GameMode.TEST_LIVE || mode === GameMode.EDITING_IN_GAME;
+  }
+
   get partDisplayName(): string {
     if (!this.esParte || !this.objetoActual || !this.rootEntityForPart) return '';
     const override = this.rootEntityForPart.partOverrides?.overrides[this.objetoActual.name];
@@ -105,7 +112,6 @@ export class InspectorProperties implements OnInit, OnDestroy {
     }
     
     this.rootEntityForPart.partOverrides.overrides[this.objetoActual.name].displayName = valClean;
-    
     this.rootEntityForPart.isDirty = true;
     this.editorMapa.onMapChanged.next();
   }
@@ -154,7 +160,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
         if (this.esParte) {
            this.familiaResumen = 'Parte Interna 3D';
            this.rootEntityForPart = this.entityManager.getEntityByMesh(rootNode as AbstractMesh) || null;
-           if (this.pestanaActiva !== 'part' && this.pestanaActiva !== 'profiler') this.cambiarPestana('part');
+           if (this.pestanaActiva !== 'part' && this.pestanaActiva !== 'profiler' && this.pestanaActiva !== 'fog') this.cambiarPestana('part');
         } else {
            this.rootEntityForPart = null;
 
@@ -163,15 +169,15 @@ export class InspectorProperties implements OnInit, OnDestroy {
            this.esLuzConModelo = this.esLuz && !!entity?.visual?.assetId;
            this.esBurbuja = type === 'bubble';
            this.esVideo = type === 'video_plane';
-           this.esPersonaje = !!entity?.characterConfig;
+           this.esPersonaje = !!entity?.characterConfig || entity?.rol === 'player' || entity?.rol === 'npc';
            
            if (this.esLuz) {
              this.familiaResumen = this.esLuzConModelo ? 'Luz con Modelo 3D' : 'Fuente de Luz';
-             if (this.pestanaActiva !== 'light' && this.pestanaActiva !== 'transform' && this.pestanaActiva !== 'profiler') {
+             if (this.pestanaActiva !== 'light' && this.pestanaActiva !== 'transform' && this.pestanaActiva !== 'profiler' && this.pestanaActiva !== 'fog') {
                this.cambiarPestana('light');
              }
            } else if (this.esPersonaje) {
-             this.familiaResumen = 'Personaje / Player';
+             this.familiaResumen = 'Personaje / Actor';
            } else if (this.esTrigger) {
              this.familiaResumen = 'Trigger de Evento';
            } else if (this.esBurbuja) {
@@ -182,7 +188,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
              this.familiaResumen = 'Objeto normal';
            }
            
-           if (this.pestanaActiva !== 'profiler') {
+           if (this.pestanaActiva !== 'profiler' && this.pestanaActiva !== 'fog') {
              if (this.pestanaActiva === 'part') this.cambiarPestana('transform');
              if (this.pestanaActiva === 'player' && (!this.esPersonaje || this.esTrigger)) this.cambiarPestana('transform');
              if (this.pestanaActiva === 'animation' && (!this.esPersonaje && !this.esLuzConModelo)) this.cambiarPestana('transform');
@@ -204,7 +210,16 @@ export class InspectorProperties implements OnInit, OnDestroy {
         this.esVideo = false;
         this.familiaResumen = 'Sin selección';
         
-        if (this.pestanaActiva !== 'world' && this.pestanaActiva !== 'platform' && this.pestanaActiva !== 'editorCam' && this.pestanaActiva !== 'mission' && this.pestanaActiva !== 'cinematic' && this.pestanaActiva !== 'prefabs' && this.pestanaActiva !== 'profiler') {
+        if (
+          this.pestanaActiva !== 'world' && 
+          this.pestanaActiva !== 'platform' && 
+          this.pestanaActiva !== 'editorCam' && 
+          this.pestanaActiva !== 'mission' && 
+          this.pestanaActiva !== 'cinematic' && 
+          this.pestanaActiva !== 'prefabs' && 
+          this.pestanaActiva !== 'profiler' &&
+          this.pestanaActiva !== 'fog'
+        ) {
           if (this.stateSvc.activeBottomTab() === 'director') {
               this.cambiarPestana('cinematic');
           } else {
@@ -218,7 +233,7 @@ export class InspectorProperties implements OnInit, OnDestroy {
     effect(() => {
       const bottomTab = this.stateSvc.activeBottomTab();
       if (bottomTab === 'director') {
-        if (this.pestanaActiva !== 'cinematic' && this.pestanaActiva !== 'profiler') {
+        if (this.pestanaActiva !== 'cinematic' && this.pestanaActiva !== 'profiler' && this.pestanaActiva !== 'fog') {
            this.cambiarPestana('cinematic');
         }
       } else if (this.pestanaActiva === 'cinematic') {

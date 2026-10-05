@@ -26,6 +26,7 @@ import { ShadowQualityService } from '../../core/engine/runtime/shadows/shadow-q
 import { PlayerSequenceService } from '../../core/engine/runtime/systems/player-sequence.service';
 import { PerformanceIncidentService } from '../../core/engine/telemetry/performance-incident.service';
 import { RuntimeReadinessBarrierService } from '../../core/engine/runtime/live/runtime-readiness-barrier.service';
+import { FogRuntimeService } from '../../core/engine/runtime/systems/fog/fog-runtime.service';
 
 export interface EditorCameraSnapshot {
   target: Vector3;
@@ -58,6 +59,7 @@ export class EditorPlayModeService {
   private readinessBarrier = inject(RuntimeReadinessBarrierService);
   private sequenceSvc = inject(PlayerSequenceService);
   private incidentSvc = inject(PerformanceIncidentService);
+  private fogRuntime = inject(FogRuntimeService);
 
   private editorSnapshot: EditorCameraSnapshot | null = null;
   private pendingFlightParams: any = null;
@@ -120,6 +122,9 @@ export class EditorPlayModeService {
     this.gameContext.setCameraView(vista);
     this.state.seleccionarObjeto(null);
     this.gameContext.setActivePlayer(playerEntity);
+
+    // Inicializar configuración runtime de niebla para Test Live
+    this.fogRuntime.initForTestLive(playerEntity);
 
     this.readinessBarrier.setStage('BUILDING_SPATIAL_GROUPS', 'Estructurando grupos espaciales...');
     if (onProgress) onProgress('Estructurando grupos espaciales...', 30);
@@ -276,6 +281,8 @@ export class EditorPlayModeService {
     this.sequenceSvc.pauseExecution();
     this.sequenceSvc.resetearSecuencias();
 
+    this.fogRuntime.clear();
+
     this.readinessBarrier.reset();
     this.spatialGroups.clear();
     this.ownership.releaseGameplayOwnership();
@@ -350,3 +357,4 @@ export class EditorPlayModeService {
     this.highlightSvc.forceResetLightVisuals();
   }
 }
+ 

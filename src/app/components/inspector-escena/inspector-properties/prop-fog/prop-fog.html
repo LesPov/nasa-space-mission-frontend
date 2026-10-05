@@ -1,0 +1,185 @@
+<!-- file: src/app/components/inspector-escena/inspector-properties/prop-fog/prop-fog.html -->
+<div class="fog-shell">
+  
+  <!-- BANNER DE CONTEXTO VISUAL -->
+  <div class="mode-banner" [class.live]="isLiveMode" [class.editor]="!isLiveMode">
+    <span>{{ isLiveMode ? '⚡ MODO EN VIVO (TEST LIVE)' : '🛠️ MODO AUTORAL (EDITOR)' }}</span>
+    <span class="status-pill-small" [class.active]="isLiveMode" [class.info]="!isLiveMode">
+      {{ isLiveMode ? 'NIEBLA VISIBLE' : 'NIEBLA OFF EN VIEWPORT' }}
+    </span>
+  </div>
+
+  <div *ngIf="!isLiveMode" class="help-text" style="color: #94a3b8; background: #020617; padding: 6px 10px; border-radius: 4px; border: 1px solid #334155;">
+    ℹ️ Entidad: <b style="color: #60a5fa;">{{ targetEntity?.name || 'Actor' }}</b>. El viewport del Editor permanece limpio sin niebla. Al entrar en <b>▶️ Jugar Preview</b> se activa la niebla en el escenario.
+  </div>
+
+  <div *ngIf="isLiveMode" class="help-text" style="color: #4ade80; background: #020617; padding: 6px 10px; border-radius: 4px; border: 1px solid #334155;">
+    🎯 Editando niebla de: <b style="color: #ffffff;">{{ targetEntity?.name || 'Jugador' }}</b>
+  </div>
+
+  <!-- BOTONES DE PERSISTENCIA CUANDO HAY CAMBIOS EN TEST LIVE -->
+  <div class="actions-row" *ngIf="isLiveMode">
+    <button class="btn-primary full" (click)="guardarEnMapa()" [disabled]="!hasChanges">
+      💾 Guardar en Mapa
+    </button>
+    <button class="btn-ghost small" (click)="descartarCambios()" [disabled]="!hasChanges" title="Descartar cambios temporales">
+      ↺ Descartar
+    </button>
+  </div>
+
+  <!-- 1. ACTIVACIÓN PRINCIPAL -->
+  <div class="checkbox-modern fog-enable-box">
+    <input type="checkbox" id="chkActiveFog" [ngModel]="fogConfig.enabled" (ngModelChange)="setFogEnabled($event)">
+    <label for="chkActiveFog">Activar Niebla Volumétrica</label>
+  </div>
+
+  <ng-container *ngIf="fogConfig.enabled">
+
+    <!-- SELECTOR DE MODALIDAD (FPS / TPS / B&W) -->
+    <div class="ring-selector-container">
+      <button class="ring-tab" [class.active]="activeFogMode === 'FPS'" (click)="activeFogMode = 'FPS'">👁️ FPS</button>
+      <button class="ring-tab" [class.active]="activeFogMode === 'TPS'" (click)="activeFogMode = 'TPS'">🧍 TPS</button>
+      <button class="ring-tab" [class.active]="activeFogMode === 'FPS_BW'" (click)="activeFogMode = 'FPS_BW'">🎞️ FPS B&N</button>
+      <button class="ring-tab" [class.active]="activeFogMode === 'TPS_BW'" (click)="activeFogMode = 'TPS_BW'">🎞️ TPS B&N</button>
+    </div>
+
+    <!-- DISTANCIA DE CORTE Y COLOR BASE GLOBAL -->
+    <div class="section-card">
+      <div class="section-head">
+        <h4>Fondo y Distancia de Corte</h4>
+      </div>
+      <div style="padding: 12px; display: flex; flex-direction: column; gap: 10px;">
+        <div class="field wide">
+          <label>Distancia Corte / Render (Z)</label>
+          <div class="slider-row">
+            <input type="range" min="20" max="800" step="5" [ngModel]="getRenderDistance()" (ngModelChange)="setRenderDistance($event)" class="slider">
+            <input type="number" min="20" max="800" step="5" [ngModel]="getRenderDistance()" (ngModelChange)="setRenderDistance($event)" style="width: 70px;">
+          </div>
+          <p class="help-text">Distancia máxima donde la niebla funde completamente la visibilidad.</p>
+        </div>
+
+        <div class="field wide">
+          <label>Color Base Global ({{ isBWMode ? 'Blanco y Negro' : 'Normal' }})</label>
+          <div class="color-box-modern">
+            <input type="color" [ngModel]="getGlobalColor()" (ngModelChange)="setGlobalColor($event)" class="color-swatch-input">
+            <span class="hex-text">{{ getGlobalColor() | uppercase }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SELECTOR DE ANILLOS / NIVELES -->
+    <div class="ring-selector-container">
+      <button *ngFor="let i of [0, 1, 2]" class="ring-tab" [class.active]="activeRingIndex === i" (click)="activeRingIndex = i">
+        <div class="radio-circle"></div> Anillo {{ i + 1 }}
+      </button>
+    </div>
+
+    <!-- PROPIEDADES DEL ANILLO ACTIVO -->
+    <div class="ring-editor" *ngIf="currentLevel as lvl">
+      <div class="ring-header">
+        <div class="ring-title-box">
+          <h3>Parámetros del Anillo {{ activeRingIndex + 1 }}</h3>
+        </div>
+        <button class="btn-ghost small" (click)="resetAnillo(activeRingIndex)">🔄 Reset</button>
+      </div>
+
+      <div class="grid-2">
+        <div class="field">
+          <label>Distancia (Z m)</label>
+          <div class="slider-row">
+            <input type="number" min="1" max="400" step="1" [(ngModel)]="lvl.distance" (ngModelChange)="onLevelPropChange('distance', lvl.distance)">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Altura (Y m)</label>
+          <div class="slider-row">
+            <input type="number" min="1" max="200" step="1" [(ngModel)]="lvl.height" (ngModelChange)="onLevelPropChange('height', lvl.height)">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Grosor (Z m)</label>
+          <div class="slider-row">
+            <input type="number" min="1" max="150" step="1" [(ngModel)]="lvl.thickness" (ngModelChange)="onLevelPropChange('thickness', lvl.thickness)">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Elevación (Offset Y m)</label>
+          <div class="slider-row">
+            <input type="number" min="-50" max="50" step="0.5" [(ngModel)]="lvl.offsetY" (ngModelChange)="onLevelPropChange('offsetY', lvl.offsetY)">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Opacidad Total (%)</label>
+          <div class="slider-row">
+            <input type="range" min="0" max="100" step="1" [(ngModel)]="lvl.opacity" (ngModelChange)="onLevelPropChange('opacity', lvl.opacity)" class="slider">
+            <input type="number" min="0" max="100" step="1" [(ngModel)]="lvl.opacity" (ngModelChange)="onLevelPropChange('opacity', lvl.opacity)" style="width: 50px;">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Color Nivel (Opcional)</label>
+          <div class="color-box-modern">
+            <input type="color" [ngModel]="lvl.color || getGlobalColor()" (ngModelChange)="onLevelPropChange('color', $event)" class="color-swatch-input">
+            <button class="btn-ghost small" (click)="onLevelPropChange('color', undefined)" title="Limpiar y usar color global">✕</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- MATRIZ DE 12 CAPAS CONCÉNTRICAS -->
+      <div class="matrix-card">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+          <h5 style="margin: 0; font-size: 10px; color: #94a3b8; text-transform: uppercase;">12 Capas Concéntricas (1 = Centro, 12 = Borde)</h5>
+          <span style="font-size: 9px; color: #64748b;">Click: +5% | Click Der: -5%</span>
+        </div>
+
+        <div class="matrix-grid">
+          <div class="matrix-row">
+            <div class="matrix-label">Capa</div>
+            <div class="matrix-cells">
+              <div *ngFor="let idx of indices12" class="m-cell header-cell">{{ idx + 1 }}</div>
+            </div>
+          </div>
+
+          <div class="matrix-row">
+            <div class="matrix-label">Opac (%)</div>
+            <div class="matrix-cells">
+              <div *ngFor="let idx of indices12" 
+                   class="m-cell value-cell blue-cell" 
+                   (click)="ajustarCapa(lvl, 'opacity', idx, 5, $event)" 
+                   (contextmenu)="ajustarCapa(lvl, 'opacity', idx, -5, $event)">
+                {{ (lvl.layerOpacities && lvl.layerOpacities[idx] !== undefined) ? lvl.layerOpacities[idx] : 100 }}
+              </div>
+            </div>
+          </div>
+
+          <div class="matrix-row">
+            <div class="matrix-label">Alto (%)</div>
+            <div class="matrix-cells">
+              <div *ngFor="let idx of indices12" 
+                   class="m-cell value-cell green-cell" 
+                   (click)="ajustarCapa(lvl, 'height', idx, 5, $event)" 
+                   (contextmenu)="ajustarCapa(lvl, 'height', idx, -5, $event)">
+                {{ (lvl.layerHeights && lvl.layerHeights[idx] !== undefined) ? lvl.layerHeights[idx] : 100 }}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RESTAURACIÓN COMPLETA -->
+    <button class="btn-ghost small full" style="border: 1px solid #334155; margin-top: 4px;" (click)="restaurarValoresSilentHill()">
+      <span class="icon">🔄</span> Restaurar Preset Original (Silent Hill)
+    </button>
+
+  </ng-container>
+
+  <div class="status-line" *ngIf="statusMessage">{{ statusMessage }}</div>
+
+</div>

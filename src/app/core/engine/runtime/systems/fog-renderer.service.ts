@@ -28,16 +28,26 @@ export class FogRendererService {
   public lastAnchorPosition = { x: 0, y: 0, z: 0 };
   public lastRingDistances: number[] = [15, 45, 90];
 
-  // Caché de estado para evitar llamadas a Babylon en reposo (de 2.4ms a 0.05ms)
   private prevRenderAnchorX = -99999;
   private prevRenderAnchorY = -99999;
   private prevRenderAnchorZ = -99999;
   private prevTargetColorHex = '';
+  private prevLevelsHash = '';
+
+  private readonly MAX_CAPAS_POR_ANILLO = 12;
 
   constructor() { 
     for (let i = 0; i < 3; i++) {
       this.wallStates.push(new FogWallState()); 
     }
+  }
+
+  public invalidateCache(): void {
+    this.prevRenderAnchorX = -99999;
+    this.prevRenderAnchorY = -99999;
+    this.prevRenderAnchorZ = -99999;
+    this.prevTargetColorHex = '';
+    this.prevLevelsHash = '';
   }
 
   private hexToColor3(hex: string, result: Color3): void {
@@ -115,10 +125,18 @@ export class FogRendererService {
     this.gradTex = null;
     this.currentScene = null;
 
-    this.prevRenderAnchorX = -99999;
-    this.prevRenderAnchorY = -99999;
-    this.prevRenderAnchorZ = -99999;
-    this.prevTargetColorHex = '';
+    this.invalidateCache();
+  }
+
+  private computeLevelsHash(levels: FogLevel[]): string {
+    if (!levels || levels.length === 0) return '';
+    let hash = '';
+    for (let i = 0; i < levels.length; i++) {
+      const l = levels[i];
+      if (!l) continue;
+      hash += `${i}:${l.distance}_${l.height}_${l.opacity}_${l.thickness}_${l.offsetY}_${l.color || ''}|`;
+    }
+    return hash;
   }
 
   public renderFogWalls(
@@ -167,11 +185,14 @@ export class FogRendererService {
     this.lastAnchorPosition.y = anchorY;
     this.lastAnchorPosition.z = anchorZ;
 
-    // Filtro de reposo: Evitar trabajo de CPU si la posición no varió más de 2cm y los colores son iguales
+    const currentLevelsHash = this.computeLevelsHash(activeLevels);
+
     const dx = Math.abs(anchorX - this.prevRenderAnchorX);
     const dy = Math.abs(anchorY - this.prevRenderAnchorY);
     const dz = Math.abs(anchorZ - this.prevRenderAnchorZ);
-    const isStationary = !firstFrame && dx < 0.02 && dy < 0.02 && dz < 0.02 && this.prevTargetColorHex === globalClearHex;
+    const isStationary = !firstFrame && dx < 0.02 && dy < 0.02 && dz < 0.02 && 
+                         this.prevTargetColorHex === globalClearHex && 
+                         this.prevLevelsHash === currentLevelsHash;
 
     if (isStationary && this.fogWalls.length === 3) {
       return;
@@ -181,8 +202,9 @@ export class FogRendererService {
     this.prevRenderAnchorY = anchorY;
     this.prevRenderAnchorZ = anchorZ;
     this.prevTargetColorHex = globalClearHex;
+    this.prevLevelsHash = currentLevelsHash;
 
-    const capasDeGrosor = 6;
+    const totalCapas = this.MAX_CAPAS_POR_ANILLO;
 
     for (let i = 0; i < 3; i++) {
       if (!this.fogWalls[i] || this.fogWalls[i].isDisposed()) {
@@ -190,7 +212,7 @@ export class FogRendererService {
         this.fogMats[i] = []; 
         this.fogShells[i] = [];
         
-        for (let j = capasDeGrosor - 1; j >= 0; j--) {
+        for (let j = totalCapas - 1; j >= 0; j--) {
           const mat = new StandardMaterial(`sharedFogMat_${i}_${j}`, scene);
           mat.disableLighting = true; 
           mat.alphaMode = Engine.ALPHA_COMBINE;
@@ -234,20 +256,22 @@ export class FogRendererService {
       
       this.tColorCache.copyFrom(targetColor);
 
-      if (useFog && activeLevels && activeLevels[i]) {
-        tDist = Math.max(15.0, activeLevels[i].distance);
-        tHeight = Math.max(2.0, activeLevels[i].height);
-        tAlpha = Math.max(0, Math.min(100, activeLevels[i].opacity)) / 100;
-        tThick = Math.max(1.0, activeLevels[i].thickness ?? 15);
-        tOffsetY = activeLevels[i].offsetY ?? 0;
-        if (activeLevels[i].color) {
-          this.hexToColor3(activeLevels[i].color!, this.tColorCache);
+      const level = activeLevels && activeLevels[i];
+
+      if (useFog && level) {
+        tDist = Math.max(1.0, level.distance);
+        tHeight = Math.max(1.0, level.height);
+        tAlpha = Math.max(0, Math.min(100, level.opacity)) / 100;
+        tThick = Math.max(1.0, level.thickness ?? 15);
+        tOffsetY = level.offsetY ?? 0;
+        if (level.color) {
+          this.hexToColor3(level.color, this.tColorCache);
         }
       }
 
       this.lastRingDistances[i] = tDist;
 
-      if (firstFrame) {
+      if (firstFrame || lerpSpeed >= 0.99) {
         state.dist = tDist; 
         state.height = tHeight; 
         state.alpha = tAlpha; 
@@ -275,22 +299,38 @@ export class FogRendererService {
       const halfThick = state.thickness / 2;
       const shells = this.fogShells[i];
 
-      for (let j = 0; j < capasDeGrosor; j++) {
+      const activeSubCapas = level?.layerOpacities ? Math.min(totalCapas, level.layerOpacities.length) : 6;
+      const numCapas = Math.max(1, activeSubCapas);
+
+      for (let j = 0; j < totalCapas; j++) {
         const shell = shells[j];
         if (!shell || shell.isDisposed()) continue;
 
-        const offsetNormalized = -1 + (j * (2 / Math.max(1, capasDeGrosor - 1)));
+        if (j >= numCapas) {
+          shell.isVisible = false;
+          continue;
+        }
+
+        const offsetNormalized = numCapas > 1 ? -1 + (j * (2 / (numCapas - 1))) : 0;
         const targetRadius = curDist + (offsetNormalized * halfThick);
         const localScaleX = targetRadius / curDist;
         
-        shell.scaling.set(localScaleX, 1.0, localScaleX);
+        const hFactor = (level?.layerHeights && level.layerHeights[j] !== undefined)
+          ? Math.max(0.01, level.layerHeights[j] / 100)
+          : 1.0;
+
+        shell.scaling.set(localScaleX, hFactor, localScaleX);
         shell.position.y = 0;
+
+        const oFactor = (level?.layerOpacities && level.layerOpacities[j] !== undefined)
+          ? Math.max(0.0, Math.min(1.0, level.layerOpacities[j] / 100))
+          : 1.0;
 
         const mat = this.fogMats[i][j];
         mat.emissiveColor.set(state.r, state.g, state.b);
-        mat.alpha = state.alpha * 0.45;
+        mat.alpha = state.alpha * 0.45 * oFactor;
 
-        shell.isVisible = isVisible && mat.alpha > 0.005;
+        shell.isVisible = isVisible && mat.alpha > 0.002;
       }
     }
   }

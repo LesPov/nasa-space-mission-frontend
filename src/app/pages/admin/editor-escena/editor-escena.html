@@ -1,3 +1,4 @@
+
 <!-- src/app/pages/admin/editor-escena/editor-escena.html -->
 <ng-container *ngIf="!editando && !cargandoEscena">
   <div class="galeria-header">
@@ -214,6 +215,11 @@
             <div style="width: 1px; height: 20px; background-color: #333; margin: 0 5px;"></div>
 
             <button class="btn-vp" *ngIf="stateSvc.playState() !== 'TRANSITIONING' && stateSvc.playState() !== 'INTERACTING'" (click)="togglePreviewMission()" [style.color]="stateSvc.previewMissionModal() || mostrarModalMisionPreview ? '#60a5fa' : ''">👁️ UI</button>
+
+            <!-- ACCESO DIRECTO A LA CONFIGURACIÓN DE NIEBLA EN VIVO -->
+            <button class="btn-vp" (click)="abrirAjustesNiebla()" style="color: #38bdf8;" title="Configurar Niebla en Vivo (Test Live) o Datos (Editor)">
+              ☁️ Niebla
+            </button>
           </div>
           
           <div class="vp-right">
@@ -252,7 +258,6 @@
           <app-ui-hud [playState]="stateSvc.playState()"></app-ui-hud>
           <app-ui-radial-menu></app-ui-radial-menu>
           
-          <!-- 🔥 FASE 1: Inyección del selector de roles en Test Live -->
           <app-ui-role-selector></app-ui-role-selector>
 
           <app-ui-mission 

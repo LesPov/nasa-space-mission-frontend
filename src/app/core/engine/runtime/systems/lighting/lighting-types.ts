@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/lighting-types.ts
 import { Color3, PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, AbstractMesh } from '@babylonjs/core';
 import { GameEntity, LightInteriorActivationMode } from '../../../entities/game.entity';
@@ -17,8 +18,11 @@ export const LIGHT_SPATIAL_CONSTANTS = {
   PREPARE_RADIUS: 65.0,
   SHADOW_ACTIVATION_RADIUS: 30.0,
   SHADOW_DEACTIVATION_RADIUS: 35.0,
-  MAX_LOCAL_LIGHTS: 3,
+  
+  // 🔥 FIX ARQUITECTÓNICO: 4 Slots en total (3 principales al 100% + 1 reservado para Fade-Out suave)
+  MAX_LOCAL_LIGHTS: 4, 
   MAX_LOCAL_SHADOWS: 3,
+  
   ZERO_INTENSITY_THRESHOLD: 0.0001,
 
   // --- CALIBRACIÓN DE RETENCIÓN PARA LUCES INTERNAS (PASILLOS Y GIROS) ---

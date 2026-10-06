@@ -154,7 +154,6 @@ export class DynamicLightingSystem implements IUpdatable {
     for (let i = 0; i < virtuals.length; i++) {
       const vl = virtuals[i];
       if (vl.isLightInRange) {
-        // 🔥 FIX BUGS DE FUNDIDO TARDÍO: Las luces iniciales arracan al 100% de intensidad
         vl.targetMultiplier = 1.0;
         vl.currentMultiplier = 1.0;
         vl._lastRenderedMultiplier = 1.0;
@@ -265,7 +264,6 @@ export class DynamicLightingSystem implements IUpdatable {
     for (let i = 0; i < activeVirtuals.length; i++) {
       const vl = activeVirtuals[i];
       if (vl.isLightInRange) {
-        // 🔥 FIX BUGS DE FUNDIDO TARDÍO: Las luces precalentadas arrancan en su intensidad máxima si están en rango
         vl.targetMultiplier = 1.0;
         vl.currentMultiplier = 1.0;
       } else {
@@ -410,7 +408,8 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    const fadeRate = 1.0 - Math.exp(-6.5 * (dtMs / 1000.0));
+    // 🔥 FIX VELOCIDAD FADE: Fundido más lento y cinematográfico para evitar popping
+    const fadeRate = 1.0 - Math.exp(-4.0 * (dtMs / 1000.0));
     const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, isEditorPure ? Math.max(0.65, fadeRate * 2.5) : fadeRate);
 
     if (dtMs > 0) {

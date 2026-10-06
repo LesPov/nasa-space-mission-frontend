@@ -95,7 +95,6 @@ export class LightDistanceService {
       vl.containerName = container ? container.name : undefined;
 
       const group = this.spatialGroups.getGroupForEntity(vl.entity.uid);
-      const isGroupActive = Boolean(group && (group.state === 'ACTIVE' || group.isInsideVolume));
       const isGroupPreparedOrBetter = Boolean(
         group && (
           group.state === 'ACTIVE' || 
@@ -152,13 +151,13 @@ export class LightDistanceService {
         );
 
         // REGLA FUNDAMENTAL DE CONTINUIDAD LUMINOSA EN PASILLOS:
-        // Si el Player está dentro del volumen O si el grupo espacial de este módulo está ACTIVE,
-        // la luz permanece incondicionalmente al 100% (targetMultiplier = 1.0) sin atenuarse en la mitad del túnel.
-        if (contResult.spatialState === 'INSIDE' || isGroupActive) {
+        // La luz respeta ESTRICTAMENTE su geometría de contención. El grupo espacial permite
+        // que la luz se asigne a un slot en background (pre-warm), pero la intensidad se rige 100% por los límites físicos.
+        if (contResult.spatialState === 'INSIDE') {
           vl.targetMultiplier = 1.0;
           vl.isLightInRange = true;
           this.evaluateStateAndDecision(vl, 0, 0, preDist, nowTimeStr, `INSIDE (${contResult.source})`);
-        } else if (contResult.spatialState === 'PRE_ENTRY' || (group && group.state === 'PREACTIVATING')) {
+        } else if (contResult.spatialState === 'PRE_ENTRY') {
           // Aproximación suave hacia el módulo
           vl.targetMultiplier = LightAttenuationCurve.calculate(contResult.distanceToBoundary, 0, preDist);
           vl.isLightInRange = vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
@@ -198,12 +197,11 @@ export class LightDistanceService {
           
           const inShadowZone = Boolean(
             contResult.spatialState === 'INSIDE' || 
-            isGroupActive ||
             (contResult.spatialState === 'PRE_ENTRY' && contResult.distanceToBoundary <= shadowPreDist) ||
             (contResult.spatialState === 'PRE_EXIT' && contResult.distanceToBoundary <= shadowExitMargin)
           );
 
-          vl.isShadowInRange = inShadowZone || Boolean(group && group.state === 'PREACTIVATING');
+          vl.isShadowInRange = inShadowZone;
         } else {
           vl.isShadowInRange = false;
         }
@@ -260,7 +258,6 @@ export class LightDistanceService {
       } else {
         vl.isLightInRange = false;
         
-        // Evitamos marcar como error una luz que simplemente está lejos legalmente
         let rejectionR = undefined;
         if (dist > rDeactivation) rejectionR = 'OUT_OF_EFFECTIVE_RANGE';
         

@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/light-pool.service.ts
 import { Injectable, inject } from '@angular/core';
 import { PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, Color3, Tags, Scene } from '@babylonjs/core';
@@ -27,15 +28,15 @@ export class LightPoolService {
     this.disposePools(); 
     this.currentScene = scene;
 
-    const MAX_LOCAL_SHADER_LIGHTS = LIGHT_SPATIAL_CONSTANTS.MAX_LOCAL_LIGHTS; // 3 slots
+    const MAX_LOCAL_SHADER_LIGHTS = LIGHT_SPATIAL_CONSTANTS.MAX_LOCAL_LIGHTS; // Ahora es 4
 
-    // Slot 0 (Tier HIGH) recibe 1024 para la luz más cercana al Player
-    const pointResolutions = [1024, 512, 256];
-    const spotResolutions = [1024, 1024, 512];
-    const tiers: ShadowTier[] = ['HIGH', 'MEDIUM', 'LOW'];
+    // 🔥 FIX GPU: Mapeo de resoluciones para los 4 slots. El 4to slot (Fade-Out) no consume sombras.
+    const pointResolutions = [1024, 512, 256, 128];
+    const spotResolutions = [1024, 1024, 512, 256];
+    const tiers: ShadowTier[] = ['HIGH', 'MEDIUM', 'LOW', 'LOW'];
 
     for (let i = 0; i < MAX_LOCAL_SHADER_LIGHTS; i++) {
-      // 1. POINT LIGHTS (Omnidireccionales / Cubemaps con atenuación uniforme STANDARD)
+      // 1. POINT LIGHTS
       const pLight = new PointLight(`pool_point_${i}`, new Vector3(0, -99999, 0), scene);
       pLight.intensity = 0; 
       pLight.diffuse = Color3.Black();
@@ -67,7 +68,7 @@ export class LightPoolService {
         shadowTier: tiers[i]
       });
 
-      // 2. SPOT LIGHTS (Focales / Proyecciones 2D con cono suave)
+      // 2. SPOT LIGHTS
       const sLight = new SpotLight(`pool_spot_${i}`, new Vector3(0, -99999, 0), new Vector3(0, -1, 0), Math.PI/3, 1.0, scene);
       sLight.intensity = 0; 
       sLight.diffuse = Color3.Black(); 

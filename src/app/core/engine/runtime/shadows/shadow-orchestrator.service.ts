@@ -1,7 +1,7 @@
 
 // file: src/app/core/engine/runtime/shadows/shadow-orchestrator.service.ts
 import { Injectable, inject } from '@angular/core';
-import { DirectionalLight, Vector3, CascadedShadowGenerator, Scene, AbstractMesh, Mesh, InstancedMesh, Tags, RenderTargetTexture } from '@babylonjs/core';
+import { DirectionalLight, Vector3, CascadedShadowGenerator, Scene, AbstractMesh, Mesh, InstancedMesh, Tags, RenderTargetTexture, Matrix } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../scene/scene-access.token';
 import { EntityManagerService } from '../../entities/entity-manager.service';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -35,10 +35,12 @@ export class ShadowOrchestratorService implements IUpdatable {
   private lastSunAnchorPos = new Vector3(-99999, -99999, -99999);
   private lastSunDir = Vector3.Zero();
 
+  private lastCamMatrix = Matrix.Identity();
+  private framesSinceLastCSMMove = 0;
+
   public profilerDisableShadows = false;
   private forceRebuild = false;
   private rebuildCooldownTimer = 0;
-  private isEditorShadowsFrozen = false;
 
   constructor() {
     this.eventBus.events$.subscribe(e => {
@@ -48,28 +50,11 @@ export class ShadowOrchestratorService implements IUpdatable {
     });
   }
 
-  // ==========================================
-  // FAST METRICS - Zero allocations per frame
-  // ==========================================
   public getFastMetrics() {
     let casters = 0;
     if (this.shadowGenerator) {
       const sm = this.shadowGenerator.getShadowMap();
       if (sm && sm.renderList) casters = sm.renderList.length;
-    }
-    return {
-      activeGenerators: this.shadowGenerator ? 1 : 0,
-      totalCasters: casters,
-      csmMaxZ: this.shadowGenerator?.shadowMaxZ || 0,
-      csmCascades: this.shadowGenerator?.numCascades || 0
-    };
-  }
-
-  // Se mantiene para el Deep Snapshot del Forense (Solo llamado bajo demanda)
-  public getProfilerMetrics() {
-    let casters = 0;
-    if (this.shadowGenerator && this.shadowGenerator.getShadowMap() && this.shadowGenerator.getShadowMap()?.renderList) {
-      casters = this.shadowGenerator.getShadowMap()!.renderList!.length;
     }
     return {
       activeGenerators: this.shadowGenerator ? 1 : 0,
@@ -89,7 +74,6 @@ export class ShadowOrchestratorService implements IUpdatable {
       const sm = this.shadowGenerator.getShadowMap();
       if (sm) {
         sm.resetRefreshCounter();
-        this.isEditorShadowsFrozen = false;
       }
     }
   }
@@ -156,7 +140,6 @@ export class ShadowOrchestratorService implements IUpdatable {
     }
     this.currentScene = null;
     this.lastSunAnchorPos.set(-99999, -99999, -99999);
-    this.isEditorShadowsFrozen = false;
   }
 
   public update(dtMs: number): void {
@@ -173,35 +156,43 @@ export class ShadowOrchestratorService implements IUpdatable {
       this.rebuildCooldownTimer = 150; 
     }
 
-    const mode = this.context.mode();
-    const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
-
-    const moveThresholdSq = isEditor ? 100 : 16;
     const refPos = this.getReferencePosition();
-
-    const hasMovedSignificantly = Vector3.DistanceSquared(this.lastSunAnchorPos, refPos) > moveThresholdSq;
+    const hasMovedSignificantly = Vector3.DistanceSquared(this.lastSunAnchorPos, refPos) > 16.0;
 
     if (hasMovedSignificantly) {
       this.mainSun.position.copyFrom(refPos);
       this.mainSun.direction.scaleToRef(100, this._tempOffset);
       this.mainSun.position.subtractInPlace(this._tempOffset);
       this.lastSunAnchorPos.copyFrom(refPos);
-      this.invalidateShadowMap();
     }
 
     const shadowMap = this.shadowGenerator.getShadowMap();
     if (shadowMap) {
-      if (isEditor) {
-        if (!this.isEditorShadowsFrozen && shadowMap.renderList && shadowMap.renderList.length > 0) {
-          shadowMap.refreshRate = 1;
-          this.isEditorShadowsFrozen = true;
-        } else if (this.isEditorShadowsFrozen) {
-          shadowMap.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+        // 🔥 SMART CSM FREEZE
+        let camMoved = false;
+        const activeCam = scene.activeCamera;
+        if (activeCam) {
+            const currentMat = activeCam.getViewMatrix();
+            // Evitamos la asignación de matrices si no es estrictamente necesario, usando isIdentity o un delta matemático liviano
+            // Babylon's Matrix.equals checks the full 16 indices
+            if (!currentMat.equals(this.lastCamMatrix)) {
+                camMoved = true;
+                this.lastCamMatrix.copyFrom(currentMat);
+            }
         }
-      } else {
-        this.isEditorShadowsFrozen = false;
-        shadowMap.refreshRate = 1;
-      }
+
+        const isMoving = hasMovedSignificantly || camMoved || this.forceRebuild;
+
+        if (isMoving) {
+            this.framesSinceLastCSMMove = 0;
+            shadowMap.refreshRate = 1;
+        } else {
+            this.framesSinceLastCSMMove++;
+            if (this.framesSinceLastCSMMove === 2) {
+                shadowMap.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+                shadowMap.resetRefreshCounter(); // Hornea la última sombra perfectamente estacionaria
+            }
+        }
     }
   }
 

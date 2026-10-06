@@ -2,7 +2,7 @@
 // file: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
-import { Color3, Vector3, AbstractMesh, SpotLight, DirectionalLight, PointLight, Light } from '@babylonjs/core';
+import { Color3, Vector3, AbstractMesh, SpotLight, DirectionalLight, PointLight, Light, Tags } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 import { WorldSettingsService } from '../../../world/world-settings.service';
@@ -71,9 +71,6 @@ export class DynamicLightingSystem implements IUpdatable {
     });
   }
 
-  // ==========================================
-  // FAST METRICS - Zero allocations per frame
-  // ==========================================
   public getFastMetrics() {
     let activeSlots = 0;
     let shadowedSlots = 0;
@@ -89,7 +86,6 @@ export class DynamicLightingSystem implements IUpdatable {
     return { activePool: activeSlots, shadowedPool: shadowedSlots };
   }
 
-  // Se mantiene para el Deep Snapshot del Forense (Solo llamado bajo demanda)
   public getProfilerMetrics() {
     let activeSlots = 0;
     let shadowedSlots = 0;
@@ -191,7 +187,7 @@ export class DynamicLightingSystem implements IUpdatable {
       if (slot.assignedEntityUid) {
         const vl = this.lightRegistry.getVirtualLightByUid(slot.assignedEntityUid);
         if (vl) {
-          this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, true);
+          this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, true, false);
           if (slot.sg && vl.isShadowInRange) {
             const range = slot.type === 'directional' ? 50 : (vl.entity.light?.range || 58);
             this.lightShadows.rebuildShadowRenderList(slot, vl.entity.uid, slot.light.position, range);
@@ -305,7 +301,7 @@ export class DynamicLightingSystem implements IUpdatable {
         if (vl) {
           const tempFirstFrame = this.isFirstFrame;
           this.isFirstFrame = true;
-          this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, true);
+          this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, true, false);
           this.isFirstFrame = tempFirstFrame;
 
           if (slot.sg && vl.isShadowInRange) {
@@ -319,7 +315,51 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
+    const backupLights: any[] = [];
+    const allSlotsForWarmup = this.lightPool.getAllSlots();
+    
+    const allCasters = scene.meshes.filter(m => {
+        return m.isVisible && m.isEnabled() && m.getTotalVertices() > 0 && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || proxy_collider || light_visual");
+    });
+
+    for (let i = 0; i < allSlotsForWarmup.length; i++) {
+      const slot = allSlotsForWarmup[i];
+      let backupRenderList: AbstractMesh[] | undefined;
+
+      if (slot.sg && slot.sg.getShadowMap()) {
+          const sm = slot.sg.getShadowMap()!;
+          backupRenderList = sm.renderList ? [...sm.renderList] : [];
+          sm.renderList = [...allCasters];
+      }
+
+      backupLights.push({
+        intensity: slot.light.intensity,
+        range: slot.type !== 'directional' ? (slot.light as any).range : undefined,
+        renderList: backupRenderList
+      });
+      
+      slot.light.intensity = 0.0001;
+      if (slot.type !== 'directional') {
+        (slot.light as any).range = 10000; 
+      }
+    }
+
     const warmupReport = await this.materialSvc.prewarmMaterials(scene);
+
+    for (let i = 0; i < allSlotsForWarmup.length; i++) {
+      const slot = allSlotsForWarmup[i];
+      const backup = backupLights[i];
+      
+      slot.light.intensity = backup.intensity;
+      if (slot.type !== 'directional') {
+        (slot.light as any).range = backup.range;
+      }
+      
+      if (slot.sg && slot.sg.getShadowMap() && backup.renderList !== undefined) {
+          slot.sg.getShadowMap()!.renderList = backup.renderList;
+      }
+    }
+
     this.profiler.recordTimelineEvent('SHADER', 'SHADER_WARMUP_COMPLETED', {
       durationMs: warmupReport.durationMs,
       compiledVariants: warmupReport.compiledVariants,
@@ -392,7 +432,7 @@ export class DynamicLightingSystem implements IUpdatable {
     }
 
     if (slot) {
-      this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, true);
+      this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, true, false);
       if (slot.sg && vl.isShadowInRange) {
         const range = slot.type === 'directional' ? 50 : (lightComp.range || 58);
         this.lightShadows.rebuildShadowRenderList(slot, entity.uid, slot.light.position, range);
@@ -539,7 +579,7 @@ export class DynamicLightingSystem implements IUpdatable {
 
       this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, shouldRebuildShadows, playerMoved);
 
-      if (slot.sg && vl.isShadowInRange) {
+      if (slot.sg && vl.isShadowInRange && slot.light.intensity > 0) {
         if (slot.isStaticLight && !slot.hasDynamicCasters) statics++;
         else dynamics++;
       }
@@ -607,7 +647,11 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > 0.001 && lightComp.enabled && lightComp.castShadows;
+    // 🔥 Early Drop Asimétrico: La sombra se apaga drásticamente en el Fade-Out al 15%, 
+    // pero en el Fade-In se activa rápidamente desde el 1% para evitar Pop-In visual.
+    const isFadingOut = vl.targetMultiplier < vl.currentMultiplier;
+    const shadowIntensityThreshold = isFadingOut ? 0.15 : 0.01;
+    const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > shadowIntensityThreshold && lightComp.enabled && lightComp.castShadows;
 
     if (slot.sg) {
       const sBias = lightComp.shadowBias ?? 0.0012;
@@ -659,7 +703,8 @@ export class DynamicLightingSystem implements IUpdatable {
           }
         }
 
-        this.lightShadows.applyShadowLOD(slot, isEditorPure, this.getReferencePosition('AUTO'));
+        // 🔥 SMART FREEZE DELEGADO A SHADOW_LOD
+        this.lightShadows.applyShadowLOD(slot, isEditorPure, this.getReferencePosition('AUTO'), playerMoved);
 
         if (listRebuilt || dynamicCasterChanged) {
           slot.sg.getShadowMap()?.resetRefreshCounter();

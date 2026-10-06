@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/light-shadow.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, ShadowGenerator, Vector3, Tags, InstancedMesh, Mesh, RenderTargetTexture, Node } from '@babylonjs/core';
@@ -195,10 +196,6 @@ export class LightShadowService {
     slot.dynamicCastersRegistered.clear();
 
     const ownerEnt = this.entityManager.getEntityByUid(entityUid);
-    const isInteriorLight = ownerEnt?.light?.containmentMode === 'INTERIOR';
-
-    // forceBackFacesOnly = false garantiza que las caras frontales de las paredes (mirando a la luz)
-    // se escriban en el mapa de profundidad para bloquear la luz hacia el exterior.
     slot.sg.forceBackFacesOnly = false;
 
     const cacheKey = `${entityUid}_${slot.type}_${slot.index}`;
@@ -224,8 +221,6 @@ export class LightShadowService {
 
       const parentEnt = this.resolveEntityForMesh(m);
       if (parentEnt && parentEnt.uid === entityUid) continue;
-
-      // El Player se administra de manera independiente mediante syncDynamicActorInSlot
       if (parentEnt && (parentEnt.rol === 'player' || parentEnt.characterConfig)) continue;
 
       m.computeWorldMatrix(true);
@@ -247,14 +242,9 @@ export class LightShadowService {
         }
 
         const meshNameL = m.name ? m.name.toLowerCase() : '';
-        const isFloorName = meshNameL.includes('piso') || meshNameL.includes('floor') || meshNameL.includes('suelo') || meshNameL.includes('ground');
-
-        // Solo se excluye el plano del suelo mundial (piso exterior sin contenedor o de tipo plane),
-        // permitiendo que el piso y las paredes de los modelos 3D del pasillo sí bloqueen la luz hacia afuera.
-        const isWorldFloorMesh = (parentEnt?.type === 'plane' || !parentEnt) && isFloorName;
-        if (isWorldFloorMesh && slot.type === 'point') {
-          continue;
-        }
+        const isWorldFloorMesh = (parentEnt?.type === 'plane' || !parentEnt) && (meshNameL.includes('piso') || meshNameL.includes('floor') || meshNameL.includes('suelo') || meshNameL.includes('ground'));
+        
+        if (isWorldFloorMesh && slot.type === 'point') continue;
 
         renderList.push(m);
         staticMeshesFound.push(m);
@@ -363,27 +353,42 @@ export class LightShadowService {
     return false;
   }
 
-  public applyShadowLOD(slot: PoolSlot, isEditor: boolean, refPos: Vector3): void {
+  public applyShadowLOD(slot: PoolSlot, isEditor: boolean, refPos: Vector3, playerMoved: boolean): void {
     if (!slot.sg || !slot.sg.getShadowMap()) return;
     const distToCam = Vector3.Distance(slot.light.position, refPos);
 
+    // Si es editor puro y luz completamente estática -> Congelar siempre
     if (isEditor && slot.type === 'point' && !slot.hasDynamicCasters && slot.isStaticLight) {
       slot.sg.getShadowMap()!.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
       slot.currentRefreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
       return;
     }
 
+    // Lógica de Gracia para el Frame de Parada (Garantiza el dibujo del último paso del jugador)
+    if (playerMoved || !slot.isStaticLight) {
+      slot._framesSinceStopped = 0;
+    } else {
+      slot._framesSinceStopped = (slot._framesSinceStopped || 0) + 1;
+    }
+
+    const isConsideredMoving = playerMoved || !slot.isStaticLight || slot._framesSinceStopped <= 2;
+
     const rate = this.lodManager.getRefreshRate(
       distToCam,
       !!slot.hasDynamicCasters,
       !slot.isStaticLight,
-      slot.shadowTier || 'HIGH'
+      slot.shadowTier || 'HIGH',
+      isConsideredMoving
     );
 
     const prevRate = slot.sg.getShadowMap()!.refreshRate;
     slot.sg.getShadowMap()!.refreshRate = rate;
     slot.currentRefreshRate = rate;
 
+    // Disparador de limpieza final al congelar (Bake)
+    if (prevRate !== RenderTargetTexture.REFRESHRATE_RENDER_ONCE && rate === RenderTargetTexture.REFRESHRATE_RENDER_ONCE) {
+      slot.sg.getShadowMap()!.resetRefreshCounter();
+    }
     if (prevRate === RenderTargetTexture.REFRESHRATE_RENDER_ONCE && rate !== RenderTargetTexture.REFRESHRATE_RENDER_ONCE) {
       slot.sg.getShadowMap()!.resetRefreshCounter();
     }

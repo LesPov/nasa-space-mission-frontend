@@ -12,7 +12,9 @@ export interface MaterialWarmupReport {
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneMaterialService {
-  public static readonly MAX_SIMULTANEOUS_LIGHTS = 10;
+  // 🔥 FASE 2: Reducido de 10 a 5. El pool físico tiene 4 locales + 1 global.
+  // Esto reduce masivamente las permutaciones de shaders y el peso en GPU VRAM.
+  public static readonly MAX_SIMULTANEOUS_LIGHTS = 5;
   
   private bwTextureCache = new Map<string, Texture>();
 
@@ -189,11 +191,8 @@ export class CoreSceneMaterialService {
     if (material.getClassName().includes('PBR')) {
       if (material.allowShaderHotSwapping !== true) material.allowShaderHotSwapping = true;
 
-      // Habilitar iluminación por ambas caras para que las paredes y tuberías interiores de 1 sola cara se iluminen
       material.twoSidedLighting = true;
       material.backFaceCulling = false;
-
-      // Desactivar atenuación física cuadrática inversa extrema para que el interior brille de forma uniforme
       material.usePhysicalLightFalloff = false;
 
       if (!material.metadata) material.metadata = {};
@@ -212,27 +211,20 @@ export class CoreSceneMaterialService {
         material.metadata.originalDirectIntensity = material.directIntensity ?? 1.0;
       }
 
-      // RESPUESTA DIFUSA DE MATERIALES EN INTERIORES CERRADOS:
-      // Si el material exportado de Blender tiene metallic alto (0.8 - 1.0), el término difuso
-      // PBR se anula casi a cero (1 - metallic). Limitamos el metallic efectivo a 0.35 para que
-      // la textura albedo reciba la luz difusa en el interior conservando el brillo especular.
       const baseMetallic = material.metadata.originalMetallic ?? (material.metallic || 0.0);
       material.metallic = Math.min(baseMetallic, 0.35);
 
-      // Modular roughness para evitar dispersión hiper-mate que apague el relieve
       if (material.roughness !== undefined && material.roughness > 0.90) {
         material.roughness = 0.75;
       }
 
-      // Elevar la respuesta directa para que la luz interna bañe las superficies con energía viva
       material.directIntensity = 1.35;
       material.environmentIntensity = Math.max(material.metadata.originalEnvironmentIntensity || 0.6, 0.6);
 
-      // MANEJO DE TEXTURAS Y COLOR
       if (isExplicitOverride && textureSource === 'solid') {
         material.albedoTexture = null;
         material.albedoColor = c3Tint.clone();
-        material.metallic = 0.1; // Sólido limpio reflectante
+        material.metallic = 0.1; 
         material.roughness = 0.6;
       } else if (isExplicitOverride && textureSource === 'asset' && texturePath && scene) {
         let tex: any = new Texture('http://localhost:4000' + texturePath, scene);
@@ -240,7 +232,6 @@ export class CoreSceneMaterialService {
         material.albedoTexture = tex;
         material.albedoColor = c3Tint.clone();
       } else {
-        // Modo original con tint o color directo
         if (isBW && scene) {
           if (material.metadata.originalAlbedoTexture) {
             const bwTex = await this.getOrCreateBwTexture(material.metadata.originalAlbedoTexture, scene);
@@ -252,7 +243,6 @@ export class CoreSceneMaterialService {
           material.albedoTexture = material.metadata.originalAlbedoTexture;
         }
 
-        // Si el usuario seleccionó un color en el editor, aplicarlo como tinte sobre el albedo
         if (isExplicitOverride && colorHex) {
           material.albedoColor = c3Tint.clone();
         } else if (material.metadata.originalAlbedoColor) {
@@ -260,7 +250,6 @@ export class CoreSceneMaterialService {
         }
       }
 
-      // EMISIÓN Y BRILLO
       if (esEmisivo) {
         const emissiveBase = colorHex ? c3Tint : (material.metadata.originalAlbedoColor || Color3.White());
         material.emissiveColor = emissiveBase.scale(brillo);
@@ -379,13 +368,6 @@ export class CoreSceneMaterialService {
       return { success: false, totalMaterials: 0, compiledVariants: 0, failedCount: 0, durationMs: 0 };
     }
 
-    const wasFogEnabled = scene.fogEnabled;
-    const prevFogMode = scene.fogMode;
-    scene.fogEnabled = true;
-    if (scene.fogMode === Scene.FOGMODE_NONE) {
-      scene.fogMode = Scene.FOGMODE_LINEAR;
-    }
-
     const meshes = customMeshes || scene.meshes;
     const compileTasks: Array<{ mat: Material; mesh: AbstractMesh }> = [];
     const seenPairs = new Set<string>();
@@ -397,6 +379,7 @@ export class CoreSceneMaterialService {
 
       const mat = m.material;
       const isSkinned = (m instanceof Mesh) && (m.skeleton !== null && m.skeleton !== undefined);
+      // El meshKey separa variantes por si la malla recibe sombras, requiere skinning o tiene distinta identidad
       const meshKey = `${mat.uniqueId}_${isSkinned ? 'skinned' : 'static'}_${m.receiveShadows ? 'shadows' : 'noshadows'}`;
 
       if (seenPairs.has(meshKey)) continue;
@@ -426,21 +409,21 @@ export class CoreSceneMaterialService {
 
     let compiledVariants = 0;
     let failedCount = 0;
+    
+    // 🔥 FASE 2: Eliminación del TASK_TIMEOUT_MS estricto para permitir compilaciones reales en cargas frías.
     const MAX_PARALLEL_BATCH = 15;
-    const TASK_TIMEOUT_MS = 600;
 
     for (let i = 0; i < compileTasks.length; i += MAX_PARALLEL_BATCH) {
       const batch = compileTasks.slice(i, i + MAX_PARALLEL_BATCH);
+      
       const batchPromises = batch.map(task => {
         if (typeof (task.mat as any).forceCompilationAsync === 'function') {
-          const compilePromise = (task.mat as any).forceCompilationAsync(task.mesh).then(() => {
+          return (task.mat as any).forceCompilationAsync(task.mesh).then(() => {
             compiledVariants++;
-          }).catch(() => {
+          }).catch((err: any) => {
             failedCount++;
+            console.warn(`[Warmup] Fallo compilación de shader para material ${task.mat.name}`, err);
           });
-
-          const timeoutPromise = new Promise<void>((resolve) => setTimeout(resolve, TASK_TIMEOUT_MS));
-          return Promise.race([compilePromise, timeoutPromise]);
         }
         return Promise.resolve();
       });
@@ -514,3 +497,4 @@ export class CoreSceneMaterialService {
     }
   }
 }
+  

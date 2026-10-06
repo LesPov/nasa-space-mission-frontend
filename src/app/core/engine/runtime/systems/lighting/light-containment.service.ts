@@ -1,4 +1,4 @@
-// file: src/app/core/engine/runtime/systems/lighting/light-containment.service.ts
+
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, PointLight, SpotLight, Scene, Vector3, Tags, Mesh, InstancedMesh, Node, MultiMaterial, Matrix } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
@@ -31,19 +31,11 @@ export interface ModelContainmentResult {
   source: ContainmentSource;
 }
 
-export interface ContainerVolumeEvaluationResult {
-  inside: boolean;
-  inPreEntry: boolean;
-  distToBox: number;
-}
-
 interface ContainerGeometryCache {
   containerUid: string;
   matrixHash: string;
   source: ContainmentSource;
   entryPoints: Vector3[];
-  floorMeshes: AbstractMesh[];
-  ceilingMeshes: AbstractMesh[];
   allRenderableMeshes: AbstractMesh[];
   minWorld: Vector3;
   maxWorld: Vector3;
@@ -185,12 +177,6 @@ export class LightContainmentService {
     return closestContainer;
   }
 
-  public getContainerDiagonal(container: GameEntity): number {
-    const cached = this.containerGeometryCache.get(container.uid);
-    if (cached) return cached.boundingDiagonal;
-    return 30.0;
-  }
-
   public analyzeContainerGeometry(container: GameEntity, scene: Scene): ContainerGeometryCache {
     const rootMesh = container.view;
     if (!rootMesh || rootMesh.isDisposed()) {
@@ -199,8 +185,6 @@ export class LightContainmentService {
         matrixHash: '',
         source: 'AABB_FALLBACK',
         entryPoints: [Vector3.Zero()],
-        floorMeshes: [],
-        ceilingMeshes: [],
         allRenderableMeshes: [],
         minWorld: Vector3.Zero(),
         maxWorld: Vector3.Zero(),
@@ -228,11 +212,9 @@ export class LightContainmentService {
 
     const invWorldMatrix = Matrix.Invert(wm);
     const { renderables } = this.getAllRenderableMeshesFromModel(rootMesh);
-    const floorMeshes: AbstractMesh[] = [];
-    const ceilingMeshes: AbstractMesh[] = [];
     const entryPoints: Vector3[] = [];
 
-    let source: ContainmentSource = container.collider?.type === 'mesh' ? 'COLLISION_MESH' : 'GEOMETRY';
+    let source: ContainmentSource = 'GEOMETRY';
 
     const descendants = rootMesh.getDescendants(false);
     for (let i = 0; i < descendants.length; i++) {
@@ -273,16 +255,6 @@ export class LightContainmentService {
         minLocal = Vector3.Minimize(minLocal, vLoc);
         maxLocal = Vector3.Maximize(maxLocal, vLoc);
       }
-
-      const nL = m.name.toLowerCase();
-      if (nL.includes('floor') || nL.includes('piso') || nL.includes('suelo') || nL.includes('ground') || nL.includes('bottom')) {
-        floorMeshes.push(m);
-      } else if (nL.includes('roof') || nL.includes('techo') || nL.includes('ceiling') || nL.includes('top')) {
-        ceilingMeshes.push(m);
-      } else {
-        floorMeshes.push(m);
-        ceilingMeshes.push(m);
-      }
     }
 
     if (renderables.length === 0) {
@@ -301,24 +273,12 @@ export class LightContainmentService {
     const sizeWorld = maxWorld.subtract(minWorld);
     const boundingDiagonal = sizeWorld.length();
 
-    // Detección multidireccional inteligente de aberturas (Pasillos rectos, curvos y en L)
+    // Detección de extremos del pasillo como bocas de entrada
     if (entryPoints.length === 0) {
-      const isCurvedOrLShaped = Math.abs(sizeWorld.x - sizeWorld.z) < (Math.max(sizeWorld.x, sizeWorld.z) * 0.55);
-
-      if (isCurvedOrLShaped) {
-        // En pasillos curvos o giros, existen aberturas en extremos perpendiculares
-        entryPoints.push(new Vector3(minWorld.x, centerWorld.y, centerWorld.z));
-        entryPoints.push(new Vector3(maxWorld.x, centerWorld.y, centerWorld.z));
-        entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, minWorld.z));
-        entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, maxWorld.z));
-      } else if (sizeWorld.x > sizeWorld.z) {
-        entryPoints.push(new Vector3(minWorld.x, centerWorld.y, centerWorld.z));
-        entryPoints.push(new Vector3(maxWorld.x, centerWorld.y, centerWorld.z));
-      } else {
-        entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, minWorld.z));
-        entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, maxWorld.z));
-      }
-      source = 'GEOMETRY';
+      entryPoints.push(new Vector3(minWorld.x, centerWorld.y, centerWorld.z));
+      entryPoints.push(new Vector3(maxWorld.x, centerWorld.y, centerWorld.z));
+      entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, minWorld.z));
+      entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, maxWorld.z));
     }
 
     const result: ContainerGeometryCache = {
@@ -326,8 +286,6 @@ export class LightContainmentService {
       matrixHash,
       source,
       entryPoints,
-      floorMeshes,
-      ceilingMeshes,
       allRenderableMeshes: renderables.length > 0 ? renderables : [rootMesh],
       minWorld,
       maxWorld,
@@ -373,7 +331,7 @@ export class LightContainmentService {
       Math.max(preEntryDistance + 14.0, preEntryDistance * LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER)
     );
 
-    const broadMargin = wasInRange ? maxKeepAliveExitDistance + 6.0 : preEntryDistance + 3.0;
+    const broadMargin = wasInRange ? maxKeepAliveExitDistance + 6.0 : preEntryDistance + 4.0;
 
     const dxBroad = Math.max(0, (min.x - broadMargin) - actorWorldPos.x, actorWorldPos.x - (max.x + broadMargin));
     const dyBroad = Math.max(0, (min.y - 4.0 - broadMargin) - actorWorldPos.y, actorWorldPos.y - (max.y + 4.0 + broadMargin));
@@ -394,19 +352,39 @@ export class LightContainmentService {
 
     this.metrics.preciseEvaluations++;
 
+    // Comprobación de altura vertical: el jugador debe estar entre el piso y el techo real
+    const isWithinVerticalBounds = (
+      actorWorldPos.y >= (min.y - 1.0) && actorWorldPos.y <= (max.y + 1.0)
+    );
+
     Vector3.TransformCoordinatesToRef(actorWorldPos, geoData.invWorldMatrix, this._tempLocalActorPos);
     const locPos = this._tempLocalActorPos;
     const locMin = geoData.minLocal;
     const locMax = geoData.maxLocal;
 
-    // Tolerancia generosa en espacio local para cubrir todo el desarrollo de pasillos curvos
-    const tolY = 2.5;
-    const tolXZ = wasInRange ? 2.5 : 0.8;
-
-    const isInsideLocalVolume =
+    const tolXZ = wasInRange ? 1.5 : 0.6;
+    const isInsideLocalAABB =
       locPos.x >= locMin.x - tolXZ && locPos.x <= locMax.x + tolXZ &&
-      locPos.y >= locMin.y - tolY && locPos.y <= locMax.y + tolY &&
       locPos.z >= locMin.z - tolXZ && locPos.z <= locMax.z + tolXZ;
+
+    // Discriminación de pasillo en forma de L para evitar falsos positivos en el cuadrante vacío exterior
+    let isInsideLCorridor = false;
+    if (isWithinVerticalBounds && isInsideLocalAABB) {
+      const spanX = locMax.x - locMin.x;
+      const spanZ = locMax.z - locMin.z;
+      
+      // Si el objeto tiene proporciones alargadas en ambos ejes (L-shape típica)
+      if (spanX > 8.0 && spanZ > 8.0) {
+        const normX = (locPos.x - locMin.x) / spanX;
+        const normZ = (locPos.z - locMin.z) / spanZ;
+
+        // Comprobación de corte en L: Si el jugador cae en el cuadrante exterior no construido, está afuera
+        const isInEmptyCorner = (normX > 0.55 && normZ > 0.55);
+        isInsideLCorridor = !isInEmptyCorner;
+      } else {
+        isInsideLCorridor = true;
+      }
+    }
 
     let minDistanceToEntry = Number.MAX_VALUE;
     let closestEntryPoint = geoData.entryPoints[0];
@@ -421,13 +399,11 @@ export class LightContainmentService {
     }
 
     const dxLoc = Math.max(0, locMin.x - locPos.x, locPos.x - locMax.x);
-    const dyLoc = Math.max(0, locMin.y - locPos.y, locPos.y - locMax.y);
     const dzLoc = Math.max(0, locMin.z - locPos.z, locPos.z - locMax.z);
-    const distToLocalBox = Math.sqrt(dxLoc * dxLoc + dyLoc * dyLoc + dzLoc * dzLoc);
+    const distToLocalBox = Math.sqrt(dxLoc * dxLoc + dzLoc * dzLoc);
 
-    // 1. REGLA INMUTABLE: Si está dentro del volumen del modelo, SIEMPRE es INSIDE (100% luz continua)
-    // Jamás degradar a PRE_EXIT mientras el jugador permanezca dentro de las paredes del pasillo.
-    if (isInsideLocalVolume) {
+    // 1. DENTRO DEL PASILLO (Máxima prioridad)
+    if (isInsideLCorridor) {
       return {
         inside: true,
         preEntry: false,
@@ -440,7 +416,7 @@ export class LightContainmentService {
       };
     }
 
-    // 2. Jugador saliendo físicamente hacia el exterior o siguiente pasillo: Zona de permanencia extendida
+    // 2. RETENCIÓN CONTINUA EN SALIDA
     if (wasInRange && (minDistanceToEntry <= maxKeepAliveExitDistance || distToLocalBox <= (exitHoldMargin + 4.0))) {
       return {
         inside: false,
@@ -454,7 +430,7 @@ export class LightContainmentService {
       };
     }
 
-    // 3. Jugador aproximándose desde el exterior hacia una entrada
+    // 3. APROXIMACIÓN EXTERIOR (PRE-ENTRADA)
     if (minDistanceToEntry <= preEntryDistance) {
       return {
         inside: false,
@@ -468,7 +444,7 @@ export class LightContainmentService {
       };
     }
 
-    // 4. Completamente fuera
+    // 4. EXTERIOR
     return {
       inside: false,
       preEntry: false,
@@ -478,20 +454,6 @@ export class LightContainmentService {
       boundaryPoint: closestEntryPoint,
       confidence: 'HIGH',
       source: geoData.source
-    };
-  }
-
-  public evaluateActorInsideContainer(
-    actorWorldPos: Vector3,
-    container: GameEntity,
-    preEntryDistance: number = 8.0,
-    wasInRange: boolean = false
-  ): ContainerVolumeEvaluationResult {
-    const res = this.evaluateModelContainment(actorWorldPos, container, preEntryDistance, wasInRange);
-    return {
-      inside: res.inside,
-      inPreEntry: res.preEntry,
-      distToBox: res.distanceToBoundary
     };
   }
 
@@ -640,7 +602,6 @@ export class LightContainmentService {
       return;
     }
 
-    // Permitir propagación de luz natural hacia pasillos contiguos
     if (mode === 'INTERIOR' && affectDescendantsOnly) {
       const receivers = this.getInteriorMeshesStrict(entity, scene);
       if (receivers.length > 0) {

@@ -1,6 +1,6 @@
 // file: src/app/core/engine/runtime/live/runtime-readiness-barrier.service.ts
 import { Injectable, inject, signal } from '@angular/core';
-import { Scene, AbstractMesh, Vector3 } from '@babylonjs/core';
+import { Scene, AbstractMesh, Vector3, Texture } from '@babylonjs/core';
 import { GameContextService } from '../../session/game-context.service';
 import { RuntimeReadyStage } from '../../session/game-context.model';
 import { EngineProfilerService } from '../../telemetry/engine-profiler.service';
@@ -58,21 +58,22 @@ export class RuntimeReadinessBarrierService {
 
   /**
    * Espera la preparación real del entorno:
-   * 1. Cero compilaciones pendientes en el radio de relevancia del spawn.
-   * 2. Renderizado de 2 cuadros de warmup para asegurar carga en VRAM.
-   * 3. Liberación rápida y determinista (evita los ~3.1s de espera artificial).
+   * 1. Residencia completa de texturas en el perímetro (evita pop-in de texturas).
+   * 2. Compilación en VRAM de todos los materiales dentro del perímetro de visibilidad.
+   * 3. Renderizado de 2 cuadros de warmup para asegurar carga en VRAM.
    */
   public async waitForTrueStability(
     scene: Scene, 
     referencePosition: Vector3,
-    relevanceRadius = 60.0,
+    relevanceRadius = 80.0,
     requiredStableFrames = 3, 
     onProgress?: (msg: string, pct: number) => void
   ): Promise<boolean> {
     const stabilityStartTime = performance.now();
-    this.setStage('CHECKING_STABILITY', 'Verificando preparación del entorno...', 'Comprobando sombreadores');
+    this.setStage('CHECKING_STABILITY', 'Verificando preparación de texturas y materiales...', 'Comprobando VRAM');
 
     const materialMeshPairs: Array<{ mat: any; mesh: AbstractMesh }> = [];
+    const texturesToWait: Texture[] = [];
     const meshes = scene.meshes;
     const relRadiusSq = relevanceRadius * relevanceRadius;
 
@@ -82,19 +83,36 @@ export class RuntimeReadinessBarrierService {
         const meshPos = m.getAbsolutePosition();
         if (Vector3.DistanceSquared(meshPos, referencePosition) <= relRadiusSq) {
           materialMeshPairs.push({ mat: m.material, mesh: m });
+
+          // Inspección profunda de texturas
+          const anyMat = m.material as any;
+          const texArray = [anyMat.albedoTexture, anyMat.diffuseTexture, anyMat.opacityTexture, anyMat.emissiveTexture, anyMat.bumpTexture];
+          for (let t = 0; t < texArray.length; t++) {
+            const tx = texArray[t];
+            if (tx && tx.isReady && !tx.isReady()) {
+              texturesToWait.push(tx);
+            }
+          }
         }
       }
     }
 
     return new Promise<boolean>((resolve) => {
       let completedFrames = 0;
-      const MAX_FRAMES = 12; // Máximo 200 ms de comprobación
+      const MAX_FRAMES = 24; 
 
       const checkLoop = () => {
         completedFrames++;
 
-        // Renderizado explícito para forzar al driver GPU a procesar uniforms y geometría
+        // Forzar al pipeline gráfico a avanzar
         scene.render();
+
+        let pendingTextures = 0;
+        for (let t = 0; t < texturesToWait.length; t++) {
+          if (!texturesToWait[t].isReady()) {
+            pendingTextures++;
+          }
+        }
 
         let compilingCount = 0;
         for (let i = 0; i < materialMeshPairs.length; i++) {
@@ -104,19 +122,22 @@ export class RuntimeReadinessBarrierService {
           }
         }
 
-        const isComplete = compilingCount === 0 && completedFrames >= requiredStableFrames;
+        const isComplete = compilingCount === 0 && pendingTextures === 0 && completedFrames >= requiredStableFrames;
 
         if (onProgress) {
           const pct = Math.min(100, Math.round((completedFrames / requiredStableFrames) * 100));
-          const msg = compilingCount > 0 
-            ? `Compilando ${compilingCount} sombreadores...` 
-            : `Estabilizando entorno (${completedFrames}/${requiredStableFrames})`;
+          let msg = 'Estabilizando entorno...';
+          if (pendingTextures > 0) {
+            msg = `Cargando ${pendingTextures} texturas residentes...`;
+          } else if (compilingCount > 0) {
+            msg = `Compilando ${compilingCount} sombreadores...`;
+          }
           onProgress(msg, pct);
         }
 
         if (isComplete || completedFrames >= MAX_FRAMES) {
           const duration = performance.now() - stabilityStartTime;
-          this.setStage('READY', 'Entorno preparado y estable', `${duration.toFixed(0)} ms`);
+          this.setStage('READY', 'Entorno preparado, texturas residentes y estables', `${duration.toFixed(0)} ms`);
           resolve(true);
           return;
         }

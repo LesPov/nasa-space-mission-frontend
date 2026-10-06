@@ -67,7 +67,6 @@ export class EditorPlayModeService {
     const scene = this.motor3d.getScene();
     const editorCam = this.motor3d.getEditorCamera();
 
-    // Detener de inmediato cualquier entrada previa del jugador
     this.inputSvc.disable();
     this.inputSvc.resetearInputs();
 
@@ -131,22 +130,21 @@ export class EditorPlayModeService {
     if (onProgress) onProgress('Estructurando grupos espaciales...', 30);
     this.spatialGroups.buildGroups();
 
-    this.readinessBarrier.setStage('PREPARING_RESOURCES', 'Inicializando burbuja crítica visual (360°)...');
-    if (onProgress) onProgress('Inicializando burbuja crítica visual (360°)...', 50);
+    this.readinessBarrier.setStage('PREPARING_RESOURCES', 'Inicializando perímetro visual residente...');
+    if (onProgress) onProgress('Inicializando perímetro visual residente...', 50);
 
     objMesh.computeWorldMatrix(true);
     const spawnPos = objMesh.getAbsolutePosition().clone();
 
-    // Reconciliación inmediata de la burbuja crítica (garantiza que paredes, suelo y objetos traseros tengan visibilidad 1.0)
     this.localRendering.reconcileAllEntitiesImmediate(spawnPos);
 
-    this.readinessBarrier.setStage('PREPARING_LIGHTS', 'Sincronizando iluminación y sombras de arranque...');
-    if (onProgress) onProgress('Sincronizando iluminación y sombras de arranque...', 70);
+    this.readinessBarrier.setStage('PREPARING_LIGHTS', 'Sincronizando iluminación y sombras...');
+    if (onProgress) onProgress('Sincronizando iluminación y sombras...', 70);
     this.dynamicLighting.prepareAllLights();
     this.shadowOrchestrator.reconcileShadows();
 
-    this.readinessBarrier.setStage('COMPILING_SHADERS', 'Precalentando sombreadores en VRAM...');
-    if (onProgress) onProgress('Precalentando sombreadores en VRAM...', 85);
+    this.readinessBarrier.setStage('COMPILING_SHADERS', 'Precalentando sombreadores y texturas en VRAM...');
+    if (onProgress) onProgress('Precalentando sombreadores y texturas en VRAM...', 85);
     await this.dynamicLighting.forceWarmup(spawnPos);
 
     this.pendingFlightParams = {
@@ -155,7 +153,6 @@ export class EditorPlayModeService {
   }
 
   public async iniciarVueloCamara(vista: CameraViewMode): Promise<void> {
-    // Para eliminar el retraso de casi 1 segundo en transiciones, alineamos la cámara de forma instantánea al destino
     if (!this.pendingFlightParams) return;
     return Promise.resolve();
   }
@@ -168,7 +165,7 @@ export class EditorPlayModeService {
     this.fogOrchestrator.forceSnapNextFrame();
     this.localRendering.reconcileAllEntitiesImmediate(spawnPos);
 
-    await this.readinessBarrier.waitForTrueStability(scene, spawnPos, 60.0, 2, (msg, pct) => {
+    await this.readinessBarrier.waitForTrueStability(scene, spawnPos, 80.0, 2, (msg, pct) => {
       if (onProgress) onProgress(msg, 85 + Math.round(pct * 0.15));
     });
   }
@@ -202,7 +199,6 @@ export class EditorPlayModeService {
       canvas.focus();
     }
 
-    // Solo habilitamos la captura de controles cuando todo el entorno está 100% visible y preparado
     this.inputSvc.start();
     this.inputSvc.enable();
     this.inputSvc.resetearInputs();

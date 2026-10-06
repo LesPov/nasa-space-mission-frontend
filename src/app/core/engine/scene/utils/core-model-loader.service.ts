@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/scene/utils/core-model-loader.service.ts
 import { Injectable, inject } from '@angular/core';
 import { 
@@ -150,7 +151,8 @@ export class CoreModelLoaderService {
     rootNode.checkCollisions = false; 
     rootNode.isPickable = true;
     rootNode.alwaysSelectAsActiveMesh = false;
-    rootNode.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_STANDARD;
+    // BoundingSphere previene pop-in de corte de cámara al girar 90 o 180 grados
+    rootNode.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
 
     rootNode.computeWorldMatrix(true);
     const updatedBounds = rootNode.getHierarchyBoundingVectors(true);
@@ -198,7 +200,7 @@ export class CoreModelLoaderService {
         m.checkCollisions = false;
       }
       
-      m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_STANDARD;
+      m.cullingStrategy = AbstractMesh.CULLINGSTRATEGY_BOUNDINGSPHERE_ONLY;
       m.receiveShadows = true; 
       
       if (!m.metadata) m.metadata = {};
@@ -232,6 +234,7 @@ export class CoreModelLoaderService {
       
       if (m.material) {
         (m.material as typeof m.material & { maxSimultaneousLights: number }).maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+        this.materialSvc.capturarEstadoAutoral(m.material);
 
         if (override) {
           this.materialSvc.asegurarMaterialUnicoParaParte(m, entity.uid, m.name);

@@ -1,4 +1,4 @@
-// file: src/app/core/engine/runtime/systems/lighting/light-registry.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { Color3, AbstractMesh, Tags, Vector3 } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
@@ -68,15 +68,20 @@ export class LightRegistryService {
           if (Tags.MatchesQuery(m, 'light_visual') || (m as any).metadata?.isLightVisual) return;
           if (!m.material) return;
 
+          // Se discrimina de forma estricta: NO capturar mallas estructurales genéricas solo porque contengan "light"
           const nL = m.name.toLowerCase();
           const mL = m.material.name.toLowerCase();
+          
           const isLampMesh = (
             nL.includes('bulb') ||
-            nL.includes('light') ||
-            nL.includes('emit') ||
+            nL.includes('foco') ||
+            nL.includes('bombilla') ||
+            nL.includes('ampolleta') ||
+            nL.includes('lamp_glass') ||
             mL.includes('bulb') ||
-            mL.includes('light') ||
-            mL.includes('emit')
+            mL.includes('foco') ||
+            mL.includes('bombilla') ||
+            mL.includes('glass')
           );
 
           if (isLampMesh) {
@@ -138,7 +143,10 @@ export class LightRegistryService {
     if (!mesh.material.name.includes(uid)) {
       try {
         if (typeof (mesh.material as any).clone === 'function') {
-          mesh.material = (mesh.material as any).clone(`${mesh.material.name}_${uid}`);
+          const oldMeta = mesh.material.metadata ? structuredClone(mesh.material.metadata) : {};
+          const clonedMat = (mesh.material as any).clone(`${mesh.material.name}_${uid}`);
+          clonedMat.metadata = oldMeta;
+          mesh.material = clonedMat;
         }
       } catch (err) {
         console.warn(`[LightRegistry] No se pudo clonar material para ${mesh.name}:`, err);
@@ -150,3 +158,4 @@ export class LightRegistryService {
     this.virtualLights = [];
   }
 }
+  

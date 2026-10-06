@@ -1,4 +1,4 @@
-// file: src/app/core/engine/runtime/systems/lighting/light-distance.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { Vector3 } from '@babylonjs/core';
 import { GameContextService } from '../../../session/game-context.service';
@@ -30,11 +30,13 @@ export class LightDistanceService {
   public evaluateDistanceAndHysteresis(activeVirtuals: VirtualLight[], baseRefPos: Vector3, speed: number): void {
     const scene = this.motor3d.getScene();
     const mode = this.context.mode();
-    const isEditorPure = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
     this.profiler.recordDistanceEvaluation('LightDistanceService', activeVirtuals.length);
     const validActors = this.referenceSvc.getValidActorEntities();
     const nowTimeStr = new Date().toLocaleTimeString();
+
+    // Lookahead predictivo: a mayor velocidad de carrera, mayor distancia de anticipación
+    const dynamicLeadDistance = Math.min(35.0, speed * 2.2);
 
     for (let i = 0; i < activeVirtuals.length; i++) {
       const vl = activeVirtuals[i];
@@ -71,7 +73,6 @@ export class LightDistanceService {
         vl.closestActorName = 'Referencia Base';
       }
 
-      // En el Editor: la distancia siempre es con respecto al Player o entidad actor, nunca a la cámara libre del visor
       const hubDist = this.spatialHub.getDistanceToPlayer(vl.entity.uid);
       const hubDistSq = this.spatialHub.getDistanceSquaredToPlayer(vl.entity.uid);
       const centerDist = hubDist !== Number.MAX_VALUE ? hubDist : Vector3.Distance(actorWorldPos, this._tempPos);
@@ -100,7 +101,7 @@ export class LightDistanceService {
       );
 
       // =========================================================================
-      // MODO INTERIOR + CONTENCIÓN EN MODELO
+      // MODO INTERIOR (PASILLOS Y VOLÚMENES CERRADOS)
       // =========================================================================
       if (isModelPreEntryMode) {
         if (!container || !container.view || container.view.isDisposed()) {
@@ -119,8 +120,10 @@ export class LightDistanceService {
           continue;
         }
 
-        const preDist = Math.max(16.0, lightComp.preEntryDistance ?? 16.0);
-        const contResult = this.containmentSvc.evaluateModelContainment(actorWorldPos, container, preDist, wasInRange);
+        const configuredPreDist = Math.max(16.0, lightComp.preEntryDistance ?? 16.0);
+        const effectivePreDist = configuredPreDist + dynamicLeadDistance;
+
+        const contResult = this.containmentSvc.evaluateModelContainment(actorWorldPos, container, effectivePreDist, wasInRange);
 
         vl.spatialState = contResult.spatialState;
         vl.insideVolume = contResult.inside;
@@ -134,23 +137,23 @@ export class LightDistanceService {
 
         const maxKeepAliveExitDistance = Math.min(
           LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_MAX_DISTANCE,
-          Math.max(preDist + 16.0, preDist * LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER)
+          Math.max(effectivePreDist + 16.0, effectivePreDist * LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER)
         );
 
         vl._isInPrepareRange = Boolean(
-          isGroupPreparedOrBetter || (contResult.distanceToBoundary <= (preDist + 20.0))
+          isGroupPreparedOrBetter || (contResult.distanceToBoundary <= (effectivePreDist + 30.0))
         );
 
         if (contResult.spatialState === 'INSIDE') {
           vl.targetMultiplier = 1.0;
           vl.isLightInRange = true;
-          this.evaluateStateAndDecision(vl, 0, 0, preDist, nowTimeStr, `INSIDE (${contResult.source})`);
+          this.evaluateStateAndDecision(vl, 0, 0, effectivePreDist, nowTimeStr, `INSIDE (${contResult.source})`);
         } else if (contResult.spatialState === 'PRE_ENTRY') {
-          vl.targetMultiplier = LightAttenuationCurve.calculate(contResult.distanceToBoundary, 0, preDist);
+          vl.targetMultiplier = LightAttenuationCurve.calculate(contResult.distanceToBoundary, 0, effectivePreDist);
           vl.isLightInRange = vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
-          this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, preDist, nowTimeStr, `PRE-ENTRADA (${contResult.source})`);
+          this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, effectivePreDist, nowTimeStr, `PRE-ENTRADA (${contResult.source})`);
         } else if (contResult.spatialState === 'PRE_EXIT') {
-          const holdDistance = preDist + LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_HOLD_MARGIN;
+          const holdDistance = effectivePreDist + LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_HOLD_MARGIN;
 
           if (contResult.distanceToBoundary <= holdDistance) {
             vl.targetMultiplier = 1.0;
@@ -177,7 +180,7 @@ export class LightDistanceService {
 
         if (lightComp.castShadows) {
           const syncShadow = lightComp.linkShadowPreEntryToLightPreEntry !== false;
-          const shadowPreDist = syncShadow ? preDist : Math.max(preDist, lightComp.shadowPreEntryDistance ?? preDist);
+          const shadowPreDist = syncShadow ? effectivePreDist : Math.max(effectivePreDist, (lightComp.shadowPreEntryDistance ?? configuredPreDist) + dynamicLeadDistance);
           const shadowExitMargin = shadowPreDist + LIGHT_SPATIAL_CONSTANTS.INTERIOR_SHADOW_EXIT_MARGIN;
           
           const inShadowZone = Boolean(
@@ -193,7 +196,7 @@ export class LightDistanceService {
 
       } else {
         // =========================================================================
-        // MODO RADIAL ESTÁNDAR (LUCES EXTERIORES)
+        // MODO RADIAL EXTERIOR
         // =========================================================================
         vl.spatialState = undefined;
         vl.containmentSource = undefined;
@@ -204,16 +207,15 @@ export class LightDistanceService {
         const configuredActivation = lightComp.activationDistance ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_ACTIVATION_RADIUS;
         const configuredDeactivation = lightComp.deactivationDistance ?? (configuredActivation + 8.0);
         
-        const rActivation = Math.max(1.0, configuredActivation);
-        const rDeactivation = Math.max(rActivation + 2.0, configuredDeactivation);
-        
+        const rActivation = Math.max(1.0, configuredActivation + dynamicLeadDistance);
+        const rDeactivation = Math.max(rActivation + 2.0, configuredDeactivation + dynamicLeadDistance);
         const rPrepare = isGroupPreparedOrBetter ? (rDeactivation + 35.0) : (rDeactivation + 20.0);
 
         this.applyStandardProximity(vl, centerDist, rActivation, rDeactivation, rPrepare, wasInRange, nowTimeStr);
 
         if (vl.isLightInRange && lightComp.castShadows && lightComp.distanceShadowsEnabled !== false) {
-          const shadowAct = Math.max(rActivation, lightComp.shadowActivationDistance ?? rActivation);
-          const shadowDeact = Math.max(rDeactivation, lightComp.shadowDeactivationDistance ?? rDeactivation);
+          const shadowAct = Math.max(rActivation, (lightComp.shadowActivationDistance ?? rActivation) + dynamicLeadDistance);
+          const shadowDeact = Math.max(rDeactivation, (lightComp.shadowDeactivationDistance ?? rDeactivation) + dynamicLeadDistance);
           
           vl.isShadowInRange = (wasInRange || vl.currentMultiplier > 0.05) ? centerDist <= shadowDeact : centerDist <= shadowAct;
         } else {
@@ -235,7 +237,7 @@ export class LightDistanceService {
     vl._isInPrepareRange = dist <= rPrepare;
     const currentLimit = wasInRange ? rDeactivation : rActivation;
 
-    vl.targetMultiplier = LightAttenuationCurve.calculate(dist, rActivation * 0.8, rDeactivation);
+    vl.targetMultiplier = LightAttenuationCurve.calculate(dist, rActivation * 0.75, rDeactivation);
 
     if (dist <= currentLimit && vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
       vl.isLightInRange = true;
@@ -246,11 +248,7 @@ export class LightDistanceService {
         this.transitionState(vl, 'FADING_OUT', timestamp, undefined, 'FADING OUT CONTINUO');
       } else {
         vl.isLightInRange = false;
-        
-        let rejectionR = undefined;
-        if (dist > rDeactivation) rejectionR = 'OUT_OF_EFFECTIVE_RANGE';
-        
-        this.transitionState(vl, dist > rDeactivation ? 'OUTSIDE' : 'INACTIVE', timestamp, rejectionR, 'Fuera de rango radial');
+        this.transitionState(vl, dist > rDeactivation ? 'OUTSIDE' : 'INACTIVE', timestamp, dist > rDeactivation ? 'OUT_OF_EFFECTIVE_RANGE' : undefined, 'Fuera de rango radial');
       }
     }
   }
@@ -298,3 +296,4 @@ export class LightDistanceService {
     vl.decisionText = decisionText;
   }
 }
+  

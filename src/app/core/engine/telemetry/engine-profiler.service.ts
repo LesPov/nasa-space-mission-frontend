@@ -1,4 +1,4 @@
-// file: src/app/core/engine/telemetry/engine-profiler.service.ts
+
 import { Injectable, inject, Injector } from '@angular/core';
 import { AdaptiveQualitySystem, QualityTier } from '../runtime/systems/adaptive-quality.system';
 import { ShadowCache } from '../runtime/shadows/shadow-cache.service';
@@ -572,8 +572,11 @@ export class EngineProfilerService {
     sample.shadowedLights = shadowedL;
     
     sample.shadowRebuilds = this.shadowCache.metrics.renderListRebuilds;
-    sample.cullingEvaluated = this.cullingEvaluatedCount;
-    sample.cullingChanged = this.cullingChangedCount;
+    
+    // Conexión directa a las métricas reales del sistema de culling
+    const cullingMetrics = this.localRendering ? this.localRendering.getMetrics() : null;
+    sample.cullingEvaluated = cullingMetrics ? cullingMetrics.evaluatedEntities : 0;
+    sample.cullingChanged = cullingMetrics ? cullingMetrics.modifiedEntities : 0;
     sample.activeSequences = this.sequenceSvc.getActiveSequencesCount();
 
     this.memoryCheckTimer++;
@@ -672,8 +675,6 @@ export class EngineProfilerService {
         this.dominantSystemName = dominantSys;
     }
 
-    this.cullingEvaluatedCount = 0;
-    this.cullingChangedCount = 0;
     this.distanceEvaluationsCounter.clear();
 
     if (this.bufferIndex % 60 === 0) {
@@ -807,7 +808,6 @@ export class EngineProfilerService {
       shadowMetrics = this.shadowSys.getFastMetrics();
     }
 
-    // CORRECCIÓN FORENSE TELEMETRÍA: Contabilizar generadores y casters reales del pool local
     let poolGeneratorsActive = 0;
     let poolCastersTotal = 0;
     try {
@@ -893,7 +893,7 @@ export class EngineProfilerService {
     }
 
     const cullingMetrics = this.localRendering ? this.localRendering.getMetrics() : {
-      visibleObjects: visibleMeshesCount, fadingObjects: 0, hardCulledObjects: 0, restoringObjects: 0, shadowProtectedObjects: 0, smoothedPlayerSpeed: 0, queuedForStreamingCount: 0
+      evaluatedEntities: 0, modifiedEntities: 0, visibleObjects: visibleMeshesCount, fadingObjects: 0, hardCulledObjects: 0, restoringObjects: 0, shadowProtectedObjects: 0, smoothedPlayerSpeed: 0, queuedForStreamingCount: 0
     };
 
     const seqDetails = this.sequenceSvc ? this.sequenceSvc.getActiveSequencesDetails() : [];
@@ -935,7 +935,7 @@ export class EngineProfilerService {
       const cp = cam.globalPosition;
       camPos = { x: this.round2(cp.x), y: this.round2(cp.y), z: this.round2(cp.z) };
       const cd = cam.getDirection(Vector3.Forward());
-      camDir = { x: this.round3(cd.x), y: this.round3(cd.y), z: this.round3(cd.z) };
+      camDir = { x: this.round3(cd.x), y: this.round3(cd.z), z: this.round3(cd.z) };
       camFov = cam.fov || 0.8;
 
       if ((cam as any).rotation) {
@@ -1044,9 +1044,13 @@ export class EngineProfilerService {
         cacheMisses: 0
       },
       culling: {
-        evaluatedEntities: this.cullingEvaluatedCount,
-        modifiedEntities: this.cullingChangedCount,
-        ...cullingMetrics
+        evaluatedEntities: cullingMetrics.evaluatedEntities,
+        modifiedEntities: cullingMetrics.modifiedEntities,
+        visibleObjects: cullingMetrics.visibleObjects,
+        fadingObjects: cullingMetrics.fadingObjects,
+        hardCulledObjects: cullingMetrics.hardCulledObjects,
+        restoringObjects: cullingMetrics.restoringObjects,
+        shadowProtectedObjects: cullingMetrics.shadowProtectedObjects
       },
       shaders: shaderMetrics,
       sequences: { activeCount: seqDetails.length, details: seqDetails },

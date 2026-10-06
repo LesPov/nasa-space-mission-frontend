@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/scene/utils/core-scene-material.service.ts
 import { Injectable } from '@angular/core';
 import { Color3, Texture, RawTexture, Scene, AbstractMesh, Material, MultiMaterial, Mesh } from '@babylonjs/core';
@@ -10,9 +11,21 @@ export interface MaterialWarmupReport {
   durationMs: number;
 }
 
+interface MaterialAuthoringSnapshot {
+  albedoTexture?: Texture | null;
+  diffuseTexture?: Texture | null;
+  opacityTexture?: Texture | null;
+  emissiveTexture?: Texture | null;
+  bumpTexture?: Texture | null;
+  albedoColor?: Color3;
+  diffuseColor?: Color3;
+  emissiveColor?: Color3;
+  alpha?: number;
+}
+
 @Injectable({ providedIn: 'root' })
 export class CoreSceneMaterialService {
-  // 6 luces simultáneas: 1 Sol + 1 Ambiente + 3 Luces locales del Pool + 1 margen de blending
+  // 6 luces fijas: 1 Sol CSM + 1 Ambiente + 3 Locales del Pool + 1 Blending/Flicker
   public static readonly MAX_SIMULTANEOUS_LIGHTS = 6;
   
   private bwTextureCache = new Map<string, Texture>();
@@ -34,9 +47,83 @@ export class CoreSceneMaterialService {
     return mat.isDisposed === true || mat._isDisposed === true;
   }
 
+  /**
+   * Captura el estado autoral inmutable del material antes de que cualquier sistema de runtime lo mute.
+   */
+  public capturarEstadoAutoral(material: any): void {
+    if (!material || this.isMaterialDisposed(material)) return;
+
+    if (material.getClassName() === 'MultiMaterial' && material.subMaterials) {
+      for (const sub of material.subMaterials) {
+        if (sub) this.capturarEstadoAutoral(sub);
+      }
+      return;
+    }
+
+    if (!material.metadata) material.metadata = {};
+    if (material.metadata.__authoringSnapshot) return;
+
+    const snapshot: MaterialAuthoringSnapshot = {};
+
+    if (material.getClassName().includes('PBR')) {
+      snapshot.albedoTexture = material.albedoTexture || null;
+      snapshot.emissiveTexture = material.emissiveTexture || null;
+      snapshot.bumpTexture = material.bumpTexture || null;
+      snapshot.albedoColor = material.albedoColor ? material.albedoColor.clone() : new Color3(1, 1, 1);
+      snapshot.emissiveColor = material.emissiveColor ? material.emissiveColor.clone() : Color3.Black();
+      snapshot.alpha = material.alpha ?? 1.0;
+    } else if (material.getClassName().includes('Standard')) {
+      snapshot.diffuseTexture = material.diffuseTexture || null;
+      snapshot.opacityTexture = material.opacityTexture || null;
+      snapshot.emissiveTexture = material.emissiveTexture || null;
+      snapshot.bumpTexture = material.bumpTexture || null;
+      snapshot.diffuseColor = material.diffuseColor ? material.diffuseColor.clone() : new Color3(1, 1, 1);
+      snapshot.emissiveColor = material.emissiveColor ? material.emissiveColor.clone() : Color3.Black();
+      snapshot.alpha = material.alpha ?? 1.0;
+    }
+
+    material.metadata.__authoringSnapshot = snapshot;
+  }
+
+  /**
+   * Restaura con fidelidad absoluta los punteros a texturas y colores originales capturados para el Editor.
+   */
+  public restaurarEstadoAutoral(material: any): void {
+    if (!material || this.isMaterialDisposed(material)) return;
+
+    if (material.getClassName() === 'MultiMaterial' && material.subMaterials) {
+      for (const sub of material.subMaterials) {
+        if (sub) this.restaurarEstadoAutoral(sub);
+      }
+      return;
+    }
+
+    const snapshot = material.metadata?.__authoringSnapshot as MaterialAuthoringSnapshot | undefined;
+    if (!snapshot) return;
+
+    if (material.getClassName().includes('PBR')) {
+      material.albedoTexture = snapshot.albedoTexture ?? null;
+      material.emissiveTexture = snapshot.emissiveTexture ?? null;
+      material.bumpTexture = snapshot.bumpTexture ?? null;
+      material.albedoColor = snapshot.albedoColor ? snapshot.albedoColor.clone() : new Color3(1, 1, 1);
+      material.emissiveColor = snapshot.emissiveColor ? snapshot.emissiveColor.clone() : Color3.Black();
+      if (snapshot.alpha !== undefined) material.alpha = snapshot.alpha;
+    } else if (material.getClassName().includes('Standard')) {
+      material.diffuseTexture = snapshot.diffuseTexture ?? null;
+      material.opacityTexture = snapshot.opacityTexture ?? null;
+      material.emissiveTexture = snapshot.emissiveTexture ?? null;
+      material.bumpTexture = snapshot.bumpTexture ?? null;
+      material.diffuseColor = snapshot.diffuseColor ? snapshot.diffuseColor.clone() : new Color3(1, 1, 1);
+      material.emissiveColor = snapshot.emissiveColor ? snapshot.emissiveColor.clone() : Color3.Black();
+      if (snapshot.alpha !== undefined) material.alpha = snapshot.alpha;
+    }
+  }
+
   public asegurarMaterialUnico(mesh: AbstractMesh, uid: string): Material | null {
     if (!mesh.material) return null;
     
+    this.capturarEstadoAutoral(mesh.material);
+
     const targetName = `${mesh.material.name}_${uid}`;
     if (mesh.material.name.endsWith(`_${uid}`)) {
       return mesh.material;
@@ -58,22 +145,26 @@ export class CoreSceneMaterialService {
         if (newMultiMat.subMaterials) {
           newMultiMat.subMaterials = multiMat.subMaterials.map((subMat: Material | null) => {
             if (subMat && !this.isMaterialDisposed(subMat) && typeof (subMat as any).clone === 'function') {
+              this.capturarEstadoAutoral(subMat);
               const subTargetName = `${subMat.name}_${uid}`;
               const existingSub = scene?.getMaterialByName(subTargetName);
               if (existingSub && !this.isMaterialDisposed(existingSub)) return existingSub;
 
               const cloned = (subMat as any).clone(subTargetName);
               cloned.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+              this.capturarEstadoAutoral(cloned);
               return cloned;
             }
             return subMat;
           });
         }
         mesh.material = newMultiMat;
+        this.capturarEstadoAutoral(newMultiMat);
         return newMultiMat;
       } else if (typeof (mesh.material as any).clone === 'function') {
         const cloned = (mesh.material as any).clone(targetName);
         cloned.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+        this.capturarEstadoAutoral(cloned);
         mesh.material = cloned;
         return cloned;
       }
@@ -86,6 +177,8 @@ export class CoreSceneMaterialService {
   public asegurarMaterialUnicoParaParte(mesh: AbstractMesh, uid: string, partName: string): Material | null {
     if (!mesh.material) return null;
     
+    this.capturarEstadoAutoral(mesh.material);
+
     const cleanPart = partName.replace(/[^a-zA-Z0-9]/g, '_');
     const uniqueSuffix = `${uid}_${cleanPart}`;
     const targetName = `${mesh.material.name}_${uniqueSuffix}`;
@@ -110,22 +203,26 @@ export class CoreSceneMaterialService {
         if (newMultiMat.subMaterials) {
           newMultiMat.subMaterials = multiMat.subMaterials.map((subMat: Material | null) => {
             if (subMat && !this.isMaterialDisposed(subMat) && typeof (subMat as any).clone === 'function') {
+              this.capturarEstadoAutoral(subMat);
               const subTargetName = `${subMat.name}_${uniqueSuffix}`;
               const existingSub = scene?.getMaterialByName(subTargetName);
               if (existingSub && !this.isMaterialDisposed(existingSub)) return existingSub;
 
               const cloned = (subMat as any).clone(subTargetName);
               cloned.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+              this.capturarEstadoAutoral(cloned);
               return cloned;
             }
             return subMat;
           });
         }
         mesh.material = newMultiMat;
+        this.capturarEstadoAutoral(newMultiMat);
         return newMultiMat;
       } else if (typeof (mesh.material as any).clone === 'function') {
         const cloned = (mesh.material as any).clone(targetName);
         cloned.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+        this.capturarEstadoAutoral(cloned);
         mesh.material = cloned;
         return cloned;
       }
@@ -149,6 +246,8 @@ export class CoreSceneMaterialService {
   ): Promise<void> {
     if (!material || this.isMaterialDisposed(material)) return;
     
+    this.capturarEstadoAutoral(material);
+
     if (material.getClassName() === 'MultiMaterial' && material.subMaterials) {
       for (const subMat of material.subMaterials) {
         if (subMat && !this.isMaterialDisposed(subMat)) {
@@ -163,7 +262,13 @@ export class CoreSceneMaterialService {
     
     material.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
 
+    const snapshot = material.metadata?.__authoringSnapshot as MaterialAuthoringSnapshot | undefined;
+
+    // Si no hay override ni efectos especiales, restauramos directamente el estado original completo
     if (!isExplicitOverride && !isBW && !esEmisivo) {
+      if (snapshot) {
+        this.restaurarEstadoAutoral(material);
+      }
       return;
     }
 
@@ -171,15 +276,10 @@ export class CoreSceneMaterialService {
     const brillo = Math.max(0, Math.min(10, brilloIntensidad));
 
     if (material.getClassName().includes('PBR')) {
-      if (material.allowShaderHotSwapping !== true) material.allowShaderHotSwapping = true;
+      material.allowShaderHotSwapping = false;
 
-      if (!material.metadata) material.metadata = {};
-      if (material.metadata.pbrOriginalsCaptured !== true) {
-        material.metadata.pbrOriginalsCaptured = true;
-        material.metadata.originalAlbedoTexture = material.albedoTexture || null;
-        material.metadata.originalAlbedoColor = material.albedoColor ? material.albedoColor.clone() : new Color3(1, 1, 1);
-        material.metadata.originalEmissiveColor = material.emissiveColor ? material.emissiveColor.clone() : Color3.Black();
-      }
+      const baseAlbedoTex = snapshot?.albedoTexture ?? material.albedoTexture;
+      const baseAlbedoColor = snapshot?.albedoColor ?? material.albedoColor ?? Color3.White();
 
       if (isExplicitOverride && textureSource === 'solid') {
         material.albedoTexture = null;
@@ -188,39 +288,36 @@ export class CoreSceneMaterialService {
         let tex: any = new Texture('http://localhost:4000' + texturePath, scene);
         if (isBW) tex = await this.getOrCreateBwTexture(tex, scene);
         material.albedoTexture = tex;
-        material.albedoColor = c3Tint.clone();
+        material.albedoColor = Color3.White(); // Mantiene textura brillante sin multiplicar por tint
       } else {
-        if (isBW && scene) {
-          if (material.metadata.originalAlbedoTexture) {
-            const bwTex = await this.getOrCreateBwTexture(material.metadata.originalAlbedoTexture, scene);
-            material.albedoTexture = bwTex;
-          }
-        } else if (material.metadata.originalAlbedoTexture) {
-          material.albedoTexture = material.metadata.originalAlbedoTexture;
+        // Textura original del GLB: NUNCA multiplicar por negro (#000000)
+        if (isBW && scene && baseAlbedoTex) {
+          material.albedoTexture = await this.getOrCreateBwTexture(baseAlbedoTex, scene);
+        } else {
+          material.albedoTexture = baseAlbedoTex;
         }
 
-        if (isExplicitOverride && colorHex) {
+        // Si el override viene en negro (#000000), es un error de guardado autoral; preservamos blanco
+        const isBlackColor = colorHex === '#000000' || (colorHex && c3Tint.r === 0 && c3Tint.g === 0 && c3Tint.b === 0);
+        if (isExplicitOverride && colorHex && !isBlackColor) {
           material.albedoColor = c3Tint.clone();
-        } else if (material.metadata.originalAlbedoColor) {
-          material.albedoColor.copyFrom(material.metadata.originalAlbedoColor);
+        } else {
+          material.albedoColor = Color3.White();
         }
       }
 
       if (esEmisivo) {
-        const emissiveBase = colorHex ? c3Tint : (material.metadata.originalAlbedoColor || Color3.White());
+        const emissiveBase = (colorHex && colorHex !== '#000000') ? c3Tint : baseAlbedoColor;
         material.emissiveColor = emissiveBase.scale(brillo);
+      } else if (snapshot?.emissiveColor) {
+        material.emissiveColor.copyFrom(snapshot.emissiveColor);
       }
 
     } else if (material.getClassName().includes('Standard')) {
-      if (material.allowShaderHotSwapping !== true) material.allowShaderHotSwapping = true;
+      material.allowShaderHotSwapping = false;
 
-      if (!material.metadata) material.metadata = {};
-      if (material.metadata.stdOriginalsCaptured !== true) {
-        material.metadata.stdOriginalsCaptured = true;
-        material.metadata.originalDiffuseTexture = material.diffuseTexture || null;
-        material.metadata.originalDiffuseColor = material.diffuseColor ? material.diffuseColor.clone() : new Color3(1, 1, 1);
-        material.metadata.originalEmissiveColor = material.emissiveColor ? material.emissiveColor.clone() : Color3.Black();
-      }
+      const baseDiffTex = snapshot?.diffuseTexture ?? material.diffuseTexture;
+      const baseDiffColor = snapshot?.diffuseColor ?? material.diffuseColor ?? Color3.White();
 
       if (isExplicitOverride && textureSource === 'solid') {
         material.diffuseTexture = null;
@@ -229,27 +326,27 @@ export class CoreSceneMaterialService {
         let tex: any = new Texture('http://localhost:4000' + texturePath, scene);
         if (isBW) tex = await this.getOrCreateBwTexture(tex, scene);
         material.diffuseTexture = tex;
-        material.diffuseColor = c3Tint.clone();
+        material.diffuseColor = Color3.White();
       } else {
-        if (isBW && scene) {
-          if (material.metadata.originalDiffuseTexture) {
-            const bwTex = await this.getOrCreateBwTexture(material.metadata.originalDiffuseTexture, scene);
-            material.diffuseTexture = bwTex;
-          }
-        } else if (material.metadata.originalDiffuseTexture) {
-          material.diffuseTexture = material.metadata.originalDiffuseTexture;
+        if (isBW && scene && baseDiffTex) {
+          material.diffuseTexture = await this.getOrCreateBwTexture(baseDiffTex, scene);
+        } else {
+          material.diffuseTexture = baseDiffTex;
         }
 
-        if (isExplicitOverride && colorHex) {
+        const isBlackColor = colorHex === '#000000' || (colorHex && c3Tint.r === 0 && c3Tint.g === 0 && c3Tint.b === 0);
+        if (isExplicitOverride && colorHex && !isBlackColor) {
           material.diffuseColor = c3Tint.clone();
-        } else if (material.metadata.originalDiffuseColor) {
-          material.diffuseColor.copyFrom(material.metadata.originalDiffuseColor);
+        } else {
+          material.diffuseColor = Color3.White();
         }
       }
 
       if (esEmisivo) {
-        const emissiveBase = colorHex ? c3Tint : (material.metadata.originalDiffuseColor || Color3.White());
+        const emissiveBase = (colorHex && colorHex !== '#000000') ? c3Tint : baseDiffColor;
         material.emissiveColor = emissiveBase.scale(brillo);
+      } else if (snapshot?.emissiveColor) {
+        material.emissiveColor.copyFrom(snapshot.emissiveColor);
       }
     }
   }
@@ -266,6 +363,19 @@ export class CoreSceneMaterialService {
         if (sm && !this.isMaterialReadyForMesh(sm, mesh)) return false;
       }
       return true;
+    }
+
+    const anyMat = material as any;
+    const texturesToCheck: Array<Texture | null | undefined> = [
+      anyMat.albedoTexture, anyMat.diffuseTexture, anyMat.opacityTexture,
+      anyMat.emissiveTexture, anyMat.bumpTexture
+    ];
+
+    for (let t = 0; t < texturesToCheck.length; t++) {
+      const tex = texturesToCheck[t];
+      if (tex && typeof tex.isReady === 'function') {
+        if (!tex.isReady()) return false;
+      }
     }
 
     if (mesh && !mesh.isDisposed()) {
@@ -347,7 +457,7 @@ export class CoreSceneMaterialService {
         if (typeof (task.mat as any).forceCompilationAsync === 'function') {
           return (task.mat as any).forceCompilationAsync(task.mesh).then(() => {
             compiledVariants++;
-          }).catch((err: any) => {
+          }).catch(() => {
             failedCount++;
           });
         }

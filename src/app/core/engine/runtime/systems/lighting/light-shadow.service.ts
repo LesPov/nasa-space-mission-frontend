@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/light-shadow.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, ShadowGenerator, Vector3, Tags, InstancedMesh, Mesh, RenderTargetTexture, Node } from '@babylonjs/core';
@@ -166,10 +167,6 @@ export class LightShadowService {
     return false;
   }
 
-  /**
-   * Prepara en memoria CPU la lista de mallas estáticas dentro del radio de influencia de la luz.
-   * Incluye paredes, techo, suelo, obstáculos y la propia estructura sólida de la lámpara.
-   */
   public prepareStaticCastersCache(entityUid: string, lightType: string, lightPos: Vector3, range: number): AbstractMesh[] {
     const cacheKey = `${entityUid}_${lightType}_cached`;
     const cachedEntry = this.slotStaticRenderListCache.get(cacheKey);
@@ -193,16 +190,14 @@ export class LightShadowService {
       const parentEnt = this.resolveEntityForMesh(m);
       if (parentEnt && (parentEnt.rol === 'player' || parentEnt.characterConfig)) continue;
 
-      // LA PROPIA LÁMPARA: Si la malla pertenece a la entidad de la luz pero NO es la bombilla, debe proyectar sombra
       const isLampBodyPart = parentEnt && parentEnt.uid === entityUid;
       if (isLampBodyPart) {
         const isBulb = Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual;
-        if (isBulb) continue; // La bombilla en sí no bloquea su propia luz
+        if (isBulb) continue;
         staticMeshesFound.push(m);
         continue;
       }
 
-      // Si la luz es de interior y pertenece a un contenedor (pasillo), SUS PROPIAS PAREDES DEBEN BLOQUEAR LA LUZ
       const isContainerWall = isInterior && parentEnt && (parentEnt.uid === containerUid);
 
       m.computeWorldMatrix(true);
@@ -218,7 +213,6 @@ export class LightShadowService {
       const dz = lightPos.z - cZ;
       const distToBoxSq = dx * dx + dy * dy + dz * dz;
 
-      // Si es la pared/techo/piso del contenedor o está en el radio físico, bloquea la luz
       if (isContainerWall || distToBoxSq <= rangeSq) {
         if (m.receiveShadows !== true) {
           m.receiveShadows = true;
@@ -275,9 +269,8 @@ export class LightShadowService {
 
     const ownerEnt = this.entityManager.getEntityByUid(entityUid);
     slot.sg.forceBackFacesOnly = false;
-    slot.sg.setDarkness(0.00); // 100% oclusión: paredes, techo y piso bloquean completamente
+    slot.sg.setDarkness(0.00);
 
-    // Preparar mallas estáticas asegurando que no se supere la longitud real del array
     const staticMeshes = this.prepareStaticCastersCache(entityUid, slot.type, lightPos, range);
     const maxMeshesToTake = slot.shadowTier === 'LOW' 
       ? Math.min(40, staticMeshes.length) 

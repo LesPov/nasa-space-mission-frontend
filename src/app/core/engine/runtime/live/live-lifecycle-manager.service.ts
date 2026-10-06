@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/live/live-lifecycle-manager.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Camera, AbstractMesh, Tags, Vector3, Node } from '@babylonjs/core';
@@ -7,12 +6,10 @@ import { EntityManagerService } from '../../entities/entity-manager.service';
 import { GameContextService } from '../../session/game-context.service';
 import { CameraOwnershipService, CameraOwner } from '../cameras/camera-ownership.service';
 import { InputRouterService } from '../../session/input-router.service';
-import { GameSession } from '../game-session';
 import { PlayerCameraManagerService } from '../systems/player-camera.service';
 import { GameEntity } from '../../entities/game.entity';
 import { CinematicLogger } from '../cinematics/cinematic-logger';
 import { DynamicLightingSystem } from '../systems/lighting/dynamic-lighting.system';
-import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
 import { GameStateService } from '../state/game-state.service';
 import { SceneNodesService } from '../../../../services/editor/sceneservice/scene-nodes.service';
 import { PlayerTriggerService } from '../systems/player-trigger.service';
@@ -24,6 +21,7 @@ import { EngineProfilerService } from '../../telemetry/engine-profiler.service';
 import { SpatialStreamingGroupService } from '../../spatial/spatial-streaming-group.service';
 import { PlayerSequenceService } from '../systems/player-sequence.service';
 import { FogRuntimeService } from '../systems/fog/fog-runtime.service';
+import { CoreSceneMaterialService } from '../../scene/utils/core-scene-material.service';
 
 export interface EditorSnapshotState {
   cameraTarget: Vector3;
@@ -40,12 +38,10 @@ export class LiveLifecycleManagerService {
   private gameContext = inject(GameContextService);
   private ownership = inject(CameraOwnershipService);
   private inputRouter = inject(InputRouterService);
-  private gameSession = inject(GameSession);
   private runtimeEngine = inject(RuntimeEngineService);
   private shadowQualitySvc = inject(ShadowQualityService);
   private playerCamSvc = inject(PlayerCameraManagerService);
   private dynLighting = inject(DynamicLightingSystem);
-  private transformMutator = inject(TransformMutatorService);
   private gameState = inject(GameStateService);
   private sceneNodesSvc = inject(SceneNodesService);
   private playerTriggerSvc = inject(PlayerTriggerService);
@@ -55,6 +51,7 @@ export class LiveLifecycleManagerService {
   private spatialGroups = inject(SpatialStreamingGroupService);
   private sequenceSvc = inject(PlayerSequenceService);
   private fogRuntime = inject(FogRuntimeService);
+  private materialSvc = inject(CoreSceneMaterialService);
 
   private isLiveActive = false;
   private savedEditorCameraState: EditorSnapshotState | null = null;
@@ -94,6 +91,12 @@ export class LiveLifecycleManagerService {
     this.gameState.enterSandbox();
     this.entityManager.getAllEntities().forEach(e => {
       e.createAuthoringBackup();
+      if (e.view && e.view.material) {
+        this.materialSvc.capturarEstadoAutoral(e.view.material);
+        e.view.getChildMeshes(false).forEach(m => {
+          if (m.material) this.materialSvc.capturarEstadoAutoral(m.material);
+        });
+      }
       if (e.characterConfig || e.rol === 'player') {
         e.movementAuthority = 'GAMEPLAY';
         if (e.playerRuntime) {
@@ -119,10 +122,8 @@ export class LiveLifecycleManagerService {
 
     this.inputRouter.unlockPointer();
 
-    // 1. Limpiar estado de niebla en runtime
+    // 1. Limpieza de runtime efímero
     this.fogRuntime.clear();
-
-    // 2. Detener sesiones volátiles de gameplay y secuencias
     this.sequenceSvc.pauseExecution();
     this.sequenceSvc.resetearSecuencias();
 
@@ -133,7 +134,7 @@ export class LiveLifecycleManagerService {
     this.playerCamSvc.updateFirstPersonVisibility(false);
     this.playerCamSvc.limpiarPivotTPS();
 
-    // 3. Normalizar configuraciones globales de hardware conservando sombreadores en VRAM
+    // 2. Normalización de hardware de motor
     const engine = this.motor3d.getEngine();
     if (engine) {
       engine.setHardwareScalingLevel(1.0);
@@ -148,8 +149,9 @@ export class LiveLifecycleManagerService {
     }
     this.shadowQualitySvc.setQualityTier('HIGH');
 
-    // 4. Restauración limpia de entidades: descartar las volátiles y restaurar backups autorales
+    // 3. Restauración limpia e idempotente de entidades y materiales autorales
     const entities = this.entityManager.getAllEntities();
+    const scene = this.motor3d.getScene();
     
     for (let i = entities.length - 1; i >= 0; i--) {
       const e = entities[i];
@@ -168,19 +170,46 @@ export class LiveLifecycleManagerService {
       }
       e.syncToView();
 
-      if (e.view && e.visual) {
-        this.transformMutator.aplicarVisuales(e.view, e.visual);
+      // Restauración física estricta de materiales para que NUNCA queden sin textura en Editor
+      if (e.view && !e.view.isDisposed()) {
+        if (e.view.material) {
+          this.materialSvc.restaurarEstadoAutoral(e.view.material);
+        }
+        e.view.getChildMeshes(false).forEach(m => {
+          if (m.material) {
+            this.materialSvc.restaurarEstadoAutoral(m.material);
+          }
+        });
+
+        const isModelBased = e.type === 'model' || (e.type.startsWith('light_') && (!!e.visual?.assetId || !!e.visual?.path));
+        if (isModelBased && e.partOverrides?.overrides) {
+          const overrides = e.partOverrides.overrides;
+          e.view.getChildMeshes(false).forEach(m => {
+            const ov = overrides[m.name];
+            if (ov && m.material) {
+              this.materialSvc.ajustarMaterialGLB(
+                m.material, false, scene,
+                ov.color, ov.color, ov.esEmisivo ?? false,
+                ov.brilloIntensidad ?? 1.0, ov.texturePath,
+                ov.textureSource || (ov.texturePath ? 'asset' : 'original'),
+                true
+              );
+            }
+          });
+        }
       }
     }
 
-    // 5. Reconciliación simétrica del pool de luces y sombras sin purgar materiales útiles
-    this.dynLighting.reconcileSceneLights();
+    // 4. Limpieza del pool de luces y sombras sin purgar materiales de VRAM
+    this.dynLighting.stop();
     this.shadowOrchestrator.reconcileShadows();
 
-    // 6. Salir del sandbox de variables de juego y reactivar triggers de editor
+    // 5. Salir del sandbox y restaurar visibilidad completa de mallas del editor
     this.gameState.exitSandbox();
     this.playerTriggerSvc.start();
     this.sceneNodesSvc.actualizarListaNodos();
+
+    this.localRendering.ensureAllEntitiesVisibleForEditor();
 
     this.gameContext.setEditorSubmode('EDITING');
     

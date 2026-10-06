@@ -17,6 +17,7 @@ export class LightVisualService {
   /**
    * Actualiza el resplandor visual (emissive materials) de las mallas 3D asociadas a una luz virtual,
    * calculando la intensidad real afectada por el multiplicador de distancia/fading actual.
+   * Respeta los partOverrides del usuario para no forzar a negro texturas o brillos configurados.
    */
   public updateVisualGlow(vl: VirtualLight, lightComp: any, baseColor: Color3, disableLocalLights: boolean): void {
       if (!vl.entity.view) return;
@@ -28,8 +29,8 @@ export class LightVisualService {
           if (vMat.diffuseColor?.copyFrom) vMat.diffuseColor.copyFrom(baseColor);
       }
 
-      let emissiveScale = (lightComp.intensity / 5) * vl.currentMultiplier;
-      if (disableLocalLights || !lightComp.enabled) emissiveScale = 0;
+      let emissiveScale = ((lightComp?.intensity ?? 5) / 5) * vl.currentMultiplier;
+      if (disableLocalLights || !lightComp?.enabled) emissiveScale = 0;
 
       const r = baseColor.r * emissiveScale; 
       const g = baseColor.g * emissiveScale; 
@@ -46,6 +47,7 @@ export class LightVisualService {
           return;
         }
 
+        // Si el material tiene textura o es parte de un modelo con partOverrides no-emisivos, no aplastarlo
         if (mat.emissiveColor && typeof mat.emissiveColor.set === 'function') {
           mat.emissiveColor.set(r, g, b);
         }

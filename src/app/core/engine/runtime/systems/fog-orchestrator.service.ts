@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/fog-orchestrator.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Scene, Color3, AbstractMesh } from '@babylonjs/core';

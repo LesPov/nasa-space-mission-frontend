@@ -1,3 +1,4 @@
+
 // file: src/app/services/motor-3d.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { 
@@ -114,7 +115,9 @@ export class Motor3dService implements ISceneAccess {
     this.scene.autoClearDepthAndStencil = false;
     this.scene.collisionsEnabled = true;
     this.scene.gravity = new Vector3(0, -0.25, 0);
-    this.scene.skipPointerMovePicking = true;
+
+    // Permitir picking dinámico estable sin saltos de raycast
+    this.scene.skipPointerMovePicking = false;
 
     this.sceneInstrumentation = new SceneInstrumentation(this.scene);
     this.sceneInstrumentation.captureActiveMeshesEvaluationTime = true;

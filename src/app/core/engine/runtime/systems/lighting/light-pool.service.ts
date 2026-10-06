@@ -1,4 +1,4 @@
-// file: src/app/core/engine/runtime/systems/lighting/light-pool.service.ts
+
 import { Injectable, inject } from '@angular/core';
 import { PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, Color3, Tags, Scene } from '@babylonjs/core';
 import { PoolSlot, LIGHT_SPATIAL_CONSTANTS, ShadowTier } from './lighting-types';
@@ -27,17 +27,13 @@ export class LightPoolService {
     this.disposePools(); 
     this.currentScene = scene;
 
-    // Exactamente 3 slots físicos activos para Point y Spot (respetando presupuesto)
     const MAX_PHYSICAL_SLOTS = LIGHT_SPATIAL_CONSTANTS.MAX_PHYSICAL_ACTIVE_LIGHTS;
-
-    const pointResolutions = [1024, 512, 512];
-    const spotResolutions = [1024, 512, 512];
-    const tiers: ShadowTier[] = ['HIGH', 'MEDIUM', 'LOW'];
+    const tiers: ShadowTier[] = ['HIGH', 'HIGH', 'HIGH'];
 
     for (let i = 0; i < MAX_PHYSICAL_SLOTS; i++) {
-      // 1. POINT LIGHTS
+      // 1. POINT LIGHTS (Defines estables y consistentes para evitar recompilaciones)
       const pLight = new PointLight(`pool_point_${i}`, new Vector3(0, -99999, 0), scene);
-      pLight.intensity = 0; 
+      pLight.intensity = 0.0; 
       pLight.diffuse = Color3.Black();
       pLight.specular = Color3.Black();
       pLight.shadowEnabled = true; 
@@ -45,12 +41,12 @@ export class LightPoolService {
       pLight.shadowMaxZ = 60.0;
       pLight.falloffType = PointLight.FALLOFF_STANDARD;
       pLight.radius = 0.20;
-      pLight.setEnabled(false); // Físicamente apagada al nacer
+      // Permanece habilitado para mantener constantes las directivas de compilación de shader
+      pLight.setEnabled(true);
       Tags.AddTagsTo(pLight, "system_element");
 
-      const pSg = new ShadowGenerator(pointResolutions[i], pLight);
+      const pSg = new ShadowGenerator(1024, pLight);
       pSg.usePoissonSampling = true;
-      // 0.00 = 100% de oclusión física detrás de paredes, techos y suelos (cero leak)
       pSg.setDarkness(0.00); 
       pSg.bias = 0.0008; 
       pSg.normalBias = 0.002; 
@@ -69,20 +65,20 @@ export class LightPoolService {
         shadowTier: tiers[i]
       });
 
-      // 2. SPOT LIGHTS
-      const sLight = new SpotLight(`pool_spot_${i}`, new Vector3(0, -99999, 0), new Vector3(0, -1, 0), Math.PI/3, 1.0, scene);
-      sLight.intensity = 0; 
+      // 2. SPOT LIGHTS (Configuración uniforme de filtrado para prevenir alternancia de defines)
+      const sLight = new SpotLight(`pool_spot_${i}`, new Vector3(0, -99999, 0), new Vector3(0, -1, 0), Math.PI / 3, 1.0, scene);
+      sLight.intensity = 0.0; 
       sLight.diffuse = Color3.Black(); 
       sLight.specular = Color3.Black();
       sLight.shadowEnabled = true; 
       sLight.shadowMinZ = 0.05;
       sLight.shadowMaxZ = 60.0;
-      sLight.setEnabled(false); // Físicamente apagada al nacer
+      sLight.setEnabled(true);
       Tags.AddTagsTo(sLight, "system_element");
 
-      const sSg = new ShadowGenerator(spotResolutions[i], sLight);
+      const sSg = new ShadowGenerator(1024, sLight);
       sSg.usePercentageCloserFiltering = true; 
-      sSg.filteringQuality = i === 0 ? ShadowGenerator.QUALITY_HIGH : (i === 1 ? ShadowGenerator.QUALITY_MEDIUM : ShadowGenerator.QUALITY_LOW);
+      sSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
       sSg.setDarkness(0.00); 
       sSg.bias = 0.0005; 
       sSg.normalBias = 0.0015; 
@@ -101,13 +97,13 @@ export class LightPoolService {
       });
     }
 
-    // 3. DIRECTIONAL LIGHT (Sol secundario / directional pool)
+    // 3. DIRECTIONAL LIGHT
     const dLight = new DirectionalLight(`pool_dir_0`, new Vector3(0, -1, 0), scene);
     dLight.intensity = 0; 
     dLight.diffuse = Color3.Black(); 
     dLight.specular = Color3.Black();
     dLight.shadowEnabled = true; 
-    dLight.setEnabled(false);
+    dLight.setEnabled(true);
     Tags.AddTagsTo(dLight, "system_element");
 
     const dSg = new ShadowGenerator(1024, dLight);
@@ -162,6 +158,7 @@ export class LightPoolService {
     if (!slot.assignedEntityUid || topUids.has(slot.assignedEntityUid)) return;
 
     const vl = this.lightRegistry.getVirtualLightByUid(slot.assignedEntityUid);
+    // Preservar la retención física del slot mientras la luz siga atenuándose
     if (vl && vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
       return; 
     }
@@ -176,9 +173,6 @@ export class LightPoolService {
     }
     slot.currentIntensity = 0; 
     slot.light.intensity = 0; 
-    if (slot.light.isEnabled()) {
-      slot.light.setEnabled(false); // Físicamente apagada
-    }
     slot.light.diffuse.set(0, 0, 0);
     slot.light.specular.set(0, 0, 0);
     slot._lightOnTimestamp = undefined;

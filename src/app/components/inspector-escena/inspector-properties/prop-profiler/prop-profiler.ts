@@ -4,7 +4,7 @@ import { Component, OnInit, OnDestroy, inject, NgZone, signal, computed, ChangeD
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
-import { EngineProfilerService, ProfilerMetrics, TimelineEvent, EntrySummaryComparison } from '../../../../core/engine/telemetry/engine-profiler.service';
+import { EngineProfilerService, ProfilerMetrics, TimelineEvent, EntrySummaryComparison, TelemetryTier } from '../../../../core/engine/telemetry/engine-profiler.service';
 import { ProfilerTogglesService } from '../../../../core/engine/telemetry/profiler-toggles.service';
 import { PerformanceIncidentService, PerformanceIncident } from '../../../../core/engine/telemetry/performance-incident.service';
 
@@ -44,7 +44,6 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
   public activeSection = signal<ProfilerSection>('overview');
   public selectedIncident = signal<PerformanceIncident | null>(null);
 
-  // Filtro de categorías para la pestaña Timeline
   public timelineFilter = signal<string>('ALL');
 
   public expandedLightUids = signal<Set<string>>(new Set());
@@ -81,12 +80,11 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
   private incidentSub: Subscription | null = null;
 
   ngOnInit(): void {
-    this.profiler.isProfilingEnabled = true;
+    // Al abrir el Profiler, habilitamos inspecciones pesadas
+    this.profiler.setTier(TelemetryTier.FORENSIC);
     this.incidents.set([...this.incidentSvc.getIncidents()]);
 
-    // Suscripción reactiva Zoneless-Safe a actualizaciones de incidentes (incluyendo snapshots)
     this.incidentSub = this.incidentSvc.onIncidentUpdated.subscribe((updatedInc: PerformanceIncident) => {
-      // 1. Actualizar inmutablemente el array de incidentes
       this.incidents.update(list => {
         const idx = list.findIndex(i => i.id === updatedInc.id);
         if (idx >= 0) {
@@ -97,7 +95,6 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
         return [updatedInc, ...list];
       });
 
-      // 2. Si el usuario está inspeccionando este incidente específico, refrescar la signal seleccionada
       if (this.selectedIncident()?.id === updatedInc.id) {
         this.selectedIncident.set({ ...updatedInc });
       }
@@ -131,6 +128,9 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
   }
 
   ngOnDestroy(): void {
+    // Al cerrar, volvemos a BALANCED para salvar recursos de CPU (Render Loop seguro)
+    this.profiler.setTier(TelemetryTier.BALANCED);
+
     if (this.intervalId) {
       clearInterval(this.intervalId);
       this.intervalId = null;
@@ -146,7 +146,6 @@ export class PropProfilerComponent implements OnInit, OnDestroy {
   }
 
   public selectIncident(inc: PerformanceIncident): void {
-    // Al seleccionar, buscar la instancia más fresca almacenada en el servicio
     const latest = this.incidentSvc.getIncidents().find(i => i.id === inc.id) || inc;
     this.selectedIncident.set({ ...latest });
   }

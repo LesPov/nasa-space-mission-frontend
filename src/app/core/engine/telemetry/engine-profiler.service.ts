@@ -15,6 +15,12 @@ import { LightReferenceService } from '../runtime/systems/lighting/light-referen
 import { FogRendererService } from '../runtime/systems/fog-renderer.service';
 import { Vector3, Material, AbstractMesh, MultiMaterial } from '@babylonjs/core';
 
+export enum TelemetryTier {
+  SILENT = 0,    // Prod: Solo FPS, Overhead virtualmente 0
+  BALANCED = 1,  // Default Editor/Test: Historial ligero, Zero Allocations
+  FORENSIC = 2   // Profiler UI Abierto: Deep Snapshots, Shaders, Arrays complejos
+}
+
 export interface LightForensicRecord {
   uid: string;
   name: string;
@@ -231,6 +237,7 @@ export interface ProfilerMetrics {
 @Injectable({ providedIn: 'root' })
 export class EngineProfilerService {
   public isProfilingEnabled = true;
+  public currentTier: TelemetryTier = TelemetryTier.BALANCED;
 
   private adaptiveQuality: AdaptiveQualitySystem | null = null;
   private shadowCache = inject(ShadowCache);
@@ -308,15 +315,16 @@ export class EngineProfilerService {
   };
   private worstFrameEver = 0;
 
-  private currentPhases: Record<string, number> = {};
-  private currentSystems: Record<string, number> = {};
-  private avgPhases: Record<string, number> = {};
-  private avgSystems: Record<string, number> = {};
+  // Optimización O(1) Zero Allocations usando Maps
+  private currentPhases = new Map<string, number>();
+  private currentSystems = new Map<string, number>();
+  private avgPhases = new Map<string, number>();
+  private avgSystems = new Map<string, number>();
   private dominantSystemName = 'None';
   private telemetryCpuAccumulator = 0;
   private avgTelemetryCpuTime = 0;
 
-  public distanceEvaluationsCounter: Record<string, number> = {};
+  public distanceEvaluationsCounter = new Map<string, number>();
   public cullingEvaluatedCount = 0;
   public cullingChangedCount = 0;
 
@@ -360,8 +368,17 @@ export class EngineProfilerService {
     }
   }
 
+  // --- FAST MATH HELPERS ---
+  private round1(val: number): number { return Math.round(val * 10) / 10; }
+  private round2(val: number): number { return Math.round(val * 100) / 100; }
+  private round3(val: number): number { return Math.round(val * 1000) / 1000; }
+
   public isHighResTelemetryEnabled(): boolean {
     return (window as any).HIGH_RES_PERFORMANCE_TELEMETRY !== false;
+  }
+
+  public setTier(tier: TelemetryTier): void {
+    this.currentTier = tier;
   }
 
   public notifySessionEntry(sessionId: string, entryNumber: number): void {
@@ -402,12 +419,13 @@ export class EngineProfilerService {
     details: Record<string, any> = {}
   ): void {
     if (!this.isProfilingEnabled || !this.isHighResTelemetryEnabled()) return;
+    if (this.currentTier === TelemetryTier.SILENT) return; // Silent no acumula strings de timeline
 
     const now = performance.now();
     const event: TimelineEvent = {
       id: this.nextEventId++,
       timestamp: now,
-      relativeMs: parseFloat((now - this.sessionStartTime).toFixed(2)),
+      relativeMs: this.round2(now - this.sessionStartTime),
       frameNumber: this.frameCounter,
       sessionId: this.currentSessionId,
       entryNumber: this.currentEntryNumber,
@@ -456,8 +474,9 @@ export class EngineProfilerService {
   }
 
   public recordDistanceEvaluation(systemName: string, count: number = 1): void {
-    if (!this.isProfilingEnabled) return;
-    this.distanceEvaluationsCounter[systemName] = (this.distanceEvaluationsCounter[systemName] || 0) + count;
+    if (!this.isProfilingEnabled || this.currentTier === TelemetryTier.SILENT) return;
+    const curr = this.distanceEvaluationsCounter.get(systemName) || 0;
+    this.distanceEvaluationsCounter.set(systemName, curr + count);
   }
 
   public beginTransitionTracking(stageName: string): void {
@@ -485,13 +504,13 @@ export class EngineProfilerService {
 
     if (stageName.includes('STABILITY')) {
       this.stabilityCheckDuration = duration;
-      if (this.currentEntrySummary) this.currentEntrySummary.stabilityCheckDurationMs = parseFloat(duration.toFixed(1));
+      if (this.currentEntrySummary) this.currentEntrySummary.stabilityCheckDurationMs = this.round1(duration);
     } else if (stageName.includes('READY')) {
       this.readyDuration = duration;
-      if (this.currentEntrySummary) this.currentEntrySummary.readyDurationMs = parseFloat(duration.toFixed(1));
+      if (this.currentEntrySummary) this.currentEntrySummary.readyDurationMs = this.round1(duration);
     }
 
-    this.recordTimelineEvent('TRANSITION', `STAGE_${stageName}`, { durationMs: parseFloat(duration.toFixed(2)) });
+    this.recordTimelineEvent('TRANSITION', `STAGE_${stageName}`, { durationMs: this.round2(duration) });
   }
 
   public endTransitionTracking(): void {
@@ -499,10 +518,10 @@ export class EngineProfilerService {
       this.lastTransitionDuration = performance.now() - this.transitionStartTime;
       this.recordTransitionMilestone('COMPLETE');
       if (this.currentEntrySummary) {
-        this.currentEntrySummary.transitionDurationMs = parseFloat(this.lastTransitionDuration.toFixed(1));
+        this.currentEntrySummary.transitionDurationMs = this.round1(this.lastTransitionDuration);
       }
       this.recordTimelineEvent('TRANSITION', 'TRANSITION_COMPLETE', {
-        totalDurationMs: parseFloat(this.lastTransitionDuration.toFixed(2))
+        totalDurationMs: this.round2(this.lastTransitionDuration)
       });
       this.transitionStartTime = 0;
     }
@@ -512,19 +531,25 @@ export class EngineProfilerService {
     if (!this.isProfilingEnabled) return;
     const tStart = performance.now();
 
+    // SILENT MODE: Ignoramos todo registro profundo para no sobrecargar el render loop.
+    if (this.currentTier === TelemetryTier.SILENT) {
+       this.currentFps = this.engineInstr?.scene?.getEngine()?.getFps() || 60;
+       return;
+    }
+
     if (timeMs > this.worstFrameEver) {
       this.worstFrameEver = timeMs;
     }
     if (this.currentEntrySummary && timeMs > this.currentEntrySummary.worstFrameTimeMs) {
-      this.currentEntrySummary.worstFrameTimeMs = parseFloat(timeMs.toFixed(1));
+      this.currentEntrySummary.worstFrameTimeMs = this.round1(timeMs);
     }
 
     if (timeMs > 1000) this.latencyBuckets.framesAbove1000ms++;
-    if (timeMs > 500) this.latencyBuckets.framesAbove500ms++;
-    if (timeMs > 250) this.latencyBuckets.framesAbove250ms++;
-    if (timeMs > 100) this.latencyBuckets.framesAbove100ms++;
-    if (timeMs > 50) this.latencyBuckets.framesAbove50ms++;
-    if (timeMs > 33.3) this.latencyBuckets.framesAbove33ms++;
+    else if (timeMs > 500) this.latencyBuckets.framesAbove500ms++;
+    else if (timeMs > 250) this.latencyBuckets.framesAbove250ms++;
+    else if (timeMs > 100) this.latencyBuckets.framesAbove100ms++;
+    else if (timeMs > 50) this.latencyBuckets.framesAbove50ms++;
+    else if (timeMs > 33.3) this.latencyBuckets.framesAbove33ms++;
 
     this.frameCounter++;
     this.frameTimeBuffer[this.bufferIndex] = timeMs;
@@ -536,18 +561,21 @@ export class EngineProfilerService {
     sample.timestamp = tStart;
     sample.fps = this.currentFps;
     sample.frameTime = timeMs;
+    
+    // Obtención Rápida O(1)
     sample.drawCalls = this.sceneInstr?.drawCallsCounter?.current || 0;
     sample.activeMeshes = this.sceneInstr?.scene?.getActiveMeshes()?.length || 0;
     
     let activeL = 0;
     let shadowedL = 0;
-    if (this.lightSys && typeof this.lightSys.getProfilerMetrics === 'function') {
-      const lm = this.lightSys.getProfilerMetrics();
+    if (this.lightSys && typeof this.lightSys.getFastMetrics === 'function') {
+      const lm = this.lightSys.getFastMetrics();
       activeL = lm.activePool;
       shadowedL = lm.shadowedPool;
     }
     sample.activeLights = activeL;
     sample.shadowedLights = shadowedL;
+    
     sample.shadowRebuilds = this.shadowCache.metrics.renderListRebuilds;
     sample.cullingEvaluated = this.cullingEvaluatedCount;
     sample.cullingChanged = this.cullingChangedCount;
@@ -564,8 +592,7 @@ export class EngineProfilerService {
 
     this.historyIndex = (this.historyIndex + 1) % this.HISTORY_CAPACITY;
 
-    // Solo inspeccionar sombreadores en runtime o test live a baja frecuencia (cada 60 frames)
-    if (this.gameContext.mode() !== 'EDITOR') {
+    if (this.currentTier === TelemetryTier.FORENSIC && this.gameContext.mode() !== 'EDITOR') {
       this.inspectShadersNonIntrusive();
     }
 
@@ -611,40 +638,48 @@ export class EngineProfilerService {
   }
 
   public recordPhaseTime(phaseName: string, timeMs: number): void {
-    if (!this.isProfilingEnabled) return;
-    this.currentPhases[phaseName] = (this.currentPhases[phaseName] || 0) + timeMs;
+    if (!this.isProfilingEnabled || this.currentTier === TelemetryTier.SILENT) return;
+    const current = this.currentPhases.get(phaseName) || 0;
+    this.currentPhases.set(phaseName, current + timeMs);
   }
 
   public recordSystemTime(systemName: string, timeMs: number): void {
-    if (!this.isProfilingEnabled) return;
-    this.currentSystems[systemName] = (this.currentSystems[systemName] || 0) + timeMs;
+    if (!this.isProfilingEnabled || this.currentTier === TelemetryTier.SILENT) return;
+    const current = this.currentSystems.get(systemName) || 0;
+    this.currentSystems.set(systemName, current + timeMs);
   }
 
   public endFrame(): void {
     if (!this.isProfilingEnabled) return;
     const tStart = performance.now();
-    const alpha = 0.15;
-    let maxSysTime = -1;
-    let dominantSys = 'None';
 
-    for (const key in this.currentPhases) {
-      this.avgPhases[key] = (this.avgPhases[key] || 0) * (1 - alpha) + this.currentPhases[key] * alpha;
-      this.currentPhases[key] = 0;
-    }
-    for (const key in this.currentSystems) {
-      const val = this.currentSystems[key];
-      this.avgSystems[key] = (this.avgSystems[key] || 0) * (1 - alpha) + val * alpha;
-      if (val > maxSysTime) {
-        maxSysTime = val;
-        dominantSys = key;
-      }
-      this.currentSystems[key] = 0;
+    if (this.currentTier !== TelemetryTier.SILENT) {
+        const alpha = 0.15;
+        let maxSysTime = -1;
+        let dominantSys = 'None';
+
+        for (const [key, val] of this.currentPhases.entries()) {
+          const avg = this.avgPhases.get(key) || 0;
+          this.avgPhases.set(key, avg * (1 - alpha) + val * alpha);
+          this.currentPhases.set(key, 0);
+        }
+        
+        for (const [key, val] of this.currentSystems.entries()) {
+          const avg = this.avgSystems.get(key) || 0;
+          this.avgSystems.set(key, avg * (1 - alpha) + val * alpha);
+          if (val > maxSysTime) {
+            maxSysTime = val;
+            dominantSys = key;
+          }
+          this.currentSystems.set(key, 0);
+        }
+
+        this.dominantSystemName = dominantSys;
     }
 
-    this.dominantSystemName = dominantSys;
     this.cullingEvaluatedCount = 0;
     this.cullingChangedCount = 0;
-    this.distanceEvaluationsCounter = {};
+    this.distanceEvaluationsCounter.clear();
 
     if (this.bufferIndex % 60 === 0) {
       this.shadowCache.clearMetrics();
@@ -664,10 +699,10 @@ export class EngineProfilerService {
       const delta = this.lastHeapMb > 0 ? used - this.lastHeapMb : 0;
       this.lastHeapMb = used;
       this.cachedMemoryMetrics = {
-        usedJSHeapSizeMb: parseFloat(used.toFixed(2)),
-        totalJSHeapSizeMb: parseFloat(total.toFixed(2)),
-        jsHeapSizeLimitMb: parseFloat(limit.toFixed(2)),
-        heapDeltaMb: parseFloat(delta.toFixed(2))
+        usedJSHeapSizeMb: this.round2(used),
+        totalJSHeapSizeMb: this.round2(total),
+        jsHeapSizeLimitMb: this.round2(limit),
+        heapDeltaMb: this.round2(delta)
       };
     }
   }
@@ -748,7 +783,7 @@ export class EngineProfilerService {
 
     let gpuMetric: number | 'unavailable' = 'unavailable';
     if (this.engineInstr?.gpuFrameTimeCounter && this.engineInstr.gpuFrameTimeCounter.current > 0) {
-      gpuMetric = this.engineInstr.gpuFrameTimeCounter.current * 0.000001;
+      gpuMetric = this.round2(this.engineInstr.gpuFrameTimeCounter.current * 0.000001);
     }
 
     const drawCalls = this.sceneInstr?.drawCallsCounter?.current || 0;
@@ -768,13 +803,13 @@ export class EngineProfilerService {
     }
 
     let lightMetrics = { totalVirtual: 0, activePool: 0, shadowedPool: 0 };
-    if (this.lightSys && typeof this.lightSys.getProfilerMetrics === 'function') {
-      lightMetrics = this.lightSys.getProfilerMetrics();
+    if (this.lightSys && typeof this.lightSys.getFastMetrics === 'function') {
+      lightMetrics = this.lightSys.getFastMetrics();
     }
 
     let shadowMetrics = { activeGenerators: 0, totalCasters: 0, csmMaxZ: 0, csmCascades: 0 };
-    if (this.shadowSys && typeof this.shadowSys.getProfilerMetrics === 'function') {
-      shadowMetrics = this.shadowSys.getProfilerMetrics();
+    if (this.shadowSys && typeof this.shadowSys.getFastMetrics === 'function') {
+      shadowMetrics = this.shadowSys.getFastMetrics();
     }
 
     const lightDetails: LightForensicRecord[] = [];
@@ -782,66 +817,69 @@ export class EngineProfilerService {
     let fadingOutCount = 0;
     let inactiveCount = 0;
 
-    try {
-      const virtuals = this.lightRegistry.getVirtualLights();
-      const slots = this.lightPool.getAllSlots();
+    if (includeDeepLights) {
+      try {
+        const virtuals = this.lightRegistry.getVirtualLights();
+        const slots = this.lightPool.getAllSlots();
+        lightMetrics.totalVirtual = virtuals.length;
 
-      for (let i = 0; i < virtuals.length; i++) {
-        const vl = virtuals[i];
-        const slot = slots.find(s => s.assignedEntityUid === vl.entity.uid);
-        const lightComp = vl.entity.light;
-        const pos = vl.entity.view 
-          ? vl.entity.view.getAbsolutePosition() 
-          : { x: vl.entity.transform.position.x, y: vl.entity.transform.position.y, z: vl.entity.transform.position.z };
+        for (let i = 0; i < virtuals.length; i++) {
+          const vl = virtuals[i];
+          const slot = slots.find(s => s.assignedEntityUid === vl.entity.uid);
+          const lightComp = vl.entity.light;
+          const pos = vl.entity.view 
+            ? vl.entity.view.getAbsolutePosition() 
+            : { x: vl.entity.transform.position.x, y: vl.entity.transform.position.y, z: vl.entity.transform.position.z };
 
-        if (vl.lifecycleStage === 'FADING_IN') fadingInCount++;
-        else if (vl.lifecycleStage === 'FADING_OUT') fadingOutCount++;
-        else if (vl.lifecycleStage === 'INACTIVE' || vl.lifecycleStage === 'OUTSIDE') inactiveCount++;
+          if (vl.lifecycleStage === 'FADING_IN') fadingInCount++;
+          else if (vl.lifecycleStage === 'FADING_OUT') fadingOutCount++;
+          else if (vl.lifecycleStage === 'INACTIVE' || vl.lifecycleStage === 'OUTSIDE') inactiveCount++;
 
-        const actDist = lightComp?.activationDistance ?? 50.0;
-        const deactDist = lightComp?.deactivationDistance ?? 55.0;
-        const shadowAct = lightComp?.shadowActivationDistance ?? 24.0;
+          const actDist = lightComp?.activationDistance ?? 50.0;
+          const deactDist = lightComp?.deactivationDistance ?? 55.0;
+          const shadowAct = lightComp?.shadowActivationDistance ?? 24.0;
 
-        lightDetails.push({
-          uid: vl.entity.uid,
-          name: vl.entity.name,
-          type: vl.entity.type,
-          position: { x: parseFloat(pos.x.toFixed(2)), y: parseFloat(pos.y.toFixed(2)), z: parseFloat(pos.z.toFixed(2)) },
-          distance: parseFloat(vl.lastEvaluatedDistance.toFixed(2)),
-          centerDistance: parseFloat(vl.centerDistance.toFixed(2)),
-          boundsDistance: parseFloat(vl.boundsDistance.toFixed(2)),
-          effectiveDistance: parseFloat(vl.effectiveDistance.toFixed(2)),
-          configActivationDistance: actDist,
-          configDeactivationDistance: deactDist,
-          configFadeStartDistance: parseFloat((actDist * 0.7).toFixed(1)),
-          configFadeEndDistance: deactDist,
-          configShadowDistance: shadowAct,
-          isLightInRange: vl.isLightInRange,
-          isShadowInRange: vl.isShadowInRange,
-          baseIntensity: lightComp?.intensity || 1.0,
-          targetMultiplier: parseFloat(vl.targetMultiplier.toFixed(2)),
-          currentMultiplier: parseFloat(vl.currentMultiplier.toFixed(2)),
-          finalIntensity: parseFloat(((lightComp?.renderIntensity !== undefined ? lightComp.renderIntensity : (lightComp?.intensity || 1.0)) * vl.currentMultiplier).toFixed(2)),
-          containmentMode: lightComp?.containmentMode || 'GLOBAL',
-          hasShadowGenerator: !!slot?.sg,
-          renderListSize: slot?.sg ? (slot.sg.getShadowMap()?.renderList?.length || 0) : 0,
-          isStatic: slot?.isStaticLight ?? true,
-          assignedSlot: slot ? slot.index : null,
-          priorityScore: parseFloat((vl._sortScore ?? 0).toFixed(2)),
-          state: vl.lifecycleStage,
-          decisionText: vl.decisionText || 'EVALUATING',
-          rejectionReason: vl.rejectionReason,
-          lastStateChangeTimestamp: vl.lastStateChangeTimestamp || 'Initial',
-          lastDistanceUpdateTimestamp: vl.lastDistanceUpdateTimestamp || 'Initial',
-          lightOnTimestamp: slot?._lightOnTimestamp,
-          shadowReadyTimestamp: slot?._shadowReadyTimestamp,
-          includedMeshesCount: slot?.light ? (slot.light.includedOnlyMeshes?.length || 0) : 0,
-          excludedMeshesCount: slot?.light ? (slot.light.excludedMeshes?.length || 0) : 0,
-          insideVolume: vl.insideVolume,
-          inPreEntryZone: vl.inPreEntryZone
-        });
-      }
-    } catch (e) {}
+          lightDetails.push({
+            uid: vl.entity.uid,
+            name: vl.entity.name,
+            type: vl.entity.type,
+            position: { x: this.round2(pos.x), y: this.round2(pos.y), z: this.round2(pos.z) },
+            distance: this.round2(vl.lastEvaluatedDistance),
+            centerDistance: this.round2(vl.centerDistance),
+            boundsDistance: this.round2(vl.boundsDistance),
+            effectiveDistance: this.round2(vl.effectiveDistance),
+            configActivationDistance: actDist,
+            configDeactivationDistance: deactDist,
+            configFadeStartDistance: this.round1(actDist * 0.7),
+            configFadeEndDistance: deactDist,
+            configShadowDistance: shadowAct,
+            isLightInRange: vl.isLightInRange,
+            isShadowInRange: vl.isShadowInRange,
+            baseIntensity: lightComp?.intensity || 1.0,
+            targetMultiplier: this.round2(vl.targetMultiplier),
+            currentMultiplier: this.round2(vl.currentMultiplier),
+            finalIntensity: this.round2((lightComp?.renderIntensity !== undefined ? lightComp.renderIntensity : (lightComp?.intensity || 1.0)) * vl.currentMultiplier),
+            containmentMode: lightComp?.containmentMode || 'GLOBAL',
+            hasShadowGenerator: !!slot?.sg,
+            renderListSize: slot?.sg ? (slot.sg.getShadowMap()?.renderList?.length || 0) : 0,
+            isStatic: slot?.isStaticLight ?? true,
+            assignedSlot: slot ? slot.index : null,
+            priorityScore: this.round2(vl._sortScore ?? 0),
+            state: vl.lifecycleStage,
+            decisionText: vl.decisionText || 'EVALUATING',
+            rejectionReason: vl.rejectionReason,
+            lastStateChangeTimestamp: vl.lastStateChangeTimestamp || 'Initial',
+            lastDistanceUpdateTimestamp: vl.lastDistanceUpdateTimestamp || 'Initial',
+            lightOnTimestamp: slot?._lightOnTimestamp,
+            shadowReadyTimestamp: slot?._shadowReadyTimestamp,
+            includedMeshesCount: slot?.light ? (slot.light.includedOnlyMeshes?.length || 0) : 0,
+            excludedMeshesCount: slot?.light ? (slot.light.excludedMeshes?.length || 0) : 0,
+            insideVolume: vl.insideVolume,
+            inPreEntryZone: vl.inPreEntryZone
+          });
+        }
+      } catch (e) {}
+    }
 
     const cullingMetrics = this.localRendering ? this.localRendering.getMetrics() : {
       visibleObjects: visibleMeshesCount, fadingObjects: 0, hardCulledObjects: 0, restoringObjects: 0, shadowProtectedObjects: 0
@@ -855,21 +893,21 @@ export class EngineProfilerService {
 
     if (validActors.length > 0 && validActors[0].view && !validActors[0].view.isDisposed()) {
       const p = validActors[0].view.getAbsolutePosition();
-      playerPos = { x: parseFloat(p.x.toFixed(2)), y: parseFloat(p.y.toFixed(2)), z: parseFloat(p.z.toFixed(2)) };
+      playerPos = { x: this.round2(p.x), y: this.round2(p.y), z: this.round2(p.z) };
 
       const pv = validActors[0].view;
       if (pv.rotationQuaternion) {
         const e = pv.rotationQuaternion.toEulerAngles();
         playerRot = { 
-          x: parseFloat((e.x * 180 / Math.PI).toFixed(1)), 
-          y: parseFloat((e.y * 180 / Math.PI).toFixed(1)), 
-          z: parseFloat((e.z * 180 / Math.PI).toFixed(1)) 
+          x: this.round1(e.x * 180 / Math.PI), 
+          y: this.round1(e.y * 180 / Math.PI), 
+          z: this.round1(e.z * 180 / Math.PI) 
         };
       } else {
         playerRot = { 
-          x: parseFloat((pv.rotation.x * 180 / Math.PI).toFixed(1)), 
-          y: parseFloat((pv.rotation.y * 180 / Math.PI).toFixed(1)), 
-          z: parseFloat((pv.rotation.z * 180 / Math.PI).toFixed(1)) 
+          x: this.round1(pv.rotation.x * 180 / Math.PI), 
+          y: this.round1(pv.rotation.y * 180 / Math.PI), 
+          z: this.round1(pv.rotation.z * 180 / Math.PI) 
         };
       }
     }
@@ -884,29 +922,29 @@ export class EngineProfilerService {
     if (cam) {
       cam.computeWorldMatrix();
       const cp = cam.globalPosition;
-      camPos = { x: parseFloat(cp.x.toFixed(2)), y: parseFloat(cp.y.toFixed(2)), z: parseFloat(cp.z.toFixed(2)) };
+      camPos = { x: this.round2(cp.x), y: this.round2(cp.y), z: this.round2(cp.z) };
       const cd = cam.getDirection(Vector3.Forward());
-      camDir = { x: parseFloat(cd.x.toFixed(3)), y: parseFloat(cd.y.toFixed(3)), z: parseFloat(cd.z.toFixed(3)) };
+      camDir = { x: this.round3(cd.x), y: this.round3(cd.y), z: this.round3(cd.z) };
       camFov = cam.fov || 0.8;
 
       if ((cam as any).rotation) {
         const cr = (cam as any).rotation;
         camRot = { 
-          x: parseFloat((cr.x * 180 / Math.PI).toFixed(1)), 
-          y: parseFloat((cr.y * 180 / Math.PI).toFixed(1)), 
-          z: parseFloat((cr.z * 180 / Math.PI).toFixed(1)) 
+          x: this.round1(cr.x * 180 / Math.PI), 
+          y: this.round1(cr.y * 180 / Math.PI), 
+          z: this.round1(cr.z * 180 / Math.PI) 
         };
       } else if ((cam as any).rotationQuaternion) {
         const e = (cam as any).rotationQuaternion.toEulerAngles();
         camRot = { 
-          x: parseFloat((e.x * 180 / Math.PI).toFixed(1)), 
-          y: parseFloat((e.y * 180 / Math.PI).toFixed(1)), 
-          z: parseFloat((e.z * 180 / Math.PI).toFixed(1)) 
+          x: this.round1(e.x * 180 / Math.PI), 
+          y: this.round1(e.y * 180 / Math.PI), 
+          z: this.round1(e.z * 180 / Math.PI) 
         };
       }
 
       if (playerPos) {
-        distCamPlayer = parseFloat(Vector3.Distance(cp, new Vector3(playerPos.x, playerPos.y, playerPos.z)).toFixed(2));
+        distCamPlayer = this.round2(Vector3.Distance(cp, new Vector3(playerPos.x, playerPos.y, playerPos.z)));
       }
     }
 
@@ -925,8 +963,7 @@ export class EngineProfilerService {
     };
 
     const combinedDistances: Record<string, number> = {
-      ...this.distanceEvaluationsCounter,
-      HubUpdateTimeMs: hubMetrics.updateTimeMs,
+      HubUpdateTimeMs: this.round3(hubMetrics.updateTimeMs),
       HubRegisteredEntities: hubMetrics.registeredEntities,
       HubEvaluationsThisFrame: hubMetrics.evaluations,
       HubSquaredDistCalls: hubMetrics.squaredDistanceCalculations,
@@ -935,29 +972,39 @@ export class EngineProfilerService {
       HubCacheMisses: hubMetrics.cacheMisses
     };
 
+    for (const [k, v] of this.distanceEvaluationsCounter.entries()) {
+       combinedDistances[k] = v;
+    }
+
     const fogAnchor = this.fogRenderer.lastAnchorPosition;
     const fogRings = [...this.fogRenderer.lastRingDistances];
 
+    const cpuPhasesRec: Record<string, number> = {};
+    for (const [k, v] of this.avgPhases.entries()) cpuPhasesRec[k] = this.round2(v);
+    
+    const cpuSystemsRec: Record<string, number> = {};
+    for (const [k, v] of this.avgSystems.entries()) cpuSystemsRec[k] = this.round2(v);
+
     return {
-      fps: parseFloat(this.currentFps.toFixed(1)),
-      frameTimeAvg: parseFloat(avg.toFixed(2)),
-      frameTimeMin: parseFloat(min.toFixed(2)),
-      frameTimeMax: parseFloat(max.toFixed(2)),
-      frameTimeP50: parseFloat(p50.toFixed(2)),
-      frameTimeP90: parseFloat(p90.toFixed(2)),
-      frameTimeP95: parseFloat(p95.toFixed(2)),
-      frameTimeP99: parseFloat(p99.toFixed(2)),
-      worstFrameTime: parseFloat(this.worstFrameEver.toFixed(2)),
+      fps: this.round1(this.currentFps),
+      frameTimeAvg: this.round2(avg),
+      frameTimeMin: this.round2(min),
+      frameTimeMax: this.round2(max),
+      frameTimeP50: this.round2(p50),
+      frameTimeP90: this.round2(p90),
+      frameTimeP95: this.round2(p95),
+      frameTimeP99: this.round2(p99),
+      worstFrameTime: this.round2(this.worstFrameEver),
       latencyBuckets: { ...this.latencyBuckets },
-      cpuPhases: { ...this.avgPhases },
-      cpuSystems: { ...this.avgSystems },
+      cpuPhases: cpuPhasesRec,
+      cpuSystems: cpuSystemsRec,
       dominantSystem: this.dominantSystemName,
-      telemetryCpuTimeMs: parseFloat(this.avgTelemetryCpuTime.toFixed(3)),
+      telemetryCpuTimeMs: this.round3(this.avgTelemetryCpuTime),
       gpu: {
         drawCalls,
         activeMeshes,
         activeIndices: this.sceneInstr?.scene?.getActiveIndices() || 0,
-        gpuFrameTime: typeof gpuMetric === 'number' ? parseFloat(gpuMetric.toFixed(2)) : gpuMetric,
+        gpuFrameTime: gpuMetric,
         hardwareScaling: engine ? engine.getHardwareScalingLevel() : 1.0,
         qualityTier: this.adaptiveQuality ? this.adaptiveQuality.currentQualityTier : 'HIGH',
         transparentMeshes,
@@ -994,7 +1041,7 @@ export class EngineProfilerService {
       sequences: { activeCount: seqDetails.length, details: seqDetails },
       distances: { evaluationsBySystem: combinedDistances },
       transition: {
-        lastTransitionTotalMs: parseFloat(this.lastTransitionDuration.toFixed(1)),
+        lastTransitionTotalMs: this.round1(this.lastTransitionDuration),
         milestones: [...this.transitionMilestones]
       },
       session: {
@@ -1010,9 +1057,9 @@ export class EngineProfilerService {
         cameraRotation: camRot,
         cameraDirection: camDir,
         cardinalDirection,
-        fogCenter: { x: parseFloat(fogAnchor.x.toFixed(2)), y: parseFloat(fogAnchor.y.toFixed(2)), z: parseFloat(fogAnchor.z.toFixed(2)) },
+        fogCenter: { x: this.round2(fogAnchor.x), y: this.round2(fogAnchor.y), z: this.round2(fogAnchor.z) },
         fogRingDistances: fogRings,
-        cameraFov: parseFloat(camFov.toFixed(2)),
+        cameraFov: this.round2(camFov),
         distanceCameraToPlayer: distCamPlayer,
         selectedObjectName: selectedNode ? selectedNode.name : null,
         sessionId: this.currentSessionId,

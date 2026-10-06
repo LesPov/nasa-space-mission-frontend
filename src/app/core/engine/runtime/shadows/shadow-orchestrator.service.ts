@@ -48,6 +48,24 @@ export class ShadowOrchestratorService implements IUpdatable {
     });
   }
 
+  // ==========================================
+  // FAST METRICS - Zero allocations per frame
+  // ==========================================
+  public getFastMetrics() {
+    let casters = 0;
+    if (this.shadowGenerator) {
+      const sm = this.shadowGenerator.getShadowMap();
+      if (sm && sm.renderList) casters = sm.renderList.length;
+    }
+    return {
+      activeGenerators: this.shadowGenerator ? 1 : 0,
+      totalCasters: casters,
+      csmMaxZ: this.shadowGenerator?.shadowMaxZ || 0,
+      csmCascades: this.shadowGenerator?.numCascades || 0
+    };
+  }
+
+  // Se mantiene para el Deep Snapshot del Forense (Solo llamado bajo demanda)
   public getProfilerMetrics() {
     let casters = 0;
     if (this.shadowGenerator && this.shadowGenerator.getShadowMap() && this.shadowGenerator.getShadowMap()?.renderList) {
@@ -152,7 +170,7 @@ export class ShadowOrchestratorService implements IUpdatable {
     if (this.forceRebuild && this.rebuildCooldownTimer <= 0) {
       this.asignarObjetosASombrasDeLuces();
       this.forceRebuild = false;
-      this.rebuildCooldownTimer = 150; // Throttling estricto de 150ms para evitar tormenta de rebuilds
+      this.rebuildCooldownTimer = 150; 
     }
 
     const mode = this.context.mode();
@@ -174,7 +192,6 @@ export class ShadowOrchestratorService implements IUpdatable {
     const shadowMap = this.shadowGenerator.getShadowMap();
     if (shadowMap) {
       if (isEditor) {
-        // 🔥 FIX BUG 4: Nunca congelar las sombras si la RenderList está vacía (puede que no haya cargado la geometría)
         if (!this.isEditorShadowsFrozen && shadowMap.renderList && shadowMap.renderList.length > 0) {
           shadowMap.refreshRate = 1;
           this.isEditorShadowsFrozen = true;

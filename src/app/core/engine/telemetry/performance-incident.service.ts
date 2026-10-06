@@ -129,6 +129,10 @@ export class PerformanceIncidentService {
   private readonly EDITOR_STARTUP_GRACE_FRAMES = 120;
   private readonly TEST_LIVE_STARTUP_GRACE_FRAMES = 25;
 
+  // Optimización de strings numéricos mediante matemáticas
+  private round1(val: number): number { return Math.round(val * 10) / 10; }
+  private round2(val: number): number { return Math.round(val * 100) / 100; }
+
   public notifyTransitionEnded(): void {
     this.framesSinceTransitionEnd = 0;
     this.sessionFrameCounter = 0;
@@ -193,7 +197,7 @@ export class PerformanceIncidentService {
   }
 
   public recordShadowMissing(lightUid: string, lightName: string, distance: number): void {
-    this.recordSpecificIncident('LIGHT_ACTIVE_SHADOW_MISSING', `Luz activa "${lightName}" sin sombra del Player a ${distance.toFixed(1)}m`, [
+    this.recordSpecificIncident('LIGHT_ACTIVE_SHADOW_MISSING', `Luz activa "${lightName}" sin sombra del Player a ${this.round1(distance)}m`, [
       `Light UID: ${lightUid}`,
       `Player en rango de luz pero no registrado en renderList`
     ], 'HIGH');
@@ -206,15 +210,15 @@ export class PerformanceIncidentService {
   }
 
   public recordObjectPopIn(uid: string, name: string, distance: number, playerSpeed: number): void {
-    this.recordSpecificIncident('OBJECT_POP_IN', `Pop-in repentino del objeto "${name}" a ${distance.toFixed(1)}m`, [
-      `Velocidad jugador: ${playerSpeed.toFixed(1)} m/s`,
+    this.recordSpecificIncident('OBJECT_POP_IN', `Pop-in repentino del objeto "${name}" a ${this.round1(distance)}m`, [
+      `Velocidad jugador: ${this.round1(playerSpeed)} m/s`,
       `UID: ${uid}`
     ], distance < 40.0 ? 'HIGH' : 'LOW');
   }
 
   public recordObjectPopOut(uid: string, name: string, distance: number, playerSpeed: number): void {
-    this.recordSpecificIncident('OBJECT_POP_OUT', `Objeto "${name}" desapareció repentinamente a ${distance.toFixed(1)}m`, [
-      `Velocidad jugador: ${playerSpeed.toFixed(1)} m/s`,
+    this.recordSpecificIncident('OBJECT_POP_OUT', `Objeto "${name}" desapareció repentinamente a ${this.round1(distance)}m`, [
+      `Velocidad jugador: ${this.round1(playerSpeed)} m/s`,
       `UID: ${uid}`
     ], distance < 40.0 ? 'HIGH' : 'LOW');
   }
@@ -229,15 +233,15 @@ export class PerformanceIncidentService {
     }
 
     this.profiler.recordTimelineEvent('CULLING', 'CULLING_FLAP', { uid, name, distance, playerSpeed, currentVisibility });
-    this.recordSpecificIncident('CULLING_FLAP', `Oscilación rápida de visibilidad (Culling Flap) en "${name}" a ${distance.toFixed(1)}m`, [
-      `Velocidad jugador: ${playerSpeed.toFixed(1)} m/s`,
-      `Visibilidad en flap: ${currentVisibility !== undefined ? (currentVisibility * 100).toFixed(0) + '%' : 'N/A'}`,
+    this.recordSpecificIncident('CULLING_FLAP', `Oscilación rápida de visibilidad (Culling Flap) en "${name}" a ${this.round1(distance)}m`, [
+      `Velocidad jugador: ${this.round1(playerSpeed)} m/s`,
+      `Visibilidad en flap: ${currentVisibility !== undefined ? Math.round(currentVisibility * 100) + '%' : 'N/A'}`,
       `Cambió de estado visible/culled reiteradamente en < 2.5s`
     ], 'HIGH');
   }
 
   public recordShadowPopIn(lightUid: string, lightName: string, distance: number): void {
-    this.recordSpecificIncident('SHADOW_POP_IN', `Sombra de la luz "${lightName}" demoró en renderizar sus casters a ${distance.toFixed(1)}m`, [
+    this.recordSpecificIncident('SHADOW_POP_IN', `Sombra de la luz "${lightName}" demoró en renderizar sus casters a ${this.round1(distance)}m`, [
       `Light UID: ${lightUid}`,
       `RenderList estaba vacía al encender`
     ], 'HIGH');
@@ -248,8 +252,8 @@ export class PerformanceIncidentService {
       return;
     }
 
-    this.recordSpecificIncident('FAST_PLAYER_MOVE', `Movimiento veloz del jugador a ${speed.toFixed(1)} m/s`, [
-      `Posición: (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}, ${pos.z.toFixed(1)})`
+    this.recordSpecificIncident('FAST_PLAYER_MOVE', `Movimiento veloz del jugador a ${this.round1(speed)} m/s`, [
+      `Posición: (${this.round1(pos.x)}, ${this.round1(pos.y)}, ${this.round1(pos.z)})`
     ], 'MEDIUM');
   }
 
@@ -346,6 +350,7 @@ export class PerformanceIncidentService {
     this.incidentStartTime = performance.now();
     this.postCaptureCounter = 0;
     
+    // Le pasamos true explícitamente porque queremos un deep snapshot forense para este incidente
     const snap = this.profiler.getSnapshot(true);
     const recentHistory = this.profiler.getRecentHistory();
     const stableSample = recentHistory.length > 10 ? recentHistory[recentHistory.length - 10] : recentHistory[0];
@@ -429,15 +434,15 @@ export class PerformanceIncidentService {
 
     const curHeap = typeof curr.memory.usedJSHeapSizeMb === 'number' ? curr.memory.usedJSHeapSizeMb : 0;
     return {
-      fpsDelta: parseFloat((curr.fps - prev.fps).toFixed(1)),
-      frameTimeDeltaMs: parseFloat((curr.frameTimeAvg - prev.frameTime).toFixed(2)),
+      fpsDelta: this.round1(curr.fps - prev.fps),
+      frameTimeDeltaMs: this.round2(curr.frameTimeAvg - prev.frameTime),
       drawCallsDelta: curr.gpu.drawCalls - prev.drawCalls,
       activeMeshesDelta: curr.gpu.activeMeshes - prev.activeMeshes,
       activeLightsDelta: curr.lights.activePool - prev.activeLights,
       shadowedLightsDelta: curr.lights.shadowedPool - prev.shadowedLights,
       shadowRebuildsDelta: curr.shadows.renderListRebuilds - prev.shadowRebuilds,
       activeSequencesDelta: curr.sequences.activeCount - (prev.activeSequences || 0),
-      heapDeltaMb: parseFloat((curHeap - prev.usedHeapMb).toFixed(2)),
+      heapDeltaMb: this.round2(curHeap - prev.usedHeapMb),
       newLightsDetected: curr.lights.details.filter(l => l.isLightInRange && l.targetMultiplier > 0.05).map(l => l.name)
     };
   }
@@ -520,7 +525,7 @@ export class PerformanceIncidentService {
     if (m.cpuSystems[m.dominantSystem] > 5.0) {
       return {
         category: 'CPU_SYSTEM_SPIKE',
-        primarySuspect: `Sobrecarga de CPU en sistema '${m.dominantSystem}' (${m.cpuSystems[m.dominantSystem].toFixed(1)} ms)`,
+        primarySuspect: `Sobrecarga de CPU en sistema '${m.dominantSystem}' (${this.round1(m.cpuSystems[m.dominantSystem])} ms)`,
         secondarySuspects: Object.keys(m.cpuSystems).filter(k => m.cpuSystems[k] > 2.0 && k !== m.dominantSystem),
         confidence: 'HIGH',
         diagnosis: `El loop se estancó principalmente en la fase de ${m.dominantSystem}`
@@ -562,7 +567,7 @@ export class PerformanceIncidentService {
       this.activeIncident.durationMs = performance.now() - this.incidentStartTime;
       this.profiler.recordTimelineEvent('SPIKE', 'FRAME_SPIKE_END', {
         incidentId: this.activeIncident.id,
-        durationMs: parseFloat(this.activeIncident.durationMs.toFixed(1))
+        durationMs: this.round1(this.activeIncident.durationMs)
       });
       console.log(`✅ [PerformanceIncident] Incidente ${this.activeIncident.id} recuperado tras ${this.activeIncident.durationMs.toFixed(0)}ms`);
       this.onIncidentUpdated.next(this.activeIncident);

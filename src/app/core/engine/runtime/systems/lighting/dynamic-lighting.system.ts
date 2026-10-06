@@ -71,6 +71,25 @@ export class DynamicLightingSystem implements IUpdatable {
     });
   }
 
+  // ==========================================
+  // FAST METRICS - Zero allocations per frame
+  // ==========================================
+  public getFastMetrics() {
+    let activeSlots = 0;
+    let shadowedSlots = 0;
+    const slots = this.lightPool.getAllSlots();
+    for (let i = 0; i < slots.length; i++) {
+      if (slots[i].assignedEntityUid) {
+        activeSlots++;
+        if (slots[i].sg && (slots[i].sg!.getShadowMap()?.renderList?.length || 0) > 0) {
+          shadowedSlots++;
+        }
+      }
+    }
+    return { activePool: activeSlots, shadowedPool: shadowedSlots };
+  }
+
+  // Se mantiene para el Deep Snapshot del Forense (Solo llamado bajo demanda)
   public getProfilerMetrics() {
     let activeSlots = 0;
     let shadowedSlots = 0;
@@ -407,7 +426,6 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    // 🔥 FIX VELOCIDAD FADE: Fundido más lento y cinematográfico para evitar popping de luz (antes exp -6.5)
     const fadeRate = 1.0 - Math.exp(-4.0 * (dtMs / 1000.0));
     const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, isEditorPure ? Math.max(0.65, fadeRate * 2.5) : fadeRate);
 
@@ -464,8 +482,6 @@ export class DynamicLightingSystem implements IUpdatable {
         vl.targetMultiplier = 0;
       }
 
-      // 🔥 FIX GUILLOTINA: Si la luz está siendo expulsada del Top y tiene que apagarse, 
-      // la apagamos más rápido para liberar físicamente el slot y no atascar luces nuevas.
       let currentLerp = lerpSpeed;
       if (vl.targetMultiplier === 0) {
         currentLerp = Math.min(1.0, currentLerp * 1.5);
@@ -475,7 +491,6 @@ export class DynamicLightingSystem implements IUpdatable {
       if (multDiff > 0.0005) {
         vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * currentLerp;
         
-        // Atajo al 0 para apagar luces en Fade-Out sin esperar a la asíntota infinita
         if (vl.targetMultiplier === 0 && vl.currentMultiplier < 0.02) {
           vl.currentMultiplier = 0;
         }

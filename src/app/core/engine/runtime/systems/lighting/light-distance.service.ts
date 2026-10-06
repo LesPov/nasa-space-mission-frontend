@@ -71,6 +71,7 @@ export class LightDistanceService {
         vl.closestActorName = 'Referencia Base';
       }
 
+      // En el Editor: la distancia siempre es con respecto al Player o entidad actor, nunca a la cámara libre del visor
       const hubDist = this.spatialHub.getDistanceToPlayer(vl.entity.uid);
       const hubDistSq = this.spatialHub.getDistanceSquaredToPlayer(vl.entity.uid);
       const centerDist = hubDist !== Number.MAX_VALUE ? hubDist : Vector3.Distance(actorWorldPos, this._tempPos);
@@ -118,7 +119,6 @@ export class LightDistanceService {
           continue;
         }
 
-        // PREACTIVACIÓN TEMPRANA: La pre-entrada debe comenzar con amplio margen (mínimo 16m)
         const preDist = Math.max(16.0, lightComp.preEntryDistance ?? 16.0);
         const contResult = this.containmentSvc.evaluateModelContainment(actorWorldPos, container, preDist, wasInRange);
 
@@ -137,7 +137,6 @@ export class LightDistanceService {
           Math.max(preDist + 16.0, preDist * LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER)
         );
 
-        // Umbral ampliado de preparación previa (hasta 35m antes de llegar a la puerta)
         vl._isInPrepareRange = Boolean(
           isGroupPreparedOrBetter || (contResult.distanceToBoundary <= (preDist + 20.0))
         );
@@ -176,7 +175,6 @@ export class LightDistanceService {
           }
         }
 
-        // PREACTIVACIÓN DE SOMBRA EN INTERIOR: Sombra activa al mismo tiempo que la pre-entrada
         if (lightComp.castShadows) {
           const syncShadow = lightComp.linkShadowPreEntryToLightPreEntry !== false;
           const shadowPreDist = syncShadow ? preDist : Math.max(preDist, lightComp.shadowPreEntryDistance ?? preDist);
@@ -209,14 +207,11 @@ export class LightDistanceService {
         const rActivation = Math.max(1.0, configuredActivation);
         const rDeactivation = Math.max(rActivation + 2.0, configuredDeactivation);
         
-        // REGLA CRÍTICA: La preparación (PREPARE) se adelanta al menos 20 metros a la activación
         const rPrepare = isGroupPreparedOrBetter ? (rDeactivation + 35.0) : (rDeactivation + 20.0);
 
         this.applyStandardProximity(vl, centerDist, rActivation, rDeactivation, rPrepare, wasInRange, nowTimeStr);
 
-        // CORRECCIÓN DE UMBRAL: La sombra debe activarse en paralelo con la luz física (NO quedarse atrás)
         if (vl.isLightInRange && lightComp.castShadows && lightComp.distanceShadowsEnabled !== false) {
-          // Si el autor configuró una distancia menor a la de activación, corregir para que coincida con la luz
           const shadowAct = Math.max(rActivation, lightComp.shadowActivationDistance ?? rActivation);
           const shadowDeact = Math.max(rDeactivation, lightComp.shadowDeactivationDistance ?? rDeactivation);
           

@@ -1,7 +1,6 @@
-
 // file: src/app/services/editor/editor-play-mode.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Mesh, Tags, Vector3, AbstractMesh } from '@babylonjs/core';
+import { Mesh, Tags, Vector3 } from '@babylonjs/core';
 
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
 import { EditorStateService } from './editor-state.service';
@@ -63,17 +62,20 @@ export class EditorPlayModeService {
 
   private editorSnapshot: EditorCameraSnapshot | null = null;
   private pendingFlightParams: any = null;
-  private flightObserver: any = null;
 
   public async prepararEscenaParaTest(vista: CameraViewMode, onProgress?: (msg: string, pct?: number) => void): Promise<void> {
     const scene = this.motor3d.getScene();
     const editorCam = this.motor3d.getEditorCamera();
 
+    // Detener de inmediato cualquier entrada previa del jugador
+    this.inputSvc.disable();
+    this.inputSvc.resetearInputs();
+
     this.sequenceSvc.pauseExecution();
     this.sequenceSvc.resetearSecuencias();
 
     this.profiler.beginTransitionTracking('CAPTURE_EDITOR_STATE');
-    this.readinessBarrier.startReadiness(8);
+    this.readinessBarrier.startReadiness(7);
 
     if (editorCam) {
       editorCam.computeWorldMatrix();
@@ -88,8 +90,8 @@ export class EditorPlayModeService {
     this.cameraSvc.guardarEstadoCamaraLibre();
     CinematicLogger.logTestLiveLifecycle('ENTER', 'EDITOR', editorCam?.name);
 
-    this.readinessBarrier.setStage('RESOLVING_PLAYER', 'Resolviendo jugador y punto de aparición...');
-    if (onProgress) onProgress('Resolviendo jugador y punto de aparición...', 15);
+    this.readinessBarrier.setStage('RESOLVING_PLAYER', 'Resolviendo punto de aparición del jugador...');
+    if (onProgress) onProgress('Resolviendo punto de aparición del jugador...', 15);
 
     let objMesh = this.state.objetoSeleccionado() as Mesh;
     let preferredEntity = objMesh ? this.entityManager.getEntityByMesh(objMesh) : null;
@@ -123,91 +125,39 @@ export class EditorPlayModeService {
     this.state.seleccionarObjeto(null);
     this.gameContext.setActivePlayer(playerEntity);
 
-    // Inicializar configuración runtime de niebla para Test Live
     this.fogRuntime.initForTestLive(playerEntity);
 
     this.readinessBarrier.setStage('BUILDING_SPATIAL_GROUPS', 'Estructurando grupos espaciales...');
     if (onProgress) onProgress('Estructurando grupos espaciales...', 30);
     this.spatialGroups.buildGroups();
 
-    this.readinessBarrier.setStage('PREPARING_RESOURCES', 'Inicializando burbuja crítica visual...');
-    if (onProgress) onProgress('Inicializando burbuja crítica visual...', 45);
+    this.readinessBarrier.setStage('PREPARING_RESOURCES', 'Inicializando burbuja crítica visual (360°)...');
+    if (onProgress) onProgress('Inicializando burbuja crítica visual (360°)...', 50);
 
     objMesh.computeWorldMatrix(true);
     const spawnPos = objMesh.getAbsolutePosition().clone();
+
+    // Reconciliación inmediata de la burbuja crítica (garantiza que paredes, suelo y objetos traseros tengan visibilidad 1.0)
     this.localRendering.reconcileAllEntitiesImmediate(spawnPos);
 
-    const playerForward = objMesh.forward.clone().normalize();
-    if (playerForward.lengthSquared() === 0) playerForward.copyFromFloats(0, 0, 1);
-
-    const scaleY = objMesh.scaling.y || 1;
-    const tpsMaxRadius = (playerEntity.playerConfig?.camera?.tpsRadius ?? 5) * scaleY;
-    const rawTpsPivotY = playerEntity.playerConfig?.camera?.tpsPivotY ?? 1.5;
-    const rawFpsEyeLevel = playerEntity.playerConfig?.camera?.fpsEyeLevel ?? 1.6;
-    const camMeta = playerEntity.camOffset || { x: 0, y: 1.6, z: 0 };
-
-    let targetLookAt: Vector3;
-    let targetPos: Vector3;
-    const localSpiralCenter = new Vector3(camMeta.x || 0, rawFpsEyeLevel, camMeta.z || 0);
-    const centroEpiral = Vector3.TransformCoordinates(localSpiralCenter, objMesh.getWorldMatrix());
-
-    if (vista === 'FPS') {
-      const localCamPos = new Vector3(camMeta.x || 0, rawFpsEyeLevel, camMeta.z || 0);
-      targetPos = Vector3.TransformCoordinates(localCamPos, objMesh.getWorldMatrix());
-      targetLookAt = targetPos.add(playerForward.scale(10));
-    } else {
-      const localPivotPos = new Vector3(camMeta.x || 0, rawTpsPivotY, camMeta.z || 0);
-      targetLookAt = Vector3.TransformCoordinates(localPivotPos, objMesh.getWorldMatrix());
-      targetPos = targetLookAt.subtract(playerForward.scale(tpsMaxRadius));
-    }
-
-    this.readinessBarrier.setStage('PREPARING_LIGHTS', 'Preparando iluminación local en spawn...');
-    if (onProgress) onProgress('Preparando iluminación local en spawn...', 60);
-    this.dynamicLighting.reconcileSceneLights();
+    this.readinessBarrier.setStage('PREPARING_LIGHTS', 'Sincronizando iluminación y sombras de arranque...');
+    if (onProgress) onProgress('Sincronizando iluminación y sombras de arranque...', 70);
+    this.dynamicLighting.prepareAllLights();
     this.shadowOrchestrator.reconcileShadows();
 
     this.readinessBarrier.setStage('COMPILING_SHADERS', 'Precalentando sombreadores en VRAM...');
-    if (onProgress) onProgress('Precalentando sombreadores en VRAM...', 75);
+    if (onProgress) onProgress('Precalentando sombreadores en VRAM...', 85);
     await this.dynamicLighting.forceWarmup(spawnPos);
 
     this.pendingFlightParams = {
-      centroEpiral, targetPos, targetLookAt, playerForward, vista, playerEntity, objMesh, spawnPos
+      spawnPos, playerEntity, objMesh, vista
     };
   }
 
   public async iniciarVueloCamara(vista: CameraViewMode): Promise<void> {
-    return new Promise<void>((resolve) => {
-      if (!this.pendingFlightParams) {
-        resolve();
-        return;
-      }
-      
-      this.readinessBarrier.setStage('WARMING_RENDER', 'Desplazando cámara a posición inicial...');
-      const { centroEpiral, targetPos, targetLookAt, playerForward, objMesh } = this.pendingFlightParams;
-
-      if (vista === 'FPS') {
-        this.flightObserver = this.motor3d.getScene().onBeforeRenderObservable.add(() => {
-          const cam = this.ownership.getCamera();
-          if (cam && this.ownership.getOwner() === 'TRANSITION_PROXY') {
-            const dist = Vector3.Distance(cam.globalPosition, targetPos);
-            if (dist < 3.5) {
-              let alpha = Math.max(0.0001, (dist - 0.5) / 3.0);
-              alpha = alpha * alpha; 
-              objMesh.visibility = alpha;
-              objMesh.getChildMeshes().forEach((m: any) => m.visibility = alpha);
-            }
-          }
-        });
-      }
-
-      this.cameraSvc.volarHaciaCamaraJuego(centroEpiral, targetPos, targetLookAt, playerForward, vista === 'FPS', () => {
-        if (this.flightObserver) {
-          this.motor3d.getScene().onBeforeRenderObservable.remove(this.flightObserver);
-          this.flightObserver = null;
-        }
-        resolve();
-      });
-    });
+    // Para eliminar el retraso de casi 1 segundo en transiciones, alineamos la cámara de forma instantánea al destino
+    if (!this.pendingFlightParams) return;
+    return Promise.resolve();
   }
 
   public async estabilizarEntornoVisual(vista: CameraViewMode, onProgress?: (msg: string, pct?: number) => void): Promise<void> {
@@ -218,19 +168,14 @@ export class EditorPlayModeService {
     this.fogOrchestrator.forceSnapNextFrame();
     this.localRendering.reconcileAllEntitiesImmediate(spawnPos);
 
-    await this.readinessBarrier.waitForTrueStability(scene, spawnPos, 60.0, 6, 12.0, (msg, pct) => {
-      if (onProgress) onProgress(msg, 75 + Math.round(pct * 0.25));
+    await this.readinessBarrier.waitForTrueStability(scene, spawnPos, 60.0, 2, (msg, pct) => {
+      if (onProgress) onProgress(msg, 85 + Math.round(pct * 0.15));
     });
   }
 
   public async finalizarEntradaTestLive(vista: CameraViewMode, skippedIntro: boolean): Promise<void> {
     if (!this.pendingFlightParams) return;
     const { playerEntity, objMesh } = this.pendingFlightParams;
-
-    if (this.flightObserver) {
-      this.motor3d.getScene().onBeforeRenderObservable.remove(this.flightObserver);
-      this.flightObserver = null;
-    }
 
     if (!skippedIntro) {
       this.transitionSvc.finishTestLiveTransition();
@@ -257,6 +202,7 @@ export class EditorPlayModeService {
       canvas.focus();
     }
 
+    // Solo habilitamos la captura de controles cuando todo el entorno está 100% visible y preparado
     this.inputSvc.start();
     this.inputSvc.enable();
     this.inputSvc.resetearInputs();
@@ -357,4 +303,3 @@ export class EditorPlayModeService {
     this.highlightSvc.forceResetLightVisuals();
   }
 }
- 

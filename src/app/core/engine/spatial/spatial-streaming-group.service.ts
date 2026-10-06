@@ -91,7 +91,6 @@ export class SpatialStreamingGroupService {
     this.clear();
     const entities = this.entityManager.getAllEntities();
 
-    // 1. Identificar únicamente modelos estructurales reales (habitaciones, pasillos)
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
       if (this.isIgnoredGroupEntity(e)) continue;
@@ -127,7 +126,6 @@ export class SpatialStreamingGroupService {
       }
     }
 
-    // 2. Asociar entidades hijas y luces secundarias
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
       if (this.entityToGroupId.has(e.uid)) continue;
@@ -220,7 +218,7 @@ export class SpatialStreamingGroupService {
 
   private discoverNeighborGroups(): void {
     const groupList = Array.from(this.groups.values());
-    const PROXIMITY_NEIGHBOR_THRESHOLD = 45.0; // Umbral ampliado para túneles contiguos
+    const PROXIMITY_NEIGHBOR_THRESHOLD = 50.0;
 
     for (let i = 0; i < groupList.length; i++) {
       const gA = groupList[i];
@@ -246,9 +244,10 @@ export class SpatialStreamingGroupService {
     Vector3.LerpToRef(this.smoothedVelocity, playerVelocity, 0.25, this.smoothedVelocity);
     const speed = this.smoothedVelocity.length();
 
+    // Lookahead adaptativo: anticipa hasta 50m cuando el jugador corre
     const lookAheadDist = Math.min(
       DEFAULT_SPATIAL_GROUP_CONFIG.maxLookAheadDistance,
-      Math.max(10.0, speed * DEFAULT_SPATIAL_GROUP_CONFIG.lookAheadMultiplier)
+      Math.max(15.0, speed * DEFAULT_SPATIAL_GROUP_CONFIG.lookAheadMultiplier * 1.5)
     );
     const moveDir = speed > 0.15 ? this.smoothedVelocity.normalizeToNew() : Vector3.Zero();
     const predictedPos = playerPos.add(moveDir.scale(lookAheadDist));
@@ -334,7 +333,6 @@ export class SpatialStreamingGroupService {
       });
     }
 
-    // Histéresis de seguridad: 3 segundos de retención para evitar que los pasillos se apaguen al doblar esquinas
     const STATE_DEGRADE_GRACE_PERIOD_MS = 3000;
 
     for (const group of this.groups.values()) {
@@ -346,7 +344,6 @@ export class SpatialStreamingGroupService {
       group.isPredictedTarget = isPredicted;
       const effectiveDist = Math.min(group.distanceToBox, group.predictedDistanceToBox);
 
-      // Si es el grupo actual, o es un vecino inmediato, o está en el radio de activación (85m) -> ACTIVE
       if (isCurrent || group.isInsideVolume || isNeighborOfCurrent || effectiveDist <= cfg.activeMargin) {
         this.transitionGroup(group, 'ACTIVE', now);
         this.activeGroupIds.add(group.id);

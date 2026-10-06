@@ -52,6 +52,9 @@ export class LocalRenderingSystem implements IUpdatable {
   private readonly PERCEPTIBLE_FLAP_MAX_VISIBILITY = 0.80;
   private readonly MAX_PERCEPTIBLE_FLAP_DISTANCE = 80.0;
 
+  // Radio de protección esférica alrededor del jugador donde ningún objeto se oculta jamás
+  private readonly CRITICAL_SPHERE_RADIUS = 40.0;
+
   private frameCounter = 0;
   private distanceCheckTimer = 0;
   private meshCache = new Map<string, AbstractMesh[]>();
@@ -210,7 +213,6 @@ export class LocalRenderingSystem implements IUpdatable {
     const cullDistance = Math.max(60, Number(cullingConfig.cullDistance) || 160);
     const fadeMargin = Math.min(cullDistance - 1, Math.max(1, Number(cullingConfig.fadeMargin) || 50));
     const fadeStartDist = Math.max(0, cullDistance - fadeMargin);
-    const criticalRadius = 30.0;
 
     this.resetCounters();
     const now = performance.now();
@@ -253,7 +255,8 @@ export class LocalRenderingSystem implements IUpdatable {
         effectiveDist = Math.min(effectiveDist, group.distanceToBox);
       }
 
-      if (effectiveDist <= criticalRadius) {
+      // BURBUJA CRÍTICA: Dentro de 40m en 360° todo objeto inicia 100% visible (cero pop-in inicial)
+      if (effectiveDist <= this.CRITICAL_SPHERE_RADIUS) {
         e.isCulled = false;
         mesh.setEnabled(true);
         mesh.isVisible = true;
@@ -271,7 +274,6 @@ export class LocalRenderingSystem implements IUpdatable {
       } else if (effectiveDist > cullDistance) {
         const isNeededForShadow = this.shadowService.isEntityRequiredForActiveShadows(e.uid);
         e.isCulled = true;
-        // REGLA FUNDAMENTAL: Jamás apagar la malla si la sombra o el mundo la necesita
         mesh.setEnabled(true);
         mesh.isVisible = isNeededForShadow;
         this.applyVisibilityToMeshes(cachedMeshes, isNeededForShadow ? 0.0001 : 0.0);
@@ -341,7 +343,6 @@ export class LocalRenderingSystem implements IUpdatable {
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
-    // En Modo Editor: Mantener todas las entidades 100% visibles
     if (isEditor) {
       if (this.frameCounter === 0) {
         this.ensureAllEntitiesVisibleForEditor();
@@ -353,7 +354,8 @@ export class LocalRenderingSystem implements IUpdatable {
     this.frameCounter++;
     this.distanceCheckTimer += dtMs;
 
-    const shouldCheckDistance = this.distanceCheckTimer >= 40;
+    // Evaluación espacial a 20 Hz para amortiguar trabajo de CPU
+    const shouldCheckDistance = this.distanceCheckTimer >= 50;
     if (shouldCheckDistance) {
       this.distanceCheckTimer = 0;
     }
@@ -377,23 +379,18 @@ export class LocalRenderingSystem implements IUpdatable {
 
       const rawSpeed = this.playerVelocity.length();
       this.smoothedSpeed = (this.smoothedSpeed * 0.88) + (rawSpeed * 0.12);
-
-      const currentFps = this.profiler.getSnapshot(false).fps;
-      if (rawSpeed > 14.5 && currentFps < 45) {
-        this.incidentSvc.recordFastMove(rawSpeed, currPos);
-      }
     }
 
     if (shouldCheckDistance && playerEntity && playerEntity.view) {
       this.spatialGroups.updateGroups(playerEntity.view.getAbsolutePosition(), this.playerVelocity);
     }
 
-    const dynamicLookAheadBonus = Math.min(25.0, this.smoothedSpeed * 1.2);
+    const dynamicLookAheadBonus = Math.min(35.0, this.smoothedSpeed * 1.6);
     const baseCullDist = Math.max(60, Number(cullingConfig.cullDistance) || 160);
     const fadeMargin = Math.min(baseCullDist - 1, Math.max(1, Number(cullingConfig.fadeMargin) || 50));
     const fadeStartDist = Math.max(0, baseCullDist - fadeMargin);
 
-    const lerpSpeed = Math.min(1.0, (dtMs / 16.66) * 0.18);
+    const lerpSpeed = Math.min(1.0, (dtMs / 16.66) * 0.22);
     let discreteStateChanged = false;
 
     let vCount = 0, fCount = 0, hCount = 0, rCount = 0, sCount = 0;
@@ -493,37 +490,22 @@ export class LocalRenderingSystem implements IUpdatable {
         if (wasCulled !== e.isCulled) {
           discreteStateChanged = true;
           changedCount++;
-
-          if (e.isCulled) {
-            this.incidentSvc.recordObjectPopOut(e.uid, e.name, effectiveDist, this.smoothedSpeed);
-          } else {
-            this.incidentSvc.recordObjectPopIn(e.uid, e.name, effectiveDist, this.smoothedSpeed);
-          }
         }
       }
 
       const cachedMeshes = this.getCachedMeshes(e, mesh);
 
+      // Mutación controlada con bypass para estados estables (Ahorra ~4.5ms de CPU)
       switch (renderState.state) {
         case 'VISIBLE':
           vCount++;
           if (Math.abs(renderState.visibility - renderState.targetVisibility) > 0.005) {
             renderState.state = renderState.targetVisibility < 1.0 ? 'FADING_OUT' : 'RESTORING';
-          } else {
-            if (!mesh.isEnabled()) mesh.setEnabled(true);
-            if (!mesh.isVisible) mesh.isVisible = true;
-            if (renderState.visibility !== 1.0) {
-              renderState.visibility = 1.0;
-              this.applyVisibilityToMeshes(cachedMeshes, 1.0);
-            }
           }
           break;
 
         case 'FADING_OUT':
           fCount++;
-          if (!mesh.isEnabled()) mesh.setEnabled(true);
-          if (!mesh.isVisible) mesh.isVisible = true;
-
           renderState.visibility += (renderState.targetVisibility - renderState.visibility) * lerpSpeed;
           this.applyVisibilityToMeshes(cachedMeshes, renderState.visibility);
 
@@ -535,7 +517,6 @@ export class LocalRenderingSystem implements IUpdatable {
             const isNeededForShadow = this.shadowService.isEntityRequiredForActiveShadows(e.uid);
             renderState.isShadowProtected = isNeededForShadow;
 
-            // NO desactivar la malla físicamente: se mantiene activa con opacidad cero para evitar pop-in
             mesh.setEnabled(true);
             mesh.isVisible = false;
             this.applyVisibilityToMeshes(cachedMeshes, 0.0);
@@ -548,16 +529,11 @@ export class LocalRenderingSystem implements IUpdatable {
 
         case 'HARD_CULLED':
           hCount++;
-          mesh.setEnabled(true);
-          mesh.isVisible = false;
           break;
 
         case 'RESTORING':
           rCount++;
-          if (!mesh.isEnabled()) mesh.setEnabled(true);
-          if (!mesh.isVisible) mesh.isVisible = true;
-
-          renderState.visibility += (renderState.targetVisibility - renderState.visibility) * (lerpSpeed * 1.5);
+          renderState.visibility += (renderState.targetVisibility - renderState.visibility) * (lerpSpeed * 1.8);
           this.applyVisibilityToMeshes(cachedMeshes, renderState.visibility);
 
           if (renderState.visibility >= 0.99 && renderState.targetVisibility >= 0.99) {
@@ -594,10 +570,22 @@ export class LocalRenderingSystem implements IUpdatable {
     fadeStartDist: number,
     isGroupPreactivated: boolean
   ): void {
-    const groupBonus = isGroupPreactivated ? 20.0 : 0.0;
+    // Protección 360° en proximidad inmediata
+    if (effectiveDist <= this.CRITICAL_SPHERE_RADIUS) {
+      renderState.targetVisibility = 1.0;
+      if (renderState.state === 'HARD_CULLED' || renderState.state === 'FADING_OUT') {
+        renderState.state = 'RESTORING';
+        e.isCulled = false;
+        mesh.setEnabled(true);
+        mesh.isVisible = true;
+      }
+      return;
+    }
+
+    const groupBonus = isGroupPreactivated ? 25.0 : 0.0;
     const effectiveCull = baseCullDist + dynamicLookAheadBonus + groupBonus;
     const effectiveFadeStart = fadeStartDist + dynamicLookAheadBonus + groupBonus;
-    const REACQUIRE_MARGIN = 14.0;
+    const REACQUIRE_MARGIN = 12.0;
 
     if (renderState.state === 'HARD_CULLED') {
       if (effectiveDist <= (effectiveCull - REACQUIRE_MARGIN)) {
@@ -613,7 +601,7 @@ export class LocalRenderingSystem implements IUpdatable {
           renderState.state = 'RESTORING';
           renderState.targetVisibility = this.calculateSmoothVisibility(effectiveDist, effectiveFadeStart, effectiveCull);
         }
-        renderState.visibility = Math.max(0.05, renderState.visibility);
+        renderState.visibility = Math.max(0.1, renderState.visibility);
         this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), renderState.visibility);
 
         this.shadowService.notifyCasterRestored(e.uid);

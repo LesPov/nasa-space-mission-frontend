@@ -1,4 +1,4 @@
-
+// file: src/app/services/editor/toolsservice/tools-gizmo.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, Vector3, PointerEventTypes, Tags, AbstractMesh } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
@@ -13,6 +13,7 @@ import { EditorCinematicService } from '../editor-cinematic.service';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { GizmoAdapterRegistryService } from './adapters/gizmo-adapter-registry.service';
 import { GameContextService } from '../../../core/engine/session/game-context.service';
+import { DynamicLightingSystem } from '../../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsGizmoService {
@@ -28,6 +29,7 @@ export class ToolsGizmoService {
   private liveSync = inject(EditorLiveSyncService);
   private cinematicSvc = inject(EditorCinematicService);
   private registry = inject(GizmoAdapterRegistryService);
+  private dynamicLighting = inject(DynamicLightingSystem);
 
   public gizmoManager: GizmoManager | null = null;
   public centerDragMesh: Mesh | null = null;
@@ -35,6 +37,7 @@ export class ToolsGizmoService {
   
   public isDraggingGizmo = false;
   private estadoAntesDeArrastrar: any = null;
+  private isPlayerBeingDragged = false;
 
   public initGizmos(): void {
     const scene = this.motor3d.getScene();
@@ -73,6 +76,10 @@ export class ToolsGizmoService {
   }
 
   public dispose(): void {
+    if (this.isPlayerBeingDragged) {
+      this.dynamicLighting.endPlayerDragTransaction();
+      this.isPlayerBeingDragged = false;
+    }
     if (this.gizmoManager) {
         this.gizmoManager.attachToMesh(null);
         this.gizmoManager.dispose();
@@ -151,11 +158,24 @@ export class ToolsGizmoService {
     centerDragBehavior.onDragEndObservable.add(this.onDragEnd);
   }
 
+  private isTargetPlayerOrActor(mesh: AbstractMesh | null): boolean {
+    if (!mesh) return false;
+    const entity = this.entityManager.getEntityByMesh(mesh);
+    if (!entity) return false;
+    return entity.rol === 'player' || !!entity.characterConfig || entity.rol === 'spawn_point';
+  }
+
   private onDragStart = () => {
     this.isDraggingGizmo = true;
     const mesh = this.state.objetoSeleccionado() as Mesh;
     if (mesh && !Tags.MatchesQuery(mesh, "cinematic_proxy")) {
       this.estadoAntesDeArrastrar = this.historialSvc.obtenerEstado(mesh);
+
+      // Si el objeto movido es el Player o un Actor relevante, abrimos la transacción de drag
+      if (this.isTargetPlayerOrActor(mesh)) {
+        this.isPlayerBeingDragged = true;
+        this.dynamicLighting.beginPlayerDragTransaction();
+      }
     }
   };
 
@@ -182,6 +202,11 @@ export class ToolsGizmoService {
     const mesh = this.state.objetoSeleccionado() as Mesh;
     const subSelected = this.state.subObjetoSeleccionado();
     
+    if (this.isPlayerBeingDragged) {
+      this.dynamicLighting.endPlayerDragTransaction();
+      this.isPlayerBeingDragged = false;
+    }
+
     if (!mesh) return;
 
     if (!subSelected && this.estadoAntesDeArrastrar && !Tags.MatchesQuery(mesh, "cinematic_proxy")) {

@@ -62,11 +62,35 @@ export class DynamicLightingSystem implements IUpdatable {
   private shadowRebuildCooldownTimer = 0;
   private previousActiveSlotsHash = '';
 
+  // Transacción de arrastre en Editor
+  private isPlayerDragActive = false;
+  private deferredShadowRebuildRequested = false;
+  private shadowRebuildQueue: Array<{ slot: PoolSlot; uid: string; range: number }> = [];
+
   constructor() {
     this.eventBus.events$.subscribe(e => {
       if (e.type === 'RuntimeVisibilityBatchChanged') {
         this.forceShadowRebuild = true;
       }
+    });
+  }
+
+  public beginPlayerDragTransaction(): void {
+    if (this.context.mode() !== GameMode.EDITOR) return;
+    this.isPlayerDragActive = true;
+    this.deferredShadowRebuildRequested = false;
+    this.shadowRebuildQueue = [];
+    this.profiler.recordTimelineEvent('LIGHT', 'EDITOR_PLAYER_DRAG_BEGIN', {
+      timestamp: performance.now()
+    });
+  }
+
+  public endPlayerDragTransaction(): void {
+    if (!this.isPlayerDragActive) return;
+    this.isPlayerDragActive = false;
+    this.deferredShadowRebuildRequested = true;
+    this.profiler.recordTimelineEvent('LIGHT', 'EDITOR_PLAYER_DRAG_END', {
+      timestamp: performance.now()
     });
   }
 
@@ -197,7 +221,6 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    // PREPARAR EN CPU LA CACHÉ DE CASTERS PARA LAS LUCES PREPARED (4 y 5)
     const preparedLights = virtuals.filter(vl => vl.lifecycleStage === 'PREPARED');
     preparedLights.forEach(vl => {
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
@@ -209,6 +232,9 @@ export class DynamicLightingSystem implements IUpdatable {
 
   public start(): void {
     this.isFirstFrame = true;
+    this.isPlayerDragActive = false;
+    this.deferredShadowRebuildRequested = false;
+    this.shadowRebuildQueue = [];
 
     const actors = this.lightReference.getValidActorEntities();
     actors.forEach(a => {
@@ -236,6 +262,9 @@ export class DynamicLightingSystem implements IUpdatable {
     this.containmentSvc.clearAllCache();
     this.shadowCache.clearMetrics();
     this.previousActiveSlotsHash = '';
+    this.isPlayerDragActive = false;
+    this.deferredShadowRebuildRequested = false;
+    this.shadowRebuildQueue = [];
   }
 
   public updateAssignedLightIntensity(uid: string, newIntensity: number): void {
@@ -465,6 +494,43 @@ export class DynamicLightingSystem implements IUpdatable {
     const playerDelta = Vector3.Distance(refPos, this.lastRefPos);
     const playerMoved = playerDelta > 0.005;
 
+    // Si el usuario está arrastrando al Player en el Editor:
+    // Congelamos la reasignación de slots de luz y la reconstrucción pesada de sombras
+    if (isEditorPure && this.isPlayerDragActive) {
+      this.lastRefPos.copyFrom(refPos);
+      this.isFirstFrame = false;
+
+      // Mantener sincronizados los emisivos y posiciones de las luces ya activas sin tocar el pool
+      const activeVirtualsDuringDrag = this.lightRegistry.getVirtualLights();
+      for (let i = 0; i < activeVirtualsDuringDrag.length; i++) {
+        const vl = activeVirtualsDuringDrag[i];
+        if (vl.isLightInRange) {
+          const slot = this.lightPool.findSlotByUid(vl.entity.uid);
+          if (slot) {
+            this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, false, false);
+          }
+        }
+      }
+      return;
+    }
+
+    // Reconciliación presupuestada al finalizar el arrastre del Player
+    if (isEditorPure && this.deferredShadowRebuildRequested) {
+      this.deferredShadowRebuildRequested = false;
+      this.reconcileDeferredAfterDrag(refPos, scene, isEditorPure);
+      return;
+    }
+
+    // Procesar cola escalonada de sombras si existe trabajo diferido
+    if (this.shadowRebuildQueue.length > 0 && this.shadowRebuildCooldownTimer <= 0) {
+      const task = this.shadowRebuildQueue.shift()!;
+      if (task.slot.assignedEntityUid === task.uid && task.slot.sg) {
+        this.lightShadows.rebuildShadowRenderList(task.slot, task.uid, task.slot.light.position, task.range);
+        task.slot.sg.getShadowMap()?.resetRefreshCounter();
+        this.shadowRebuildCooldownTimer = 16; // 1 rebuild cada frame
+      }
+    }
+
     const activeVirtuals = this.lightRegistry.getVirtualLights();
     const anyLightDirty = activeVirtuals.some(v => v.entity.isDirty);
     const anyLightFading = activeVirtuals.some(v => Math.abs(v.targetMultiplier - v.currentMultiplier) > 0.001);
@@ -614,6 +680,31 @@ export class DynamicLightingSystem implements IUpdatable {
     this.isFirstFrame = false;
   }
 
+  private reconcileDeferredAfterDrag(refPos: Vector3, scene: any, isEditorPure: boolean): void {
+    const activeVirtuals = this.lightRegistry.getVirtualLights();
+    this.lightDistance.evaluateDistanceAndHysteresis(activeVirtuals, refPos, 0);
+
+    const candidates = activeVirtuals.filter(vl => vl.entity.light?.enabled !== false);
+    this.lightAllocation.allocatePoolSlots(candidates, refPos, Vector3.Zero(), 0, null);
+
+    const allSlots = this.lightPool.getAllSlots();
+    this.shadowRebuildQueue = [];
+
+    for (let i = 0; i < allSlots.length; i++) {
+      const slot = allSlots[i];
+      if (slot.assignedEntityUid) {
+        const vl = this.lightRegistry.getVirtualLightByUid(slot.assignedEntityUid);
+        if (vl) {
+          this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, false, false);
+          if (slot.sg && vl.isShadowInRange) {
+            const range = slot.type === 'directional' ? 50 : (vl.entity.light?.range || 58);
+            this.shadowRebuildQueue.push({ slot, uid: vl.entity.uid, range });
+          }
+        }
+      }
+    }
+  }
+
   private syncSlotWithVirtualLight(
     slot: PoolSlot, 
     vl: VirtualLight, 
@@ -685,7 +776,6 @@ export class DynamicLightingSystem implements IUpdatable {
     if (slot.sg) {
       const sBias = lightComp.shadowBias ?? 0.0008;
       const sNormalBias = lightComp.shadowNormalBias ?? 0.002;
-      // 0.00 por defecto para que las sombras bloqueen el 100% de la luz directa en paredes
       const sDarkness = 0.00;
 
       if (slot.sg.bias !== sBias) slot.sg.bias = sBias;
@@ -701,7 +791,8 @@ export class DynamicLightingSystem implements IUpdatable {
 
         const shouldExecuteRebuild = (!slot.isWarmedUp && (slot._isNewAssignment || renderListEmpty)) || distMovedSq > 1.0 || forceRebuildShadows;
 
-        if (shouldExecuteRebuild) {
+        // Si estamos en drag en el Editor, no reconstruimos la lista pesada de casters en cada movimiento
+        if (shouldExecuteRebuild && (!isEditorPure || !this.isPlayerDragActive)) {
           const lightRange = slot.type === 'directional' ? 50 : (slot.light as any).range || 58;
           this.lightShadows.rebuildShadowRenderList(slot, vl.entity.uid, slot.light.position, lightRange);
           if (!slot.lastShadowRebuildPos) slot.lastShadowRebuildPos = Vector3.Zero();

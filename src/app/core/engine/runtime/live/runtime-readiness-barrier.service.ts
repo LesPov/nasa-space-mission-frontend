@@ -57,23 +57,21 @@ export class RuntimeReadinessBarrierService {
   }
 
   /**
-   * Evalúa la estabilidad real del pipeline de renderizado basándose en:
-   * 1. 0 compilaciones pendientes en mallas relevantes cercanas al spawn.
-   * 2. Varianza de frametime acotada (estabilidad de entrega entre frames consecutivos).
-   * 3. Sin retrasos artificiales fijos ni requerimientos de framerate absoluto inalcanzables.
+   * Espera la preparación real del entorno:
+   * 1. Cero compilaciones pendientes en el radio de relevancia del spawn.
+   * 2. Renderizado de 2 cuadros de warmup para asegurar carga en VRAM.
+   * 3. Liberación rápida y determinista (evita los ~3.1s de espera artificial).
    */
   public async waitForTrueStability(
     scene: Scene, 
     referencePosition: Vector3,
     relevanceRadius = 60.0,
-    requiredStableFrames = 6, 
-    maxVarianceMs = 12.0,
+    requiredStableFrames = 3, 
     onProgress?: (msg: string, pct: number) => void
   ): Promise<boolean> {
     const stabilityStartTime = performance.now();
-    this.setStage('CHECKING_STABILITY', 'Verificando estabilidad de render...', 'Comprobando fluidez');
+    this.setStage('CHECKING_STABILITY', 'Verificando preparación del entorno...', 'Comprobando sombreadores');
 
-    // Filtrar únicamente mallas en el radio relevante del jugador
     const materialMeshPairs: Array<{ mat: any; mesh: AbstractMesh }> = [];
     const meshes = scene.meshes;
     const relRadiusSq = relevanceRadius * relevanceRadius;
@@ -89,63 +87,44 @@ export class RuntimeReadinessBarrierService {
     }
 
     return new Promise<boolean>((resolve) => {
-      let stableFramesCount = 0;
-      let totalElapsedFrames = 0;
-      const MAX_WATCHDOG_FRAMES = 35; // Límite máximo de seguridad (menos de 600ms a 60 FPS)
-      let prevDt = 16.66;
-      let lastTime = performance.now();
+      let completedFrames = 0;
+      const MAX_FRAMES = 12; // Máximo 200 ms de comprobación
 
-      const stabilityLoop = () => {
-        const now = performance.now();
-        const dt = Math.max(1.0, now - lastTime);
-        lastTime = now;
-        totalElapsedFrames++;
+      const checkLoop = () => {
+        completedFrames++;
 
+        // Renderizado explícito para forzar al driver GPU a procesar uniforms y geometría
         scene.render();
 
-        // Verificar si algún material del área relevante sigue compilando en VRAM
-        let compilingShaders = 0;
+        let compilingCount = 0;
         for (let i = 0; i < materialMeshPairs.length; i++) {
           const pair = materialMeshPairs[i];
           if (!this.materialSvc.isMaterialReadyForMesh(pair.mat, pair.mesh)) {
-            compilingShaders++;
+            compilingCount++;
           }
         }
 
-        // Calibración adaptativa: El frame es estable si los shaders están listos y no hay saltos bruscos entre frames
-        const frameJitter = Math.abs(dt - prevDt);
-        prevDt = dt;
-
-        const isWarmupFrame = totalElapsedFrames <= 2;
-        const isPipelineClean = compilingShaders === 0;
-        const isSmoothDelivery = frameJitter <= maxVarianceMs || isWarmupFrame;
-
-        if (isPipelineClean && isSmoothDelivery && !isWarmupFrame) {
-          stableFramesCount++;
-        } else if (!isWarmupFrame) {
-          stableFramesCount = Math.max(0, stableFramesCount - 1);
-        }
-
-        const stabilityProgressPct = Math.min(100, Math.round((stableFramesCount / requiredStableFrames) * 100));
-        const statusMsg = compilingShaders > 0 
-          ? `Compilando ${compilingShaders} sombreadores...` 
-          : `Estabilizando entorno: ${stableFramesCount}/${requiredStableFrames}`;
+        const isComplete = compilingCount === 0 && completedFrames >= requiredStableFrames;
 
         if (onProgress) {
-          onProgress(statusMsg, stabilityProgressPct);
+          const pct = Math.min(100, Math.round((completedFrames / requiredStableFrames) * 100));
+          const msg = compilingCount > 0 
+            ? `Compilando ${compilingCount} sombreadores...` 
+            : `Estabilizando entorno (${completedFrames}/${requiredStableFrames})`;
+          onProgress(msg, pct);
         }
 
-        if (stableFramesCount >= requiredStableFrames || totalElapsedFrames >= MAX_WATCHDOG_FRAMES) {
-          const totalDuration = performance.now() - stabilityStartTime;
-          this.setStage('READY', 'Entorno preparado y estable', `${totalDuration.toFixed(0)} ms`);
+        if (isComplete || completedFrames >= MAX_FRAMES) {
+          const duration = performance.now() - stabilityStartTime;
+          this.setStage('READY', 'Entorno preparado y estable', `${duration.toFixed(0)} ms`);
           resolve(true);
           return;
         }
 
-        requestAnimationFrame(stabilityLoop);
+        requestAnimationFrame(checkLoop);
       };
 
-      requestAnimationFrame(stabilityLoop);
+      requestAnimationFrame(checkLoop);
     });
   }
 

@@ -1,8 +1,7 @@
-
 // file: src/app/core/engine/runtime/systems/lighting/light-shadow.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, ShadowGenerator, Vector3, Tags, InstancedMesh, Mesh, RenderTargetTexture, Node } from '@babylonjs/core';
-import { PoolSlot } from './lighting-types';
+import { PoolSlot, ShadowTier } from './lighting-types';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { ShadowCache } from '../../shadows/shadow-cache.service';
 import { ShadowQualityService } from '../../shadows/shadow-quality.service';
@@ -82,7 +81,7 @@ export class LightShadowService {
     if (!actorEntity.view || actorEntity.view.isDisposed()) return [];
     
     let meshes = this.actorRenderableMeshesCache.get(actorEntity.uid);
-    if (!meshes || meshes.some(m => m.isDisposed())) {
+    if (!meshes || meshes.some(m => !m || m.isDisposed())) {
       meshes = [];
       const root = actorEntity.view;
       
@@ -119,9 +118,12 @@ export class LightShadowService {
       const e = entities[i];
       if (this.isEligibleShadowCaster(e) && e.view && !e.view.isDisposed()) {
         const processMesh = (m: AbstractMesh) => {
-          if (m.isDisposed()) return;
+          if (!m || m.isDisposed()) return;
 
-          if (!e.isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || light_visual || proxy_collider || ignore_raycast")) {
+          const isLightBulbVisual = Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual;
+          if (isLightBulbVisual) return;
+
+          if (!e.isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || proxy_collider || ignore_raycast || invisible_floor")) {
             if (m.getClassName() === "InstancedMesh" && (m as InstancedMesh).sourceMesh) {
               this.castersCache.push(m);
             } else if (m.getClassName() === "Mesh" && (m as Mesh).getTotalVertices() > 0) {
@@ -151,7 +153,7 @@ export class LightShadowService {
       const bounds = e.view.getHierarchyBoundingVectors(true);
       const diag = Vector3.Distance(bounds.min, bounds.max);
 
-      if (diag < 0.1) return false;
+      if (diag < 0.05) return false;
       return true;
     }
     return false;
@@ -164,7 +166,83 @@ export class LightShadowService {
     return false;
   }
 
+  /**
+   * Prepara en memoria CPU la lista de mallas estáticas dentro del radio de influencia de la luz.
+   * Incluye paredes, techo, suelo, obstáculos y la propia estructura sólida de la lámpara.
+   */
+  public prepareStaticCastersCache(entityUid: string, lightType: string, lightPos: Vector3, range: number): AbstractMesh[] {
+    const cacheKey = `${entityUid}_${lightType}_cached`;
+    const cachedEntry = this.slotStaticRenderListCache.get(cacheKey);
+
+    if (cachedEntry && Vector3.DistanceSquared(cachedEntry.lightPos, lightPos) < 0.1 && cachedEntry.range === range) {
+      return cachedEntry.meshes;
+    }
+
+    const effectiveStaticRange = Math.max(15.0, range);
+    const rangeSq = effectiveStaticRange * effectiveStaticRange;
+    const staticMeshesFound: AbstractMesh[] = [];
+
+    const ownerEnt = this.entityManager.getEntityByUid(entityUid);
+    const isInterior = ownerEnt?.light?.containmentMode === 'INTERIOR';
+    const containerUid = ownerEnt?.light?.containerEntityUid || ownerEnt?.parentId;
+
+    for (let i = 0; i < this.castersCache.length; i++) {
+      const m = this.castersCache[i];
+      if (!m || m.isDisposed()) continue;
+
+      const parentEnt = this.resolveEntityForMesh(m);
+      if (parentEnt && (parentEnt.rol === 'player' || parentEnt.characterConfig)) continue;
+
+      // LA PROPIA LÁMPARA: Si la malla pertenece a la entidad de la luz pero NO es la bombilla, debe proyectar sombra
+      const isLampBodyPart = parentEnt && parentEnt.uid === entityUid;
+      if (isLampBodyPart) {
+        const isBulb = Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual;
+        if (isBulb) continue; // La bombilla en sí no bloquea su propia luz
+        staticMeshesFound.push(m);
+        continue;
+      }
+
+      // Si la luz es de interior y pertenece a un contenedor (pasillo), SUS PROPIAS PAREDES DEBEN BLOQUEAR LA LUZ
+      const isContainerWall = isInterior && parentEnt && (parentEnt.uid === containerUid);
+
+      m.computeWorldMatrix(true);
+      const bInfo = m.getBoundingInfo();
+      const bBox = bInfo.boundingBox;
+
+      const cX = Math.max(bBox.minimumWorld.x, Math.min(lightPos.x, bBox.maximumWorld.x));
+      const cY = Math.max(bBox.minimumWorld.y, Math.min(lightPos.y, bBox.maximumWorld.y));
+      const cZ = Math.max(bBox.minimumWorld.z, Math.min(lightPos.z, bBox.maximumWorld.z));
+
+      const dx = lightPos.x - cX;
+      const dy = lightPos.y - cY;
+      const dz = lightPos.z - cZ;
+      const distToBoxSq = dx * dx + dy * dy + dz * dz;
+
+      // Si es la pared/techo/piso del contenedor o está en el radio físico, bloquea la luz
+      if (isContainerWall || distToBoxSq <= rangeSq) {
+        if (m.receiveShadows !== true) {
+          m.receiveShadows = true;
+        }
+
+        staticMeshesFound.push(m);
+        if (staticMeshesFound.length >= 120) break;
+      }
+    }
+
+    this.slotStaticRenderListCache.set(cacheKey, {
+      meshes: staticMeshesFound,
+      lightPos: lightPos.clone(),
+      range
+    });
+
+    return staticMeshesFound;
+  }
+
   public rebuildShadowRenderList(slot: PoolSlot, entityUid: string, lightPos: Vector3, range: number): void {
+    if (!slot.light || slot.light.isDisposed()) {
+      return;
+    }
+
     if (!slot.sg) {
       const config = slot.type === 'spot' ? this.shadowQualitySvc.getSpotConfig() : this.shadowQualitySvc.getPointConfig();
       slot.sg = new ShadowGenerator(config.resolution, slot.light);
@@ -172,11 +250,11 @@ export class LightShadowService {
         slot.sg.usePercentageCloserFiltering = true;
         slot.sg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
         slot.sg.bias = 0.0005;
-        slot.sg.normalBias = 0.002;
+        slot.sg.normalBias = 0.0015;
       } else {
         slot.sg.usePoissonSampling = true;
-        slot.sg.bias = 0.0012;
-        slot.sg.normalBias = 0.0035;
+        slot.sg.bias = 0.0008;
+        slot.sg.normalBias = 0.002;
       }
       slot.sg.setDarkness(0.00);
     }
@@ -197,58 +275,20 @@ export class LightShadowService {
 
     const ownerEnt = this.entityManager.getEntityByUid(entityUid);
     slot.sg.forceBackFacesOnly = false;
+    slot.sg.setDarkness(0.00); // 100% oclusión: paredes, techo y piso bloquean completamente
 
-    const cacheKey = `${entityUid}_${slot.type}_${slot.index}`;
-    const cachedEntry = this.slotStaticRenderListCache.get(cacheKey);
+    // Preparar mallas estáticas asegurando que no se supere la longitud real del array
+    const staticMeshes = this.prepareStaticCastersCache(entityUid, slot.type, lightPos, range);
+    const maxMeshesToTake = slot.shadowTier === 'LOW' 
+      ? Math.min(40, staticMeshes.length) 
+      : staticMeshes.length;
 
-    if (cachedEntry && Vector3.DistanceSquared(cachedEntry.lightPos, lightPos) < 0.25 && cachedEntry.range === range) {
-      for (let i = 0; i < cachedEntry.meshes.length; i++) {
-        const m = cachedEntry.meshes[i];
-        if (!m.isDisposed()) {
-          renderList.push(m);
-        }
-      }
-      slot.isStaticLight = ownerEnt ? (!ownerEnt.autoAnim?.enabled && ownerEnt.movementAuthority === 'GAMEPLAY' && !ownerEnt.characterConfig) : true;
-      return;
-    }
-
-    const rangeSq = range * range;
-    const staticMeshesFound: AbstractMesh[] = [];
-
-    for (let i = 0; i < this.castersCache.length; i++) {
-      const m = this.castersCache[i];
-      if (m.isDisposed()) continue;
-
-      const parentEnt = this.resolveEntityForMesh(m);
-      if (parentEnt && parentEnt.uid === entityUid) continue;
-      if (parentEnt && (parentEnt.rol === 'player' || parentEnt.characterConfig)) continue;
-
-      m.computeWorldMatrix(true);
-      const bInfo = m.getBoundingInfo();
-      const bBox = bInfo.boundingBox;
-
-      const cX = Math.max(bBox.minimumWorld.x, Math.min(lightPos.x, bBox.maximumWorld.x));
-      const cY = Math.max(bBox.minimumWorld.y, Math.min(lightPos.y, bBox.maximumWorld.y));
-      const cZ = Math.max(bBox.minimumWorld.z, Math.min(lightPos.z, bBox.maximumWorld.z));
-
-      const dx = lightPos.x - cX;
-      const dy = lightPos.y - cY;
-      const dz = lightPos.z - cZ;
-      const distToBoxSq = dx * dx + dy * dy + dz * dz;
-
-      if (distToBoxSq <= rangeSq) {
-        if (m.receiveShadows !== true) {
-          m.receiveShadows = true;
-        }
-
-        const meshNameL = m.name ? m.name.toLowerCase() : '';
-        const isWorldFloorMesh = (parentEnt?.type === 'plane' || !parentEnt) && (meshNameL.includes('piso') || meshNameL.includes('floor') || meshNameL.includes('suelo') || meshNameL.includes('ground'));
-        
-        if (isWorldFloorMesh && slot.type === 'point') continue;
-
+    for (let i = 0; i < maxMeshesToTake; i++) {
+      const m = staticMeshes[i];
+      if (m && !m.isDisposed()) {
         renderList.push(m);
-        staticMeshesFound.push(m);
 
+        const parentEnt = this.resolveEntityForMesh(m);
         if (parentEnt) {
           let slotSet = this.entityToActiveSlotsMap.get(parentEnt.uid);
           if (!slotSet) {
@@ -264,12 +304,6 @@ export class LightShadowService {
         }
       }
     }
-
-    this.slotStaticRenderListCache.set(cacheKey, {
-      meshes: staticMeshesFound,
-      lightPos: lightPos.clone(),
-      range
-    });
 
     slot.isStaticLight = ownerEnt ? (!ownerEnt.autoAnim?.enabled && ownerEnt.movementAuthority === 'GAMEPLAY' && !ownerEnt.characterConfig) : true;
     this.shadowCache.recordRebuild();
@@ -299,12 +333,14 @@ export class LightShadowService {
       let anyAdded = false;
       for (let i = 0; i < actorMeshes.length; i++) {
         const m = actorMeshes[i];
-        if (!renderList.includes(m)) {
-          renderList.push(m);
-          anyAdded = true;
-        }
-        if (m.receiveShadows !== true) {
-          m.receiveShadows = true;
+        if (m && !m.isDisposed()) {
+          if (!renderList.includes(m)) {
+            renderList.push(m);
+            anyAdded = true;
+          }
+          if (m.receiveShadows !== true) {
+            m.receiveShadows = true;
+          }
         }
       }
 
@@ -357,21 +393,25 @@ export class LightShadowService {
     if (!slot.sg || !slot.sg.getShadowMap()) return;
     const distToCam = Vector3.Distance(slot.light.position, refPos);
 
-    // Si es editor puro y luz completamente estática -> Congelar siempre
+    if (slot.shadowTier === 'DISABLED') {
+      slot.sg.getShadowMap()!.refreshRate = 0;
+      slot.currentRefreshRate = 0;
+      return;
+    }
+
     if (isEditor && slot.type === 'point' && !slot.hasDynamicCasters && slot.isStaticLight) {
       slot.sg.getShadowMap()!.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
       slot.currentRefreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
       return;
     }
 
-    // Lógica de Gracia para el Frame de Parada (Garantiza el dibujo del último paso del jugador)
     if (playerMoved || !slot.isStaticLight) {
       slot._framesSinceStopped = 0;
     } else {
       slot._framesSinceStopped = (slot._framesSinceStopped || 0) + 1;
     }
 
-    const isConsideredMoving = playerMoved || !slot.isStaticLight || slot._framesSinceStopped <= 2;
+    const isConsideredMoving = playerMoved || !slot.isStaticLight || (slot._framesSinceStopped !== undefined && slot._framesSinceStopped <= 2);
 
     const rate = this.lodManager.getRefreshRate(
       distToCam,
@@ -385,7 +425,6 @@ export class LightShadowService {
     slot.sg.getShadowMap()!.refreshRate = rate;
     slot.currentRefreshRate = rate;
 
-    // Disparador de limpieza final al congelar (Bake)
     if (prevRate !== RenderTargetTexture.REFRESHRATE_RENDER_ONCE && rate === RenderTargetTexture.REFRESHRATE_RENDER_ONCE) {
       slot.sg.getShadowMap()!.resetRefreshCounter();
     }

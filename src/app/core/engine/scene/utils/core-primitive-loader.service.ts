@@ -1,3 +1,5 @@
+
+// file: src/app/core/engine/scene/utils/core-primitive-loader.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Color3, Mesh, MeshBuilder, StandardMaterial, Texture, Vector3, VideoTexture, Tags, TransformNode } from '@babylonjs/core';
 import { CoreSceneProjectionService } from '../utils/core-scene-projection.service';
@@ -180,7 +182,6 @@ export class CorePrimitiveLoaderService {
           mat.disableLighting = false;
         }
 
-        // 🔥 UNIFICACIÓN DEFINITIVA A 10 LUCES SIMULTÁNEAS
         mat.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS; 
         mat.fogEnabled = !entity.visual.ignoraNiebla;
         mesh.material = mat;

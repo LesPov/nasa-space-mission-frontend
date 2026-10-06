@@ -1,5 +1,6 @@
 
-import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject, effect, untracked } from '@angular/core';
+// file: src/app/components/inspector-escena/inspector-properties/prop-world/prop-world.ts
+import { Component, OnInit, OnDestroy, ChangeDetectorRef, inject, effect, untracked, Injectable } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Subscription } from 'rxjs';
@@ -11,7 +12,9 @@ import { VisualMode } from '../../../../core/engine/world/world-settings.model';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
 import { TransformMutatorService } from '../../../../services/editor/mutators/transform-mutator.service';
 import { AbstractMesh } from '@babylonjs/core';
+import { ShadowOrchestratorService } from '../../../../core/engine/runtime/shadows/shadow-orchestrator.service';
 
+@Injectable({ providedIn: 'root' })
 @Component({
   selector: 'app-prop-world',
   standalone: true, 
@@ -25,6 +28,7 @@ export class PropWorld implements OnInit, OnDestroy {
   private worldSettingsSvc = inject(WorldSettingsService);
   private motor3dSvc: ISceneAccess = inject(SCENE_ACCESS_TOKEN);
   private transformMutator = inject(TransformMutatorService);
+  private shadowOrchestrator = inject(ShadowOrchestratorService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -38,12 +42,12 @@ export class PropWorld implements OnInit, OnDestroy {
   ambientDirY = 1;
   ambientDirZ = 0;
 
+  sunEnabled = true;
   visualMode: VisualMode = 'normal';
 
   private lastSceneId: number | null = null;
 
   constructor() {
-    // 🔥 Efecto Reactivo para sincronizar el Entorno Global
     effect(() => {
       const sceneId = this.editorSvc.escenaIdActiva();
       
@@ -83,8 +87,15 @@ export class PropWorld implements OnInit, OnDestroy {
     this.ambientDirX = w.ambientDirX;
     this.ambientDirY = w.ambientDirY;
     this.ambientDirZ = w.ambientDirZ;
+    this.sunEnabled = w.sunEnabled !== false;
 
     this.cdr.detectChanges();
+  }
+
+  aplicarSol() {
+    this.worldSettingsSvc.updateWorldSettings({ sunEnabled: this.sunEnabled });
+    this.shadowOrchestrator.reconcileShadows();
+    this.editorSvc.onMapChanged.next();
   }
 
   aplicarModoVisualCambiado() {

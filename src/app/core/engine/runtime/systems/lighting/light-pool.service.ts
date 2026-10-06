@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/lighting/light-pool.service.ts
 import { Injectable, inject } from '@angular/core';
 import { PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, Color3, Tags, Scene } from '@babylonjs/core';
@@ -28,31 +27,33 @@ export class LightPoolService {
     this.disposePools(); 
     this.currentScene = scene;
 
-    const MAX_LOCAL_SHADER_LIGHTS = LIGHT_SPATIAL_CONSTANTS.MAX_LOCAL_LIGHTS; // Ahora es 4
+    // Exactamente 3 slots físicos activos para Point y Spot (respetando presupuesto)
+    const MAX_PHYSICAL_SLOTS = LIGHT_SPATIAL_CONSTANTS.MAX_PHYSICAL_ACTIVE_LIGHTS;
 
-    // 🔥 FIX GPU: Mapeo de resoluciones para los 4 slots. El 4to slot (Fade-Out) no consume sombras.
-    const pointResolutions = [1024, 512, 256, 128];
-    const spotResolutions = [1024, 1024, 512, 256];
-    const tiers: ShadowTier[] = ['HIGH', 'MEDIUM', 'LOW', 'LOW'];
+    const pointResolutions = [1024, 512, 512];
+    const spotResolutions = [1024, 512, 512];
+    const tiers: ShadowTier[] = ['HIGH', 'MEDIUM', 'LOW'];
 
-    for (let i = 0; i < MAX_LOCAL_SHADER_LIGHTS; i++) {
+    for (let i = 0; i < MAX_PHYSICAL_SLOTS; i++) {
       // 1. POINT LIGHTS
       const pLight = new PointLight(`pool_point_${i}`, new Vector3(0, -99999, 0), scene);
       pLight.intensity = 0; 
       pLight.diffuse = Color3.Black();
       pLight.specular = Color3.Black();
       pLight.shadowEnabled = true; 
-      pLight.shadowMinZ = 0.1;
-      pLight.shadowMaxZ = 35.0;
+      pLight.shadowMinZ = 0.05;
+      pLight.shadowMaxZ = 60.0;
       pLight.falloffType = PointLight.FALLOFF_STANDARD;
-      pLight.radius = 0.25;
+      pLight.radius = 0.20;
+      pLight.setEnabled(false); // Físicamente apagada al nacer
       Tags.AddTagsTo(pLight, "system_element");
 
       const pSg = new ShadowGenerator(pointResolutions[i], pLight);
       pSg.usePoissonSampling = true;
-      pSg.setDarkness(0.30); 
-      pSg.bias = 0.0015; 
-      pSg.normalBias = 0.004; 
+      // 0.00 = 100% de oclusión física detrás de paredes, techos y suelos (cero leak)
+      pSg.setDarkness(0.00); 
+      pSg.bias = 0.0008; 
+      pSg.normalBias = 0.002; 
       pSg.forceBackFacesOnly = false;
       pSg.useContactHardeningShadow = false;
 
@@ -74,16 +75,17 @@ export class LightPoolService {
       sLight.diffuse = Color3.Black(); 
       sLight.specular = Color3.Black();
       sLight.shadowEnabled = true; 
-      sLight.shadowMinZ = 0.1;
-      sLight.shadowMaxZ = 45.0;
+      sLight.shadowMinZ = 0.05;
+      sLight.shadowMaxZ = 60.0;
+      sLight.setEnabled(false); // Físicamente apagada al nacer
       Tags.AddTagsTo(sLight, "system_element");
 
       const sSg = new ShadowGenerator(spotResolutions[i], sLight);
       sSg.usePercentageCloserFiltering = true; 
       sSg.filteringQuality = i === 0 ? ShadowGenerator.QUALITY_HIGH : (i === 1 ? ShadowGenerator.QUALITY_MEDIUM : ShadowGenerator.QUALITY_LOW);
-      sSg.setDarkness(0.30); 
+      sSg.setDarkness(0.00); 
       sSg.bias = 0.0005; 
-      sSg.normalBias = 0.002; 
+      sSg.normalBias = 0.0015; 
       sSg.forceBackFacesOnly = false;
 
       this.spotPool.push({ 
@@ -99,20 +101,21 @@ export class LightPoolService {
       });
     }
 
-    // 3. DIRECTIONAL LIGHT (Sol Global)
+    // 3. DIRECTIONAL LIGHT (Sol secundario / directional pool)
     const dLight = new DirectionalLight(`pool_dir_0`, new Vector3(0, -1, 0), scene);
     dLight.intensity = 0; 
     dLight.diffuse = Color3.Black(); 
     dLight.specular = Color3.Black();
     dLight.shadowEnabled = true; 
+    dLight.setEnabled(false);
     Tags.AddTagsTo(dLight, "system_element");
 
     const dSg = new ShadowGenerator(1024, dLight);
     dSg.usePercentageCloserFiltering = true; 
     dSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-    dSg.setDarkness(0.35); 
+    dSg.setDarkness(0.00); 
     dSg.bias = 0.0008; 
-    dSg.normalBias = 0.005; 
+    dSg.normalBias = 0.003; 
     dSg.forceBackFacesOnly = false;
     
     this.dirPool.push({ 
@@ -173,7 +176,9 @@ export class LightPoolService {
     }
     slot.currentIntensity = 0; 
     slot.light.intensity = 0; 
-    if (slot.light.isEnabled()) slot.light.setEnabled(false); // 🔥 PHYSICAL DISABLE
+    if (slot.light.isEnabled()) {
+      slot.light.setEnabled(false); // Físicamente apagada
+    }
     slot.light.diffuse.set(0, 0, 0);
     slot.light.specular.set(0, 0, 0);
     slot._lightOnTimestamp = undefined;

@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/telemetry/engine-profiler.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { AdaptiveQualitySystem, QualityTier } from '../runtime/systems/adaptive-quality.system';
@@ -16,9 +15,9 @@ import { FogRendererService } from '../runtime/systems/fog-renderer.service';
 import { Vector3, Material, AbstractMesh, MultiMaterial } from '@babylonjs/core';
 
 export enum TelemetryTier {
-  SILENT = 0,    // Prod: Solo FPS, Overhead virtualmente 0
-  BALANCED = 1,  // Default Editor/Test: Historial ligero, Zero Allocations
-  FORENSIC = 2   // Profiler UI Abierto: Deep Snapshots, Shaders, Arrays complejos
+  SILENT = 0,
+  BALANCED = 1,
+  FORENSIC = 2
 }
 
 export interface LightForensicRecord {
@@ -315,7 +314,6 @@ export class EngineProfilerService {
   };
   private worstFrameEver = 0;
 
-  // Optimización O(1) Zero Allocations usando Maps
   private currentPhases = new Map<string, number>();
   private currentSystems = new Map<string, number>();
   private avgPhases = new Map<string, number>();
@@ -368,7 +366,6 @@ export class EngineProfilerService {
     }
   }
 
-  // --- FAST MATH HELPERS ---
   private round1(val: number): number { return Math.round(val * 10) / 10; }
   private round2(val: number): number { return Math.round(val * 100) / 100; }
   private round3(val: number): number { return Math.round(val * 1000) / 1000; }
@@ -419,7 +416,7 @@ export class EngineProfilerService {
     details: Record<string, any> = {}
   ): void {
     if (!this.isProfilingEnabled || !this.isHighResTelemetryEnabled()) return;
-    if (this.currentTier === TelemetryTier.SILENT) return; // Silent no acumula strings de timeline
+    if (this.currentTier === TelemetryTier.SILENT) return;
 
     const now = performance.now();
     const event: TimelineEvent = {
@@ -531,7 +528,6 @@ export class EngineProfilerService {
     if (!this.isProfilingEnabled) return;
     const tStart = performance.now();
 
-    // SILENT MODE: Ignoramos todo registro profundo para no sobrecargar el render loop.
     if (this.currentTier === TelemetryTier.SILENT) {
        this.currentFps = this.engineInstr?.scene?.getEngine()?.getFps() || 60;
        return;
@@ -562,7 +558,6 @@ export class EngineProfilerService {
     sample.fps = this.currentFps;
     sample.frameTime = timeMs;
     
-    // Obtención Rápida O(1)
     sample.drawCalls = this.sceneInstr?.drawCallsCounter?.current || 0;
     sample.activeMeshes = this.sceneInstr?.scene?.getActiveMeshes()?.length || 0;
     
@@ -811,6 +806,22 @@ export class EngineProfilerService {
     if (this.shadowSys && typeof this.shadowSys.getFastMetrics === 'function') {
       shadowMetrics = this.shadowSys.getFastMetrics();
     }
+
+    // CORRECCIÓN FORENSE TELEMETRÍA: Contabilizar generadores y casters reales del pool local
+    let poolGeneratorsActive = 0;
+    let poolCastersTotal = 0;
+    try {
+      const allSlots = this.lightPool.getAllSlots();
+      allSlots.forEach(s => {
+        if (s.assignedEntityUid && s.light.isEnabled() && s.currentIntensity > 0 && s.sg) {
+          poolGeneratorsActive++;
+          poolCastersTotal += (s.sg.getShadowMap()?.renderList?.length || 0);
+        }
+      });
+    } catch (e) {}
+
+    shadowMetrics.activeGenerators += poolGeneratorsActive;
+    shadowMetrics.totalCasters += poolCastersTotal;
 
     const lightDetails: LightForensicRecord[] = [];
     let fadingInCount = 0;

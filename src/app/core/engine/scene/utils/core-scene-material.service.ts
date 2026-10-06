@@ -12,9 +12,8 @@ export interface MaterialWarmupReport {
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneMaterialService {
-  // 🔥 FASE 2: Reducido de 10 a 5. El pool físico tiene 4 locales + 1 global.
-  // Esto reduce masivamente las permutaciones de shaders y el peso en GPU VRAM.
-  public static readonly MAX_SIMULTANEOUS_LIGHTS = 5;
+  // 6 luces simultáneas: 1 Sol + 1 Ambiente + 3 Luces locales del Pool + 1 margen de blending
+  public static readonly MAX_SIMULTANEOUS_LIGHTS = 6;
   
   private bwTextureCache = new Map<string, Texture>();
 
@@ -33,20 +32,6 @@ export class CoreSceneMaterialService {
       return mat.isDisposed();
     }
     return mat.isDisposed === true || mat._isDisposed === true;
-  }
-
-  private cloneMetadataSafely(source: any, target: any): void {
-    if (!source || !target) return;
-    if (source.metadata) {
-      target.metadata = {
-        ...source.metadata,
-        originalAlbedoColor: source.metadata.originalAlbedoColor ? source.metadata.originalAlbedoColor.clone() : undefined,
-        originalDiffuseColor: source.metadata.originalDiffuseColor ? source.metadata.originalDiffuseColor.clone() : undefined,
-        originalAmbientColor: source.metadata.originalAmbientColor ? source.metadata.originalAmbientColor.clone() : undefined,
-        originalEmissiveColor: source.metadata.originalEmissiveColor ? source.metadata.originalEmissiveColor.clone() : undefined,
-        originalSpecularColor: source.metadata.originalSpecularColor ? source.metadata.originalSpecularColor.clone() : undefined
-      };
-    }
   }
 
   public asegurarMaterialUnico(mesh: AbstractMesh, uid: string): Material | null {
@@ -79,7 +64,6 @@ export class CoreSceneMaterialService {
 
               const cloned = (subMat as any).clone(subTargetName);
               cloned.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
-              this.cloneMetadataSafely(subMat, cloned);
               return cloned;
             }
             return subMat;
@@ -90,12 +74,11 @@ export class CoreSceneMaterialService {
       } else if (typeof (mesh.material as any).clone === 'function') {
         const cloned = (mesh.material as any).clone(targetName);
         cloned.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
-        this.cloneMetadataSafely(mesh.material, cloned);
         mesh.material = cloned;
         return cloned;
       }
     } catch (e) {
-      console.warn("[CoreSceneMaterialService] No se pudo clonar el material para hacerlo único:", e);
+      console.warn("[CoreSceneMaterialService] Fallo al clonar material:", e);
     }
     return mesh.material;
   }
@@ -133,7 +116,6 @@ export class CoreSceneMaterialService {
 
               const cloned = (subMat as any).clone(subTargetName);
               cloned.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
-              this.cloneMetadataSafely(subMat, cloned);
               return cloned;
             }
             return subMat;
@@ -144,12 +126,11 @@ export class CoreSceneMaterialService {
       } else if (typeof (mesh.material as any).clone === 'function') {
         const cloned = (mesh.material as any).clone(targetName);
         cloned.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
-        this.cloneMetadataSafely(mesh.material, cloned);
         mesh.material = cloned;
         return cloned;
       }
     } catch (e) {
-      console.warn("[CoreSceneMaterialService] No se pudo clonar el material para hacerlo único por parte:", e);
+      console.warn("[CoreSceneMaterialService] Fallo al clonar material único para parte:", e);
     }
     return mesh.material;
   }
@@ -180,52 +161,29 @@ export class CoreSceneMaterialService {
       return;
     }
     
-    if (material.maxSimultaneousLights !== CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS) {
-      material.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+    material.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
+
+    if (!isExplicitOverride && !isBW && !esEmisivo) {
+      return;
     }
 
-    const c3Amb = ambientColorHex ? Color3.FromHexString(ambientColorHex) : new Color3(1, 1, 1);
     const c3Tint = colorHex ? Color3.FromHexString(colorHex) : new Color3(1, 1, 1);
     const brillo = Math.max(0, Math.min(10, brilloIntensidad));
 
     if (material.getClassName().includes('PBR')) {
       if (material.allowShaderHotSwapping !== true) material.allowShaderHotSwapping = true;
 
-      material.twoSidedLighting = true;
-      material.backFaceCulling = false;
-      material.usePhysicalLightFalloff = false;
-
       if (!material.metadata) material.metadata = {};
       if (material.metadata.pbrOriginalsCaptured !== true) {
         material.metadata.pbrOriginalsCaptured = true;
         material.metadata.originalAlbedoTexture = material.albedoTexture || null;
         material.metadata.originalAlbedoColor = material.albedoColor ? material.albedoColor.clone() : new Color3(1, 1, 1);
-        material.metadata.originalMetallic = material.metallic ?? 0.0;
-        material.metadata.originalRoughness = material.roughness ?? 0.5;
-        material.metadata.originalMetallicTexture = material.metallicTexture || null;
-        material.metadata.originalBumpTexture = material.bumpTexture || null;
-        material.metadata.originalAmbientTexture = material.ambientTexture || null;
         material.metadata.originalEmissiveColor = material.emissiveColor ? material.emissiveColor.clone() : Color3.Black();
-        material.metadata.originalEmissiveTexture = material.emissiveTexture || null;
-        material.metadata.originalEnvironmentIntensity = material.environmentIntensity ?? 1.0;
-        material.metadata.originalDirectIntensity = material.directIntensity ?? 1.0;
       }
-
-      const baseMetallic = material.metadata.originalMetallic ?? (material.metallic || 0.0);
-      material.metallic = Math.min(baseMetallic, 0.35);
-
-      if (material.roughness !== undefined && material.roughness > 0.90) {
-        material.roughness = 0.75;
-      }
-
-      material.directIntensity = 1.35;
-      material.environmentIntensity = Math.max(material.metadata.originalEnvironmentIntensity || 0.6, 0.6);
 
       if (isExplicitOverride && textureSource === 'solid') {
         material.albedoTexture = null;
         material.albedoColor = c3Tint.clone();
-        material.metallic = 0.1; 
-        material.roughness = 0.6;
       } else if (isExplicitOverride && textureSource === 'asset' && texturePath && scene) {
         let tex: any = new Texture('http://localhost:4000' + texturePath, scene);
         if (isBW) tex = await this.getOrCreateBwTexture(tex, scene);
@@ -236,10 +194,8 @@ export class CoreSceneMaterialService {
           if (material.metadata.originalAlbedoTexture) {
             const bwTex = await this.getOrCreateBwTexture(material.metadata.originalAlbedoTexture, scene);
             material.albedoTexture = bwTex;
-          } else {
-            material.albedoTexture = null;
           }
-        } else {
+        } else if (material.metadata.originalAlbedoTexture) {
           material.albedoTexture = material.metadata.originalAlbedoTexture;
         }
 
@@ -253,32 +209,17 @@ export class CoreSceneMaterialService {
       if (esEmisivo) {
         const emissiveBase = colorHex ? c3Tint : (material.metadata.originalAlbedoColor || Color3.White());
         material.emissiveColor = emissiveBase.scale(brillo);
-      } else {
-        if (material.metadata.originalEmissiveColor) {
-          material.emissiveColor.copyFrom(material.metadata.originalEmissiveColor);
-        } else {
-          material.emissiveColor = Color3.Black();
-        }
-        if (material.metadata.originalEmissiveTexture !== undefined) {
-          material.emissiveTexture = material.metadata.originalEmissiveTexture;
-        }
       }
 
     } else if (material.getClassName().includes('Standard')) {
       if (material.allowShaderHotSwapping !== true) material.allowShaderHotSwapping = true;
-
-      material.twoSidedLighting = true;
-      material.backFaceCulling = false;
 
       if (!material.metadata) material.metadata = {};
       if (material.metadata.stdOriginalsCaptured !== true) {
         material.metadata.stdOriginalsCaptured = true;
         material.metadata.originalDiffuseTexture = material.diffuseTexture || null;
         material.metadata.originalDiffuseColor = material.diffuseColor ? material.diffuseColor.clone() : new Color3(1, 1, 1);
-        material.metadata.originalAmbientColor = material.ambientColor ? material.ambientColor.clone() : Color3.Black();
         material.metadata.originalEmissiveColor = material.emissiveColor ? material.emissiveColor.clone() : Color3.Black();
-        material.metadata.originalEmissiveTexture = material.emissiveTexture || null;
-        material.metadata.originalSpecularColor = material.specularColor ? material.specularColor.clone() : new Color3(0, 0, 0);
       }
 
       if (isExplicitOverride && textureSource === 'solid') {
@@ -294,10 +235,8 @@ export class CoreSceneMaterialService {
           if (material.metadata.originalDiffuseTexture) {
             const bwTex = await this.getOrCreateBwTexture(material.metadata.originalDiffuseTexture, scene);
             material.diffuseTexture = bwTex;
-          } else {
-            material.diffuseTexture = null;
           }
-        } else {
+        } else if (material.metadata.originalDiffuseTexture) {
           material.diffuseTexture = material.metadata.originalDiffuseTexture;
         }
 
@@ -311,15 +250,6 @@ export class CoreSceneMaterialService {
       if (esEmisivo) {
         const emissiveBase = colorHex ? c3Tint : (material.metadata.originalDiffuseColor || Color3.White());
         material.emissiveColor = emissiveBase.scale(brillo);
-      } else {
-        if (material.metadata.originalEmissiveColor) {
-          material.emissiveColor.copyFrom(material.metadata.originalEmissiveColor);
-        } else {
-          material.emissiveColor = Color3.Black();
-        }
-        if (material.metadata.originalEmissiveTexture !== undefined) {
-          material.emissiveTexture = material.metadata.originalEmissiveTexture;
-        }
       }
     }
   }
@@ -379,7 +309,6 @@ export class CoreSceneMaterialService {
 
       const mat = m.material;
       const isSkinned = (m instanceof Mesh) && (m.skeleton !== null && m.skeleton !== undefined);
-      // El meshKey separa variantes por si la malla recibe sombras, requiere skinning o tiene distinta identidad
       const meshKey = `${mat.uniqueId}_${isSkinned ? 'skinned' : 'static'}_${m.receiveShadows ? 'shadows' : 'noshadows'}`;
 
       if (seenPairs.has(meshKey)) continue;
@@ -409,8 +338,6 @@ export class CoreSceneMaterialService {
 
     let compiledVariants = 0;
     let failedCount = 0;
-    
-    // 🔥 FASE 2: Eliminación del TASK_TIMEOUT_MS estricto para permitir compilaciones reales en cargas frías.
     const MAX_PARALLEL_BATCH = 15;
 
     for (let i = 0; i < compileTasks.length; i += MAX_PARALLEL_BATCH) {
@@ -422,7 +349,6 @@ export class CoreSceneMaterialService {
             compiledVariants++;
           }).catch((err: any) => {
             failedCount++;
-            console.warn(`[Warmup] Fallo compilación de shader para material ${task.mat.name}`, err);
           });
         }
         return Promise.resolve();
@@ -484,9 +410,6 @@ export class CoreSceneMaterialService {
       rawTex.wrapV = originalTexture.wrapV;
       rawTex.coordinatesIndex = originalTexture.coordinatesIndex;
       rawTex.coordinatesMode = originalTexture.coordinatesMode;
-      rawTex.uAng = originalTexture.uAng;
-      rawTex.vAng = originalTexture.vAng;
-      rawTex.wAng = originalTexture.wAng;
 
       rawTex.name = cacheKey;
       this.bwTextureCache.set(cacheKey, rawTex);
@@ -497,4 +420,3 @@ export class CoreSceneMaterialService {
     }
   }
 }
-  

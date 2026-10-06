@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/local-rendering.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -272,9 +271,10 @@ export class LocalRenderingSystem implements IUpdatable {
       } else if (effectiveDist > cullDistance) {
         const isNeededForShadow = this.shadowService.isEntityRequiredForActiveShadows(e.uid);
         e.isCulled = true;
-        mesh.setEnabled(isNeededForShadow);
-        mesh.isVisible = false;
-        this.applyVisibilityToMeshes(cachedMeshes, 0.0);
+        // REGLA FUNDAMENTAL: Jamás apagar la malla si la sombra o el mundo la necesita
+        mesh.setEnabled(true);
+        mesh.isVisible = isNeededForShadow;
+        this.applyVisibilityToMeshes(cachedMeshes, isNeededForShadow ? 0.0001 : 0.0);
         this.renderStates.set(e.uid, { 
           state: 'HARD_CULLED', 
           visibility: 0.0, 
@@ -341,7 +341,7 @@ export class LocalRenderingSystem implements IUpdatable {
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
-    // En Modo Editor: Mantener todas las entidades activas y visibles sin degradación de culling
+    // En Modo Editor: Mantener todas las entidades 100% visibles
     if (isEditor) {
       if (this.frameCounter === 0) {
         this.ensureAllEntitiesVisibleForEditor();
@@ -535,34 +535,21 @@ export class LocalRenderingSystem implements IUpdatable {
             const isNeededForShadow = this.shadowService.isEntityRequiredForActiveShadows(e.uid);
             renderState.isShadowProtected = isNeededForShadow;
 
-            if (isNeededForShadow) {
-              mesh.setEnabled(true);
-              mesh.isVisible = false;
-              this.applyVisibilityToMeshes(cachedMeshes, 0.0);
-              sCount++;
-            } else {
-              mesh.setEnabled(false);
-              mesh.isVisible = false;
-              this.applyVisibilityToMeshes(cachedMeshes, 0.0);
-            }
+            // NO desactivar la malla físicamente: se mantiene activa con opacidad cero para evitar pop-in
+            mesh.setEnabled(true);
+            mesh.isVisible = false;
+            this.applyVisibilityToMeshes(cachedMeshes, 0.0);
 
             discreteStateChanged = true;
             changedCount++;
+            hCount++;
           }
           break;
 
         case 'HARD_CULLED':
           hCount++;
-          if (renderState.isShadowProtected) {
-            sCount++;
-            if (!mesh.isEnabled()) mesh.setEnabled(true);
-            mesh.isVisible = false;
-          } else {
-            if (mesh.isEnabled()) {
-              mesh.setEnabled(false);
-            }
-            mesh.isVisible = false;
-          }
+          mesh.setEnabled(true);
+          mesh.isVisible = false;
           break;
 
         case 'RESTORING':

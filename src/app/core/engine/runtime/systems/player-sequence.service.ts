@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/player-sequence.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Vector3, Quaternion } from '@babylonjs/core';
@@ -351,7 +350,6 @@ export class PlayerSequenceService implements IUpdatable {
             }
           }, delayMs);
 
-          // Escalonamiento ampliado a 150 ms para amortiguar el impacto sobre el pipeline
           delayMs += 150;
         }
       }
@@ -487,12 +485,18 @@ export class PlayerSequenceService implements IUpdatable {
       state.jumpTriggered = false;
       state.cinematicTied = this.context.isCinematicPlaying(); 
 
-      this.profiler.recordTimelineEvent('SEQUENCE', 'SEQUENCE_STARTED', {
-        sequenceId,
-        entityUid: entity.uid,
-        entityName: entity.name,
-        stepCount: seqToRun.steps.length
-      });
+      // HISTÉRESIS DE TELEMETRÍA: Solo registrar inicio de secuencias que no sean bucles infinitos de luz
+      const firstAction = seqToRun.steps[0]?.action;
+      const isContinuousLightAnim = firstAction === 'lightPulse' || firstAction === 'lightFlicker';
+
+      if (!isContinuousLightAnim) {
+        this.profiler.recordTimelineEvent('SEQUENCE', 'SEQUENCE_STARTED', {
+          sequenceId,
+          entityUid: entity.uid,
+          entityName: entity.name,
+          stepCount: seqToRun.steps.length
+        });
+      }
 
       this.captureSequenceOrientationState(entity, state);
     }
@@ -650,12 +654,16 @@ export class PlayerSequenceService implements IUpdatable {
         this.gameState.setVar(step.stateKey, step.stateValue);
       }
 
-      this.profiler.recordTimelineEvent('SEQUENCE', 'SEQ_STEP_ENTERED', {
-        sequenceId: sequence.id,
-        entityUid: entity.uid,
-        stepIndex: state.index,
-        action: step.action
-      });
+      // Supresión de saturación en telemetría para loops infinitos de luz (lightPulse/lightFlicker)
+      const isContinuousLightAnim = step.action === 'lightPulse' || step.action === 'lightFlicker';
+      if (!isContinuousLightAnim) {
+        this.profiler.recordTimelineEvent('SEQUENCE', 'SEQ_STEP_ENTERED', {
+          sequenceId: sequence.id,
+          entityUid: entity.uid,
+          stepIndex: state.index,
+          action: step.action
+        });
+      }
 
       state.stepEntered = false;
     } else {

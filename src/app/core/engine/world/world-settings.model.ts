@@ -1,6 +1,4 @@
-// RUTA: src/app/core/engine/world/world-settings.model.ts
-// ACCIÓN: MODIFICAR
-
+// file: src/app/core/engine/world/world-settings.model.ts
 import { Vector3Dto } from '../models/api-dto.model';
 
 export type VisualMode = 'normal' | 'bw';
@@ -47,37 +45,25 @@ export const GRAVITY_PRESETS: Record<GravityPreset, GravityDefinition> = {
   }
 };
 
-/**
- * Constantes de calibración de sensibilidad para la cámara del Editor 3D.
- * Centraliza los factores base de Babylon.js para desacoplarlos de valores mágicos.
- */
 export const EDITOR_CAMERA_CALIBRATION = {
-  // Órbita: Base de sensibilidad angular (Babylon: menor divisor = mayor rotación)
   ORBIT_BASE_DIVISOR: 2200,
-
-  // Zoom: Rango dinámico de wheelPrecision adaptativo
-  // Disminuido para permitir un desplazamiento longitudinal ágil sin fatiga de scroll
   ZOOM_MIN_PRECISION: 1.2,
   ZOOM_BASE_MULTIPLIER: 4.8,
-
-  // Pan: Reducción de resistencia en px para acompañar el cursor
   PAN_MIN_SENSIBILITY: 8.0,
   PAN_BASE_SCALE: 48.0,
-
-  // Límites globales de sliders
   SLIDER_MIN: 0.2,
   SLIDER_MAX: 10.0,
   SLIDER_STEP: 0.05
 };
 
 export interface EditorCameraSettings {
-  orbitSensitivity: number;  // Multiplicador de rotación (Base 1.0)
-  zoomSensitivity: number;   // Multiplicador de zoom por rueda (Base equilibrada)
-  panSensitivity: number;    // Multiplicador de paneo con click derecho (Base equilibrada)
-  navigationSpeed: number;   // Multiplicador de vuelo/desplazamiento general
-  minDistance: number;       // Distancia mínima de acercamiento (zoom in)
-  maxDistance: number;       // Distancia máxima de alejamiento (zoom out)
-  inertia: number;           // Inercia de frenado (0.0 a 0.95)
+  orbitSensitivity: number;
+  zoomSensitivity: number;
+  panSensitivity: number;
+  navigationSpeed: number;
+  minDistance: number;
+  maxDistance: number;
+  inertia: number;
 }
 
 export const DEFAULT_EDITOR_CAMERA_SETTINGS: EditorCameraSettings = {
@@ -104,6 +90,7 @@ export interface WorldSettings {
   ambientDirX: number;
   ambientDirY: number;
   ambientDirZ: number;
+  sunEnabled: boolean; // Control explícito de Sol / CSM para interiores
   logicSettings?: any;
   editorCameraSettings?: EditorCameraSettings;
 }
@@ -141,6 +128,7 @@ export const DEFAULT_WORLD_SETTINGS: WorldSettings = {
   ambientDirX: 0,
   ambientDirY: 1,
   ambientDirZ: 0,
+  sunEnabled: true,
   editorCameraSettings: { ...DEFAULT_EDITOR_CAMERA_SETTINGS }
 };
 

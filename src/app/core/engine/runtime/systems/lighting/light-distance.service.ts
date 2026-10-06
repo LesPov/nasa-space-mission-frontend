@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/lighting/light-distance.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Vector3 } from '@babylonjs/core';
@@ -72,17 +71,12 @@ export class LightDistanceService {
         vl.closestActorName = 'Referencia Base';
       }
 
-      // Consumo de distancias desde el Hub O(1)
       const hubDist = this.spatialHub.getDistanceToPlayer(vl.entity.uid);
       const hubDistSq = this.spatialHub.getDistanceSquaredToPlayer(vl.entity.uid);
-
-      // Si el Hub no estaba inicializado (HubDist == MaxValue), usar distancia Euclidiana estricta para el warmup
       const centerDist = hubDist !== Number.MAX_VALUE ? hubDist : Vector3.Distance(actorWorldPos, this._tempPos);
       
       vl.centerDistance = parseFloat(centerDist.toFixed(2));
       vl.boundsDistance = parseFloat(centerDist.toFixed(2));
-      vl.effectiveDistance = parseFloat(centerDist.toFixed(2));
-      vl.lastEvaluatedDistance = vl.effectiveDistance;
       vl.distSq = hubDistSq !== Number.MAX_VALUE ? hubDistSq : (centerDist * centerDist);
       vl.lastDistanceUpdateTimestamp = nowTimeStr;
 
@@ -105,7 +99,7 @@ export class LightDistanceService {
       );
 
       // =========================================================================
-      // MODO INTERIOR + MODEL_PREENTRY (COBERTURA UNIFORME DE PASILLOS Y TÚNELES)
+      // MODO INTERIOR + CONTENCIÓN EN MODELO
       // =========================================================================
       if (isModelPreEntryMode) {
         if (!container || !container.view || container.view.isDisposed()) {
@@ -117,13 +111,15 @@ export class LightDistanceService {
           vl.isLightInRange = false;
           vl.isShadowInRange = false;
           vl._isInPrepareRange = false;
+          vl.effectiveDistance = vl.centerDistance;
+          vl.lastEvaluatedDistance = vl.centerDistance;
           vl.containmentSource = 'AABB_FALLBACK';
           this.transitionState(vl, 'OUTSIDE', nowTimeStr, 'CONTAINER_NOT_FOUND', 'Contenedor no resuelto');
           continue;
         }
 
-        // Ampliar margen de pre-entrada a un mínimo de 12 metros para pasillos
-        const preDist = Math.max(12.0, lightComp.preEntryDistance ?? 12.0);
+        // PREACTIVACIÓN TEMPRANA: La pre-entrada debe comenzar con amplio margen (mínimo 16m)
+        const preDist = Math.max(16.0, lightComp.preEntryDistance ?? 16.0);
         const contResult = this.containmentSvc.evaluateModelContainment(actorWorldPos, container, preDist, wasInRange);
 
         vl.spatialState = contResult.spatialState;
@@ -133,37 +129,28 @@ export class LightDistanceService {
         vl.distanceToBoundary = parseFloat(contResult.distanceToBoundary.toFixed(2));
         vl.containmentSource = contResult.source;
 
-        if (contResult.inside) {
-          vl.effectiveDistance = 0.0;
-          vl.lastEvaluatedDistance = 0.0;
-        } else {
-          vl.effectiveDistance = contResult.distanceToBoundary;
-          vl.lastEvaluatedDistance = contResult.distanceToBoundary;
-        }
+        vl.effectiveDistance = vl.centerDistance;
+        vl.lastEvaluatedDistance = vl.centerDistance;
 
         const maxKeepAliveExitDistance = Math.min(
           LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_MAX_DISTANCE,
           Math.max(preDist + 16.0, preDist * LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER)
         );
 
+        // Umbral ampliado de preparación previa (hasta 35m antes de llegar a la puerta)
         vl._isInPrepareRange = Boolean(
-          isGroupPreparedOrBetter || (contResult.distanceToBoundary <= (maxKeepAliveExitDistance + 10.0))
+          isGroupPreparedOrBetter || (contResult.distanceToBoundary <= (preDist + 20.0))
         );
 
-        // REGLA FUNDAMENTAL DE CONTINUIDAD LUMINOSA EN PASILLOS:
-        // La luz respeta ESTRICTAMENTE su geometría de contención. El grupo espacial permite
-        // que la luz se asigne a un slot en background (pre-warm), pero la intensidad se rige 100% por los límites físicos.
         if (contResult.spatialState === 'INSIDE') {
           vl.targetMultiplier = 1.0;
           vl.isLightInRange = true;
           this.evaluateStateAndDecision(vl, 0, 0, preDist, nowTimeStr, `INSIDE (${contResult.source})`);
         } else if (contResult.spatialState === 'PRE_ENTRY') {
-          // Aproximación suave hacia el módulo
           vl.targetMultiplier = LightAttenuationCurve.calculate(contResult.distanceToBoundary, 0, preDist);
           vl.isLightInRange = vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
           this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, preDist, nowTimeStr, `PRE-ENTRADA (${contResult.source})`);
         } else if (contResult.spatialState === 'PRE_EXIT') {
-          // Zona de permanencia extendida al salir hacia el siguiente tramo
           const holdDistance = preDist + LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_HOLD_MARGIN;
 
           if (contResult.distanceToBoundary <= holdDistance) {
@@ -189,10 +176,10 @@ export class LightDistanceService {
           }
         }
 
-        // Sombras en interiores: activas mientras el módulo esté dentro de rango visual
+        // PREACTIVACIÓN DE SOMBRA EN INTERIOR: Sombra activa al mismo tiempo que la pre-entrada
         if (lightComp.castShadows) {
           const syncShadow = lightComp.linkShadowPreEntryToLightPreEntry !== false;
-          const shadowPreDist = syncShadow ? preDist : Math.max(0.5, lightComp.shadowPreEntryDistance ?? preDist);
+          const shadowPreDist = syncShadow ? preDist : Math.max(preDist, lightComp.shadowPreEntryDistance ?? preDist);
           const shadowExitMargin = shadowPreDist + LIGHT_SPATIAL_CONSTANTS.INTERIOR_SHADOW_EXIT_MARGIN;
           
           const inShadowZone = Boolean(
@@ -208,24 +195,31 @@ export class LightDistanceService {
 
       } else {
         // =========================================================================
-        // MODO RADIAL ESTÁNDAR (LUCES EXTERIORES O INTERIORES POR DISTANCIA PURA)
+        // MODO RADIAL ESTÁNDAR (LUCES EXTERIORES)
         // =========================================================================
         vl.spatialState = undefined;
         vl.containmentSource = undefined;
         vl.inPreExitZone = false;
+        vl.effectiveDistance = vl.centerDistance;
+        vl.lastEvaluatedDistance = vl.centerDistance;
 
         const configuredActivation = lightComp.activationDistance ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_ACTIVATION_RADIUS;
-        const configuredDeactivation = lightComp.deactivationDistance ?? (configuredActivation + 6.0);
+        const configuredDeactivation = lightComp.deactivationDistance ?? (configuredActivation + 8.0);
         
         const rActivation = Math.max(1.0, configuredActivation);
         const rDeactivation = Math.max(rActivation + 2.0, configuredDeactivation);
-        const rPrepare = isGroupPreparedOrBetter ? (rDeactivation + 35.0) : (rDeactivation + 15.0);
+        
+        // REGLA CRÍTICA: La preparación (PREPARE) se adelanta al menos 20 metros a la activación
+        const rPrepare = isGroupPreparedOrBetter ? (rDeactivation + 35.0) : (rDeactivation + 20.0);
 
         this.applyStandardProximity(vl, centerDist, rActivation, rDeactivation, rPrepare, wasInRange, nowTimeStr);
 
+        // CORRECCIÓN DE UMBRAL: La sombra debe activarse en paralelo con la luz física (NO quedarse atrás)
         if (vl.isLightInRange && lightComp.castShadows && lightComp.distanceShadowsEnabled !== false) {
+          // Si el autor configuró una distancia menor a la de activación, corregir para que coincida con la luz
           const shadowAct = Math.max(rActivation, lightComp.shadowActivationDistance ?? rActivation);
           const shadowDeact = Math.max(rDeactivation, lightComp.shadowDeactivationDistance ?? rDeactivation);
+          
           vl.isShadowInRange = (wasInRange || vl.currentMultiplier > 0.05) ? centerDist <= shadowDeact : centerDist <= shadowAct;
         } else {
           vl.isShadowInRange = false;

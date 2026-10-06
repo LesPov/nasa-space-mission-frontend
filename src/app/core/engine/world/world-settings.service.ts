@@ -1,6 +1,4 @@
-// RUTA: src/app/core/engine/world/world-settings.service.ts
-// ACCIÓN: MODIFICAR
-
+// file: src/app/core/engine/world/world-settings.service.ts
 import { Injectable, signal } from '@angular/core';
 import { Color3, Color4, HemisphericLight, Scene, Vector3 } from '@babylonjs/core';
 import { 
@@ -64,6 +62,7 @@ export class WorldSettingsService {
         ambientDirX: Number.isFinite(Number(worldData.ambientDirX)) ? Number(worldData.ambientDirX) : DEFAULT_WORLD_SETTINGS.ambientDirX,
         ambientDirY: Number.isFinite(Number(worldData.ambientDirY)) ? Number(worldData.ambientDirY) : DEFAULT_WORLD_SETTINGS.ambientDirY,
         ambientDirZ: Number.isFinite(Number(worldData.ambientDirZ)) ? Number(worldData.ambientDirZ) : DEFAULT_WORLD_SETTINGS.ambientDirZ,
+        sunEnabled: worldData.sunEnabled !== false,
         logicSettings: worldData.logicSettings || {},
         editorCameraSettings: loadedCamSettings
       });
@@ -151,6 +150,7 @@ export class WorldSettingsService {
       gravityMagnitude: w.gravityMagnitude,
       gravityVector: w.gravityVector,
       uiSettings: ui,
+      sunEnabled: w.sunEnabled,
       logicSettings: w.logicSettings || {},
       editorCameraSettings: w.editorCameraSettings || { ...DEFAULT_EDITOR_CAMERA_SETTINGS }
     };

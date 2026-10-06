@@ -1,4 +1,4 @@
-
+<!-- file: src/app/components/inspector-escena/inspector-properties/prop-world/prop-world.html -->
 <div class="section-card">
   <div class="section-head">
     <h4>Filtro Visual de Cámara</h4>
@@ -10,9 +10,24 @@
         <option value="bw">Blanco y negro (Época antigua)</option>
       </select>
       <p class="help-text">
-        Filtro global que afecta tanto al Editor como al Juego Final. Útil para flashbacks.
+        Filtro global que afecta tanto al Editor como al Juego Final.
       </p>
     </div>
+  </div>
+</div>
+
+<div class="section-card">
+  <div class="section-head">
+    <h4>Sol Global y Sombras CSM</h4>
+  </div>
+  <div style="padding: 12px;">
+    <div class="checkbox-modern" style="margin-bottom: 8px;">
+      <input type="checkbox" id="chkSunEnabled" [(ngModel)]="sunEnabled" (ngModelChange)="aplicarSol()">
+      <label for="chkSunEnabled" style="color: #facc15; font-weight: bold;">☀️ Activar Sol Direccional (CSM)</label>
+    </div>
+    <p class="help-text">
+      Desactiva esta opción en episodios que se desarrollen únicamente en interiores o pasillos cerrados para optimizar el rendimiento y ahorrar draw calls de sombras solares.
+    </p>
   </div>
 </div>
 
@@ -61,7 +76,7 @@
     </div>
     
     <div class="section-mini-head">
-       <h5>Dirección del Sol Global</h5>
+       <h5>Dirección de la Iluminación</h5>
     </div>
     <div class="grid-3">
       <div class="field"><label>Dir X</label><input type="number" step="0.1" [(ngModel)]="ambientDirX" (ngModelChange)="aplicarIluminacion()" /></div>

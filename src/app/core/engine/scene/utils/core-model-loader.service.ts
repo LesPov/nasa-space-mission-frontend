@@ -231,9 +231,7 @@ export class CoreModelLoaderService {
       }
       
       if (m.material) {
-        if (m.material.getClassName() === "StandardMaterial" || m.material.getClassName() === "PBRMaterial") {
-          (m.material as any).maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
-        }
+        (m.material as typeof m.material & { maxSimultaneousLights: number }).maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
 
         if (override) {
           this.materialSvc.asegurarMaterialUnicoParaParte(m, entity.uid, m.name);
@@ -249,29 +247,20 @@ export class CoreModelLoaderService {
             true
           );
         } else {
-          // Si la entidad no tiene personalizaciones únicas (emisión, B&N, o brillo forzado),
-          // reutiliza el material original compartido del contenedor sin clonar
-          const needsUniqueClone = entity.visual.esEmisivo || 
-                                   entity.visual.ignoraNiebla || 
-                                   isBW || 
-                                   entity.visual.brilloIntensidad !== 1.0;
-
-          if (needsUniqueClone) {
+          const hasCustomVisualOverride = entity.visual.esEmisivo || isBW;
+          if (hasCustomVisualOverride) {
             this.materialSvc.asegurarMaterialUnico(m, entity.uid);
+            await this.materialSvc.ajustarMaterialGLB(
+              m.material, isBW, scene, 
+              activeAmbient, 
+              undefined, 
+              entity.visual.esEmisivo, 
+              entity.visual.brilloIntensidad,
+              undefined,
+              'original',
+              false
+            );
           }
-
-          // Se pasa colorHex como undefined y isExplicitOverride como false para respetar
-          // intacto el material PBR original del GLB sin sobreescrituras destructivas
-          await this.materialSvc.ajustarMaterialGLB(
-            m.material, isBW, scene, 
-            activeAmbient, 
-            undefined, 
-            entity.visual.esEmisivo, 
-            entity.visual.brilloIntensidad,
-            undefined,
-            'original',
-            false
-          );
         }
       }
     }
@@ -325,6 +314,7 @@ export class CoreModelLoaderService {
       lightVisualMat.specularColor = Color3.Black();
       lightVisualMat.disableLighting = true;
       lightVisualMat.fogEnabled = false;
+      lightVisualMat.maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
       visualSphere.material = lightVisualMat;
 
       Tags.AddTagsTo(visualSphere, "light_visual"); 

@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/shadows/shadow-orchestrator.service.ts
 import { Injectable, inject } from '@angular/core';
 import { DirectionalLight, Vector3, CascadedShadowGenerator, Scene, AbstractMesh, Mesh, InstancedMesh, Tags, RenderTargetTexture, Matrix } from '@babylonjs/core';
@@ -52,16 +51,21 @@ export class ShadowOrchestratorService implements IUpdatable {
 
   public getFastMetrics() {
     let casters = 0;
-    if (this.shadowGenerator) {
+    if (this.shadowGenerator && this.isSunActive()) {
       const sm = this.shadowGenerator.getShadowMap();
       if (sm && sm.renderList) casters = sm.renderList.length;
     }
     return {
-      activeGenerators: this.shadowGenerator ? 1 : 0,
+      activeGenerators: (this.shadowGenerator && this.isSunActive()) ? 1 : 0,
       totalCasters: casters,
-      csmMaxZ: this.shadowGenerator?.shadowMaxZ || 0,
-      csmCascades: this.shadowGenerator?.numCascades || 0
+      csmMaxZ: (this.shadowGenerator && this.isSunActive()) ? this.shadowGenerator.shadowMaxZ : 0,
+      csmCascades: (this.shadowGenerator && this.isSunActive()) ? this.shadowGenerator.numCascades : 0
     };
+  }
+
+  private isSunActive(): boolean {
+    const w = this.worldSettings.settings();
+    return w.sunEnabled !== false && !this.profilerDisableShadows;
   }
 
   public reconcileShadows(): void {
@@ -144,7 +148,20 @@ export class ShadowOrchestratorService implements IUpdatable {
 
   public update(dtMs: number): void {
     const scene = this.motor3d.getScene();
-    if (!scene || !this.mainSun || !this.shadowGenerator) return;
+    if (!scene) return;
+
+    if (!this.isSunActive()) {
+      if (this.mainSun && this.mainSun.isEnabled()) {
+        this.mainSun.setEnabled(false);
+      }
+      return;
+    } else {
+      if (this.mainSun && !this.mainSun.isEnabled()) {
+        this.mainSun.setEnabled(true);
+      }
+    }
+
+    if (!this.mainSun || !this.shadowGenerator) return;
 
     if (this.rebuildCooldownTimer > 0) {
       this.rebuildCooldownTimer -= dtMs;
@@ -168,31 +185,28 @@ export class ShadowOrchestratorService implements IUpdatable {
 
     const shadowMap = this.shadowGenerator.getShadowMap();
     if (shadowMap) {
-        // 🔥 SMART CSM FREEZE
-        let camMoved = false;
-        const activeCam = scene.activeCamera;
-        if (activeCam) {
-            const currentMat = activeCam.getViewMatrix();
-            // Evitamos la asignación de matrices si no es estrictamente necesario, usando isIdentity o un delta matemático liviano
-            // Babylon's Matrix.equals checks the full 16 indices
-            if (!currentMat.equals(this.lastCamMatrix)) {
-                camMoved = true;
-                this.lastCamMatrix.copyFrom(currentMat);
-            }
+      let camMoved = false;
+      const activeCam = scene.activeCamera;
+      if (activeCam) {
+        const currentMat = activeCam.getViewMatrix();
+        if (!currentMat.equals(this.lastCamMatrix)) {
+          camMoved = true;
+          this.lastCamMatrix.copyFrom(currentMat);
         }
+      }
 
-        const isMoving = hasMovedSignificantly || camMoved || this.forceRebuild;
+      const isMoving = hasMovedSignificantly || camMoved || this.forceRebuild;
 
-        if (isMoving) {
-            this.framesSinceLastCSMMove = 0;
-            shadowMap.refreshRate = 1;
-        } else {
-            this.framesSinceLastCSMMove++;
-            if (this.framesSinceLastCSMMove === 2) {
-                shadowMap.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
-                shadowMap.resetRefreshCounter(); // Hornea la última sombra perfectamente estacionaria
-            }
+      if (isMoving) {
+        this.framesSinceLastCSMMove = 0;
+        shadowMap.refreshRate = 1;
+      } else {
+        this.framesSinceLastCSMMove++;
+        if (this.framesSinceLastCSMMove === 2) {
+          shadowMap.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+          shadowMap.resetRefreshCounter();
         }
+      }
     }
   }
 
@@ -224,6 +238,17 @@ export class ShadowOrchestratorService implements IUpdatable {
     }
 
     const w = this.worldSettings.settings();
+    const sunWanted = w.sunEnabled !== false && !this.profilerDisableShadows;
+
+    if (!sunWanted) {
+      if (this.mainSun) this.mainSun.setEnabled(false);
+      if (this.shadowGenerator) {
+        const sm = this.shadowGenerator.getShadowMap();
+        if (sm?.renderList) sm.renderList.length = 0;
+      }
+      return;
+    }
+
     const newDir = new Vector3(w.ambientDirX, w.ambientDirY, w.ambientDirZ).normalize();
 
     if (!this.mainSun || this.mainSun.isDisposed()) {
@@ -232,6 +257,7 @@ export class ShadowOrchestratorService implements IUpdatable {
       this.mainSun.position = new Vector3(0, 100, 0);
       this.lastSunDir.copyFrom(newDir);
     } else {
+      if (!this.mainSun.isEnabled()) this.mainSun.setEnabled(true);
       if (Vector3.DistanceSquared(this.lastSunDir, newDir) > 0.0001) {
         this.mainSun.direction.copyFrom(newDir);
         this.lastSunDir.copyFrom(newDir);
@@ -259,11 +285,6 @@ export class ShadowOrchestratorService implements IUpdatable {
 
     const renderList = this.shadowGenerator.getShadowMap()?.renderList;
     if (renderList) {
-      if (this.profilerDisableShadows) {
-        renderList.length = 0;
-        return;
-      }
-
       const newRenderList: AbstractMesh[] = [];
       const entities = this.entityManager.getAllEntities();
 

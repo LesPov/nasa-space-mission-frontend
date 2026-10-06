@@ -882,7 +882,7 @@ export class EngineProfilerService {
     }
 
     const cullingMetrics = this.localRendering ? this.localRendering.getMetrics() : {
-      visibleObjects: visibleMeshesCount, fadingObjects: 0, hardCulledObjects: 0, restoringObjects: 0, shadowProtectedObjects: 0
+      visibleObjects: visibleMeshesCount, fadingObjects: 0, hardCulledObjects: 0, restoringObjects: 0, shadowProtectedObjects: 0, smoothedPlayerSpeed: 0, queuedForStreamingCount: 0
     };
 
     const seqDetails = this.sequenceSvc ? this.sequenceSvc.getActiveSequencesDetails() : [];

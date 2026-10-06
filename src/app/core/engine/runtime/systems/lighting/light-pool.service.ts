@@ -173,6 +173,7 @@ export class LightPoolService {
     }
     slot.currentIntensity = 0; 
     slot.light.intensity = 0; 
+    if (slot.light.isEnabled()) slot.light.setEnabled(false); // 🔥 PHYSICAL DISABLE
     slot.light.diffuse.set(0, 0, 0);
     slot.light.specular.set(0, 0, 0);
     slot._lightOnTimestamp = undefined;

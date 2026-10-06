@@ -401,6 +401,7 @@ export class DynamicLightingSystem implements IUpdatable {
       if (slot) {
         slot.currentIntensity = 0;
         slot.light.intensity = 0;
+        if (slot.light.isEnabled()) slot.light.setEnabled(false);
         if (slot.sg && slot.sg.getShadowMap()?.renderList) {
           slot.sg.getShadowMap()!.renderList!.length = 0;
         }
@@ -538,6 +539,12 @@ export class DynamicLightingSystem implements IUpdatable {
         vl.currentMultiplier = vl.targetMultiplier;
       }
 
+      // 🔥 CICLO DE VIDA: Trancisión formal hacia INACTIVE al completarse el Fade Out
+      if (vl.currentMultiplier === 0 && vl.lifecycleStage === 'FADING_OUT') {
+         vl.previousLifecycleStage = vl.lifecycleStage;
+         vl.lifecycleStage = vl.isInterior ? 'OUTSIDE' : 'INACTIVE';
+      }
+
       if (matchedSlot && vl.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD && !vl.isLightInRange) {
         this.lightPool.forceHardRelease(matchedSlot);
       }
@@ -563,6 +570,7 @@ export class DynamicLightingSystem implements IUpdatable {
         if (Math.abs(slot.currentIntensity) > 0.0001) {
           slot.currentIntensity = 0;
           slot.light.intensity = 0;
+          if (slot.light.isEnabled()) slot.light.setEnabled(false);
           slot.light.diffuse.set(0, 0, 0);
           slot.light.specular.set(0, 0, 0);
           slot.shadowTier = undefined;
@@ -641,14 +649,19 @@ export class DynamicLightingSystem implements IUpdatable {
     slot.currentIntensity = finalIntensity;
     slot.light.intensity = finalIntensity;
 
+    // 🔥 PHYSICAL SYNC: Ahorro masivo en GPU: deshabilita las luces totalmente si su intensidad es 0
+    if (finalIntensity > 0.0001) {
+        if (!slot.light.isEnabled()) slot.light.setEnabled(true);
+    } else {
+        if (slot.light.isEnabled()) slot.light.setEnabled(false);
+    }
+
     if (slot._isNewAssignment || vl.entity.isDirty || this.isFirstFrame) {
       if (slot.type !== 'directional') {
         this.containmentSvc.applyContainment(slot.light as any, vl.entity, scene);
       }
     }
 
-    // 🔥 Early Drop Asimétrico: La sombra se apaga drásticamente en el Fade-Out al 15%, 
-    // pero en el Fade-In se activa rápidamente desde el 1% para evitar Pop-In visual.
     const isFadingOut = vl.targetMultiplier < vl.currentMultiplier;
     const shadowIntensityThreshold = isFadingOut ? 0.15 : 0.01;
     const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > shadowIntensityThreshold && lightComp.enabled && lightComp.castShadows;
@@ -703,7 +716,6 @@ export class DynamicLightingSystem implements IUpdatable {
           }
         }
 
-        // 🔥 SMART FREEZE DELEGADO A SHADOW_LOD
         this.lightShadows.applyShadowLOD(slot, isEditorPure, this.getReferencePosition('AUTO'), playerMoved);
 
         if (listRebuilt || dynamicCasterChanged) {

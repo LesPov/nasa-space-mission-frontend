@@ -1,3 +1,4 @@
+
 // file: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.ts
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -12,6 +13,7 @@ import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../../core/engine/scene/
 import { LightContainmentMode, LightDistanceReferenceMode, LightInteriorActivationMode } from '../../../../core/engine/entities/game.entity';
 import { LightContainmentService } from '../../../../core/engine/runtime/systems/lighting/light-containment.service';
 import { DynamicLightingSystem } from '../../../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
+import { LightPoolService } from '../../../../core/engine/runtime/systems/lighting/light-pool.service';
 
 interface AttachedNodeOption {
   label: string;
@@ -39,6 +41,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   private entityManager = inject(EntityManagerService);
   private containmentSvc = inject(LightContainmentService);
   private dynamicLighting = inject(DynamicLightingSystem);
+  private lightPool = inject(LightPoolService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -142,7 +145,10 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       this.currentDistance = parseFloat(vl.lastEvaluatedDistance.toFixed(2));
       this.currentMultiplier = vl.currentMultiplier;
       this.currentEffectiveIntensity = (entity.light?.intensity ?? 1.0) * vl.currentMultiplier;
-      this.isLightActiveStatus = vl.isLightInRange && (entity.light?.enabled ?? true) && vl.currentMultiplier > 0.001;
+      
+      const slot = this.lightPool.findSlotByUid(entity.uid);
+      this.isLightActiveStatus = !!slot && slot.light.isEnabled() && slot.currentIntensity > 0;
+      
       this.isShadowActiveStatus = vl.isShadowInRange && (entity.light?.castShadows ?? true);
       this.shadowTierText = vl.shadowTier || 'OFF';
       this.closestActorName = vl.closestActorName || 'Actor';

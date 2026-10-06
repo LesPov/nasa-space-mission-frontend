@@ -142,7 +142,6 @@ export class DynamicLightingSystem implements IUpdatable {
 
     const virtuals = this.lightRegistry.getVirtualLights();
     
-    // 🔥 FORZAMOS EVALUACIÓN DE DISTANCIA INICIAL
     this.lightDistance.evaluateDistanceAndHysteresis(virtuals, refPos, 0);
 
     const candidates = virtuals.filter(vl => vl.entity.light?.enabled !== false);
@@ -286,7 +285,7 @@ export class DynamicLightingSystem implements IUpdatable {
         const vl = this.lightRegistry.getVirtualLightByUid(slot.assignedEntityUid);
         if (vl) {
           const tempFirstFrame = this.isFirstFrame;
-          this.isFirstFrame = true; // Fuerza la aplicación instantánea sin interpolar posiciones
+          this.isFirstFrame = true;
           this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, true);
           this.isFirstFrame = tempFirstFrame;
 
@@ -408,7 +407,7 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    // 🔥 FIX VELOCIDAD FADE: Fundido más lento y cinematográfico para evitar popping
+    // 🔥 FIX VELOCIDAD FADE: Fundido más lento y cinematográfico para evitar popping de luz (antes exp -6.5)
     const fadeRate = 1.0 - Math.exp(-4.0 * (dtMs / 1000.0));
     const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, isEditorPure ? Math.max(0.65, fadeRate * 2.5) : fadeRate);
 
@@ -465,10 +464,19 @@ export class DynamicLightingSystem implements IUpdatable {
         vl.targetMultiplier = 0;
       }
 
+      // 🔥 FIX GUILLOTINA: Si la luz está siendo expulsada del Top y tiene que apagarse, 
+      // la apagamos más rápido para liberar físicamente el slot y no atascar luces nuevas.
+      let currentLerp = lerpSpeed;
+      if (vl.targetMultiplier === 0) {
+        currentLerp = Math.min(1.0, currentLerp * 1.5);
+      }
+
       const multDiff = Math.abs(vl.targetMultiplier - vl.currentMultiplier);
       if (multDiff > 0.0005) {
-        vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
-        if (vl.currentMultiplier < LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
+        vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * currentLerp;
+        
+        // Atajo al 0 para apagar luces en Fade-Out sin esperar a la asíntota infinita
+        if (vl.targetMultiplier === 0 && vl.currentMultiplier < 0.02) {
           vl.currentMultiplier = 0;
         }
       } else {
@@ -555,7 +563,6 @@ export class DynamicLightingSystem implements IUpdatable {
       const effectiveRange = Math.max(1, lightComp.range || 58);
       (slot.light as any).range = effectiveRange;
 
-      // shadowMaxZ debe igualar el rango efectivo para que no existan halos no ocluidos
       slot.light.shadowMinZ = 0.1;
       slot.light.shadowMaxZ = effectiveRange;
 

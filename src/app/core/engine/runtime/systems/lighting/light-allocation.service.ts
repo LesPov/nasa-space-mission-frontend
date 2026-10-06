@@ -1,5 +1,4 @@
 
-// file: src/app/core/engine/runtime/systems/lighting/light-allocation.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Vector3, SpotLight, DirectionalLight } from '@babylonjs/core';
 import { VirtualLight, PoolSlot, ShadowTier, LIGHT_SPATIAL_CONSTANTS } from './lighting-types';
@@ -51,14 +50,13 @@ export class LightAllocationService {
     const preparedGroups = this.spatialGroups.getPreparedGroupIds();
     const preactivatingGroups = this.spatialGroups.getPreactivatingGroupIds();
 
-    // 1. Filtrar candidatos válidos basados ESTRICTAMENTE en posición
+    // 1. Filtrar candidatos válidos
     const validCandidates = activeVirtuals.filter(vl => {
       if (!vl.entity.light || !vl.entity.light.enabled) {
         vl.rejectionReason = 'DISABLED';
         return false;
       }
 
-      // Inmunidad de desvanecimiento para luces que ya estaban en el pool y aún tienen presencia
       if (assignedSet.has(vl.entity.uid) && vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
         return true;
       }
@@ -93,7 +91,7 @@ export class LightAllocationService {
       return false;
     });
 
-    // 2. Cálculo determinista de Score espacial (Penalización severa a luces a la espalda)
+    // 2. Cálculo de Score Espacial Unificado y Penalización Direccional
     validCandidates.forEach(vl => {
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
       const isInteriorVolumeMode = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
@@ -101,18 +99,19 @@ export class LightAllocationService {
 
       let score = 0;
 
+      // Base Scoring Positivo: Menor es más prioritario
       if (isInteriorVolumeMode) {
         const boundaryDist = vl.distanceToBoundary ?? 0;
         if (vl.spatialState === 'INSIDE') {
-          score = -50000 + boundaryDist;
+          score = 0; 
         } else if (vl.spatialState === 'PRE_ENTRY') {
-          score = -20000 + (boundaryDist * 10);
+          score = 100 + (boundaryDist * 10);
         } else if (vl.spatialState === 'PRE_EXIT') {
-          score = -15000 + (boundaryDist * 12);
+          score = 500 + (boundaryDist * 20);
         } else if (group && (preactivatingGroups.has(group.id) || group.isPredictedTarget)) {
-          score = -5000 + (boundaryDist * 5);
+          score = 1000 + (boundaryDist * 25);
         } else if (vl._isInPrepareRange) {
-          score = 500 + (boundaryDist * 2);
+          score = 2000 + (boundaryDist * 20);
         } else {
           score = 999999;
         }
@@ -122,28 +121,35 @@ export class LightAllocationService {
         const isFadingOut = assignedSet.has(vl.entity.uid) && vl.targetMultiplier === 0 && vl.currentMultiplier > 0.01;
         const predictedDistSq = isFadingOut ? distSq : Vector3.DistanceSquared(predictedPos, this._tempPos);
 
-        score = (distSq * 0.6) + (predictedDistSq * 0.4);
+        score = 1000 + (distSq * 0.6) + (predictedDistSq * 0.4);
+      }
 
-        if (dist > 0.5) {
+      // 🏆 CASTIGO DIRECCIONAL (View Dot Penalization)
+      // Se aplica a TODAS las luces excepto si el jugador está 100% adentro del volumen (INSIDE).
+      if (!isInteriorVolumeMode || vl.spatialState !== 'INSIDE') {
+        const distToLight = Vector3.Distance(refPos, this._tempPos);
+        if (distToLight > 1.0) {
           const dirToLight = this._tempPos.subtract(refPos).normalize();
           const viewDot = Vector3.Dot(this._cameraForward, dirToLight);
           
-          // 🔥 FIX CÁMARA FRONTAL: Beneficio a lo que tienes delante, destrucción a lo que dejas atrás.
           if (viewDot > 0.15) {
-            score *= 0.35; 
+             // Es una luz que estamos mirando de frente: Recompensa.
+             score *= 0.35; 
           } else if (viewDot < -0.1) {
-            score *= (1.0 + (Math.abs(viewDot) * 6.0));
+             // Es una luz que dejamos a nuestras espaldas: Castigo extremo.
+             score *= (1.0 + (Math.abs(viewDot) * 6.0));
           }
         }
       }
 
+      // Bonus por pre-carga
       if (group) {
         if (group.id === activeGroupId) score *= 0.1;
         else if (preactivatingGroups.has(group.id) || group.isPredictedTarget) score *= 0.2;
         else if (preparedGroups.has(group.id)) score *= 0.4;
       }
 
-      // 🔥 FIX STICKINESS: Reducido para permitir robos fluidos de slot por luces frontales
+      // Slot Stickiness reducido para permitir robos fluidos
       if (assignedSet.has(vl.entity.uid)) {
         if (vl.isLightInRange || vl._isInPrepareRange || vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
           score *= 0.85; 
@@ -153,18 +159,16 @@ export class LightAllocationService {
       vl._sortScore = parseFloat(score.toFixed(2));
     });
 
-    // 3. Ordenar candidatos por prioridad física real
+    // 3. Ordenar candidatos por prioridad
     validCandidates.sort((a, b) => (a._sortScore ?? 0) - (b._sortScore ?? 0));
 
     // 4. Seleccionar el Top de luces para los slots físicos
-    // Pool Físico = 4. Máximo de luces activas plenas = 3. El 4to slot se usa de transición.
-    const poolSize = LIGHT_SPATIAL_CONSTANTS.MAX_LOCAL_LIGHTS; // 4
-    const activeAllowed = 3;
+    const poolSize = LIGHT_SPATIAL_CONSTANTS.MAX_LOCAL_LIGHTS; // 4 Slots
+    const activeAllowed = 3; // Solo 3 proyectan al 100%
 
     const topVirtuals = validCandidates.slice(0, poolSize);
     const topUids = new Set(topVirtuals.map(x => x.entity.uid));
 
-    // A las que exceden el pool físico se apagan matemáticamente por completo
     validCandidates.slice(poolSize).forEach((vl, idx) => {
       vl.rejectionReason = 'LOWER_PRIORITY_RANK';
       vl.poolRank = poolSize + idx + 1;
@@ -184,19 +188,18 @@ export class LightAllocationService {
       }
     });
 
-    // 5. Liberar únicamente slots que salieron del Top y completaron su fade out
+    // 5. Liberar
     this.lightPool.getAllSlots().forEach(s => {
       this.lightPool.releaseSlot(s, topUids);
     });
 
-    // 6. Asignación estable de slots
+    // 6. Asignación estable
     const tiers: ShadowTier[] = ['HIGH', 'MEDIUM', 'LOW', 'LOW'];
 
     topVirtuals.forEach((vl, rankIndex) => {
       vl.poolRank = rankIndex + 1;
 
-      // 🔥 REGLA DE ORO DE LOS 3 SLOTS ACTIVOS:
-      // La 4ta luz es forzada a apagarse suavemente y pierde sus sombras instantáneamente para salvar GPU.
+      // 🔥 REGLA DE LA LUZ EXPULSADA: El 4to slot se apaga forzosamente y pierde las sombras para salvar la GPU
       if (rankIndex >= activeAllowed) {
          vl.rejectionReason = 'FADING_OUT_TRANSITION';
          vl.targetMultiplier = 0.0;

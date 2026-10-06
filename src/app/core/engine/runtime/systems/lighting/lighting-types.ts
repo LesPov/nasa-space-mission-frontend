@@ -19,7 +19,7 @@ export const LIGHT_SPATIAL_CONSTANTS = {
   SHADOW_ACTIVATION_RADIUS: 30.0,
   SHADOW_DEACTIVATION_RADIUS: 35.0,
   
-  // 🔥 FIX ARQUITECTÓNICO: 4 Slots en total (3 principales al 100% + 1 reservado para Fade-Out suave)
+  // 4 Slots en total (3 principales al 100% + 1 reservado para Fade-Out suave)
   MAX_LOCAL_LIGHTS: 4, 
   MAX_LOCAL_SHADOWS: 3,
   
@@ -27,13 +27,13 @@ export const LIGHT_SPATIAL_CONSTANTS = {
 
   // --- CALIBRACIÓN DE RETENCIÓN PARA LUCES INTERNAS (PASILLOS Y GIROS) ---
   /** Margen adicional fuera del vano de la puerta donde la luz interna conserva el 100% antes de iniciar fade out */
-  INTERIOR_KEEP_ALIVE_HOLD_MARGIN: 7.0,
+  INTERIOR_KEEP_ALIVE_HOLD_MARGIN: 2.0,
 
   /** Multiplicador sobre preEntryDistance para calcular la distancia máxima de visibilidad en alejamiento */
-  INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER: 2.8,
+  INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER: 1.5,
 
   /** Límite superior absoluto de permanencia visual fuera del pasillo (metros) */
-  INTERIOR_KEEP_ALIVE_MAX_DISTANCE: 32.0,
+  INTERIOR_KEEP_ALIVE_MAX_DISTANCE: 20.0,
 
   /** Distancia de seguridad para mantener la sombra activa antes de optimizarla a solo luz difusa en alejamiento */
   INTERIOR_SHADOW_EXIT_MARGIN: 4.0
@@ -111,6 +111,7 @@ export interface PoolSlot {
   shadowTier?: ShadowTier;
   currentRefreshRate?: number;
 
-  // Seguimiento de actores dinámicos actualmente inyectados en la renderList
   dynamicCastersRegistered?: Set<string>;
 }
+  
+ 

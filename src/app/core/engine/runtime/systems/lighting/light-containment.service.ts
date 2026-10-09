@@ -1,3 +1,4 @@
+// file: src/app/core/engine/runtime/systems/lighting/light-containment.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, PointLight, SpotLight, Scene, Vector3, Tags, Mesh, InstancedMesh, Node, Matrix, Ray } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
@@ -104,51 +105,7 @@ export class LightContainmentService {
       }
     }
 
-    if (lightEntity.view && lightEntity.view.parent) {
-      let currentParent: Node | null = lightEntity.view.parent;
-      while (currentParent) {
-        const ent = this.entityManager.getEntityByMesh(currentParent as AbstractMesh);
-        if (ent && ent.uid !== lightEntity.uid && (ent.type === 'model' || ent.type === 'cube')) {
-          return ent;
-        }
-        currentParent = currentParent.parent;
-      }
-    }
-
-    const lightPos = lightEntity.view
-      ? lightEntity.view.getAbsolutePosition()
-      : new Vector3(lightEntity.transform.position.x, lightEntity.transform.position.y, lightEntity.transform.position.z);
-
-    const candidates = this.entityManager.getAllEntities().filter(
-      e => e.uid !== lightEntity.uid && (e.type === 'model' || e.type === 'cube') && e.view && !e.view.isDisposed() && !e.type.startsWith('light_') && e.rol !== 'light'
-    );
-
-    let closestContainer: GameEntity | null = null;
-    let smallestDist = Number.MAX_VALUE;
-
-    for (let i = 0; i < candidates.length; i++) {
-      const cand = candidates[i];
-      if (!cand.view) continue;
-
-      const rec = this.spatialHub.getRecord(cand.uid);
-      if (!rec) continue;
-
-      const dist = Vector3.Distance(rec.centerWorld, lightPos);
-      if (
-        lightPos.x >= rec.minWorld.x - 0.5 && lightPos.x <= rec.maxWorld.x + 0.5 &&
-        lightPos.y >= rec.minWorld.y - 0.5 && lightPos.y <= rec.maxWorld.y + 0.5 &&
-        lightPos.z >= rec.minWorld.z - 0.5 && lightPos.z <= rec.maxWorld.z + 0.5
-      ) {
-        return cand;
-      }
-
-      if (dist < smallestDist) {
-        smallestDist = dist;
-        closestContainer = cand;
-      }
-    }
-
-    return closestContainer;
+    return null;
   }
 
   public analyzeContainerGeometry(container: GameEntity, scene: Scene): ContainerGeometryCache {
@@ -233,42 +190,13 @@ export class LightContainmentService {
     const corridorApproxWidth = Math.max(3.0, Math.min(sizeWorld.x, sizeWorld.z));
 
     if (entryPoints.length === 0) {
-      const extremityClusters: Vector3[] = [];
-      const thresholdMargin = Math.max(2.5, corridorApproxWidth * 0.8);
-
-      for (let i = 0; i < renderables.length; i++) {
-        const m = renderables[i];
-        const c = m.getBoundingInfo().boundingBox.centerWorld;
-
-        const isAtEdgeX = (Math.abs(c.x - maxWorld.x) <= thresholdMargin) || (Math.abs(c.x - minWorld.x) <= thresholdMargin);
-        const isAtEdgeZ = (Math.abs(c.z - maxWorld.z) <= thresholdMargin) || (Math.abs(c.z - minWorld.z) <= thresholdMargin);
-
-        if (isAtEdgeX || isAtEdgeZ) {
-          const pt = new Vector3(c.x, minWorld.y + 1.2, c.z);
-          let existsClose = false;
-          for (let k = 0; k < extremityClusters.length; k++) {
-            if (Vector3.DistanceSquared(pt, extremityClusters[k]) < 16.0) {
-              existsClose = true;
-              break;
-            }
-          }
-          if (!existsClose) {
-            extremityClusters.push(pt);
-          }
-        }
-      }
-
-      if (extremityClusters.length > 0) {
-        entryPoints.push(...extremityClusters);
+      const isLongitudinalZ = sizeWorld.z >= sizeWorld.x;
+      if (isLongitudinalZ) {
+        entryPoints.push(new Vector3(centerWorld.x, minWorld.y + 1.2, minWorld.z));
+        entryPoints.push(new Vector3(centerWorld.x, minWorld.y + 1.2, maxWorld.z));
       } else {
-        const isLongitudinalZ = sizeWorld.z >= sizeWorld.x;
-        if (isLongitudinalZ) {
-          entryPoints.push(new Vector3(centerWorld.x, minWorld.y + 1.2, minWorld.z));
-          entryPoints.push(new Vector3(centerWorld.x, minWorld.y + 1.2, maxWorld.z));
-        } else {
-          entryPoints.push(new Vector3(minWorld.x, minWorld.y + 1.2, centerWorld.z));
-          entryPoints.push(new Vector3(maxWorld.x, minWorld.y + 1.2, centerWorld.z));
-        }
+        entryPoints.push(new Vector3(minWorld.x, minWorld.y + 1.2, centerWorld.z));
+        entryPoints.push(new Vector3(maxWorld.x, minWorld.y + 1.2, centerWorld.z));
       }
     }
 
@@ -296,7 +224,7 @@ export class LightContainmentService {
   public evaluateModelContainment(
     actorWorldPos: Vector3,
     container: GameEntity | null,
-    preEntryDistance: number = 16.0,
+    preEntryDistance: number = 8.0,
     wasInRange: boolean = false,
     actorVelocity: Vector3 = Vector3.Zero()
   ): ModelContainmentResult {
@@ -318,25 +246,37 @@ export class LightContainmentService {
     const min = geoData.minWorld;
     const max = geoData.maxWorld;
 
-    const speed = actorVelocity.length();
-    const lookAheadBonus = Math.min(10.0, speed * 1.0);
-    const effectivePreEntryDistance = preEntryDistance + lookAheadBonus;
+    const dxBroad = Math.max(0, min.x - actorWorldPos.x, actorWorldPos.x - max.x);
+    const dyBroad = Math.max(0, min.y - actorWorldPos.y, actorWorldPos.y - max.y);
+    const dzBroad = Math.max(0, min.z - actorWorldPos.z, actorWorldPos.z - max.z);
 
-    const maxKeepAliveExitDistance = Math.max(effectivePreEntryDistance + 4.0, LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_MAX_DISTANCE);
-    const broadMargin = wasInRange ? maxKeepAliveExitDistance + 2.0 : effectivePreEntryDistance + 2.0;
-
-    const dxBroad = Math.max(0, (min.x - broadMargin) - actorWorldPos.x, actorWorldPos.x - (max.x + broadMargin));
-    const dyBroad = Math.max(0, (min.y - 3.0) - actorWorldPos.y, actorWorldPos.y - (max.y + 3.0));
-    const dzBroad = Math.max(0, (min.z - broadMargin) - actorWorldPos.z, actorWorldPos.z - (max.z + broadMargin));
-
+    // Si el actor está completamente fuera del AABB mundial del pasillo
     if (dxBroad > 0 || dyBroad > 0 || dzBroad > 0) {
-      const distToBox = Math.sqrt(dxBroad * dxBroad + dyBroad * dyBroad + dzBroad * dzBroad);
+      let minDistanceToEntry = Number.MAX_VALUE;
+      for (let i = 0; i < geoData.entryPoints.length; i++) {
+        const d = Vector3.Distance(actorWorldPos, geoData.entryPoints[i]);
+        if (d < minDistanceToEntry) minDistanceToEntry = d;
+      }
+
+      // Solo es pre-entrada si está verdaderamente en la boca de entrada a menos de la distancia configurada
+      if (minDistanceToEntry <= preEntryDistance) {
+        return {
+          inside: false,
+          preEntry: true,
+          preExit: false,
+          spatialState: 'PRE_ENTRY',
+          distanceToBoundary: minDistanceToEntry,
+          confidence: 'HIGH',
+          source: geoData.source
+        };
+      }
+
       return {
         inside: false,
         preEntry: false,
         preExit: false,
         spatialState: 'OUTSIDE',
-        distanceToBoundary: distToBox,
+        distanceToBoundary: minDistanceToEntry,
         confidence: 'HIGH',
         source: geoData.source
       };
@@ -345,7 +285,7 @@ export class LightContainmentService {
     this.metrics.preciseEvaluations++;
 
     const isWithinVerticalBounds = (
-      actorWorldPos.y >= (min.y - 1.5) && actorWorldPos.y <= (max.y + 2.5)
+      actorWorldPos.y >= (min.y - 0.5) && actorWorldPos.y <= (max.y + 1.0)
     );
 
     Vector3.TransformCoordinatesToRef(actorWorldPos, geoData.invWorldMatrix, this._tempLocalActorPos);
@@ -353,88 +293,54 @@ export class LightContainmentService {
     const locMin = geoData.minLocal;
     const locMax = geoData.maxLocal;
 
-    const tolXZ = wasInRange ? 1.0 : 0.4;
     const isInsideLocalAABB =
-      locPos.x >= locMin.x - tolXZ && locPos.x <= locMax.x + tolXZ &&
-      locPos.z >= locMin.z - tolXZ && locPos.z <= locMax.z + tolXZ;
+      locPos.x >= locMin.x && locPos.x <= locMax.x &&
+      locPos.z >= locMin.z && locPos.z <= locMax.z;
 
     let isUnderRoof = false;
     if (isWithinVerticalBounds && isInsideLocalAABB && geoData.allRenderableMeshes.length > 0) {
-      const rayOrigin = new Vector3(actorWorldPos.x, actorWorldPos.y + 0.5, actorWorldPos.z);
-      const upRay = new Ray(rayOrigin, Vector3.Up(), 12.0);
-      const hitUp = scene.pickWithRay(upRay, (m) => {
-        return geoData.allRenderableMeshes.includes(m as AbstractMesh);
-      });
-      if (hitUp && hitUp.hit && hitUp.pickedMesh) {
-        isUnderRoof = true;
-      }
+      const rayOrigin = new Vector3(actorWorldPos.x, actorWorldPos.y + 0.2, actorWorldPos.z);
+      const upRay = new Ray(rayOrigin, Vector3.Up(), 10.0);
+      const hitUp = scene.pickWithRay(upRay, (m) => geoData.allRenderableMeshes.includes(m as AbstractMesh));
+      if (hitUp && hitUp.hit) isUnderRoof = true;
     }
 
     let minDistanceToEntry = Number.MAX_VALUE;
-    let closestEntryPoint = geoData.entryPoints[0];
-
     for (let i = 0; i < geoData.entryPoints.length; i++) {
-      const ep = geoData.entryPoints[i];
-      const d = Vector3.Distance(actorWorldPos, ep);
-      if (d < minDistanceToEntry) {
-        minDistanceToEntry = d;
-        closestEntryPoint = ep;
-      }
+      const d = Vector3.Distance(actorWorldPos, geoData.entryPoints[i]);
+      if (d < minDistanceToEntry) minDistanceToEntry = d;
     }
 
-    const isDeepInBox = isWithinVerticalBounds && isInsideLocalAABB && (minDistanceToEntry > 2.0);
-    const isInsideGeometry = isWithinVerticalBounds && isInsideLocalAABB && (isUnderRoof || isDeepInBox);
-
-    // 1. DENTRO DEL PASILLO
-    if (isInsideGeometry) {
+    if (isWithinVerticalBounds && isInsideLocalAABB && isUnderRoof) {
       return {
         inside: true,
         preEntry: false,
         preExit: false,
         spatialState: 'INSIDE',
         distanceToBoundary: 0,
-        boundaryPoint: closestEntryPoint,
         confidence: 'HIGH',
         source: geoData.source
       };
     }
 
-    // 2. SALIDA PROGRESIVA CONTROLADA (PRE-EXIT)
-    if (wasInRange && minDistanceToEntry <= maxKeepAliveExitDistance) {
-      return {
-        inside: false,
-        preEntry: false,
-        preExit: true,
-        spatialState: 'PRE_EXIT',
-        distanceToBoundary: minDistanceToEntry,
-        boundaryPoint: closestEntryPoint,
-        confidence: 'HIGH',
-        source: geoData.source
-      };
-    }
-
-    // 3. APROXIMACIÓN ANTICIPADA HACIA LA ENTRADA (PRE-ENTRY)
-    if (minDistanceToEntry <= effectivePreEntryDistance) {
+    if (minDistanceToEntry <= preEntryDistance) {
       return {
         inside: false,
         preEntry: true,
         preExit: false,
         spatialState: 'PRE_ENTRY',
         distanceToBoundary: minDistanceToEntry,
-        boundaryPoint: closestEntryPoint,
         confidence: 'HIGH',
         source: geoData.source
       };
     }
 
-    // 4. EXTERIOR
     return {
       inside: false,
       preEntry: false,
       preExit: false,
       spatialState: 'OUTSIDE',
       distanceToBoundary: minDistanceToEntry,
-      boundaryPoint: closestEntryPoint,
       confidence: 'HIGH',
       source: geoData.source
     };
@@ -455,9 +361,7 @@ export class LightContainmentService {
       visitedNodes.add(node);
       totalDescendantsCount++;
 
-      if (node.isDisposed()) {
-        return;
-      }
+      if (node.isDisposed()) return;
 
       if (
         Tags.MatchesQuery(
@@ -493,11 +397,6 @@ export class LightContainmentService {
     return { renderables, totalDescendantsCount, rejected };
   }
 
-  /**
-   * Aplica contención física de iluminación:
-   * Para luces interiores, asegura que la luz ilumine al contenedor del pasillo y al jugador,
-   * impidiendo que la luz afecte habitaciones lejanas o traspase el suelo sin restricción.
-   */
   public applyContainment(light: PointLight | SpotLight, entity: GameEntity, scene: Scene): void {
     const mode: LightContainmentMode = entity.light?.containmentMode || 'GLOBAL';
     const affectDescendantsOnly = entity.light?.affectDescendantsOnly ?? false;
@@ -513,11 +412,7 @@ export class LightContainmentService {
           return;
         }
 
-        // Si la luz sale por las puertas: iluminamos el pasillo y únicamente al actor/jugador
-        // Bloqueamos que la luz se aplique a suelos exteriores lejanos sin sombra.
         const validReceivers = new Set<AbstractMesh>(renderables);
-
-        // Añadir únicamente las mallas del jugador activo
         const playerEnt = this.entityManager.getAllEntities().find(e => e.rol === 'player' || !!e.characterConfig);
         if (playerEnt && playerEnt.view) {
           validReceivers.add(playerEnt.view as AbstractMesh);
@@ -530,7 +425,6 @@ export class LightContainmentService {
       }
     }
 
-    // Modo GLOBAL: iluminación abierta estándar
     light.includedOnlyMeshes = [];
     light.excludedMeshes = [];
   }

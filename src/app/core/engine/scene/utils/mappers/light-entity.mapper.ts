@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/scene/utils/mappers/light-entity.mapper.ts
 import { Injectable } from '@angular/core';
 import { BaseEntityMapper } from './base-entity.mapper';
@@ -27,17 +26,14 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.transform.scale = TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
     }
 
-    if (!props.transformSpace) {
-      if (props.attachedNodeName) {
-        entity.transformSpace = 'ATTACHED';
-      } else if (obj.parentId) {
-        entity.transformSpace = 'LOCAL';
-        entity.isLegacyLocalTransform = false;
-      } else {
-        entity.transformSpace = 'WORLD';
-      }
+    // Normalización de transformSpace: si tiene parentId, su espacio de datos es estrictamente LOCAL
+    if (obj.parentId) {
+      entity.transformSpace = 'LOCAL';
+      entity.isLegacyLocalTransform = false;
+    } else if (props.attachedNodeName) {
+      entity.transformSpace = 'ATTACHED';
     } else {
-      entity.transformSpace = props.transformSpace;
+      entity.transformSpace = props.transformSpace || 'WORLD';
     }
 
     if (entity.light) {

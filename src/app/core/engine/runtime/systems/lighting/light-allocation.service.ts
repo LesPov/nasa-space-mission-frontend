@@ -3,12 +3,14 @@ import { Injectable, inject } from '@angular/core';
 import { Vector3, SpotLight, DirectionalLight } from '@babylonjs/core';
 import { 
   VirtualLight, PoolSlot, ShadowTier, ActiveLogicalSlot, 
-  PreparedLogicalSlot, LIGHT_SPATIAL_CONSTANTS 
+  PreparedLogicalSlot, LIGHT_SPATIAL_CONSTANTS, LightEvictionReason, LightPromotionReason,
+  SpatialContextDomain 
 } from './lighting-types';
 import { LightPoolService } from './light-pool.service';
 import { LightTransformService } from './light-transform.service';
 import { LightShadowService } from './light-shadow.service';
 import { LightDistanceService } from './light-distance.service';
+import { EngineProfilerService } from '../../../telemetry/engine-profiler.service';
 
 @Injectable({ providedIn: 'root' })
 export class LightAllocationService {
@@ -16,16 +18,17 @@ export class LightAllocationService {
   private lightTransform = inject(LightTransformService);
   private lightShadows = inject(LightShadowService);
   private lightDistance = inject(LightDistanceService);
+  private profiler = inject(EngineProfilerService);
 
   private _tempPos = Vector3.Zero();
   private _tempDir = Vector3.Zero();
 
-  // 4 Slots Físicos Activos (0, 1, 2, 3)
+  // Partición del Presupuesto Físico: 3 Slots Funcionales Principales + 1 Slot de Transición/Relevo
   private activeSlots: ActiveLogicalSlot[] = [
-    { id: 0, assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 },
-    { id: 1, assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 },
-    { id: 2, assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 },
-    { id: 3, assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 }
+    { id: 0, role: 'PRIMARY_PROTECTED_1', assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 },
+    { id: 1, role: 'PRIMARY_PROTECTED_2', assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 },
+    { id: 2, role: 'TARGET_ZONE_PRIMARY', assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 },
+    { id: 3, role: 'TRANSITION_HANDOVER', assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 }
   ];
 
   // 2 Slots Lógicos de Preparación Anticipada (4 y 5)
@@ -68,6 +71,16 @@ export class LightAllocationService {
   public releaseEntity(uid: string): void {
     for (const slot of this.activeSlots) {
       if (slot.assignedUid === uid) {
+        this.profiler.recordTimelineEvent('LIGHT', 'LIGHT_SLOT_RELEASED', {
+          slotId: slot.id,
+          entityUid: uid,
+          reason: 'EXPLICIT_RELEASE'
+        }, {
+          entityUid: uid,
+          slotIndex: slot.id,
+          reason: 'EXPLICIT_RELEASE'
+        });
+
         if (slot.physicalSlot) {
           this.lightPool.forceHardRelease(slot.physicalSlot);
         }
@@ -105,6 +118,11 @@ export class LightAllocationService {
   ): void {
     const now = performance.now();
 
+    // 1. Determinar el Dominio Espacial Principal del Jugador
+    const macroZone = this.lightDistance.getMacroZone();
+    const isInteriorConfirmed = macroZone === 'INTERIOR_ACTIVE';
+    const dominantDomain: SpatialContextDomain = isInteriorConfirmed ? 'INTERIOR' : 'EXTERIOR';
+
     const currentlyAssignedUids = new Set<string>();
     for (const slot of this.activeSlots) {
       if (slot.assignedUid) {
@@ -112,17 +130,11 @@ export class LightAllocationService {
       }
     }
 
-    // 1. Filtrado de candidatos elegibles
+    // 2. Filtrado de candidatos elegibles
     const validCandidates = activeVirtuals.filter(vl => {
       if (!vl.entity.light || !vl.entity.light.enabled) {
         vl.rejectionReason = 'DISABLED';
         return false;
-      }
-
-      if (vl.rejectionReason === 'TOPOLOGICALLY_DISCONNECTED') {
-        if (!currentlyAssignedUids.has(vl.entity.uid)) {
-          return false;
-        }
       }
 
       if (currentlyAssignedUids.has(vl.entity.uid)) {
@@ -130,93 +142,119 @@ export class LightAllocationService {
       }
 
       if (vl.isInterior) {
-        if (vl.insideVolume || vl.inPreEntryZone || vl.inPreExitZone || vl._isInPrepareRange) {
-          return true;
+        // En exterior, las luces del pasillo SOLO compiten si el jugador está a las puertas (< 6 metros de la entrada)
+        if (dominantDomain === 'EXTERIOR' && !vl.inPreEntryZone) {
+          return false;
         }
-        return false;
+        return vl.insideVolume || vl.inPreEntryZone || vl.inPreExitZone || vl._isInPrepareRange;
       }
 
-      if (vl.isLightInRange || vl._isInPrepareRange) {
-        return true;
-      }
-
-      return false;
+      return vl.isLightInRange || vl._isInPrepareRange;
     });
 
-    // 2. Cálculo de puntuación priorizada con continuidad en pasillos
+    // 3. Cálculo de puntuación priorizada por distancia euclidiana pura
     validCandidates.forEach(vl => {
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
       const isInterior = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
-      const hop = vl.topologicalHop ?? 0;
-
+      
       let score = 0;
 
       if (isInterior) {
         const boundaryDist = vl.distanceToBoundary ?? 0;
-        
         if (vl.spatialState === 'INSIDE') {
           score = 5.0 + (boundaryDist * 1.0);
         } else if (vl.spatialState === 'PRE_ENTRY') {
-          // Permite convivir en slots activos con luces de fachada exterior sin expulsarlas
-          score = 9.0 + (boundaryDist * 1.2);
+          score = 15.0 + (boundaryDist * 1.5);
         } else if (vl.spatialState === 'PRE_EXIT') {
-          score = 16.0 + (boundaryDist * 1.4);
-        } else if (vl._isInPrepareRange) {
-          score = 45.0 + (boundaryDist * 1.8);
+          score = 25.0 + (boundaryDist * 1.5);
         } else {
-          score = 999999;
+          score = 80.0 + (boundaryDist * 2.0);
         }
-
-        score += hop * 120;
       } else {
+        // Luces exteriores: puntuación directa por distancia
         const dist = vl.effectiveDistance;
-        score = 8.0 + (dist * 1.0);
+        score = dist * 1.0;
 
-        // Democión suave por ángulo cuando la luz queda a espaldas
-        if (vl.dotWithCameraForward !== undefined && vl.dotWithCameraForward < LIGHT_SPATIAL_CONSTANTS.BEHIND_CAMERA_DOT_THRESHOLD && dist > 14.0) {
-          score += 25.0;
+        if (vl.dotWithCameraForward !== undefined && vl.dotWithCameraForward < LIGHT_SPATIAL_CONSTANTS.BEHIND_CAMERA_DOT_THRESHOLD && dist > 20.0) {
+          score += 30.0;
         }
       }
 
-      // Histéresis de retención firme para evitar parpadeos
+      // Histéresis de retención firme
       if (currentlyAssignedUids.has(vl.entity.uid)) {
         score *= LIGHT_SPATIAL_CONSTANTS.STICKINESS_SCORE_MULTIPLIER;
       }
 
       if (selectedUid && vl.entity.uid === selectedUid) {
-        score *= 0.5;
+        score *= 0.1;
       }
 
       vl._sortScore = parseFloat(score.toFixed(2));
     });
 
-    validCandidates.sort((a, b) => {
-      const diff = (a._sortScore ?? 0) - (b._sortScore ?? 0);
-      if (Math.abs(diff) > 0.01) return diff;
-      return a.entity.uid.localeCompare(b.entity.uid);
-    });
+    // 4. Separación de Candidatos por Dominio
+    const primaryCandidates: VirtualLight[] = [];
+    const targetCandidates: VirtualLight[] = [];
 
-    const MAX_ACTIVE = LIGHT_SPATIAL_CONSTANTS.MAX_PHYSICAL_ACTIVE_LIGHTS; // 4 slots
-    const desiredActiveCandidates = validCandidates.slice(0, MAX_ACTIVE);
-    const desiredPreparedCandidates = validCandidates.slice(MAX_ACTIVE, MAX_ACTIVE + LIGHT_SPATIAL_CONSTANTS.MAX_PREPARED_LIGHTS);
+    for (let i = 0; i < validCandidates.length; i++) {
+      const vl = validCandidates[i];
+      if (dominantDomain === 'EXTERIOR') {
+        if (!vl.isInterior) {
+          primaryCandidates.push(vl); // Postes de luz de la calle
+        } else if (vl.inPreEntryZone || vl.spatialState === 'PRE_ENTRY') {
+          targetCandidates.push(vl);  // Entrada al pasillo
+        }
+      } else {
+        // En el interior del pasillo
+        if (vl.isInterior && (vl.insideVolume || vl.spatialState === 'INSIDE' || vl.spatialState === 'PRE_EXIT')) {
+          primaryCandidates.push(vl);
+        } else {
+          targetCandidates.push(vl);
+        }
+      }
+    }
 
-    // 3. Máquina de estados: Transición continua sin corte abrupto
-    for (let i = 0; i < this.activeSlots.length; i++) {
-      const slot = this.activeSlots[i];
+    primaryCandidates.sort((a, b) => (a._sortScore ?? 0) - (b._sortScore ?? 0));
+    targetCandidates.sort((a, b) => (a._sortScore ?? 0) - (b._sortScore ?? 0));
+
+    // 5. ASIGNACIÓN JUSTA DE SLOTS:
+    // Si estás en el EXTERIOR y tienes 3 postes cercanos, ¡los 3 postes deben encenderse!
+    // Solo si una luz interior está verdaderamente en PRE_ENTRY (< 8m), ocupa el Slot 2.
+    let desiredMainSlots: (VirtualLight | null)[];
+    
+    if (dominantDomain === 'EXTERIOR') {
+      const hasCloseInteriorEntry = targetCandidates.length > 0 && (targetCandidates[0].distanceToBoundary ?? 99) <= 8.0;
+      
+      desiredMainSlots = [
+        primaryCandidates[0] || null,
+        primaryCandidates[1] || null,
+        (hasCloseInteriorEntry ? targetCandidates[0] : (primaryCandidates[2] || targetCandidates[0] || null))
+      ];
+    } else {
+      desiredMainSlots = [
+        primaryCandidates[0] || null,
+        primaryCandidates[1] || null,
+        targetCandidates[0] || primaryCandidates[2] || null
+      ];
+    }
+
+    // 6. Transición y Protección en los Slots Funcionales Principales (0, 1, 2)
+    for (let sIdx = 0; sIdx < 3; sIdx++) {
+      const slot = this.activeSlots[sIdx];
+      const desiredCandidate = desiredMainSlots[sIdx];
 
       if (slot.assignedUid) {
-        const occupant = activeVirtuals.find(v => v.entity.uid === slot.assignedUid);
+        const occupant = activeVirtuals.find(v => v.entity.uid === slot.assignedUid) || null;
 
         if (!occupant || !occupant.entity.light || !occupant.entity.light.enabled) {
-          this.executeSlotHandover(slot, occupant || null, activeVirtuals, now);
+          this.executeSlotHandover(slot, occupant, activeVirtuals, now, 'DISABLED');
         } else if (slot.state === 'FADING_OUT') {
           const fadeOutTime = now - slot.lastStateChangeTime;
-          // Se completa el relevo si la intensidad ya es nula o transcurrieron más de 900 ms de seguridad
-          if (occupant.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD || fadeOutTime > 900) {
-            this.executeSlotHandover(slot, occupant, activeVirtuals, now);
+          if (occupant.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD || fadeOutTime > 700) {
+            this.executeSlotHandover(slot, occupant, activeVirtuals, now, 'REPLACED_BY_HIGHER_PRIORITY');
           } else {
-            const isBackInTop = desiredActiveCandidates.some(c => c.entity.uid === occupant.entity.uid);
-            if (isBackInTop && occupant.targetMultiplier > 0.01) {
+            const isRestored = desiredCandidate && desiredCandidate.entity.uid === occupant.entity.uid;
+            if (isRestored && occupant.targetMultiplier > 0.01) {
               slot.pendingUid = null;
               slot.state = 'FADING_IN';
               occupant.lifecycleStage = 'FADING_IN';
@@ -228,27 +266,29 @@ export class LightAllocationService {
             occupant.lifecycleStage = 'ACTIVE';
           }
         } else if (slot.state === 'ACTIVE') {
-          const isStillInTop = desiredActiveCandidates.some(c => c.entity.uid === occupant.entity.uid);
-          if (!isStillInTop) {
-            const candidateToPromote = desiredActiveCandidates.find(c =>
-              !this.activeSlots.some(s => s.assignedUid === c.entity.uid || s.pendingUid === c.entity.uid)
-            );
+          const isStillAssigned = desiredCandidate && desiredCandidate.entity.uid === occupant.entity.uid;
 
-            if (candidateToPromote) {
-              const holdTimeSatisfied = (now - slot.assignedTime) >= 600; // 600 ms de estabilidad mínima
-              const isSignificantlyBetter = (candidateToPromote._sortScore ?? 0) < ((occupant._sortScore ?? 0) * LIGHT_SPATIAL_CONSTANTS.REPLACEMENT_SCORE_ADVANTAGE);
-              const isOccupantOutOfRange = occupant.rejectionReason !== undefined && occupant.rejectionReason !== 'NONE';
+          if (!isStillAssigned && desiredCandidate) {
+            const holdTimeSatisfied = (now - slot.assignedTime) >= LIGHT_SPATIAL_CONSTANTS.MIN_SLOT_HOLD_TIME_MS;
+            const isSignificantlyBetter = (desiredCandidate._sortScore ?? 0) < ((occupant._sortScore ?? 0) * LIGHT_SPATIAL_CONSTANTS.REPLACEMENT_SCORE_ADVANTAGE);
+            const isOccupantOutOfRange = occupant.rejectionReason !== undefined && occupant.rejectionReason !== 'NONE';
 
-              if ((holdTimeSatisfied && isSignificantlyBetter) || isOccupantOutOfRange) {
-                // Iniciar desvanecimiento de salida sin cortar de golpe la luz
+            if ((holdTimeSatisfied && isSignificantlyBetter) || isOccupantOutOfRange) {
+              const handoverSlot = this.activeSlots[3];
+              const handoverOccupant = handoverSlot.assignedUid ? (activeVirtuals.find(v => v.entity.uid === handoverSlot.assignedUid) || null) : null;
+              const isHandoverFree = handoverSlot.state === 'EMPTY' || (handoverOccupant !== null && handoverOccupant.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD);
+
+              if (isHandoverFree) {
+                if (handoverSlot.assignedUid) {
+                  this.executeSlotHandover(handoverSlot, handoverOccupant, activeVirtuals, now, 'TRANSITION_HANDOVER');
+                }
+                this.transferToHandoverSlot(slot, handoverSlot, occupant, now);
+              } else {
                 slot.state = 'FADING_OUT';
-                slot.pendingUid = candidateToPromote.entity.uid;
+                slot.pendingUid = desiredCandidate.entity.uid;
                 slot.lastStateChangeTime = now;
-
                 occupant.targetMultiplier = 0.0;
                 occupant.lifecycleStage = 'FADING_OUT';
-
-                candidateToPromote.lifecycleStage = 'PREPARED';
               }
             }
           }
@@ -256,42 +296,50 @@ export class LightAllocationService {
       }
     }
 
-    // Asignación de slots vacíos a candidatos prioritarios
-    for (let i = 0; i < this.activeSlots.length; i++) {
-      const slot = this.activeSlots[i];
-      if (slot.state === 'EMPTY') {
-        const candidateToBind = desiredActiveCandidates.find(c =>
-          !this.activeSlots.some(s => s.assignedUid === c.entity.uid || s.pendingUid === c.entity.uid)
-        );
+    // 7. Mantenimiento del Slot 3 (Puesto Transitorio de Relevo)
+    const handoverSlot = this.activeSlots[3];
+    if (handoverSlot.assignedUid) {
+      const occupant = activeVirtuals.find(v => v.entity.uid === handoverSlot.assignedUid) || null;
+      const isFinished = !occupant || !occupant.entity.light?.enabled || occupant.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
+      const isTimeout = (now - handoverSlot.lastStateChangeTime) > 750;
 
-        if (candidateToBind) {
-          const pool = this.lightPool.getPoolByType(candidateToBind.entity.type);
-          const freeSlot = pool.find(s => s.assignedEntityUid === null);
+      if (isFinished || isTimeout) {
+        this.executeSlotHandover(handoverSlot, occupant, activeVirtuals, now, 'TRANSITION_HANDOVER');
+      }
+    }
 
-          if (freeSlot) {
-            freeSlot.assignedEntityUid = candidateToBind.entity.uid;
-            freeSlot.logicalSlotIndex = slot.id;
-            freeSlot.currentIntensity = 0;
-            freeSlot.light.intensity = 0;
-            freeSlot._isNewAssignment = true;
-            freeSlot.isWarmedUp = false;
+    // 8. Vinculación de Slots Vacíos a los Candidatos Deseados
+    for (let sIdx = 0; sIdx < 3; sIdx++) {
+      const slot = this.activeSlots[sIdx];
+      const candidateToBind = desiredMainSlots[sIdx];
 
-            slot.physicalSlot = freeSlot;
-            slot.assignedUid = candidateToBind.entity.uid;
-            slot.pendingUid = null;
-            slot.state = 'FADING_IN';
-            slot.assignedTime = now;
-            slot.lastStateChangeTime = now;
+      if (slot.state === 'EMPTY' && candidateToBind) {
+        const pool = this.lightPool.getPoolByType(candidateToBind.entity.type);
+        const freeSlot = pool.find(s => s.assignedEntityUid === null);
 
-            candidateToBind.logicalSlotIndex = slot.id;
-            candidateToBind.lifecycleStage = 'FADING_IN';
-            candidateToBind.isLightInRange = true;
-          }
+        if (freeSlot) {
+          freeSlot.assignedEntityUid = candidateToBind.entity.uid;
+          freeSlot.logicalSlotIndex = slot.id;
+          freeSlot.currentIntensity = 0;
+          freeSlot.light.intensity = 0;
+          freeSlot._isNewAssignment = true;
+          freeSlot.isWarmedUp = false;
+
+          slot.physicalSlot = freeSlot;
+          slot.assignedUid = candidateToBind.entity.uid;
+          slot.pendingUid = null;
+          slot.state = 'FADING_IN';
+          slot.assignedTime = now;
+          slot.lastStateChangeTime = now;
+
+          candidateToBind.logicalSlotIndex = slot.id;
+          candidateToBind.lifecycleStage = 'FADING_IN';
+          candidateToBind.isLightInRange = true;
         }
       }
     }
 
-    // 4. Asignación estratificada de sombras
+    // 9. Estratificación de Sombras
     const assignedActiveSlots = this.activeSlots.filter(s => s.assignedUid !== null);
     assignedActiveSlots.sort((a, b) => {
       const vlA = activeVirtuals.find(v => v.entity.uid === a.assignedUid);
@@ -332,9 +380,11 @@ export class LightAllocationService {
       }
     });
 
-    // 5. Gestión de los 2 Slots de Preparación Anticipada
+    // 10. Slots de Preparación Anticipada (Slots 4 y 5)
     const activeUids = new Set(this.activeSlots.map(s => s.assignedUid).filter(Boolean) as string[]);
-    const prepCandidates = desiredPreparedCandidates.filter(c => !activeUids.has(c.entity.uid)).slice(0, 2);
+    const unassignedPrimary = primaryCandidates.filter(c => !activeUids.has(c.entity.uid));
+    const unassignedTarget = targetCandidates.filter(c => !activeUids.has(c.entity.uid));
+    const prepCandidates = [...unassignedPrimary, ...unassignedTarget].slice(0, LIGHT_SPATIAL_CONSTANTS.MAX_PREPARED_LIGHTS);
 
     for (let idx = 0; idx < this.preparedSlots.length; idx++) {
       const prepSlot = this.preparedSlots[idx];
@@ -352,6 +402,7 @@ export class LightAllocationService {
         vl.isLightInRange = false;
         vl.isShadowInRange = false;
         vl.lifecycleStage = 'PREPARED';
+        vl.decisionText = `PREPARADA (SLOT ${prepSlot.id})`;
 
         this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
         const range = vl.entity.light?.range || 45;
@@ -363,7 +414,7 @@ export class LightAllocationService {
       }
     }
 
-    // 6. Limpieza de luces inactivas fuera de rango
+    // 11. Limpieza de luces inactivas
     const prepUids = new Set(this.preparedSlots.map(p => p.candidateUid).filter(Boolean) as string[]);
     activeVirtuals.forEach(vl => {
       if (!activeUids.has(vl.entity.uid) && !prepUids.has(vl.entity.uid)) {
@@ -382,11 +433,40 @@ export class LightAllocationService {
     });
   }
 
+  private transferToHandoverSlot(
+    sourceSlot: ActiveLogicalSlot,
+    handoverSlot: ActiveLogicalSlot,
+    occupant: VirtualLight,
+    now: number
+  ): void {
+    handoverSlot.assignedUid = occupant.entity.uid;
+    handoverSlot.physicalSlot = sourceSlot.physicalSlot;
+    if (handoverSlot.physicalSlot) {
+      handoverSlot.physicalSlot.logicalSlotIndex = handoverSlot.id;
+    }
+    handoverSlot.state = 'FADING_OUT';
+    handoverSlot.assignedTime = sourceSlot.assignedTime;
+    handoverSlot.lastStateChangeTime = now;
+    handoverSlot.pendingUid = null;
+
+    occupant.logicalSlotIndex = handoverSlot.id;
+    occupant.targetMultiplier = 0.0;
+    occupant.lifecycleStage = 'FADING_OUT';
+
+    sourceSlot.assignedUid = null;
+    sourceSlot.physicalSlot = null;
+    sourceSlot.state = 'EMPTY';
+    sourceSlot.pendingUid = null;
+    sourceSlot.assignedTime = 0;
+    sourceSlot.lastStateChangeTime = now;
+  }
+
   private executeSlotHandover(
     slot: ActiveLogicalSlot, 
     outgoingVl: VirtualLight | null, 
     activeVirtuals: VirtualLight[], 
-    now: number
+    now: number,
+    evictionReason: LightEvictionReason = 'UNKNOWN'
   ): void {
     if (outgoingVl) {
       outgoingVl.currentMultiplier = 0.0;
@@ -394,7 +474,6 @@ export class LightAllocationService {
       outgoingVl.isLightInRange = false;
       outgoingVl.isShadowInRange = false;
       outgoingVl.lifecycleStage = outgoingVl.isInterior ? 'OUTSIDE' : 'INACTIVE';
-      outgoingVl.decisionText = 'RELEVADA Y APAGADA';
     }
 
     const oldPhysical = slot.physicalSlot;
@@ -433,7 +512,6 @@ export class LightAllocationService {
           incomingVl.logicalSlotIndex = slot.id;
           incomingVl.lifecycleStage = 'FADING_IN';
           incomingVl.isLightInRange = true;
-          incomingVl.decisionText = `PROMOCIONADA A SLOT ${slot.id} (ENCENDIENDO)`;
           return;
         }
       }

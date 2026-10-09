@@ -113,10 +113,10 @@ export class LightDistanceService {
 
       vl.closestActorName = actorName;
       const wasInRange = vl.isLightInRange;
+      
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
 
-      const hubDist = this.spatialHub.getDistanceToPlayer(vl.entity.uid);
-      const centerDist = hubDist !== Number.MAX_VALUE ? hubDist : Vector3.Distance(actorWorldPos, this._tempPos);
+      const centerDist = Vector3.Distance(actorWorldPos, this._tempPos);
       
       vl.centerDistance = parseFloat(centerDist.toFixed(2));
       vl.effectiveDistance = vl.centerDistance;
@@ -124,7 +124,6 @@ export class LightDistanceService {
       vl.distSq = centerDist * centerDist;
       vl.lastDistanceUpdateTimestamp = nowTimeStr;
 
-      // Cálculo continuo del dot con el vector forward de la cámara
       const cam = scene?.activeCamera;
       if (cam && centerDist > 0.1) {
         const toLightDir = this._tempPos.subtract(actorWorldPos).normalize();
@@ -149,25 +148,8 @@ export class LightDistanceService {
       const hopDistance = (activeGroupId && group) ? this.spatialGroups.getHopDistance(activeGroupId, group.id) : 0;
       vl.topologicalHop = hopDistance;
 
-      // Desconexión topológica estricta: solo a >= 2 saltos si no es grupo predicho y estamos profundamente en otro interior
-      const isPredictedGroup = Boolean(group && this.spatialGroups.getPreactivatingGroupIds().has(group.id));
-      if (isInterior && activeGroupId && group && hopDistance >= 2 && !isPredictedGroup && !wasInRange && this.currentMacroZone === 'INTERIOR_ACTIVE') {
-        vl.spatialState = 'OUTSIDE';
-        vl.insideVolume = false;
-        vl.inPreEntryZone = false;
-        vl.inPreExitZone = false;
-        vl.targetMultiplier = 0.0;
-        vl.isLightInRange = false;
-        vl.isShadowInRange = false;
-        vl._isInPrepareRange = false;
-        vl.rejectionReason = 'TOPOLOGICALLY_DISCONNECTED';
-        vl.decisionText = `INELIGIBLE (Salto ${hopDistance} desde zona activa)`;
-        this.transitionState(vl, 'INACTIVE', nowTimeStr, 'TOPOLOGICALLY_DISCONNECTED', vl.decisionText);
-        continue;
-      }
-
       // =======================================================================
-      // EVALUACIÓN MODO INTERIOR (PRE-ENTRY 16 METROS PRESERVADA)
+      // EVALUACIÓN MODO INTERIOR: PRE-ENTRADA SILENCIOSA (CALENTAR SIN ENCENDER)
       // =======================================================================
       if (isModelPreEntryMode) {
         if (!container || !container.view || container.view.isDisposed()) {
@@ -193,21 +175,25 @@ export class LightDistanceService {
         vl.distanceToBoundary = parseFloat(contResult.distanceToBoundary.toFixed(2));
         vl.containmentSource = contResult.source;
 
-        const isConnectedNeighbor = Boolean(hopDistance <= 1 || isPredictedGroup);
-        const prepareLookAhead = Math.min(12.0, speed * 1.5);
-        const totalPrepareMargin = configuredPreDist + 8.0 + prepareLookAhead;
-        vl._isInPrepareRange = Boolean(isConnectedNeighbor && (contResult.distanceToBoundary <= totalPrepareMargin));
-
+        // 1. DENTRO DEL PASILLO (INSIDE): LUZ 100% ACTIVA
         if (contResult.spatialState === 'INSIDE') {
           vl.targetMultiplier = 1.0;
           vl.isLightInRange = true;
-          this.evaluateStateAndDecision(vl, 0, 0, configuredPreDist, nowTimeStr, `ACTIVA (DENTRO DE ${group?.name || 'PASILLO'})`);
-        } else if (contResult.spatialState === 'PRE_ENTRY') {
-          // Curva suave de entrada hacia la abertura de la puerta
-          vl.targetMultiplier = LightAttenuationCurve.calculate(contResult.distanceToBoundary, 0, configuredPreDist);
-          vl.isLightInRange = vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
-          this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, configuredPreDist, nowTimeStr, `PRE-ENTRADA (${group?.name || 'UMBRAL'})`);
-        } else if (contResult.spatialState === 'PRE_EXIT') {
+          vl.isShadowInRange = lightComp.castShadows ?? true;
+          vl._isInPrepareRange = true;
+          this.evaluateStateAndDecision(vl, 0, 0, configuredPreDist, nowTimeStr, `ACTIVA (DENTRO DE ${container.name})`);
+        } 
+        // 2. EN PRE-ENTRADA EXTERIOR (PRE_ENTRY): CALENTAMIENTO SILENCIOSO POR DEBAJO
+        // Se prepara en la GPU pero NO EMITE LUZ VISIBLE HASTA QUE EL JUGADOR CRUCE LA ENTRADA
+        else if (contResult.spatialState === 'PRE_ENTRY') {
+          vl.targetMultiplier = 0.0; // Silencioso: no encender en la retina del jugador aún
+          vl.isLightInRange = false; // No robar slots activos principales
+          vl.isShadowInRange = false;
+          vl._isInPrepareRange = true; // Activa pre-calentamiento de casters en Slot 4/5
+          this.transitionState(vl, 'PREPARING', nowTimeStr, undefined, `PRE-ENTRADA CALENTANDO (PUERTA ${container.name})`);
+        } 
+        // 3. EN PRE-SALIDA (PRE_EXIT): SALIENDO DEL PASILLO CON FADE SUAVE
+        else if (contResult.spatialState === 'PRE_EXIT') {
           const holdDistance = LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_HOLD_MARGIN;
           const maxExitDist = Math.max(configuredPreDist + 4.0, lightComp.deactivationDistance ?? 32.0);
 
@@ -218,26 +204,21 @@ export class LightDistanceService {
           }
 
           vl.isLightInRange = vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
-          this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, holdDistance, maxExitDist, nowTimeStr, `PRE-SALIDA / ATENUANDO (${group?.name || 'ZONA'})`);
-        } else {
+          vl.isShadowInRange = vl.isLightInRange && (lightComp.castShadows ?? true);
+          vl._isInPrepareRange = true;
+          this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, holdDistance, maxExitDist, nowTimeStr, `PRE-SALIDA (${container.name})`);
+        } 
+        // 4. FUERA DEL PASILLO: TOTALMENTE APAGADA
+        else {
           vl.targetMultiplier = 0.0;
-          if (vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
-            vl.isLightInRange = true;
-            this.transitionState(vl, 'FADING_OUT', nowTimeStr, undefined, 'APAGANDO TRAS SALIR');
-          } else {
-            vl.isLightInRange = false;
-            this.transitionState(vl, 'OUTSIDE', nowTimeStr, 'OUTSIDE_INTERIOR_VOLUME', 'Fuera de preentrada interior');
-          }
+          vl.isLightInRange = false;
+          vl.isShadowInRange = false;
+          vl._isInPrepareRange = false;
+          this.transitionState(vl, 'OUTSIDE', nowTimeStr, 'OUTSIDE_INTERIOR_VOLUME', 'Fuera de pasillo');
         }
-
-        const shadowPreDist = lightComp.linkShadowPreEntryToLightPreEntry !== false
-          ? configuredPreDist
-          : (lightComp.shadowPreEntryDistance ?? configuredPreDist);
-
-        vl.isShadowInRange = (vl.isLightInRange || (contResult.distanceToBoundary <= shadowPreDist)) && (lightComp.castShadows ?? true);
       } 
       // =======================================================================
-      // EVALUACIÓN MODO EXTERIOR / GLOBAL
+      // EVALUACIÓN MODO EXTERIOR / GLOBAL (POSTES Y CALLES)
       // =======================================================================
       else {
         vl.spatialState = undefined;
@@ -245,18 +226,18 @@ export class LightDistanceService {
         vl.inPreExitZone = false;
 
         const configuredAct = lightComp.activationDistance ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_ACTIVATION_RADIUS;
-        const configuredDeact = lightComp.deactivationDistance ?? (configuredAct + 7.0);
+        const configuredDeact = lightComp.deactivationDistance ?? (configuredAct + 10.0);
 
-        // Cuando el jugador se interna profundamente en el pasillo interior, las luces exteriores atenúan su alcance
-        const isDeepInside = this.currentMacroZone === 'INTERIOR_ACTIVE';
-        const effectiveActDist = isDeepInside ? (configuredAct * 0.45) : configuredAct;
-        const effectiveDeactDist = isDeepInside ? (configuredDeact * 0.55) : configuredDeact;
+        // Si estamos verdaderamente dentro del pasillo, atenuamos las luces de la calle
+        const isActuallyDeepInside = this.currentMacroZone === 'INTERIOR_ACTIVE';
+        const effectiveActDist = isActuallyDeepInside ? (configuredAct * 0.45) : configuredAct;
+        const effectiveDeactDist = isActuallyDeepInside ? (configuredDeact * 0.55) : configuredDeact;
 
         this.applyStandardProximity(vl, centerDist, effectiveActDist, effectiveDeactDist, wasInRange, nowTimeStr);
 
         if (vl.isLightInRange && lightComp.castShadows && lightComp.distanceShadowsEnabled !== false) {
-          const shadowAct = lightComp.shadowActivationDistance ?? (effectiveActDist * 0.85);
-          const shadowDeact = lightComp.shadowDeactivationDistance ?? (shadowAct + 4.0);
+          const shadowAct = lightComp.shadowActivationDistance ?? (effectiveActDist * 0.9);
+          const shadowDeact = lightComp.shadowDeactivationDistance ?? (shadowAct + 5.0);
           vl.isShadowInRange = wasInRange ? centerDist <= shadowDeact : centerDist <= shadowAct;
         } else {
           vl.isShadowInRange = false;

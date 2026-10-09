@@ -9,7 +9,35 @@ export type ShadowTier = 'HIGH' | 'MEDIUM' | 'LOW' | 'DISABLED';
 
 export type LogicalSlotState = 'EMPTY' | 'ACTIVE' | 'FADING_OUT' | 'RELEASING' | 'REBINDING' | 'FADING_IN';
 
+export type LogicalSlotRole = 
+  | 'PRIMARY_PROTECTED_1' 
+  | 'PRIMARY_PROTECTED_2' 
+  | 'TARGET_ZONE_PRIMARY' 
+  | 'TRANSITION_HANDOVER';
+
+export type SpatialContextDomain = 'EXTERIOR' | 'INTERIOR';
+
 export type MacroZoneState = 'EXTERIOR' | 'APPROACHING_ENTRY' | 'INTERIOR_PREENTRY' | 'INTERIOR_ACTIVE' | 'INTERIOR_EXIT' | 'EXTERIOR_RESTORED';
+
+export type LightEvictionReason =
+  | 'REPLACED_BY_HIGHER_PRIORITY'
+  | 'OUT_OF_PROXIMITY'
+  | 'OUTSIDE_INTERIOR_VOLUME'
+  | 'TOPOLOGICALLY_DISCONNECTED'
+  | 'DISABLED'
+  | 'EXPLICIT_RELEASE'
+  | 'TRANSITION_HANDOVER'
+  | 'CONTEXT_SWAP'
+  | 'UNKNOWN';
+
+export type LightPromotionReason =
+  | 'EMPTY_SLOT_AVAILABLE'
+  | 'HIGHER_PRIORITY_TAKEOVER'
+  | 'FORCED_SELECTION'
+  | 'PREPARED_SLOT_ACTIVATION'
+  | 'TARGET_ZONE_PROMOTION'
+  | 'PRIMARY_PROTECTED_ASSIGNMENT'
+  | 'UNKNOWN';
 
 export const LIGHT_SPATIAL_CONSTANTS = {
   DEFAULT_ACTIVATION_RADIUS: 25.0,
@@ -22,8 +50,9 @@ export const LIGHT_SPATIAL_CONSTANTS = {
   SHADOW_ACTIVATION_RADIUS: 22.0,
   SHADOW_DEACTIVATION_RADIUS: 28.0,
 
-  // Capacidad del Pool: 4 Slots Físicos Activos + 2 de Preparación = 6 Lógicos
+  // Capacidad del Pool: 4 Slots Físicos Activos (3 Funcionales + 1 Transición) + 2 de Preparación
   MAX_PHYSICAL_ACTIVE_LIGHTS: 4,
+  MAX_MAIN_FUNCTIONAL_LIGHTS: 3,
   MAX_PREPARED_LIGHTS: 2,
   TOTAL_LOGICAL_SLOTS: 6,
   MAX_LOCAL_LIGHTS: 4,
@@ -51,6 +80,7 @@ export const LIGHT_SPATIAL_CONSTANTS = {
 
 export interface ActiveLogicalSlot {
   id: number;
+  role: LogicalSlotRole;
   assignedUid: string | null;
   physicalSlot: PoolSlot | null;
   state: LogicalSlotState;

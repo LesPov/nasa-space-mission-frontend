@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/local-rendering.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -295,7 +296,6 @@ export class LocalRenderingSystem implements IUpdatable {
         const isNeededForShadow = this.shadowService.isEntityRequiredForActiveShadows(e.uid);
         e.isCulled = !isNeededForShadow;
         mesh.setEnabled(true);
-        // Si se requiere para sombras, se mantiene activo en el pipeline de renderizado
         mesh.isVisible = isNeededForShadow;
         this.applyVisibilityToMeshes(cachedMeshes, isNeededForShadow ? 1.0 : 0.0, isNeededForShadow);
         this.renderStates.set(e.uid, { 
@@ -431,6 +431,7 @@ export class LocalRenderingSystem implements IUpdatable {
       // Inmunidad estructural permanente: mallas arquitectónicas nunca sufren culling
       if (!isEligible) {
         if (renderState.visibility !== 1.0 || !mesh.isVisible || !mesh.isEnabled()) {
+          const prevState = renderState.state;
           renderState.targetVisibility = 1.0;
           renderState.visibility = 1.0;
           renderState.state = 'VISIBLE';
@@ -439,6 +440,17 @@ export class LocalRenderingSystem implements IUpdatable {
           mesh.isVisible = true;
           this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), 1.0, false);
           changedThisFrame++;
+
+          this.profiler.recordTimelineEvent('CULLING', 'CULLING_STATE_CHANGED', {
+            entityUid: e.uid,
+            name: e.name,
+            reason: 'STRUCTURAL_IMMUNITY'
+          }, {
+            entityUid: e.uid,
+            previousState: prevState,
+            newState: 'VISIBLE',
+            reason: 'STRUCTURAL_IMMUNITY'
+          });
         }
         vCount++;
         continue;
@@ -453,6 +465,7 @@ export class LocalRenderingSystem implements IUpdatable {
 
         if (adjustedDist <= this.RELEVANCE_CORE_RADIUS) {
           if (renderState.visibility !== 1.0 || renderState.state !== 'VISIBLE') {
+            const prevState = renderState.state;
             renderState.targetVisibility = 1.0;
             renderState.visibility = 1.0;
             renderState.state = 'VISIBLE';
@@ -461,14 +474,26 @@ export class LocalRenderingSystem implements IUpdatable {
             mesh.isVisible = true;
             this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), 1.0, false);
             changedThisFrame++;
+
+            this.profiler.recordTimelineEvent('CULLING', 'CULLING_STATE_CHANGED', {
+              entityUid: e.uid,
+              name: e.name,
+              distance: effectiveDist,
+              reason: 'RESTORING_AFTER_CULL'
+            }, {
+              entityUid: e.uid,
+              previousState: prevState,
+              newState: 'VISIBLE',
+              reason: 'RESTORING_AFTER_CULL'
+            });
           }
           vCount++;
         } else if (adjustedDist > (this.RELEVANCE_CORE_RADIUS + this.RELEVANCE_HYSTERESIS_MARGIN)) {
           const isNeededForShadow = this.shadowService.isEntityRequiredForActiveShadows(e.uid);
           
           if (isNeededForShadow) {
-            // Protección de sombra: se mantiene activa con visibilidad completa para casters
             if (renderState.state !== 'VISIBLE' || !mesh.isVisible) {
+              const prevState = renderState.state;
               renderState.state = 'VISIBLE';
               renderState.visibility = 1.0;
               renderState.targetVisibility = 1.0;
@@ -478,11 +503,24 @@ export class LocalRenderingSystem implements IUpdatable {
               mesh.isVisible = true;
               this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), 1.0, true);
               changedThisFrame++;
+
+              this.profiler.recordTimelineEvent('CULLING', 'CULLING_STATE_CHANGED', {
+                entityUid: e.uid,
+                name: e.name,
+                distance: effectiveDist,
+                reason: 'SHADOW_PROTECTED'
+              }, {
+                entityUid: e.uid,
+                previousState: prevState,
+                newState: 'VISIBLE',
+                reason: 'SHADOW_PROTECTED'
+              });
             }
             sCount++;
             vCount++;
           } else {
             if (renderState.state !== 'HARD_CULLED') {
+              const prevState = renderState.state;
               renderState.state = 'HARD_CULLED';
               renderState.visibility = 0.0;
               renderState.targetVisibility = 0.0;
@@ -492,6 +530,18 @@ export class LocalRenderingSystem implements IUpdatable {
               mesh.isVisible = false;
               this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), 0.0, false);
               changedThisFrame++;
+
+              this.profiler.recordTimelineEvent('CULLING', 'CULLING_STATE_CHANGED', {
+                entityUid: e.uid,
+                name: e.name,
+                distance: effectiveDist,
+                reason: 'OUT_OF_RANGE'
+              }, {
+                entityUid: e.uid,
+                previousState: prevState,
+                newState: 'HARD_CULLED',
+                reason: 'OUT_OF_RANGE'
+              });
             }
             hCount++;
           }
@@ -530,7 +580,6 @@ export class LocalRenderingSystem implements IUpdatable {
       m.visibility = isFullyVisible ? 1.0 : (isHidden ? 0.0 : visibility);
       m.isVisible = !isHidden;
 
-      // Garantiza que casters requeridos nunca se descarten en el frustum del ShadowMap
       if (isShadowCaster && !isHidden) {
         m.alwaysSelectAsActiveMesh = true;
       } else {

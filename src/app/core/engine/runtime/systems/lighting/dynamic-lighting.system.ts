@@ -480,7 +480,6 @@ export class DynamicLightingSystem implements IUpdatable {
     const playerDelta = Vector3.Distance(refPos, this.lastRefPos);
     const playerMoved = playerDelta > 0.005;
 
-    // En el Editor con Gizmo activo: actualizamos intensidades y asignación sin reconstruir el mapa de sombras
     if (isEditorPure && this.isPlayerDragActive) {
       this.lastRefPos.copyFrom(refPos);
 
@@ -512,7 +511,6 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    // Transición asimétrica suave: encendido continuo (3.5) vs atenuación progresiva (1.8)
     const fadeRateIn = 1.0 - Math.exp(-3.5 * (dtMs / 1000.0));
     const fadeRateOut = 1.0 - Math.exp(-1.8 * (dtMs / 1000.0));
 
@@ -756,7 +754,9 @@ export class DynamicLightingSystem implements IUpdatable {
           ? Vector3.DistanceSquared(slot.lastShadowRebuildPos, slot.light.position) 
           : 9999;
 
-        const shouldExecuteRebuild = (!slot.isWarmedUp && (slot._isNewAssignment || renderListEmpty)) || distMovedSq > 1.0 || forceRebuildShadows;
+        // PROTECCIÓN ANTI-FLICKER:
+        // Solo reconstruir casters estáticos si el slot nunca se calentó o la luz se trasladó físicamente más de 3 metros
+        const shouldExecuteRebuild = (!slot.isWarmedUp && (slot._isNewAssignment || renderListEmpty)) || distMovedSq > 9.0 || forceRebuildShadows;
 
         if (shouldExecuteRebuild && (!isEditorPure || !this.isPlayerDragActive)) {
           const lightRange = slot.type === 'directional' ? 50 : (slot.light as any).range || 58;
@@ -778,7 +778,7 @@ export class DynamicLightingSystem implements IUpdatable {
 
           let actorShouldCastShadow = false;
           if (vl.isInterior && vl.interiorActivationMode !== 'DISTANCE') {
-            actorShouldCastShadow = (vl.spatialState === 'INSIDE' || vl.spatialState === 'PRE_ENTRY' || vl.spatialState === 'PRE_EXIT') && distToLight <= (lightRange + 8.0);
+            actorShouldCastShadow = (vl.spatialState === 'INSIDE' || vl.spatialState === 'PRE_EXIT') && distToLight <= (lightRange + 8.0);
           } else {
             actorShouldCastShadow = distToLight <= (lightRange + 4.0);
           }

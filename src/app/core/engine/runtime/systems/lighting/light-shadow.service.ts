@@ -9,6 +9,7 @@ import { InteractableRulesService } from '../../rules/interactable-rules.service
 import { GameEntity } from '../../../entities/game.entity';
 import { ShadowLODManager } from '../../shadows/shadow-lod-manager.service';
 import { SpatialRelevanceHubService } from '../../../spatial/spatial-relevance-hub.service';
+import { EngineProfilerService } from '../../../telemetry/engine-profiler.service';
 
 interface CachedStaticCaster {
   mesh: AbstractMesh;
@@ -25,6 +26,7 @@ export class LightShadowService {
   private shadowQualitySvc = inject(ShadowQualityService);
   private interactRules = inject(InteractableRulesService);
   private spatialHub = inject(SpatialRelevanceHubService);
+  private profiler = inject(EngineProfilerService);
 
   private castersCache: AbstractMesh[] = [];
   private staticCastersIndex: CachedStaticCaster[] = [];
@@ -230,7 +232,6 @@ export class LightShadowService {
         continue;
       }
 
-      // Si es luz interior, todas las paredes y pisos del contenedor del pasillo bloquean la luz sin excepción
       const isContainerWall = isInterior && (item.entityUid === containerUid);
 
       const dx = lightPos.x - item.centerWorld.x;
@@ -339,6 +340,20 @@ export class LightShadowService {
       }
     }
 
+    // Comprobación de cambio: si la lista ya tiene exactamente las mismas mallas, no limpiar ni resetear
+    if (renderList.length === nextList.length) {
+      let isIdentical = true;
+      for (let idx = 0; idx < nextList.length; idx++) {
+        if (renderList[idx] !== nextList[idx]) {
+          isIdentical = false;
+          break;
+        }
+      }
+      if (isIdentical && slot.isWarmedUp) {
+        return; // Evita el parpadeo en las texturas
+      }
+    }
+
     renderList.length = 0;
     for (let k = 0; k < nextList.length; k++) {
       renderList.push(nextList[k]);
@@ -440,7 +455,6 @@ export class LightShadowService {
     }
 
     if (slot.type === 'point') {
-      // Para PointLights en interiores: si no hay actores moviéndose, congelar a RENDER_ONCE
       const pointRate = (playerMoved && slot.hasDynamicCasters) ? 2 : RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
       slot.sg.getShadowMap()!.refreshRate = pointRate;
       slot.currentRefreshRate = pointRate;

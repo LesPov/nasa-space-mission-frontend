@@ -105,6 +105,19 @@ export interface LatencyBuckets {
   framesAbove1000ms: number;
 }
 
+export type TimelineEventCategory = 
+  | 'LIFECYCLE' 
+  | 'TRANSITION' 
+  | 'READINESS' 
+  | 'SHADER' 
+  | 'LIGHT' 
+  | 'SHADOW'
+  | 'SEQUENCE' 
+  | 'CULLING' 
+  | 'ZONE' 
+  | 'SPIKE' 
+  | 'SNAPSHOT';
+
 export interface TimelineEvent {
   id: number;
   timestamp: number;
@@ -112,8 +125,15 @@ export interface TimelineEvent {
   frameNumber: number;
   sessionId: string;
   entryNumber: number;
-  category: 'LIFECYCLE' | 'TRANSITION' | 'READINESS' | 'SHADER' | 'LIGHT' | 'SEQUENCE' | 'CULLING' | 'ZONE' | 'SPIKE' | 'SNAPSHOT';
+  category: TimelineEventCategory;
   name: string;
+  entityUid?: string;
+  slotIndex?: number | null;
+  previousState?: string;
+  newState?: string;
+  reason?: string;
+  durationMs?: number;
+  playerCoordinates?: { x: number; y: number; z: number } | null;
   details: Record<string, any>;
 }
 
@@ -295,9 +315,10 @@ export class EngineProfilerService {
   private historyIndex = 0;
   private frameCounter = 0;
 
-  private readonly EVENT_CAPACITY = 256;
+  public readonly EVENT_CAPACITY = 256;
   private timelineEventsBuffer: TimelineEvent[] = [];
   private nextEventId = 1;
+  public discardedEventsCount = 0;
 
   private sessionComparisons: EntrySummaryComparison[] = [];
   private currentEntrySummary: EntrySummaryComparison | null = null;
@@ -382,6 +403,7 @@ export class EngineProfilerService {
     this.currentSessionId = sessionId;
     this.currentEntryNumber = entryNumber;
     this.sessionStartTime = performance.now();
+    this.discardedEventsCount = 0;
 
     this.currentEntrySummary = {
       entryNumber,
@@ -411,28 +433,57 @@ export class EngineProfilerService {
   }
 
   public recordTimelineEvent(
-    category: TimelineEvent['category'],
+    category: TimelineEventCategory,
     name: string,
-    details: Record<string, any> = {}
+    details: Record<string, any> = {},
+    options?: {
+      entityUid?: string;
+      slotIndex?: number | null;
+      previousState?: string;
+      newState?: string;
+      reason?: string;
+      durationMs?: number;
+      playerCoordinates?: { x: number; y: number; z: number } | null;
+    }
   ): void {
     if (!this.isProfilingEnabled || !this.isHighResTelemetryEnabled()) return;
     if (this.currentTier === TelemetryTier.SILENT) return;
 
-    const now = performance.now();
+    const tStart = performance.now();
+
+    let playerCoords = options?.playerCoordinates;
+    if (playerCoords === undefined) {
+      const activePlayer = this.gameContext.activePlayerEntity();
+      if (activePlayer && activePlayer.view && !activePlayer.view.isDisposed()) {
+        const abs = activePlayer.view.getAbsolutePosition();
+        playerCoords = { x: this.round2(abs.x), y: this.round2(abs.y), z: this.round2(abs.z) };
+      } else {
+        playerCoords = null;
+      }
+    }
+
     const event: TimelineEvent = {
       id: this.nextEventId++,
-      timestamp: now,
-      relativeMs: this.round2(now - this.sessionStartTime),
+      timestamp: tStart,
+      relativeMs: this.round2(tStart - this.sessionStartTime),
       frameNumber: this.frameCounter,
       sessionId: this.currentSessionId,
       entryNumber: this.currentEntryNumber,
       category,
       name,
+      entityUid: options?.entityUid,
+      slotIndex: options?.slotIndex,
+      previousState: options?.previousState,
+      newState: options?.newState,
+      reason: options?.reason,
+      durationMs: options?.durationMs !== undefined ? this.round2(options.durationMs) : undefined,
+      playerCoordinates: playerCoords,
       details
     };
 
     if (this.timelineEventsBuffer.length >= this.EVENT_CAPACITY) {
       this.timelineEventsBuffer.shift();
+      this.discardedEventsCount++;
     }
     this.timelineEventsBuffer.push(event);
 
@@ -444,6 +495,8 @@ export class EngineProfilerService {
       if (name === 'CULLING_FLAP') this.currentEntrySummary.cullingFlapsCount++;
       if (category === 'SNAPSHOT') this.currentEntrySummary.snapshotStatus = name;
     }
+
+    this.telemetryCpuAccumulator += (performance.now() - tStart);
   }
 
   public getTimelineEvents(): TimelineEvent[] {
@@ -573,7 +626,6 @@ export class EngineProfilerService {
     
     sample.shadowRebuilds = this.shadowCache.metrics.renderListRebuilds;
     
-    // Conexión directa a las métricas reales del sistema de culling
     const cullingMetrics = this.localRendering ? this.localRendering.getMetrics() : null;
     sample.cullingEvaluated = cullingMetrics ? cullingMetrics.evaluatedEntities : 0;
     sample.cullingChanged = cullingMetrics ? cullingMetrics.modifiedEntities : 0;

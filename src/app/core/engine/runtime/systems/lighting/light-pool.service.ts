@@ -1,6 +1,6 @@
 // file: src/app/core/engine/runtime/systems/lighting/light-pool.service.ts
 import { Injectable, inject } from '@angular/core';
-import { PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, Color3, Tags, Scene } from '@babylonjs/core';
+import { PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, Color3, Tags, Scene, RenderTargetTexture } from '@babylonjs/core';
 import { PoolSlot, LIGHT_SPATIAL_CONSTANTS, ShadowTier } from './lighting-types';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 import { LightContainmentService } from './light-containment.service';
@@ -27,30 +27,36 @@ export class LightPoolService {
     this.disposePools(); 
     this.currentScene = scene;
 
-    const MAX_PHYSICAL_SLOTS = LIGHT_SPATIAL_CONSTANTS.MAX_PHYSICAL_ACTIVE_LIGHTS;
-    const tiers: ShadowTier[] = ['HIGH', 'HIGH', 'HIGH'];
+    const MAX_PHYSICAL_SLOTS = LIGHT_SPATIAL_CONSTANTS.MAX_PHYSICAL_ACTIVE_LIGHTS; // 4 slots
+    const tiers: ShadowTier[] = ['HIGH', 'HIGH', 'MEDIUM', 'LOW'];
 
     for (let i = 0; i < MAX_PHYSICAL_SLOTS; i++) {
-      // 1. POINT LIGHTS (Inician en estado deshabilitado para no consumir cupos en maxSimultaneousLights)
+      // 1. POINT LIGHTS (Calibradas para sellado de paredes y suelo sin lag de renderloop)
       const pLight = new PointLight(`pool_point_${i}`, new Vector3(0, -99999, 0), scene);
       pLight.intensity = 0.0; 
       pLight.diffuse = Color3.Black();
       pLight.specular = Color3.Black();
       pLight.shadowEnabled = true; 
       pLight.shadowMinZ = 0.05;
-      pLight.shadowMaxZ = 60.0;
+      pLight.shadowMaxZ = 45.0;
       pLight.falloffType = PointLight.FALLOFF_STANDARD;
-      pLight.radius = 0.20;
+      pLight.radius = 0.15;
       pLight.setEnabled(false);
       Tags.AddTagsTo(pLight, "system_element");
 
-      const pSg = new ShadowGenerator(1024, pLight);
+      const pSg = new ShadowGenerator(512, pLight);
       pSg.usePoissonSampling = true;
       pSg.setDarkness(0.00); 
-      pSg.bias = 0.0008; 
-      pSg.normalBias = 0.002; 
-      pSg.forceBackFacesOnly = false;
+      pSg.bias = 0.0003; 
+      pSg.normalBias = 0.005; 
+      pSg.forceBackFacesOnly = false; // Permite que caras frontales de piso y pared bloqueen la luz
       pSg.useContactHardeningShadow = false;
+
+      // Congelar inmediatamente para que un slot libre consuma cero tiempo de GPU
+      const pSm = pSg.getShadowMap();
+      if (pSm) {
+        pSm.refreshRate = 0;
+      }
 
       this.pointPool.push({ 
         index: i, 
@@ -65,14 +71,14 @@ export class LightPoolService {
         shadowTier: tiers[i]
       });
 
-      // 2. SPOT LIGHTS (Inician en estado deshabilitado)
+      // 2. SPOT LIGHTS (Calibración PCF de alta fidelidad)
       const sLight = new SpotLight(`pool_spot_${i}`, new Vector3(0, -99999, 0), new Vector3(0, -1, 0), Math.PI / 3, 1.0, scene);
       sLight.intensity = 0.0; 
       sLight.diffuse = Color3.Black(); 
       sLight.specular = Color3.Black();
       sLight.shadowEnabled = true; 
       sLight.shadowMinZ = 0.05;
-      sLight.shadowMaxZ = 60.0;
+      sLight.shadowMaxZ = 50.0;
       sLight.setEnabled(false);
       Tags.AddTagsTo(sLight, "system_element");
 
@@ -80,9 +86,14 @@ export class LightPoolService {
       sSg.usePercentageCloserFiltering = true; 
       sSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
       sSg.setDarkness(0.00); 
-      sSg.bias = 0.0005; 
-      sSg.normalBias = 0.0015; 
+      sSg.bias = 0.0003; 
+      sSg.normalBias = 0.004; 
       sSg.forceBackFacesOnly = false;
+
+      const sSm = sSg.getShadowMap();
+      if (sSm) {
+        sSm.refreshRate = 0;
+      }
 
       this.spotPool.push({ 
         index: i, 
@@ -98,7 +109,7 @@ export class LightPoolService {
       });
     }
 
-    // 3. DIRECTIONAL LIGHT
+    // 3. DIRECTIONAL LIGHT (Sol)
     const dLight = new DirectionalLight(`pool_dir_0`, new Vector3(0, -1, 0), scene);
     dLight.intensity = 0; 
     dLight.diffuse = Color3.Black(); 
@@ -170,9 +181,15 @@ export class LightPoolService {
   public forceHardRelease(slot: PoolSlot): void {
     slot.assignedEntityUid = null;
     slot.logicalSlotIndex = null;
-    if (slot.sg && slot.sg.getShadowMap()?.renderList) {
-      slot.sg.getShadowMap()!.renderList!.length = 0; 
+    
+    // Congelar refresco de sombras para no desperdiciar GPU en slots libres
+    if (slot.sg) {
+      const sm = slot.sg.getShadowMap();
+      if (sm) {
+        sm.refreshRate = 0;
+      }
     }
+
     slot.currentIntensity = 0; 
     slot.light.intensity = 0; 
     slot.light.diffuse.set(0, 0, 0);

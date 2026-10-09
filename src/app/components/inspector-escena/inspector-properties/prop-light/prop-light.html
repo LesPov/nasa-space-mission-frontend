@@ -1,3 +1,4 @@
+
 <!-- file: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.html -->
 <div class="section-card">
   <div class="section-head">
@@ -74,7 +75,7 @@
         </p>
       </div>
 
-      <!-- PRE-ENTRADA AL MODELO -->
+      <!-- PRE-ENTRADA AL MODELO (CONFIGURACIÓN HASTA 50 METROS PARA PASILLOS GRANDES) -->
       <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border: 1px solid #334155; border-radius: 6px; margin-bottom: 12px;" *ngIf="interiorActivationMode !== 'DISTANCE'">
         <div class="checkbox-modern" style="margin-bottom: 10px;">
           <input type="checkbox" id="chkPreEntry" [(ngModel)]="preEntryEnabled" (ngModelChange)="aplicarLuz()">
@@ -83,8 +84,8 @@
 
         <div class="field wide" *ngIf="preEntryEnabled" style="margin-bottom: 12px;">
           <label>Distancia de Pre-Entrada exterior (m)</label>
-          <input type="number" step="0.5" min="0.5" max="25" [(ngModel)]="preEntryDistance" (ngModelChange)="onPreEntryDistanceChange()" />
-          <p class="help-text">Margen exterior a la entrada del pasillo donde la luz comienza a encenderse suavemente.</p>
+          <input type="number" step="0.5" min="0.5" max="50" [(ngModel)]="preEntryDistance" (ngModelChange)="onPreEntryDistanceChange()" />
+          <p class="help-text">Margen exterior a la entrada del pasillo donde la luz comienza a prepararse y encenderse suavemente (configurable hasta 50m).</p>
         </div>
 
         <!-- CONTROL DE SOMBRA EN PRE-ENTRADA -->
@@ -101,7 +102,7 @@
                 🔗 Sincronizada: {{ preEntryDistance }} m
               </span>
             </div>
-            <input type="number" step="0.5" min="0.5" max="25" 
+            <input type="number" step="0.5" min="0.5" max="50" 
                    [disabled]="linkShadowPreEntryToLightPreEntry"
                    [(ngModel)]="shadowPreEntryDistance" 
                    (ngModelChange)="aplicarLuz()" 

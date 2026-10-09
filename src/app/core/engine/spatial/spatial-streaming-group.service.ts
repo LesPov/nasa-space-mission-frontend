@@ -362,23 +362,29 @@ export class SpatialStreamingGroupService {
       }
     }
 
-    // Si el jugador no está dentro de ningún volumen cerrado, permanecer sin grupo activo exterior
-    if (closestActiveGroup && this.currentPrimaryGroupId !== closestActiveGroup.id) {
-      const prev = this.currentPrimaryGroupId;
-      this.currentPrimaryGroupId = closestActiveGroup.id;
-      this.profiler.recordTimelineEvent('ZONE', 'PRIMARY_GROUP_CHANGED', {
-        previousGroupId: prev,
-        newGroupId: closestActiveGroup.id,
-        newGroupName: closestActiveGroup.name
-      });
-    } else if (!closestActiveGroup && this.currentPrimaryGroupId !== null) {
-      const prev = this.currentPrimaryGroupId;
-      this.currentPrimaryGroupId = null;
-      this.profiler.recordTimelineEvent('ZONE', 'PRIMARY_GROUP_CHANGED', {
-        previousGroupId: prev,
-        newGroupId: null,
-        newGroupName: 'EXTERIOR'
-      });
+    // Histéresis espacial: Evita que el grupo activo salte entre EXTERIOR y un pasillo por un simple paso
+    const EXIT_HYSTERESIS_THRESHOLD = 4.0;
+    if (closestActiveGroup) {
+      if (this.currentPrimaryGroupId !== closestActiveGroup.id) {
+        const prev = this.currentPrimaryGroupId;
+        this.currentPrimaryGroupId = closestActiveGroup.id;
+        this.profiler.recordTimelineEvent('ZONE', 'PRIMARY_GROUP_CHANGED', {
+          previousGroupId: prev,
+          newGroupId: closestActiveGroup.id,
+          newGroupName: closestActiveGroup.name
+        });
+      }
+    } else if (this.currentPrimaryGroupId !== null) {
+      const prevGrp = this.groups.get(this.currentPrimaryGroupId);
+      if (!prevGrp || prevGrp.distanceToBox > EXIT_HYSTERESIS_THRESHOLD) {
+        const prev = this.currentPrimaryGroupId;
+        this.currentPrimaryGroupId = null;
+        this.profiler.recordTimelineEvent('ZONE', 'PRIMARY_GROUP_CHANGED', {
+          previousGroupId: prev,
+          newGroupId: null,
+          newGroupName: 'EXTERIOR'
+        });
+      }
     }
 
     if (bestPredictedTarget && this.predictedTargetGroupId !== bestPredictedTarget.id) {
@@ -413,7 +419,6 @@ export class SpatialStreamingGroupService {
           }
         }
       } else if (!currentPrimary) {
-        // En exterior, buscar el portal al exterior del grupo
         for (let p = 0; p < group.portals.length; p++) {
           const portal = group.portals[p];
           if (portal.targetGroupId === 'EXTERIOR') {

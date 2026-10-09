@@ -512,7 +512,7 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    // Transición asimétrica suave: encendido responsivo (3.5) vs apagado progresivo no abrupto (1.8)
+    // Transición asimétrica suave: encendido continuo (3.5) vs atenuación progresiva (1.8)
     const fadeRateIn = 1.0 - Math.exp(-3.5 * (dtMs / 1000.0));
     const fadeRateOut = 1.0 - Math.exp(-1.8 * (dtMs / 1000.0));
 
@@ -539,7 +539,7 @@ export class DynamicLightingSystem implements IUpdatable {
         }
       }
 
-      this.lightDistance.evaluateDistanceAndHysteresis(activeVirtuals, refPos, speed);
+      this.lightDistance.evaluateDistanceAndHysteresis(activeVirtuals, refPos, speed, moveDir);
 
       const candidates = activeVirtuals.filter(vl => vl.entity.light?.enabled !== false);
       this.lightAllocation.allocatePoolSlots(candidates, refPos, moveDir, speed, null);
@@ -741,8 +741,8 @@ export class DynamicLightingSystem implements IUpdatable {
     const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > 0.01 && lightComp.enabled && lightComp.castShadows && slot.shadowTier !== 'DISABLED';
 
     if (slot.sg) {
-      const sBias = lightComp.shadowBias ?? 0.0008;
-      const sNormalBias = lightComp.shadowNormalBias ?? 0.002;
+      const sBias = lightComp.shadowBias ?? 0.0003;
+      const sNormalBias = lightComp.shadowNormalBias ?? 0.005;
       const sDarkness = 0.00;
 
       if (slot.sg.bias !== sBias) slot.sg.bias = sBias;

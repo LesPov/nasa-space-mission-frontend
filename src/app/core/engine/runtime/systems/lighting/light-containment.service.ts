@@ -1,4 +1,3 @@
-// file: src/app/core/engine/runtime/systems/lighting/light-containment.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, PointLight, SpotLight, Scene, Vector3, Tags, Mesh, InstancedMesh, Node, Matrix, Ray } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
@@ -234,13 +233,42 @@ export class LightContainmentService {
     const corridorApproxWidth = Math.max(3.0, Math.min(sizeWorld.x, sizeWorld.z));
 
     if (entryPoints.length === 0) {
-      const isLongitudinalZ = sizeWorld.z >= sizeWorld.x;
-      if (isLongitudinalZ) {
-        entryPoints.push(new Vector3(centerWorld.x, minWorld.y + 1.0, minWorld.z));
-        entryPoints.push(new Vector3(centerWorld.x, minWorld.y + 1.0, maxWorld.z));
+      const extremityClusters: Vector3[] = [];
+      const thresholdMargin = Math.max(2.5, corridorApproxWidth * 0.8);
+
+      for (let i = 0; i < renderables.length; i++) {
+        const m = renderables[i];
+        const c = m.getBoundingInfo().boundingBox.centerWorld;
+
+        const isAtEdgeX = (Math.abs(c.x - maxWorld.x) <= thresholdMargin) || (Math.abs(c.x - minWorld.x) <= thresholdMargin);
+        const isAtEdgeZ = (Math.abs(c.z - maxWorld.z) <= thresholdMargin) || (Math.abs(c.z - minWorld.z) <= thresholdMargin);
+
+        if (isAtEdgeX || isAtEdgeZ) {
+          const pt = new Vector3(c.x, minWorld.y + 1.2, c.z);
+          let existsClose = false;
+          for (let k = 0; k < extremityClusters.length; k++) {
+            if (Vector3.DistanceSquared(pt, extremityClusters[k]) < 16.0) {
+              existsClose = true;
+              break;
+            }
+          }
+          if (!existsClose) {
+            extremityClusters.push(pt);
+          }
+        }
+      }
+
+      if (extremityClusters.length > 0) {
+        entryPoints.push(...extremityClusters);
       } else {
-        entryPoints.push(new Vector3(minWorld.x, minWorld.y + 1.0, centerWorld.z));
-        entryPoints.push(new Vector3(maxWorld.x, minWorld.y + 1.0, centerWorld.z));
+        const isLongitudinalZ = sizeWorld.z >= sizeWorld.x;
+        if (isLongitudinalZ) {
+          entryPoints.push(new Vector3(centerWorld.x, minWorld.y + 1.2, minWorld.z));
+          entryPoints.push(new Vector3(centerWorld.x, minWorld.y + 1.2, maxWorld.z));
+        } else {
+          entryPoints.push(new Vector3(minWorld.x, minWorld.y + 1.2, centerWorld.z));
+          entryPoints.push(new Vector3(maxWorld.x, minWorld.y + 1.2, centerWorld.z));
+        }
       }
     }
 
@@ -268,8 +296,9 @@ export class LightContainmentService {
   public evaluateModelContainment(
     actorWorldPos: Vector3,
     container: GameEntity | null,
-    preEntryDistance: number = 8.0,
-    wasInRange: boolean = false
+    preEntryDistance: number = 16.0,
+    wasInRange: boolean = false,
+    actorVelocity: Vector3 = Vector3.Zero()
   ): ModelContainmentResult {
     if (!container || !container.view || container.view.isDisposed()) {
       return {
@@ -289,8 +318,12 @@ export class LightContainmentService {
     const min = geoData.minWorld;
     const max = geoData.maxWorld;
 
-    const maxKeepAliveExitDistance = Math.max(preEntryDistance + 4.0, LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_MAX_DISTANCE);
-    const broadMargin = wasInRange ? maxKeepAliveExitDistance + 2.0 : preEntryDistance + 2.0;
+    const speed = actorVelocity.length();
+    const lookAheadBonus = Math.min(10.0, speed * 1.0);
+    const effectivePreEntryDistance = preEntryDistance + lookAheadBonus;
+
+    const maxKeepAliveExitDistance = Math.max(effectivePreEntryDistance + 4.0, LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_MAX_DISTANCE);
+    const broadMargin = wasInRange ? maxKeepAliveExitDistance + 2.0 : effectivePreEntryDistance + 2.0;
 
     const dxBroad = Math.max(0, (min.x - broadMargin) - actorWorldPos.x, actorWorldPos.x - (max.x + broadMargin));
     const dyBroad = Math.max(0, (min.y - 3.0) - actorWorldPos.y, actorWorldPos.y - (max.y + 3.0));
@@ -320,16 +353,15 @@ export class LightContainmentService {
     const locMin = geoData.minLocal;
     const locMax = geoData.maxLocal;
 
-    const tolXZ = wasInRange ? 0.8 : 0.3;
+    const tolXZ = wasInRange ? 1.0 : 0.4;
     const isInsideLocalAABB =
       locPos.x >= locMin.x - tolXZ && locPos.x <= locMax.x + tolXZ &&
       locPos.z >= locMin.z - tolXZ && locPos.z <= locMax.z + tolXZ;
 
-    // Precisión física: Verificamos si existe techo del contenedor directamente sobre el actor
     let isUnderRoof = false;
     if (isWithinVerticalBounds && isInsideLocalAABB && geoData.allRenderableMeshes.length > 0) {
       const rayOrigin = new Vector3(actorWorldPos.x, actorWorldPos.y + 0.5, actorWorldPos.z);
-      const upRay = new Ray(rayOrigin, Vector3.Up(), 10.0);
+      const upRay = new Ray(rayOrigin, Vector3.Up(), 12.0);
       const hitUp = scene.pickWithRay(upRay, (m) => {
         return geoData.allRenderableMeshes.includes(m as AbstractMesh);
       });
@@ -350,9 +382,10 @@ export class LightContainmentService {
       }
     }
 
-    const isInsideGeometry = isWithinVerticalBounds && isInsideLocalAABB && isUnderRoof;
+    const isDeepInBox = isWithinVerticalBounds && isInsideLocalAABB && (minDistanceToEntry > 2.0);
+    const isInsideGeometry = isWithinVerticalBounds && isInsideLocalAABB && (isUnderRoof || isDeepInBox);
 
-    // 1. DENTRO DEL PASILLO ACTUAL (Debe estar bajo techo físicamente)
+    // 1. DENTRO DEL PASILLO
     if (isInsideGeometry) {
       return {
         inside: true,
@@ -380,8 +413,8 @@ export class LightContainmentService {
       };
     }
 
-    // 3. APROXIMACIÓN HACIA LA ENTRADA (PRE-ENTRY)
-    if (minDistanceToEntry <= preEntryDistance) {
+    // 3. APROXIMACIÓN ANTICIPADA HACIA LA ENTRADA (PRE-ENTRY)
+    if (minDistanceToEntry <= effectivePreEntryDistance) {
       return {
         inside: false,
         preEntry: true,
@@ -394,7 +427,7 @@ export class LightContainmentService {
       };
     }
 
-    // 4. EXTERIOR / DESCONECTADO
+    // 4. EXTERIOR
     return {
       inside: false,
       preEntry: false,
@@ -423,7 +456,6 @@ export class LightContainmentService {
       totalDescendantsCount++;
 
       if (node.isDisposed()) {
-        rejected.push({ meshName: node.name, reason: 'Nodo descartado' });
         return;
       }
 
@@ -433,7 +465,6 @@ export class LightContainmentService {
           'editor_only || fog_element || debug_element || proxy_collider || invisible_floor || light_visual || ignore_raycast'
         )
       ) {
-        rejected.push({ meshName: node.name, reason: 'Etiqueta excluida' });
         return;
       }
 
@@ -462,20 +493,44 @@ export class LightContainmentService {
     return { renderables, totalDescendantsCount, rejected };
   }
 
+  /**
+   * Aplica contención física de iluminación:
+   * Para luces interiores, asegura que la luz ilumine al contenedor del pasillo y al jugador,
+   * impidiendo que la luz afecte habitaciones lejanas o traspase el suelo sin restricción.
+   */
   public applyContainment(light: PointLight | SpotLight, entity: GameEntity, scene: Scene): void {
     const mode: LightContainmentMode = entity.light?.containmentMode || 'GLOBAL';
     const affectDescendantsOnly = entity.light?.affectDescendantsOnly ?? false;
 
-    if (mode === 'INTERIOR' && affectDescendantsOnly) {
+    if (mode === 'INTERIOR') {
       const container = this.resolveContainerEntity(entity, scene);
       if (container && container.view) {
         const { renderables } = this.getAllRenderableMeshesFromModel(container.view);
-        light.includedOnlyMeshes = [...renderables];
+
+        if (affectDescendantsOnly) {
+          light.includedOnlyMeshes = [...renderables];
+          light.excludedMeshes = [];
+          return;
+        }
+
+        // Si la luz sale por las puertas: iluminamos el pasillo y únicamente al actor/jugador
+        // Bloqueamos que la luz se aplique a suelos exteriores lejanos sin sombra.
+        const validReceivers = new Set<AbstractMesh>(renderables);
+
+        // Añadir únicamente las mallas del jugador activo
+        const playerEnt = this.entityManager.getAllEntities().find(e => e.rol === 'player' || !!e.characterConfig);
+        if (playerEnt && playerEnt.view) {
+          validReceivers.add(playerEnt.view as AbstractMesh);
+          playerEnt.view.getChildMeshes(false).forEach(m => validReceivers.add(m));
+        }
+
+        light.includedOnlyMeshes = Array.from(validReceivers);
         light.excludedMeshes = [];
         return;
       }
     }
 
+    // Modo GLOBAL: iluminación abierta estándar
     light.includedOnlyMeshes = [];
     light.excludedMeshes = [];
   }

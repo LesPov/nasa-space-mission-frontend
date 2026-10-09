@@ -1,3 +1,4 @@
+
 // file: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.ts
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -59,9 +60,9 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   containmentMode: LightContainmentMode = 'GLOBAL';
   interiorActivationMode: LightInteriorActivationMode = 'VOLUME';
   preEntryEnabled: boolean = true;
-  preEntryDistance: number = 4.5;
+  preEntryDistance: number = 8.0;
   linkShadowPreEntryToLightPreEntry: boolean = true;
-  shadowPreEntryDistance: number = 4.5;
+  shadowPreEntryDistance: number = 8.0;
 
   containerEntityUid: string = '';
   affectDescendantsOnly: boolean = false;
@@ -302,7 +303,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.containmentMode = entity.light.containmentMode ?? (entity.parentId ? 'INTERIOR' : 'GLOBAL');
     this.interiorActivationMode = entity.light.interiorActivationMode || 'VOLUME';
     this.preEntryEnabled = entity.light.preEntryEnabled ?? true;
-    this.preEntryDistance = entity.light.preEntryDistance ?? 4.5;
+    this.preEntryDistance = entity.light.preEntryDistance ?? 8.0;
     
     this.linkShadowPreEntryToLightPreEntry = entity.light.linkShadowPreEntryToLightPreEntry !== false;
     this.shadowPreEntryDistance = entity.light.shadowPreEntryDistance ?? this.preEntryDistance;

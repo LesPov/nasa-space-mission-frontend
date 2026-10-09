@@ -1,4 +1,3 @@
-
 // file: src/app/services/editor/editor-orchestrator.service.ts
 import { Injectable, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
@@ -7,7 +6,7 @@ import { Subscription } from 'rxjs';
 import { debounceTime } from 'rxjs/operators';
 
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../core/engine/scene/scene-access.token';
-import { EditorMapaService } from '../editor-mapa.service';
+import { EditorMapaService, MapChangeEvent } from '../editor-mapa.service';
 import { EditorStateService } from './editor-state.service';
 import { EditorSceneService } from './editor-scene.service';
 import { EditorToolsService } from './editor-tools.service';
@@ -38,6 +37,7 @@ import { ShadowOrchestratorService } from '../../core/engine/runtime/shadows/sha
 import { LocalRenderingSystem } from '../../core/engine/runtime/systems/local-rendering.system';
 import { SpatialRelevanceHubService } from '../../core/engine/spatial/spatial-relevance-hub.service';
 import { LightShadowService } from '../../core/engine/runtime/systems/lighting/light-shadow.service';
+import { RuntimeReadinessBarrierService } from '../../core/engine/runtime/live/runtime-readiness-barrier.service';
 
 @Injectable({ providedIn: 'root' })
 export class EditorOrchestratorService {
@@ -71,11 +71,14 @@ export class EditorOrchestratorService {
   private localRendering = inject(LocalRenderingSystem);
   private spatialHub = inject(SpatialRelevanceHubService);
   private lightShadows = inject(LightShadowService);
+  private readinessBarrier = inject(RuntimeReadinessBarrierService);
 
   public readonly editando = signal(false);
   public readonly isPlayable = signal(false);
   public readonly cargandoEscena = signal(false);
   public readonly cargandoTexto = signal('Preparando entorno...');
+  public readonly cargandoProgreso = signal<number | undefined>(undefined);
+  public readonly cargandoDetalle = signal<string | undefined>(undefined);
   public readonly fps = signal('0');
   public readonly estadoGuardado = signal('Guardado');
   
@@ -107,17 +110,23 @@ export class EditorOrchestratorService {
       }
     });
 
-    this.mapChangeSub = this.editorSvc.onMapChanged.subscribe(() => {
+    this.mapChangeSub = this.editorSvc.onMapChanged.subscribe(event => {
+      // Si el evento fue puramente de movimiento de Gizmo, no evaluar jugabilidad estructural
+      if (event && (event as MapChangeEvent).type === 'TRANSFORM') {
+        return;
+      }
       setTimeout(() => this.revisarSiEsJugable(), 0);
     });
 
     this.autoSaveSub = this.editorSvc.onMapChanged.pipe(
       debounceTime(1500) 
-    ).subscribe(() => {
+    ).subscribe(event => {
       try {
         const state = this.stateSvc.playState();
         if (this.gameContext.authorityProfile().canEdit && this.editando() && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
-          this.guardarMapaEnBD(true); 
+          // Si el evento fue puramente transformacional de Gizmo, guardado silencioso sin alert
+          const esSilencioso = event ? (event as MapChangeEvent).type === 'TRANSFORM' : true;
+          this.guardarMapaEnBD(esSilencioso); 
         }
       } catch (e) {
         console.error('Error durante autoguardado:', e);
@@ -169,6 +178,8 @@ export class EditorOrchestratorService {
     this.layoutSvc.ocultarMenu();
     this.cargandoEscena.set(true);
     this.cargandoTexto.set('Cargando herramientas de creador...');
+    this.cargandoProgreso.set(undefined);
+    this.cargandoDetalle.set(undefined);
     
     this.epiApiSvc.obtenerPlataformasEscena(episodio.id).subscribe({
       next: (plataformas) => {
@@ -230,7 +241,6 @@ export class EditorOrchestratorService {
           
           this.cargandoTexto.set('Estabilizando sombreadores e iluminación del editor...');
           
-          // 🔥 FASE B: Asegurar que las matrices de transformación estén completamente calculadas
           const allEntities = this.entityManager.getAllEntities();
           allEntities.forEach(e => {
             if (e.view && !e.view.isDisposed()) {
@@ -238,35 +248,25 @@ export class EditorOrchestratorService {
             }
           });
 
-          // Asegurar que la cámara del editor esté al día
           const editorCam = this.motor3dSvc.getEditorCamera();
           editorCam.computeWorldMatrix();
           
-          // 🔥 FASE C: Obtener la posición de referencia y FORZAR AL HUB ESPACIAL A CALCULAR DISTANCIAS
           const realPlayerRefPos = this.dynLighting.getReferencePosition('AUTO');
           const camFwd = editorCam.getDirection(Vector3.Forward());
           camFwd.y = 0;
           camFwd.normalize();
 
-          // Sembramos el SpatialHub con las coordenadas precisas para que las distancias sean matemáticas y no `Number.MAX_VALUE`
           this.spatialHub.forceUpdatePositions(realPlayerRefPos, editorCam.globalPosition, camFwd);
-
-          // Forzar a Culling a mostrar todas las entidades para que ShadowMaps las atrape en su primer paso
           this.localRendering.ensureAllEntitiesVisibleForEditor();
-
-          // Refrescar caché de casters de sombras ANTES del warmup
           this.lightShadows.refreshShadowCastersCache();
 
-          // 🔥 FASE D/E/F: Warmup determinista (ahora las distancias de las luces no son Infinity)
           this.dynLighting.start();
           this.shadowOrchestrator.start();
           await this.dynLighting.forceWarmup(realPlayerRefPos);
 
-          // Renderizar 2 frames asíncronos para llenar buffers de GPU y procesar frustums
           scene.render();
           scene.render();
 
-          // 🔥 FASE H: Listo. Entregamos el editor limpio.
           this.cargandoEscena.set(false);
           this.revisarSiEsJugable(); 
           this.toolsSvc.forceResetVisuals();
@@ -305,6 +305,8 @@ export class EditorOrchestratorService {
     this.guardarMapaEnBD(true); 
     this.cargandoEscena.set(true);
     this.cargandoTexto.set('Cambiando de zona...');
+    this.cargandoProgreso.set(undefined);
+    this.cargandoDetalle.set(undefined);
     this.procesarCarga(this.editorSvc.episodioActualData(), sceneId);
   }
 
@@ -312,6 +314,8 @@ export class EditorOrchestratorService {
     const sessionId = this.sessionSvc.startNewSession();
     this.cargandoEscena.set(true);
     this.cargandoTexto.set('Teletransportando a nueva zona...');
+    this.cargandoProgreso.set(undefined);
+    this.cargandoDetalle.set(undefined);
     
     this.runtime.stopTestSession();
     this.editorSvc.setEscenaIdActiva(sceneId);
@@ -341,7 +345,10 @@ export class EditorOrchestratorService {
             if (!this.sessionSvc.isSessionActive(sessionId)) return;
             
             try {
-                await this.playModeSvc.prepararEscenaParaTest(this.gameContext.cameraView(), (msg) => this.cargandoTexto.set(msg));
+                await this.playModeSvc.prepararEscenaParaTest(this.gameContext.cameraView(), (msg, pct) => {
+                  this.cargandoTexto.set(msg);
+                  if (pct !== undefined) this.cargandoProgreso.set(pct);
+                });
             } catch(e) {
                 console.error(e);
             }
@@ -349,6 +356,8 @@ export class EditorOrchestratorService {
             await this.playModeSvc.finalizarEntradaTestLive(this.gameContext.cameraView(), true);
             
             this.cargandoEscena.set(false);
+            this.cargandoProgreso.set(undefined);
+            this.cargandoDetalle.set(undefined);
             this.revisarSiEsJugable();
           }, 100);
         });
@@ -356,6 +365,8 @@ export class EditorOrchestratorService {
       error: (err) => {
         if (!this.sessionSvc.isSessionActive(sessionId)) return;
         this.cargandoEscena.set(false);
+        this.cargandoProgreso.set(undefined);
+        this.cargandoDetalle.set(undefined);
         alert('Error al teletransportar a la plataforma.');
         this.detenerModoPrueba();
       }
@@ -429,7 +440,11 @@ export class EditorOrchestratorService {
     this.guardarMapaEnBD(true);
 
     this.cargandoEscena.set(true);
-    this.cargandoTexto.set('Iniciando Runtime Ready...');
+    this.cargandoTexto.set('Iniciando entorno de prueba...');
+    this.cargandoProgreso.set(5);
+    this.cargandoDetalle.set('Preparando pantalla de carga');
+
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
 
     this.liveLifecycle.captureEditorState();
 
@@ -443,29 +458,31 @@ export class EditorOrchestratorService {
     try {
       await this.playModeSvc.prepararEscenaParaTest(vista, (msg, pct) => {
         this.cargandoTexto.set(msg);
+        if (pct !== undefined) this.cargandoProgreso.set(pct);
+        const detail = this.readinessBarrier.progress().detail;
+        if (detail) this.cargandoDetalle.set(detail);
       });
 
-      if (skipIntro) {
-        await this.playModeSvc.estabilizarEntornoVisual(vista);
-        await this.playModeSvc.finalizarEntradaTestLive(vista, true);
-      } else {
-        this.cargandoTexto.set('Desplazando cámara a posición inicial...');
-        await this.playModeSvc.iniciarVueloCamara(vista);
+      this.cargandoTexto.set('Estabilizando sombreadores e iluminación...');
+      await this.playModeSvc.estabilizarEntornoVisual(vista, (msg, pct) => {
+        this.cargandoTexto.set(msg);
+        if (pct !== undefined) this.cargandoProgreso.set(pct);
+        const detail = this.readinessBarrier.progress().detail;
+        if (detail) this.cargandoDetalle.set(detail);
+      });
 
-        this.cargandoTexto.set('Estabilizando iluminación y sombras...');
-        await this.playModeSvc.estabilizarEntornoVisual(vista, (msg, pct) => {
-          this.cargandoTexto.set(msg);
-        });
-
-        await this.playModeSvc.finalizarEntradaTestLive(vista, false);
-      }
+      await this.playModeSvc.finalizarEntradaTestLive(vista, skipIntro);
 
       this.cargandoEscena.set(false);
+      this.cargandoProgreso.set(undefined);
+      this.cargandoDetalle.set(undefined);
       this.revisarSiEsJugable();
 
     } catch (e) {
-      console.error('[EditorOrchestrator] Error en transición:', e);
+      console.error('[EditorOrchestrator] Error en transición a Test Live:', e);
       this.cargandoEscena.set(false);
+      this.cargandoProgreso.set(undefined);
+      this.cargandoDetalle.set(undefined);
       this.detenerModoPrueba();
     }
   }
@@ -478,6 +495,10 @@ export class EditorOrchestratorService {
 
     this.cargandoEscena.set(true);
     this.cargandoTexto.set('Restaurando Editor...');
+    this.cargandoProgreso.set(undefined);
+    this.cargandoDetalle.set(undefined);
+
+    await new Promise(resolve => requestAnimationFrame(resolve));
 
     this.liveLifecycle.endLiveSession();
 
@@ -491,7 +512,7 @@ export class EditorOrchestratorService {
     this.revisarSiEsJugable(); 
 
     setTimeout(() => {
-        this.editorSvc.onMapChanged.next();
+        this.editorSvc.onMapChanged.next({ type: 'SESSION', origin: 'SYSTEM' });
         this.toolsSvc.forceResetVisuals();
     }, 100);
   }

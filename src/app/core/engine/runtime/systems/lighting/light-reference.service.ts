@@ -1,11 +1,12 @@
-
 // file: src/app/core/engine/runtime/systems/lighting/light-reference.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Vector3 } from '@babylonjs/core';
+import { Vector3, AbstractMesh } from '@babylonjs/core';
 import { GameContextService } from '../../../session/game-context.service';
 import { CameraOwnershipService } from '../../cameras/camera-ownership.service';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { GameEntity } from '../../../entities/game.entity';
+import { EditorStateService } from '../../../../../services/editor/editor-state.service';
+import { GameMode } from '../../../session/game-mode.model';
 
 export interface ClosestActorResult {
   actor: GameEntity | null;
@@ -18,10 +19,24 @@ export class LightReferenceService {
   private context = inject(GameContextService);
   private ownership = inject(CameraOwnershipService);
   private entityManager = inject(EntityManagerService);
+  private stateSvc = inject(EditorStateService);
 
   private static readonly _fallbackPos = Vector3.Zero();
 
   public getValidActorEntities(): GameEntity[] {
+    const isEditor = this.context.mode() === GameMode.EDITOR || this.context.mode() === GameMode.EDITING_IN_GAME;
+
+    // En modo Editor, si el creador tiene seleccionado al jugador o un spawn marker, es la referencia prioritaria
+    if (isEditor) {
+      const selected = this.stateSvc.objetoSeleccionado() as AbstractMesh | null;
+      if (selected) {
+        const selEntity = this.entityManager.getEntityByMesh(selected);
+        if (selEntity && (selEntity.rol === 'player' || selEntity.hasComponent('characterConfig') || selEntity.rol === 'spawn_point')) {
+          return [selEntity];
+        }
+      }
+    }
+
     const activePlayer = this.context.activePlayerEntity();
     if (activePlayer && activePlayer.view && !activePlayer.view.isDisposed()) {
       return [activePlayer];
@@ -110,7 +125,22 @@ export class LightReferenceService {
   }
 
   public getReferencePosition(customMode?: 'AUTO' | 'CAMERA' | 'PLAYER'): Vector3 {
-    // 1. Autoridad absoluta de gameplay: el Player/Actor activo
+    const isEditor = this.context.mode() === GameMode.EDITOR || this.context.mode() === GameMode.EDITING_IN_GAME;
+
+    // 1. En Editor: verificar si el objeto arrastrado/seleccionado es el jugador o un spawn marker
+    if (isEditor) {
+      const selected = this.stateSvc.objetoSeleccionado() as AbstractMesh | null;
+      if (selected) {
+        const selEntity = this.entityManager.getEntityByMesh(selected);
+        if (selEntity && (selEntity.rol === 'player' || selEntity.hasComponent('characterConfig') || selEntity.rol === 'spawn_point')) {
+          const pos = new Vector3();
+          this.getActorWorldPosition(selEntity, pos);
+          return pos;
+        }
+      }
+    }
+
+    // 2. Jugador activo en runtime
     const playerEntity = this.context.activePlayerEntity();
     if (playerEntity && playerEntity.view && !playerEntity.view.isDisposed()) {
       const pos = new Vector3();
@@ -118,7 +148,7 @@ export class LightReferenceService {
       return pos;
     }
 
-    // 2. Si no hay player activo, buscar los actores/spawns de la escena
+    // 3. Actores o spawns presentes en la escena
     const actors = this.getValidActorEntities();
     if (actors.length > 0) {
       const pos = new Vector3();
@@ -126,10 +156,9 @@ export class LightReferenceService {
       return pos;
     }
 
-    // 3. Fallback en editor: la cámara del visor (NO el objeto seleccionado)
+    // 4. Cámara del visor
     const camera = this.ownership.getCamera();
     if (camera) {
-      // 🔥 FIX 3: Solo computamos si el mesh/cámara ya están en el pipeline de renderizado
       if (camera.getScene() && !camera.getScene().isDisposed) {
         camera.computeWorldMatrix();
       }

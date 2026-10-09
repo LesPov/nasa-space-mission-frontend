@@ -1,6 +1,5 @@
-// ARCHIVO: src/app/core/engine/runtime/systems/lighting/lighting-types.ts
-
-import { Color3, PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, AbstractMesh } from '@babylonjs/core';
+// file: src/app/core/engine/runtime/systems/lighting/lighting-types.ts
+import { Color3, PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3 } from '@babylonjs/core';
 import { GameEntity, LightInteriorActivationMode } from '../../../entities/game.entity';
 
 export type LightLifecycleStage = 'OUTSIDE' | 'PREPARING' | 'PREPARED' | 'FADING_IN' | 'ACTIVE' | 'FADING_OUT' | 'INACTIVE';
@@ -8,34 +7,50 @@ export type LightSpatialState = 'OUTSIDE' | 'PRE_ENTRY' | 'INSIDE' | 'PRE_EXIT';
 export type ContainmentSource = 'COLLISION_MESH' | 'EXPLICIT_MESH' | 'GEOMETRY' | 'AABB_FALLBACK';
 export type ShadowTier = 'HIGH' | 'MEDIUM' | 'LOW' | 'DISABLED';
 
+export type LogicalSlotState = 'EMPTY' | 'ACTIVE' | 'FADING_OUT' | 'RELEASING' | 'REBINDING' | 'FADING_IN';
+
 export const LIGHT_SPATIAL_CONSTANTS = {
-  DEFAULT_ACTIVATION_RADIUS: 50.0,
-  DEFAULT_DEACTIVATION_RADIUS: 58.0,
-  DEFAULT_SHADOW_ACTIVATION_RADIUS: 32.0,
-  DEFAULT_SHADOW_DEACTIVATION_RADIUS: 38.0,
-  RELEVANCE_RADIUS: 50.0,
-  DEACTIVATION_RADIUS: 58.0,
-  PREPARE_RADIUS: 70.0,
-  SHADOW_ACTIVATION_RADIUS: 32.0,
-  SHADOW_DEACTIVATION_RADIUS: 38.0,
+  DEFAULT_ACTIVATION_RADIUS: 20.0,
+  DEFAULT_DEACTIVATION_RADIUS: 26.0,
+  DEFAULT_SHADOW_ACTIVATION_RADIUS: 16.0,
+  DEFAULT_SHADOW_DEACTIVATION_RADIUS: 22.0,
+  RELEVANCE_RADIUS: 25.0,
+  DEACTIVATION_RADIUS: 30.0,
+  PREPARE_RADIUS: 35.0,
+  SHADOW_ACTIVATION_RADIUS: 18.0,
+  SHADOW_DEACTIVATION_RADIUS: 24.0,
   MAX_PHYSICAL_ACTIVE_LIGHTS: 3,
   MAX_PREPARED_LIGHTS: 2,
+  TOTAL_LOGICAL_SLOTS: 5,
   MAX_LOCAL_LIGHTS: 3,
   MAX_LOCAL_SHADOWS: 3,
   ZERO_INTENSITY_THRESHOLD: 0.001,
-  INTERIOR_KEEP_ALIVE_HOLD_MARGIN: 4.0,
-  INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER: 1.6,
-  INTERIOR_KEEP_ALIVE_MAX_DISTANCE: 25.0,
-  INTERIOR_SHADOW_EXIT_MARGIN: 6.0
+  // Márgenes precisos para transiciones en pasillos
+  INTERIOR_KEEP_ALIVE_HOLD_MARGIN: 1.5,
+  INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER: 1.2,
+  INTERIOR_KEEP_ALIVE_MAX_DISTANCE: 7.0,
+  INTERIOR_SHADOW_EXIT_MARGIN: 3.0,
+  // Histéresis e inercia de puntuación
+  STICKINESS_SCORE_MULTIPLIER: 0.70,
+  REPLACEMENT_SCORE_ADVANTAGE: 0.85,
+  MIN_SLOT_HOLD_TIME_MS: 200
 };
 
-export interface LightDistanceBreakdown {
-  centerDistance: number;
-  boundsDistance: number;
-  effectiveDistance: number;
-  activationDistance: number;
-  fadeStartDistance: number;
-  fadeEndDistance: number;
+export interface ActiveLogicalSlot {
+  id: number;
+  assignedUid: string | null;
+  physicalSlot: PoolSlot | null;
+  state: LogicalSlotState;
+  pendingUid: string | null;
+  assignedTime: number;
+  lastStateChangeTime: number;
+}
+
+export interface PreparedLogicalSlot {
+  id: number;
+  candidateUid: string | null;
+  score: number;
+  isReady: boolean;
 }
 
 export interface VirtualLight {
@@ -56,6 +71,7 @@ export interface VirtualLight {
   _sortScore?: number;
   closestActorName?: string;
   poolRank?: number;
+  logicalSlotIndex?: number | null;
   lifecycleStage: LightLifecycleStage;
   previousLifecycleStage?: LightLifecycleStage;
   lastStateChangeTimestamp?: string;
@@ -73,12 +89,15 @@ export interface VirtualLight {
   distanceToBoundary?: number;
   containmentSource?: ContainmentSource;
   containerName?: string;
+  topologicalHop?: number;
+  corridorZoneName?: string;
   shadowTier?: ShadowTier;
   shadowRank?: number;
 }
 
 export interface PoolSlot {
   index: number;
+  logicalSlotIndex?: number | null;
   type: 'point' | 'spot' | 'directional';
   light: PointLight | SpotLight | DirectionalLight;
   sg: ShadowGenerator | null;

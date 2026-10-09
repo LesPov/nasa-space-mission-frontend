@@ -48,12 +48,18 @@ export class LightTransformService {
 
     let targetNode: any = entity.view;
 
+    // Asegurar que la jerarquía de matrices mundiales esté actualizada
+    targetNode.computeWorldMatrix(true);
+
     const visualSphere = entity.view.getChildMeshes(false).find(
       (m: AbstractMesh) => Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual
     );
 
     if (entity.light?.attachedNodeName) {
       const searchRoot = entity.view.parent || entity.view;
+      if (searchRoot && typeof searchRoot.computeWorldMatrix === 'function') {
+        searchRoot.computeWorldMatrix(true);
+      }
       const boneNode = searchRoot.getDescendants(false).find(n => n.name === entity.light!.attachedNodeName);
       if (boneNode) {
         targetNode = boneNode;

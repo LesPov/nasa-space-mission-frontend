@@ -1,4 +1,3 @@
-
 <div class="profiler-container">
 
   <!-- ======================================================================= -->
@@ -330,11 +329,11 @@
         </div>
       </section>
 
-      <!-- TAB 7: LUCES -->
+      <!-- TAB 7: LUCES (5 SLOTS LÓGICOS: 3 ACTIVOS + 2 PREPARADOS) -->
       <section *ngIf="activeSection() === 'lights'" class="tab-pane">
         <div class="summary-banner">
-          <div><strong>{{ metrics().lights.activePool }}</strong> / {{ metrics().lights.totalVirtual }} Luces en Pool</div>
-          <div><strong style="color: #facc15;">{{ metrics().lights.shadowedPool }}</strong> con Sombras</div>
+          <div><strong>{{ metrics().lights.activePool }}</strong> / {{ metrics().lights.totalVirtual }} Luces en Pool Físico</div>
+          <div><strong style="color: #facc15;">{{ metrics().lights.shadowedPool }}</strong> con Sombras Activas</div>
         </div>
 
         <div class="cards-stack">
@@ -346,7 +345,7 @@
               </div>
               <div class="card-right-status">
                 <span class="status-pill" [class.on]="l.isLightInRange" [class.off]="!l.isLightInRange">
-                  {{ l.isLightInRange ? 'Slot ' + (l.assignedSlot !== null ? l.assignedSlot : '-') : 'Inactiva' }}
+                  {{ l.isLightInRange ? 'Slot ' + (l.assignedSlot !== null ? l.assignedSlot : '-') : (l.state === 'PREPARED' ? 'Prep' : 'Inactiva') }}
                 </span>
                 <span class="chevron-icon">{{ isLightExpanded(l.uid) ? '▼' : '▶' }}</span>
               </div>
@@ -361,6 +360,7 @@
             <div class="item-card-expanded-content" *ngIf="isLightExpanded(l.uid)">
               <div class="kv-item"><span class="kv-key">UID:</span> <span class="kv-val ellipsis" [title]="l.uid">{{ l.uid }}</span></div>
               <div class="kv-item"><span class="kv-key">Posición:</span> <span class="kv-val">({{ l.position.x }}, {{ l.position.y }}, {{ l.position.z }})</span></div>
+              <div class="kv-item"><span class="kv-key">Slot Lógico:</span> <span class="kv-val"><strong style="color: #60a5fa;">{{ l.assignedSlot !== null ? 'Slot ' + l.assignedSlot : (l.state === 'PREPARED' ? 'Preparada (Slot 3/4)' : 'Sin Asignar') }}</strong></span></div>
               <div class="kv-item"><span class="kv-key">Contención:</span> <span class="kv-val">{{ l.containmentMode }}</span></div>
               <div class="kv-item"><span class="kv-key">Estado Interior:</span> <span class="kv-val" [style.color]="l.insideVolume ? '#4ade80' : (l.inPreEntryZone ? '#facc15' : '#94a3b8')">{{ l.insideVolume ? 'DENTRO DE VOLUMEN' : (l.inPreEntryZone ? 'PRE-ENTRADA' : 'EXTERIOR') }}</span></div>
               <div class="kv-item"><span class="kv-key">Sombra:</span> <span class="kv-val">{{ l.hasShadowGenerator ? 'SÍ (' + l.renderListSize + ' casters)' : 'NO' }}</span></div>
@@ -689,7 +689,7 @@
           <div class="item-card" *ngFor="let l of inc.metrics.lights.details">
             <div class="item-card-header">
               <span class="card-item-title ellipsis" [title]="l.name">{{ l.name }}</span>
-              <span class="status-pill" [class.on]="l.isLightInRange">{{ l.isLightInRange ? 'Slot ' + l.assignedSlot : 'Inactiva' }}</span>
+              <span class="status-pill" [class.on]="l.isLightInRange">{{ l.isLightInRange ? 'Slot ' + l.assignedSlot : (l.state === 'PREPARED' ? 'Prep' : 'Inactiva') }}</span>
             </div>
             <div class="item-card-preview-row">
               <span>Dist: <strong>{{ l.distance }}m</strong></span>

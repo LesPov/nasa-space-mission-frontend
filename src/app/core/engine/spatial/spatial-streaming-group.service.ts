@@ -1,7 +1,7 @@
 // file: src/app/core/engine/spatial/spatial-streaming-group.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Vector3, Tags } from '@babylonjs/core';
-import { SpatialGroup, SpatialGroupState, DEFAULT_SPATIAL_GROUP_CONFIG } from './spatial-group.model';
+import { SpatialGroup, SpatialGroupState, SpatialPortal, DEFAULT_SPATIAL_GROUP_CONFIG } from './spatial-group.model';
 import { EntityManagerService } from '../entities/entity-manager.service';
 import { SpatialRelevanceHubService } from './spatial-relevance-hub.service';
 import { GameEntity } from '../entities/game.entity';
@@ -24,6 +24,9 @@ export class SpatialStreamingGroupService {
   private predictedTargetGroupId: string | null = null;
 
   private smoothedVelocity = Vector3.Zero();
+
+  // Umbral máximo de contacto para considerar que dos pasillos se tocan físicamente (m)
+  private readonly CORRIDOR_ABUTTING_THRESHOLD = 3.5;
 
   public clear(): void {
     this.groups.clear();
@@ -69,6 +72,21 @@ export class SpatialStreamingGroupService {
     return this.preactivatingGroupIds;
   }
 
+  public getHopDistance(fromGroupId: string, toGroupId: string): number {
+    if (fromGroupId === toGroupId) return 0;
+    const gFrom = this.groups.get(fromGroupId);
+    if (!gFrom) return 999;
+    if (gFrom.neighborGroupIds.has(toGroupId)) return 1;
+
+    for (const nId of gFrom.neighborGroupIds) {
+      const gN = this.groups.get(nId);
+      if (gN && gN.neighborGroupIds.has(toGroupId)) {
+        return 2;
+      }
+    }
+    return 999;
+  }
+
   public isGroupReadyForGameplay(groupId: string): boolean {
     const grp = this.groups.get(groupId);
     if (!grp) return false;
@@ -105,6 +123,7 @@ export class SpatialStreamingGroupService {
           rootEntityUid: e.uid,
           memberUids: new Set<string>([e.uid]),
           neighborGroupIds: new Set<string>(),
+          portals: [],
           minWorld: new Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE),
           maxWorld: new Vector3(-Number.MAX_VALUE, -Number.MAX_VALUE, -Number.MAX_VALUE),
           centerWorld: Vector3.Zero(),
@@ -117,6 +136,7 @@ export class SpatialStreamingGroupService {
           directionDot: 0,
           isInsideVolume: false,
           isPredictedTarget: false,
+          hopDistanceFromActive: 999,
           config: { ...DEFAULT_SPATIAL_GROUP_CONFIG },
           lastStateChangeTimestamp: performance.now(),
           preparationProgress: 0
@@ -157,7 +177,7 @@ export class SpatialStreamingGroupService {
     }
 
     this.recalculateAllBounds();
-    this.discoverNeighborGroups();
+    this.discoverNeighborGroupsAndPortals();
   }
 
   private createAutonomousGroup(e: GameEntity): void {
@@ -167,6 +187,7 @@ export class SpatialStreamingGroupService {
       rootEntityUid: e.uid,
       memberUids: new Set<string>([e.uid]),
       neighborGroupIds: new Set<string>(),
+      portals: [],
       minWorld: new Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE),
       maxWorld: new Vector3(-Number.MAX_VALUE, -Number.MAX_VALUE, -Number.MAX_VALUE),
       centerWorld: Vector3.Zero(),
@@ -179,6 +200,7 @@ export class SpatialStreamingGroupService {
       directionDot: 0,
       isInsideVolume: false,
       isPredictedTarget: false,
+      hopDistanceFromActive: 999,
       config: { ...DEFAULT_SPATIAL_GROUP_CONFIG },
       lastStateChangeTimestamp: performance.now(),
       preparationProgress: 0
@@ -216,9 +238,8 @@ export class SpatialStreamingGroupService {
     }
   }
 
-  private discoverNeighborGroups(): void {
+  private discoverNeighborGroupsAndPortals(): void {
     const groupList = Array.from(this.groups.values());
-    const PROXIMITY_NEIGHBOR_THRESHOLD = 50.0;
 
     for (let i = 0; i < groupList.length; i++) {
       const gA = groupList[i];
@@ -230,10 +251,43 @@ export class SpatialStreamingGroupService {
         const dz = Math.max(0, Math.max(gA.minWorld.z - gB.maxWorld.z, gB.minWorld.z - gA.maxWorld.z));
         const distBetweenBoxes = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-        if (distBetweenBoxes <= PROXIMITY_NEIGHBOR_THRESHOLD) {
+        // Umbral de adyacencia estricto (3.5 m). Impide unir pasillos lejanos separados por curvas o paredes
+        if (distBetweenBoxes <= this.CORRIDOR_ABUTTING_THRESHOLD) {
           gA.neighborGroupIds.add(gB.id);
           gB.neighborGroupIds.add(gA.id);
+
+          // Cálculo del punto medio de contacto para el portal de transición
+          const portalPos = new Vector3(
+            Math.max(gA.minWorld.x, gB.minWorld.x) * 0.5 + Math.min(gA.maxWorld.x, gB.maxWorld.x) * 0.5,
+            Math.max(gA.minWorld.y, gB.minWorld.y) * 0.5 + Math.min(gA.maxWorld.y, gB.maxWorld.y) * 0.5,
+            Math.max(gA.minWorld.z, gB.minWorld.z) * 0.5 + Math.min(gA.maxWorld.z, gB.maxWorld.z) * 0.5
+          );
+
+          const normalAB = gB.centerWorld.subtract(gA.centerWorld).normalize();
+          const normalBA = normalAB.scale(-1);
+
+          gA.portals.push({ targetGroupId: gB.id, position: portalPos.clone(), normal: normalAB, width: 3.0 });
+          gB.portals.push({ targetGroupId: gA.id, position: portalPos.clone(), normal: normalBA, width: 3.0 });
         }
+      }
+    }
+
+    // Identificar extremos con salidas hacia el exterior
+    for (let i = 0; i < groupList.length; i++) {
+      const g = groupList[i];
+      if (g.neighborGroupIds.size <= 1) {
+        // Segmento terminal (Pasillo 1 o Pasillo 3): añadir portal al exterior
+        const portalPos = new Vector3(
+          g.centerWorld.x,
+          g.minWorld.y + 1.2,
+          g.neighborGroupIds.size === 0 ? g.maxWorld.z : (g.minWorld.z < 0 ? g.minWorld.z : g.maxWorld.z)
+        );
+        g.portals.push({
+          targetGroupId: 'EXTERIOR',
+          position: portalPos,
+          normal: new Vector3(0, 0, 1),
+          width: 3.5
+        });
       }
     }
   }
@@ -244,10 +298,9 @@ export class SpatialStreamingGroupService {
     Vector3.LerpToRef(this.smoothedVelocity, playerVelocity, 0.25, this.smoothedVelocity);
     const speed = this.smoothedVelocity.length();
 
-    // Lookahead adaptativo: anticipa hasta 50m cuando el jugador corre
     const lookAheadDist = Math.min(
       DEFAULT_SPATIAL_GROUP_CONFIG.maxLookAheadDistance,
-      Math.max(15.0, speed * DEFAULT_SPATIAL_GROUP_CONFIG.lookAheadMultiplier * 1.5)
+      Math.max(8.0, speed * DEFAULT_SPATIAL_GROUP_CONFIG.lookAheadMultiplier)
     );
     const moveDir = speed > 0.15 ? this.smoothedVelocity.normalizeToNew() : Vector3.Zero();
     const predictedPos = playerPos.add(moveDir.scale(lookAheadDist));
@@ -325,77 +378,77 @@ export class SpatialStreamingGroupService {
 
     if (bestPredictedTarget && this.predictedTargetGroupId !== bestPredictedTarget.id) {
       this.predictedTargetGroupId = bestPredictedTarget.id;
-      this.profiler.recordTimelineEvent('ZONE', 'SPATIAL_LOOKAHEAD_CHANGED', {
-        predictedTargetGroupId: bestPredictedTarget.id,
-        predictedTargetName: bestPredictedTarget.name,
-        lookAheadDistance: parseFloat(lookAheadDist.toFixed(1)),
-        playerSpeed: parseFloat(speed.toFixed(1))
-      });
     }
 
-    const STATE_DEGRADE_GRACE_PERIOD_MS = 3000;
+    // Actualización de distancias topológicas (Hops) desde el grupo primario
+    const currentPrimary = this.currentPrimaryGroupId;
+    for (const group of this.groups.values()) {
+      group.hopDistanceFromActive = currentPrimary ? this.getHopDistance(currentPrimary, group.id) : 999;
+    }
 
     for (const group of this.groups.values()) {
-      const cfg = group.config;
       const isCurrent = Boolean(closestActiveGroup && group.id === closestActiveGroup.id);
-      const isNeighborOfCurrent = closestActiveGroup ? closestActiveGroup.neighborGroupIds.has(group.id) : false;
-      const isPredicted = Boolean(bestPredictedTarget && group.id === bestPredictedTarget.id);
-      
-      group.isPredictedTarget = isPredicted;
-      const effectiveDist = Math.min(group.distanceToBox, group.predictedDistanceToBox);
+      const hop = group.hopDistanceFromActive;
 
-      if (isCurrent || group.isInsideVolume || isNeighborOfCurrent || effectiveDist <= cfg.activeMargin) {
+      // Zonas a >= 2 saltos topológicos quedan estrictamente DORMANT
+      if (hop >= 2 && !isCurrent) {
+        this.transitionGroup(group, 'DORMANT', now);
+        continue;
+      }
+
+      const isNeighborOfCurrent = hop === 1;
+      const isPredicted = Boolean(bestPredictedTarget && group.id === bestPredictedTarget.id);
+      group.isPredictedTarget = isPredicted;
+
+      // Proximidad real hacia el portal que conecta con este vecino
+      let distToConnectingPortal = Number.MAX_VALUE;
+      if (isNeighborOfCurrent && closestActiveGroup) {
+        for (let p = 0; p < closestActiveGroup.portals.length; p++) {
+          const portal = closestActiveGroup.portals[p];
+          if (portal.targetGroupId === group.id) {
+            const d = Vector3.Distance(playerPos, portal.position);
+            if (d < distToConnectingPortal) distToConnectingPortal = d;
+          }
+        }
+      }
+
+      if (isCurrent || group.isInsideVolume) {
         this.transitionGroup(group, 'ACTIVE', now);
         this.activeGroupIds.add(group.id);
         this.preparedGroupIds.add(group.id);
       }
-      else if ((isPredicted && effectiveDist <= cfg.prepareMargin) || effectiveDist <= cfg.prepareMargin) {
+      else if (isNeighborOfCurrent && (distToConnectingPortal <= group.config.prepareMargin || group.distanceToBox <= group.config.prepareMargin)) {
         this.transitionGroup(group, 'PREACTIVATING', now);
         this.preactivatingGroupIds.add(group.id);
         this.preparedGroupIds.add(group.id);
       }
-      else if (effectiveDist <= (cfg.preloadMargin + lookAheadDist)) {
-        const canDegrade = (now - group.lastStateChangeTimestamp) > STATE_DEGRADE_GRACE_PERIOD_MS;
-        if (group.state === 'PREACTIVATING' && !canDegrade) {
-          this.preactivatingGroupIds.add(group.id);
-          this.preparedGroupIds.add(group.id);
-        } else {
-          this.transitionGroup(group, 'PREPARED', now);
-          this.preparedGroupIds.add(group.id);
-        }
+      else if (isNeighborOfCurrent && (group.distanceToBox <= group.config.preloadMargin)) {
+        this.transitionGroup(group, 'PREPARED', now);
+        this.preparedGroupIds.add(group.id);
       }
       else {
-        const wasPreparedOrActive = group.state === 'ACTIVE' || group.state === 'PREACTIVATING' || group.state === 'PREPARED' || group.state === 'RETAINED';
-        if (wasPreparedOrActive && effectiveDist <= (cfg.preloadMargin + cfg.retainDistance)) {
-          this.transitionGroup(group, 'RETAINED', now);
-          this.preparedGroupIds.add(group.id);
-        } else {
-          this.transitionGroup(group, 'DORMANT', now);
-        }
+        this.transitionGroup(group, 'DORMANT', now);
       }
     }
   }
 
   private transitionGroup(group: SpatialGroup, newState: SpatialGroupState, now: number): void {
     if (group.state !== newState) {
-      const oldState = group.state;
-      group.previousState = oldState;
+      group.previousState = group.state;
       group.state = newState;
       group.lastStateChangeTimestamp = now;
 
       if (newState === 'PREPARED' || newState === 'PREACTIVATING') {
         group.preparationProgress = 1.0;
-        this.profiler.recordTimelineEvent('ZONE', `SPATIAL_PREPARE_COMPLETED`, {
+        this.profiler.recordTimelineEvent('ZONE', 'SPATIAL_PREPARE_COMPLETED', {
           groupId: group.id,
           groupName: group.name,
-          state: newState,
-          memberCount: group.memberUids.size
+          state: newState
         });
       } else if (newState === 'ACTIVE') {
-        this.profiler.recordTimelineEvent('ZONE', `SPATIAL_ZONE_ACTIVATED`, {
+        this.profiler.recordTimelineEvent('ZONE', 'SPATIAL_ZONE_ACTIVATED', {
           groupId: group.id,
-          groupName: group.name,
-          distanceToPlayer: parseFloat(group.distanceToPlayer.toFixed(1))
+          groupName: group.name
         });
       }
     }

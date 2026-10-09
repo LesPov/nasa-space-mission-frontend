@@ -1,6 +1,6 @@
 // file: src/app/services/editor/mutators/transform-mutator.service.ts
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, Color3, Engine, StandardMaterial, Texture, Vector3, Quaternion, Mesh } from '@babylonjs/core';
+import { AbstractMesh, Color3, StandardMaterial, Texture, Vector3, Quaternion, Mesh } from '@babylonjs/core';
 import { EditorMapaService } from '../../editor-mapa.service';
 import { HistorialService } from '../../historial.service';
 import { CoreSceneProjectionService } from '../../../core/engine/scene/utils/core-scene-projection.service';
@@ -9,6 +9,7 @@ import { WorldSettingsService } from '../../../core/engine/world/world-settings.
 import { CoreSceneMaterialService } from '../../../core/engine/scene/utils/core-scene-material.service';
 import { DynamicLightingSystem } from '../../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 import { GameContextService } from '../../../core/engine/session/game-context.service';
+import { SpatialRelevanceHubService } from '../../../core/engine/spatial/spatial-relevance-hub.service';
 
 export interface ProyeccionConfig {
   profundidadProyeccion: number;
@@ -52,6 +53,7 @@ export class TransformMutatorService {
   private materialSvc = inject(CoreSceneMaterialService);
   private dynamicLighting = inject(DynamicLightingSystem);
   private context = inject(GameContextService);
+  private spatialHub = inject(SpatialRelevanceHubService);
 
   public aplicarPosicion(objeto: AbstractMesh, localPos: { x: number, y: number, z: number }): void {
     const entity = this.entityManager.getEntityByMesh(objeto);
@@ -70,13 +72,16 @@ export class TransformMutatorService {
       }
     });
 
-    if (entity && entity.type === 'image_plane') {
-       this.projectionSvc.actualizarProyeccion(objeto as Mesh);
+    if (entity) {
+       this.spatialHub.registerEntity(entity);
+       if (entity.type === 'image_plane') {
+          this.projectionSvc.actualizarProyeccion(objeto as Mesh);
+       }
+       if (entity.type.startsWith('light_')) {
+          this.dynamicLighting.syncLightImmediate(entity, true);
+       }
     }
-    if (entity && entity.type.startsWith('light_')) {
-       this.dynamicLighting.syncLightImmediate(entity, true);
-    }
-    this.mapaSvc.onMapChanged.next();
+    this.mapaSvc.notifyTransformChanged(entity ? entity.uid : undefined);
   }
 
   public aplicarRotacion(objeto: AbstractMesh, localRotEulerDeg: { x: number, y: number, z: number }): void {
@@ -108,13 +113,16 @@ export class TransformMutatorService {
       }
     });
 
-    if (entity && entity.type === 'image_plane') {
-       this.projectionSvc.actualizarProyeccion(objeto as Mesh);
+    if (entity) {
+       this.spatialHub.registerEntity(entity);
+       if (entity.type === 'image_plane') {
+          this.projectionSvc.actualizarProyeccion(objeto as Mesh);
+       }
+       if (entity.type.startsWith('light_')) {
+          this.dynamicLighting.syncLightImmediate(entity, true);
+       }
     }
-    if (entity && entity.type.startsWith('light_')) {
-       this.dynamicLighting.syncLightImmediate(entity, true);
-    }
-    this.mapaSvc.onMapChanged.next();
+    this.mapaSvc.notifyTransformChanged(entity ? entity.uid : undefined);
   }
 
   public aplicarEscala(objeto: AbstractMesh, localEscReal: { x: number, y: number, z: number }): void {
@@ -134,10 +142,13 @@ export class TransformMutatorService {
       }
     });
 
-    if (entity && entity.type === 'image_plane') {
-       this.projectionSvc.actualizarProyeccion(objeto as Mesh);
+    if (entity) {
+       this.spatialHub.registerEntity(entity);
+       if (entity.type === 'image_plane') {
+          this.projectionSvc.actualizarProyeccion(objeto as Mesh);
+       }
     }
-    this.mapaSvc.onMapChanged.next();
+    this.mapaSvc.notifyTransformChanged(entity ? entity.uid : undefined);
   }
 
   public aplicarProyeccion(objeto: AbstractMesh, config: ProyeccionConfig): void {
@@ -163,7 +174,7 @@ export class TransformMutatorService {
     if (entity.type === 'image_plane') {
        this.projectionSvc.actualizarProyeccion(objeto as Mesh);
     }
-    this.mapaSvc.onMapChanged.next();
+    this.mapaSvc.notifyConfigurationChanged(entity.uid, 'projection');
   }
 
   public aplicarVisuales(objeto: AbstractMesh, config: VisualConfig): void {
@@ -302,7 +313,7 @@ export class TransformMutatorService {
     objeto.applyFog = !config.ignoraNiebla;
     objeto.getChildMeshes().forEach((m: AbstractMesh) => m.applyFog = !config.ignoraNiebla);
     
-    this.mapaSvc.onMapChanged.next();
+    this.mapaSvc.notifyConfigurationChanged(entity.uid, 'visuals');
   }
 
   public aplicarInteraccion(objeto: AbstractMesh, config: InteraccionConfig): void {
@@ -322,7 +333,7 @@ export class TransformMutatorService {
         entity.createAuthoringBackup();
     }
 
-    this.mapaSvc.onMapChanged.next();
+    this.mapaSvc.notifyConfigurationChanged(entity.uid, 'interaction');
   }
 
   public forzarRecalculoProyeccion(objeto: AbstractMesh): void {
@@ -330,7 +341,7 @@ export class TransformMutatorService {
       const entity = this.entityManager.getEntityByMesh(objeto);
       if (entity && entity.type === 'image_plane') {
          this.projectionSvc.actualizarProyeccion(objeto as Mesh);
-         this.mapaSvc.onMapChanged.next();
+         this.mapaSvc.notifyConfigurationChanged(entity.uid, 'projection');
       }
     }
   }

@@ -76,6 +76,7 @@ export class LocalRenderingSystem implements IUpdatable {
   private playerVelocity = Vector3.Zero();
   private lastPlayerPos = Vector3.Zero();
   private smoothedSpeed = 0;
+  private sustainedLookAheadBonus = 0;
 
   public getMetrics(): CullingSystemMetrics {
     return {
@@ -137,6 +138,10 @@ export class LocalRenderingSystem implements IUpdatable {
       nameL.includes('sueloinvisible') || 
       nameL.includes('ground') ||
       nameL.includes('terrain') ||
+      nameL.includes('corridor') ||
+      nameL.includes('pasillo') ||
+      nameL.includes('pared') ||
+      nameL.includes('wall') ||
       Tags.MatchesQuery(e.view, 'invisible_floor')
     ) {
       return true;
@@ -161,6 +166,7 @@ export class LocalRenderingSystem implements IUpdatable {
     this.frameCounter = 0;
     this.distanceCheckTimer = 9999;
     this.smoothedSpeed = 0;
+    this.sustainedLookAheadBonus = 0;
     this.resetCounters();
   }
 
@@ -397,13 +403,20 @@ export class LocalRenderingSystem implements IUpdatable {
 
       const rawSpeed = this.playerVelocity.length();
       this.smoothedSpeed = (this.smoothedSpeed * 0.88) + (rawSpeed * 0.12);
+
+      // Asimetría de lookahead: se expande rápidamente con velocidad, se retrae suavemente
+      const targetLookAhead = Math.min(20.0, this.smoothedSpeed * 1.3);
+      if (targetLookAhead > this.sustainedLookAheadBonus) {
+        this.sustainedLookAheadBonus = (this.sustainedLookAheadBonus * 0.7) + (targetLookAhead * 0.3);
+      } else {
+        this.sustainedLookAheadBonus = (this.sustainedLookAheadBonus * 0.96) + (targetLookAhead * 0.04);
+      }
     }
 
     if (shouldCheckDistance && playerEntity && playerEntity.view) {
       this.spatialGroups.updateGroups(playerEntity.view.getAbsolutePosition(), this.playerVelocity);
     }
 
-    const dynamicLookAheadBonus = Math.min(15.0, this.smoothedSpeed * 1.0);
     const rawCull = Number(cullingConfig.cullDistance) || 150;
     const rawMargin = Number(cullingConfig.fadeMargin) || 40;
     const baseCullDist = Math.max(30, rawCull);
@@ -485,7 +498,7 @@ export class LocalRenderingSystem implements IUpdatable {
 
         this.evaluateIndividualCulling(
           e, renderState, mesh, effectiveDist, baseCullDist, 
-          dynamicLookAheadBonus, fadeStartDist, isGroupPreactivatingOrBetter, isStructural
+          this.sustainedLookAheadBonus, fadeStartDist, isGroupPreactivatingOrBetter, isStructural
         );
 
         if (prevState !== renderState.state) {
@@ -606,12 +619,12 @@ export class LocalRenderingSystem implements IUpdatable {
       return;
     }
 
-    const structuralBonus = isStructural ? 15.0 : 0.0;
-    const groupBonus = isGroupPreactivated ? 15.0 : 0.0;
+    const structuralBonus = isStructural ? 25.0 : 0.0;
+    const groupBonus = isGroupPreactivated ? 20.0 : 0.0;
 
     const effectiveCull = baseCullDist + dynamicLookAheadBonus + groupBonus + structuralBonus;
     const effectiveFadeStart = fadeStartDist + dynamicLookAheadBonus + groupBonus + structuralBonus;
-    const REACQUIRE_MARGIN = 8.0;
+    const REACQUIRE_MARGIN = 12.0;
 
     if (renderState.state === 'HARD_CULLED') {
       if (effectiveDist <= (effectiveCull - REACQUIRE_MARGIN)) {

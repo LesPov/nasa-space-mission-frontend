@@ -1,24 +1,11 @@
-
+// file: src/app/core/engine/runtime/systems/lighting/light-containment.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { AbstractMesh, PointLight, SpotLight, Scene, Vector3, Tags, Mesh, InstancedMesh, Node, MultiMaterial, Matrix } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { GameEntity, LightContainmentMode } from '../../../entities/game.entity';
 import { SpatialRelevanceHubService } from '../../../spatial/spatial-relevance-hub.service';
+import { SpatialStreamingGroupService } from '../../../spatial/spatial-streaming-group.service';
 import { ContainmentSource, LightSpatialState, LIGHT_SPATIAL_CONSTANTS } from './lighting-types';
-
-export interface LightContainmentAuditReport {
-  lightUid: string;
-  containerUid: string;
-  containerFound: boolean;
-  containerName: string;
-  runtimeRootName: string;
-  totalDescendants: number;
-  totalRenderableMeshes: number;
-  totalReceivers: number;
-  rejectedCount: number;
-  rejectedDetails: Array<{ meshName: string; reason: string }>;
-  materialsSummary: Array<{ meshName: string; materialType: string; isMulti: boolean; subMaterialsCount: number; maxLights: number }>;
-}
 
 export interface ModelContainmentResult {
   inside: boolean;
@@ -54,16 +41,19 @@ export class LightContainmentService {
 
   private _spatialHub: SpatialRelevanceHubService | null = null;
   private get spatialHub(): SpatialRelevanceHubService {
-    if (!this._spatialHub) {
-      this._spatialHub = this.injector.get(SpatialRelevanceHubService);
-    }
+    if (!this._spatialHub) this._spatialHub = this.injector.get(SpatialRelevanceHubService);
     return this._spatialHub;
+  }
+
+  private _spatialGroups: SpatialStreamingGroupService | null = null;
+  private get spatialGroups(): SpatialStreamingGroupService {
+    if (!this._spatialGroups) this._spatialGroups = this.injector.get(SpatialStreamingGroupService);
+    return this._spatialGroups;
   }
 
   private containerRenderablesCache = new Map<string, AbstractMesh[]>();
   private strictInteriorReceiversCache = new Map<string, AbstractMesh[]>();
   private containerGeometryCache = new Map<string, ContainerGeometryCache>();
-  private lastAuditReport: LightContainmentAuditReport | null = null;
 
   private _tempLocalActorPos = Vector3.Zero();
 
@@ -92,15 +82,10 @@ export class LightContainmentService {
     this.containerRenderablesCache.clear();
     this.strictInteriorReceiversCache.clear();
     this.containerGeometryCache.clear();
-    this.lastAuditReport = null;
     this.metrics.containmentRebuilds = 0;
     this.metrics.cacheHits = 0;
     this.metrics.cacheMisses = 0;
     this.metrics.preciseEvaluations = 0;
-  }
-
-  public getLastAuditReport(): LightContainmentAuditReport | null {
-    return this.lastAuditReport;
   }
 
   public resolveContainerEntity(lightEntity: GameEntity, scene: Scene): GameEntity | null {
@@ -132,21 +117,11 @@ export class LightContainmentService {
 
     const lightPos = lightEntity.view
       ? lightEntity.view.getAbsolutePosition()
-      : new Vector3(
-          lightEntity.transform.position.x,
-          lightEntity.transform.position.y,
-          lightEntity.transform.position.z
-        );
+      : new Vector3(lightEntity.transform.position.x, lightEntity.transform.position.y, lightEntity.transform.position.z);
 
-    const candidates = this.entityManager
-      .getAllEntities()
-      .filter(
-        e =>
-          e.uid !== lightEntity.uid &&
-          (e.type === 'model' || e.type === 'cube') &&
-          e.view &&
-          !e.view.isDisposed()
-      );
+    const candidates = this.entityManager.getAllEntities().filter(
+      e => e.uid !== lightEntity.uid && (e.type === 'model' || e.type === 'cube') && e.view && !e.view.isDisposed()
+    );
 
     let closestContainer: GameEntity | null = null;
     let smallestDist = Number.MAX_VALUE;
@@ -159,7 +134,6 @@ export class LightContainmentService {
       if (!rec) continue;
 
       const dist = Vector3.Distance(rec.centerWorld, lightPos);
-
       if (
         lightPos.x >= rec.minWorld.x - 0.5 && lightPos.x <= rec.maxWorld.x + 0.5 &&
         lightPos.y >= rec.minWorld.y - 0.5 && lightPos.y <= rec.maxWorld.y + 0.5 &&
@@ -214,26 +188,11 @@ export class LightContainmentService {
     const { renderables } = this.getAllRenderableMeshesFromModel(rootMesh);
     const entryPoints: Vector3[] = [];
 
-    let source: ContainmentSource = 'GEOMETRY';
-
-    const descendants = rootMesh.getDescendants(false);
-    for (let i = 0; i < descendants.length; i++) {
-      const d = descendants[i];
-      const nameL = d.name.toLowerCase();
-      if (
-        nameL.includes('door') ||
-        nameL.includes('entry') ||
-        nameL.includes('entrance') ||
-        nameL.includes('portal') ||
-        nameL.includes('opening') ||
-        nameL.includes('entrada') ||
-        nameL.includes('puerta') ||
-        nameL.includes('salida')
-      ) {
-        if (d instanceof AbstractMesh || d instanceof Node) {
-          entryPoints.push(d.getWorldMatrix().getTranslation().clone());
-          source = 'EXPLICIT_MESH';
-        }
+    // Obtención de portales reales desde SpatialStreamingGroupService
+    const group = this.spatialGroups.getGroupForEntity(container.uid);
+    if (group && group.portals.length > 0) {
+      for (let p = 0; p < group.portals.length; p++) {
+        entryPoints.push(group.portals[p].position.clone());
       }
     }
 
@@ -261,9 +220,8 @@ export class LightContainmentService {
       const b = rootMesh.getBoundingInfo().boundingBox;
       minWorld = b.minimumWorld.clone();
       maxWorld = b.maximumWorld.clone();
-      const vectorsWorld = b.vectorsWorld;
-      for (let v = 0; v < vectorsWorld.length; v++) {
-        const vLoc = Vector3.TransformCoordinates(vectorsWorld[v], invWorldMatrix);
+      for (let v = 0; v < b.vectorsWorld.length; v++) {
+        const vLoc = Vector3.TransformCoordinates(b.vectorsWorld[v], invWorldMatrix);
         minLocal = Vector3.Minimize(minLocal, vLoc);
         maxLocal = Vector3.Maximize(maxLocal, vLoc);
       }
@@ -273,18 +231,22 @@ export class LightContainmentService {
     const sizeWorld = maxWorld.subtract(minWorld);
     const boundingDiagonal = sizeWorld.length();
 
-    // Detección de extremos del pasillo como bocas de entrada
+    // Si no hay portales explícitos, usar solo las dos caras terminales del eje mayor (longitudinal)
     if (entryPoints.length === 0) {
-      entryPoints.push(new Vector3(minWorld.x, centerWorld.y, centerWorld.z));
-      entryPoints.push(new Vector3(maxWorld.x, centerWorld.y, centerWorld.z));
-      entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, minWorld.z));
-      entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, maxWorld.z));
+      const isLongitudinalZ = sizeWorld.z >= sizeWorld.x;
+      if (isLongitudinalZ) {
+        entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, minWorld.z));
+        entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, maxWorld.z));
+      } else {
+        entryPoints.push(new Vector3(minWorld.x, centerWorld.y, centerWorld.z));
+        entryPoints.push(new Vector3(maxWorld.x, centerWorld.y, centerWorld.z));
+      }
     }
 
     const result: ContainerGeometryCache = {
       containerUid: container.uid,
       matrixHash,
-      source,
+      source: 'GEOMETRY',
       entryPoints,
       allRenderableMeshes: renderables.length > 0 ? renderables : [rootMesh],
       minWorld,
@@ -304,7 +266,7 @@ export class LightContainmentService {
   public evaluateModelContainment(
     actorWorldPos: Vector3,
     container: GameEntity | null,
-    preEntryDistance: number = 8.0,
+    preEntryDistance: number = 6.0,
     wasInRange: boolean = false
   ): ModelContainmentResult {
     if (!container || !container.view || container.view.isDisposed()) {
@@ -325,16 +287,11 @@ export class LightContainmentService {
     const min = geoData.minWorld;
     const max = geoData.maxWorld;
 
-    const exitHoldMargin = wasInRange ? LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_HOLD_MARGIN : 0.0;
-    const maxKeepAliveExitDistance = Math.min(
-      LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_MAX_DISTANCE,
-      Math.max(preEntryDistance + 14.0, preEntryDistance * LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER)
-    );
-
-    const broadMargin = wasInRange ? maxKeepAliveExitDistance + 6.0 : preEntryDistance + 4.0;
+    const maxKeepAliveExitDistance = LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_MAX_DISTANCE;
+    const broadMargin = wasInRange ? maxKeepAliveExitDistance + 2.0 : preEntryDistance + 2.0;
 
     const dxBroad = Math.max(0, (min.x - broadMargin) - actorWorldPos.x, actorWorldPos.x - (max.x + broadMargin));
-    const dyBroad = Math.max(0, (min.y - 4.0 - broadMargin) - actorWorldPos.y, actorWorldPos.y - (max.y + 4.0 + broadMargin));
+    const dyBroad = Math.max(0, (min.y - 3.0) - actorWorldPos.y, actorWorldPos.y - (max.y + 3.0));
     const dzBroad = Math.max(0, (min.z - broadMargin) - actorWorldPos.z, actorWorldPos.z - (max.z + broadMargin));
 
     if (dxBroad > 0 || dyBroad > 0 || dzBroad > 0) {
@@ -352,9 +309,8 @@ export class LightContainmentService {
 
     this.metrics.preciseEvaluations++;
 
-    // Comprobación de altura vertical: el jugador debe estar entre el piso y el techo real
     const isWithinVerticalBounds = (
-      actorWorldPos.y >= (min.y - 1.0) && actorWorldPos.y <= (max.y + 1.0)
+      actorWorldPos.y >= (min.y - 1.5) && actorWorldPos.y <= (max.y + 1.5)
     );
 
     Vector3.TransformCoordinatesToRef(actorWorldPos, geoData.invWorldMatrix, this._tempLocalActorPos);
@@ -362,29 +318,12 @@ export class LightContainmentService {
     const locMin = geoData.minLocal;
     const locMax = geoData.maxLocal;
 
-    const tolXZ = wasInRange ? 1.5 : 0.6;
+    const tolXZ = wasInRange ? 1.0 : 0.4;
     const isInsideLocalAABB =
       locPos.x >= locMin.x - tolXZ && locPos.x <= locMax.x + tolXZ &&
       locPos.z >= locMin.z - tolXZ && locPos.z <= locMax.z + tolXZ;
 
-    // Discriminación de pasillo en forma de L para evitar falsos positivos en el cuadrante vacío exterior
-    let isInsideLCorridor = false;
-    if (isWithinVerticalBounds && isInsideLocalAABB) {
-      const spanX = locMax.x - locMin.x;
-      const spanZ = locMax.z - locMin.z;
-      
-      // Si el objeto tiene proporciones alargadas en ambos ejes (L-shape típica)
-      if (spanX > 8.0 && spanZ > 8.0) {
-        const normX = (locPos.x - locMin.x) / spanX;
-        const normZ = (locPos.z - locMin.z) / spanZ;
-
-        // Comprobación de corte en L: Si el jugador cae en el cuadrante exterior no construido, está afuera
-        const isInEmptyCorner = (normX > 0.55 && normZ > 0.55);
-        isInsideLCorridor = !isInEmptyCorner;
-      } else {
-        isInsideLCorridor = true;
-      }
-    }
+    const isInsideGeometry = isWithinVerticalBounds && isInsideLocalAABB;
 
     let minDistanceToEntry = Number.MAX_VALUE;
     let closestEntryPoint = geoData.entryPoints[0];
@@ -398,12 +337,8 @@ export class LightContainmentService {
       }
     }
 
-    const dxLoc = Math.max(0, locMin.x - locPos.x, locPos.x - locMax.x);
-    const dzLoc = Math.max(0, locMin.z - locPos.z, locPos.z - locMax.z);
-    const distToLocalBox = Math.sqrt(dxLoc * dxLoc + dzLoc * dzLoc);
-
-    // 1. DENTRO DEL PASILLO (Máxima prioridad)
-    if (isInsideLCorridor) {
+    // 1. DENTRO DEL PASILLO ACTUAL
+    if (isInsideGeometry) {
       return {
         inside: true,
         preEntry: false,
@@ -416,8 +351,8 @@ export class LightContainmentService {
       };
     }
 
-    // 2. RETENCIÓN CONTINUA EN SALIDA
-    if (wasInRange && (minDistanceToEntry <= maxKeepAliveExitDistance || distToLocalBox <= (exitHoldMargin + 4.0))) {
+    // 2. SALIDA PROGRESIVA CONTROLADA (PRE-EXIT)
+    if (wasInRange && minDistanceToEntry <= maxKeepAliveExitDistance) {
       return {
         inside: false,
         preEntry: false,
@@ -430,7 +365,7 @@ export class LightContainmentService {
       };
     }
 
-    // 3. APROXIMACIÓN EXTERIOR (PRE-ENTRADA)
+    // 3. APROXIMACIÓN HACIA LA ENTRADA (PRE-ENTRY)
     if (minDistanceToEntry <= preEntryDistance) {
       return {
         inside: false,
@@ -444,13 +379,13 @@ export class LightContainmentService {
       };
     }
 
-    // 4. EXTERIOR
+    // 4. EXTERIOR / DESCONECTADO
     return {
       inside: false,
       preEntry: false,
       preExit: false,
       spatialState: 'OUTSIDE',
-      distanceToBoundary: Math.min(minDistanceToEntry, distToLocalBox),
+      distanceToBoundary: minDistanceToEntry,
       boundaryPoint: closestEntryPoint,
       confidence: 'HIGH',
       source: geoData.source
@@ -483,26 +418,21 @@ export class LightContainmentService {
           'editor_only || fog_element || debug_element || proxy_collider || invisible_floor || light_visual || ignore_raycast'
         )
       ) {
-        rejected.push({ meshName: node.name, reason: 'Etiqueta de sistema/colisionador' });
+        rejected.push({ meshName: node.name, reason: 'Etiqueta excluida' });
         return;
       }
 
       if (node instanceof AbstractMesh) {
         const className = node.getClassName();
-
         if (className === 'InstancedMesh') {
           const instanced = node as InstancedMesh;
           if (instanced.sourceMesh && !instanced.sourceMesh.isDisposed()) {
             renderables.push(instanced);
-          } else {
-            rejected.push({ meshName: node.name, reason: 'InstancedMesh sin sourceMesh válido' });
           }
         } else if (className === 'Mesh') {
           const mesh = node as Mesh;
           if (mesh.getTotalVertices() > 0) {
             renderables.push(mesh);
-          } else {
-            rejected.push({ meshName: node.name, reason: 'Mesh sin vértices' });
           }
         }
       }
@@ -517,110 +447,25 @@ export class LightContainmentService {
     return { renderables, totalDescendantsCount, rejected };
   }
 
-  public getInteriorMeshesStrict(lightEntity: GameEntity, scene: Scene): AbstractMesh[] {
-    const cacheKey = `${lightEntity.uid}_${lightEntity.light?.containerEntityUid || 'auto'}`;
-
-    if (this.strictInteriorReceiversCache.has(cacheKey)) {
-      const cached = this.strictInteriorReceiversCache.get(cacheKey)!;
-      const allValid = cached.every(m => m && !m.isDisposed() && m.getScene() === scene);
-
-      if (allValid) {
-        this.metrics.cacheHits++;
-        return cached;
-      } else {
-        this.strictInteriorReceiversCache.delete(cacheKey);
-      }
-    }
-
-    this.metrics.cacheMisses++;
-    this.metrics.containmentRebuilds++;
-
-    const container = this.resolveContainerEntity(lightEntity, scene);
-    if (!container || !container.view) {
-      this.strictInteriorReceiversCache.set(cacheKey, []);
-      return [];
-    }
-
-    const { renderables, totalDescendantsCount, rejected } = this.getAllRenderableMeshesFromModel(container.view);
-    const materialsSummary: LightContainmentAuditReport['materialsSummary'] = [];
-    const finalReceiversSet = new Set<AbstractMesh>();
-
-    for (let i = 0; i < renderables.length; i++) {
-      const mesh = renderables[i];
-      finalReceiversSet.add(mesh);
-
-      const mat = mesh.material;
-      if (mat) {
-        if (mat.getClassName() === 'MultiMaterial') {
-          const multi = mat as MultiMaterial;
-          const subMats = multi.subMaterials || [];
-          materialsSummary.push({
-            meshName: mesh.name,
-            materialType: 'MultiMaterial',
-            isMulti: true,
-            subMaterialsCount: subMats.length,
-            maxLights: 10
-          });
-        } else {
-          materialsSummary.push({
-            meshName: mesh.name,
-            materialType: mat.getClassName(),
-            isMulti: false,
-            subMaterialsCount: 1,
-            maxLights: (mat as any).maxSimultaneousLights ?? 10
-          });
-        }
-      }
-    }
-
-    const finalReceivers = Array.from(finalReceiversSet);
-    this.strictInteriorReceiversCache.set(cacheKey, finalReceivers);
-
-    this.lastAuditReport = {
-      lightUid: lightEntity.uid,
-      containerUid: container.uid,
-      containerFound: true,
-      containerName: container.name,
-      runtimeRootName: container.view.name,
-      totalDescendants: totalDescendantsCount,
-      totalRenderableMeshes: renderables.length,
-      totalReceivers: finalReceivers.length,
-      rejectedCount: rejected.length,
-      rejectedDetails: rejected,
-      materialsSummary: materialsSummary
-    };
-
-    return finalReceivers;
-  }
-
   public applyContainment(light: PointLight | SpotLight, entity: GameEntity, scene: Scene): void {
     const mode: LightContainmentMode = entity.light?.containmentMode || 'GLOBAL';
     const affectDescendantsOnly = entity.light?.affectDescendantsOnly ?? false;
 
-    const cacheStamp = `${mode}_${entity.light?.containerEntityUid || ''}_${entity.uid}_${affectDescendantsOnly}`;
-    if ((light as any)._containmentAppliedStamp === cacheStamp && !entity.isDirty) {
-      return;
-    }
-
     if (mode === 'INTERIOR' && affectDescendantsOnly) {
-      const receivers = this.getInteriorMeshesStrict(entity, scene);
-      if (receivers.length > 0) {
-        light.includedOnlyMeshes = [...receivers];
+      const container = this.resolveContainerEntity(entity, scene);
+      if (container && container.view) {
+        const { renderables } = this.getAllRenderableMeshesFromModel(container.view);
+        light.includedOnlyMeshes = [...renderables];
         light.excludedMeshes = [];
-      } else {
-        light.includedOnlyMeshes = [];
-        light.excludedMeshes = [];
+        return;
       }
-    } else {
-      light.includedOnlyMeshes = [];
-      light.excludedMeshes = [];
     }
 
-    (light as any)._containmentAppliedStamp = cacheStamp;
+    light.includedOnlyMeshes = [];
+    light.excludedMeshes = [];
   }
 
   public clearContainment(light: PointLight | SpotLight): void {
-    (light as any)._containmentAppliedStamp = undefined;
     light.includedOnlyMeshes = [];
     light.excludedMeshes = [];
   }

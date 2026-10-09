@@ -10,22 +10,29 @@ export type SpatialGroupState =
   | 'RETAINED';
 
 export interface SpatialGroupConfig {
-  preloadMargin: number;       // Margen extra antes de entrar a la zona para disparar preparación (metros)
-  prepareMargin: number;       // Distancia de hidratación de recursos de luz/sombras (metros)
-  activeMargin: number;        // Distancia para activar visibilidad completa (metros)
-  retainDistance: number;      // Distancia de histéresis para retener antes de pasar a DORMANT (metros)
-  lookAheadMultiplier: number; // Multiplicador de velocidad para anticipar el vector de carrera
-  maxLookAheadDistance: number;// Límite máximo de proyección frontal (metros)
+  preloadMargin: number;       // Margen antes de entrar para preparar recursos (m)
+  prepareMargin: number;       // Distancia para preparar iluminación y sombras (m)
+  activeMargin: number;        // Distancia para activación plena (m)
+  retainDistance: number;      // Histéresis de retención antes de pasar a DORMANT (m)
+  lookAheadMultiplier: number; // Multiplicador de velocidad para vector de avance
+  maxLookAheadDistance: number;// Máxima proyección de avance frontal (m)
 }
 
 export const DEFAULT_SPATIAL_GROUP_CONFIG: SpatialGroupConfig = {
-  preloadMargin: 160.0,
-  prepareMargin: 110.0,
-  activeMargin: 85.0,
-  retainDistance: 40.0,
-  lookAheadMultiplier: 2.2,
-  maxLookAheadDistance: 50.0
+  preloadMargin: 45.0,
+  prepareMargin: 20.0,
+  activeMargin: 12.0,
+  retainDistance: 8.0,
+  lookAheadMultiplier: 1.2,
+  maxLookAheadDistance: 16.0
 };
+
+export interface SpatialPortal {
+  targetGroupId: string; // ID del grupo contiguo o 'EXTERIOR'
+  position: Vector3;     // Coordenada mundial del umbral/puerta
+  normal: Vector3;       // Vector normal saliente desde este grupo
+  width: number;
+}
 
 export interface SpatialGroup {
   id: string;
@@ -33,6 +40,7 @@ export interface SpatialGroup {
   rootEntityUid: string;
   memberUids: Set<string>;
   neighborGroupIds: Set<string>;
+  portals: SpatialPortal[];
   minWorld: Vector3;
   maxWorld: Vector3;
   centerWorld: Vector3;
@@ -45,7 +53,8 @@ export interface SpatialGroup {
   directionDot: number;
   isInsideVolume: boolean;
   isPredictedTarget: boolean;
+  hopDistanceFromActive: number; // 0 = actual, 1 = vecino inmediato, >= 2 = desconectado
   config: SpatialGroupConfig;
   lastStateChangeTimestamp: number;
-  preparationProgress: number; // 0.0 a 1.0 para preparación incremental
+  preparationProgress: number;
 }

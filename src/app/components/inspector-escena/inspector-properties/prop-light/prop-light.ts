@@ -1,4 +1,3 @@
-
 // file: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.ts
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, SimpleChanges, OnChanges } from '@angular/core';
 import { CommonModule } from '@angular/common';
@@ -96,6 +95,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   spatialContextText: string = 'GLOBAL';
   containmentSourceText: string = 'N/A';
   distanceToBoundaryText: string = 'N/A';
+  corridorZoneText: string = 'N/A';
+  decisionText: string = 'EVALUANDO';
 
   public childNodes: AttachedNodeOption[] = [];
   public containerOptions: ContainerOption[] = [];
@@ -152,7 +153,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       this.isShadowActiveStatus = vl.isShadowInRange && (entity.light?.castShadows ?? true);
       this.shadowTierText = vl.shadowTier || 'OFF';
       this.closestActorName = vl.closestActorName || 'Actor';
-      this.poolRankText = vl.poolRank && vl.poolRank > 0 ? `${vl.poolRank} / 3 (ACTIVA)` : 'Fuera de Pool (INACTIVA)';
+      this.poolRankText = vl.poolRank && vl.poolRank > 0 ? `${vl.poolRank} / 3 (ACTIVA)` : (vl.lifecycleStage === 'PREPARED' ? 'Preparada (Slot 3/4)' : 'Fuera de Pool (INACTIVA)');
       this.referenceModeDisplay = this.distanceReferenceMode === 'AUTO' 
         ? 'ACTOR (Player/NPC)' 
         : this.distanceReferenceMode;
@@ -163,6 +164,11 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       this.isInPreExit = vl.inPreExitZone ?? false;
       this.containmentSourceText = vl.containmentSource || 'N/A';
       this.distanceToBoundaryText = vl.distanceToBoundary !== undefined ? `${vl.distanceToBoundary.toFixed(2)} m` : 'N/A';
+
+      const hop = vl.topologicalHop !== undefined ? vl.topologicalHop : 0;
+      const zoneName = vl.corridorZoneName || vl.containerName || 'Desconocido';
+      this.corridorZoneText = `${zoneName} (Salto ${hop}${hop === 0 ? ' - ACTUAL' : (hop === 1 ? ' - VECINO' : ' - DESCONECTADO')})`;
+      this.decisionText = vl.decisionText || (vl.rejectionReason ? `RECHAZADA (${vl.rejectionReason})` : 'EVALUANDO');
 
       if (vl.isInterior) {
         if (this.isModelPreEntryActive) {
@@ -352,7 +358,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
   aplicarLuz() {
     if (this.attachedNodePath === "") {
-        this.attachedNodeName = "";
+      this.attachedNodeName = "";
     }
 
     const targetNode = this.attachedNodePath !== "" ? (
@@ -367,16 +373,16 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     const entity = this.entityManager.getEntityByMesh(this.objeto);
     if (entity && entity.light) {
       if (targetNode && targetNode instanceof AbstractMesh) {
-         if (this.objeto.parent !== targetNode && !targetNode.isDescendantOf(this.objeto)) {
-             this.objeto.setParent(targetNode);
-             entity.syncTransformFromView();
-         }
+        if (this.objeto.parent !== targetNode && !targetNode.isDescendantOf(this.objeto)) {
+          this.objeto.setParent(targetNode);
+          entity.syncTransformFromView();
+        }
       } else {
-         const root = this.stateSvc.encontrarRaiz(this.objeto);
-         if (root && root !== this.objeto && this.objeto.parent !== root) {
-             this.objeto.setParent(root as AbstractMesh);
-             entity.syncTransformFromView();
-         }
+        const root = this.stateSvc.encontrarRaiz(this.objeto);
+        if (root && root !== this.objeto && this.objeto.parent !== root) {
+          this.objeto.setParent(root as AbstractMesh);
+          entity.syncTransformFromView();
+        }
       }
 
       if (this.deactivationDistance <= this.activationDistance) {
@@ -428,7 +434,6 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
         this.containmentSvc.markDirty(this.containerEntityUid);
       }
       
-      // Sincronización física instantánea en el viewport de BabylonJS
       this.dynamicLighting.syncLightImmediate(entity, true);
       this.updateTelemetry();
     }

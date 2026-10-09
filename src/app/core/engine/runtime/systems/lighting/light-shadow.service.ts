@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/lighting/light-shadow.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, ShadowGenerator, Vector3, Tags, InstancedMesh, Mesh, RenderTargetTexture, Node } from '@babylonjs/core';
@@ -9,6 +8,14 @@ import { ShadowQualityService } from '../../shadows/shadow-quality.service';
 import { InteractableRulesService } from '../../rules/interactable-rules.service';
 import { GameEntity } from '../../../entities/game.entity';
 import { ShadowLODManager } from '../../shadows/shadow-lod-manager.service';
+import { SpatialRelevanceHubService } from '../../../spatial/spatial-relevance-hub.service';
+
+interface CachedStaticCaster {
+  mesh: AbstractMesh;
+  entityUid: string;
+  centerWorld: Vector3;
+  boundingRadius: number;
+}
 
 @Injectable({ providedIn: 'root' })
 export class LightShadowService {
@@ -17,12 +24,14 @@ export class LightShadowService {
   private shadowCache = inject(ShadowCache);
   private shadowQualitySvc = inject(ShadowQualityService);
   private interactRules = inject(InteractableRulesService);
+  private spatialHub = inject(SpatialRelevanceHubService);
 
   private castersCache: AbstractMesh[] = [];
+  private staticCastersIndex: CachedStaticCaster[] = [];
   private entityToActiveSlotsMap = new Map<string, Set<PoolSlot>>();
   private actorRenderableMeshesCache = new Map<string, AbstractMesh[]>();
   
-  private slotStaticRenderListCache = new Map<string, { meshes: AbstractMesh[]; lightPos: Vector3; range: number }>();
+  private slotStaticRenderListCache = new Map<string, { meshes: AbstractMesh[]; lightPosHash: string; range: number }>();
 
   public getCastersCacheSize(): number {
     return this.castersCache.length;
@@ -30,6 +39,7 @@ export class LightShadowService {
 
   public clearCache(): void {
     this.castersCache.length = 0;
+    this.staticCastersIndex.length = 0;
     this.entityToActiveSlotsMap.clear();
     this.actorRenderableMeshesCache.clear();
     this.slotStaticRenderListCache.clear();
@@ -52,7 +62,7 @@ export class LightShadowService {
     if (!slots) return;
 
     for (const slot of slots) {
-      if (slot.sg && slot.sg.getShadowMap()) {
+      if (slot.sg) {
         const shadowMap = slot.sg.getShadowMap();
         if (shadowMap) {
           shadowMap.resetRefreshCounter();
@@ -111,6 +121,7 @@ export class LightShadowService {
 
   public refreshShadowCastersCache(): void {
     this.castersCache.length = 0;
+    this.staticCastersIndex.length = 0;
     this.actorRenderableMeshesCache.clear();
     this.slotStaticRenderListCache.clear();
     const entities = this.entityManager.getAllEntities();
@@ -118,6 +129,11 @@ export class LightShadowService {
     for (let i = 0; i < entities.length; i++) {
       const e = entities[i];
       if (this.isEligibleShadowCaster(e) && e.view && !e.view.isDisposed()) {
+        const isDynamic = this.isDynamicCaster(e);
+        const record = this.spatialHub.getRecord(e.uid);
+        const centerWorld = record ? record.centerWorld.clone() : e.view.getAbsolutePosition().clone();
+        const boundingRadius = record ? record.boundingRadius : 2.0;
+
         const processMesh = (m: AbstractMesh) => {
           if (!m || m.isDisposed()) return;
 
@@ -125,10 +141,23 @@ export class LightShadowService {
           if (isLightBulbVisual) return;
 
           if (!e.isManuallyHidden && !Tags.MatchesQuery(m, "editor_only || fog_element || debug_element || proxy_collider || ignore_raycast || invisible_floor")) {
+            let isValid = false;
             if (m.getClassName() === "InstancedMesh" && (m as InstancedMesh).sourceMesh) {
-              this.castersCache.push(m);
+              isValid = true;
             } else if (m.getClassName() === "Mesh" && (m as Mesh).getTotalVertices() > 0) {
+              isValid = true;
+            }
+
+            if (isValid) {
               this.castersCache.push(m);
+              if (!isDynamic) {
+                this.staticCastersIndex.push({
+                  mesh: m,
+                  entityUid: e.uid,
+                  centerWorld,
+                  boundingRadius
+                });
+              }
             }
           }
         };
@@ -150,12 +179,15 @@ export class LightShadowService {
     if (renderableTypes.includes(e.type) || !!e.visual?.assetId || !!e.visual?.path) {
       if (this.interactRules.isInteractable(e)) return true;
 
+      const record = this.spatialHub.getRecord(e.uid);
+      if (record) {
+        return record.boundingRadius >= 0.05;
+      }
+
       e.view.computeWorldMatrix(true);
       const bounds = e.view.getHierarchyBoundingVectors(true);
       const diag = Vector3.Distance(bounds.min, bounds.max);
-
-      if (diag < 0.05) return false;
-      return true;
+      return diag >= 0.05;
     }
     return false;
   }
@@ -168,10 +200,11 @@ export class LightShadowService {
   }
 
   public prepareStaticCastersCache(entityUid: string, lightType: string, lightPos: Vector3, range: number): AbstractMesh[] {
-    const cacheKey = `${entityUid}_${lightType}_cached`;
+    const posHash = `${lightPos.x.toFixed(1)}_${lightPos.y.toFixed(1)}_${lightPos.z.toFixed(1)}`;
+    const cacheKey = `${entityUid}_${lightType}_${posHash}_${range}`;
     const cachedEntry = this.slotStaticRenderListCache.get(cacheKey);
 
-    if (cachedEntry && Vector3.DistanceSquared(cachedEntry.lightPos, lightPos) < 0.1 && cachedEntry.range === range) {
+    if (cachedEntry) {
       return cachedEntry.meshes;
     }
 
@@ -183,49 +216,44 @@ export class LightShadowService {
     const isInterior = ownerEnt?.light?.containmentMode === 'INTERIOR';
     const containerUid = ownerEnt?.light?.containerEntityUid || ownerEnt?.parentId;
 
-    for (let i = 0; i < this.castersCache.length; i++) {
-      const m = this.castersCache[i];
+    const totalIndexed = this.staticCastersIndex.length;
+
+    for (let i = 0; i < totalIndexed; i++) {
+      const item = this.staticCastersIndex[i];
+      const m = item.mesh;
       if (!m || m.isDisposed()) continue;
 
-      const parentEnt = this.resolveEntityForMesh(m);
-      if (parentEnt && (parentEnt.rol === 'player' || parentEnt.characterConfig)) continue;
-
-      const isLampBodyPart = parentEnt && parentEnt.uid === entityUid;
-      if (isLampBodyPart) {
+      if (item.entityUid === entityUid) {
         const isBulb = Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual;
-        if (isBulb) continue;
-        staticMeshesFound.push(m);
+        if (!isBulb) {
+          staticMeshesFound.push(m);
+        }
         continue;
       }
 
-      const isContainerWall = isInterior && parentEnt && (parentEnt.uid === containerUid);
+      const isContainerWall = isInterior && (item.entityUid === containerUid);
 
-      m.computeWorldMatrix(true);
-      const bInfo = m.getBoundingInfo();
-      const bBox = bInfo.boundingBox;
+      const dx = lightPos.x - item.centerWorld.x;
+      const dy = lightPos.y - item.centerWorld.y;
+      const dz = lightPos.z - item.centerWorld.z;
+      const distSq = dx * dx + dy * dy + dz * dz;
 
-      const cX = Math.max(bBox.minimumWorld.x, Math.min(lightPos.x, bBox.maximumWorld.x));
-      const cY = Math.max(bBox.minimumWorld.y, Math.min(lightPos.y, bBox.maximumWorld.y));
-      const cZ = Math.max(bBox.minimumWorld.z, Math.min(lightPos.z, bBox.maximumWorld.z));
+      const maxReach = effectiveStaticRange + item.boundingRadius;
+      const maxReachSq = maxReach * maxReach;
 
-      const dx = lightPos.x - cX;
-      const dy = lightPos.y - cY;
-      const dz = lightPos.z - cZ;
-      const distToBoxSq = dx * dx + dy * dy + dz * dz;
-
-      if (isContainerWall || distToBoxSq <= rangeSq) {
+      if (isContainerWall || distSq <= maxReachSq) {
         if (m.receiveShadows !== true) {
           m.receiveShadows = true;
         }
 
         staticMeshesFound.push(m);
-        if (staticMeshesFound.length >= 120) break;
+        if (staticMeshesFound.length >= 100) break;
       }
     }
 
     this.slotStaticRenderListCache.set(cacheKey, {
       meshes: staticMeshesFound,
-      lightPos: lightPos.clone(),
+      lightPosHash: posHash,
       range
     });
 
@@ -289,17 +317,43 @@ export class LightShadowService {
             this.entityToActiveSlotsMap.set(parentEnt.uid, slotSet);
           }
           slotSet.add(slot);
+        }
+      }
+    }
 
-          if (this.isDynamicCaster(parentEnt)) {
-            slot.hasDynamicCasters = true;
-            slot.dynamicCastersRegistered.add(parentEnt.uid);
+    // Comprobar e incorporar los actores dinámicos elegibles
+    const actors = this.entityManager.getAllEntities().filter(e => this.isDynamicCaster(e));
+    for (let i = 0; i < actors.length; i++) {
+      const actor = actors[i];
+      const actorMeshes = this.getActorRenderableMeshes(actor);
+      if (actorMeshes.length > 0) {
+        const actorPos = actor.view ? actor.view.getAbsolutePosition() : Vector3.Zero();
+        const distSq = Vector3.DistanceSquared(actorPos, lightPos);
+        const effectiveRange = range + 8.0;
+
+        if (distSq <= effectiveRange * effectiveRange) {
+          for (let m = 0; m < actorMeshes.length; m++) {
+            renderList.push(actorMeshes[m]);
           }
+          slot.hasDynamicCasters = true;
+          slot.dynamicCastersRegistered.add(actor.uid);
+
+          let slotSet = this.entityToActiveSlotsMap.get(actor.uid);
+          if (!slotSet) {
+            slotSet = new Set<PoolSlot>();
+            this.entityToActiveSlotsMap.set(actor.uid, slotSet);
+          }
+          slotSet.add(slot);
         }
       }
     }
 
     slot.isStaticLight = ownerEnt ? (!ownerEnt.autoAnim?.enabled && ownerEnt.movementAuthority === 'GAMEPLAY' && !ownerEnt.characterConfig) : true;
+    slot.lastShadowRebuildPos = lightPos.clone();
+    slot.isWarmedUp = true;
+    
     this.shadowCache.recordRebuild();
+    slot.sg.getShadowMap()?.resetRefreshCounter();
   }
 
   public syncDynamicActorInSlot(

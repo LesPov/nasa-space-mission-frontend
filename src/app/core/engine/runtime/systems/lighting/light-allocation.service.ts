@@ -1,20 +1,97 @@
-
 // file: src/app/core/engine/runtime/systems/lighting/light-allocation.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Vector3, SpotLight, DirectionalLight } from '@babylonjs/core';
-import { VirtualLight, PoolSlot, ShadowTier, LIGHT_SPATIAL_CONSTANTS } from './lighting-types';
+import { 
+  VirtualLight, PoolSlot, ShadowTier, ActiveLogicalSlot, 
+  PreparedLogicalSlot, LIGHT_SPATIAL_CONSTANTS 
+} from './lighting-types';
 import { LightPoolService } from './light-pool.service';
 import { LightTransformService } from './light-transform.service';
 import { SpatialStreamingGroupService } from '../../../spatial/spatial-streaming-group.service';
+import { LightShadowService } from './light-shadow.service';
 
 @Injectable({ providedIn: 'root' })
 export class LightAllocationService {
   private lightPool = inject(LightPoolService);
   private lightTransform = inject(LightTransformService);
   private spatialGroups = inject(SpatialStreamingGroupService);
+  private lightShadows = inject(LightShadowService);
 
   private _tempPos = Vector3.Zero();
   private _tempDir = Vector3.Zero();
+
+  private activeSlots: ActiveLogicalSlot[] = [
+    { id: 0, assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 },
+    { id: 1, assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 },
+    { id: 2, assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 }
+  ];
+
+  private preparedSlots: PreparedLogicalSlot[] = [
+    { id: 3, candidateUid: null, score: 999999, isReady: false },
+    { id: 4, candidateUid: null, score: 999999, isReady: false }
+  ];
+
+  public getActiveSlots(): ActiveLogicalSlot[] {
+    return this.activeSlots;
+  }
+
+  public getPreparedSlots(): PreparedLogicalSlot[] {
+    return this.preparedSlots;
+  }
+
+  public hasPendingTransitions(): boolean {
+    return this.activeSlots.some(s => s.state === 'FADING_OUT' || s.state === 'FADING_IN' || s.pendingUid !== null);
+  }
+
+  public reset(): void {
+    for (const slot of this.activeSlots) {
+      if (slot.physicalSlot) {
+        this.lightPool.forceHardRelease(slot.physicalSlot);
+      }
+      slot.assignedUid = null;
+      slot.physicalSlot = null;
+      slot.state = 'EMPTY';
+      slot.pendingUid = null;
+      slot.assignedTime = 0;
+      slot.lastStateChangeTime = 0;
+    }
+    for (const prep of this.preparedSlots) {
+      prep.candidateUid = null;
+      prep.score = 999999;
+      prep.isReady = false;
+    }
+  }
+
+  public releaseEntity(uid: string): void {
+    for (const slot of this.activeSlots) {
+      if (slot.assignedUid === uid) {
+        if (slot.physicalSlot) {
+          this.lightPool.forceHardRelease(slot.physicalSlot);
+        }
+        slot.assignedUid = null;
+        slot.physicalSlot = null;
+        slot.state = 'EMPTY';
+        slot.pendingUid = null;
+      }
+      if (slot.pendingUid === uid) {
+        slot.pendingUid = null;
+      }
+    }
+    for (const prep of this.preparedSlots) {
+      if (prep.candidateUid === uid) {
+        prep.candidateUid = null;
+        prep.score = 999999;
+        prep.isReady = false;
+      }
+    }
+  }
+
+  private getPoolType(entityType: string): 'point' | 'spot' | 'directional' {
+    if (entityType === 'light_point') return 'point';
+    if (entityType === 'light_spot') return 'spot';
+    if (entityType === 'light_directional') return 'directional';
+    return 'point';
+  }
 
   public allocatePoolSlots(
     activeVirtuals: VirtualLight[], 
@@ -23,276 +100,357 @@ export class LightAllocationService {
     speed: number, 
     selectedUid: string | null
   ): void {
-    const lookAheadTime = Math.min(2.0, Math.max(0.6, speed * 0.15));
-    const lookAheadDist = Math.min(45.0, Math.max(10.0, speed * lookAheadTime * 2.0));
-    const predictedPos = refPos.add(moveDir.scale(lookAheadDist));
+    const now = performance.now();
 
-    const currentlyOccupiedSlots = this.lightPool.getAllSlots().filter(s => s.assignedEntityUid !== null);
-    const assignedUidsSet = new Set<string>();
-    currentlyOccupiedSlots.forEach(s => assignedUidsSet.add(s.assignedEntityUid!));
+    const currentlyAssignedUids = new Set<string>();
+    for (const slot of this.activeSlots) {
+      if (slot.assignedUid) {
+        currentlyAssignedUids.add(slot.assignedUid);
+      }
+    }
 
-    const activeGroupId = this.spatialGroups.getActiveGroupId();
-    const preactivatingGroups = this.spatialGroups.getPreactivatingGroupIds();
-
+    // 1. Filtrado de candidatos válidos con filtro topológico
     const validCandidates = activeVirtuals.filter(vl => {
       if (!vl.entity.light || !vl.entity.light.enabled) {
         vl.rejectionReason = 'DISABLED';
         return false;
       }
 
-      if (assignedUidsSet.has(vl.entity.uid) && vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
-        return true;
-      }
-
-      const group = this.spatialGroups.getGroupForEntity(vl.entity.uid);
-      const isGroupPriority = Boolean(
-        group && (
-          group.id === activeGroupId || 
-          preactivatingGroups.has(group.id) || 
-          group.isPredictedTarget
-        )
-      );
-
-      const isInteriorVolumeMode = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
-      if (isInteriorVolumeMode) {
-        if (vl.spatialState === 'OUTSIDE' && !vl._isInPrepareRange && !isGroupPriority && vl.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
-          vl.rejectionReason = 'OUTSIDE_INTERIOR_VOLUME';
-          vl.targetMultiplier = 0.0;
-          vl.isLightInRange = false;
-          vl.isShadowInRange = false;
+      // Si está topológicamente desconectada y no tiene luz residual, rechazar
+      if (vl.rejectionReason === 'TOPOLOGICALLY_DISCONNECTED') {
+        if (!currentlyAssignedUids.has(vl.entity.uid)) {
           return false;
         }
       }
 
-      if (isGroupPriority) return true;
-      if (vl.isLightInRange || vl._isInPrepareRange) return true;
+      if (currentlyAssignedUids.has(vl.entity.uid)) {
+        return true;
+      }
 
-      const deact = vl.entity.light.deactivationDistance ?? ((vl.entity.light.activationDistance ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_ACTIVATION_RADIUS) + 10.0);
-      if (vl.effectiveDistance <= (deact + 25.0)) return true;
+      if (vl.isLightInRange || vl._isInPrepareRange) {
+        return true;
+      }
 
-      vl.rejectionReason = 'OUTSIDE_EFFECTIVE_RANGE';
       return false;
     });
 
+    // 2. Cálculo de puntuación
     validCandidates.forEach(vl => {
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
-      const isInteriorVolumeMode = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
-      const group = this.spatialGroups.getGroupForEntity(vl.entity.uid);
+      const isInterior = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
+      const hop = vl.topologicalHop ?? 0;
 
       let score = 0;
 
-      if (isInteriorVolumeMode) {
+      if (isInterior) {
         const boundaryDist = vl.distanceToBoundary ?? 0;
         if (vl.spatialState === 'INSIDE') {
-          score = 10 + (boundaryDist * 2);
+          score = 5 + (boundaryDist * 2);
         } else if (vl.spatialState === 'PRE_ENTRY') {
-          score = 60 + (boundaryDist * 4);
+          score = 50 + (boundaryDist * 3);
         } else if (vl.spatialState === 'PRE_EXIT') {
-          score = 120 + (boundaryDist * 6);
-        } else if (group && (preactivatingGroups.has(group.id) || group.isPredictedTarget)) {
-          score = 200 + (boundaryDist * 8); 
+          score = 110 + (boundaryDist * 4);
         } else if (vl._isInPrepareRange) {
-          score = 350 + (boundaryDist * 10);
+          score = 250 + (boundaryDist * 5);
         } else {
           score = 999999;
         }
+
+        // Penalización drástica por distancia topológica (salto de pasillo)
+        score += hop * 2000;
       } else {
         const dist = vl.effectiveDistance;
-        const distSq = dist * dist;
-        const predictedDistSq = Vector3.DistanceSquared(predictedPos, this._tempPos);
-
-        let directionalDotBonus = 1.0;
-        if (speed > 0.2 && dist > 1.0) {
-          const toLightDir = this._tempPos.subtract(refPos).normalize();
-          const dot = Vector3.Dot(moveDir, toLightDir);
-          if (dot > 0.15) {
-            directionalDotBonus = Math.max(0.55, 1.0 - (dot * 0.45));
-          } else if (dot < -0.2) {
-            directionalDotBonus = 1.4;
-          }
-        }
-
-        score = 180 + ((distSq * 0.5) + (predictedDistSq * 0.5)) * directionalDotBonus;
+        score = 80 + (dist * dist * 0.5);
       }
 
-      // Estabilidad estricta para evitar alternancia de slots
-      if (assignedUidsSet.has(vl.entity.uid)) {
+      // Stickiness bonus para luces ya asignadas (30% de ventaja para evitar churn)
+      if (currentlyAssignedUids.has(vl.entity.uid)) {
+        score *= LIGHT_SPATIAL_CONSTANTS.STICKINESS_SCORE_MULTIPLIER;
+      }
+
+      if (selectedUid && vl.entity.uid === selectedUid) {
         score *= 0.5;
       }
 
       vl._sortScore = parseFloat(score.toFixed(2));
     });
 
-    validCandidates.sort((a, b) => (a._sortScore ?? 0) - (b._sortScore ?? 0));
-
-    const MAX_ACTIVE = LIGHT_SPATIAL_CONSTANTS.MAX_PHYSICAL_ACTIVE_LIGHTS;
-    const MAX_PREPARED = LIGHT_SPATIAL_CONSTANTS.MAX_PREPARED_LIGHTS;
-
-    const selectedActive: VirtualLight[] = [];
-    for (let i = 0; i < validCandidates.length && selectedActive.length < MAX_ACTIVE; i++) {
-      selectedActive.push(validCandidates[i]);
-    }
-
-    const preparedCandidates = validCandidates.filter(vl => !selectedActive.includes(vl)).slice(0, MAX_PREPARED);
-    const dormantCandidates = validCandidates.filter(vl => !selectedActive.includes(vl) && !preparedCandidates.includes(vl));
-
-    const activeUids = new Set(selectedActive.map(x => x.entity.uid));
-    const tiers: ShadowTier[] = ['HIGH', 'HIGH', 'HIGH'];
-
-    selectedActive.forEach((vl, rankIdx) => {
-      vl.poolRank = rankIdx + 1;
-      vl.rejectionReason = undefined;
-      vl.shadowRank = rankIdx + 1;
-      vl.shadowTier = tiers[rankIdx];
-
-      const pool = this.lightPool.getPoolByType(vl.entity.type);
-      if (pool.length === 0) return;
-
-      const existingSlot = pool.find(s => s.assignedEntityUid === vl.entity.uid);
-      if (existingSlot) {
-        existingSlot.shadowTier = vl.shadowTier;
-        this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
-        existingSlot.light.position.copyFrom(this._tempPos);
-
-        if (existingSlot.type === 'spot') {
-          const spot = existingSlot.light as SpotLight;
-          spot.direction.copyFrom(this._tempDir);
-          spot.angle = (vl.entity.light?.angle || 60) * (Math.PI / 180);
-        } else if (existingSlot.type === 'directional') {
-          const dirL = existingSlot.light as DirectionalLight;
-          dirL.direction.copyFrom(this._tempDir);
-        }
-
-        if (existingSlot.type !== 'directional') {
-          const range = vl.entity.light?.range || 50;
-          (existingSlot.light as any).range = range;
-          existingSlot.light.shadowMaxZ = range;
-        }
-      }
+    validCandidates.sort((a, b) => {
+      const diff = (a._sortScore ?? 0) - (b._sortScore ?? 0);
+      if (Math.abs(diff) > 0.01) return diff;
+      return a.entity.uid.localeCompare(b.entity.uid);
     });
 
-    selectedActive.forEach((vl) => {
-      const pool = this.lightPool.getPoolByType(vl.entity.type);
-      if (pool.length === 0) return;
+    const MAX_ACTIVE = LIGHT_SPATIAL_CONSTANTS.MAX_PHYSICAL_ACTIVE_LIGHTS; // 3
+    const desiredActiveCandidates = validCandidates.slice(0, MAX_ACTIVE);
+    const desiredPreparedCandidates = validCandidates.slice(MAX_ACTIVE, MAX_ACTIVE + LIGHT_SPATIAL_CONSTANTS.MAX_PREPARED_LIGHTS);
 
-      let existingSlot = pool.find(s => s.assignedEntityUid === vl.entity.uid);
-      if (!existingSlot) {
-        const freeSlot = pool.find(s => s.assignedEntityUid === null);
-        if (freeSlot) {
-          freeSlot.assignedEntityUid = vl.entity.uid;
-          freeSlot.currentIntensity = 0;
-          freeSlot.light.intensity = 0;
-          freeSlot._isNewAssignment = true;
-          freeSlot.isWarmedUp = false;
-          freeSlot.shadowTier = vl.shadowTier;
-          existingSlot = freeSlot;
-        } else {
-          const replaceable = pool.find(s => {
-            if (activeUids.has(s.assignedEntityUid || '')) return false;
-            const currentVl = activeVirtuals.find(v => v.entity.uid === s.assignedEntityUid);
-            return !currentVl || currentVl.currentMultiplier <= 0.05;
-          }) || pool.find(s => !activeUids.has(s.assignedEntityUid || ''));
+    // 3. Máquina de estados de los 3 slots activos
+    for (let i = 0; i < this.activeSlots.length; i++) {
+      const slot = this.activeSlots[i];
 
-          if (replaceable) {
-            this.lightPool.forceHardRelease(replaceable);
-            replaceable.assignedEntityUid = vl.entity.uid;
-            replaceable.currentIntensity = 0;
-            replaceable.light.intensity = 0;
-            replaceable._isNewAssignment = true;
-            replaceable.isWarmedUp = false;
-            replaceable.shadowTier = vl.shadowTier;
-            existingSlot = replaceable;
+      if (slot.assignedUid) {
+        const occupant = activeVirtuals.find(v => v.entity.uid === slot.assignedUid);
+
+        if (!occupant || !occupant.entity.light || !occupant.entity.light.enabled) {
+          this.executeSlotHandover(slot, occupant || null, activeVirtuals, now);
+        } else if (slot.state === 'FADING_OUT') {
+          const fadeOutTime = now - slot.lastStateChangeTime;
+          // Si el apagado ya bajó de 0.05 o tardó más de 250ms, completar relevo de inmediato
+          if (occupant.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD || fadeOutTime > 250) {
+            this.executeSlotHandover(slot, occupant, activeVirtuals, now);
+          } else {
+            const isBackInTop = desiredActiveCandidates.some(c => c.entity.uid === occupant.entity.uid);
+            if (isBackInTop) {
+              slot.pendingUid = null;
+              slot.state = 'FADING_IN';
+              occupant.targetMultiplier = 1.0;
+              occupant.lifecycleStage = 'FADING_IN';
+            }
+          }
+        } else if (slot.state === 'FADING_IN') {
+          if (occupant.currentMultiplier >= 0.98) {
+            slot.state = 'ACTIVE';
+            occupant.lifecycleStage = 'ACTIVE';
+          }
+        } else if (slot.state === 'ACTIVE') {
+          const isStillInTop = desiredActiveCandidates.some(c => c.entity.uid === occupant.entity.uid);
+          if (!isStillInTop) {
+            const candidateToPromote = desiredActiveCandidates.find(c =>
+              !this.activeSlots.some(s => s.assignedUid === c.entity.uid || s.pendingUid === c.entity.uid)
+            );
+
+            if (candidateToPromote) {
+              const holdTimeSatisfied = (now - slot.assignedTime) >= LIGHT_SPATIAL_CONSTANTS.MIN_SLOT_HOLD_TIME_MS;
+              const isSignificantlyBetter = (candidateToPromote._sortScore ?? 0) < ((occupant._sortScore ?? 0) * LIGHT_SPATIAL_CONSTANTS.REPLACEMENT_SCORE_ADVANTAGE);
+              const isOccupantOutOfRange = occupant.rejectionReason !== undefined && occupant.rejectionReason !== 'NONE';
+
+              if ((holdTimeSatisfied && isSignificantlyBetter) || isOccupantOutOfRange) {
+                slot.state = 'FADING_OUT';
+                slot.pendingUid = candidateToPromote.entity.uid;
+                slot.lastStateChangeTime = now;
+
+                occupant.targetMultiplier = 0.0;
+                occupant.lifecycleStage = 'FADING_OUT';
+
+                candidateToPromote.targetMultiplier = 0.0;
+                candidateToPromote.currentMultiplier = 0.0;
+                candidateToPromote.lifecycleStage = 'PREPARED';
+              }
+            }
           }
         }
+      }
+    }
 
-        if (existingSlot) {
-          existingSlot.shadowTier = vl.shadowTier;
+    // Asignación directa para slots activos vacíos
+    for (let i = 0; i < this.activeSlots.length; i++) {
+      const slot = this.activeSlots[i];
+      if (slot.state === 'EMPTY') {
+        const candidateToBind = desiredActiveCandidates.find(c =>
+          !this.activeSlots.some(s => s.assignedUid === c.entity.uid || s.pendingUid === c.entity.uid)
+        );
+
+        if (candidateToBind) {
+          const pool = this.lightPool.getPoolByType(candidateToBind.entity.type);
+          const freeSlot = pool.find(s => s.assignedEntityUid === null);
+
+          if (freeSlot) {
+            freeSlot.assignedEntityUid = candidateToBind.entity.uid;
+            freeSlot.logicalSlotIndex = slot.id;
+            freeSlot.currentIntensity = 0;
+            freeSlot.light.intensity = 0;
+            freeSlot._isNewAssignment = true;
+            freeSlot.isWarmedUp = false;
+
+            slot.physicalSlot = freeSlot;
+            slot.assignedUid = candidateToBind.entity.uid;
+            slot.pendingUid = null;
+            slot.state = 'FADING_IN';
+            slot.assignedTime = now;
+            slot.lastStateChangeTime = now;
+
+            candidateToBind.logicalSlotIndex = slot.id;
+            candidateToBind.targetMultiplier = 1.0;
+            candidateToBind.currentMultiplier = 0.0;
+            candidateToBind.lifecycleStage = 'FADING_IN';
+            candidateToBind.isLightInRange = true;
+          }
+        }
+      }
+    }
+
+    // 4. Estratificación de sombras (HIGH, MEDIUM, LOW)
+    const assignedActiveSlots = this.activeSlots.filter(s => s.assignedUid !== null);
+    assignedActiveSlots.sort((a, b) => {
+      const vlA = activeVirtuals.find(v => v.entity.uid === a.assignedUid);
+      const vlB = activeVirtuals.find(v => v.entity.uid === b.assignedUid);
+      return (vlA?._sortScore ?? 0) - (vlB?._sortScore ?? 0);
+    });
+
+    const tiers: ShadowTier[] = ['HIGH', 'MEDIUM', 'LOW'];
+    assignedActiveSlots.forEach((slot, rankIdx) => {
+      const vl = activeVirtuals.find(v => v.entity.uid === slot.assignedUid);
+      if (vl) {
+        vl.poolRank = rankIdx + 1;
+        vl.logicalSlotIndex = slot.id;
+        vl.shadowRank = rankIdx + 1;
+        vl.shadowTier = tiers[rankIdx];
+        if (slot.physicalSlot) {
+          slot.physicalSlot.shadowTier = tiers[rankIdx];
+          slot.physicalSlot.logicalSlotIndex = slot.id;
+
           this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
-          existingSlot.light.position.copyFrom(this._tempPos);
+          slot.physicalSlot.light.position.copyFrom(this._tempPos);
 
-          if (existingSlot.type === 'spot') {
-            const spot = existingSlot.light as SpotLight;
+          if (slot.physicalSlot.type === 'spot') {
+            const spot = slot.physicalSlot.light as SpotLight;
             spot.direction.copyFrom(this._tempDir);
             spot.angle = (vl.entity.light?.angle || 60) * (Math.PI / 180);
-          } else if (existingSlot.type === 'directional') {
-            const dirL = existingSlot.light as DirectionalLight;
+          } else if (slot.physicalSlot.type === 'directional') {
+            const dirL = slot.physicalSlot.light as DirectionalLight;
             dirL.direction.copyFrom(this._tempDir);
           }
 
-          if (existingSlot.type !== 'directional') {
+          if (slot.physicalSlot.type !== 'directional') {
             const range = vl.entity.light?.range || 50;
-            (existingSlot.light as any).range = range;
-            existingSlot.light.shadowMaxZ = range;
+            (slot.physicalSlot.light as any).range = range;
+            slot.physicalSlot.light.shadowMaxZ = range;
           }
         }
       }
     });
 
-    preparedCandidates.forEach((vl, prepIdx) => {
-      vl.poolRank = MAX_ACTIVE + prepIdx + 1;
-      vl.shadowTier = 'DISABLED';
-      vl.shadowRank = undefined;
-      vl.isShadowInRange = false;
+    // 5. Gestión de los 2 Slots de Preparación (Slots 3 y 4)
+    const activeUids = new Set(this.activeSlots.map(s => s.assignedUid).filter(Boolean) as string[]);
+    const prepCandidates = desiredPreparedCandidates.filter(c => !activeUids.has(c.entity.uid)).slice(0, 2);
 
-      if (vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
-        vl.targetMultiplier = 0.0;
-        vl.lifecycleStage = 'FADING_OUT';
-        vl.decisionText = `FADING OUT (STANDBY #${prepIdx + 1})`;
-      } else {
-        const oldSlot = this.lightPool.findSlotByUid(vl.entity.uid);
-        if (oldSlot) {
-          this.lightPool.forceHardRelease(oldSlot);
-        }
+    for (let idx = 0; idx < this.preparedSlots.length; idx++) {
+      const prepSlot = this.preparedSlots[idx];
+      const vl = prepCandidates[idx];
+
+      if (vl) {
+        prepSlot.candidateUid = vl.entity.uid;
+        prepSlot.score = vl._sortScore ?? 999999;
+        prepSlot.isReady = true;
+
+        vl.poolRank = 3 + idx + 1;
+        vl.logicalSlotIndex = prepSlot.id;
+        vl.shadowRank = undefined;
+        vl.shadowTier = 'DISABLED';
+        vl.isLightInRange = false;
+        vl.isShadowInRange = false;
         vl.targetMultiplier = 0.0;
         vl.currentMultiplier = 0.0;
         vl.lifecycleStage = 'PREPARED';
-        vl.decisionText = `PREPARED #${prepIdx + 1} (LISTA PARA ROTACIÓN)`;
-        vl.rejectionReason = 'PREPARED_IN_STANDBY';
-      }
-    });
 
-    dormantCandidates.forEach((vl, dormIdx) => {
-      vl.poolRank = MAX_ACTIVE + MAX_PREPARED + dormIdx + 1;
-      vl.shadowTier = undefined;
-      vl.shadowRank = undefined;
-      vl.isShadowInRange = false;
-
-      if (vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
-        vl.targetMultiplier = 0.0;
-        vl.lifecycleStage = 'FADING_OUT';
-        vl.decisionText = 'FADING OUT (DORMANT)';
+        this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
+        const range = vl.entity.light?.range || 50;
+        this.lightShadows.prepareStaticCastersCache(vl.entity.uid, vl.entity.type, this._tempPos, range);
       } else {
-        const oldSlot = this.lightPool.findSlotByUid(vl.entity.uid);
-        if (oldSlot) {
-          this.lightPool.forceHardRelease(oldSlot);
-        }
-        vl.targetMultiplier = 0.0;
-        vl.currentMultiplier = 0.0;
-        vl.lifecycleStage = 'INACTIVE';
-        vl.rejectionReason = 'LOWER_PRIORITY_RANK';
-        vl.decisionText = 'DORMANT (FUERA DE PRESUPUESTO)';
+        prepSlot.candidateUid = null;
+        prepSlot.score = 999999;
+        prepSlot.isReady = false;
       }
-    });
+    }
 
+    // 6. Limpieza de luces inactivas
+    const prepUids = new Set(this.preparedSlots.map(p => p.candidateUid).filter(Boolean) as string[]);
     activeVirtuals.forEach(vl => {
-      if (!activeUids.has(vl.entity.uid) && !preparedCandidates.includes(vl) && !dormantCandidates.includes(vl)) {
-        if (vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
-          vl.targetMultiplier = 0.0;
-          vl.lifecycleStage = 'FADING_OUT';
-        } else {
-          vl.poolRank = 0;
-          vl.shadowTier = undefined;
-          vl.shadowRank = undefined;
-          vl.isShadowInRange = false;
-          vl.targetMultiplier = 0.0;
+      if (!activeUids.has(vl.entity.uid) && !prepUids.has(vl.entity.uid)) {
+        vl.poolRank = 0;
+        vl.logicalSlotIndex = null;
+        vl.shadowRank = undefined;
+        vl.shadowTier = undefined;
+        vl.isLightInRange = false;
+        vl.isShadowInRange = false;
+        vl.targetMultiplier = 0.0;
+        if (vl.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
           vl.currentMultiplier = 0.0;
           vl.lifecycleStage = 'INACTIVE';
         }
       }
     });
 
-    this.lightPool.getAllSlots().forEach(s => {
-      this.lightPool.releaseSlot(s, activeUids);
-    });
+    // 7. Salvaguarda: nunca más de 3 slots físicos activos en hardware
+    const activePhysicalSlots = this.lightPool.getAllSlots().filter(s => s.assignedEntityUid !== null && s.currentIntensity > 0);
+    if (activePhysicalSlots.length > LIGHT_SPATIAL_CONSTANTS.MAX_PHYSICAL_ACTIVE_LIGHTS) {
+      activePhysicalSlots.sort((a, b) => a.currentIntensity - b.currentIntensity);
+      while (activePhysicalSlots.length > LIGHT_SPATIAL_CONSTANTS.MAX_PHYSICAL_ACTIVE_LIGHTS) {
+        const excess = activePhysicalSlots.shift();
+        if (excess) {
+          this.lightPool.forceHardRelease(excess);
+        }
+      }
+    }
+  }
+
+  private executeSlotHandover(
+    slot: ActiveLogicalSlot, 
+    outgoingVl: VirtualLight | null, 
+    activeVirtuals: VirtualLight[], 
+    now: number
+  ): void {
+    if (outgoingVl) {
+      outgoingVl.currentMultiplier = 0.0;
+      outgoingVl._lastRenderedMultiplier = 0.0;
+      outgoingVl.isLightInRange = false;
+      outgoingVl.isShadowInRange = false;
+      outgoingVl.lifecycleStage = outgoingVl.isInterior ? 'OUTSIDE' : 'INACTIVE';
+      outgoingVl.decisionText = 'RELEVADA Y APAGADA';
+    }
+
+    const oldPhysical = slot.physicalSlot;
+
+    if (slot.pendingUid) {
+      const incomingVl = activeVirtuals.find(v => v.entity.uid === slot.pendingUid);
+      if (incomingVl && incomingVl.entity.light && incomingVl.entity.light.enabled) {
+        let newPhysical: PoolSlot | null = null;
+        const targetType = this.getPoolType(incomingVl.entity.type);
+
+        if (oldPhysical && oldPhysical.type === targetType) {
+          newPhysical = oldPhysical;
+        } else {
+          if (oldPhysical) {
+            this.lightPool.forceHardRelease(oldPhysical);
+          }
+          const pool = this.lightPool.getPoolByType(incomingVl.entity.type);
+          newPhysical = pool.find(s => s.assignedEntityUid === null) || null;
+        }
+
+        if (newPhysical) {
+          newPhysical.assignedEntityUid = incomingVl.entity.uid;
+          newPhysical.logicalSlotIndex = slot.id;
+          newPhysical.currentIntensity = 0;
+          newPhysical.light.intensity = 0;
+          newPhysical._isNewAssignment = true;
+          newPhysical.isWarmedUp = false;
+
+          slot.physicalSlot = newPhysical;
+          slot.assignedUid = incomingVl.entity.uid;
+          slot.pendingUid = null;
+          slot.state = 'FADING_IN';
+          slot.assignedTime = now;
+          slot.lastStateChangeTime = now;
+
+          incomingVl.logicalSlotIndex = slot.id;
+          incomingVl.targetMultiplier = 1.0;
+          incomingVl.currentMultiplier = 0.0;
+          incomingVl.lifecycleStage = 'FADING_IN';
+          incomingVl.isLightInRange = true;
+          incomingVl.decisionText = `PROMOCIONADA A SLOT ${slot.id} (ENCENDIENDO)`;
+          return;
+        }
+      }
+    }
+
+    if (oldPhysical) {
+      this.lightPool.forceHardRelease(oldPhysical);
+    }
+    slot.physicalSlot = null;
+    slot.assignedUid = null;
+    slot.pendingUid = null;
+    slot.state = 'EMPTY';
+    slot.lastStateChangeTime = now;
   }
 }

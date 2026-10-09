@@ -1,4 +1,4 @@
-
+// file: src/app/core/engine/runtime/systems/lighting/light-pool.service.ts
 import { Injectable, inject } from '@angular/core';
 import { PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, Color3, Tags, Scene } from '@babylonjs/core';
 import { PoolSlot, LIGHT_SPATIAL_CONSTANTS, ShadowTier } from './lighting-types';
@@ -41,7 +41,6 @@ export class LightPoolService {
       pLight.shadowMaxZ = 60.0;
       pLight.falloffType = PointLight.FALLOFF_STANDARD;
       pLight.radius = 0.20;
-      // Permanece habilitado para mantener constantes las directivas de compilación de shader
       pLight.setEnabled(true);
       Tags.AddTagsTo(pLight, "system_element");
 
@@ -55,6 +54,7 @@ export class LightPoolService {
 
       this.pointPool.push({ 
         index: i, 
+        logicalSlotIndex: null,
         type: 'point', 
         light: pLight, 
         sg: pSg, 
@@ -86,6 +86,7 @@ export class LightPoolService {
 
       this.spotPool.push({ 
         index: i, 
+        logicalSlotIndex: null,
         type: 'spot', 
         light: sLight, 
         sg: sSg, 
@@ -116,6 +117,7 @@ export class LightPoolService {
     
     this.dirPool.push({ 
       index: 0, 
+      logicalSlotIndex: null,
       type: 'directional', 
       light: dLight, 
       sg: dSg, 
@@ -158,7 +160,6 @@ export class LightPoolService {
     if (!slot.assignedEntityUid || topUids.has(slot.assignedEntityUid)) return;
 
     const vl = this.lightRegistry.getVirtualLightByUid(slot.assignedEntityUid);
-    // Preservar la retención física del slot mientras la luz siga atenuándose
     if (vl && vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
       return; 
     }
@@ -168,6 +169,7 @@ export class LightPoolService {
 
   public forceHardRelease(slot: PoolSlot): void {
     slot.assignedEntityUid = null;
+    slot.logicalSlotIndex = null;
     if (slot.sg && slot.sg.getShadowMap()?.renderList) {
       slot.sg.getShadowMap()!.renderList!.length = 0; 
     }

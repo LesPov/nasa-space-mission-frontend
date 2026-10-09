@@ -1,4 +1,3 @@
-
 <!-- file: src/app/components/inspector-escena/inspector-properties/prop-light/prop-light.html -->
 <div class="section-card">
   <div class="section-head">
@@ -75,7 +74,7 @@
         </p>
       </div>
 
-      <!-- PRE-ENTRADA AL MODELO (FASE C: LUZ + SOMBRAS UNIFICADAS) -->
+      <!-- PRE-ENTRADA AL MODELO -->
       <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border: 1px solid #334155; border-radius: 6px; margin-bottom: 12px;" *ngIf="interiorActivationMode !== 'DISTANCE'">
         <div class="checkbox-modern" style="margin-bottom: 10px;">
           <input type="checkbox" id="chkPreEntry" [(ngModel)]="preEntryEnabled" (ngModelChange)="aplicarLuz()">
@@ -249,6 +248,10 @@
         <strong [style.color]="isInteriorLight ? '#c084fc' : '#38bdf8'">{{ spatialContextText }}</strong>
       </div>
       <div class="telemetry-row" *ngIf="isInteriorLight">
+        <span>Zona / Salto Topológico:</span>
+        <strong style="color: #38bdf8;">{{ corridorZoneText }}</strong>
+      </div>
+      <div class="telemetry-row" *ngIf="isInteriorLight">
         <span>Fuente Contención:</span>
         <strong style="color: #facc15;">{{ containmentSourceText }}</strong>
       </div>
@@ -267,7 +270,7 @@
         </strong>
       </div>
       <div class="telemetry-row">
-        <span>{{ isModelPreEntryActive ? 'Distancia a la Entrada:' : 'Distancia al Actor:' }}</span>
+        <span>{{ isModelPreEntryActive ? 'Distancia al Umbral/Portal:' : 'Distancia al Actor:' }}</span>
         <strong style="color: #38bdf8;">{{ isModelPreEntryActive ? distanceToBoundaryText : currentDistance + ' m' }}</strong>
       </div>
       <div class="telemetry-row">
@@ -281,6 +284,10 @@
       <div class="telemetry-row">
         <span>Ranking en Pool (Top 3):</span>
         <strong [style.color]="isLightActiveStatus ? '#4ade80' : '#ef4444'">{{ poolRankText }}</strong>
+      </div>
+      <div class="telemetry-row">
+        <span>Decisión / Rechazo:</span>
+        <strong style="color: #cbd5e1; font-size: 10px;">{{ decisionText }}</strong>
       </div>
       <div class="telemetry-row">
         <span>Estado Sombras:</span>

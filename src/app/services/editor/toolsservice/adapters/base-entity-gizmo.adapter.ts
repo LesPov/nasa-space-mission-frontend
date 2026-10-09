@@ -1,5 +1,4 @@
-// src/app/services/editor/toolsservice/adapters/base-entity-gizmo.adapter.ts
-
+// file: src/app/services/editor/toolsservice/adapters/base-entity-gizmo.adapter.ts
 import { IGizmoTargetAdapter } from './gizmo-target-adapter.interface';
 import { AbstractMesh, Vector3, Quaternion, Matrix, Tags } from '@babylonjs/core';
 import { GameEntity } from '../../../../core/engine/entities/game.entity';
@@ -61,6 +60,10 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
     } else {
       mesh.position.addInPlace(delta);
     }
+    
+    if (entity) {
+      entity.syncTransformFromView();
+    }
     this.compensarEscalaVisual(mesh);
   }
 
@@ -80,15 +83,16 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
         if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
         
         if (mesh.parent) {
-            const parentRotMat = mesh.parent.getWorldMatrix().getRotationMatrix();
-            const parentQuat = Quaternion.FromRotationMatrix(parentRotMat);
-            parentQuat.invertInPlace();
-            mesh.rotationQuaternion = parentQuat.multiply(pivotNode.rotationQuaternion);
+          const parentRotMat = mesh.parent.getWorldMatrix().getRotationMatrix();
+          const parentQuat = Quaternion.FromRotationMatrix(parentRotMat);
+          parentQuat.invertInPlace();
+          mesh.rotationQuaternion = parentQuat.multiply(pivotNode.rotationQuaternion);
         } else {
-            mesh.rotationQuaternion.copyFrom(pivotNode.rotationQuaternion);
+          mesh.rotationQuaternion.copyFrom(pivotNode.rotationQuaternion);
         }
       }
 
+      entity.syncTransformFromView();
       this.compensarEscalaVisual(mesh);
       return;
     }
@@ -97,12 +101,12 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
       if (!mesh.rotationQuaternion) mesh.rotationQuaternion = Quaternion.Identity();
       
       if (mesh.parent) {
-          const parentRotMat = mesh.parent.getWorldMatrix().getRotationMatrix();
-          const parentQuat = Quaternion.FromRotationMatrix(parentRotMat);
-          parentQuat.invertInPlace();
-          mesh.rotationQuaternion = parentQuat.multiply(pivotNode.rotationQuaternion);
+        const parentRotMat = mesh.parent.getWorldMatrix().getRotationMatrix();
+        const parentQuat = Quaternion.FromRotationMatrix(parentRotMat);
+        parentQuat.invertInPlace();
+        mesh.rotationQuaternion = parentQuat.multiply(pivotNode.rotationQuaternion);
       } else {
-          mesh.rotationQuaternion.copyFrom(pivotNode.rotationQuaternion);
+        mesh.rotationQuaternion.copyFrom(pivotNode.rotationQuaternion);
       }
     }
     
@@ -117,9 +121,9 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
 
     const rotMatrix = Matrix.Identity();
     if (mesh.rotationQuaternion) {
-       mesh.rotationQuaternion.toRotationMatrix(rotMatrix);
+      mesh.rotationQuaternion.toRotationMatrix(rotMatrix);
     } else {
-       Matrix.RotationYawPitchRollToRef(mesh.rotation.y, mesh.rotation.x, mesh.rotation.z, rotMatrix);
+      Matrix.RotationYawPitchRollToRef(mesh.rotation.y, mesh.rotation.x, mesh.rotation.z, rotMatrix);
     }
 
     Vector3.TransformCoordinatesToRef(BaseEntityGizmoAdapter._tempLocal, rotMatrix, BaseEntityGizmoAdapter._tempWorldOffset);
@@ -133,6 +137,8 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
     } else {
       mesh.position.copyFrom(targetWorldPos);
     }
+
+    entity.syncTransformFromView();
 
     mesh.getChildMeshes().forEach(m => {
       if (Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual) {
@@ -151,7 +157,6 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
       const sy = TransformNormalizer.sanitizeScale(mesh.scaling.y, 'scaling.y');
       const sz = TransformNormalizer.sanitizeScale(mesh.scaling.z, 'scaling.z');
 
-      // Escala visual acotada [0.1, 2.0] que previene la corrupción de bounding boxes
       const targetX = Math.max(0.1, Math.min(2.0, 0.4 / sx));
       const targetY = Math.max(0.1, Math.min(2.0, 0.4 / sy));
       const targetZ = Math.max(0.1, Math.min(2.0, 0.4 / sz));
@@ -159,9 +164,8 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
       if (Math.abs(visual.scaling.x - targetX) > 0.005 ||
           Math.abs(visual.scaling.y - targetY) > 0.005 ||
           Math.abs(visual.scaling.z - targetZ) > 0.005) {
-          
-          visual.scaling.set(targetX, targetY, targetZ);
-          visual.renderingGroupId = 1;
+        visual.scaling.set(targetX, targetY, targetZ);
+        visual.renderingGroupId = 1;
       }
     }
   }

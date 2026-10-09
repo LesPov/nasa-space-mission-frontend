@@ -150,7 +150,6 @@ export class EditorToolsService {
   }
 
   private manejarFPSAdminSelection(canvas: HTMLCanvasElement | null, isLocked: boolean): void {
-    const scene = this.motor3d.getScene();
     const activeCam = this.ownership.getCamera();
 
     if (this.state.modoVistaPrueba !== 'FPS') {
@@ -339,7 +338,6 @@ export class EditorToolsService {
     }
 
     if (pi.type === PointerEventTypes.POINTERMOVE) {
-      // Si el botón está presionado (navegando u orbitando con la cámara), omitir hover picking para máxima fluidez
       if (this.isPointerDown) {
         if (this.state.objetoHovereado()) {
           this.state.setObjetoHovereado(null);
@@ -347,8 +345,9 @@ export class EditorToolsService {
         return;
       }
 
+      // Optimización a 30 Hz para liberar el CPU y permitir más de 60 FPS fluidos
       const now = performance.now();
-      if (now - this.lastHoverCheckTime < 45) return;
+      if (now - this.lastHoverCheckTime < 33) return;
       this.lastHoverCheckTime = now;
 
       const activeCam = this.ownership.getCamera();
@@ -362,7 +361,7 @@ export class EditorToolsService {
         if (this.state.ratonBloqueado()) return;
 
         const ray = scene.createPickingRay(scene.pointerX, scene.pointerY, Matrix.Identity(), activeCam);
-        ray.length = 10000;
+        ray.length = 1000; // Acotado a 1.000 m en vez de 10.000 m
 
         const hitGizmo = scene.pickWithRay(
           ray,

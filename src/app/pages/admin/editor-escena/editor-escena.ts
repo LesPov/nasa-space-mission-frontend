@@ -1,5 +1,6 @@
 
-import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, HostListener, effect, untracked, NgZone } from '@angular/core';
+// file: src/app/pages/admin/editor-escena/editor-escena.ts
+import { Component, OnDestroy, OnInit, inject, signal, ChangeDetectorRef, effect, untracked, NgZone } from '@angular/core';
 import { Router } from '@angular/router';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
@@ -87,6 +88,8 @@ export class EditorEscena implements OnInit, OnDestroy {
   get isPlayable() { return this.orchestrator.isPlayable(); }
   get cargandoEscena() { return this.orchestrator.cargandoEscena(); }
   get cargandoTexto() { return this.orchestrator.cargandoTexto(); }
+  get cargandoProgreso() { return this.orchestrator.cargandoProgreso(); }
+  get cargandoDetalle() { return this.orchestrator.cargandoDetalle(); }
   get fps() { return this.orchestrator.fps(); }
   get estadoGuardado() { return this.orchestrator.estadoGuardado(); }
   get listaEpisodios() { return this.orchestrator.listaEpisodios(); }

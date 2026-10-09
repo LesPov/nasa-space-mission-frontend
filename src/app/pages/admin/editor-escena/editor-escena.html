@@ -198,7 +198,11 @@
       <div class="canvas-wrapper" [style.height.%]="layoutUI.showTimeline() ? 100 - layoutUI.timelineHeight() : 100">
         
         <div class="cinematic-overlay" *ngIf="cargandoEscena">
-          <app-ui-loading [texto]="cargandoTexto"></app-ui-loading>
+          <app-ui-loading 
+            [texto]="cargandoTexto"
+            [progress]="cargandoProgreso"
+            [stageDetail]="cargandoDetalle">
+          </app-ui-loading>
         </div>
 
         <div class="viewport-topbar">
@@ -216,7 +220,6 @@
 
             <button class="btn-vp" *ngIf="stateSvc.playState() !== 'TRANSITIONING' && stateSvc.playState() !== 'INTERACTING'" (click)="togglePreviewMission()" [style.color]="stateSvc.previewMissionModal() || mostrarModalMisionPreview ? '#60a5fa' : ''">👁️ UI</button>
 
-            <!-- ACCESO DIRECTO A LA CONFIGURACIÓN DE NIEBLA EN VIVO -->
             <button class="btn-vp" (click)="abrirAjustesNiebla()" style="color: #38bdf8;" title="Configurar Niebla en Vivo (Test Live) o Datos (Editor)">
               ☁️ Niebla
             </button>

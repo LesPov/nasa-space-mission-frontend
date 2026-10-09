@@ -1,4 +1,4 @@
-
+// file: src/app/core/engine/runtime/runtime-engine.service.ts
 import { Injectable, inject } from '@angular/core';
 import { StandardMaterial, VideoTexture, Color3, Mesh, Tags } from '@babylonjs/core';
 import { GameSession } from './game-session';
@@ -16,7 +16,7 @@ import { SpawnManagerService } from './systems/spawn-manager.service';
 import { ISceneAccess, SCENE_ACCESS_TOKEN } from '../scene/scene-access.token';
 import { PlatformLifecycleService } from './systems/platform-lifecycle.service';
 import { LoopManagerService } from '../behaviors/services/loop-manager.service';
- import { EngineProfilerService } from '../telemetry/engine-profiler.service';
+import { EngineProfilerService } from '../telemetry/engine-profiler.service';
 import { AdaptiveQualitySystem } from './systems/adaptive-quality.system';
  
 @Injectable({ providedIn: 'root' })
@@ -44,7 +44,6 @@ export class RuntimeEngineService {
     this.motor3d.forceResize();
     this.loaderSvc.createInvisibleFloor(this.motor3d.getScene());
     
-    // 🔥 FASE 4: Registrar sistema de calidad adaptativa
     if (!this.adaptiveRegistered) {
       this.loopManager.registerSystem(this.adaptiveQuality);
       this.profiler.setAdaptiveSystem(this.adaptiveQuality);
@@ -118,7 +117,7 @@ export class RuntimeEngineService {
 
     if (this.adaptiveRegistered) {
       this.loopManager.unregisterSystem(this.adaptiveQuality.id);
-      this.adaptiveQuality.forceTier('HIGH'); // Reseteamos al detener
+      this.adaptiveQuality.forceTier('HIGH');
       this.adaptiveRegistered = false;
     }
 
@@ -129,7 +128,7 @@ export class RuntimeEngineService {
     }
   }
 
-  public startTestSession(playerEntity: GameEntity, view: CameraViewMode): void {
+  public prepareTestSession(playerEntity: GameEntity, view: CameraViewMode): void {
     if (!this.adaptiveRegistered) {
       this.loopManager.registerSystem(this.adaptiveQuality);
       this.profiler.setAdaptiveSystem(this.adaptiveQuality);
@@ -144,15 +143,29 @@ export class RuntimeEngineService {
     targetCam.getViewMatrix(true);
     
     const canvas = this.motor3d.getEngine().getRenderingCanvas();
+    // Se activa la cámara de juego en Babylon, pero attachControl se mantiene en false durante la carga
+    this.ownership.setCamera(view === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', targetCam, canvas, false);
+  }
+
+  public activateTestSession(playerEntity: GameEntity, view: CameraViewMode): void {
+    const targetCam = view === 'FPS' ? this.motor3d.getPlayerCameraFPS() : this.motor3d.getPlayerCameraTPS();
+    targetCam.getViewMatrix(true);
+    
+    const canvas = this.motor3d.getEngine().getRenderingCanvas();
     this.ownership.setCamera(view === 'FPS' ? 'PLAYER_FPS' : 'PLAYER_TPS', targetCam, canvas, true);
 
     this.gameSession.start(playerEntity, view);
   }
 
+  public startTestSession(playerEntity: GameEntity, view: CameraViewMode): void {
+    this.prepareTestSession(playerEntity, view);
+    this.activateTestSession(playerEntity, view);
+  }
+
   public stopTestSession(): void {
     if (this.adaptiveRegistered) {
       this.loopManager.unregisterSystem(this.adaptiveQuality.id);
-      this.adaptiveQuality.forceTier('HIGH'); // Restaura resolución en el Editor
+      this.adaptiveQuality.forceTier('HIGH');
       this.adaptiveRegistered = false;
     }
 

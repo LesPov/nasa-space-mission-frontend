@@ -22,6 +22,7 @@ import { SpatialStreamingGroupService } from '../../spatial/spatial-streaming-gr
 import { PlayerSequenceService } from '../systems/player-sequence.service';
 import { FogRuntimeService } from '../systems/fog/fog-runtime.service';
 import { CoreSceneMaterialService } from '../../scene/utils/core-scene-material.service';
+import { SpatialRelevanceHubService } from '../../spatial/spatial-relevance-hub.service';
 
 export interface EditorSnapshotState {
   cameraTarget: Vector3;
@@ -52,6 +53,7 @@ export class LiveLifecycleManagerService {
   private sequenceSvc = inject(PlayerSequenceService);
   private fogRuntime = inject(FogRuntimeService);
   private materialSvc = inject(CoreSceneMaterialService);
+  private spatialHub = inject(SpatialRelevanceHubService);
 
   private isLiveActive = false;
   private savedEditorCameraState: EditorSnapshotState | null = null;
@@ -149,7 +151,14 @@ export class LiveLifecycleManagerService {
     }
     this.shadowQualitySvc.setQualityTier('HIGH');
 
-    // 3. Restauración limpia e idempotente de entidades y materiales autorales
+    // 3. Capturar la posición actual del jugador antes de limpiar entidades runtime
+    const activePlayer = this.gameContext.activePlayerEntity();
+    let playerReturnPos: Vector3 = Vector3.Zero();
+    if (activePlayer && activePlayer.view && !activePlayer.view.isDisposed()) {
+      playerReturnPos = activePlayer.view.getAbsolutePosition().clone();
+    }
+
+    // 4. Restauración limpia e idempotente de entidades y materiales autorales
     const entities = this.entityManager.getAllEntities();
     const scene = this.motor3d.getScene();
     
@@ -161,7 +170,15 @@ export class LiveLifecycleManagerService {
         continue;
       }
 
-      e.restoreAuthoringBackup();
+      // Si es el jugador principal, conservar la posición alcanzada durante el juego
+      if ((e.rol === 'player' || e.characterConfig) && playerReturnPos.lengthSquared() > 0.001) {
+        e.transform.position.x = playerReturnPos.x;
+        e.transform.position.y = playerReturnPos.y;
+        e.transform.position.z = playerReturnPos.z;
+      } else {
+        e.restoreAuthoringBackup();
+      }
+
       e.movementAuthority = 'GAMEPLAY';
       if (e.playerRuntime) {
         e.playerRuntime.cinematicAnimation = null;
@@ -187,9 +204,10 @@ export class LiveLifecycleManagerService {
           e.view.getChildMeshes(false).forEach(m => {
             const ov = overrides[m.name];
             if (ov && m.material) {
+              const activeColorOverride = ov.color && ov.color !== '#000000' ? ov.color : undefined;
               this.materialSvc.ajustarMaterialGLB(
                 m.material, false, scene,
-                ov.color, ov.color, ov.esEmisivo ?? false,
+                ov.color, activeColorOverride, ov.esEmisivo ?? false,
                 ov.brilloIntensidad ?? 1.0, ov.texturePath,
                 ov.textureSource || (ov.texturePath ? 'asset' : 'original'),
                 true
@@ -200,16 +218,25 @@ export class LiveLifecycleManagerService {
       }
     }
 
-    // 4. Limpieza del pool de luces y sombras sin purgar materiales de VRAM
-    this.dynLighting.stop();
-    this.shadowOrchestrator.reconcileShadows();
-
     // 5. Salir del sandbox y restaurar visibilidad completa de mallas del editor
     this.gameState.exitSandbox();
     this.playerTriggerSvc.start();
     this.sceneNodesSvc.actualizarListaNodos();
 
+    // 6. Asegurar visibilidad de todas las entidades en el Editor
     this.localRendering.ensureAllEntitiesVisibleForEditor();
+
+    // 7. Sincronización espacial con la posición en la que quedó el jugador
+    this.spatialHub.rebuildRegistry();
+    if (playerReturnPos.lengthSquared() > 0.001) {
+      const editorCam = this.motor3d.getEditorCamera();
+      const camFwd = editorCam ? editorCam.getDirection(Vector3.Forward()) : Vector3.Forward();
+      this.spatialHub.forceUpdatePositions(playerReturnPos, editorCam?.globalPosition || playerReturnPos, camFwd);
+    }
+
+    // 8. Reconciliar la iluminación local del Editor alrededor del jugador
+    this.dynLighting.reconcileForEditorReturn(playerReturnPos);
+    this.shadowOrchestrator.reconcileShadows();
 
     this.gameContext.setEditorSubmode('EDITING');
     

@@ -1,6 +1,6 @@
 // file: src/app/services/editor/toolsservice/tools-gizmo.service.ts
 import { Injectable, inject } from '@angular/core';
-import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, Quaternion, StandardMaterial, Vector3, PointerEventTypes, Tags, AbstractMesh } from '@babylonjs/core';
+import { Color3, GizmoManager, Mesh, MeshBuilder, PointerDragBehavior, StandardMaterial, Vector3, PointerEventTypes, Tags, AbstractMesh } from '@babylonjs/core';
 import { HistorialService } from '../../historial.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
 import { EditorStateService } from '../editor-state.service';
@@ -14,6 +14,7 @@ import { EditorMapaService } from '../../editor-mapa.service';
 import { GizmoAdapterRegistryService } from './adapters/gizmo-adapter-registry.service';
 import { GameContextService } from '../../../core/engine/session/game-context.service';
 import { DynamicLightingSystem } from '../../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
+import { SpatialRelevanceHubService } from '../../../core/engine/spatial/spatial-relevance-hub.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsGizmoService {
@@ -30,6 +31,7 @@ export class ToolsGizmoService {
   private cinematicSvc = inject(EditorCinematicService);
   private registry = inject(GizmoAdapterRegistryService);
   private dynamicLighting = inject(DynamicLightingSystem);
+  private spatialHub = inject(SpatialRelevanceHubService);
 
   public gizmoManager: GizmoManager | null = null;
   public centerDragMesh: Mesh | null = null;
@@ -171,7 +173,6 @@ export class ToolsGizmoService {
     if (mesh && !Tags.MatchesQuery(mesh, "cinematic_proxy")) {
       this.estadoAntesDeArrastrar = this.historialSvc.obtenerEstado(mesh);
 
-      // Si el objeto movido es el Player o un Actor relevante, abrimos la transacción de drag
       if (this.isTargetPlayerOrActor(mesh)) {
         this.isPlayerBeingDragged = true;
         this.dynamicLighting.beginPlayerDragTransaction();
@@ -209,19 +210,26 @@ export class ToolsGizmoService {
 
     if (!mesh) return;
 
+    const entity = this.entityManager.getEntityByMesh(mesh);
+
     if (!subSelected && this.estadoAntesDeArrastrar && !Tags.MatchesQuery(mesh, "cinematic_proxy")) {
       this.historialSvc.registrarAccionTransform(mesh, this.estadoAntesDeArrastrar);
       this.estadoAntesDeArrastrar = null;
       
-      const entity = this.entityManager.getEntityByMesh(mesh);
       if (entity && entity.type === 'image_plane') {
           this.projectionSvc.actualizarProyeccion(mesh);
       }
     }
 
+    // Actualización de registro espacial de la entidad afectada
+    if (entity) {
+      this.spatialHub.registerEntity(entity);
+    }
+
+    // Emisión tipada: Cambio puramente de transformación, NO estructural
     queueMicrotask(() => { 
       this.mapaSvc.onGizmoDrag.next(); 
-      this.mapaSvc.onMapChanged.next(); 
+      this.mapaSvc.notifyTransformChanged(entity ? entity.uid : undefined);
     });
   };
 

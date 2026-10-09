@@ -24,7 +24,7 @@ interface MaterialAuthoringSnapshot {
 
 @Injectable({ providedIn: 'root' })
 export class CoreSceneMaterialService {
-  public static readonly MAX_SIMULTANEOUS_LIGHTS = 6;
+  public static readonly MAX_SIMULTANEOUS_LIGHTS = 8;
   
   private bwTextureCache = new Map<string, Texture>();
 
@@ -293,7 +293,7 @@ export class CoreSceneMaterialService {
     const brillo = Math.max(0, Math.min(10, brilloIntensidad));
 
     if (material.getClassName().includes('PBR')) {
-      material.allowShaderHotSwapping = false;
+      material.allowShaderHotSwapping = true;
 
       const baseAlbedoTex = snapshot?.albedoTexture ?? material.albedoTexture;
       const baseAlbedoColor = snapshot?.albedoColor ?? material.albedoColor ?? Color3.White();
@@ -329,7 +329,7 @@ export class CoreSceneMaterialService {
       }
 
     } else if (material.getClassName().includes('Standard')) {
-      material.allowShaderHotSwapping = false;
+      material.allowShaderHotSwapping = true;
 
       const baseDiffTex = snapshot?.diffuseTexture ?? material.diffuseTexture;
       const baseDiffColor = snapshot?.diffuseColor ?? material.diffuseColor ?? Color3.White();

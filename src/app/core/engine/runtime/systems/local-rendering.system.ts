@@ -57,7 +57,6 @@ export class LocalRenderingSystem implements IUpdatable {
   private readonly PERCEPTIBLE_FLAP_MAX_VISIBILITY = 0.80;
   private readonly MAX_PERCEPTIBLE_FLAP_DISTANCE = 80.0;
 
-  // Radio crítico 360° donde jamás se oculta nada
   private readonly CRITICAL_SPHERE_RADIUS = 35.0;
 
   private frameCounter = 0;
@@ -151,6 +150,7 @@ export class LocalRenderingSystem implements IUpdatable {
 
   private isEligibleForHardCull(e: GameEntity): boolean {
     if (e.isPersistent || e.rol === 'player' || e.characterConfig || e.rol === 'spawn_point') return false;
+    if (this.isStructuralEntity(e)) return false; // Mallas estructurales y pasillos NUNCA se ocultan a negro
     if (e.autoAnim?.enabled) return false;
     if (e.movementAuthority !== 'GAMEPLAY') return false;
     if (e.type === 'trigger' || e.type === 'trigger_compuesto') return false;
@@ -404,7 +404,6 @@ export class LocalRenderingSystem implements IUpdatable {
       const rawSpeed = this.playerVelocity.length();
       this.smoothedSpeed = (this.smoothedSpeed * 0.88) + (rawSpeed * 0.12);
 
-      // Asimetría de lookahead: se expande rápidamente con velocidad, se retrae suavemente
       const targetLookAhead = Math.min(20.0, this.smoothedSpeed * 1.3);
       if (targetLookAhead > this.sustainedLookAheadBonus) {
         this.sustainedLookAheadBonus = (this.sustainedLookAheadBonus * 0.7) + (targetLookAhead * 0.3);

@@ -234,6 +234,7 @@ export class PlayerSequenceService implements IUpdatable {
     orientationLocked: boolean;
     rotation: { x: number, y: number, z: number, w?: number } | null;
     cinematicTied: boolean;
+    lastRecordedStepIndex: number;
   }>();
 
   constructor() {
@@ -432,7 +433,8 @@ export class PlayerSequenceService implements IUpdatable {
     if (!this.activeSequences.has(entityUid)) {
       this.activeSequences.set(entityUid, {
         id: '', index: 0, elapsedMs: 0, stepEntered: false,
-        jumpTriggered: false, orientationLocked: false, rotation: null, cinematicTied: false
+        jumpTriggered: false, orientationLocked: false, rotation: null, cinematicTied: false,
+        lastRecordedStepIndex: -1
       });
     }
     return this.activeSequences.get(entityUid)!;
@@ -484,8 +486,8 @@ export class PlayerSequenceService implements IUpdatable {
       state.stepEntered = true;
       state.jumpTriggered = false;
       state.cinematicTied = this.context.isCinematicPlaying(); 
+      state.lastRecordedStepIndex = -1;
 
-      // HISTÉRESIS DE TELEMETRÍA: Solo registrar inicio de secuencias que no sean bucles infinitos de luz
       const firstAction = seqToRun.steps[0]?.action;
       const isContinuousLightAnim = firstAction === 'lightPulse' || firstAction === 'lightFlicker';
 
@@ -607,6 +609,7 @@ export class PlayerSequenceService implements IUpdatable {
       state.elapsedMs = 0; 
       state.stepEntered = true; 
       state.jumpTriggered = false;
+      state.lastRecordedStepIndex = -1;
     }
 
     let step = sequence.steps[Math.max(0, Math.min(state.index, sequence.steps.length - 1))] || null;
@@ -654,15 +657,18 @@ export class PlayerSequenceService implements IUpdatable {
         this.gameState.setVar(step.stateKey, step.stateValue);
       }
 
-      // Supresión de saturación en telemetría para loops infinitos de luz (lightPulse/lightFlicker)
+      // Supresión de telemetría repetitiva en bucles infinitos: solo registrar si cambia el paso o es el primer ciclo
       const isContinuousLightAnim = step.action === 'lightPulse' || step.action === 'lightFlicker';
-      if (!isContinuousLightAnim) {
+      const isRedundantLoopEvent = sequence.repeat && state.lastRecordedStepIndex === state.index;
+
+      if (!isContinuousLightAnim && !isRedundantLoopEvent) {
         this.profiler.recordTimelineEvent('SEQUENCE', 'SEQ_STEP_ENTERED', {
           sequenceId: sequence.id,
           entityUid: entity.uid,
           stepIndex: state.index,
           action: step.action
         });
+        state.lastRecordedStepIndex = state.index;
       }
 
       state.stepEntered = false;

@@ -31,7 +31,7 @@ export class LightPoolService {
     const tiers: ShadowTier[] = ['HIGH', 'HIGH', 'HIGH'];
 
     for (let i = 0; i < MAX_PHYSICAL_SLOTS; i++) {
-      // 1. POINT LIGHTS (Defines estables y consistentes para evitar recompilaciones)
+      // 1. POINT LIGHTS (Inician en estado deshabilitado para no consumir cupos en maxSimultaneousLights)
       const pLight = new PointLight(`pool_point_${i}`, new Vector3(0, -99999, 0), scene);
       pLight.intensity = 0.0; 
       pLight.diffuse = Color3.Black();
@@ -41,7 +41,7 @@ export class LightPoolService {
       pLight.shadowMaxZ = 60.0;
       pLight.falloffType = PointLight.FALLOFF_STANDARD;
       pLight.radius = 0.20;
-      pLight.setEnabled(true);
+      pLight.setEnabled(false);
       Tags.AddTagsTo(pLight, "system_element");
 
       const pSg = new ShadowGenerator(1024, pLight);
@@ -65,7 +65,7 @@ export class LightPoolService {
         shadowTier: tiers[i]
       });
 
-      // 2. SPOT LIGHTS (Configuración uniforme de filtrado para prevenir alternancia de defines)
+      // 2. SPOT LIGHTS (Inician en estado deshabilitado)
       const sLight = new SpotLight(`pool_spot_${i}`, new Vector3(0, -99999, 0), new Vector3(0, -1, 0), Math.PI / 3, 1.0, scene);
       sLight.intensity = 0.0; 
       sLight.diffuse = Color3.Black(); 
@@ -73,7 +73,7 @@ export class LightPoolService {
       sLight.shadowEnabled = true; 
       sLight.shadowMinZ = 0.05;
       sLight.shadowMaxZ = 60.0;
-      sLight.setEnabled(true);
+      sLight.setEnabled(false);
       Tags.AddTagsTo(sLight, "system_element");
 
       const sSg = new ShadowGenerator(1024, sLight);
@@ -104,7 +104,7 @@ export class LightPoolService {
     dLight.diffuse = Color3.Black(); 
     dLight.specular = Color3.Black();
     dLight.shadowEnabled = true; 
-    dLight.setEnabled(true);
+    dLight.setEnabled(false);
     Tags.AddTagsTo(dLight, "system_element");
 
     const dSg = new ShadowGenerator(1024, dLight);
@@ -177,6 +177,7 @@ export class LightPoolService {
     slot.light.intensity = 0; 
     slot.light.diffuse.set(0, 0, 0);
     slot.light.specular.set(0, 0, 0);
+    slot.light.setEnabled(false);
     slot._lightOnTimestamp = undefined;
     slot._shadowReadyTimestamp = undefined;
     slot._isNewAssignment = false;
@@ -196,7 +197,10 @@ export class LightPoolService {
     const cleanPool = (pool: PoolSlot[]) => {
       pool.forEach(p => { 
         this.containmentSvc.clearContainment(p.light as any);
-        if (p.light && !p.light.isDisposed()) p.light.dispose(); 
+        if (p.light && !p.light.isDisposed()) {
+          p.light.setEnabled(false);
+          p.light.dispose(); 
+        }
         if (p.sg) p.sg.dispose(); 
       });
     };

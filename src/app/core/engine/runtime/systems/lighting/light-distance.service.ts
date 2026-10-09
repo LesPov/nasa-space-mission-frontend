@@ -2,7 +2,10 @@
 import { Injectable, inject } from '@angular/core';
 import { Vector3 } from '@babylonjs/core';
 import { GameContextService } from '../../../session/game-context.service';
-import { VirtualLight, LightLifecycleStage, LIGHT_SPATIAL_CONSTANTS } from './lighting-types';
+import { 
+  VirtualLight, LightLifecycleStage, MacroZoneState, 
+  LIGHT_SPATIAL_CONSTANTS 
+} from './lighting-types';
 import { LightTransformService } from './light-transform.service';
 import { LightReferenceService } from './light-reference.service';
 import { LightAttenuationCurve } from './light-attenuation-curve';
@@ -26,6 +29,12 @@ export class LightDistanceService {
   private _tempPos = Vector3.Zero();
   private _tempDir = Vector3.Zero();
 
+  private currentMacroZone: MacroZoneState = 'EXTERIOR';
+
+  public getMacroZone(): MacroZoneState {
+    return this.currentMacroZone;
+  }
+
   public evaluateDistanceAndHysteresis(activeVirtuals: VirtualLight[], baseRefPos: Vector3, speed: number): void {
     const scene = this.motor3d.getScene();
     this.profiler.recordDistanceEvaluation('LightDistanceService', activeVirtuals.length);
@@ -34,6 +43,47 @@ export class LightDistanceService {
 
     const activeGroupId = this.spatialGroups.getActiveGroupId();
 
+    let actorWorldPos: Vector3;
+    let actorName = 'Referencia Base';
+    if (validActors.length > 0) {
+      actorWorldPos = this.referenceSvc.getActorWorldPosition(validActors[0], new Vector3());
+      actorName = validActors[0].name;
+    } else {
+      actorWorldPos = baseRefPos;
+    }
+
+    // 1. Determinar el Estado Macro Espacial del Jugador basado en posición REAL
+    let anyInsideInterior = false;
+    let anyInPreEntryInterior = false;
+    let anyInPreExitInterior = false;
+
+    for (let i = 0; i < activeVirtuals.length; i++) {
+      const vl = activeVirtuals[i];
+      if (vl.entity.light?.containmentMode === 'INTERIOR') {
+        const container = scene ? this.containmentSvc.resolveContainerEntity(vl.entity, scene) : null;
+        if (container) {
+          const preDist = Math.max(3.0, vl.entity.light?.preEntryDistance ?? 8.0);
+          const wasInside = vl.spatialState === 'INSIDE';
+          const evalRes = this.containmentSvc.evaluateModelContainment(actorWorldPos, container, preDist, wasInside);
+          
+          if (evalRes.spatialState === 'INSIDE') anyInsideInterior = true;
+          if (evalRes.spatialState === 'PRE_ENTRY') anyInPreEntryInterior = true;
+          if (evalRes.spatialState === 'PRE_EXIT') anyInPreExitInterior = true;
+        }
+      }
+    }
+
+    if (anyInsideInterior) {
+      this.currentMacroZone = 'INTERIOR_ACTIVE';
+    } else if (anyInPreEntryInterior) {
+      this.currentMacroZone = 'INTERIOR_PREENTRY';
+    } else if (anyInPreExitInterior) {
+      this.currentMacroZone = 'INTERIOR_EXIT';
+    } else {
+      this.currentMacroZone = 'EXTERIOR';
+    }
+
+    // 2. Evaluación individual de cada luz virtual
     for (let i = 0; i < activeVirtuals.length; i++) {
       const vl = activeVirtuals[i];
       const lightComp = vl.entity.light;
@@ -54,17 +104,9 @@ export class LightDistanceService {
         continue;
       }
 
+      vl.closestActorName = actorName;
       const wasInRange = vl.isLightInRange;
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
-
-      let actorWorldPos: Vector3;
-      if (validActors.length > 0) {
-        actorWorldPos = this.referenceSvc.getActorWorldPosition(validActors[0], new Vector3());
-        vl.closestActorName = validActors[0].name;
-      } else {
-        actorWorldPos = baseRefPos;
-        vl.closestActorName = 'Referencia Base';
-      }
 
       const hubDist = this.spatialHub.getDistanceToPlayer(vl.entity.uid);
       const centerDist = hubDist !== Number.MAX_VALUE ? hubDist : Vector3.Distance(actorWorldPos, this._tempPos);
@@ -89,10 +131,8 @@ export class LightDistanceService {
       const hopDistance = (activeGroupId && group) ? this.spatialGroups.getHopDistance(activeGroupId, group.id) : 0;
       vl.topologicalHop = hopDistance;
 
-      // =========================================================================
-      // FILTRADO TOPOLÓGICO: PASILLOS NO CONECTADOS QUEDAN EXCLUIDOS
-      // =========================================================================
-      if (isInterior && activeGroupId && group && hopDistance >= 2 && !wasInRange) {
+      // FILTRADO TOPOLÓGICO: Si el jugador está dentro de un pasillo, luces interiores a salto >= 2 están desconectadas
+      if (isInterior && activeGroupId && group && hopDistance >= 2 && !wasInRange && this.currentMacroZone === 'INTERIOR_ACTIVE') {
         vl.spatialState = 'OUTSIDE';
         vl.insideVolume = false;
         vl.inPreEntryZone = false;
@@ -107,6 +147,9 @@ export class LightDistanceService {
         continue;
       }
 
+      // =======================================================================
+      // EVALUACIÓN MODO INTERIOR (MODEL PRE-ENTRY)
+      // =======================================================================
       if (isModelPreEntryMode) {
         if (!container || !container.view || container.view.isDisposed()) {
           vl.spatialState = 'OUTSIDE';
@@ -121,7 +164,7 @@ export class LightDistanceService {
           continue;
         }
 
-        const configuredPreDist = Math.max(3.0, lightComp.preEntryDistance ?? 6.0);
+        const configuredPreDist = Math.max(3.0, lightComp.preEntryDistance ?? 8.0);
         const contResult = this.containmentSvc.evaluateModelContainment(actorWorldPos, container, configuredPreDist, wasInRange);
 
         vl.spatialState = contResult.spatialState;
@@ -131,20 +174,25 @@ export class LightDistanceService {
         vl.distanceToBoundary = parseFloat(contResult.distanceToBoundary.toFixed(2));
         vl.containmentSource = contResult.source;
 
-        const isConnectedNeighbor = hopDistance === 1;
-        vl._isInPrepareRange = (hopDistance === 0) || (isConnectedNeighbor && contResult.distanceToBoundary <= (configuredPreDist + 8.0));
+        // La preparación invisible solo se habilita si el pasillo es contiguo
+        const isConnectedNeighbor = hopDistance <= 1;
+        vl._isInPrepareRange = isConnectedNeighbor && (contResult.distanceToBoundary <= (configuredPreDist + 12.0));
 
+        // REGLA: Si el jugador está físicamente en el exterior (fuera de pre-entrada),
+        // la luz interior NUNCA debe encenderse físicamente
         if (contResult.spatialState === 'INSIDE') {
           vl.targetMultiplier = 1.0;
           vl.isLightInRange = true;
           this.evaluateStateAndDecision(vl, 0, 0, configuredPreDist, nowTimeStr, `ACTIVA (DENTRO DE ${group?.name || 'PASILLO'})`);
         } else if (contResult.spatialState === 'PRE_ENTRY') {
+          // Fundido suave hacia el umbral de entrada (de 0 en preDist hasta 1.0 en la puerta)
           vl.targetMultiplier = LightAttenuationCurve.calculate(contResult.distanceToBoundary, 0, configuredPreDist);
           vl.isLightInRange = vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
           this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0, configuredPreDist, nowTimeStr, `PRE-ENTRADA (${group?.name || 'UMBRAL'})`);
         } else if (contResult.spatialState === 'PRE_EXIT') {
+          // Salida suave: mantiene brillo completo cerca del umbral y atenúa hacia la distancia de salida
           const holdDistance = LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_HOLD_MARGIN;
-          const maxExitDist = LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_MAX_DISTANCE;
+          const maxExitDist = Math.max(configuredPreDist + 4.0, lightComp.deactivationDistance ?? 30.0);
 
           if (contResult.distanceToBoundary <= holdDistance) {
             vl.targetMultiplier = 1.0;
@@ -155,19 +203,23 @@ export class LightDistanceService {
           vl.isLightInRange = vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
           this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, holdDistance, maxExitDist, nowTimeStr, `PRE-SALIDA / ATENUANDO (${group?.name || 'ZONA'})`);
         } else {
+          // Completamente exterior: targetMultiplier es 0
           vl.targetMultiplier = 0.0;
           if (vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
             vl.isLightInRange = true;
-            this.transitionState(vl, 'FADING_OUT', nowTimeStr, undefined, 'APAGANDO DESPUÉS DE SALIR');
+            this.transitionState(vl, 'FADING_OUT', nowTimeStr, undefined, 'APAGANDO TRAS SALIR');
           } else {
             vl.isLightInRange = false;
-            this.transitionState(vl, 'OUTSIDE', nowTimeStr, 'OUTSIDE_INTERIOR_VOLUME', 'Fuera del pasillo');
+            this.transitionState(vl, 'OUTSIDE', nowTimeStr, 'OUTSIDE_INTERIOR_VOLUME', 'Fuera de preentrada interior');
           }
         }
 
         vl.isShadowInRange = vl.isLightInRange && (lightComp.castShadows ?? true);
-      } else {
-        // Modo radial exterior
+      } 
+      // =======================================================================
+      // EVALUACIÓN MODO EXTERIOR / GLOBAL (FAROLAS Y FOCOS EXTERIORES)
+      // =======================================================================
+      else {
         vl.spatialState = undefined;
         vl.containmentSource = undefined;
         vl.inPreExitZone = false;
@@ -175,15 +227,23 @@ export class LightDistanceService {
         const configuredAct = lightComp.activationDistance ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_ACTIVATION_RADIUS;
         const configuredDeact = lightComp.deactivationDistance ?? (configuredAct + 6.0);
 
-        this.applyStandardProximity(vl, centerDist, configuredAct, configuredDeact, wasInRange, nowTimeStr);
+        // SOLO cuando el jugador está verdaderamente adentro del pasillo (INTERIOR_ACTIVE) se reduce el rango de luces exteriores.
+        // En EXTERIOR, INTERIOR_PREENTRY o INTERIOR_EXIT, las luces exteriores mantienen el 100% de su alcance configurado.
+        const isDeepInside = this.currentMacroZone === 'INTERIOR_ACTIVE';
+        const effectiveActDist = isDeepInside ? (configuredAct * 0.5) : configuredAct;
+        const effectiveDeactDist = isDeepInside ? (configuredDeact * 0.6) : configuredDeact;
+
+        this.applyStandardProximity(vl, centerDist, effectiveActDist, effectiveDeactDist, wasInRange, nowTimeStr);
 
         if (vl.isLightInRange && lightComp.castShadows && lightComp.distanceShadowsEnabled !== false) {
-          const shadowAct = lightComp.shadowActivationDistance ?? (configuredAct * 0.8);
+          const shadowAct = lightComp.shadowActivationDistance ?? (effectiveActDist * 0.85);
           const shadowDeact = lightComp.shadowDeactivationDistance ?? (shadowAct + 4.0);
           vl.isShadowInRange = wasInRange ? centerDist <= shadowDeact : centerDist <= shadowAct;
         } else {
           vl.isShadowInRange = false;
         }
+
+        vl._isInPrepareRange = centerDist <= (effectiveDeactDist + 15.0);
       }
     }
   }
@@ -196,14 +256,14 @@ export class LightDistanceService {
 
     if (dist <= currentLimit && vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
       vl.isLightInRange = true;
-      this.evaluateStateAndDecision(vl, dist, rAct, rDeact, timestamp, 'PROXIMIDAD RADIAL');
+      this.evaluateStateAndDecision(vl, dist, rAct, rDeact, timestamp, 'PROXIMIDAD RADIAL EXTERIOR');
     } else {
       if (vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
         vl.isLightInRange = true;
         this.transitionState(vl, 'FADING_OUT', timestamp, undefined, 'FADING OUT RADIAL');
       } else {
         vl.isLightInRange = false;
-        this.transitionState(vl, dist > rDeact ? 'OUTSIDE' : 'INACTIVE', timestamp, 'OUT_OF_RANGE', 'Fuera de rango');
+        this.transitionState(vl, dist > rDeact ? 'OUTSIDE' : 'INACTIVE', timestamp, 'OUT_OF_RANGE', 'Fuera de rango exterior');
       }
     }
   }

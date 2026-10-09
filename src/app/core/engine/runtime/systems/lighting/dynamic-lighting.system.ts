@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
@@ -76,7 +75,6 @@ export class DynamicLightingSystem implements IUpdatable {
   }
 
   public endPlayerDragTransaction(): void {
-    // Corrección del error de negación booleana
     if (this.context.mode() !== GameMode.EDITOR) return;
     this.isPlayerDragActive = false;
     const refPos = this.getReferencePosition('AUTO');
@@ -91,7 +89,7 @@ export class DynamicLightingSystem implements IUpdatable {
     let shadowedSlots = 0;
     const slots = this.lightPool.getAllSlots();
     for (let i = 0; i < slots.length; i++) {
-      if (slots[i].assignedEntityUid && slots[i].currentIntensity > 0) {
+      if (slots[i].assignedEntityUid && slots[i].currentIntensity > 0 && slots[i].light.isEnabled()) {
         activeSlots++;
         if (slots[i].sg && (slots[i].sg!.getShadowMap()?.renderList?.length || 0) > 0) {
           shadowedSlots++;
@@ -110,7 +108,7 @@ export class DynamicLightingSystem implements IUpdatable {
     const slotsInfo: { id: string; assigned: boolean; hasSg: boolean; renderListSize: number; tier?: string }[] = [];
 
     this.lightPool.getAllSlots().forEach(s => {
-      const isPhysicallyOn = !!s.assignedEntityUid && s.currentIntensity > 0;
+      const isPhysicallyOn = !!s.assignedEntityUid && s.currentIntensity > 0 && s.light.isEnabled();
       if (isPhysicallyOn) {
         activeSlots++;
         if (s.sg && (s.sg.getShadowMap()?.renderList?.length || 0) > 0) shadowedSlots++;
@@ -181,9 +179,8 @@ export class DynamicLightingSystem implements IUpdatable {
     for (let i = 0; i < virtuals.length; i++) {
       const vl = virtuals[i];
       if (vl.isLightInRange) {
-        vl.targetMultiplier = 1.0;
-        vl.currentMultiplier = 1.0;
-        vl._lastRenderedMultiplier = 1.0;
+        vl.currentMultiplier = vl.targetMultiplier;
+        vl._lastRenderedMultiplier = vl.currentMultiplier;
         
         const lightComp = vl.entity.light;
         if (lightComp) {
@@ -251,9 +248,8 @@ export class DynamicLightingSystem implements IUpdatable {
     for (let i = 0; i < virtuals.length; i++) {
       const vl = virtuals[i];
       if (vl.isLightInRange) {
-        vl.targetMultiplier = 1.0;
-        vl.currentMultiplier = 1.0;
-        vl._lastRenderedMultiplier = 1.0;
+        vl.currentMultiplier = vl.targetMultiplier;
+        vl._lastRenderedMultiplier = vl.currentMultiplier;
         
         const lightComp = vl.entity.light;
         if (lightComp) {
@@ -365,8 +361,7 @@ export class DynamicLightingSystem implements IUpdatable {
     for (let i = 0; i < activeVirtuals.length; i++) {
       const vl = activeVirtuals[i];
       if (vl.isLightInRange) {
-        vl.targetMultiplier = 1.0;
-        vl.currentMultiplier = 1.0;
+        vl.currentMultiplier = vl.targetMultiplier;
       } else {
         vl.currentMultiplier = 0.0;
       }
@@ -454,15 +449,12 @@ export class DynamicLightingSystem implements IUpdatable {
       return;
     }
 
-    vl.targetMultiplier = 1.0;
-    vl.currentMultiplier = 1.0;
-    vl.isLightInRange = true;
-    vl._isInPrepareRange = true;
+    const refPos = this.getReferencePosition('AUTO');
+    this.lightDistance.evaluateDistanceAndHysteresis([vl], refPos, 0);
 
     const isEditorPure = this.context.mode() === GameMode.EDITOR || this.context.mode() === GameMode.EDITING_IN_GAME;
     this.lightVisual.updateVisualGlow(vl, lightComp, baseColor, this.profilerDisableLocalLights);
 
-    const refPos = this.getReferencePosition('AUTO');
     this.lightAllocation.allocatePoolSlots(this.lightRegistry.getVirtualLights(), refPos, Vector3.Zero(), 0, entity.uid);
     
     const slot = this.lightPool.findSlotByUid(entity.uid);
@@ -520,8 +512,9 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    const fadeRate = 1.0 - Math.exp(-4.5 * (dtMs / 1000.0));
-    const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, isEditorPure ? 0.6 : fadeRate);
+    // Transición asimétrica suave: encendido responsivo (3.5) vs apagado progresivo no abrupto (1.8)
+    const fadeRateIn = 1.0 - Math.exp(-3.5 * (dtMs / 1000.0));
+    const fadeRateOut = 1.0 - Math.exp(-1.8 * (dtMs / 1000.0));
 
     if (dtMs > 0) {
       this.playerVelocity.copyFrom(refPos).subtractInPlace(this.lastRefPos).scaleInPlace(1000 / dtMs);
@@ -578,6 +571,10 @@ export class DynamicLightingSystem implements IUpdatable {
 
       const multDiff = Math.abs(vl.targetMultiplier - vl.currentMultiplier);
       if (multDiff > 0.0005) {
+        const isFadingOut = vl.targetMultiplier < vl.currentMultiplier;
+        const rate = isFadingOut ? fadeRateOut : fadeRateIn;
+        const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, isEditorPure ? 0.6 : rate);
+
         vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
         
         if (vl.targetMultiplier === 0 && vl.currentMultiplier < LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
@@ -609,11 +606,12 @@ export class DynamicLightingSystem implements IUpdatable {
       const slot = allSlots[i];
 
       if (!slot.assignedEntityUid) {
-        if (Math.abs(slot.currentIntensity) > 0.0001) {
+        if (Math.abs(slot.currentIntensity) > 0.0001 || slot.light.isEnabled()) {
           slot.currentIntensity = 0;
           slot.light.intensity = 0;
           slot.light.diffuse.set(0, 0, 0);
           slot.light.specular.set(0, 0, 0);
+          slot.light.setEnabled(false);
           slot.shadowTier = undefined;
           if (slot.type !== 'directional') (slot.light as any).position.set(0, -99999, 0);
         }
@@ -645,8 +643,23 @@ export class DynamicLightingSystem implements IUpdatable {
     const candidates = activeVirtuals.filter(vl => vl.entity.light?.enabled !== false);
     this.lightAllocation.allocatePoolSlots(candidates, refPos, Vector3.Zero(), 0, null);
 
-    const allSlots = this.lightPool.getAllSlots();
+    const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
 
+    for (let i = 0; i < activeVirtuals.length; i++) {
+      const vl = activeVirtuals[i];
+      if (vl.isLightInRange) {
+        vl.currentMultiplier = vl.targetMultiplier;
+        vl._lastRenderedMultiplier = vl.currentMultiplier;
+        const lightComp = vl.entity.light;
+        if (lightComp) {
+          const hexColor = isBW ? lightComp.lightColorBW : lightComp.lightColor;
+          vl.baseColor = Color3.FromHexString(hexColor || '#ffffff');
+          this.lightVisual.updateVisualGlow(vl, lightComp, vl.baseColor, this.profilerDisableLocalLights);
+        }
+      }
+    }
+
+    const allSlots = this.lightPool.getAllSlots();
     for (let i = 0; i < allSlots.length; i++) {
       const slot = allSlots[i];
       if (slot.assignedEntityUid) {
@@ -713,6 +726,11 @@ export class DynamicLightingSystem implements IUpdatable {
 
     slot.currentIntensity = finalIntensity;
     slot.light.intensity = finalIntensity;
+
+    const shouldBeEnabled = finalIntensity > 0.001;
+    if (slot.light.isEnabled() !== shouldBeEnabled) {
+      slot.light.setEnabled(shouldBeEnabled);
+    }
 
     if (slot._isNewAssignment || vl.entity.isDirty || this.isFirstFrame) {
       if (slot.type !== 'directional') {

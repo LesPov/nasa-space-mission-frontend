@@ -9,6 +9,7 @@ import { LightPoolService } from './light-pool.service';
 import { LightTransformService } from './light-transform.service';
 import { SpatialStreamingGroupService } from '../../../spatial/spatial-streaming-group.service';
 import { LightShadowService } from './light-shadow.service';
+import { LightDistanceService } from './light-distance.service';
 
 @Injectable({ providedIn: 'root' })
 export class LightAllocationService {
@@ -16,6 +17,7 @@ export class LightAllocationService {
   private lightTransform = inject(LightTransformService);
   private spatialGroups = inject(SpatialStreamingGroupService);
   private lightShadows = inject(LightShadowService);
+  private lightDistance = inject(LightDistanceService);
 
   private _tempPos = Vector3.Zero();
   private _tempDir = Vector3.Zero();
@@ -101,6 +103,7 @@ export class LightAllocationService {
     selectedUid: string | null
   ): void {
     const now = performance.now();
+    const macroZone = this.lightDistance.getMacroZone();
 
     const currentlyAssignedUids = new Set<string>();
     for (const slot of this.activeSlots) {
@@ -109,14 +112,13 @@ export class LightAllocationService {
       }
     }
 
-    // 1. Filtrado de candidatos válidos con filtro topológico
+    // 1. Filtrado de candidatos con elegibilidad de macro-zona
     const validCandidates = activeVirtuals.filter(vl => {
       if (!vl.entity.light || !vl.entity.light.enabled) {
         vl.rejectionReason = 'DISABLED';
         return false;
       }
 
-      // Si está topológicamente desconectada y no tiene luz residual, rechazar
       if (vl.rejectionReason === 'TOPOLOGICALLY_DISCONNECTED') {
         if (!currentlyAssignedUids.has(vl.entity.uid)) {
           return false;
@@ -127,6 +129,14 @@ export class LightAllocationService {
         return true;
       }
 
+      // Si el jugador está en el EXTERIOR, las luces interiores fuera de preentrada
+      // van directo a preparación, no compiten por slots activos
+      if (macroZone === 'EXTERIOR' && vl.isInterior) {
+        if (!vl.inPreEntryZone && !vl.insideVolume) {
+          return false; // Candidata a preparación en slots 3 y 4
+        }
+      }
+
       if (vl.isLightInRange || vl._isInPrepareRange) {
         return true;
       }
@@ -134,7 +144,7 @@ export class LightAllocationService {
       return false;
     });
 
-    // 2. Cálculo de puntuación
+    // 2. Cálculo de puntuación priorizada por Macro-Zona
     validCandidates.forEach(vl => {
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
       const isInterior = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
@@ -144,26 +154,28 @@ export class LightAllocationService {
 
       if (isInterior) {
         const boundaryDist = vl.distanceToBoundary ?? 0;
+        
         if (vl.spatialState === 'INSIDE') {
-          score = 5 + (boundaryDist * 2);
+          score = (macroZone === 'INTERIOR_ACTIVE') ? 5 + (boundaryDist * 2) : 50 + (boundaryDist * 2);
         } else if (vl.spatialState === 'PRE_ENTRY') {
-          score = 50 + (boundaryDist * 3);
+          score = (macroZone === 'EXTERIOR') ? 120 + (boundaryDist * 4) : 25 + (boundaryDist * 3);
         } else if (vl.spatialState === 'PRE_EXIT') {
-          score = 110 + (boundaryDist * 4);
+          score = 40 + (boundaryDist * 3);
         } else if (vl._isInPrepareRange) {
-          score = 250 + (boundaryDist * 5);
+          score = 400 + (boundaryDist * 5);
         } else {
           score = 999999;
         }
 
-        // Penalización drástica por distancia topológica (salto de pasillo)
         score += hop * 2000;
       } else {
+        // Luces exteriores (GLOBAL): Prioridad máxima en el EXTERIOR
         const dist = vl.effectiveDistance;
-        score = 80 + (dist * dist * 0.5);
+        let baseScore = (macroZone === 'EXTERIOR') ? 5.0 : 80.0;
+        score = baseScore + (dist * 1.2);
       }
 
-      // Stickiness bonus para luces ya asignadas (30% de ventaja para evitar churn)
+      // Inercia de permanencia (Stickiness)
       if (currentlyAssignedUids.has(vl.entity.uid)) {
         score *= LIGHT_SPATIAL_CONSTANTS.STICKINESS_SCORE_MULTIPLIER;
       }
@@ -196,20 +208,18 @@ export class LightAllocationService {
           this.executeSlotHandover(slot, occupant || null, activeVirtuals, now);
         } else if (slot.state === 'FADING_OUT') {
           const fadeOutTime = now - slot.lastStateChangeTime;
-          // Si el apagado ya bajó de 0.05 o tardó más de 250ms, completar relevo de inmediato
-          if (occupant.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD || fadeOutTime > 250) {
+          if (occupant.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD || fadeOutTime > 800) {
             this.executeSlotHandover(slot, occupant, activeVirtuals, now);
           } else {
             const isBackInTop = desiredActiveCandidates.some(c => c.entity.uid === occupant.entity.uid);
-            if (isBackInTop) {
+            if (isBackInTop && occupant.targetMultiplier > 0.01) {
               slot.pendingUid = null;
               slot.state = 'FADING_IN';
-              occupant.targetMultiplier = 1.0;
               occupant.lifecycleStage = 'FADING_IN';
             }
           }
         } else if (slot.state === 'FADING_IN') {
-          if (occupant.currentMultiplier >= 0.98) {
+          if (occupant.currentMultiplier >= (occupant.targetMultiplier - 0.02)) {
             slot.state = 'ACTIVE';
             occupant.lifecycleStage = 'ACTIVE';
           }
@@ -233,8 +243,6 @@ export class LightAllocationService {
                 occupant.targetMultiplier = 0.0;
                 occupant.lifecycleStage = 'FADING_OUT';
 
-                candidateToPromote.targetMultiplier = 0.0;
-                candidateToPromote.currentMultiplier = 0.0;
                 candidateToPromote.lifecycleStage = 'PREPARED';
               }
             }
@@ -243,7 +251,7 @@ export class LightAllocationService {
       }
     }
 
-    // Asignación directa para slots activos vacíos
+    // Asignación de slots vacíos (conservando targetMultiplier calculado espacialmente)
     for (let i = 0; i < this.activeSlots.length; i++) {
       const slot = this.activeSlots[i];
       if (slot.state === 'EMPTY') {
@@ -271,8 +279,6 @@ export class LightAllocationService {
             slot.lastStateChangeTime = now;
 
             candidateToBind.logicalSlotIndex = slot.id;
-            candidateToBind.targetMultiplier = 1.0;
-            candidateToBind.currentMultiplier = 0.0;
             candidateToBind.lifecycleStage = 'FADING_IN';
             candidateToBind.isLightInRange = true;
           }
@@ -280,7 +286,7 @@ export class LightAllocationService {
       }
     }
 
-    // 4. Estratificación de sombras (HIGH, MEDIUM, LOW)
+    // 4. Asignación de Tiers de sombra a slots activos
     const assignedActiveSlots = this.activeSlots.filter(s => s.assignedUid !== null);
     assignedActiveSlots.sort((a, b) => {
       const vlA = activeVirtuals.find(v => v.entity.uid === a.assignedUid);
@@ -321,7 +327,7 @@ export class LightAllocationService {
       }
     });
 
-    // 5. Gestión de los 2 Slots de Preparación (Slots 3 y 4)
+    // 5. Gestión de los 2 Slots de Preparación (3 y 4)
     const activeUids = new Set(this.activeSlots.map(s => s.assignedUid).filter(Boolean) as string[]);
     const prepCandidates = desiredPreparedCandidates.filter(c => !activeUids.has(c.entity.uid)).slice(0, 2);
 
@@ -340,8 +346,6 @@ export class LightAllocationService {
         vl.shadowTier = 'DISABLED';
         vl.isLightInRange = false;
         vl.isShadowInRange = false;
-        vl.targetMultiplier = 0.0;
-        vl.currentMultiplier = 0.0;
         vl.lifecycleStage = 'PREPARED';
 
         this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
@@ -372,7 +376,7 @@ export class LightAllocationService {
       }
     });
 
-    // 7. Salvaguarda: nunca más de 3 slots físicos activos en hardware
+    // 7. Salvaguarda estricta
     const activePhysicalSlots = this.lightPool.getAllSlots().filter(s => s.assignedEntityUid !== null && s.currentIntensity > 0);
     if (activePhysicalSlots.length > LIGHT_SPATIAL_CONSTANTS.MAX_PHYSICAL_ACTIVE_LIGHTS) {
       activePhysicalSlots.sort((a, b) => a.currentIntensity - b.currentIntensity);
@@ -434,8 +438,6 @@ export class LightAllocationService {
           slot.lastStateChangeTime = now;
 
           incomingVl.logicalSlotIndex = slot.id;
-          incomingVl.targetMultiplier = 1.0;
-          incomingVl.currentMultiplier = 0.0;
           incomingVl.lifecycleStage = 'FADING_IN';
           incomingVl.isLightInRange = true;
           incomingVl.decisionText = `PROMOCIONADA A SLOT ${slot.id} (ENCENDIENDO)`;

@@ -1,6 +1,6 @@
 // file: src/app/core/engine/runtime/systems/lighting/light-containment.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
-import { AbstractMesh, PointLight, SpotLight, Scene, Vector3, Tags, Mesh, InstancedMesh, Node, MultiMaterial, Matrix } from '@babylonjs/core';
+import { AbstractMesh, PointLight, SpotLight, Scene, Vector3, Tags, Mesh, InstancedMesh, Node, Matrix, Ray } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { GameEntity, LightContainmentMode } from '../../../entities/game.entity';
 import { SpatialRelevanceHubService } from '../../../spatial/spatial-relevance-hub.service';
@@ -31,6 +31,7 @@ interface ContainerGeometryCache {
   centerWorld: Vector3;
   invWorldMatrix: Matrix;
   boundingDiagonal: number;
+  corridorApproxWidth: number;
   lastAnalyzedTime: number;
 }
 
@@ -120,7 +121,7 @@ export class LightContainmentService {
       : new Vector3(lightEntity.transform.position.x, lightEntity.transform.position.y, lightEntity.transform.position.z);
 
     const candidates = this.entityManager.getAllEntities().filter(
-      e => e.uid !== lightEntity.uid && (e.type === 'model' || e.type === 'cube') && e.view && !e.view.isDisposed()
+      e => e.uid !== lightEntity.uid && (e.type === 'model' || e.type === 'cube') && e.view && !e.view.isDisposed() && !e.type.startsWith('light_') && e.rol !== 'light'
     );
 
     let closestContainer: GameEntity | null = null;
@@ -167,6 +168,7 @@ export class LightContainmentService {
         centerWorld: Vector3.Zero(),
         invWorldMatrix: Matrix.Identity(),
         boundingDiagonal: 10.0,
+        corridorApproxWidth: 4.0,
         lastAnalyzedTime: performance.now()
       };
     }
@@ -188,7 +190,6 @@ export class LightContainmentService {
     const { renderables } = this.getAllRenderableMeshesFromModel(rootMesh);
     const entryPoints: Vector3[] = [];
 
-    // Obtención de portales reales desde SpatialStreamingGroupService
     const group = this.spatialGroups.getGroupForEntity(container.uid);
     if (group && group.portals.length > 0) {
       for (let p = 0; p < group.portals.length; p++) {
@@ -230,16 +231,16 @@ export class LightContainmentService {
     const centerWorld = minWorld.add(maxWorld).scale(0.5);
     const sizeWorld = maxWorld.subtract(minWorld);
     const boundingDiagonal = sizeWorld.length();
+    const corridorApproxWidth = Math.max(3.0, Math.min(sizeWorld.x, sizeWorld.z));
 
-    // Si no hay portales explícitos, usar solo las dos caras terminales del eje mayor (longitudinal)
     if (entryPoints.length === 0) {
       const isLongitudinalZ = sizeWorld.z >= sizeWorld.x;
       if (isLongitudinalZ) {
-        entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, minWorld.z));
-        entryPoints.push(new Vector3(centerWorld.x, centerWorld.y, maxWorld.z));
+        entryPoints.push(new Vector3(centerWorld.x, minWorld.y + 1.0, minWorld.z));
+        entryPoints.push(new Vector3(centerWorld.x, minWorld.y + 1.0, maxWorld.z));
       } else {
-        entryPoints.push(new Vector3(minWorld.x, centerWorld.y, centerWorld.z));
-        entryPoints.push(new Vector3(maxWorld.x, centerWorld.y, centerWorld.z));
+        entryPoints.push(new Vector3(minWorld.x, minWorld.y + 1.0, centerWorld.z));
+        entryPoints.push(new Vector3(maxWorld.x, minWorld.y + 1.0, centerWorld.z));
       }
     }
 
@@ -256,6 +257,7 @@ export class LightContainmentService {
       centerWorld,
       invWorldMatrix,
       boundingDiagonal,
+      corridorApproxWidth,
       lastAnalyzedTime: performance.now()
     };
 
@@ -266,7 +268,7 @@ export class LightContainmentService {
   public evaluateModelContainment(
     actorWorldPos: Vector3,
     container: GameEntity | null,
-    preEntryDistance: number = 6.0,
+    preEntryDistance: number = 8.0,
     wasInRange: boolean = false
   ): ModelContainmentResult {
     if (!container || !container.view || container.view.isDisposed()) {
@@ -287,7 +289,7 @@ export class LightContainmentService {
     const min = geoData.minWorld;
     const max = geoData.maxWorld;
 
-    const maxKeepAliveExitDistance = LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_MAX_DISTANCE;
+    const maxKeepAliveExitDistance = Math.max(preEntryDistance + 4.0, LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_MAX_DISTANCE);
     const broadMargin = wasInRange ? maxKeepAliveExitDistance + 2.0 : preEntryDistance + 2.0;
 
     const dxBroad = Math.max(0, (min.x - broadMargin) - actorWorldPos.x, actorWorldPos.x - (max.x + broadMargin));
@@ -310,7 +312,7 @@ export class LightContainmentService {
     this.metrics.preciseEvaluations++;
 
     const isWithinVerticalBounds = (
-      actorWorldPos.y >= (min.y - 1.5) && actorWorldPos.y <= (max.y + 1.5)
+      actorWorldPos.y >= (min.y - 1.5) && actorWorldPos.y <= (max.y + 2.5)
     );
 
     Vector3.TransformCoordinatesToRef(actorWorldPos, geoData.invWorldMatrix, this._tempLocalActorPos);
@@ -318,12 +320,23 @@ export class LightContainmentService {
     const locMin = geoData.minLocal;
     const locMax = geoData.maxLocal;
 
-    const tolXZ = wasInRange ? 1.0 : 0.4;
+    const tolXZ = wasInRange ? 0.8 : 0.3;
     const isInsideLocalAABB =
       locPos.x >= locMin.x - tolXZ && locPos.x <= locMax.x + tolXZ &&
       locPos.z >= locMin.z - tolXZ && locPos.z <= locMax.z + tolXZ;
 
-    const isInsideGeometry = isWithinVerticalBounds && isInsideLocalAABB;
+    // Precisión física: Verificamos si existe techo del contenedor directamente sobre el actor
+    let isUnderRoof = false;
+    if (isWithinVerticalBounds && isInsideLocalAABB && geoData.allRenderableMeshes.length > 0) {
+      const rayOrigin = new Vector3(actorWorldPos.x, actorWorldPos.y + 0.5, actorWorldPos.z);
+      const upRay = new Ray(rayOrigin, Vector3.Up(), 10.0);
+      const hitUp = scene.pickWithRay(upRay, (m) => {
+        return geoData.allRenderableMeshes.includes(m as AbstractMesh);
+      });
+      if (hitUp && hitUp.hit && hitUp.pickedMesh) {
+        isUnderRoof = true;
+      }
+    }
 
     let minDistanceToEntry = Number.MAX_VALUE;
     let closestEntryPoint = geoData.entryPoints[0];
@@ -337,7 +350,9 @@ export class LightContainmentService {
       }
     }
 
-    // 1. DENTRO DEL PASILLO ACTUAL
+    const isInsideGeometry = isWithinVerticalBounds && isInsideLocalAABB && isUnderRoof;
+
+    // 1. DENTRO DEL PASILLO ACTUAL (Debe estar bajo techo físicamente)
     if (isInsideGeometry) {
       return {
         inside: true,

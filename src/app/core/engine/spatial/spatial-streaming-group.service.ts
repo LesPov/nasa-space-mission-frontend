@@ -25,7 +25,6 @@ export class SpatialStreamingGroupService {
 
   private smoothedVelocity = Vector3.Zero();
 
-  // Umbral máximo de contacto para considerar que dos pasillos se tocan físicamente (m)
   private readonly CORRIDOR_ABUTTING_THRESHOLD = 3.5;
 
   public clear(): void {
@@ -97,8 +96,19 @@ export class SpatialStreamingGroupService {
     if (e.isManuallyHidden) return true;
     if (e.rol === 'player' || e.characterConfig || e.rol === 'spawn_point') return true;
     if (e.type === 'trigger' || e.type === 'trigger_compuesto') return true;
+    if (e.type.startsWith('light_') || e.rol === 'light') return true;
 
     const nameL = e.name ? e.name.toLowerCase() : '';
+    if (
+      nameL.startsWith('luz') || 
+      nameL.includes('street_light') || 
+      nameL.includes('street-light') || 
+      nameL.includes('lamp') ||
+      nameL.includes('farola')
+    ) {
+      return true;
+    }
+
     if (nameL.includes('piso') || nameL.includes('sueloinvisible') || nameL.includes('ground') || Tags.MatchesQuery(e.view, 'invisible_floor')) {
       return true;
     }
@@ -251,12 +261,10 @@ export class SpatialStreamingGroupService {
         const dz = Math.max(0, Math.max(gA.minWorld.z - gB.maxWorld.z, gB.minWorld.z - gA.maxWorld.z));
         const distBetweenBoxes = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-        // Umbral de adyacencia estricto (3.5 m). Impide unir pasillos lejanos separados por curvas o paredes
         if (distBetweenBoxes <= this.CORRIDOR_ABUTTING_THRESHOLD) {
           gA.neighborGroupIds.add(gB.id);
           gB.neighborGroupIds.add(gA.id);
 
-          // Cálculo del punto medio de contacto para el portal de transición
           const portalPos = new Vector3(
             Math.max(gA.minWorld.x, gB.minWorld.x) * 0.5 + Math.min(gA.maxWorld.x, gB.maxWorld.x) * 0.5,
             Math.max(gA.minWorld.y, gB.minWorld.y) * 0.5 + Math.min(gA.maxWorld.y, gB.maxWorld.y) * 0.5,
@@ -272,11 +280,9 @@ export class SpatialStreamingGroupService {
       }
     }
 
-    // Identificar extremos con salidas hacia el exterior
     for (let i = 0; i < groupList.length; i++) {
       const g = groupList[i];
       if (g.neighborGroupIds.size <= 1) {
-        // Segmento terminal (Pasillo 1 o Pasillo 3): añadir portal al exterior
         const portalPos = new Vector3(
           g.centerWorld.x,
           g.minWorld.y + 1.2,
@@ -300,7 +306,7 @@ export class SpatialStreamingGroupService {
 
     const lookAheadDist = Math.min(
       DEFAULT_SPATIAL_GROUP_CONFIG.maxLookAheadDistance,
-      Math.max(8.0, speed * DEFAULT_SPATIAL_GROUP_CONFIG.lookAheadMultiplier)
+      Math.max(4.0, speed * DEFAULT_SPATIAL_GROUP_CONFIG.lookAheadMultiplier)
     );
     const moveDir = speed > 0.15 ? this.smoothedVelocity.normalizeToNew() : Vector3.Zero();
     const predictedPos = playerPos.add(moveDir.scale(lookAheadDist));
@@ -348,7 +354,7 @@ export class SpatialStreamingGroupService {
         }
       }
 
-      if (!group.isInsideVolume && group.directionDot > 0.15) {
+      if (!group.isInsideVolume && group.directionDot > 0.25) {
         if (predDistToBox < minPredictedDist) {
           minPredictedDist = predDistToBox;
           bestPredictedTarget = group;
@@ -356,16 +362,7 @@ export class SpatialStreamingGroupService {
       }
     }
 
-    if (!closestActiveGroup) {
-      let nearestDist = Number.MAX_VALUE;
-      for (const group of this.groups.values()) {
-        if (group.distanceToBox < nearestDist) {
-          nearestDist = group.distanceToBox;
-          closestActiveGroup = group;
-        }
-      }
-    }
-
+    // Si el jugador no está dentro de ningún volumen cerrado, permanecer sin grupo activo exterior
     if (closestActiveGroup && this.currentPrimaryGroupId !== closestActiveGroup.id) {
       const prev = this.currentPrimaryGroupId;
       this.currentPrimaryGroupId = closestActiveGroup.id;
@@ -374,13 +371,20 @@ export class SpatialStreamingGroupService {
         newGroupId: closestActiveGroup.id,
         newGroupName: closestActiveGroup.name
       });
+    } else if (!closestActiveGroup && this.currentPrimaryGroupId !== null) {
+      const prev = this.currentPrimaryGroupId;
+      this.currentPrimaryGroupId = null;
+      this.profiler.recordTimelineEvent('ZONE', 'PRIMARY_GROUP_CHANGED', {
+        previousGroupId: prev,
+        newGroupId: null,
+        newGroupName: 'EXTERIOR'
+      });
     }
 
     if (bestPredictedTarget && this.predictedTargetGroupId !== bestPredictedTarget.id) {
       this.predictedTargetGroupId = bestPredictedTarget.id;
     }
 
-    // Actualización de distancias topológicas (Hops) desde el grupo primario
     const currentPrimary = this.currentPrimaryGroupId;
     for (const group of this.groups.values()) {
       group.hopDistanceFromActive = currentPrimary ? this.getHopDistance(currentPrimary, group.id) : 999;
@@ -390,22 +394,29 @@ export class SpatialStreamingGroupService {
       const isCurrent = Boolean(closestActiveGroup && group.id === closestActiveGroup.id);
       const hop = group.hopDistanceFromActive;
 
-      // Zonas a >= 2 saltos topológicos quedan estrictamente DORMANT
-      if (hop >= 2 && !isCurrent) {
+      if (currentPrimary && hop >= 2 && !isCurrent) {
         this.transitionGroup(group, 'DORMANT', now);
         continue;
       }
 
-      const isNeighborOfCurrent = hop === 1;
+      const isNeighborOfCurrent = currentPrimary ? hop === 1 : (group.distanceToBox <= group.config.preloadMargin);
       const isPredicted = Boolean(bestPredictedTarget && group.id === bestPredictedTarget.id);
       group.isPredictedTarget = isPredicted;
 
-      // Proximidad real hacia el portal que conecta con este vecino
       let distToConnectingPortal = Number.MAX_VALUE;
       if (isNeighborOfCurrent && closestActiveGroup) {
         for (let p = 0; p < closestActiveGroup.portals.length; p++) {
           const portal = closestActiveGroup.portals[p];
           if (portal.targetGroupId === group.id) {
+            const d = Vector3.Distance(playerPos, portal.position);
+            if (d < distToConnectingPortal) distToConnectingPortal = d;
+          }
+        }
+      } else if (!currentPrimary) {
+        // En exterior, buscar el portal al exterior del grupo
+        for (let p = 0; p < group.portals.length; p++) {
+          const portal = group.portals[p];
+          if (portal.targetGroupId === 'EXTERIOR') {
             const d = Vector3.Distance(playerPos, portal.position);
             if (d < distToConnectingPortal) distToConnectingPortal = d;
           }
@@ -416,17 +427,14 @@ export class SpatialStreamingGroupService {
         this.transitionGroup(group, 'ACTIVE', now);
         this.activeGroupIds.add(group.id);
         this.preparedGroupIds.add(group.id);
-      }
-      else if (isNeighborOfCurrent && (distToConnectingPortal <= group.config.prepareMargin || group.distanceToBox <= group.config.prepareMargin)) {
+      } else if (distToConnectingPortal <= group.config.prepareMargin || group.distanceToBox <= group.config.activeMargin) {
         this.transitionGroup(group, 'PREACTIVATING', now);
         this.preactivatingGroupIds.add(group.id);
         this.preparedGroupIds.add(group.id);
-      }
-      else if (isNeighborOfCurrent && (group.distanceToBox <= group.config.preloadMargin)) {
+      } else if (group.distanceToBox <= group.config.preloadMargin || (isPredicted && group.predictedDistanceToBox <= group.config.preloadMargin)) {
         this.transitionGroup(group, 'PREPARED', now);
         this.preparedGroupIds.add(group.id);
-      }
-      else {
+      } else {
         this.transitionGroup(group, 'DORMANT', now);
       }
     }

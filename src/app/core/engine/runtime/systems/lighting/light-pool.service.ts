@@ -31,7 +31,7 @@ export class LightPoolService {
     const tiers: ShadowTier[] = ['HIGH', 'HIGH', 'MEDIUM', 'LOW'];
 
     for (let i = 0; i < MAX_PHYSICAL_SLOTS; i++) {
-      // 1. POINT LIGHTS (Calibradas para sellado de paredes y suelo sin lag de renderloop)
+      // 1. POINT LIGHTS (Calibradas con sesgo mínimo para impedir fugas a través de paredes finas)
       const pLight = new PointLight(`pool_point_${i}`, new Vector3(0, -99999, 0), scene);
       pLight.intensity = 0.0; 
       pLight.diffuse = Color3.Black();
@@ -44,15 +44,14 @@ export class LightPoolService {
       pLight.setEnabled(false);
       Tags.AddTagsTo(pLight, "system_element");
 
-      const pSg = new ShadowGenerator(512, pLight);
+      const pSg = new ShadowGenerator(1024, pLight);
       pSg.usePoissonSampling = true;
       pSg.setDarkness(0.00); 
-      pSg.bias = 0.0003; 
-      pSg.normalBias = 0.005; 
-      pSg.forceBackFacesOnly = false; // Permite que caras frontales de piso y pared bloqueen la luz
+      pSg.bias = 0.0001; 
+      pSg.normalBias = 0.001; 
+      pSg.forceBackFacesOnly = false;
       pSg.useContactHardeningShadow = false;
 
-      // Congelar inmediatamente para que un slot libre consuma cero tiempo de GPU
       const pSm = pSg.getShadowMap();
       if (pSm) {
         pSm.refreshRate = 0;
@@ -86,8 +85,8 @@ export class LightPoolService {
       sSg.usePercentageCloserFiltering = true; 
       sSg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
       sSg.setDarkness(0.00); 
-      sSg.bias = 0.0003; 
-      sSg.normalBias = 0.004; 
+      sSg.bias = 0.0001; 
+      sSg.normalBias = 0.001; 
       sSg.forceBackFacesOnly = false;
 
       const sSm = sSg.getShadowMap();
@@ -182,7 +181,6 @@ export class LightPoolService {
     slot.assignedEntityUid = null;
     slot.logicalSlotIndex = null;
     
-    // Congelar refresco de sombras para no desperdiciar GPU en slots libres
     if (slot.sg) {
       const sm = slot.sg.getShadowMap();
       if (sm) {

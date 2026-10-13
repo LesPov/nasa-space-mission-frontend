@@ -1,7 +1,7 @@
 // file: src/app/core/engine/runtime/systems/lighting/light-shadow.service.ts
 import { Injectable, inject } from '@angular/core';
-import { AbstractMesh, ShadowGenerator, Vector3, Tags, InstancedMesh, Mesh, RenderTargetTexture, Node } from '@babylonjs/core';
-import { PoolSlot, ShadowTier } from './lighting-types';
+import { AbstractMesh, ShadowGenerator, Vector3, Tags, InstancedMesh, Mesh, Node } from '@babylonjs/core';
+import { PoolSlot } from './lighting-types';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { ShadowCache } from '../../shadows/shadow-cache.service';
 import { ShadowQualityService } from '../../shadows/shadow-quality.service';
@@ -47,10 +47,6 @@ export class LightShadowService {
     this.slotStaticRenderListCache.clear();
   }
 
-  /**
-   * Solo protege una entidad si la luz a la que pertenece el slot está FÍSICAMENTE encendida
-   * y proyectando sombras vivas en este fotograma. Si la luz está apagada o fuera de rango, no protege.
-   */
   public isEntityRequiredForActiveShadows(entityUid: string): boolean {
     const slots = this.entityToActiveSlotsMap.get(entityUid);
     if (!slots || slots.size === 0) return false;
@@ -273,17 +269,17 @@ export class LightShadowService {
     const ownerEnt = this.entityManager.getEntityByUid(entityUid);
 
     if (!slot.sg) {
-      const config = slot.type === 'spot' ? this.shadowQualitySvc.getSpotConfig() : { resolution: 512, filteringQuality: 1 };
+      const config = slot.type === 'spot' ? this.shadowQualitySvc.getSpotConfig() : { resolution: 1024, filteringQuality: 1 };
       slot.sg = new ShadowGenerator(config.resolution, slot.light);
       if (slot.type === 'spot') {
         slot.sg.usePercentageCloserFiltering = true;
         slot.sg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-        slot.sg.bias = 0.0003;
-        slot.sg.normalBias = 0.004;
+        slot.sg.bias = 0.0001;
+        slot.sg.normalBias = 0.001;
       } else {
         slot.sg.usePoissonSampling = true;
-        slot.sg.bias = 0.0003;
-        slot.sg.normalBias = 0.005;
+        slot.sg.bias = 0.0001;
+        slot.sg.normalBias = 0.001;
       }
       slot.sg.setDarkness(0.00);
     }
@@ -464,15 +460,15 @@ export class LightShadowService {
     }
 
     if (slot.type === 'point') {
-      const pointRate = (playerMoved && slot.hasDynamicCasters) ? 2 : RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+      const pointRate = (playerMoved && slot.hasDynamicCasters) ? 2 : 0;
       slot.sg.getShadowMap()!.refreshRate = pointRate;
       slot.currentRefreshRate = pointRate;
       return;
     }
 
     if (isEditor && !slot.hasDynamicCasters && slot.isStaticLight) {
-      slot.sg.getShadowMap()!.refreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
-      slot.currentRefreshRate = RenderTargetTexture.REFRESHRATE_RENDER_ONCE;
+      slot.sg.getShadowMap()!.refreshRate = 0;
+      slot.currentRefreshRate = 0;
       return;
     }
 
@@ -496,7 +492,7 @@ export class LightShadowService {
     slot.sg.getShadowMap()!.refreshRate = rate;
     slot.currentRefreshRate = rate;
 
-    if (prevRate !== RenderTargetTexture.REFRESHRATE_RENDER_ONCE && rate === RenderTargetTexture.REFRESHRATE_RENDER_ONCE) {
+    if (prevRate !== 0 && rate === 0) {
       slot.sg.getShadowMap()?.resetRefreshCounter();
     }
   }

@@ -26,7 +26,7 @@ export class LightReferenceService {
   public getValidActorEntities(): GameEntity[] {
     const isEditor = this.context.mode() === GameMode.EDITOR || this.context.mode() === GameMode.EDITING_IN_GAME;
 
-    // En modo Editor, si el creador tiene seleccionado al jugador o un spawn marker, es la referencia prioritaria
+    // 1. En modo Editor: si el creador tiene seleccionado al jugador o un spawn marker, es la referencia prioritaria
     if (isEditor) {
       const selected = this.stateSvc.objetoSeleccionado() as AbstractMesh | null;
       if (selected) {
@@ -37,14 +37,21 @@ export class LightReferenceService {
       }
     }
 
+    // 2. Jugador activo en el contexto
     const activePlayer = this.context.activePlayerEntity();
     if (activePlayer && activePlayer.view && !activePlayer.view.isDisposed()) {
       return [activePlayer];
     }
 
+    // 3. Búsqueda explícita de la entidad con rol 'player' o 'characterConfig' en la escena
     const all = this.entityManager.getAllEntities();
-    const actors: GameEntity[] = [];
+    const primaryActor = all.find(e => !e.isManuallyHidden && (e.rol === 'player' || e.hasComponent('characterConfig')));
+    if (primaryActor && primaryActor.view && !primaryActor.view.isDisposed()) {
+      return [primaryActor];
+    }
 
+    // 4. Actores secundarios / NPCs
+    const actors: GameEntity[] = [];
     for (let i = 0; i < all.length; i++) {
       const e = all[i];
       if (e.isManuallyHidden) continue;
@@ -60,20 +67,14 @@ export class LightReferenceService {
       }
     }
 
-    const primaryActor = actors.find(e => e.rol === 'player' || e.hasComponent('characterConfig'));
-    if (primaryActor) {
-      const idx = actors.indexOf(primaryActor);
-      if (idx > 0) {
-        actors.splice(idx, 1);
-        actors.unshift(primaryActor);
-      }
+    if (actors.length > 0) {
+      return actors;
     }
 
-    if (actors.length === 0) {
-      for (let i = 0; i < all.length; i++) {
-        if (!all[i].isManuallyHidden && all[i].rol === 'spawn_point') {
-          actors.push(all[i]);
-        }
+    // 5. Spawn points como fallback de posición inicial
+    for (let i = 0; i < all.length; i++) {
+      if (!all[i].isManuallyHidden && all[i].rol === 'spawn_point') {
+        actors.push(all[i]);
       }
     }
 
@@ -127,8 +128,18 @@ export class LightReferenceService {
   public getReferencePosition(customMode?: 'AUTO' | 'CAMERA' | 'PLAYER'): Vector3 {
     const isEditor = this.context.mode() === GameMode.EDITOR || this.context.mode() === GameMode.EDITING_IN_GAME;
 
-    // 1. En Editor: verificar si el objeto arrastrado/seleccionado es el jugador o un spawn marker
+    // A. Si se solicita explícitamente la cámara
+    if (customMode === 'CAMERA') {
+      const camera = this.ownership.getCamera();
+      if (camera) {
+        camera.computeWorldMatrix();
+        return camera.globalPosition.clone();
+      }
+    }
+
+    // B. En modo Editor: prioridad máxima al Player existente en la escena para inicializar Frame 0
     if (isEditor) {
+      // 1. Objeto seleccionado si es player o actor
       const selected = this.stateSvc.objetoSeleccionado() as AbstractMesh | null;
       if (selected) {
         const selEntity = this.entityManager.getEntityByMesh(selected);
@@ -138,9 +149,26 @@ export class LightReferenceService {
           return pos;
         }
       }
+
+      // 2. Jugador autoral en la escena (independientemente de si está seleccionado o no)
+      const all = this.entityManager.getAllEntities();
+      const playerEntity = all.find(e => !e.isManuallyHidden && (e.rol === 'player' || e.hasComponent('characterConfig')));
+      if (playerEntity && playerEntity.view && !playerEntity.view.isDisposed()) {
+        const pos = new Vector3();
+        this.getActorWorldPosition(playerEntity, pos);
+        return pos;
+      }
+
+      // 3. Spawn point como posición inicial esperada del jugador
+      const spawnEntity = all.find(e => !e.isManuallyHidden && e.rol === 'spawn_point');
+      if (spawnEntity && spawnEntity.view && !spawnEntity.view.isDisposed()) {
+        const pos = new Vector3();
+        this.getActorWorldPosition(spawnEntity, pos);
+        return pos;
+      }
     }
 
-    // 2. Jugador activo en runtime
+    // C. Jugador activo en runtime / gameplay
     const playerEntity = this.context.activePlayerEntity();
     if (playerEntity && playerEntity.view && !playerEntity.view.isDisposed()) {
       const pos = new Vector3();
@@ -148,7 +176,7 @@ export class LightReferenceService {
       return pos;
     }
 
-    // 3. Actores o spawns presentes en la escena
+    // D. Actores disponibles
     const actors = this.getValidActorEntities();
     if (actors.length > 0) {
       const pos = new Vector3();
@@ -156,7 +184,7 @@ export class LightReferenceService {
       return pos;
     }
 
-    // 4. Cámara del visor
+    // E. Fallback final a la cámara si no existe ningún actor en el mapa
     const camera = this.ownership.getCamera();
     if (camera) {
       if (camera.getScene() && !camera.getScene().isDisposed) {

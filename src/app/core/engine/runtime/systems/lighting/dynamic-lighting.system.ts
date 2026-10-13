@@ -233,6 +233,7 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     });
 
+    // Resolución de posición del Player
     const refPos = this.getReferencePosition('AUTO');
     this.lastRefPos.copyFrom(refPos);
 
@@ -511,8 +512,8 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    const fadeRateIn = 1.0 - Math.exp(-3.5 * (dtMs / 1000.0));
-    const fadeRateOut = 1.0 - Math.exp(-1.8 * (dtMs / 1000.0));
+    const fadeRateIn = 1.0 - Math.exp(-4.5 * (dtMs / 1000.0));
+    const fadeRateOut = 1.0 - Math.exp(-2.2 * (dtMs / 1000.0));
 
     if (dtMs > 0) {
       this.playerVelocity.copyFrom(refPos).subtractInPlace(this.lastRefPos).scaleInPlace(1000 / dtMs);
@@ -571,7 +572,7 @@ export class DynamicLightingSystem implements IUpdatable {
       if (multDiff > 0.0005) {
         const isFadingOut = vl.targetMultiplier < vl.currentMultiplier;
         const rate = isFadingOut ? fadeRateOut : fadeRateIn;
-        const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, isEditorPure ? 0.6 : rate);
+        const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, isEditorPure ? 0.8 : rate);
 
         vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
         
@@ -739,8 +740,8 @@ export class DynamicLightingSystem implements IUpdatable {
     const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > 0.01 && lightComp.enabled && lightComp.castShadows && slot.shadowTier !== 'DISABLED';
 
     if (slot.sg) {
-      const sBias = lightComp.shadowBias ?? 0.0003;
-      const sNormalBias = lightComp.shadowNormalBias ?? 0.005;
+      const sBias = lightComp.shadowBias ?? 0.0001;
+      const sNormalBias = lightComp.shadowNormalBias ?? 0.001;
       const sDarkness = 0.00;
 
       if (slot.sg.bias !== sBias) slot.sg.bias = sBias;
@@ -754,8 +755,6 @@ export class DynamicLightingSystem implements IUpdatable {
           ? Vector3.DistanceSquared(slot.lastShadowRebuildPos, slot.light.position) 
           : 9999;
 
-        // PROTECCIÓN ANTI-FLICKER:
-        // Solo reconstruir casters estáticos si el slot nunca se calentó o la luz se trasladó físicamente más de 3 metros
         const shouldExecuteRebuild = (!slot.isWarmedUp && (slot._isNewAssignment || renderListEmpty)) || distMovedSq > 9.0 || forceRebuildShadows;
 
         if (shouldExecuteRebuild && (!isEditorPure || !this.isPlayerDragActive)) {

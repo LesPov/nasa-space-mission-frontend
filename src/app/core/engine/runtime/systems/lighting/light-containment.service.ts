@@ -5,7 +5,7 @@ import { EntityManagerService } from '../../../entities/entity-manager.service';
 import { GameEntity, LightContainmentMode } from '../../../entities/game.entity';
 import { SpatialRelevanceHubService } from '../../../spatial/spatial-relevance-hub.service';
 import { SpatialStreamingGroupService } from '../../../spatial/spatial-streaming-group.service';
-import { ContainmentSource, LightSpatialState, LIGHT_SPATIAL_CONSTANTS } from './lighting-types';
+import { ContainmentSource, LightSpatialState } from './lighting-types';
 
 export interface ModelContainmentResult {
   inside: boolean;
@@ -18,11 +18,18 @@ export interface ModelContainmentResult {
   source: ContainmentSource;
 }
 
+export interface PortalOpening {
+  position: Vector3;
+  outwardNormal: Vector3;
+  width: number;
+  height: number;
+}
+
 interface ContainerGeometryCache {
   containerUid: string;
   matrixHash: string;
   source: ContainmentSource;
-  entryPoints: Vector3[];
+  openings: PortalOpening[];
   allRenderableMeshes: AbstractMesh[];
   minWorld: Vector3;
   maxWorld: Vector3;
@@ -30,8 +37,9 @@ interface ContainerGeometryCache {
   maxLocal: Vector3;
   centerWorld: Vector3;
   invWorldMatrix: Matrix;
-  boundingDiagonal: number;
+  worldMatrix: Matrix;
   corridorApproxWidth: number;
+  corridorApproxHeight: number;
   lastAnalyzedTime: number;
 }
 
@@ -53,10 +61,9 @@ export class LightContainmentService {
   }
 
   private containerRenderablesCache = new Map<string, AbstractMesh[]>();
-  private strictInteriorReceiversCache = new Map<string, AbstractMesh[]>();
   private containerGeometryCache = new Map<string, ContainerGeometryCache>();
 
-  private _tempLocalActorPos = Vector3.Zero();
+  private _tempRay = new Ray(Vector3.Zero(), Vector3.Up(), 20);
 
   public metrics = {
     containmentRebuilds: 0,
@@ -67,11 +74,6 @@ export class LightContainmentService {
 
   public markDirty(containerOrLightUid?: string): void {
     if (containerOrLightUid) {
-      for (const key of this.strictInteriorReceiversCache.keys()) {
-        if (key.includes(containerOrLightUid)) {
-          this.strictInteriorReceiversCache.delete(key);
-        }
-      }
       this.containerRenderablesCache.delete(containerOrLightUid);
       this.containerGeometryCache.delete(containerOrLightUid);
     } else {
@@ -81,7 +83,6 @@ export class LightContainmentService {
 
   public clearAllCache(): void {
     this.containerRenderablesCache.clear();
-    this.strictInteriorReceiversCache.clear();
     this.containerGeometryCache.clear();
     this.metrics.containmentRebuilds = 0;
     this.metrics.cacheHits = 0;
@@ -105,6 +106,18 @@ export class LightContainmentService {
       }
     }
 
+    // Si la vista en Babylon tiene padre, buscar la entidad correspondiente
+    if (lightEntity.view && lightEntity.view.parent) {
+      let p: any = lightEntity.view.parent;
+      while (p) {
+        const ent = this.entityManager.getEntityByMesh(p);
+        if (ent && ent.view && !ent.view.isDisposed()) {
+          return ent;
+        }
+        p = p.parent;
+      }
+    }
+
     return null;
   }
 
@@ -115,7 +128,7 @@ export class LightContainmentService {
         containerUid: container.uid,
         matrixHash: '',
         source: 'AABB_FALLBACK',
-        entryPoints: [Vector3.Zero()],
+        openings: [],
         allRenderableMeshes: [],
         minWorld: Vector3.Zero(),
         maxWorld: Vector3.Zero(),
@@ -123,15 +136,16 @@ export class LightContainmentService {
         maxLocal: Vector3.Zero(),
         centerWorld: Vector3.Zero(),
         invWorldMatrix: Matrix.Identity(),
-        boundingDiagonal: 10.0,
+        worldMatrix: Matrix.Identity(),
         corridorApproxWidth: 4.0,
+        corridorApproxHeight: 4.0,
         lastAnalyzedTime: performance.now()
       };
     }
 
     rootMesh.computeWorldMatrix(true);
     const wm = rootMesh.getWorldMatrix();
-    const matrixHash = `${wm.m[12].toFixed(2)}_${wm.m[13].toFixed(2)}_${wm.m[14].toFixed(2)}_${rootMesh.scaling.x.toFixed(2)}`;
+    const matrixHash = `${wm.m[12].toFixed(2)}_${wm.m[13].toFixed(2)}_${wm.m[14].toFixed(2)}_${rootMesh.scaling.x.toFixed(2)}_${rootMesh.scaling.z.toFixed(2)}`;
 
     const cached = this.containerGeometryCache.get(container.uid);
     if (cached && cached.matrixHash === matrixHash) {
@@ -144,14 +158,6 @@ export class LightContainmentService {
 
     const invWorldMatrix = Matrix.Invert(wm);
     const { renderables } = this.getAllRenderableMeshesFromModel(rootMesh);
-    const entryPoints: Vector3[] = [];
-
-    const group = this.spatialGroups.getGroupForEntity(container.uid);
-    if (group && group.portals.length > 0) {
-      for (let p = 0; p < group.portals.length; p++) {
-        entryPoints.push(group.portals[p].position.clone());
-      }
-    }
 
     let minWorld = new Vector3(Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE);
     let maxWorld = new Vector3(-Number.MAX_VALUE, -Number.MAX_VALUE, -Number.MAX_VALUE);
@@ -186,25 +192,43 @@ export class LightContainmentService {
 
     const centerWorld = minWorld.add(maxWorld).scale(0.5);
     const sizeWorld = maxWorld.subtract(minWorld);
-    const boundingDiagonal = sizeWorld.length();
+    const sizeLocal = maxLocal.subtract(minLocal);
+    const corridorApproxHeight = Math.max(3.0, sizeWorld.y);
     const corridorApproxWidth = Math.max(3.0, Math.min(sizeWorld.x, sizeWorld.z));
 
-    if (entryPoints.length === 0) {
-      const isLongitudinalZ = sizeWorld.z >= sizeWorld.x;
-      if (isLongitudinalZ) {
-        entryPoints.push(new Vector3(centerWorld.x, minWorld.y + 1.2, minWorld.z));
-        entryPoints.push(new Vector3(centerWorld.x, minWorld.y + 1.2, maxWorld.z));
-      } else {
-        entryPoints.push(new Vector3(minWorld.x, minWorld.y + 1.2, centerWorld.z));
-        entryPoints.push(new Vector3(maxWorld.x, minWorld.y + 1.2, centerWorld.z));
+    const openings: PortalOpening[] = [];
+
+    const group = this.spatialGroups.getGroupForEntity(container.uid);
+    if (group && group.portals.length > 0) {
+      for (let p = 0; p < group.portals.length; p++) {
+        openings.push({
+          position: group.portals[p].position.clone(),
+          outwardNormal: group.portals[p].normal.clone(),
+          width: group.portals[p].width || corridorApproxWidth,
+          height: corridorApproxHeight
+        });
       }
+    }
+
+    if (openings.length === 0) {
+      const floorYWorld = minWorld.y + 1.2;
+
+      // Boca 1: Extremo de la abertura Z
+      const p1World = new Vector3(centerWorld.x, floorYWorld, minWorld.z);
+      const n1World = new Vector3(0, 0, -1);
+      openings.push({ position: p1World, outwardNormal: n1World, width: corridorApproxWidth, height: corridorApproxHeight });
+
+      // Boca 2: Extremo de la abertura X
+      const p2World = new Vector3(maxWorld.x, floorYWorld, centerWorld.z);
+      const n2World = new Vector3(1, 0, 0);
+      openings.push({ position: p2World, outwardNormal: n2World, width: corridorApproxWidth, height: corridorApproxHeight });
     }
 
     const result: ContainerGeometryCache = {
       containerUid: container.uid,
       matrixHash,
       source: 'GEOMETRY',
-      entryPoints,
+      openings,
       allRenderableMeshes: renderables.length > 0 ? renderables : [rootMesh],
       minWorld,
       maxWorld,
@@ -212,8 +236,9 @@ export class LightContainmentService {
       maxLocal,
       centerWorld,
       invWorldMatrix,
-      boundingDiagonal,
+      worldMatrix: wm.clone(),
       corridorApproxWidth,
+      corridorApproxHeight,
       lastAnalyzedTime: performance.now()
     };
 
@@ -243,40 +268,22 @@ export class LightContainmentService {
     const scene = container.view.getScene();
     const geoData = this.analyzeContainerGeometry(container, scene);
 
-    const min = geoData.minWorld;
-    const max = geoData.maxWorld;
+    const minW = geoData.minWorld;
+    const maxW = geoData.maxWorld;
 
-    const dxBroad = Math.max(0, min.x - actorWorldPos.x, actorWorldPos.x - max.x);
-    const dyBroad = Math.max(0, min.y - actorWorldPos.y, actorWorldPos.y - max.y);
-    const dzBroad = Math.max(0, min.z - actorWorldPos.z, actorWorldPos.z - max.z);
-
-    // Si el actor está completamente fuera del AABB mundial del pasillo
-    if (dxBroad > 0 || dyBroad > 0 || dzBroad > 0) {
-      let minDistanceToEntry = Number.MAX_VALUE;
-      for (let i = 0; i < geoData.entryPoints.length; i++) {
-        const d = Vector3.Distance(actorWorldPos, geoData.entryPoints[i]);
-        if (d < minDistanceToEntry) minDistanceToEntry = d;
-      }
-
-      // Solo es pre-entrada si está verdaderamente en la boca de entrada a menos de la distancia configurada
-      if (minDistanceToEntry <= preEntryDistance) {
-        return {
-          inside: false,
-          preEntry: true,
-          preExit: false,
-          spatialState: 'PRE_ENTRY',
-          distanceToBoundary: minDistanceToEntry,
-          confidence: 'HIGH',
-          source: geoData.source
-        };
-      }
-
+    // Descarte preliminar fuera de la envolvente extendida
+    const margin = Math.max(preEntryDistance + 6.0, 15.0);
+    if (
+      actorWorldPos.x < (minW.x - margin) || actorWorldPos.x > (maxW.x + margin) ||
+      actorWorldPos.z < (minW.z - margin) || actorWorldPos.z > (maxW.z + margin) ||
+      actorWorldPos.y < (minW.y - 4.0) || actorWorldPos.y > (maxW.y + 6.0)
+    ) {
       return {
         inside: false,
         preEntry: false,
         preExit: false,
         spatialState: 'OUTSIDE',
-        distanceToBoundary: minDistanceToEntry,
+        distanceToBoundary: Number.MAX_VALUE,
         confidence: 'HIGH',
         source: geoData.source
       };
@@ -284,34 +291,55 @@ export class LightContainmentService {
 
     this.metrics.preciseEvaluations++;
 
-    const isWithinVerticalBounds = (
-      actorWorldPos.y >= (min.y - 0.5) && actorWorldPos.y <= (max.y + 1.0)
+    // 1. Distancia a las bocas de entrada reales
+    let bestPortalDist = Number.MAX_VALUE;
+    let isFacingPortalEntrance = false;
+
+    for (let i = 0; i < geoData.openings.length; i++) {
+      const portal = geoData.openings[i];
+      const toActor = actorWorldPos.subtract(portal.position);
+      const dist = toActor.length();
+
+      if (dist < bestPortalDist) {
+        bestPortalDist = dist;
+      }
+
+      if (dist <= preEntryDistance) {
+        const dotOutward = Vector3.Dot(toActor.normalize(), portal.outwardNormal);
+        if (dotOutward >= -0.3) {
+          isFacingPortalEntrance = true;
+        }
+      }
+    }
+
+    // 2. Detección de Interior Transitable:
+    // El actor está dentro del bounding horizontal con margen de pared y bajo el techo del pasillo
+    const isWithinHorizontalSpan = (
+      actorWorldPos.x >= (minW.x + 0.5) && actorWorldPos.x <= (maxW.x - 0.5) &&
+      actorWorldPos.z >= (minW.z + 0.5) && actorWorldPos.z <= (maxW.z - 0.5)
+    );
+    const isWithinVerticalSpan = (
+      actorWorldPos.y >= (minW.y - 1.0) && actorWorldPos.y <= (maxW.y + 1.0)
     );
 
-    Vector3.TransformCoordinatesToRef(actorWorldPos, geoData.invWorldMatrix, this._tempLocalActorPos);
-    const locPos = this._tempLocalActorPos;
-    const locMin = geoData.minLocal;
-    const locMax = geoData.maxLocal;
+    // Verificación vertical con raycast amplio
+    const testOrigin = new Vector3(actorWorldPos.x, actorWorldPos.y + 0.5, actorWorldPos.z);
+    this._tempRay.origin.copyFrom(testOrigin);
+    this._tempRay.direction.set(0, 1, 0);
+    this._tempRay.length = Math.max(15.0, geoData.corridorApproxHeight + 6.0);
 
-    const isInsideLocalAABB =
-      locPos.x >= locMin.x && locPos.x <= locMax.x &&
-      locPos.z >= locMin.z && locPos.z <= locMax.z;
+    const hitUp = scene.pickWithRay(this._tempRay, (m) => geoData.allRenderableMeshes.includes(m as AbstractMesh));
+    const hasRoofAbove = hitUp && hitUp.hit;
 
-    let isUnderRoof = false;
-    if (isWithinVerticalBounds && isInsideLocalAABB && geoData.allRenderableMeshes.length > 0) {
-      const rayOrigin = new Vector3(actorWorldPos.x, actorWorldPos.y + 0.2, actorWorldPos.z);
-      const upRay = new Ray(rayOrigin, Vector3.Up(), 10.0);
-      const hitUp = scene.pickWithRay(upRay, (m) => geoData.allRenderableMeshes.includes(m as AbstractMesh));
-      if (hitUp && hitUp.hit) isUnderRoof = true;
-    }
+    // Raycast hacia el piso del pasillo
+    this._tempRay.direction.set(0, -1, 0);
+    this._tempRay.length = 4.0;
+    const hitDown = scene.pickWithRay(this._tempRay, (m) => geoData.allRenderableMeshes.includes(m as AbstractMesh));
+    const hasFloorBelow = hitDown && hitDown.hit;
 
-    let minDistanceToEntry = Number.MAX_VALUE;
-    for (let i = 0; i < geoData.entryPoints.length; i++) {
-      const d = Vector3.Distance(actorWorldPos, geoData.entryPoints[i]);
-      if (d < minDistanceToEntry) minDistanceToEntry = d;
-    }
+    const isInsideCorridor = (isWithinHorizontalSpan && isWithinVerticalSpan && (hasRoofAbove || hasFloorBelow));
 
-    if (isWithinVerticalBounds && isInsideLocalAABB && isUnderRoof) {
+    if (isInsideCorridor) {
       return {
         inside: true,
         preEntry: false,
@@ -323,14 +351,28 @@ export class LightContainmentService {
       };
     }
 
-    if (minDistanceToEntry <= preEntryDistance) {
+    // 3. Pre-Entrada frente a la abertura de acceso
+    if (isFacingPortalEntrance && bestPortalDist <= preEntryDistance) {
       return {
         inside: false,
         preEntry: true,
         preExit: false,
         spatialState: 'PRE_ENTRY',
-        distanceToBoundary: minDistanceToEntry,
+        distanceToBoundary: bestPortalDist,
         confidence: 'HIGH',
+        source: geoData.source
+      };
+    }
+
+    // 4. Pre-Salida suave al abandonar el pasillo
+    if (wasInRange && bestPortalDist <= (preEntryDistance + 4.0)) {
+      return {
+        inside: false,
+        preEntry: false,
+        preExit: true,
+        spatialState: 'PRE_EXIT',
+        distanceToBoundary: bestPortalDist,
+        confidence: 'MEDIUM',
         source: geoData.source
       };
     }
@@ -340,7 +382,7 @@ export class LightContainmentService {
       preEntry: false,
       preExit: false,
       spatialState: 'OUTSIDE',
-      distanceToBoundary: minDistanceToEntry,
+      distanceToBoundary: bestPortalDist,
       confidence: 'HIGH',
       source: geoData.source
     };
@@ -366,7 +408,7 @@ export class LightContainmentService {
       if (
         Tags.MatchesQuery(
           node,
-          'editor_only || fog_element || debug_element || proxy_collider || invisible_floor || light_visual || ignore_raycast'
+          'editor_only || fog_element || debug_element || invisible_floor || light_visual || ignore_raycast'
         )
       ) {
         return;
@@ -406,25 +448,23 @@ export class LightContainmentService {
       if (container && container.view) {
         const { renderables } = this.getAllRenderableMeshesFromModel(container.view);
 
-        if (affectDescendantsOnly) {
-          light.includedOnlyMeshes = [...renderables];
+        // Si se pide explícitamente restringir solo a mallas del modelo:
+        if (affectDescendantsOnly && renderables.length > 0) {
+          const validReceivers = new Set<AbstractMesh>(renderables);
+          const playerEnt = this.entityManager.getAllEntities().find(e => e.rol === 'player' || !!e.characterConfig);
+          if (playerEnt && playerEnt.view) {
+            validReceivers.add(playerEnt.view as AbstractMesh);
+            playerEnt.view.getChildMeshes(false).forEach(m => validReceivers.add(m));
+          }
+
+          light.includedOnlyMeshes = Array.from(validReceivers);
           light.excludedMeshes = [];
           return;
         }
-
-        const validReceivers = new Set<AbstractMesh>(renderables);
-        const playerEnt = this.entityManager.getAllEntities().find(e => e.rol === 'player' || !!e.characterConfig);
-        if (playerEnt && playerEnt.view) {
-          validReceivers.add(playerEnt.view as AbstractMesh);
-          playerEnt.view.getChildMeshes(false).forEach(m => validReceivers.add(m));
-        }
-
-        light.includedOnlyMeshes = Array.from(validReceivers);
-        light.excludedMeshes = [];
-        return;
       }
     }
 
+    // Por defecto: la luz ilumina libremente el interior y las sombras se encargan de ocluir hacia el exterior
     light.includedOnlyMeshes = [];
     light.excludedMeshes = [];
   }

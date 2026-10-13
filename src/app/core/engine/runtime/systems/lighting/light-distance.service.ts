@@ -185,7 +185,6 @@ export class LightDistanceService {
         } 
         // 2. EN PRE-ENTRADA EXTERIOR (PRE_ENTRY): PROGRESIÓN ANALÓGICA HACIA LA ENTRADA
         else if (contResult.spatialState === 'PRE_ENTRY') {
-          // Curva de entrada continua hacia el portal: comienza en 0.0001 en el borde y escala hacia 1.0 en la puerta
           const distToPortal = contResult.distanceToBoundary;
           const curve = LightAttenuationCurve.calculate(distToPortal, 0.5, configuredPreDist);
           const progressiveMultiplier = Math.max(LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD, curve);
@@ -213,7 +212,7 @@ export class LightDistanceService {
           vl._isInPrepareRange = true;
           this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, holdDistance, maxExitDist, nowTimeStr, `PRE-SALIDA (${container.name})`);
         } 
-        // 4. FUERA DEL PASILLO: TOTALMENTE APAGADA
+        // 4. FUERA DEL PASILLO: TOTALMENTE APAGADA (Sin falsos positivos en paredes exteriores)
         else {
           vl.targetMultiplier = 0.0;
           vl.isLightInRange = false;
@@ -259,7 +258,6 @@ export class LightDistanceService {
     const currentLimit = wasInRange ? rDeact : rAct;
     const curveVal = LightAttenuationCurve.calculate(dist, rAct * 0.65, rDeact);
     
-    // Si la distancia entra en el perímetro, garantizar arranque en 0.0001
     const progressiveVal = (dist <= rDeact && curveVal > 0)
       ? Math.max(LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD, curveVal)
       : 0.0;

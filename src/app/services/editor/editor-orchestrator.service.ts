@@ -111,7 +111,6 @@ export class EditorOrchestratorService {
     });
 
     this.mapChangeSub = this.editorSvc.onMapChanged.subscribe(event => {
-      // Si el evento fue puramente de movimiento de Gizmo, no evaluar jugabilidad estructural
       if (event && (event as MapChangeEvent).type === 'TRANSFORM') {
         return;
       }
@@ -124,7 +123,6 @@ export class EditorOrchestratorService {
       try {
         const state = this.stateSvc.playState();
         if (this.gameContext.authorityProfile().canEdit && this.editando() && (state === 'EDITOR' || state === 'EDITING_IN_GAME')) {
-          // Si el evento fue puramente transformacional de Gizmo, guardado silencioso sin alert
           const esSilencioso = event ? (event as MapChangeEvent).type === 'TRANSFORM' : true;
           this.guardarMapaEnBD(esSilencioso); 
         }
@@ -248,21 +246,30 @@ export class EditorOrchestratorService {
             }
           });
 
+          // Obtener la posición de referencia real del Player/Actor
+          const realPlayerRefPos = this.dynLighting.getReferencePosition('AUTO');
+
           const editorCam = this.motor3dSvc.getEditorCamera();
           editorCam.computeWorldMatrix();
           
-          const realPlayerRefPos = this.dynLighting.getReferencePosition('AUTO');
           const camFwd = editorCam.getDirection(Vector3.Forward());
           camFwd.y = 0;
           camFwd.normalize();
 
+          // Sincronización espacial inmediata con el Player antes de que la escena sea visible
+          this.spatialHub.rebuildRegistry();
           this.spatialHub.forceUpdatePositions(realPlayerRefPos, editorCam.globalPosition, camFwd);
           this.localRendering.ensureAllEntitiesVisibleForEditor();
           this.lightShadows.refreshShadowCastersCache();
 
           this.dynLighting.start();
           this.shadowOrchestrator.start();
+          
+          // Warmup dirigido a la posición del jugador
           await this.dynLighting.forceWarmup(realPlayerRefPos);
+
+          // Evaluación Frame 0 inmediata para que las luces adquieran su intensidad final
+          this.dynLighting.update(16.66);
 
           scene.render();
           scene.render();

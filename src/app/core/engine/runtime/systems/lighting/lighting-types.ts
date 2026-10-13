@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/lighting-types.ts
 import { Color3, PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3 } from '@babylonjs/core';
 import { GameEntity, LightInteriorActivationMode } from '../../../entities/game.entity';
@@ -57,13 +58,14 @@ export const LIGHT_SPATIAL_CONSTANTS = {
   TOTAL_LOGICAL_SLOTS: 6,
   MAX_LOCAL_LIGHTS: 4,
   MAX_LOCAL_SHADOWS: 4,
-  ZERO_INTENSITY_THRESHOLD: 0.001,
+  ZERO_INTENSITY_THRESHOLD: 0.00005,
+  MIN_FADE_INITIAL_MULTIPLIER: 0.0001,
   
-  // Parámetros de Pasillo y Preentrada (16m preservados)
+  // Parámetros de Pasillo y Preentrada
   DEFAULT_INTERIOR_PREENTRY_DISTANCE: 16.0,
   INTERIOR_KEEP_ALIVE_HOLD_MARGIN: 3.5,
   INTERIOR_KEEP_ALIVE_DISTANCE_MULTIPLIER: 1.3,
-  INTERIOR_KEEP_ALIVE_MAX_DISTANCE: 12.0,
+  INTERIOR_KEEP_ALIVE_MAX_DISTANCE: 16.0,
   INTERIOR_SHADOW_EXIT_MARGIN: 4.5,
   
   // Histéresis de umbrales
@@ -130,6 +132,9 @@ export interface VirtualLight {
   inPreExitZone?: boolean;
   spatialState?: LightSpatialState;
   distanceToBoundary?: number;
+  signedDistanceToPortal?: number;
+  matchedPortalId?: string;
+  transitionProgress?: number;
   containmentSource?: ContainmentSource;
   containerName?: string;
   topologicalHop?: number;

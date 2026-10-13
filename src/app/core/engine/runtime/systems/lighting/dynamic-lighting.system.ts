@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
@@ -233,7 +234,6 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     });
 
-    // Resolución de posición del Player
     const refPos = this.getReferencePosition('AUTO');
     this.lastRefPos.copyFrom(refPos);
 
@@ -503,7 +503,7 @@ export class DynamicLightingSystem implements IUpdatable {
 
     const activeVirtuals = this.lightRegistry.getVirtualLights();
     const anyLightDirty = activeVirtuals.some(v => v.entity.isDirty);
-    const anyLightFading = activeVirtuals.some(v => Math.abs(v.targetMultiplier - v.currentMultiplier) > 0.001);
+    const anyLightFading = activeVirtuals.some(v => Math.abs(v.targetMultiplier - v.currentMultiplier) > 0.0001);
     const anyPendingTransition = this.lightAllocation.hasPendingTransitions();
 
     if (isEditorPure && !this.isFirstFrame) {
@@ -512,8 +512,8 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    const fadeRateIn = 1.0 - Math.exp(-4.5 * (dtMs / 1000.0));
-    const fadeRateOut = 1.0 - Math.exp(-2.2 * (dtMs / 1000.0));
+    const fadeRateIn = 1.0 - Math.exp(-6.0 * (dtMs / 1000.0));
+    const fadeRateOut = 1.0 - Math.exp(-3.5 * (dtMs / 1000.0));
 
     if (dtMs > 0) {
       this.playerVelocity.copyFrom(refPos).subtractInPlace(this.lastRefPos).scaleInPlace(1000 / dtMs);
@@ -569,10 +569,10 @@ export class DynamicLightingSystem implements IUpdatable {
       }
 
       const multDiff = Math.abs(vl.targetMultiplier - vl.currentMultiplier);
-      if (multDiff > 0.0005) {
+      if (multDiff > 0.00005) {
         const isFadingOut = vl.targetMultiplier < vl.currentMultiplier;
         const rate = isFadingOut ? fadeRateOut : fadeRateIn;
-        const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, isEditorPure ? 0.8 : rate);
+        const lerpSpeed = this.isFirstFrame ? 1.0 : Math.min(1.0, isEditorPure ? 0.9 : rate);
 
         vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
         
@@ -588,7 +588,7 @@ export class DynamicLightingSystem implements IUpdatable {
       }
 
       const renderDiff = Math.abs(vl.currentMultiplier - (vl._lastRenderedMultiplier ?? -1));
-      if (renderDiff > 0.002 || this.isFirstFrame || vl.entity.isDirty) {
+      if (renderDiff > 0.0005 || this.isFirstFrame || vl.entity.isDirty) {
         vl._lastRenderedMultiplier = vl.currentMultiplier;
         const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
         const hexColor = lightComp ? (isBW ? lightComp.lightColorBW : lightComp.lightColor) : '#ffffff';
@@ -605,7 +605,7 @@ export class DynamicLightingSystem implements IUpdatable {
       const slot = allSlots[i];
 
       if (!slot.assignedEntityUid) {
-        if (Math.abs(slot.currentIntensity) > 0.0001 || slot.light.isEnabled()) {
+        if (Math.abs(slot.currentIntensity) > 0.00001 || slot.light.isEnabled()) {
           slot.currentIntensity = 0;
           slot.light.intensity = 0;
           slot.light.diffuse.set(0, 0, 0);
@@ -693,8 +693,8 @@ export class DynamicLightingSystem implements IUpdatable {
     if (slot.type === 'spot') {
       const spot = slot.light as SpotLight;
       spot.direction.copyFrom(this._tempDir);
-      spot.angle = (vl.entity.light?.angle || 60) * (Math.PI / 180);
-      spot.exponent = 1.0;
+      spot.angle = (lightComp.angle || 60) * (Math.PI / 180);
+      spot.exponent = Math.max(0.1, lightComp.exponent ?? 1.0);
     } else if (slot.type === 'directional') {
       const dirL = slot.light as DirectionalLight;
       dirL.direction.copyFrom(this._tempDir);
@@ -726,7 +726,7 @@ export class DynamicLightingSystem implements IUpdatable {
     slot.currentIntensity = finalIntensity;
     slot.light.intensity = finalIntensity;
 
-    const shouldBeEnabled = finalIntensity > 0.001;
+    const shouldBeEnabled = finalIntensity > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
     if (slot.light.isEnabled() !== shouldBeEnabled) {
       slot.light.setEnabled(shouldBeEnabled);
     }
@@ -737,7 +737,7 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > 0.01 && lightComp.enabled && lightComp.castShadows && slot.shadowTier !== 'DISABLED';
+    const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD && lightComp.enabled && lightComp.castShadows && slot.shadowTier !== 'DISABLED';
 
     if (slot.sg) {
       const sBias = lightComp.shadowBias ?? 0.0001;
@@ -777,7 +777,7 @@ export class DynamicLightingSystem implements IUpdatable {
 
           let actorShouldCastShadow = false;
           if (vl.isInterior && vl.interiorActivationMode !== 'DISTANCE') {
-            actorShouldCastShadow = (vl.spatialState === 'INSIDE' || vl.spatialState === 'PRE_EXIT') && distToLight <= (lightRange + 8.0);
+            actorShouldCastShadow = (vl.spatialState === 'INSIDE' || vl.spatialState === 'PRE_EXIT' || vl.spatialState === 'PRE_ENTRY') && distToLight <= (lightRange + 8.0);
           } else {
             actorShouldCastShadow = distToLight <= (lightRange + 4.0);
           }

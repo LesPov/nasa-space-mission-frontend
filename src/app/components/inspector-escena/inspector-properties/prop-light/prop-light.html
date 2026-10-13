@@ -35,8 +35,40 @@
       </div>
 
       <div class="field wide" *ngIf="isSpot">
-        <label>Apertura (° Grados)</label>
+        <label>Apertura (° Grados del Cono)</label>
         <input type="number" step="1" min="1" max="179" [(ngModel)]="angle" (ngModelChange)="aplicarLuz()" />
+      </div>
+
+      <div class="field wide" *ngIf="isSpot">
+        <label>Foco / Concentración Angular (Exponente)</label>
+        <input type="number" step="0.1" min="0.1" max="64" [(ngModel)]="exponent" (ngModelChange)="aplicarLuz()" />
+        <p class="help-text">Controla la suavidad del borde del foco de la luz spot (1.0 = suave, >4.0 = haz concentrado).</p>
+      </div>
+    </div>
+
+    <!-- ESCALA LOCAL DE LA LUZ -->
+    <div style="border-top: 1px dashed #334155; padding-top: 10px; margin-top: 12px;">
+      <label style="font-size: 10px; color: #60a5fa; font-weight: bold; margin-bottom: 6px; display: block;">
+        Escala Dimensional de la Luz:
+      </label>
+      <div class="grid-3">
+        <div class="field"><label>Escala X</label><input type="number" step="0.05" min="0.01" [(ngModel)]="lightScaleX" (ngModelChange)="onScaleChange()"></div>
+        <div class="field"><label>Escala Y</label><input type="number" step="0.05" min="0.01" [(ngModel)]="lightScaleY" (ngModelChange)="onScaleChange()"></div>
+        <div class="field"><label>Escala Z</label><input type="number" step="0.05" min="0.01" [(ngModel)]="lightScaleZ" (ngModelChange)="onScaleChange()"></div>
+      </div>
+    </div>
+
+    <!-- CONTROLES VISUALES DE DEPURACIÓN (ESFERA Y CAJA) -->
+    <div style="border-top: 1px dashed #334155; padding-top: 10px; margin-top: 12px;">
+      <div class="grid-2">
+        <div class="checkbox-modern">
+          <input type="checkbox" id="chkShowRangeSphere" [(ngModel)]="showRangeSphereHelper" (ngModelChange)="onDebugHelpersChange()">
+          <label for="chkShowRangeSphere" style="color: #facc15;">🟡 Ver Esfera de Alcance</label>
+        </div>
+        <div class="checkbox-modern" *ngIf="containmentMode === 'INTERIOR'">
+          <input type="checkbox" id="chkShowContainerBox" [(ngModel)]="showContainerBoxHelper" (ngModelChange)="onDebugHelpersChange()">
+          <label for="chkShowContainerBox" style="color: #38bdf8;">🔷 Ver Caja Pasillo</label>
+        </div>
       </div>
     </div>
   </div>
@@ -64,31 +96,68 @@
       <div class="field wide" style="margin-bottom: 12px;">
         <label style="color: #facc15; font-weight: bold;">Método de Activación Interior</label>
         <select [(ngModel)]="interiorActivationMode" (ngModelChange)="aplicarLuz()" style="border-color: #facc15;">
-          <option value="VOLUME">🚪 PRE-ENTRADA AL MODELO (Por defecto - El modelo gobierna entrada)</option>
+          <option value="VOLUME">🚪 ACTIVACIÓN POR PORTALES (Exclusivo pasillos: entrada/salida por aberturas)</option>
           <option value="DISTANCE">📡 DISTANCIA (Radial al foco - Ignora volumen)</option>
           <option value="BOTH">🔒 VOLUMEN + DISTANCIA (Dentro del pasillo Y cerca de la luz)</option>
         </select>
-        <p class="help-text">
-          {{ interiorActivationMode === 'VOLUME' ? 'El modelo 3D y su abertura gobiernan la entrada. Los controles radiales se anulan automáticamente.' : '' }}
-          {{ interiorActivationMode === 'DISTANCE' ? 'La luz se enciende por radio esférico aunque el jugador esté fuera de las paredes.' : '' }}
-          {{ interiorActivationMode === 'BOTH' ? 'Debe estar dentro del pasillo Y a menos de la distancia configurada.' : '' }}
-        </p>
       </div>
 
-      <!-- PRE-ENTRADA AL MODELO (CONFIGURACIÓN HASTA 50 METROS PARA PASILLOS GRANDES) -->
+      <!-- GESTOR DE PORTALES BIDIRECCIONALES -->
+      <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border: 1px solid #334155; border-radius: 6px; margin-bottom: 12px;" *ngIf="interiorActivationMode !== 'DISTANCE'">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+          <h5 style="margin: 0; color: #60a5fa; font-size: 11px; text-transform: uppercase;">Portales del Pasillo (Discos 3D Seleccionables)</h5>
+          <button class="btn-secondary small" (click)="agregarPortal()">+ Añadir Portal</button>
+        </div>
+
+        <div *ngFor="let portal of portals; let pIdx = index" 
+             [style.border-color]="selectedPortalIndex === pIdx ? '#facc15' : '#334155'"
+             style="background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 10px; margin-bottom: 8px; cursor: pointer;"
+             (click)="seleccionarPortal(pIdx)">
+          
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
+            <div style="display: flex; align-items: center; gap: 6px; width: 80%;">
+              <span style="font-size: 12px;">{{ selectedPortalIndex === pIdx ? '🔘' : '⚪' }}</span>
+              <input type="text" [(ngModel)]="portal.name" (ngModelChange)="aplicarLuz()" style="background: transparent; border: none; color: #f8fafc; font-weight: bold; font-size: 11px; outline: none; width: 100%;">
+            </div>
+            <button class="btn-danger small" (click)="eliminarPortal(pIdx); $event.stopPropagation()" style="padding: 2px 6px;">✕</button>
+          </div>
+
+          <div class="grid-3" style="margin-bottom: 6px;">
+            <div class="field"><label>Pos Local X</label><input type="number" step="0.05" [(ngModel)]="portal.localPosition.x" (ngModelChange)="aplicarLuz()"></div>
+            <div class="field"><label>Pos Local Y</label><input type="number" step="0.05" [(ngModel)]="portal.localPosition.y" (ngModelChange)="aplicarLuz()"></div>
+            <div class="field"><label>Pos Local Z</label><input type="number" step="0.05" [(ngModel)]="portal.localPosition.z" (ngModelChange)="aplicarLuz()"></div>
+          </div>
+
+          <div class="grid-3" style="margin-bottom: 6px;">
+            <div class="field"><label>Normal X</label><input type="number" step="0.1" [(ngModel)]="portal.localNormal.x" (ngModelChange)="aplicarLuz()"></div>
+            <div class="field"><label>Normal Y</label><input type="number" step="0.1" [(ngModel)]="portal.localNormal.y" (ngModelChange)="aplicarLuz()"></div>
+            <div class="field"><label>Normal Z</label><input type="number" step="0.1" [(ngModel)]="portal.localNormal.z" (ngModelChange)="aplicarLuz()"></div>
+          </div>
+
+          <!-- ESCALA INDIVIDUAL DEL DISCO Y DISTANCIA DE PRE-ENTRADA -->
+          <div class="grid-2">
+            <div class="field"><label style="color:#facc15">Radio Disco 3D (m)</label><input type="number" step="0.1" min="0.2" [(ngModel)]="portal.radius" (ngModelChange)="onPortalRadiusChange(portal)"></div>
+            <div class="field"><label style="color:#4ade80">Pre-Entrada (m)</label><input type="number" step="0.5" min="0.5" max="50" [(ngModel)]="portal.preEntryDistance" (ngModelChange)="aplicarLuz()"></div>
+          </div>
+        </div>
+
+        <button class="btn-ghost small full" (click)="autocalibrarDosPortales()" style="margin-top: 6px;">
+          🎯 Auto-calibrar 2 Aberturas (Discos en Extremos Z)
+        </button>
+      </div>
+
+      <!-- PRE-ENTRADA GLOBAL DEL PASILLO -->
       <div style="background: rgba(15, 23, 42, 0.6); padding: 12px; border: 1px solid #334155; border-radius: 6px; margin-bottom: 12px;" *ngIf="interiorActivationMode !== 'DISTANCE'">
         <div class="checkbox-modern" style="margin-bottom: 10px;">
           <input type="checkbox" id="chkPreEntry" [(ngModel)]="preEntryEnabled" (ngModelChange)="aplicarLuz()">
-          <label for="chkPreEntry" style="color: #60a5fa; font-weight: 700;">🚶 Activar Pre-Entrada (Fade-in hacia la abertura/puerta)</label>
+          <label for="chkPreEntry" style="color: #60a5fa; font-weight: 700;">🚶 Activar Pre-Entrada (Fade-in hacia las aberturas)</label>
         </div>
 
         <div class="field wide" *ngIf="preEntryEnabled" style="margin-bottom: 12px;">
-          <label>Distancia de Pre-Entrada exterior (m)</label>
+          <label>Distancia de Pre-Entrada exterior global (m)</label>
           <input type="number" step="0.5" min="0.5" max="50" [(ngModel)]="preEntryDistance" (ngModelChange)="onPreEntryDistanceChange()" />
-          <p class="help-text">Margen exterior a la entrada del pasillo donde la luz comienza a prepararse y encenderse suavemente (configurable hasta 50m).</p>
         </div>
 
-        <!-- CONTROL DE SOMBRA EN PRE-ENTRADA -->
         <div *ngIf="preEntryEnabled" style="border-top: 1px dashed #334155; padding-top: 10px;">
           <div class="checkbox-modern" style="margin-bottom: 8px;">
             <input type="checkbox" id="chkSyncShadow" [(ngModel)]="linkShadowPreEntryToLightPreEntry" (ngModelChange)="onSyncShadowToggle()">
@@ -96,20 +165,11 @@
           </div>
 
           <div class="field wide">
-            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
-              <label>Distancia de Pre-Entrada de Sombras (m)</label>
-              <span class="status-pill" *ngIf="linkShadowPreEntryToLightPreEntry" style="background: rgba(74, 222, 128, 0.15); color: #4ade80; border: 1px solid rgba(74, 222, 128, 0.3);">
-                🔗 Sincronizada: {{ preEntryDistance }} m
-              </span>
-            </div>
             <input type="number" step="0.5" min="0.5" max="50" 
                    [disabled]="linkShadowPreEntryToLightPreEntry"
                    [(ngModel)]="shadowPreEntryDistance" 
                    (ngModelChange)="aplicarLuz()" 
                    [style.opacity]="linkShadowPreEntryToLightPreEntry ? '0.5' : '1'" />
-            <p class="help-text">
-              {{ linkShadowPreEntryToLightPreEntry ? 'La sombra se prepara automáticamente en la misma distancia que la luz.' : 'Distancia personalizada para proyectar sombra antes de ingresar al pasillo.' }}
-            </p>
           </div>
         </div>
       </div>
@@ -120,23 +180,21 @@
           <option value="">-- Detección Automática (Padre o Envolvente) --</option>
           <option *ngFor="let opt of containerOptions" [value]="opt.uid">📦 {{ opt.label }}</option>
         </select>
-        <p class="help-text">El Player/NPC debe entrar a la geometría interior de este modelo para encender la luz.</p>
       </div>
 
       <div class="checkbox-modern" style="margin-bottom: 8px;">
         <input type="checkbox" id="chkDescOnly" [(ngModel)]="affectDescendantsOnly" (ngModelChange)="aplicarLuz()">
-        <label for="chkDescOnly">Restringir físicamente a mallas del modelo (Desactivar para permitir salida de luz por puertas)</label>
+        <label for="chkDescOnly">Restringir físicamente a mallas del modelo (Evita fugas de luz)</label>
       </div>
 
-      <!-- Calibración Anti-Leaking de Sombras -->
       <div class="grid-2" style="margin-top: 10px; border-top: 1px dashed #334155; padding-top: 10px;">
         <div class="field">
           <label>Bloqueo de Pared (Darkness)</label>
-          <input type="number" step="0.1" min="0" max="1" [(ngModel)]="shadowDarkness" (ngModelChange)="aplicarLuz()" title="0 = 100% Bloqueo negro detrás de paredes" />
+          <input type="number" step="0.1" min="0" max="1" [(ngModel)]="shadowDarkness" (ngModelChange)="aplicarLuz()" />
         </div>
         <div class="field">
           <label>Normal Bias (Anti-Acne)</label>
-          <input type="number" step="0.005" min="0" max="0.1" [(ngModel)]="shadowNormalBias" (ngModelChange)="aplicarLuz()" />
+          <input type="number" step="0.0005" min="0" max="0.05" [(ngModel)]="shadowNormalBias" (ngModelChange)="aplicarLuz()" />
         </div>
       </div>
     </ng-container>
@@ -144,193 +202,58 @@
 </div>
 
 <!-- ======================================================================== -->
-<!-- SISTEMA DE CONTROL DE PROXIMIDAD Y FADE SUAVE (RADIAL)                   -->
+<!-- TELEMETRÍA EN VIVO                                                       -->
 <!-- ======================================================================== -->
-<div class="section-card" [class.section-card-locked]="isModelPreEntryActive">
+<div class="section-card">
   <div class="section-head">
-    <h4 style="color: #f59e0b;">Control de Proximidad & Fade Suave</h4>
-    <span class="status-pill locked-pill" *ngIf="isModelPreEntryActive">🔒 GOBERNADO POR MODELO</span>
+    <h4 style="color: #f59e0b;">Telemetría y Estado Espacial</h4>
   </div>
   <div style="padding: 12px;">
-    
-    <!-- BANNER VISUAL DE BLOQUEO CUANDO PRE-ENTRADA AL MODELO ESTÁ ACTIVA -->
-    <div class="model-preentry-locked-banner" *ngIf="isModelPreEntryActive">
-      <span class="lock-icon">🔒</span>
-      <div class="banner-body">
-        <div class="banner-title">CONTROLADO POR PRE-ENTRADA AL MODELO 3D</div>
-        <div class="banner-desc">
-          La activación, el fade y las sombras son gobernados exclusivamente por la geometría real y aberturas del modelo contenedor. 
-          Los controles de distancia radial quedan desactivados y no participan en el cálculo en tiempo real.
-        </div>
-      </div>
-    </div>
-
-    <div class="checkbox-modern" 
-         [class.disabled-input]="isModelPreEntryActive"
-         style="margin-bottom: 12px; border-color: #f59e0b; background: rgba(245, 158, 11, 0.1);">
-      <input type="checkbox" id="chkDistControl" 
-             [disabled]="isModelPreEntryActive"
-             [(ngModel)]="distanceControlEnabled" 
-             (ngModelChange)="aplicarLuz()" 
-             style="accent-color: #f59e0b;">
-      <label for="chkDistControl" style="color: #f59e0b; font-weight: 700;">📡 Activar Fade por Proximidad</label>
-    </div>
-
-    <div class="field wide" [class.disabled-input]="isModelPreEntryActive" style="margin-bottom: 12px;">
-      <label>Fuente de Referencia Espacial</label>
-      <select [disabled]="isModelPreEntryActive" [(ngModel)]="distanceReferenceMode" (ngModelChange)="aplicarLuz()">
-        <option value="AUTO">🎯 AUTOMÁTICA (Editor: Player/NPC / Test: Player)</option>
-        <option value="CAMERA">🎥 CÁMARA (Siempre relativa a la cámara de juego)</option>
-        <option value="PLAYER">🏃 PLAYER (Siempre relativa al Player)</option>
-      </select>
-    </div>
-
-    <div class="grid-2" style="margin-bottom: 12px;" 
-         [class.disabled-input]="isModelPreEntryActive || !distanceControlEnabled"
-         [style.opacity]="(distanceControlEnabled && !isModelPreEntryActive) ? '1' : '0.4'" 
-         [style.pointer-events]="(distanceControlEnabled && !isModelPreEntryActive) ? 'auto' : 'none'">
-      <div class="field">
-        <label>Fade Inicio (100% Brillo)</label>
-        <input type="number" step="1" min="1" 
-               [disabled]="isModelPreEntryActive || !distanceControlEnabled"
-               [(ngModel)]="activationDistance" 
-               (ngModelChange)="aplicarLuz()" 
-               title="Distancia máxima al Actor donde el brillo se mantiene al 100%" />
-      </div>
-      <div class="field">
-        <label>Fade Fin (0% Brillo)</label>
-        <input type="number" step="1" min="1" 
-               [disabled]="isModelPreEntryActive || !distanceControlEnabled"
-               [(ngModel)]="deactivationDistance" 
-               (ngModelChange)="aplicarLuz()" 
-               title="Distancia al Actor donde la luz se apaga progresivamente por completo" />
-      </div>
-    </div>
-
-    <!-- CONTROL DE SOMBRAS POR DISTANCIA -->
-    <div style="border-top: 1px dashed #334155; padding-top: 10px; margin-top: 10px;">
-      <div class="checkbox-modern" 
-           [class.disabled-input]="isModelPreEntryActive || !castShadows"
-           style="margin-bottom: 10px; border-color: #60a5fa; background: rgba(96, 165, 250, 0.1);">
-        <input type="checkbox" id="chkShadowDistControl" 
-               [disabled]="isModelPreEntryActive || !castShadows"
-               [(ngModel)]="distanceShadowsEnabled" 
-               (ngModelChange)="aplicarLuz()">
-        <label for="chkShadowDistControl" style="color: #60a5fa; font-weight: 700;">🌑 Sombras por Distancia (Ahorro GPU)</label>
-      </div>
-
-      <div class="grid-2" 
-           [class.disabled-input]="isModelPreEntryActive || !distanceShadowsEnabled || !castShadows"
-           [style.opacity]="(distanceShadowsEnabled && castShadows && !isModelPreEntryActive) ? '1' : '0.4'" 
-           [style.pointer-events]="(distanceShadowsEnabled && castShadows && !isModelPreEntryActive) ? 'auto' : 'none'">
-        <div class="field">
-          <label>Act. Sombras (m)</label>
-          <input type="number" step="1" min="1" 
-                 [disabled]="isModelPreEntryActive || !distanceShadowsEnabled || !castShadows"
-                 [(ngModel)]="shadowActivationDistance" 
-                 (ngModelChange)="aplicarLuz()" 
-                 title="Distancia máxima al Actor para proyectar sombras" />
-        </div>
-        <div class="field">
-          <label>Desact. Sombras (m)</label>
-          <input type="number" step="1" min="1" 
-                 [disabled]="isModelPreEntryActive || !distanceShadowsEnabled || !castShadows"
-                 [(ngModel)]="shadowDeactivationDistance" 
-                 (ngModelChange)="aplicarLuz()" 
-                 title="Distancia al Actor con histéresis para apagar sombras" />
-        </div>
-      </div>
-    </div>
-
-    <!-- TELEMETRÍA EN VIVO Y DIAGNÓSTICO EN TIEMPO REAL -->
-    <div class="distance-telemetry-box" style="margin-top: 14px;">
+    <div class="distance-telemetry-box">
       <div class="telemetry-row">
         <span>Contexto Espacial:</span>
         <strong [style.color]="isInteriorLight ? '#c084fc' : '#38bdf8'">{{ spatialContextText }}</strong>
       </div>
-      <div class="telemetry-row" *ngIf="isInteriorLight">
-        <span>Zona / Salto Topológico:</span>
-        <strong style="color: #38bdf8;">{{ corridorZoneText }}</strong>
-      </div>
-      <div class="telemetry-row" *ngIf="isInteriorLight">
-        <span>Fuente Contención:</span>
-        <strong style="color: #facc15;">{{ containmentSourceText }}</strong>
-      </div>
       <div class="telemetry-row">
-        <span>Actor de Referencia:</span>
-        <strong style="color: #4ade80;">{{ closestActorName }}</strong>
-      </div>
-      <div class="telemetry-row">
-        <span>Dentro del Volumen:</span>
+        <span>Dentro del Pasillo:</span>
         <strong [style.color]="isInsideVolume ? '#4ade80' : '#ef4444'">{{ isInsideVolume ? 'SÍ' : 'NO' }}</strong>
       </div>
       <div class="telemetry-row" *ngIf="isInteriorLight">
         <span>Pre-Entrada / Pre-Salida:</span>
         <strong [style.color]="isInPreEntry ? '#4ade80' : (isInPreExit ? '#facc15' : '#94a3b8')">
-          {{ isInPreEntry ? 'PRE-ENTRADA (Fade In)' : (isInPreExit ? 'PRE-SALIDA (Fade Out)' : 'NO') }}
+          {{ isInPreEntry ? 'PRE-ENTRADA (Abertura)' : (isInPreExit ? 'PRE-SALIDA (Abertura)' : 'NO') }}
         </strong>
       </div>
-      <div class="telemetry-row">
-        <span>{{ isModelPreEntryActive ? 'Distancia al Umbral/Portal:' : 'Distancia al Actor:' }}</span>
-        <strong style="color: #38bdf8;">{{ isModelPreEntryActive ? distanceToBoundaryText : currentDistance + ' m' }}</strong>
+      <div class="telemetry-row" *ngIf="isInteriorLight">
+        <span>Portal Detectado:</span>
+        <strong style="color: #facc15;">{{ activePortalIdText }}</strong>
+      </div>
+      <div class="telemetry-row" *ngIf="isInteriorLight">
+        <span>Distancia al Plano del Portal:</span>
+        <strong style="color: #38bdf8;">{{ signedDistanceText }}</strong>
       </div>
       <div class="telemetry-row">
-        <span>Factor Atenuación (Fade):</span>
-        <strong style="color: #facc15;">{{ (currentMultiplier * 100) | number:'1.0-1' }}%</strong>
+        <span>Distancia Euclidiana:</span>
+        <strong style="color: #94a3b8;">{{ distanceToBoundaryText }}</strong>
       </div>
       <div class="telemetry-row">
-        <span>Intensidad Efectiva:</span>
-        <strong style="color: #4ade80;">{{ currentEffectiveIntensity | number:'1.2-2' }} (Base: {{ intensity | number:'1.1-1' }})</strong>
+        <span>Progreso Fundido (0 - 1):</span>
+        <strong style="color: #4ade80;">{{ (currentTransitionProgress * 100) | number:'1.0-1' }}% ({{ currentTransitionProgress | number:'1.3-3' }})</strong>
       </div>
       <div class="telemetry-row">
-        <span>Ranking en Pool (Top 3):</span>
-        <strong [style.color]="isLightActiveStatus ? '#4ade80' : '#ef4444'">{{ poolRankText }}</strong>
+        <span>Multiplicador Efectivo:</span>
+        <strong style="color: #facc15;">{{ (currentMultiplier * 100) | number:'1.2-2' }}% ({{ currentMultiplier | number:'1.4-4' }})</strong>
       </div>
       <div class="telemetry-row">
-        <span>Decisión / Rechazo:</span>
-        <strong style="color: #cbd5e1; font-size: 10px;">{{ decisionText }}</strong>
+        <span>Intensidad en Babylon.js:</span>
+        <strong style="color: #4ade80;">{{ currentEffectiveIntensity | number:'1.4-4' }} (Base: {{ intensity | number:'1.1-1' }})</strong>
       </div>
       <div class="telemetry-row">
-        <span>Estado Sombras:</span>
-        <span class="telemetry-pill" [class.active]="isShadowActiveStatus" [class.inactive]="!isShadowActiveStatus">
-          {{ isShadowActiveStatus ? 'ACTIVAS (' + shadowTierText + ')' : 'INACTIVAS' }}
-        </span>
+        <span>Estado Lámpara / Fuente:</span>
+        <strong [style.color]="isLightActiveStatus ? '#4ade80' : '#94a3b8'">
+          {{ isLightActiveStatus ? 'EMITIENDO LUZ (ACTIVA)' : 'FUENTE APAGADA (MODELO VISIBLE)' }}
+        </strong>
       </div>
-    </div>
-
-  </div>
-</div>
-
-<div class="section-card">
-  <div class="section-head">
-    <h4>Estados y Sombras Globales</h4>
-  </div>
-  <div style="padding: 12px;">
-    <div class="grid-2">
-      <div class="checkbox-modern" style="border-color: #facc15; background: rgba(250, 204, 21, 0.1);">
-        <input type="checkbox" id="chkLightEnabled" [(ngModel)]="enabled" (ngModelChange)="aplicarLuz()" style="accent-color: #facc15;">
-        <label for="chkLightEnabled" style="color: #facc15;">💡 Encendida</label>
-      </div>
-      <div class="checkbox-modern" style="border-color: #60a5fa; background: rgba(96, 165, 250, 0.1);">
-        <input type="checkbox" id="chkCastShadows" [(ngModel)]="castShadows" (ngModelChange)="aplicarLuz()">
-        <label for="chkCastShadows" style="color: #60a5fa;">🌑 Sombras</label>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="section-card" *ngIf="childNodes.length > 0">
-  <div class="section-head">
-    <h4>Anclaje (Bone/Mesh)</h4>
-  </div>
-  <div style="padding: 12px;">
-    <div class="field wide" style="background: rgba(59, 130, 246, 0.05); padding: 10px; border: 1px solid #334155; border-radius: 6px;">
-      <label style="color: #60a5fa;">🔗 Atar Luz a Hueso/Pieza:</label>
-      <select [(ngModel)]="attachedNodePath" (ngModelChange)="aplicarLuz()" style="margin-top: 6px;">
-        <option value="">-- Suelo / Centro (Estático) --</option>
-        <option *ngFor="let node of childNodes" [value]="node.value">🦴 {{ node.label }}</option>
-      </select>
-      <p class="help-text">Si pegas la luz al nodo correcto, viajará con la animación del modelo 3D.</p>
     </div>
   </div>
 </div>

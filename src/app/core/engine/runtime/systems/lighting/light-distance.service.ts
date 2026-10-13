@@ -46,8 +46,6 @@ export class LightDistanceService {
     const validActors = this.referenceSvc.getValidActorEntities();
     const nowTimeStr = new Date().toLocaleTimeString();
 
-    const activeGroupId = this.spatialGroups.getActiveGroupId();
-
     let actorWorldPos: Vector3;
     let actorName = 'Referencia Base';
     if (validActors.length > 0) {
@@ -71,7 +69,7 @@ export class LightDistanceService {
         if (container) {
           const configuredPreDist = Math.max(3.0, vl.entity.light?.preEntryDistance ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_INTERIOR_PREENTRY_DISTANCE);
           const wasInside = vl.spatialState === 'INSIDE';
-          const evalRes = this.containmentSvc.evaluateModelContainment(actorWorldPos, container, configuredPreDist, wasInside, actorVelocity);
+          const evalRes = this.containmentSvc.evaluateModelContainment(actorWorldPos, container, configuredPreDist, wasInside, actorVelocity, vl.entity.light?.portals);
           
           if (evalRes.spatialState === 'INSIDE') anyInsideInterior = true;
           if (evalRes.spatialState === 'PRE_ENTRY') anyInPreEntryInterior = true;
@@ -108,6 +106,7 @@ export class LightDistanceService {
         vl.spatialState = 'OUTSIDE';
         vl.lastEvaluatedDistance = 99999;
         vl.effectiveDistance = 99999;
+        vl.transitionProgress = 0;
         continue;
       }
 
@@ -115,7 +114,6 @@ export class LightDistanceService {
       const wasInRange = vl.isLightInRange;
       
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
-
       const centerDist = Vector3.Distance(actorWorldPos, this._tempPos);
       
       vl.centerDistance = parseFloat(centerDist.toFixed(2));
@@ -123,16 +121,6 @@ export class LightDistanceService {
       vl.lastEvaluatedDistance = vl.centerDistance;
       vl.distSq = centerDist * centerDist;
       vl.lastDistanceUpdateTimestamp = nowTimeStr;
-
-      const cam = scene?.activeCamera;
-      if (cam && centerDist > 0.1) {
-        const toLightDir = this._tempPos.subtract(actorWorldPos).normalize();
-        const camFwd = cam.getDirection(Vector3.Forward());
-        camFwd.y = 0; camFwd.normalize();
-        vl.dotWithCameraForward = Vector3.Dot(camFwd, toLightDir);
-      } else {
-        vl.dotWithCameraForward = 1.0;
-      }
 
       const isInterior = lightComp.containmentMode === 'INTERIOR';
       vl.isInterior = isInterior;
@@ -142,40 +130,36 @@ export class LightDistanceService {
       const container = (isInterior && scene) ? this.containmentSvc.resolveContainerEntity(vl.entity, scene) : null;
       vl.containerName = container ? container.name : undefined;
 
-      const group = this.spatialGroups.getGroupForEntity(vl.entity.uid);
-      vl.corridorZoneName = group ? group.name : undefined;
-
-      const hopDistance = (activeGroupId && group) ? this.spatialGroups.getHopDistance(activeGroupId, group.id) : 0;
-      vl.topologicalHop = hopDistance;
-
       // =======================================================================
-      // EVALUACIÓN MODO INTERIOR: PRE-ENTRADA PROGRESIVA Y CALENTAMIENTO
+      // EVALUACIÓN MODO INTERIOR: EL ESTADO DEL PASILLO GOBIERNA LA LUZ
       // =======================================================================
       if (isModelPreEntryMode) {
         if (!container || !container.view || container.view.isDisposed()) {
           vl.spatialState = 'OUTSIDE';
           vl.insideVolume = false;
           vl.inPreEntryZone = false;
-          vl.inPreExitZone = false;
           vl.targetMultiplier = 0.0;
           vl.isLightInRange = false;
           vl.isShadowInRange = false;
-          vl._isInPrepareRange = false;
-          this.transitionState(vl, 'OUTSIDE', nowTimeStr, 'CONTAINER_NOT_FOUND', 'Sin contenedor válido');
+          vl.transitionProgress = 0;
+          this.transitionState(vl, 'OUTSIDE', nowTimeStr, 'CONTAINER_NOT_FOUND', 'Sin contenedor');
           continue;
         }
 
         const configuredPreDist = Math.max(3.0, lightComp.preEntryDistance ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_INTERIOR_PREENTRY_DISTANCE);
-        const contResult = this.containmentSvc.evaluateModelContainment(actorWorldPos, container, configuredPreDist, wasInRange, actorVelocity);
+        const contResult = this.containmentSvc.evaluateModelContainment(actorWorldPos, container, configuredPreDist, wasInRange, actorVelocity, lightComp.portals);
 
         vl.spatialState = contResult.spatialState;
         vl.insideVolume = contResult.inside;
         vl.inPreEntryZone = contResult.preEntry;
         vl.inPreExitZone = contResult.preExit;
         vl.distanceToBoundary = parseFloat(contResult.distanceToBoundary.toFixed(2));
+        vl.signedDistanceToPortal = parseFloat(contResult.signedDistance.toFixed(2));
+        vl.matchedPortalId = contResult.matchedPortalId;
         vl.containmentSource = contResult.source;
+        vl.transitionProgress = parseFloat(contResult.progress.toFixed(4));
 
-        // 1. DENTRO DEL PASILLO (INSIDE): LUZ 100% ACTIVA
+        // CASO 1: Dentro del pasillo (100 % de intensidad permanente y sin interrupciones)
         if (contResult.spatialState === 'INSIDE') {
           vl.targetMultiplier = 1.0;
           vl.isLightInRange = true;
@@ -183,19 +167,23 @@ export class LightDistanceService {
           vl._isInPrepareRange = true;
           this.evaluateStateAndDecision(vl, 0, 0, configuredPreDist, nowTimeStr, `ACTIVA (DENTRO DE ${container.name})`);
         } 
-        // 2. EN PRE-ENTRADA EXTERIOR (PRE_ENTRY): PROGRESIÓN ANALÓGICA HACIA LA ENTRADA
+        // CASO 2: En zona de preentrada exterior (Transición suave que enciende progresivamente)
         else if (contResult.spatialState === 'PRE_ENTRY') {
-          const distToPortal = contResult.distanceToBoundary;
-          const curve = LightAttenuationCurve.calculate(distToPortal, 0.5, configuredPreDist);
-          const progressiveMultiplier = Math.max(LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD, curve);
+          const prog = Math.max(0, Math.min(1.0, contResult.progress));
+          // Curva suave de Hermite: prog * prog * (3.0 - 2.0 * prog)
+          const smoothFactor = prog * prog * (3.0 - 2.0 * prog);
+          const progressiveMultiplier = Math.max(
+            LIGHT_SPATIAL_CONSTANTS.MIN_FADE_INITIAL_MULTIPLIER, 
+            smoothFactor * (1.0 - LIGHT_SPATIAL_CONSTANTS.MIN_FADE_INITIAL_MULTIPLIER) + LIGHT_SPATIAL_CONSTANTS.MIN_FADE_INITIAL_MULTIPLIER
+          );
 
-          vl.targetMultiplier = progressiveMultiplier;
-          vl.isLightInRange = progressiveMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
-          vl.isShadowInRange = vl.isLightInRange && (lightComp.castShadows ?? true);
+          vl.targetMultiplier = parseFloat(progressiveMultiplier.toFixed(4));
+          vl.isLightInRange = true;
+          vl.isShadowInRange = lightComp.castShadows ?? true;
           vl._isInPrepareRange = true;
-          this.evaluateStateAndDecision(vl, distToPortal, 0.5, configuredPreDist, nowTimeStr, `PRE-ENTRADA PROGRESIVA (${container.name})`);
+          this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, 0.2, configuredPreDist, nowTimeStr, `PRE-ENTRADA (${container.name}) [Portal: ${vl.matchedPortalId || 'Default'}]`);
         } 
-        // 3. EN PRE-SALIDA (PRE_EXIT): SALIENDO DEL PASILLO CON FADE SUAVE
+        // CASO 3: Presalida (Saliendo del pasillo hacia el exterior con retención gradual)
         else if (contResult.spatialState === 'PRE_EXIT') {
           const holdDistance = LIGHT_SPATIAL_CONSTANTS.INTERIOR_KEEP_ALIVE_HOLD_MARGIN;
           const maxExitDist = Math.max(configuredPreDist + 4.0, lightComp.deactivationDistance ?? 32.0);
@@ -204,15 +192,15 @@ export class LightDistanceService {
             vl.targetMultiplier = 1.0;
           } else {
             const rawFactor = LightAttenuationCurve.calculate(contResult.distanceToBoundary, holdDistance, maxExitDist);
-            vl.targetMultiplier = Math.max(LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD, rawFactor);
+            vl.targetMultiplier = Math.max(LIGHT_SPATIAL_CONSTANTS.MIN_FADE_INITIAL_MULTIPLIER, rawFactor);
           }
 
-          vl.isLightInRange = vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
+          vl.isLightInRange = vl.targetMultiplier >= LIGHT_SPATIAL_CONSTANTS.MIN_FADE_INITIAL_MULTIPLIER;
           vl.isShadowInRange = vl.isLightInRange && (lightComp.castShadows ?? true);
           vl._isInPrepareRange = true;
-          this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, holdDistance, maxExitDist, nowTimeStr, `PRE-SALIDA (${container.name})`);
+          this.evaluateStateAndDecision(vl, contResult.distanceToBoundary, holdDistance, maxExitDist, nowTimeStr, `PRE-SALIDA (${container.name}) [Portal: ${vl.matchedPortalId || 'Default'}]`);
         } 
-        // 4. FUERA DEL PASILLO: TOTALMENTE APAGADA (Sin falsos positivos en paredes exteriores)
+        // CASO 4: Totalmente en el exterior
         else {
           vl.targetMultiplier = 0.0;
           vl.isLightInRange = false;
@@ -222,32 +210,28 @@ export class LightDistanceService {
         }
       } 
       // =======================================================================
-      // EVALUACIÓN MODO EXTERIOR / GLOBAL (POSTES Y CALLES)
+      // EVALUACIÓN MODO PROXIMIDAD RADIAL (LUCES GLOBALES / EXTERIORES)
       // =======================================================================
       else {
         vl.spatialState = undefined;
         vl.containmentSource = undefined;
         vl.inPreExitZone = false;
+        vl.transitionProgress = 0;
 
         const configuredAct = lightComp.activationDistance ?? LIGHT_SPATIAL_CONSTANTS.DEFAULT_ACTIVATION_RADIUS;
         const configuredDeact = lightComp.deactivationDistance ?? (configuredAct + 10.0);
 
-        // Si estamos verdaderamente dentro del pasillo, atenuamos las luces de la calle
-        const isActuallyDeepInside = this.currentMacroZone === 'INTERIOR_ACTIVE';
-        const effectiveActDist = isActuallyDeepInside ? (configuredAct * 0.45) : configuredAct;
-        const effectiveDeactDist = isActuallyDeepInside ? (configuredDeact * 0.55) : configuredDeact;
-
-        this.applyStandardProximity(vl, centerDist, effectiveActDist, effectiveDeactDist, wasInRange, nowTimeStr);
+        this.applyStandardProximity(vl, centerDist, configuredAct, configuredDeact, wasInRange, nowTimeStr);
 
         if (vl.isLightInRange && lightComp.castShadows && lightComp.distanceShadowsEnabled !== false) {
-          const shadowAct = lightComp.shadowActivationDistance ?? (effectiveActDist * 0.9);
+          const shadowAct = lightComp.shadowActivationDistance ?? (configuredAct * 0.9);
           const shadowDeact = lightComp.shadowDeactivationDistance ?? (shadowAct + 5.0);
           vl.isShadowInRange = wasInRange ? centerDist <= shadowDeact : centerDist <= shadowAct;
         } else {
           vl.isShadowInRange = false;
         }
 
-        vl._isInPrepareRange = centerDist <= (effectiveDeactDist + 15.0);
+        vl._isInPrepareRange = centerDist <= (configuredDeact + 15.0);
       }
     }
   }
@@ -259,12 +243,12 @@ export class LightDistanceService {
     const curveVal = LightAttenuationCurve.calculate(dist, rAct * 0.65, rDeact);
     
     const progressiveVal = (dist <= rDeact && curveVal > 0)
-      ? Math.max(LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD, curveVal)
+      ? Math.max(LIGHT_SPATIAL_CONSTANTS.MIN_FADE_INITIAL_MULTIPLIER, curveVal)
       : 0.0;
 
     vl.targetMultiplier = progressiveVal;
 
-    if (dist <= currentLimit && vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
+    if (dist <= currentLimit && vl.targetMultiplier >= LIGHT_SPATIAL_CONSTANTS.MIN_FADE_INITIAL_MULTIPLIER) {
       vl.isLightInRange = true;
       this.evaluateStateAndDecision(vl, dist, rAct, rDeact, timestamp, 'PROXIMIDAD RADIAL EXTERIOR');
     } else {
@@ -283,7 +267,7 @@ export class LightDistanceService {
   ): void {
     if (vl.targetMultiplier >= 0.98) {
       this.transitionState(vl, 'ACTIVE', timestamp, undefined, `ACTIVA (${contextMsg})`);
-    } else if (vl.targetMultiplier > 0.0001) {
+    } else if (vl.targetMultiplier > 0.00005) {
       if (vl.targetMultiplier > vl.currentMultiplier) {
         this.transitionState(vl, 'FADING_IN', timestamp, undefined, `ENCENDIENDO (${contextMsg})`);
       } else {

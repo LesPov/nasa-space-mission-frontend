@@ -1,3 +1,4 @@
+// file: src/app/services/editor/sceneservice/scene-saver.service.ts
 import { Injectable, inject } from '@angular/core'; 
 import { Quaternion } from '@babylonjs/core';
 import { EntityManagerService } from '../../../core/engine/entities/entity-manager.service';
@@ -35,10 +36,7 @@ export class SceneSaverService {
     allEntities.forEach(entity => {
       entity.syncTransformFromView();
 
-      const isPureLight = entity.type.startsWith('light_') && !entity.visual?.assetId && !entity.visual?.path;
-      const sanitizedScale = isPureLight 
-        ? { x: 1, y: 1, z: 1 } 
-        : TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
+      const sanitizedScale = TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
       const sanitizedPos = TransformNormalizer.sanitizePositionVector(entity.transform.position);
 
       entity.transform.position = { ...sanitizedPos };

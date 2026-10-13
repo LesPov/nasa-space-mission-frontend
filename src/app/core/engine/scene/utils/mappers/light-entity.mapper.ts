@@ -2,7 +2,7 @@
 import { Injectable } from '@angular/core';
 import { BaseEntityMapper } from './base-entity.mapper';
 import { GameEntity, LightContainmentMode, LightDistanceReferenceMode, LightInteriorActivationMode } from '../../../entities/game.entity';
-import { SceneObjectDto, TriggerDto, SceneObjectPropertiesDto } from '../../../models/api-dto.model';
+import { SceneObjectDto, TriggerDto, SceneObjectPropertiesDto, ConfiguredPortalDto } from '../../../models/api-dto.model';
 import { TransformNormalizer } from '../transform-normalizer';
 
 @Injectable({ providedIn: 'root' })
@@ -19,14 +19,12 @@ export class LightEntityMapper extends BaseEntityMapper {
     super.applyDbToEntity(obj, entity);
     const props = obj.properties || {} as SceneObjectPropertiesDto;
 
-    const isPureLight = !entity.visual?.assetId && !entity.visual?.path;
-    if (isPureLight) {
-      entity.transform.scale = { x: 1, y: 1, z: 1 };
-    } else {
-      entity.transform.scale = TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
-    }
+    // Respetar la escala configurada por el usuario (local o del prefab)
+    entity.transform.scale = TransformNormalizer.sanitizeScaleVector(
+      obj.scale || (obj as any).size || entity.transform.scale, 
+      entity.name
+    );
 
-    // Normalización de transformSpace: si tiene parentId, su espacio de datos es estrictamente LOCAL
     if (obj.parentId) {
       entity.transformSpace = 'LOCAL';
       entity.isLegacyLocalTransform = false;
@@ -42,6 +40,7 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.intensity = props.intensity ?? 1.0;
       entity.light.range = props.range ?? 50;
       entity.light.angle = props.angle ?? 60;
+      entity.light.exponent = props.exponent ?? 1.0;
 
       entity.light.attachedNodePath = props.attachedNodePath || '';
       entity.light.attachedNodeName = props.attachedNodeName || '';
@@ -53,7 +52,7 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.containmentMode = (props.containmentMode as LightContainmentMode) || defaultContainment;
       entity.light.interiorActivationMode = (props.interiorActivationMode as LightInteriorActivationMode) || (entity.light.containmentMode === 'INTERIOR' ? 'VOLUME' : 'DISTANCE');
       entity.light.preEntryEnabled = props.preEntryEnabled ?? true;
-      entity.light.preEntryDistance = props.preEntryDistance ?? 4.5;
+      entity.light.preEntryDistance = props.preEntryDistance ?? 8.0;
 
       entity.light.linkShadowPreEntryToLightPreEntry = props.linkShadowPreEntryToLightPreEntry !== false;
       entity.light.shadowPreEntryDistance = props.shadowPreEntryDistance ?? entity.light.preEntryDistance;
@@ -61,7 +60,6 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.containerEntityUid = props.containerEntityUid || obj.parentId || '';
       entity.light.affectDescendantsOnly = props.affectDescendantsOnly ?? false;
 
-      // 0.00 por defecto: sombra 100% opaca que bloquea completamente la luz detrás de paredes y techos
       entity.light.shadowDarkness = props.shadowDarkness ?? 0.0;
       entity.light.shadowBias = props.shadowBias ?? 0.0008;
       entity.light.shadowNormalBias = props.shadowNormalBias ?? 0.002;
@@ -79,6 +77,29 @@ export class LightEntityMapper extends BaseEntityMapper {
       entity.light.shadowDeactivationDistance = props.shadowDeactivationDistance ?? (entity.light.shadowActivationDistance + 4);
 
       entity.light.distanceReferenceMode = (props.distanceReferenceMode as LightDistanceReferenceMode) || 'AUTO';
+
+      if (Array.isArray(props.portals)) {
+        entity.light.portals = props.portals.map((p: any) => {
+          const rawRadius = p.radius !== undefined ? Number(p.radius) : (p.width !== undefined ? Number(p.width) / 2 : 1.75);
+          const effectiveRadius = Math.max(0.2, Number.isFinite(rawRadius) ? rawRadius : 1.75);
+          const effectiveWidth = p.width !== undefined ? Math.max(0.4, Number(p.width)) : (effectiveRadius * 2);
+
+          return {
+            id: p.id || window.crypto.randomUUID(),
+            name: p.name || 'Portal',
+            localPosition: { x: p.localPosition?.x ?? 0, y: p.localPosition?.y ?? 0, z: p.localPosition?.z ?? 0 },
+            localNormal: { x: p.localNormal?.x ?? 0, y: p.localNormal?.y ?? 0, z: p.localNormal?.z ?? 1 },
+            radius: effectiveRadius,
+            width: effectiveWidth,
+            height: p.height ?? 3.5,
+            depth: p.depth ?? 1.0,
+            preEntryDistance: p.preEntryDistance ?? entity.light!.preEntryDistance ?? 8.0,
+            enabled: p.enabled !== false
+          };
+        });
+      } else {
+        entity.light.portals = [];
+      }
     }
   }
 
@@ -93,6 +114,7 @@ export class LightEntityMapper extends BaseEntityMapper {
         renderIntensity: entity.light.renderIntensity,
         range: entity.light.range,
         angle: entity.light.angle,
+        exponent: entity.light.exponent,
         attachedNodePath: entity.light.attachedNodePath,
         attachedNodeName: entity.light.attachedNodeName,
         isEnabled: entity.light.enabled,
@@ -115,23 +137,33 @@ export class LightEntityMapper extends BaseEntityMapper {
         distanceShadowsEnabled: entity.light.distanceShadowsEnabled,
         shadowActivationDistance: entity.light.shadowActivationDistance,
         shadowDeactivationDistance: entity.light.shadowDeactivationDistance,
-        distanceReferenceMode: entity.light.distanceReferenceMode
+        distanceReferenceMode: entity.light.distanceReferenceMode,
+        portals: entity.light.portals ? entity.light.portals.map(p => ({
+          id: p.id,
+          name: p.name,
+          localPosition: { ...p.localPosition },
+          localNormal: { ...p.localNormal },
+          radius: p.radius,
+          width: p.width,
+          height: p.height,
+          depth: p.depth,
+          preEntryDistance: p.preEntryDistance,
+          enabled: p.enabled
+        })) : []
       } : {})
     };
   }
 
   override extractToDtos(entity: GameEntity): any[] {
     const dtos = super.extractToDtos(entity);
-    const isPureLight = !entity.visual?.assetId && !entity.visual?.path;
-    if (isPureLight) {
-      dtos.forEach(d => {
-        d.scale = { x: 1, y: 1, z: 1 };
-        if (d.properties) {
-          d.properties.scale = { x: 1, y: 1, z: 1 };
-          d.properties.size = { x: 1, y: 1, z: 1 };
-        }
-      });
-    }
+    const sanitizedScale = TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
+    dtos.forEach(d => {
+      d.scale = { ...sanitizedScale };
+      if (d.properties) {
+        d.properties.scale = { ...sanitizedScale };
+        d.properties.size = { ...sanitizedScale };
+      }
+    });
     return dtos;
   }
 }

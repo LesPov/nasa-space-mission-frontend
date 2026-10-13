@@ -24,7 +24,7 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
       if (entity.type.startsWith('light_') || (mesh as any).metadata?.isLightVisual) {
         pivotNode.position.copyFrom(mesh.getAbsolutePosition());
         pivotNode.rotationQuaternion = Quaternion.FromRotationMatrix(worldMatrix.getRotationMatrix());
-        pivotNode.scaling.set(1, 1, 1);
+        pivotNode.scaling.copyFrom(mesh.scaling);
         this.compensarEscalaVisual(mesh);
         return pivotNode;
       }
@@ -92,6 +92,10 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
         }
       }
 
+      const safeLightScale = TransformNormalizer.sanitizeScaleVector(pivotNode.scaling, entity.name);
+      mesh.scaling.set(safeLightScale.x, safeLightScale.y, safeLightScale.z);
+      entity.transform.scale = { ...safeLightScale };
+
       entity.syncTransformFromView();
       this.compensarEscalaVisual(mesh);
       return;
@@ -157,9 +161,9 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
       const sy = TransformNormalizer.sanitizeScale(mesh.scaling.y, 'scaling.y');
       const sz = TransformNormalizer.sanitizeScale(mesh.scaling.z, 'scaling.z');
 
-      const targetX = Math.max(0.1, Math.min(2.0, 0.4 / sx));
-      const targetY = Math.max(0.1, Math.min(2.0, 0.4 / sy));
-      const targetZ = Math.max(0.1, Math.min(2.0, 0.4 / sz));
+      const targetX = Math.max(0.05, Math.min(3.0, 0.4 / sx));
+      const targetY = Math.max(0.05, Math.min(3.0, 0.4 / sy));
+      const targetZ = Math.max(0.05, Math.min(3.0, 0.4 / sz));
 
       if (Math.abs(visual.scaling.x - targetX) > 0.005 ||
           Math.abs(visual.scaling.y - targetY) > 0.005 ||
@@ -172,8 +176,7 @@ export class BaseEntityGizmoAdapter implements IGizmoTargetAdapter {
 
   syncEntity(mesh: AbstractMesh, entity: GameEntity, debugSvc: ToolsDebugService, state: EditorStateService, motor3d: ISceneAccess): void {
     entity.syncTransformFromView();
-    const isPureLight = entity.type.startsWith('light_') && !entity.visual?.assetId && !entity.visual?.path;
-    const sanitizedScale = isPureLight ? { x: 1, y: 1, z: 1 } : TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
+    const sanitizedScale = TransformNormalizer.sanitizeScaleVector(entity.transform.scale, entity.name);
     entity.transform.scale = sanitizedScale;
     mesh.scaling.set(sanitizedScale.x, sanitizedScale.y, sanitizedScale.z);
     entity.syncToView();

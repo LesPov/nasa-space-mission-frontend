@@ -3,7 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Vector3, SpotLight, DirectionalLight } from '@babylonjs/core';
 import { 
   VirtualLight, PoolSlot, ShadowTier, ActiveLogicalSlot, 
-  PreparedLogicalSlot, LIGHT_SPATIAL_CONSTANTS, LightEvictionReason, LightPromotionReason,
+  PreparedLogicalSlot, LIGHT_SPATIAL_CONSTANTS, LightEvictionReason,
   SpatialContextDomain 
 } from './lighting-types';
 import { LightPoolService } from './light-pool.service';
@@ -23,7 +23,6 @@ export class LightAllocationService {
   private _tempPos = Vector3.Zero();
   private _tempDir = Vector3.Zero();
 
-  // Partición del Presupuesto Físico: 3 Slots Funcionales Principales + 1 Slot de Transición/Relevo
   private activeSlots: ActiveLogicalSlot[] = [
     { id: 0, role: 'PRIMARY_PROTECTED_1', assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 },
     { id: 1, role: 'PRIMARY_PROTECTED_2', assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 },
@@ -31,7 +30,6 @@ export class LightAllocationService {
     { id: 3, role: 'TRANSITION_HANDOVER', assignedUid: null, physicalSlot: null, state: 'EMPTY', pendingUid: null, assignedTime: 0, lastStateChangeTime: 0 }
   ];
 
-  // 2 Slots Lógicos de Preparación Anticipada (4 y 5)
   private preparedSlots: PreparedLogicalSlot[] = [
     { id: 4, candidateUid: null, score: 999999, isReady: false },
     { id: 5, candidateUid: null, score: 999999, isReady: false }
@@ -118,7 +116,6 @@ export class LightAllocationService {
   ): void {
     const now = performance.now();
 
-    // 1. Determinar el Dominio Espacial Principal del Jugador
     const macroZone = this.lightDistance.getMacroZone();
     const isInteriorConfirmed = macroZone === 'INTERIOR_ACTIVE';
     const dominantDomain: SpatialContextDomain = isInteriorConfirmed ? 'INTERIOR' : 'EXTERIOR';
@@ -130,7 +127,6 @@ export class LightAllocationService {
       }
     }
 
-    // 2. Filtrado de candidatos elegibles
     const validCandidates = activeVirtuals.filter(vl => {
       if (!vl.entity.light || !vl.entity.light.enabled) {
         vl.rejectionReason = 'DISABLED';
@@ -142,17 +138,16 @@ export class LightAllocationService {
       }
 
       if (vl.isInterior) {
-        // En exterior, las luces del pasillo SOLO compiten si el jugador está a las puertas (< 6 metros de la entrada)
-        if (dominantDomain === 'EXTERIOR' && !vl.inPreEntryZone) {
-          return false;
+        // En exterior, la luz interior COMPITE activamente si está en preentrada, preparándose o si tiene multiplicador
+        if (dominantDomain === 'EXTERIOR') {
+          return vl.inPreEntryZone || vl.spatialState === 'PRE_ENTRY' || vl._isInPrepareRange || vl.targetMultiplier > 0;
         }
-        return vl.insideVolume || vl.inPreEntryZone || vl.inPreExitZone || vl._isInPrepareRange;
+        return vl.insideVolume || vl.inPreEntryZone || vl.inPreExitZone || vl._isInPrepareRange || vl.targetMultiplier > 0;
       }
 
-      return vl.isLightInRange || vl._isInPrepareRange;
+      return vl.isLightInRange || vl._isInPrepareRange || vl.targetMultiplier > 0;
     });
 
-    // 3. Cálculo de puntuación priorizada por distancia euclidiana pura
     validCandidates.forEach(vl => {
       this.lightTransform.getLightWorldTransform(vl.entity, this._tempPos, this._tempDir);
       const isInterior = vl.isInterior && vl.interiorActivationMode !== 'DISTANCE';
@@ -164,14 +159,14 @@ export class LightAllocationService {
         if (vl.spatialState === 'INSIDE') {
           score = 5.0 + (boundaryDist * 1.0);
         } else if (vl.spatialState === 'PRE_ENTRY') {
-          score = 15.0 + (boundaryDist * 1.5);
+          // Puntuación favorable para ganar slot ANTES de cruzar el portal físico
+          score = 8.0 + (boundaryDist * 0.5);
         } else if (vl.spatialState === 'PRE_EXIT') {
-          score = 25.0 + (boundaryDist * 1.5);
+          score = 12.0 + (boundaryDist * 1.0);
         } else {
-          score = 80.0 + (boundaryDist * 2.0);
+          score = 60.0 + (boundaryDist * 1.5);
         }
       } else {
-        // Luces exteriores: puntuación directa por distancia
         const dist = vl.effectiveDistance;
         score = dist * 1.0;
 
@@ -180,7 +175,6 @@ export class LightAllocationService {
         }
       }
 
-      // Histéresis de retención firme
       if (currentlyAssignedUids.has(vl.entity.uid)) {
         score *= LIGHT_SPATIAL_CONSTANTS.STICKINESS_SCORE_MULTIPLIER;
       }
@@ -192,7 +186,6 @@ export class LightAllocationService {
       vl._sortScore = parseFloat(score.toFixed(2));
     });
 
-    // 4. Separación de Candidatos por Dominio
     const primaryCandidates: VirtualLight[] = [];
     const targetCandidates: VirtualLight[] = [];
 
@@ -200,12 +193,11 @@ export class LightAllocationService {
       const vl = validCandidates[i];
       if (dominantDomain === 'EXTERIOR') {
         if (!vl.isInterior) {
-          primaryCandidates.push(vl); // Postes de luz de la calle
-        } else if (vl.inPreEntryZone || vl.spatialState === 'PRE_ENTRY') {
-          targetCandidates.push(vl);  // Entrada al pasillo
+          primaryCandidates.push(vl);
+        } else if (vl.inPreEntryZone || vl.spatialState === 'PRE_ENTRY' || vl._isInPrepareRange || vl.targetMultiplier > 0) {
+          targetCandidates.push(vl);
         }
       } else {
-        // En el interior del pasillo
         if (vl.isInterior && (vl.insideVolume || vl.spatialState === 'INSIDE' || vl.spatialState === 'PRE_EXIT')) {
           primaryCandidates.push(vl);
         } else {
@@ -217,13 +209,14 @@ export class LightAllocationService {
     primaryCandidates.sort((a, b) => (a._sortScore ?? 0) - (b._sortScore ?? 0));
     targetCandidates.sort((a, b) => (a._sortScore ?? 0) - (b._sortScore ?? 0));
 
-    // 5. ASIGNACIÓN JUSTA DE SLOTS:
-    // Si estás en el EXTERIOR y tienes 3 postes cercanos, ¡los 3 postes deben encenderse!
-    // Solo si una luz interior está verdaderamente en PRE_ENTRY (< 8m), ocupa el Slot 2.
     let desiredMainSlots: (VirtualLight | null)[];
     
     if (dominantDomain === 'EXTERIOR') {
-      const hasCloseInteriorEntry = targetCandidates.length > 0 && (targetCandidates[0].distanceToBoundary ?? 99) <= 8.0;
+      const hasCloseInteriorEntry = targetCandidates.length > 0 && (
+        targetCandidates[0].inPreEntryZone || 
+        targetCandidates[0].targetMultiplier > 0 ||
+        (targetCandidates[0].distanceToBoundary ?? 99) <= 30.0
+      );
       
       desiredMainSlots = [
         primaryCandidates[0] || null,
@@ -238,7 +231,6 @@ export class LightAllocationService {
       ];
     }
 
-    // 6. Transición y Protección en los Slots Funcionales Principales (0, 1, 2)
     for (let sIdx = 0; sIdx < 3; sIdx++) {
       const slot = this.activeSlots[sIdx];
       const desiredCandidate = desiredMainSlots[sIdx];
@@ -254,7 +246,7 @@ export class LightAllocationService {
             this.executeSlotHandover(slot, occupant, activeVirtuals, now, 'REPLACED_BY_HIGHER_PRIORITY');
           } else {
             const isRestored = desiredCandidate && desiredCandidate.entity.uid === occupant.entity.uid;
-            if (isRestored && occupant.targetMultiplier > 0.01) {
+            if (isRestored && occupant.targetMultiplier > 0.00005) {
               slot.pendingUid = null;
               slot.state = 'FADING_IN';
               occupant.lifecycleStage = 'FADING_IN';
@@ -296,7 +288,6 @@ export class LightAllocationService {
       }
     }
 
-    // 7. Mantenimiento del Slot 3 (Puesto Transitorio de Relevo)
     const handoverSlot = this.activeSlots[3];
     if (handoverSlot.assignedUid) {
       const occupant = activeVirtuals.find(v => v.entity.uid === handoverSlot.assignedUid) || null;
@@ -308,7 +299,6 @@ export class LightAllocationService {
       }
     }
 
-    // 8. Vinculación de Slots Vacíos a los Candidatos Deseados
     for (let sIdx = 0; sIdx < 3; sIdx++) {
       const slot = this.activeSlots[sIdx];
       const candidateToBind = desiredMainSlots[sIdx];
@@ -339,7 +329,6 @@ export class LightAllocationService {
       }
     }
 
-    // 9. Estratificación de Sombras
     const assignedActiveSlots = this.activeSlots.filter(s => s.assignedUid !== null);
     assignedActiveSlots.sort((a, b) => {
       const vlA = activeVirtuals.find(v => v.entity.uid === a.assignedUid);
@@ -380,7 +369,6 @@ export class LightAllocationService {
       }
     });
 
-    // 10. Slots de Preparación Anticipada (Slots 4 y 5)
     const activeUids = new Set(this.activeSlots.map(s => s.assignedUid).filter(Boolean) as string[]);
     const unassignedPrimary = primaryCandidates.filter(c => !activeUids.has(c.entity.uid));
     const unassignedTarget = targetCandidates.filter(c => !activeUids.has(c.entity.uid));
@@ -414,7 +402,6 @@ export class LightAllocationService {
       }
     }
 
-    // 11. Limpieza de luces inactivas
     const prepUids = new Set(this.preparedSlots.map(p => p.candidateUid).filter(Boolean) as string[]);
     activeVirtuals.forEach(vl => {
       if (!activeUids.has(vl.entity.uid) && !prepUids.has(vl.entity.uid)) {

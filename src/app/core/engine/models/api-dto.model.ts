@@ -8,6 +8,19 @@ export * from './space-mission.model';
 export interface Vector3Dto { x: number; y: number; z: number; }
 export interface AssetDto { id?: number; path?: string; type?: string; name?: string; }
 
+export interface ConfiguredPortalDto {
+  id: string;
+  name: string;
+  localPosition: Vector3Dto;
+  localNormal: Vector3Dto;
+  radius: number;
+  width: number;
+  height: number;
+  depth?: number;
+  preEntryDistance: number;
+  enabled: boolean;
+}
+
 export interface ColliderDto {
   type: string;
   sizeX?: number;
@@ -58,7 +71,7 @@ export interface SceneObjectPropertiesDto {
   camOffset?: Vector3Dto; playerConfig?: PlayerRuntimeConfig; selectionRange?: SelectionRangeDto; animationNames?: string[]; autoAnim?: AutoAnimDto;
   path?: string; videoUrl?: string; imageUrl?: string; profundidadProyeccion?: number; anguloProyeccion?: number; proyeccionAncho?: number;
   proyeccionAlto?: number; proyeccionRepeticiones?: number; proyeccionEspaciado?: number; proyeccionEje?: string; fadeDistance?: number;
-  lightColor?: string; lightColorBW?: string; intensity?: number; renderIntensity?: number; range?: number; angle?: number;
+  lightColor?: string; lightColorBW?: string; intensity?: number; renderIntensity?: number; range?: number; angle?: number; exponent?: number;
   attachedNodePath?: string; attachedNodeName?: string;
   
   disableCulling?: boolean;
@@ -76,6 +89,7 @@ export interface SceneObjectPropertiesDto {
   shadowBias?: number;
   shadowNormalBias?: number;
   excludeExteriorMeshes?: boolean;
+  portals?: ConfiguredPortalDto[];
 
   distanceControlEnabled?: boolean;
   activationDistance?: number;

@@ -238,6 +238,7 @@ export class LightShadowService {
         continue;
       }
 
+      // Asegurar que todas las paredes y techos del contenedor reciban y proyecten sombra
       const isContainerWall = isInterior && (item.entityUid === containerUid);
 
       const dx = lightPos.x - item.centerWorld.x;
@@ -249,6 +250,7 @@ export class LightShadowService {
       const maxReachSq = maxReach * maxReach;
 
       if (isContainerWall || distSq <= maxReachSq) {
+        m.receiveShadows = true;
         staticMeshesFound.push(m);
       }
     }

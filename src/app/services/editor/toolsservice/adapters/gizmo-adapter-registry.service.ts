@@ -1,4 +1,5 @@
 
+// file: src/app/services/editor/toolsservice/adapters/gizmo-adapter-registry.service.ts
 import { Injectable } from '@angular/core';
 import { GameEntity } from '../../../../core/engine/entities/game.entity';
 import { AbstractMesh } from '@babylonjs/core';
@@ -8,6 +9,7 @@ import { CameraGizmoAdapter } from './camera-gizmo.adapter';
 import { ColliderGizmoAdapter } from './collider-gizmo.adapter';
 import { FogGizmoAdapter } from './fog-gizmo.adapter';
 import { PartGizmoAdapter } from './part-gizmo.adapter';
+import { PortalGizmoAdapter } from './portal-gizmo.adapter';
 
 @Injectable({ providedIn: 'root' })
 export class GizmoAdapterRegistryService {
@@ -15,6 +17,7 @@ export class GizmoAdapterRegistryService {
 
   constructor() {
     this.adapters = [
+      new PortalGizmoAdapter(),
       new PartGizmoAdapter(),
       new CameraGizmoAdapter(),
       new ColliderGizmoAdapter(),
@@ -23,11 +26,6 @@ export class GizmoAdapterRegistryService {
     ];
   }
 
-  /**
-   * Retorna el adaptador correspondiente para manipular la entidad con el Gizmo.
-   * Al unificarse la arquitectura, las luces (y cualquier otra entidad con TransformComponent)
-   * delegan su manipulación en el BaseEntityGizmoAdapter, eliminando la necesidad de lógica duplicada.
-   */
   public getAdapter(subSelected: string | null, entity: GameEntity | null, mesh?: AbstractMesh | null): IGizmoTargetAdapter | null {
     for (const adapter of this.adapters) {
       if (adapter.supports(subSelected, entity, mesh)) {
@@ -37,3 +35,4 @@ export class GizmoAdapterRegistryService {
     return null;
   }
 }
+  

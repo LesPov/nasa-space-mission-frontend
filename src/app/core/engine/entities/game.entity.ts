@@ -1,3 +1,4 @@
+
 // file: src/app/core/engine/entities/game.entity.ts
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
@@ -73,6 +74,19 @@ export type LightContainmentMode = 'GLOBAL' | 'INTERIOR' | 'EXTERIOR';
 export type LightInteriorActivationMode = 'VOLUME' | 'DISTANCE' | 'BOTH';
 export type LightDistanceReferenceMode = 'AUTO' | 'CAMERA' | 'PLAYER';
 
+export interface ConfiguredPortal {
+  id: string;
+  name: string;
+  localPosition: { x: number; y: number; z: number };
+  localNormal: { x: number; y: number; z: number };
+  radius: number;
+  width: number;
+  height: number;
+  depth?: number;
+  preEntryDistance: number;
+  enabled: boolean;
+}
+
 export class LightComponent {
   constructor(
     public lightColor = '#ffffff', 
@@ -80,6 +94,7 @@ export class LightComponent {
     public intensity = 1.0, 
     public range = 50, 
     public angle = 60,
+    public exponent = 1.0,
     public attachedNodePath = '', 
     public attachedNodeName = '',
     public renderIntensity?: number,
@@ -88,9 +103,9 @@ export class LightComponent {
     public containmentMode: LightContainmentMode = 'GLOBAL',
     public interiorActivationMode: LightInteriorActivationMode = 'VOLUME',
     public preEntryEnabled: boolean = true,
-    public preEntryDistance: number = 4.5,
+    public preEntryDistance: number = 8.0,
     public linkShadowPreEntryToLightPreEntry: boolean = true,
-    public shadowPreEntryDistance: number = 4.5,
+    public shadowPreEntryDistance: number = 8.0,
     public containerEntityUid: string = '',
     public affectDescendantsOnly: boolean = false,
     public shadowDarkness: number = 0.0,
@@ -103,7 +118,8 @@ export class LightComponent {
     public distanceShadowsEnabled: boolean = true,
     public shadowActivationDistance: number = 52,
     public shadowDeactivationDistance: number = 56,
-    public distanceReferenceMode: LightDistanceReferenceMode = 'AUTO'
+    public distanceReferenceMode: LightDistanceReferenceMode = 'AUTO',
+    public portals: ConfiguredPortal[] = []
   ) {}
 }
 
@@ -305,14 +321,15 @@ export class GameEntity {
     let clonedLight: LightComponent | null = null;
     if (l) {
       clonedLight = new LightComponent(
-        l.lightColor, l.lightColorBW, l.intensity, l.range, l.angle,
+        l.lightColor, l.lightColorBW, l.intensity, l.range, l.angle, l.exponent,
         l.attachedNodePath, l.attachedNodeName, l.renderIntensity, l.enabled,
         l.castShadows, l.containmentMode, l.interiorActivationMode, l.preEntryEnabled,
         l.preEntryDistance, l.linkShadowPreEntryToLightPreEntry, l.shadowPreEntryDistance,
         l.containerEntityUid, l.affectDescendantsOnly, l.shadowDarkness,
         l.shadowBias, l.shadowNormalBias, l.excludeExteriorMeshes, l.distanceControlEnabled,
         l.activationDistance, l.deactivationDistance, l.distanceShadowsEnabled,
-        l.shadowActivationDistance, l.shadowDeactivationDistance, l.distanceReferenceMode
+        l.shadowActivationDistance, l.shadowDeactivationDistance, l.distanceReferenceMode,
+        l.portals ? JSON.parse(JSON.stringify(l.portals)) : []
       );
     }
 
@@ -381,6 +398,9 @@ export class GameEntity {
 
     if (b.light && this.light) {
       Object.assign(this.light, b.light);
+      if (b.light.portals) {
+        this.light.portals = JSON.parse(JSON.stringify(b.light.portals));
+      }
     }
 
     if (b.partOverrides && this.partOverrides) {

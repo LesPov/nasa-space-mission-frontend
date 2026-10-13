@@ -1,4 +1,5 @@
 
+// file: src/app/services/editor/toolsservice/tools-debug.service.ts
 import { Injectable, inject } from '@angular/core';
 import { AbstractMesh, Mesh, Vector3, Matrix } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';
@@ -10,6 +11,8 @@ import { ToolsDebugColliderService } from './tools-debug-collider.service';
 import { ToolsDebugCameraService } from './tools-debug-camera.service';
 import { ToolsDebugFogService } from './tools-debug-fog.service';
 import { ToolsDebugVisualCenterService } from './tools-debug-visual-center.service';
+import { ToolsDebugLightRangeService } from './tools-debug-light-range.service';
+import { ToolsDebugPortalsService } from './tools-debug-portals.service';
 
 @Injectable({ providedIn: 'root' })
 export class ToolsDebugService {
@@ -23,40 +26,43 @@ export class ToolsDebugService {
   private cameraSvc = inject(ToolsDebugCameraService);
   private fogSvc = inject(ToolsDebugFogService);
   private visualCenterSvc = inject(ToolsDebugVisualCenterService);
+  private lightRangeSvc = inject(ToolsDebugLightRangeService);
+  public portalsSvc = inject(ToolsDebugPortalsService);
 
   get debugCollider() { return this.colliderSvc.debugCollider; }
   get debugCameraBox() { return this.cameraSvc.debugCameraBox; }
   get debugFogStartSphere() { return this.fogSvc.debugFogStartSphere; }
   get debugFogEndSphere() { return this.fogSvc.debugFogEndSphere; }
 
-  public getFogBaseLocalPos(selected: AbstractMesh): Vector3 {
+  public actualizarDebugMeshes(selected: Mesh | null): void {
+    const playState = this.state.playState();
+    if (!selected || (playState !== 'EDITOR' && playState !== 'EDITING_IN_GAME')) {
+      this.colliderSvc.dispose();
+      this.cameraSvc.dispose();
+      this.fogSvc.dispose();
+      this.visualCenterSvc.dispose();
+      this.lightRangeSvc.dispose();
+      this.portalsSvc.dispose();
+      return;
+    }
+
+    const scene = this.motor3d.getScene();
     const entity = this.entityManager.getEntityByMesh(selected);
-    const camOffset = entity?.camOffset;
-    if (entity?.characterConfig && camOffset) {
-      return new Vector3(
-        this.selectionSvc.normalizarNumero(camOffset.x, 0),
-        this.selectionSvc.normalizarNumero(camOffset.y, 1.6),
-        this.selectionSvc.normalizarNumero(camOffset.z, 0)
-      );
-    }
-    if (entity?.initialHeadLocal) {
-      return new Vector3(
-        this.selectionSvc.normalizarNumero(entity.initialHeadLocal.x, 0),
-        this.selectionSvc.normalizarNumero(entity.initialHeadLocal.y, 1.6),
-        this.selectionSvc.normalizarNumero(entity.initialHeadLocal.z, 0)
-      );
-    }
-    const collider = entity?.collider;
-    if (collider) {
-      const offsetY = this.selectionSvc.normalizarNumero(collider.offsetY, 0);
-      const sizeY = this.selectionSvc.normalizarNumero(collider.sizeY, 1);
-      return new Vector3(
-        this.selectionSvc.normalizarNumero(collider.offsetX, 0),
-        offsetY + Math.max(sizeY, 0.8),
-        this.selectionSvc.normalizarNumero(collider.offsetZ, 0)
-      );
-    }
-    return new Vector3(0, 1.6, 0);
+    if (!entity) return;
+
+    const subSelected = this.state.subObjetoSeleccionado();
+
+    this.colliderSvc.update(scene, selected, entity, subSelected);
+    this.cameraSvc.update(scene, selected, entity, subSelected);
+    this.visualCenterSvc.update(scene, selected, entity, subSelected);
+    this.lightRangeSvc.update(scene, selected, entity, subSelected);
+    this.portalsSvc.update(scene, entity);
+
+    const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
+    const isFPS = this.state.modoVistaPrueba === 'FPS';
+    const fogAnchor = this.getFogDebugAnchor(selected);
+
+    this.fogSvc.update(scene, selected, entity, subSelected, fogAnchor, isBW, isFPS);
   }
 
   public getFogDebugAnchor(selected: AbstractMesh): Vector3 {
@@ -72,89 +78,12 @@ export class ToolsDebugService {
     return pPos;
   }
 
-  public actualizarDebugMeshes(selected: Mesh | null): void {
-    const playState = this.state.playState();
-    if (!selected || (playState !== 'EDITOR' && playState !== 'EDITING_IN_GAME')) {
-      this.colliderSvc.dispose();
-      this.cameraSvc.dispose();
-      this.fogSvc.dispose();
-      this.visualCenterSvc.dispose();
-      return;
-    }
-
-    const scene = this.motor3d.getScene();
-    const entity = this.entityManager.getEntityByMesh(selected);
-    if (!entity) return;
-
-    const subSelected = this.state.subObjetoSeleccionado();
-
-    this.colliderSvc.update(scene, selected, entity, subSelected);
-    this.cameraSvc.update(scene, selected, entity, subSelected);
-    this.visualCenterSvc.update(scene, selected, entity, subSelected);
-
-    const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
-    const isFPS = this.state.modoVistaPrueba === 'FPS';
-    const fogAnchor = this.getFogDebugAnchor(selected);
-
-    this.fogSvc.update(scene, selected, entity, subSelected, fogAnchor, isBW, isFPS);
-  }
-
   public syncBreathAnimations(obj: Mesh): void {
     if (!obj) return;
     const entity = this.entityManager.getEntityByMesh(obj);
     if (!entity) return;
 
-    let breathX = 0, breathY = 0, breathZ = 0;
-
-    if (entity.initialHeadLocal) {
-      const headNode = obj.getChildTransformNodes(false).find((n: any) =>
-        n.name.toLowerCase() === 'head' || n.name.toLowerCase() === 'neck' || n.name.toLowerCase().includes('head')
-      );
-      if (headNode) {
-        const currentGlobal = headNode.getAbsolutePosition();
-        const currentLocal = Vector3.TransformCoordinates(currentGlobal, Matrix.Invert(obj.getWorldMatrix()));
-        breathX = currentLocal.x - entity.initialHeadLocal.x;
-        breathY = currentLocal.y - entity.initialHeadLocal.y;
-        breathZ = currentLocal.z - entity.initialHeadLocal.z;
-      }
-    }
-
-    const colMeta = entity.collider;
-    if (colMeta) {
-      this.colliderSvc.sync(colMeta.offsetX, colMeta.offsetY, colMeta.offsetZ, 0, 0, 0);
-    }
-
-    let cX = entity.camOffset.x || 0;
-    let cY = entity.camOffset.y || 1.6;
-    let cZ = entity.camOffset.z || 0;
-
-    if (entity.characterConfig && entity.playerConfig) {
-       cY = entity.playerConfig.camera.fpsEyeLevel;
-    }
-
-    this.cameraSvc.sync(cX, cY, cZ, breathX, breathY, breathZ);
-    this.visualCenterSvc.sync();
-
-    const fogConfig = entity.playerConfig?.fog;
-    if (fogConfig) {
-      const fogShape = fogConfig.fogShape || 'cylinder';
-      const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
-      const isFPS = this.state.modoVistaPrueba === 'FPS';
-      
-      const hStartFpsBW = fogConfig.fogHeightYStartFpsBW ?? 4.0;
-      const hStartTpsBW = fogConfig.fogHeightYStartTpsBW ?? 4.0;
-      const hStartFPS = fogConfig.fogHeightYStartFPS ?? 4.0;
-      const hStartTPS = fogConfig.fogHeightYStartTPS ?? 4.0;
-      const fogHeightStart = Math.max(0.1, isBW ? (isFPS ? hStartFpsBW : hStartTpsBW) : (isFPS ? hStartFPS : hStartTPS));
-
-      const hEndFpsBW = fogConfig.fogHeightYEndFpsBW ?? 10.0;
-      const hEndTpsBW = fogConfig.fogHeightYEndTpsBW ?? 10.0;
-      const hEndFPS = fogConfig.fogHeightYEndFPS ?? 10.0;
-      const hEndTPS = fogConfig.fogHeightYEndTPS ?? 10.0;
-      const fogHeightEnd = Math.max(0.1, isBW ? (isFPS ? hEndFpsBW : hEndTpsBW) : (isFPS ? hEndFPS : hEndTPS));
-
-      const fogAnchor = this.getFogDebugAnchor(obj);
-      this.fogSvc.sync(fogShape, fogHeightStart, fogHeightEnd, fogAnchor);
-    }
+    this.colliderSvc.sync(entity.collider?.offsetX || 0, entity.collider?.offsetY || 0, entity.collider?.offsetZ || 0, 0, 0, 0);
+    this.lightRangeSvc.sync();
   }
 }

@@ -10,10 +10,12 @@ import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { EditorStateService } from '../../../../services/editor/editor-state.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../../core/engine/scene/scene-access.token';
-import { LightContainmentMode, LightDistanceReferenceMode, LightInteriorActivationMode } from '../../../../core/engine/entities/game.entity';
+import { LightContainmentMode, LightDistanceReferenceMode, LightInteriorActivationMode, ConfiguredPortal } from '../../../../core/engine/entities/game.entity';
 import { LightContainmentService } from '../../../../core/engine/runtime/systems/lighting/light-containment.service';
 import { DynamicLightingSystem } from '../../../../core/engine/runtime/systems/lighting/dynamic-lighting.system';
 import { LightPoolService } from '../../../../core/engine/runtime/systems/lighting/light-pool.service';
+import { ToolsDebugPortalsService } from '../../../../services/editor/toolsservice/tools-debug-portals.service';
+import { ToolsDebugLightRangeService } from '../../../../services/editor/toolsservice/tools-debug-light-range.service';
 
 interface AttachedNodeOption {
   label: string;
@@ -42,6 +44,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   private containmentSvc = inject(LightContainmentService);
   private dynamicLighting = inject(DynamicLightingSystem);
   private lightPool = inject(LightPoolService);
+  private debugPortalsSvc = inject(ToolsDebugPortalsService);
+  private debugLightRangeSvc = inject(ToolsDebugLightRangeService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
 
@@ -54,8 +58,16 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   intensity = 1.0;
   range = 50;
   angle = 60;
+  exponent = 1.0;
   enabled = true;
   castShadows = true;
+
+  lightScaleX = 1.0;
+  lightScaleY = 1.0;
+  lightScaleZ = 1.0;
+
+  showRangeSphereHelper = false;
+  showContainerBoxHelper = false;
 
   containmentMode: LightContainmentMode = 'GLOBAL';
   interiorActivationMode: LightInteriorActivationMode = 'VOLUME';
@@ -63,6 +75,9 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   preEntryDistance: number = 8.0;
   linkShadowPreEntryToLightPreEntry: boolean = true;
   shadowPreEntryDistance: number = 8.0;
+
+  portals: ConfiguredPortal[] = [];
+  selectedPortalIndex = 0;
 
   containerEntityUid: string = '';
   affectDescendantsOnly: boolean = false;
@@ -81,6 +96,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
   currentDistance: number = 0;
   currentMultiplier: number = 1.0;
+  currentTransitionProgress: number = 0;
   currentEffectiveIntensity: number = 0.0;
   isLightActiveStatus: boolean = false;
   isShadowActiveStatus: boolean = false;
@@ -96,6 +112,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   spatialContextText: string = 'GLOBAL';
   containmentSourceText: string = 'N/A';
   distanceToBoundaryText: string = 'N/A';
+  signedDistanceText: string = 'N/A';
+  activePortalIdText: string = 'N/A';
   corridorZoneText: string = 'N/A';
   decisionText: string = 'EVALUANDO';
 
@@ -112,6 +130,9 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
   }
 
   ngOnInit() {
+    this.showRangeSphereHelper = this.debugLightRangeSvc.showRangeSphereHelper;
+    this.showContainerBoxHelper = this.debugLightRangeSvc.showContainerBoxHelper;
+
     this.syncData();
     this.subs.push(
       this.editorSvc.onGizmoDrag.pipe(auditTime(100)).subscribe(() => this.syncData()),
@@ -135,6 +156,39 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       clearInterval(this.telemetryInterval);
       this.telemetryInterval = null;
     }
+    this.debugPortalsSvc.dispose();
+  }
+
+  public onScaleChange(): void {
+    if (!this.objeto) return;
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (!entity) return;
+
+    const sx = Math.max(0.01, Number(this.lightScaleX) || 1.0);
+    const sy = Math.max(0.01, Number(this.lightScaleY) || 1.0);
+    const sz = Math.max(0.01, Number(this.lightScaleZ) || 1.0);
+
+    entity.transform.scale = { x: sx, y: sy, z: sz };
+    this.objeto.scaling.set(sx, sy, sz);
+    entity.isDirty = true;
+    entity.syncToView();
+
+    this.editorSvc.onMapChanged.next();
+  }
+
+  public onPortalRadiusChange(portal: ConfiguredPortal): void {
+    portal.width = (portal.radius || 1.75) * 2;
+    this.aplicarLuz();
+  }
+
+  public onDebugHelpersChange(): void {
+    this.debugLightRangeSvc.showRangeSphereHelper = this.showRangeSphereHelper;
+    this.debugLightRangeSvc.showContainerBoxHelper = this.showContainerBoxHelper;
+    const scene = this.objeto?.getScene();
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    if (scene && entity) {
+      this.debugLightRangeSvc.update(scene, this.objeto, entity, null);
+    }
   }
 
   private updateTelemetry(): void {
@@ -146,10 +200,11 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     if (vl) {
       this.currentDistance = parseFloat(vl.lastEvaluatedDistance.toFixed(2));
       this.currentMultiplier = vl.currentMultiplier;
+      this.currentTransitionProgress = vl.transitionProgress ?? 0;
       this.currentEffectiveIntensity = (entity.light?.intensity ?? 1.0) * vl.currentMultiplier;
       
       const slot = this.lightPool.findSlotByUid(entity.uid);
-      this.isLightActiveStatus = !!slot && slot.light.isEnabled() && slot.currentIntensity > 0;
+      this.isLightActiveStatus = !!slot && slot.light.isEnabled() && slot.currentIntensity > 0.00005;
       
       this.isShadowActiveStatus = vl.isShadowInRange && (entity.light?.castShadows ?? true);
       this.shadowTierText = vl.shadowTier || 'OFF';
@@ -165,6 +220,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       this.isInPreExit = vl.inPreExitZone ?? false;
       this.containmentSourceText = vl.containmentSource || 'N/A';
       this.distanceToBoundaryText = vl.distanceToBoundary !== undefined ? `${vl.distanceToBoundary.toFixed(2)} m` : 'N/A';
+      this.signedDistanceText = vl.signedDistanceToPortal !== undefined ? `${vl.signedDistanceToPortal.toFixed(2)} m` : 'N/A';
+      this.activePortalIdText = vl.matchedPortalId || 'Ninguno';
 
       const hop = vl.topologicalHop !== undefined ? vl.topologicalHop : 0;
       const zoneName = vl.corridorZoneName || vl.containerName || 'Desconocido';
@@ -176,11 +233,11 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
           if (vl.spatialState === 'INSIDE') {
             this.spatialContextText = `INTERIOR (${vl.containerName || 'Dentro'}) - INSIDE (100%)`;
           } else if (vl.spatialState === 'PRE_ENTRY') {
-            this.spatialContextText = `PRE-ENTRADA (${vl.containerName || 'Puerta'}) - FADE IN (${(vl.currentMultiplier * 100).toFixed(0)}%)`;
+            this.spatialContextText = `PRE-ENTRADA (${vl.containerName || 'Portal'}) - FADE IN (${(vl.currentMultiplier * 100).toFixed(2)}%)`;
           } else if (vl.spatialState === 'PRE_EXIT') {
-            this.spatialContextText = `PRE-SALIDA (${vl.containerName || 'Puerta'}) - FADE OUT (${(vl.currentMultiplier * 100).toFixed(0)}%)`;
+            this.spatialContextText = `PRE-SALIDA (${vl.containerName || 'Portal'}) - FADE OUT (${(vl.currentMultiplier * 100).toFixed(2)}%)`;
           } else {
-            this.spatialContextText = `FUERA DEL MODELO (${vl.containerName || 'Exterior'}) - APAGADA`;
+            this.spatialContextText = `FUERA DEL PASILLO (${vl.containerName || 'Pared exterior'}) - APAGADA`;
           }
         } else {
           this.spatialContextText = vl.insideVolume 
@@ -193,6 +250,84 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
       this.cdr.detectChanges();
     }
+  }
+
+  public seleccionarPortal(index: number): void {
+    this.selectedPortalIndex = index;
+    const portal = this.portals[index];
+    if (portal) {
+      this.debugPortalsSvc.setSelectedPortalId(portal.id);
+    }
+  }
+
+  public agregarPortal(): void {
+    const newPortal: ConfiguredPortal = {
+      id: window.crypto.randomUUID(),
+      name: `Portal ${this.portals.length + 1}`,
+      localPosition: { x: 0, y: 0, z: this.portals.length === 0 ? -10 : 10 },
+      localNormal: { x: 0, y: 0, z: this.portals.length === 0 ? -1 : 1 },
+      radius: 1.75,
+      width: 3.5,
+      height: 3.5,
+      depth: 1.5,
+      preEntryDistance: this.preEntryDistance,
+      enabled: true
+    };
+    this.portals.push(newPortal);
+    this.selectedPortalIndex = this.portals.length - 1;
+    this.aplicarLuz();
+  }
+
+  public eliminarPortal(index: number): void {
+    this.portals.splice(index, 1);
+    if (this.selectedPortalIndex >= this.portals.length) {
+      this.selectedPortalIndex = Math.max(0, this.portals.length - 1);
+    }
+    this.aplicarLuz();
+  }
+
+  public autocalibrarDosPortales(): void {
+    const entity = this.entityManager.getEntityByMesh(this.objeto);
+    const container = entity ? this.containmentSvc.resolveContainerEntity(entity, this.objeto.getScene()) : null;
+    
+    let halfDepth = 15;
+    let radius = 1.75;
+    if (container && container.view) {
+      container.view.computeWorldMatrix(true);
+      const b = container.view.getBoundingInfo().boundingBox;
+      halfDepth = Math.max(5, (b.maximum.z - b.minimum.z) * 0.5);
+      radius = Math.max(1.2, (b.maximum.x - b.minimum.x) * 0.45);
+    }
+
+    this.portals = [
+      {
+        id: 'portal_front',
+        name: 'Portal 1 (Extremo Z-)',
+        localPosition: { x: 0, y: 0, z: -halfDepth },
+        localNormal: { x: 0, y: 0, z: -1 },
+        radius: parseFloat(radius.toFixed(2)),
+        width: parseFloat((radius * 2).toFixed(2)),
+        height: 3.5,
+        depth: 1.5,
+        preEntryDistance: this.preEntryDistance,
+        enabled: true
+      },
+      {
+        id: 'portal_back',
+        name: 'Portal 2 (Extremo Z+)',
+        localPosition: { x: 0, y: 0, z: halfDepth },
+        localNormal: { x: 0, y: 0, z: 1 },
+        radius: parseFloat(radius.toFixed(2)),
+        width: parseFloat((radius * 2).toFixed(2)),
+        height: 3.5,
+        depth: 1.5,
+        preEntryDistance: this.preEntryDistance,
+        enabled: true
+      }
+    ];
+
+    this.selectedPortalIndex = 0;
+    this.aplicarLuz();
   }
 
   private getAllAttachableNodes(): Array<TransformNode | AbstractMesh> {
@@ -222,18 +357,12 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     const root = this.stateSvc.encontrarRaiz(this.objeto);
 
     while (current) {
-      if (current.name) {
-        parts.unshift(current.name);
-      }
-
+      if (current.name) parts.unshift(current.name);
       const parent: any = current.parent;
       if (!parent || parent === root) {
-        if (parent && parent !== root && parent.name) {
-          parts.unshift(parent.name);
-        }
+        if (parent && parent !== root && parent.name) parts.unshift(parent.name);
         break;
       }
-
       current = parent;
     }
 
@@ -242,15 +371,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
 
   private resolveNodeByPath(path: string): TransformNode | AbstractMesh | null {
     if (!this.objeto || !path) return null;
-
     const nodes = this.getAllAttachableNodes();
-    const byPath = nodes.find(n => this.buildNodePath(n) === path);
-    if (byPath) return byPath;
-
-    const byName = nodes.find(n => n.name === path);
-    if (byName) return byName;
-
-    return null;
+    return nodes.find(n => this.buildNodePath(n) === path) || nodes.find(n => n.name === path) || null;
   }
 
   private getAnimatedNodeNames(): Set<string> {
@@ -272,6 +394,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     if (this.linkShadowPreEntryToLightPreEntry) {
       this.shadowPreEntryDistance = this.preEntryDistance;
     }
+    this.portals.forEach(p => p.preEntryDistance = this.preEntryDistance);
     this.aplicarLuz();
   }
 
@@ -296,15 +419,22 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.intensity = entity.light.intensity ?? 1.0;
     this.range = entity.light.range ?? 50;
     this.angle = entity.light.angle ?? 60;
+    this.exponent = entity.light.exponent ?? 1.0;
     
+    this.lightScaleX = parseFloat((entity.transform.scale.x || 1.0).toFixed(3));
+    this.lightScaleY = parseFloat((entity.transform.scale.y || 1.0).toFixed(3));
+    this.lightScaleZ = parseFloat((entity.transform.scale.z || 1.0).toFixed(3));
+
     this.enabled = entity.light.enabled ?? true;
     this.castShadows = entity.light.castShadows ?? true;
 
     this.containmentMode = entity.light.containmentMode ?? (entity.parentId ? 'INTERIOR' : 'GLOBAL');
-    this.interiorActivationMode = entity.light.interiorActivationMode || 'VOLUME';
+    this.interiorActivationMode = entity.light.interiorActivationMode || (this.containmentMode === 'INTERIOR' ? 'VOLUME' : 'DISTANCE');
     this.preEntryEnabled = entity.light.preEntryEnabled ?? true;
     this.preEntryDistance = entity.light.preEntryDistance ?? 8.0;
     
+    this.portals = entity.light.portals ? JSON.parse(JSON.stringify(entity.light.portals)) : [];
+
     this.linkShadowPreEntryToLightPreEntry = entity.light.linkShadowPreEntryToLightPreEntry !== false;
     this.shadowPreEntryDistance = entity.light.shadowPreEntryDistance ?? this.preEntryDistance;
 
@@ -335,14 +465,8 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     const animatedNames = this.getAnimatedNodeNames();
 
     const filtered = allNodes
-      .filter(n => {
-        if (!animatedNames.size) return true;
-        return animatedNames.has(n.name);
-      })
-      .map(n => ({
-        label: n.name,
-        value: this.buildNodePath(n)
-      }));
+      .filter(n => animatedNames.size ? animatedNames.has(n.name) : true)
+      .map(n => ({ label: n.name, value: this.buildNodePath(n) }));
 
     this.childNodes = filtered.length > 0 ? filtered : allNodes.map(n => ({
       label: n.name,
@@ -352,6 +476,13 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
     this.containerOptions = this.entityManager.getAllEntities()
       .filter(e => e.uid !== entity.uid && (e.type === 'model' || e.type === 'cube'))
       .map(e => ({ label: e.name, uid: e.uid }));
+
+    const scene = this.objeto.getScene();
+    if (scene) {
+      const activePortalId = this.portals[this.selectedPortalIndex]?.id || null;
+      this.debugPortalsSvc.update(scene, entity, activePortalId);
+      this.debugLightRangeSvc.update(scene, this.objeto, entity, null);
+    }
 
     this.updateTelemetry();
     this.cdr.detectChanges();
@@ -398,6 +529,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.light.intensity = this.intensity;
       entity.light.range = this.range;
       entity.light.angle = this.angle;
+      entity.light.exponent = this.exponent;
       entity.light.enabled = this.enabled;
       entity.light.castShadows = this.castShadows;
       entity.light.attachedNodeName = this.attachedNodeName;
@@ -409,6 +541,7 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       entity.light.preEntryDistance = this.preEntryDistance;
       entity.light.linkShadowPreEntryToLightPreEntry = this.linkShadowPreEntryToLightPreEntry;
       entity.light.shadowPreEntryDistance = this.linkShadowPreEntryToLightPreEntry ? this.preEntryDistance : this.shadowPreEntryDistance;
+      entity.light.portals = JSON.parse(JSON.stringify(this.portals));
 
       entity.light.containerEntityUid = this.containerEntityUid;
       entity.light.affectDescendantsOnly = this.affectDescendantsOnly;
@@ -434,13 +567,20 @@ export class PropLight implements OnInit, OnDestroy, OnChanges {
       if (this.containerEntityUid) {
         this.containmentSvc.markDirty(this.containerEntityUid);
       }
+
+      const scene = this.objeto.getScene();
+      if (scene) {
+        const activePortalId = this.portals[this.selectedPortalIndex]?.id || null;
+        this.debugPortalsSvc.update(scene, entity, activePortalId);
+        this.debugLightRangeSvc.update(scene, this.objeto, entity, null);
+      }
       
       this.dynamicLighting.syncLightImmediate(entity, true);
       this.updateTelemetry();
     }
 
     this.editorSvc.onMapChanged.next();
-    this.animStatus = '💡 Parámetros de iluminación actualizados';
+    this.animStatus = '💡 Parámetros de luz actualizados en vivo';
     setTimeout(() => this.animStatus = '', 2000);
   }
 }

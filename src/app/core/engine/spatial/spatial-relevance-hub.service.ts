@@ -215,7 +215,7 @@ export class SpatialRelevanceHubService implements IUpdatable {
     
     const dSqP = dx * dx + dy * dy + dz * dz;
     record.distSqToPlayer = dSqP;
-    record.distToPlayer = Math.sqrt(dSqP); // Pre-calculado exactamente una sola vez
+    record.distToPlayer = Math.sqrt(dSqP);
 
     const cdx = this.currentCamPos.x - record.centerWorld.x;
     const cdy = this.currentCamPos.y - record.centerWorld.y;
@@ -246,16 +246,22 @@ export class SpatialRelevanceHubService implements IUpdatable {
     const ref = this.getReferencePosition();
     this.currentRefPos.copyFrom(ref);
 
-    const scene = this.motor3d.getScene();
-    const cam = this.ownership.getCamera() || scene?.activeCamera || this.motor3d.getEditorCamera();
+    const scene = this.motor3d?.getScene ? this.motor3d.getScene() : null;
+    const editorCam = (typeof this.motor3d?.getEditorCamera === 'function') ? this.motor3d.getEditorCamera() : null;
+    const cam = this.ownership.getCamera() || scene?.activeCamera || editorCam;
+
     if (cam) {
-      cam.computeWorldMatrix();
+      if (typeof cam.computeWorldMatrix === 'function') {
+        cam.computeWorldMatrix();
+      }
       this.currentCamPos.copyFrom(cam.globalPosition);
 
       if (cam.getDirectionToRef) {
         cam.getDirectionToRef(Vector3.Forward(), SpatialRelevanceHubService._tempCamFwd);
-      } else {
+      } else if (cam.getDirection) {
         SpatialRelevanceHubService._tempCamFwd.copyFrom(cam.getDirection(Vector3.Forward()));
+      } else {
+        SpatialRelevanceHubService._tempCamFwd.set(0, 0, 1);
       }
       SpatialRelevanceHubService._tempCamFwd.y = 0;
       SpatialRelevanceHubService._tempCamFwd.normalize();
@@ -271,7 +277,7 @@ export class SpatialRelevanceHubService implements IUpdatable {
       return;
     }
 
-    const shouldRecomputeAll = refMovedSq > 0.01 || this.frameCount % 10 === 0;
+    const shouldRecomputeAll = refMovedSq > 0.001 || this.frameCount % 5 === 0;
 
     if (shouldRecomputeAll) {
       this.lastRefPos.copyFrom(this.currentRefPos);

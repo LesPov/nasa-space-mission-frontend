@@ -149,7 +149,7 @@ export class LightDistanceService {
       vl.topologicalHop = hopDistance;
 
       // =======================================================================
-      // EVALUACIÓN MODO INTERIOR: PRE-ENTRADA SILENCIOSA (CALENTAR SIN ENCENDER)
+      // EVALUACIÓN MODO INTERIOR: PRE-ENTRADA PROGRESIVA Y CALENTAMIENTO
       // =======================================================================
       if (isModelPreEntryMode) {
         if (!container || !container.view || container.view.isDisposed()) {
@@ -183,14 +183,18 @@ export class LightDistanceService {
           vl._isInPrepareRange = true;
           this.evaluateStateAndDecision(vl, 0, 0, configuredPreDist, nowTimeStr, `ACTIVA (DENTRO DE ${container.name})`);
         } 
-        // 2. EN PRE-ENTRADA EXTERIOR (PRE_ENTRY): CALENTAMIENTO SILENCIOSO POR DEBAJO
-        // Se prepara en la GPU pero NO EMITE LUZ VISIBLE HASTA QUE EL JUGADOR CRUCE LA ENTRADA
+        // 2. EN PRE-ENTRADA EXTERIOR (PRE_ENTRY): PROGRESIÓN ANALÓGICA HACIA LA ENTRADA
         else if (contResult.spatialState === 'PRE_ENTRY') {
-          vl.targetMultiplier = 0.0; // Silencioso: no encender en la retina del jugador aún
-          vl.isLightInRange = false; // No robar slots activos principales
-          vl.isShadowInRange = false;
-          vl._isInPrepareRange = true; // Activa pre-calentamiento de casters en Slot 4/5
-          this.transitionState(vl, 'PREPARING', nowTimeStr, undefined, `PRE-ENTRADA CALENTANDO (PUERTA ${container.name})`);
+          // Curva de entrada continua hacia el portal: comienza en 0.0001 en el borde y escala hacia 1.0 en la puerta
+          const distToPortal = contResult.distanceToBoundary;
+          const curve = LightAttenuationCurve.calculate(distToPortal, 0.5, configuredPreDist);
+          const progressiveMultiplier = Math.max(LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD, curve);
+
+          vl.targetMultiplier = progressiveMultiplier;
+          vl.isLightInRange = progressiveMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
+          vl.isShadowInRange = vl.isLightInRange && (lightComp.castShadows ?? true);
+          vl._isInPrepareRange = true;
+          this.evaluateStateAndDecision(vl, distToPortal, 0.5, configuredPreDist, nowTimeStr, `PRE-ENTRADA PROGRESIVA (${container.name})`);
         } 
         // 3. EN PRE-SALIDA (PRE_EXIT): SALIENDO DEL PASILLO CON FADE SUAVE
         else if (contResult.spatialState === 'PRE_EXIT') {
@@ -200,7 +204,8 @@ export class LightDistanceService {
           if (contResult.distanceToBoundary <= holdDistance) {
             vl.targetMultiplier = 1.0;
           } else {
-            vl.targetMultiplier = LightAttenuationCurve.calculate(contResult.distanceToBoundary, holdDistance, maxExitDist);
+            const rawFactor = LightAttenuationCurve.calculate(contResult.distanceToBoundary, holdDistance, maxExitDist);
+            vl.targetMultiplier = Math.max(LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD, rawFactor);
           }
 
           vl.isLightInRange = vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
@@ -252,7 +257,14 @@ export class LightDistanceService {
     vl: VirtualLight, dist: number, rAct: number, rDeact: number, wasInRange: boolean, timestamp: string
   ): void {
     const currentLimit = wasInRange ? rDeact : rAct;
-    vl.targetMultiplier = LightAttenuationCurve.calculate(dist, rAct * 0.65, rDeact);
+    const curveVal = LightAttenuationCurve.calculate(dist, rAct * 0.65, rDeact);
+    
+    // Si la distancia entra en el perímetro, garantizar arranque en 0.0001
+    const progressiveVal = (dist <= rDeact && curveVal > 0)
+      ? Math.max(LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD, curveVal)
+      : 0.0;
+
+    vl.targetMultiplier = progressiveVal;
 
     if (dist <= currentLimit && vl.targetMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
       vl.isLightInRange = true;
@@ -273,7 +285,7 @@ export class LightDistanceService {
   ): void {
     if (vl.targetMultiplier >= 0.98) {
       this.transitionState(vl, 'ACTIVE', timestamp, undefined, `ACTIVA (${contextMsg})`);
-    } else if (vl.targetMultiplier > 0.01) {
+    } else if (vl.targetMultiplier > 0.0001) {
       if (vl.targetMultiplier > vl.currentMultiplier) {
         this.transitionState(vl, 'FADING_IN', timestamp, undefined, `ENCENDIENDO (${contextMsg})`);
       } else {

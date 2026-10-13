@@ -1,4 +1,4 @@
-
+// file: src/app/core/engine/telemetry/engine-profiler.service.ts
 import { Injectable, inject, Injector } from '@angular/core';
 import { AdaptiveQualitySystem, QualityTier } from '../runtime/systems/adaptive-quality.system';
 import { ShadowCache } from '../runtime/shadows/shadow-cache.service';
@@ -366,7 +366,9 @@ export class EngineProfilerService {
   private transitionMilestones: TransitionMilestone[] = [];
 
   constructor() {
-    (window as any).HIGH_RES_PERFORMANCE_TELEMETRY = true;
+    if (typeof globalThis !== 'undefined') {
+      (globalThis as any).HIGH_RES_PERFORMANCE_TELEMETRY = true;
+    }
 
     for (let i = 0; i < this.HISTORY_CAPACITY; i++) {
       this.historyCircularBuffer.push({
@@ -392,7 +394,10 @@ export class EngineProfilerService {
   private round3(val: number): number { return Math.round(val * 1000) / 1000; }
 
   public isHighResTelemetryEnabled(): boolean {
-    return (window as any).HIGH_RES_PERFORMANCE_TELEMETRY !== false;
+    if (typeof globalThis !== 'undefined') {
+      return (globalThis as any).HIGH_RES_PERFORMANCE_TELEMETRY !== false;
+    }
+    return true;
   }
 
   public setTier(tier: TelemetryTier): void {

@@ -1,4 +1,4 @@
-
+// file: src/app/core/engine/runtime/systems/lighting/light-registry.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Color3, AbstractMesh, Tags, Vector3 } from '@babylonjs/core';
 import { EntityManagerService } from '../../../entities/entity-manager.service';
@@ -36,65 +36,31 @@ export class LightRegistryService {
 
     const mats: any[] = [];
 
+    // SOLO asociar materiales que pertenezcan estrictamente a la entidad de la luz (foco o bombilla visual)
+    // NUNCA contaminar los materiales del modelo padre (ej: pasillo, paredes, techos)
     if (e.view) {
       const isVisualMesh = Tags.MatchesQuery(e.view, 'light_visual') || (e.view as any).metadata?.isLightVisual;
-      if (e.view.material && !isVisualMesh) {
+      if (e.view.material && !isVisualMesh && e.visual?.assetId) {
         this.ensureUniqueMaterial(e.view, e.uid);
         mats.push(e.view.material);
       }
 
-      e.view.computeWorldMatrix(true);
-      const lightWorldPos = e.view.getAbsolutePosition();
-
-      let searchRoot: any = e.view;
-      if (e.parentId) {
-        const parentEnt = this.entityManager.getEntityByUid(e.parentId);
-        if (parentEnt && parentEnt.view) {
-          searchRoot = parentEnt.view;
-        }
-      } else if (e.view.parent) {
-        searchRoot = e.view.parent;
+      // Si tiene una esfera visual o bombilla dedicada a la luz:
+      const visualBulb = e.view.getChildMeshes(false).find(
+        (m: AbstractMesh) => Tags.MatchesQuery(m, 'light_visual') || (m as any).metadata?.isLightVisual
+      );
+      if (visualBulb && visualBulb.material && !mats.includes(visualBulb.material)) {
+        mats.push(visualBulb.material);
       }
 
+      // Si la luz tiene un nodo anclado específico:
       if (e.light?.attachedNodeName) {
-        const attachedNode = searchRoot.getDescendants(false).find((n: any) => n.name === e.light!.attachedNodeName);
+        const attachedNode = e.view.getDescendants(false).find((n: any) => n.name === e.light!.attachedNodeName);
         if (attachedNode && (attachedNode as AbstractMesh).material) {
           const m = attachedNode as AbstractMesh;
           this.ensureUniqueMaterial(m, e.uid);
           if (!mats.includes(m.material)) mats.push(m.material);
         }
-      } else {
-        searchRoot.getChildMeshes(false).forEach((m: AbstractMesh) => {
-          if (Tags.MatchesQuery(m, 'light_visual') || (m as any).metadata?.isLightVisual) return;
-          if (!m.material) return;
-
-          // Se discrimina de forma estricta: NO capturar mallas estructurales genéricas solo porque contengan "light"
-          const nL = m.name.toLowerCase();
-          const mL = m.material.name.toLowerCase();
-          
-          const isLampMesh = (
-            nL.includes('bulb') ||
-            nL.includes('foco') ||
-            nL.includes('bombilla') ||
-            nL.includes('ampolleta') ||
-            nL.includes('lamp_glass') ||
-            mL.includes('bulb') ||
-            mL.includes('foco') ||
-            mL.includes('bombilla') ||
-            mL.includes('glass')
-          );
-
-          if (isLampMesh) {
-            m.computeWorldMatrix(true);
-            const distToMesh = Vector3.Distance(m.getAbsolutePosition(), lightWorldPos);
-            if (distToMesh <= 3.5) {
-              this.ensureUniqueMaterial(m, e.uid);
-              if (!mats.includes(m.material)) {
-                mats.push(m.material);
-              }
-            }
-          }
-        });
       }
     }
 
@@ -158,4 +124,3 @@ export class LightRegistryService {
     this.virtualLights = [];
   }
 }
-  

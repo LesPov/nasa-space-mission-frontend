@@ -249,7 +249,11 @@ export class CoreSceneLoaderService {
         scene.render();
         scene.render();
 
-        this.localRendering.reconcileAllEntitiesImmediate(warmupPos);
+        if (isEditor) {
+          this.localRendering.ensureAllEntitiesVisibleForEditor();
+        } else {
+          this.localRendering.reconcileAllEntitiesImmediate(warmupPos);
+        }
 
         this.dynamicLighting.forceWarmup(warmupPos);
         // Ejecución inmediata del update de iluminación para que las luces adquieran sus intensidades reales antes de que la escena sea visible

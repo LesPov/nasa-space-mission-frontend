@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/scene/utils/core-model-loader.service.ts
 import { Injectable, inject } from '@angular/core';
 import { 
@@ -179,9 +178,6 @@ export class CoreModelLoaderService {
 
     const subMeshes = rootNode.getChildMeshes(false);
     
-    const isEditor = this.gameContext.mode() === GameMode.EDITOR || 
-                     this.gameContext.mode() === GameMode.EDITING_IN_GAME || 
-                     this.gameContext.mode() === GameMode.TEST_LIVE;
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
 
     const activeAmbient = isBW ? entity.visual.ambientColorBW : entity.visual.ambientColor;
@@ -226,12 +222,6 @@ export class CoreModelLoaderService {
         }
       }
       
-      const isInteractable = !!entity.interaction?.mensaje || !!entity.interaction?.interactSequenceIdFPS;
-      if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled && !override && !isInteractable) {
-        m.computeWorldMatrix(true);
-        m.freezeWorldMatrix();
-      }
-      
       if (m.material) {
         (m.material as typeof m.material & { maxSimultaneousLights: number }).maxSimultaneousLights = CoreSceneMaterialService.MAX_SIMULTANEOUS_LIGHTS;
         this.materialSvc.capturarEstadoAutoral(m.material);
@@ -266,12 +256,6 @@ export class CoreModelLoaderService {
           }
         }
       }
-    }
-
-    const isInteractableRoot = !!entity.interaction?.mensaje || !!entity.interaction?.interactSequenceIdFPS;
-    if (!isCharacter && entity.rol === 'prop' && !isEditor && !entity.autoAnim?.enabled && Object.keys(partOverrides).length === 0 && !isInteractableRoot) {
-      rootNode.computeWorldMatrix(true);
-      rootNode.freezeWorldMatrix();
     }
 
     if (entity.visual.isSolid && !isCharacter && entity.collider.type !== 'mesh') {

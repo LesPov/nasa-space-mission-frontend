@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/local-rendering.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../behaviors/services/loop-manager.service';
@@ -12,7 +11,7 @@ import { LightShadowService } from './lighting/light-shadow.service';
 import { EngineProfilerService } from '../../telemetry/engine-profiler.service';
 import { SpatialRelevanceHubService } from '../../spatial/spatial-relevance-hub.service';
 import { SpatialStreamingGroupService } from '../../spatial/spatial-streaming-group.service';
-import { PerformanceIncidentService } from '../../telemetry/performance-incident.service';
+import { CameraOwnershipService } from '../cameras/camera-ownership.service';
 
 export type CullState = 'VISIBLE' | 'FADING_OUT' | 'HARD_CULLED' | 'RESTORING';
 
@@ -50,11 +49,7 @@ export class LocalRenderingSystem implements IUpdatable {
   private profiler = inject(EngineProfilerService);
   private spatialHub = inject(SpatialRelevanceHubService);
   private spatialGroups = inject(SpatialStreamingGroupService);
-  private incidentSvc = inject(PerformanceIncidentService);
-
-  // Radio central de relevancia espacial amplia para pasillos y estructuras
-  private readonly RELEVANCE_CORE_RADIUS = 140.0;
-  private readonly RELEVANCE_HYSTERESIS_MARGIN = 25.0;
+  private ownership = inject(CameraOwnershipService);
 
   private frameCounter = 0;
   private distanceCheckTimer = 0;
@@ -129,37 +124,7 @@ export class LocalRenderingSystem implements IUpdatable {
     if (e.visual?.disableCulling === true) return true;
     
     const nameL = e.name ? e.name.toLowerCase() : '';
-    if (
-      nameL.includes('sueloinvisible') || 
-      nameL.includes('ground') ||
-      nameL.includes('terrain') ||
-      nameL.includes('corridor') ||
-      nameL.includes('pasillo') ||
-      nameL.includes('pasillocurvo') ||
-      nameL.includes('pared') ||
-      nameL.includes('wall') ||
-      nameL.includes('piso') ||
-      nameL.includes('floor') ||
-      nameL.includes('poste') ||
-      nameL.includes('lamp') ||
-      nameL.includes('luz') ||
-      nameL.includes('door') ||
-      nameL.includes('puerta') ||
-      nameL.includes('doorframe') ||
-      nameL.includes('marco') ||
-      nameL.includes('portal') ||
-      nameL.includes('arch') ||
-      nameL.includes('ceiling') ||
-      nameL.includes('roof') ||
-      nameL.includes('techo') ||
-      nameL.includes('col') ||
-      nameL.includes('column') ||
-      nameL.includes('columna') ||
-      nameL.includes('corner') ||
-      nameL.includes('curved') ||
-      nameL.includes('texture_atlas') ||
-      Tags.MatchesQuery(e.view, 'invisible_floor')
-    ) {
+    if (nameL.includes('sueloinvisible') || Tags.MatchesQuery(e.view, 'invisible_floor')) {
       return true;
     }
     return false;
@@ -169,7 +134,6 @@ export class LocalRenderingSystem implements IUpdatable {
     if (e.isPersistent || e.rol === 'player' || e.characterConfig || e.rol === 'spawn_point') return false;
     if (this.isStructuralEntity(e)) return false;
     if (e.autoAnim?.enabled) return false;
-    if (e.movementAuthority !== 'GAMEPLAY') return false;
     if (e.type === 'trigger' || e.type === 'trigger_compuesto') return false;
     if (e.type.startsWith('light_')) return false;
     if (e.type === 'image_plane' || e.type === 'video_plane' || e.type === 'bubble') return false;
@@ -206,12 +170,14 @@ export class LocalRenderingSystem implements IUpdatable {
       const mesh = e.view as AbstractMesh;
       if (mesh && !mesh.isDisposed()) {
         if (!mesh.isEnabled()) mesh.setEnabled(true);
-        if (!mesh.isVisible) mesh.isVisible = true;
+        mesh.isVisible = true;
+        mesh.visibility = 1.0;
 
         const cachedMeshes = this.getCachedMeshes(e, mesh);
         for (let m = 0; m < cachedMeshes.length; m++) {
           const c = cachedMeshes[m];
           if (!Tags.MatchesQuery(c, 'proxy_collider || debug_element || editor_only || light_visual || fog_element')) {
+            c.setEnabled(true);
             c.isVisible = true;
             c.visibility = 1.0;
           }
@@ -223,6 +189,15 @@ export class LocalRenderingSystem implements IUpdatable {
   }
 
   public reconcileAllEntitiesImmediate(explicitOrigin?: Vector3): void {
+    const mode = this.context.mode();
+    const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
+
+    if (isEditor) {
+      this.ensureAllEntitiesVisibleForEditor();
+      this.eventBus.emit({ type: 'RuntimeVisibilityBatchChanged' });
+      return;
+    }
+
     const entities = this.entityManager.getAllEntities();
     let playerEntity = this.context.activePlayerEntity();
     if (!playerEntity) {
@@ -232,6 +207,12 @@ export class LocalRenderingSystem implements IUpdatable {
     const origin = explicitOrigin || (playerEntity?.view ? playerEntity.view.getAbsolutePosition() : Vector3.Zero());
     this.lastPlayerPos.copyFrom(origin);
     this.spatialGroups.updateGroups(origin, Vector3.Zero());
+
+    const cullingConfig = playerEntity?.playerConfig?.culling;
+    const isCullingEnabled = cullingConfig ? cullingConfig.enabled !== false : true;
+    const cullDistance = cullingConfig?.cullDistance ? Math.max(10, cullingConfig.cullDistance) : 150.0;
+    const fadeMargin = cullingConfig?.fadeMargin ? Math.max(1, cullingConfig.fadeMargin) : 30.0;
+    const fadeStartDistance = Math.max(5, cullDistance - fadeMargin);
 
     this.resetCounters();
     const now = performance.now();
@@ -250,7 +231,7 @@ export class LocalRenderingSystem implements IUpdatable {
       const cachedMeshes = this.getCachedMeshes(e, mesh);
       const isEligible = this.isEligibleForHardCull(e);
 
-      if (!isEligible) {
+      if (!isEligible || !isCullingEnabled) {
         e.isCulled = false;
         mesh.setEnabled(true);
         mesh.isVisible = true;
@@ -269,14 +250,12 @@ export class LocalRenderingSystem implements IUpdatable {
         continue;
       }
 
-      const effectiveDist = this.spatialHub.getDistanceToPlayer(e.uid);
+      const effectiveDist = this.getDirectDistance(e, origin);
       const record = this.spatialHub.getRecord(e.uid);
       const boundingRadius = record ? record.boundingRadius : 2.0;
-
-      // Compensación de volumen arquitectónico
       const adjustedDist = Math.max(0, effectiveDist - boundingRadius);
 
-      if (adjustedDist <= this.RELEVANCE_CORE_RADIUS) {
+      if (adjustedDist <= fadeStartDistance) {
         e.isCulled = false;
         mesh.setEnabled(true);
         mesh.isVisible = true;
@@ -292,10 +271,28 @@ export class LocalRenderingSystem implements IUpdatable {
           flapCounter: 0 
         });
         this._visibleCount++;
+      } else if (adjustedDist <= cullDistance) {
+        const factor = 1.0 - ((adjustedDist - fadeStartDistance) / fadeMargin);
+        const targetVis = Math.max(0.01, Math.min(1.0, factor));
+        e.isCulled = false;
+        mesh.setEnabled(true);
+        mesh.isVisible = true;
+        this.applyVisibilityToMeshes(cachedMeshes, targetVis, false);
+        this.renderStates.set(e.uid, { 
+          state: 'FADING_OUT', 
+          visibility: targetVis, 
+          targetVisibility: targetVis, 
+          isShadowProtected: false, 
+          isStructural: false, 
+          isResourceResident: true,
+          lastStateChangeTime: now, 
+          flapCounter: 0 
+        });
+        this._fadingCount++;
       } else {
         const isNeededForShadow = this.shadowService.isEntityRequiredForActiveShadows(e.uid);
         e.isCulled = !isNeededForShadow;
-        mesh.setEnabled(true);
+        mesh.setEnabled(isNeededForShadow);
         mesh.isVisible = isNeededForShadow;
         this.applyVisibilityToMeshes(cachedMeshes, isNeededForShadow ? 1.0 : 0.0, isNeededForShadow);
         this.renderStates.set(e.uid, { 
@@ -335,6 +332,7 @@ export class LocalRenderingSystem implements IUpdatable {
       if (mesh && !mesh.isDisposed()) {
         if (!mesh.isEnabled()) mesh.setEnabled(true);
         mesh.isVisible = true;
+        mesh.visibility = 1.0;
         const cachedMeshes = this.getCachedMeshes(e, mesh);
         this.applyVisibilityToMeshes(cachedMeshes, 1.0, false);
       }
@@ -353,12 +351,23 @@ export class LocalRenderingSystem implements IUpdatable {
     this._evaluatedCount = entities.length;
   }
 
+  private getDirectDistance(entity: GameEntity, referencePos: Vector3): number {
+    if (entity.view && !entity.view.isDisposed()) {
+      return Vector3.Distance(entity.view.getAbsolutePosition(), referencePos);
+    }
+    return Vector3.Distance(
+      new Vector3(entity.transform.position.x, entity.transform.position.y, entity.transform.position.z),
+      referencePos
+    );
+  }
+
   public update(dtMs: number): void {
     const mode = this.context.mode();
     const isEditor = mode === GameMode.EDITOR || mode === GameMode.EDITING_IN_GAME;
 
     if (isEditor) {
-      if (this.frameCounter === 0) {
+      const anyCulledInEditor = this.entityManager.getAllEntities().some(e => !e.isManuallyHidden && e.isCulled);
+      if (this.frameCounter === 0 || anyCulledInEditor) {
         this.ensureAllEntitiesVisibleForEditor();
       }
       this.frameCounter++;
@@ -368,8 +377,7 @@ export class LocalRenderingSystem implements IUpdatable {
     this.frameCounter++;
     this.distanceCheckTimer += dtMs;
 
-    // Evaluación a 15 Hz estable
-    const shouldCheckDistance = this.distanceCheckTimer >= 66;
+    const shouldCheckDistance = this.distanceCheckTimer >= 50;
     if (shouldCheckDistance) {
       this.distanceCheckTimer = 0;
     }
@@ -383,15 +391,28 @@ export class LocalRenderingSystem implements IUpdatable {
 
     if (isTransitioning) return;
 
-    if (playerEntity && playerEntity.view && dtMs > 0) {
-      const currPos = playerEntity.view.getAbsolutePosition();
-      this.playerVelocity.copyFrom(currPos).subtractInPlace(this.lastPlayerPos).scaleInPlace(1000 / dtMs);
-      this.lastPlayerPos.copyFrom(currPos);
+    let observerOrigin: Vector3 = Vector3.Zero();
+    if (playerEntity && playerEntity.view && !playerEntity.view.isDisposed()) {
+      observerOrigin = playerEntity.view.getAbsolutePosition();
+    } else {
+      const activeCam = this.ownership.getCamera();
+      if (activeCam) observerOrigin = activeCam.globalPosition;
     }
 
-    if (shouldCheckDistance && playerEntity && playerEntity.view) {
-      this.spatialGroups.updateGroups(playerEntity.view.getAbsolutePosition(), this.playerVelocity);
+    if (dtMs > 0 && observerOrigin.lengthSquared() > 0.001) {
+      this.playerVelocity.copyFrom(observerOrigin).subtractInPlace(this.lastPlayerPos).scaleInPlace(1000 / dtMs);
+      this.lastPlayerPos.copyFrom(observerOrigin);
     }
+
+    if (shouldCheckDistance && observerOrigin.lengthSquared() > 0.001) {
+      this.spatialGroups.updateGroups(observerOrigin, this.playerVelocity);
+    }
+
+    const cullingConfig = playerEntity?.playerConfig?.culling;
+    const isCullingEnabled = cullingConfig ? cullingConfig.enabled !== false : true;
+    const cullDistance = cullingConfig?.cullDistance ? Math.max(10, cullingConfig.cullDistance) : 150.0;
+    const fadeMargin = cullingConfig?.fadeMargin ? Math.max(1, cullingConfig.fadeMargin) : 30.0;
+    const fadeStartDistance = Math.max(5, cullDistance - fadeMargin);
 
     let vCount = 0, fCount = 0, hCount = 0, rCount = 0, sCount = 0;
     let evaluatedThisFrame = 0;
@@ -407,6 +428,11 @@ export class LocalRenderingSystem implements IUpdatable {
         if (mesh.isVisible || mesh.isEnabled()) {
           mesh.isVisible = false;
           mesh.setEnabled(false);
+          const cached = this.getCachedMeshes(e, mesh);
+          for (let m = 0; m < cached.length; m++) {
+            cached[m].isVisible = false;
+            cached[m].setEnabled(false);
+          }
         }
         continue;
       }
@@ -428,10 +454,8 @@ export class LocalRenderingSystem implements IUpdatable {
       }
       const renderState = this.renderStates.get(e.uid)!;
 
-      // Inmunidad estructural permanente: mallas arquitectónicas nunca sufren culling
-      if (!isEligible) {
+      if (!isEligible || !isCullingEnabled) {
         if (renderState.visibility !== 1.0 || !mesh.isVisible || !mesh.isEnabled()) {
-          const prevState = renderState.state;
           renderState.targetVisibility = 1.0;
           renderState.visibility = 1.0;
           renderState.state = 'VISIBLE';
@@ -440,17 +464,6 @@ export class LocalRenderingSystem implements IUpdatable {
           mesh.isVisible = true;
           this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), 1.0, false);
           changedThisFrame++;
-
-          this.profiler.recordTimelineEvent('CULLING', 'CULLING_STATE_CHANGED', {
-            entityUid: e.uid,
-            name: e.name,
-            reason: 'STRUCTURAL_IMMUNITY'
-          }, {
-            entityUid: e.uid,
-            previousState: prevState,
-            newState: 'VISIBLE',
-            reason: 'STRUCTURAL_IMMUNITY'
-          });
         }
         vCount++;
         continue;
@@ -458,13 +471,14 @@ export class LocalRenderingSystem implements IUpdatable {
 
       if (shouldCheckDistance) {
         evaluatedThisFrame++;
-        const effectiveDist = this.spatialHub.getDistanceToPlayer(e.uid);
+        const effectiveDist = this.getDirectDistance(e, observerOrigin);
         const record = this.spatialHub.getRecord(e.uid);
         const boundingRadius = record ? record.boundingRadius : 2.0;
         const adjustedDist = Math.max(0, effectiveDist - boundingRadius);
 
-        if (adjustedDist <= this.RELEVANCE_CORE_RADIUS) {
-          if (renderState.visibility !== 1.0 || renderState.state !== 'VISIBLE') {
+        // ZONA 1: Dentro del rango de visibilidad plena
+        if (adjustedDist <= fadeStartDistance) {
+          if (renderState.visibility !== 1.0 || renderState.state !== 'VISIBLE' || !mesh.isVisible || !mesh.isEnabled()) {
             const prevState = renderState.state;
             renderState.targetVisibility = 1.0;
             renderState.visibility = 1.0;
@@ -488,11 +502,30 @@ export class LocalRenderingSystem implements IUpdatable {
             });
           }
           vCount++;
-        } else if (adjustedDist > (this.RELEVANCE_CORE_RADIUS + this.RELEVANCE_HYSTERESIS_MARGIN)) {
+        } 
+        // ZONA 2: En la franja de desvanecimiento progresivo
+        else if (adjustedDist <= cullDistance) {
+          const factor = 1.0 - ((adjustedDist - fadeStartDistance) / fadeMargin);
+          const targetVis = Math.max(0.01, Math.min(1.0, factor));
+
+          if (Math.abs(renderState.visibility - targetVis) > 0.03 || renderState.state !== 'FADING_OUT' || !mesh.isVisible || !mesh.isEnabled()) {
+            renderState.state = 'FADING_OUT';
+            renderState.targetVisibility = targetVis;
+            renderState.visibility = targetVis;
+            e.isCulled = false;
+            mesh.setEnabled(true);
+            mesh.isVisible = true;
+            this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), targetVis, false);
+            changedThisFrame++;
+          }
+          fCount++;
+        } 
+        // ZONA 3: Más allá del rango de corte (Hard Culled)
+        else {
           const isNeededForShadow = this.shadowService.isEntityRequiredForActiveShadows(e.uid);
           
           if (isNeededForShadow) {
-            if (renderState.state !== 'VISIBLE' || !mesh.isVisible) {
+            if (renderState.state !== 'VISIBLE' || !mesh.isVisible || !mesh.isEnabled()) {
               const prevState = renderState.state;
               renderState.state = 'VISIBLE';
               renderState.visibility = 1.0;
@@ -519,14 +552,14 @@ export class LocalRenderingSystem implements IUpdatable {
             sCount++;
             vCount++;
           } else {
-            if (renderState.state !== 'HARD_CULLED') {
+            if (renderState.state !== 'HARD_CULLED' || mesh.isVisible || mesh.isEnabled()) {
               const prevState = renderState.state;
               renderState.state = 'HARD_CULLED';
               renderState.visibility = 0.0;
               renderState.targetVisibility = 0.0;
               renderState.isShadowProtected = false;
               e.isCulled = true;
-              mesh.setEnabled(true);
+              mesh.setEnabled(false);
               mesh.isVisible = false;
               this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), 0.0, false);
               changedThisFrame++;
@@ -545,11 +578,10 @@ export class LocalRenderingSystem implements IUpdatable {
             }
             hCount++;
           }
-        } else {
-          vCount++;
         }
       } else {
         if (renderState.state === 'VISIBLE') vCount++;
+        else if (renderState.state === 'FADING_OUT') fCount++;
         else hCount++;
       }
     }
@@ -571,14 +603,23 @@ export class LocalRenderingSystem implements IUpdatable {
     }
   }
 
-  private applyVisibilityToMeshes(meshes: AbstractMesh[], visibility: number, isShadowCaster = false) {
+  private applyVisibilityToMeshes(meshes: AbstractMesh[], visibility: number, isShadowCaster = false): void {
     const isFullyVisible = visibility >= 0.99;
-    const isHidden = visibility <= 0.01;
+    const isHidden = visibility <= 0.001;
 
     for (let c = 0; c < meshes.length; c++) {
       const m = meshes[c];
-      m.visibility = isFullyVisible ? 1.0 : (isHidden ? 0.0 : visibility);
-      m.isVisible = !isHidden;
+      if (!m || m.isDisposed()) continue;
+
+      if (isHidden) {
+        m.setEnabled(false);
+        m.isVisible = false;
+        m.visibility = 0.0;
+      } else {
+        m.setEnabled(true);
+        m.isVisible = true;
+        m.visibility = isFullyVisible ? 1.0 : visibility;
+      }
 
       if (isShadowCaster && !isHidden) {
         m.alwaysSelectAsActiveMesh = true;

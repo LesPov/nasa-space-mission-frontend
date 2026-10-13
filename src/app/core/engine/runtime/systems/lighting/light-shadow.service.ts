@@ -33,7 +33,6 @@ export class LightShadowService {
   private entityToActiveSlotsMap = new Map<string, Set<PoolSlot>>();
   private actorRenderableMeshesCache = new Map<string, AbstractMesh[]>();
   
-  // Clave de caché persistente por luz para no recalcular durante movimiento
   private slotStaticRenderListCache = new Map<string, { meshes: AbstractMesh[]; range: number }>();
 
   public getCastersCacheSize(): number {
@@ -48,12 +47,23 @@ export class LightShadowService {
     this.slotStaticRenderListCache.clear();
   }
 
+  /**
+   * Solo protege una entidad si la luz a la que pertenece el slot está FÍSICAMENTE encendida
+   * y proyectando sombras vivas en este fotograma. Si la luz está apagada o fuera de rango, no protege.
+   */
   public isEntityRequiredForActiveShadows(entityUid: string): boolean {
     const slots = this.entityToActiveSlotsMap.get(entityUid);
     if (!slots || slots.size === 0) return false;
 
     for (const slot of slots) {
-      if (slot.sg && slot.assignedEntityUid) {
+      if (
+        slot.sg && 
+        slot.assignedEntityUid && 
+        slot.light && 
+        slot.light.isEnabled() && 
+        slot.currentIntensity > 0.01 &&
+        slot.shadowTier !== 'DISABLED'
+      ) {
         return true;
       }
     }
@@ -340,7 +350,6 @@ export class LightShadowService {
       }
     }
 
-    // Comprobación de cambio: si la lista ya tiene exactamente las mismas mallas, no limpiar ni resetear
     if (renderList.length === nextList.length) {
       let isIdentical = true;
       for (let idx = 0; idx < nextList.length; idx++) {
@@ -350,7 +359,7 @@ export class LightShadowService {
         }
       }
       if (isIdentical && slot.isWarmedUp) {
-        return; // Evita el parpadeo en las texturas
+        return;
       }
     }
 

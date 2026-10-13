@@ -1,4 +1,4 @@
-
+<!-- file: src/app/components/inspector-escena/inspector-outliner/scene-outliner/scene-outliner.html -->
 <ul [class.tree-items]="depth === 0">
   <li *ngFor="let node of filteredNodes; trackBy: trackById">
     
@@ -14,10 +14,10 @@
          (dblclick)="startEditing(node, $event)">
       
       <!-- Flecha de Expansión -->
-      <button *ngIf="getUsefulChildren(node).length > 0" class="expand-btn" (click)="toggleExpand(node, $event)">
+      <button *ngIf="getUsefulChildren(node).length > 0 || hasColliderChild(node)" class="expand-btn" (click)="toggleExpand(node, $event)">
         <span class="arrow" [class.expanded]="isExpanded(node) || matchesSearch(node)">▶</span>
       </button>
-      <div *ngIf="getUsefulChildren(node).length === 0" style="width: 20px; flex-shrink: 0;"></div>
+      <div *ngIf="getUsefulChildren(node).length === 0 && !hasColliderChild(node)" style="width: 20px; flex-shrink: 0;"></div>
 
       <span class="icon">{{ getIcon(node) }}</span>
       
@@ -50,10 +50,32 @@
       </div>
     </div>
 
-    <!-- Hijos Recursivos (Saltando Wrappers) -->
-    <app-scene-outliner *ngIf="getUsefulChildren(node).length > 0 && (isExpanded(node) || matchesSearch(node))" 
-                        [nodes]="getUsefulChildren(node)" 
-                        [depth]="depth + 1">
-    </app-scene-outliner>
+    <!-- Hijos Recursivos y Colisionador Seleccionable -->
+    <ul *ngIf="(getUsefulChildren(node).length > 0 || hasColliderChild(node)) && (isExpanded(node) || matchesSearch(node))" style="list-style: none; padding-left: 14px; margin: 0;">
+      
+      <!-- SUB-ELEMENTO FÍSICO HIJO: CUERPO DE COLISIÓN -->
+      <li *ngIf="hasColliderChild(node)">
+        <div class="outliner-item" 
+             [class.selected]="isColliderSelected(node)"
+             (click)="selectCollider(node, $event)"
+             style="color: #60a5fa;">
+          <div style="width: 20px; flex-shrink: 0;"></div>
+          <span class="icon">🛡️</span>
+          <span class="name-text" title="Colisionador Físico editable">
+            Collider ({{ getEntityForNode(node)?.collider?.type || 'box' }})
+          </span>
+          <span style="font-size: 8px; background: rgba(59, 130, 246, 0.2); border: 1px solid #3b82f6; border-radius: 3px; padding: 1px 4px; color: #93c5fd; margin-left: auto;">
+            PHYSICS
+          </span>
+        </div>
+      </li>
+
+      <!-- Hijos de Malla / Entidades -->
+      <app-scene-outliner *ngIf="getUsefulChildren(node).length > 0" 
+                          [nodes]="getUsefulChildren(node)" 
+                          [depth]="depth + 1">
+      </app-scene-outliner>
+    </ul>
+
   </li>
 </ul>

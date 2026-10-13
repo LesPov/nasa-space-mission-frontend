@@ -1,14 +1,13 @@
-
+// file: src/app/components/inspector-escena/inspector-outliner/scene-outliner/scene-outliner.ts
 import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, effect, untracked } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { Node, AbstractMesh, Tags, Mesh, Camera, Light } from '@babylonjs/core';
-import { Subscription } from 'rxjs';
 import { EditorStateService } from '../../../../services/editor/editor-state.service';
 import { EditorMapaService } from '../../../../services/editor-mapa.service';
 import { OutlinerStateService } from '../outliner-state.service';
 import { EntityManagerService } from '../../../../core/engine/entities/entity-manager.service';
-import { PartOverridesComponent } from '../../../../core/engine/entities/game.entity';
+import { PartOverridesComponent, GameEntity } from '../../../../core/engine/entities/game.entity';
 import { SceneNodesService } from '../../../../services/editor/sceneservice/scene-nodes.service';
 
 @Component({
@@ -37,7 +36,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
   private lastSearchTermCache: string | null = null;
 
   constructor() {
-    // 🔥 Reacción a Cambios Estructurales
     effect(() => {
        this.outlinerState.structureRevision();
        untracked(() => {
@@ -46,7 +44,6 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
        });
     });
 
-    // 🔥 Reacción Ligera a Cambios de Visibilidad (Sin romper Caches)
     effect(() => {
        this.outlinerState.visibilityRevision();
        untracked(() => {
@@ -55,9 +52,7 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     });
   }
 
-  ngOnInit() {
-    // Las suscripciones destructivas a onMapChanged fueron eliminadas para salvar el rendimiento.
-  }
+  ngOnInit() {}
 
   ngOnDestroy() {
     this.childrenCache.clear();
@@ -142,6 +137,36 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
     if (!term) return false;
     const children = this.getUsefulChildren(node);
     return children.some(c => this.nodeOrChildMatches(c, term));
+  }
+
+  public getEntityForNode(node: Node): GameEntity | null {
+    if (node instanceof AbstractMesh) {
+      return this.entityManager.getEntityByMesh(node) || null;
+    }
+    return null;
+  }
+
+  public hasColliderChild(node: Node): boolean {
+    const entity = this.getEntityForNode(node);
+    if (!entity) return false;
+    if (entity.type.startsWith('light_') && !entity.visual?.assetId && !entity.visual?.path) return false;
+    if (entity.type === 'trigger' || entity.type === 'trigger_compuesto') return false;
+    return !!entity.collider;
+  }
+
+  public isColliderSelected(node: Node): boolean {
+    const selected = this.stateSvc.objetoSeleccionado();
+    const entity = this.getEntityForNode(node);
+    if (!entity || !selected) return false;
+    const selectedEntity = selected instanceof AbstractMesh ? this.entityManager.getEntityByMesh(selected) : null;
+    return selectedEntity?.uid === entity.uid && this.stateSvc.subObjetoSeleccionado() === 'collider';
+  }
+
+  public selectCollider(node: Node, event: Event): void {
+    event.stopPropagation();
+    if (!(node instanceof AbstractMesh)) return;
+    this.stateSvc.seleccionarObjeto(node);
+    this.stateSvc.setSubObjetoSeleccionado('collider');
   }
 
   getUsefulChildren(node: Node): Node[] {
@@ -335,24 +360,17 @@ export class SceneOutlinerComponent implements OnInit, OnDestroy {
 
   isSelected(node: Node): boolean {
     const selected = this.stateSvc.objetoSeleccionado();
-    if (selected === node) return true;
+    if (selected === node && !this.stateSvc.subObjetoSeleccionado()) return true;
     
     if (selected instanceof AbstractMesh && node instanceof AbstractMesh) {
       const selectedEntity = this.entityManager.getEntityByMesh(selected);
       const nodeEntity = this.entityManager.getEntityByMesh(node);
-      if (selectedEntity && nodeEntity && selectedEntity.uid === nodeEntity.uid) {
-        return true;
-      }
-      if ((selected as any).metadata?.entityUid && (selected as any).metadata?.entityUid === (node as any).metadata?.entityUid) {
+      if (selectedEntity && nodeEntity && selectedEntity.uid === nodeEntity.uid && !this.stateSvc.subObjetoSeleccionado()) {
         return true;
       }
     }
     return false;
   }
-
-  // ===============================================
-  // 🔥 LÓGICA SEMÁNTICA DE VISIBILIDAD DE CAPAS
-  // ===============================================
 
   isNodeManuallyHidden(node: Node): boolean {
     if (node instanceof AbstractMesh) {

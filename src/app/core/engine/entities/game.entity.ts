@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/entities/game.entity.ts
 import { AbstractMesh, Vector3, Quaternion, StandardMaterial } from '@babylonjs/core';
 import { PlayerRuntimeConfig, cloneDefaultPlayerConfig } from '../models/player-config.model';
@@ -49,7 +48,17 @@ export class VisualComponent {
 }
 
 export class PhysicsComponent {
-  constructor(public type = 'box', public sizeX = 0.5, public sizeY = 0.5, public sizeZ = 0.5, public offsetX = 0, public offsetY = 0, public offsetZ = 0) {}
+  constructor(
+    public type = 'box',
+    public sizeX = 0.5,
+    public sizeY = 0.5,
+    public sizeZ = 0.5,
+    public offsetX = 0,
+    public offsetY = 0,
+    public offsetZ = 0,
+    public rotation = { x: 0, y: 0, z: 0 },
+    public scale = { x: 1, y: 1, z: 1 }
+  ) {}
 }
 
 export class InteractionComponent {

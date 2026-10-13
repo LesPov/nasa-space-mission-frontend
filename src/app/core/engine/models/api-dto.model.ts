@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/models/api-dto.model.ts
 import { VisualMode } from '../world/world-settings.model';
 import { PlayerRuntimeConfig } from './player-config.model';
@@ -10,9 +9,22 @@ export interface Vector3Dto { x: number; y: number; z: number; }
 export interface AssetDto { id?: number; path?: string; type?: string; name?: string; }
 
 export interface ColliderDto {
-  type: string; sizeX?: number; sizeY?: number; sizeZ?: number;
-  offsetX?: number; offsetY?: number; offsetZ?: number;
-  radiusX?: number; heightY?: number; radiusZ?: number;
+  type: string;
+  sizeX?: number;
+  sizeY?: number;
+  sizeZ?: number;
+  offsetX?: number;
+  offsetY?: number;
+  offsetZ?: number;
+  rotationX?: number;
+  rotationY?: number;
+  rotationZ?: number;
+  scaleX?: number;
+  scaleY?: number;
+  scaleZ?: number;
+  radiusX?: number;
+  heightY?: number;
+  radiusZ?: number;
 }
 
 export interface CharacterConfigDto { characterType: string; isPlayable: boolean; faction: string; }
@@ -51,7 +63,6 @@ export interface SceneObjectPropertiesDto {
   
   disableCulling?: boolean;
 
-  // --- LIGHT CONTAINMENT PROPERTIES (FASE C) ---
   containmentMode?: 'GLOBAL' | 'INTERIOR' | 'EXTERIOR';
   interiorActivationMode?: 'VOLUME' | 'DISTANCE' | 'BOTH';
   preEntryEnabled?: boolean;
@@ -66,7 +77,6 @@ export interface SceneObjectPropertiesDto {
   shadowNormalBias?: number;
   excludeExteriorMeshes?: boolean;
 
-  // --- LIGHT DISTANCE PROPERTIES (RADIAL) ---
   distanceControlEnabled?: boolean;
   activationDistance?: number;
   deactivationDistance?: number;

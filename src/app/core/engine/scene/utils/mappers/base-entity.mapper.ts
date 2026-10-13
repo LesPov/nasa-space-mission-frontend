@@ -1,6 +1,6 @@
 // file: src/app/core/engine/scene/utils/mappers/base-entity.mapper.ts
 import { inject } from '@angular/core';
-import { GameEntity, PartOverridesComponent } from '../../../entities/game.entity';
+import { GameEntity, PartOverridesComponent, PhysicsComponent } from '../../../entities/game.entity';
 import { SceneObjectDto, TriggerDto, SceneObjectPropertiesDto } from '../../../models/api-dto.model';
 import { CoreSceneUtilsService } from '../core-scene-utils.service';
 import { EntityMapperStrategy } from './entity-mapper-strategy.interface';
@@ -55,10 +55,31 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
     const defaultCollider = this.getDefaultCollider(entity);
     const savedCollider = props.collider || props.capsule || { ...defaultCollider };
     if (savedCollider.radiusX !== undefined) {
-      savedCollider.sizeX = savedCollider.radiusX; savedCollider.sizeY = savedCollider.heightY; savedCollider.sizeZ = savedCollider.radiusZ;
+      savedCollider.sizeX = savedCollider.radiusX; 
+      savedCollider.sizeY = savedCollider.heightY; 
+      savedCollider.sizeZ = savedCollider.radiusZ;
       if (savedCollider.type !== 'mesh') savedCollider.type = 'capsule'; 
     }
-    entity.collider = savedCollider as any;
+
+    entity.collider = new PhysicsComponent(
+      savedCollider.type || defaultCollider.type,
+      this.utilsSvc.normalizarNumero(savedCollider.sizeX, defaultCollider.sizeX),
+      this.utilsSvc.normalizarNumero(savedCollider.sizeY, defaultCollider.sizeY),
+      this.utilsSvc.normalizarNumero(savedCollider.sizeZ, defaultCollider.sizeZ),
+      this.utilsSvc.normalizarNumero(savedCollider.offsetX, 0),
+      this.utilsSvc.normalizarNumero(savedCollider.offsetY, 0),
+      this.utilsSvc.normalizarNumero(savedCollider.offsetZ, 0),
+      {
+        x: this.utilsSvc.normalizarNumero(savedCollider.rotationX, 0),
+        y: this.utilsSvc.normalizarNumero(savedCollider.rotationY, 0),
+        z: this.utilsSvc.normalizarNumero(savedCollider.rotationZ, 0)
+      },
+      {
+        x: this.utilsSvc.normalizarNumero(savedCollider.scaleX, 1),
+        y: this.utilsSvc.normalizarNumero(savedCollider.scaleY, 1),
+        z: this.utilsSvc.normalizarNumero(savedCollider.scaleZ, 1)
+      }
+    );
 
     const savedSelectionRange = this.utilsSvc.extraerSelectionRange(props || obj);
     entity.selectionRange = { ...savedSelectionRange };
@@ -79,6 +100,23 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
   }
 
   extractEntityProperties(entity: GameEntity): Partial<SceneObjectPropertiesDto> {
+    const col = entity.collider;
+    const colDto = col ? {
+      type: col.type,
+      sizeX: col.sizeX,
+      sizeY: col.sizeY,
+      sizeZ: col.sizeZ,
+      offsetX: col.offsetX,
+      offsetY: col.offsetY,
+      offsetZ: col.offsetZ,
+      rotationX: col.rotation?.x || 0,
+      rotationY: col.rotation?.y || 0,
+      rotationZ: col.rotation?.z || 0,
+      scaleX: col.scale?.x || 1,
+      scaleY: col.scale?.y || 1,
+      scaleZ: col.scale?.z || 1
+    } : undefined;
+
     return {
       rol: entity.characterConfig ? entity.characterConfig.characterType : entity.rol,
       transformSpace: entity.transformSpace,
@@ -102,7 +140,7 @@ export abstract class BaseEntityMapper implements EntityMapperStrategy {
       interactSequenceIdTPS: entity.interaction.interactSequenceIdTPS,
       interactSequenceId: entity.interaction.interactSequenceId,
       respawnTime: entity.interaction.respawnTime,
-      collider: entity.collider as any,
+      collider: colDto as any,
       camOffset: entity.camOffset as any,
       selectionRange: entity.selectionRange,
       playerConfig: entity.playerConfig,

@@ -1,5 +1,4 @@
-
-
+// file: src/app/services/editor/toolsservice/tools-highlight.service.ts
 import { Injectable, inject } from '@angular/core';
 import { Color3, Color4, Mesh, AbstractMesh, Tags, HighlightLayer, Node, Scene } from '@babylonjs/core';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../core/engine/scene/scene-access.token';

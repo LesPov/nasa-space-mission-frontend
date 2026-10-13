@@ -1,5 +1,5 @@
-
-import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef } from '@angular/core';
+// file: src/app/components/inspector-escena/inspector-properties/prop-physics/prop-physics.ts
+import { Component, Input, OnInit, OnDestroy, inject, ChangeDetectorRef, effect } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { AbstractMesh, Vector3, MeshBuilder, Mesh, Tags } from '@babylonjs/core';
@@ -20,7 +20,7 @@ export class PropPhysics implements OnInit, OnDestroy {
   @Input() objeto!: AbstractMesh;
   
   private editorSvc = inject(EditorMapaService);
-  private stateSvc = inject(EditorStateService);
+  public stateSvc = inject(EditorStateService);
   private entityManager = inject(EntityManagerService);
   private cdr = inject(ChangeDetectorRef);
   private subs: Subscription[] = [];
@@ -28,23 +28,47 @@ export class PropPhysics implements OnInit, OnDestroy {
   colliderType = 'box';
   colliderSizeX = 1; colliderSizeY = 1; colliderSizeZ = 1;
   colliderOffX = 0; colliderOffY = 0; colliderOffZ = 0;
-  camPosX = 0; camPosY = 1.6; camPosZ = 0;
   
   esPersonaje = false;
+
+  get estaEditandoColliderGizmo(): boolean {
+    return this.stateSvc.subObjetoSeleccionado() === 'collider';
+  }
+
+  constructor() {
+    effect(() => {
+      this.stateSvc.subObjetoSeleccionado();
+      this.syncData();
+    });
+  }
 
   ngOnInit() {
     this.syncData();
     this.subs.push(
-      this.editorSvc.onGizmoDrag.pipe(auditTime(100)).subscribe(() => this.syncData()),
-      this.editorSvc.onMapChanged.pipe(auditTime(100)).subscribe(() => this.syncData())
+      this.editorSvc.onGizmoDrag.pipe(auditTime(80)).subscribe(() => this.syncData()),
+      this.editorSvc.onMapChanged.pipe(auditTime(80)).subscribe(() => this.syncData())
     );
   }
 
   ngOnDestroy() {
     this.subs.forEach(s => s.unsubscribe());
+    if (this.stateSvc.subObjetoSeleccionado() === 'collider') {
+      this.stateSvc.setSubObjetoSeleccionado(null);
+    }
   }
 
-  private formatNum(val: number): number { return parseFloat(Number(val || 0).toFixed(3)); }
+  public toggleEditarColliderGizmo(): void {
+    if (this.estaEditandoColliderGizmo) {
+      this.stateSvc.setSubObjetoSeleccionado(null);
+    } else {
+      this.stateSvc.setSubObjetoSeleccionado('collider');
+    }
+    this.editorSvc.onMapChanged.next();
+  }
+
+  private formatNum(val: number): number { 
+    return parseFloat(Number(val || 0).toFixed(3)); 
+  }
 
   syncData() {
     if (!this.objeto) return;
@@ -54,19 +78,13 @@ export class PropPhysics implements OnInit, OnDestroy {
     this.esPersonaje = !!entity.characterConfig;
     
     if (entity.collider) {
-      this.colliderType = entity.collider.type || 'box';
+      this.colliderType = entity.collider.type || (this.esPersonaje ? 'capsule' : 'box');
       this.colliderSizeX = this.formatNum(entity.collider.sizeX ?? 1);
       this.colliderSizeY = this.formatNum(entity.collider.sizeY ?? 1);
       this.colliderSizeZ = this.formatNum(entity.collider.sizeZ ?? 1);
       this.colliderOffX = this.formatNum(entity.collider.offsetX ?? 0);
       this.colliderOffY = this.formatNum(entity.collider.offsetY ?? 0);
       this.colliderOffZ = this.formatNum(entity.collider.offsetZ ?? 0);
-    }
-
-    if (entity.camOffset) {
-      this.camPosX = this.formatNum(entity.camOffset.x ?? 0);
-      this.camPosY = this.formatNum(entity.camOffset.y ?? 1.6);
-      this.camPosZ = this.formatNum(entity.camOffset.z ?? 0);
     }
     
     this.cdr.detectChanges();
@@ -112,6 +130,9 @@ export class PropPhysics implements OnInit, OnDestroy {
           } else if (this.colliderType === 'capsule') {
               const r = Math.max(this.colliderSizeX, this.colliderSizeZ); 
               colMesh = MeshBuilder.CreateCapsule(`col_${entity.uid}`, { radius: r, height: this.colliderSizeY * 2 }, scene);
+          } else if (this.colliderType === 'cylinder') {
+              const diam = Math.max(this.colliderSizeX, this.colliderSizeZ) * 2;
+              colMesh = MeshBuilder.CreateCylinder(`col_${entity.uid}`, { diameter: diam, height: this.colliderSizeY * 2 }, scene);
           } else {
               colMesh = MeshBuilder.CreateBox(`col_${entity.uid}`, { width: this.colliderSizeX * 2, height: this.colliderSizeY * 2, depth: this.colliderSizeZ * 2 }, scene);
           }
@@ -122,34 +143,18 @@ export class PropPhysics implements OnInit, OnDestroy {
           colMesh.isVisible = true;
           colMesh.visibility = 0;
           colMesh.checkCollisions = true;
-          Tags.AddTagsTo(colMesh, "proxy_collider system_element");
+          Tags.AddTagsTo(colMesh, "proxy_collider system_element ignore_raycast");
       }
     } else {
        const proxies = this.objeto.getChildMeshes(true).filter(m => Tags.MatchesQuery(m, "proxy_collider") && m.name.startsWith("col_"));
        proxies.forEach(p => p.dispose());
        
        this.objeto.getChildMeshes(false).forEach(m => {
-           if (!Tags.MatchesQuery(m, "decal") && m.getTotalVertices() > 0) {
+           if (!Tags.MatchesQuery(m, "decal || proxy_collider || system_element || editor_only") && m.getTotalVertices() > 0) {
                m.checkCollisions = true;
            }
        });
     }
-    
-    if (this.colliderType === 'mesh' && this.stateSvc.subObjetoSeleccionado() === 'collider') {
-        this.stateSvc.setSubObjetoSeleccionado(null);
-    }
-    
-    this.editorSvc.onMapChanged.next();
-  }
-
-  aplicarCamara() {
-    if (this.esPersonaje) return; 
-    const entity = this.entityManager.getEntityByMesh(this.objeto);
-    if (!entity) return;
-    
-    entity.camOffset = { x: this.camPosX, y: this.camPosY, z: this.camPosZ };
-    entity.isDirty = true;
-    entity.syncToView(); 
     
     this.editorSvc.onMapChanged.next();
   }

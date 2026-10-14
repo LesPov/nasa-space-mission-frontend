@@ -10,6 +10,7 @@ import { LightPoolService } from './light-pool.service';
 import { LightTransformService } from './light-transform.service';
 import { LightShadowService } from './light-shadow.service';
 import { LightDistanceService } from './light-distance.service';
+import { LightContainmentService } from './light-containment.service';
 import { EngineProfilerService } from '../../../telemetry/engine-profiler.service';
 
 @Injectable({ providedIn: 'root' })
@@ -18,6 +19,7 @@ export class LightAllocationService {
   private lightTransform = inject(LightTransformService);
   private lightShadows = inject(LightShadowService);
   private lightDistance = inject(LightDistanceService);
+  private containmentSvc = inject(LightContainmentService);
   private profiler = inject(EngineProfilerService);
 
   private _tempPos = Vector3.Zero();
@@ -138,7 +140,6 @@ export class LightAllocationService {
       }
 
       if (vl.isInterior) {
-        // En exterior, la luz interior COMPITE activamente si está en preentrada, preparándose o si tiene multiplicador
         if (dominantDomain === 'EXTERIOR') {
           return vl.inPreEntryZone || vl.spatialState === 'PRE_ENTRY' || vl._isInPrepareRange || vl.targetMultiplier > 0;
         }
@@ -159,7 +160,6 @@ export class LightAllocationService {
         if (vl.spatialState === 'INSIDE') {
           score = 5.0 + (boundaryDist * 1.0);
         } else if (vl.spatialState === 'PRE_ENTRY') {
-          // Puntuación favorable para ganar slot ANTES de cruzar el portal físico
           score = 8.0 + (boundaryDist * 0.5);
         } else if (vl.spatialState === 'PRE_EXIT') {
           score = 12.0 + (boundaryDist * 1.0);
@@ -304,18 +304,36 @@ export class LightAllocationService {
       const candidateToBind = desiredMainSlots[sIdx];
 
       if (slot.state === 'EMPTY' && candidateToBind) {
-        const pool = this.lightPool.getPoolByType(candidateToBind.entity.type);
-        const freeSlot = pool.find(s => s.assignedEntityUid === null);
+        let physicalToUse: PoolSlot | null = null;
 
-        if (freeSlot) {
-          freeSlot.assignedEntityUid = candidateToBind.entity.uid;
-          freeSlot.logicalSlotIndex = slot.id;
-          freeSlot.currentIntensity = 0;
-          freeSlot.light.intensity = 0;
-          freeSlot._isNewAssignment = true;
-          freeSlot.isWarmedUp = false;
+        // 1. Si el candidato ya estaba asignado en el handoverSlot, promoverlo y reutilizarlo directamente
+        const hSlot = this.activeSlots[3];
+        if (hSlot.assignedUid === candidateToBind.entity.uid && hSlot.physicalSlot) {
+          physicalToUse = hSlot.physicalSlot;
+          hSlot.assignedUid = null;
+          hSlot.physicalSlot = null;
+          hSlot.state = 'EMPTY';
+          hSlot.pendingUid = null;
+        } else {
+          // 2. Verificar si ya tiene un slot físico asignado en el pool para evitar asignaciones duales
+          physicalToUse = this.lightPool.findSlotByUid(candidateToBind.entity.uid) || null;
+          if (!physicalToUse) {
+            const pool = this.lightPool.getPoolByType(candidateToBind.entity.type);
+            physicalToUse = pool.find(s => s.assignedEntityUid === null) || null;
+          }
+        }
 
-          slot.physicalSlot = freeSlot;
+        if (physicalToUse) {
+          physicalToUse.assignedEntityUid = candidateToBind.entity.uid;
+          physicalToUse.logicalSlotIndex = slot.id;
+          physicalToUse.currentIntensity = 0;
+          physicalToUse.light.intensity = LIGHT_SPATIAL_CONSTANTS.PHYSICAL_IDLE_MIN_INTENSITY;
+          physicalToUse.light.diffuse.set(0, 0, 0);
+          physicalToUse.light.specular.set(0, 0, 0);
+          physicalToUse._isNewAssignment = true;
+          physicalToUse.isWarmedUp = false;
+
+          slot.physicalSlot = physicalToUse;
           slot.assignedUid = candidateToBind.entity.uid;
           slot.pendingUid = null;
           slot.state = 'FADING_IN';
@@ -473,6 +491,18 @@ export class LightAllocationService {
 
         if (oldPhysical && oldPhysical.type === targetType) {
           newPhysical = oldPhysical;
+          // Limpiar de forma segura receptores previos y sombras del ocupante anterior
+          if ((newPhysical.light as any).includedOnlyMeshes?.length > 0) {
+            this.containmentSvc.clearContainment(newPhysical.light as any);
+          }
+          if (newPhysical.sg) {
+            const sm = newPhysical.sg.getShadowMap();
+            if (sm?.renderList) {
+              sm.renderList.length = 0;
+            }
+          }
+          newPhysical.dynamicCastersRegistered?.clear();
+          newPhysical.hasDynamicCasters = false;
         } else {
           if (oldPhysical) {
             this.lightPool.forceHardRelease(oldPhysical);
@@ -485,7 +515,9 @@ export class LightAllocationService {
           newPhysical.assignedEntityUid = incomingVl.entity.uid;
           newPhysical.logicalSlotIndex = slot.id;
           newPhysical.currentIntensity = 0;
-          newPhysical.light.intensity = 0;
+          newPhysical.light.intensity = LIGHT_SPATIAL_CONSTANTS.PHYSICAL_IDLE_MIN_INTENSITY;
+          newPhysical.light.diffuse.set(0, 0, 0);
+          newPhysical.light.specular.set(0, 0, 0);
           newPhysical._isNewAssignment = true;
           newPhysical.isWarmedUp = false;
 

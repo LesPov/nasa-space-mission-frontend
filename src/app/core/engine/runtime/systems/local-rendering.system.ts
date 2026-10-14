@@ -12,6 +12,7 @@ import { EngineProfilerService } from '../../telemetry/engine-profiler.service';
 import { SpatialRelevanceHubService } from '../../spatial/spatial-relevance-hub.service';
 import { SpatialStreamingGroupService } from '../../spatial/spatial-streaming-group.service';
 import { CameraOwnershipService } from '../cameras/camera-ownership.service';
+import { LightPoolService } from './lighting/light-pool.service';
 
 export type CullState = 'VISIBLE' | 'FADING_OUT' | 'HARD_CULLED' | 'RESTORING';
 
@@ -50,6 +51,7 @@ export class LocalRenderingSystem implements IUpdatable {
   private spatialHub = inject(SpatialRelevanceHubService);
   private spatialGroups = inject(SpatialStreamingGroupService);
   private ownership = inject(CameraOwnershipService);
+  private lightPool = inject(LightPoolService);
 
   private frameCounter = 0;
   private distanceCheckTimer = 0;
@@ -130,9 +132,29 @@ export class LocalRenderingSystem implements IUpdatable {
     return false;
   }
 
+  private isProtectedByActiveContainerLight(entityUid: string): boolean {
+    // Solo proteger al contenedor del culling si la luz interior está REALMENTE emitiendo luz
+    // Si la luz ya se apagó por distancia, el contenedor puede entrar en culling y desaparecer normalmente.
+    const allSlots = this.lightPool.getAllSlots();
+    for (let i = 0; i < allSlots.length; i++) {
+      const slot = allSlots[i];
+      if (slot.assignedEntityUid && slot.currentIntensity > 0.001) {
+        const lightEnt = this.entityManager.getEntityByUid(slot.assignedEntityUid);
+        if (lightEnt && lightEnt.light?.containmentMode === 'INTERIOR') {
+          const containerUid = lightEnt.light.containerEntityUid || lightEnt.parentId;
+          if (containerUid === entityUid) {
+            return true;
+          }
+        }
+      }
+    }
+    return false;
+  }
+
   private isEligibleForHardCull(e: GameEntity): boolean {
     if (e.isPersistent || e.rol === 'player' || e.characterConfig || e.rol === 'spawn_point') return false;
     if (this.isStructuralEntity(e)) return false;
+    if (this.isProtectedByActiveContainerLight(e.uid)) return false;
     if (e.autoAnim?.enabled) return false;
     if (e.type === 'trigger' || e.type === 'trigger_compuesto') return false;
     if (e.type.startsWith('light_')) return false;
@@ -476,7 +498,7 @@ export class LocalRenderingSystem implements IUpdatable {
         const boundingRadius = record ? record.boundingRadius : 2.0;
         const adjustedDist = Math.max(0, effectiveDist - boundingRadius);
 
-        // ZONA 1: Dentro del rango de visibilidad plena
+        // ZONA 1: Rango de visibilidad plena
         if (adjustedDist <= fadeStartDistance) {
           if (renderState.visibility !== 1.0 || renderState.state !== 'VISIBLE' || !mesh.isVisible || !mesh.isEnabled()) {
             const prevState = renderState.state;
@@ -520,7 +542,7 @@ export class LocalRenderingSystem implements IUpdatable {
           }
           fCount++;
         } 
-        // ZONA 3: Más allá del rango de corte (Hard Culled)
+        // ZONA 3: Fuera del rango de corte
         else {
           const isNeededForShadow = this.shadowService.isEntityRequiredForActiveShadows(e.uid);
           

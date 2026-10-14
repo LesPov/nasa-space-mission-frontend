@@ -205,18 +205,14 @@ export class LightContainmentService {
 
     const openings: PortalOpening[] = [];
 
-    // Prioridad 1: Portales explícitamente configurados por el creador
     if (configuredPortals && configuredPortals.length > 0) {
       for (let p = 0; p < configuredPortals.length; p++) {
         const cp = configuredPortals[p];
         if (cp.enabled === false) continue;
 
         const locPos = new Vector3(cp.localPosition.x, cp.localPosition.y, cp.localPosition.z);
-        
         let rawNormal = new Vector3(cp.localNormal.x, cp.localNormal.y, cp.localNormal.z);
         
-        // Detección robusta de normal saliente cuando la normal guardada es nula o degenerada:
-        // Se determina el eje principal de la posición local del portal respecto al centro del bounding box local.
         if (rawNormal.lengthSquared() < 0.0001) {
           const centerLocal = minLocal.add(maxLocal).scale(0.5);
           const deltaFromCenter = locPos.subtract(centerLocal);
@@ -253,7 +249,6 @@ export class LightContainmentService {
       }
     }
 
-    // Prioridad 2: Portales derivados del grupo de streaming topológico
     if (openings.length === 0) {
       const group = this.spatialGroups.getGroupForEntity(container.uid);
       if (group && group.portals.length > 0) {
@@ -273,7 +268,6 @@ export class LightContainmentService {
       }
     }
 
-    // Prioridad 3: Geometría de dos bocas en los extremos
     if (openings.length === 0) {
       const floorYWorld = minWorld.y + 1.2;
       const p1World = new Vector3(centerWorld.x, floorYWorld, minWorld.z);
@@ -384,7 +378,6 @@ export class LightContainmentService {
     let matchedPortalPreDist = preEntryDistance;
     let highestProgress = 0;
 
-    // Evaluación direccional de cruce de portales
     let isCrossingInward = false;
     let isCrossingOutward = false;
 
@@ -401,7 +394,6 @@ export class LightContainmentService {
       const maxAllowedLateral = Math.max(14.0, portal.radius * 3.8);
 
       if (lateralDist <= maxAllowedLateral) {
-        // Enfoque hacia el umbral exterior: dotOutward >= 0 (fuera del portal) hasta portalPreDist
         if (dotOutward >= 0.0 && dotOutward <= portalPreDist) {
           isInsidePortalPreEntryCone = true;
           const currentProg = Math.max(0, Math.min(1.0, 1.0 - (dotOutward / portalPreDist)));
@@ -414,9 +406,7 @@ export class LightContainmentService {
           }
         }
 
-        // Justo al cruzar el portal hacia adentro (dotOutward < 0, hasta la profundidad del cono de entrada interior)
         if (dotOutward < 0.0 && dotOutward >= -Math.max(10.0, portal.radius * 2.5)) {
-          // El jugador ha atravesado el plano hacia adentro en la zona del umbral
           isCrossingInward = true;
           if (!matchedPortal || dist < bestPortalDist) {
             matchedPortal = portal;
@@ -426,8 +416,6 @@ export class LightContainmentService {
           }
         }
 
-        // Detección de presalida real: sólo si el jugador ya estaba adentro y se mueve hacia el exterior
-        // (su vector velocidad tiene componente positiva a lo largo de outwardNormal)
         if (wasInRange && dotOutward >= -Math.max(8.0, portalPreDist * 0.5) && dotOutward <= 2.0) {
           const velocityDotOutward = Vector3.Dot(actorVelocity, portal.outwardNormal);
           if (velocityDotOutward > 0.1) {
@@ -459,13 +447,10 @@ export class LightContainmentService {
 
     let isRealInterior = false;
 
-    // 1. Si acaba de cruzar el portal hacia el interior (dotOutward < 0 dentro del cono),
-    // se confirma de forma inmediata el estado interior para evitar cualquier brecha o apagón.
     if (isCrossingInward && isWithinVerticalInterior) {
       isRealInterior = true;
     }
 
-    // 2. Comprobación de permanencia en el interior por AABB y presencia en pasillo
     if (!isRealInterior && isWithinHorizontalInterior && isWithinVerticalInterior) {
       const group = this.spatialGroups.getGroupForEntity(container.uid);
       const isGroupActive = group && (group.state === 'ACTIVE' || group.isInsideVolume);
@@ -492,11 +477,7 @@ export class LightContainmentService {
       }
     }
 
-    // RESOLUCIÓN DE ESTADOS:
-
-    // A. Si está dentro del interior (incluyendo el cruce inmediato tras el portal 1)
     if (isRealInterior) {
-      // Solo transiciona a PRE_EXIT si el jugador va caminando deliberadamente hacia afuera y está cerca del umbral
       if (isCrossingOutward && bestSignedDist >= -4.0 && bestSignedDist <= 2.0) {
         return {
           inside: true,
@@ -512,7 +493,6 @@ export class LightContainmentService {
         };
       }
 
-      // 100 % de intensidad permanente dentro de todo el pasillo
       return {
         inside: true,
         preEntry: false,
@@ -527,7 +507,6 @@ export class LightContainmentService {
       };
     }
 
-    // B. En aproximación exterior (pre-entrada progresiva)
     if (isInsidePortalPreEntryCone && bestSignedDist >= 0.0 && bestSignedDist <= matchedPortalPreDist) {
       return {
         inside: false,
@@ -543,7 +522,6 @@ export class LightContainmentService {
       };
     }
 
-    // C. En transición de salida hacia afuera ya iniciada
     if (wasInRange && isCrossingOutward && bestPortalDist <= (matchedPortalPreDist + 8.0)) {
       const exitProg = Math.max(0, 1.0 - (Math.max(0, bestSignedDist) / (matchedPortalPreDist + 8.0)));
       return {
@@ -560,7 +538,6 @@ export class LightContainmentService {
       };
     }
 
-    // D. Completamente en el exterior
     return {
       inside: false,
       preEntry: false,
@@ -630,17 +607,25 @@ export class LightContainmentService {
     const mode: LightContainmentMode = entity.light?.containmentMode || 'GLOBAL';
     const affectDescendantsOnly = entity.light?.affectDescendantsOnly ?? false;
 
-    if (mode === 'INTERIOR') {
+    // Si el usuario marcó explícitamente "Restringir físicamente a mallas del modelo",
+    // se confina la luz sólo al interior del pasillo.
+    // De lo contrario, la luz queda libre (includedOnlyMeshes = []) para que pueda
+    // escapar físicamente por las puertas y bañar el suelo exterior y objetos cercanos
+    // mediante la oclusión de sus paredes y el ShadowGenerator.
+    if (mode === 'INTERIOR' && affectDescendantsOnly) {
       const container = this.resolveContainerEntity(entity, scene);
       if (container && container.view) {
         const { renderables } = this.getAllRenderableMeshesFromModel(container.view);
 
-        if (affectDescendantsOnly && renderables.length > 0) {
+        if (renderables.length > 0) {
           const validReceivers = new Set<AbstractMesh>(renderables);
+          
           const playerEnt = this.entityManager.getAllEntities().find(e => e.rol === 'player' || !!e.characterConfig);
-          if (playerEnt && playerEnt.view) {
+          if (playerEnt && playerEnt.view && !playerEnt.view.isDisposed()) {
             validReceivers.add(playerEnt.view as AbstractMesh);
-            playerEnt.view.getChildMeshes(false).forEach(m => validReceivers.add(m));
+            playerEnt.view.getChildMeshes(false).forEach(m => {
+              if (!m.isDisposed()) validReceivers.add(m);
+            });
           }
 
           light.includedOnlyMeshes = Array.from(validReceivers);
@@ -650,6 +635,7 @@ export class LightContainmentService {
       }
     }
 
+    // Modo natural: la luz viaja libremente y la oclusión de las sombras define la silueta en puertas y suelo
     light.includedOnlyMeshes = [];
     light.excludedMeshes = [];
   }

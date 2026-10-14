@@ -57,7 +57,6 @@ export class LightShadowService {
         slot.assignedEntityUid && 
         slot.light && 
         slot.light.isEnabled() && 
-        slot.currentIntensity > 0.01 &&
         slot.shadowTier !== 'DISABLED'
       ) {
         return true;
@@ -209,22 +208,37 @@ export class LightShadowService {
   }
 
   public prepareStaticCastersCache(entityUid: string, lightType: string, lightPos: Vector3, range: number): AbstractMesh[] {
-    const cacheKey = `${entityUid}_${lightType}_${Math.round(range)}`;
-    const cachedEntry = this.slotStaticRenderListCache.get(cacheKey);
-
-    if (cachedEntry) {
-      return cachedEntry.meshes;
-    }
-
-    const effectiveStaticRange = Math.max(16.0, range);
-    const staticMeshesFound: AbstractMesh[] = [];
-
     const ownerEnt = this.entityManager.getEntityByUid(entityUid);
     const isInterior = ownerEnt?.light?.containmentMode === 'INTERIOR';
     const containerUid = ownerEnt?.light?.containerEntityUid || ownerEnt?.parentId;
 
-    const totalIndexed = this.staticCastersIndex.length;
+    const effectiveStaticRange = Math.max(25.0, range);
+    const staticMeshesFound: AbstractMesh[] = [];
 
+    // 1. Recolección forzosa de todas las submallas del pasillo contenedor
+    if (isInterior && containerUid) {
+      const containerEnt = this.entityManager.getEntityByUid(containerUid);
+      if (containerEnt && containerEnt.view && !containerEnt.view.isDisposed()) {
+        const collectMeshes = (mesh: AbstractMesh) => {
+          if (!mesh || mesh.isDisposed()) return;
+          if (Tags.MatchesQuery(mesh, 'editor_only || fog_element || debug_element || proxy_collider || ignore_raycast || light_visual')) return;
+          
+          const cls = mesh.getClassName();
+          if ((cls === 'Mesh' && (mesh as Mesh).getTotalVertices() > 0) || (cls === 'InstancedMesh' && (mesh as InstancedMesh).sourceMesh)) {
+            mesh.computeWorldMatrix(true);
+            mesh.receiveShadows = true;
+            if (!staticMeshesFound.includes(mesh)) {
+              staticMeshesFound.push(mesh);
+            }
+          }
+        };
+        collectMeshes(containerEnt.view);
+        containerEnt.view.getChildMeshes(false).forEach(collectMeshes);
+      }
+    }
+
+    // 2. Indexación de casters estáticos circundantes en el radio de alcance
+    const totalIndexed = this.staticCastersIndex.length;
     for (let i = 0; i < totalIndexed; i++) {
       const item = this.staticCastersIndex[i];
       const m = item.mesh;
@@ -232,14 +246,13 @@ export class LightShadowService {
 
       if (item.entityUid === entityUid) {
         const isBulb = Tags.MatchesQuery(m, "light_visual") || (m as any).metadata?.isLightVisual;
-        if (!isBulb) {
+        if (!isBulb && !staticMeshesFound.includes(m)) {
           staticMeshesFound.push(m);
         }
         continue;
       }
 
-      // Asegurar que todas las paredes y techos del contenedor reciban y proyecten sombra
-      const isContainerWall = isInterior && (item.entityUid === containerUid);
+      if (staticMeshesFound.includes(m)) continue;
 
       const dx = lightPos.x - item.centerWorld.x;
       const dy = lightPos.y - item.centerWorld.y;
@@ -249,16 +262,12 @@ export class LightShadowService {
       const maxReach = effectiveStaticRange + item.boundingRadius;
       const maxReachSq = maxReach * maxReach;
 
-      if (isContainerWall || distSq <= maxReachSq) {
+      if (distSq <= maxReachSq) {
         m.receiveShadows = true;
+        m.computeWorldMatrix(true);
         staticMeshesFound.push(m);
       }
     }
-
-    this.slotStaticRenderListCache.set(cacheKey, {
-      meshes: staticMeshesFound,
-      range
-    });
 
     return staticMeshesFound;
   }
@@ -276,11 +285,11 @@ export class LightShadowService {
       if (slot.type === 'spot') {
         slot.sg.usePercentageCloserFiltering = true;
         slot.sg.filteringQuality = ShadowGenerator.QUALITY_MEDIUM;
-        slot.sg.bias = 0.0001;
+        slot.sg.bias = 0.00005;
         slot.sg.normalBias = 0.001;
       } else {
         slot.sg.usePoissonSampling = true;
-        slot.sg.bias = 0.0001;
+        slot.sg.bias = 0.00005;
         slot.sg.normalBias = 0.001;
       }
       slot.sg.setDarkness(0.00);
@@ -289,7 +298,10 @@ export class LightShadowService {
     slot.sg.forceBackFacesOnly = false;
     slot.sg.setDarkness(0.00);
 
-    const renderList = slot.sg.getShadowMap()?.renderList;
+    const shadowMap = slot.sg.getShadowMap();
+    if (!shadowMap) return;
+
+    const renderList = shadowMap.renderList;
     if (!renderList) return;
 
     for (const [, slotsSet] of this.entityToActiveSlotsMap.entries()) {
@@ -329,11 +341,13 @@ export class LightShadowService {
       if (actorMeshes.length > 0) {
         const actorPos = actor.view ? actor.view.getAbsolutePosition() : Vector3.Zero();
         const distSq = Vector3.DistanceSquared(actorPos, lightPos);
-        const effectiveRange = range + 8.0;
+        const effectiveRange = range + 10.0;
 
         if (distSq <= effectiveRange * effectiveRange) {
           for (let m = 0; m < actorMeshes.length; m++) {
-            nextList.push(actorMeshes[m]);
+            if (!nextList.includes(actorMeshes[m])) {
+              nextList.push(actorMeshes[m]);
+            }
           }
           slot.hasDynamicCasters = true;
           slot.dynamicCastersRegistered.add(actor.uid);
@@ -348,19 +362,6 @@ export class LightShadowService {
       }
     }
 
-    if (renderList.length === nextList.length) {
-      let isIdentical = true;
-      for (let idx = 0; idx < nextList.length; idx++) {
-        if (renderList[idx] !== nextList[idx]) {
-          isIdentical = false;
-          break;
-        }
-      }
-      if (isIdentical && slot.isWarmedUp) {
-        return;
-      }
-    }
-
     renderList.length = 0;
     for (let k = 0; k < nextList.length; k++) {
       renderList.push(nextList[k]);
@@ -371,7 +372,7 @@ export class LightShadowService {
     slot.isWarmedUp = true;
     
     this.shadowCache.recordRebuild();
-    slot.sg.getShadowMap()?.resetRefreshCounter();
+    shadowMap.resetRefreshCounter();
   }
 
   public syncDynamicActorInSlot(

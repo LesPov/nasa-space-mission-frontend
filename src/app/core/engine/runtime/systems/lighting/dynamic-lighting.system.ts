@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/lighting/dynamic-lighting.system.ts
 import { Injectable, inject } from '@angular/core';
 import { IUpdatable } from '../../../behaviors/services/loop-manager.service';
@@ -90,7 +89,7 @@ export class DynamicLightingSystem implements IUpdatable {
     let shadowedSlots = 0;
     const slots = this.lightPool.getAllSlots();
     for (let i = 0; i < slots.length; i++) {
-      if (slots[i].assignedEntityUid && slots[i].currentIntensity > 0 && slots[i].light.isEnabled()) {
+      if (slots[i].assignedEntityUid && slots[i].currentIntensity > 0) {
         activeSlots++;
         if (slots[i].sg && (slots[i].sg!.getShadowMap()?.renderList?.length || 0) > 0) {
           shadowedSlots++;
@@ -109,8 +108,8 @@ export class DynamicLightingSystem implements IUpdatable {
     const slotsInfo: { id: string; assigned: boolean; hasSg: boolean; renderListSize: number; tier?: string }[] = [];
 
     this.lightPool.getAllSlots().forEach(s => {
-      const isPhysicallyOn = !!s.assignedEntityUid && s.currentIntensity > 0 && s.light.isEnabled();
-      if (isPhysicallyOn) {
+      const isPhysicallyActive = !!s.assignedEntityUid && s.currentIntensity > 0;
+      if (isPhysicallyActive) {
         activeSlots++;
         if (s.sg && (s.sg.getShadowMap()?.renderList?.length || 0) > 0) shadowedSlots++;
       }
@@ -118,7 +117,7 @@ export class DynamicLightingSystem implements IUpdatable {
         id: s.logicalSlotIndex !== undefined && s.logicalSlotIndex !== null 
           ? `Slot ${s.logicalSlotIndex}` 
           : `${s.type}_${s.index}`,
-        assigned: isPhysicallyOn,
+        assigned: isPhysicallyActive,
         hasSg: !!s.sg,
         renderListSize: s.sg ? (s.sg.getShadowMap()?.renderList?.length || 0) : 0,
         tier: s.shadowTier
@@ -321,7 +320,16 @@ export class DynamicLightingSystem implements IUpdatable {
 
     const effective = Math.max(0, newIntensity * vl.currentMultiplier);
     slot.currentIntensity = effective;
-    slot.light.intensity = effective;
+    
+    if (effective > 0) {
+      slot.light.intensity = effective;
+      slot.light.diffuse.copyFrom(vl.baseColor);
+      slot.light.specular.copyFrom(vl.baseColor);
+    } else {
+      slot.light.intensity = LIGHT_SPATIAL_CONSTANTS.PHYSICAL_IDLE_MIN_INTENSITY;
+      slot.light.diffuse.set(0, 0, 0);
+      slot.light.specular.set(0, 0, 0);
+    }
 
     const isBW = this.worldSettingsSvc.settings().visualMode === 'bw';
     const hexColor = isBW ? vl.entity.light.lightColorBW : vl.entity.light.lightColor;
@@ -441,10 +449,6 @@ export class DynamicLightingSystem implements IUpdatable {
 
       const slot = this.lightPool.findSlotByUid(entity.uid);
       if (slot) {
-        slot.currentIntensity = 0;
-        slot.light.intensity = 0;
-        slot.light.diffuse.set(0, 0, 0);
-        slot.light.specular.set(0, 0, 0);
         this.lightPool.forceHardRelease(slot);
       }
       return;
@@ -513,7 +517,7 @@ export class DynamicLightingSystem implements IUpdatable {
     }
 
     const fadeRateIn = 1.0 - Math.exp(-6.0 * (dtMs / 1000.0));
-    const fadeRateOut = 1.0 - Math.exp(-3.5 * (dtMs / 1000.0));
+    const fadeRateOut = 1.0 - Math.exp(-4.5 * (dtMs / 1000.0));
 
     if (dtMs > 0) {
       this.playerVelocity.copyFrom(refPos).subtractInPlace(this.lastRefPos).scaleInPlace(1000 / dtMs);
@@ -576,8 +580,9 @@ export class DynamicLightingSystem implements IUpdatable {
 
         vl.currentMultiplier += (vl.targetMultiplier - vl.currentMultiplier) * lerpSpeed;
         
-        if (vl.targetMultiplier === 0 && vl.currentMultiplier < LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
-          vl.currentMultiplier = 0;
+        // Colapso limpio y estricto a cero cuando está cerca del umbral de apagado
+        if (vl.targetMultiplier === 0 && vl.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
+          vl.currentMultiplier = 0.0;
         }
       } else {
         vl.currentMultiplier = vl.targetMultiplier;
@@ -605,12 +610,11 @@ export class DynamicLightingSystem implements IUpdatable {
       const slot = allSlots[i];
 
       if (!slot.assignedEntityUid) {
-        if (Math.abs(slot.currentIntensity) > 0.00001 || slot.light.isEnabled()) {
+        if (slot.currentIntensity > 0 || slot.light.diffuse.r > 0 || slot.light.diffuse.g > 0 || slot.light.diffuse.b > 0) {
           slot.currentIntensity = 0;
-          slot.light.intensity = 0;
+          slot.light.intensity = LIGHT_SPATIAL_CONSTANTS.PHYSICAL_IDLE_MIN_INTENSITY;
           slot.light.diffuse.set(0, 0, 0);
           slot.light.specular.set(0, 0, 0);
-          slot.light.setEnabled(false);
           slot.shadowTier = undefined;
           if (slot.type !== 'directional') (slot.light as any).position.set(0, -99999, 0);
         }
@@ -625,7 +629,7 @@ export class DynamicLightingSystem implements IUpdatable {
 
       this.syncSlotWithVirtualLight(slot, vl, scene, isEditorPure, shouldRebuildShadows, playerMoved);
 
-      if (slot.sg && vl.isShadowInRange && slot.light.intensity > 0) {
+      if (slot.sg && vl.isShadowInRange && slot.currentIntensity > 0) {
         if (slot.isStaticLight && !slot.hasDynamicCasters) statics++;
         else dynamics++;
       }
@@ -671,6 +675,15 @@ export class DynamicLightingSystem implements IUpdatable {
             slot.sg.getShadowMap()?.resetRefreshCounter();
           }
         }
+      } else {
+        if (slot.currentIntensity > 0 || slot.light.diffuse.r > 0 || slot.light.diffuse.g > 0 || slot.light.diffuse.b > 0) {
+          slot.currentIntensity = 0;
+          slot.light.intensity = LIGHT_SPATIAL_CONSTANTS.PHYSICAL_IDLE_MIN_INTENSITY;
+          slot.light.diffuse.set(0, 0, 0);
+          slot.light.specular.set(0, 0, 0);
+          slot.shadowTier = undefined;
+          if (slot.type !== 'directional') (slot.light as any).position.set(0, -99999, 0);
+        }
       }
     }
   }
@@ -713,9 +726,6 @@ export class DynamicLightingSystem implements IUpdatable {
       }
     }
 
-    slot.light.diffuse.copyFrom(vl.baseColor);
-    slot.light.specular.copyFrom(vl.baseColor);
-
     const effectiveBase = (lightComp.renderIntensity !== undefined && lightComp.renderIntensity !== null && lightComp.renderIntensity > 0)
       ? lightComp.renderIntensity
       : (lightComp.intensity ?? 1.0);
@@ -724,14 +734,21 @@ export class DynamicLightingSystem implements IUpdatable {
     if (!lightComp.enabled || this.profilerDisableLocalLights) finalIntensity = 0;
 
     slot.currentIntensity = finalIntensity;
-    slot.light.intensity = finalIntensity;
-
-    const shouldBeEnabled = finalIntensity > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD;
-    if (slot.light.isEnabled() !== shouldBeEnabled) {
-      slot.light.setEnabled(shouldBeEnabled);
+    
+    if (finalIntensity > 0) {
+      slot.light.intensity = finalIntensity;
+      slot.light.diffuse.copyFrom(vl.baseColor);
+      slot.light.specular.copyFrom(vl.baseColor);
+    } else {
+      slot.light.intensity = LIGHT_SPATIAL_CONSTANTS.PHYSICAL_IDLE_MIN_INTENSITY;
+      slot.light.diffuse.set(0, 0, 0);
+      slot.light.specular.set(0, 0, 0);
     }
 
-    if (slot._isNewAssignment || vl.entity.isDirty || this.isFirstFrame) {
+    const needsContainmentReapply = slot._isNewAssignment || vl.entity.isDirty || this.isFirstFrame || 
+      (lightComp.containmentMode === 'INTERIOR');
+
+    if (needsContainmentReapply) {
       if (slot.type !== 'directional') {
         this.containmentSvc.applyContainment(slot.light as any, vl.entity, scene);
       }
@@ -740,7 +757,7 @@ export class DynamicLightingSystem implements IUpdatable {
     const wantsShadow = vl.isShadowInRange && vl.currentMultiplier > LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD && lightComp.enabled && lightComp.castShadows && slot.shadowTier !== 'DISABLED';
 
     if (slot.sg) {
-      const sBias = lightComp.shadowBias ?? 0.0001;
+      const sBias = lightComp.shadowBias ?? 0.00005;
       const sNormalBias = lightComp.shadowNormalBias ?? 0.001;
       const sDarkness = 0.00;
 
@@ -755,7 +772,8 @@ export class DynamicLightingSystem implements IUpdatable {
           ? Vector3.DistanceSquared(slot.lastShadowRebuildPos, slot.light.position) 
           : 9999;
 
-        const shouldExecuteRebuild = (!slot.isWarmedUp && (slot._isNewAssignment || renderListEmpty)) || distMovedSq > 9.0 || forceRebuildShadows;
+        // 🔥 CORRECCIÓN CLAVE: Si la lista está vacía O es nueva asignación, SIEMPRE reconstruir
+        const shouldExecuteRebuild = renderListEmpty || slot._isNewAssignment || distMovedSq > 9.0 || forceRebuildShadows;
 
         if (shouldExecuteRebuild && (!isEditorPure || !this.isPlayerDragActive)) {
           const lightRange = slot.type === 'directional' ? 50 : (slot.light as any).range || 58;
@@ -779,7 +797,7 @@ export class DynamicLightingSystem implements IUpdatable {
           if (vl.isInterior && vl.interiorActivationMode !== 'DISTANCE') {
             actorShouldCastShadow = (vl.spatialState === 'INSIDE' || vl.spatialState === 'PRE_EXIT' || vl.spatialState === 'PRE_ENTRY') && distToLight <= (lightRange + 8.0);
           } else {
-            actorShouldCastShadow = distToLight <= (lightRange + 4.0);
+            actorShouldCastShadow = (distToLight <= (lightRange + 4.0));
           }
 
           const changed = this.lightShadows.syncDynamicActorInSlot(slot, actor, slot.light.position, lightRange, actorShouldCastShadow);
@@ -795,11 +813,14 @@ export class DynamicLightingSystem implements IUpdatable {
           this.shadowCache.recordInvalidation();
         }
       } else {
-        if ((slot.sg.getShadowMap()?.renderList?.length ?? 0) > 0) {
-          slot.sg.getShadowMap()!.renderList!.length = 0;
-          slot.dynamicCastersRegistered?.clear();
-          slot.hasDynamicCasters = false;
+        if (slot.sg.getShadowMap()) {
+          slot.sg.getShadowMap()!.refreshRate = 0;
+          if (slot.sg.getShadowMap()!.renderList && slot.sg.getShadowMap()!.renderList!.length > 0) {
+            slot.sg.getShadowMap()!.renderList!.length = 0;
+          }
         }
+        slot.dynamicCastersRegistered?.clear();
+        slot.hasDynamicCasters = false;
       }
     }
 

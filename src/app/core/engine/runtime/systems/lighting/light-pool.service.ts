@@ -1,6 +1,6 @@
 // file: src/app/core/engine/runtime/systems/lighting/light-pool.service.ts
 import { Injectable, inject } from '@angular/core';
-import { PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, Color3, Tags, Scene, RenderTargetTexture } from '@babylonjs/core';
+import { PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3, Color3, Tags, Scene } from '@babylonjs/core';
 import { PoolSlot, LIGHT_SPATIAL_CONSTANTS, ShadowTier } from './lighting-types';
 import { SCENE_ACCESS_TOKEN, ISceneAccess } from '../../../scene/scene-access.token';
 import { LightContainmentService } from './light-containment.service';
@@ -31,9 +31,9 @@ export class LightPoolService {
     const tiers: ShadowTier[] = ['HIGH', 'HIGH', 'MEDIUM', 'LOW'];
 
     for (let i = 0; i < MAX_PHYSICAL_SLOTS; i++) {
-      // 1. POINT LIGHTS (Calibradas con sesgo mínimo para impedir fugas a través de paredes finas)
+      // 1. POINT LIGHTS (Inicializadas en modo IDLE estable, con isEnabled en true para no mutar defines de shaders)
       const pLight = new PointLight(`pool_point_${i}`, new Vector3(0, -99999, 0), scene);
-      pLight.intensity = 0.0; 
+      pLight.intensity = LIGHT_SPATIAL_CONSTANTS.PHYSICAL_IDLE_MIN_INTENSITY; 
       pLight.diffuse = Color3.Black();
       pLight.specular = Color3.Black();
       pLight.shadowEnabled = true; 
@@ -41,7 +41,7 @@ export class LightPoolService {
       pLight.shadowMaxZ = 45.0;
       pLight.falloffType = PointLight.FALLOFF_STANDARD;
       pLight.radius = 0.15;
-      pLight.setEnabled(false);
+      pLight.setEnabled(true);
       Tags.AddTagsTo(pLight, "system_element");
 
       const pSg = new ShadowGenerator(1024, pLight);
@@ -70,15 +70,15 @@ export class LightPoolService {
         shadowTier: tiers[i]
       });
 
-      // 2. SPOT LIGHTS (Calibración PCF de alta fidelidad)
+      // 2. SPOT LIGHTS
       const sLight = new SpotLight(`pool_spot_${i}`, new Vector3(0, -99999, 0), new Vector3(0, -1, 0), Math.PI / 3, 1.0, scene);
-      sLight.intensity = 0.0; 
+      sLight.intensity = LIGHT_SPATIAL_CONSTANTS.PHYSICAL_IDLE_MIN_INTENSITY; 
       sLight.diffuse = Color3.Black(); 
       sLight.specular = Color3.Black();
       sLight.shadowEnabled = true; 
       sLight.shadowMinZ = 0.05;
       sLight.shadowMaxZ = 50.0;
-      sLight.setEnabled(false);
+      sLight.setEnabled(true);
       Tags.AddTagsTo(sLight, "system_element");
 
       const sSg = new ShadowGenerator(1024, sLight);
@@ -110,11 +110,11 @@ export class LightPoolService {
 
     // 3. DIRECTIONAL LIGHT (Sol)
     const dLight = new DirectionalLight(`pool_dir_0`, new Vector3(0, -1, 0), scene);
-    dLight.intensity = 0; 
+    dLight.intensity = LIGHT_SPATIAL_CONSTANTS.PHYSICAL_IDLE_MIN_INTENSITY; 
     dLight.diffuse = Color3.Black(); 
     dLight.specular = Color3.Black();
     dLight.shadowEnabled = true; 
-    dLight.setEnabled(false);
+    dLight.setEnabled(true);
     Tags.AddTagsTo(dLight, "system_element");
 
     const dSg = new ShadowGenerator(1024, dLight);
@@ -177,6 +177,11 @@ export class LightPoolService {
     this.forceHardRelease(slot);
   }
 
+  /**
+   * Pasa el slot al estado Idle Standby sin invocar setEnabled(false).
+   * La luz permanece activa en Babylon.js con intensidad mínima y color negro,
+   * garantizando que los shaders no se recompilen ni se produzcan parpadeos.
+   */
   public forceHardRelease(slot: PoolSlot): void {
     slot.assignedEntityUid = null;
     slot.logicalSlotIndex = null;
@@ -185,17 +190,24 @@ export class LightPoolService {
       const sm = slot.sg.getShadowMap();
       if (sm) {
         sm.refreshRate = 0;
+        if (sm.renderList) {
+          sm.renderList.length = 0;
+        }
       }
+      slot.dynamicCastersRegistered?.clear();
+      slot.hasDynamicCasters = false;
     }
 
+    // Apagado óptico absoluto: intensidad casi nula y componentes en negro
     slot.currentIntensity = 0; 
-    slot.light.intensity = 0; 
+    slot.light.intensity = LIGHT_SPATIAL_CONSTANTS.PHYSICAL_IDLE_MIN_INTENSITY; 
     slot.light.diffuse.set(0, 0, 0);
     slot.light.specular.set(0, 0, 0);
-    slot.light.setEnabled(false);
+
     slot._lightOnTimestamp = undefined;
     slot._shadowReadyTimestamp = undefined;
     slot._isNewAssignment = false;
+    // 🔥 CORRECCIÓN CLAVE: Al vaciar el renderList, se reinicia isWarmedUp para forzar reconstrucción en la próxima asignación
     slot.isWarmedUp = false;
 
     if (slot.type !== 'directional') {

@@ -1,4 +1,3 @@
-
 // file: src/app/core/engine/runtime/systems/lighting/lighting-types.ts
 import { Color3, PointLight, SpotLight, DirectionalLight, ShadowGenerator, Vector3 } from '@babylonjs/core';
 import { GameEntity, LightInteriorActivationMode } from '../../../entities/game.entity';
@@ -58,8 +57,13 @@ export const LIGHT_SPATIAL_CONSTANTS = {
   TOTAL_LOGICAL_SLOTS: 6,
   MAX_LOCAL_LIGHTS: 4,
   MAX_LOCAL_SHADOWS: 4,
-  ZERO_INTENSITY_THRESHOLD: 0.00005,
+  
+  // Umbral de corte limpio a cero para evitar residuos de luz asintóticos en desvanecimientos
+  ZERO_INTENSITY_THRESHOLD: 0.05,
   MIN_FADE_INITIAL_MULTIPLIER: 0.0001,
+
+  // Intensidad física mínima para mantener estable el pipeline de shaders sin desactivar la luz
+  PHYSICAL_IDLE_MIN_INTENSITY: 0.00001,
   
   // Parámetros de Pasillo y Preentrada
   DEFAULT_INTERIOR_PREENTRY_DISTANCE: 16.0,

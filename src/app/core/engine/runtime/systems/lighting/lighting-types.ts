@@ -166,5 +166,6 @@ export interface PoolSlot {
   shadowTier?: ShadowTier;
   currentRefreshRate?: number;
   _framesSinceStopped?: number;
+  _framesSinceAssignment?: number;
   dynamicCastersRegistered?: Set<string>;
 }

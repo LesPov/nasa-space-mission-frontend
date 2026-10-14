@@ -243,7 +243,7 @@ export class LightAllocationService {
         } else if (slot.state === 'FADING_OUT') {
           const fadeOutTime = now - slot.lastStateChangeTime;
           if (occupant.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD || fadeOutTime > 700) {
-            this.executeSlotHandover(slot, occupant, activeVirtuals, now, 'REPLACED_BY_HIGHER_PRIORITY');
+            this.executeSlotHandover(slot, occupant, activeVirtuals, now, slot.pendingUid ? 'REPLACED_BY_HIGHER_PRIORITY' : 'OUT_OF_PROXIMITY');
           } else {
             const isRestored = desiredCandidate && desiredCandidate.entity.uid === occupant.entity.uid;
             if (isRestored && occupant.targetMultiplier > 0.00005) {
@@ -260,27 +260,46 @@ export class LightAllocationService {
         } else if (slot.state === 'ACTIVE') {
           const isStillAssigned = desiredCandidate && desiredCandidate.entity.uid === occupant.entity.uid;
 
-          if (!isStillAssigned && desiredCandidate) {
-            const holdTimeSatisfied = (now - slot.assignedTime) >= LIGHT_SPATIAL_CONSTANTS.MIN_SLOT_HOLD_TIME_MS;
-            const isSignificantlyBetter = (desiredCandidate._sortScore ?? 0) < ((occupant._sortScore ?? 0) * LIGHT_SPATIAL_CONSTANTS.REPLACEMENT_SCORE_ADVANTAGE);
-            const isOccupantOutOfRange = occupant.rejectionReason !== undefined && occupant.rejectionReason !== 'NONE';
+          if (!isStillAssigned) {
+            if (desiredCandidate) {
+              const holdTimeSatisfied = (now - slot.assignedTime) >= LIGHT_SPATIAL_CONSTANTS.MIN_SLOT_HOLD_TIME_MS;
+              const isSignificantlyBetter = (desiredCandidate._sortScore ?? 0) < ((occupant._sortScore ?? 0) * LIGHT_SPATIAL_CONSTANTS.REPLACEMENT_SCORE_ADVANTAGE);
+              const isOccupantOutOfRange = occupant.rejectionReason !== undefined && occupant.rejectionReason !== 'NONE';
 
-            if ((holdTimeSatisfied && isSignificantlyBetter) || isOccupantOutOfRange) {
-              const handoverSlot = this.activeSlots[3];
-              const handoverOccupant = handoverSlot.assignedUid ? (activeVirtuals.find(v => v.entity.uid === handoverSlot.assignedUid) || null) : null;
-              const isHandoverFree = handoverSlot.state === 'EMPTY' || (handoverOccupant !== null && handoverOccupant.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD);
+              if ((holdTimeSatisfied && isSignificantlyBetter) || isOccupantOutOfRange) {
+                const handoverSlot = this.activeSlots[3];
+                const handoverOccupant = handoverSlot.assignedUid ? (activeVirtuals.find(v => v.entity.uid === handoverSlot.assignedUid) || null) : null;
+                const isHandoverFree = handoverSlot.state === 'EMPTY' || (handoverOccupant !== null && handoverOccupant.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD);
 
-              if (isHandoverFree) {
-                if (handoverSlot.assignedUid) {
-                  this.executeSlotHandover(handoverSlot, handoverOccupant, activeVirtuals, now, 'TRANSITION_HANDOVER');
+                if (isHandoverFree) {
+                  if (handoverSlot.assignedUid) {
+                    this.executeSlotHandover(handoverSlot, handoverOccupant, activeVirtuals, now, 'TRANSITION_HANDOVER');
+                  }
+                  this.transferToHandoverSlot(slot, handoverSlot, occupant, now);
+                } else {
+                  slot.state = 'FADING_OUT';
+                  slot.pendingUid = desiredCandidate.entity.uid;
+                  slot.lastStateChangeTime = now;
+                  occupant.targetMultiplier = 0.0;
+                  occupant.lifecycleStage = 'FADING_OUT';
                 }
-                this.transferToHandoverSlot(slot, handoverSlot, occupant, now);
-              } else {
-                slot.state = 'FADING_OUT';
-                slot.pendingUid = desiredCandidate.entity.uid;
-                slot.lastStateChangeTime = now;
-                occupant.targetMultiplier = 0.0;
-                occupant.lifecycleStage = 'FADING_OUT';
+              }
+            } else {
+              // No hay candidato que ocupe este slot (jugador se alejó a la oscuridad/exterior)
+              const isOccupantOut = occupant.targetMultiplier === 0 || 
+                                    occupant.lifecycleStage === 'OUTSIDE' || 
+                                    occupant.lifecycleStage === 'INACTIVE' || 
+                                    (occupant.rejectionReason !== undefined && occupant.rejectionReason !== 'NONE');
+              if (isOccupantOut) {
+                if (occupant.currentMultiplier <= LIGHT_SPATIAL_CONSTANTS.ZERO_INTENSITY_THRESHOLD) {
+                  this.executeSlotHandover(slot, occupant, activeVirtuals, now, 'OUT_OF_PROXIMITY');
+                } else {
+                  slot.state = 'FADING_OUT';
+                  slot.pendingUid = null;
+                  slot.lastStateChangeTime = now;
+                  occupant.targetMultiplier = 0.0;
+                  occupant.lifecycleStage = 'FADING_OUT';
+                }
               }
             }
           }
@@ -331,6 +350,7 @@ export class LightAllocationService {
           physicalToUse.light.diffuse.set(0, 0, 0);
           physicalToUse.light.specular.set(0, 0, 0);
           physicalToUse._isNewAssignment = true;
+          physicalToUse._framesSinceAssignment = 0;
           physicalToUse.isWarmedUp = false;
 
           slot.physicalSlot = physicalToUse;
@@ -519,6 +539,7 @@ export class LightAllocationService {
           newPhysical.light.diffuse.set(0, 0, 0);
           newPhysical.light.specular.set(0, 0, 0);
           newPhysical._isNewAssignment = true;
+          newPhysical._framesSinceAssignment = 0;
           newPhysical.isWarmedUp = false;
 
           slot.physicalSlot = newPhysical;

@@ -616,6 +616,7 @@ export class DynamicLightingSystem implements IUpdatable {
           slot.light.diffuse.set(0, 0, 0);
           slot.light.specular.set(0, 0, 0);
           slot.shadowTier = undefined;
+          slot._framesSinceAssignment = undefined;
           if (slot.type !== 'directional') (slot.light as any).position.set(0, -99999, 0);
         }
         continue;
@@ -682,6 +683,7 @@ export class DynamicLightingSystem implements IUpdatable {
           slot.light.diffuse.set(0, 0, 0);
           slot.light.specular.set(0, 0, 0);
           slot.shadowTier = undefined;
+          slot._framesSinceAssignment = undefined;
           if (slot.type !== 'directional') (slot.light as any).position.set(0, -99999, 0);
         }
       }
@@ -772,7 +774,6 @@ export class DynamicLightingSystem implements IUpdatable {
           ? Vector3.DistanceSquared(slot.lastShadowRebuildPos, slot.light.position) 
           : 9999;
 
-        // 🔥 CORRECCIÓN CLAVE: Si la lista está vacía O es nueva asignación, SIEMPRE reconstruir
         const shouldExecuteRebuild = renderListEmpty || slot._isNewAssignment || distMovedSq > 9.0 || forceRebuildShadows;
 
         if (shouldExecuteRebuild && (!isEditorPure || !this.isPlayerDragActive)) {
@@ -782,6 +783,7 @@ export class DynamicLightingSystem implements IUpdatable {
           slot.lastShadowRebuildPos.copyFrom(slot.light.position);
           listRebuilt = true;
           slot.isWarmedUp = true;
+          slot._framesSinceAssignment = 0;
         }
 
         const actors = this.lightReference.getValidActorEntities();

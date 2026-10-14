@@ -57,6 +57,7 @@ export class LightShadowService {
         slot.assignedEntityUid && 
         slot.light && 
         slot.light.isEnabled() && 
+        slot.currentIntensity > 0.005 && 
         slot.shadowTier !== 'DISABLED'
       ) {
         return true;
@@ -70,9 +71,11 @@ export class LightShadowService {
     if (!slots) return;
 
     for (const slot of slots) {
+      slot._framesSinceAssignment = 0;
       if (slot.sg) {
         const shadowMap = slot.sg.getShadowMap();
         if (shadowMap) {
+          shadowMap.refreshRate = 1;
           shadowMap.resetRefreshCounter();
           this.shadowCache.recordInvalidation();
         }
@@ -219,10 +222,18 @@ export class LightShadowService {
     if (isInterior && containerUid) {
       const containerEnt = this.entityManager.getEntityByUid(containerUid);
       if (containerEnt && containerEnt.view && !containerEnt.view.isDisposed()) {
+        if (!containerEnt.view.isEnabled()) {
+          containerEnt.view.setEnabled(true);
+        }
+
         const collectMeshes = (mesh: AbstractMesh) => {
           if (!mesh || mesh.isDisposed()) return;
           if (Tags.MatchesQuery(mesh, 'editor_only || fog_element || debug_element || proxy_collider || ignore_raycast || light_visual')) return;
           
+          if (!mesh.isEnabled()) {
+            mesh.setEnabled(true);
+          }
+
           const cls = mesh.getClassName();
           if ((cls === 'Mesh' && (mesh as Mesh).getTotalVertices() > 0) || (cls === 'InstancedMesh' && (mesh as InstancedMesh).sourceMesh)) {
             mesh.computeWorldMatrix(true);
@@ -370,6 +381,7 @@ export class LightShadowService {
     slot.isStaticLight = ownerEnt ? (!ownerEnt.autoAnim?.enabled && ownerEnt.movementAuthority === 'GAMEPLAY' && !ownerEnt.characterConfig) : true;
     slot.lastShadowRebuildPos = lightPos.clone();
     slot.isWarmedUp = true;
+    slot._framesSinceAssignment = 0;
     
     this.shadowCache.recordRebuild();
     shadowMap.resetRefreshCounter();
@@ -459,6 +471,15 @@ export class LightShadowService {
     if (slot.shadowTier === 'DISABLED') {
       slot.sg.getShadowMap()!.refreshRate = 0;
       slot.currentRefreshRate = 0;
+      return;
+    }
+
+    // Ventana de calentamiento de 6 fotogramas tras asignación para asegurar
+    // que la geometría y los materiales se dibujen en el ShadowMap antes de congelarse
+    if (slot._framesSinceAssignment !== undefined && slot._framesSinceAssignment < 6) {
+      slot._framesSinceAssignment++;
+      slot.sg.getShadowMap()!.refreshRate = 1;
+      slot.currentRefreshRate = 1;
       return;
     }
 

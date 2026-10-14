@@ -133,8 +133,6 @@ export class LocalRenderingSystem implements IUpdatable {
   }
 
   private isProtectedByActiveContainerLight(entityUid: string): boolean {
-    // Solo proteger al contenedor del culling si la luz interior está REALMENTE emitiendo luz
-    // Si la luz ya se apagó por distancia, el contenedor puede entrar en culling y desaparecer normalmente.
     const allSlots = this.lightPool.getAllSlots();
     for (let i = 0; i < allSlots.length; i++) {
       const slot = allSlots[i];
@@ -316,11 +314,11 @@ export class LocalRenderingSystem implements IUpdatable {
         e.isCulled = !isNeededForShadow;
         mesh.setEnabled(isNeededForShadow);
         mesh.isVisible = isNeededForShadow;
-        this.applyVisibilityToMeshes(cachedMeshes, isNeededForShadow ? 1.0 : 0.0, isNeededForShadow);
+        this.applyVisibilityToMeshes(cachedMeshes, isNeededForShadow ? 0.001 : 0.0, isNeededForShadow);
         this.renderStates.set(e.uid, { 
-          state: isNeededForShadow ? 'VISIBLE' : 'HARD_CULLED', 
-          visibility: isNeededForShadow ? 1.0 : 0.0, 
-          targetVisibility: isNeededForShadow ? 1.0 : 0.0, 
+          state: isNeededForShadow ? 'FADING_OUT' : 'HARD_CULLED', 
+          visibility: isNeededForShadow ? 0.001 : 0.0, 
+          targetVisibility: isNeededForShadow ? 0.001 : 0.0, 
           isShadowProtected: isNeededForShadow, 
           isStructural: false, 
           isResourceResident: true,
@@ -329,7 +327,6 @@ export class LocalRenderingSystem implements IUpdatable {
         });
         if (isNeededForShadow) {
           this._shadowProtectedCount++;
-          this._visibleCount++;
         } else {
           this._hardCulledCount++;
         }
@@ -511,6 +508,8 @@ export class LocalRenderingSystem implements IUpdatable {
             this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), 1.0, false);
             changedThisFrame++;
 
+            this.shadowService.notifyCasterRestored(e.uid);
+
             this.profiler.recordTimelineEvent('CULLING', 'CULLING_STATE_CHANGED', {
               entityUid: e.uid,
               name: e.name,
@@ -531,6 +530,7 @@ export class LocalRenderingSystem implements IUpdatable {
           const targetVis = Math.max(0.01, Math.min(1.0, factor));
 
           if (Math.abs(renderState.visibility - targetVis) > 0.03 || renderState.state !== 'FADING_OUT' || !mesh.isVisible || !mesh.isEnabled()) {
+            const wasDisabled = renderState.state === 'HARD_CULLED' || !mesh.isEnabled();
             renderState.state = 'FADING_OUT';
             renderState.targetVisibility = targetVis;
             renderState.visibility = targetVis;
@@ -539,6 +539,10 @@ export class LocalRenderingSystem implements IUpdatable {
             mesh.isVisible = true;
             this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), targetVis, false);
             changedThisFrame++;
+
+            if (wasDisabled) {
+              this.shadowService.notifyCasterRestored(e.uid);
+            }
           }
           fCount++;
         } 
@@ -547,32 +551,18 @@ export class LocalRenderingSystem implements IUpdatable {
           const isNeededForShadow = this.shadowService.isEntityRequiredForActiveShadows(e.uid);
           
           if (isNeededForShadow) {
-            if (renderState.state !== 'VISIBLE' || !mesh.isVisible || !mesh.isEnabled()) {
-              const prevState = renderState.state;
-              renderState.state = 'VISIBLE';
-              renderState.visibility = 1.0;
-              renderState.targetVisibility = 1.0;
+            if (!mesh.isEnabled() || !mesh.isVisible || renderState.state !== 'FADING_OUT') {
+              renderState.state = 'FADING_OUT';
+              renderState.visibility = 0.001; 
+              renderState.targetVisibility = 0.001;
               renderState.isShadowProtected = true;
               e.isCulled = false;
               mesh.setEnabled(true);
               mesh.isVisible = true;
-              this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), 1.0, true);
+              this.applyVisibilityToMeshes(this.getCachedMeshes(e, mesh), 0.001, true);
               changedThisFrame++;
-
-              this.profiler.recordTimelineEvent('CULLING', 'CULLING_STATE_CHANGED', {
-                entityUid: e.uid,
-                name: e.name,
-                distance: effectiveDist,
-                reason: 'SHADOW_PROTECTED'
-              }, {
-                entityUid: e.uid,
-                previousState: prevState,
-                newState: 'VISIBLE',
-                reason: 'SHADOW_PROTECTED'
-              });
             }
             sCount++;
-            vCount++;
           } else {
             if (renderState.state !== 'HARD_CULLED' || mesh.isVisible || mesh.isEnabled()) {
               const prevState = renderState.state;
